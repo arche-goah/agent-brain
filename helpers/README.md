@@ -1,9 +1,10 @@
 # core/helpers — hook scripts (state of F2 cleanup 2026-07-29, path after core split 2026-08-04)
 
-Only these 7 are wired up as hooks (`.claude/settings.json` hooks) — don't put anything
-else here; ghost hooks were an audit finding (claude-flow import, 19 files deleted,
-git history has them). Only exception: `statusline.cjs` — not a hook, but the
-statusline (table below), installed at USER level via `scripts/install-statusline.sh`.
+Everything here is wired up as a hook (`.claude/settings.json` hooks) — don't put
+anything else here; ghost hooks were an audit finding (claude-flow import, 19 files
+deleted, git history has them). Two exceptions: `statusline.cjs` (not a hook, table
+below, installed at USER level via `scripts/install-statusline.sh`) and
+`run-record.sh` (helper for scheduled jobs, called from launchers).
 
 | Script | Event | Purpose |
 |--------|-------|---------|
@@ -11,6 +12,9 @@ statusline (table below), installed at USER level via `scripts/install-statuslin
 | session-closing.sh | SessionEnd | HANDOFF.md with real git data + line in docs/maintenance/session-log.md |
 | memory-sync.cjs | SessionStart/SessionEnd/PreCompact | auto-memory <-> docs/memory-snapshot sync |
 | file-guard.cjs | PreToolUse (Edit/Write) | protects sensitive files + branch gate: edits in a core checkout only on a feature branch (pin/main blocks) |
+| mechanism-guard.cjs | PreToolUse (Bash) | blocks known ad-hoc shortcuts; rules are instance data (`.claude/rules/mechanism-rules.json`) |
+| secret-guard.cjs | PreToolUse (Read/Edit/Write/Bash) | blocks secret channels into context/repo; patterns instance-extensible (`.claude/rules/secret-patterns.json`) |
+| freshness-gate.cjs | PreToolUse (Workflow) | repeat-run rule carrier: fresh completed run of the same workflow → read artifacts instead of relaunching; thresholds instance data (`.claude/rules/freshness-gate.json`) |
 | junk-cleaner.cjs | PostToolUse (Bash) | cleans up junk files |
 | stop-verifier.cjs | Stop | verification reminder |
 | notify.cjs | PostToolUse (Agent/Task) + Notification | sound on agent end / permission question |
