@@ -4,6 +4,14 @@ All notable changes to this repo. Versions are graded by content (AGENTS.md #5):
 patch = mini updates, minor = a new capability, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.2.1 — 2026-08-13
+
+- **Fix: the v1.2.0 release shipped with `plugin.json` still saying 1.1.2** —
+  the release checklist (AGENTS.md #5) bumps it every time, and the version
+  string is exactly what the plugin cache collides on (the measured crossover
+  class): same string + different content = a stale cache that looks current.
+  No content change beyond the manifest version.
+
 ## 1.2.0 — 2026-08-13
 
 - **New capability: `scripts/suite-install.sh` — one command fetches a released
