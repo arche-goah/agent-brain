@@ -4,6 +4,22 @@ All notable changes to this repo. Versions are graded by content (AGENTS.md #5):
 patch = mini updates, minor = a new capability, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.1.1 — 2026-08-13
+
+- **brain-update: cache provenance checks EVERY install scope, not entry zero
+  (PR #9).** With a project-scope duplicate next to the user-scope install, the
+  records masked each other and a FAIL could hide behind a healthy first entry
+  (measured on both brains during the repo-move migration). Each scope is now
+  verified on its own; the FAIL text names the scope so the printed
+  uninstall/reinstall heals the right record.
+- **Docs: the canonical core update path is `brain-update.sh` (PR #10).**
+  templates/CLAUDE.md, README and CONVENTIONS still recommended
+  `git submodule update --remote core` + `claude plugin update` — `--remote`
+  tracks `main`, not the released pin, and after the brain-core → agent-brain
+  repo move it resolves the OLD repo's main (now an archive notice). All three
+  spots name the one command and say why `--remote` is not the path. Patch:
+  fix + docs, no new capability.
+
 ## 1.1.0 — 2026-08-13
 
 - **brain-scan: CVE identifiers require an official source (PR #2).** Both SOTA
