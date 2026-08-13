@@ -159,6 +159,14 @@ except Exception:
 #     the pin move; output style dead, stale skill channel, while submodule,
 #     marketplace checkout and remote tags all verified clean. The version string
 #     is a NAME; only the commit SHA ties the cache to the pinned source.
+#     The record can also be wrong the OTHER way (measured 2026-08-13, Windows
+#     brain, twice): cache content byte-identical to the pinned tag while
+#     gitCommitSha still names an old commit (in-place update did not refresh the
+#     record; one cache even recorded a commit whose plugin.json says 1.1.2 under
+#     a 1.1.4 cache). A mismatch therefore proves ONLY that the record does not
+#     describe the pin — foreign content and stale record are indistinguishable
+#     from here. The remediation is identical (reinstall rewrites record AND
+#     content), so the check stays; the message must not claim more than that.
 for p in $(enabled_plugins); do
   have_sha=$(recorded_sha "$p")
   [ -n "$have_sha" ] || continue   # not installed, or a pre-SHA record: nothing to verify against
@@ -179,9 +187,9 @@ for p in $(enabled_plugins); do
   if [ "$have_sha" = "$want_sha" ]; then
     echo "OK   plugin $p cache matches its pin ($pin_repo@$pin_ref)"
   else
-    echo "FAIL plugin $p cache is foreign content under the pinned version:"
+    echo "FAIL plugin $p cache provenance mismatch — foreign content OR stale install record:"
     echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
-    echo "     fix: claude plugin uninstall $p  &&  claude plugin install $p  — then restart Claude Code"
+    echo "     fix (either way): claude plugin uninstall $p  &&  claude plugin install $p  — then restart Claude Code"
     failed=1
   fi
 done
