@@ -22,6 +22,14 @@ Before each of these actions, internal thinking is REQUIRED:
      timestamp, counter-check without the source) before they count as a measurement.
      (Incident: TD DAT survives inside the .toe → the "measurement" was 1.6 h old
      history.)
+   - **Time references ARE measurement claims (operator instruction 2026-08-13):**
+     Every relative time word ("yesterday", "last week", "n days ago") asserts a
+     measured timestamp. Before writing one, read the source's timestamp (git log,
+     install record, mtime, log stamp) and compute against today's date. Not
+     measured or not measurable → OMIT the time reference entirely; the sentence
+     carries without it. (Incident: "completed yesterday" claimed for an event
+     whose install record said SAME day — "yesterday" was derived from the phrase
+     "next session" in a note, never from a timestamp.)
    - **Separate in the report:** measured / derived / assumed. No action is taken
      on assumptions.
    - **Self-tally is not a measurement:** The prose summary of an agent or a report
