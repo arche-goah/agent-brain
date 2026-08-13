@@ -4,6 +4,17 @@ All notable changes to this repo. Versions are graded by content (AGENTS.md #5):
 patch = mini updates, minor = a new capability, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.1 — 2026-08-13
+
+- **Rules: Project Work Ledgers** (PR #21, operator decision 2026-08-13) — uniform
+  project tracking across instances in `rules/arbeitsregeln.md`: one hand-maintained
+  detail list per project domain in the PRIVATE instance repo (never the project/tool
+  repo), entries carry `id`/`class`/`reach`/`origin` as the English cross-instance
+  interface; overviews are generated, never hand-kept; `reach: shared` marks entries
+  for the org shared-memory export (one-file-one-fact, deliberate act at close);
+  decisions are pointers into the change/decision logs; brain maintenance lists carry
+  brain-function work only. Patch: rule addition, no new mechanics.
+
 ## 1.3.0 — 2026-08-13
 
 - **Bootup: suite clones are covered by the released-state check.** The existing
