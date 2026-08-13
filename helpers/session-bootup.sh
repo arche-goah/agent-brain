@@ -112,6 +112,55 @@ if [[ -n "$upd" ]]; then
   echo "!! update available: $upd — ask the operator, then ONE command updates everything: bash core/scripts/brain-update.sh (restart Claude Code afterwards if it says so)"
 fi
 
+# Suite clones are NOT plugins — a new suite release tag reaches no pin, so without
+# this check it slips past every session start (operator order 2026-08-13: the
+# startup check covers update possibilities in ALL repos, not just the core).
+# For every kind=suite entry in the brain's ecosystem record: newest remote v* tag
+# vs newest tag reachable from the local checkout; only a genuinely NEWER remote
+# tag is reported (a dev checkout sitting ahead stays silent). Offline or no
+# record: silently skipped — a missing answer is not a finding.
+supd=$(python3 - <<'PY' 2>/dev/null
+import json, os, re, subprocess
+from concurrent.futures import ThreadPoolExecutor
+def load(p):
+    try:
+        with open(p, encoding="utf-8") as f: return json.load(f)
+    except Exception: return {}
+def ver(tag):
+    m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", tag or "")
+    return tuple(map(int, m.groups())) if m else None
+def check(item):
+    name, e = item
+    path = os.path.expanduser(e.get("path", ""))
+    if not os.path.isdir(os.path.join(path, ".git")): return None
+    try:
+        loc = subprocess.run(["git", "-C", path, "describe", "--tags", "--abbrev=0"],
+                             capture_output=True, text=True, timeout=6).stdout.strip()
+        raw = subprocess.run(["git", "ls-remote", "--tags", e.get("remote") or "origin"],
+                             capture_output=True, text=True, timeout=8)
+        if raw.returncode != 0: return None
+    except Exception:
+        return None
+    remote = [t for t in (l.rsplit("refs/tags/", 1)[-1].replace("^{}", "")
+                          for l in raw.stdout.splitlines()) if ver(t)]
+    if not remote: return None
+    newest = max(remote, key=ver)
+    lv = ver(loc)
+    if lv is None or ver(newest) > lv:
+        return f"{name} {loc or 'untagged'} -> {newest}"
+    return None
+suites = [(n, e) for n, e in (load("config/ecosystem.json").get("repos") or {}).items()
+          if isinstance(e, dict) and e.get("kind") == "suite"][:8]
+if suites:
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        found = [r for r in ex.map(check, suites) if r]
+    if found: print(", ".join(found))
+PY
+)
+if [[ -n "$supd" ]]; then
+  echo "!! suite update available: $supd — ask the operator; consumer checkouts: bash core/scripts/suite-install.sh <suite> (a developer checkout refuses safely — pull it by hand)"
+fi
+
 # Open PRs across the ecosystem (operator order 2026-08-13): NAME them at session
 # start — visibility only. Merging is maintainer work through the review pipeline;
 # this line never offers it. Owner derived from the marketplace repo in settings
