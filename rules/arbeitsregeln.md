@@ -66,20 +66,21 @@ instance and every colleague files it the same way and lists stay compatible:
    repo (`docs/<domain>/offene-punkte.md` or the instance's equivalent) — NEVER in
    the project/tool repo itself. Operator orders, hardware context and intermediate
    states are instance knowledge; project repos may become public (tool/instance
-   split). Every entry carries four fields:
+   split). Every entry carries four fields (English keys and values — they are the
+   cross-instance interface; the prose around them may be the instance's language):
    - `id:` stable slug — referencable, survives rephrasing
-   - `klasse:` todo | entscheidung | lektion (decision | lesson)
-   - `reichweite:` projekt | brain | shared (reach — see 3.)
-   - `von:` operator | derived (derived = proposal, needs an OK)
+   - `class:` todo | decision | lesson
+   - `reach:` project | brain | shared (see 3.)
+   - `origin:` operator | derived (derived = proposal, needs an OK)
 2. **Every overview above the detail lists is GENERATED, never hand-maintained.**
    A second hand-kept list drifts — measured repeatedly. Aggregation is a script's
    view over the registered detail lists, not a document anyone edits.
-3. **`reichweite: shared`** marks an entry for the org's shared-memory repo as soon
+3. **`reach: shared`** marks an entry for the org's shared-memory repo as soon
    as more than one brain works the project: exported as one-file-one-fact WITH a
    back-reference to the source `id`. The export is a deliberate act at session
    close (leak discipline) — nothing propagates itself.
 4. **Decisions are pointers, not copies.** The full why lives in the domain change
-   log / decision log (Session Traceability above); a `klasse: entscheidung` entry
+   log / decision log (Session Traceability above); a `class: decision` entry
    only references it. No second maintenance.
 5. **The brain's own maintenance/scan order list carries ONLY brain-function work**
    (consistency, carriers, audits). Domain work in the brain list — or brain work in
