@@ -7,7 +7,8 @@
 #
 # What it does, in order, all idempotent:
 #   1. refresh every marketplace named in the brain's settings
-#   2. update every ENABLED plugin of those marketplaces (claude CLI channel)
+#   2. update every ENABLED plugin of those marketplaces (claude CLI channel),
+#      then verify each plugin cache's PROVENANCE (commit SHA vs the pinned source)
 #   3. put the core/ submodule on the tag the plugin channel resolved
 #      (the marketplace pin — both channels ship the same repo, same tag)
 #   4. refresh config/ecosystem.json if the brain carries one
@@ -24,7 +25,7 @@ set -uo pipefail
 BRAIN="${BRAIN_UPDATE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$BRAIN" || { echo "FAIL cannot cd to brain root"; exit 1; }
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-changed=0; plugin_moved=0
+changed=0; plugin_moved=0; failed=0
 
 # -- settings readers (project + user merged) ---------------------------------
 # Every reader ends in `tr -d '\r'`: Windows Python writes CRLF to pipes, and MSYS
@@ -73,6 +74,19 @@ try:
         d = json.load(f)
     e = (d.get("plugins") or {}).get(sys.argv[2]) or []
     print(e[0].get("version", "") if e else "")
+except Exception:
+    print("")
+' "$CFG" "$1" | tr -d '\r'
+}
+
+recorded_sha() { # $1 = plugin id (name@marketplace) -> gitCommitSha of the installed cache
+  python3 -c '
+import json, os, sys
+try:
+    with open(os.path.join(sys.argv[1], "plugins", "installed_plugins.json"), encoding="utf-8") as f:
+        d = json.load(f)
+    e = (d.get("plugins") or {}).get(sys.argv[2]) or []
+    print(e[0].get("gitCommitSha", "") if e else "")
 except Exception:
     print("")
 ' "$CFG" "$1" | tr -d '\r'
@@ -135,6 +149,43 @@ except Exception:
     pass
 ' "$CFG" "$1" "$2" | tr -d '\r'
 }
+
+# 2b) cache provenance (sits here because it reuses marketplace_pin above).
+#     The plugin cache is keyed by NAME+VERSION, not by source. After a repo move
+#     (the pin now names a different repo that carries the same version string)
+#     `claude plugin update/install` no-op on "already at X" and keep FOREIGN
+#     content under the right version name — measured 2026-08-13: a brain-core
+#     1.0.1 cache from the pre-move repo (content: its release 1.1.2) survived
+#     the pin move; output style dead, stale skill channel, while submodule,
+#     marketplace checkout and remote tags all verified clean. The version string
+#     is a NAME; only the commit SHA ties the cache to the pinned source.
+for p in $(enabled_plugins); do
+  have_sha=$(recorded_sha "$p")
+  [ -n "$have_sha" ] || continue   # not installed, or a pre-SHA record: nothing to verify against
+  pin=$(marketplace_pin "${p#*@}" "${p%@*}")
+  pin_repo="${pin%% *}"
+  pin_ref="${pin#* }"
+  if [ -z "$pin_repo" ] || [ -z "$pin_ref" ] || [ "$pin_ref" = "$pin" ]; then
+    continue                       # no github pin with a ref: no source of truth to compare
+  fi
+  # Annotated tags peel to the commit on the ^{} line; lightweight tags only have
+  # the plain line. installed_plugins.json records the COMMIT sha, so prefer peeled.
+  want_sha=$(git ls-remote "https://github.com/$pin_repo.git" "refs/tags/$pin_ref" "refs/tags/$pin_ref^{}" 2>/dev/null \
+    | awk '{ if ($2 ~ /\^\{\}$/) p=$1; else t=$1 } END { if (p) print p; else if (t) print t }')
+  if [ -z "$want_sha" ]; then
+    echo "WARN plugin $p provenance unverified (cannot resolve $pin_repo@$pin_ref — offline?)"
+    continue
+  fi
+  if [ "$have_sha" = "$want_sha" ]; then
+    echo "OK   plugin $p cache matches its pin ($pin_repo@$pin_ref)"
+  else
+    echo "FAIL plugin $p cache is foreign content under the pinned version:"
+    echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
+    echo "     fix: claude plugin uninstall $p  &&  claude plugin install $p  — then restart Claude Code"
+    failed=1
+  fi
+done
+
 core_plugin=$(enabled_plugins | grep -E '^brain-core@' | head -1 || true)
 if [ -n "$core_plugin" ] && [ -d core ] && git -C core rev-parse --git-dir >/dev/null 2>&1; then
   ver=$(installed_version "$core_plugin")
@@ -181,6 +232,7 @@ if [ -n "$core_plugin" ] && [ -d core ] && git -C core rev-parse --git-dir >/dev
       changed=1
     else
       echo "FAIL core could not move to $tag (network? tag missing?) — still on $cur"
+      failed=1
     fi
   else
     echo "WARN $core_plugin not installed — core/ left untouched"
@@ -210,6 +262,13 @@ if ! git diff --quiet -- core config/ecosystem.json .gitmodules 2>/dev/null; the
 fi
 
 echo
+# A FAIL line must reach the exit code — a scheduler or one-word update that
+# prints DONE and exits 0 over a red line is the "false green" class again.
+if [ "$failed" -eq 1 ]; then
+  echo "DONE — WITH FAILURES: see FAIL lines above; the brain is NOT fully on the released state."
+  [ "$plugin_moved" -eq 1 ] && echo "(a plugin still changed on disk — restart Claude Code regardless)"
+  exit 1
+fi
 if [ "$plugin_moved" -eq 1 ]; then
   echo "DONE — RESTART REQUIRED: close Claude Code and start it again (new terminal on"
   echo "Windows); plugin skills, hooks and the output style only load on the next start."
