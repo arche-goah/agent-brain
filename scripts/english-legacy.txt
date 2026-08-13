@@ -1,0 +1,6 @@
+# Files that legitimately contain German strings. Everything else must be English
+# (AGENTS.md rule 7). The two entries below are NOT awaiting translation: they quote
+# measured German operator trigger utterances as DATA (a matched string is interface)
+# next to their English equivalents. Remove an entry only when its German data goes.
+skills/autonomer-lauf/SKILL.md
+skills/session-close/SKILL.md

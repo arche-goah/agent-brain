@@ -1,0 +1,7 @@
+# Decided once for the whole repo (PR #7 note, PR #6 measurement, PR #9): bash
+# executes the shell helpers on Unix and Git Bash alike — a CRLF checkout breaks
+# shebangs and traps grep anchors. Measured 2026-08-04 on Windows: the Workflow
+# tool also rejects a CRLF workflow script outright ("script contains control
+# characters"), which takes every workflow in workflows/ out of service there.
+# The class is "text we execute", not one extension — so pin all text, once.
+* text=auto eol=lf

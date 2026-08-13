@@ -1,0 +1,63 @@
+{
+  "manifest_version": 1,
+  "requires_core": "*",
+  "comment": [
+    "External dependency manifest (CONVENTIONS.md section 9). requires_core is '*'",
+    "because this repo IS the core — the field exists so suite-check can parse this",
+    "repo with the same code path as any suite.",
+    "What belongs here is everything a package manager cannot see: system tools a",
+    "consumer must have before the scripts and hooks can run."
+  ],
+  "dependencies": [
+    {
+      "name": "python3",
+      "kind": "tool",
+      "url": "https://www.python.org/",
+      "pin": ">=3.9",
+      "license": "PSF-2.0",
+      "target": "system",
+      "install": [
+        "macOS: brew install python@3 (or the system python3)",
+        "Windows: winget install Python.Python.3"
+      ],
+      "used_by": ["scripts"],
+      "note": "All lint/contract scripts are stdlib-only — no pip install needed."
+    },
+    {
+      "name": "node",
+      "kind": "tool",
+      "url": "https://nodejs.org/",
+      "pin": ">=18",
+      "license": "MIT",
+      "target": "system",
+      "install": [
+        "macOS: brew install node",
+        "Windows: winget install OpenJS.NodeJS"
+      ],
+      "used_by": ["helpers"],
+      "note": "The hook helpers are plain .cjs — no npm install, no build step."
+    },
+    {
+      "name": "git",
+      "kind": "tool",
+      "url": "https://git-scm.com/",
+      "pin": ">=2.30",
+      "license": "GPL-2.0",
+      "target": "system",
+      "install": ["macOS: xcode-select --install", "Windows: winget install Git.Git"],
+      "used_by": ["scripts", "helpers"],
+      "note": "Submodule + ecosystem tooling."
+    },
+    {
+      "name": "zsh",
+      "kind": "tool",
+      "url": "https://www.zsh.org/",
+      "pin": "*",
+      "license": "MIT-like",
+      "target": "system",
+      "install": ["macOS: preinstalled", "Windows: not available — see note"],
+      "used_by": ["scripts/brain-scan.sh"],
+      "note": "The session hooks no longer need zsh: bootup and closing are portable bash and the settings template wires them via `bash`, verified on Windows/Git-Bash. Only scripts/brain-scan.sh still carries a zsh shebang — it is launched by a scheduler (launchd/cron), so making it portable is part of making the scheduler itself run on Windows, not a hook concern."
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "Instance watch list for core/scripts/leak-scan.py. Put every person, show, venue and rig name here that must never appear in a shared repo — lowercase, word-boundary matched case-insensitively. The core scanner ships WITHOUT names on purpose: a public guard must not name whom it protects. Empty lists are valid (the generic patterns for home paths, IPs, MACs and secrets always apply).",
+  "names": [],
+  "instances": []
+}

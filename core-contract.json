@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "The machine-readable half of CONVENTIONS.md — the single source both the",
+    "checker (scripts/suite-check.py) and the suites refer to.",
+    "",
+    "contract_version is bumped by hand, and ONLY here:",
+    "  major — a suite built against the old version can break (renamed required file,",
+    "          new mandatory field, changed hook or MCP interface)",
+    "  minor — new optional capability, or a new check that only warns",
+    "  patch — wording, tightened error messages, no new obligation",
+    "Every bump gets a line in the history below with WHY. A bump without a reason cannot",
+    "be judged by the other person."
+  ],
+  "contract_version": "1.1.0",
+  "history": [
+    {
+      "version": "1.1.0",
+      "date": "2026-08-13",
+      "why": "suite-check lints workflow push triggers (unfiltered push = ERROR; macOS runner = INFO). Strictly a blocking check would be major, but measured impact is zero: the class was closed the same day in every repo with CI (core PR #53, suites). Minor by measured impact, reason recorded here so the other person can judge it."
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-08-03",
+      "why": "First machine-checkable version. Prose existed since 2026-08-03 morning (CONVENTIONS sections 6-8) but nothing enforced it: zero tags, zero CHANGELOGs, zero core declarations across four suites."
+    }
+  ],
+  "required_files": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "dependencies.json",
+    ".claude-plugin/plugin.json",
+    "scripts/leak-scan.py",
+    ".github/workflows/ci.yml"
+  ],
+  "required_ci_steps": [
+    "leak-scan.py"
+  ],
+  "plugin_required_fields": ["name", "description", "author"],
+  "dependencies_required_fields": ["manifest_version", "requires_core", "dependencies"],
+  "forbidden_in_tracked_files": {
+    "absolute_home_path": "/(Users|home)/<name> — a path from one machine never works on another"
+  }
+}

@@ -1,0 +1,184 @@
+{
+  "_comment": "From agent-brain/templates. Hooks point at core/helpers (submodule). Marketplace/plugins: enter once, installation happens on the next start. The marketplace below is an EXAMPLE — replace 'your-org' with the marketplace repo that pins this core for your setup.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/file-guard.cjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/mechanism-guard.cjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/secret-guard.cjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/junk-cleaner.cjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/notify.cjs\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/core/helpers/session-bootup.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" import",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/core/helpers/session-closing.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" export",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/stop-verifier.cjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" export",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/notify.cjs\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "your-org": {
+      "source": {
+        "source": "github",
+        "repo": "your-org/claude-marketplace"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "brain-core@your-org": true
+  },
+  "permissions": {
+    "_comment": "A new brain's default scope is the core ONLY — additional suites are enabled/installed exclusively on explicit operator request. The allowlist covers self-setup and self-analysis (core scripts/helpers, git reads, committing, plugin checks); push and settings edits stay ask.",
+    "allow": [
+      "Bash(python3 core/scripts/*)",
+      "Bash(core/scripts/handover-gate.sh)",
+      "Bash(bash core/scripts/*)",
+      "Bash(bash core/helpers/*)",
+      "Bash(node core/helpers/*)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git submodule status*)",
+      "Bash(git submodule update*)",
+      "Bash(git --version)",
+      "Bash(node --version)",
+      "Bash(python3 --version)",
+      "Bash(claude --version)",
+      "Bash(claude doctor)",
+      "Bash(claude plugin list*)",
+      "Bash(claude plugin validate*)",
+      "Edit(docs/**)",
+      "Edit(src/**)",
+      "Edit(scripts/**)",
+      "Edit(config/**)",
+      "Edit(.claude/skills/**)",
+      "Edit(.claude/rules/**)"
+    ],
+    "ask": [
+      "Edit(.claude/settings.json)",
+      "Edit(.claude/settings.local.json)",
+      "Edit(.mcp.json)",
+      "Bash(git push*)",
+      "Bash(git -C * push*)",
+      "Bash(git * push*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Edit(./.env)",
+      "Edit(./.env.*)",
+      "Read(.claude-state/**)",
+      "Edit(.claude-state/**)"
+    ]
+  },
+  "env": {}
+}

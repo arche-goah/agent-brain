@@ -1,0 +1,11 @@
+agent-brain
+Copyright 2026 ArcheGoah
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+Third-party content:
+- skills/last30days, skills/firecrawl-web, skills/defuddle, skills/json-canvas,
+  skills/playwright-skill and other imported skills retain the licenses and
+  attribution stated in their own directories where present.
+- helpers/secret-guard.cjs is based on protect-secrets.js from
+  karanb192/claude-code-hooks (MIT License, Copyright karanb192).

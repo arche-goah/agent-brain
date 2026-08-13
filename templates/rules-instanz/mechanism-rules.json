@@ -1,0 +1,8 @@
+[
+  {
+    "_comment": "Rules for core/helpers/mechanism-guard.cjs — instance knowledge. pattern = JS regex matched against the bash command. Every newly discovered shortcut gets added here. Example rule (generic, fine to keep):",
+    "pattern": "\\bnetworksetup\\s+-set|\\bifconfig\\s+\\S+\\s+(inet|alias)\\b|\\broute\\s+(add|delete)\\b|\\bipconfig\\s+set\\b",
+    "was": "IP/routing configuration done locally on the end device",
+    "stattdessen": "Addresses come from the network setup (DHCP reservation on the router or similar) — use the instance's documented path; record here where it lives."
+  }
+]

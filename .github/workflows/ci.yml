@@ -1,0 +1,90 @@
+# No secrets, no network beyond checkout — every check runs on the repo alone.
+# The cut is only as good as what keeps it: this is the same scan that gated commit 1.
+name: CI
+
+# push on every branch + pull_request ran each PR branch TWICE (push event and PR
+# event) and burned the 2000-min free quota: 2026-08-13 the account hit its spending
+# limit mid-month (~2138 billed min, 1890 of them from this repo — macOS counts 10x,
+# Windows 2x). Restricting push to main/tags keeps every gate: PRs still run the full
+# matrix via pull_request, merges via push on main.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+# Rapid push series on a PR branch must not stack stale runs; main keeps every run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  leaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: instance-data leak scan
+        run: python3 scripts/leak-scan.py
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # skill-lint expects an instance layout (.claude/skills); here the skills ARE
+      # the plugin payload at skills/, so point it there explicitly.
+      - name: skill lint (plugin payload)
+        run: python3 scripts/skill-lint.py --skills skills
+      # English-only is a ratchet, not a grep: scripts/english-legacy.txt freezes the
+      # German legacy awaiting translation sweeps; this fails on NEW German anywhere
+      # else, and on a translated file that forgot to leave the list.
+      - name: english-only ratchet
+        run: python3 scripts/english-only.py
+      - name: helpers parse (node syntax check)
+        run: |
+          sudo apt-get update && sudo apt-get install -y nodejs
+          for f in helpers/*.cjs; do node --check "$f"; done
+
+      # Workflows need a check of their OWN: `node --check` alone parses as CommonJS
+      # and reports exit 0, while the workflow tool's module parse fails. That is
+      # exactly how brain-scan.js stayed unstartable from v1.0.0 to 2026-08-04
+      # without CI ever saying a word.
+      - name: workflows parse (the way the workflow tool loads them)
+        run: bash scripts/workflow-parse-check.sh
+
+  # The core scripts are actually EXECUTED on every OS, not just linted: the
+  # v1.2.0 regression (PR #27) was a BSD/GNU fallback that never ran on GNU — the
+  # bootup died on every non-Mac, and no check here saw it. windows-latest with
+  # shell: bash IS the Git Bash environment of the Windows brain.
+  portability:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      # The line-ending check calls regen-skill-registry.py — without a pinned
+      # Python the check depends on the runner image instead of the repo.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: portability smoke (bootup, scan-gate, run-record, loop-watchdog, line endings)
+        shell: bash
+        run: bash scripts/portability-smoke.sh
+
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Eat your own dogfood: this repo must satisfy the contract it defines.
+      - name: suite-check against itself
+        run: python3 scripts/suite-check.py .
