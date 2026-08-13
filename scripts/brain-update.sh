@@ -79,16 +79,21 @@ except Exception:
 ' "$CFG" "$1" | tr -d '\r'
 }
 
-recorded_sha() { # $1 = plugin id (name@marketplace) -> gitCommitSha of the installed cache
+recorded_sha() { # $1 = plugin id -> one "scope sha" line PER install record.
+  # A plugin can be installed at several scopes (user + project) and the records
+  # are independent — reading only the first entry lets a stale record mask a
+  # healed one and vice versa (measured 2026-08-13: a fresh user-scope reinstall
+  # recorded the correct sha, but a stale project-scope duplicate sat at index 0
+  # and kept the check red; the reverse masking is just as possible).
   python3 -c '
 import json, os, sys
 try:
     with open(os.path.join(sys.argv[1], "plugins", "installed_plugins.json"), encoding="utf-8") as f:
         d = json.load(f)
-    e = (d.get("plugins") or {}).get(sys.argv[2]) or []
-    print(e[0].get("gitCommitSha", "") if e else "")
+    for x in (d.get("plugins") or {}).get(sys.argv[2]) or []:
+        print((x.get("scope") or "?") + " " + x.get("gitCommitSha", ""))
 except Exception:
-    print("")
+    pass
 ' "$CFG" "$1" | tr -d '\r'
 }
 
@@ -168,8 +173,8 @@ except Exception:
 #     from here. The remediation is identical (reinstall rewrites record AND
 #     content), so the check stays; the message must not claim more than that.
 for p in $(enabled_plugins); do
-  have_sha=$(recorded_sha "$p")
-  [ -n "$have_sha" ] || continue   # not installed, or a pre-SHA record: nothing to verify against
+  recs=$(recorded_sha "$p")
+  [ -n "$recs" ] || continue       # not installed: nothing to verify against
   pin=$(marketplace_pin "${p#*@}" "${p%@*}")
   pin_repo="${pin%% *}"
   pin_ref="${pin#* }"
@@ -184,14 +189,18 @@ for p in $(enabled_plugins); do
     echo "WARN plugin $p provenance unverified (cannot resolve $pin_repo@$pin_ref — offline?)"
     continue
   fi
-  if [ "$have_sha" = "$want_sha" ]; then
-    echo "OK   plugin $p cache matches its pin ($pin_repo@$pin_ref)"
-  else
-    echo "FAIL plugin $p cache provenance mismatch — foreign content OR stale install record:"
-    echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
-    echo "     fix (either way): claude plugin uninstall $p  &&  claude plugin install $p  — then restart Claude Code"
-    failed=1
-  fi
+  # EVERY install record is checked — scopes are independent (see recorded_sha).
+  while read -r scope have_sha; do
+    [ -n "$have_sha" ] || continue # a pre-SHA record: nothing to verify against
+    if [ "$have_sha" = "$want_sha" ]; then
+      echo "OK   plugin $p ($scope) cache matches its pin ($pin_repo@$pin_ref)"
+    else
+      echo "FAIL plugin $p ($scope) cache provenance mismatch — foreign content OR stale install record:"
+      echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
+      echo "     fix (either way): claude plugin uninstall $p --scope $scope  &&  claude plugin install $p  — then restart Claude Code"
+      failed=1
+    fi
+  done <<< "$recs"
 done
 
 core_plugin=$(enabled_plugins | grep -E '^brain-core@' | head -1 || true)
