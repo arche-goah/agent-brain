@@ -4,6 +4,17 @@ All notable changes to this repo. Versions are graded by content (AGENTS.md #5):
 patch = mini updates, minor = a new capability, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.1.2 — 2026-08-13
+
+- **Rules: the session-start summary is written in human language (PR #12).**
+  The rule ordered a mini-summary but said nothing about its language, so raw
+  hook vocabulary (`!!` markers, return codes) leaked into chat and pending
+  decisions ended as a generic "what's next?" instead of a direct question
+  ("update available — shall I run it?"). The Session Start section of
+  `rules/intelligence.md` now requires translating machine artifacts into
+  operator-facing language — in every chat output, not just the session start.
+  Patch: docs only.
+
 ## 1.1.1 — 2026-08-13
 
 - **brain-update: cache provenance checks EVERY install scope, not entry zero
