@@ -29,6 +29,13 @@ session start.
    the bar, not breakage alone). A batch takes the highest grade inside it.
    `x.10+` and `x.y.10+` are normal — never round to a milestone number for
    aesthetics; 2.0.0 is earned by the step, not by the counter.
+   **Mechanically carried:** run `bash scripts/release-preflight.sh vX.Y.Z` BEFORE
+   tagging — it enforces manifest==tag, a CHANGELOG section, no pre-existing tag
+   (the race guard: an existing tag or open release PR means the release happened
+   elsewhere — comment there, never re-cut), and HEAD==origin/main. CI re-checks
+   manifest+CHANGELOG on every pushed `v*` tag, so a broken tag turns red on the
+   repo page instead of failing silently on the next consumer update (the v1.2.0
+   incident: tagged with the manifest still on 1.1.2).
 6. **CI must stay meaningful — and paid for by a shared budget.** `ci.yml` runs
    leak-scan, skill-lint and suite-check against this repo itself. Never replace a
    failing check with an echo. Actions minutes are one account-wide pot: `push`
