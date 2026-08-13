@@ -53,6 +53,24 @@ jobs:
       # must-stay-silent, fail-open included), not just parsed.
       - name: freshness-gate fixtures
         run: python3 scripts/freshness-gate-test.py
+      - name: release-preflight fixtures
+        run: bash scripts/release-preflight-test.sh
+
+  # A release is one atomic promise: tag name == manifest version == CHANGELOG
+  # section. v1.2.0 shipped with the manifest still on 1.1.2 — the plugin cache
+  # keys on that string, so consumers keep stale content that looks current, and
+  # nothing turned red. This job makes a broken tag LOUD on the repo page the
+  # moment it is pushed, no matter which session cut it.
+  release-tag:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: tag matches manifest + CHANGELOG
+        run: bash scripts/release-preflight.sh --ci-tag "${GITHUB_REF_NAME}"
 
       # Workflows need a check of their OWN: `node --check` alone parses as CommonJS
       # and reports exit 0, while the workflow tool's module parse fails. That is
