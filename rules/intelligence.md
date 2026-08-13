@@ -114,6 +114,13 @@ the question already:**
 3. **Only then re-run** — and only if it can be named which question the artifacts
    do not answer.
 
+**Mechanically carried:** `helpers/freshness-gate.cjs` (PreToolUse/Workflow) denies a
+relaunch whose last completed run is younger than the threshold and cost real tokens,
+and demands exactly this sequence — read artifacts, declare reuse, or relaunch with
+`// FRESHNESS-OK: <the unanswered question>`. Resume (`resumeFromRunId`) passes freely.
+Thresholds are instance data: `.claude/rules/freshness-gate.json` (a scheduled cadence
+sets its per-workflow threshold below the cadence instead of carrying a marker).
+
 **A report that recommends its own repeat run is not an assignment.** It is checked
 against the run record: if an agent's prose tally deviates from the machine result,
 `result`/`logs` count, not the prose (measured 2026-08-04: a register reported
