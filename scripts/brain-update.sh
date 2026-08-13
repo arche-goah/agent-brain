@@ -106,13 +106,60 @@ for p in $(enabled_plugins); do
 done
 
 # 3) core/ submodule onto the same released tag the plugin channel resolved.
-#    Convention: the core plugin and the core/ submodule are the SAME repo; the
-#    plugin's installed version names the tag (plugin 1.9.0 <=> tag v1.9.0).
+#    Convention: the core plugin and the core/ submodule are the SAME repo, same
+#    tag — and the MARKETPLACE PIN is the single source of truth for both: its
+#    entry names repo AND ref. The submodule is aligned to the pinned repo BEFORE
+#    the tag resolves, on EVERY layer that names the repo: the submodule's own
+#    origin remote, the superproject config, and the .gitmodules DECLARATION —
+#    a fresh clone reads only the declaration, so a live-only fix leaves every
+#    future clone resolving the old repo where the pinned commit does not exist
+#    (measured 2026-08-13 right after the public fresh cut). Without a readable
+#    pin entry: the installed version names the tag (plugin 1.9.0 <=> tag
+#    v1.9.0), nothing is re-pointed.
+norm_url() { printf '%s' "$1" | sed -e 's#^git@github\.com:#https://github.com/#' -e 's#\.git$##'; }
+marketplace_pin() { # $1 = marketplace name, $2 = plugin name -> "repo ref" or ""
+  python3 -c '
+import json, os, sys
+p = os.path.join(sys.argv[1], "plugins", "marketplaces", sys.argv[2],
+                 ".claude-plugin", "marketplace.json")
+try:
+    with open(p, encoding="utf-8") as f:
+        d = json.load(f)
+    for e in d.get("plugins") or []:
+        if e.get("name") == sys.argv[3]:
+            s = e.get("source") or {}
+            if s.get("source") == "github" and s.get("repo"):
+                print(s.get("repo") + " " + s.get("ref", ""))
+            break
+except Exception:
+    pass
+' "$CFG" "$1" "$2" | tr -d '\r'
+}
 core_plugin=$(enabled_plugins | grep -E '^brain-core@' | head -1 || true)
 if [ -n "$core_plugin" ] && [ -d core ] && git -C core rev-parse --git-dir >/dev/null 2>&1; then
   ver=$(installed_version "$core_plugin")
   if [ -n "$ver" ]; then
     tag="v$ver"
+    pin=$(marketplace_pin "${core_plugin#*@}" "${core_plugin%@*}")
+    pin_repo="${pin%% *}"
+    pin_ref="${pin#* }"
+    if [ -n "$pin_repo" ]; then
+      [ -n "$pin_ref" ] && [ "$pin_ref" != "$pin" ] && tag="$pin_ref"
+      want_url="https://github.com/$pin_repo.git"
+      cur_url=$(git -C core remote get-url origin 2>/dev/null || echo "")
+      if [ -n "$cur_url" ] && [ "$(norm_url "$cur_url")" != "$(norm_url "$want_url")" ]; then
+        git -C core remote set-url origin "$want_url"
+        echo "OK   core origin -> $pin_repo (follows the marketplace pin)"
+        changed=1
+      fi
+      decl=$(git config -f .gitmodules submodule.core.url 2>/dev/null || echo "")
+      if [ -n "$decl" ] && [ "$(norm_url "$decl")" != "$(norm_url "$want_url")" ]; then
+        git config -f .gitmodules submodule.core.url "$want_url"
+        git submodule sync -- core >/dev/null 2>&1
+        echo "OK   .gitmodules core url -> $pin_repo (fresh clones resolve the pinned repo)"
+        changed=1
+      fi
+    fi
     cur=$(git -C core describe --tags 2>/dev/null || echo none)
     # --force on the tag fetch, and the local tag is verified against the remote:
     # a plain fetch refuses to move an existing tag, so after an upstream history
@@ -148,8 +195,8 @@ if [ -f core/scripts/ecosystem-sync.py ] && [ -f config/ecosystem.json ]; then
 fi
 
 # 5) commit + push (own brain repo only — that is where this script lives)
-if ! git diff --quiet -- core config/ecosystem.json 2>/dev/null; then
-  git add core config/ecosystem.json 2>/dev/null
+if ! git diff --quiet -- core config/ecosystem.json .gitmodules 2>/dev/null; then
+  git add core config/ecosystem.json .gitmodules 2>/dev/null
   if git commit -q -m "chore(core): brain-update to the released state"; then
     echo "OK   pin committed"
     vis=$(gh repo view --json visibility --jq .visibility 2>/dev/null || echo unknown)
