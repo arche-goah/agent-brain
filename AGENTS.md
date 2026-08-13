@@ -48,6 +48,11 @@ session start.
    memory). Existing German content is legacy awaiting dedicated translation sweeps:
    do not add to it, do not mix languages within a change; a CI english-only check
    lands together with the completed sweep (earlier it would be permanently red).
+   **Scope: this governs ARTIFACTS** (repo content, file names, logs, docs, commits).
+   Conversational chat output is NOT an artifact — it follows the operator's
+   language with its native orthography: umlauts/accents are fine in chat
+   (operator order 2026-08-13). The ASCII transliteration (ae/oe/ue digraphs) is an
+   artifact convention and must not leak into conversation.
 8. **Assume a second session.** Working copies on a machine are SHARED between
    parallel Claude sessions. Before push/rebase/branch surgery: run
    `scripts/parallel-sessions.sh` (the bootup hook warns automatically). Rules when
