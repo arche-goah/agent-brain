@@ -49,6 +49,10 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y nodejs
           for f in helpers/*.cjs; do node --check "$f"; done
+      # Detector discipline: gates are tested in BOTH directions (must-deny and
+      # must-stay-silent, fail-open included), not just parsed.
+      - name: freshness-gate fixtures
+        run: python3 scripts/freshness-gate-test.py
 
       # Workflows need a check of their OWN: `node --check` alone parses as CommonJS
       # and reports exit 0, while the workflow tool's module parse fails. That is
