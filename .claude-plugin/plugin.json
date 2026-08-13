@@ -1,6 +1,6 @@
 {
   "name": "brain-core",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Shared brain core: 22 general-purpose skills, the caveman output style, and audit workflows. Rules, hooks and contract scripts travel via the core/ submodule, not this plugin.",
   "author": {
     "name": "ArcheGoah"
