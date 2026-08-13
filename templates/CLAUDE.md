@@ -20,8 +20,11 @@ do NOT delete them, otherwise the rules only sit on disk instead of in context):
   path: feature branch directly in the submodule `core/` — the submodule is a
   full checkout. Only the consumed state (pin/main) is off-limits; `file-guard`
   blocks edits there mechanically.
-- Core update: `git submodule update --remote core` + `claude plugin update brain-core`
-  — recommended weekly, never on a show day.
+- Core update: `bash core/scripts/brain-update.sh` — one command, follows the
+  marketplace pin on every layer (plugin cache with provenance check, submodule
+  remote, `.gitmodules`, tag). Recommended weekly, never on a show day. NOT
+  `git submodule update --remote core`: that tracks `main`, not the released pin —
+  and after a core repo move it resolves the OLD repo's main.
 
 ## Instance rules (yours — additions to the core, not a replacement)
 
