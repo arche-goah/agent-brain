@@ -277,8 +277,10 @@ conflict a human must resolve by hand — reached structurally, not through care
    the normal case, not a defect.
 
 **The sync beat.** Pulling (each side for itself, weekly is enough, never on a show day):
-`git submodule update --remote core` · `claude plugin marketplace update <mp>` ·
-`claude plugin update <suite>` · `ecosystem-sync.py` for the drift report. Giving:
+`bash core/scripts/brain-update.sh` — refreshes the marketplaces, every enabled plugin
+(cache provenance verified against the pin), the `core/` submodule onto the pinned tag,
+`ecosystem.json`. Not `git submodule update --remote core`: that tracks `main`, not the
+released pin. Giving:
 branch → CI green → PR → merge → **tag → marketplace pin**. Only the pin makes a change
 visible to the other side — "I pushed" never means "something changed for you"; the
 receiver stays in control.
