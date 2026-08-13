@@ -23,6 +23,15 @@ question ("update available — shall I run it?"), never as a generic "what's ne
 This applies to ALL chat output that renders machine artifacts, not just the
 session start.
 
+**Relevance beats completeness** (operator correction 2026-08-13, second pass —
+translating everything is not the point either): a briefing names ONLY what the
+operator must know or decide right now, in one or two plain sentences. Everything
+else is checked silently and surfaced only when it needs action or a decision — a
+check that came back clean is silence, not a line. Nothing gets verbalized out of
+obligation. Boundary: reporting DUTIES stay (FAIL lines, reportable events,
+evidence chains in reports) — the filter applies to briefing prose, not to
+mandatory artifacts.
+
 ## Session End
 
 The operator triggers skill `session-close` ("close the session" and similar): persist
