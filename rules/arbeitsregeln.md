@@ -57,6 +57,38 @@ rule file.
 append-only history, never "clean up"/consolidate, never treat facts from them as
 current state.
 
+## Project Work Ledgers (operator decision 2026-08-13)
+
+How project work (todos, intermediate states, decisions) is tracked, so that every
+instance and every colleague files it the same way and lists stay compatible:
+
+1. **One hand-maintained detail list per project domain**, in the PRIVATE instance
+   repo (`docs/<domain>/offene-punkte.md` or the instance's equivalent) — NEVER in
+   the project/tool repo itself. Operator orders, hardware context and intermediate
+   states are instance knowledge; project repos may become public (tool/instance
+   split). Every entry carries four fields (English keys and values — they are the
+   cross-instance interface; the prose around them may be the instance's language):
+   - `id:` stable slug — referencable, survives rephrasing
+   - `class:` todo | decision | lesson
+   - `reach:` project | brain | shared (see 3.)
+   - `origin:` operator | derived (derived = proposal, needs an OK)
+2. **Every overview above the detail lists is GENERATED, never hand-maintained.**
+   A second hand-kept list drifts — measured repeatedly. Aggregation is a script's
+   view over the registered detail lists, not a document anyone edits.
+3. **`reach: shared`** marks an entry for the org's shared-memory repo as soon
+   as more than one brain works the project: exported as one-file-one-fact WITH a
+   back-reference to the source `id`. The export is a deliberate act at session
+   close (leak discipline) — nothing propagates itself.
+4. **Decisions are pointers, not copies.** The full why lives in the domain change
+   log / decision log (Session Traceability above); a `class: decision` entry
+   only references it. No second maintenance.
+5. **The brain's own maintenance/scan order list carries ONLY brain-function work**
+   (consistency, carriers, audits). Domain work in the brain list — or brain work in
+   a domain list — is misfiled and gets moved, not tolerated.
+
+Which domains exist and where their lists live is instance knowledge (folder table
+in the instance rule file).
+
 ## Mechanism Discipline (HARD)
 
 **The trigger is the UNEXPECTED subtask.** The planned main task gets researched; the
