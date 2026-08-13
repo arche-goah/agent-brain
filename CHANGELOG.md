@@ -6,6 +6,21 @@ The marketplace pins tags, never `main`.
 
 ## 1.2.1 — 2026-08-13
 
+- **New capability: `helpers/freshness-gate.cjs` — the repeat-run rule gets a
+  mechanical carrier (PR #15; ships first in 1.2.1 because v1.2.0 was tagged
+  without it).** PreToolUse(Workflow) hook: relaunching a workflow whose last
+  completed run is younger than the freshness threshold and cost real tokens is
+  denied, pointing to the run record + journal instead. Explicit escapes only:
+  `resumeFromRunId`, `// FRESHNESS-OK: <the unanswered question>`, failed or
+  cheap prior runs. Thresholds are instance data
+  (`.claude/rules/freshness-gate.json`) so a scheduled cadence lowers its
+  per-workflow threshold instead of carrying a permanent marker. 12 fixtures in
+  both directions wired into CI; template settings, helpers README (drift:
+  mechanism/secret-guard rows were missing) and the rule pointer in
+  `rules/intelligence.md` updated. Minor grade inside a patch-numbered release:
+  the 1.2.x line was already assigned when the batch closed — content noted
+  here, counter not reshuffled.
+
 - **Fix: the v1.2.0 release shipped with `plugin.json` still saying 1.1.2** —
   the release checklist (AGENTS.md #5) bumps it every time, and the version
   string is exactly what the plugin cache collides on (the measured crossover
