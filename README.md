@@ -29,11 +29,14 @@ plugin, delete your local copies of what the core now delivers.
 Weekly sync (never on a show day):
 
 ```
-git submodule update --remote core
-claude plugin marketplace update <your-marketplace>
-claude plugin update brain-core
-python3 core/scripts/ecosystem-sync.py
+bash core/scripts/brain-update.sh
 ```
+
+One command: refreshes the marketplaces, updates every enabled plugin (verifying
+cache provenance against the pin), puts the `core/` submodule on the pinned tag —
+healing the submodule remote and `.gitmodules` after a repo move — and refreshes
+`ecosystem.json`. Not `git submodule update --remote core`: that tracks `main`,
+not the released pin.
 
 ## Rules of the ecosystem
 
