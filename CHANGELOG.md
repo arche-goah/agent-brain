@@ -4,6 +4,18 @@ All notable changes to this repo. Versions are graded by content (AGENTS.md #5):
 patch = mini updates, minor = a new capability, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.0 — 2026-08-13
+
+- **Bootup: suite clones are covered by the released-state check.** The existing
+  check reads marketplace pins, so it sees plugins and the core submodule — but
+  suites are consumed as git clones, and a new suite release tag reaches no pin:
+  it slipped past every session start. The bootup now compares, for every
+  `kind=suite` entry in the brain's ecosystem record, the newest remote `v*` tag
+  against the newest tag reachable from the local checkout (parallel
+  `ls-remote`, offline-silent). Only a genuinely newer remote tag is reported —
+  a developer checkout sitting ahead stays silent; consumer checkouts get the
+  `suite-install.sh` one-liner. Minor: new check.
+
 ## 1.2.1 — 2026-08-13
 
 - **New capability: `helpers/freshness-gate.cjs` — the repeat-run rule gets a
