@@ -54,6 +54,13 @@ fi
 
 DATE=$(date +%F)
 cd "$REPO" || exit 1
+# The Workflow tool always backgrounds its run, and headless `claude -p` kills
+# background tasks after 600s by default — the scan takes longer, so the run was
+# terminated before any report existed while still exiting 0 (measured 2026-08-09:
+# rc=0, no report, four days of "due" without a scan). 90 min ceiling instead of
+# 0 (=infinite) so a hung run cannot pile up under the scheduler; an outer value
+# (instance wrapper, manual run) wins over the default.
+export CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS="${CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS:-5400000}"
 {
   echo "=== brain-scan start $(date '+%F %T') ==="
   # `--allowedTools Workflow` is required: without it the headless run stalls at the
