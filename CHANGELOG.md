@@ -4,6 +4,21 @@ All notable changes to this repo. Versions are graded by content (AGENTS.md #5):
 patch = mini updates, minor = a new capability, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.2.0 — 2026-08-13
+
+- **New capability: `scripts/suite-install.sh` — one command fetches a released
+  tool suite.** Colleagues consume the suites (mikrotik, grandma3, chataigne,
+  show-tools) as git clones, and until now "get the release" was tribal
+  knowledge (clone, fetch, find the right tag). The script resolves path +
+  remote from the brain's ecosystem record (defaults for a fresh brain), clones
+  or fetches, and checks out the newest `v*` tag — never `main`: an untagged
+  state is not released. Local changes and developer checkouts (anything
+  sitting on a branch it did not just clone) are a hard stop, so it can never
+  eat a working copy. `--all` updates every suite the brain records; the
+  ecosystem record is refreshed afterwards. Wiring (.mcp.json entry, skill
+  symlinks) stays a documented hand step on purpose — launchers carry
+  operator-specific addresses and credential names.
+
 ## 1.1.2 — 2026-08-13
 
 - **Rules: the session-start summary is written in human language (PR #12).**
