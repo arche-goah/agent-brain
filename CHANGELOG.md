@@ -1,8 +1,37 @@
 # Changelog — agent-brain
 
 All notable changes to this repo. Versions are graded by content (AGENTS.md #5):
-patch = mini updates, minor = a new capability, major = a big, thoroughly tested step.
+patch is the default (unproven capability included), minor = a proven-feature
+re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
+
+## 1.3.2 — 2026-08-14
+
+- **LA1 language audit, names** (PR #23) — every German-named artifact renamed with
+  a one-major deprecation path: `rules/arbeitsregeln.md` -> `rules/working-rules.md`
+  (stub keeps old imports loading via a relative `@working-rules.md` chain), skills
+  `autonomer-lauf` -> `autonomous-run` and `kohaerenz-scan` -> `coherence-scan`
+  (pointer stubs remain), workflows `coherence-scan.js` / `full-audit-synthesis.js`,
+  templates `rules-instance/` with `working-rules-instance.md` +
+  `intelligence-instance.md`, interface key `reports.kohaerenz` -> `reports.coherence`.
+  session-bootup warns on legacy imports/skill names until the instance migrates.
+- **LA1 language audit, ratchet** (PR #26) — `english-only.py` now token-checks every
+  tracked PATH against a German name dictionary (all suffixes; shrink-only baseline
+  `english-legacy-names.txt` carries only the deprecation stubs) and the content word
+  list grows by 19 unambiguous words. Negative controls in both directions.
+- **Spec Gate** (PR #24) — `verification-before-completion` gains the order-fidelity #4
+  carrier: every completion claim answers the spec-deviation question explicitly; a
+  deviation becomes a debt entry and is reported first.
+- **Version grading** (PR #27, operator order 2026-08-14) — patch is the release
+  default; minor is a deliberate re-release once features are proven in real runs.
+- **Project Lifecycle rule** (PR #28) — `working-rules.md` defines what gets CREATED
+  when a new project domain starts: tool/instance cut, ledger birth, domain-keyed
+  history, memory placement, aggregator registration, suite wiring.
+- **Self-contained onboarding** (PR #29) — `ONBOARDING.md` plus ported English
+  scripts (`preflight.sh`/`.ps1`, `setup-shell-start.sh`, `onboarding-verify.sh`)
+  and `docs/onboarding-contract.md` (11 checks, suite checks SKIP when absent);
+  replaces the separate onboarding kit for the generic path. `preflight.ps1` is
+  not yet exercised on a real Windows machine.
 
 ## 1.3.1 — 2026-08-13
 
