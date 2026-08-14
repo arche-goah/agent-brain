@@ -5,6 +5,17 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.4 — 2026-08-14
+
+- **ci-watch.sh — robust CI waiter for PRs and refs, tags included** (PR #34,
+  operator order after two ad-hoc watchers broke in one session): `gh run list
+  --branch <tag>` never matches a tag run (a loop compared an empty field against
+  "completed" forever — silence looked like still-running), and zsh's no-split on
+  unquoted variables 404'd every call with the error swallowed. The tool matches
+  refs via the headBranch JSON field, enumerates every terminal state, and cannot
+  end silently: exit 0 green, 1 red, 2 UNKNOWN (loud, never reads as green).
+  9 stubbed fixtures both directions wired into CI; proven live on its own PR.
+
 ## 1.3.3 — 2026-08-14
 
 - **preflight.ps1 parses on Windows PowerShell 5.1 and measures the right thing**
