@@ -5,6 +5,26 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.6 — 2026-08-14
+
+- **The Python interpreter is resolved, no longer assumed** (PR #37). A bare
+  `python3` in command position is a Windows landmine: the python.org installer ships
+  only `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH
+  but does not run — so probing has to RUN the interpreter, never `command -v`.
+  `onboarding-verify.sh` carried the fix and the explanation since the Windows
+  onboarding; the class was never swept into its ten neighbours. Measured 2026-08-14 on
+  a colleague brain mid-migration: no working `python3`, so every settings reader in
+  `brain-update.sh` returned empty and the script printed `DONE` without having done
+  anything — a green check with no effect, on the script that carries a migration. The
+  same file documents this exact failure mode for the CR-in-pipes class two dozen lines
+  above its first unguarded call. Swept: `session-bootup.sh`, `bootstrap-brain.sh`,
+  `brain-update.sh`, `ci-watch.sh`, `effect-check.sh`, `handover-gate.sh`,
+  `portability-smoke.sh`, `release-preflight.sh`, `suite-install.sh`,
+  `last30days/sync.sh`. Carrier against a relapse: a CI lint step greps `*.sh` for a
+  bare `python3` in command position — it found a site the sweep itself had missed
+  before the first push. Proof: `portability-smoke.sh` under a stubbed `python3` goes
+  from 3 FAIL to all-green, unstubbed stays green.
+
 ## 1.3.5 — 2026-08-14
 
 - **`scripts/wait-mcp-reconnect.sh` + the rule that a needed reload is not a wait
