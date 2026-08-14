@@ -17,6 +17,13 @@ Both consumers look the same: a private brain repo as working directory, `core/`
 submodule, core skills from the plugin. Comparability comes from identical structure,
 not discipline.
 
+## Onboarding
+
+New to the setup? **`ONBOARDING.md`** is the complete walk-through: prerequisites,
+`scripts/preflight.sh`, marketplace registration, bootstrapping your own brain,
+optional suites, and the final acceptance via `scripts/onboarding-verify.sh` against
+`docs/onboarding-contract.md`.
+
 ## Consuming it
 
 New brain: `scripts/bootstrap-brain.sh <target>` (creates a private brain from
