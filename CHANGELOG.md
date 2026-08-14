@@ -5,6 +5,18 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.3 — 2026-08-14
+
+- **preflight.ps1 parses on Windows PowerShell 5.1 and measures the right thing**
+  (PR #31, found and fixed by the workstation brain, proven ALL GREEN on real
+  Win 11/PS 5.1): the file now carries a UTF-8 BOM (BOM-less .ps1 is read as ANSI
+  by PS 5.1 — an em-dash byte became a string terminator and zero checks ran) and
+  the SSH check proves GitHub ACCESS via `ssh -T` output like the bash edition,
+  demoting the ssh-agent service to a WARN.
+- **Node install advice satisfies the script's own gate** (PR #32): the bash
+  preflight recommended `OpenJS.NodeJS.LTS` while gating on Node >= 23.6 —
+  current LTS is 22, so the printed fix failed the very check that printed it.
+
 ## 1.3.2 — 2026-08-14
 
 - **LA1 language audit, names** (PR #23) — every German-named artifact renamed with
