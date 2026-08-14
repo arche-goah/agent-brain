@@ -169,6 +169,29 @@ explicit `# MECHANISM-OK: <reason>` marker. The rules for it are instance knowle
 `.claude/rules/mechanism-rules.json` (every newly discovered shortcut gets added
 there — the system learns, not just the agent).
 
+## A Needed Reload Is Not a Wait State (operator order 2026-08-06, sharpened 2026-08-14)
+
+A change to a tool that only takes effect after the server reloads ends many turns with
+"this needs a restart" — and then the agent waits for a human reply. That is a wait
+state the agent can dissolve itself. Two rules, in this order:
+
+1. **Ask for the smallest reload that does the job.** A changed or added MCP tool needs
+   the CLIENT to re-read the tool list — an `/mcp` reconnect. A full Claude restart is
+   the bigger hammer and is rarely the one required; asking for it by reflex costs the
+   operator their session context for nothing. Name which one you need and why.
+2. **Arm the watcher in the SAME turn, then keep working.**
+   `scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s]`, started in the
+   background (Bash `run_in_background`), exits when the server writes a fresh boot
+   stamp — the agent is re-invoked and runs the verification by itself. Never end a turn
+   on "tell me when you've reconnected".
+
+**Proof is the server's own boot stamp, never its reachability** — a stale server answers
+too, with the OLD code. The stamp is the suite's half of the contract: an MCP server
+writes a small file at startup whose content changes on every boot, and documents its
+path in its AGENTS.md (grandma3-suite: `<GMA3_IPC_DIR>/mcp-boot.json`). A server without
+a stamp cannot be waited on — that missing carrier is itself the finding, and the waiter
+says so instead of reporting green.
+
 ## Order Fidelity (Auftragstreue) (HARD)
 
 1. **The assignment is the measure, not the activity.** Autonomy without a principal
