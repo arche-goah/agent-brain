@@ -24,6 +24,14 @@
 # Disable with BOOTSTRAP_STATUSLINE=0.
 set -euo pipefail
 
+# Resolve the Python interpreter: the python.org installer on Windows ships ONLY
+# `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH but
+# does not run — so probe by RUNNING it, never with `command -v` (measured 2026-08-14:
+# a colleague brain had no working `python3`, every reader below returned empty and
+# brain-update.sh printed DONE without having done anything).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+
 CORE_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET="${1:?Usage: bootstrap-brain.sh <target-dir> [core-repo-url]}"
 CORE_URL="${2:-https://github.com/arche-goah/agent-brain.git}"
@@ -186,9 +194,9 @@ fi
 # 6. Record state, so the new brain passes its own gate:
 #    REGISTRY.md (skill-lint requires it, even with zero skills) and the
 #    ecosystem pin (otherwise check 5 reports "core contract: pinned None").
-python3 core/scripts/regen-skill-registry.py --skills .claude/skills >/dev/null 2>&1 ||
+"$PY" core/scripts/regen-skill-registry.py --skills .claude/skills >/dev/null 2>&1 ||
   echo "bootstrap-brain: REGISTRY.md not generated — run 'python3 core/scripts/regen-skill-registry.py --skills .claude/skills' to catch up."
-python3 core/scripts/ecosystem-sync.py --write >/dev/null 2>&1 ||
+"$PY" core/scripts/ecosystem-sync.py --write >/dev/null 2>&1 ||
   echo "bootstrap-brain: ecosystem.json not pinned — run 'python3 core/scripts/ecosystem-sync.py --write' to catch up."
 
 # 7. Initial commit

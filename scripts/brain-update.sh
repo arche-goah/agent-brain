@@ -20,6 +20,14 @@
 # Needs: git, python3, claude CLI, gh (push visibility check only — skipped without it).
 set -uo pipefail
 
+# Resolve the Python interpreter: the python.org installer on Windows ships ONLY
+# `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH but
+# does not run — so probe by RUNNING it, never with `command -v` (measured 2026-08-14:
+# a colleague brain had no working `python3`, every reader below returned empty and
+# brain-update.sh printed DONE without having done anything).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+
 # Brain root = two levels above this script (core/scripts/ -> brain).
 # BRAIN_UPDATE_ROOT overrides it (tests, running a checkout copy against a brain).
 BRAIN="${BRAIN_UPDATE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
@@ -35,7 +43,7 @@ changed=0; plugin_moved=0; failed=0
 # installed" while installed at 1.9.0; on a stale brain the update would no-op and
 # still print DONE). Same class effect-check guards with `pver=${pver%$'\r'}`.
 marketplaces() {
-  python3 -c '
+  "$PY" -c '
 import json, os, sys
 def load(p):
     try:
@@ -51,7 +59,7 @@ for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json")
 }
 
 enabled_plugins() {
-  python3 -c '
+  "$PY" -c '
 import json, os, sys
 def load(p):
     try:
@@ -67,7 +75,7 @@ for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json")
 }
 
 installed_version() { # $1 = plugin id (name@marketplace)
-  python3 -c '
+  "$PY" -c '
 import json, os, sys
 try:
     with open(os.path.join(sys.argv[1], "plugins", "installed_plugins.json"), encoding="utf-8") as f:
@@ -85,7 +93,7 @@ recorded_sha() { # $1 = plugin id -> one "scope sha" line PER install record.
   # healed one and vice versa (measured 2026-08-13: a fresh user-scope reinstall
   # recorded the correct sha, but a stale project-scope duplicate sat at index 0
   # and kept the check red; the reverse masking is just as possible).
-  python3 -c '
+  "$PY" -c '
 import json, os, sys
 try:
     with open(os.path.join(sys.argv[1], "plugins", "installed_plugins.json"), encoding="utf-8") as f:
@@ -137,7 +145,7 @@ done
 #    v1.9.0), nothing is re-pointed.
 norm_url() { printf '%s' "$1" | sed -e 's#^git@github\.com:#https://github.com/#' -e 's#\.git$##'; }
 marketplace_pin() { # $1 = marketplace name, $2 = plugin name -> "repo ref" or ""
-  python3 -c '
+  "$PY" -c '
 import json, os, sys
 p = os.path.join(sys.argv[1], "plugins", "marketplaces", sys.argv[2],
                  ".claude-plugin", "marketplace.json")
@@ -258,7 +266,7 @@ fi
 
 # 4) ecosystem record
 if [ -f core/scripts/ecosystem-sync.py ] && [ -f config/ecosystem.json ]; then
-  python3 core/scripts/ecosystem-sync.py --write >/dev/null 2>&1 \
+  "$PY" core/scripts/ecosystem-sync.py --write >/dev/null 2>&1 \
     && echo "OK   ecosystem record refreshed" \
     || echo "WARN ecosystem-sync failed (non-fatal)"
 fi

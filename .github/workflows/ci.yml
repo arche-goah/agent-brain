@@ -45,6 +45,22 @@ jobs:
       # else, and on a translated file that forgot to leave the list.
       - name: english-only ratchet
         run: python3 scripts/english-only.py
+      # Class guard (2026-08-14): a bare `python3` in COMMAND position is a Windows
+      # landmine — the python.org installer ships only `python`, the Store ships a
+      # `python3` STUB that resolves in PATH but does not run. A shell script that
+      # assumes it gets empty readers and reports success (measured: brain-update.sh
+      # printed DONE without doing anything). Resolve into `$PY` first, see the block
+      # at the top of scripts/onboarding-verify.sh. Prose, JSON and `for c in python3
+      # python` probes are not command position and stay untouched.
+      - name: no bare python3 in shell scripts
+        run: |
+          hits=$(grep -rnE '(^|\$\(|\||&&|;)[[:space:]]*python3[[:space:]]' \
+                   --include='*.sh' . | grep -vE ':[0-9]+:[[:space:]]*#' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "Resolve the interpreter into \$PY instead of calling python3 directly."
+            exit 1
+          fi
       - name: helpers parse (node syntax check)
         run: |
           sudo apt-get update && sudo apt-get install -y nodejs

@@ -27,6 +27,14 @@
 # Needs: git, python3. SUITE_ORG / SUITE_BASE_DIR override the defaults.
 set -uo pipefail
 
+# Resolve the Python interpreter: the python.org installer on Windows ships ONLY
+# `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH but
+# does not run — so probe by RUNNING it, never with `command -v` (measured 2026-08-14:
+# a colleague brain had no working `python3`, every reader below returned empty and
+# brain-update.sh printed DONE without having done anything).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+
 BRAIN="${BRAIN_UPDATE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 ORG="${SUITE_ORG:-arche-goah}"
 BASE="${SUITE_BASE_DIR:-$HOME/Projects}"
@@ -38,7 +46,7 @@ usage() { echo "usage: suite-install.sh <suite>|--all [tag]" >&2; exit 2; }
 # -- ecosystem readers (best effort — a fresh colleague brain may not record suites yet)
 eco_field() {  # eco_field <suite> <field>
   [ -f "$ECO" ] || return 1
-  python3 - "$ECO" "$1" "$2" <<'PY' 2>/dev/null
+  "$PY" - "$ECO" "$1" "$2" <<'PY' 2>/dev/null
 import json, sys
 eco, suite, field = sys.argv[1:4]
 e = json.load(open(eco)).get("repos", {}).get(suite)
@@ -49,7 +57,7 @@ PY
 
 eco_suites() {
   [ -f "$ECO" ] || return 0
-  python3 - "$ECO" <<'PY' 2>/dev/null
+  "$PY" - "$ECO" <<'PY' 2>/dev/null
 import json, sys
 for name, e in json.load(open(sys.argv[1])).get("repos", {}).items():
     if isinstance(e, dict) and e.get("kind") == "suite": print(name)
@@ -106,8 +114,8 @@ install_one() {  # install_one <suite> [tag]
 
   # contract: the suite says which core it needs; the running core says what it is
   local req have
-  req="$(python3 -c "import json;print(json.load(open('$dir/dependencies.json')).get('requires_core',''))" 2>/dev/null || true)"
-  have="$(python3 -c "import json;print(json.load(open('$BRAIN/core/core-contract.json'))['contract_version'])" 2>/dev/null || true)"
+  req="$("$PY" -c "import json;print(json.load(open('$dir/dependencies.json')).get('requires_core',''))" 2>/dev/null || true)"
+  have="$("$PY" -c "import json;print(json.load(open('$BRAIN/core/core-contract.json'))['contract_version'])" 2>/dev/null || true)"
   [ -n "$req" ] && echo "     requires_core $req — running core contract: ${have:-unknown}"
 
   # wiring stays a hand step (site-specific launcher/secrets) — point at the notes
@@ -132,7 +140,7 @@ fi
 
 # keep the brain's ecosystem record honest about what now runs here
 if [ -f "$ECO" ] && [ -f "$BRAIN/core/scripts/ecosystem-sync.py" ]; then
-  python3 "$BRAIN/core/scripts/ecosystem-sync.py" --write >/dev/null 2>&1 \
+  "$PY" "$BRAIN/core/scripts/ecosystem-sync.py" --write >/dev/null 2>&1 \
     && echo "OK   ecosystem record refreshed" \
     || echo "!!   ecosystem record refresh failed — run core/scripts/ecosystem-sync.py --write"
 fi

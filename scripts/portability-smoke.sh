@@ -11,6 +11,14 @@
 #
 # Local: bash scripts/portability-smoke.sh   (exit 0 = all checks passed)
 set -u
+
+# Resolve the Python interpreter: the python.org installer on Windows ships ONLY
+# `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH but
+# does not run — so probe by RUNNING it, never with `command -v` (measured 2026-08-14:
+# a colleague brain had no working `python3`, every reader below returned empty and
+# brain-update.sh printed DONE without having done anything).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 CORE="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d)"
 trap 'rm -rf "$T" "$CORE/.claude-state"' EXIT
@@ -76,7 +84,7 @@ esac
 mkdir -p "$T/skills/smoke-skill"
 printf -- '---\nname: smoke-skill\ndescription: fixture for the line-ending check\n---\n\n# Smoke\n' \
   > "$T/skills/smoke-skill/SKILL.md"
-if python3 "$CORE/scripts/regen-skill-registry.py" --skills "$T/skills" >/dev/null 2>&1 \
+if "$PY" "$CORE/scripts/regen-skill-registry.py" --skills "$T/skills" >/dev/null 2>&1 \
    && [ -f "$T/skills/REGISTRY.md" ]; then
   if od -c "$T/skills/REGISTRY.md" | grep -q '\\r'; then
     bad "registry generator writes CRLF (newline= missing)"
@@ -84,7 +92,7 @@ if python3 "$CORE/scripts/regen-skill-registry.py" --skills "$T/skills" >/dev/nu
     ok "registry generator writes LF"
   fi
 else
-  bad "registry generator did not run (python3 present? exit?)"
+  bad "registry generator did not run (python present? exit?)"
 fi
 
 # 6) bootstrap-brain REJECTS a target path that is too long, instead of dying mid-run.
@@ -115,12 +123,12 @@ esac
 #    (backslash comparison, 100 findings on a clean tree — PR #60); the ubuntu-only
 #    lint job was structurally blind to it. Same class as every other check here:
 #    execution on the OS is the only proof.
-if python3 "$CORE/scripts/english-only.py" >/dev/null 2>&1; then
+if "$PY" "$CORE/scripts/english-only.py" >/dev/null 2>&1; then
   ok "english-only ratchet runs clean on this OS"
 else
   bad "english-only ratchet failed on this OS (path handling? baseline drift?)"
 fi
-if python3 "$CORE/scripts/suite-check.py" "$CORE" >/dev/null 2>&1; then
+if "$PY" "$CORE/scripts/suite-check.py" "$CORE" >/dev/null 2>&1; then
   ok "suite-check self-run clean on this OS"
 else
   bad "suite-check self-run failed on this OS"
