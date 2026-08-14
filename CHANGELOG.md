@@ -5,6 +5,26 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.5 — 2026-08-14
+
+- **`scripts/wait-mcp-reconnect.sh` + the rule that a needed reload is not a wait
+  state** (operator order 2026-08-14, sharpening the 2026-08-06 watchdog order). Two
+  things were wrong with the previous answer to "this needs a restart": it asked for a
+  full Claude restart where an `/mcp` reconnect refreshes the tool list, and its watcher
+  lived in one instance, matched `ps` output and compared PID sets. `ps -o comm=` does
+  not exist on Windows, and the PID-set comparison is undecidable when a second session
+  runs the same server — a foreign session's PID survives every reconnect of this one,
+  so "all old PIDs gone" never becomes true and the watcher sleeps through the restart.
+  The waiter now reads a boot stamp the SERVER writes (content compare, not mtime — the
+  `stat -c/-f` / `date -r` class already broke the bootup in v1.2.0), which is one `cat`
+  on every platform and reports the process that actually serves this session.
+  Reachability is explicitly not proof: a stale server answers with the old code.
+  Exit 0 reconnected · 2 unknown (loud) · 3 usage. Carried by portability-smoke, so all
+  three exit paths are EXECUTED on ubuntu, macOS and Windows, not just parsed.
+  The suite half of the contract is the stamp itself (grandma3-suite ≥ 1.1.12 writes
+  `<GMA3_IPC_DIR>/mcp-boot.json`); a server without one cannot be waited on, and the
+  waiter reports that missing carrier instead of reporting green.
+
 ## 1.3.4 — 2026-08-14
 
 - **ci-watch.sh — robust CI waiter for PRs and refs, tags included** (PR #34,

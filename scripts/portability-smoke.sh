@@ -126,6 +126,23 @@ else
   bad "suite-check self-run failed on this OS"
 fi
 
+# 8) MCP reconnect waiter: detects a changed boot stamp, and reports a stamp that never
+#    changes as UNKNOWN rather than green. Its predecessor read `ps` output, which is
+#    exactly what does not exist on Windows — so this one is executed here on all three.
+printf '{"pid":1,"startedAt":"first"}' > "$T/mcp-boot.json"
+( sleep 2; printf '{"pid":2,"startedAt":"second"}' > "$T/mcp-boot.json" ) &
+_w="$(MCP_WAIT_POLL=1 bash "$CORE/scripts/wait-mcp-reconnect.sh" "$T/mcp-boot.json" 20 2>&1)"; _rc=$?
+wait
+case "$_rc:$_w" in
+  0:*"RECONNECT DETECTED"*) ok "reconnect waiter detects a new boot stamp";;
+  *) bad "reconnect waiter: rc=$_rc $(printf '%s' "$_w" | tr '\n' ' ')";;
+esac
+_w="$(MCP_WAIT_POLL=1 bash "$CORE/scripts/wait-mcp-reconnect.sh" "$T/mcp-boot.json" 2 2>&1)"; _rc=$?
+case "$_rc:$_w" in
+  2:*TIMEOUT*) ok "reconnect waiter reports an unchanged stamp as unknown (rc=2)";;
+  *) bad "reconnect waiter timeout path: rc=$_rc (expected 2)";;
+esac
+
 echo
 if [ "$fail" -eq 0 ]; then echo "portability-smoke: ALL checks passed"; else echo "portability-smoke: FAILURE (see FAIL lines)"; fi
 exit "$fail"
