@@ -9,7 +9,7 @@
 # The platform-independent entry point is the workflow tool, directly in the
 # session:
 #     Workflow({ scriptPath: "core/workflows/brain-scan.js", args: { date: "<YYYY-MM-DD>" } })
-# (verified 2026-08-04 on Windows/Git-Bash together with kohaerenz-scan). The scan
+# (verified 2026-08-04 on Windows/Git-Bash together with coherence-scan). The scan
 # itself is platform-neutral — only this scheduling wrapper around it is not.
 #
 # Before every start, apply `core/rules/intelligence.md` -> "repeat runs":

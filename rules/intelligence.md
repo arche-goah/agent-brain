@@ -2,7 +2,7 @@
 
 > CORE VERSION: session mechanics + auto-organization. The auto-fire table
 > (pattern → skill) is instance knowledge — it lives in the instance rule file of
-> the respective brain (`.claude/rules/intelligence-instanz.md`) and is the ONLY
+> the respective brain (`.claude/rules/intelligence-instance.md`) and is the ONLY
 > source there (no second copy maintained in CLAUDE.md).
 
 ## Session Start (mechanical + Claude's part)

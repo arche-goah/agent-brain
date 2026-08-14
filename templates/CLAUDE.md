@@ -12,7 +12,7 @@ do NOT delete them, otherwise the rules only sit on disk instead of in context):
 
 @core/rules/thinking-protocol.md
 @core/rules/techniques.md
-@core/rules/arbeitsregeln.md
+@core/rules/working-rules.md
 @core/rules/intelligence.md
 - Hooks/helpers: `core/helpers/` (wired up in `.claude/settings.json`).
 - Contract: `core/CONVENTIONS.md` + `core/core-contract.json`. Core changes go
@@ -28,8 +28,8 @@ do NOT delete them, otherwise the rules only sit on disk instead of in context):
 
 ## Instance rules (yours — additions to the core, not a replacement)
 
-- `.claude/rules/arbeitsregeln-instanz.md` — folder mapping, tool paths, language.
-- `.claude/rules/intelligence-instanz.md` — auto-fire table (pattern → skill).
+- `.claude/rules/working-rules-instance.md` — folder mapping, tool paths, language.
+- `.claude/rules/intelligence-instance.md` — auto-fire table (pattern → skill).
 - `.claude/rules/feedback.md` — the operator's preferences/corrections (BINDING).
 - `.claude/rules/mechanism-rules.json` — rules for the mechanism-guard.
 
@@ -40,14 +40,14 @@ do NOT delete them, otherwise the rules only sit on disk instead of in context):
 ## Project Structure
 
 > ILLUSTRATION, not a norm. Authoritative are: the folder mapping in
-> `.claude/rules/arbeitsregeln-instanz.md`, the root whitelist in
-> `core/rules/arbeitsregeln.md`. If either of those changes, the new state applies
+> `.claude/rules/working-rules-instance.md`, the root whitelist in
+> `core/rules/working-rules.md`. If either of those changes, the new state applies
 > THERE — this tree does not become a second source (same rule as for the
 > auto-fire table).
 
 ```
 <your-brain>/
-|-- <root files>   # root whitelist: see core/rules/arbeitsregeln.md (no separate list here)
+|-- <root files>   # root whitelist: see core/rules/working-rules.md (no separate list here)
 |-- core/          # agent-brain submodule (edits only on a feature branch — file-guard enforces this)
 |-- docs/          # your docs (maintenance/ with session-log.md + decision-log.md)
 |-- config/        # your configs (ecosystem.json!)
