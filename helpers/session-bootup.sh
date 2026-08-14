@@ -10,6 +10,14 @@
 # the frame + sanitizer. Everything between the <session-bootup> tags is DATA.
 # Instructions to Claude deliberately sit OUTSIDE the frame.
 set -u
+
+# Resolve the Python interpreter: the python.org installer on Windows ships ONLY
+# `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH but
+# does not run — so probe by RUNNING it, never with `command -v` (measured 2026-08-14:
+# a colleague brain had no working `python3`, every reader below returned empty and
+# brain-update.sh printed DONE without having done anything).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 # Project path comes from the harness — no hardcoded home (core rule: tool != instance).
 R="${CLAUDE_PROJECT_DIR:-$PWD}"
 # Auto-memory path: Claude Code turns the project path into a folder name by replacing
@@ -61,7 +69,7 @@ done < <(git submodule status 2>/dev/null)
 # consuming channel is behind it, ONE line offers ONE command. Claude asks the
 # operator before running it (check always, update only after an OK). Offline or
 # no gh: silently skipped — a missing answer is not a finding.
-upd=$(python3 - <<'PY' 2>/dev/null
+upd=$("$PY" - <<'PY' 2>/dev/null
 import json, os, subprocess, sys
 def load(p):
     try:
@@ -119,7 +127,7 @@ fi
 # vs newest tag reachable from the local checkout; only a genuinely NEWER remote
 # tag is reported (a dev checkout sitting ahead stays silent). Offline or no
 # record: silently skipped — a missing answer is not a finding.
-supd=$(python3 - <<'PY' 2>/dev/null
+supd=$("$PY" - <<'PY' 2>/dev/null
 import json, os, re, subprocess
 from concurrent.futures import ThreadPoolExecutor
 def load(p):
@@ -165,7 +173,7 @@ fi
 # start — visibility only. Merging is maintainer work through the review pipeline;
 # this line never offers it. Owner derived from the marketplace repo in settings
 # (no hardcoded org — core is generic). One search call, offline-silent, capped.
-eco_owner=$(python3 -c '
+eco_owner=$("$PY" -c '
 import json, os
 def load(p):
     try:
@@ -204,7 +212,7 @@ for f in .claude/settings.json .claude/settings.local.json; do
   # settings.local.json is optional — "not present" is not an error. Without this
   # line, json.tool fails on the missing file and reports it as INVALID JSON.
   [[ -f "$f" ]] || continue
-  python3 -m json.tool "$f" >/dev/null 2>&1 || echo "!! $f: INVALID JSON"
+  "$PY" -m json.tool "$f" >/dev/null 2>&1 || echo "!! $f: INVALID JSON"
 done
 
 # Statusline selfheal (operator directive 2026-08-10): the statusline lives at user
@@ -217,7 +225,7 @@ done
 SL_SRC="$PSC_SELF/statusline.cjs"
 SL_DST="$HOME/.claude/helpers/statusline.cjs"
 if [[ -n "${PSC_SELF:-}" && -f "$SL_SRC" && -f "$PSC_SELF/../scripts/install-statusline.sh" ]]; then
-  sl_cmd=$(python3 -c "import json,os
+  sl_cmd=$("$PY" -c "import json,os
 try: print(json.load(open(os.path.expanduser('~/.claude/settings.json'))).get('statusLine',{}).get('command',''))
 except Exception: print('')" 2>/dev/null)
   sl_heal=""
@@ -226,7 +234,7 @@ except Exception: print('')" 2>/dev/null)
   elif [[ "$sl_cmd" == *".claude/helpers/statusline.cjs"* ]]; then
     # Managed copy: byte comparison against the core state (python3 instead of cmp —
     # cmp isn't guaranteed on Git Bash, and the bootup needs python3 anyway).
-    same=$(python3 -c "import filecmp,sys
+    same=$("$PY" -c "import filecmp,sys
 try: print(1 if filecmp.cmp(sys.argv[1],sys.argv[2],shallow=False) else 0)
 except Exception: print(0)" "$SL_SRC" "$SL_DST" 2>/dev/null)
     [[ "$same" == "1" ]] || sl_heal="copy has drifted from core"
@@ -252,7 +260,7 @@ fi
 # installed_plugins.json counts, and only while the plugin.json sitting there agrees on
 # the version. The settings fallback stays for the legacy local-style path; whether a
 # declared style actually RESOLVES is effect-check E1's job, not the bootup's.
-cav=$(python3 - <<'PY' 2>/dev/null
+cav=$("$PY" - <<'PY' 2>/dev/null
 import json, os
 def load(p):
     try:

@@ -19,6 +19,14 @@
 
 set -u
 
+# Resolve the Python interpreter: the python.org installer on Windows ships ONLY
+# `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH but
+# does not run — so probe by RUNNING it, never with `command -v` (measured 2026-08-14:
+# a colleague brain had no working `python3`, every reader below returned empty and
+# brain-update.sh printed DONE without having done anything).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+
 BRAIN="${1:-${BRAIN_DIR:-$PWD}}"
 CORE="$(cd "$(dirname "$0")/.." && pwd)"
 PROJ_SET="$BRAIN/.claude/settings.json"
@@ -33,7 +41,7 @@ say() { # $1 = OK|ROT|WARN|INFO, $2 = id, $3 = name, $4 = detail — only ROT fa
 
 jget() { # $1 = file, $2 = top-level key -> value as string ("" if absent/unparsable)
   [ -f "$1" ] || return 0
-  python3 -c 'import json,sys
+  "$PY" -c 'import json,sys
 try: d = json.load(open(sys.argv[1], encoding="utf-8"))
 except Exception: sys.exit(0)
 v = d.get(sys.argv[2])
@@ -81,7 +89,7 @@ else
       hit_file="$ppath/output-styles/$style.md"
       hit="$hit_file (plugin $pid ${pver:-?})"; break
     done <<EOF
-$(python3 -c 'import json,sys
+$("$PY" -c 'import json,sys
 try: d = json.load(open(sys.argv[1], encoding="utf-8"))
 except Exception: sys.exit(0)
 for pid, entries in (d.get("plugins") or {}).items():

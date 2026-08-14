@@ -21,6 +21,14 @@
 # Defaults: timeout 900 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
 set -u
 
+# Resolve the Python interpreter: the python.org installer on Windows ships ONLY
+# `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH but
+# does not run — so probe by RUNNING it, never with `command -v` (measured 2026-08-14:
+# a colleague brain had no working `python3`, every reader below returned empty and
+# brain-update.sh printed DONE without having done anything).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+
 MODE="${1:-}"; REPO="${2:-}"; TARGET="${3:-}"; TIMEOUT="${4:-900}"
 POLL="${CI_WATCH_POLL:-15}"
 
@@ -49,7 +57,7 @@ while :; do
       if (( rc == 8 )) || grep -qi "pending" <<<"$json"; then sleep "$POLL"; continue; fi
       fail_unknown "gh pr checks failed (rc=$rc): $(head -c 200 <<<"$json")"
     fi
-    counts=$(python3 -c '
+    counts=$("$PY" -c '
 import json, sys
 b = [c.get("bucket") for c in json.load(sys.stdin)]
 print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x in b))
@@ -65,7 +73,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
   # ref mode: match the run's headBranch FIELD — tag runs land there too.
   json=$(gh run list -R "$REPO" --limit 30 --json headBranch,status,conclusion 2>&1) \
     || fail_unknown "gh run list failed: $(head -c 200 <<<"$json")"
-  verdict=$(python3 -c '
+  verdict=$("$PY" -c '
 import json, sys
 ref = sys.argv[1]
 runs = [r for r in json.load(sys.stdin) if r.get("headBranch") == ref]

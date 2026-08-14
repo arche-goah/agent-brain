@@ -3,6 +3,14 @@
 # Usage: bash skills/last30days/scripts/sync.sh  (run from repo root)
 set -euo pipefail
 
+# Resolve the Python interpreter: the python.org installer on Windows ships ONLY
+# `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH but
+# does not run — so probe by RUNNING it, never with `command -v` (measured 2026-08-14:
+# a colleague brain had no working `python3`, every reader below returned empty and
+# brain-update.sh printed DONE without having done anything).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Source: $SRC"
 
@@ -57,7 +65,7 @@ sync_target() {
 
   if (
     cd "$target/scripts" &&
-    python3 -c "import briefing, store, watchlist; from lib import youtube_yt, bird_x, render, ui; print('  Import check: OK')"
+    "$PY" -c "import briefing, store, watchlist; from lib import youtube_yt, bird_x, render, ui; print('  Import check: OK')"
   ); then
     true
   else
@@ -100,7 +108,7 @@ if [ -d "$HOME/.hermes/skills/research" ]; then
   
   if (
     cd "$HERMES_TARGET/scripts" &&
-    python3 -c "import briefing, store, watchlist; from lib import youtube_yt, bird_x, render, ui; print('  Import check: OK')"
+    "$PY" -c "import briefing, store, watchlist; from lib import youtube_yt, bird_x, render, ui; print('  Import check: OK')"
   ); then
     true
   else
