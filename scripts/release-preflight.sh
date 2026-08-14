@@ -26,6 +26,14 @@
 # Env: RELEASE_PREFLIGHT_ROOT overrides the repo root (tests).
 set -uo pipefail
 
+# Resolve the Python interpreter: the python.org installer on Windows ships ONLY
+# `python`, and the Microsoft Store ships a `python3` STUB that resolves in PATH but
+# does not run — so probe by RUNNING it, never with `command -v` (measured 2026-08-14:
+# a colleague brain had no working `python3`, every reader below returned empty and
+# brain-update.sh printed DONE without having done anything).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+
 ROOT="${RELEASE_PREFLIGHT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 MODE=local
 TAG="${1:-}"
@@ -43,7 +51,7 @@ note(){ echo "     $1"; }
 
 # 1. manifest version == tag — the v1.2.0 class: same version string, different content
 MANIFEST="$ROOT/.claude-plugin/plugin.json"
-MV="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['version'])" "$MANIFEST" 2>/dev/null || true)"
+MV="$("$PY" -c "import json,sys;print(json.load(open(sys.argv[1]))['version'])" "$MANIFEST" 2>/dev/null || true)"
 if [ "$MV" = "$VER" ]; then
   ok "plugin.json version $MV matches $TAG"
 else
