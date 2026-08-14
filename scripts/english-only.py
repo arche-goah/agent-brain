@@ -17,6 +17,12 @@ Detection is the dual grep from the 2026-08-13 language invariant: umlauts alone
 blind to ASCII-transliterated German ("fuer", "gehoert"), so both classes count.
 Word list is deliberately conservative — a false red teaches ignoring.
 
+Since 2026-08-14 (LA1 audit) the ratchet also checks NAMES: a German token in a
+tracked file's PATH fails, regardless of content — the audit's trigger was that
+`rules/arbeitsregeln.md` sat invisible in a content-only check. Known legacy paths
+(the LA1 deprecation stubs) live in scripts/english-legacy-names.txt and may only
+ever disappear from it, same one-way semantics as the content baseline.
+
 Usage: scripts/english-only.py [--write-baseline]   (run from anywhere; repo = script's repo)
 Exit 0 = clean, 1 = findings.
 """
@@ -29,20 +35,32 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "scripts" / "english-legacy.txt"
+NAME_BASELINE = ROOT / "scripts" / "english-legacy-names.txt"
 
 TEXT_SUFFIX = {".md", ".py", ".sh", ".cjs", ".js", ".json", ".yml", ".yaml",
                ".lua", ".html", ".txt"}
 # The baseline lists German-named entries, this script carries the German word
 # list as detection data, and skill-lint.py carries German stopwords as similarity
 # data — none of that is German CONTENT.
-SKIP_NAMES = {"english-legacy.txt", "english-only.py", "skill-lint.py"}
+SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py", "skill-lint.py"}
 
 UMLAUT = re.compile(r"[äöüßÄÖÜ]")
 # Transliterated / bare German that does not occur in technical English. Extend only
 # with words you have never seen in an English sentence.
 GERMAN_WORDS = re.compile(
     r"\b(fuer|ueber|gehoert|traegt|unabhaengig|ausloesen|zuerst|nicht|wird|keine|"
-    r"jede[rn]?|Pflicht|Werkzeug|Geraet|Ansage|Regel|Vorfall|gemessen|Auftrag)\b")
+    r"jede[rn]?|Pflicht|Werkzeug|Geraet|Ansage|Regel|Vorfall|gemessen|Auftrag|"
+    r"und|wurde|koennen|muessen|sollen|waehrend|bereits|zwingend|heisst|bleibt|"
+    r"deshalb|jedoch|sowie|gemaess|dafuer|dazu|beim|ausserdem|trotzdem)\b")
+# German tokens that must not appear in a tracked file PATH. Matched against path
+# components split on -_./ so compound names (autonomer-lauf) hit token-wise. Same
+# conservatism as above: only tokens with no English reading.
+GERMAN_NAME_TOKENS = {
+    "arbeitsregeln", "instanz", "kohaerenz", "koharenz", "synthese", "autonomer",
+    "auftrag", "auftraege", "pruefung", "pruef", "messung", "werkzeug", "geraet",
+    "geraete", "uebersicht", "vorlage", "beispiel", "hinweis", "regeln", "punkte",
+    "traeger", "sprache", "woerterbuch", "anleitung", "uebergabe", "lauf",
+}
 
 
 def tracked_files():
@@ -57,6 +75,11 @@ def has_german(path: Path) -> bool:
     except (OSError, UnicodeDecodeError):
         return False
     return bool(UMLAUT.search(text) or GERMAN_WORDS.search(text))
+
+
+def german_named(rel_posix: str) -> bool:
+    tokens = re.split(r"[-_./]", rel_posix.lower())
+    return any(t in GERMAN_NAME_TOKENS for t in tokens)
 
 
 def main() -> int:
@@ -90,6 +113,21 @@ def main() -> int:
         elif entry not in german:
             findings.append(f"TRANSLATED: {entry} — remove from english-legacy.txt "
                             "(the ratchet only turns one way)")
+
+    # NAME ratchet: German tokens in tracked paths, every suffix — a rename is a
+    # rename regardless of file type. Legacy = the LA1 deprecation stubs only.
+    name_baseline = set()
+    if NAME_BASELINE.exists():
+        name_baseline = {l.strip() for l in NAME_BASELINE.read_text(encoding="utf-8").splitlines()
+                         if l.strip() and not l.startswith("#")}
+    for f in sorted(tracked):
+        if german_named(f) and f not in name_baseline:
+            findings.append(f"GERMAN NAME: {f} — file/dir names in public-bound repos "
+                            "are English (AGENTS.md rule 7); rename with a deprecation path")
+    for entry in sorted(name_baseline):
+        if entry not in tracked:
+            findings.append(f"STALE NAME ENTRY: {entry} — path gone, remove from "
+                            "english-legacy-names.txt")
 
     if findings:
         for f in findings:
