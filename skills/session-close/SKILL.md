@@ -20,7 +20,7 @@ then an explicit release follows.
    - **MANDATORY GATE for live states (rig/desk/show) — tightened 2026-08-02 (operator order):**
      If the session CHANGED a live system, its state is **measured**, not copied from
      one's own docs. **WHICH verify path that is, is instance knowledge** and lives in
-     the instance rules file (`.claude/rules/arbeitsregeln-instanz.md`) — device, desk
+     the instance rules file (`.claude/rules/working-rules-instance.md`) — device, desk
      and tool names belong there, never in this shared artifact
      (CONVENTIONS.md §1: "No behaviour that only makes sense for one owner's rig").
      The result (green, or findings) goes into the close report AND the session log. A

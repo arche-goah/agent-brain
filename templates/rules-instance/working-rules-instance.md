@@ -1,6 +1,6 @@
 # Working Rules — Instance Part
 
-> Extends `core/rules/arbeitsregeln.md` (core). This file holds only what applies
+> Extends `core/rules/working-rules.md` (core). This file holds only what applies
 > to THIS brain: language, folder mapping, tool paths.
 
 ## Language

@@ -74,7 +74,7 @@ Example — destructive op:
 
 Code/commits/PRs: write normal. Same for mandatory artifacts — logs, reports, claim blocks, handoffs: reporting duty beats style, caveman never shortens them. "stop caveman" or "normal mode": revert. Level persist until changed or session end.
 
-The language rule of the INSTANCE stays: caveman compresses that language, it never switches it. Where the split runs between conversation and code/commits is instance knowledge (`.claude/rules/arbeitsregeln-instanz.md`) — this file is shared by every brain and states no language of its own.
+The language rule of the INSTANCE stays: caveman compresses that language, it never switches it. Where the split runs between conversation and code/commits is instance knowledge (`.claude/rules/working-rules-instance.md`) — this file is shared by every brain and states no language of its own.
 
 <!-- Canonical source of the caveman rules. Mechanism since 2026-08-04: `force-for-plugin: true`
      — the style applies as soon as the plugin is enabled, without any brain having to set

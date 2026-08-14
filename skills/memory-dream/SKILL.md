@@ -56,7 +56,7 @@ If files contradict each other:
 1. Check which is more recent
 2. Verify against current codebase state
 3. Keep accurate version, update or remove the other
-⚠ **Limit (kohaerenz-scan principle, 2026-08-01):** Applies only to FACT
+⚠ **Limit (coherence-scan principle, 2026-08-01):** Applies only to FACT
 contradictions (IPs, paths, statuses). If RULES contradict each other (type:feedback,
 HARD rules): ONLY report — which rule wins is decided by the operator, never by
 maintenance.

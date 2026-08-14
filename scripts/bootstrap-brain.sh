@@ -94,9 +94,9 @@ cp "$CORE_SRC/templates/CLAUDE.md" CLAUDE.md
 mkdir -p .claude/rules .claude/skills docs/maintenance config scripts src
 cp "$CORE_SRC/templates/settings.json" .claude/settings.json
 cp "$CORE_SRC/templates/feedback.md" .claude/rules/feedback.md
-cp "$CORE_SRC/templates/rules-instanz/arbeitsregeln-instanz.md" .claude/rules/
-cp "$CORE_SRC/templates/rules-instanz/intelligence-instanz.md" .claude/rules/
-cp "$CORE_SRC/templates/rules-instanz/mechanism-rules.json" .claude/rules/
+cp "$CORE_SRC/templates/rules-instance/working-rules-instance.md" .claude/rules/
+cp "$CORE_SRC/templates/rules-instance/intelligence-instance.md" .claude/rules/
+cp "$CORE_SRC/templates/rules-instance/mechanism-rules.json" .claude/rules/
 cp "$CORE_SRC/templates/leak-names.json" .claude/rules/leak-names.json
 # MEMORY.md seed: Claude Code creates Auto-Memory itself — the seed documents the format.
 mkdir -p docs/maintenance

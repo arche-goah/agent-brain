@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'kohaerenz-scan',
+  name: 'coherence-scan',
   description: 'Coherence audit of the norm stack: find contradictions/redundancy/drift, verify adversarially, register with resolution proposals',
   whenToUse: 'On demand or on brain-scan recommendation. Call with args {date:"YYYY-MM-DD", scratch:"<abs. scratch dir>"}.',
   phases: [
@@ -16,12 +16,12 @@ export const meta = {
 const REPO = (typeof args === 'object' && args && args.repo) || '.'
 const MEMDIR = (typeof args === 'object' && args && args.memdir) ||
   '$HOME/.claude/projects/<absolute project path, every "/" replaced by "-">/memory (agent: resolve this yourself, use pwd)'
-const REPORT_DIR = `${REPO}/docs/research/kohaerenz-scan`
+const REPORT_DIR = `${REPO}/docs/research/coherence-scan`
 const AUFTRAEGE = `${REPO}/docs/maintenance/brain-scan-auftraege.md`
 
 let A = args
 if (typeof A === 'string') { try { A = JSON.parse(A) } catch (e) { A = null } }
-if (!A || !A.date || !A.scratch) throw new Error('kohaerenz-scan requires args {date:"YYYY-MM-DD", scratch:"<abs. path>"} — date via `date +%F`, scratch = session scratchpad subfolder')
+if (!A || !A.date || !A.scratch) throw new Error('coherence-scan requires args {date:"YYYY-MM-DD", scratch:"<abs. path>"} — date via `date +%F`, scratch = session scratchpad subfolder')
 const DATE = A.date
 const CORPUS = `${A.scratch}/corpus`
 const REGISTER = `${REPORT_DIR}/register-${DATE}.md`
@@ -67,7 +67,7 @@ const inv = await agent(
 2. ${REPO}/core/rules/*.md AND ${REPO}/.claude/rules/*.md → corpus/rules/ (since the core split, the core rules live under core/rules/ and the instance additions under .claude/rules/ — a corpus without the core half audits only half the norm)
 3. ${REPO}/docs/maintenance/brain-scan-checklist.md → corpus/checklist/
 4. ${MEMDIR}/*.md → corpus/memory/ (ONLY *.md)
-5. ${REPO}/.claude/skills/REGISTRY.md → corpus/skills/ (instance registry; may be missing/empty) PLUS the SKILL.md of these behavior-shaping skills (each as <name>.md) — they live under ${REPO}/core/skills/<name>/SKILL.md, instance skills under ${REPO}/.claude/skills/<name>/SKILL.md: session-close, caveman, ponytail, multi-device-messung, rig-health-check, brain-scan workflow (${REPO}/core/workflows/brain-scan.js as brain-scan-workflow.js.txt), memory-dream, kohaerenz-scan. A skill listed here but existing nowhere is an anomaly for the MANIFEST, not an abort.
+5. ${REPO}/.claude/skills/REGISTRY.md → corpus/skills/ (instance registry; may be missing/empty) PLUS the SKILL.md of these behavior-shaping skills (each as <name>.md) — they live under ${REPO}/core/skills/<name>/SKILL.md, instance skills under ${REPO}/.claude/skills/<name>/SKILL.md: session-close, caveman, ponytail, multi-device-messung, rig-health-check, brain-scan workflow (${REPO}/core/workflows/brain-scan.js as brain-scan-workflow.js.txt), memory-dream, coherence-scan. A skill listed here but existing nowhere is an anomaly for the MANIFEST, not an abort.
 6. ${REPO}/.claude/settings.json → corpus/settings/
 7. From ${REPO}/docs/event-network/offene-punkte.md ONLY the sections containing vetted rules/process rules (not the open items themselves) → corpus/domain-rules/event-network-regeln.md; the "Event-Netz" (event network) + "Harte Regeln" (hard rules) block from CLAUDE.md is already included via (1).
 THEN write ${CORPUS}/MANIFEST.md: every file with source path + line count — MEASURE the numbers (wc -l/grep -c), never estimate; "empty"/"missing" only with ls evidence (incident 2026-08-10: a registry was recorded as empty, actually 100 lines). Memory sources are a live knowledge base and a full audit object; the append-only PROTOCOL label applies EXCLUSIVELY to session-log/decision-log — mark those as DELIBERATELY EXCLUDED, nothing else.
@@ -154,7 +154,7 @@ phase('Register')
 const p0Machine = surviving.filter(f => f.severity === 'P0').length
 const p1Machine = surviving.filter(f => f.severity === 'P1').length
 const report = await agent(
-  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}. Data basis (JSON, already verified):\n${JSON.stringify({ summary: merged.summary, findings: surviving }).slice(0, 60000)}\n\nAUTHORITATIVE numbers (machine-derived from the verified array): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if the supplied summary deviates from them, the array wins — note the deviation as a footnote in the register, do not adopt it.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — explicitly: EVERY fix needs the operator's decision.\nTHEN append the P0/P1 findings to ${AUFTRAEGE} under the existing structure as proposal items, origin "abgeleitet (kohaerenz-scan ${DATE})" (abgeleitet = derived), 1 line each with a pointer to the register — implement NONE of it.\nReturn: report_path, p0_count, p1_count, appended_orders.`,
+  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}. Data basis (JSON, already verified):\n${JSON.stringify({ summary: merged.summary, findings: surviving }).slice(0, 60000)}\n\nAUTHORITATIVE numbers (machine-derived from the verified array): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if the supplied summary deviates from them, the array wins — note the deviation as a footnote in the register, do not adopt it.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — explicitly: EVERY fix needs the operator's decision.\nTHEN append the P0/P1 findings to ${AUFTRAEGE} under the existing structure as proposal items, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), 1 line each with a pointer to the register — implement NONE of it.\nReturn: report_path, p0_count, p1_count, appended_orders.`,
   { label: 'register', phase: 'Register', schema: {
     type: 'object', required: ['report_path', 'p0_count', 'p1_count'],
     properties: { report_path: { type: 'string' }, p0_count: { type: 'number' }, p1_count: { type: 'number' }, appended_orders: { type: 'number' } },

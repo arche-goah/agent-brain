@@ -1,6 +1,6 @@
 ---
 name: full-audit
-description: Overall audit conductor — orchestrates brain-scan (conformance), memory-dream (memory hygiene) and kohaerenz-scan (norm contradictions) as SEPARATE phase workflows and synthesizes them into ONE deduplicated measure catalog (mechanical fixes vs. decision agenda for the operator). Expensive (largest run in the system) — ONLY on explicit call. Use when the operator says "full audit", "gesamt audit" (overall audit), "audit alles" (audit everything), "kompletter selbst-audit" (complete self-audit), or before major restructurings (e.g. repo split R1). Do NOT start automatically.
+description: Overall audit conductor — orchestrates brain-scan (conformance), memory-dream (memory hygiene) and coherence-scan (norm contradictions) as SEPARATE phase workflows and synthesizes them into ONE deduplicated measure catalog (mechanical fixes vs. decision agenda for the operator). Expensive (largest run in the system) — ONLY on explicit call. Use when the operator says "full audit", "gesamt audit" (overall audit), "audit alles" (audit everything), "kompletter selbst-audit" (complete self-audit), or before major restructurings (e.g. repo split R1). Do NOT start automatically.
 ---
 
 # Full Audit (conductor)
@@ -16,8 +16,8 @@ costs more than one phase; between phases I stay in the loop and check the resul
 |-------|----------|--------|--------|
 | 1 | `core/workflows/brain-scan.js` | `docs/research/brain-scan/scan-<date>.md` | conformance: reality == target (checklist) |
 | 2 | `core/workflows/memory-dream.js` | `docs/research/memory-dream/report-<date>.md` | memory hygiene (read-only) |
-| 3 | `core/workflows/kohaerenz-scan.js` | `docs/research/kohaerenz-scan/register-<date>.md` | whether the target state is internally consistent (de-bias multi-agent) |
-| 4 | `core/workflows/full-audit-synthese.js` | `docs/research/full-audit/gesamt-<date>.md` | dedup + measure catalog over 1-3 |
+| 3 | `core/workflows/coherence-scan.js` | `docs/research/coherence-scan/register-<date>.md` | whether the target state is internally consistent (de-bias multi-agent) |
+| 4 | `core/workflows/full-audit-synthesis.js` | `docs/research/full-audit/gesamt-<date>.md` | dedup + measure catalog over 1-3 |
 
 ## Freshness rule (token protection, operator directive 2026-08-01)
 
@@ -40,12 +40,12 @@ stage.
    including its fix phase (ONLY `von: Operator` items, order fidelity). Read the result.
 3. **Stage 2** `Workflow({scriptPath: memory-dream.js, args:{date}})` — read-only.
    Read the result.
-4. **Stage 3** `Workflow({scriptPath: kohaerenz-scan.js, args:{date, scratch:
-   "<session scratchpad>/kohaerenz-<date>"}})` — read-only, register with proposals.
+4. **Stage 3** `Workflow({scriptPath: coherence-scan.js, args:{date, scratch:
+   "<session scratchpad>/coherence-<date>"}})` — read-only, register with proposals.
    Read the result. Stages 1-3 may run in parallel (all read-only towards each other);
    on a tight budget, run them sequentially cheap → expensive.
-5. **Stage 4 synthesis** `Workflow({scriptPath: full-audit-synthese.js, args:{date,
-   reports:{brain:"<path>", memory:"<path>", kohaerenz:"<path>"}}})` — dedups
+5. **Stage 4 synthesis** `Workflow({scriptPath: full-audit-synthesis.js, args:{date,
+   reports:{brain:"<path>", memory:"<path>", coherence:"<path>"}}})` — dedups
    across scans, splits the catalog into (a) **mechanically uncontroversial fixes**
    (doc==reality drift, dead paths) and (b) a **decision agenda** (everything where a
    rule has to win — rule-conflict protocol step 3: explain, discuss, decide per
@@ -69,7 +69,7 @@ stage.
 
 ## Scope boundaries
 
-- Single questions ("are my rules consistent?") → only `kohaerenz-scan`.
+- Single questions ("are my rules consistent?") → only `coherence-scan`.
   Memory cleanup → `memory-dream`. Weekly routine → `brain-scan` (runs anyway).
 - The full audit does NOT check rig/MA3 live systems (for that: `rig-health-check`,
   `grandma3-human-check` — separate processes, separate sessions).
