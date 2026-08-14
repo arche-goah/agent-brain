@@ -27,7 +27,7 @@ if command -v node >/dev/null 2>&1; then
     bad "node $v too old" "install Node >= 23.6 (nodejs.org) — suite MCP servers rely on native type stripping"
   fi
 else
-  bad "node missing" "install Node >= 23.6 (nodejs.org / winget install OpenJS.NodeJS.LTS) — then open a NEW terminal, otherwise node stays missing from PATH"
+  bad "node missing" "install Node >= 23.6 (nodejs.org / winget install OpenJS.NodeJS) — then open a NEW terminal, otherwise node stays missing from PATH"
 fi
 
 command -v git >/dev/null 2>&1 && ok "git $(git --version | awk '{print $3}')" || bad "git missing" "install git (git-scm.com)"
