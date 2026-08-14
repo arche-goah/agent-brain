@@ -1,0 +1,6 @@
+# German-NAMED paths that may still exist: the LA1 deprecation stubs (renamed
+# 2026-08-14, removed with the next major release). One-way list — entries only
+# ever leave. A new German name anywhere else fails english-only.py directly.
+rules/arbeitsregeln.md
+skills/autonomer-lauf/SKILL.md
+skills/kohaerenz-scan/SKILL.md
