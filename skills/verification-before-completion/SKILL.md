@@ -141,6 +141,29 @@ class in a single day, each "fixed" individually):
 The gate function above verifies the fix; this gate verifies the class. Both run before
 any completion claim.
 
+## The Spec Gate (since 2026-08-14 — a workaround is a DEBT, not a checkmark)
+
+Order fidelity #4 (`rules/working-rules.md`): done is only what works AS SPECIFIED.
+The gate function proves "it works"; this gate asks "is IT the thing that was
+ordered?" — a verified workaround still fails the order. Before any completion
+claim, answer explicitly:
+
+1. **Does the delivered result deviate from the ordered spec in ANY way?**
+   Workaround taken, scope trimmed, requirement substituted, a named deliverable
+   replaced by "something equivalent", a number missed? Concrete nouns with a
+   number or proper name in the order are deliverables, not examples (#4a).
+2. **If yes: record a DEBT entry instead of a checkmark** — "spec not fulfilled"
+   with priority, in the order list / ledger the assignment came from, plus the
+   reason and what the original would take. Then report the deviation FIRST, not
+   the success.
+3. **A silent substitution is the expensive case** (#4a goal substitution): if you
+   notice the goal itself drifted while working, say (a) that a substitution
+   happened, (b) why the original was not obtainable — attempted and showable,
+   not "wasn't lying around" — and (c) only then continue.
+
+Answering "no deviation" is a claim like any other: it needs the line-by-line
+requirements check from the table above, not a feeling.
+
 From 24 failure memories:
 - your human partner said "I don't believe you" - trust broken
 - Undefined functions shipped - would crash
