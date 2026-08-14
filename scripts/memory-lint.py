@@ -2,7 +2,7 @@
 """DETERMINISTIC memory linter — the machine, not the interpreter.
 
 WHY (finding 2026-08-02): our audit suite (brain-scan, memory-dream,
-kohaerenz-scan) is purely LLM-based and therefore NOT reproducible — two runs
+coherence-scan) is purely LLM-based and therefore NOT reproducible — two runs
 on the same state can produce different findings, and an overlooked dead link
 is indistinguishable from "there wasn't one". This script checks the
 mechanically checkable part FIRST and always delivers the same result for the

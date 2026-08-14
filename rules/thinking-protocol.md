@@ -65,7 +65,7 @@ Before each of these actions, internal thinking is REQUIRED:
 | LOW (30-60%) | Research first (web search, read the codebase) |
 | UNCERTAIN (<30%) | First resolve it yourself (research/measurement/docs — read-before-ask); ask ONLY if the uncertainty cannot be resolved that way AND the decision belongs to the operator (goal/money/hardware/risk). If the instance carries a stop test (e.g. three-conditions), that test applies. |
 
-⚠ **Destructive/irreversible/externally-effective beats confidence** (kohaerenz-scan
+⚠ **Destructive/irreversible/externally-effective beats confidence** (coherence-scan
 K-13, 2026-08-01): for such actions the respective gate applies (Think-Before-Act #1,
 read-before-ask (b), rig/deploy/social gates) INDEPENDENTLY of how certain the
 solution appears — >90% confidence is no free pass for a
@@ -75,7 +75,7 @@ switch-chip reset during a show.
 
 1. Explicit user instructions (highest priority)
 2. **HARD core rules** — order fidelity (Auftragstreue), mechanism discipline,
-   evidence-chain-or-silence (`arbeitsregeln.md`, top of this file)
+   evidence-chain-or-silence (`working-rules.md`, top of this file)
 3. Feedback rules in .claude/rules/feedback.md
 4. Project-specific conventions (existing code)
 5. General best practices
@@ -85,11 +85,11 @@ switch-chip reset during a show.
 contradiction ALWAYS goes to the operator (rule-conflict protocol below,
 step 3) — the ranking is no license to decide it oneself.
 
-Rank 2 added on 2026-08-04 (operator decision, kohaerenz-scan P1-2): the HARD blocks
+Rank 2 added on 2026-08-04 (operator decision, coherence-scan P1-2): the HARD blocks
 were not located anywhere in this list at all — neither above nor below feedback.
 They asserted their precedence only themselves.
 
-## Rule-Conflict Protocol (operator instruction 2026-08-01, from kohaerenz-scan K-19 — CANONICAL place)
+## Rule-Conflict Protocol (operator instruction 2026-08-01, from coherence-scan K-19 — CANONICAL place)
 
 1. **Harmonize first:** Apparent conflicts are mostly surface cuts of the organic
    growth — check whether both rules can be phrased compatibly, and
