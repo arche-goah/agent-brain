@@ -1,9 +1,17 @@
-# preflight.ps1 (PowerShell edition) — checks onboarding prerequisites, reports,
+﻿# preflight.ps1 (PowerShell edition) — checks onboarding prerequisites, reports,
 # installs NOTHING. The authoritative edition is preflight.sh (Git Bash); this one
 # exists for the view from PowerShell and checks the same items.
+#
+# ENCODING: this file MUST keep its UTF-8 BOM. Windows PowerShell 5.1 reads a
+# BOM-less .ps1 as ANSI; the em-dash bytes (E2 80 94) then decode to CP1252, whose
+# third byte 0x94 is a smart quote that PS 5.1 accepts as a string terminator —
+# strings close mid-sentence and the whole file fails to parse (measured 2026-08-14,
+# Win 11 / PS 5.1: ParserError, zero checks ran).
 $fail = 0
 function OK($m)  { Write-Host "  OK   $m" }
 function BAD($m, $fix) { Write-Host "  FAIL $m"; Write-Host "     -> $fix"; $script:fail = 1 }
+# WARN = noteworthy, but no reason to stop the onboarding (does NOT set fail).
+function WARN($m, $fix) { Write-Host "  WARN $m"; Write-Host "     -> $fix" }
 
 Write-Host "=== Onboarding preflight (PowerShell) ==="
 
@@ -43,9 +51,21 @@ if (Get-Command gh -ErrorAction SilentlyContinue) {
   if ($LASTEXITCODE -eq 0) { OK "gh CLI logged in" } else { BAD "gh not logged in" "gh auth login" }
 } else { BAD "gh CLI missing" "winget install GitHub.cli — then open a NEW terminal, otherwise gh stays missing from PATH" }
 
-$agent = Get-Service ssh-agent -ErrorAction SilentlyContinue
-if ($agent -and $agent.Status -eq 'Running') { OK "ssh-agent service running" }
-else { BAD "ssh-agent service not running" "As ADMINISTRATOR (without admin rights: 'Access is denied'): Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent — then ssh-add. With a passphrase-free key the service is not needed; what decides is 'ssh -T git@github.com'" }
+# The question is "can I reach GitHub over SSH", not "is an agent running" — same
+# rationale as preflight.sh. ssh -T ALWAYS exits 1 (GitHub gives no shell), so the
+# OUTPUT decides, never the exit code. StrictHostKeyChecking=accept-new keeps the
+# first contact (no known_hosts entry yet) from failing with a perfect key.
+$sshOut = (ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -T git@github.com 2>&1 | Out-String)
+if ($sshOut -match 'successfully authenticated') {
+  $who = ''; if ($sshOut -match 'Hi ([^!]+)!') { $who = " (as $($Matches[1]))" }
+  OK "SSH access to GitHub proven$who"
+  $agent = Get-Service ssh-agent -ErrorAction SilentlyContinue
+  if ($agent -and $agent.Status -eq 'Running') { OK "ssh-agent service running" }
+  else { WARN "ssh-agent service not running — harmless, access is already proven" "Only needed if your key has a passphrase. As ADMINISTRATOR (without admin rights: 'Access is denied'): Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent — then ssh-add" }
+} else {
+  $first = ($sshOut -split "`r?`n" | Where-Object { $_ })[0]
+  BAD "SSH to GitHub not proven (message: $first)" "Create a key: ssh-keygen -t ed25519 · show the public key: type $env:USERPROFILE\.ssh\id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
+}
 
 if (Get-Command claude -ErrorAction SilentlyContinue) { OK "claude CLI present" } else { BAD "claude CLI missing" "install Claude Code" }
 
