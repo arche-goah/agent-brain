@@ -21,12 +21,17 @@ session start.
    2026-08-13: nine minor bumps in four days drifted toward a 2.0 that would mean
    nothing). Every release: bump `version` in `.claude-plugin/plugin.json`, add a
    CHANGELOG entry, tag `vX.Y.Z`. The marketplace pins tags, never `main` — an
-   untagged change reaches nobody. Grading (operator wording): **patch** (third
-   digit) = mini updates — fixes, docs, rule wording, CI plumbing; **minor**
-   (second digit) = mid-size updates — a new capability (script, check, skill,
-   workflow stage); **major** (first digit) = only a big, solid, THOROUGHLY
-   TESTED mega step (breaking changes always land here, but size and proof are
-   the bar, not breakage alone). A batch takes the highest grade inside it.
+   untagged change reaches nobody. Grading (operator order 2026-08-14, tightening
+   the 2026-08-13 wording): **patch (third digit) is the DEFAULT** — fixes, docs,
+   rule wording, CI plumbing, AND new capabilities that have not yet PROVEN
+   themselves in real runs. Felt size is not a criterion: the stabilization phase
+   after a release keeps producing "one more thing that wasn't final", and every
+   one of those is a patch. **minor** (second digit) = a deliberate re-release
+   with clear notes once a feature set is ROBUSTLY PROVEN (ran in production
+   sessions, not merely built and merged); **major** (first digit) = only a big,
+   solid, THOROUGHLY TESTED mega step (breaking changes always land here, but
+   size and proof are the bar, not breakage alone). A batch takes the highest
+   grade inside it — which, under the patch default, is normally still a patch.
    `x.10+` and `x.y.10+` are normal — never round to a milestone number for
    aesthetics; 2.0.0 is earned by the step, not by the counter.
    **Mechanically carried:** run `bash scripts/release-preflight.sh vX.Y.Z` BEFORE
