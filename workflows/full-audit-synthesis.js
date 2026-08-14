@@ -1,7 +1,7 @@
 export const meta = {
-  name: 'full-audit-synthese',
-  description: 'Synthesis stage of the full audit: dedupes the findings from brain-scan + memory-dream + kohaerenz-scan into ONE measure catalog (mechanical fixes vs. decision agenda)',
-  whenToUse: 'ONLY as stage 4 of the full-audit skill, after the individual reports exist. args {date, reports:{brain, memory, kohaerenz}} = paths.',
+  name: 'full-audit-synthesis',
+  description: 'Synthesis stage of the full audit: dedupes the findings from brain-scan + memory-dream + coherence-scan into ONE measure catalog (mechanical fixes vs. decision agenda)',
+  whenToUse: 'ONLY as stage 4 of the full-audit skill, after the individual reports exist. args {date, reports:{brain, memory, coherence}} = paths.',
   phases: [
     { title: 'Catalog', detail: 'Read reports, dedupe across scans, classify' },
     { title: 'Report', detail: 'Write overall report + proposals to the order list' },
@@ -16,8 +16,8 @@ const AUFTRAEGE = `${REPO}/docs/maintenance/brain-scan-auftraege.md`
 
 let A = args
 if (typeof A === 'string') { try { A = JSON.parse(A) } catch (e) { A = null } }
-if (!A || !A.date || !A.reports || !A.reports.brain || !A.reports.memory || !A.reports.kohaerenz) {
-  throw new Error('full-audit-synthese requires args {date, reports:{brain,memory,kohaerenz}} — paths of the three individual reports')
+if (!A || !A.date || !A.reports || !A.reports.brain || !A.reports.memory || !A.reports.coherence) {
+  throw new Error('full-audit-synthesis requires args {date, reports:{brain,memory,coherence}} — paths of the three individual reports')
 }
 const DATE = A.date
 const OUT = `${REPORT_DIR}/gesamt-${DATE}.md`
@@ -28,7 +28,7 @@ const katalog = await agent(
   `You are the synthesis stage of a full audit. Read these three reports COMPLETELY:
 1. Conformance (brain-scan): ${A.reports.brain}
 2. Memory hygiene (memory-dream): ${A.reports.memory}
-3. Norm coherence (kohaerenz-scan): ${A.reports.kohaerenz}
+3. Norm coherence (coherence-scan): ${A.reports.coherence}
 Plus the open part of ${AUFTRAEGE} (do NOT re-include items already done/[x]).
 
 Build the cross-scan measure catalog:
@@ -76,7 +76,7 @@ const dec = katalog.massnahmen.filter(m => m.typ === 'entscheidung')
 const rep = await agent(
   `Write the full-audit overall report to ${OUT} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.
 Data basis (JSON): ${JSON.stringify({ summary: katalog.summary, mechanisch: mech, entscheidung: dec }).slice(0, 50000)}
-Source reports (link in the header, incl. a note if a report is reused/older — the date is in the filename): brain=${A.reports.brain}, memory=${A.reports.memory}, kohaerenz=${A.reports.kohaerenz}
+Source reports (link in the header, incl. a note if a report is reused/older — the date is in the filename): brain=${A.reports.brain}, memory=${A.reports.memory}, coherence=${A.reports.coherence}
 Structure: (1) header: scan scope, source reports, dedupe balance; (2) "Mechanical fixes"
 by priority (each: title, sources, proposal); (3) "Decision agenda for the operator" by
 priority (each: question, options, recommendation if available); (4) "Next steps":

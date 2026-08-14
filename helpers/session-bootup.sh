@@ -285,6 +285,15 @@ fi
 bl=$(find .claude/skills -type l ! -exec test -e {} \; -print 2>/dev/null)
 [[ -n "$bl" ]] && echo "!! broken skill symlinks: ${bl//$'\n'/, }"
 
+# Legacy names from the LA1 rename (2026-08-14)? German core file/skill names left
+# the public repo; deprecation stubs keep old references working for ONE major
+# release only — warn until the instance has migrated its side.
+if [[ -f CLAUDE.md ]] && grep -q '@core/rules/arbeitsregeln\.md' CLAUDE.md; then
+  echo "!! legacy import: CLAUDE.md imports @core/rules/arbeitsregeln.md — renamed to working-rules.md (stub redirects until the next major); update the import line"
+fi
+lg=$(grep -lE 'autonomer-lauf|kohaerenz-scan' .claude/rules/*.md 2>/dev/null)
+[[ -n "$lg" ]] && echo "!! legacy skill names (autonomer-lauf -> autonomous-run, kohaerenz-scan -> coherence-scan) still referenced in: ${lg//$'\n'/, } (stubs redirect until the next major)"
+
 # Parallel sessions in the same repo? (Incident 2026-08-03: two sessions, one
 # brain-core checkout — foreign branches, force push, troubleshooting against the
 # wrong machine. Visibility is the fix; the rules live in memory agent-datei-kollision.)
