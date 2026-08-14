@@ -55,6 +55,8 @@ jobs:
         run: python3 scripts/freshness-gate-test.py
       - name: release-preflight fixtures
         run: bash scripts/release-preflight-test.sh
+      - name: ci-watch fixtures
+        run: bash scripts/ci-watch-test.sh
 
   # A release is one atomic promise: tag name == manifest version == CHANGELOG
   # section. v1.2.0 shipped with the manifest still on 1.1.2 — the plugin cache
