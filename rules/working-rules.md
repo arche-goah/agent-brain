@@ -89,6 +89,42 @@ instance and every colleague files it the same way and lists stay compatible:
 Which domains exist and where their lists live is instance knowledge (folder table
 in the instance rule file).
 
+## Project Lifecycle (operator order 2026-08-14)
+
+The ledger rule above says how project work is TRACKED; this one says what gets
+CREATED when a new project domain starts (a new tool, a new show system, a new
+pipeline) — top-down and identical in every brain, so any colleague opening the
+same topic lands in the same layout:
+
+1. **Decide the cut first: tool vs. instance** (CONVENTIONS §11). Executable
+   capability any operator could reuse => own TOOL repo (public-able, English,
+   suite conventions: AGENTS.md, leak-scan, release-preflight + tag CI).
+   Operator orders, hardware context and intermediate states => the PRIVATE
+   brain. A project that starts as "just a folder" in the brain gets the
+   decision recorded, not skipped.
+2. **The instance ledger is born with the first order:**
+   `docs/<domain>/offene-punkte.md` (or the instance's equivalent) per the
+   Project Work Ledgers rule — field convention `id`/`class`/`reach`/`origin`
+   from day one; the founding order is its first entry.
+3. **History goes domain-keyed:** a change log in the domain docs; pillar
+   decisions additionally in the decision log (Session Traceability). Ledger
+   `class: decision` entries point there — never a second copy.
+4. **Memory follows the working directory.** Sessions working IN a project
+   repo grow that repo's own auto-memory; the brain memory keeps pointers.
+   As soon as a second brain works the project: `reach: shared` entries and
+   one-file-one-fact exports to the org's shared-memory repo, with a
+   back-reference to the source `id`.
+5. **Register the ledger with the instance's aggregator.** The generated
+   overview sees only registered detail lists — an unregistered domain is
+   invisible by construction (deliberate: no silent glob fallback). Adding the
+   source line is part of creating the ledger, not a later cleanup.
+6. **When the project ships tools:** ecosystem record entry (which state runs
+   here), marketplace pin once it becomes a plugin, release discipline
+   (preflight, tags, English-only).
+
+None of this is optional per project — a domain that skips a step files
+differently than every other and breaks the cross-instance interface.
+
 ## Mechanism Discipline (HARD)
 
 **The trigger is the UNEXPECTED subtask.** The planned main task gets researched; the
