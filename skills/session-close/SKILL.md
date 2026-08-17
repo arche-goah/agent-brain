@@ -36,6 +36,23 @@ then an explicit release follows.
      although the instance's own naming check reports exactly that immediately. The
      operator found it on 2026-08-02, not the process. Lesson: "an audit ran" does
      NOT mean "the live system was checked".
+   - **CROSS-INSTANCE GATE — if this setup shares memory with other instances or people
+     (operator order 2026-08-17):** ask, per finding of this session, whether its REACH
+     goes past this machine — a measurement someone else's work depends on, a correction
+     that retires something the shared record still claims, a decision another instance
+     must follow. If yes, it belongs in the shared record BEFORE the session ends, and
+     the entry gets pushed, not left staged. Where that record lives and what the entry
+     format is, is instance knowledge (instance rules file) — this artifact only demands
+     that the question is asked.
+     **The trap this closes:** a PR thread, a chat answer and a merged commit all FEEL
+     like the finding is recorded. They are the volatile forms; the collaborator on the
+     other machine reads none of them at session start. Measured 2026-08-17: three merged
+     PRs corrected a claim the shared record still stated as open, and the shared entry
+     had to be written after the operator asked — the close ran without it.
+     **"If needed" is a filter, not an excuse to skip:** most sessions have nothing with
+     that reach, and then this step is one sentence in the close report. A session that
+     changed a SHARED tool, corrected a SHARED claim, or answered another instance's
+     question almost always has something.
    - After this: no further live CHANGES (measuring stays allowed).
 2. **Mechanical close:**
    ```bash
@@ -81,7 +98,9 @@ then an explicit release follows.
      export ran (memory-sync output), working tree clean or the remainder justified.
 5. **Close report to the operator:** 3-5 lines — what was persisted, what stays open
    (with its location), then explicitly: "Persisted — you can shut down." Only after
-   this report is the session closed.
+   this report is the session closed. If the setup shares memory across instances, the
+   report says which findings went there **or that none had that reach** — an unstated
+   cross-instance step reads as done and is the one nobody can check afterwards.
 
 ## Scope
 
