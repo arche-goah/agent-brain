@@ -5,6 +5,25 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.7 — 2026-08-17
+
+- **The cross-instance record is part of closing a session, not an afterthought**
+  (PR #39). `session-close` secured memory, session log, decision log and commits —
+  and said nothing about the record OTHER instances read at their session start.
+  Measured the day this landed: three merged PRs corrected a claim the shared record
+  still stated as open, and the entry only got written after the operator asked; the
+  close had already reported success. It slips because a PR thread, a chat answer and
+  a merged commit all *feel* like the finding is recorded — those are the volatile
+  forms, and a collaborator on another machine reads none of them.
+  Step 1 now asks, per finding, whether its REACH goes past this machine, and requires
+  the entry to be pushed before the session ends. Step 5 requires the close report to
+  name what went there **or** state that nothing had that reach — an unstated step
+  reads as done. Where the shared record lives stays instance knowledge
+  (CONVENTIONS §1); the skill only demands that the question is asked.
+
+  Released on its own instead of collected: a rule about persistence that exists only
+  on `main` is the very failure it describes — present, not effective.
+
 ## 1.3.6 — 2026-08-14
 
 - **The Python interpreter is resolved, no longer assumed** (PR #37). A bare
