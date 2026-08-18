@@ -5,9 +5,9 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
-## Unreleased
+## 1.3.8 — 2026-08-18
 
-- **Shared-memory awareness is a carrier now, not a habit** (PR #TBD). An instance
+- **Shared-memory awareness is a carrier now, not a habit** (PR #41). An instance
   learned about the shared record only when someone remembered to pull it — and a
   stale checkout is indistinguishable from a quiet one. Measured on 2026-08-18: a
   second instance's first pull of the session was stale and only the second brought
