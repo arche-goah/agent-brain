@@ -5,6 +5,31 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## Unreleased
+
+- **Shared-memory awareness is a carrier now, not a habit** (PR #TBD). An instance
+  learned about the shared record only when someone remembered to pull it — and a
+  stale checkout is indistinguishable from a quiet one. Measured on 2026-08-18: a
+  second instance's first pull of the session was stale and only the second brought
+  in an entry that had been waiting; on the same day it asked, in the shared repo,
+  whether any watchdog existed at all, because it could not see the other machine's
+  instance-local scripts. That is the shape of instance-local mechanics: they work
+  for exactly one brain and are invisible to the next one.
+  Two levels, one cursor, both folded into the core:
+  `helpers/shared-memory-check.sh` runs from `session-bootup.sh` and reports what
+  arrived since this instance last looked; `scripts/shared-memory-watch.sh` is the
+  persistent live watch for a running session, driven by Monitor. Skill
+  `shared-memory-watch` documents when to arm it unasked.
+  Properties kept from the proving instance: one watcher per machine (lock), own
+  pushes are not events (reachability, never author names — one operator's name is
+  the same on both their machines), a missing cursor aborts loudly instead of
+  watching blind, and the repo path is overridable so the core hardcodes no instance
+  path. `scripts/shared-memory-watch-test.sh` is the negative control — a watcher
+  nobody has seen fire cannot be told apart from a broken one — and it now runs in
+  the portability job on all three operating systems.
+- Stale skill counts in `plugin.json` and `README.md` replaced by a pointer to
+  `skills/REGISTRY.md`; the number had drifted twice already and is generated anyway.
+
 ## 1.3.7 — 2026-08-17
 
 - **The cross-instance record is part of closing a session, not an afterthought**
