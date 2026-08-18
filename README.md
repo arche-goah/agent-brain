@@ -10,7 +10,7 @@ ships keeps its original name `brain-core`, so skill references in consuming bra
 
 | Channel | Delivers | Why this channel |
 |---|---|---|
-| **Plugin** `brain-core` (via a marketplace repo that pins a tag of this repo) | `skills/` (22 general-purpose skills), `output-styles/caveman.md` | one-command install, auto-update, namespaced, no symlinks |
+| **Plugin** `brain-core` (via a marketplace repo that pins a tag of this repo) | `skills/` (general-purpose skills — count and list: skills/REGISTRY.md), `output-styles/caveman.md` | one-command install, auto-update, namespaced, no symlinks |
 | **git submodule `core/`** | `CONVENTIONS.md`, `core-contract.json`, `rules/`, `helpers/`, `scripts/`, `templates/`, `workflows/` | exactly what a plugin cannot deliver: CLAUDE.md content, settings/hook wiring, contract scripts that must run from a checkout |
 
 Both consumers look the same: a private brain repo as working directory, `core/` as
