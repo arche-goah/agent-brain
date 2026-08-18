@@ -20,20 +20,37 @@ BARE="$TMP/remote.git"
 WORK="$TMP/work"      # "our" checkout — the one the watcher polls
 OTHER="$TMP/other"    # somebody else's checkout
 
-git init -q --bare "$BARE"
-git clone -q "$BARE" "$WORK" 2>/dev/null   # "cloned an empty repository" is expected here
+# Build the sandbox WITHOUT cloning an empty repository. The first version did, and it
+# passed on the author's machine and failed on all three CI runners: the empty clone
+# left a checkout whose first commit staged nothing, `branch -M main` then had no
+# commit to rename, and the push died with "src refspec main does not match any" — a
+# failure three steps downstream of its cause. init + remote + push is the same setup
+# with no version- or config-dependent edge (`init.defaultBranch` differs per machine,
+# which is why it is pinned here instead of assumed).
+git -c init.defaultBranch=main init -q --bare "$BARE"
+git -c init.defaultBranch=main init -q "$WORK"
 git -C "$WORK" config user.email me@local
 git -C "$WORK" config user.name Me
+git -C "$WORK" remote add origin "$BARE"
 mkdir -p "$WORK/domain"
-echo one > "$WORK/domain/a.md"
+printf 'one\n' > "$WORK/domain/a.md"
 git -C "$WORK" add -A
 git -C "$WORK" commit -qm "first"
-git -C "$WORK" branch -M main
-git -C "$WORK" push -q origin main
+git -C "$WORK" push -q -u origin main
+
+# Preconditions, checked instead of assumed: everything below is meaningless if the
+# sandbox did not come up, and "watcher reported nothing" would then be blamed on the
+# watcher. This is the same class the watcher itself guards against.
+if ! git -C "$WORK" rev-parse origin/main >/dev/null 2>&1; then
+  echo "SETUP FAILED: no origin/main in the sandbox — this is a test-harness fault, not a watcher finding"
+  git -C "$WORK" status --short --branch
+  exit 1
+fi
 
 git clone -q "$BARE" "$OTHER"
 git -C "$OTHER" config user.email colleague@local
 git -C "$OTHER" config user.name Colleague
+[ -d "$OTHER/domain" ] || { echo "SETUP FAILED: colleague checkout has no content"; exit 1; }
 
 STATE="$TMP/state.json"
 printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "x"\n}\n' \
