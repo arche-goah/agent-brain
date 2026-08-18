@@ -151,6 +151,25 @@ case "$_rc:$_w" in
   *) bad "reconnect waiter timeout path: rc=$_rc (expected 2)";;
 esac
 
+# 9) Shared-memory pair: level 1 (bootup check) and level 2 (live watch). Both are git
+#    plumbing plus text munging — the two things that diverge silently between GNU and
+#    BSD userland — and level 2 is the only long-running loop the core ships. The watch
+#    test builds its own sandbox repo, so this needs no network and no real data.
+#    Level 1 against a repo that is NOT cloned must be silent, not an error: an instance
+#    that does not take part in shared memory gets nagged at every single start otherwise.
+_sm="$(SHARED_MEMORY_REPO="$T/not-cloned" SHARED_MEMORY_STATE="$T/sm-state.json" \
+       bash "$CORE/helpers/shared-memory-check.sh" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ] && [ -z "$_sm" ]; then
+  ok "shared-memory check stays silent without a cloned repo"
+else
+  bad "shared-memory check on missing repo: rc=$_rc out='$_sm'"
+fi
+if bash "$CORE/scripts/shared-memory-watch-test.sh" >/dev/null 2>&1; then
+  ok "shared-memory watch reports a foreign commit AND survives to report the next"
+else
+  bad "shared-memory watch negative control failed on this OS"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then echo "portability-smoke: ALL checks passed"; else echo "portability-smoke: FAILURE (see FAIL lines)"; fi
 exit "$fail"

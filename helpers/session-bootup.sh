@@ -20,6 +20,9 @@ PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 # Project path comes from the harness — no hardcoded home (core rule: tool != instance).
 R="${CLAUDE_PROJECT_DIR:-$PWD}"
+# This helper's own directory: sibling helpers are called by absolute path, because the
+# hook's working directory is the instance, not the core.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # Auto-memory path: Claude Code turns the project path into a folder name by replacing
 # EVERY character outside [A-Za-z0-9] with '-' — and it does so on the path in
 # PLATFORM notation. On Windows that's the Windows path, not the MSYS path that
@@ -370,6 +373,12 @@ au="$R/docs/maintenance/brain-scan-auftraege.md"
 if [[ -f "$au" ]]; then
   sed -n '/## Offen/,/## Vorgeschlagen/p' "$au" | grep '^- \[ \]' 2>/dev/null | head -3 | cut -c1-110 | sed 's/^- \[ \]/task OPEN:/'
 fi
+
+# Shared memory: what other instances/collaborators pushed since this instance last
+# looked. Level 1 of the pair; level 2 (scripts/shared-memory-watch.sh) watches while
+# the session runs. Silent when the repo is not cloned or nothing is new — an instance
+# that does not take part must not be nagged, and a clean check is not a line.
+[[ -f "$HERE/shared-memory-check.sh" ]] && bash "$HERE/shared-memory-check.sh" 2>/dev/null
 
 # Deadlines (only if the file exists)
 [[ -f "$R/docs/business/deadlines.md" ]] && echo "deadlines: docs/business/deadlines.md present — check it"
