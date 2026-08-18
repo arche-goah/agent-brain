@@ -164,10 +164,13 @@ if [ "$_rc" -eq 0 ] && [ -z "$_sm" ]; then
 else
   bad "shared-memory check on missing repo: rc=$_rc out='$_sm'"
 fi
-if bash "$CORE/scripts/shared-memory-watch-test.sh" >/dev/null 2>&1; then
+#    A sub-test whose output is thrown away is the same defect it is meant to catch:
+#    "it failed" without the line that says why sends the next person back to guessing.
+_smw="$(bash "$CORE/scripts/shared-memory-watch-test.sh" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ]; then
   ok "shared-memory watch reports a foreign commit AND survives to report the next"
 else
-  bad "shared-memory watch negative control failed on this OS"
+  bad "shared-memory watch negative control failed on this OS: $(printf '%s' "$_smw" | tr '\n' ' ' | tail -c 400)"
 fi
 
 echo
