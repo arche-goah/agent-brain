@@ -71,12 +71,15 @@ stage.
 
 - Single questions ("are my rules consistent?") → only `coherence-scan`.
   Memory cleanup → `memory-dream`. Weekly routine → `brain-scan` (runs anyway).
-- The full audit does NOT check rig/MA3 live systems (for that: `rig-health-check`,
-  `grandma3-human-check` — separate processes, separate sessions).
+- The full audit does NOT check live systems (rig, desk, show machines). WHICH verify
+  path covers them is instance knowledge and lives in the instance rule file
+  (same move as the session-close live gate — CONVENTIONS §1: "No behaviour that
+  only makes sense for one owner's rig"); separate processes, separate sessions.
   ⚠ **STATE THIS ACTIVELY, do not just omit it (operator directive 2026-08-02, after an
   incident):** If the closing report says "full audit ran", it reads like "everything
   checked". On 2026-08-01 the full audit ran on the same day that `router ether6` was
   repurposed live — the resulting naming/logic collision was found only a day later, by
   the operator. Therefore: if the session touched live systems, note EXPLICITLY in the
-  report: "live systems NOT part of this audit → run `rig-health-check` separately".
+  report: "live systems NOT part of this audit → run the instance's live verify
+  path separately".
   The measurement gate for this lives in the `session-close` skill (step 1).

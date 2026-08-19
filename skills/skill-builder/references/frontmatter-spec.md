@@ -14,7 +14,7 @@ long form.
 - **Reserved**: the word `claude` does not belong in the name
 - **Examples**:
   - ✅ `api-documentation-generator`
-  - ✅ `session-close`, `multi-device-messung` (these are the names of our real skills)
+  - ✅ `session-close`, `coherence-scan` (these are the names of our real skills)
   - ❌ `"API Documentation Generator"` (Title Case — does not match the directory)
   - ❌ `skill-1` (not descriptive)
 
