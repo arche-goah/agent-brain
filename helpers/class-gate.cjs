@@ -166,7 +166,7 @@ setTimeout(() => {
   console.log(JSON.stringify({
     decision: 'block',
     reason:
-      `CLASS-GATE (success trigger) — touched this turn: ${shown}\n` +
+      `CLASS-GATE (success trigger). Touched this turn: ${shown}\n` +
       'Reply with ONE compact line prefixed "⚙" (do NOT repeat your answer, no ' +
       'essay): larger goal & object level ok? · invariant behind the work + site ' +
       'count (searched, not recalled) · register state (>=3 sites or repeat => ' +
