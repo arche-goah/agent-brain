@@ -271,6 +271,18 @@ if [ -f core/scripts/ecosystem-sync.py ] && [ -f config/ecosystem.json ]; then
     || echo "WARN ecosystem-sync failed (non-fatal)"
 fi
 
+# 4b) invariant register — a fixed step of every release catch-up (operator order
+# 2026-08-19): a class needs a place where it stays open, and a brain without the
+# register gets the class-discipline rules as prose only — exactly the form that
+# gets pattern-matched instead of understood. Created once from the template,
+# never overwritten (the register is instance history).
+if [ ! -f docs/maintenance/invariants.md ] && [ -f core/templates/invariants.md ]; then
+  mkdir -p docs/maintenance
+  cp core/templates/invariants.md docs/maintenance/invariants.md \
+    && echo "OK   invariant register created (docs/maintenance/invariants.md, from core template — seed your first class)" \
+    || echo "WARN could not create the invariant register"
+fi
+
 # 5) commit + push (own brain repo only — that is where this script lives)
 if ! git diff --quiet -- core config/ecosystem.json .gitmodules 2>/dev/null; then
   git add core config/ecosystem.json .gitmodules 2>/dev/null
