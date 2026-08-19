@@ -5,6 +5,18 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.11 — 2026-08-19
+
+- **Anti-hallucination #8: mechanism over memory — a recalled rule is a pointer,
+  not a license** (PR #43, contributed by the Windows instance from its own
+  operator instruction). Before applying a rule recalled from memory, restate its
+  mechanism causally in your own words; if you cannot, re-verify at the primary
+  source before acting. Incident behind it: two memory entries read as
+  contradictory under text-level pattern matching; both were correct once the
+  actual mechanism was traced. Complements v1.3.9/v1.3.10: those govern how a
+  lesson is STORED (invariant + carrier), this one guards the moment of APPLYING
+  it — together they close both ends of the stimulus-response failure.
+
 ## 1.3.10 — 2026-08-19
 
 - **Class discipline moved into the core** (PR #46, phase 2 of the 2026-08-06
