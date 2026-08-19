@@ -380,8 +380,39 @@ fi
 # that does not take part must not be nagged, and a clean check is not a line.
 [[ -f "$HERE/shared-memory-check.sh" ]] && bash "$HERE/shared-memory-check.sh" 2>/dev/null
 
-# Deadlines (only if the file exists)
-[[ -f "$R/docs/business/deadlines.md" ]] && echo "deadlines: docs/business/deadlines.md present — check it"
+# Deadlines (only if the file exists). "Present — check it" was presence, not effect:
+# the bootup NAMED the file but never computed, so a date one day away looked exactly
+# like one a month away (Phase-2 finding 2026-08-19). Date headings (## YYYY-MM-DD)
+# are parsed and the NEAREST upcoming one is reported with its distance; <7 days or
+# overdue escalates to !! (the proactive rule's threshold). No parseable heading
+# falls back to the old line — an empty computation must not silence the pointer.
+if [[ -f "$R/docs/business/deadlines.md" ]]; then
+  dl=$(DEADLINE_FILE="$R/docs/business/deadlines.md" "$PY" - <<'PY' 2>/dev/null
+import datetime, os, re
+today = datetime.date.today()
+best = None
+for line in open(os.environ["DEADLINE_FILE"], encoding="utf-8"):
+    m = re.match(r"^## (\d{4})-(\d{2})-(\d{2})(?:\s*[—-]\s*(.*))?", line)
+    if not m: continue
+    try:
+        d = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except ValueError:
+        continue
+    if best is None or d < best[0]:
+        best = (d, (m.group(4) or "").strip())
+if best:
+    days = (best[0] - today).days
+    title = f" ({best[1][:60]})" if best[1] else ""
+    if days < 0:
+        print(f"!! deadline OVERDUE by {-days} d: {best[0]}{title} — docs/business/deadlines.md")
+    elif days < 7:
+        print(f"!! deadline {best[0]} in {days} d{title} — docs/business/deadlines.md")
+    else:
+        print(f"deadlines: next {best[0]} in {days} d{title} — docs/business/deadlines.md")
+PY
+)
+  echo "${dl:-deadlines: docs/business/deadlines.md present — check it}"
+fi
 
 echo "=== END BOOTUP ==="
 }

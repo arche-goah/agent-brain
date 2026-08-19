@@ -56,6 +56,26 @@ Before each of these actions, internal thinking is REQUIRED:
 6. **Never claim a file exists** without having read it
 7. **Never assume code conventions** - Read the existing code first
 
+## Class Discipline (pointer — the mechanism lives elsewhere)
+
+A fix hits the instance the incident names; the class stays open and comes back
+(measured on a proving instance: five classes, up to 15 single fixes of the same
+root in 12 days). A found defect therefore counts as done only when the CLASS is
+addressed: (1) name the invariant, not the anecdote, (2) enumerate by SEARCH, not
+by recollection, (3) close or register every found site. The class question is a
+search, not speculation — executed, it returns measurements.
+
+This rule deliberately does NOT carry the mechanics. They live in:
+- skill `verification-before-completion` (the Class Gate, runs at "done"),
+- the instance's invariant register + `core/scripts/invariant-check.py` (a class
+  needs a place where it stays open; the runner re-runs every registered search).
+
+Build threshold (operator decision 2026-08-06): the search is always mandatory ·
+1 site = done · 2 sites = fix both, no mechanism · >=3 sites or a repeat after a
+fix = build a mechanism (the check must catch the CLASS, not the known case).
+Sites outside the order: list, don't fix — but what is in reach and belongs to
+the same matter gets DONE, not tabled.
+
 ## Confidence Assessment
 
 | Confidence | Behavior |
