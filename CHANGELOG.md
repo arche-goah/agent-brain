@@ -7,6 +7,9 @@ The marketplace pins tags, never `main`.
 
 ## 1.3.13 — 2026-08-19
 
+- Casing fix for the combination of the two PRs below (PR #55): #53 lower-cased a
+  phrase #52's fresh smoke check matched exactly — each PR green against its own
+  base, the combination red, caught by the release PR's CI doing its job.
 - **class-gate blocks are terse now — the gate shows, the rule explains** (PR #53,
   operator finding, screenshot-verified: a ~20-line pedagogical block plus a long
   reflective answer buried the actual reply in the terminal). The block is 3 lines,
