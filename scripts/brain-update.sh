@@ -283,6 +283,20 @@ if [ ! -f docs/maintenance/invariants.md ] && [ -f core/templates/invariants.md 
     || echo "WARN could not create the invariant register"
 fi
 
+# 4c) hook coverage — a template hook reaches existing brains only as a CHANGELOG
+# sentence, so a release can leave a helper consumed but wired nowhere (measured
+# 2026-08-19, Windows instance: class-gate.cjs shipped in v1.3.12, ran never).
+# Reported, never edited: settings.json is operator territory. The bootup repeats
+# this as a !! line every session until it is fixed.
+if [ -f core/scripts/hook-coverage.py ]; then
+  hc=$("$PY" core/scripts/hook-coverage.py . 2>/dev/null)
+  if [ -n "$hc" ]; then
+    echo "WARN hooks from the core template are not wired in this brain:"
+    printf '%s\n' "$hc" | sed 's/^/     /'
+    echo "     add the line(s) to .claude/settings.json by hand (operator edit; template: core/templates/settings.json), then restart Claude Code"
+  fi
+fi
+
 # 5) commit + push (own brain repo only — that is where this script lives)
 if ! git diff --quiet -- core config/ecosystem.json .gitmodules 2>/dev/null; then
   git add core config/ecosystem.json .gitmodules 2>/dev/null
