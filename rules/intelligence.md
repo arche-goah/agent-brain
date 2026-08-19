@@ -64,12 +64,38 @@ fire on a hard kill). NO `memory/session_*.md` files — memory lives in auto-me
 3. Every code change → skill `verification-before-completion`.
 4. Delete junk (temp files, .DS_Store, __pycache__) immediately.
 
+## Knowledge Carriers (lesson → invariant → carrier)
+
+A lesson that lives only as prose (a feedback entry, a memory note) gets recalled
+as a stimulus→response pattern, not as a causal model: the agent re-applies the
+remembered TEXT while the mechanism underneath has moved on (self-diagnosed on a
+live instance 2026-08-19: domain rules remembered per incident, not derivable
+from how the system works — errors repeated despite the notes). Prose entries
+are EVIDENCE, never the carrier. When an insight is worth keeping:
+
+1. **Name the invariant, not the anecdote** — same move as the memory-slug rule
+   above and the class gate in `verification-before-completion`.
+2. **Give it the strongest carrier that fits**, in this order: mechanical
+   check/gate/lint > executable tool or skill (repeatable task class — use
+   `skill-builder`) > mechanism document (a causal "how the system actually
+   works" explanation, written as explanation, not as an incident list; when
+   the knowledge is reusable beyond one instance it belongs in the tool suite,
+   not the private brain) > memory (pointer + invariant). A skill's
+   `references/` files are the natural home for the mechanism behind its
+   procedure — the causal model then loads exactly when the task class fires,
+   instead of being recalled from memory.
+3. **The trigger is a per-task question, not a repetition counter.** At the
+   moment of doing a task, ask: "is this task's CLASS generalizable /
+   repeatable?" If yes, a skill/tool is due — propose it (build directly only
+   where tool-first is ordered). Waiting to notice "done manually 3x" across
+   sessions never fires: nothing counts repetitions.
+
 ## Proactive Intelligence (propose, do NOT build — order fidelity (Auftragstreue) HARD)
 
 | Pattern | Action |
 |---------|--------|
 | Deadline < 7 days (bootup reports it) | warn immediately + PROPOSE an action plan |
-| Same task done manually 3x | PROPOSE a skill/automation |
+| Task at hand has a generalizable/repeatable CLASS (per-task question — see Knowledge Carriers above; replaces the dead "done manually 3x" counter) | PROPOSE a skill/automation |
 | New project mentioned | create memory (**exempt from the propose gate** — memory is a protocol, not an artifact on the operating surface); PROPOSE folder/structure |
 | Bootup shows `!!` (unpushed, limits, symlinks) | report + PROPOSE a fix |
 
