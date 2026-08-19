@@ -158,20 +158,19 @@ setTimeout(() => {
   const shown = substantive.slice(0, 6).join(', ') +
                 (substantive.length > 6 ? ` (+${substantive.length - 6})` : '');
 
-  // Terse on purpose (operator finding 2026-08-19: a ~20-line block plus a long
-  // reflective answer buried the actual reply in the terminal). The block SHOWS,
-  // the rule EXPLAINS — the full mechanics live in rules/thinking-protocol.md,
-  // section "Class Discipline". The demanded answer is ONE compact line for the
-  // operator's scrollback, not an essay for the agent's own reflection.
+  // Two lines, both written for the OPERATOR's scrollback (findings 2026-08-19,
+  // twice in one day: first a ~20-line block buried the reply, then the terse
+  // version read as word salad — compressed meta-instructions plus a jargon
+  // answer). Terse is not the goal, readable is. The agent's mechanics live in
+  // rules/thinking-protocol.md → Class Discipline and need no repetition here;
+  // the demanded ⚙ line is addressed to the human, so it must be plain language.
   console.log(JSON.stringify({
     decision: 'block',
     reason:
-      `CLASS-GATE (success trigger). Touched this turn: ${shown}\n` +
-      'Reply with ONE compact line prefixed "⚙" (do NOT repeat your answer, no ' +
-      'essay): larger goal & object level ok? · invariant behind the work + site ' +
-      'count (searched, not recalled) · register state (>=3 sites or repeat => ' +
-      'mechanism). Pure refactor/new build without defect: reply exactly "⚙ no ' +
-      'class". Mechanics: rules/thinking-protocol.md → Class Discipline.',
+      `CLASS-GATE — routine success check, not an error. Touched this turn: ${shown}\n` +
+      'Answer with ONE ⚙ line in plain operator language: is the bigger goal ' +
+      'still served, does the same defect exist elsewhere (searched), anything ' +
+      'for the register? Nothing transferable: "⚙ no class".',
   }));
   process.exit(0);
 }, 400);
