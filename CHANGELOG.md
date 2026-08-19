@@ -5,6 +5,35 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.10 — 2026-08-19
+
+- **Class discipline moved into the core** (PR #46, phase 2 of the 2026-08-06
+  rebuild, shipped after the two-week evaluation measured that the register and
+  gate carry). Four carriers that proved themselves on one instance now reach
+  every brain:
+  - `scripts/invariant-check.py` — the invariant-register runner, pure Python
+    (a grep subprocess is a Windows mine). The port surfaced a defect in the
+    grep era: `--include` filters also swallowed explicitly named file targets,
+    so a register could carry a dead target and report ok. Explicit targets are
+    now always searched; otherwise hit-for-hit equivalent on both live registers.
+  - `helpers/stop-verifier.cjs` v2 — reads the TURN from the transcript (text
+    written by the edit tools since the last real operator message) instead of
+    the git working tree, which measured history: stale artifacts blocked
+    unrelated turns, committed work went unseen. Pre-existing markers in a
+    touched file no longer block; only markers this turn added do.
+  - `helpers/session-bootup.sh` — deadline headings (`## YYYY-MM-DD`) are now
+    computed: nearest date, distance in days, `!!` when under 7 days or overdue.
+    "present — check it" was presence, not effect.
+  - `rules/thinking-protocol.md` — Class Discipline section as a POINTER to the
+    mechanism (Class Gate skill, register + runner) carrying the build threshold.
+  - `rules/intelligence.md` — skill-first order of inquiry (operator order
+    2026-08-19): skill exists? → use it; tools complete? → missing tool is the
+    build order; repeatable class without a skill? → define it first; ad hoc
+    intelligence only for genuine one-offs. Procedures live in skills, memory
+    holds lesson + pointer.
+  portability-smoke grew six checks for all of this, executed on the three CI
+  OSes (the Windows leg caught a real one: node cannot open MSYS /tmp paths).
+
 ## 1.3.9 — 2026-08-19
 
 - **Knowledge carriers: a lesson is not kept until it has a carrier** (PR #44).
