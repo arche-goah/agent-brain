@@ -218,6 +218,16 @@ for f in .claude/settings.json .claude/settings.local.json; do
   "$PY" -m json.tool "$f" >/dev/null 2>&1 || echo "!! $f: INVALID JSON"
 done
 
+# Hooks the core template wires but this brain does not (incident 2026-08-19,
+# Windows instance: class-gate.cjs consumed with v1.3.12 yet wired nowhere — a
+# template hook reaches existing brains only as a CHANGELOG sentence, so a missed
+# sentence leaves the helper silently half-functional forever). This line repeats
+# every session until the operator adds the wiring; the check never edits settings.
+if [[ -f "$HERE/../scripts/hook-coverage.py" ]]; then
+  hc=$("$PY" "$HERE/../scripts/hook-coverage.py" "$R" 2>/dev/null)
+  [[ -n "$hc" ]] && echo "!! hooks in the core template but not wired here: ${hc//$'\n'/ · } — ask the operator to add the line(s) to .claude/settings.json (source: core/templates/settings.json), then restart Claude Code"
+fi
+
 # Statusline selfheal (operator directive 2026-08-10): the statusline lives at user
 # level (~/.claude) so it renders in ALL projects — which is exactly why it doesn't
 # migrate along by itself. The carrier is this bootup (lives in the repo): the first

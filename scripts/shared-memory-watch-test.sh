@@ -29,6 +29,10 @@ OTHER="$TMP/other"    # somebody else's checkout
 # which is why it is pinned here instead of assumed).
 git -c init.defaultBranch=main init -q --bare "$BARE"
 git -c init.defaultBranch=main init -q "$WORK"
+# autocrlf is pinned off in the sandbox: with the Git-for-Windows default (true),
+# every add/commit of the LF fixtures spams "LF will be replaced by CRLF" warnings
+# into the test output — cosmetic, but noise a reader has to rule out by hand.
+git -C "$WORK" config core.autocrlf false
 git -C "$WORK" config user.email me@local
 git -C "$WORK" config user.name Me
 git -C "$WORK" remote add origin "$BARE"
@@ -48,6 +52,7 @@ if ! git -C "$WORK" rev-parse origin/main >/dev/null 2>&1; then
 fi
 
 git clone -q "$BARE" "$OTHER"
+git -C "$OTHER" config core.autocrlf false
 git -C "$OTHER" config user.email colleague@local
 git -C "$OTHER" config user.name Colleague
 [ -d "$OTHER/domain" ] || { echo "SETUP FAILED: colleague checkout has no content"; exit 1; }

@@ -254,6 +254,18 @@ else
   bad "class-gate blocked a doc-only turn: '$_cg'"
 fi
 
+# 11b2) class-gate shows paths RELATIVE to cwd also when the transcript carries
+#       Windows backslash paths — `cwd + '/'` never matched those, so the gate
+#       printed absolute paths (cosmetic, measured 2026-08-19 on the Windows
+#       instance). Pure string handling, so this runs on every OS.
+printf '%s\n' '{"message":{"role":"user","content":"windows turn"}}' > "$_tg"
+printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"C:\\x\\brain\\scripts\\tool3.py"}}]}}' >> "$_tg"
+_cg="$(printf '{"transcript_path":"%s","cwd":"C:\\\\x\\\\brain","stop_hook_active":false}' "$_tgn" | node "$CORE/helpers/class-gate.cjs" 2>&1)"
+case "$_cg" in
+  *"Touched this turn: scripts/tool3.py"*) ok "class-gate strips the cwd prefix from backslash paths";;
+  *) bad "class-gate backslash strip: '$(printf '%s' "$_cg" | grep -o 'Touched this turn: [^\\n\"]*' | head -1)'";;
+esac
+
 # 11c) the register template must parse in the runner (a seed that the runner
 #      rejects would ship a broken fixed step of the release catch-up).
 mkdir -p "$T/regbrain/docs/maintenance"
@@ -274,6 +286,35 @@ out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || 
 case "$out" in
   *"!! deadline $_d3 in 3 d"*) ok "bootup computes deadline distance (<7 d escalates)";;
   *) bad "bootup deadline math missing: $(printf '%s' "$out" | grep -i deadline | tail -1)";;
+esac
+
+# 13) hook coverage: a template hook that no settings scope wires must be reported
+#     (the v1.3.12 class-gate shipped consumed-but-wired-nowhere on a live brain);
+#     a fully wired brain must stay silent. CLAUDE_CONFIG_DIR points into the
+#     fixture so the runner's real user settings can never leak into the check.
+mkdir -p "$T/hookbrain/core/templates" "$T/hookbrain/core/helpers" "$T/hookbrain/.claude" "$T/nocfg"
+cp "$CORE/templates/settings.json" "$T/hookbrain/core/templates/"
+cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$T/hookbrain/core/helpers/" 2>/dev/null
+printf '{}\n' > "$T/hookbrain/.claude/settings.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"Stop:"*class-gate.cjs*) ok "hook-coverage flags an unwired template hook (exit 1)";;
+  *) bad "hook-coverage missing-hook case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ] && [ -z "$_hc" ]; then
+  ok "hook-coverage stays silent on a fully wired brain"
+else
+  bad "hook-coverage false alarm: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'"
+fi
+#     And the bootup voices it: the fixture brain gets the template but an empty
+#     settings file — the !! line is the carrier that repeats until it is fixed.
+printf '{}\n' > "$T/hookbrain/.claude/settings.json"
+out="$(CLAUDE_PROJECT_DIR="$T/hookbrain" CLAUDE_CONFIG_DIR="$T/nocfg" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in
+  *"!! hooks in the core template but not wired here:"*) ok "bootup voices unwired template hooks";;
+  *) bad "bootup hook-coverage line missing";;
 esac
 
 echo
