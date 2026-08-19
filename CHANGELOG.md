@@ -5,6 +5,32 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.12 — 2026-08-19
+
+- **The class gate moves into the core** (PR #50). The Stop gate that fires on
+  SUCCESS (goal & level → invariant → register state) was instance-only, so every
+  other brain received the Class Discipline rule as prose — exactly the
+  stimulus-response form it is meant to break. Ported unchanged after 14 days of
+  live operation (37 firing sessions, no wallpaper effect): transcript turn
+  window, 3-operator-turn cooldown read from its own replayed feedback,
+  doc/scratch filters, legacy echo marker recognized. `helpers/class-gate.cjs`,
+  wired in `templates/settings.json`; existing brains add one Stop-hook line:
+  `node "$CLAUDE_PROJECT_DIR/core/helpers/class-gate.cjs"`.
+- **Invariant register is a fixed step now** (PR #50, operator order 2026-08-19).
+  `templates/invariants.md` seeds the register; `brain-update` creates
+  `docs/maintenance/invariants.md` when missing (never overwrites — the register
+  is instance history); `bootstrap-brain.sh` creates it on fresh onboarding.
+  A class needs a place where it stays open.
+- **Foreign instance names removed from shared core artifacts** (PR #49,
+  contributed by the Windows instance — measured there against v1.3.10: the
+  coherence-scan walked rules that exist in no corpus, pure phantom traces).
+  coherence-scan/full-audit/skill-builder/coherence-scan.js now parameterize over
+  the instance's auto-fire table and domain ledgers instead of naming one owner's
+  skills, domains and repos (CONVENTIONS §1). A walked rule existing nowhere is
+  now itself a declared finding.
+- portability-smoke +4 checks (gate block/cooldown/doc-turn, register template
+  parses in the runner), all three OSes.
+
 ## 1.3.11 — 2026-08-19
 
 - **Anti-hallucination #8: mechanism over memory — a recalled rule is a pointer,
