@@ -221,6 +221,50 @@ else
   bad "stop-verifier v2 blocked wrongly: '$_sv'"
 fi
 
+# 11b) class-gate: block on a code turn, silent on a doc-only turn, silent in
+#      cooldown. Proven 14 days on one instance before moving here — these three
+#      fixtures pin the mechanics that made it work (turn window, doc filter,
+#      3-turn cooldown read from its own replayed feedback).
+_tg="$T/gate-transcript.jsonl"
+_tgn="$(cygpath -m "$_tg" 2>/dev/null || printf '%s' "$_tg")"
+printf '%s\n' '{"message":{"role":"user","content":"build the thing"}}' > "$_tg"
+printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/tool.py","new_string":"y = 2"}}]}}' >> "$_tg"
+_cg="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_tgn" | node "$CORE/helpers/class-gate.cjs" 2>&1)"
+case "$_cg" in
+  *CLASS-GATE*) ok "class-gate blocks after a code turn";;
+  *) bad "class-gate did not block: '$_cg'";;
+esac
+printf '%s\n' '{"message":{"role":"user","content":"Stop hook feedback: CLASS-GATE (fires because work succeeded)"}}' >> "$_tg"
+printf '%s\n' '{"message":{"role":"user","content":"next order"}}' >> "$_tg"
+printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/x/tool2.py","new_string":"z = 3"}}]}}' >> "$_tg"
+_cg="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_tgn" | node "$CORE/helpers/class-gate.cjs" 2>&1)"
+if [ -z "$_cg" ]; then
+  ok "class-gate stays silent in the 3-turn cooldown"
+else
+  bad "class-gate fired inside cooldown: '$_cg'"
+fi
+printf '%s\n' '{"message":{"role":"user","content":"turn 2"}}' >> "$_tg"
+printf '%s\n' '{"message":{"role":"user","content":"turn 3"}}' >> "$_tg"
+printf '%s\n' '{"message":{"role":"user","content":"turn 4, docs please"}}' >> "$_tg"
+printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"/x/notes.md","content":"docs"}}]}}' >> "$_tg"
+_cg="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_tgn" | node "$CORE/helpers/class-gate.cjs" 2>&1)"
+if [ -z "$_cg" ]; then
+  ok "class-gate ignores a doc-only turn (cooldown also elapsed)"
+else
+  bad "class-gate blocked a doc-only turn: '$_cg'"
+fi
+
+# 11c) the register template must parse in the runner (a seed that the runner
+#      rejects would ship a broken fixed step of the release catch-up).
+mkdir -p "$T/regbrain/docs/maintenance"
+cp "$CORE/templates/invariants.md" "$T/regbrain/docs/maintenance/invariants.md"
+_rg="$("$PY" "$CORE/scripts/invariant-check.py" "$T/regbrain/docs/maintenance/invariants.md" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ]; then
+  ok "invariant register template parses clean in the runner"
+else
+  bad "register template rejected: rc=$_rc $(printf '%s' "$_rg" | tr '\n' ' ' | tail -c 200)"
+fi
+
 # 12) bootup deadline math: a heading 3 days out must surface as '!! ... in 3 d'.
 #     The old line said only 'present — check it' — presence, not effect.
 mkdir -p "$T/docs/business"

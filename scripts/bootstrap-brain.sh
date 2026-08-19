@@ -109,6 +109,10 @@ cp "$CORE_SRC/templates/leak-names.json" .claude/rules/leak-names.json
 # MEMORY.md seed: Claude Code creates Auto-Memory itself — the seed documents the format.
 mkdir -p docs/maintenance
 cp "$CORE_SRC/templates/MEMORY.md" docs/maintenance/memory-seed-referenz.md
+# Invariant register from day one (operator order 2026-08-19): a class needs a place
+# where it stays open — without the register, the class-discipline rules reach a
+# fresh brain as prose only.
+cp "$CORE_SRC/templates/invariants.md" docs/maintenance/invariants.md
 
 # .gitattributes BEFORE the first commit: Git for Windows defaults to core.autocrlf=true
 # and then checks out CRLF. The workflow tool rejects a script with CR ("script contains
