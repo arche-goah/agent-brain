@@ -90,6 +90,23 @@ are EVIDENCE, never the carrier. When an insight is worth keeping:
    where tool-first is ordered). Waiting to notice "done manually 3x" across
    sessions never fires: nothing counts repetitions.
 
+**Skill-first order of inquiry (operator order 2026-08-19), on EVERY task,
+before the first move — intelligent analysis yes, but in this sequence:**
+
+1. **Is there a skill that covers this?** Use it. Never improvise alongside an
+   existing skill, not even "just this once".
+2. **Does the skill have every tool it needs to execute?** A missing tool is
+   the build order (in the suite) plus a skill extension — never a reason to
+   bypass the skill.
+3. **No skill, but the task class is repeatable?** Define the skill first
+   (conventions and target state go in), THEN execute. The propose gate above
+   applies unless tool-first is ordered for the environment.
+4. **Solving ad hoc with intelligence** stays reserved for genuine one-off
+   situations. The yardstick is not "worked today" but: repeatable cleanly in a
+   year, by another session, on someone else's rig. Long-term operational
+   stability is the goal, not session success. Procedures live in skills (and
+   their `references/`); memory holds only lesson + pointer.
+
 ## Proactive Intelligence (propose, do NOT build — order fidelity (Auftragstreue) HARD)
 
 | Pattern | Action |
