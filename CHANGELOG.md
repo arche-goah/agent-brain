@@ -5,6 +5,21 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.9 — 2026-08-19
+
+- **Knowledge carriers: a lesson is not kept until it has a carrier** (PR #44).
+  A sibling instance self-diagnosed the failure mode: domain rules recalled as
+  stimulus→response text instead of a causal model, errors repeated despite the
+  notes, no skills forming for repeatable tasks. The core's only skill-formation
+  trigger was "same task done manually 3x" — a repetition counter nothing counts,
+  so it never fired; the working trigger (per-task class question) lived only in
+  one instance's operator orders. `rules/intelligence.md` now carries a
+  Knowledge-Carriers ladder — name the invariant, pick the strongest carrier
+  (check/gate > tool/skill > mechanism doc > memory), mechanism docs written as
+  explanation and placed in the suite when reusable — and the proactive table
+  asks the class question at execution time instead of counting. Propose gate
+  unchanged.
+
 ## 1.3.8 — 2026-08-18
 
 - **Shared-memory awareness is a carrier now, not a habit** (PR #41). An instance
