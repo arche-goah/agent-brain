@@ -202,16 +202,19 @@ esac
 #     contains it literally either.
 _mk="$(printf 'TO%s' 'DO')"
 _tr="$T/transcript.jsonl"
+# node is a Windows binary under Git Bash and cannot open MSYS /tmp paths — hand it
+# the mixed form (C:/...); everywhere else cygpath does not exist and the path stays.
+_trn="$(cygpath -m "$_tr" 2>/dev/null || printf '%s' "$_tr")"
 printf '%s\n' '{"message":{"role":"user","content":"do the thing"}}' > "$_tr"
 printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"/x/a.py","content":"# %s later\\n"}}]}}\n' "$_mk" >> "$_tr"
-_sv="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_tr" | node "$CORE/helpers/stop-verifier.cjs" 2>&1)"
+_sv="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_trn" | node "$CORE/helpers/stop-verifier.cjs" 2>&1)"
 case "$_sv" in
   *'"decision":"block"'*) ok "stop-verifier v2 blocks on a marker written this turn";;
   *) bad "stop-verifier v2 did not block: '$_sv'";;
 esac
 printf '%s\n' '{"message":{"role":"user","content":"next turn"}}' >> "$_tr"
 printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"/x/notes.md","content":"# %s later\\n"}}]}}\n' "$_mk" >> "$_tr"
-_sv="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_tr" | node "$CORE/helpers/stop-verifier.cjs" 2>&1)"
+_sv="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_trn" | node "$CORE/helpers/stop-verifier.cjs" 2>&1)"
 if [ -z "$_sv" ]; then
   ok "stop-verifier v2 allows doc-only markers AND ignores the previous turn"
 else
