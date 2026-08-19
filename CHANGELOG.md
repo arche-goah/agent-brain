@@ -5,6 +5,30 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.13 — 2026-08-19
+
+- Casing fix for the combination of the two PRs below (PR #55): #53 lower-cased a
+  phrase #52's fresh smoke check matched exactly — each PR green against its own
+  base, the combination red, caught by the release PR's CI doing its job.
+- **class-gate blocks are terse now — the gate shows, the rule explains** (PR #53,
+  operator finding, screenshot-verified: a ~20-line pedagogical block plus a long
+  reflective answer buried the actual reply in the terminal). The block is 3 lines,
+  points at thinking-protocol.md → Class Discipline, and demands ONE compact
+  ⚙-prefixed answer line instead of an essay. Same trim applied to the proving
+  instance's time-gate.
+- **hook-coverage: a template hook that no settings scope wires gets a loud line**
+  (PR #52, contributed by emil-workstation from its v1.3.12 catch-up — it measured
+  THREE unwired template hooks on itself, including one whose rule text claimed it
+  was "mechanically carried"). A hook shipped only as a CHANGELOG sentence leaves
+  brains silently half-functional: `scripts/hook-coverage.py` compares the template
+  against project/local/user settings by helper filename and reports missing lines
+  (never edits — settings are operator territory); `session-bootup` repeats a `!!`
+  line until wired; `brain-update` step 4c prints the exact lines to add.
+- class-gate cwd strip normalizes separators (Windows transcripts carry backslash
+  paths; repo-relative display was broken there — cosmetic, PR #52).
+- shared-memory-watch-test pins `core.autocrlf false` in its sandbox (no more CRLF
+  warning noise on Windows, PR #52). portability-smoke: 30 checks.
+
 ## 1.3.12 — 2026-08-19
 
 - **The class gate moves into the core** (PR #50). The Stop gate that fires on
