@@ -144,10 +144,15 @@ setTimeout(() => {
   // survive the turn is not work on the system — otherwise the gate fires on its
   // own tooling.
   const scratch = /^(\/private)?\/(tmp|var\/folders)\/|[\\/]Temp[\\/]/;
-  const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  // Separators are normalized before the prefix strip: on Windows the transcript
+  // carries backslash paths, so `cwd + '/'` never matched and the gate showed
+  // absolute paths (cosmetic — measured 2026-08-19 on the Windows instance).
+  const norm = (s) => String(s).replace(/\\/g, '/');
+  const cwd = norm(input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd())
+    .replace(/\/+$/, '');
   const substantive = touched
     .filter((f) => !docExt.test(f) && !scratch.test(f))
-    .map((f) => (f.startsWith(cwd + '/') ? f.slice(cwd.length + 1) : f));
+    .map((f) => (norm(f).startsWith(cwd + '/') ? norm(f).slice(cwd.length + 1) : f));
   if (substantive.length === 0) return allow();
 
   const shown = substantive.slice(0, 6).join(', ') +
