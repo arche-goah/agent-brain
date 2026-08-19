@@ -5,6 +5,18 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.14 — 2026-08-19
+
+- **class-gate block speaks to the operator — operator-reviewed before release**
+  (PR #56). Second finding on the same artifact in one day: the v1.3.13 terse
+  block still carried five lines of compressed meta-instruction and produced
+  jargon answer lines — word salad for the human whose terminal it lands in.
+  Now two plain-language lines ("routine success check, not an error" defuses
+  the harness's "Stop hook error:" prefix) and the demanded ⚙ answer line is
+  explicitly ordered in plain operator language. The operator sighted a live
+  firing and approved this wording. Lesson, same as the output style carries:
+  terse is not the goal, readable is — a block text must remember who reads it.
+
 ## 1.3.13 — 2026-08-19
 
 - Casing fix for the combination of the two PRs below (PR #55): #53 lower-cased a
