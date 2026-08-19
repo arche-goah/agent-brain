@@ -20,14 +20,16 @@ contradictions and propose resolutions; consolidate redundancy toward
 **Normative layer (audit object):** CLAUDE.md, `.claude/rules/*.md`,
 `docs/maintenance/brain-scan-checklist.md`, auto-memory (`~/.claude/projects/
 <project path, "/" replaced by "-">/memory/`), skill descriptions (REGISTRY.md) +
-behavior-shaping skills (session-close, caveman, ponytail, multi-device-messung, …),
+behavior-shaping skills (session-close, caveman, ponytail, plus whatever the
+instance's auto-fire table marks as behavior-shaping — that list is instance
+knowledge, never hardcoded here),
 `.claude/settings.json` (hooks/permissions), the hard-rules blocks of the domain docs.
 
 **OUTSIDE the scope (never "clean up"):**
 - `session-log.md` + `decision-log.md` — append-only PROTOCOLS (operator directive
   2026-07-31); the scan uses them only as the *origin history* of rules.
-- Domain expertise (event-network configs, MA3 standards) — only their process rules.
-- The MA3 repo (`ma3-showcontrol`) — separate project, separate scan.
+- Domain expertise (the instance's rig/show/domain configs) — only their process rules.
+- The instance's separate project repos — separate project, separate scan.
 
 ## De-bias measures (the core of this skill)
 
