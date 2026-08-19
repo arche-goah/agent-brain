@@ -55,6 +55,22 @@ Before each of these actions, internal thinking is REQUIRED:
 5. **Do not guess links** - If a URL is unknown, open/check it first
 6. **Never claim a file exists** without having read it
 7. **Never assume code conventions** - Read the existing code first
+8. **Mechanism over memory — a recalled rule is a pointer, not a license
+   (operator instruction 2026-08-19).** Before applying a rule or pattern
+   recalled from memory, check whether its underlying mechanism can be
+   restated causally, in one's own words (WHY it holds, not just WHAT it
+   says). If it cannot, that is the signal to re-verify against the primary
+   source (code, docs, the live system) before acting — treating a
+   remembered rule as a fixed text to replay is stimulus-response, not
+   understanding, and it fails silently in exactly the case where a new
+   situation looks similar but differs in the load-bearing detail.
+   (Incident: an instance held two memory entries from different sessions
+   that read as contradictory; both were correct once the actual mechanism
+   was traced out — the text-level pattern match had missed the
+   distinguishing condition entirely, and no contradiction existed once
+   restated causally.) Applies with extra weight whenever a fix from one
+   incident is about to be reapplied to a new one on pattern-similarity
+   alone.
 
 ## Confidence Assessment
 
