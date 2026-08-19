@@ -173,6 +173,62 @@ else
   bad "shared-memory watch negative control failed on this OS: $(printf '%s' "$_smw" | tr '\n' ' ' | tail -c 400)"
 fi
 
+# 10) invariant-check: pure-Python runner against a fixture register. Three cases in
+#     one fixture: a matching baseline (ok), a NEW site (drift, exit 1), and an
+#     explicitly named file target that --include does NOT match — the grep-era
+#     defect: grep applied --include to command-line files too, so the register
+#     carried a dead target and reported ok (P-1 in the runner itself).
+mkdir -p "$T/inv/sub"
+printf 'alpha MARKER1\n' > "$T/inv/sub/base.py"
+printf 'no hit here\n' > "$T/inv/clean.py"
+printf 'MARKER1 in explicit target\n' > "$T/inv/explicit.txt"
+printf 'root: .\n\n## X-1 — fixture class\npattern: MARKER1\npaths: --include=*.py sub explicit.txt\nknown: sub/base.py=1 explicit.txt=1\nstatus: closed\n' > "$T/inv/reg.md"
+_iv="$("$PY" "$CORE/scripts/invariant-check.py" "$T/inv/reg.md" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ]; then
+  ok "invariant-check: baseline incl. explicit file target holds (grep-era dead target now searched)"
+else
+  bad "invariant-check baseline: rc=$_rc $(printf '%s' "$_iv" | tr '\n' ' ' | tail -c 300)"
+fi
+printf 'beta MARKER1\n' > "$T/inv/sub/new.py"
+_iv="$("$PY" "$CORE/scripts/invariant-check.py" "$T/inv/reg.md" 2>&1)"; _rc=$?
+case "$_rc:$_iv" in
+  1:*"NEW site: sub/new.py"*) ok "invariant-check: new site fails loudly (drift ratchet)";;
+  *) bad "invariant-check drift: rc=$_rc (expected 1 + NEW site)";;
+esac
+
+# 11) stop-verifier v2: reads the TURN from the transcript, not the working tree.
+#     Case A: this turn Write()s code containing a marker -> block. Case B: the same
+#     marker only in a doc file -> allow. The marker is assembled so this script never
+#     contains it literally either.
+_mk="$(printf 'TO%s' 'DO')"
+_tr="$T/transcript.jsonl"
+printf '%s\n' '{"message":{"role":"user","content":"do the thing"}}' > "$_tr"
+printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"/x/a.py","content":"# %s later\\n"}}]}}\n' "$_mk" >> "$_tr"
+_sv="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_tr" | node "$CORE/helpers/stop-verifier.cjs" 2>&1)"
+case "$_sv" in
+  *'"decision":"block"'*) ok "stop-verifier v2 blocks on a marker written this turn";;
+  *) bad "stop-verifier v2 did not block: '$_sv'";;
+esac
+printf '%s\n' '{"message":{"role":"user","content":"next turn"}}' >> "$_tr"
+printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"/x/notes.md","content":"# %s later\\n"}}]}}\n' "$_mk" >> "$_tr"
+_sv="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_tr" | node "$CORE/helpers/stop-verifier.cjs" 2>&1)"
+if [ -z "$_sv" ]; then
+  ok "stop-verifier v2 allows doc-only markers AND ignores the previous turn"
+else
+  bad "stop-verifier v2 blocked wrongly: '$_sv'"
+fi
+
+# 12) bootup deadline math: a heading 3 days out must surface as '!! ... in 3 d'.
+#     The old line said only 'present — check it' — presence, not effect.
+mkdir -p "$T/docs/business"
+_d3="$("$PY" -c 'import datetime;print(datetime.date.today()+datetime.timedelta(days=3))')"
+printf '## %s — fixture deadline\n' "$_d3" > "$T/docs/business/deadlines.md"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in
+  *"!! deadline $_d3 in 3 d"*) ok "bootup computes deadline distance (<7 d escalates)";;
+  *) bad "bootup deadline math missing: $(printf '%s' "$out" | grep -i deadline | tail -1)";;
+esac
+
 echo
 if [ "$fail" -eq 0 ]; then echo "portability-smoke: ALL checks passed"; else echo "portability-smoke: FAILURE (see FAIL lines)"; fi
 exit "$fail"
