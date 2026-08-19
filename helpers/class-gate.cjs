@@ -153,26 +153,20 @@ setTimeout(() => {
   const shown = substantive.slice(0, 6).join(', ') +
                 (substantive.length > 6 ? ` (+${substantive.length - 6})` : '');
 
+  // Terse on purpose (operator finding 2026-08-19: a ~20-line block plus a long
+  // reflective answer buried the actual reply in the terminal). The block SHOWS,
+  // the rule EXPLAINS — the full mechanics live in rules/thinking-protocol.md,
+  // section "Class Discipline". The demanded answer is ONE compact line for the
+  // operator's scrollback, not an essay for the agent's own reflection.
   console.log(JSON.stringify({
     decision: 'block',
     reason:
-      'CLASS-GATE (fires because work succeeded, not because something broke).\n' +
-      `Touched this turn: ${shown}\n` +
-      'Answer briefly, then stop — no new work order, no table:\n' +
-      '1. GOAL & LEVEL (first, and the more important question): what is this all ' +
-      'for — which larger goal stands behind it, and am I still working on it? Is ' +
-      'this the right object, or am I adjusting the wrong primitive one level too ' +
-      'deep? If the answer needs proper names to be sayable, it is too deep.\n' +
-      '2. CLASS: which invariant sits behind the work — the general sentence, not ' +
-      'the anecdote ("what survives a reset must never be created unguarded", not ' +
-      '"X was unguarded")? Derive the search space from the INVARIANT, not from the ' +
-      'first find\'s vocabulary. How many sites?\n' +
-      '3. STATE: closed · noted · register line due (the instance\'s invariant ' +
-      'register, e.g. docs/maintenance/invariants.md)? From 3 sites or a repeat ' +
-      'after a fix: mechanism, not single fix. What is in reach and belongs to the ' +
-      'same matter gets DONE, not tabled.\n' +
-      'If none applies (pure refactoring, new build without a defect): say ' +
-      '"no class" and stop.',
+      `CLASS-GATE (success trigger) — touched this turn: ${shown}\n` +
+      'Reply with ONE compact line prefixed "⚙" (do NOT repeat your answer, no ' +
+      'essay): larger goal & object level ok? · invariant behind the work + site ' +
+      'count (searched, not recalled) · register state (>=3 sites or repeat => ' +
+      'mechanism). Pure refactor/new build without defect: reply exactly "⚙ no ' +
+      'class". Mechanics: rules/thinking-protocol.md → Class Discipline.',
   }));
   process.exit(0);
 }, 400);
