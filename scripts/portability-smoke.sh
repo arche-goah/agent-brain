@@ -349,14 +349,27 @@ case "$_hc" in
   *class-gate*) bad "hook-coverage still reports a dispatcher-registered helper";;
   *) ok "hook-coverage accepts a helper registered behind a wired dispatcher";;
 esac
+# The bootup runs the machinery check itself, so no instance has to remember a settings
+# line (third-instance proposal 2026-08-20, after two machines were measured without it).
+# A template entry would have reached only newly bootstrapped brains; this reaches every
+# brain that consumes the core. Asserted on the OUTPUT, because a call that silently
+# does nothing is the failure this whole strand is about.
+_bo="$(CLAUDE_PROJECT_DIR="$T/hookbrain" CLAUDE_CONFIG_DIR="$T/nocfg" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$_bo" in
+  *brain-check:*) ok "bootup runs the machinery check itself";;
+  *) bad "bootup does not run brain-check — an instance would have to remember it";;
+esac
+
 # A template hook in core/SCRIPTS must be demanded just like one in core/helpers.
 # Measured 2026-08-20: brain-check.sh lives in scripts/, so a brain that never wired it
-# was reported as fully covered — the check for 'shipped but not wired' was blind to
-# exactly that shape, and the Windows instance ran no self-test after its update.
-mkdir -p "$T/scriptbrain/.claude" "$T/scriptbrain/core"
+# was reported as fully covered — the check for "shipped but not wired" was blind to
+# exactly that shape. The case builds its OWN template: asserting a capability against
+# whatever the real template happens to contain measures that content instead.
+mkdir -p "$T/scriptbrain/.claude" "$T/scriptbrain/core/templates" "$T/scriptbrain/core/scripts"
 cp -R "$CORE/helpers" "$T/scriptbrain/core/helpers"
-cp -R "$CORE/scripts" "$T/scriptbrain/core/scripts"
-cp -R "$CORE/templates" "$T/scriptbrain/core/templates"
+cp "$CORE/scripts/brain-check.sh" "$T/scriptbrain/core/scripts/brain-check.sh"
+printf '%s' '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR/core/scripts/brain-check.sh\" --brief"}]}]}}' \
+  > "$T/scriptbrain/core/templates/settings.json"
 printf '{}\n' > "$T/scriptbrain/.claude/settings.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/scriptbrain" 2>&1)"
 case "$_hc" in
