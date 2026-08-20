@@ -16,17 +16,13 @@ fail=0
 # brain happens to surround it, and shipping a second language here proves the contract
 # that a language is DATA — the engine keeps only English built-ins.
 mkdir -p "$T/.claude/rules"
-"$PY" - "$T/.claude/rules/premise-patterns.json" <<'PYEOF'
-import json, sys
-json.dump({"generalisation_patterns": [
-    r"\b(muss|müssen|darf|soll|wird|gilt|ist|sind|bleibt)\s+(immer|nie|niemals|grundsätzlich|grundsaetzlich)\b",
-    r"\b\w+t\s+(immer|nie|niemals)\s+(der|die|das|ein|eine)\b",
-    r"\b\w+t\s+(immer|nie|niemals)\s+(von|selbst|mit|ohne|auf|aus)\b",
-    r"\b\w+t\s+(grundsätzlich|grundsaetzlich|ausnahmslos)\b",
-    r"\bjedes\s+Mal\b",
-], "instruction_patterns": [r"^\s*\d+\.\s+\*\*"]},
-    open(sys.argv[1], "w", encoding="utf-8"))
-PYEOF
+printf '%s' '{"generalisation_patterns":[' > "$T/.claude/rules/premise-patterns.json"
+printf '%s' '"\\b(muss|müssen|darf|soll|wird|gilt|ist|sind|bleibt)\\s+(immer|nie|niemals|grundsätzlich|grundsaetzlich)\\b",' >> "$T/.claude/rules/premise-patterns.json"
+printf '%s' '"\\b\\w+t\\s+(immer|nie|niemals)\\s+(der|die|das|ein|eine)\\b",' >> "$T/.claude/rules/premise-patterns.json"
+printf '%s' '"\\b\\w+t\\s+(immer|nie|niemals)\\s+(von|selbst|mit|ohne|auf|aus)\\b",' >> "$T/.claude/rules/premise-patterns.json"
+printf '%s' '"\\b\\w+t\\s+(grundsätzlich|grundsaetzlich|ausnahmslos)\\b",' >> "$T/.claude/rules/premise-patterns.json"
+printf '%s' '"\\bjedes\\s+Mal\\b"],' >> "$T/.claude/rules/premise-patterns.json"
+printf '%s' '"instruction_patterns":["^\\s*\\d+\\. \\*\\*"]}' >> "$T/.claude/rules/premise-patterns.json"
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
 

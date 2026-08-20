@@ -36,22 +36,20 @@ mkdir -p "$CFG/.claude/rules"
 CG=$(cd "$ROOT" && resolve helpers/class-gate.cjs)
 PG=$(cd "$ROOT" && resolve helpers/premise-gate.cjs || resolve scripts/hooks/premise-gate.cjs)
 TG=$(cd "$ROOT" && resolve scripts/hooks/time-gate.cjs || true)
-"$PY" - "$CFG/.claude/rules/stop-checks.json" "$ROOT/$CG" "$ROOT/$PG" "${TG:+$ROOT/$TG}" <<'PYEOF'
-import json, sys
-path, cg, pg, tg = sys.argv[1:5]
-checks = [
-    {"label": "CLASS", "marker": "CLASS-GATE", "cmd": cg, "mode": "block",
-     "extract": r"Touched this turn:\s*(.+)", "template": "{1} -> class?",
-     "basename": True},
-    {"label": "PREMISE", "marker": "PREMISE-GATE", "cmd": pg, "mode": "block",
-     "extract": r"Rule-shaped wording:\s*(.+)", "template": "{1} carries an action"},
-]
-if tg:
-    checks.append({"label": "TIME", "marker": "TIME-GATE", "cmd": tg,
-                   "mode": "record", "args": ["--record"]})
-json.dump({"header": "STOP-CHECKS ({n})", "checks": checks},
-          open(path, "w", encoding="utf-8"))
-PYEOF
+{
+  printf '{"header":"STOP-CHECKS ({n})","checks":['
+  printf '{"label":"CLASS","marker":"CLASS-GATE","cmd":"%s","mode":"block",' "$ROOT/$CG"
+  # ' *' instead of a backslash class: same match, no escape to survive two layers of
+  # quoting. The heredoc that used to build this JSON was the only thing in the suite
+  # that needed an interpreter, and the only thing that failed on Windows.
+  printf '"extract":"Touched this turn: *(.+)","template":"{1} -> class?","basename":true}'
+  printf ',{"label":"PREMISE","marker":"PREMISE-GATE","cmd":"%s","mode":"block",' "$ROOT/$PG"
+  printf '"extract":"Rule-shaped wording: *(.+)","template":"{1} carries an action"}'
+  if [ -n "$TG" ]; then
+    printf ',{"label":"TIME","marker":"TIME-GATE","cmd":"%s","mode":"record","args":["--record"]}' "$ROOT/$TG"
+  fi
+  printf ']}'
+} > "$CFG/.claude/rules/stop-checks.json"
 trap 'rm -rf "$T" "$CFG"' EXIT
 
 feed() { # $1 transcript -> dispatcher output
