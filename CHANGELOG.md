@@ -5,6 +5,25 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.17 — 2026-08-20
+
+- **The machinery check works in a consuming brain, not only in this repo.** Wiring it
+  (1.3.16) was not enough: run from a brain it reported "needs a look" and found almost
+  nothing, for two reasons that are the same mistake twice — a tool assuming it stands
+  where it was written.
+  - `brain-selftest.sh` looked for fixtures in `scripts/` only. In a brain the suites
+    live in `core/scripts/`, so every mechanism the core ships was listed as unproven
+    while its fixture sat unused one directory away. Both locations are scanned now,
+    each glob on its own (`ls a b` fails as soon as one is empty, which would have made
+    the second location narrow the check instead of widening it).
+  - `brain-check.sh` called its sibling scripts relative to the BRAIN, where they no
+    longer exist once the brain consumes them from the core. Siblings are resolved next
+    to the wrapper itself now — the failure it reported was its own path handling.
+
+  Verified the way the gap was found: with `CLAUDE_PROJECT_DIR` pointing at a consuming
+  brain, `brain-check --brief` reports `machinery ok — 6 fixture(s) green, 0 without an
+  effect proof`.
+
 ## 1.3.16 — 2026-08-20
 
 - **Shipping a capability is not delivering it** (operator finding, same day as
