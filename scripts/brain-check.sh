@@ -5,13 +5,14 @@
 #   bash scripts/brain-check.sh --brief  # both, one summary line — unless something
 #                                        # is wrong, then the full detail follows
 #
-# The session start runs --brief (operator: "das muss auf jeden fall beim session start
-# mit laufen"). Full run every time, short output every time: skipping the run when
+# The session start runs --brief (operator, translated: this has to run at every
+# session start, no exceptions). Full run every time, short output every time:
+# skipping the run when
 # nothing changed would have missed everything that breaks WITHOUT a file changing —
 # a submodule update, a deleted target, a permission change. The cost is ~5 s of wall
 # clock at startup, and the output is one line when all is well.
 #
-# WHY the pair (operator, 2026-08-20): "does every mechanism still run" and "do the
+# WHY the pair (operator, 2026-08-20): "does every mechanism still run" and "do those
 # mechanisms contradict each other" are different questions with different failure
 # modes. The first is answered by executing fixtures, the second by comparing wiring
 # against wiring. Neither is a substitute for the other, and neither needs a model.

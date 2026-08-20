@@ -42,7 +42,12 @@ TEXT_SUFFIX = {".md", ".py", ".sh", ".cjs", ".js", ".json", ".yml", ".yaml",
 # The baseline lists German-named entries, this script carries the German word
 # list as detection data, and skill-lint.py carries German stopwords as similarity
 # data — none of that is German CONTENT.
-SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py", "skill-lint.py"}
+# test-premise-gate.sh and test-stop-checks.sh carry German SAMPLES: the premise
+# fixture ships a second language to prove that a language is data, and the stop
+# fixture feeds transliterated German to the orthography check. In both the German
+# IS the subject under test — translating it would delete the test.
+SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py",
+              "skill-lint.py", "test-premise-gate.sh", "test-stop-checks.sh"}
 
 UMLAUT = re.compile(r"[äöüßÄÖÜ]")
 # Transliterated / bare German that does not occur in technical English. Extend only

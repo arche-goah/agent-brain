@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Does this brain's own machinery still work — or does it only exist?
 #
-# WHY (operator, 2026-08-20): "solche probleme ... gibt es vielleicht viel oefter beim
-# kollegen und wir wissen es nur nicht ... wir muessen diese grund brain sanity schon
-# irgendwie sicherstellen, sonst stoesst der staendig auf unerklaerliche frustrierende
-# probleme." The trigger was a self-inflicted one: consolidating seven Stop hooks into
+# WHY (operator, 2026-08-20, translated): problems like this one probably exist far
+# more often on the other instance and nobody knows, so basic brain sanity has to be
+# assured somehow — otherwise that instance keeps running into inexplicable,
+# frustrating trouble. The trigger was self-inflicted: consolidating seven Stop hooks
 # one dispatcher silently turned hook-coverage.py into a permanent false alarm, because
 # it matches helper FILENAMES in settings.json and cannot know a dispatcher runs them.
 # Nobody would have found that by reading; it showed up because one command was run.

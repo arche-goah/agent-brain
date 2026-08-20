@@ -15,6 +15,11 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 fail=0
+# file-guard has a branch gate for core checkouts: on a detached HEAD it blocks
+# every edit on purpose, and CI checks out exactly that. So every path here lives in
+# a throwaway directory — otherwise the fixture measures the checkout, not the guard.
+FG="$(mktemp -d)"
+trap 'rm -rf "$FG"' EXIT
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
 
@@ -50,17 +55,17 @@ echo "PreToolUse guards:"
 
 # --- file-guard: secrets are not edited by an agent, ever --------------------
 probe "file-guard/.env" file-guard.cjs \
-  '{"tool_name":"Edit","tool_input":{"file_path":"'"$ROOT"'/.env"},"cwd":"'"$ROOT"'"}' block
+  '{"tool_name":"Edit","tool_input":{"file_path":"'"$FG"'/.env"},"cwd":"'"$FG"'"}' block
 probe "file-guard/id_rsa" file-guard.cjs \
-  '{"tool_name":"Write","tool_input":{"file_path":"/opt/fixture/.ssh/id_rsa"},"cwd":"'"$ROOT"'"}' block
+  '{"tool_name":"Write","tool_input":{"file_path":"/opt/fixture/.ssh/id_rsa"},"cwd":"'"$FG"'"}' block
 probe "file-guard/normal file" file-guard.cjs \
-  '{"tool_name":"Edit","tool_input":{"file_path":"'"$ROOT"'/README.md"},"cwd":"'"$ROOT"'"}' allow
+  '{"tool_name":"Edit","tool_input":{"file_path":"'"$FG"'/README.md"},"cwd":"'"$FG"'"}' allow
 
 # --- secret-guard: reading a secret into context is the leak -----------------
 probe "secret-guard/read .env" secret-guard.cjs \
-  '{"tool_name":"Read","tool_input":{"file_path":"'"$ROOT"'/.env"},"cwd":"'"$ROOT"'"}' block
+  '{"tool_name":"Read","tool_input":{"file_path":"'"$FG"'/.env"},"cwd":"'"$FG"'"}' block
 probe "secret-guard/read a doc" secret-guard.cjs \
-  '{"tool_name":"Read","tool_input":{"file_path":"'"$ROOT"'/README.md"},"cwd":"'"$ROOT"'"}' allow
+  '{"tool_name":"Read","tool_input":{"file_path":"'"$FG"'/README.md"},"cwd":"'"$FG"'"}' allow
 
 # --- mechanism-guard: a documented path exists, so the shortcut is refused ---
 # The RULES are instance data, so the fixture brings its own instead of depending on
@@ -94,9 +99,9 @@ rm -rf "$MG"
 # fixture cannot fake without inventing a run id. What IS provable here: it stays out
 # of the way of everything else — the failure mode that would make it deny real work.
 probe "freshness-gate/other tool" freshness-gate.cjs \
-  '{"tool_name":"Bash","tool_input":{"command":"ls"},"cwd":"'"$ROOT"'"}' allow
+  '{"tool_name":"Bash","tool_input":{"command":"ls"},"cwd":"'"$FG"'"}' allow
 probe "freshness-gate/workflow resume" freshness-gate.cjs \
-  '{"tool_name":"Workflow","tool_input":{"resumeFromRunId":"wf_abc123"},"cwd":"'"$ROOT"'"}' allow
+  '{"tool_name":"Workflow","tool_input":{"resumeFromRunId":"wf_abc123"},"cwd":"'"$FG"'"}' allow
 
 echo
 [ "$fail" -eq 0 ] && echo "guard fixtures: ALL passed" || echo "FAILURE"
