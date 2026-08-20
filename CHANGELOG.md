@@ -5,6 +5,19 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.24 — 2026-08-20
+
+- **The bootup's suite-update check now measures the right entity** (#75). A suite
+  delivered as an installed plugin had its dev/PR checkout compared against remote tags
+  a second time and reported a false "update available" while the operator-facing
+  plugin was current. ecosystem-sync now stamps `consumer_plugin` onto the repo entry
+  mechanically (matched by normalized remote slug from the local marketplace cache —
+  a first, hand-annotated version keyed on a field nothing generated and never fired);
+  the bootup skips stamped suites, keeps checking checkout-consuming ones, and a
+  fixture suite proves both halves. Verified against a real consuming brain in both
+  shapes: plugin-installed (skip fires) and checkout-consuming with an empty-installs
+  registry husk (check stays live, correctly).
+
 ## 1.3.23 — 2026-08-20
 
 - **brain-check/brain-selftest: a later PY override clobbered the python3->python probe**
