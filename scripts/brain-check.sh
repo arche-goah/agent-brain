@@ -17,6 +17,8 @@
 # modes. The first is answered by executing fixtures, the second by comparing wiring
 # against wiring. Neither is a substitute for the other, and neither needs a model.
 set -u
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT" || exit 1
 PY="${PYTHON:-python3}"

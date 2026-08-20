@@ -5,6 +5,8 @@
 # seen stay silent is as useless as one nobody has seen fire.
 # Usage: bash scripts/test-premise-gate.sh   (exit 0 = all fixtures pass)
 set -u
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -14,7 +16,7 @@ fail=0
 # brain happens to surround it, and shipping a second language here proves the contract
 # that a language is DATA — the engine keeps only English built-ins.
 mkdir -p "$T/.claude/rules"
-python3 - "$T/.claude/rules/premise-patterns.json" <<'PYEOF'
+"$PY" - "$T/.claude/rules/premise-patterns.json" <<'PYEOF'
 import json, sys
 json.dump({"generalisation_patterns": [
     r"\b(muss|müssen|darf|soll|wird|gilt|ist|sind|bleibt)\s+(immer|nie|niemals|grundsätzlich|grundsaetzlich)\b",

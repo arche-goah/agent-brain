@@ -3,6 +3,8 @@
 # keep every gate's cooldown marker, and stay silent when nothing fires?
 # Usage: bash scripts/test-stop-dispatcher.sh   (exit 0 = all fixtures pass)
 set -u
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 # Two layouts, one fixture: inside a brain the helpers live under core/helpers, inside
 # the core repo itself under helpers. A fixture that only knows one of them silently
 # tests nothing in the other — so resolution is explicit, and a missing subject is
@@ -34,7 +36,7 @@ mkdir -p "$CFG/.claude/rules"
 CG=$(cd "$ROOT" && resolve helpers/class-gate.cjs)
 PG=$(cd "$ROOT" && resolve helpers/premise-gate.cjs || resolve scripts/hooks/premise-gate.cjs)
 TG=$(cd "$ROOT" && resolve scripts/hooks/time-gate.cjs || true)
-python3 - "$CFG/.claude/rules/stop-checks.json" "$ROOT/$CG" "$ROOT/$PG" "${TG:+$ROOT/$TG}" <<'PYEOF'
+"$PY" - "$CFG/.claude/rules/stop-checks.json" "$ROOT/$CG" "$ROOT/$PG" "${TG:+$ROOT/$TG}" <<'PYEOF'
 import json, sys
 path, cg, pg, tg = sys.argv[1:5]
 checks = [
@@ -79,7 +81,7 @@ else
 fi
 case "$OUT" in *'[PREMISE-GATE]'*) ok "keeps PREMISE-GATE cooldown marker";; *) bad "PREMISE-GATE marker lost";; esac
 case "$OUT" in *'[CLASS-GATE]'*) ok "keeps CLASS-GATE cooldown marker";; *) bad "CLASS-GATE marker lost";; esac
-lines=$(printf '%s' "$OUT" | python3 -c "import json,sys; print(len(json.load(sys.stdin)['reason'].splitlines()))")
+lines=$(printf '%s' "$OUT" | "$PY" -c "import json,sys; print(len(json.load(sys.stdin)['reason'].splitlines()))")
 [ "$lines" -le 6 ] && ok "compact ($lines lines)" || bad "not compact ($lines lines)"
 
 # --- a clean turn: nothing fires --------------------------------------------
