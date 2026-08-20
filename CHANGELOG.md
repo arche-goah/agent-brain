@@ -5,6 +5,24 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.18 — 2026-08-20
+
+- **The session bootup runs the machinery check itself.** Proposed by a third instance
+  that measured the same gap independently on its own machine, and it is the better
+  mechanism: `templates/settings.json` reaches only brains bootstrapped AFTER an entry
+  lands, while `helpers/session-bootup.sh` is shared core code that every consuming
+  brain already runs. An instance cannot forget what it does not have to remember —
+  which is the whole point, given that two machines were measured without the wiring
+  within hours of the capability shipping.
+  - The template entry from 1.3.16 is removed in the same move; keeping both would run
+    the check twice on a newly bootstrapped brain.
+  - The bootup never fails on it (`|| true`): a broken check must not keep a session
+    from starting. Cost on a full brain: ~6 s, one line when everything is fine.
+  - `hook-coverage`'s awareness of `core/scripts/` hooks (1.3.16) stays — it is the
+    right contract regardless of what the template currently carries. Its smoke case
+    now builds its own template instead of depending on the real one, which is why
+    removing that entry turned a working check red.
+
 ## 1.3.17 — 2026-08-20
 
 - **The machinery check works in a consuming brain, not only in this repo.** Wiring it
