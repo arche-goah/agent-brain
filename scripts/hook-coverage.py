@@ -92,12 +92,17 @@ def main():
     missing = []
     for event, cmds in commands_by_event(template).items():
         for cmd in cmds:
-            m = re.search(r"core/helpers/([\w.-]+)", cmd)
+            # Any template hook pointing INTO the consumed core counts, not just
+            # helpers/. Measured 2026-08-20: brain-check.sh lives in core/scripts, so a
+            # brain that never wired it was reported as fully covered — the check that
+            # exists to catch "shipped but not wired" had a blind spot of exactly that
+            # shape.
+            m = re.search(r"core/(helpers|scripts)/([\w.-]+)", cmd)
             if not m:
-                continue  # template command outside core/helpers: not this check's contract
-            helper = m.group(1)
-            if not os.path.isfile(os.path.join(root, "core", "helpers", helper)):
-                continue  # helper not in the consumed core yet: nothing to wire
+                continue  # template command outside the core: not this check's contract
+            sub, helper = m.group(1), m.group(2)
+            if not os.path.isfile(os.path.join(root, "core", sub, helper)):
+                continue  # not in the consumed core yet: nothing to wire
             if any(helper in c for c in wired.get(event, [])):
                 continue
             if helper in dispatched:

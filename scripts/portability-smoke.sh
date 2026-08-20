@@ -349,6 +349,21 @@ case "$_hc" in
   *class-gate*) bad "hook-coverage still reports a dispatcher-registered helper";;
   *) ok "hook-coverage accepts a helper registered behind a wired dispatcher";;
 esac
+# A template hook in core/SCRIPTS must be demanded just like one in core/helpers.
+# Measured 2026-08-20: brain-check.sh lives in scripts/, so a brain that never wired it
+# was reported as fully covered — the check for 'shipped but not wired' was blind to
+# exactly that shape, and the Windows instance ran no self-test after its update.
+mkdir -p "$T/scriptbrain/.claude" "$T/scriptbrain/core"
+cp -R "$CORE/helpers" "$T/scriptbrain/core/helpers"
+cp -R "$CORE/scripts" "$T/scriptbrain/core/scripts"
+cp -R "$CORE/templates" "$T/scriptbrain/core/templates"
+printf '{}\n' > "$T/scriptbrain/.claude/settings.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/scriptbrain" 2>&1)"
+case "$_hc" in
+  *brain-check.sh*) ok "hook-coverage demands a template hook from core/scripts";;
+  *) bad "hook-coverage blind to core/scripts template hooks";;
+esac
+
 # ... and the same helper WITHOUT the registration must still be reported, otherwise the
 # acceptance above would be a way to silence the check by writing an empty file.
 printf '{"checks":[]}\n' > "$T/dispbrain/.claude/rules/stop-checks.json"

@@ -71,3 +71,21 @@ session start.
    it flags: commit after every block, NEVER force-push a shared remote, hand work
    over via an explicit note (memory/PR comment) instead of leaving state in the
    tree — and version numbers are assigned by ONE session per release, never two.
+
+9. **An instance's `settings.json` is invisible from here — and every one differs**
+   (operator finding 2026-08-20). A capability that must run in EVERY brain is not
+   delivered by shipping the file. The measured case: `brain-check.sh` shipped with
+   v1.3.15, a second instance updated, started a fresh session, and nothing ran —
+   because the hook existed in one brain's settings and nowhere else. The author had
+   silently assumed other instances look like his own.
+   **Three things are needed, and shipping the file is only the first:**
+   - the capability itself in `helpers/` or `scripts/`,
+   - the wiring in `templates/settings.json` — that file IS the documented default
+     proposal for what a brain should have, the only shared surface that exists,
+   - and the DEMAND: `scripts/hook-coverage.py` diffs the template against the brain,
+     the bootup voices it every session, and `brain-update.sh` warns after an update.
+     Without the third step the second reaches new brains only, because the template
+     is copied once at bootstrap and never again.
+   Consequence for a reader as much as for a writer: `templates/settings.json` plus the
+   `hook-coverage` output is the answer to "what should be wired here" — never another
+   instance's file, and never memory of one.
