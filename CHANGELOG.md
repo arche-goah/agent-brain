@@ -5,6 +5,19 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.19 — 2026-08-20
+
+- **v1.3.18 regression: the bootup hook timeout could kill the entire bootup** (#62).
+  Folding brain-check into session-bootup.sh (v1.3.18) pushed the hook past the
+  template's 10s ceiling — measured 11.57s real on an idle macOS machine, and
+  `hook_cancelled` under load on Windows, losing the whole bootup summary. Template
+  timeout raised to 30. Existing brains carry `timeout: 10` in their own
+  settings.json and need the same one-line edit locally — the template only reaches
+  brains bootstrapped after this.
+- **Reporting duties get their own briefing line** (#63). A FAIL/`!!` item folded
+  into a prose summary sentence satisfied the 2026-08-13 boundary rule and still got
+  missed; the rule now demands a visually separated line plus the concrete next step.
+
 ## 1.3.18 — 2026-08-20
 
 - **The session bootup runs the machinery check itself.** Proposed by a third instance
