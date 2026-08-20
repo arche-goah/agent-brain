@@ -317,6 +317,47 @@ case "$out" in
   *) bad "bootup hook-coverage line missing";;
 esac
 
+# --- 12. the mechanisms prove themselves, on every OS ------------------------
+# Fixtures instead of assertions about fixtures: each suite runs every helper it covers
+# in BOTH directions. A helper that stops firing on one platform is otherwise invisible
+# — it looks exactly like a helper that had nothing to say.
+for suite in test-guards test-stop-checks test-session-helpers test-stop-dispatcher \
+             test-premise-gate; do
+  if [ -f "$CORE/scripts/$suite.sh" ]; then
+    if _out="$(cd "$CORE" && bash "scripts/$suite.sh" 2>&1)"; then
+      ok "$suite"
+    else
+      bad "$suite: $(printf '%s' "$_out" | grep -E '^  FAIL' | head -2 | tr '\n' ' ')"
+    fi
+  fi
+done
+
+# --- 13. hook-coverage understands indirection -------------------------------
+# A dispatcher runs several checks itself, so settings name only the dispatcher.
+# Matching on filenames alone reported those helpers as missing every session (measured
+# 2026-08-20) — and a warning that is always there stops being a signal. Both halves are
+# required: the dispatcher must be WIRED and the helper REGISTERED.
+mkdir -p "$T/dispbrain/.claude/rules" "$T/dispbrain/core"
+cp -R "$CORE/helpers" "$T/dispbrain/core/helpers"
+cp -R "$CORE/templates" "$T/dispbrain/core/templates"
+printf '{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"node \\"$CLAUDE_PROJECT_DIR/core/helpers/stop-dispatcher.cjs\\""}]}]}}\n' \
+  > "$T/dispbrain/.claude/settings.json"
+printf '{"checks":[{"label":"C","marker":"CLASS-GATE","cmd":"core/helpers/class-gate.cjs","mode":"block"}]}\n' \
+  > "$T/dispbrain/.claude/rules/stop-checks.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/dispbrain" 2>&1)"; _rc=$?
+case "$_hc" in
+  *class-gate*) bad "hook-coverage still reports a dispatcher-registered helper";;
+  *) ok "hook-coverage accepts a helper registered behind a wired dispatcher";;
+esac
+# ... and the same helper WITHOUT the registration must still be reported, otherwise the
+# acceptance above would be a way to silence the check by writing an empty file.
+printf '{"checks":[]}\n' > "$T/dispbrain/.claude/rules/stop-checks.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/dispbrain" 2>&1)"
+case "$_hc" in
+  *class-gate*) ok "hook-coverage still flags an unregistered helper";;
+  *) bad "hook-coverage went blind: an unregistered helper was accepted";;
+esac
+
 echo
 if [ "$fail" -eq 0 ]; then echo "portability-smoke: ALL checks passed"; else echo "portability-smoke: FAILURE (see FAIL lines)"; fi
 exit "$fail"

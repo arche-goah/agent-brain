@@ -31,6 +31,13 @@
  * 2 = fix both, no mechanism · >=3 or repeat after a fix = build a mechanism.
  * "Outside the order: list, don't fix" guards scope, NOT finishing — what is in
  * reach and belongs to the same matter gets done, not tabled.
+
+ * INPUT IS READ TO ITS END, never on a timer. Until 2026-08-20 this ran in a
+ * setTimeout(..., 400): if the timer fires before the first data event the buffer is
+ * empty, JSON.parse throws, and the hook silently allows. Measured on a sibling hook
+ * with 0 ms — same input, same file, once blocking and once completely silent. 400 ms
+ * mitigates that, it does not promise it, and a gate that fails open at random is
+ * indistinguishable from one that agrees.
  */
 const fs = require('fs');
 
@@ -122,7 +129,7 @@ function analyze(transcriptPath) {
   return { files, quiet: turnsSinceGate < COOLDOWN_TURNS };
 }
 
-setTimeout(() => {
+process.stdin.on('end', () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { return allow(); }
 
@@ -173,6 +180,6 @@ setTimeout(() => {
       'for the register? Nothing transferable: "⚙ no class".',
   }));
   process.exit(0);
-}, 400);
+});
 
 process.stdin.resume();
