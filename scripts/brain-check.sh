@@ -41,7 +41,13 @@ if [ "${1:-}" != "--brief" ]; then
 fi
 
 # --- brief: the numbers that change, not the list that does not ---------------
-unproven=$(printf '%s' "$self_out" | grep -c '^  ??' || true)
+# "mechanisms without a fixture" and "executables nothing calls" share the same
+# "  ??  " marker (brain-selftest.sh:193,252,255) — grepping that marker across the
+# whole output double-counts the untriggered list as unproven whenever the fixture
+# gap is 0, so it must read brain-selftest.sh's own tally line instead of re-deriving
+# it (measured 2026-08-20: reported "2 without an effect proof" while the true count
+# was 0, mirroring the untriggered count of 2).
+unproven=$(printf '%s' "$self_out" | sed -n 's/^\([0-9]*\) mechanism(s) without an effect proof.*/\1/p')
 untrig=$(printf '%s' "$self_out" | sed -n 's/.*(\([0-9]*\) without a trigger.*/\1/p')
 fric=$(printf '%s' "$fric_out" | sed -n 's/^\([0-9]*\) friction candidate.*/\1/p')
 accepted=$(printf '%s' "$fric_out" | sed -n 's/.*(\([0-9]*\) candidate(s) accepted.*/\1/p')
