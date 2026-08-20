@@ -5,6 +5,31 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.22 — 2026-08-20
+
+- **skill-first had a blind spot the exact shape of the failure it exists to prevent**
+  (operator finding). A loaded skill answered step 1 with "yes"; step 2 asked only
+  whether the skill has the TOOLS; step 3 fires only when there is NO skill. A skill
+  that exists and does not describe the PROCEDURE therefore fell through all three, and
+  the work was improvised beside it — same job, different result each time, and the
+  difference surfaced as troubleshooting at the hardware.
+  - Step 2 now asks whether the skill covers the TASK, with a mechanical test: am I
+    about to DECIDE something the skill does not dictate? Then the decision belongs in
+    the skill first.
+  - Step 3 gains the SEAM case: when skill A says "the other side runs through B" and B
+    points back, the work between them belongs to nobody and gets reinvented every time.
+    It goes to the skill that owns the artefact being built.
+  - The header states that a task ARISING mid-session is a task. The check fires at the
+    start of the WORK, not of the session — the unexpected sub-job is exactly where
+    improvisation happens.
+
+  ⚠ **Version incident, recorded because the rule exists for exactly this:** this change
+  was prepared as 1.3.19 while a parallel session released 1.3.19-1.3.21. The merge
+  therefore pushed plugin.json BACKWARDS from 1.3.21 to 1.3.19 on main for a few minutes.
+  Versions are assigned by ONE session per release (AGENTS.md #8) — and the practical
+  half of that rule is: re-read the version at the moment of the version bump, not when
+  the work started. A tag that is burned is never re-cut; the next number supersedes it.
+
 ## 1.3.21 — 2026-08-20
 
 - **brain-check --brief no longer mirrors the untriggered count into the unproven
@@ -37,24 +62,6 @@ The marketplace pins tags, never `main`.
 - **Reporting duties get their own briefing line** (#63). A FAIL/`!!` item folded
   into a prose summary sentence satisfied the 2026-08-13 boundary rule and still got
   missed; the rule now demands a visually separated line plus the concrete next step.
-
-## 1.3.19 — 2026-08-20
-
-- **skill-first had a blind spot the exact shape of the failure it exists to prevent**
-  (operator finding). A loaded skill answered step 1 with "yes"; step 2 asked only
-  whether the skill has the TOOLS; step 3 fires only when there is NO skill. A skill
-  that exists and does not describe the PROCEDURE therefore fell through all three, and
-  the work was improvised beside it — same job, different result each time, and the
-  difference surfaced as troubleshooting at the hardware.
-  - Step 2 now asks whether the skill covers the TASK, with a mechanical test: am I
-    about to DECIDE something the skill does not dictate? Then the decision belongs in
-    the skill first.
-  - Step 3 gains the SEAM case: when skill A says "the other side runs through B" and B
-    points back, the work between them belongs to nobody and gets reinvented every time.
-    It goes to the skill that owns the artefact being built.
-  - The header states that a task ARISING mid-session is a task. The check fires at the
-    start of the WORK, not of the session — the unexpected sub-job is exactly where
-    improvisation happens.
 
 ## 1.3.18 — 2026-08-20
 
