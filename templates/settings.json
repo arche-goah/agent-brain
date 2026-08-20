@@ -80,15 +80,6 @@
             "timeout": 10
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/core/scripts/brain-check.sh\" --brief",
-            "timeout": 60
-          }
-        ]
       }
     ],
     "SessionEnd": [

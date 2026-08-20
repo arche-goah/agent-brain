@@ -424,6 +424,18 @@ PY
   echo "${dl:-deadlines: docs/business/deadlines.md present — check it}"
 fi
 
+# --- machinery check ---------------------------------------------------------
+# Runs HERE rather than as a per-instance settings line, on the third instance's
+# proposal (2026-08-20) after it measured that the line was missing on its machine and
+# on the colleague's: a template entry reaches only brains bootstrapped after it lands,
+# a bootup call reaches every brain that consumes the core. An instance cannot forget
+# what it does not have to remember.
+# Cost measured on a full brain: ~6 s, one line of output when everything is fine.
+# It never fails the bootup — a broken check must not keep a session from starting.
+if [[ -f "$HERE/../scripts/brain-check.sh" ]]; then
+  CLAUDE_PROJECT_DIR="$R" bash "$HERE/../scripts/brain-check.sh" --brief 2>/dev/null || true
+fi
+
 echo "=== END BOOTUP ==="
 }
 
