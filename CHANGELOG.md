@@ -5,6 +5,17 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.25 — 2026-08-20
+
+- **brain-check/brain-selftest: ROOT fallback was one level too shallow in a consumed
+  brain** (#77, found + fixed + verified by the Windows collaborator, relayed via
+  shared memory). Without CLAUDE_PROJECT_DIR the hooks-wired check silently iterated
+  over ZERO hooks and reported clean — a false green indistinguishable from fully
+  wired — and memory-lint ran against core/ instead of the real memory. Reproduced
+  independently on a second brain (0 hooks before, 13 after; bare repo unchanged).
+  On the reporter'''s brain the fix unmasked a real pre-existing memory finding
+  (52 name mismatches, 14 dead links) that had never been measured.
+
 ## 1.3.24 — 2026-08-20
 
 - **The bootup's suite-update check now measures the right entity** (#75). A suite
