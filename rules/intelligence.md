@@ -103,16 +103,27 @@ are EVIDENCE, never the carrier. When an insight is worth keeping:
    sessions never fires: nothing counts repetitions.
 
 **Skill-first order of inquiry (operator order 2026-08-19), on EVERY task,
-before the first move — intelligent analysis yes, but in this sequence:**
+before the first move — and a task that ARISES mid-session is a task (the
+check fires at the start of the WORK, not at the start of the session; the
+unexpected sub-job is exactly where improvisation happens) — intelligent analysis yes, but in this sequence:**
 
 1. **Is there a skill that covers this?** Use it. Never improvise alongside an
    existing skill, not even "just this once".
-2. **Does the skill have every tool it needs to execute?** A missing tool is
-   the build order (in the suite) plus a skill extension — never a reason to
-   bypass the skill.
-3. **No skill, but the task class is repeatable?** Define the skill first
-   (conventions and target state go in), THEN execute. The propose gate above
-   applies unless tool-first is ordered for the environment.
+2. **Does the skill COVER this task — the procedure, not just the topic?**
+   Measured gap (operator finding 2026-08-20): a loaded skill answered step 1
+   with "yes", step 2 asked only about TOOLS, and step 3 fires only when there
+   is NO skill — so a skill that exists and does not describe the procedure
+   fell through all three, and the work got improvised next to it for half a
+   day. The test is mechanical: **am I about to DECIDE something the skill does
+   not dictate?** Then that decision belongs in the skill first. Same answer
+   when a tool is missing: build it in the suite and extend the skill — never
+   bypass either.
+3. **No skill, or a seam between two of them?** Define it first (conventions
+   and target state go in), THEN execute. Watch the SEAM in particular: when
+   skill A says "the other side runs through B" and B points back, the work
+   between them belongs to nobody and gets reinvented every time. It goes to
+   the skill of the side that OWNS the artefact being built. The propose gate
+   above applies unless tool-first is ordered for the environment.
 4. **Solving ad hoc with intelligence** stays reserved for genuine one-off
    situations. The yardstick is not "worked today" but: repeatable cleanly in a
    year, by another session, on someone else's rig. Long-term operational
