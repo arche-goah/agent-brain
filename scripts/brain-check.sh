@@ -17,7 +17,7 @@
 # modes. The first is answered by executing fixtures, the second by comparing wiring
 # against wiring. Neither is a substitute for the other, and neither needs a model.
 set -u
-PY=python3
+PY="${PYTHON:-python3}"
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 # Sibling scripts are resolved next to THIS file, never relative to the brain: when the
 # core runs against a consuming brain, scripts/ is the brain's directory and the suite
@@ -26,7 +26,6 @@ PY=python3
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT" || exit 1
-PY="${PYTHON:-python3}"
 STAMP=".claude-state/brain-check.stamp"
 
 rc=0
