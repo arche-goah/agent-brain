@@ -5,6 +5,15 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.21 — 2026-08-20
+
+- **brain-check --brief no longer mirrors the untriggered count into the unproven
+  slot** (#67). Both selftest sections share the "  ??" marker; grepping it across
+  the whole output double-counted whenever the fixture gap was 0. The brief line now
+  reads the selftest's own tally. Reproduced on a second instance before merge
+  (brief said 11 unproven, tally said 0); every consuming brain's bootup summary
+  carried the wrong number each session start.
+
 ## 1.3.20 — 2026-08-20
 
 - **memory-lint no longer misreads in-flight memory-sync writes** (#65). With several
