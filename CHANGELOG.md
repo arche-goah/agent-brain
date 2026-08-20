@@ -5,6 +5,28 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.16 — 2026-08-20
+
+- **Shipping a capability is not delivering it** (operator finding, same day as
+  1.3.15). A second instance pulled v1.3.15, started a fresh session, and no
+  self-test ran: `brain-check.sh` was wired in ONE brain's `settings.json` and
+  nowhere else. The author had reasoned from his own instance to everyone's — and an
+  instance's settings are invisible from this repo, which is exactly why that
+  reasoning cannot be checked by looking.
+  - `templates/settings.json` now carries the SessionStart hook. That file is the
+    documented default proposal for what a brain should have; it is the only shared
+    surface between instances.
+  - `hook-coverage.py` counts a template hook pointing at `core/scripts/` as well,
+    not only `core/helpers/`. `brain-check.sh` lives in `scripts/`, so the check that
+    exists to catch "shipped but not wired" was blind to precisely that shape. The
+    bootup voices the gap every session and `brain-update.sh` warns after an update —
+    which is what reaches brains that were bootstrapped long ago, since the template
+    is copied once and never again.
+  - AGENTS.md rule 9 states the class: a capability that must run in every brain needs
+    the file, the template entry AND the demand. Two out of three is silence.
+  - The 3-OS smoke asserts the new case: a brain with the template but empty settings
+    must be told about the `core/scripts` hook, and a registered one must not.
+
 ## 1.3.15 — 2026-08-20
 
 - **Two silent defects in the hook layer, found by writing the first fixtures.**
