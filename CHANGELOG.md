@@ -5,6 +5,17 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.20 — 2026-08-20
+
+- **memory-lint no longer misreads in-flight memory-sync writes** (#65). With several
+  sessions open in one repo, a SessionStart lint could read the snapshot mid-write and
+  report a phantom "content differs" (measured, workstation invariant I-7).
+  memory-sync.cjs now holds an age-checked `.sync.lock` during export/import/prune/
+  push/pull; memory-lint skips the snapshot comparison (and says so) while the lock is
+  fresh (<15 s). Verified live on a second instance: skip with fresh lock, full check
+  without, no lock residue. Residual class noted on the PR (reader-starts-first window,
+  concurrent-writer unlink during `pull`) — register-notes, not regressions.
+
 ## 1.3.19 — 2026-08-20
 
 - **v1.3.18 regression: the bootup hook timeout could kill the entire bootup** (#62).
