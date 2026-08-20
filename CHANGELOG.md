@@ -7,6 +7,12 @@ The marketplace pins tags, never `main`.
 
 ## 1.3.23 — 2026-08-20
 
+- **brain-check/brain-selftest: a later PY override clobbered the python3->python probe**
+  (#72, found + fixed + verified by the Windows collaborator via shared memory — no
+  collaborator rights on this repo, patch relayed with credit). On any system without a
+  python3 alias the machinery check always exited 1 regardless of machinery state; since
+  v1.3.18 that failure landed in every session bootup. One PY resolution per script now.
+
 - **The bootup's `|| true` is load-bearing for VISIBILITY, and now says so.** A sibling
   instance measured that the harness passes on only `hook_success`: the content of a
   NON-BLOCKING hook error reaches nobody's context. A non-zero exit from the embedded
