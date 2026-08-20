@@ -32,6 +32,18 @@ obligation. Boundary: reporting DUTIES stay (FAIL lines, reportable events,
 evidence chains in reports) — the filter applies to briefing prose, not to
 mandatory artifacts.
 
+**A reporting duty needs its own line, not a clause inside the summary sentence**
+(operator correction 2026-08-20): folding a FAIL/`!!` line into the middle of a
+prose summary satisfies the letter of the boundary above but not its point — the
+finding reads as one more status clause among several and gets lost exactly the
+way the terseness rule was designed to prevent for everything else. A FAIL/`!!`/
+SELF-TEST-FAILURE item gets (a) its own visually separated line, not blended with
+push status or PR counts, and (b) the next concrete step (verify/report/propose),
+not just the bare state word. (Incident: a mini-summary listed "brain-check: needs
+a look" as one clause among five in a single sentence; the operator had to call it
+out explicitly before it got the visibility the boundary rule already entitled it
+to.)
+
 ## Session End
 
 The operator triggers skill `session-close` ("close the session" and similar): persist
