@@ -33,6 +33,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 # Auto-Memory path: Claude Code mints the project path into a folder name (/ -> -).
@@ -57,6 +58,8 @@ SNAP_DEFAULT = _INSTANCE / "docs/memory-snapshot"
 INDEX = "MEMORY.md"
 VALID_TYPES = {"user", "feedback", "project", "reference"}
 MAX_LINES, MAX_BYTES = 200, 25600
+LOCK_STALE_S = 15   # memory-sync.cjs's own stale threshold — kept in sync by convention,
+                    # not shared code (one's Node, one's Python, not worth an IPC file)
 MAX_INDEX_LINE = 400   # checklist §5; applies ONLY to entry lines ("- [Title](file.md) — …"),
                        # not to the explanatory header block (otherwise false alarm on prose)
 
@@ -162,26 +165,42 @@ def lint(mem: Path, snap: Path | None) -> dict:
     # (README.md explains the snapshot itself). The first run 2026-08-02 flagged
     # exactly those as false drift; the instrument was sharpened instead of
     # trusting the finding.
+    skipped = False
     if snap and snap.is_dir():
+        # memory-sync.cjs (a SessionStart hook, same as this check) writes the manifest
+        # and snapshot files without transactional guarantees. Reading them mid-write
+        # produced a real false positive (2026-08-20, invariant I-7): the manifest had
+        # been updated but a snapshot .md write was still in flight, "content differs"
+        # fired on a file nobody actually changed. A lock file (memory-sync.cjs writes
+        # it for the duration of export/import/prune) makes that window visible instead
+        # of silently misread — skip the comparison rather than report a phantom drift.
+        lock = snap / ".sync.lock"
         try:
-            mirrored = set(json.loads(
-                (snap / ".sync-manifest.json").read_text(encoding="utf-8")).get("files", {}))
-        except Exception:
-            mirrored = {p.name for p in snap.glob("*.md")}   # no manifest -> evaluate everything
-        snap_files = {p.name for p in snap.glob("*.md")} & mirrored
-        for miss in sorted({s + ".md" for s in stems} - snap_files):
-            f["snapshot_drift"].append({"issue": "missing from the repo snapshot", "file": miss,
-                                        "fix": "node core/helpers/memory-sync.cjs export"})
-        for extra in sorted(snap_files - {s + ".md" for s in stems} - {INDEX}):
-            f["snapshot_drift"].append({"issue": "in the snapshot, but no longer in memory",
-                                        "file": extra,
-                                        "fix": "memory-sync.cjs prune (after memory delete)"})
-        for p in files:                       # drifted apart in content?
-            sp = snap / p.name
-            if sp.is_file() and sp.read_bytes() != p.read_bytes():
-                f["snapshot_drift"].append({"issue": "content differs", "file": p.name})
+            if time.time() - lock.stat().st_mtime < LOCK_STALE_S:
+                skipped = True
+        except FileNotFoundError:
+            pass
+        if not skipped:
+            try:
+                mirrored = set(json.loads(
+                    (snap / ".sync-manifest.json").read_text(encoding="utf-8")).get("files", {}))
+            except Exception:
+                mirrored = {p.name for p in snap.glob("*.md")}   # no manifest -> evaluate everything
+            snap_files = {p.name for p in snap.glob("*.md")} & mirrored
+            for miss in sorted({s + ".md" for s in stems} - snap_files):
+                f["snapshot_drift"].append({"issue": "missing from the repo snapshot", "file": miss,
+                                            "fix": "node core/helpers/memory-sync.cjs export"})
+            for extra in sorted(snap_files - {s + ".md" for s in stems} - {INDEX}):
+                f["snapshot_drift"].append({"issue": "in the snapshot, but no longer in memory",
+                                            "file": extra,
+                                            "fix": "memory-sync.cjs prune (after memory delete)"})
+            for p in files:                       # drifted apart in content?
+                sp = snap / p.name
+                if sp.is_file() and sp.read_bytes() != p.read_bytes():
+                    f["snapshot_drift"].append({"issue": "content differs", "file": p.name})
 
-    return {"findings": f, "counts": {k: len(v) for k, v in f.items()}, "scanned": len(files)}
+    return {"findings": f, "counts": {k: len(v) for k, v in f.items()}, "scanned": len(files),
+            "snapshot_skipped": skipped}
 
 
 def main() -> int:
@@ -209,8 +228,12 @@ def main() -> int:
                 print("   " + json.dumps(it, ensure_ascii=False))
             if len(items) > 20:
                 print(f"   ... and {len(items) - 20} more")
+        if rep.get("snapshot_skipped"):
+            print("(snapshot check skipped: memory-sync.cjs lock is fresh — sync in progress)")
         if total == 0:
-            print("all clean (index, frontmatter, links, limits, snapshot).")
+            what = "index, frontmatter, links, limits" if rep.get("snapshot_skipped") \
+                else "index, frontmatter, links, limits, snapshot"
+            print(f"all clean ({what}).")
     return 1 if sum(rep["counts"].values()) else 0
 
 

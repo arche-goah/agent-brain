@@ -70,6 +70,23 @@ function saveManifest(m) {
   fs.writeFileSync(manifestPath, JSON.stringify(m, null, 2) + '\n');
 }
 
+// Multiple Claude Code sessions in the SAME repo each run this hook at their own
+// SessionStart — measured 2026-08-20 (invariant I-7): memory-lint.py, also a
+// SessionStart check, read the manifest while a write here was still in flight and
+// reported a phantom "content differs". This lock does not serialize writers against
+// each other (each file write is its own writeFileSync, and hash-convergent — a second
+// writer re-doing the same export is a no-op, not corruption); it only gives a READER
+// something to check so it can skip instead of misreading a half-written state. Age-
+// checked, not held-checked: a hook that died mid-run must never leave a permanent lock.
+// Stale threshold lives on the reader's side (memory-lint.py's LOCK_STALE_S).
+const lockPath = path.join(snapshotDir, '.sync.lock');
+function withLock(fn) {
+  fs.mkdirSync(snapshotDir, { recursive: true });
+  fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, ts: nowISO() }));
+  try { fn(); }
+  finally { try { fs.unlinkSync(lockPath); } catch (e) { /* already gone */ } }
+}
+
 function doExport() {
   const live = liveDir();
   if (!fs.existsSync(live)) { log(`[memory-sync] no live memory dir (${live}); nothing to export`); return; }
@@ -198,12 +215,12 @@ function doPull() {
 
 const cmd = process.argv[2] || 'status';
 try {
-  if (cmd === 'export') doExport();
-  else if (cmd === 'import') doImport();
+  if (cmd === 'export') withLock(doExport);
+  else if (cmd === 'import') withLock(doImport);
   else if (cmd === 'status') doStatus();
-  else if (cmd === 'push') doPush();
-  else if (cmd === 'pull') doPull();
-  else if (cmd === 'prune') doPrune();
+  else if (cmd === 'push') withLock(doPush);
+  else if (cmd === 'pull') withLock(doPull);
+  else if (cmd === 'prune') withLock(doPrune);
   else log(`[memory-sync] unknown command: ${cmd} (use export|import|status|push|pull|prune)`);
 } catch (e) {
   log('[memory-sync] error: ' + (e && e.message)); // never throw out of a hook
