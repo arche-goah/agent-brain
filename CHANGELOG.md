@@ -5,6 +5,17 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.23 — 2026-08-20
+
+- **The bootup's `|| true` is load-bearing for VISIBILITY, and now says so.** A sibling
+  instance measured that the harness passes on only `hook_success`: the content of a
+  NON-BLOCKING hook error reaches nobody's context. A non-zero exit from the embedded
+  machinery check would therefore turn the whole bootup into a silent failure — the check
+  would go quiet exactly in the case where it has something to report. Swallowing the exit
+  code is what keeps the message; the comment exists so the next cleanup does not remove
+  it. Same instance found the timeout half of this (PR #62, merged): ~6 s of embedded work
+  under a 10 s hook timeout killed their entire bootup.
+
 ## 1.3.22 — 2026-08-20
 
 - **skill-first had a blind spot the exact shape of the failure it exists to prevent**
