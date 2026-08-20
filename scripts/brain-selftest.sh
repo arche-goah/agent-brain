@@ -25,11 +25,10 @@
 #
 # Usage: bash scripts/brain-selftest.sh [brain-root]
 set -u
-PY=python3
+PY="${PYTHON:-python3}"
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 ROOT="${1:-${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}}"
 cd "$ROOT" || exit 1
-PY="${PYTHON:-python3}"
 fail=0
 unproven=0
 
