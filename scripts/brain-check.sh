@@ -24,13 +24,25 @@ PY="${PYTHON:-python3}"
 # lives in core/scripts. Measured 2026-08-20 — the wrapper looked for its own tools in
 # the wrong repo and reported a failure that was its own path handling.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+# Root is one level further up when this file lives in core/scripts (a consumed
+# brain) than when it lives in scripts/ (the bare agent-brain repo) — going up a
+# fixed one level lands on core/ itself for the former. Measured 2026-08-20: with
+# CLAUDE_PROJECT_DIR unset (true for a manually invoked shell, not just hooks),
+# ROOT resolved to .../core, `.claude/settings.json` was unreachable from there,
+# and the hooks-wired check silently reported 0 hooks instead of 15 — a false
+# green, not an error.
+if [ "$(basename "$(dirname "$HERE")")" = "core" ]; then
+  DEFAULT_ROOT="$(cd "$HERE/../.." && pwd)"
+else
+  DEFAULT_ROOT="$(cd "$HERE/.." && pwd)"
+fi
+ROOT="${CLAUDE_PROJECT_DIR:-$DEFAULT_ROOT}"
 cd "$ROOT" || exit 1
 STAMP=".claude-state/brain-check.stamp"
 
 rc=0
-self_out=$(bash "$HERE/brain-selftest.sh" 2>&1) || rc=1
-fric_out=$("$PY" "$HERE/brain-friction.py" 2>&1) || rc=1
+self_out=$(bash "$HERE/brain-selftest.sh" "$ROOT" 2>&1) || rc=1
+fric_out=$("$PY" "$HERE/brain-friction.py" "$ROOT" 2>&1) || rc=1
 mkdir -p .claude-state
 date '+%Y-%m-%d %H:%M' > "$STAMP"
 

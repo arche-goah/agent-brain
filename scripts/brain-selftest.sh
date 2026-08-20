@@ -27,7 +27,16 @@
 set -u
 PY="${PYTHON:-python3}"
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
-ROOT="${1:-${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}}"
+# Same off-by-one as brain-check.sh's ROOT (core/scripts vs bare scripts/) —
+# only matters when this runs standalone, without $1; brain-check.sh now passes
+# its own resolved ROOT explicitly.
+SELFDIR="$(cd "$(dirname "$0")" && pwd)"
+if [ "$(basename "$(dirname "$SELFDIR")")" = "core" ]; then
+  DEFAULT_ROOT="$(cd "$SELFDIR/../.." && pwd)"
+else
+  DEFAULT_ROOT="$(cd "$SELFDIR/.." && pwd)"
+fi
+ROOT="${1:-${CLAUDE_PROJECT_DIR:-$DEFAULT_ROOT}}"
 cd "$ROOT" || exit 1
 fail=0
 unproven=0
