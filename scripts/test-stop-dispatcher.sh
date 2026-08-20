@@ -3,6 +3,13 @@
 # keep every gate's cooldown marker, and stay silent when nothing fires?
 # Usage: bash scripts/test-stop-dispatcher.sh   (exit 0 = all fixtures pass)
 set -u
+
+# A path that travels INSIDE data (a JSON string, an env var read by a native process)
+# is not translated by the shell — on Git Bash node would receive /d/a/... or /tmp/...
+# and resolve neither. cygpath states the same path natively; elsewhere it is a no-op.
+native() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 # Two layouts, one fixture: inside a brain the helpers live under core/helpers, inside
@@ -38,23 +45,24 @@ PG=$(cd "$ROOT" && resolve helpers/premise-gate.cjs || resolve scripts/hooks/pre
 TG=$(cd "$ROOT" && resolve scripts/hooks/time-gate.cjs || true)
 {
   printf '{"header":"STOP-CHECKS ({n})","checks":['
-  printf '{"label":"CLASS","marker":"CLASS-GATE","cmd":"%s","mode":"block",' "$ROOT/$CG"
+  printf '{"label":"CLASS","marker":"CLASS-GATE","cmd":"%s","mode":"block",' "$(native "$ROOT/$CG")"
   # ' *' instead of a backslash class: same match, no escape to survive two layers of
   # quoting. The heredoc that used to build this JSON was the only thing in the suite
   # that needed an interpreter, and the only thing that failed on Windows.
   printf '"extract":"Touched this turn: *(.+)","template":"{1} -> class?","basename":true}'
-  printf ',{"label":"PREMISE","marker":"PREMISE-GATE","cmd":"%s","mode":"block",' "$ROOT/$PG"
+  printf ',{"label":"PREMISE","marker":"PREMISE-GATE","cmd":"%s","mode":"block",' "$(native "$ROOT/$PG")"
   printf '"extract":"Rule-shaped wording: *(.+)","template":"{1} carries an action"}'
   if [ -n "$TG" ]; then
-    printf ',{"label":"TIME","marker":"TIME-GATE","cmd":"%s","mode":"record","args":["--record"]}' "$ROOT/$TG"
+    printf ',{"label":"TIME","marker":"TIME-GATE","cmd":"%s","mode":"record","args":["--record"]}' "$(native "$ROOT/$TG")"
   fi
   printf ']}'
 } > "$CFG/.claude/rules/stop-checks.json"
 trap 'rm -rf "$T" "$CFG"' EXIT
 
 feed() { # $1 transcript -> dispatcher output
-  printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$1" "$CFG" \
-    | CLAUDE_PROJECT_DIR="$CFG" node "$D" 2>/dev/null
+  printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' \
+    "$(native "$1")" "$(native "$CFG")" \
+    | CLAUDE_PROJECT_DIR="$(native "$CFG")" node "$D" 2>/dev/null
 }
 
 # --- a turn that trips THREE gates: time + premise + class -------------------
@@ -90,8 +98,9 @@ OUT2="$(feed "$TR2")"
 [ -z "$OUT2" ] && ok "silent when no gate fires" || bad "fired on a clean turn: $OUT2"
 
 # --- re-issue pass: stop_hook_active silences everything ---------------------
-OUT3="$(printf '{"transcript_path":"%s","stop_hook_active":true,"cwd":"%s"}' "$TR" "$CFG" \
-  | CLAUDE_PROJECT_DIR="$CFG" node "$D" 2>/dev/null)"
+OUT3="$(printf '{"transcript_path":"%s","stop_hook_active":true,"cwd":"%s"}' \
+  "$(native "$TR")" "$(native "$CFG")" \
+  | CLAUDE_PROJECT_DIR="$(native "$CFG")" node "$D" 2>/dev/null)"
 [ -z "$OUT3" ] && ok "silent on the re-issue pass" || bad "blocked twice: $OUT3"
 
 echo

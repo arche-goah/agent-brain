@@ -5,6 +5,13 @@
 # seen stay silent is as useless as one nobody has seen fire.
 # Usage: bash scripts/test-premise-gate.sh   (exit 0 = all fixtures pass)
 set -u
+
+# A path that travels INSIDE data (a JSON string, an env var read by a native process)
+# is not translated by the shell — on Git Bash node would receive /d/a/... or /tmp/...
+# and resolve neither. cygpath states the same path natively; elsewhere it is a no-op.
+native() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 T="$(mktemp -d)"
@@ -50,7 +57,7 @@ run_case() {
     printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s},{"type":"tool_use","name":"%s","input":{}}]}}\n' "$2" "$3" >> "$tr"
   fi
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$tr" "$T" | node "$G" 2>&1)"
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$tr")" "$(native "$T")" | node "$G" 2>&1)"
   if [ "$4" = "block" ]; then
     case "$out" in *PREMISE-GATE*) ok "$1 blocks";; *) bad "$1 did not block: '$out'";; esac
   else
