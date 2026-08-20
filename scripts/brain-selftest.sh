@@ -73,7 +73,11 @@ echo
 # --- 2. fixtures: the only proof that a mechanism actually fires -------------
 echo "fixtures (effect proof):"
 shopt -s nullglob
-for t in scripts/test-*.sh; do
+# Fixtures live in BOTH places: a brain carries its own under scripts/, and the
+# consumed core ships its suites under core/scripts/. Measured 2026-08-20: run against
+# a brain, this found only the brain's own and reported every core mechanism as
+# unproven — the suites were right there and never ran.
+for t in scripts/test-*.sh core/scripts/test-*.sh; do
   name=$(basename "$t" .sh)
   if out=$(bash "$t" 2>&1); then
     echo "  ok  $name"
@@ -177,12 +181,15 @@ echo
 # a `# covers:` line, and the filename is only the fallback. Without that declaration,
 # grouping a fixture would silently look like deleting one.
 echo "mechanisms without a fixture (presence only, not proven):"
-covered=$(grep -h '^# covers:' scripts/test-*.sh 2>/dev/null | sed 's/^# covers://')
+covered=$(grep -h '^# covers:' scripts/test-*.sh core/scripts/test-*.sh 2>/dev/null | sed 's/^# covers://')
 for f in scripts/hooks/*.cjs scripts/hooks/*.sh core/helpers/*.cjs; do
   [ -e "$f" ] || continue
   base=$(basename "$f"); base=${base%.*}
   if printf '%s' "$covered" | grep -qw -- "$base"; then continue; fi
-  if ! ls scripts/test-*"${base}"*.sh >/dev/null 2>&1; then
+  # each glob on its own: `ls a b` fails as soon as ONE of them is empty, which would
+  # make the second location make the check stricter instead of broader
+  if ! ls scripts/test-*"${base}"*.sh >/dev/null 2>&1 \
+     && ! ls core/scripts/test-*"${base}"*.sh >/dev/null 2>&1; then
     echo "  ??  $base"
     unproven=$((unproven + 1))
   fi

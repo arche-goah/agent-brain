@@ -19,14 +19,19 @@
 set -u
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+# Sibling scripts are resolved next to THIS file, never relative to the brain: when the
+# core runs against a consuming brain, scripts/ is the brain's directory and the suite
+# lives in core/scripts. Measured 2026-08-20 — the wrapper looked for its own tools in
+# the wrong repo and reported a failure that was its own path handling.
+HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT" || exit 1
 PY="${PYTHON:-python3}"
 STAMP=".claude-state/brain-check.stamp"
 
 rc=0
-self_out=$(bash scripts/brain-selftest.sh 2>&1) || rc=1
-fric_out=$("$PY" scripts/brain-friction.py 2>&1) || rc=1
+self_out=$(bash "$HERE/brain-selftest.sh" 2>&1) || rc=1
+fric_out=$("$PY" "$HERE/brain-friction.py" 2>&1) || rc=1
 mkdir -p .claude-state
 date '+%Y-%m-%d %H:%M' > "$STAMP"
 
@@ -52,5 +57,5 @@ fi
 echo "!! brain-check: needs a look"
 printf '%s\n' "$self_out" | grep -E '^  !!|FAILURE' | head -8
 printf '%s\n' "$fric_out" | sed -n '/^[a-z-]*([0-9]*):/,$p' | head -12
-echo "   full run: bash scripts/brain-check.sh"
+echo "   full run: bash $HERE/brain-check.sh"
 exit "$rc"
