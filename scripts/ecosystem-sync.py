@@ -81,6 +81,10 @@ def observe(path: Path):
     }
 
 
+def config_dir() -> Path:
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
+
+
 def observe_plugins():
     """Which plugins are installed for this user, at which version and commit.
 
@@ -91,8 +95,7 @@ def observe_plugins():
     the commit while saying nothing about a plugin that ships an MCP server has an
     inventory with a hole in it.
     """
-    cfg = Path(os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude"))
-    reg = cfg / "plugins" / "installed_plugins.json"
+    reg = config_dir() / "plugins" / "installed_plugins.json"
     if not reg.exists():
         return {}
     try:
@@ -105,6 +108,55 @@ def observe_plugins():
             continue
         i = installs[0]
         out[name] = {"version": i.get("version"), "commit": (i.get("gitCommitSha") or "")[:12] or None}
+    return out
+
+
+def repo_slug(remote):
+    """'git@github.com:owner/repo.git' / 'https://github.com/owner/repo' -> 'owner/repo'."""
+    if not remote:
+        return None
+    m = re.search(r"github\.com[:/]+(.+?)(?:\.git)?/?$", remote)
+    return m.group(1).lower() if m else None
+
+
+def observe_marketplace_sources():
+    """plugin-id -> 'owner/repo' for every plugin any locally cached marketplace lists.
+
+    WHY (incident 2026-08-20, agent-brain PR #75 review): a bootup check needs to know
+    WHICH suite repo a given installed plugin is delivered from, to tell a developer/PR
+    checkout (legitimately behind) apart from the operator-facing consumer path (the
+    plugin). A first attempt hand-wrote that link as a `plugin_name` annotation in the
+    lockfile's plugins block — but nothing ever GENERATED it, so on every brain except
+    the one it was typed into by hand, the link was silently absent and the check it
+    was meant to feed never fired (presence without effect). The marketplace cache each
+    installed marketplace already writes locally (`~/.claude/plugins/marketplaces/*/
+    .claude-plugin/marketplace.json`) carries this link natively — plugin name to its
+    source repo — so reading it here needs no network call and nothing new to maintain.
+    """
+    out = {}
+    mdir = config_dir() / "plugins" / "marketplaces"
+    if not mdir.is_dir():
+        return out
+    for mp in mdir.glob("*/.claude-plugin/marketplace.json"):
+        try:
+            data = json.loads(mp.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for p in data.get("plugins") or []:
+            if not isinstance(p, dict):
+                continue
+            name, src = p.get("name"), p.get("source")
+            # "source" varies across real marketplaces: a plain string (local plugin
+            # path, no repo), {"source":"github","repo":"owner/repo"} (this brain's own
+            # marketplace), or {"source":"url"/"git-subdir","url":"https://.../repo.git"}
+            # (the official marketplace, no "repo" key at all) — only a dict can carry
+            # repo identity, and it may need the same URL-to-slug parse as observe()'s
+            # local `remote` reads.
+            if not name or not isinstance(src, dict):
+                continue
+            slug = src.get("repo") or repo_slug(src.get("url"))
+            if slug:
+                out[name] = slug.lower()
     return out
 
 
@@ -121,6 +173,11 @@ def main() -> int:
     if lock.get("core_contract") != core_now:
         drift.append(f"core contract: pinned {lock.get('core_contract')} -> now {core_now}")
     lock["core_contract"] = core_now
+
+    # Computed once, used below to stamp each repo entry with WHICH installed plugin (if
+    # any) delivers it to the operator — see observe_marketplace_sources() docstring.
+    now_plugins = observe_plugins()
+    plugin_sources = observe_marketplace_sources()
 
     for name, entry in lock["repos"].items():
         path = Path(entry["path"]).expanduser()
@@ -144,10 +201,22 @@ def main() -> int:
             drift.append(f"{name}: {now['unpushed']} commit(s) not pushed")
         entry.update({k: now[k] for k in ("commit", "version", "requires_core", "remote")})
 
+        # consumer_plugin: identity data, not a version measurement (agrees with the
+        # PR #75 review — it doesn't go stale the way a tag/commit does, so it is safe
+        # to key a "skip this dev checkout" decision on). Matched by normalized github
+        # remote, never by repo/plugin NAME (those legitimately differ, e.g.
+        # "grandma3-suite" the repo vs "grandma3" the plugin id).
+        slug = repo_slug(entry.get("remote"))
+        match = next((pid for pid in now_plugins
+                      if plugin_sources.get(pid.split("@", 1)[0]) == slug), None) if slug else None
+        if match:
+            entry["consumer_plugin"] = match
+        else:
+            entry.pop("consumer_plugin", None)
+
     # Plugins: same contract as repos — the script owns "version" and "commit", every
     # other key in an entry (notes, what it delivers) belongs to the instance and is
     # left alone.
-    now_plugins = observe_plugins()
     pinned_plugins = lock.setdefault("plugins", {})
     for name, now in now_plugins.items():
         entry = pinned_plugins.setdefault(name, {})

@@ -130,6 +130,25 @@ fi
 # vs newest tag reachable from the local checkout; only a genuinely NEWER remote
 # tag is reported (a dev checkout sitting ahead stays silent). Offline or no
 # record: silently skipped — a missing answer is not a finding.
+#
+# Entity guard (incident 2026-08-20, sharpened in agent-brain PR #75 review): a suite
+# entry whose ecosystem.json path is a developer/PR workspace (not the consumer) is
+# delivered to the operator through an installed PLUGIN instead — and that plugin is
+# already measured correctly, against the live marketplace pin, by the $upd check
+# above. Comparing THIS entry's local checkout tag to the remote a second time checks
+# a different entity (the dev workspace, which legitimately lags — it is pulled on
+# demand for PR work, not kept current) and reported a false "update available" while
+# the operator-facing plugin was already current.
+#
+# A first version of this guard keyed the skip on a hand-written `plugin_name`
+# annotation — nothing ever GENERATED that field (confirmed empty on a second, real
+# consuming brain), so the skip silently never fired anywhere but the one file it was
+# typed into: presence without effect. `ecosystem-sync.py` now computes the link
+# mechanically (matches each repo's remote against the locally cached marketplace.json
+# that lists every installed plugin's source repo — see its `observe_marketplace_sources`
+# docstring) and stamps it onto the REPO entry as `consumer_plugin`. That field is read
+# here directly, no reverse lookup, no name-vs-name guessing. A suite with no such field
+# keeps the checkout check unchanged — for it, the checkout IS the consumer.
 supd=$("$PY" - <<'PY' 2>/dev/null
 import json, os, re, subprocess
 from concurrent.futures import ThreadPoolExecutor
@@ -160,8 +179,10 @@ def check(item):
     if lv is None or ver(newest) > lv:
         return f"{name} {loc or 'untagged'} -> {newest}"
     return None
-suites = [(n, e) for n, e in (load("config/ecosystem.json").get("repos") or {}).items()
-          if isinstance(e, dict) and e.get("kind") == "suite"][:8]
+eco = load("config/ecosystem.json")
+suites = [(n, e) for n, e in (eco.get("repos") or {}).items()
+          if isinstance(e, dict) and e.get("kind") == "suite"
+          and not e.get("consumer_plugin")][:8]
 if suites:
     with ThreadPoolExecutor(max_workers=4) as ex:
         found = [r for r in ex.map(check, suites) if r]
