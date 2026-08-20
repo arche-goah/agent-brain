@@ -48,6 +48,24 @@ def commands_by_event(settings):
     return out
 
 
+def registered_via_dispatcher(root, wired):
+    """Helpers a wired dispatcher runs on the brain's behalf.
+
+    The claim is only accepted when BOTH halves hold: a dispatcher is actually wired in
+    settings, AND the helper is registered in its config. Either half alone would turn
+    this into a way to silence the check by writing a file.
+    """
+    if not any("dispatcher" in c for cmds in wired.values() for c in cmds):
+        return set()
+    cfg = load(os.path.join(root, ".claude", "rules", "stop-checks.json"))
+    out = set()
+    for check in cfg.get("checks") or []:
+        cmd = check.get("cmd") if isinstance(check, dict) else None
+        if cmd:
+            out.add(os.path.basename(cmd))
+    return out
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else "."
     template = load(os.path.join(root, "core", "templates", "settings.json"))
@@ -64,6 +82,13 @@ def main():
         for event, cmds in commands_by_event(load(p)).items():
             wired.setdefault(event, []).extend(cmds)
 
+    # A helper can be wired INDIRECTLY: a dispatcher hook runs several checks itself
+    # and the settings then name only the dispatcher. Matching on filenames alone
+    # reports those as missing — measured 2026-08-20 on an instance that consolidated
+    # seven Stop hooks into one: two live helpers were reported missing every session,
+    # and a warning that is always there stops being a signal.
+    dispatched = registered_via_dispatcher(root, wired)
+
     missing = []
     for event, cmds in commands_by_event(template).items():
         for cmd in cmds:
@@ -75,6 +100,8 @@ def main():
                 continue  # helper not in the consumed core yet: nothing to wire
             if any(helper in c for c in wired.get(event, [])):
                 continue
+            if helper in dispatched:
+                continue  # runs behind a dispatcher, see registered_via_dispatcher()
             missing.append("%s: %s" % (event, cmd))
 
     for line in missing:

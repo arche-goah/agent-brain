@@ -4,6 +4,13 @@
  * checkout that sits on the consumed state (detached HEAD pin or main) instead
  * of a feature branch.
  * Exit code 2 = block the tool call.
+
+ * INPUT IS READ TO ITS END, never on a timer. Until 2026-08-20 this ran in a
+ * setTimeout(..., 400): if the timer fires before the first data event the buffer is
+ * empty, JSON.parse throws, and the hook silently allows. Measured on a sibling hook
+ * with 0 ms — same input, same file, once blocking and once completely silent. 400 ms
+ * mitigates that, it does not promise it, and a gate that fails open at random is
+ * indistinguishable from one that agrees.
  */
 const fs = require('fs');
 const path = require('path');
@@ -37,7 +44,7 @@ let data = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 
-setTimeout(() => {
+process.stdin.on('end', () => {
   try {
     const input = JSON.parse(data);
     const fp = (input.tool_input && input.tool_input.file_path) || '';
@@ -88,6 +95,6 @@ setTimeout(() => {
     }
   } catch (e) { /* allow on parse error */ }
   process.exit(0);
-}, 400);
+});
 
 process.stdin.resume();
