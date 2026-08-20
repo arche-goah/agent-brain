@@ -432,6 +432,12 @@ fi
 # what it does not have to remember.
 # Cost measured on a full brain: ~6 s, one line of output when everything is fine.
 # It never fails the bootup — a broken check must not keep a session from starting.
+# The `|| true` is load-bearing for VISIBILITY, not only for robustness — do not tidy it
+# away. A sibling instance measured (2026-08-20) that the harness injects the content of
+# a NON-BLOCKING hook error into nobody's context: only hook_success is passed on. So a
+# non-zero exit here would make the whole bootup a silent failure, and the check would go
+# quiet exactly in the case where it has something to say. Swallowing the code is what
+# keeps the message.
 if [[ -f "$HERE/../scripts/brain-check.sh" ]]; then
   CLAUDE_PROJECT_DIR="$R" bash "$HERE/../scripts/brain-check.sh" --brief 2>/dev/null || true
 fi
