@@ -7,6 +7,24 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **recall-gate + transcript-recall: research must leave a carrier, and the next
+  session must look before it reads live again.** Measured on the Windows instance
+  2026-08-21: a session spent ~60 % of its limit reading a reference showfile live, left
+  one summary line, no memory file; the next session re-read the same structures live
+  until the operator stopped it — the findings sat in the transcript all along. Two
+  pieces, one class (same as the verification-doc gate proposal): `helpers/recall-gate.cjs`
+  is a Stop check that counts live-research tool calls over the session and fires when
+  they pass a threshold with nothing persisted since the first read (memory file, ledger,
+  suite reference, shared-memory); cooldown 3 turns, re-fires only after NEW research,
+  `--record` mode for the dispatcher so precision is measured before it is allowed to
+  block. Which tools are research and which writes are persistence is instance data
+  (`.claude/rules/recall-tools.json`, template in `templates/rules-instance/`).
+  `scripts/transcript-recall.py` is the read side: one command over the project's own
+  transcripts (keyword / `--session` from a commit trailer or `originSessionId`,
+  `--days`, `--json`), stdlib, OS-agnostic. Fixtures both directions for both, wired
+  into CI. Ships with the next collected release; instances register the check in
+  `stop-checks.json` (mode `record` first).
+
 - **memory-lint follows topic sub-indexes** (`index-<topic>.md`). A brain whose
   MEMORY.md grows toward the harness limit (200 lines / 25 KB, truncated silently) can
   now move a topic's entries into `index-<topic>.md` and keep ONE pointer line in
