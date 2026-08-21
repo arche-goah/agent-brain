@@ -1,0 +1,16 @@
+{
+  "_comment": "Instance data for core/helpers/recall-gate.cjs (Stop check): which tool calls count as LIVE RESEARCH and which writes count as PERSISTENCE. Regexes, case-insensitive. Missing keys fall back to the helper's defaults. Tune `threshold` per instance — measure with mode=record in stop-checks.json before switching to block.",
+  "threshold": 8,
+  "research": [
+    "^mcp__.*(children|search|export|overview|xml_get|xml_summary|object_props|contents|readout|leases|ports_all|full_readout|scan|probe|inspect|dmx_read|get_td_nodes)"
+  ],
+  "persistTools": ["Write", "Edit", "MultiEdit", "NotebookEdit"],
+  "persistPaths": [
+    "[\\\\/]memory[\\\\/][^\\\\/]+\\.md$",
+    "offene-punkte\\.md$",
+    "[\\\\/]references[\\\\/]",
+    "shared-memory",
+    "[\\\\/]docs[\\\\/][^\\\\/]+[\\\\/].*\\.md$"
+  ],
+  "persistBash": ["memory-sync", "shared-memory.*(commit|push)"]
+}

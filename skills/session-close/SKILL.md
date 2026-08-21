@@ -15,6 +15,14 @@ then an explicit release follows.
    - Write unfinished orders / intermediate states / decisions of this session as memory,
      or update existing memories (observe the auto-memory rules; maintain the MEMORY.md
      index). Do not store anything already finished a second time.
+   - **Research leaves a carrier (2026-08-21):** if this session read a live system in
+     bulk (reference showfile, device readouts, exports, doc sweeps), the FINDINGS get a
+     file before the close — memory file (instance), ledger entry, suite reference
+     (anything that holds on a foreign rig), or shared-memory. A summary line in the
+     session log is an index, not a carrier; the next session would have to read live
+     again. `core/helpers/recall-gate.cjs` asks this mechanically when wired; the
+     answer "nothing reusable" is allowed, silence is not. Before the NEXT live read:
+     `python3 core/scripts/transcript-recall.py <keyword>` (interpreter per instance rule).
    - If anything came up in `docs/maintenance/brain-scan-auftraege.md` or project order
      lists: update the entries.
    - **MANDATORY GATE for live states (rig/desk/show) — tightened 2026-08-02 (operator order):**
