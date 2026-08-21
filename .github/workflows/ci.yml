@@ -69,6 +69,8 @@ jobs:
       # must-stay-silent, fail-open included), not just parsed.
       - name: freshness-gate fixtures
         run: python3 scripts/freshness-gate-test.py
+      - name: memory-lint fixtures (sub-index contract)
+        run: python3 scripts/memory-lint-test.py
       - name: release-preflight fixtures
         run: bash scripts/release-preflight-test.sh
       - name: ci-watch fixtures

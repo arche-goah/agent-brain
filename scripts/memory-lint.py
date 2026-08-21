@@ -16,7 +16,12 @@ actual drift class, namely MEMORY.md index <-> files.
 Run against our memory it found 0 real findings out of 55 false positives.
 
 CHECKS (all read-only, no writes, stdlib only):
-  1. index-drift    MEMORY.md line without a file / file without an index line
+  1. index-drift    MEMORY.md line without a file / file without an index line.
+                    SUB-INDEXES: a file named `index-<topic>.md` that MEMORY.md links
+                    counts as part of the index — its entries are indexed too (one
+                    level deep, no recursion). That is how a brain keeps MEMORY.md
+                    under the harness limit without losing files: the topic index is
+                    read on demand, MEMORY.md carries one pointer line per topic.
   2. frontmatter    name + description + metadata.type present and valid
   3. name-mismatch  frontmatter `name` != filename (slug)
   4. dead-links     [[wikilink]] without a target file
@@ -113,6 +118,14 @@ def lint(mem: Path, snap: Path | None) -> dict:
 
     # 1. index drift — both directions
     linked = {Path(m).stem for m in INDEX_LINK.findall(index_text)}
+    # Sub-indexes: `index-<topic>.md` linked from MEMORY.md is itself an index. Its
+    # entries count as indexed, its entry lines obey the same per-line limit. One level
+    # only — a sub-index linking another sub-index is not followed (keeps "where is this
+    # file indexed?" answerable by reading at most two files).
+    sub_texts: dict[str, str] = {}
+    for stem in sorted(s for s in linked if s.startswith("index-") and s in stems):
+        sub_texts[stem] = (mem / f"{stem}.md").read_text(encoding="utf-8", errors="replace")
+        linked |= {Path(m).stem for m in INDEX_LINK.findall(sub_texts[stem])}
     for miss in sorted(linked - stems):
         f["index_drift"].append({"issue": "index points to a missing file", "target": miss})
     for miss in sorted(stems - linked):
@@ -126,11 +139,13 @@ def lint(mem: Path, snap: Path | None) -> dict:
     if n_bytes > MAX_BYTES:
         f["limits"].append({"issue": "MEMORY.md too large", "bytes": n_bytes, "max": MAX_BYTES})
     # index entries individually: one overlong line eats the budget of all the others
-    for i, raw in enumerate(index_text.splitlines(), 1):
-        if raw.startswith("- [") and len(raw) > MAX_INDEX_LINE:
-            f["limits"].append({"issue": "index entry too long", "line": i,
-                                "chars": len(raw), "max": MAX_INDEX_LINE,
-                                "entry": raw[:60] + "…"})
+    # (sub-indexes included — they are read whole when their topic is opened)
+    for src, text_ in [(INDEX, index_text)] + [(s + ".md", t) for s, t in sub_texts.items()]:
+        for i, raw in enumerate(text_.splitlines(), 1):
+            if raw.startswith("- [") and len(raw) > MAX_INDEX_LINE:
+                f["limits"].append({"issue": "index entry too long", "index": src, "line": i,
+                                    "chars": len(raw), "max": MAX_INDEX_LINE,
+                                    "entry": raw[:60] + "…"})
 
     for p in files:
         text = p.read_text(encoding="utf-8", errors="replace")
