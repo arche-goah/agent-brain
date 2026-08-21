@@ -5,6 +5,19 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## Unreleased
+
+- **memory-lint follows topic sub-indexes** (`index-<topic>.md`). A brain whose
+  MEMORY.md grows toward the harness limit (200 lines / 25 KB, truncated silently) can
+  now move a topic's entries into `index-<topic>.md` and keep ONE pointer line in
+  MEMORY.md — the linter counts those entries as indexed, checks their targets and
+  line length, and still reports a real orphan. One level deep, no recursion; an
+  `index-*.md` that MEMORY.md does not link is an orphan like any other (a forgotten
+  pointer line must stay visible, not silently detach a topic). Fixtures in both
+  directions: `scripts/memory-lint-test.py`, wired into CI. Motivation measured on
+  the macOS brain 2026-08-21: 121 entries, 19.7 KB, 33 memory files touched on one day
+  — line-trimming alone bought ~1.7 KB, not a structure.
+
 ## 1.3.25 — 2026-08-20
 
 - **brain-check/brain-selftest: ROOT fallback was one level too shallow in a consumed
