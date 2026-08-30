@@ -93,11 +93,27 @@ VALID_TYPES = {"project", "feedback", "reference", "decision"}
 # flags a fifth of all entries — a check that red is a check nobody reads. 1200 flags the
 # five genuine runaways, which is a list someone can act on.
 MAX_INDEX_LINE = 1200
-# The index itself is the "keep it compact" signal the operator actually asked for. It is
-# NOT a harness limit — this index is read on demand, nothing truncates it — so exceeding
-# it is a cost finding, and the fix is archiving settled entries, never trimming the text
-# of live ones.
-MAX_INDEX_BYTES = 60_000
+# The index budget, set from MEASUREMENT rather than feel (2026-08-30, on the real repo):
+# INDEX.md 91,185 chars, median fact file 4,167 — so reading the index costs about what
+# opening 22 files costs, while the whole corpus is 797,000 chars. Two facts decide the
+# number, and both are arithmetic on those measured sizes. Disk is free but CONTEXT is
+# not: a megabyte-sized index is roughly 270k tokens, which does not fit a 200k-context
+# model at all and takes a quarter of a 1M one for a single lookup. And the index is read
+# WHOLE — there is no partial read of a lookup table you are scanning for a name — so its
+# size is paid in full on every read, unlike the corpus behind it.
+#
+# NOT claimed here, because it was never measured: how OFTEN the index is read. An earlier
+# draft of this comment asserted "the index every time" and multiplied it out over twenty
+# sessions. No read was ever counted, and the instance rule that governs this repo says
+# the opposite — INDEX.md is read on demand. The threshold does not need the frequency:
+# cost-per-read and the hard context ceiling carry it on their own.
+#
+# 50,000 is therefore not "delete above this", it is "the topic split is now due": a root
+# index carrying one pointer line per topic plus what is genuinely open, and per-topic
+# index files beneath it. That pattern is already proven in the brain's own auto-memory
+# (MEMORY.md + index-<topic>.md). Crossing this line means RESTRUCTURE, never trim the
+# text of live entries and never delete.
+MAX_INDEX_BYTES = 50_000
 LOG_ROTATE_BYTES = 60_000
 
 WIKILINK = re.compile(r"\[\[([^\]|#]+)")
@@ -199,7 +215,12 @@ def fact_files(repo: Path) -> list[Path]:
             continue
         if len(rel.parts) != 2:            # root docs and nested attachments
             continue
-        if rel.name == LOG_NAME:
+        # A per-topic INDEX.md is an INDEX, not an entry — same shape as memory-lint's
+        # index-<topic>.md rule, and the same lesson landing in a third repo: every
+        # consumer of the index STRUCTURE has to know that sub-indexes exist. Without
+        # this, generating the two-level index made the linter report all 142 entries as
+        # missing from the index and the five new topic indexes as schema-less files.
+        if rel.name in (LOG_NAME, INDEX):
             continue
         out.append(p)
     return out
@@ -226,7 +247,21 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
     # 1. index drift — both directions. Index links are repo-relative paths here,
     # not bare stems: the repo is nested, and two topics may hold the same slug.
     linked = {m for m in INDEX_LINK.findall(index_text)}
-    linked_files = {ln for ln in linked if not ln.endswith("/")}
+    # SUB-INDEXES: a `<topic>/INDEX.md` the root links is itself an index, so what IT
+    # lists counts as indexed. One level deep, no recursion — the same rule memory-lint
+    # already carries for `index-<topic>.md`, and the same lesson arriving in a third
+    # place: every consumer of the index STRUCTURE must know sub-indexes exist, not just
+    # the one that was fixed first. Without this, splitting the index by topic made all
+    # 142 entries read as missing from the index.
+    for sub in sorted(ln for ln in linked if ln.endswith(f"/{INDEX}")):
+        sub_path = repo / sub
+        if not sub_path.is_file():
+            continue
+        sub_dir = Path(sub).parent
+        for m in INDEX_LINK.findall(sub_path.read_text(encoding="utf-8", errors="replace")):
+            # topic index lines point back up with `../<topic>/<slug>.md`
+            linked.add(os.path.normpath(os.path.join(str(sub_dir), m)).replace("\\", "/"))
+    linked_files = {ln for ln in linked if not ln.endswith("/") and not ln.endswith(INDEX)}
     for miss in sorted(linked_files - rels):
         # A link into archive/ or to a root doc is legitimate, just not a fact file.
         if (repo / miss).is_file():
@@ -238,10 +273,17 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
     # 6a. index size and entry length
     idx_bytes = len(index_text.encode("utf-8"))
     if idx_bytes > MAX_INDEX_BYTES:
-        f["limits"].append({"issue": "INDEX.md over the compactness budget",
+        f["limits"].append({"issue": "INDEX.md over budget — the topic split is due",
                             "bytes": idx_bytes, "max": MAX_INDEX_BYTES,
-                            "fix": "archive settled entries (see the archive findings); "
-                                   "do not trim live entries"})
+                            "approx_tokens": idx_bytes // 4,
+                            "fix": "SPLIT BY TOPIC: a root index with one pointer line per "
+                                   "topic plus what is genuinely open, and per-topic index "
+                                   "files beneath it (the pattern MEMORY.md + "
+                                   "index-<topic>.md already proves). This is a structural "
+                                   "change — agree it with the other party. Do NOT trim the "
+                                   "text of live entries and do NOT delete: the index is "
+                                   "read every time, which is what makes its size cost, not "
+                                   "its disk footprint."})
     for i, raw in enumerate(index_text.splitlines(), 1):
         if raw.startswith("- [") and len(raw) > MAX_INDEX_LINE:
             f["limits"].append({"issue": "index entry too long", "line": i,

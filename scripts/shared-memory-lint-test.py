@@ -270,6 +270,27 @@ def main() -> int:
         else:
             bad(f"25 inventory row incomplete: {row}")
 
+
+        # 26. SUB-INDEX: a topic INDEX.md the root links is itself an index, and what it
+        #     lists counts as indexed. Same rule memory-lint carries for index-<topic>.md.
+        #     Without it, splitting the index by topic reads as 'every entry is missing'.
+        for leftover in ("settled.md", "successor.md"):
+            (repo / "ops" / leftover).unlink(missing_ok=True)
+        (repo / "ops" / "INDEX.md").write_text(
+            "# ops\n\n- [Alpha](../ops/alpha.md) — a\n", encoding="utf-8")
+        idx.write_text("# Index\n\n- [ops](ops/INDEX.md) — 1\n"
+                       "- [Beta](grandma3/beta.md) — b\n", encoding="utf-8")
+        check("26 entries listed in a topic sub-index count as indexed",
+              run(repo), "index_drift", 0)
+
+        # 27. NEGATIVE: the topic index file itself is not a fact file — no frontmatter
+        #     finding, no name mismatch, no index line demanded for it
+        c = run(repo)
+        if c["frontmatter"] == 0 and c["name_mismatch"] == 0:
+            ok("27 topic index is an index, not an entry")
+        else:
+            bad(f"27 topic index treated as a fact file: {c}")
+
     return 1 if fails else 0
 
 
