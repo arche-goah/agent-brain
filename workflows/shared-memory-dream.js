@@ -235,7 +235,7 @@ REFUTE this finding. Open the cited files yourself and read them in full — the
 out of context. Default to stands=false when uncertain. Specific traps in this repo:
 - a thread of question/answer/correction over several days is NOT a duplicate;
 - two measurements from different machines or software versions are NOT a contradiction;
-- an entry that names itself a snapshot ("Stand", "WIP") is not stale for saying so;
+- an entry that labels itself a snapshot or work-in-progress is not stale for saying so;
 - a proposal marked as awaiting someone's decision is not an unanswered question.
 
 FINDING: ${JSON.stringify(f).slice(0, 6000)}`,
