@@ -7,6 +7,47 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+## 1.3.26 — 2026-08-30
+
+The carrier release, held back through the stability window and cut now that it is
+over: knowledge that a session establishes has to leave something behind, and the
+tools that read the index have to agree on what the index is.
+
+⚠ **Instances upgrading from 1.3.25:** `RECALL-GATE` gained a SECOND trigger
+(verification claims, below). If your `stop-checks.json` already registers the check
+in `block` mode, it can now fire on turns that never tripped it before — check the
+mode and run `record` for a few sessions first. Nothing else in this release changes
+when an existing check fires.
+
+- **recall-gate: verification CLAIMS are the second trigger** — the Windows
+  instance's verification-doc-gate proposal (T5), built INTO the research gate rather
+  than beside it, because it is one class: knowledge established, session over, no
+  carrier. Tool counting misses the cheaper half — a single command can establish a
+  mechanism, one tool call, far under any research threshold, worth more than fifty
+  listings. That is the proposing instance's own incident: two-level nesting syntax
+  verified live, called a breakthrough, nothing written down, recovered from a
+  transcript two days and one failed live session later. A claim counts only when a
+  verification VERB and a discovery OBJECT meet in the same text block ("verified" AND
+  "mechanism/syntax/root cause/live") — the conjunction is the precision filter that
+  keeps a routine "CI green, verified" from tripping it, and the reason the two lists
+  are separate data. Threshold: 2 claims with nothing persisted since the first
+  signal. Word lists are English in the core (this repo is English-only, and a word
+  list is data, not code); a brain answering in another language ships its own in
+  `.claude/rules/recall-tools.json` — config REPLACES rather than extends, so such a
+  brain lists both languages there. Measured before arming (measure-then-arm rule,
+  2026-08-20): 40 real transcripts in `--record` mode — the claim trigger fires in
+  39/40 (2–37 claims per session), the research trigger in 19/40, `would_block` 0/40,
+  because persistence is never zero in that brain. Specific, not silent. Six new
+  fixtures, four of them negative controls.
+
+- **memory-dream skill and workflow follow topic sub-indexes too.** The linter learned
+  this below; the skill and the workflow did not, so on a brain that split a topic out
+  they reported the whole topic as orphans — a class of non-findings hitting exactly
+  the brains that followed the compaction advice. Same invariant, one statement per
+  carrier. Class swept across the repo: the remaining `MEMORY.md` mentions
+  (session-close, session-insights, session-bootup, bootstrap-brain, intelligence.md,
+  templates/CLAUDE.md) speak of it as a place or a size limit, never as a form.
+
 - **recall-gate + transcript-recall: research must leave a carrier, and the next
   session must look before it reads live again.** Measured on the Windows instance
   2026-08-21: a session spent ~60 % of its limit reading a reference showfile live, left
