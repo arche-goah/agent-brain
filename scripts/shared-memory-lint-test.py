@@ -198,58 +198,77 @@ def main() -> int:
         check("17 small LOG is silent", run(repo), "limits", 0)
         (repo / "ops" / "LOG.md").unlink()
 
-        # 18. archive: settled AND cold. The fixture backdates the commit, because the
-        #     check reads git, not mtime — a fresh checkout would otherwise look new.
+        # 18. archive: a NAMED SUCCESSOR supersedes an entry -> candidate. Age plays no
+        #     part; the fixture does not touch a single timestamp.
         old = repo / "ops" / "settled.md"
-        old.write_text(fm("settled", body="This is UEBERHOLT, see the successor."),
+        old.write_text(fm("settled", body="The original decision."), encoding="utf-8")
+        succ = repo / "ops" / "successor.md"
+        succ.write_text(fm("successor", body="SUPERSEDES: [[settled]] — this replaces it."),
+                        encoding="utf-8")
+        idx.write_text(keep + "- [S](ops/settled.md) — s\n- [N](ops/successor.md) — n\n",
+                       encoding="utf-8")
+        check("18 successor names the superseded entry -> relation reported",
+              run(repo), "archive", 1)
+
+
+        # 19b. the OTHER direction: the superseded file marks ITSELF and names the
+        #      successor. This repo writes it that way, so a check that only understood
+        #      "successor announces" would have been blind to its actual convention.
+        old.write_text(fm("settled", body="SUPERSEDED BY [[successor]] instead."),
+                       encoding="utf-8")
+        succ.write_text(fm("successor", body="The new decision."), encoding="utf-8")
+        idx.write_text(keep + "- [S](ops/settled.md) — s\n- [N](ops/successor.md) — n\n",
+                       encoding="utf-8")
+        check("19b self-marked supersession is found too", run(repo), "archive", 1)
+        succ.unlink()
+
+        # 19. NEGATIVE — the case that carries the operator's rule: an entry that says
+        #     it is DONE, with nothing superseding it, is NOT a candidate — at any age.
+        #     A settled decision is exactly what has to stay traceable years later.
+        old.write_text(fm("settled", body="ERLEDIGT 2019 — decided, and nothing replaced it."),
                        encoding="utf-8")
         idx.write_text(keep + "- [S](ops/settled.md) — s\n", encoding="utf-8")
-        stamp = int(time.time()) - (sml.ARCHIVE_STALE_DAYS + 30) * 86400
-        env_date = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(stamp))
-        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=False)
-        subprocess.run(
-            ["git", "-C", str(repo), "-c", "user.email=t@t", "-c", "user.name=t",
-             "-c", f"commit.gpgsign=false", "commit", "-qm", "old",
-             "--date", env_date],
-            check=False,
-            env={**__import__("os").environ, "GIT_COMMITTER_DATE": env_date})
-        check("18 settled and cold -> archive candidate", run(repo), "archive", 1)
+        check("19 settled but unsuperseded stays, whatever its age", run(repo), "archive", 0)
 
-        # 19. NEGATIVE: settled but RECENT is not an archive candidate — a finding closed
-        #     yesterday is what everyone is reading this week
-        fresh = repo / "ops" / "fresh.md"
-        fresh.write_text(fm("fresh", body="ERLEDIGT today."), encoding="utf-8")
-        idx.write_text(idx.read_text(encoding="utf-8") + "- [F](ops/fresh.md) — f\n",
+        # 20. NEGATIVE: a supersession sentence that names nothing resolvable is not a
+        #     candidate either — the successor must SAY which entry it replaces.
+        old.write_text(fm("settled", body="SUPERSEDES something, somewhere."),
                        encoding="utf-8")
-        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=False)
-        subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@t", "-c",
-                        "user.name=t", "commit", "-qm", "fresh"], check=False)
-        check("19 settled but recent stays put", run(repo), "archive", 1)  # only the old one
+        check("20 supersession without a named target", run(repo), "archive", 0)
 
-        # 20. the marker list is DATA: a repo that names its own tokens gets those and
-        #     only those. Same lesson as the recall-gate word lists — a language list
-        #     baked into an English-only core is both wrong and unshippable.
+        # 21. NEGATIVE: a file may not supersede itself (a self-link in its own body)
+        old.write_text(fm("settled", body="SUPERSEDES: [[settled]] — see above."),
+                       encoding="utf-8")
+        check("21 self-supersession ignored", run(repo), "archive", 0)
+
+        # 22. the marker list is DATA: a repo naming its own tokens gets those and only
+        #     those. Same lesson as the recall-gate word lists.
+        old.write_text(fm("settled", body="The original decision."), encoding="utf-8")
+        succ.write_text(fm("successor", body="SUPERSEDES: [[settled]] — this replaces it."),
+                        encoding="utf-8")
+        idx.write_text(keep + "- [S](ops/settled.md) — s\n- [N](ops/successor.md) — n\n",
+                       encoding="utf-8")
         (repo / sml.MARKERS_NAME).write_text("ZZZ-NO-SUCH-MARKER\n", encoding="utf-8")
-        check("20 repo replaces the marker list", run(repo), "archive", 0)
+        check("22 repo replaces the marker list", run(repo), "archive", 0)
         (repo / sml.MARKERS_NAME).unlink()
-        check("21 default markers back in force", run(repo), "archive", 1)
+        check("23 default markers back in force", run(repo), "archive", 1)
 
-        # 22. --inventory is a TABLE, one row per fact file. This exists because the
+        # 24. --inventory is a TABLE, one row per fact file. This exists because the
         #     judging workflow had an agent produce it and got back a single summary row
         #     for the whole repo — schema satisfied, four lenses left with nothing.
         inv = sml.inventory(repo)
         facts = sml.fact_files(repo)
         if inv["count"] == len(facts) == len(inv["files"]) and len(facts) > 1:
-            ok(f"22 inventory has one row per fact file ({inv['count']})")
+            ok(f"24 inventory has one row per fact file ({inv['count']})")
         else:
-            bad(f"22 inventory row count {inv['count']} vs {len(facts)} fact files")
+            bad(f"24 inventory row count {inv['count']} vs {len(facts)} fact files")
 
-        # 23. and the rows carry the fields the lenses target their reads with
+        # 25. and the rows carry the fields the lenses target their reads with
         row = next((r for r in inv["files"] if r["path"] == "ops/alpha.md"), None)
         if row and row["von"] == "emil-macos" and row["topic"] == "ops" and row["indexed"]:
-            ok("23 inventory row carries von / topic / indexed")
+            ok("25 inventory row carries von / topic / indexed")
         else:
-            bad(f"23 inventory row incomplete: {row}")
+            bad(f"25 inventory row incomplete: {row}")
 
     return 1 if fails else 0
 

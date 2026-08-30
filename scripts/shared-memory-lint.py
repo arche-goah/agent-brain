@@ -27,8 +27,8 @@ CHECKS (all read-only, no writes, stdlib only):
                      pointer into a private instance memory that a collaborator cannot
                      follow. Both are worth seeing; only the author can tell them apart.
   6. limits          INDEX entry line longer than the cap; a LOG over the rotation size
-  7. archive         files whose own body marks them settled (UEBERHOLT / ERLEDIGT /
-                     SUPERSEDED / RESOLVED) and that have not been touched in a while
+  7. archive         entries a NAMED SUCCESSOR supersedes — relevance, never age (see
+                     the note at SUPERSESSION_DEFAULT). Age is not in this check at all.
 
 RATCHET (same shape as english-only.py, and for the same reason): the audience/topic
 convention was decided on 2026-08-21 with the explicit note that older files are
@@ -43,10 +43,12 @@ The baseline file lives IN the linted repo (`.shared-memory-legacy.txt` at its r
 not next to this script — see the note at BASELINE_NAME. Short version: this repo is
 public, that one is not.
 
-The archive check NEVER proposes a deletion. It lists candidates for moving to
-`archive/<year>/` with the index line kept as a one-liner — the operator's rule is that
-protocols are append-only and nothing here is a fact base to be trimmed on a machine's
-say-so.
+The archive check NEVER proposes a deletion, and never fires on age. It lists only
+entries a named successor has superseded, for moving to `archive/<year>/` with the index
+line kept as a one-liner pointing at both the new path and the successor. The operator's
+rule: protocols are append-only, nothing here is a fact base to be trimmed on a machine's
+say-so, and a decision must stay traceable years later — so what has no successor stays
+where it is, however old.
 
 Usage: shared-memory-lint.py [--repo DIR] [--json] [--write-baseline]
        (--repo defaults to $SHARED_MEMORY_REPO, else ~/Projects/brain-shared-memory)
@@ -58,7 +60,6 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -98,7 +99,6 @@ MAX_INDEX_LINE = 1200
 # of live ones.
 MAX_INDEX_BYTES = 60_000
 LOG_ROTATE_BYTES = 60_000
-ARCHIVE_STALE_DAYS = 120
 
 WIKILINK = re.compile(r"\[\[([^\]|#]+)")
 INDEX_LINK = re.compile(r"\[[^\]]*\]\(([^)]+\.md)\)")
@@ -108,24 +108,40 @@ INLINE_CODE = re.compile(r"`[^`\n]*`")
 # whitespace, quotes or shell metacharacters is not a link — measured: `[[ "$(cat …)" ]]`
 # in a bash snippet parsed as a wikilink and was reported as a dead one.
 SLUGISH = re.compile(r"^[A-Za-z0-9._/-]+$")
-# Markers a file uses to say IT IS SETTLED. Language DATA, not logic — the linted repo
-# may set its own list in `.shared-memory-markers.txt` (one token per line). The defaults
-# below cover English plus the ASCII-transliterated German this repo actually writes;
-# measured before including them: UEBERHOLT appears in 5 files, the umlaut spelling in
-# zero, so the umlaut variant was a guess and is gone. That also keeps this file inside
-# the repo's English-only ratchet, which the umlaut broke on four CI jobs at once.
-SETTLED_DEFAULT = ["SUPERSEDED", "RESOLVED", "OBSOLETE",
-                   "UEBERHOLT", "ERLEDIGT", "ABGESCHLOSSEN", "OBSOLET"]
+# ARCHIVING IS RELEVANCE-BASED, NEVER AGE-BASED (operator instruction 2026-08-30:
+# archiving must not be time-based; a relevant decision has to stay traceable years later).
+#
+# The first version of this check was wrong twice over, and both errors point the same
+# way. It keyed on (a) 120 days without a commit and (b) a settled marker in the file's
+# own body — so an untouched three-year-old decision scored as archivable, and a row
+# saying ERLEDIGT scored HIGHEST, when a settled decision is exactly the one somebody
+# has to be able to trace later. Age measures attention, not relevance; "done" marks a
+# record, not a leftover.
+#
+# What actually makes an entry archivable is that its content SURVIVES SOMEWHERE ELSE:
+# a named successor exists and points back at it. Then nothing is lost by moving the
+# original — the fact lives in the successor, the history lives in archive/<year>/, and
+# the index line keeps a one-liner pointing at the new path. An entry that nothing
+# supersedes stays where it is, whatever its age.
+#
+# Supersession phrasing is language DATA, and English-only HERE on purpose: this repo is
+# public and a word list is data, not code (the same ratchet rejected an earlier draft of
+# this file for exactly that). A repo written in another language ships its own tokens in
+# `.shared-memory-markers.txt`, one per line; config REPLACES these defaults rather than
+# extending them, so such a repo lists both languages there.
+SUPERSESSION_DEFAULT = ["SUPERSEDES", "REPLACES", "SUPERSEDED BY", "REPLACED BY",
+                        "OVERTAKEN BY", "RETIRED BY"]
 MARKERS_NAME = ".shared-memory-markers.txt"
 
 
-def settled_re(repo: Path) -> "re.Pattern[str]":
+def supersession_re(repo: Path) -> "re.Pattern[str]":
     try:
         toks = [ln.strip() for ln in (repo / MARKERS_NAME).read_text(encoding="utf-8")
                 .splitlines() if ln.strip() and not ln.startswith("#")]
     except FileNotFoundError:
         toks = []
-    return re.compile(r"\b(" + "|".join(re.escape(t) for t in (toks or SETTLED_DEFAULT)) + r")\b")
+    return re.compile(r"\b(" + "|".join(re.escape(t) for t in (toks or SUPERSESSION_DEFAULT))
+                      + r")\b", re.I)
 
 
 def frontmatter(text: str) -> dict | None:
@@ -166,23 +182,6 @@ def load_baseline(path: Path) -> set[str]:
         return set()
 
 
-def last_touched_days(repo: Path, rel: str) -> int | None:
-    """Days since the file's last commit. git is the only honest source here — a
-    working-tree mtime says when the file was CHECKED OUT, not when it was written,
-    and on a fresh clone that is today for every file in the repo."""
-    try:
-        out = subprocess.run(
-            ["git", "-C", str(repo), "log", "-1", "--format=%ct", "--", rel],
-            capture_output=True, text=True, timeout=20)
-        stamp = out.stdout.strip()
-        if not stamp:
-            return None
-        import time
-        return int((time.time() - int(stamp)) / 86400)
-    except Exception:
-        return None
-
-
 def fact_files(repo: Path) -> list[Path]:
     """Every one-fact file: EXACTLY `<topic>/<slug>.md`, nothing else.
 
@@ -221,7 +220,8 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
     rels = {str(p.relative_to(repo)) for p in files}
     stems = {p.stem for p in files}
     baseline = load_baseline(baseline_path or baseline_for(repo))
-    settled = settled_re(repo)
+    supersedes = supersession_re(repo)
+    superseded: dict[str, list] = {}
 
     # 1. index drift — both directions. Index links are repo-relative paths here,
     # not bare stems: the repo is nested, and two topics may hold the same slug.
@@ -312,14 +312,39 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
                 continue
             f["unresolved_links"].append({"file": rel, "target": t, "note": "not a file in THIS repo — either a typo or a pointer into a private instance memory, which no collaborator can follow"})
 
-        # 7. archive candidates — settled AND cold. Either alone is not enough: a
-        # finding closed yesterday is still what everyone is reading this week.
-        if settled.search(text):
-            age = last_touched_days(repo, rel)
-            if age is not None and age >= ARCHIVE_STALE_DAYS:
-                f["archive"].append({"file": rel, "days_since_last_commit": age,
-                                     "fix": f"move to archive/<year>/, keep a one-line "
-                                            f"index entry pointing at the new path"})
+        # 7. supersession RELATIONS — pairs, not verdicts. A supersession sentence that
+        # also names a resolvable entry links two files; which of the two may move is a
+        # judgment this script does not make, for two measured reasons:
+        #   - the direction is written both ways in practice. This repo's own convention
+        #     is the SUPERSEDED file marking itself (a banner at its own top saying which of
+        #     its sections are retired), while a successor announcing "this replaces X" is
+#     just as valid;
+        #   - real supersession is often PARTIAL — that same line retires two sections of
+        #     a file whose remaining sections still hold. Moving the file would take the
+        #     survivors with it.
+        # So the machine surfaces the relation and the evidence line; the judging pass and
+        # the author decide whether the content fully survives elsewhere.
+        for line in prose.splitlines():
+            if not supersedes.search(line):
+                continue
+            for t in WIKILINK.findall(line):
+                t = t.strip().split("/")[-1]
+                if t in stems and t != p.stem:
+                    key = tuple(sorted((p.stem, t)))
+                    superseded.setdefault(key, []).append({"marker_in": rel, "names": t,
+                                                           "line": line.strip()[:180]})
+
+    for (a, b), ev in sorted(superseded.items()):
+        f["archive"].append({
+            "pair": [a + ".md", b + ".md"],
+            "marker_in": ev[0]["marker_in"],
+            "evidence": ev[0]["line"],
+            "fix": "DECIDE first whether the content of one side survives COMPLETELY in "
+                   "the other — partial supersession is not an archive case. If it does: "
+                   "move that file to archive/<year>/ and keep a one-line index entry "
+                   "pointing at both the new path and the successor. Never delete, and "
+                   "never on age: a decision must stay traceable years later.",
+        })
 
     for miss in sorted(baseline - rels):
         f["baseline"].append({"file": miss, "issue": "baseline entry has no file",
