@@ -10,6 +10,13 @@
 #   5. own echo in the last turn, no new research since      -> allow (cooldown, no wallpaper)
 #   6. --record mode on case 1                                -> prints record, never blocks
 #   7. instance config raises the threshold                   -> allow
+# Second trigger (verification claims, T5 — a claim needs verb AND object):
+#   8. two verification claims, nothing persisted            -> block
+#   9. two verification claims, memory written after         -> allow
+#  10. verification VERB alone, no discovery object          -> allow (the AND is the filter)
+#  11. discovery OBJECT alone, no verification verb          -> allow
+#  12. one claim only (below verifyThreshold)                -> allow
+#  13. instance empties the word lists                       -> allow (data, not code)
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
@@ -66,5 +73,35 @@ run_hook "6 record mode" "$T/c1.jsonl" record "$T" --record
 mkdir -p "$T/cfg/.claude/rules"
 printf '{"threshold": 50}\n' > "$T/cfg/.claude/rules/recall-tools.json"
 run_hook "7 instance threshold 50" "$T/c1.jsonl" allow "$T/cfg"
+
+# ── second trigger: verification claims ───────────────────────────────────────
+# The real incident's shape: one command establishes a mechanism, far below the
+# research threshold, and nothing is written down.
+say() { # $1 text -> one assistant text block
+  printf '{"message":{"role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$1"
+}
+CLAIM1='Two-level nesting verified live at the desk - the mechanism holds.'
+CLAIM2='Reproduced three times, root cause confirmed.'
+VERB_ONLY='CI is green, all checks verified, PR merged and pushed.'
+OBJ_ONLY='I will look into the nesting syntax and the mechanism behind it tomorrow.'
+
+{ echo "$U"; say "$CLAIM1"; say "$CLAIM2"; } > "$T/c8.jsonl"
+run_hook "8 two claims, nothing persisted" "$T/c8.jsonl" block "$T"
+
+{ echo "$U"; say "$CLAIM1"; say "$CLAIM2"; echo "$MEMWRITE"; } > "$T/c9.jsonl"
+run_hook "9 two claims, memory written after" "$T/c9.jsonl" allow "$T"
+
+{ echo "$U"; say "$VERB_ONLY"; say "$VERB_ONLY"; say "$VERB_ONLY"; } > "$T/c10.jsonl"
+run_hook "10 verification verb without object" "$T/c10.jsonl" allow "$T"
+
+{ echo "$U"; say "$OBJ_ONLY"; say "$OBJ_ONLY"; say "$OBJ_ONLY"; } > "$T/c11.jsonl"
+run_hook "11 discovery object without verb" "$T/c11.jsonl" allow "$T"
+
+{ echo "$U"; say "$CLAIM1"; } > "$T/c12.jsonl"
+run_hook "12 single claim below threshold" "$T/c12.jsonl" allow "$T"
+
+mkdir -p "$T/cfg2/.claude/rules"
+printf '{"verifyVerbs": ["zzzz-no-such-word"]}\n' > "$T/cfg2/.claude/rules/recall-tools.json"
+run_hook "13 instance replaces the word list" "$T/c8.jsonl" allow "$T/cfg2"
 
 exit $fail
