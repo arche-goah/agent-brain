@@ -93,11 +93,20 @@ VALID_TYPES = {"project", "feedback", "reference", "decision"}
 # flags a fifth of all entries — a check that red is a check nobody reads. 1200 flags the
 # five genuine runaways, which is a list someone can act on.
 MAX_INDEX_LINE = 1200
-# The index itself is the "keep it compact" signal the operator actually asked for. It is
-# NOT a harness limit — this index is read on demand, nothing truncates it — so exceeding
-# it is a cost finding, and the fix is archiving settled entries, never trimming the text
-# of live ones.
-MAX_INDEX_BYTES = 60_000
+# The index budget, set from MEASUREMENT rather than feel (2026-08-30, on the real repo):
+# INDEX.md 91,185 chars, median fact file 4,167 — so reading the index costs about what
+# opening 22 files costs, while the whole corpus is 797,000 chars. Two facts decide the
+# number. Disk is free but CONTEXT is not: a megabyte-sized index is roughly 270k tokens,
+# which does not fit a 200k-context model at all and eats a quarter of a 1M one for a
+# lookup. And frequency: files are read on demand, the index EVERY time — twenty sessions
+# at 23k tokens is 460k tokens spent only on finding things.
+#
+# 50,000 is therefore not "delete above this", it is "the topic split is now due": a root
+# index carrying one pointer line per topic plus what is genuinely open, and per-topic
+# index files beneath it. That pattern is already proven in the brain's own auto-memory
+# (MEMORY.md + index-<topic>.md). Crossing this line means RESTRUCTURE, never trim the
+# text of live entries and never delete.
+MAX_INDEX_BYTES = 50_000
 LOG_ROTATE_BYTES = 60_000
 
 WIKILINK = re.compile(r"\[\[([^\]|#]+)")
@@ -238,10 +247,17 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
     # 6a. index size and entry length
     idx_bytes = len(index_text.encode("utf-8"))
     if idx_bytes > MAX_INDEX_BYTES:
-        f["limits"].append({"issue": "INDEX.md over the compactness budget",
+        f["limits"].append({"issue": "INDEX.md over budget — the topic split is due",
                             "bytes": idx_bytes, "max": MAX_INDEX_BYTES,
-                            "fix": "archive settled entries (see the archive findings); "
-                                   "do not trim live entries"})
+                            "approx_tokens": idx_bytes // 4,
+                            "fix": "SPLIT BY TOPIC: a root index with one pointer line per "
+                                   "topic plus what is genuinely open, and per-topic index "
+                                   "files beneath it (the pattern MEMORY.md + "
+                                   "index-<topic>.md already proves). This is a structural "
+                                   "change — agree it with the other party. Do NOT trim the "
+                                   "text of live entries and do NOT delete: the index is "
+                                   "read every time, which is what makes its size cost, not "
+                                   "its disk footprint."})
     for i, raw in enumerate(index_text.splitlines(), 1):
         if raw.startswith("- [") and len(raw) > MAX_INDEX_LINE:
             f["limits"].append({"issue": "index entry too long", "line": i,
