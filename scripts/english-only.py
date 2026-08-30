@@ -74,6 +74,260 @@ def tracked_files():
     return [ROOT / p for p in out.stdout.split("\0") if p]
 
 
+def untracked_candidates():
+    """New files this check CANNOT see yet — the blind spot that makes a local run lie.
+
+    Measured twice in one session: a new script was written, the local run reported
+    clean, and CI went red the moment the file was staged. Both times the file simply
+    was not in .claude-plugin/plugin.json
+.gitattributes
+.github/workflows/ci.yml
+.gitignore
+AGENTS.md
+CHANGELOG.md
+CLAUDE.md
+CONVENTIONS.md
+LICENSE
+NOTICE
+ONBOARDING.md
+README.md
+core-contract.json
+dependencies.json
+docs/onboarding-contract.md
+helpers/README.md
+helpers/class-gate.cjs
+helpers/file-guard.cjs
+helpers/freshness-gate.cjs
+helpers/junk-cleaner.cjs
+helpers/mechanism-guard.cjs
+helpers/memory-sync.cjs
+helpers/notify.cjs
+helpers/premise-gate.cjs
+helpers/recall-gate.cjs
+helpers/run-record.sh
+helpers/secret-guard.cjs
+helpers/session-bootup.sh
+helpers/session-closing.sh
+helpers/shared-memory-check.sh
+helpers/statusline.cjs
+helpers/stop-dispatcher.cjs
+helpers/stop-verifier.cjs
+output-styles/caveman.md
+rules/arbeitsregeln.md
+rules/intelligence.md
+rules/techniques.md
+rules/thinking-protocol.md
+rules/working-rules.md
+scripts/bootstrap-brain.sh
+scripts/brain-check.sh
+scripts/brain-friction.py
+scripts/brain-scan.sh
+scripts/brain-selftest.sh
+scripts/brain-update.sh
+scripts/ci-watch-test.sh
+scripts/ci-watch.sh
+scripts/dep-install.py
+scripts/dep-lint.py
+scripts/ecosystem-sync.py
+scripts/effect-check.sh
+scripts/english-legacy-names.txt
+scripts/english-legacy.txt
+scripts/english-only.py
+scripts/freshness-gate-test.py
+scripts/gate-precision.py
+scripts/handover-gate.sh
+scripts/hook-coverage.py
+scripts/install-statusline.sh
+scripts/invariant-check-test.py
+scripts/invariant-check.py
+scripts/leak-scan.py
+scripts/lint-placeholders.sh
+scripts/loop-watchdog.sh
+scripts/memory-lint-test.py
+scripts/memory-lint.py
+scripts/onboarding-verify.sh
+scripts/parallel-sessions.sh
+scripts/portability-smoke.sh
+scripts/preflight.ps1
+scripts/preflight.sh
+scripts/regen-skill-registry.py
+scripts/release-preflight-test.sh
+scripts/release-preflight.sh
+scripts/setup-shell-start.sh
+scripts/shared-memory-index.py
+scripts/shared-memory-lint-test.py
+scripts/shared-memory-lint.py
+scripts/shared-memory-watch-test.sh
+scripts/shared-memory-watch.sh
+scripts/skill-lint.py
+scripts/suite-check.py
+scripts/suite-install.sh
+scripts/test-guards.sh
+scripts/test-premise-gate.sh
+scripts/test-recall-gate.sh
+scripts/test-session-helpers.sh
+scripts/test-stop-checks.sh
+scripts/test-stop-dispatcher.sh
+scripts/test-suite-plugin-linkage.sh
+scripts/transcript-recall-test.py
+scripts/transcript-recall.py
+scripts/wait-mcp-reconnect.sh
+scripts/workflow-parse-check.sh
+skills/REGISTRY.md
+skills/autonomer-lauf/SKILL.md
+skills/autonomous-run/SKILL.md
+skills/caveman/SKILL.md
+skills/code-audit/SKILL.md
+skills/code-audit/audit-report-template.md
+skills/code-audit/findings-schema.json
+skills/codex-review/SKILL.md
+skills/coherence-scan/SKILL.md
+skills/defuddle/SKILL.md
+skills/dependency-audit/SKILL.md
+skills/dependency-audit/dep_audit.py
+skills/firecrawl-web/.skill_id
+skills/firecrawl-web/SKILL.md
+skills/firecrawl-web/fc.py
+skills/firecrawl-web/requirements.txt
+skills/full-audit/SKILL.md
+skills/json-canvas/SKILL.md
+skills/json-canvas/references/EXAMPLES.md
+skills/kohaerenz-scan/SKILL.md
+skills/last30days/SKILL.md
+skills/last30days/agents/openai.yaml
+skills/last30days/references/save-html-brief.md
+skills/last30days/scripts/briefing.py
+skills/last30days/scripts/build-skill.sh
+skills/last30days/scripts/compare.sh
+skills/last30days/scripts/evaluate_search_quality.py
+skills/last30days/scripts/last30days.py
+skills/last30days/scripts/lib/__init__.py
+skills/last30days/scripts/lib/bird_x.py
+skills/last30days/scripts/lib/bluesky.py
+skills/last30days/scripts/lib/categories.py
+skills/last30days/scripts/lib/chrome_cookies.py
+skills/last30days/scripts/lib/cluster.py
+skills/last30days/scripts/lib/competitors.py
+skills/last30days/scripts/lib/cookie_extract.py
+skills/last30days/scripts/lib/dates.py
+skills/last30days/scripts/lib/dedupe.py
+skills/last30days/scripts/lib/digg.py
+skills/last30days/scripts/lib/entity_extract.py
+skills/last30days/scripts/lib/env.py
+skills/last30days/scripts/lib/fanout.py
+skills/last30days/scripts/lib/fusion.py
+skills/last30days/scripts/lib/github.py
+skills/last30days/scripts/lib/grounding.py
+skills/last30days/scripts/lib/hackernews.py
+skills/last30days/scripts/lib/html_render.py
+skills/last30days/scripts/lib/http.py
+skills/last30days/scripts/lib/instagram.py
+skills/last30days/scripts/lib/log.py
+skills/last30days/scripts/lib/normalize.py
+skills/last30days/scripts/lib/perplexity.py
+skills/last30days/scripts/lib/pinterest.py
+skills/last30days/scripts/lib/pipeline.py
+skills/last30days/scripts/lib/planner.py
+skills/last30days/scripts/lib/polymarket.py
+skills/last30days/scripts/lib/preflight.py
+skills/last30days/scripts/lib/providers.py
+skills/last30days/scripts/lib/quality_nudge.py
+skills/last30days/scripts/lib/query.py
+skills/last30days/scripts/lib/reddit.py
+skills/last30days/scripts/lib/reddit_enrich.py
+skills/last30days/scripts/lib/reddit_public.py
+skills/last30days/scripts/lib/relevance.py
+skills/last30days/scripts/lib/render.py
+skills/last30days/scripts/lib/rerank.py
+skills/last30days/scripts/lib/resolve.py
+skills/last30days/scripts/lib/safari_cookies.py
+skills/last30days/scripts/lib/schema.py
+skills/last30days/scripts/lib/setup_wizard.py
+skills/last30days/scripts/lib/signals.py
+skills/last30days/scripts/lib/snippet.py
+skills/last30days/scripts/lib/subproc.py
+skills/last30days/scripts/lib/threads.py
+skills/last30days/scripts/lib/tiktok.py
+skills/last30days/scripts/lib/truthsocial.py
+skills/last30days/scripts/lib/ui.py
+skills/last30days/scripts/lib/vendor/bird-search/LICENSE
+skills/last30days/scripts/lib/vendor/bird-search/bird-search.mjs
+skills/last30days/scripts/lib/vendor/bird-search/lib/cookies.js
+skills/last30days/scripts/lib/vendor/bird-search/lib/features.json
+skills/last30days/scripts/lib/vendor/bird-search/lib/paginate-cursor.js
+skills/last30days/scripts/lib/vendor/bird-search/lib/query-ids.json
+skills/last30days/scripts/lib/vendor/bird-search/lib/runtime-features.js
+skills/last30days/scripts/lib/vendor/bird-search/lib/runtime-query-ids.js
+skills/last30days/scripts/lib/vendor/bird-search/lib/twitter-client-base.js
+skills/last30days/scripts/lib/vendor/bird-search/lib/twitter-client-constants.js
+skills/last30days/scripts/lib/vendor/bird-search/lib/twitter-client-features.js
+skills/last30days/scripts/lib/vendor/bird-search/lib/twitter-client-search.js
+skills/last30days/scripts/lib/vendor/bird-search/lib/twitter-client-types.js
+skills/last30days/scripts/lib/vendor/bird-search/lib/twitter-client-utils.js
+skills/last30days/scripts/lib/vendor/bird-search/package.json
+skills/last30days/scripts/lib/xai_x.py
+skills/last30days/scripts/lib/xiaohongshu_api.py
+skills/last30days/scripts/lib/xquik.py
+skills/last30days/scripts/lib/xurl_x.py
+skills/last30days/scripts/lib/youtube_yt.py
+skills/last30days/scripts/store.py
+skills/last30days/scripts/sync.sh
+skills/last30days/scripts/test_device_auth.py
+skills/last30days/scripts/verify_v3.py
+skills/last30days/scripts/watchlist.py
+skills/memory-dream/.skill_id
+skills/memory-dream/SKILL.md
+skills/ollama-fallback/SKILL.md
+skills/parallel-research-agent/SKILL.md
+skills/playwright-skill/.skill_id
+skills/playwright-skill/0)
+skills/playwright-skill/API_REFERENCE.md
+skills/playwright-skill/SKILL.md
+skills/playwright-skill/lib/helpers.js
+skills/playwright-skill/package.json
+skills/playwright-skill/run.js
+skills/ponytail/SKILL.md
+skills/repo-recon/SKILL.md
+skills/repo-recon/recon.py
+skills/session-close/SKILL.md
+skills/session-insights/SKILL.md
+skills/shared-memory-tidy/SKILL.md
+skills/shared-memory-watch/SKILL.md
+skills/skill-builder/.skill_id
+skills/skill-builder/SKILL.md
+skills/skill-builder/references/frontmatter-spec.md
+skills/skill-builder/references/structure-and-disclosure.md
+skills/skill-builder/references/templates-and-examples.md
+skills/test-survey/SKILL.md
+skills/test-survey/test_survey.py
+skills/verification-before-completion/.skill_id
+skills/verification-before-completion/SKILL.md
+templates/CLAUDE.md
+templates/MEMORY.md
+templates/feedback.md
+templates/invariants.md
+templates/leak-names.json
+templates/rules-instance/intelligence-instance.md
+templates/rules-instance/mechanism-rules.json
+templates/rules-instance/recall-tools.json
+templates/rules-instance/working-rules-instance.md
+templates/settings.json
+workflows/brain-scan.js
+workflows/coherence-scan.js
+workflows/full-audit-synthesis.js
+workflows/memory-dream.js
+workflows/shared-memory-dream.js yet, so the ratchet had nothing to look at. A checker that
+    is silent about what it could not examine reports "clean" and "not looked" with the
+    same word — the same conflation that makes a held-back pin read as a stale one.
+    """
+    out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", "--others",
+                          "--exclude-standard"],
+                         capture_output=True, text=True, timeout=30)
+    return [ROOT / p for p in out.stdout.split("\0")
+            if p and Path(p).suffix.lower() in TEXT_SUFFIX
+            and Path(p).name not in SKIP_NAMES]
+
+
 def has_german(path: Path) -> bool:
     try:
         text = path.read_text(encoding="utf-8")
@@ -138,7 +392,14 @@ def main() -> int:
         for f in findings:
             print(f"!! {f}")
         return 1
+    unseen = [p.relative_to(ROOT).as_posix() for p in untracked_candidates()]
     print(f"english-only: clean — {len(baseline)} legacy files awaiting sweep, 0 drift")
+    if unseen:
+        # Say what was NOT looked at. Clean-and-complete and clean-but-blind print the
+        # same word otherwise, and the difference only shows up in CI after staging.
+        print(f"   note: {len(unseen)} untracked file(s) NOT checked — stage them and "
+              f"re-run before trusting this: {', '.join(unseen[:5])}"
+              + (" …" if len(unseen) > 5 else ""))
     return 0
 
 
