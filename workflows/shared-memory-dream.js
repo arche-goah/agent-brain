@@ -110,7 +110,11 @@ const FINDINGS_SCHEMA = {
 // on nothing. Enumeration is mechanical, so the machine does it and the agent only
 // carries the output across. Same principle the lint itself is built on.
 phase('Inventory')
-const LINT = `${INSTANCE}/core/scripts/shared-memory-lint.py`
+// Default is the consumed layout (`<instance>/core/scripts/...`); `args.lint` overrides
+// it, which is what makes this workflow runnable against a dev checkout at all — without
+// the override it can only ever be proven on an instance that already ships the release
+// being tested, which is no proof.
+const LINT = A.lint || `${INSTANCE}/core/scripts/shared-memory-lint.py`
 const inv = await agent(
   `Run exactly this, once, and return its output UNCHANGED as your structured result:
 
