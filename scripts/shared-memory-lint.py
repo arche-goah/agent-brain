@@ -96,10 +96,17 @@ MAX_INDEX_LINE = 1200
 # The index budget, set from MEASUREMENT rather than feel (2026-08-30, on the real repo):
 # INDEX.md 91,185 chars, median fact file 4,167 — so reading the index costs about what
 # opening 22 files costs, while the whole corpus is 797,000 chars. Two facts decide the
-# number. Disk is free but CONTEXT is not: a megabyte-sized index is roughly 270k tokens,
-# which does not fit a 200k-context model at all and eats a quarter of a 1M one for a
-# lookup. And frequency: files are read on demand, the index EVERY time — twenty sessions
-# at 23k tokens is 460k tokens spent only on finding things.
+# number, and both are arithmetic on those measured sizes. Disk is free but CONTEXT is
+# not: a megabyte-sized index is roughly 270k tokens, which does not fit a 200k-context
+# model at all and takes a quarter of a 1M one for a single lookup. And the index is read
+# WHOLE — there is no partial read of a lookup table you are scanning for a name — so its
+# size is paid in full on every read, unlike the corpus behind it.
+#
+# NOT claimed here, because it was never measured: how OFTEN the index is read. An earlier
+# draft of this comment asserted "the index every time" and multiplied it out over twenty
+# sessions. No read was ever counted, and the instance rule that governs this repo says
+# the opposite — INDEX.md is read on demand. The threshold does not need the frequency:
+# cost-per-read and the hard context ceiling carry it on their own.
 #
 # 50,000 is therefore not "delete above this", it is "the topic split is now due": a root
 # index carrying one pointer line per topic plus what is genuinely open, and per-topic
