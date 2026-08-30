@@ -115,46 +115,51 @@ phase('Inventory')
 // the override it can only ever be proven on an instance that already ships the release
 // being tested, which is no proof.
 const LINT = A.lint || `${INSTANCE}/core/scripts/shared-memory-lint.py`
+const INV_FILE = `${A.scratch || REPORT_DIR}/.inventory-${DATE}.json`
+
+// The table goes to a FILE, and only its path travels. Two measured failures taught this,
+// both on real runs of this very workflow:
+//   1. an agent asked to "produce a compact table" returned ONE summary row for 141 files
+//      — schema satisfied, content worthless;
+//   2. an agent asked to run the command and pass the JSON through UNCHANGED returned
+//      count 141 with 22 of the 141 rows, and spent 115k tokens doing it.
+// The second is the instructive one: an agent is never a pipe. Anything it "passes on" it
+// regenerates token by token, so bulk data through a model is both lossy and expensive.
+// Bulk data belongs on disk; a model may carry a path, a count, a verdict — not a table.
 const inv = await agent(
-  `Run exactly this, once, and return its output UNCHANGED as your structured result:
+  `Run these two commands, in this order, and report only what they print:
 
-    python3 ${LINT} --repo ${SHARED} --inventory
+    mkdir -p "$(dirname ${INV_FILE})"
+    python3 ${LINT} --repo ${SHARED} --inventory > ${INV_FILE}
+    python3 -c "import json;d=json.load(open('${INV_FILE}'));print(d['count'], len(d['files']), d.get('index_bytes',0))"
 
-It prints JSON with count, files[] and logs[]. Do not summarize it, do not re-order it,
-do not drop rows: you are a pipe, not a reader. If the command fails, return count 0 and
-an empty files array so the run stops instead of guessing.`,
+Return the three numbers from the last command as count, rows and index_bytes, plus the
+file path. Do NOT read the JSON itself into your answer — it is large on purpose and the
+lenses read it from disk. If a command fails, return count 0.`,
   { label: 'inventory', phase: 'Inventory', model: 'haiku', schema: {
-    type: 'object', required: ['files', 'count'],
+    type: 'object', required: ['count', 'rows', 'path'],
     properties: {
-      count: { type: 'number' },
-      index_bytes: { type: 'number' },
-      files: {
-        type: 'array', maxItems: 400,
-        items: {
-          type: 'object', required: ['path'],
-          properties: {
-            path: { type: 'string' }, von: { type: 'string' }, type: { type: 'string' },
-            audience: { type: 'string' }, topic: { type: 'string' },
-            description: { type: 'string' }, indexed: { type: 'boolean' },
-          },
-        },
-      },
-      logs: { type: 'array', maxItems: 20, items: { type: 'object', properties: { path: { type: 'string' }, bytes: { type: 'number' } } } },
+      count: { type: 'number' }, rows: { type: 'number' },
+      index_bytes: { type: 'number' }, path: { type: 'string' },
     },
   } },
 )
 if (!inv) throw new Error('inventory agent failed')
-// A degenerate table is the failure this phase exists to prevent — catch it here rather
-// than letting four lenses burn their budget on it.
-if (!inv.files || inv.files.length < 2 || inv.count !== inv.files.length) {
-  throw new Error(`inventory looks degenerate (count=${inv.count}, rows=${(inv.files || []).length}) — expected one row per fact file; check that ${LINT} --inventory runs`)
+if (!inv.count || inv.count !== inv.rows) {
+  throw new Error(`inventory looks degenerate (count=${inv.count}, rows=${inv.rows}) — expected one row per fact file; check that ${LINT} --inventory runs`)
 }
-log(`${inv.count} files inventoried (deterministic)`)
+log(`${inv.count} files inventoried (deterministic, on disk at ${INV_FILE})`)
 
 // ── Phase 2: Analysis (four lenses, in parallel) ───────────────────────────
 // Judgment — session model. Each lens gets the inventory so it can target its reads.
 phase('Analysis')
-const TABLE = JSON.stringify(inv.files).slice(0, 60000)
+// The lenses read the table off disk themselves. Inlining it here would put ~90 KB into
+// four prompts and rebuild the transport problem the inventory phase just removed.
+const TABLE_NOTE = `FILE TABLE: ${INV_FILE} — JSON with count, files[] (path, von, type,
+audience, topic, description, indexed) and logs[], ${inv.count} rows, produced
+deterministically by the lint. READ IT FROM DISK (jq/python/Read) and use it to target
+which files you open in full. Do not assume its contents; do not re-derive it by walking
+the repo.`
 
 const LENSES = [
   {
@@ -195,7 +200,7 @@ asks a question of the other party with no visible answer anywhere (klass 'open-
 ]
 
 const analyses = (await parallel(LENSES.map(l => () =>
-  agent(`${COMMON}\n\nFILE TABLE (from the inventory, use it to target your reads):\n${TABLE}\n\n${l.prompt}`,
+  agent(`${COMMON}\n\n${TABLE_NOTE}\n\n${l.prompt}`,
     { label: `lens:${l.slug}`, phase: 'Analysis', schema: FINDINGS_SCHEMA }),
 ))).filter(Boolean)
 
