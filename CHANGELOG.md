@@ -7,6 +7,39 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+## 1.3.27 — 2026-08-30
+
+- **`scripts/shared-memory-lint.py` — the deterministic half of the shared-memory
+  tidy-up.** The operator ordered that tidy-up as a repeatable procedure rather than a
+  cleanup (2026-08-21): keep the shared memory compact, archive settled entries and
+  logs, make search hits efficient, keep what matters prominent. This is its machine
+  half; duplicates and contradictions stay judgment and belong to a read-only LLM pass,
+  the same split `memory-lint` and `memory-dream` already use. Not `memory-lint` with a
+  flag — a brain's auto-memory is flat, private, one index, one schema, while the shared
+  repo is nested by topic, written by several instances plus an external collaborator,
+  and carries append-only LOGs next to one-fact files; pointed at it, the flat linter
+  reports the folder structure itself as drift. Seven checks: index drift both ways,
+  frontmatter schema, name vs. filename, topic vs. folder, unresolved wikilinks, size
+  limits (index and LOG), archive candidates. The archive check never proposes a
+  deletion — it lists move candidates and keeps the index line.
+  **Ratchet, like `english-only.py`:** the audience/topic convention was decided WITH
+  the note that older files are legacy, not violations, so a plain check would be
+  permanently red and train everyone to ignore it. Enforced in both directions, and the
+  baseline lives IN the linted repo — that repo is private and this one is public, so a
+  baseline here would publish a hundred file paths of a private collaboration.
+  **Calibrated against the real repo, not guessed.** Four fixtures are false positives
+  the instrument produced first: a bash `[[ … ]]` snippet parsed as a wikilink; the
+  collaborator's verbatim skill copies linted as one-fact files (depth rule now: exactly
+  `<topic>/<slug>.md`); `metadata.type: decision` rejected because the schema had been
+  copied from the brain instead of read from that repo's own README; and an
+  entry-length cap picked by feel that flagged a fifth of all entries — the measured
+  distribution puts the runaway line at 1200, which flags five. Language markers are
+  data, not code (`.shared-memory-markers.txt`); the first draft carried an umlaut
+  variant that appears in zero real files and broke this repo's own English-only ratchet
+  on four CI jobs at once. 21 fixtures, both directions, wired into CI.
+  First real run: 139 files, 31 findings — 10 files unreachable from the index, 6 schema
+  breaks, 1 name mismatch, 8 links no collaborator can follow, 6 size items.
+
 ## 1.3.26 — 2026-08-30
 
 The carrier release, held back through the stability window and cut now that it is
