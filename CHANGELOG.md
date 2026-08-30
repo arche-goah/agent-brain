@@ -7,6 +7,26 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+## 1.3.29 — 2026-08-30
+
+- **Archiving is relevance-based, never age-based** (`shared-memory-lint.py`, operator
+  instruction). The check shipped in 1.3.27 was wrong twice over, and both errors point
+  the same way: it keyed on 120 days without a commit AND on a settled marker in the
+  file's own body — so an untouched three-year-old decision scored as archivable, and a
+  row saying "done" scored highest, when a settled decision is exactly the one somebody
+  has to be able to trace later. Age measures attention, not relevance; "done" marks a
+  record, not a leftover. The git-age helper is gone; no date enters this check at all.
+  What replaces it is a supersession RELATION — a sentence that supersedes AND names a
+  resolvable entry — and two things the real data taught while building it: the direction
+  is written both ways (a repo's convention may be the superseded file marking itself
+  rather than a successor announcing the replacement, so a one-directional check is blind
+  to the convention actually in use), and supersession is often PARTIAL, retiring some
+  sections of a file whose remainder still holds. The machine therefore reports the pair
+  and its evidence line and does not decide which side may move; that needs a reader who
+  can judge whether the content survives completely elsewhere. Deletion stays out of the
+  mandate at every level. 25 fixtures, four of them negative — settled-but-unsuperseded
+  stays put at any age.
+
 ## 1.3.28 — 2026-08-30
 
 - **`skills/shared-memory-tidy` + `workflows/shared-memory-dream.js` — the judging half
