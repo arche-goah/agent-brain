@@ -47,7 +47,7 @@ the backlog is invisible, and a register whose whole purpose is that "a class ne
 place where it stays open" quietly stops holding half its classes open. So: state the
 reason: `mechanizable: no — …` for a judgement only a human can make, or
 `mechanizable: tool — …` when a NAMED TOOL re-checks it instead of a grep (measured on
-the same register: several entries name effect-check.sh, statefile-readers.py or an MCP
+the same register: several entries name a bundled effect probe, a state-file report or an MCP
 verb in their `check` field — those are mechanized, just not by a pattern). Both report
 as deliberate. Leave the field off and the entry reports as `??` and is counted in a
 closing summary: held by prose alone.
