@@ -108,8 +108,24 @@ INLINE_CODE = re.compile(r"`[^`\n]*`")
 # whitespace, quotes or shell metacharacters is not a link — measured: `[[ "$(cat …)" ]]`
 # in a bash snippet parsed as a wikilink and was reported as a dead one.
 SLUGISH = re.compile(r"^[A-Za-z0-9._/-]+$")
-SETTLED = re.compile(
-    r"\b(UEBERHOLT|ÜBERHOLT|SUPERSEDED|ERLEDIGT|RESOLVED|ABGESCHLOSSEN|OBSOLET)\b")
+# Markers a file uses to say IT IS SETTLED. Language DATA, not logic — the linted repo
+# may set its own list in `.shared-memory-markers.txt` (one token per line). The defaults
+# below cover English plus the ASCII-transliterated German this repo actually writes;
+# measured before including them: UEBERHOLT appears in 5 files, the umlaut spelling in
+# zero, so the umlaut variant was a guess and is gone. That also keeps this file inside
+# the repo's English-only ratchet, which the umlaut broke on four CI jobs at once.
+SETTLED_DEFAULT = ["SUPERSEDED", "RESOLVED", "OBSOLETE",
+                   "UEBERHOLT", "ERLEDIGT", "ABGESCHLOSSEN", "OBSOLET"]
+MARKERS_NAME = ".shared-memory-markers.txt"
+
+
+def settled_re(repo: Path) -> "re.Pattern[str]":
+    try:
+        toks = [ln.strip() for ln in (repo / MARKERS_NAME).read_text(encoding="utf-8")
+                .splitlines() if ln.strip() and not ln.startswith("#")]
+    except FileNotFoundError:
+        toks = []
+    return re.compile(r"\b(" + "|".join(re.escape(t) for t in (toks or SETTLED_DEFAULT)) + r")\b")
 
 
 def frontmatter(text: str) -> dict | None:
@@ -205,6 +221,7 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
     rels = {str(p.relative_to(repo)) for p in files}
     stems = {p.stem for p in files}
     baseline = load_baseline(baseline_path or baseline_for(repo))
+    settled = settled_re(repo)
 
     # 1. index drift — both directions. Index links are repo-relative paths here,
     # not bare stems: the repo is nested, and two topics may hold the same slug.
@@ -297,7 +314,7 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
 
         # 7. archive candidates — settled AND cold. Either alone is not enough: a
         # finding closed yesterday is still what everyone is reading this week.
-        if SETTLED.search(text):
+        if settled.search(text):
             age = last_touched_days(repo, rel)
             if age is not None and age >= ARCHIVE_STALE_DAYS:
                 f["archive"].append({"file": rel, "days_since_last_commit": age,

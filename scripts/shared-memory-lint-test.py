@@ -226,6 +226,14 @@ def main() -> int:
                         "user.name=t", "commit", "-qm", "fresh"], check=False)
         check("19 settled but recent stays put", run(repo), "archive", 1)  # only the old one
 
+        # 20. the marker list is DATA: a repo that names its own tokens gets those and
+        #     only those. Same lesson as the recall-gate word lists — a language list
+        #     baked into an English-only core is both wrong and unshippable.
+        (repo / sml.MARKERS_NAME).write_text("ZZZ-NO-SUCH-MARKER\n", encoding="utf-8")
+        check("20 repo replaces the marker list", run(repo), "archive", 0)
+        (repo / sml.MARKERS_NAME).unlink()
+        check("21 default markers back in force", run(repo), "archive", 1)
+
     return 1 if fails else 0
 
 
