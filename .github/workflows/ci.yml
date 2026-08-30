@@ -73,6 +73,8 @@ jobs:
         run: python3 scripts/memory-lint-test.py
       - name: shared-memory-lint fixtures (ratchet + the measured false positives)
         run: python3 scripts/shared-memory-lint-test.py
+      - name: invariant-check fixtures (drift + the backlog it used to hide)
+        run: python3 scripts/invariant-check-test.py
       - name: recall-gate fixtures (both directions + record mode)
         run: bash scripts/test-recall-gate.sh
       - name: transcript-recall fixtures
