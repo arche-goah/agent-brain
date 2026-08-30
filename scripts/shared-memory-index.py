@@ -128,7 +128,7 @@ def build(repo: Path) -> tuple[str, dict[str, str], list[dict]]:
                  f"is GENERATED (scripts/shared-memory-index.py), do not hand-edit.", ""]
         for e in sorted(es, key=lambda x: x["name"]):
             disc = first_sentence(e["desc"], DISCRIMINATOR_CHARS)
-            addr = f" · für: {e['audience']}" if e["audience"] else ""
+            addr = f" · for: {e['audience']}" if e["audience"] else ""
             lines.append(f"- [{title_of(e)}](../{e['path']}) — {disc}{addr}")
         topic_files[topic] = "\n".join(lines) + "\n"
 
