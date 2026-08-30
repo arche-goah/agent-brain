@@ -7,6 +7,41 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+## 1.3.30 — 2026-08-30
+
+- **`scripts/shared-memory-index.py` — the shared index is generated, three levels,
+  routing-first.** Measured on the real repo: the hand-written index was 91,029 chars
+  across 142 entries, of which only 16 % was title and path. The other 84 % was
+  descriptive prose that every one of those files already carries in its frontmatter —
+  a hand-maintained second copy, exactly what the project-ledger rule forbids, and it
+  had drifted: ten substantive files were reachable only by walking the folders. Root
+  routes by topic (1,679 chars), the topic index routes by entry, the file holds the
+  text. A lookup costs 20,189 chars (~5k tokens) instead of 91,185 (~22.8k). Nothing is
+  invented or shortened — the discriminator is the file's own description cut at a
+  sentence boundary — and index lines pointing outside the managed shape are carried
+  through verbatim, measured before the first write because one such line existed. No
+  "still open" section: 71 of 142 files carry a priority marker, so it would flag half
+  the corpus, and no field in that repo reliably says "needs someone". Open work stays
+  in the ledgers rather than becoming a third drifting list.
+- **`shared-memory-lint.py` follows topic sub-indexes**, and an `INDEX.md` at any depth
+  is an index rather than an entry. Generating the split broke the linter the same way
+  `memory-lint` broke before #79 — third repo, same invariant: every consumer of the
+  index STRUCTURE has to know sub-indexes exist, not only the one fixed first.
+- **`invariant-check.py` separates "cannot be mechanized" from "not mechanized yet".**
+  Measured on a real register: 43 entries, 8 with a pattern, 35 printed identically as
+  `-- external`. One symbol for three states — a class that cannot be greppable (the
+  search term is in the change, not the register), a class a named TOOL re-checks, and a
+  class nobody has mechanized yet. The third is a backlog, and printed like the others
+  it was invisible: a register whose purpose is that "a class needs a place where it
+  stays open" had stopped holding 81 % of its classes open. Now `mechanizable: no — …`
+  or `mechanizable: tool — …` records the decision, and its absence reports as `??` with
+  a closing count.
+- **The runner got its first fixture**, which had made it an instance of an invariant its
+  own register carries — "a mechanism without a fixture is an assertion about itself".
+  Seven cases wired into CI, four negative: a stated reason must not count as backlog,
+  `mechanizable` must not silence a real pattern, an open entry must still print its
+  verdict, and the tool state must not count as backlog either.
+
 ## 1.3.29 — 2026-08-30
 
 - **Archiving is relevance-based, never age-based** (`shared-memory-lint.py`, operator
