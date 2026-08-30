@@ -328,6 +328,43 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
     return {"findings": f, "counts": {k: len(v) for k, v in f.items()}, "scanned": len(files)}
 
 
+def inventory(repo: Path) -> dict:
+    """The repo's file table as DATA — path, von, type, audience, topic, description,
+    indexed yes/no, plus the LOGs and their sizes.
+
+    Why this lives here and not in a prompt: the judging pass needs this table so its
+    lenses can target their reads, and an agent asked to produce it can satisfy the
+    schema with a one-row SUMMARY of the repo instead of a row per file. That is not a
+    hypothetical — it is what the first real run returned (count: 1, path: the repo
+    root), leaving four analysis lenses working from nothing. Enumeration is mechanical,
+    so it belongs to the machine; the agent that calls this only has to pass the output
+    on unchanged."""
+    idx = (repo / INDEX)
+    index_text = idx.read_text(encoding="utf-8", errors="replace") if idx.is_file() else ""
+    linked = set(INDEX_LINK.findall(index_text))
+    rows = []
+    for p in fact_files(repo):
+        rel = str(p.relative_to(repo))
+        fm = frontmatter(p.read_text(encoding="utf-8", errors="replace")) or {}
+        meta = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
+        rows.append({
+            "path": rel,
+            "von": meta.get("von") or fm.get("von") or "",
+            "type": meta.get("type") or "",
+            "audience": meta.get("audience") or fm.get("audience") or "",
+            "topic": meta.get("topic") or "",
+            "description": (fm.get("description") or "")[:240],
+            "indexed": rel in linked,
+        })
+    logs = []
+    for log in sorted(repo.rglob(LOG_NAME)):
+        if ".git" in log.relative_to(repo).parts:
+            continue
+        logs.append({"path": str(log.relative_to(repo)), "bytes": log.stat().st_size})
+    return {"count": len(rows), "files": rows, "logs": logs,
+            "index_bytes": len(index_text.encode("utf-8"))}
+
+
 def write_baseline(repo: Path, baseline_path: Path | None = None) -> int:
     """Freeze the CURRENT set of files missing convention fields. Run once, at
     introduction — afterwards the list may only shrink, which is the whole point."""
@@ -352,6 +389,8 @@ def main() -> int:
     ap.add_argument("--repo", type=Path, default=REPO_DEFAULT)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--write-baseline", action="store_true")
+    ap.add_argument("--inventory", action="store_true",
+                    help="emit the file table as JSON and exit (no findings, always 0)")
     ap.add_argument("--baseline", type=Path, default=None,
                     help=f"ratchet baseline (default: <repo>/{BASELINE_NAME})")
     a = ap.parse_args()
@@ -359,6 +398,9 @@ def main() -> int:
     if not a.repo.is_dir():
         print(f"ERROR: shared-memory repo not found: {a.repo}", file=sys.stderr)
         return 2
+    if a.inventory:
+        print(json.dumps(inventory(a.repo), indent=1, ensure_ascii=False))
+        return 0
     if a.write_baseline:
         return write_baseline(a.repo, a.baseline)
 

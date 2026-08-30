@@ -234,6 +234,23 @@ def main() -> int:
         (repo / sml.MARKERS_NAME).unlink()
         check("21 default markers back in force", run(repo), "archive", 1)
 
+        # 22. --inventory is a TABLE, one row per fact file. This exists because the
+        #     judging workflow had an agent produce it and got back a single summary row
+        #     for the whole repo — schema satisfied, four lenses left with nothing.
+        inv = sml.inventory(repo)
+        facts = sml.fact_files(repo)
+        if inv["count"] == len(facts) == len(inv["files"]) and len(facts) > 1:
+            ok(f"22 inventory has one row per fact file ({inv['count']})")
+        else:
+            bad(f"22 inventory row count {inv['count']} vs {len(facts)} fact files")
+
+        # 23. and the rows carry the fields the lenses target their reads with
+        row = next((r for r in inv["files"] if r["path"] == "ops/alpha.md"), None)
+        if row and row["von"] == "emil-macos" and row["topic"] == "ops" and row["indexed"]:
+            ok("23 inventory row carries von / topic / indexed")
+        else:
+            bad(f"23 inventory row incomplete: {row}")
+
     return 1 if fails else 0
 
 

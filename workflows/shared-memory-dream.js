@@ -102,31 +102,36 @@ const FINDINGS_SCHEMA = {
 }
 
 // ── Phase 1: Inventory ─────────────────────────────────────────────────────
-// Counting and tabulating — small model (model routing rule).
+// DETERMINISTIC, not judged: `shared-memory-lint.py --inventory` emits the table.
+//
+// This was an agent once, and the first real run showed why it must not be: asked for
+// "a compact table of the repo", it returned ONE row — path = the repo root, count = 1,
+// a tidy summary that satisfied the schema perfectly — and four analysis lenses then ran
+// on nothing. Enumeration is mechanical, so the machine does it and the agent only
+// carries the output across. Same principle the lint itself is built on.
 phase('Inventory')
+const LINT = `${INSTANCE}/core/scripts/shared-memory-lint.py`
 const inv = await agent(
-  `${COMMON}
+  `Run exactly this, once, and return its output UNCHANGED as your structured result:
 
-INVENTORY ONLY, no judgment. Produce a compact table of the repo so the analysis lenses do
-not each re-read everything:
-- every <topic>/<slug>.md: path, metadata.von, metadata.type, metadata.audience, and the
-  description line (shortened to ~200 chars)
-- which files INDEX.md links, and which it does not
-- the LOG.md files with their sizes
-Run Bash commands individually/atomically. Read frontmatter with head/sed, do not open
-whole files here.`,
+    python3 ${LINT} --repo ${SHARED} --inventory
+
+It prints JSON with count, files[] and logs[]. Do not summarize it, do not re-order it,
+do not drop rows: you are a pipe, not a reader. If the command fails, return count 0 and
+an empty files array so the run stops instead of guessing.`,
   { label: 'inventory', phase: 'Inventory', model: 'haiku', schema: {
     type: 'object', required: ['files', 'count'],
     properties: {
       count: { type: 'number' },
+      index_bytes: { type: 'number' },
       files: {
-        type: 'array', maxItems: 250,
+        type: 'array', maxItems: 400,
         items: {
           type: 'object', required: ['path'],
           properties: {
             path: { type: 'string' }, von: { type: 'string' }, type: { type: 'string' },
-            audience: { type: 'string' }, description: { type: 'string' },
-            indexed: { type: 'boolean' },
+            audience: { type: 'string' }, topic: { type: 'string' },
+            description: { type: 'string' }, indexed: { type: 'boolean' },
           },
         },
       },
@@ -135,7 +140,12 @@ whole files here.`,
   } },
 )
 if (!inv) throw new Error('inventory agent failed')
-log(`${inv.count} files inventoried`)
+// A degenerate table is the failure this phase exists to prevent — catch it here rather
+// than letting four lenses burn their budget on it.
+if (!inv.files || inv.files.length < 2 || inv.count !== inv.files.length) {
+  throw new Error(`inventory looks degenerate (count=${inv.count}, rows=${(inv.files || []).length}) — expected one row per fact file; check that ${LINT} --inventory runs`)
+}
+log(`${inv.count} files inventoried (deterministic)`)
 
 // ── Phase 2: Analysis (four lenses, in parallel) ───────────────────────────
 // Judgment — session model. Each lens gets the inventory so it can target its reads.
