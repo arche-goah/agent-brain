@@ -71,6 +71,8 @@ jobs:
         run: python3 scripts/freshness-gate-test.py
       - name: memory-lint fixtures (sub-index contract)
         run: python3 scripts/memory-lint-test.py
+      - name: shared-memory-lint fixtures (ratchet + the measured false positives)
+        run: python3 scripts/shared-memory-lint-test.py
       - name: recall-gate fixtures (both directions + record mode)
         run: bash scripts/test-recall-gate.sh
       - name: transcript-recall fixtures
