@@ -7,6 +7,42 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+## 1.3.28 — 2026-08-30
+
+- **`skills/shared-memory-tidy` + `workflows/shared-memory-dream.js` — the judging half
+  of the shared-memory tidy-up.** The machine half shipped in 1.3.27; this is what needs
+  reading rather than counting. Four lenses in parallel (overlap, collision, currency,
+  findability), then adversarial verification whose default is "not a finding", then a
+  report grouped by **owner** — `us` / `other-party` / `both` / `operator` — rather than
+  by severity, because with a second author the question "whose call is this?" decides
+  more than "how bad is it?". Rewriting the other party's entry to tidy an index costs
+  more trust than a noisy index costs time. Deletion is not in the mandate at any level;
+  the strongest proposal is ARCHIVE or MERGE, with a pointer left behind. Three
+  misjudgments are built out on purpose, all real shapes in that repo: a
+  question/answer/follow-up thread across both sides is the collaboration working, not a
+  duplicate; two entries that disagree are usually two machines or two versions, so every
+  collision finding must name the condition under which BOTH are right and only one that
+  cannot scores P1; an entry labelling itself a snapshot is not stale for saying so.
+- **Bulk data never accumulates in the orchestrator** — the architectural rule this
+  workflow was rebuilt around, after four measured failures of the same family on four
+  real runs. A workflow script has no filesystem access, so anything the orchestrator
+  holds can reach the next agent only through a prompt, and an agent handed bulk in a
+  prompt regenerates it and drops rows silently, with a correct-looking count beside the
+  truncated array. Measured: a tool table came back as 1 row of 141; the same table
+  relayed "unchanged" came back as 22 of 141 at 115k tokens; a staging agent told to
+  write the JSON it had been given wrote 2 verified and ZERO of 51 unverified. The rule
+  that holds is narrower than "write a file": only what an agent PRODUCED can it write,
+  so the producer writes and only pointers, counts and titles cross. Each lens now writes
+  its own findings file and returns a thin, schema-validated index; verify agents are
+  told which entry of which file to read and pointedly NOT given the finding.
+  Consequence found on the next run and fixed here: moving findings into agent-written
+  files bought completeness and cost validation — two of four lenses wrote `owner` as
+  free prose and the routing tally counted a person as an owner class — so the index
+  carries the enum, and routing stays constrained even when the file's prose drifts.
+- Counts a model is asked for are assertions; the same counts computed in the script are
+  measurements. `by_owner` is now reduced from the verified array (`coherence-scan.js`
+  has carried the same guard for its register numbers all along).
+
 ## 1.3.27 — 2026-08-30
 
 - **`scripts/shared-memory-lint.py` — the deterministic half of the shared-memory
