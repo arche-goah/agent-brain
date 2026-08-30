@@ -17,7 +17,7 @@ below, installed at USER level via `scripts/install-statusline.sh`) and
 | freshness-gate.cjs | PreToolUse (Workflow) | repeat-run rule carrier: fresh completed run of the same workflow → read artifacts instead of relaunching; thresholds instance data (`.claude/rules/freshness-gate.json`) |
 | junk-cleaner.cjs | PostToolUse (Bash) | cleans up junk files |
 | stop-verifier.cjs | Stop | verification reminder |
-| recall-gate.cjs | Stop (via stop-dispatcher, `stop-checks.json`) | research without a carrier: live-research tool calls above threshold with nothing persisted since → one question; `--record` for precision measurement; tool/path patterns instance data (`.claude/rules/recall-tools.json`); read side = `scripts/transcript-recall.py` |
+| recall-gate.cjs | Stop (via stop-dispatcher, `stop-checks.json`) | knowledge without a carrier, two triggers: live-research tool calls above threshold, OR verification CLAIMS in the agent's own text (a verification verb AND a discovery object in the same block, `verifyThreshold` of them) — either one with nothing persisted since → one question; `--record` for precision measurement; tool patterns, word lists and persistence paths are instance data (`.claude/rules/recall-tools.json`, English defaults, config replaces rather than extends); read side = `scripts/transcript-recall.py` |
 | notify.cjs | PostToolUse (Agent/Task) + Notification | sound on agent end / permission question |
 | statusline.cjs | statusLine (NOT a hook; user-level `~/.claude/settings.json`) | footer: model, 5h/7d rate-limit remaining with reset countdown, context % — install: `scripts/install-statusline.sh` |
 
