@@ -215,7 +215,12 @@ def fact_files(repo: Path) -> list[Path]:
             continue
         if len(rel.parts) != 2:            # root docs and nested attachments
             continue
-        if rel.name == LOG_NAME:
+        # A per-topic INDEX.md is an INDEX, not an entry — same shape as memory-lint's
+        # index-<topic>.md rule, and the same lesson landing in a third repo: every
+        # consumer of the index STRUCTURE has to know that sub-indexes exist. Without
+        # this, generating the two-level index made the linter report all 142 entries as
+        # missing from the index and the five new topic indexes as schema-less files.
+        if rel.name in (LOG_NAME, INDEX):
             continue
         out.append(p)
     return out
@@ -242,7 +247,21 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
     # 1. index drift — both directions. Index links are repo-relative paths here,
     # not bare stems: the repo is nested, and two topics may hold the same slug.
     linked = {m for m in INDEX_LINK.findall(index_text)}
-    linked_files = {ln for ln in linked if not ln.endswith("/")}
+    # SUB-INDEXES: a `<topic>/INDEX.md` the root links is itself an index, so what IT
+    # lists counts as indexed. One level deep, no recursion — the same rule memory-lint
+    # already carries for `index-<topic>.md`, and the same lesson arriving in a third
+    # place: every consumer of the index STRUCTURE must know sub-indexes exist, not just
+    # the one that was fixed first. Without this, splitting the index by topic made all
+    # 142 entries read as missing from the index.
+    for sub in sorted(ln for ln in linked if ln.endswith(f"/{INDEX}")):
+        sub_path = repo / sub
+        if not sub_path.is_file():
+            continue
+        sub_dir = Path(sub).parent
+        for m in INDEX_LINK.findall(sub_path.read_text(encoding="utf-8", errors="replace")):
+            # topic index lines point back up with `../<topic>/<slug>.md`
+            linked.add(os.path.normpath(os.path.join(str(sub_dir), m)).replace("\\", "/"))
+    linked_files = {ln for ln in linked if not ln.endswith("/") and not ln.endswith(INDEX)}
     for miss in sorted(linked_files - rels):
         # A link into archive/ or to a root doc is legitimate, just not a fact file.
         if (repo / miss).is_file():
