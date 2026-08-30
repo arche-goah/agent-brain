@@ -260,13 +260,36 @@ const unverified = dropped.map(f => ({ ...f, verdict: 'NOT VERIFIED — verify c
 
 // ── Phase 4: Report ────────────────────────────────────────────────────────
 phase('Report')
+
+// Findings go to a FILE, like the inventory, and for the same reason — measured on the
+// first complete run of this workflow: the unverified list was inlined into this prompt
+// with a .slice(0, 12000), 51 findings became the 6 that fitted, and the report then
+// stated "6 unverified" in perfectly confident prose. Same silent truncation as the
+// inventory phase, one function further down, and it survived a class sweep that only
+// looked for the inventory shape. The boundary is what matters, not the direction:
+// bulk data crossing an agent boundary either way goes through disk.
+const DATA_FILE = `${A.scratch || REPORT_DIR}/.findings-${DATE}.json`
+const dataAgent = await agent(
+  `Write this JSON to ${DATA_FILE} exactly as given (mkdir -p its directory first), then
+print the byte size of the written file. Do not reformat or abridge it.
+
+${JSON.stringify({ verified, unverified, lens_summaries: analyses.map(a => a.summary) })}`,
+  { label: 'stage-findings', phase: 'Report', model: 'haiku', schema: {
+    type: 'object', required: ['bytes'], properties: { bytes: { type: 'number' } } } },
+)
+if (!dataAgent || !dataAgent.bytes) throw new Error('staging the findings file failed')
+
 const rep = await agent(
   `Write the shared-memory tidy-up report to ${REPORT} (mkdir -p ${REPORT_DIR} first). Date: ${DATE}.
 
-DATA (verified findings, JSON): ${JSON.stringify(verified).slice(0, 50000)}
-UNVERIFIED findings (verify cap reached — list them in a clearly marked section of their
-own, never mixed in with the verified ones): ${JSON.stringify(unverified).slice(0, 12000)}
-Lens summaries: ${JSON.stringify(analyses.map(a => a.summary)).slice(0, 4000)}
+DATA: ${DATA_FILE} — read it from disk. It holds three keys: \`verified\` (${verified.length}
+findings that survived adversarial verification), \`unverified\` (${unverified.length} findings
+the verify cap never reached) and \`lens_summaries\`. These counts are authoritative: if what
+you read disagrees with them, say so in the report rather than reconciling it silently.
+
+COUNTS you must state and must not recompute: ${raw.length} raw findings from
+${analyses.length} lenses, ${toVerify.length} sent to verification, ${verified.length} stood,
+${unverified.length} never verified because the cap was ${VERIFY_CAP}.
 
 Structure:
 1. one paragraph: what was audited, how many files, how many raw findings, how many were
@@ -281,20 +304,30 @@ Structure:
 
 The report is a PROPOSAL DOCUMENT. Nothing in it is executed by this run. Write it in the
 instance's language as found in ${INSTANCE}/CLAUDE.md.
-Return: report_path, finding_count, by_owner counts.`,
+Return: report_path only.`,
   { label: 'report', phase: 'Report', schema: {
-    type: 'object', required: ['report_path', 'finding_count'],
-    properties: {
-      report_path: { type: 'string' }, finding_count: { type: 'number' },
-      us: { type: 'number' }, other_party: { type: 'number' }, operator: { type: 'number' },
-    },
+    type: 'object', required: ['report_path'],
+    properties: { report_path: { type: 'string' } },
   } },
 )
 if (!rep) throw new Error('report agent failed')
 
+// Counted here, not asked for. The first complete run had the report agent return
+// by_owner {us: 2, other_party: 5, operator: 0} — summing to 7 next to a verified count
+// of 2, because it had tallied the unverified section in as well. A number a model is
+// asked to produce is an assertion; the same number computed from the data is a
+// measurement, and this one costs a reduce.
+const byOwner = verified.reduce((acc, f) => {
+  const k = f.owner || 'unknown'
+  acc[k] = (acc[k] || 0) + 1
+  return acc
+}, {})
+
 return {
   report: rep.report_path,
   raw: raw.length,
+  sent_to_verify: toVerify.length,
   verified: verified.length,
-  by_owner: { us: rep.us || 0, other_party: rep.other_party || 0, operator: rep.operator || 0 },
+  unverified: unverified.length,
+  by_owner: byOwner,
 }
