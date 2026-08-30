@@ -1,3 +1,8 @@
+// FRESHNESS-OK: the prior run's artifacts answer what is IN the shared repo; they cannot
+// answer whether the restructured data path carries the findings intact, because they were
+// produced by the old one. Under the old structure the report received 6 of 51 unverified
+// findings and stated '6' as fact. What this run has to show is a lens file per lens whose
+// finding count matches its returned index, and unverified reaching the report complete.
 export const meta = {
   name: 'shared-memory-dream',
   description: 'Judgment pass over the shared-memory repo (read-only): duplicates, contradictions, superseded entries, buried open points — report with proposals, no fixes',
@@ -226,7 +231,17 @@ const LENS_INDEX_SCHEMA = {
           i: { type: 'number', description: 'position in the findings array in the file' },
           severity: { type: 'string', enum: ['P0', 'P1', 'P2', 'INFO'] },
           klass: { type: 'string' }, title: { type: 'string' },
-          owner: { type: 'string' },
+          // ENUM ON PURPOSE, and it is the whole reason the index exists as a separate
+          // thing. Moving the findings into agent-written FILES bought completeness and
+          // cost validation: a file is written freehand, so FINDINGS_SCHEMA below is
+          // only a description there, not a constraint. Measured on the first run of the
+          // restructured pass — two of four lenses wrote owner as free prose
+          // ("emil-macos (author of the entry; blurredvision-win co-signed …)"), and
+          // by_owner, which routes who may act, counted "emil-macos" as an owner class.
+          // The index IS schema-validated, so the routing-critical field is constrained
+          // here even when the prose in the file drifts.
+          owner: { type: 'string', enum: ['us', 'other-party', 'operator', 'both'],
+                   description: 'One of the four routing classes, NOT a person or instance name. Who wrote the entry belongs in the finding itself, not here.' },
         },
       },
     },
@@ -244,7 +259,13 @@ OUTPUT — two steps, in this order:
 2. RETURN only: the path, how many findings you wrote, your summary, and a thin index —
    one entry per finding with its position i (0-based, matching the array in the file),
    severity, klass, title and owner. The index is a table of contents, not a copy: no
-   claims, no quotes, no proposals in it.`,
+   claims, no quotes, no proposals in it.
+
+\`owner\` — in the file AND in the index — is exactly one of \`us\`, \`other-party\`,
+\`operator\`, \`both\`. It is a ROUTING class, not a name: it answers who may act, not who
+wrote the entry. WHO wrote it goes in the finding's sources (\`von\`). Writing
+"emil-macos (author, …)" there breaks the report's grouping, which is the one thing that
+decides what gets done and what only gets proposed.`,
     { label: `lens:${l.slug}`, phase: 'Analysis', schema: LENS_INDEX_SCHEMA })
     .then(r => (r && r.count && r.index && r.index.length === r.count
       ? { ...r, slug: l.slug }
