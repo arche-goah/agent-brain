@@ -123,9 +123,13 @@ const INV_FILE = `${A.scratch || REPORT_DIR}/.inventory-${DATE}.json`
 //      — schema satisfied, content worthless;
 //   2. an agent asked to run the command and pass the JSON through UNCHANGED returned
 //      count 141 with 22 of the 141 rows, and spent 115k tokens doing it.
-// The second is the instructive one: an agent is never a pipe. Anything it "passes on" it
-// regenerates token by token, so bulk data through a model is both lossy and expensive.
-// Bulk data belongs on disk; a model may carry a path, a count, a verdict — not a table.
+// The second is the instructive one: an agent asked to "pass data through" does not pipe
+// it, it regenerates it token by token — and the truncation was SILENT, the count field
+// staying right while the array was cut. How general that is has not been measured here:
+// both observations are one model tier (haiku), one schema shape, ~90 KB, and no
+// threshold was looked for. What the fix rests on is weaker and enough — routing bulk
+// data through a file removes the failure class wherever the threshold sits, and costs
+// nothing. A model carries a path, a count, a verdict; the table goes on disk.
 const inv = await agent(
   `Run these two commands, in this order, and report only what they print:
 
