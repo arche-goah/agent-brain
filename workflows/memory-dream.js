@@ -24,6 +24,9 @@ const REPORT = `${REPORT_DIR}/report-${DATE}.md`
 
 const COMMON = `You are a memory audit agent. STRICTLY READ-ONLY — you change NOTHING, you propose.
 Audit object: ${MEMDIR}/ (MEMORY.md = index, remaining *.md = 1 fact each).
+SUB-INDEXES: a file named index-<topic>.md that MEMORY.md links to is ITSELF an index — the entries
+it lists are indexed, not orphaned. Read every linked sub-index before calling anything an orphan or
+unindexed (one level only). Same rule as scripts/memory-lint.py.
 EXCEPTION RULE (operator directive 2026-07-31): session-log/decision-log in the repo are append-only PROTOCOLS
 — memories MAY point at them, but never report "clean up the log". Every finding needs
 file + evidence (quote or measurement). Return value = raw data via StructuredOutput.`
