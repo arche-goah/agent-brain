@@ -36,7 +36,13 @@ directly, changes go via auto-memory + memory-sync export.
 Read the MEMORY.md index file. Check:
 - Total line count (warn if >150, critical if >200)
 - Broken links (files referenced but don't exist)
-- Orphan files (exist in memory/ but not in MEMORY.md)
+- Orphan files (exist in memory/ but not in MEMORY.md **or in a sub-index it links**)
+
+**Sub-indexes:** a file named `index-<topic>.md` that MEMORY.md links to is itself an
+index — the entries it lists are indexed, not orphaned. Read every linked sub-index
+before calling anything an orphan, or a brain that split a topic out will report its
+whole topic as orphans (one level only: a sub-index linking another sub-index is not
+followed). This is the same rule `scripts/memory-lint.py` enforces mechanically.
 
 ### Step 2: Read All Memory Files
 Read every .md file in the memory directory. For each check:
