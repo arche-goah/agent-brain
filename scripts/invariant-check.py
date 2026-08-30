@@ -23,6 +23,7 @@ Register format (Markdown, blocks starting at '## '):
     pattern:   ERE for grep -rnE           | OR
     check:     <external, e.g. a tool>     | when no grep covers the space
     paths:     grep arguments after the pattern
+    mechanizable: no|tool — <reason>       # DELIBERATELY not a grep, see below
     known:     path=N path=N               # baseline: hits per file
     instances: 3                           # REAL sites of the class (human count)
     repeat:    yes|no                      # did it come back after a fix?
@@ -31,6 +32,25 @@ Register format (Markdown, blocks starting at '## '):
 
 `known` catches newcomers (drift); `instances` decides the build threshold:
 1 site = done · 2 = fix both, no mechanism · >=3 or repeat = build a mechanism.
+
+WHY `mechanizable` exists (measured on a real register 2026-08-30): of 43 entries, 8
+carried a pattern and 35 did not — and the report printed all 35 identically, as
+`--  external: <check text>`. That collapses two different states into one symbol:
+
+  * an invariant that CANNOT be mechanized, because the search term is different every
+    time (B-1: "grep the load-bearing nouns of whatever rule just changed" — the word is
+    in the change, not in the register), and
+  * an invariant that simply has not been mechanized YET.
+
+The first is a finished decision; the second is a backlog item. Printed the same way,
+the backlog is invisible, and a register whose whole purpose is that "a class needs a
+place where it stays open" quietly stops holding half its classes open. So: state the
+reason: `mechanizable: no — …` for a judgement only a human can make, or
+`mechanizable: tool — …` when a NAMED TOOL re-checks it instead of a grep (measured on
+the same register: several entries name effect-check.sh, statefile-readers.py or an MCP
+verb in their `check` field — those are mechanized, just not by a pattern). Both report
+as deliberate. Leave the field off and the entry reports as `??` and is counted in a
+closing summary: held by prose alone.
 """
 import fnmatch
 import os
@@ -40,7 +60,7 @@ import sys
 from pathlib import Path
 
 FIELDS = ("invariant", "pattern", "check", "paths", "known", "instances", "repeat",
-          "status", "note")
+          "status", "note", "mechanizable")
 
 OPEN_STATES = ("offen", "open")
 
@@ -130,6 +150,7 @@ def verdict(b):
 
 def main(argv):
     bad = 0
+    unmechanized = []
     for reg in argv or ["docs/maintenance/invariants.md"]:
         regp = Path(reg).resolve()
         root, blocks = parse(regp)
@@ -138,7 +159,18 @@ def main(argv):
         for b in blocks:
             head = f"{b['id']}  [{b.get('status', '?')}]"
             if not b.get("pattern"):
-                print(f"  --  {head}\n      external: {b.get('check', '(no check on file)')}")
+                why = b.get("mechanizable", "").strip()
+                kind = why.split(None, 1)[0].lower().rstrip(":—-") if why else ""
+                if kind in ("no", "tool"):
+                    label = ("external by decision" if kind == "no"
+                             else "mechanized by a tool")
+                    print(f"  --  {head}\n      {label}: {why}")
+                else:
+                    # No pattern AND no stated reason: a backlog item, not a decision.
+                    unmechanized.append(b["id"])
+                    print(f"  ??  {head}\n      no pattern and no reason — mechanize it, "
+                          f"or record `mechanizable: no — <why>`")
+                print(f"      check: {b.get('check', '(no check on file)')}")
                 if b.get("status") in OPEN_STATES:
                     print(f"      -> {verdict(b)}")
                 continue
@@ -165,6 +197,14 @@ def main(argv):
                 print(f"  ok  {head}  ({sum(now.values())} hits in {len(now)} files)")
             if b.get("status") in OPEN_STATES:
                 print(f"      -> {verdict(b)}")
+
+    if unmechanized:
+        # Printed as a count, because a backlog buried in per-entry lines is a backlog
+        # nobody reads — the same reason this distinction was introduced at all.
+        print(f"\n  {len(unmechanized)} invariant(s) with neither a pattern nor a stated "
+              f"reason — they are held by prose alone:")
+        for i in unmechanized:
+            print(f"    ?? {i}")
     return bad
 
 
