@@ -268,7 +268,14 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
             continue
         f["index_drift"].append({"issue": "index points to a missing file", "target": miss})
     for miss in sorted(rels - linked_files):
-        f["index_drift"].append({"issue": "file not in the index", "file": miss})
+        # Name the REMEDY, not just the defect. The index is generated
+        # (shared-memory-index.py), so "add a line by hand" is the wrong instinct and the
+        # reason this drift existed at all: ten files had been missed by hand-maintenance.
+        # Naming the generator here is also its trigger — the finding is what tells a
+        # reader to run it.
+        f["index_drift"].append({"issue": "file not in the index", "file": miss,
+                                 "fix": "run scripts/shared-memory-index.py (the index is "
+                                        "generated; do not add the line by hand)"})
 
     # 6a. index size and entry length
     idx_bytes = len(index_text.encode("utf-8"))
