@@ -291,6 +291,22 @@ def main() -> int:
         else:
             bad(f"27 topic index treated as a fact file: {c}")
 
+
+        # 28. the drift finding must NAME its remedy. That sentence is the generator's
+        #     trigger: the tool is hand-run, so the only thing that can send someone to it
+        #     is the finding itself. Without this the generator is a carrier with no
+        #     trigger — the class the register calls exactly that.
+        (repo / "ops" / "INDEX.md").unlink(missing_ok=True)
+        idx.write_text(keep, encoding="utf-8")
+        (repo / "ops" / "nudge.md").write_text(fm("nudge"), encoding="utf-8")
+        b2 = tmp / "empty-baseline.txt"
+        res = sml.lint(repo, b2)["findings"]["index_drift"]
+        if res and any("shared-memory-index.py" in (f.get("fix") or "") for f in res):
+            ok("28 drift finding names the generator as its remedy")
+        else:
+            bad(f"28 remedy not named: {res[:1]}")
+        (repo / "ops" / "nudge.md").unlink()
+
     return 1 if fails else 0
 
 
