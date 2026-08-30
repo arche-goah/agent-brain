@@ -203,14 +203,59 @@ asks a question of the other party with no visible answer anywhere (klass 'open-
   },
 ]
 
+// Each lens WRITES its own findings and returns only a path plus a thin index. The
+// orchestrator has no filesystem access, so anything it holds can reach the next agent
+// only through a prompt — and an agent handed bulk in a prompt regenerates it, losing
+// rows silently. Measured three times in this one workflow before the cause was named
+// properly: the tool table (1 row of 141), the relayed table (22 of 141), and then the
+// "fix" itself — a staging agent told to write the JSON it had been given wrote 2
+// verified and ZERO of 51 unverified findings into a 13 KB file. The lesson is not
+// "write a file", it is: bulk must never ACCUMULATE in the orchestrator. It is written
+// by whoever produced it; only paths, counts and titles cross.
+const LENS_FILE = (slug) => `${A.scratch || REPORT_DIR}/.lens-${slug}-${DATE}.json`
+const LENS_INDEX_SCHEMA = {
+  type: 'object',
+  required: ['path', 'count', 'summary', 'index'],
+  properties: {
+    path: { type: 'string' }, count: { type: 'number' }, summary: { type: 'string' },
+    index: {
+      type: 'array', maxItems: 40,
+      items: {
+        type: 'object', required: ['i', 'severity', 'klass', 'title', 'owner'],
+        properties: {
+          i: { type: 'number', description: 'position in the findings array in the file' },
+          severity: { type: 'string', enum: ['P0', 'P1', 'P2', 'INFO'] },
+          klass: { type: 'string' }, title: { type: 'string' },
+          owner: { type: 'string' },
+        },
+      },
+    },
+  },
+}
+
 const analyses = (await parallel(LENSES.map(l => () =>
-  agent(`${COMMON}\n\n${TABLE_NOTE}\n\n${l.prompt}`,
-    { label: `lens:${l.slug}`, phase: 'Analysis', schema: FINDINGS_SCHEMA }),
+  agent(`${COMMON}\n\n${TABLE_NOTE}\n\n${l.prompt}
+
+OUTPUT — two steps, in this order:
+1. WRITE your findings to ${LENS_FILE(l.slug)} (mkdir -p its directory first) as JSON:
+   {"summary": "...", "findings": [ ... ]}, each finding shaped as
+   ${JSON.stringify(FINDINGS_SCHEMA.properties.findings.items.required)} plus the optional
+   both_right_if. This file is the record — write it in full, however long it is.
+2. RETURN only: the path, how many findings you wrote, your summary, and a thin index —
+   one entry per finding with its position i (0-based, matching the array in the file),
+   severity, klass, title and owner. The index is a table of contents, not a copy: no
+   claims, no quotes, no proposals in it.`,
+    { label: `lens:${l.slug}`, phase: 'Analysis', schema: LENS_INDEX_SCHEMA })
+    .then(r => (r && r.count && r.index && r.index.length === r.count
+      ? { ...r, slug: l.slug }
+      : null)),
 ))).filter(Boolean)
 
-if (!analyses.length) throw new Error('all analysis lenses failed')
-const raw = analyses.flatMap(r => r.findings)
-log(`${raw.length} raw findings from ${analyses.length}/${LENSES.length} lenses`)
+if (!analyses.length) throw new Error('all analysis lenses failed (or all returned an index that disagreed with their own count)')
+// `raw` is now a list of POINTERS — {slug, path, i, severity, klass, title, owner} —
+// never the findings themselves. That is what keeps the orchestrator light.
+const raw = analyses.flatMap(a => a.index.map(e => ({ ...e, slug: a.slug, path: a.path })))
+log(`${raw.length} raw findings from ${analyses.length}/${LENSES.length} lenses (records on disk, pointers in memory)`)
 
 // ── Phase 3: Verify (adversarial, per finding) ─────────────────────────────
 // A judgment pass that reports its first impression is a rumour generator. Each finding
@@ -247,7 +292,10 @@ out of context. Default to stands=false when uncertain. Specific traps in this r
 - an entry that labels itself a snapshot or work-in-progress is not stale for saying so;
 - a proposal marked as awaiting someone's decision is not an unanswered question.
 
-FINDING: ${JSON.stringify(f).slice(0, 6000)}`,
+THE FINDING is entry [${f.i}] of the "findings" array in ${f.path} (lens "${f.slug}",
+titled "${f.title}"). READ IT FROM THAT FILE — it is not reproduced here, on purpose: a
+finding retyped into a prompt is a finding that may have lost a source or a quote on the
+way, and you are the one check that would not notice.`,
     { label: `verify:${(f.title || String(i)).slice(0, 40)}`, phase: 'Verify', schema: VERDICT_SCHEMA })
     .then(v => (v && v.stands ? { ...f, severity: v.corrected_severity || f.severity, verdict: v.why } : null)),
 ))).filter(Boolean)
@@ -261,31 +309,28 @@ const unverified = dropped.map(f => ({ ...f, verdict: 'NOT VERIFIED — verify c
 // ── Phase 4: Report ────────────────────────────────────────────────────────
 phase('Report')
 
-// Findings go to a FILE, like the inventory, and for the same reason — measured on the
-// first complete run of this workflow: the unverified list was inlined into this prompt
-// with a .slice(0, 12000), 51 findings became the 6 that fitted, and the report then
-// stated "6 unverified" in perfectly confident prose. Same silent truncation as the
-// inventory phase, one function further down, and it survived a class sweep that only
-// looked for the inventory shape. The boundary is what matters, not the direction:
-// bulk data crossing an agent boundary either way goes through disk.
-const DATA_FILE = `${A.scratch || REPORT_DIR}/.findings-${DATE}.json`
-const dataAgent = await agent(
-  `Write this JSON to ${DATA_FILE} exactly as given (mkdir -p its directory first), then
-print the byte size of the written file. Do not reformat or abridge it.
-
-${JSON.stringify({ verified, unverified, lens_summaries: analyses.map(a => a.summary) })}`,
-  { label: 'stage-findings', phase: 'Report', model: 'haiku', schema: {
-    type: 'object', required: ['bytes'], properties: { bytes: { type: 'number' } } } },
-)
-if (!dataAgent || !dataAgent.bytes) throw new Error('staging the findings file failed')
+// No staging agent. The findings already sit in the lens files where they were written;
+// the report agent is told WHICH entries to read and what the verdicts were. An earlier
+// version handed a staging agent the whole JSON with "write this exactly as given" — it
+// wrote 2 verified and ZERO of 51 unverified into a 13 KB file. Asking an agent to
+// transcribe bulk is the same defect as asking it to relay bulk, and putting the word
+// "file" in the prompt does not change that. Only what an agent PRODUCED can it write.
+const VERDICTS = verified.map(v => ({ path: v.path, i: v.i, severity: v.severity, owner: v.owner, verdict: v.verdict }))
+const UNVERIFIED = unverified.map(u => ({ path: u.path, i: u.i, severity: u.severity, klass: u.klass, title: u.title }))
 
 const rep = await agent(
   `Write the shared-memory tidy-up report to ${REPORT} (mkdir -p ${REPORT_DIR} first). Date: ${DATE}.
 
-DATA: ${DATA_FILE} — read it from disk. It holds three keys: \`verified\` (${verified.length}
-findings that survived adversarial verification), \`unverified\` (${unverified.length} findings
-the verify cap never reached) and \`lens_summaries\`. These counts are authoritative: if what
-you read disagrees with them, say so in the report rather than reconciling it silently.
+WHERE THE FINDINGS ARE: each lens wrote its own file; read them from disk, they are the
+record and nothing here reproduces them.
+${analyses.map(a => `  - ${a.path} — lens "${a.slug}", ${a.count} findings`).join('\n')}
+
+VERIFIED (survived adversarial refutation — read each by its index in its file):
+${JSON.stringify(VERDICTS)}
+
+NOT VERIFIED (the cap was reached before these; they are suspicions with a quote, NOT
+findings, and belong in a section of their own that says so):
+${JSON.stringify(UNVERIFIED)}
 
 COUNTS you must state and must not recompute: ${raw.length} raw findings from
 ${analyses.length} lenses, ${toVerify.length} sent to verification, ${verified.length} stood,
