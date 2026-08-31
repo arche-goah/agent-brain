@@ -238,7 +238,11 @@ except Exception:
 targets = []
 for d in ("core/scripts", "core/helpers", "scripts", "scripts/hooks"):
     if os.path.isdir(d):
-        targets += [os.path.join(d, f) for f in sorted(os.listdir(d))
+        # "/".join, not os.path.join: this string is REPORTED and matched against —
+        # the other instance's fixture greps the report for `scripts/<name>.sh` and got
+        # `scripts\\<name>.sh` on Windows, so both negative cases read as passes. Same
+        # class as OS-1 in docs/os-traps.md, reached through a different constructor.
+        targets += ["/".join((d, f)) for f in sorted(os.listdir(d))
                     if f.endswith((".sh", ".py", ".cjs", ".js"))]
 # A fixture suite is triggered BY CONSTRUCTION: the runners discover it by glob, which
 # is exactly why nothing names it any more. Matching on name references alone reported
