@@ -40,6 +40,26 @@ The marketplace pins tags, never `main`.
 - The routing is in `AGENTS.md` (rule 10) and the pointer for a new brain in
   `templates/invariants.md`: platform classes belong in the core register, never in an
   instance's own — filed per instance, every brain pays for the same trap once.
+- **The stop gate moves into the core, and it now catches the HANDOFF, not just the
+  question.** It lived in one instance only, so no other brain had it at all. And it
+  matched a closing QUESTION — every pattern required a literal `?`. Measured on that
+  instance 2026-08-31: four deferrals in one day, not one of them a question, every one
+  parking work the three-condition test assigned to the agent — "yours to merge or to
+  shred", "tell me which side takes it", "let me know if you want the fixture first",
+  "the fix sits with the other instance". A question mark is a FORM; parking work on
+  someone else is the FUNCTION, and only the function is the anti-pattern. The new shapes
+  are ENGLISH built-ins, per this hook's own contract that a class fix lands in the
+  built-ins and a language pack only ever adds a language — putting them in an instance
+  file, as they first were, would have fixed one brain and left the class open in the
+  others. Wired in `templates/settings.json` so existing brains pick it up through the
+  hook-coverage path. Two negative controls in the fixture: a real operator boundary that
+  is correctly STATED must pass, and so must a plain measurement report.
+- The ported fixture carries the `native()` helper (OS-3) — it hands a transcript path to
+  node, and a Git Bash path would have made every must-block case pass for the wrong
+  reason. Caught by the trap register in the smoke run, not by review. Its `cwd` is now a
+  scratch dir with no instance pattern file, so the new cases are proven to be carried by
+  the built-ins alone; it used to be a hard-coded home path, which was both instance data
+  in a core fixture and a leak-scan finding.
 
 - **The fixture runner executed what `manual-tools.json` forbade.** That list keeps hand
   tools out of the trigger detector; the runner never read it, so one consumer of the same
