@@ -67,22 +67,29 @@ jobs:
           for f in helpers/*.cjs; do node --check "$f"; done
       # Detector discipline: gates are tested in BOTH directions (must-deny and
       # must-stay-silent, fail-open included), not just parsed.
-      - name: freshness-gate fixtures
-        run: python3 scripts/freshness-gate-test.py
-      - name: memory-lint fixtures (sub-index contract)
-        run: python3 scripts/memory-lint-test.py
-      - name: shared-memory-lint fixtures (ratchet + the measured false positives)
-        run: python3 scripts/shared-memory-lint-test.py
-      - name: invariant-check fixtures (drift + the backlog it used to hide)
-        run: python3 scripts/invariant-check-test.py
-      - name: recall-gate fixtures (both directions + record mode)
-        run: bash scripts/test-recall-gate.sh
-      - name: transcript-recall fixtures
-        run: python3 scripts/transcript-recall-test.py
-      - name: release-preflight fixtures
-        run: bash scripts/release-preflight-test.sh
-      - name: ci-watch fixtures
-        run: bash scripts/ci-watch-test.sh
+      # DISCOVERED, not listed. One step per suite meant a new suite was covered only
+      # if somebody remembered to add its step — and the same hand-kept list existed a
+      # second time in portability-smoke.sh, where five suites had already fallen out.
+      # Three naming shapes are in use, all three are globbed. Registered as OS-4 in
+      # docs/os-traps.md.
+      - name: fixture suites (discovered — both directions each)
+        run: |
+          set -e
+          shopt -s nullglob
+          n=0
+          for s in scripts/test-*.sh scripts/*-test.sh; do
+            echo "::group::$s"; bash "$s"; echo "::endgroup::"; n=$((n+1))
+          done
+          for s in scripts/*-test.py; do
+            echo "::group::$s"; python3 "$s"; echo "::endgroup::"; n=$((n+1))
+          done
+          [ "$n" -gt 0 ] || { echo "no fixture suite discovered — the glob is broken"; exit 1; }
+          echo "$n fixture suite(s) run"
+      # Known Mac/Windows divergences do not reproduce on this runner, which is exactly
+      # why they slipped through. The register states each class as a search; running it
+      # here catches a NEW SITE of a known trap even where the trap itself is invisible.
+      - name: OS-trap register (no new site of a known platform trap)
+        run: python3 scripts/invariant-check.py docs/os-traps.md
 
   # A release is one atomic promise: tag name == manifest version == CHANGELOG
   # section. v1.2.0 shipped with the manifest still on 1.1.2 — the plugin cache
