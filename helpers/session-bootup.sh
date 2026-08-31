@@ -109,7 +109,29 @@ if core_pin and os.path.isdir("core"):
         sub = subprocess.run(["git", "-C", "core", "describe", "--tags"],
                              capture_output=True, text=True, timeout=10).stdout.strip()
     except Exception: pass
-    if sub != core_pin: stale.append(f"core rules {sub or 'unknown'} -> {core_pin}")
+    # ASCII only in what this block PRINTS: its stdout is decoded by the console
+    #     codepage, and on Windows (cp1252) an em dash came out as a replacement char
+    #     while the same dash in a bash literal one line further down was fine.
+    # AHEAD is not STALE. A brain verifying an unreleased line moves core/ past the pin
+    # on purpose; string inequality called that "update available: v1.3.30-4 -> v1.3.25"
+    # and pointed at brain-update.sh, which would move the submodule BACK and silently
+    # discard the checkout under test. Mirror of the suite-side guard below (a dev
+    # checkout legitimately lags). Reported either way — an unremarked divergence from
+    # the pin is its own trap — but as its own state, not as an update.
+    ahead = False
+    if sub and sub != core_pin and core_pin:
+        try:
+            ahead = subprocess.run(
+                ["git", "-C", "core", "merge-base", "--is-ancestor", core_pin, "HEAD"],
+                capture_output=True, timeout=10).returncode == 0
+        except Exception:
+            ahead = False
+    if sub != core_pin:
+        if ahead:
+            print(f"__AHEAD__core rules {sub} is AHEAD of the pin {core_pin} -- "
+                  f"verification checkout; brain-update.sh would move it back")
+        else:
+            stale.append(f"core rules {sub or 'unknown'} -> {core_pin}")
 plugs = load(os.path.join(cfg, "plugins", "installed_plugins.json")).get("plugins") or {}
 for pid, entries in plugs.items():
     name = pid.split("@", 1)[0]
@@ -119,6 +141,14 @@ for pid, entries in plugs.items():
 if stale: print(", ".join(stale))
 PY
 )
+# grep -a: this pipeline carries UTF-8 dashes and, on Git Bash, grep declared the
+# stream binary and printed "Binary file (standard input) matches" INSTEAD of the
+# line — a report line replaced by a diagnostic about itself.
+ahead_note=$(printf '%s\n' "$upd" | grep -a '^__AHEAD__' | sed 's/^__AHEAD__//')
+upd=$(printf '%s\n' "$upd" | grep -av '^__AHEAD__' | tr -d '\n')
+if [[ -n "$ahead_note" ]]; then
+  echo "!! $ahead_note"
+fi
 if [[ -n "$upd" ]]; then
   echo "!! update available: $upd — ask the operator, then ONE command updates everything: bash core/scripts/brain-update.sh (restart Claude Code afterwards if it says so)"
 fi
