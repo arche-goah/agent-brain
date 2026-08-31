@@ -105,6 +105,29 @@ except Exception:
 ' "$CFG" "$1" | tr -d '\r'
 }
 
+# The version string INSIDE the cached plugin, read from the cache directory the record
+# names. This is the discriminator the provenance check lacked: the recorded sha and the
+# cached content are two independent facts, and only one of them describes what actually
+# loads. Empty when the path or the file is unreadable — an absent answer must look
+# absent, never like agreement.
+cached_version() {   # $1 = plugin@marketplace
+  "$PY" -c '
+import json, os, sys
+try:
+    with open(os.path.join(sys.argv[1], "plugins", "installed_plugins.json"), encoding="utf-8") as f:
+        d = json.load(f)
+    for x in (d.get("plugins") or {}).get(sys.argv[2]) or []:
+        p = os.path.join(x.get("installPath", ""), ".claude-plugin", "plugin.json")
+        try:
+            with open(p, encoding="utf-8") as g:
+                print((x.get("scope") or "?") + " " + (json.load(g).get("version") or ""))
+        except Exception:
+            print((x.get("scope") or "?") + " ")
+except Exception:
+    pass
+' "$CFG" "$1" | tr -d '\r'
+}
+
 echo "=== brain-update: $BRAIN ==="
 
 # 1) marketplaces
@@ -203,10 +226,29 @@ for p in $(enabled_plugins); do
     if [ "$have_sha" = "$want_sha" ]; then
       echo "OK   plugin $p ($scope) cache matches its pin ($pin_repo@$pin_ref)"
     else
-      echo "FAIL plugin $p ($scope) cache provenance mismatch — foreign content OR stale install record:"
-      echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
-      echo "     fix (either way): claude plugin uninstall $p --scope $scope  &&  claude plugin install $p  — then restart Claude Code"
-      failed=1
+      # The two states are NOT indistinguishable any more, and telling them apart is
+      # the whole value: a stale record is cosmetic, foreign content means the plugin
+      # loading right now is not the one the pin names. The discriminator is the
+      # version inside the cache, against the version the pin's tag encodes — this
+      # ecosystem guarantees tag == plugin.json version, because release-preflight
+      # refuses to cut a tag where they differ. Measured 2026-08-31 on two consecutive
+      # releases: content 1.3.31 then 1.3.32, both correct, while the record kept the
+      # sha of the 1.3.25 install — `claude plugin update` does not rewrite that field,
+      # so the check failed on every UPDATED plugin and only ever passed on a freshly
+      # installed one.
+      have_ver=$(cached_version "$p" | awk -v s="$scope" '$1 == s { print $2 }')
+      want_ver="${pin_ref#v}"
+      if [ -n "$have_ver" ] && [ "$have_ver" = "$want_ver" ]; then
+        echo "NOTE plugin $p ($scope) install record is stale, content is the pinned release:"
+        echo "     cached plugin.json says $have_ver = $pin_ref; recorded commit ${have_sha:0:12} is older"
+        echo "     harmless — the record is refreshed by a reinstall, not by an update"
+      else
+        echo "FAIL plugin $p ($scope) cache provenance mismatch — content is NOT the pinned release:"
+        echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
+        echo "     cached version '${have_ver:-unreadable}' vs pinned '$want_ver'"
+        echo "     fix: claude plugin uninstall $p --scope $scope  &&  claude plugin install $p  — then restart Claude Code"
+        failed=1
+      fi
     fi
   done <<< "$recs"
 done
