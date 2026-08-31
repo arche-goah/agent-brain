@@ -7,6 +7,17 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **The fixture runner executed what `manual-tools.json` forbade.** That list keeps hand
+  tools out of the trigger detector; the runner never read it, so one consumer of the same
+  list forbade what the other executed, and the block looked intact from outside. Measured
+  on a real instance: a script matching `*-test.sh` was not a test at all — it queries a
+  physical network rig device by device. It ran twice, left two partial reports and sat in
+  connection timeouts, so the self-test looked HUNG rather than failed; with the hardware
+  powered on, a routine self-test would have been talking to production equipment. A
+  second declared tool there writes to live devices and was stopped only by an argument
+  guard — luck, not a contract. Both loops (shell and python) now skip a declared tool and
+  SAY so. The fixture asserts the side effect, not the report: a marker file the hand tool
+  writes when it runs. Negative control against the unguarded runner: it runs, 2 FAIL.
 - **The arm lock could be deleted by a watcher that did not own it, and the claim was
   check-then-write** (`shared-memory-watch.sh`). The EXIT trap ran an unconditional
   `rm -f`, so a watcher from an earlier session that exits late removed whatever lock was

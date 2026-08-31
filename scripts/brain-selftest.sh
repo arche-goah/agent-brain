@@ -90,9 +90,34 @@ shopt -s nullglob
 # python suites ran in CI (linux) only, and they are the ones carrying the path and
 # file-writing classes — the classes that behave differently per OS. Registered as OS-4
 # in the core's docs/os-traps.md.
+# A NAME IS NOT A CONTRACT. The same `manual-tools.json` that keeps hand tools out of the
+# trigger detector below must keep them out of the RUNNER — otherwise one consumer of that
+# list forbids what the other executes, and the block looks intact from outside.
+# Measured 2026-08-31 on a real instance: `kaltstart-test.sh` matched `*-test.sh` and is
+# not a test at all — it queries a physical network rig device by device. It ran twice,
+# left two partial reports, and sat in connection timeouts, so the self-test looked HUNG
+# rather than failed; with the hardware powered on, a routine self-test would have been
+# talking to production equipment. A second declared tool on the same instance writes to
+# live devices and was stopped only by an argument guard — luck, not a contract.
+is_manual() {
+  [ -f .claude/rules/manual-tools.json ] || return 1
+  "$PY" - "$1" <<'PY'
+import json, os, sys
+try:
+    manual = set(json.load(open(".claude/rules/manual-tools.json",
+                                encoding="utf-8")).get("manual", []))
+except Exception:
+    sys.exit(1)
+sys.exit(0 if os.path.basename(sys.argv[1]) in manual else 1)
+PY
+}
 for t in scripts/test-*.sh core/scripts/test-*.sh \
          scripts/*-test.sh core/scripts/*-test.sh; do
   name=$(basename "$t" .sh)
+  if is_manual "$t"; then
+    echo "  --  $name — declared a hand tool, not executed (manual-tools.json)"
+    continue
+  fi
   if out=$(bash "$t" 2>&1); then
     echo "  ok  $name"
   else
@@ -103,6 +128,12 @@ for t in scripts/test-*.sh core/scripts/test-*.sh \
 done
 for t in scripts/*-test.py core/scripts/*-test.py; do
   name=$(basename "$t")
+  # Same guard as the shell loop: the python naming shape can just as easily match a
+  # hand tool, and a rule that covers one of two loops is the defect it is fixing.
+  if is_manual "$t"; then
+    echo "  --  $name — declared a hand tool, not executed (manual-tools.json)"
+    continue
+  fi
   if out=$("$PY" "$t" 2>&1); then
     echo "  ok  $name"
   else

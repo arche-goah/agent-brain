@@ -45,6 +45,15 @@ YML
 printf '#!/usr/bin/env bash\nbash scripts/run-by-a-script.sh\n' > scripts/caller.sh
 printf 'The file scripts/only-documented.sh exists and is described here.\n' > docs/notes.md
 
+# A hand tool wearing a fixture's name. The runner globs by name shape, so without a
+# contract it EXECUTES this; on a real instance the equivalent script queried physical
+# network hardware and the self-test looked hung rather than failed. The marker file is
+# how we detect execution: if the guard fails, the script runs and writes it.
+mkdir -p "$TMP/brain/.claude/rules"
+printf '{ "manual": ["danger-test.sh"] }\n' > "$TMP/brain/.claude/rules/manual-tools.json"
+printf '#!/usr/bin/env bash\ntouch "%s/EXECUTED"\nexit 0\n' "$TMP" \
+  > "$TMP/brain/scripts/danger-test.sh"
+
 report="$TMP/out.txt"
 bash "$HERE/brain-selftest.sh" "$TMP/brain" > "$report" 2>&1
 
@@ -84,6 +93,20 @@ else
   bad "a comment inside ci.yml cleared a script — a mention is not a call"
 fi
 
+# --- the runner honours the same list the detector honours ----------------------
+# The decisive one: not "is it reported correctly" but "did it RUN". Everything else in
+# this file is about a report; this is about a side effect on the world.
+if [[ -e "$TMP/EXECUTED" ]]; then
+  bad "a script declared in manual-tools.json was EXECUTED by the fixture runner"
+else
+  ok "a declared hand tool is not executed, even wearing a fixture's name"
+fi
+if grep -q 'danger-test — declared a hand tool' "$report"; then
+  ok "and the skip is stated, not silent"
+else
+  bad "the hand tool was skipped without saying so — silence is not a report"
+fi
+
 # NOT asserted here, deliberately: "no comment in brain-selftest.sh names a script that
 # it would thereby clear". I wrote that check and it fired on `brain-check.sh` (named in
 # a comment that legitimately describes the relationship between the two) and on the
@@ -95,4 +118,4 @@ fi
 
 echo
 if (( fails )); then echo "brain-selftest-test: $fails FAILURE(S)"; exit 1; fi
-echo "brain-selftest-test: all 4 checks passed"
+echo "brain-selftest-test: all 7 checks passed"
