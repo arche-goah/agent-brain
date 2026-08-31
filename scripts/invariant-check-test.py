@@ -165,6 +165,75 @@ status: closed
         else:
             bad(f"7 tool state mishandled: {out.strip()[:200]}")
 
+        # 8. closed, stated reason, no pattern and no tool: nothing here can ever
+        #    contradict the word "closed" again. Must show up in the closing list.
+        reg = write(tmp, """## Y-6 — closed by assertion
+invariant: closed with no instrument behind it
+check: read it and judge
+mechanizable: no — the judgement is human
+instances: 2
+repeat: no
+status: closed
+""")
+        out, rc = run(reg)
+        if "closed invariant(s) with no instrument" in out and "-- Y-6" in out:
+            ok("8 closed without an instrument is listed")
+        else:
+            bad(f"8 asserted-closed not reported: {out.strip()[:200]}")
+
+        # 9. NEGATIVE, and this is the half that matters: a closed entry WITH a pattern
+        #    has an instrument — the search re-runs every time. Listing it too would make
+        #    the new list noise, and a noisy list gets skimmed, which is how the state it
+        #    reports became invisible in the first place.
+        reg = write(tmp, """## Y-7 — closed and re-checked
+invariant: closed, but the search still runs
+pattern: FORBIDDEN_CALL
+paths: --include=*.py src
+known: src/a.py=1
+instances: 2
+repeat: no
+status: closed
+""")
+        out, rc = run(reg)
+        if "no instrument" not in out:
+            ok("9 closed WITH a pattern is not listed — it has an instrument")
+        else:
+            bad(f"9 false positive on a re-checked class: {out.strip()[:200]}")
+
+        # 10. a status is prose, not an enum. "offen (R-14)" is open, and before the word
+        #     match it was neither open nor closed — the build-threshold verdict silently
+        #     vanished for 36 of 45 entries on the real register.
+        reg = write(tmp, """## Y-8 — open with a qualifier
+invariant: the status carries a suffix
+check: manual
+mechanizable: no — human judgement
+instances: 4
+repeat: yes
+status: offen (R-14); die Uhr-Schicht ist zu
+""")
+        out, rc = run(reg)
+        if "MECHANISM due" in out and "no instrument" not in out:
+            ok("10 a qualified status still counts as open")
+        else:
+            bad(f"10 qualified status misread: {out.strip()[:200]}")
+
+        # 11. `instances` is hand-written and is prose as often as a number. int() on the
+        #     whole field raised ValueError; the crash was invisible while the status match
+        #     was exact, because those entries never reached the verdict line.
+        reg = write(tmp, """## Y-9 — prose in instances
+invariant: the count is written as a sentence
+check: manual
+mechanizable: no — human judgement
+instances: 3 geprueft, 1 als Fehlbefund verworfen
+repeat: no
+status: open
+""")
+        out, rc = run(reg)
+        if "MECHANISM due" in out:
+            ok("11 a prose `instances` field is read, not crashed on")
+        else:
+            bad(f"11 prose instances mishandled: {out.strip()[:200]}")
+
     return 1 if fails else 0
 
 
