@@ -7,6 +7,34 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **`shared-memory-index.py`: the factor line names the direction it measured.** "cheaper"
+  was a fixed word beside a ratio that falls below 1 as soon as the index is already
+  split — so a real run reported `0.1x cheaper per lookup` for a lookup ten times dearer.
+  The arithmetic was never wrong; one word quit two opposite cases. Reported by the other
+  instance from its own run, which is also the point: the generator had **no fixture at
+  all**. It has one now (`shared-memory-index-test.py`, 7 cases): forward slashes in both
+  index levels, LF in every written file, managed entries not carried into the root page,
+  and both directions of the factor line, so a fix that hard-codes the other word fails.
+  Negative control run: defects reintroduced → 5 of 7 red, fix restored → green. The
+  discovery from the previous release picked the new suite up on its own.
+- **`grep` swallowed report lines by calling the stream binary** — three sites in one
+  afternoon, all in the failure path where nobody has a second copy: `session-bootup`
+  printed `Binary file (standard input) matches` in place of the AHEAD line it had just
+  computed, and `portability-smoke` did the same for a failing suite's FAIL detail AND for
+  the os-trap register's drift lines — a gate reporting a failure it then made unreadable.
+  14 greps on report paths (`brain-selftest`, `brain-check`, `effect-check`,
+  `portability-smoke`) now pass `-a`; the remaining 20 are baselined as **OS-5** so a new
+  pipe-grep is read rather than silently added. The review question is one word long: does
+  this line end up in front of a human?
+- **`brain-check` counted 7 fixtures green where 15 had run.** It matched `^  ok  test-`,
+  one of the three naming shapes discovery now finds — a headline number measuring a third
+  of what it names, in the one line the operator sees every session start. Counts the
+  fixture block instead: 16.
+- OS-1 gained the lesson that a PROSE mention counts as a hit: a fixture docstring
+  describing the very defect tripped its own register the same day. Honest trade for a
+  grep — it cannot tell code from a sentence about code, and weakening the pattern to
+  spare the sentence would spare a real site in a fixture too.
+
 - **A core checkout AHEAD of the pin is not an update** (`session-bootup.sh`). The
   comparison was a string inequality, so a brain verifying an unreleased line — the
   brain-core-next channel exists for exactly this — was told `update available: v1.3.30-4

@@ -8,9 +8,9 @@
 > CRLF reports success. Every one of those looks like a clean run on the OS that
 > cannot reproduce it.
 >
-> Three of these classes have now come back after being fixed once (2026-08-13,
-> 2026-08-10, 2026-08-31) — above the build threshold, so they get a mechanism rather
-> than a fourth single fix. This register is that mechanism: each class stated as an
+> Four of these classes have now come back after being fixed once (2026-08-10,
+> 2026-08-13, 2026-08-31 twice) — above the build threshold, so they get a mechanism
+> rather than another single fix. This register is that mechanism: each class stated as an
 > INVARIANT plus the search that spans its space, re-run automatically.
 >
 > **Checked by:** `python3 scripts/invariant-check.py docs/os-traps.md` — wired into
@@ -47,7 +47,11 @@ from the index AND every index line as pointing at a missing file; shared-memory
 matched nothing against the old index and carried every existing entry into the root page
 (83,205 chars instead of 1,651), writing backslashed links; leak-scan.py in its report
 only. Baseline zero on purpose — after the fix there is no legitimate site, so any hit is
-a new one.
+a new one. A PROSE mention counts as a hit — measured the same day, when a fixture
+docstring describing this very defect tripped it. That is the honest trade for a grep: it
+cannot tell code from a sentence about code, and weakening the pattern to spare the
+sentence would spare a real site in a fixture too. Write about the class without writing
+the call.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -90,6 +94,31 @@ and the comment explaining it; test-recall-gate.sh was written afterwards withou
 failed 4 of 13 cases on Windows on 2026-08-31 — the other 9 were green for the wrong
 reason, which is the worse half. A new fixture appears here as drift; the review question
 is whether any path in it crosses into a native process.
+
+## OS-5 — grep swallows a report line by calling the stream binary
+
+invariant: A grep that renders a REPORT line — a FAIL, a verdict, a count somebody acts
+on — passes `-a`. Git Bash decides per stream whether it is text, and on a decision of
+"binary" grep prints `Binary file (standard input) matches` INSTEAD of the matching line:
+the diagnostic replaces exactly the output it was asked to produce, and only in the
+failure path, where nobody has a second copy.
+pattern:   \| *grep -[b-zA-Z]
+paths:     --include=*.sh scripts helpers
+known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=2 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=5 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1
+instances: 3
+repeat:    yes
+status:    closed
+note:      Measured 2026-08-31, three sites in one afternoon: session-bootup printed
+"Binary file (standard input) matches" in place of the AHEAD line it had just computed;
+portability-smoke did the same for the FAIL detail of a failing suite AND for the
+os-trap register's own drift lines — a gate reporting a failure it then made unreadable.
+Report paths in brain-selftest, brain-check, effect-check and portability-smoke were
+swept in the same pass (14 greps). The baseline is what is LEFT: predicates (`grep -q`,
+whose exit status is unaffected) are in it too, because a pattern cannot tell them
+apart from the rest, and the rest are greps whose output
+nobody reads as a verdict. They stay listed rather than changed, because `-a` on a line
+that never renders anything is noise — but a NEW pipe-grep must be looked at, and the
+question is one word long: does this line end up in front of a human?
 
 ## OS-4 — a fixture suite exists but no OS gate runs it
 
