@@ -5,7 +5,7 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
-## Unreleased
+## 1.3.31 — 2026-08-31
 
 - **Windows verification of 1.3.26–1.3.30, and the reason it was needed at all.** Three
   defects, one root each, all invisible to CI: `shared-memory-lint.py` and
@@ -43,6 +43,30 @@ The marketplace pins tags, never `main`.
   baseline. Unsupported, the token fell through to the target list and the search died with
   `path not found`.
 - `leak-scan.py` and `english-only.py`'s baseline writer swept along with OS-1/OS-2.
+- **`invariant-check.py` reports closed classes that nothing could ever re-open.** The
+  register's own header defines closed as "the search runs and finds nothing unknown, not
+  that it feels settled" — but an entry with neither a `pattern` nor a
+  `mechanizable: tool` has no search and no tool behind it. Measured on a real register:
+  13 such entries, 6 closed outright. What produced the class: a class was declared closed
+  on the strength of its CARRIER having been built, while three prose copies of the value
+  that carrier now owned stayed behind and went stale the moment the value changed. A
+  carrier does not delete the copies, it only makes them redundant. Report, never a
+  failure.
+- **A `status` field is prose, not an enum.** It was matched exactly against
+  `("offen", "open")`, which hit 9 of 45 entries on a real register; the other 36 silently
+  lost their build-threshold verdict — the one line that says whether a mechanism is due.
+  Now matched as a word, with open and closed read separately, because a status can say
+  both. This uncovered a second defect it had been hiding: `verdict()` called `int()` on
+  the whole hand-written `instances` field, which is prose as often as a number, and those
+  entries had simply never reached that line.
+- **`ci-watch.sh`: "the run does not exist yet" is a wait in `pr` mode too.** Armed in the
+  same turn as the push — which the reload rule asks for — a pr-mode watch hit
+  `gh pr checks` before GitHub had registered the run; gh answers rc=1 "no checks
+  reported", which fell through to a hard UNKNOWN and ended the watch with no verdict
+  seconds before the run turned green. `ref` mode had always known this case and said so.
+  An empty check list is the same ambiguity one level on ("this repo has no CI" vs. "not
+  registered yet") and now waits as well. The deadline still ends the watch honestly, and
+  a genuine gh failure still exits immediately — that negative control is a fixture.
 
 ## 1.3.30 — 2026-08-30
 
