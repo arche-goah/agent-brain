@@ -5,6 +5,25 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## Unreleased
+
+- **A core checkout AHEAD of the pin is not an update** (`session-bootup.sh`). The
+  comparison was a string inequality, so a brain verifying an unreleased line — the
+  brain-core-next channel exists for exactly this — was told `update available: v1.3.30-4
+  -> v1.3.25` and pointed at `brain-update.sh`, which would move the submodule BACK and
+  silently discard the checkout under test. Mirror of the suite-side guard from 1.3.24
+  (a dev checkout legitimately lags); the class was fixed one function over and not swept.
+  Reported either way, because an unremarked divergence from the pin is its own trap, but
+  as its own state. Two Windows details fixed with it: the pipeline needed `grep -a`
+  (Git Bash declared the stream binary and printed "Binary file (standard input) matches"
+  in place of the line it was asked to print), and the line is ASCII, because that block's
+  stdout is decoded by the console codepage and an em dash arrived as a replacement char.
+- **The trigger detector knows the fixture naming shapes** (`brain-selftest.sh`).
+  Discovery removed the only thing that NAMED a suite, so "executables nothing calls"
+  reported six of them as untriggered the moment they started being discovered — the same
+  indirection blind spot hook-coverage had with the dispatcher. A fixture is triggered by
+  construction; all three naming shapes are now recognised as the fixture layer.
+
 ## 1.3.31 — 2026-08-31
 
 - **Windows verification of 1.3.26–1.3.30, and the reason it was needed at all.** Three

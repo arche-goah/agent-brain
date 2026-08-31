@@ -240,8 +240,18 @@ for d in ("core/scripts", "core/helpers", "scripts", "scripts/hooks"):
     if os.path.isdir(d):
         targets += [os.path.join(d, f) for f in sorted(os.listdir(d))
                     if f.endswith((".sh", ".py", ".cjs", ".js"))]
+# A fixture suite is triggered BY CONSTRUCTION: the runners discover it by glob, which
+# is exactly why nothing names it any more. Matching on name references alone reported
+# six of them as "nothing references it at all" the moment discovery replaced the hand-
+# kept lists — the same indirection blind spot hook-coverage had with the dispatcher.
+# Three naming shapes are in use; all three are the fixture layer, not a mechanism.
+def is_fixture(name):
+    return (name.startswith("test-")
+            or name.endswith(("-test.sh", "-test.py")))
+
+
 names = {os.path.basename(t): t for t in targets
-         if os.path.basename(t) not in manual and not os.path.basename(t).startswith("test-")}
+         if os.path.basename(t) not in manual and not is_fixture(os.path.basename(t))}
 
 # ONE pass over the setup instead of one grep per file: the per-file version took 18 s,
 # and a check that slow gets skipped, which is the same as not having it.
