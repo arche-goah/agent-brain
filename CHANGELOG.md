@@ -5,7 +5,7 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
-## Unreleased
+## 1.3.32 — 2026-08-31
 
 - **`python -` executed the file passed as its argument, and the one site it hit was the
   hand-tool guard.** Python 3.14's install manager — the `python3` on PATH on a Windows
