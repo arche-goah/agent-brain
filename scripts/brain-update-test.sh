@@ -31,8 +31,11 @@ bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 sed -n '/^cached_version() {/,/^}/p' "$HERE/brain-update.sh" > "$TMP/fn.sh"
 [ -s "$TMP/fn.sh" ] || { echo "  FAIL cached_version() not found in brain-update.sh"; exit 1; }
 
+# Probe THROUGH the variable, never by naming python3 directly: the Microsoft Store
+# ships a `python3` stub that resolves in PATH and does not run, so a bare call is a
+# Windows mine and the lint refuses it — rightly, and it caught me here.
 PY=python3
-python3 -c 'import sys' >/dev/null 2>&1 || PY=python
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 CFG="$TMP/cfg"
 mkdir -p "$CFG/plugins"
 
