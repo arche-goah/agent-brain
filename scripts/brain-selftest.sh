@@ -85,13 +85,29 @@ shopt -s nullglob
 # consumed core ships its suites under core/scripts/. Measured 2026-08-20: run against
 # a brain, this found only the brain's own and reported every core mechanism as
 # unproven — the suites were right there and never ran.
-for t in scripts/test-*.sh core/scripts/test-*.sh; do
+# Three naming shapes are in use and all three must be discovered: `test-<thing>.sh`,
+# `<thing>-test.sh`, and the python suites `<thing>-test.py`. Measured 2026-08-31: the
+# python suites ran in CI (linux) only, and they are the ones carrying the path and
+# file-writing classes — the classes that behave differently per OS. Registered as OS-4
+# in the core's docs/os-traps.md.
+for t in scripts/test-*.sh core/scripts/test-*.sh \
+         scripts/*-test.sh core/scripts/*-test.sh; do
   name=$(basename "$t" .sh)
   if out=$(bash "$t" 2>&1); then
     echo "  ok  $name"
   else
     echo "  !!  $name FAILED"
     echo "$out" | tail -5 | sed 's/^/        /'
+    fail=1
+  fi
+done
+for t in scripts/*-test.py core/scripts/*-test.py; do
+  name=$(basename "$t")
+  if out=$("$PY" "$t" 2>&1); then
+    echo "  ok  $name"
+  else
+    echo "  !!  $name FAILED"
+    echo "$out" | grep -E 'FAIL' | tail -5 | sed 's/^/        /'
     fail=1
   fi
 done

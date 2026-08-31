@@ -99,7 +99,12 @@ def read_entry(p: Path, repo: Path) -> dict:
     fields = dict(FM_FIELD.findall(head))
     desc = desc_m.group(1) if desc_m else ""
     return {
-        "path": str(p.relative_to(repo)),
+        # as_posix: this string becomes a markdown link target AND is matched against
+        # the old index to decide what is carried through verbatim. With backslashes
+        # (Windows) nothing matches, so the generator carried EVERY existing entry into
+        # the root index — measured 2026-08-31: root 83,205 chars instead of the routing
+        # page, and every link it wrote was unfollowable.
+        "path": p.relative_to(repo).as_posix(),
         "topic": p.relative_to(repo).parts[0],
         "name": name_m.group(1) if name_m else p.stem,
         "desc": desc,
@@ -198,9 +203,14 @@ def main() -> int:
     if not a.write:
         print("\ndry run — nothing written. Re-run with --write to produce the files.")
         return 0
-    (a.repo / "INDEX.md").write_text(root, encoding="utf-8")
+    # newline="\n": write_text translates \n to the platform separator, so on Windows
+    # this generator produced CRLF in a repo whose .gitattributes says LF — every line of
+    # the generated index shows as changed, or git rewrites the file behind the run.
+    # Measured 2026-08-31: 17 of 17 lines CRLF in the root index. Same class as the
+    # generators fixed in #34.
+    (a.repo / "INDEX.md").write_text(root, encoding="utf-8", newline="\n")
     for t, v in topics.items():
-        (a.repo / t / "INDEX.md").write_text(v, encoding="utf-8")
+        (a.repo / t / "INDEX.md").write_text(v, encoding="utf-8", newline="\n")
     print(f"\nwritten: INDEX.md + {len(topics)} topic index files")
     return 0
 

@@ -147,7 +147,7 @@ def main() -> int:
                         continue
                     findings.append({
                         "check": name,
-                        "file": str(path.relative_to(ROOT)),
+                        "file": path.relative_to(ROOT).as_posix(),
                         "line": lineno,
                         "match": hit,
                     })

@@ -22,7 +22,7 @@ Register format (Markdown, blocks starting at '## '):
     invariant: the sentence that spans the search space (never an anecdote)
     pattern:   ERE for grep -rnE           | OR
     check:     <external, e.g. a tool>     | when no grep covers the space
-    paths:     grep arguments after the pattern
+    paths:     grep arguments after the pattern (--include=/--exclude= plus paths)
     mechanizable: no|tool — <reason>       # DELIBERATELY not a grep, see below
     known:     path=N path=N               # baseline: hits per file
     instances: 3                           # REAL sites of the class (human count)
@@ -88,18 +88,27 @@ def counts(root, pattern, paths):
 
     The first version shelled out to `grep -rcE` — a Windows mine: the tool name
     in PATH is an assumption, not a promise, and core scripts run on three OSes.
-    `paths` keeps the grep argument shape (`--include=GLOB` filters, everything
+    `paths` keeps the grep argument shape (`--include=GLOB` and `--exclude=GLOB`
+    filters, everything
     else is a path) so existing registers stay valid unchanged.
     """
     rx = re.compile(pattern)
-    includes, targets = [], []
+    includes, excludes, targets = [], [], []
     for tok in shlex.split(paths or "."):
         if tok.startswith("--include="):
             includes.append(tok[len("--include="):])
+        elif tok.startswith("--exclude="):
+            excludes.append(tok[len("--exclude="):])
         else:
             targets.append(tok)
 
     def wanted(name):
+        # --exclude belongs to the documented grep argument shape; without it a class
+        # whose space is production code ONLY cannot be stated at all, because the
+        # fixtures exercising the same pattern drown the baseline. Unsupported, the
+        # token fell through to targets and the search died with "path not found".
+        if any(fnmatch.fnmatch(name, g) for g in excludes):
+            return False
         return not includes or any(fnmatch.fnmatch(name, g) for g in includes)
 
     def count_file(p):

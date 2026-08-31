@@ -7,6 +7,43 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **Windows verification of 1.3.26–1.3.30, and the reason it was needed at all.** Three
+  defects, one root each, all invisible to CI: `shared-memory-lint.py` and
+  `shared-memory-index.py` stated repo-relative paths with `str(relative_to(...))`, which
+  is backslashed on Windows — the linter reported 143 of 143 real files as missing from
+  the index AND every index line as pointing at a missing file, and the generator, matching
+  nothing against the old index, carried every existing entry into the root page (83,205
+  chars instead of 1,651) with unfollowable links. The generator additionally wrote CRLF
+  into a repo whose `.gitattributes` says LF (17 of 17 lines). `test-recall-gate.sh` handed
+  node a Git-Bash `/tmp/...` transcript path: 4 of 13 cases failed and the other 9 were
+  green for the wrong reason — the gate itself is fine. After the fix the linter returns
+  the macOS numbers exactly (index_drift 0, frontmatter 0, limits 0, unresolved_links 8)
+  and `--write` produces a byte-identical index: `git status` clean against what macOS
+  generated.
+- **`docs/os-traps.md` — a register for platform traps, re-run automatically.** CI runs on
+  Linux, most of this repo is written on macOS, and Windows is where it breaks; worse, the
+  breakage is silent, because a path comparison that always misses, a fixture whose
+  transcript cannot be read and a generator writing CRLF all look like clean runs on the
+  OS that cannot reproduce them. Three of these classes had already been fixed once
+  (2026-08-10, 2026-08-13) and came back. Four entries, each an invariant plus the search
+  spanning its space, run by `invariant-check.py` in CI and in `portability-smoke.sh`, so
+  the search executes on every OS even where the defect itself is invisible. Extending it
+  is one block; a class belongs there at instance 1.
+- **The fixture runners discover suites instead of listing them.** The literal list in
+  `portability-smoke.sh` named five suites and had not grown — `test-recall-gate.sh` and
+  four `*-test.py` suites ran on Linux only, which is exactly how the three defects above
+  shipped. CI carried the same list a second time, one step per suite. All three runners
+  now glob (three naming shapes: `test-*.sh`, `*-test.sh`, `*-test.py`) and fail loudly if
+  discovery yields nothing: the OS gate went from 5 suites to 12, `brain-selftest` from 8
+  to 15. Registered as OS-4 — a hand-kept list of what to run is a second copy of the
+  directory, and what it drops is the coverage the suites were written for.
+- `invariant-check.py` accepts `--exclude=GLOB`, which its own docstring already promised
+  by calling `paths` "the grep argument shape". Without it, a class whose space is
+  production code only cannot be stated: the fixtures exercising the same pattern drown the
+  baseline. Unsupported, the token fell through to the target list and the search died with
+  `path not found`.
+- `leak-scan.py` and `english-only.py`'s baseline writer swept along with OS-1/OS-2.
+
 ## 1.3.30 — 2026-08-30
 
 - **`scripts/shared-memory-index.py` — the shared index is generated, three levels,
