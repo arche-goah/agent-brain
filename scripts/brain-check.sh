@@ -62,7 +62,11 @@ unproven=$(printf '%s' "$self_out" | sed -n 's/^\([0-9]*\) mechanism(s) without 
 untrig=$(printf '%s' "$self_out" | sed -n 's/.*(\([0-9]*\) without a trigger.*/\1/p')
 fric=$(printf '%s' "$fric_out" | sed -n 's/^\([0-9]*\) friction candidate.*/\1/p')
 accepted=$(printf '%s' "$fric_out" | sed -n 's/.*(\([0-9]*\) candidate(s) accepted.*/\1/p')
-fixtures=$(printf '%s' "$self_out" | grep -c '^  ok  test-' || true)
+# Every fixture line, not just the `test-*` shape: since discovery, suites also arrive
+# as `<thing>-test.sh` and `<thing>-test.py`, and counting one shape reported 7 green
+# where 15 had run — a headline number quietly measuring a third of what it named.
+fixtures=$(printf '%s' "$self_out" | sed -n '/^fixtures (effect proof)/,/^$/p' \
+           | grep -ac '^  ok  ' || true)
 
 if [ "$rc" -eq 0 ] && [ "${fric:-0}" -eq 0 ]; then
   echo "brain-check: machinery ok — ${fixtures} fixture(s) green, ${unproven:-0} without" \
@@ -72,7 +76,7 @@ fi
 
 # Something is off: the summary alone would be a shrug, so the detail follows.
 echo "!! brain-check: needs a look"
-printf '%s\n' "$self_out" | grep -E '^  !!|FAILURE' | head -8
+printf '%s\n' "$self_out" | grep -aE '^  !!|FAILURE' | head -8
 printf '%s\n' "$fric_out" | sed -n '/^[a-z-]*([0-9]*):/,$p' | head -12
 echo "   full run: bash $HERE/brain-check.sh"
 exit "$rc"

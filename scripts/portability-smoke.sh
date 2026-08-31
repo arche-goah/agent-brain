@@ -263,7 +263,7 @@ printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"tool_use","nam
 _cg="$(printf '{"transcript_path":"%s","cwd":"C:\\\\x\\\\brain","stop_hook_active":false}' "$_tgn" | node "$CORE/helpers/class-gate.cjs" 2>&1)"
 case "$_cg" in
   *"Touched this turn: scripts/tool3.py"*) ok "class-gate strips the cwd prefix from backslash paths";;
-  *) bad "class-gate backslash strip: '$(printf '%s' "$_cg" | grep -o 'Touched this turn: [^\\n\"]*' | head -1)'";;
+  *) bad "class-gate backslash strip: '$(printf '%s' "$_cg" | grep -ao 'Touched this turn: [^\\n\"]*' | head -1)'";;
 esac
 
 # 11c) the register template must parse in the runner (a seed that the runner
@@ -285,7 +285,7 @@ printf '## %s — fixture deadline\n' "$_d3" > "$T/docs/business/deadlines.md"
 out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
 case "$out" in
   *"!! deadline $_d3 in 3 d"*) ok "bootup computes deadline distance (<7 d escalates)";;
-  *) bad "bootup deadline math missing: $(printf '%s' "$out" | grep -i deadline | tail -1)";;
+  *) bad "bootup deadline math missing: $(printf '%s' "$out" | grep -ai deadline | tail -1)";;
 esac
 
 # 13) hook coverage: a template hook that no settings scope wires must be reported
@@ -343,7 +343,7 @@ for _s in "${_suites[@]}"; do
   if _out="$(cd "$CORE" && bash "scripts/$suite.sh" 2>&1)"; then
     ok "$suite"
   else
-    bad "$suite: $(printf '%s' "$_out" | grep -E '^ *(FAIL|!!)' | head -2 | tr '\n' ' ')"
+    bad "$suite: $(printf '%s' "$_out" | grep -aE '^ *(FAIL|!!)' | head -2 | tr '\n' ' ')"
   fi
 done
 # The python fixtures carry the path- and file-writing classes — precisely the ones that
@@ -353,10 +353,15 @@ for _s in "${_pysuites[@]}"; do
   if _out="$(cd "$CORE" && "$PY" "scripts/$suite" 2>&1)"; then
     ok "$suite"
   else
-    bad "$suite: $(printf '%s' "$_out" | grep -E 'FAIL' | head -2 | tr '\n' ' ')"
+    bad "$suite: $(printf '%s' "$_out" | grep -aE 'FAIL' | head -2 | tr '\n' ' ')"
   fi
 done
 
+# grep -aE throughout below: a FAILURE line is the one place the output must survive,
+# and on Git Bash grep declared these streams binary and printed "Binary file (standard
+# input) matches" INSTEAD of the failing line — the diagnostic replacing what it was
+# asked to show, exactly when it mattered. Third site of that shape (session-bootup was
+# the first two).
 # --- 12b. the OS-trap register re-runs its own searches ----------------------
 # Known Mac/Windows divergences slip past CI because the OS that can reproduce them is
 # not the OS that runs it. docs/os-traps.md states each class as an invariant plus the
@@ -364,7 +369,7 @@ done
 if _out="$(cd "$CORE" && "$PY" scripts/invariant-check.py docs/os-traps.md 2>&1)"; then
   ok "os-trap register: no new site"
 else
-  bad "os-trap register: $(printf '%s' "$_out" | grep -E 'NEW site|drift|vanished|search failed' | head -2 | tr '\n' ' ')"
+  bad "os-trap register: $(printf '%s' "$_out" | grep -aE 'NEW site|drift|vanished|search failed' | head -2 | tr '\n' ' ')"
 fi
 
 # --- 13. hook-coverage understands indirection -------------------------------

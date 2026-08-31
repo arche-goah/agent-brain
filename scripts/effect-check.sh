@@ -117,8 +117,8 @@ if [ -z "$sl" ]; then
 else
   # Quoted form first (the installer quotes the path since 2026-08-04, so a home dir
   # with a space survives) — in the JSON text a quote inside the value appears as \".
-  p=$(printf '%s' "$sl" | grep -oE '\\"[^"\\]*statusline[^"\\]*\.(cjs|js|sh)\\"' | head -1 | sed 's/^\\"//;s/\\"$//')
-  [ -n "$p" ] || p=$(printf '%s' "$sl" | grep -oE '[^ "]*statusline[^ "]*\.(cjs|js|sh)' | head -1)
+  p=$(printf '%s' "$sl" | grep -aoE '\\"[^"\\]*statusline[^"\\]*\.(cjs|js|sh)\\"' | head -1 | sed 's/^\\"//;s/\\"$//')
+  [ -n "$p" ] || p=$(printf '%s' "$sl" | grep -aoE '[^ "]*statusline[^ "]*\.(cjs|js|sh)' | head -1)
   p=${p/\$CLAUDE_PROJECT_DIR/$BRAIN}
   if [ -n "$p" ] && [ ! -f "$p" ]; then say ROT E2 "Statusline" "statusLine points to $p — file missing"
   else say OK E2 "Statusline" "wired up${p:+: $p}"; fi

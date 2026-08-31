@@ -198,7 +198,18 @@ def main() -> int:
     print(f"one lookup AFTER:  {lookup_new:>7} chars  (~{lookup_new//4} tokens) — root + the "
           f"largest topic")
     if lookup_new:
-        print(f"factor:            {old_size/lookup_new:>7.1f}x cheaper per lookup")
+        # The direction is COMPUTED, never assumed. "cheaper" was a fixed word next to a
+        # ratio that can fall below 1 — and it now does routinely: once the split this
+        # figure argued for has happened, the comparison is "already split against split",
+        # and the run reported "0.1x cheaper per lookup" for a lookup ten times dearer.
+        # Reported by the other instance from a real run; the arithmetic was never wrong,
+        # only the one word quitting two opposite cases.
+        ratio = old_size / lookup_new
+        if ratio >= 1:
+            print(f"factor:            {ratio:>7.1f}x CHEAPER per lookup")
+        else:
+            print(f"factor:            {1 / ratio:>7.1f}x MORE EXPENSIVE per lookup "
+                  f"— the index is already split; this compares split against split")
 
     if not a.write:
         print("\ndry run — nothing written. Re-run with --write to produce the files.")
