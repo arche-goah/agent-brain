@@ -5,6 +5,28 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## Unreleased
+
+- **The cache provenance check could not name which of two states it had found**
+  (`brain-update.sh`). It compares the recorded install commit against the pinned tag,
+  and those disagree in two different situations: the record is stale (the content IS the
+  pinned release — `claude plugin update` never rewrites `gitCommitSha`), or the content
+  is foreign (the plugin loading right now is not what the pin names). Both printed FAIL,
+  and the comment above the check said so and accepted it because the remedy is the same.
+  The remedy is, the URGENCY is not. Measured on two consecutive releases: content 1.3.31
+  then 1.3.32, both correct, record still holding the sha of the 1.3.25 install — so the
+  check failed on every UPDATED plugin and only ever passed on a freshly installed one,
+  which is the opposite of useful. Discriminator: the version inside the cached
+  `plugin.json` against the version the tag encodes, which this ecosystem guarantees
+  because `release-preflight` refuses to cut a tag where they differ. Stale record is now
+  a NOTE that names itself; foreign content stays a FAIL and says which version it found.
+- `brain-update-test.sh`: first fixture for that script. Three cases, and the negative one
+  carries it — foreign content must report its OWN version, never the pin's, or the fix
+  would have softened a real defect into a reassuring note. Its stdin program takes both
+  paths from the environment (OS-6): a `.json` argument is safe today only because it
+  carries no shebang, and that is an assumption about the input, not a property of the
+  call.
+
 ## 1.3.32 — 2026-08-31
 
 - **`python -` executed the file passed as its argument, and the one site it hit was the
