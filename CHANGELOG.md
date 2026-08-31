@@ -45,6 +45,19 @@ The marketplace pins tags, never `main`.
   describing the very defect tripped its own register the same day. Honest trade for a
   grep — it cannot tell code from a sentence about code, and weakening the pattern to
   spare the sentence would spare a real site in a fixture too.
+- **The trigger detector never looked where CI wiring lives** (`brain-selftest.sh`). The
+  classifier already had a `ci` branch for `.yml`/`.yaml` references — but `.github` was
+  not among the directories it walked, so that branch was unreachable and every script
+  invoked only from a workflow read as untriggered. Measured on this repo: 8 reported, 6
+  real; the OS gate runner and one more are `run:` steps in `ci.yml`. Second half, found
+  while fixing the first: inside a workflow file a `run:` line CALLS a script and a `#`
+  line only mentions one, so workflow files are matched WITHOUT their comment lines —
+  counting comments cleared a third script on the strength of prose. Third half, found
+  while writing the comment explaining the second: naming a script inside this file makes
+  this file that script's "reference" and clears it, which is exactly the trap the
+  allowlist comment two blocks up already warned about. The explanation now carries no
+  script names. No fixture: `brain-selftest.sh` has none, and the proof here is the
+  measured before/after (8 → 6) plus the deliberate wrong state in between (5).
 
 - **A core checkout AHEAD of the pin is not an update** (`session-bootup.sh`). The
   comparison was a string inequality, so a brain verifying an unreleased line — the
