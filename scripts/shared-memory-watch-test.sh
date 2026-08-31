@@ -12,7 +12,10 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WATCH="$HERE/shared-memory-watch.sh"
+# Defaults to the sibling script so the fixture runners can call it with no arguments;
+# the optional path exists so the party checks below can be run as a NEGATIVE control
+# against an unpatched copy, which is the only way to show they can fail at all.
+WATCH="${1:-$HERE/shared-memory-watch.sh}"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
@@ -67,20 +70,30 @@ bash "$WATCH" watch 2 > "$OUT" 2>&1 &
 WATCHER=$!
 sleep 3
 
-push_from_other() {   # $1 = file, $2 = message
-  echo "$2" > "$OTHER/domain/$1"
+push_from_other() {   # $1 = file, $2 = message, $3 = von: party (optional)
+  # Entries in this repo carry a `von:` field naming the PARTY. It is written here
+  # because the report line is derived from it, not from the git account: two of the
+  # three parties push under one account, so `%an` cannot tell them apart.
+  if [ -n "${3:-}" ]; then
+    printf -- '---\nname: %s\nmetadata:\n  von: %s\n---\n\n%s\n' \
+      "${1%.md}" "$3" "$2" > "$OTHER/domain/$1"
+  else
+    echo "$2" > "$OTHER/domain/$1"
+  fi
   git -C "$OTHER" add -A
   git -C "$OTHER" commit -qm "$2"
   git -C "$OTHER" push -q origin main
 }
 
-push_from_other b.md "colleague one"
+push_from_other b.md "colleague one" blurredvision-win
 sleep 6
 FIRST=$(grep -c '^FOUND:' "$OUT" || true)
+COLLEAGUE_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
-push_from_other c.md "colleague two"
+push_from_other c.md "colleague two" emil-workstation
 sleep 6
 SECOND=$(grep -c '^FOUND:' "$OUT" || true)
+WORKSTATION_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
 # Braces + redirect: the shell prints its own "Terminated" job message on wait,
 # which reads like a test failure in the log and is not one.
@@ -94,4 +107,23 @@ if [[ "$FIRST" -ge 1 ]]; then echo "PASS: first foreign commit reported"
 else echo "FAIL: first foreign commit NOT reported"; fail=1; fi
 if [[ "$SECOND" -ge 2 ]]; then echo "PASS: watcher survived and reported the second"
 else echo "FAIL: no second report — watcher died after the first find"; fail=1; fi
+
+# --- the report names the PARTY, not the git account -------------------------------
+# Both pushes above come from the SAME git identity in this sandbox, exactly as they do
+# in reality for two of the three parties. So a line derived from `%an` cannot separate
+# them, and these two checks are the negative control for that: the second must not read
+# as the colleague. Measured incident 2026-08-22 — a session reported our own Windows
+# machine as "the colleague" and the record would have credited him with decisions that
+# were never put to him.
+if grep -q 'from .*blurredvision-win' <<<"$COLLEAGUE_LINE"; then
+  echo "PASS: an entry von: blurredvision-win is reported as that party"
+else
+  echo "FAIL: party missing or wrong for the colleague's entry: $COLLEAGUE_LINE"; fail=1
+fi
+if grep -q 'from .*emil-workstation' <<<"$WORKSTATION_LINE" \
+   && ! grep -q 'blurredvision' <<<"$WORKSTATION_LINE"; then
+  echo "PASS: an entry von: emil-workstation is NOT reported as the colleague"
+else
+  echo "FAIL: our own workstation read as someone else: $WORKSTATION_LINE"; fail=1
+fi
 exit "$fail"
