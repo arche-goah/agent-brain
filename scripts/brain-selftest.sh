@@ -107,7 +107,7 @@ for t in scripts/*-test.py core/scripts/*-test.py; do
     echo "  ok  $name"
   else
     echo "  !!  $name FAILED"
-    echo "$out" | grep -E 'FAIL' | tail -5 | sed 's/^/        /'
+    echo "$out" | grep -aE 'FAIL' | tail -5 | sed 's/^/        /'
     fail=1
   fi
 done
@@ -150,12 +150,12 @@ for _, line in left:
     print(f"OPEN {line}")
 PY
 )
-    open_gaps=$(printf '%s' "$rest" | grep -c '^OPEN' || true)
-    printf '%s' "$rest" | grep '^COVERED' | sed 's/^COVERED /  ok  hook-coverage: /' \
+    open_gaps=$(printf '%s' "$rest" | grep -ac '^OPEN' || true)
+    printf '%s' "$rest" | grep -a '^COVERED' | sed 's/^COVERED /  ok  hook-coverage: /' \
       | sed 's/$/ runs via the dispatcher (registered in stop-checks.json)/'
     if [ "$open_gaps" -gt 0 ]; then
       echo "  !!  hook-coverage reports $open_gaps real gap(s):"
-      printf '%s' "$rest" | grep '^OPEN' | sed 's/^OPEN /        /'
+      printf '%s' "$rest" | grep -a '^OPEN' | sed 's/^OPEN /        /'
       fail=1
     fi
   fi
@@ -168,7 +168,7 @@ if [ -f core/scripts/effect-check.sh ]; then
     echo "  ok  effect-check (presence vs effect)"
   else
     echo "  !!  effect-check reports:"
-    printf '%s\n' "$ec" | grep -Ei '(fail|rot|red|!!|missing)' | head -5 | sed 's/^/        /'
+    printf '%s\n' "$ec" | grep -aEi '(fail|rot|red|!!|missing)' | head -5 | sed 's/^/        /'
     fail=1
   fi
 fi
@@ -188,13 +188,13 @@ for lint in "core/scripts/lint-placeholders.sh:placeholders in skills/rules" \
     echo "  ok  $(basename "$f") — $what"
   else
     echo "  !!  $(basename "$f") reports findings ($what):"
-    printf '%s\n' "$out" | grep -E '^\s*\{|^!!' | head -4 | sed 's/^/        /'
+    printf '%s\n' "$out" | grep -aE '^\s*\{|^!!' | head -4 | sed 's/^/        /'
     fail=1
   fi
 done
 if [ -f core/scripts/invariant-check.py ] && [ -f docs/maintenance/invariants.md ]; then
   ic=$("$PY" core/scripts/invariant-check.py docs/maintenance/invariants.md 2>&1)
-  drift=$(printf '%s' "$ic" | grep -c 'NEW site' || true)
+  drift=$(printf '%s' "$ic" | grep -ac 'NEW site' || true)
   echo "  ok  invariant-check ran ($drift new sites — open classes are normal)"
 fi
 echo
@@ -209,7 +209,7 @@ covered=$(grep -h '^# covers:' scripts/test-*.sh core/scripts/test-*.sh 2>/dev/n
 for f in scripts/hooks/*.cjs scripts/hooks/*.sh core/helpers/*.cjs; do
   [ -e "$f" ] || continue
   base=$(basename "$f"); base=${base%.*}
-  if printf '%s' "$covered" | grep -qw -- "$base"; then continue; fi
+  if printf '%s' "$covered" | grep -aqw -- "$base"; then continue; fi
   # each glob on its own: `ls a b` fails as soon as ONE of them is empty, which would
   # make the second location make the check stricter instead of broader
   if ! ls scripts/test-*"${base}"*.sh >/dev/null 2>&1 \
