@@ -75,15 +75,32 @@ case "${1:-status}" in
     # One machine can have several sessions open on the same brain. Only ONE should
     # poll — otherwise every session hammers the same fetch and all of them react to
     # the same commit. The lock is per machine, in gitignored state.
-    if lock_owner_alive; then
-      echo "already armed by another session: pid $(cat "$LOCK") — skipping duplicate watcher"
-      exit 0
+    # Claim and check in ONE step. `noclobber` makes the redirect fail if the file
+    # already exists (O_EXCL), so there is no window between asking whether the lock is
+    # free and taking it. The check-then-write version had one: two sessions arming
+    # close together both passed the check and both wrote, and the file then named only
+    # the last of them while both watchers polled.
+    claim() { ( set -o noclobber; echo $$ > "$LOCK" ) 2>/dev/null; }
+    if ! claim; then
+      if lock_owner_alive; then
+        echo "already armed by another session: pid $(cat "$LOCK") — skipping duplicate watcher"
+        exit 0
+      fi
+      # The owner is gone without its trap having run (kill -9, crash, reboot). Clear
+      # the corpse and claim once; a second failure is a real problem, not a stale lock.
+      rm -f "$LOCK"
+      claim || { echo "ERROR: cannot claim lock $LOCK"; exit 1; }
     fi
+    # Only remove the lock if it STILL names this process. The unconditional `rm -f`
+    # here deleted whatever lock happened to be there — including one a later session
+    # had legitimately claimed after this one was presumed dead. The next session then
+    # read "not armed" and started a second watcher on the same cursor, invisible to
+    # `status`, which can only ever name one pid. Measured 2026-08-20: two watchers,
+    # started six minutes apart, both polling.
+    trap 'if [[ "$(cat "$LOCK" 2>/dev/null)" == "$$" ]]; then rm -f "$LOCK"; fi' EXIT
     [[ -d "$REPO/.git" ]] || { echo "ERROR: shared-memory repo not cloned: $REPO"; exit 1; }
 
     INTERVAL="${2:-300}"
-    echo $$ > "$LOCK"
-    trap 'rm -f "$LOCK"' EXIT
 
     # A MISSING cursor used to be silent: the find condition required a non-empty
     # cursor, so with no state file the loop polled forever and reported nothing —
@@ -112,9 +129,18 @@ case "${1:-status}" in
           COUNT=$(git -C "$REPO" rev-list --count "$LAST_SEEN..$REMOTE_HEAD" -- . 2>/dev/null)
           FILES=$(git -C "$REPO" diff --name-only "$LAST_SEEN" "$REMOTE_HEAD" -- . 2>/dev/null \
             | grep -v '^INDEX\.md$' | head -5 | tr '\n' '|' | sed 's/|/, /g; s/, $//')
-          AUTHORS=$(git -C "$REPO" log --format='%an' "$LAST_SEEN..$REMOTE_HEAD" -- . 2>/dev/null \
+          # The PARTY is the `von:` field of the changed entries, never the git account:
+          # two of the three parties share one account, so `%an` cannot tell them apart
+          # (measured 2026-08-22 — a session reported our own Windows machine as "the
+          # colleague"). Falls back to a visibly unknown party rather than to a name.
+          PARTIES=$(git -C "$REPO" diff --name-only "$LAST_SEEN" "$REMOTE_HEAD" -- . 2>/dev/null \
+            | grep '\.md$' \
+            | while read -r f; do
+                git -C "$REPO" show "$REMOTE_HEAD:$f" 2>/dev/null \
+                  | sed -n 's/^[[:space:]]*von:[[:space:]]*//p' | head -1
+              done \
             | sort -u | tr '\n' '|' | sed 's/|/, /g; s/, $//')
-          echo "FOUND: ${COUNT:-?} new commit(s) by ${AUTHORS:-unknown} — ${FILES:-see git log}"
+          echo "FOUND: ${COUNT:-?} new commit(s) from ${PARTIES:-unknown party (no von: field)} — ${FILES:-see git log}"
           write_sha "$REMOTE_HEAD"     # cursor advances, watch CONTINUES
         fi
       fi
