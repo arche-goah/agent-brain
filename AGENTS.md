@@ -89,3 +89,25 @@ session start.
    Consequence for a reader as much as for a writer: `templates/settings.json` plus the
    `hook-coverage` output is the answer to "what should be wired here" — never another
    instance's file, and never memory of one.
+
+10. **A platform divergence is registered before it is fixed** (operator order
+   2026-08-31: "keep all mac/win issues in the register and derive error classes, so we
+   do not keep getting stuck in new instances and patching everything by hand").
+   CI runs on Linux, most of this repo is written on macOS, and the divergences surface
+   on Windows — where they are silent, because the failing path produces nothing to look
+   at on the platform that can reproduce it. `docs/os-traps.md` is where they live:
+   - **at instance 1**, as an INVARIANT plus the search spanning its space, not as an
+     anecdote and not after the third occurrence;
+   - stating which of the three shapes it is (A: the platform reshapes a string in
+     transit · B: the same command name is a different program · C: the gate does not run
+     where the defect lives) — and if it fits none, naming the fourth shape there;
+   - with a baseline of the sites that are CORRECT, so a NEW site surfaces and is read.
+   The searches run in CI and in `portability-smoke.sh`, which is the point: they execute
+   on the platform that cannot reproduce the defect. Six entries came out of a single day
+   in which four of them were classes that had already been fixed once and came back
+   under a different spelling.
+   **Then regenerate the signpost:** `scripts/os-traps-export.py --write` produces a
+   pointer entry in the shared-memory repo. A tool repo is read when somebody checks it
+   out; the shared memory is read by every instance at session start, so a finding that
+   only lands here reaches the other instance days late or never. The entry is generated
+   and carries no text of its own — adding a line by hand drifts by the next trap.

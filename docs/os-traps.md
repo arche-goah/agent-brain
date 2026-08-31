@@ -29,7 +29,55 @@
 
 root: ..
 
+## The three shapes behind all of these (operator order 2026-08-31)
+
+Six entries in one day is not six unrelated bugs; it is three shapes, and naming them is
+what lets a NEW instance look in the right place instead of rediscovering each one at the
+cost of a session. Every entry above is an instance of exactly one:
+
+**A · The platform reshapes a string in transit.** The value is right when written and
+wrong when read, because something between the two applied a platform convention.
+Members: OS-1 (path separator), OS-2 (line ending). Older, same shape: the cp1252 finding
+of 2026-08-04 (encoding), the MSYS argument rewriting of `git show a:b`.
+*Where to look first on a new platform:* every place a path or text crosses a boundary —
+written to a file another tool reads, compared against text somebody else wrote, printed
+into a report a fixture greps. The test is never "does it look right in the terminal" but
+"is it byte-identical to what the other platform produces".
+
+**B · The same command name is a different program.** Nothing is reshaped; the tool
+itself behaves differently, and usually only in one branch. Members: OS-5 (`grep` decides
+per stream whether it is text), OS-6 (`python3` is an install manager that honours a
+shebang in an argument, while `python` on the same machine does not). Older, same shape:
+`stat -c` vs `-f`, `lsof` absent, the Microsoft Store python3 stub.
+*Where to look first:* every tool invoked by bare name in a REPORTING or GUARDING path.
+An interpreter probe that runs `-c 'import sys'` proves the binary starts, never that it
+behaves — and a guard that fails open looks exactly like a guard with nothing to say.
+
+**C · The gate does not run where the defect lives.** Not a divergence at all: a coverage
+hole that makes A and B invisible. Member: OS-4 (the OS gate carried a hand-written suite
+list). *Where to look first:* anything that ENUMERATES what to check — a list of suites, a
+list of directories to walk, a list of steps in CI. Every hand-kept enumeration is a second
+copy of a directory and drifts silently toward "we checked everything".
+
+**How this register is kept** — the part that has to survive this session:
+
+1. A Mac/Windows divergence that cost a debugging session gets a block here **at instance
+   1**, before it is fixed. Registering is not the build threshold; only building a
+   mechanism is.
+2. It is stated as an INVARIANT plus a search, never as an anecdote — and the search runs
+   in CI and in `portability-smoke.sh`, so it executes on the platform that cannot
+   reproduce the defect.
+3. It says which of A/B/C it belongs to. If it fits none, that is the interesting case:
+   name the fourth shape here rather than filing it as a one-off.
+4. Baselines hold the sites that are CORRECT. The point is not a clean list, it is that a
+   new site surfaces and gets read.
+5. This file lives in the CORE, not in an instance register, because a platform is not a
+   property of one brain. An instance's own register keeps its instance-specific classes
+   and points here for platform ones.
+
 ## OS-1 — a repo-relative path leaves the program as text with the platform separator
+
+shape: A
 
 invariant: A path that is compared against, or written into, forward-slashed text —
 markdown links, git output, a baseline file, JSON another instance reads — is stated
@@ -65,13 +113,15 @@ block embedded in a shell script, where a `*.py` search could not see it.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
+shape: A
+
 invariant: Every write of a file that git tracks pins `newline="\n"`. Python text mode
 translates `\n` to the platform separator, so the same generator emits LF on macOS and
 CRLF on Windows — against a `.gitattributes` that says LF the whole file reads as
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1
+known:     scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -84,9 +134,13 @@ both fixed then; 2026-08-31 shared-memory-index.py shipped the same defect again
 lines CRLF in the generated root index of the shared-memory repo) and english-only.py's
 baseline writer carried it unnoticed. The pattern deliberately matches correct sites too:
 "is there a new place that writes a tracked file" is the question a grep can answer, "did
-the author think about line endings" is not.
+the author think about line endings" is not. Proven in use the same day: the seventh site
+(os-traps-export.py, which generates this register's own signpost) surfaced as drift on the
+first run after it was written, was read, and was correct.
 
 ## OS-3 — a fixture hands a shell path to a native process
+
+shape: A
 
 invariant: A fixture that creates a temp dir and passes it into node or python as DATA
 (a JSON field, an env var) states it natively via `cygpath -m`. Git Bash `/tmp/...` does
@@ -106,6 +160,8 @@ reason, which is the worse half. A new fixture appears here as drift; the review
 is whether any path in it crosses into a native process.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
+
+shape: B
 
 invariant: A grep that renders a REPORT line — a FAIL, a verdict, a count somebody acts
 on — passes `-a`. Git Bash decides per stream whether it is text, and on a decision of
@@ -130,7 +186,36 @@ nobody reads as a verdict. They stay listed rather than changed, because `-a` on
 that never renders anything is noise — but a NEW pipe-grep must be looked at, and the
 question is one word long: does this line end up in front of a human?
 
+## OS-6 — `python -` runs the file you passed as an argument
+
+shape: B
+
+invariant: A path is never handed to `"$PY" - "<path>"` as argv when that file may carry a
+shebang. Python 3.14's install manager — the `python3` on PATH on a Windows workstation —
+honours the shebang of a file argument even though the program was given on stdin: the
+stdin program never runs, and the argument is EXECUTED instead. Pass such a value in the
+environment.
+pattern:   "\$PY" - "
+paths:     --include=*.sh scripts helpers
+known:     scripts/brain-selftest.sh=2 scripts/suite-install.sh=2
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-08-31 on the workstation. Exactly one of the five sites was
+affected, and it was the hand-tool guard — the check whose entire purpose is that a
+declared script does NOT run. It returned "not a hand tool" and launched bash on the very
+file it was protecting. Isolated: only a shebang-carrying FILE triggers it; a directory, a
+.json and a shebang-less .sh are passed through as argv correctly, which is why the other
+four sites are fine and why nothing else in the repo showed a symptom. Invisible to the
+interpreter probe at the top of those scripts (`python3 -c 'import sys'` succeeds) and
+invisible to python.org's `python` 3.11 on the same machine, which behaves correctly — two
+interpreters under two names, one of them wrong only for this construct. The baseline
+counts the remaining `$PY - "<arg>"` sites; a new one is read with one question: can this
+argument ever be a file with a shebang?
+
 ## OS-4 — a fixture suite exists but no OS gate runs it
+
+shape: C
 
 invariant: The set of fixture suites that `portability-smoke.sh` runs is DISCOVERED, not
 listed. A hand-kept list is a second copy of the directory and drifts the moment somebody
