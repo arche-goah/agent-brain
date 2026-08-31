@@ -35,10 +35,10 @@ invariant: A path that is compared against, or written into, forward-slashed tex
 markdown links, git output, a baseline file, JSON another instance reads — is stated
 with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so every
 such comparison misses and every such link is unfollowable.
-pattern:   str\([A-Za-z_.]+\.relative_to\(
-paths:     --include=*.py scripts helpers
-known:
-instances: 4
+pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
+paths:     --include=*.py --include=*.sh scripts helpers
+known:     scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=5 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=3 scripts/shared-memory-lint.py=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 helpers/session-bootup.sh=8
+instances: 5
 repeat:    yes
 status:    closed
 note:      2026-08-13 english-only.py — 100 findings on a clean tree. 2026-08-31, same
@@ -51,7 +51,17 @@ a new one. A PROSE mention counts as a hit — measured the same day, when a fix
 docstring describing this very defect tripped it. That is the honest trade for a grep: it
 cannot tell code from a sentence about code, and weakening the pattern to spare the
 sentence would spare a real site in a fixture too. Write about the class without writing
-the call.
+the call. Second constructor added the same day: `os.path.join()` produces the
+identical defect and the first pattern could not see it — found only because the
+other instance's new fixture greps a REPORT for `scripts/<name>.sh` and the detector
+printed `scripts\<name>.sh`, so both its negative cases read as passes. A class is
+the invariant, not the one spelling that produced it; the baseline below is now the
+join sites that legitimately build a filesystem path — the baseline is no longer zero,
+and the review question for a new hit is one sentence: does this string get REPORTED,
+or matched against forward-slashed text? If it only ever reaches the filesystem, it is
+fine and gets counted; if it reaches a reader or a comparison, it needs `as_posix()` or
+a literal `/`. `.sh` is in the search because the defect was found inside a python
+block embedded in a shell script, where a `*.py` search could not see it.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 

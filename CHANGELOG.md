@@ -30,6 +30,17 @@ The marketplace pins tags, never `main`.
   one of the three naming shapes discovery now finds — a headline number measuring a third
   of what it names, in the one line the operator sees every session start. Counts the
   fixture block instead: 16.
+- **The trigger detector reported backslashed paths**, so the other instance's new
+  fixture (#100) failed on Windows in both its NEGATIVE cases — it greps the report for
+  `scripts/<name>.sh` and got `scripts\<name>.sh`. The fixture was right; the report was
+  platform-shaped. Measured here: that branch plus this one line turns all four of its
+  cases green. Fifth site of OS-1 — and one its pattern could not see, because this path
+  is built with `os.path.join`, not `str(relative_to())`. The class is the invariant, not
+  the spelling that produced it: OS-1 now covers both constructors, searches `.sh` too
+  (the defect sat in a python block inside a shell script, invisible to a `*.py` search)
+  and carries a baseline of the join sites that only ever reach the filesystem — for a new
+  hit the review question is one sentence: does this string reach a reader or a
+  comparison, or only the filesystem?
 - OS-1 gained the lesson that a PROSE mention counts as a hit: a fixture docstring
   describing the very defect tripped its own register the same day. Honest trade for a
   grep — it cannot tell code from a sentence about code, and weakening the pattern to
