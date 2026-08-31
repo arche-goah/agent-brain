@@ -15,6 +15,13 @@ case "${CI_WATCH_STUB:?}" in
   pr_green)   echo '[{"bucket":"pass"},{"bucket":"skipping"}]' ;;
   pr_red)     echo '[{"bucket":"pass"},{"bucket":"fail"}]' ;;
   pr_zero)    echo '[]' ;;
+  # gh's wording when the run has not been created yet. rc=1, not rc=8.
+  pr_nochecks) echo "no checks reported on the 'feature' branch" >&2; exit 1 ;;
+  # the race that motivated the wait: not-yet on the first poll, checks on the second.
+  pr_nochecks_flip)
+              f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
+              else touch "$f"; echo "no checks reported on the 'feature' branch" >&2; exit 1; fi ;;
   pr_flip)    f="${CI_WATCH_STATE:?}"
               if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
               else touch "$f"; echo '[{"bucket":"pending"},{"bucket":"pass"}]'; fi ;;
@@ -41,7 +48,9 @@ check() { # label scenario expected_rc mode target timeout
 echo "=== ci-watch fixtures ==="
 check "pr all green"                    pr_green   0 pr 12
 check "pr one failing check"            pr_red     1 pr 12
-check "pr zero checks = unknown"        pr_zero    2 pr 12
+check "pr zero checks = wait, then timeout(2)"  pr_zero          2 pr 12 2
+check "pr 'no checks reported' waits, then timeout(2)" pr_nochecks 2 pr 12 2
+check "pr 'no checks' then green"       pr_nochecks_flip 0 pr 12
 check "pr pending then green"           pr_flip    0 pr 12
 check "gh hard error = unknown"         gh_broken  2 pr 12
 check "ref (tag) success"               ref_green  0 ref v9.9.9
@@ -51,4 +60,4 @@ check "gh hard error in ref mode"       gh_broken  2 ref v9.9.9
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
-echo "ci-watch-test: all 9 fixtures passed"
+echo "ci-watch-test: all 11 fixtures passed"
