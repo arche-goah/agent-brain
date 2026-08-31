@@ -7,6 +7,40 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **`python -` executed the file passed as its argument, and the one site it hit was the
+  hand-tool guard.** Python 3.14's install manager — the `python3` on PATH on a Windows
+  workstation — honours a SHEBANG in a file argument even when the program came in on
+  stdin: it never ran the stdin program at all, read `#!/usr/bin/env bash` from the
+  argument and launched bash on it. So `is_manual()` answered "not a hand tool" **and
+  attempted to execute the very script it exists to keep from running**. Isolated: only a
+  shebang-carrying file triggers it — a directory, a `.json` and a shebang-less `.sh` pass
+  through as argv, which is why the other four stdin-program sites are unaffected and why
+  the single affected one is the safety check. Invisible to the interpreter probe
+  (`python3 -c 'import sys'` succeeds) and invisible to python.org's `python` 3.11 on the
+  same machine. The candidate now travels in the environment. Registered as **OS-6**; the
+  fixture from the previous release is what caught it, on the workstation, after CI on
+  windows-latest had passed.
+- **The trap register now carries derived CLASSES, not only cases** (operator order
+  2026-08-31: keep every macOS/Windows issue in the register and derive the classes, so a
+  new instance stops rediscovering each one by hand). Six entries in one day are three
+  shapes: **A** the platform reshapes a string in transit (separator, line ending,
+  encoding) · **B** the same command name is a different program (`grep`'s binary
+  heuristic, `python3` as install manager, `stat -c`/`-f`) · **C** the gate does not run
+  where the defect lives. Each entry states its shape, each shape says where to look FIRST
+  on an unfamiliar platform, and a trap fitting none of the three is the interesting case:
+  name the fourth shape rather than filing a one-off. Registering is due at instance 1 —
+  that is not the build threshold.
+- **`scripts/os-traps-export.py` — the register gets a signpost in shared memory**, because
+  a tool repo is read when somebody checks it out while the shared repo is read by every
+  instance at session start. Generated, never hand-kept: shapes, entries and status come
+  from the register, so the pointer cannot drift the way six entries in one day would drift
+  a hand-written list. Fixtures both directions, including the one specific to this tool —
+  an entry with no shape must be VISIBLE rather than quietly filed under a shrug — and a
+  register it cannot parse fails loudly instead of writing a confident-looking file.
+- The routing is in `AGENTS.md` (rule 10) and the pointer for a new brain in
+  `templates/invariants.md`: platform classes belong in the core register, never in an
+  instance's own — filed per instance, every brain pays for the same trap once.
+
 - **The fixture runner executed what `manual-tools.json` forbade.** That list keeps hand
   tools out of the trigger detector; the runner never read it, so one consumer of the same
   list forbade what the other executed, and the block looked intact from outside. Measured

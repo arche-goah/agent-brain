@@ -101,14 +101,25 @@ shopt -s nullglob
 # live devices and was stopped only by an argument guard — luck, not a contract.
 is_manual() {
   [ -f .claude/rules/manual-tools.json ] || return 1
-  "$PY" - "$1" <<'PY'
+  # The candidate travels in the ENVIRONMENT, not in argv, and the reason is specific:
+  # Python 3.14's install manager (the `python3` on PATH on a Windows workstation here)
+  # honours a SHEBANG in a file passed as an argument even when the program was given on
+  # stdin via `-`. Measured 2026-08-31: `python3 - scripts/danger-test.sh <<PY …` never
+  # ran the stdin program at all — it read the .sh file's `#!/usr/bin/env bash` and
+  # launched bash on it. So this guard returned "not a hand tool" AND attempted to
+  # execute the very script it exists to keep from running. Only shebang-carrying file
+  # arguments trigger it; directories, .json and shebang-less files pass through as argv,
+  # which is why the other four stdin-program sites in this repo are unaffected — and
+  # why the one site that IS affected is the safety guard. python.org's `python` (3.11)
+  # behaves correctly, so the interpreter probe above cannot see this.
+  CANDIDATE="$1" "$PY" - <<'PY'
 import json, os, sys
 try:
     manual = set(json.load(open(".claude/rules/manual-tools.json",
                                 encoding="utf-8")).get("manual", []))
 except Exception:
     sys.exit(1)
-sys.exit(0 if os.path.basename(sys.argv[1]) in manual else 1)
+sys.exit(0 if os.path.basename(os.environ["CANDIDATE"]) in manual else 1)
 PY
 }
 for t in scripts/test-*.sh core/scripts/test-*.sh \
