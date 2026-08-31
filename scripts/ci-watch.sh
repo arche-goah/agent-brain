@@ -55,6 +55,20 @@ while :; do
     if (( rc != 0 )); then
       # gh exits 8 while checks are pending — that is a wait, not an error.
       if (( rc == 8 )) || grep -qi "pending" <<<"$json"; then sleep "$POLL"; continue; fi
+      # "no checks reported" right after a push is the SAME wait: the workflow run has
+      # not been created yet. ref mode has always known this ("a just-pushed tag can take
+      # a moment"); pr mode concluded UNKNOWN instead and exited, so a watch armed in the
+      # same turn as the push reported no verdict at all — measured 2026-08-31, the run
+      # existed seconds later. Waiting costs nothing: the deadline above still ends the
+      # watch honestly if the checks genuinely never appear.
+      if grep -qi "no checks reported" <<<"$json"; then
+        if (( warned_no_run == 0 )); then
+          echo "ci-watch: no checks on PR #$TARGET yet (a just-pushed branch can take a" \
+               "moment) — waiting" >&2
+          warned_no_run=1
+        fi
+        sleep "$POLL"; continue
+      fi
       fail_unknown "gh pr checks failed (rc=$rc): $(head -c 200 <<<"$json")"
     fi
     counts=$("$PY" -c '
@@ -63,7 +77,16 @@ b = [c.get("bucket") for c in json.load(sys.stdin)]
 print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x in b))
 ' <<<"$json" 2>/dev/null) || fail_unknown "unparseable gh pr checks output"
     read -r total pending bad <<<"$counts"
-    if (( total == 0 )); then fail_unknown "PR $TARGET reports zero checks — nothing measured"; fi
+    # Zero checks is the same ambiguity one level on: "this repo has no CI" and "the run
+    # is not registered yet" arrive as the same empty list. Wait it out — if it is still
+    # empty at the deadline, the timeout says so, and that IS the honest verdict.
+    if (( total == 0 )); then
+      if (( warned_no_run == 0 )); then
+        echo "ci-watch: PR #$TARGET reports zero checks yet — waiting" >&2
+        warned_no_run=1
+      fi
+      sleep "$POLL"; continue
+    fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
     echo "CI-WATCH GREEN: $REPO PR #$TARGET — $total checks, none failing"
