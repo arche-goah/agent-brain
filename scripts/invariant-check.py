@@ -75,8 +75,9 @@ FIELDS = ("invariant", "pattern", "check", "paths", "known", "instances", "repea
 
 OPEN_STATES = ("offen", "open")
 
-# A status line is prose, not an enum: registers in the wild carry "offen (R-14)",
-# "geschlossen fuer den Prozess-Fall", "WIEDER OFFEN seit ...". Matching the field
+# A status line is prose, not an enum: registers in the wild carry "open (R-14)",
+# "closed for the process case, the class stays open", "OPEN AGAIN since ...", and the
+# same shapes in the register's own language. Matching the field
 # EXACTLY against OPEN_STATES therefore recognised only the handful of entries whose
 # status is the bare word — measured on a real register: 9 of 45. The other 36 silently
 # lost their build-threshold verdict, which is the one line that says whether a mechanism
@@ -172,7 +173,7 @@ def verdict(b):
     """Build threshold — the search is mandatory, the build is not.
 
     `instances` is written by hand and is prose as often as it is a number
-    ("2 geprueft, 1 war falsch verkabelt"). Read the FIRST integer in it rather than
+    ("2 checked, 1 turned out to be miswired"). Read the FIRST integer in it rather than
     the whole field: int() on the whole thing raised ValueError, and the crash stayed
     invisible for as long as the status match was exact — those entries never reached
     this line. Two defects that hid each other; the wider status match uncovered this one.
