@@ -7,6 +7,33 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **The arm lock could be deleted by a watcher that did not own it, and the claim was
+  check-then-write** (`shared-memory-watch.sh`). The EXIT trap ran an unconditional
+  `rm -f`, so a watcher from an earlier session that exits late removed whatever lock was
+  there — including one a newer session had legitimately claimed. The next session then
+  read "not armed" and started a duplicate on the same cursor, invisible to `status`,
+  which can only ever name one pid. Measured: two watchers six minutes apart, both
+  polling. Second defect in the same block: `lock_owner_alive` and `echo $$ > "$LOCK"`
+  are two steps, so sessions arming close together all passed the check — 8 arming at
+  once left 4, 2 and 2 alive across runs. Claim is now one step (`noclobber`, O_EXCL) and
+  the trap only removes a lock that still names this process. Fixture
+  `shared-memory-watch-lock-test.sh`, three properties; OWNERSHIP is the negative control
+  and fails 3/3 on the unpatched script.
+- **The watch line named the git ACCOUNT, which cannot identify the party**
+  (`shared-memory-watch.sh`). Three parties share the repo and two of them share one
+  account, so `%an` is correct exactly when the external collaborator commits and blind
+  exactly in the confusable case. Measured incident: a session read `by arche-goah`,
+  reported "the colleague sent two decisions", and both entries were `von:` the
+  operator's own second machine — the record would have credited him with decisions that
+  were never put to him. The line now reports the `von:` field of the changed entries and
+  falls back to `unknown party (no von: field)` rather than to a name. Both directions
+  are asserted in `shared-memory-watch-test.sh`: an entry from the collaborator is named
+  as such, and one from our own workstation must NOT read as the collaborator — both
+  pushes come from the same git identity in the sandbox, which is the point.
+- Both fixtures take the script path as an optional argument and default to the sibling
+  script, because the fixture runners discover suites by name and call them without
+  arguments; the argument is what makes the negative controls runnable at all.
+
 - **`shared-memory-index.py`: the factor line names the direction it measured.** "cheaper"
   was a fixed word beside a ratio that falls below 1 as soon as the index is already
   split — so a real run reported `0.1x cheaper per lookup` for a lookup ten times dearer.
