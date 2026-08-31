@@ -33,6 +33,17 @@ Register format (Markdown, blocks starting at '## '):
 `known` catches newcomers (drift); `instances` decides the build threshold:
 1 site = done · 2 = fix both, no mechanism · >=3 or repeat = build a mechanism.
 
+WHAT "closed" IS ALLOWED TO MEAN (added 2026-08-31): a register's own definition is that
+closed means the search runs and finds nothing unknown — not that the matter feels
+settled. So an entry that says `status: closed` while carrying neither a `pattern` nor a
+`mechanizable: tool` has nothing left that could ever contradict the word: no search
+re-runs, no tool re-checks. Those are listed at the end, as a report, never as a failure.
+The measurement behind it: a class was closed on the strength of its CARRIER having been
+built, and three prose copies of the value that carrier now owned stayed behind — going
+stale the moment the carrier's value changed. A carrier does not delete the copies, it
+only makes them redundant; enumerating them is a separate act, and this list is where
+skipping it becomes visible.
+
 WHY `mechanizable` exists (measured on a real register 2026-08-30): of 43 entries, 8
 carried a pattern and 35 did not — and the report printed all 35 identically, as
 `--  external: <check text>`. That collapses two different states into one symbol:
@@ -63,6 +74,25 @@ FIELDS = ("invariant", "pattern", "check", "paths", "known", "instances", "repea
           "status", "note", "mechanizable")
 
 OPEN_STATES = ("offen", "open")
+
+# A status line is prose, not an enum: registers in the wild carry "offen (R-14)",
+# "geschlossen fuer den Prozess-Fall", "WIEDER OFFEN seit ...". Matching the field
+# EXACTLY against OPEN_STATES therefore recognised only the handful of entries whose
+# status is the bare word — measured on a real register: 9 of 45. The other 36 silently
+# lost their build-threshold verdict, which is the one line that says whether a mechanism
+# is due. Match the WORD anywhere in the status instead, and read the two states
+# separately: a status can say both ("closed for X, the class stays open").
+_OPEN_RE = re.compile(r"\b(offen|open)\b", re.I)
+_CLOSED_RE = re.compile(r"\b(geschlossen|closed)\b", re.I)
+
+
+def says_open(status):
+    return bool(_OPEN_RE.search(status or ""))
+
+
+def says_closed(status):
+    return bool(_CLOSED_RE.search(status or ""))
+
 
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv"}
 
@@ -139,8 +169,16 @@ def baseline(spec):
 
 
 def verdict(b):
-    """Build threshold — the search is mandatory, the build is not."""
-    n = int(b.get("instances", "1") or 1)
+    """Build threshold — the search is mandatory, the build is not.
+
+    `instances` is written by hand and is prose as often as it is a number
+    ("2 geprueft, 1 war falsch verkabelt"). Read the FIRST integer in it rather than
+    the whole field: int() on the whole thing raised ValueError, and the crash stayed
+    invisible for as long as the status match was exact — those entries never reached
+    this line. Two defects that hid each other; the wider status match uncovered this one.
+    """
+    m = re.search(r"\d+", b.get("instances", "") or "")
+    n = int(m.group()) if m else 1
     if b.get("repeat", "no") == "yes" or n >= 3:
         return "MECHANISM due (>=3 sites or repeat after a fix)"
     if n == 2:
@@ -151,6 +189,7 @@ def verdict(b):
 def main(argv):
     bad = 0
     unmechanized = []
+    asserted_closed = []
     for reg in argv or ["docs/maintenance/invariants.md"]:
         regp = Path(reg).resolve()
         root, blocks = parse(regp)
@@ -171,8 +210,12 @@ def main(argv):
                     print(f"  ??  {head}\n      no pattern and no reason — mechanize it, "
                           f"or record `mechanizable: no — <why>`")
                 print(f"      check: {b.get('check', '(no check on file)')}")
-                if b.get("status") in OPEN_STATES:
+                if says_open(b.get("status", "")):
                     print(f"      -> {verdict(b)}")
+                if says_closed(b.get("status", "")) and kind != "tool":
+                    # Closed, and nothing here could ever re-open it: no pattern to re-run
+                    # and no tool named. That is a verdict, not a measurement.
+                    asserted_closed.append((b["id"], says_open(b.get("status", ""))))
                 continue
             try:
                 now = counts(rootp, b["pattern"], b.get("paths"))
@@ -195,7 +238,7 @@ def main(argv):
                     print(f"      vanished: {f} — update the baseline")
             else:
                 print(f"  ok  {head}  ({sum(now.values())} hits in {len(now)} files)")
-            if b.get("status") in OPEN_STATES:
+            if says_open(b.get("status", "")):
                 print(f"      -> {verdict(b)}")
 
     if unmechanized:
@@ -205,6 +248,24 @@ def main(argv):
               f"reason — they are held by prose alone:")
         for i in unmechanized:
             print(f"    ?? {i}")
+
+    if asserted_closed:
+        # The register's own definition: "closed" means the search runs and finds nothing
+        # unknown — not that it feels settled. An entry that is closed while carrying
+        # neither a pattern nor a named tool has no instrument that could ever re-open it,
+        # so nothing will contradict the word "closed" again. Measured on a real register
+        # 2026-08-31: a class was closed on the strength of its CARRIER being built, while
+        # three prose copies of the value the carrier now owned stayed behind and went
+        # stale the moment the carrier's value changed. The carrier does not delete the
+        # copies; it only makes them redundant. Enumerating them is a separate act, and
+        # this list is where the omission becomes visible.
+        full = [i for i, also_open in asserted_closed if not also_open]
+        print(f"\n  {len(asserted_closed)} closed invariant(s) with no instrument that "
+              f"could re-open them ({len(full)} closed outright):")
+        for i, also_open in asserted_closed:
+            print(f"    -- {i}{'' if not also_open else '  (partly still open)'}")
+        print("     Either give them a `pattern`/tool, or say in `status` that the close "
+              "is a judgement with no instrument — so the next reader knows which it is.")
     return bad
 
 
