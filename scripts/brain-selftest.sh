@@ -260,7 +260,16 @@ names = {os.path.basename(t): t for t in targets
 # ONE pass over the setup instead of one grep per file: the per-file version took 18 s,
 # and a check that slow gets skipped, which is the same as not having it.
 refs = {n: set() for n in names}
-for base in (".claude", "core", "scripts", "docs", "config"):
+# `.github` belongs in this list and was missing: the classifier below already has a
+# "ci" branch for .yml/.yaml references, so the capability was written but unreachable —
+# the one directory where CI wiring lives was never walked. Measured on this repo:
+# Measured on this repo: the OS gate runner is invoked by a `run:` step in ci.yml and was
+# nonetheless reported as "mentioned in documentation only, never invoked", and two more
+# CI-only scripts with it. A run from a BRAIN hides this, because there such scripts are
+# declared in manual-tools.json and drop out before the scan; the bare repo is where it
+# shows. (No script names in this comment on purpose — see the note further down: naming
+# one here would make this file its reference and clear it.)
+for base in (".claude", ".github", "core", "scripts", "docs", "config"):
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d not in (".git", "node_modules", "__pycache__")]
         for fn in filenames:
@@ -276,6 +285,18 @@ for base in (".claude", "core", "scripts", "docs", "config"):
                 text = open(p, encoding="utf-8", errors="ignore").read()
             except Exception:
                 continue
+            # In a workflow file the same distinction applies one level down: a `run:`
+            # line CALLS a script, a `#` line only talks about one. Measured while
+            # adding .github to the walk above: ci.yml names two scripts in comments,
+            # and counting those cleared one of them on the strength of prose. That is
+            # the trap the comment above this loop warns about, imported into the new
+            # branch. So workflow files are read WITHOUT their comment lines.
+            # (Deliberately no script NAMES in this comment: naming one here would make
+            #  this very file its "reference" and clear it — the same trap a third time,
+            #  and the reason the allowlist comment above phrases it the way it does.)
+            if fn.endswith((".yml", ".yaml")):
+                text = "\n".join(l for l in text.splitlines()
+                                 if not l.lstrip().startswith("#"))
             for n in names:
                 if n in text and os.path.basename(p) != n:
                     refs[n].add(p)
