@@ -35,3 +35,12 @@ root: ../..
 <!-- First entry: take your most recent repeated defect, name the invariant it
      violated, write the search that finds ALL its sites, and record the baseline.
      An empty register on a working brain is a finding, not a clean sheet. -->
+
+<!-- PLATFORM classes (macOS vs Windows vs Linux) do NOT belong here. They belong in
+     the core's own register, core/docs/os-traps.md, because a platform is not a
+     property of one brain — filed here, every instance rediscovers the same trap at
+     the cost of a session. Read it before debugging a divergence: if the class is
+     already there, the search is already written. It groups its entries into three
+     shapes (the platform reshapes a string in transit / the same command name is a
+     different program / the gate does not run where the defect lives), which is the
+     fastest way to guess where an unfamiliar platform will bite next. -->
