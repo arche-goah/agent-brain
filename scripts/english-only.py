@@ -46,8 +46,14 @@ TEXT_SUFFIX = {".md", ".py", ".sh", ".cjs", ".js", ".json", ".yml", ".yaml",
 # fixture ships a second language to prove that a language is data, and the stop
 # fixture feeds transliterated German to the orthography check. In both the German
 # IS the subject under test — translating it would delete the test.
+# stoppen-gate.cjs and its fixture join them on the same terms, and only on those terms:
+# the hook's prose is English, and its three flagged lines are the German entries of the
+# language pack — detection patterns, the same category as this file's own word list. The
+# fixture feeds German sentences BECAUSE they are what the pack must match. Neither file
+# may carry German explanation; if one ever does, it belongs out of this set again.
 SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py",
-              "skill-lint.py", "test-premise-gate.sh", "test-stop-checks.sh"}
+              "skill-lint.py", "test-premise-gate.sh", "test-stop-checks.sh",
+              "stoppen-gate.cjs", "test-stoppen-gate.sh"}
 
 UMLAUT = re.compile(r"[äöüßÄÖÜ]")
 # Transliterated / bare German that does not occur in technical English. Extend only
