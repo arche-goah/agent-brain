@@ -238,7 +238,13 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
 
     index_text = index_path.read_text(encoding="utf-8", errors="replace")
     files = fact_files(repo)
-    rels = {str(p.relative_to(repo)) for p in files}
+    # as_posix: these paths are compared against — and reported next to — markdown
+    # link targets, which are forward-slashed everywhere. Bare relative_to() yields
+    # backslashes on Windows and every comparison misses; measured 2026-08-31 on the
+    # real repo: 143 of 143 files read as "not in the index" AND every index line read
+    # as pointing at a missing file. Same class as english-only.py (2026-08-13, 100
+    # findings on a clean tree) — the linter is the third tool to meet it.
+    rels = {p.relative_to(repo).as_posix() for p in files}
     stems = {p.stem for p in files}
     baseline = load_baseline(baseline_path or baseline_for(repo))
     supersedes = supersession_re(repo)
@@ -304,12 +310,12 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
         size = log.stat().st_size
         if size > LOG_ROTATE_BYTES:
             f["limits"].append({"issue": "LOG over rotation size",
-                                "file": str(log.relative_to(repo)), "bytes": size,
+                                "file": log.relative_to(repo).as_posix(), "bytes": size,
                                 "max": LOG_ROTATE_BYTES,
                                 "fix": "split into LOG-<month>.md, keep the pointer"})
 
     for p in files:
-        rel = str(p.relative_to(repo))
+        rel = p.relative_to(repo).as_posix()
         text = p.read_text(encoding="utf-8", errors="replace")
         fm = frontmatter(text)
         legacy = rel in baseline
@@ -418,7 +424,7 @@ def inventory(repo: Path) -> dict:
     linked = set(INDEX_LINK.findall(index_text))
     rows = []
     for p in fact_files(repo):
-        rel = str(p.relative_to(repo))
+        rel = p.relative_to(repo).as_posix()
         fm = frontmatter(p.read_text(encoding="utf-8", errors="replace")) or {}
         meta = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
         rows.append({
@@ -434,7 +440,7 @@ def inventory(repo: Path) -> dict:
     for log in sorted(repo.rglob(LOG_NAME)):
         if ".git" in log.relative_to(repo).parts:
             continue
-        logs.append({"path": str(log.relative_to(repo)), "bytes": log.stat().st_size})
+        logs.append({"path": log.relative_to(repo).as_posix(), "bytes": log.stat().st_size})
     return {"count": len(rows), "files": rows, "logs": logs,
             "index_bytes": len(index_text.encode("utf-8"))}
 
@@ -448,12 +454,12 @@ def write_baseline(repo: Path, baseline_path: Path | None = None) -> int:
         meta = (fm or {}).get("metadata")
         meta = meta if isinstance(meta, dict) else {}
         if any(not meta.get(k) for k in ("von", "audience", "topic")):
-            rows.append(str(p.relative_to(repo)))
+            rows.append(p.relative_to(repo).as_posix())
     baseline_path = baseline_path or baseline_for(repo)
     baseline_path.write_text(
         "# Files predating the audience/topic convention (2026-08-21). This list may\n"
         "# only ever SHRINK: carry a file over, then delete its line here.\n"
-        + "\n".join(sorted(rows)) + "\n", encoding="utf-8")
+        + "\n".join(sorted(rows)) + "\n", encoding="utf-8", newline="\n")
     print(f"baseline written: {len(rows)} legacy file(s) -> {baseline_path}")
     return 0
 

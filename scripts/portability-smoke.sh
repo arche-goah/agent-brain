@@ -321,16 +321,51 @@ esac
 # Fixtures instead of assertions about fixtures: each suite runs every helper it covers
 # in BOTH directions. A helper that stops firing on one platform is otherwise invisible
 # — it looks exactly like a helper that had nothing to say.
-for suite in test-guards test-stop-checks test-session-helpers test-stop-dispatcher \
-             test-premise-gate; do
-  if [ -f "$CORE/scripts/$suite.sh" ]; then
-    if _out="$(cd "$CORE" && bash "scripts/$suite.sh" 2>&1)"; then
-      ok "$suite"
-    else
-      bad "$suite: $(printf '%s' "$_out" | grep -E '^  FAIL' | head -2 | tr '\n' ' ')"
-    fi
+#
+# DISCOVERED, never listed. The literal list this loop used to carry named five suites
+# and had not grown with the repo: test-recall-gate.sh and four `*-test.py` suites ran
+# in CI (linux) and nowhere else, so three Windows defects shipped unseen — a path
+# comparison that missed every file, a generator writing CRLF, and that very fixture
+# passing an unresolvable /tmp path into node. A hand-kept list of what to run is a
+# second copy of the directory, and what it drops is exactly the OS coverage the suite
+# was written for. Registered as OS-4 in docs/os-traps.md.
+shopt -s nullglob
+# Two naming shapes are in use (`test-<thing>.sh` and `<thing>-test.sh`); the glob
+# covers both, or half the suites stay invisible for a reason nobody intended.
+_suites=("$CORE"/scripts/test-*.sh "$CORE"/scripts/*-test.sh)
+_pysuites=("$CORE"/scripts/*-test.py)
+shopt -u nullglob
+if [ ${#_suites[@]} -eq 0 ] && [ ${#_pysuites[@]} -eq 0 ]; then
+  bad "fixture discovery found no suite at all — the glob, not the fixtures, is broken"
+fi
+for _s in "${_suites[@]}"; do
+  suite="$(basename "$_s" .sh)"
+  if _out="$(cd "$CORE" && bash "scripts/$suite.sh" 2>&1)"; then
+    ok "$suite"
+  else
+    bad "$suite: $(printf '%s' "$_out" | grep -E '^ *(FAIL|!!)' | head -2 | tr '\n' ' ')"
   fi
 done
+# The python fixtures carry the path- and file-writing classes — precisely the ones that
+# behave differently here than on the OS they were written on.
+for _s in "${_pysuites[@]}"; do
+  suite="$(basename "$_s")"
+  if _out="$(cd "$CORE" && "$PY" "scripts/$suite" 2>&1)"; then
+    ok "$suite"
+  else
+    bad "$suite: $(printf '%s' "$_out" | grep -E 'FAIL' | head -2 | tr '\n' ' ')"
+  fi
+done
+
+# --- 12b. the OS-trap register re-runs its own searches ----------------------
+# Known Mac/Windows divergences slip past CI because the OS that can reproduce them is
+# not the OS that runs it. docs/os-traps.md states each class as an invariant plus the
+# search spanning its space; this runs those searches HERE, on whatever OS this is.
+if _out="$(cd "$CORE" && "$PY" scripts/invariant-check.py docs/os-traps.md 2>&1)"; then
+  ok "os-trap register: no new site"
+else
+  bad "os-trap register: $(printf '%s' "$_out" | grep -E 'NEW site|drift|vanished|search failed' | head -2 | tr '\n' ' ')"
+fi
 
 # --- 13. hook-coverage understands indirection -------------------------------
 # A dispatcher runs several checks itself, so settings name only the dispatcher.

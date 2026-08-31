@@ -25,6 +25,14 @@ trap 'rm -rf "$T"' EXIT
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
+# A path that travels INSIDE data (a JSON field, an env var read by a native process) is
+# not translated by the shell — on Git Bash node would receive /tmp/... and resolve nothing,
+# so every must-block case read an empty transcript and "passed" by staying silent. Measured
+# 2026-08-31 on Windows: 4 of 13 cases FAIL, the other 9 green for the wrong reason. Same
+# helper test-stop-dispatcher.sh and test-premise-gate.sh already carry.
+native() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi
+}
 resolve() { for c in "core/$1" "$1"; do [ -f "$c" ] && { printf '%s' "$c"; return 0; }; done; return 1; }
 HOOK=$(resolve helpers/recall-gate.cjs) || { echo "  --  recall-gate not in this layout"; exit 0; }
 
@@ -32,8 +40,8 @@ HOOK=$(resolve helpers/recall-gate.cjs) || { echo "  --  recall-gate not in this
 run_hook() {
   local name="$1" tr="$2" want="$3" cwd="$4"; shift 4
   local out
-  out=$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$tr" "$cwd" \
-        | CLAUDE_PROJECT_DIR="$cwd" node "$HOOK" "$@" 2>&1)
+  out=$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$tr")" "$(native "$cwd")" \
+        | CLAUDE_PROJECT_DIR="$(native "$cwd")" node "$HOOK" "$@" 2>&1)
   if [ "$want" = "block" ]; then
     case "$out" in *RECALL-GATE*) ok "$name blocks";; *) bad "$name did not block: ${out:0:140}";; esac
   elif [ "$want" = "record" ]; then

@@ -97,7 +97,7 @@ def main() -> int:
                     and has_german(p))
 
     if "--write-baseline" in sys.argv:
-        BASELINE.write_text("\n".join(german) + "\n", encoding="utf-8")
+        BASELINE.write_text("\n".join(german) + "\n", encoding="utf-8", newline="\n")
         print(f"english-only: baseline written, {len(german)} legacy files")
         return 0
 
