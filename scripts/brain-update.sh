@@ -32,6 +32,32 @@ PY=python3
 # BRAIN_UPDATE_ROOT overrides it (tests, running a checkout copy against a brain).
 BRAIN="${BRAIN_UPDATE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$BRAIN" || { echo "FAIL cannot cd to brain root"; exit 1; }
+
+# WHERE AM I? Three states that must not share one outcome (measured 2026-09-02): run
+# from the plugin cache without BRAIN_UPDATE_ROOT, the root resolves two levels above the
+# script — beside the cache, not into a brain. Every later step then silently did nothing,
+# git printed one bare `fatal:` from the only call without a stderr redirect, and the run
+# still ended in DONE with exit 0. A cd that succeeds proves the directory exists, nothing
+# more; each of the three ways this is not a brain now names itself and exits.
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+  echo "FAIL no brain at $BRAIN — that path is not a git repository."
+  echo "     If you started this script from the plugin cache or a bare checkout, point it"
+  echo "     at the brain: BRAIN_UPDATE_ROOT=<brain-root> bash <this script>"
+  exit 1
+fi
+if [ ! -d core ]; then
+  echo "FAIL brain at $BRAIN has no core/ directory — there is no submodule to align."
+  exit 1
+fi
+# `git -C core rev-parse --git-dir` is NOT the test here: git walks upwards, so inside a
+# brain an EMPTY core/ answers with the superproject and the probe reports a healthy
+# submodule. An initialised submodule has its own core/.git (file or directory); that is
+# the thing being asked about.
+if [ ! -e core/.git ]; then
+  echo "FAIL core/ at $BRAIN exists but is not a git repository — submodule not initialised."
+  echo "     git -C \"$BRAIN\" submodule update --init core"
+  exit 1
+fi
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 changed=0; plugin_moved=0; failed=0
 
@@ -272,7 +298,7 @@ fi
 if [ -z "$core_plugin" ] && [ -d core ]; then
   echo "WARN no core channel plugin enabled (brain-core / brain-core-next) — core/ submodule NOT aligned this run"
 fi
-if [ -n "$core_plugin" ] && [ -d core ] && git -C core rev-parse --git-dir >/dev/null 2>&1; then
+if [ -n "$core_plugin" ] && [ -d core ] && [ -e core/.git ]; then
   ver=$(installed_version "$core_plugin")
   if [ -n "$ver" ]; then
     tag="v$ver"
@@ -303,7 +329,13 @@ if [ -n "$core_plugin" ] && [ -d core ] && git -C core rev-parse --git-dir >/dev
     # RIGHT name — describe matches the pin and nothing ever heals. Verify-then-
     # checkout closes that: the remote SHA is the truth, the local name is not.
     git -C core fetch -q --tags --force 2>/dev/null
-    want=$(git -C core ls-remote origin "refs/tags/$tag" 2>/dev/null | awk 'NR==1{print $1}')
+    # ls-remote returns the TAG OBJECT sha for an annotated tag, while `have` below is a
+    # COMMIT sha — comparing them can never be equal, so the verify-then-checkout guard
+    # described above never held and every run took the repair path and reported a move
+    # that had not happened (measured 2026-09-02: "core v1.3.34 -> v1.3.34" on a brain
+    # already sitting on that tag). Ask for the dereferenced ref as well and prefer it;
+    # a lightweight tag has no ^{} line and falls back to the plain one.
+    want=$(git -C core ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" 2>/dev/null | awk '$2 ~ /\^\{\}$/ {deref=$1} $2 !~ /\^\{\}$/ {plain=$1} END {print (deref ? deref : plain)}')
     have=$(git -C core rev-parse "tags/$tag^{commit}" 2>/dev/null || echo none)
     if [ -n "$want" ] && [ "$have" != "$want" ]; then
       git -C core fetch -q --force origin "+refs/tags/$tag:refs/tags/$tag" 2>/dev/null
@@ -358,7 +390,16 @@ if [ -f core/scripts/hook-coverage.py ]; then
 fi
 
 # 5) commit + push (own brain repo only — that is where this script lives)
-if ! git diff --quiet -- core config/ecosystem.json .gitmodules 2>/dev/null; then
+# `git diff --quiet` answers 0 = clean, 1 = differences, >1 = it could not tell (128 in a
+# non-repo). Testing it with `if !` collapses the last two into "there are changes", and
+# the failure then surfaced only as a bare `fatal:` from git commit — the one call here
+# without a stderr redirect. The exit code is read explicitly so "cannot tell" reaches the
+# FAIL path instead of the commit path.
+git diff --quiet -- core config/ecosystem.json .gitmodules 2>/dev/null; pin_dirty=$?
+if [ "$pin_dirty" -gt 1 ]; then
+  echo "FAIL cannot tell whether the pin moved (git diff exit $pin_dirty) — nothing committed"
+  failed=1
+elif [ "$pin_dirty" -eq 1 ]; then
   git add core config/ecosystem.json .gitmodules 2>/dev/null
   if git commit -q -m "chore(core): brain-update to the released state"; then
     echo "OK   pin committed"
