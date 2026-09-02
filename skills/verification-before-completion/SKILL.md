@@ -79,6 +79,8 @@ The second state usually does not exist yet when the check is written — the wo
 delivers it later. That is why this is a question asked at every emit, not a
 pattern to grep for.
 
+## Common Failures
+
 | Claim | Requires | Not Sufficient |
 |-------|----------|----------------|
 | Tests pass | Test command output: 0 failures | Previous run, "should pass" |
