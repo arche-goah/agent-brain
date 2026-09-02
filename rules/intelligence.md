@@ -161,6 +161,20 @@ chat tokens — only for broad independent work, orchestration as separate
 phase workflows (research → audit → verify → synthesis), persist each phase's
 result, next phase via `args`.
 
+**Multi-agent invariant — only the producer writes (measured 2026-08-30, four
+failures in one workflow):** a workflow script has NO filesystem access; whatever
+the orchestrator holds reaches the next agent only through a prompt, and an agent
+does not pass content through — it regenerates it and truncates SILENTLY (measured:
+1 of 141 rows survived a "create a table" relay; 22 of 141 survived "return the
+JSON UNCHANGED, you are a pipe"; a count field next to the array stayed correct
+while the array was cut). Therefore: bulk data is written to a file by the agent
+that PRODUCED it; across the agent boundary travel only path, count, and verdict,
+plus a narrow schema-validated index. Routing-critical fields belong in that
+validated index, not in the agent-written file (agent-written files lose schema
+validation). And a number the model is asked to REPORT is a claim; the same number
+computed in the script is a measurement — the script-side count wins, with an
+abort (not a warning) on mismatch.
+
 ## Repeat Runs (CANONICAL place — skills point here)
 
 An audit/analysis workflow costs six to seven figures in tokens. Before one runs
