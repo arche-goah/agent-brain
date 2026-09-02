@@ -36,16 +36,32 @@ def load(path):
 
 
 def commands_by_event(settings):
+    """event -> [(matcher, command)]. The MATCHER is carried on purpose: a hook can be
+    wired and still not run, because its matcher names fewer tools than the template
+    does. Measured 2026-09-02: mechanism-guard was wired everywhere with matcher
+    \"Bash\", the template had widened to \"Bash|Monitor\", and a hand-built watcher —
+    a Monitor command — passed every brain untouched while this check reported full
+    coverage. Comparing commands alone cannot see that state."""
     out = {}
     for event, groups in (settings.get("hooks") or {}).items():
         for group in groups or []:
             if not isinstance(group, dict):
                 continue
+            matcher = group.get("matcher") or ""
             for h in group.get("hooks") or []:
                 cmd = h.get("command") if isinstance(h, dict) else None
                 if cmd:
-                    out.setdefault(event, []).append(cmd)
+                    out.setdefault(event, []).append((matcher, cmd))
     return out
+
+
+def matcher_tools(matcher):
+    """The tool names a matcher covers. An empty matcher means every tool, which can
+    never be narrower than the template — so it is returned as None, not as an empty
+    set, to keep \"matches everything\" apart from \"matches nothing\"."""
+    if not matcher or matcher == "*":
+        return None
+    return {tok.strip() for tok in matcher.split("|") if tok.strip()}
 
 
 def registered_via_dispatcher(root, wired):
@@ -55,7 +71,7 @@ def registered_via_dispatcher(root, wired):
     settings, AND the helper is registered in its config. Either half alone would turn
     this into a way to silence the check by writing a file.
     """
-    if not any("dispatcher" in c for cmds in wired.values() for c in cmds):
+    if not any("dispatcher" in c for pairs in wired.values() for _, c in pairs):
         return set()
     cfg = load(os.path.join(root, ".claude", "rules", "stop-checks.json"))
     out = set()
@@ -79,8 +95,8 @@ def main():
         os.path.join(root, ".claude", "settings.local.json"),
         os.path.join(cfg, "settings.json"),
     ):
-        for event, cmds in commands_by_event(load(p)).items():
-            wired.setdefault(event, []).extend(cmds)
+        for event, pairs in commands_by_event(load(p)).items():
+            wired.setdefault(event, []).extend(pairs)
 
     # A helper can be wired INDIRECTLY: a dispatcher hook runs several checks itself
     # and the settings then name only the dispatcher. Matching on filenames alone
@@ -90,8 +106,9 @@ def main():
     dispatched = registered_via_dispatcher(root, wired)
 
     missing = []
-    for event, cmds in commands_by_event(template).items():
-        for cmd in cmds:
+    narrower = []
+    for event, pairs in commands_by_event(template).items():
+        for matcher, cmd in pairs:
             # Any template hook pointing INTO the consumed core counts, not just
             # helpers/. Measured 2026-08-20: brain-check.sh lives in core/scripts, so a
             # brain that never wired it was reported as fully covered — the check that
@@ -103,15 +120,30 @@ def main():
             sub, helper = m.group(1), m.group(2)
             if not os.path.isfile(os.path.join(root, "core", sub, helper)):
                 continue  # not in the consumed core yet: nothing to wire
-            if any(helper in c for c in wired.get(event, [])):
+            hits = [(m, c) for m, c in wired.get(event, []) if helper in c]
+            if hits:
+                # Wired — but a matcher that names fewer tools than the template means
+                # the hook does not run where the template says it must.
+                want = matcher_tools(matcher)
+                if want:
+                    for m, _c in hits:
+                        have = matcher_tools(m)
+                        if have is None:
+                            continue  # matches everything, never narrower
+                        gap = want - have
+                        if gap:
+                            narrower.append(
+                                "%s: %s runs only on %s — the template also wires %s"
+                                % (event, helper, m or "(none)", "|".join(sorted(gap)))
+                            )
                 continue
             if helper in dispatched:
                 continue  # runs behind a dispatcher, see registered_via_dispatcher()
             missing.append("%s: %s" % (event, cmd))
 
-    for line in missing:
+    for line in missing + narrower:
         print(line)
-    return 1 if missing else 0
+    return 1 if (missing or narrower) else 0
 
 
 if __name__ == "__main__":
