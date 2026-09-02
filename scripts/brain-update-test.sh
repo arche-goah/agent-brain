@@ -81,6 +81,40 @@ got=$(read_version)
 if [ -z "$got" ]; then ok "a missing cache yields an empty answer, never a match"
 else bad "missing cache produced '$got' — absence must look absent"; fi
 
+# --- the three ways a path is NOT a brain must not share one outcome --------------
+# Measured 2026-09-02: started from the plugin cache without BRAIN_UPDATE_ROOT, the root
+# resolved beside the cache. Everything downstream silently did nothing, git emitted one
+# bare `fatal:` from the only call lacking a stderr redirect, and the run still printed
+# DONE and exited 0. Each state now names itself and exits non-zero. The probes run the
+# real script: the checks sit directly after the cd, so nothing else executes.
+UPD="$(cd "$(dirname "$0")" && pwd)/brain-update.sh"
+probe_root() { # $1 label, $2 dir, $3 expected substring
+  local out rc d="$2"
+  command -v cygpath >/dev/null 2>&1 && d="$(cygpath -w "$d")"
+  out=$(BRAIN_UPDATE_ROOT="$d" bash "$UPD" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ]; then bad "$1: exited 0 — a non-brain must never report success"; return; fi
+  case "$out" in
+    *DONE*) bad "$1: printed DONE over a FAIL"; return ;;
+  esac
+  case "$out" in
+    *"$3"*) ok "$1" ;;
+    *) bad "$1: wrong message: $(printf %s "$out" | head -1)" ;;
+  esac
+}
+
+NB=$(mktemp -d)                       # not a git repository at all
+probe_root "no brain at the path names itself" "$NB" "not a git repository"
+
+NC=$(mktemp -d)                       # a git repo, but no core/
+git -c init.defaultBranch=main init -q "$NC"
+probe_root "a brain without core/ names itself" "$NC" "has no core/ directory"
+
+NU=$(mktemp -d)                       # a git repo with an uninitialised core/
+git -c init.defaultBranch=main init -q "$NU"; mkdir -p "$NU/core"
+probe_root "an uninitialised core/ names itself" "$NU" "not a git repository — submodule not initialised"
+
+rm -rf "$NB" "$NC" "$NU"
+
 echo
 if (( fails )); then echo "brain-update-test: $fails FAILURE(S)"; exit 1; fi
-echo "brain-update-test: all 3 checks passed"
+echo "brain-update-test: all 6 checks passed"
