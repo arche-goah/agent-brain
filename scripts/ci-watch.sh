@@ -56,12 +56,21 @@ fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
 # CONFLICTING right after the fixing force-push). One read is therefore not a
 # measurement — the verdict requires TWO consecutive CONFLICTING reads a poll apart.
 conflict_seen=0
+warned_view_fail=0
 pr_conflicting_check() {
   local m
-  m=$(gh pr view "$TARGET" -R "$REPO" --json mergeable --jq .mergeable 2>/dev/null) || return 0
+  if ! m=$(gh pr view "$TARGET" -R "$REPO" --json mergeable --jq .mergeable 2>/dev/null); then
+    # Fail-open by design (the deadline still ends the watch honestly), but not
+    # silently — otherwise "gh broke" reads exactly like "no conflict".
+    if (( warned_view_fail == 0 )); then
+      echo "ci-watch: could not read mergeable for PR #$TARGET (gh error) — conflict check is flying blind this round" >&2
+      warned_view_fail=1
+    fi
+    return 0
+  fi
   if [[ "$m" == "CONFLICTING" ]]; then
     if (( conflict_seen )); then
-      echo "CI-WATCH UNKNOWN: $REPO PR #$TARGET is CONFLICTING (two consecutive reads) — GitHub cannot build the merge ref, so no pull_request run will EVER be created (no error, just nothing). This is not a CI outage and no amount of re-triggering helps: rebase the branch, then re-arm." >&2
+      echo "CI-WATCH UNKNOWN: $REPO PR #$TARGET is CONFLICTING (two consecutive reads) — either GitHub creates no pull_request run for it at all (zero checks), or the checks you see are GREEN BUT STALE, computed before the base changed. Both mean the same thing: not mergeable, and no re-trigger helps — rebase the branch, then re-arm." >&2
       exit 2
     fi
     conflict_seen=1
@@ -120,6 +129,13 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
+    # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
+    # the checks then predate the base change and are never recomputed (measured
+    # 2026-09-02 on a live PR: 7 SUCCESS checks, mergeable CONFLICTING, merge → 405).
+    # GREEN here means "green AND mergeable"; a conflicting read loops for the
+    # two-consecutive confirmation instead of exiting success.
+    pr_conflicting_check
+    if (( conflict_seen )); then sleep "$POLL"; continue; fi
     echo "CI-WATCH GREEN: $REPO PR #$TARGET — $total checks, none failing"
     exit 0
   fi
