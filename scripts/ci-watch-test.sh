@@ -29,6 +29,12 @@ case "${CI_WATCH_STUB:?}" in
   ref_green)  echo '[{"headBranch":"v9.9.9","status":"completed","conclusion":"success"}]' ;;
   ref_red)    echo '[{"headBranch":"v9.9.9","status":"completed","conclusion":"failure"}]' ;;
   ref_absent) echo '[{"headBranch":"main","status":"completed","conclusion":"success"}]' ;;
+  # A conflicted PR: `pr checks` sees nothing (GitHub never creates the run),
+  # `pr view --json mergeable` names the reason. Two flavors: gh error wording / empty list.
+  pr_conflict)      if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then echo "CONFLICTING"
+                    else echo "no checks reported on the 'feature' branch" >&2; exit 1; fi ;;
+  pr_conflict_zero) if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then echo "CONFLICTING"
+                    else echo '[]'; fi ;;
 esac
 STUB
 chmod +x "$TMP/gh"
@@ -53,6 +59,12 @@ check "pr 'no checks reported' waits, then timeout(2)" pr_nochecks 2 pr 12 2
 check "pr 'no checks' then green"       pr_nochecks_flip 0 pr 12
 check "pr pending then green"           pr_flip    0 pr 12
 check "gh hard error = unknown"         gh_broken  2 pr 12
+check "conflicted PR (no-checks wording) = named unknown(2), no wait" pr_conflict      2 pr 12 30
+grep -q "CONFLICTING" "$TMP/out" && echo "  OK   conflict verdict names CONFLICTING" \
+  || { echo "  FAIL conflict verdict does not name CONFLICTING"; fails=$((fails+1)); }
+check "conflicted PR (zero checks) = named unknown(2), no wait"       pr_conflict_zero 2 pr 12 30
+grep -q "rebase" "$TMP/out" && echo "  OK   conflict verdict says rebase" \
+  || { echo "  FAIL conflict verdict does not say rebase"; fails=$((fails+1)); }
 check "ref (tag) success"               ref_green  0 ref v9.9.9
 check "ref (tag) failure"               ref_red    1 ref v9.9.9
 check "ref never appears = timeout(2)"  ref_absent 2 ref v9.9.9 2
@@ -60,4 +72,4 @@ check "gh hard error in ref mode"       gh_broken  2 ref v9.9.9
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
-echo "ci-watch-test: all 11 fixtures passed"
+echo "ci-watch-test: all 15 checks passed"

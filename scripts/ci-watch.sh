@@ -42,6 +42,22 @@ warned_no_run=0
 
 fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
 
+# A PR with a merge conflict gets NO pull_request run at all: GitHub cannot build the
+# merge ref, so it creates nothing — no error, no message. "Zero checks" is therefore
+# the same visible state as a dead CI, an exhausted quota or a workflow filter; one
+# command separates them. Measured 2026-09-02: repo-outage and account-quota were both
+# diagnosed AND published for a PR that simply read mergeable=CONFLICTING — while the
+# mechanism sat documented in an instance memory since 08-13 and was not recalled.
+# That is why this check lives in the TOOL: the verdict arrives with the diagnosis.
+pr_conflicting_check() {
+  local m
+  m=$(gh pr view "$TARGET" -R "$REPO" --json mergeable --jq .mergeable 2>/dev/null) || return 0
+  if [[ "$m" == "CONFLICTING" ]]; then
+    echo "CI-WATCH UNKNOWN: $REPO PR #$TARGET is CONFLICTING — GitHub cannot build the merge ref, so no pull_request run will EVER be created (no error, just nothing). This is not a CI outage and no amount of re-triggering helps: rebase the branch, then re-arm." >&2
+    exit 2
+  fi
+}
+
 while :; do
   now=$(date +%s)
   if (( now >= deadline )); then
@@ -62,6 +78,7 @@ while :; do
       # existed seconds later. Waiting costs nothing: the deadline above still ends the
       # watch honestly if the checks genuinely never appear.
       if grep -qi "no checks reported" <<<"$json"; then
+        pr_conflicting_check
         if (( warned_no_run == 0 )); then
           echo "ci-watch: no checks on PR #$TARGET yet (a just-pushed branch can take a" \
                "moment) — waiting" >&2
@@ -81,6 +98,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # is not registered yet" arrive as the same empty list. Wait it out — if it is still
     # empty at the deadline, the timeout says so, and that IS the honest verdict.
     if (( total == 0 )); then
+      pr_conflicting_check
       if (( warned_no_run == 0 )); then
         echo "ci-watch: PR #$TARGET reports zero checks yet — waiting" >&2
         warned_no_run=1
