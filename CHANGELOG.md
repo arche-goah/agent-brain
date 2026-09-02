@@ -5,7 +5,30 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
-## Unreleased
+## 1.3.33 — 2026-09-02
+
+> **BETA-PHASE TAG.** Pinned on `brain-core-next` ONLY (the operator's four-step of
+> 2026-09-02: develop → verify on mac AND win → beta phase → release/pin). The
+> `brain-core` pin stays on v1.3.32 until the beta ends and the operator releases.
+> Full-audit strand: PRs #107 + #108 + #109, every change counter-checked by the
+> second instance (byte-level where it mattered).
+
+- **Two multi-agent/verification invariants lifted from instance memory into core
+  carriers** (#107): `rules/intelligence.md` gains "only the producer writes"
+  (workflow scripts have no filesystem; relayed content truncates silently — measured
+  1/141 and 22/141 rows surviving a prompt relay); `verification-before-completion`
+  gains the "One Symbol, Two States" gate (check output is evidence only if it
+  differs between world states; every "nothing found" must say whether it found
+  nothing or SAW nothing).
+- **codex-review triggers genericized** (#107): another owner's Vercel-portfolio/PM2
+  context replaced by generic deployment/production wording.
+- **Origin-marker alias** (#107, tightened in #108 after the Windows counter-check):
+  `origin: operator` is canonical; the literal `von: Operator` and the documented
+  operator-name form stay matchable — brain-scan's context phase now names all three
+  forms explicitly (the placeholder wording silently unmatched the literal core form).
+- **`## Common Failures` heading restored** in verification-before-completion (#108;
+  eaten by the #107 section insert) and the full-audit write-side promotion wording
+  names the list's own marker (#108).
 
 - **The multi-agent invariant "only the producer writes" had no carrier, and the
   workflows themselves were the pattern it forbids.** Five sites relayed bulk data across
