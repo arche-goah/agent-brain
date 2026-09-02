@@ -102,7 +102,13 @@ pins = {p.get("name", ""): p.get("source", {}).get("ref", "")
 enabled = {k for s in (proj, user)
            for k, v in (s.get("enabledPlugins") or {}).items() if v}
 stale = []
-core_pin = pins.get("brain-core", "")
+# The submodule is compared against the ENABLED core channel, not the literal name:
+# a beta machine runs brain-core-next while brain-core (disabled) is deliberately
+# pinned behind — comparing against the held pin would flag a correct beta state as
+# stale (same class as the updater's silent submodule skip, 2026-09-02).
+core_channel = next((n for n in ("brain-core-next", "brain-core")
+                     if any(k.startswith(n + "@") for k in enabled)), "brain-core")
+core_pin = pins.get(core_channel, "")
 if core_pin and os.path.isdir("core"):
     sub = ""
     try:
