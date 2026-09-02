@@ -46,6 +46,17 @@ case "${CI_WATCH_STUB:?}" in
                       if [[ -f "$f.view" ]]; then echo '[{"bucket":"pass"}]'
                       else echo "no checks reported on the 'feature' branch" >&2; exit 1; fi
                     fi ;;
+  # The live case of 2026-09-02: ALL checks green, but they predate the base change —
+  # the PR is genuinely conflicting and a merge would 405. Green must not exit 0 here.
+  pr_green_conflict) if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then echo "CONFLICTING"
+                    else echo '[{"bucket":"pass"},{"bucket":"pass"}]'; fi ;;
+  # ...and the same shape where the CONFLICTING read was just stale: heals to green.
+  pr_green_conflict_stale)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+                      if [[ -f "$f.view" ]]; then echo "MERGEABLE"
+                      else touch "$f.view"; echo "CONFLICTING"; fi
+                    else echo '[{"bucket":"pass"}]'; fi ;;
 esac
 STUB
 chmod +x "$TMP/gh"
@@ -79,6 +90,10 @@ grep -q "rebase" "$TMP/out" && echo "  OK   conflict verdict says rebase" \
 check "ONE stale CONFLICTING read heals, watch turns green"           pr_conflict_stale 0 pr 12
 grep -q "two consecutive reads" "$TMP/out" && { echo "  FAIL stale single read produced the verdict"; fails=$((fails+1)); } \
   || echo "  OK   single stale read did not verdict"
+check "green checks + real conflict = unknown(2), NOT green"          pr_green_conflict 2 pr 12 30
+grep -q "STALE" "$TMP/out" && echo "  OK   green-but-conflicting verdict names stale checks" \
+  || { echo "  FAIL verdict does not explain stale green checks"; fails=$((fails+1)); }
+check "green checks + stale conflict read heals to green"             pr_green_conflict_stale 0 pr 12
 check "ref (tag) success"               ref_green  0 ref v9.9.9
 check "ref (tag) failure"               ref_red    1 ref v9.9.9
 check "ref never appears = timeout(2)"  ref_absent 2 ref v9.9.9 2
@@ -86,4 +101,4 @@ check "gh hard error in ref mode"       gh_broken  2 ref v9.9.9
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
-echo "ci-watch-test: all 17 checks passed"
+echo "ci-watch-test: all 20 checks passed"
