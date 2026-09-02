@@ -253,7 +253,20 @@ for p in $(enabled_plugins); do
   done <<< "$recs"
 done
 
-core_plugin=$(enabled_plugins | grep -E '^brain-core@' | head -1 || true)
+# The core channel is whichever of brain-core / brain-core-next is ENABLED — both
+# ship the same repo, and the marketplace forbids running both at once. Binding this
+# to the literal name `brain-core` made the submodule step SKIP SILENTLY on a machine
+# that switched to the test channel, while "DONE" still printed (measured 2026-09-02,
+# first beta step of v1.3.33: plugin on 1.3.33, submodule left on v1.3.32). If both
+# channels are enabled, that misconfiguration is reported instead of picking one.
+core_plugin=$(enabled_plugins | grep -E '^brain-core(-next)?@' || true)
+if [ "$(printf '%s\n' "$core_plugin" | grep -c .)" -gt 1 ]; then
+  echo "FAIL both brain-core AND brain-core-next are enabled — they ship the same skills and collide; disable one, then re-run"
+  exit 1
+fi
+if [ -z "$core_plugin" ] && [ -d core ]; then
+  echo "WARN no core channel plugin enabled (brain-core / brain-core-next) — core/ submodule NOT aligned this run"
+fi
 if [ -n "$core_plugin" ] && [ -d core ] && git -C core rev-parse --git-dir >/dev/null 2>&1; then
   ver=$(installed_version "$core_plugin")
   if [ -n "$ver" ]; then
