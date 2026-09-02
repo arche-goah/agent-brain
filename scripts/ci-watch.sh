@@ -42,6 +42,44 @@ warned_no_run=0
 
 fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
 
+# A PR with a merge conflict gets NO pull_request run at all: GitHub cannot build the
+# merge ref, so it creates nothing — no error, no message. "Zero checks" is therefore
+# the same visible state as a dead CI, an exhausted quota or a workflow filter; one
+# command separates them. Measured 2026-09-02: repo-outage and account-quota were both
+# diagnosed AND published for a PR that simply read mergeable=CONFLICTING — while the
+# mechanism sat documented in an instance memory since 08-13 and was not recalled.
+# That is why this check lives in the TOOL: the verdict arrives with the diagnosis.
+#
+# ⚠ The field itself lies right after a push: GitHub recomputes mergeability lazily,
+# and a read taken immediately after a rebase/force-push returns the OLD state
+# (measured 2026-09-02, both directions: MERGEABLE right before a 405 conflict, and
+# CONFLICTING right after the fixing force-push). One read is therefore not a
+# measurement — the verdict requires TWO consecutive CONFLICTING reads a poll apart.
+conflict_seen=0
+warned_view_fail=0
+pr_conflicting_check() {
+  local m
+  if ! m=$(gh pr view "$TARGET" -R "$REPO" --json mergeable --jq .mergeable 2>/dev/null); then
+    # Fail-open by design (the deadline still ends the watch honestly), but not
+    # silently — otherwise "gh broke" reads exactly like "no conflict".
+    if (( warned_view_fail == 0 )); then
+      echo "ci-watch: could not read mergeable for PR #$TARGET (gh error) — conflict check is flying blind this round" >&2
+      warned_view_fail=1
+    fi
+    return 0
+  fi
+  if [[ "$m" == "CONFLICTING" ]]; then
+    if (( conflict_seen )); then
+      echo "CI-WATCH UNKNOWN: $REPO PR #$TARGET is CONFLICTING (two consecutive reads) — either GitHub creates no pull_request run for it at all (zero checks), or the checks you see are GREEN BUT STALE, computed before the base changed. Both mean the same thing: not mergeable, and no re-trigger helps — rebase the branch, then re-arm." >&2
+      exit 2
+    fi
+    conflict_seen=1
+    echo "ci-watch: PR #$TARGET reads CONFLICTING — re-checking next round (the field is stale right after a push)" >&2
+  else
+    conflict_seen=0
+  fi
+}
+
 while :; do
   now=$(date +%s)
   if (( now >= deadline )); then
@@ -62,6 +100,7 @@ while :; do
       # existed seconds later. Waiting costs nothing: the deadline above still ends the
       # watch honestly if the checks genuinely never appear.
       if grep -qi "no checks reported" <<<"$json"; then
+        pr_conflicting_check
         if (( warned_no_run == 0 )); then
           echo "ci-watch: no checks on PR #$TARGET yet (a just-pushed branch can take a" \
                "moment) — waiting" >&2
@@ -81,6 +120,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # is not registered yet" arrive as the same empty list. Wait it out — if it is still
     # empty at the deadline, the timeout says so, and that IS the honest verdict.
     if (( total == 0 )); then
+      pr_conflicting_check
       if (( warned_no_run == 0 )); then
         echo "ci-watch: PR #$TARGET reports zero checks yet — waiting" >&2
         warned_no_run=1
@@ -89,6 +129,13 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
+    # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
+    # the checks then predate the base change and are never recomputed (measured
+    # 2026-09-02 on a live PR: 7 SUCCESS checks, mergeable CONFLICTING, merge → 405).
+    # GREEN here means "green AND mergeable"; a conflicting read loops for the
+    # two-consecutive confirmation instead of exiting success.
+    pr_conflicting_check
+    if (( conflict_seen )); then sleep "$POLL"; continue; fi
     echo "CI-WATCH GREEN: $REPO PR #$TARGET — $total checks, none failing"
     exit 0
   fi
