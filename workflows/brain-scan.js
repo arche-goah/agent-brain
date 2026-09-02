@@ -5,7 +5,7 @@ export const meta = {
   phases: [
     { title: 'Context', detail: 'Order list + checklist + latest report', model: 'haiku' },
     { title: 'Scan', detail: '5 repo checks + 2 SOTA delta checks in parallel', model: 'haiku' },
-    { title: 'Fixes', detail: 'ONLY items with von: Operator, sequential with verify' },
+    { title: 'Fixes', detail: 'ONLY operator-ordered items (origin: operator / von: Operator / von: <name>), sequential with verify' },
     { title: 'Report', detail: 'Write scan report, update the order list' },
   ],
 }
@@ -53,7 +53,7 @@ const FINDINGS_SCHEMA = {
 phase('Context')
 const ctx = await agent(
   `Read (1) ${AUFTRAEGE}, (2) ${CHECKLIST}, (3) the newest existing report in ${REPORT_DIR}/ (ls, then read the newest scan-*.md; if none exists: last_scan_date = null, prev_open = []).
-Return via StructuredOutput: orders = ONLY the items from the section "Offen (bestellt)" (open, ordered) that are operator-ordered — the origin marker is "origin: operator" OR "von: <the operator's documented name>" (e.g. "von: Emil"); both forms count, "derived"/"abgeleitet" never does — and that are (a) unfinished (checkbox [ ] — skip [x]) AND (b) carry NO "eigene Session"/"EIGENE-SESSION" (own-session) note (the scan never touches such projects, only reports them as open). Full wording; last_scan_date; prev_open = unresolved finding titles from the last report. The return value is raw data.`,
+Return via StructuredOutput: orders = ONLY the items from the section "Offen (bestellt)" (open, ordered) that are operator-ordered — the origin marker is any of these three forms: "origin: operator", the literal "von: Operator", or "von: <the operator's documented name>" (e.g. "von: Emil"); all three count as ordered, "derived"/"abgeleitet" never does — and that are (a) unfinished (checkbox [ ] — skip [x]) AND (b) carry NO "eigene Session"/"EIGENE-SESSION" (own-session) note (the scan never touches such projects, only reports them as open). Full wording; last_scan_date; prev_open = unresolved finding titles from the last report. The return value is raw data.`,
   { label: 'context', phase: 'Context', model: 'haiku', schema: {
     type: 'object', required: ['orders', 'prev_open'],
     properties: {

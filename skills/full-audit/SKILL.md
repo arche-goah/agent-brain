@@ -55,8 +55,10 @@ stage.
    the absence is reported — do not improvise creating it.
 6. **Closing report to the operator:** overall report path, findings balance, the
    decision agenda as a list. Implementation only after operator OK (promote items to
-   `von: Operator`; "obvious fixes done myself" only if the operator explicitly grants
-   that as a blanket approval, as on 2026-08-01).
+   the list's own operator marker — `origin: operator` in field-convention ledgers,
+   `von: Operator` / the documented operator name in legacy lists; "obvious fixes done
+   myself" only if the operator explicitly grants that as a blanket approval, as on
+   2026-08-01).
 
 ## Trigger & cadence
 
