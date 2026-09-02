@@ -7,8 +7,6 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
-## Unreleased
-
 - **The mechanism-guard could not see the tool class it exists for.** `templates/settings.json` wired it to matcher `Bash`; a hand-built watcher is a `Monitor` command, so the one mechanical carrier against improvising past a documented path was blind to improvised watchers, in every bootstrapped brain. The guard itself needed no change - it reads `tool_input.command` and never looks at `tool_name`, and Monitor carries the same field. Matcher widened to `Bash|Monitor`. The template rule file said "matched against the bash command", which is the assumption that produced the gap; it now says otherwise. Found by walking into it: a session polled CI in a hand-built Monitor loop instead of using `ci-watch.sh`, and the guard never saw the command. Counter-measured on the other instance: 60 unique ad-hoc poll commands across 37 sessions, so the class is real and not local.
 - **`hook-coverage.py` compares the MATCHER, not only the command.** It reported full coverage for exactly the state above: the hook was wired, so it counted as covered, while its matcher named fewer tools than the template. A wired hook with a narrower matcher is now its own reported gap - which is what reaches brains bootstrapped before this change, since the template alone only ever reaches new ones.
 - `test-guards.sh`: the mechanism-guard probes take a tool name, and a Monitor payload must block. That proves the guard is tool-agnostic; the wiring half belongs to hook-coverage. Neither check alone separates "guard runs here" from "guard would run here if it were wired".
