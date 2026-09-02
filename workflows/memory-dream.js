@@ -50,6 +50,25 @@ const FINDINGS_SCHEMA = {
   },
 }
 
+// ── Multi-agent invariant: only the producer writes (rules/intelligence.md) ─
+// A relay through a prompt truncates silently — measured 2026-08-30: 1 of 141 rows
+// survived one hop. These two helpers do not make the boundary lossless; they make a
+// loss impossible to mistake for complete data, which is the half a script can enforce.
+const relay = (obj, limit, what) => {
+  const s = JSON.stringify(obj)
+  if (s.length <= limit) return s
+  log(`RELAY TRUNCATED: ${what} — ${limit} of ${s.length} chars reach the agent`)
+  return `${s.slice(0, limit)}
+[TRUNCATED: ${limit} of ${s.length} chars — this payload is INCOMPLETE, say so in the report]`
+}
+// A number the model REPORTS is a claim; the same number computed here is a measurement.
+// The measurement wins, and a mismatch aborts rather than being footnoted.
+const assertCount = (machine, claimed, what) => {
+  if (claimed !== undefined && claimed !== machine) {
+    throw new Error(`${what}: agent reported ${claimed}, script counted ${machine} — the script-side count wins (rules/intelligence.md, "only the producer writes"). Aborting instead of returning numbers that do not match the data.`)
+  }
+}
+
 // ── Phase 1: Analysis (2 independent perspectives) ────────────────────────
 phase('Analysis')
 // Model routing (rules/intelligence.md): mechanics is counting/reconciling — small
@@ -70,7 +89,7 @@ log(`${findings.length} findings from ${analyses.length}/2 analyses`)
 phase('Report')
 const rep = await agent(
   `Write the memory-dream report to ${REPORT} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.
-Data basis (JSON): ${JSON.stringify({ summaries: analyses.map(a => a.summary), findings }).slice(0, 50000)}
+Data basis (JSON): ${relay({ summaries: analyses.map(a => a.summary), findings }, 50000, 'analysis findings')}
 Structure: header (file/line counts, limits), findings by severity with proposal, section
 "Merge/delete candidates" as a table, closing section "Implementation ONLY after operator OK —
 respect the snapshot rule: memory changes via auto-memory + memory-sync export, never
@@ -82,5 +101,9 @@ Return: report_path, p0_count, p1_count, finding_count.`,
   } },
 )
 if (!rep) throw new Error('Report agent failed')
+// The counts the script holds are the measurement; the agent's are a claim.
+const p0Machine = findings.filter(f => f.severity === 'P0').length
+const p1Machine = findings.filter(f => f.severity === 'P1').length
+assertCount(findings.length, rep.finding_count, 'memory-dream findings')
 
-return { report: rep.report_path, befunde: rep.finding_count, p0: rep.p0_count || 0, p1: rep.p1_count || 0 }
+return { report: rep.report_path, befunde: findings.length, p0: p0Machine, p1: p1Machine }

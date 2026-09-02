@@ -22,6 +22,25 @@ if (!A || !A.date || !A.reports || !A.reports.brain || !A.reports.memory || !A.r
 const DATE = A.date
 const OUT = `${REPORT_DIR}/gesamt-${DATE}.md`
 
+// ── Multi-agent invariant: only the producer writes (rules/intelligence.md) ─
+// A relay through a prompt truncates silently — measured 2026-08-30: 1 of 141 rows
+// survived one hop. These two helpers do not make the boundary lossless; they make a
+// loss impossible to mistake for complete data, which is the half a script can enforce.
+const relay = (obj, limit, what) => {
+  const s = JSON.stringify(obj)
+  if (s.length <= limit) return s
+  log(`RELAY TRUNCATED: ${what} — ${limit} of ${s.length} chars reach the agent`)
+  return `${s.slice(0, limit)}
+[TRUNCATED: ${limit} of ${s.length} chars — this payload is INCOMPLETE, say so in the report]`
+}
+// A number the model REPORTS is a claim; the same number computed here is a measurement.
+// The measurement wins, and a mismatch aborts rather than being footnoted.
+const assertCount = (machine, claimed, what) => {
+  if (claimed !== undefined && claimed !== machine) {
+    throw new Error(`${what}: agent reported ${claimed}, script counted ${machine} — the script-side count wins (rules/intelligence.md, "only the producer writes"). Aborting instead of returning numbers that do not match the data.`)
+  }
+}
+
 // ── Phase 1: Catalog (1 agent — needs ALL reports at once, no fan-out) ─────
 phase('Catalog')
 const katalog = await agent(
@@ -75,7 +94,7 @@ const mech = katalog.massnahmen.filter(m => m.typ === 'mechanisch')
 const dec = katalog.massnahmen.filter(m => m.typ === 'entscheidung')
 const rep = await agent(
   `Write the full-audit overall report to ${OUT} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.
-Data basis (JSON): ${JSON.stringify({ summary: katalog.summary, mechanisch: mech, entscheidung: dec }).slice(0, 50000)}
+Data basis (JSON): ${relay({ summary: katalog.summary, mechanisch: mech, entscheidung: dec }, 50000, 'catalog')}
 Source reports (link in the header, incl. a note if a report is reused/older — the date is in the filename): brain=${A.reports.brain}, memory=${A.reports.memory}, coherence=${A.reports.coherence}
 Structure: (1) header: scan scope, source reports, dedupe balance; (2) "Mechanical fixes"
 by priority (each: title, sources, proposal); (3) "Decision agenda for the operator" by
@@ -91,6 +110,8 @@ Return: report_path, mech_count, decision_count, appended.`,
   } },
 )
 if (!rep) throw new Error('Report agent failed')
+assertCount(mech.length, rep.mech_count, 'full-audit mechanical measures')
+assertCount(dec.length, rep.decision_count, 'full-audit decision agenda')
 
 return {
   gesamt_report: rep.report_path,

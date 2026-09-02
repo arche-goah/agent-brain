@@ -59,6 +59,25 @@ const FINDINGS_SCHEMA = {
   },
 }
 
+// ── Multi-agent invariant: only the producer writes (rules/intelligence.md) ─
+// A relay through a prompt truncates silently — measured 2026-08-30: 1 of 141 rows
+// survived one hop. These two helpers do not make the boundary lossless; they make a
+// loss impossible to mistake for complete data, which is the half a script can enforce.
+const relay = (obj, limit, what) => {
+  const s = JSON.stringify(obj)
+  if (s.length <= limit) return s
+  log(`RELAY TRUNCATED: ${what} — ${limit} of ${s.length} chars reach the agent`)
+  return `${s.slice(0, limit)}
+[TRUNCATED: ${limit} of ${s.length} chars — this payload is INCOMPLETE, say so in the report]`
+}
+// A number the model REPORTS is a claim; the same number computed here is a measurement.
+// The measurement wins, and a mismatch aborts rather than being footnoted.
+const assertCount = (machine, claimed, what) => {
+  if (claimed !== undefined && claimed !== machine) {
+    throw new Error(`${what}: agent reported ${claimed}, script counted ${machine} — the script-side count wins (rules/intelligence.md, "only the producer writes"). Aborting instead of returning numbers that do not match the data.`)
+  }
+}
+
 // ── Phase 1: Inventory ─────────────────────────────────────────────────────
 phase('Inventory')
 const inv = await agent(
@@ -112,7 +131,7 @@ log(`${analyses.length}/9 analyses done, ${rawFindings.length} raw findings`)
 // ── Phase 3: Merge/dedupe (barrier justified: needs ALL findings) ─────────
 phase('Merge')
 const merged = await agent(
-  `${FRAMING}\n\nHere are all raw findings of the audit (JSON):\n${JSON.stringify(rawFindings).slice(0, 60000)}\n\nMerge duplicates (same rule pair/same drift family from different lenses → ONE finding, sources united, keep the strongest scenario). Prioritize by severity and real damage probability. Return at most 24 consolidated findings; if you have to cut, list the titles of the omitted ones in summary (no silent capping).`,
+  `${FRAMING}\n\nHere are all raw findings of the audit (JSON):\n${relay(rawFindings, 60000, 'raw findings')}\n\nMerge duplicates (same rule pair/same drift family from different lenses → ONE finding, sources united, keep the strongest scenario). Prioritize by severity and real damage probability. Return at most 24 consolidated findings; if you have to cut, list the titles of the omitted ones in summary (no silent capping).`,
   { label: 'merge', phase: 'Merge', schema: { ...FINDINGS_SCHEMA, properties: { ...FINDINGS_SCHEMA.properties, findings: { ...FINDINGS_SCHEMA.properties.findings, maxItems: 24 } } } },
 )
 if (!merged) throw new Error('Merge failed')
@@ -154,13 +173,15 @@ phase('Register')
 const p0Machine = surviving.filter(f => f.severity === 'P0').length
 const p1Machine = surviving.filter(f => f.severity === 'P1').length
 const report = await agent(
-  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}. Data basis (JSON, already verified):\n${JSON.stringify({ summary: merged.summary, findings: surviving }).slice(0, 60000)}\n\nAUTHORITATIVE numbers (machine-derived from the verified array): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if the supplied summary deviates from them, the array wins — note the deviation as a footnote in the register, do not adopt it.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — explicitly: EVERY fix needs the operator's decision.\nTHEN append the P0/P1 findings to ${AUFTRAEGE} under the existing structure as proposal items, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), 1 line each with a pointer to the register — implement NONE of it.\nReturn: report_path, p0_count, p1_count, appended_orders.`,
+  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}. Data basis (JSON, already verified):\n${relay({ summary: merged.summary, findings: surviving }, 60000, 'verified findings')}\n\nAUTHORITATIVE numbers (machine-derived from the verified array): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if the supplied summary deviates from them, the array wins. State exactly these numbers and return them unchanged — a deviation in your returned counts aborts the run.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — explicitly: EVERY fix needs the operator's decision.\nTHEN append the P0/P1 findings to ${AUFTRAEGE} under the existing structure as proposal items, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), 1 line each with a pointer to the register — implement NONE of it.\nReturn: report_path, p0_count, p1_count, appended_orders.`,
   { label: 'register', phase: 'Register', schema: {
     type: 'object', required: ['report_path', 'p0_count', 'p1_count'],
     properties: { report_path: { type: 'string' }, p0_count: { type: 'number' }, p1_count: { type: 'number' }, appended_orders: { type: 'number' } },
   } },
 )
 if (!report) throw new Error('Register agent failed')
+assertCount(p0Machine, report.p0_count, 'coherence-scan P0')
+assertCount(p1Machine, report.p1_count, 'coherence-scan P1')
 
 return {
   register: report.report_path,
