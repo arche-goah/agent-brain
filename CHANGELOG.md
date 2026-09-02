@@ -7,6 +7,24 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **The multi-agent invariant "only the producer writes" had no carrier, and the
+  workflows themselves were the pattern it forbids.** Five sites relayed bulk data across
+  an agent boundary inside a prompt with a bare `JSON.stringify(x).slice(0, N)` — a cut
+  that leaves no trace in the log, in the payload, or in the report built from it, so half
+  the data reads exactly like all of it. Replaced by `relay(obj, limit, what)`: it logs the
+  cut and writes a `[TRUNCATED: n of m chars]` marker INTO the payload the agent reads, so
+  the loss survives into the report instead of vanishing at the boundary. The invariant's
+  second half was missing too: `coherence-scan.js` computed the authoritative P0/P1 counts
+  and then asked the agent to footnote any deviation — a warning where the rule says abort —
+  while `memory-dream.js` returned the agent's REPORTED counts as the workflow's result and
+  never compared them against the array it was holding. Both now go through `assertCount()`,
+  which throws; memory-dream returns the script-side numbers.
+- `test-workflow-relays.sh`: fixture for the above, and the guard against the next bare site.
+  Its first version passed while the defect was reintroduced — the grep stopped at the first
+  `)` and could not see a relay whose payload contains parentheses, which is every real one.
+  "Found nothing" and "cannot see it" printed the same OK; caught by the red-green cycle,
+  not by reading the pattern. Discovered by the same rule the fixture guards.
+  It creates no temp directory on purpose (OS-3).
 - **The cache provenance check could not name which of two states it had found**
   (`brain-update.sh`). It compares the recorded install commit against the pinned tag,
   and those disagree in two different situations: the record is stale (the content IS the
