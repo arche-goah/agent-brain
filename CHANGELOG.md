@@ -5,6 +5,25 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 1.3.34 — 2026-09-02
+
+> **BETA-PHASE TAG, replaces v1.3.33 on `brain-core-next`.** First beta finding, on
+> the very first beta step: a test-channel machine could not cleanly GET onto the
+> beta. `brain-core` stays on v1.3.32 until the operator releases after the beta.
+
+- **brain-update follows the ENABLED core channel** (#111): the submodule alignment
+  was bound to the literal plugin name `brain-core` — with `brain-core-next` enabled
+  and `brain-core` disabled it skipped SILENTLY and still printed DONE (measured:
+  plugin on 1.3.33, submodule left on v1.3.32). Now: either channel matches, both
+  enabled at once FAILs with instructions, neither enabled WARNs instead of silence.
+- **Class closed, not the instance** (#111): `onboarding-verify.sh` accepts either
+  channel for plugin presence and cache dir (a beta machine read as "brain-core
+  MISSING" before); `session-bootup.sh` compares the submodule against the ENABLED
+  channel's pin (a correct beta state read as stale against the held brain-core pin).
+  `file-guard.cjs` checked and not affected (matches the repo manifest name).
+- The new updater block is grep-free (OS-5 register ratchets DOWN:
+  brain-update.sh 2 → 1 pipe-grep sites).
+
 ## 1.3.33 — 2026-09-02
 
 > **BETA-PHASE TAG.** Pinned on `brain-core-next` ONLY (the operator's four-step of
