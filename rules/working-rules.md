@@ -71,7 +71,10 @@ instance and every colleague files it the same way and lists stay compatible:
    - `id:` stable slug — referencable, survives rephrasing
    - `class:` todo | decision | lesson
    - `reach:` project | brain | shared (see 3.)
-   - `origin:` operator | derived (derived = proposal, needs an OK)
+   - `origin:` operator | derived (derived = proposal, needs an OK). Legacy lists
+     may still carry the instance's documented operator name as the value
+     (e.g. `origin: Emil`) or the older `von: <name>` marker — aggregators and
+     scan prompts MUST match both forms; new entries write `operator`.
 2. **Every overview above the detail lists is GENERATED, never hand-maintained.**
    A second hand-kept list drifts — measured repeatedly. Aggregation is a script's
    view over the registered detail lists, not a document anyone edits.
@@ -198,8 +201,9 @@ says so instead of reporting green.
    becomes self-occupation.
 2. **No self-invented goals while an operator assignment is open.**
    Autonomous loops work through an **assignment list**; every item carries an origin
-   marker (`von: Operator` | `abgeleitet`, i.e. derived). Derived items are
-   **proposals** and need an OK.
+   marker (`von: Operator` | `abgeleitet`, i.e. derived — same semantics as the
+   ledger fields `origin: operator | derived` above; both marker forms are valid,
+   consumers match both). Derived items are **proposals** and need an OK.
 3. **An empty list is a SUCCESS, not an emergency.** List empty → **report and
    stop**, don't refill. NORMAL CASE: assignment fulfilled → check-in with the
    operator. NARROW EXCEPTION only for the explicitly scheduled time-boxed run

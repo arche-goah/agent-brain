@@ -53,7 +53,7 @@ const FINDINGS_SCHEMA = {
 phase('Context')
 const ctx = await agent(
   `Read (1) ${AUFTRAEGE}, (2) ${CHECKLIST}, (3) the newest existing report in ${REPORT_DIR}/ (ls, then read the newest scan-*.md; if none exists: last_scan_date = null, prev_open = []).
-Return via StructuredOutput: orders = ONLY the items from the section "Offen (bestellt)" (open, ordered) with origin "von: Operator" that are (a) unfinished (checkbox [ ] — skip [x]) AND (b) carry NO "eigene Session"/"EIGENE-SESSION" (own-session) note (the scan never touches such projects, only reports them as open). Full wording; last_scan_date; prev_open = unresolved finding titles from the last report. The return value is raw data.`,
+Return via StructuredOutput: orders = ONLY the items from the section "Offen (bestellt)" (open, ordered) that are operator-ordered — the origin marker is "origin: operator" OR "von: <the operator's documented name>" (e.g. "von: Emil"); both forms count, "derived"/"abgeleitet" never does — and that are (a) unfinished (checkbox [ ] — skip [x]) AND (b) carry NO "eigene Session"/"EIGENE-SESSION" (own-session) note (the scan never touches such projects, only reports them as open). Full wording; last_scan_date; prev_open = unresolved finding titles from the last report. The return value is raw data.`,
   { label: 'context', phase: 'Context', model: 'haiku', schema: {
     type: 'object', required: ['orders', 'prev_open'],
     properties: {
