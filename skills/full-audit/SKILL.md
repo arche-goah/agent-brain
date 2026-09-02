@@ -37,7 +37,8 @@ stage.
 1. `DATE=$(date +%F)` (never estimate). Briefly announce which stages run fresh and
    which reports are reused.
 2. **Stage 1** `Workflow({scriptPath: brain-scan.js, args:{date}})` — runs as always,
-   including its fix phase (ONLY `von: Operator` items, order fidelity). Read the result.
+   including its fix phase (ONLY operator-ordered items — `origin: operator` /
+   `von: Operator` / documented-name form; order fidelity). Read the result.
 3. **Stage 2** `Workflow({scriptPath: memory-dream.js, args:{date}})` — read-only.
    Read the result.
 4. **Stage 3** `Workflow({scriptPath: coherence-scan.js, args:{date, scratch:
@@ -55,8 +56,10 @@ stage.
    the absence is reported — do not improvise creating it.
 6. **Closing report to the operator:** overall report path, findings balance, the
    decision agenda as a list. Implementation only after operator OK (promote items to
-   `von: Operator`; "obvious fixes done myself" only if the operator explicitly grants
-   that as a blanket approval, as on 2026-08-01).
+   the list's own operator marker — `origin: operator` in field-convention ledgers,
+   `von: Operator` / the documented operator name in legacy lists; "obvious fixes done
+   myself" only if the operator explicitly grants that as a blanket approval, as on
+   2026-08-01).
 
 ## Trigger & cadence
 
