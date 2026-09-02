@@ -49,12 +49,25 @@ fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
 # diagnosed AND published for a PR that simply read mergeable=CONFLICTING — while the
 # mechanism sat documented in an instance memory since 08-13 and was not recalled.
 # That is why this check lives in the TOOL: the verdict arrives with the diagnosis.
+#
+# ⚠ The field itself lies right after a push: GitHub recomputes mergeability lazily,
+# and a read taken immediately after a rebase/force-push returns the OLD state
+# (measured 2026-09-02, both directions: MERGEABLE right before a 405 conflict, and
+# CONFLICTING right after the fixing force-push). One read is therefore not a
+# measurement — the verdict requires TWO consecutive CONFLICTING reads a poll apart.
+conflict_seen=0
 pr_conflicting_check() {
   local m
   m=$(gh pr view "$TARGET" -R "$REPO" --json mergeable --jq .mergeable 2>/dev/null) || return 0
   if [[ "$m" == "CONFLICTING" ]]; then
-    echo "CI-WATCH UNKNOWN: $REPO PR #$TARGET is CONFLICTING — GitHub cannot build the merge ref, so no pull_request run will EVER be created (no error, just nothing). This is not a CI outage and no amount of re-triggering helps: rebase the branch, then re-arm." >&2
-    exit 2
+    if (( conflict_seen )); then
+      echo "CI-WATCH UNKNOWN: $REPO PR #$TARGET is CONFLICTING (two consecutive reads) — GitHub cannot build the merge ref, so no pull_request run will EVER be created (no error, just nothing). This is not a CI outage and no amount of re-triggering helps: rebase the branch, then re-arm." >&2
+      exit 2
+    fi
+    conflict_seen=1
+    echo "ci-watch: PR #$TARGET reads CONFLICTING — re-checking next round (the field is stale right after a push)" >&2
+  else
+    conflict_seen=0
   fi
 }
 

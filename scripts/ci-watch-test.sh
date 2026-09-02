@@ -35,6 +35,17 @@ case "${CI_WATCH_STUB:?}" in
                     else echo "no checks reported on the 'feature' branch" >&2; exit 1; fi ;;
   pr_conflict_zero) if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then echo "CONFLICTING"
                     else echo '[]'; fi ;;
+  # The stale-field race: mergeable reads CONFLICTING once right after a push, then
+  # heals; the checks appear a round later. ONE stale read must not kill the watch.
+  pr_conflict_stale)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+                      if [[ -f "$f.view" ]]; then echo "MERGEABLE"
+                      else touch "$f.view"; echo "CONFLICTING"; fi
+                    else
+                      if [[ -f "$f.view" ]]; then echo '[{"bucket":"pass"}]'
+                      else echo "no checks reported on the 'feature' branch" >&2; exit 1; fi
+                    fi ;;
 esac
 STUB
 chmod +x "$TMP/gh"
@@ -65,6 +76,9 @@ grep -q "CONFLICTING" "$TMP/out" && echo "  OK   conflict verdict names CONFLICT
 check "conflicted PR (zero checks) = named unknown(2), no wait"       pr_conflict_zero 2 pr 12 30
 grep -q "rebase" "$TMP/out" && echo "  OK   conflict verdict says rebase" \
   || { echo "  FAIL conflict verdict does not say rebase"; fails=$((fails+1)); }
+check "ONE stale CONFLICTING read heals, watch turns green"           pr_conflict_stale 0 pr 12
+grep -q "two consecutive reads" "$TMP/out" && { echo "  FAIL stale single read produced the verdict"; fails=$((fails+1)); } \
+  || echo "  OK   single stale read did not verdict"
 check "ref (tag) success"               ref_green  0 ref v9.9.9
 check "ref (tag) failure"               ref_red    1 ref v9.9.9
 check "ref never appears = timeout(2)"  ref_absent 2 ref v9.9.9 2
@@ -72,4 +86,4 @@ check "gh hard error in ref mode"       gh_broken  2 ref v9.9.9
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
-echo "ci-watch-test: all 15 checks passed"
+echo "ci-watch-test: all 17 checks passed"
