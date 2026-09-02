@@ -13,15 +13,19 @@ Claiming work is complete without verification is dishonesty, not efficiency.
 
 **Violating the letter of this rule is violating the spirit of this rule.**
 
-## Codex Adversarial Review Integration (Update 2026-04-11)
+## Codex Adversarial Review Integration (Update 2026-04-11, genericized 2026-09-02)
 
-For critical code changes (web edits, bot code, critical code), additionally trigger the Codex adversarial review via the `codex-review` skill (local: `tools/codex-plugin-cc/`).
+For critical code changes, additionally trigger the Codex adversarial review via the
+`codex-review` skill (where the instance carries it).
 
 **Triggers:**
-- Before deploying to Vercel (portfolio site)
-- Before a PM2 restart of a production bot
-- Before `git push` with bot code
+- Before deployments and anything outward-facing
+- Before restarting a production process on changed code
+- Before `git push` of code that runs unattended
 - Before submitting critical code
+
+(Earlier wording named one owner's Vercel portfolio site and PM2 bots — instance
+context of another brain; removed, coherence-scan 2026-09-02 §P2-9.)
 
 **Codex checks 7 areas:**
 Authentication, Data Loss, Rollbacks, Race Conditions, Degraded Dependencies, Version Skew, Observability Gap
@@ -53,7 +57,27 @@ BEFORE claiming any status or expressing satisfaction:
 Skip any step = lying, not verifying
 ```
 
-## Common Failures
+## One Symbol, Two States (since 2026-09-02 — a check must separate the worlds)
+
+Verification output is evidence only if it DIFFERS between the world where the
+claim holds and the world where it doesn't. Five independent finds in one day
+(2026-08-30, operator instance): "checked and clean" and "could not see anything"
+both printed `clean`; "forgot to pin" and "deliberately held back" both printed
+`STALE`; "cannot be mechanized" and "not yet mechanized" shared one marker. The
+error direction is NOT predictable — some hid necessary work, some invented it.
+
+Before trusting (or emitting) any check output, answer two questions:
+
+1. **Which OTHER world state produces exactly this same output?** If one exists,
+   it needs its own symbol AND a reason field — not just a flag.
+2. **What did I NOT look at?** Anything unexamined is its own state and must never
+   read as "checked". Every "nothing found" must be able to say whether it found
+   nothing or SAW nothing (an untracked file is invisible to `git ls-files`; an
+   empty grep over the wrong directory is not a pass).
+
+The second state usually does not exist yet when the check is written — the world
+delivers it later. That is why this is a question asked at every emit, not a
+pattern to grep for.
 
 | Claim | Requires | Not Sufficient |
 |-------|----------|----------------|
