@@ -49,6 +49,25 @@ const FINDINGS_SCHEMA = {
   },
 }
 
+// ── Multi-agent invariant: only the producer writes (rules/intelligence.md) ─
+// A relay through a prompt truncates silently — measured 2026-08-30: 1 of 141 rows
+// survived one hop. These two helpers do not make the boundary lossless; they make a
+// loss impossible to mistake for complete data, which is the half a script can enforce.
+const relay = (obj, limit, what) => {
+  const s = JSON.stringify(obj)
+  if (s.length <= limit) return s
+  log(`RELAY TRUNCATED: ${what} — ${limit} of ${s.length} chars reach the agent`)
+  return `${s.slice(0, limit)}
+[TRUNCATED: ${limit} of ${s.length} chars — this payload is INCOMPLETE, say so in the report]`
+}
+// A number the model REPORTS is a claim; the same number computed here is a measurement.
+// The measurement wins, and a mismatch aborts rather than being footnoted.
+const assertCount = (machine, claimed, what) => {
+  if (claimed !== undefined && claimed !== machine) {
+    throw new Error(`${what}: agent reported ${claimed}, script counted ${machine} — the script-side count wins (rules/intelligence.md, "only the producer writes"). Aborting instead of returning numbers that do not match the data.`)
+  }
+}
+
 // ── Phase 1: Context ───────────────────────────────────────────────────────
 phase('Context')
 const ctx = await agent(
@@ -67,7 +86,7 @@ if (!ctx) throw new Error('Context agent failed')
 log(`${ctx.orders.length} ordered tasks, last scan: ${ctx.last_scan_date || 'never'}`)
 
 // ── Phase 2: Scan (repo + SOTA in parallel) ───────────────────────────────
-const SCAN_COMMON = `You are a brain-scan agent for ${REPO}. STRICTLY READ-ONLY. Check EVERY check of your checklist section from ${CHECKLIST} individually and concretely (measure/read/test, do not guess). Already-known unresolved findings from the last scan: ${JSON.stringify(ctx.prev_open).slice(0, 3000)} — prefix such findings with "RECURRING:". Severity OK = check passed (report only in summarized form) — then "state" is REQUIRED: "verified" ONLY if you yourself executed the behavior check declared in section 0/your section and can name the result; reading/parsing/schema-checking is "configured". When in doubt: "configured".
+const SCAN_COMMON = `You are a brain-scan agent for ${REPO}. STRICTLY READ-ONLY. Check EVERY check of your checklist section from ${CHECKLIST} individually and concretely (measure/read/test, do not guess). Already-known unresolved findings from the last scan: ${relay(ctx.prev_open, 3000, 'prev_open')} — prefix such findings with "RECURRING:". Severity OK = check passed (report only in summarized form) — then "state" is REQUIRED: "verified" ONLY if you yourself executed the behavior check declared in section 0/your section and can name the result; reading/parsing/schema-checking is "configured". When in doubt: "configured".
 FRESHNESS REQUIREMENT: every statement about rule/doc files (CLAUDE.md, rules/, checklist, settings) must rest on a read from disk IN THIS RUN — never quote injected context/system-prompt copies (2026-08-01: two stale findings, refuted by grep).
 ADDITIONAL CRITERION in YOUR area (every section, no auto-fix): if you notice a construct that only resolves on macOS/BSD (BSD-only flags like \`stat -f\`/\`date -r\`, \`zsh\`-specific syntax, \`launchd\`, fixed paths like /opt/homebrew, assumption of \`/\` path separators, tools like \`system_profiler\`/\`ioreg\` without fallback) — report it as a separate finding prefixed "OS:" (severity INFO, never higher for this alone), file+line, 1 sentence why it could break on Windows/Linux, plus — where evident — a brief suggestion for the Windows/POSIX equivalent. No fix, no judgment: making it robust needs its own review session with the Windows machine + PR reconciliation, not this scan.
 StructuredOutput per schema; return value = raw data.`

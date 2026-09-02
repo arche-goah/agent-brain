@@ -173,7 +173,10 @@ plus a narrow schema-validated index. Routing-critical fields belong in that
 validated index, not in the agent-written file (agent-written files lose schema
 validation). And a number the model is asked to REPORT is a claim; the same number
 computed in the script is a measurement — the script-side count wins, with an
-abort (not a warning) on mismatch.
+abort (not a warning) on mismatch. **Carried, not only stated:** the workflows use
+`relay()` (a cut is logged AND marked inside the payload, so truncated data cannot
+read as complete) and `assertCount()` (a mismatch throws); `scripts/test-workflow-relays.sh`
+fails on a new bare `JSON.stringify(...).slice(...)` relay site.
 
 ## Repeat Runs (CANONICAL place — skills point here)
 
