@@ -45,12 +45,15 @@ check 1 "Access" $(( gh_ok || ssh_ok )) "gh=$([ $gh_ok -eq 0 ] && echo ok || ech
 # 2 Plugins enabled — mandatory is ONLY the core plugin; additional suites are
 # opt-in on explicit request and are checked here only WHEN installed.
 pl=$(claude plugin list 2>/dev/null)
-echo "$pl" | grep -q "brain-core@"; p1=$?
-check 2 "Plugins" $p1 "brain-core=$([ $p1 -eq 0 ] && echo present || echo MISSING) (suites are opt-in — default is core only)"
+# Either channel counts — brain-core-next is the same repo on a test tag (a beta
+# machine has next enabled and brain-core disabled; the literal match read that as
+# MISSING — same class as the updater's silent submodule skip, 2026-09-02).
+echo "$pl" | grep -qE "brain-core(-next)?@"; p1=$?
+check 2 "Plugins" $p1 "core channel=$([ $p1 -eq 0 ] && echo present || echo MISSING) (brain-core or brain-core-next; suites are opt-in — default is core only)"
 
 # Find the plugin cache root
 cache="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache"
-bc_dir=$(find "$cache" -maxdepth 4 -type d -name "brain-core" 2>/dev/null | head -1)
+bc_dir=$(find "$cache" -maxdepth 4 -type d \( -name "brain-core" -o -name "brain-core-next" \) 2>/dev/null | head -1)
 # Suites, generically: every cached plugin BESIDES brain-core that ships an MCP
 # server manifest counts as an installed suite (suite shape per CONVENTIONS section 2).
 suite_dirs=$(find "$cache" -maxdepth 5 -name ".mcp.json" -not -path "*brain-core*" 2>/dev/null | xargs -I{} dirname {} 2>/dev/null | sort -u)
