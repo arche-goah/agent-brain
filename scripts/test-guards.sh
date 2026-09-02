@@ -78,7 +78,7 @@ printf '%s' '[{"pattern":"\\bfixture-shortcut\\b","was":"fixture","stattdessen":
 mg_probe() { # $1 name, $2 command, $3 block|allow
   local out rc
   local helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
-  out=$(printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$2" "$MG" \
+  out=$(printf '{"tool_name":"%s","tool_input":{"command":"%s"},"cwd":"%s"}' "${4:-Bash}" "$2" "$MG" \
         | CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1)
   rc=$?
   if [ "$rc" -eq 2 ] || printf '%s' "$out" | grep -q '"permissionDecision": *"deny"'; then
@@ -92,6 +92,12 @@ mg_probe "mechanism-guard/plain command" "git status --short" allow
 # The marker is the guard's own escape hatch — if it stopped working, every documented
 # shortcut would be unreachable and the guard would be switched off within a day.
 mg_probe "mechanism-guard/MECHANISM-OK marker" "fixture-shortcut --now  # MECHANISM-OK: proving the escape hatch" allow
+# A hand-built watcher is a Monitor command, not a Bash one. The guard never reads
+# tool_name, so this proves it is tool-agnostic and the ONLY thing between the class
+# and the guard is the matcher in settings.json. That other half is hook-coverage.py,
+# which since 2026-09-02 reports a matcher narrower than the template: the presence
+# of the hook alone said "covered" while every Monitor command walked past it.
+mg_probe "mechanism-guard/Monitor payload" "fixture-shortcut --now" block Monitor
 rm -rf "$MG"
 
 # --- freshness-gate: only the Workflow tool concerns it ----------------------
