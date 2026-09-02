@@ -80,7 +80,7 @@ Source reports (link in the header, incl. a note if a report is reused/older —
 Structure: (1) header: scan scope, source reports, dedupe balance; (2) "Mechanical fixes"
 by priority (each: title, sources, proposal); (3) "Decision agenda for the operator" by
 priority (each: question, options, recommendation if available); (4) "Next steps":
-EVERY implementation needs the operator (promotion to von: Operator or an explicit blanket OK).
+EVERY implementation needs the operator (promotion to the list's own operator marker — origin: operator, or the legacy von: Operator / documented-name form — or an explicit blanket OK).
 THEN append the P0/P1 measures to ${AUFTRAEGE} under the existing proposed-items structure
 as 1-line items, origin "abgeleitet (full-audit ${DATE})" (abgeleitet = derived), with a
 pointer to ${OUT} — implement NOTHING, change no existing entries.
