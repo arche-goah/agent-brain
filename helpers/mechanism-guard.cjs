@@ -19,8 +19,20 @@
  * Format: [{ "pattern": "<JS regex>", "was": "...", "stattdessen": "..." }, ...]
  * If the file is missing or broken, the guard blocks nothing (fail-open, read-only hook).
  * Every newly discovered shortcut gets added there as a rule — the system learns.
+ *
+ * HEREDOC FALSE POSITIVE (found 2026-09-08, sibling hook's own first real run):
+ * matching happens against the raw `command` string, which can contain a heredoc
+ * whose BODY is literal text this command merely writes to a file, not something
+ * it executes — e.g. authoring a doc or test fixture that shows an example of a
+ * blocked pattern as sample text trips the guard on content it never runs. Strip
+ * heredoc bodies before matching so only text this command actually executes is
+ * checked.
  */
 const fs = require('fs');
+
+function stripHeredocs(cmd) {
+  return cmd.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n([\s\S]*?)\n\2\b/g, '<<HEREDOC-STRIPPED>>');
+}
 
 function loadRules() {
   const p = `${process.env.CLAUDE_PROJECT_DIR || '.'}/.claude/rules/mechanism-rules.json`;
@@ -45,9 +57,10 @@ process.stdin.on('end', () => {
     process.exit(0);
   }
   if (/MECHANISM-OK:/.test(cmd)) process.exit(0); // deliberate, justified deviation
+  const checkCmd = stripHeredocs(cmd);
 
   for (const r of loadRules()) {
-    if (r.re.test(cmd)) {
+    if (r.re.test(checkCmd)) {
       const msg =
         `MECHANISM CHECK: ${r.was}\n\n` +
         `The setup has a documented path for this:\n  ${r.stattdessen}\n\n` +
