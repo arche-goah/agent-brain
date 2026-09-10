@@ -259,7 +259,13 @@ fi
 if [[ -f "$M" ]]; then
   ml=$(wc -l < "$M" | tr -d ' '); mb=$(wc -c < "$M" | tr -d ' ')
   mwarn=""; (( ml > 180 || mb > 23000 )) && mwarn=" !! near limit"
-  echo "memory: $ml/200 lines, $mb/25600 bytes$mwarn"
+  # Density projection (operator order 2026-09-10): which limit binds, and how many
+  # entries fit at the current bytes-per-entry. Measured on the proving instance: 104
+  # lines but 18.3 KB — the BYTE cap binds first, ~140 entries, while the line count
+  # suggested room for 96 more. An entry is an index line ("- [" prefix); the header
+  # block is excluded so prose does not skew the average.
+  mroom=$(awk '/^- \[/ { n++; s += length($0) + 1 } END { if (n) { r = int(25600 / (s / n)); if (r > 200) r = 200; printf "%d entries, room for ~%d at %d B/entry", n, r, s / n } }' "$M")
+  echo "memory: $ml/200 lines, $mb/25600 bytes${mroom:+ · $mroom}$mwarn"
 else
   # Report the path along with it: "missing" used to mean either "there is none" or
   # "the check is looking in the wrong place" — without the path that was indistinguishable

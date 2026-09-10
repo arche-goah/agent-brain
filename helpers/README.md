@@ -18,6 +18,7 @@ below, installed at USER level via `scripts/install-statusline.sh`) and
 | junk-cleaner.cjs | PostToolUse (Bash) | cleans up junk files |
 | stop-verifier.cjs | Stop | verification reminder |
 | recall-gate.cjs | Stop (via stop-dispatcher, `stop-checks.json`) | knowledge without a carrier, two triggers: live-research tool calls above threshold, OR verification CLAIMS in the agent's own text (a verification verb AND a discovery object in the same block, `verifyThreshold` of them) — either one with nothing persisted since → one question; `--record` for precision measurement; tool patterns, word lists and persistence paths are instance data (`.claude/rules/recall-tools.json`, English defaults, config replaces rather than extends); read side = `scripts/transcript-recall.py` |
+| memory-recall.cjs | UserPromptSubmit + PreToolUse (`Skill\|mcp__.*`, `--tool`) | the READ side of memory: names the memory files whose frontmatter matches the prompt, injects a matching topic index once per session (also when a mapped skill/MCP tool is called); `--record` logs only. Config `.claude/rules/memory-recall.json`; judge with `scripts/memory-usage.py --precision`. Alpha: instances wire it themselves until the template does |
 | notify.cjs | PostToolUse (Agent/Task) + Notification | sound on agent end / permission question |
 | statusline.cjs | statusLine (NOT a hook; user-level `~/.claude/settings.json`) | footer: model, 5h/7d rate-limit remaining with reset countdown, context % — install: `scripts/install-statusline.sh` |
 
