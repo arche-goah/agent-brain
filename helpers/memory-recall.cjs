@@ -262,7 +262,7 @@ function loadCorpus(memDir, cfg) {
 }
 
 function frontmatter(text) {
-  const t = text.replace(/^﻿/, '').replace(/\r/g, '');
+  const t = text.replace(/^\uFEFF/, '').replace(/\r/g, '');
   if (!t.startsWith('---')) return null;
   const end = t.indexOf('\n---', 3);
   if (end < 0) return null;
@@ -277,8 +277,12 @@ function frontmatter(text) {
   return out;
 }
 
+// Umlaut folding as escapes, not literals: the english-only ratchet reads a literal
+// umlaut as German prose, and a brain's memory writes both forms (ae in repo artifacts,
+// the umlaut in chat quotes) — folding makes them one token.
 function fold(s) {
-  return s.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+  return s.toLowerCase()
+    .replace(/\u00e4/g, 'ae').replace(/\u00f6/g, 'oe').replace(/\u00fc/g, 'ue').replace(/\u00df/g, 'ss');
 }
 
 function tokenize(s, stop) {
