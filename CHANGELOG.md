@@ -7,6 +7,45 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **`helpers/memory-recall.cjs` — the READ side of memory, at prompt time and at tool
+  time (operator order 2026-09-09/10, alpha on the proving instance first).** The harness
+  loads one memory file per session, `MEMORY.md`, and only its first 200 lines / 25 KB;
+  every other memory file is read only if the model decides to (code.claude.com
+  memory.md — no prompt-time retrieval exists for memory, only for skills and rules).
+  Measured on the proving instance over 241 transcripts: 53 of 135 files never opened,
+  index lines grown to ~185 characters because the LINE carries the lesson instead of
+  the file, the byte cap binding at ~140 entries, and a topic sub-index read in 4
+  sessions although a rule made it mandatory — an unloaded index is invisible. The
+  collaborator asked for exactly this read side on 2026-08-21; the write side has been
+  `recall-gate.cjs` since 1.3.26. The hook reads ONLY frontmatter (`name`,
+  `description`, optional new `keywords`), scores token overlap with IDF, and names at
+  most `k` files as pointers; a matching TOPIC index (`index-<topic>.md`, the
+  specialized memory of one project) is injected whole, once per session. `--tool`
+  (PreToolUse, matcher `Skill|mcp__.*`) injects the topic index mapped to the skill or
+  MCP tool being called — which tool belongs to which topic is instance data
+  (`.claude/rules/memory-recall.json`, `topics`), as are the stopwords (core ships
+  English only; a list in the config REPLACES the default, same rule as
+  recall-tools.json). Every call appends a record line to
+  `.claude-state/memory-recall.jsonl`; `--record` keeps only the log — measure, then
+  arm. Never blocks, exit 0 always, output capped in bytes, paths in posix text
+  (OS-1), CRLF frontmatter parses (OS-2), fixtures pass paths through `native()`
+  (OS-3). 19 cases both directions in `scripts/test-memory-recall.sh`. NOT wired in
+  `templates/settings.json` yet — that is the merge step after the alpha reads green
+  on both operator machines.
+- **`scripts/memory-usage.py` — which memory files sessions actually open.** Counts
+  Read-tool and Bash-reader opens per file over the instance's transcripts (a Write is
+  not an open), lists never-opened files, and with `--precision` joins the recall
+  hook's log with the transcripts: named AND opened / named only / opened only. That
+  is the number the injection gets armed on. "Never opened" is a relevance SIGNAL for
+  memory-dream, not a verdict — a HARD rule works from its index line without the
+  file ever being opened; archiving stays relevance-based, never age-based.
+  `memory-usage-test.py`, 5 cases.
+- **`session-bootup.sh` memory line names which limit binds** — `98 entries, room for
+  ~136 at 187 B/entry`: at 105 lines the line count suggested room for 95 more while the
+  byte cap allowed 31. Awk over the index lines only, so the header prose does not skew
+  the average.
+- New mechanism doc `docs/memory-architecture.md`: tiers (hot index, topic indexes,
+  files), the budget arithmetic, what the hook changes and what stays a judgment.
 - **The mechanism-guard could not see the tool class it exists for.** `templates/settings.json` wired it to matcher `Bash`; a hand-built watcher is a `Monitor` command, so the one mechanical carrier against improvising past a documented path was blind to improvised watchers, in every bootstrapped brain. The guard itself needed no change - it reads `tool_input.command` and never looks at `tool_name`, and Monitor carries the same field. Matcher widened to `Bash|Monitor`. The template rule file said "matched against the bash command", which is the assumption that produced the gap; it now says otherwise. Found by walking into it: a session polled CI in a hand-built Monitor loop instead of using `ci-watch.sh`, and the guard never saw the command. Counter-measured on the other instance: 60 unique ad-hoc poll commands across 37 sessions, so the class is real and not local.
 - **`hook-coverage.py` compares the MATCHER, not only the command.** It reported full coverage for exactly the state above: the hook was wired, so it counted as covered, while its matcher named fewer tools than the template. A wired hook with a narrower matcher is now its own reported gap - which is what reaches brains bootstrapped before this change, since the template alone only ever reaches new ones.
 - `test-guards.sh`: the mechanism-guard probes take a tool name, and a Monitor payload must block. That proves the guard is tool-agnostic; the wiring half belongs to hook-coverage. Neither check alone separates "guard runs here" from "guard would run here if it were wired".
