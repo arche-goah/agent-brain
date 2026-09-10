@@ -22,6 +22,18 @@
  */
 const fs = require('fs');
 
+// A heredoc body (git commit -m "$(cat <<'EOF' ... EOF)", a doc/test-fixture write) is
+// literal text, not something this command executes. Scanning the raw command for a
+// banned pattern without stripping heredoc bodies produces a false positive on any
+// heredoc that merely QUOTES/describes the banned mechanism as prose (found live: a
+// commit message documenting a "msg.exe via Task Scheduler" finding tripped the
+// msg(\.exe)? rule, though no such command was ever run). Same root-cause class as
+// scripts/hooks/cross-instance-push-watch.cjs's original bug (an instance-side hook,
+// fixed independently the same day) — this is the mechanism's own copy of that fix.
+function stripHeredocs(cmd) {
+  return cmd.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n([\s\S]*?)\n\2\b/g, '<<HEREDOC-STRIPPED>>');
+}
+
 function loadRules() {
   const p = `${process.env.CLAUDE_PROJECT_DIR || '.'}/.claude/rules/mechanism-rules.json`;
   try {
@@ -46,8 +58,9 @@ process.stdin.on('end', () => {
   }
   if (/MECHANISM-OK:/.test(cmd)) process.exit(0); // deliberate, justified deviation
 
+  const stripped = stripHeredocs(cmd);
   for (const r of loadRules()) {
-    if (r.re.test(cmd)) {
+    if (r.re.test(stripped)) {
       const msg =
         `MECHANISM CHECK: ${r.was}\n\n` +
         `The setup has a documented path for this:\n  ${r.stattdessen}\n\n` +
