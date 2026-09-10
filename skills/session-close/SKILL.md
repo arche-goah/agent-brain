@@ -80,30 +80,24 @@ then an explicit release follows.
      its header) — incl. rejected alternatives + co-dependencies. Domain decisions
      (e.g. in a network or show domain) still go FIRST into the domain's change log;
      the decision log then only links there instead of duplicating.
-4. **Commit gate (operator order 2026-08-01 — mandatory, replaces the old "only on request"):**
-   - Check `git status`. Commit all commit-ready material (meaningful commit
-     message naming the session content).
-   - **Push gate, precised 2026-08-13 (operator order; supersedes the 2026-08-04
-     wording that gated every `main` push):** the deciding line is WHOSE state a push
-     changes, not the branch name.
-     * **The instance's OWN private brain repo: `main` push is free** — close commits,
-       memory snapshots, instance docs change nobody else's state. Verify visibility
-       once per session when in doubt: `gh repo view --json visibility` (a repo that
-       is not private strips this freedom).
-     * **Every SHARED repo of the ecosystem — core, marketplace, suites — keeps the
-       gate even while private:** feature-branch push is free (it is the technical
-       precondition of the PR), merge and release run through the PR pipeline or an
-       explicit operator OK.
-     * **Public repos, switching anything public, deployments: always gated.**
-     The gate is the agreement itself — whether a mechanical ask-prompt exists besides
-     it is the instance's business (some deliberately have none; a missing prompt is
-     NOT an approval).
-   - Name whatever is NOT committed explicitly in the close report WITH a reason
-     (e.g. secrets/.env, half-finished state that must be discussed with the operator
-     first, deliberately local experiment). "Forgot" is not a valid reason — the
-     2026-08-01 incident (70 files uncommitted after close) must not happen again.
+4. **Commit/push gate — this step VERIFIES the instance's rule, it does not set one
+   (see Scope below). The 2026-08-01 "mandatory, replaces only-on-request" wording
+   that used to stand here was itself superseded by a later, stricter instance rule
+   (2026-08-15/16: commit/push EVERYWHERE only on explicit request, no exception —
+   this skill had simply never been updated to match, which is exactly the kind of
+   drift the Rule-Conflict Protocol's back-propagation step exists to catch):**
+   - Check `git status`. List what is commit-ready, with a proposed commit message.
+   - **Do not commit or push without the operator's explicit go-ahead this session** —
+     "close the session" is not, by itself, that go-ahead. If the operator's closing
+     instruction already included it ("mach schluss und pushe", "commit and close"),
+     that counts; otherwise ask, even for the instance's own private repo.
+   - Name whatever stays uncommitted in the close report WITH a reason (e.g.
+     secrets/.env, half-finished state, deliberately local experiment, or simply "no
+     go-ahead given yet"). "Forgot" is not a valid reason — the 2026-08-01 incident
+     (70 files uncommitted after close) must not happen again; asking and getting a
+     "not now" is a fine outcome, silently forgetting is not.
    - Then a quick check: `.claude/HANDOFF.md` fresh (timestamp), `docs/memory-snapshot/`
-     export ran (memory-sync output), working tree clean or the remainder justified.
+     export ran (memory-sync output), working tree clean-or-justified either way.
 5. **Close report to the operator:** 3-5 lines — what was persisted, what stays open
    (with its location), then explicitly: "Persisted — you can shut down." Only after
    this report is the session closed. If the setup shares memory across instances, the
@@ -112,11 +106,12 @@ then an explicit release follows.
 
 ## Scope
 
-- Committing applies IN GENERAL (operator order 2026-08-01): commit commit-ready
-  material — allowed continuously, MANDATORY at close (step 4 = verification point);
-  name non-commit-ready material WITH a reason. Push rule as in step 4 (2026-08-13):
-  own private brain repo free, shared ecosystem repos gated even while private,
-  public/deploy always gated; feature-branch push free.
+- Commit/push is gated behind the operator's explicit go-ahead EVERYWHERE, no
+  exception for the instance's own private repo (instance rule, currently stricter
+  than any per-repo carve-out this skill used to state — step 4 is the verification
+  point, not the source; feature-branch pushes toward an open PR remain the normal
+  exception everywhere, since they are the technical precondition of review, not a
+  merge/release/main push).
 - **The commit/push policy must not live here alone.** This skill only loads at session
   end — a session that ends in a hard kill or a topic change never had it in context
   (incident "70 files uncommitted"). The instance therefore carries it as a base rule
