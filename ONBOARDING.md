@@ -59,23 +59,35 @@ installed plugin are only read on the next start. Check with `claude plugin list
 Everything else in the marketplace (tool-domain suites) is opt-in — install a suite
 only when you explicitly want and need it (step 4).
 
-**Scope: install the core once, in scope `user` (the default).** The core is the
-machine's operating layer, not one repo's: session bootup, hooks and the output style
-must reach every session on the machine — the brain, a suite checkout you open for a
-PR, a project repo. A `--scope project` install is enabled only for sessions started in
-that directory; and `enabledPlugins` in a project's `settings.json` was measured to
-register the marketplace at the trust dialog but NOT to install the plugin (Windows,
-Claude Code 2.1.220). Two rules follow:
+**Scope: install the core exactly ONCE — the binding part is the "once", not which
+scope.** The same plugin id enabled in two scopes at the same time is a defect, not
+belt-and-braces: every skill and hook loads twice and which version wins is left to the
+harness. `scripts/onboarding-verify.sh` (step 6) prints the scope per core entry and
+turns check 2 red on a duplicate; a single install is green in EITHER scope. Fix a
+duplicate with `claude plugin uninstall <plugin>@your-org --scope project` (or
+`--scope user` — keep the one you decided on).
 
-- **The same plugin id in two scopes at once is a defect**, not belt-and-braces: every
-  skill and hook loads twice and which version wins is left to the harness.
-  `scripts/onboarding-verify.sh` (step 6) reports the scopes and turns check 2 red on a
-  duplicate. Fix: `claude plugin uninstall <plugin>@your-org --scope project` (or
-  `--scope user` — keep the one you decided on).
-- **`--scope project` is the documented exception for a TRIAL beside an existing setup
-  that must stay untouched** (an older brain line still in use on the same machine). It
-  is temporary: when the trial ends, move to `user` — uninstall the project-scoped
-  copy, install without a scope flag, restart Claude Code.
+**Which scope is the instance's decision.** Nothing in the core requires one: the
+updater reads the enabled plugins from the project `settings.json` AND the user config,
+and bootup, hooks and cache paths hang off the plugin, not off the scope. Choose by how
+the machine is used:
+
+- **`user` (the default) when Claude starts in more than one directory on that machine** —
+  the brain, a suite checkout opened for a PR, an unrelated project repo. A
+  project-scoped plugin is enabled only for sessions started in that directory, so
+  everything outside it would run without bootup, hooks and the output style.
+- **`project` when every session starts in the brain** and there is no session outside
+  it. Then the plugin travels in the repo's own settings, which is one less thing to
+  keep in sync per machine.
+- **`project` is also the documented exception for a TRIAL beside an older setup that
+  must stay untouched.** That one is temporary: when the trial ends, pick the scope that
+  matches the two cases above, uninstall the other, restart Claude Code.
+
+**One measurement to know before relying on `project` to travel:** `enabledPlugins` in a
+project's `settings.json` was measured to register the marketplace at the trust dialog
+but NOT to install the plugin (Windows, Claude Code 2.1.220). On that version a fresh
+clone still needs `claude plugin install --scope project` by hand. If you measure
+otherwise on a newer build, that is worth reporting back — it changes this paragraph.
 
 ## 3. Your own private brain
 
