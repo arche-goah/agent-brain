@@ -8,10 +8,12 @@ ended the shell literal, the script never parsed, and `2>/dev/null || true` turn
 parse error into a green line. The positive control (a fed-in duplicate) stayed green,
 which is the one thing a checker must never do. A file has no quoting layer to break.
 
-Contract (ONBOARDING.md step 2): the core is installed ONCE, in scope `user`. The same
-plugin id enabled in two scopes at once loads every skill and hook twice and leaves
-"which version wins" to the harness — measured on a collaborator's first day
-(2026-09-12: brain-core 1.3.32 in user AND project, both enabled).
+Contract (ONBOARDING.md step 2): the core is installed exactly ONCE. WHICH scope is the
+instance's decision — nothing in the core requires one, and this checker has no opinion
+about it: it prints the scope and goes red only on a duplicate. The same plugin id
+enabled in two scopes at once loads every skill and hook twice and leaves "which version
+wins" to the harness — measured on a collaborator's first day (2026-09-12: brain-core
+1.3.32 in user AND project, both enabled).
 
 stdin   : JSON from `claude plugin list --json` — a list of entries, or an object with a
           `plugins` list (both shapes accepted; the list form is what 2.1.x prints)

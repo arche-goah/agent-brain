@@ -50,10 +50,11 @@ pl=$(claude plugin list 2>/dev/null)
 # MISSING — same class as the updater's silent submodule skip, 2026-09-02).
 echo "$pl" | grep -qE "brain-core(-next)?@"; p1=$?
 present=$p1   # the channel line below reports PRESENCE; a scope defect fails the check without lying about presence
-# Scope is part of the contract (ONBOARDING.md step 2): the core is installed in
-# scope USER, once. A trial run beside an existing setup may use scope project — but
-# the SAME plugin id enabled in two scopes at once loads every skill and hook twice and
-# leaves "which version wins" to the harness. Measured 2026-09-12 on a colleague's
+# Scope is part of the contract (ONBOARDING.md step 2), and the binding part is the
+# ONCE, not which scope: the SAME plugin id enabled in two scopes at once loads every
+# skill and hook twice and leaves "which version wins" to the harness. A single install
+# is fine in EITHER scope — which one is the instance's decision (ONBOARDING names the
+# two cases), so this check reports the scope and judges only the duplicate. Measured 2026-09-12 on a colleague's
 # first onboarding: brain-core 1.3.32 in user AND project, both enabled. The text
 # listing cannot tell scopes apart; --json can. Older CLIs without --json fall back
 # to the presence check above.
@@ -67,7 +68,7 @@ if [ -n "$pl_json" ]; then
   scope_note=$(printf '%s' "$pl_json" | "$PY" "$(dirname "$0")/plugin-scope-check.py"); scope_rc=$?
 fi
 case "$scope_rc" in
-  1) p1=1; scope_note="$scope_note — same plugin enabled in TWO scopes; keep ONE (user is the default, see ONBOARDING.md step 2)";;
+  1) p1=1; scope_note="$scope_note — same plugin enabled in TWO scopes; keep exactly ONE (either scope is fine, see ONBOARDING.md step 2)";;
   2) scope_note="scope UNCHECKED ($scope_note)";;
 esac
 check 2 "Plugins" $p1 "core channel=$([ $present -eq 0 ] && echo present || echo MISSING)${scope_note:+ $scope_note} (brain-core or brain-core-next; suites are opt-in — default is core only)"
