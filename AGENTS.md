@@ -42,8 +42,13 @@ session start.
    repo page instead of failing silently on the next consumer update (the v1.2.0
    incident: tagged with the manifest still on 1.1.2).
 6. **CI must stay meaningful — and paid for by a shared budget.** `ci.yml` runs
-   leak-scan, skill-lint and suite-check against this repo itself. Never replace a
-   failing check with an echo. Actions minutes are one account-wide pot: `push`
+   leak-scan, skill-lint, content-guard, shellcheck and suite-check against this repo
+   itself. Never replace a failing check with an echo, and never silence
+   content-guard by editing a pattern — an inline `content-guard-ok: <reason>` is the
+   visible way, and it is a review event. Actions are pinned by commit SHA (Dependabot
+   proposes bumps); the token is read-only; `main` requires a code-owner review and
+   green required checks (ruleset), so a fork PR from a collaborator is reviewed here
+   before it runs in anyone's brain. Actions minutes are one account-wide pot: `push`
    triggers are always branch/tag-filtered (an unfiltered `push` plus `pull_request`
    runs every PR branch twice — that exhausted the account quota mid-month on
    2026-08-13 and killed CI everywhere), and macOS/Windows runners (10x/2x billing)
