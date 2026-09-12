@@ -148,7 +148,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1
+known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -158,6 +158,12 @@ and the comment explaining it; test-recall-gate.sh was written afterwards withou
 failed 4 of 13 cases on Windows on 2026-08-31 — the other 9 were green for the wrong
 reason, which is the worse half. A new fixture appears here as drift; the review question
 is whether any path in it crosses into a native process.
+2026-09-12, test-promise-gate.sh baselined after exactly that review: three paths cross
+into node — the transcript, the cwd carrying the pattern data, and the cwd of the
+discriminator case — and all three go through `native()`. The discriminator is the reason
+it matters here more than usual: it asserts SILENCE, and an unresolvable path produces
+silence too, so without `native()` that case would pass on Windows for the wrong reason
+and certify a fixture that sees only one world state.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
