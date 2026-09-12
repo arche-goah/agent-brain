@@ -80,24 +80,25 @@ then an explicit release follows.
      its header) — incl. rejected alternatives + co-dependencies. Domain decisions
      (e.g. in a network or show domain) still go FIRST into the domain's change log;
      the decision log then only links there instead of duplicating.
-4. **Commit/push gate — this step VERIFIES the instance's rule, it does not set one
-   (see Scope below). The 2026-08-01 "mandatory, replaces only-on-request" wording
-   that used to stand here was itself superseded by a later, stricter instance rule
-   (2026-08-15/16: commit/push EVERYWHERE only on explicit request, no exception —
-   this skill had simply never been updated to match, which is exactly the kind of
-   drift the Rule-Conflict Protocol's back-propagation step exists to catch):**
-   - Check `git status`. List what is commit-ready, with a proposed commit message.
-   - **Do not commit or push without the operator's explicit go-ahead this session** —
-     "close the session" is not, by itself, that go-ahead. If the operator's closing
-     instruction already included it ("mach schluss und pushe", "commit and close"),
-     that counts; otherwise ask, even for the instance's own private repo.
-   - Name whatever stays uncommitted in the close report WITH a reason (e.g.
-     secrets/.env, half-finished state, deliberately local experiment, or simply "no
-     go-ahead given yet"). "Forgot" is not a valid reason — the 2026-08-01 incident
-     (70 files uncommitted after close) must not happen again; asking and getting a
-     "not now" is a fine outcome, silently forgetting is not.
+4. **Commit/push gate — this step VERIFIES the instance's rule, it does not set one.**
+   The wording that used to stand here cached ONE instance's dated policy, and a cached
+   policy goes stale silently — which is the drift the Rule-Conflict Protocol's
+   back-propagation step exists to catch. So this step names no policy of its own:
+   - Read the instance's commit/push rule (`.claude/rules/feedback.md` or the
+     instance's equivalent) and apply it. What it allows without asking, do; what it
+     gates, list — with the proposed commit message — and ask.
+   - **If the instance has no written rule, ask before committing or pushing.**
+     "Close the session" is not by itself a go-ahead; a closing instruction that
+     already includes it ("commit and close") is.
+   - Feature-branch pushes toward an open PR are the technical precondition of review,
+     not a merge or release, and count as allowed unless the instance says otherwise.
+   - Name whatever stays uncommitted in the close report WITH a reason (secrets/.env,
+     half-finished state, a deliberately local experiment, or simply "no go-ahead").
+     "Forgot" is not a reason — the 2026-08-01 incident (70 files uncommitted after
+     close) must not happen again; asking and getting a "not now" is a fine outcome,
+     silently forgetting is not.
    - Then a quick check: `.claude/HANDOFF.md` fresh (timestamp), `docs/memory-snapshot/`
-     export ran (memory-sync output), working tree clean-or-justified either way.
+     export ran (memory-sync output), working tree clean or the remainder justified.
 5. **Close report to the operator:** 3-5 lines — what was persisted, what stays open
    (with its location), then explicitly: "Persisted — you can shut down." Only after
    this report is the session closed. If the setup shares memory across instances, the
@@ -106,12 +107,10 @@ then an explicit release follows.
 
 ## Scope
 
-- Commit/push is gated behind the operator's explicit go-ahead EVERYWHERE, no
-  exception for the instance's own private repo (instance rule, currently stricter
-  than any per-repo carve-out this skill used to state — step 4 is the verification
-  point, not the source; feature-branch pushes toward an open PR remain the normal
-  exception everywhere, since they are the technical precondition of review, not a
-  merge/release/main push).
+- The commit/push policy is INSTANCE knowledge and lives in the instance's rule file.
+  This skill applies it at close and carries no copy of it — instances differ (one
+  brain commits continuously and pushes its own private `main` freely, another gates
+  every commit), and whichever wording stood here would be wrong for the others.
 - **The commit/push policy must not live here alone.** This skill only loads at session
   end — a session that ends in a hard kill or a topic change never had it in context
   (incident "70 files uncommitted"). The instance therefore carries it as a base rule
