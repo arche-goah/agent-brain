@@ -59,6 +59,24 @@ installed plugin are only read on the next start. Check with `claude plugin list
 Everything else in the marketplace (tool-domain suites) is opt-in — install a suite
 only when you explicitly want and need it (step 4).
 
+**Scope: install the core once, in scope `user` (the default).** The core is the
+machine's operating layer, not one repo's: session bootup, hooks and the output style
+must reach every session on the machine — the brain, a suite checkout you open for a
+PR, a project repo. A `--scope project` install is enabled only for sessions started in
+that directory; and `enabledPlugins` in a project's `settings.json` was measured to
+register the marketplace at the trust dialog but NOT to install the plugin (Windows,
+Claude Code 2.1.220). Two rules follow:
+
+- **The same plugin id in two scopes at once is a defect**, not belt-and-braces: every
+  skill and hook loads twice and which version wins is left to the harness.
+  `scripts/onboarding-verify.sh` (step 6) reports the scopes and turns check 2 red on a
+  duplicate. Fix: `claude plugin uninstall <plugin>@your-org --scope project` (or
+  `--scope user` — keep the one you decided on).
+- **`--scope project` is the documented exception for a TRIAL beside an existing setup
+  that must stay untouched** (an older brain line still in use on the same machine). It
+  is temporary: when the trial ends, move to `user` — uninstall the project-scoped
+  copy, install without a scope flag, restart Claude Code.
+
 ## 3. Your own private brain
 
 ```
