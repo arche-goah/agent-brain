@@ -7,6 +7,7 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **Plugin scope is part of the onboarding contract.** Measured on the third collaborator's first day (2026-09-12): `brain-core` 1.3.32 enabled in scope `user` AND `project` at once — every skill and hook loaded twice, "which version wins" left to the harness, and `onboarding-verify.sh` reported it as one green line because the text listing does not show scopes. The contract now says: the core is installed once, in scope `user` (the machine's operating layer — a project-scoped plugin is enabled only for sessions started in that directory, and `enabledPlugins` in project settings was measured not to install at all). `--scope project` stays the documented, temporary exception for a trial beside an existing setup. Check 2 of `onboarding-verify.sh` reads `claude plugin list --json`, prints the scope per core entry and goes RED on a duplicate, with the uninstall command in the line; CLIs without `--json` keep the old presence check. The check is its own file (`scripts/plugin-scope-check.py`, fixture `plugin-scope-check-test.py`): the first, inline version never parsed because of shell quoting and reported that as green — the positive control caught it before the PR, which is what the negative-control clause of the contract is for. Input the checker does not understand reports as UNCHECKED, never as green.
 ## 1.3.35 — 2026-09-12
 
 > **BETA-PHASE TAG, replaces v1.3.34 on `brain-core-next`.** Two strands land together
