@@ -25,6 +25,20 @@ then an explicit release follows.
      `python3 core/scripts/transcript-recall.py <keyword>` (interpreter per instance rule).
    - If anything came up in `docs/maintenance/brain-scan-auftraege.md` or project order
      lists: update the entries.
+   - **STANDING PROMISES — say per line whether the condition still holds (2026-09-12):**
+     If `.claude-state/promises.jsonl` exists, read it and go through the promises made
+     in this session. Each row carries the promise and what bound it. For every one:
+     the condition still holds (it stays), or it has lapsed (it is over, and it says so
+     in the close report). A promise whose condition is gone does not quietly become a
+     standing rule, and it never outranks a step of this procedure.
+     **The incident that forced this (collaborating instance, 2026-09-11):** permission
+     for ONE unattended task, granted while the operator slept ("no commit, no push").
+     The task ended, the operator was back in the chat, awake — and the promise was
+     still being obeyed, so the mandatory commit step below was silently skipped and the
+     close was reported as complete anyway. Nothing in the text marked the omission,
+     which is why the check sits here and not in a hook.
+     No file, or nothing open: one sentence, move on. `core/helpers/promise-gate.cjs`
+     writes the rows when wired; its absence does not excuse the question.
    - **MANDATORY GATE for live states (rig/desk/show) — tightened 2026-08-02 (operator order):**
      If the session CHANGED a live system, its state is **measured**, not copied from
      one's own docs. **WHICH verify path that is, is instance knowledge** and lives in

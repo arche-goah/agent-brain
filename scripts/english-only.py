@@ -51,8 +51,13 @@ TEXT_SUFFIX = {".md", ".py", ".sh", ".cjs", ".js", ".json", ".yml", ".yaml",
 # language pack — detection patterns, the same category as this file's own word list. The
 # fixture feeds German sentences BECAUSE they are what the pack must match. Neither file
 # may carry German explanation; if one ever does, it belongs out of this set again.
+# test-promise-gate.sh enters on exactly those terms (2026-09-12): its prose is English,
+# its German is the instance pattern file it writes and the sentences that file must
+# match — and its discriminator DEPENDS on German, because it proves the hit comes from
+# the data by running the same German sentence without that file and requiring silence.
 SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py",
-              "skill-lint.py", "test-premise-gate.sh", "test-stop-checks.sh",
+              "skill-lint.py", "test-premise-gate.sh", "test-promise-gate.sh",
+              "test-stop-checks.sh",
               "stoppen-gate.cjs", "test-stoppen-gate.sh"}
 
 UMLAUT = re.compile(r"[äöüßÄÖÜ]")
