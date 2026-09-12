@@ -54,7 +54,7 @@ CLEAN = {
     "scripts/tool.sh": b"#!/usr/bin/env bash\nset -u\necho done\n",
     "scripts/tool.py": b"import base64\nprint(base64.b64encode(b'x'))\n",
     "skills/x/SKILL.md": b"# Skill\n\nFollow the operator's instruction. <!-- a plain html comment -->\n",
-    "rules/r.md": "Umlaute sind erlaubt: äöü ß.\n".encode("utf-8"),
+    "rules/r.md": "Accented Latin letters are fine: ä ö ü ß é.\n".encode("utf-8"),
     "scripts/preflight.ps1": "﻿# BOM at file start is fine\n".encode("utf-8"),
 }
 

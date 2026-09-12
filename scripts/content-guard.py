@@ -74,7 +74,10 @@ NETWORK = re.compile(
     r"|require\(\s*['\"]https?['\"]\s*\)|\burllib\.request\b|\bsocket\.(create_connection|socket)\b"
     r"|\bnet\.(connect|createConnection)\s*\(")
 LONG_BLOB = re.compile(r"[A-Za-z0-9+/]{120,}={0,2}")
-COMMENT_LEAD = re.compile(r"^\s*(#|//|\*|/\*|<!--|-->)")
+# Comment leads of the CODE languages only (this is applied to code files). HTML comment
+# markers do not belong here: CodeQL reads any `<!--`/`-->` regex as an HTML filter
+# (py/bad-tag-filter), and no code file in this repo carries HTML comments.
+COMMENT_LEAD = re.compile(r"^\s*(#|//|\*|/\*)")
 
 
 def load_allow(root: Path) -> set[tuple[str, str]]:
