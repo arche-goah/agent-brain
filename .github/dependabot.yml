@@ -1,0 +1,9 @@
+# Actions are pinned by commit SHA in ci.yml (a moved tag is not a release). This
+# keeps the pins moving on purpose instead of by hand, one PR per bump, reviewed.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3

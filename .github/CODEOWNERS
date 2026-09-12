@@ -1,0 +1,13 @@
+# Code owners — the ruleset on main requires an owner's review before a PR merges.
+# Everything that EXECUTES in a consuming brain, or becomes model instruction there,
+# is listed explicitly even though the owner is the same: the list documents what a
+# review must not wave through, and it is what "require code owner review" resolves.
+*                 @arche-goah
+/helpers/         @arche-goah
+/scripts/         @arche-goah
+/rules/           @arche-goah
+/skills/          @arche-goah
+/output-styles/   @arche-goah
+/templates/       @arche-goah
+/workflows/       @arche-goah
+/.github/         @arche-goah

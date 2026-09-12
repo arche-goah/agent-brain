@@ -13,6 +13,15 @@ on:
     tags: ["v*"]
   pull_request:
 
+# The default token is read-only on every job. A job that needs more declares it
+# itself — none does today, and a PR that adds one is a review event.
+permissions:
+  contents: read
+
+# Actions are pinned by commit SHA, not by tag: a tag can be moved, a SHA cannot, and
+# the repo policy allows only GitHub-owned and verified actions. Dependabot proposes
+# the bumps (.github/dependabot.yml); the version comment is what a human reads.
+
 # Rapid push series on a PR branch must not stack stale runs; main keeps every run.
 concurrency:
   group: ci-${{ github.ref }}
@@ -22,8 +31,8 @@ jobs:
   leaks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: instance-data leak scan
@@ -32,8 +41,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       # skill-lint expects an instance layout (.claude/skills); here the skills ARE
@@ -45,6 +54,16 @@ jobs:
       # else, and on a translated file that forgot to leave the list.
       - name: english-only ratchet
         run: python3 scripts/english-only.py
+      # This repo ships hooks that run silently in every consuming brain and text that
+      # becomes model instruction. A virus scanner sees none of that; this scans for
+      # what a review can miss in text: invisible/bidi characters, homoglyphs, opaque
+      # blobs, remote scripts piped into a shell, decode-and-exec, eval, a hook that
+      # talks to the network, and
+      # prompt-injection markers. Fixture: scripts/content-guard-test.py (both
+      # directions, per class). Suppression is visible only (inline marker or the
+      # allow ratchet) — never by editing the pattern.
+      - name: content guard (malicious-content classes)
+        run: python3 scripts/content-guard.py
       # Class guard (2026-08-14): a bare `python3` in COMMAND position is a Windows
       # landmine — the python.org installer ships only `python`, the Store ships a
       # `python3` STUB that resolves in PATH but does not run. A shell script that
@@ -91,6 +110,32 @@ jobs:
       - name: OS-trap register (no new site of a known platform trap)
         run: python3 scripts/invariant-check.py docs/os-traps.md
 
+  # Shell is the language of the update path (brain-update, bootstrap, preflight) and
+  # has no parser in this CI otherwise. Error severity only: warnings are a ratchet
+  # for later, errors are constructs shellcheck can prove wrong. Ubuntu only — the
+  # findings are text-level, not OS-level.
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: shellcheck (severity error) over helpers/ and scripts/
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck --version | head -2
+          shellcheck --severity=error --shell=bash helpers/*.sh scripts/*.sh
+
+  # Supply-chain gate on the PR itself: a dependency a PR adds or bumps is compared
+  # against the advisory database before it can merge. This repo has no manifests
+  # today — the job is the seat, so the first manifest that arrives is already gated.
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+
   # A release is one atomic promise: tag name == manifest version == CHANGELOG
   # section. v1.2.0 shipped with the manifest still on 1.1.2 — the plugin cache
   # keys on that string, so consumers keep stale content that looks current, and
@@ -100,8 +145,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: tag matches manifest + CHANGELOG
@@ -125,10 +170,10 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # The line-ending check calls regen-skill-registry.py — without a pinned
       # Python the check depends on the runner image instead of the repo.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: portability smoke (bootup, scan-gate, run-record, loop-watchdog, line endings)
@@ -138,8 +183,8 @@ jobs:
   contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       # Eat your own dogfood: this repo must satisfy the contract it defines.

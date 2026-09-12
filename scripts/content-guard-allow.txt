@@ -1,0 +1,4 @@
+# content-guard allow list — `<path>:<class>` per line, reviewed and accepted.
+# A ratchet: entries are removed when the site is fixed, never added to make CI green.
+# Prefer an inline `content-guard-ok: <reason>` on the line itself; use this file only
+# for a whole-file class (e.g. a fixture that must contain a planted marker).
