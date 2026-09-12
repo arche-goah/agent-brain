@@ -49,7 +49,36 @@ pl=$(claude plugin list 2>/dev/null)
 # machine has next enabled and brain-core disabled; the literal match read that as
 # MISSING — same class as the updater's silent submodule skip, 2026-09-02).
 echo "$pl" | grep -qE "brain-core(-next)?@"; p1=$?
-check 2 "Plugins" $p1 "core channel=$([ $p1 -eq 0 ] && echo present || echo MISSING) (brain-core or brain-core-next; suites are opt-in — default is core only)"
+# Scope is part of the contract (ONBOARDING.md step 2): the core is installed in
+# scope USER, once. A trial run beside an existing setup may use scope project — but
+# the SAME plugin id enabled in two scopes at once loads every skill and hook twice and
+# leaves "which version wins" to the harness. Measured 2026-09-12 on a colleague's
+# first onboarding: brain-core 1.3.32 in user AND project, both enabled. The text
+# listing cannot tell scopes apart; --json can. Older CLIs without --json fall back
+# to the presence check above.
+scope_note=""
+pl_json=$(claude plugin list --json 2>/dev/null || true)
+if [ -n "$pl_json" ]; then
+  scope_note=$(printf '%s' "$pl_json" | "$PY" -c '
+import json, sys
+try:
+    plugins = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+core = [p for p in plugins
+        if str(p.get("id", "")).startswith(("brain-core@", "brain-core-next@")) and p.get("enabled")]
+scopes = {}
+for p in core:
+    scopes.setdefault(p["id"], []).append(str(p.get("scope", "?")))
+parts = [f"{i}:{'+'.join(s)}" for i, s in sorted(scopes.items())]
+dup = [i for i, s in scopes.items() if len(s) > 1]
+print(("DUPLICATE-SCOPE " if dup else "") + " ".join(parts))
+' 2>/dev/null || true)
+fi
+case "$scope_note" in
+  DUPLICATE-SCOPE*) p1=1; scope_note="${scope_note#DUPLICATE-SCOPE } — same plugin enabled in TWO scopes; keep ONE (user is the default, see ONBOARDING.md step 2)";;
+esac
+check 2 "Plugins" $p1 "core channel=$([ $p1 -eq 0 ] && echo present || echo MISSING)${scope_note:+ $scope_note} (brain-core or brain-core-next; suites are opt-in — default is core only)"
 
 # Find the plugin cache root
 cache="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache"
