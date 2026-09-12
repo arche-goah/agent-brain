@@ -98,6 +98,20 @@ mg_probe "mechanism-guard/MECHANISM-OK marker" "fixture-shortcut --now  # MECHAN
 # which since 2026-09-02 reports a matcher narrower than the template: the presence
 # of the hook alone said "covered" while every Monitor command walked past it.
 mg_probe "mechanism-guard/Monitor payload" "fixture-shortcut --now" block Monitor
+# HEREDOC: the body is data or code depending on its CONSUMER, and the guard must judge
+# only what the command EXECUTES. Both directions, because a blanket strip passes the
+# first probe and silently turns the guard off for the second — measured 2026-09-12:
+# 7 of 8 executed heredoc shapes went blind.
+mg_probe "mechanism-guard/heredoc quoted as prose" \
+  'git commit -m \"$(cat <<EOF\nnote: fixture-shortcut is banned\nEOF\n)\"' allow
+mg_probe "mechanism-guard/heredoc written to a file" \
+  'cat <<EOF > doc.md\nfixture-shortcut is banned\nEOF' allow
+mg_probe "mechanism-guard/heredoc fed to bash" \
+  'bash <<EOF\nfixture-shortcut --now\nEOF' block
+mg_probe "mechanism-guard/heredoc fed to ssh" \
+  'ssh host <<EOF\nfixture-shortcut --now\nEOF' block
+mg_probe "mechanism-guard/heredoc through eval" \
+  'eval \"$(cat <<EOF\nfixture-shortcut --now\nEOF\n)\"' block
 rm -rf "$MG"
 
 # --- freshness-gate: only the Workflow tool concerns it ----------------------
