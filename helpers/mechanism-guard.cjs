@@ -22,16 +22,31 @@
  */
 const fs = require('fs');
 
-// A heredoc body (git commit -m "$(cat <<'EOF' ... EOF)", a doc/test-fixture write) is
-// literal text, not something this command executes. Scanning the raw command for a
-// banned pattern without stripping heredoc bodies produces a false positive on any
-// heredoc that merely QUOTES/describes the banned mechanism as prose (found live: a
-// commit message documenting a "msg.exe via Task Scheduler" finding tripped the
-// msg(\.exe)? rule, though no such command was ever run). Same root-cause class as
-// scripts/hooks/cross-instance-push-watch.cjs's original bug (an instance-side hook,
-// fixed independently the same day) — this is the mechanism's own copy of that fix.
+// A heredoc body is literal text ONLY when its consumer cannot execute it. Scanning the
+// raw command without stripping produces a false positive on any heredoc that merely
+// QUOTES the banned mechanism as prose (found live: a commit message documenting a
+// "msg.exe via Task Scheduler" finding tripped the msg(\.exe)? rule, though no such
+// command ever ran). Same root-cause class as scripts/hooks/cross-instance-push-watch.cjs's
+// original bug (an instance-side hook, fixed independently the same day).
+//
+// BUT stripping EVERY heredoc turns the guard off through one syntax: `bash <<EOF`,
+// `ssh host <<EOF`, `python3 - <<EOF`, `eval "$(cat <<EOF …)"` all EXECUTE their body.
+// Measured against the fixture rule \bfixture-shortcut\b: 7 of 8 executed shapes went
+// from "seen" to "blind" with a blanket strip. So the consumer decides, and the default
+// is fail-closed — an unknown consumer keeps its body in the scanned text.
+const HEREDOC_EXECUTES = /(^|[|;&]|\$\(|\()\s*(eval|source|\.)\s/;
+const HEREDOC_PROSE_CONSUMER = /(?:^|[|;&]|\$\(|\()\s*(?:cat|tee)(?:\s+[^<|;&]*)?$/;
+
 function stripHeredocs(cmd) {
-  return cmd.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n([\s\S]*?)\n\2\b/g, '<<HEREDOC-STRIPPED>>');
+  return cmd.replace(
+    /(^|\n)([^\n]*?)(<<-?\s*(['"]?)(\w+)\4[^\n]*\n[\s\S]*?\n\5\b)/g,
+    (match, lead, before) => {
+      // `before` is everything on the line up to `<<`; its last command is the consumer.
+      if (HEREDOC_EXECUTES.test(before)) return match;        // eval/source run the text
+      if (!HEREDOC_PROSE_CONSUMER.test(before)) return match; // unknown: keep scanning it
+      return `${lead}${before}<<HEREDOC-STRIPPED>>`;
+    }
+  );
 }
 
 function loadRules() {
