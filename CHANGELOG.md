@@ -5,7 +5,16 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
-## Unreleased
+## 1.3.36 — 2026-09-12
+
+> **BETA-PHASE TAG on `brain-core-next`.** Second beta of the day: v1.3.35 shipped the
+> promise gate and the content guard, this one carries the onboarding contract's plugin
+> scope (and its same-day correction), two collaborator-reported guard/skill fixes, and
+> the supply-chain bumps. `brain-core` stays on v1.3.32 until the operator releases.
+
+- **The mechanism guard judges what a command EXECUTES, not what it merely writes.** Patterns were matched against the raw command including heredoc bodies, so a commit message that only DESCRIBES a banned mechanism as prose tripped the guard (found live while committing a register that discussed exactly such a finding). Reported by BlurredVision. Stripping every heredoc, however, would have turned the guard off through one syntax: measured against the fixture rule, 7 of 8 shapes whose body is executed went from seen to blind (`bash <<EOF`, `sh -s`, `ssh`, `python3 -`, `node`, `eval "$(cat …)"`, `source /dev/stdin`). So the CONSUMER decides and the default is fail-closed — cat/tee bodies are stripped, eval/source never, an unknown consumer keeps its body in the scanned text. Fixtures in `scripts/test-guards.sh` cover both directions; with the blanket strip restored, exactly the three executed fixtures go red.
+- **`session-close` no longer states a commit/push policy of its own.** Step 4 had cached one instance's dated policy as if it were the core's, and a cached policy goes stale silently — the drift the Rule-Conflict Protocol's back-propagation step exists to catch. Reported by BlurredVision, whose first fix replaced it with their own instance's (stricter) rule; three brains consume this core and their rules genuinely differ, so the skill now names none: it reads the instance's rule and applies it, and asks when there is none. The stricter default for an unwritten rule, the "close the session is not by itself a go-ahead" clarification and uncommitted-with-a-reason are kept.
+- **Supply chain:** `actions/checkout` and `actions/setup-python` bumped to the current majors, SHA-pinned as the ruleset now requires.
 
 - **Which plugin scope is the instance's decision, not the core's.** The scope paragraph written the same morning said "install the core once, in scope `user`" and justified it with "the core must reach every session on the machine" — a statement about OUR machines, not about the core. The first collaborator it applied to starts Claude only inside their brain and asked what technically requires `user`. Measured, nothing does: `brain-update.sh` reads the enabled plugins from the project `settings.json` AND the user config, and `plugin-scope-check.py` is green on a single install in either scope, red only on the duplicate — the check never had an opinion, only the prose did. Binding is "exactly once"; `ONBOARDING.md` now names the two cases (`user` when sessions start in more than one directory on the machine, `project` when every session starts in the brain) and keeps the `enabledPlugins`-does-not-install measurement with its version and its age attached.
 
