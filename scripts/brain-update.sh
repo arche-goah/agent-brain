@@ -156,8 +156,22 @@ except Exception:
 
 echo "=== brain-update: $BRAIN ==="
 
+# A list producer feeding a loop is a CHECKER'S INPUT: when it comes back empty every
+# loop below runs zero times, the script reaches its summary having done nothing, and
+# prints "DONE — already up to date." Measured once in this very script already
+# (2026-08-14, the Windows python3 stub: DONE without doing anything) — the interpreter
+# was fixed, the SHAPE was not. Emptiness is never normal here: a brain with neither a
+# known marketplace nor an enabled plugin cannot be running this script.
+mkts=$(marketplaces)
+plugs=$(enabled_plugins)
+if [ -z "$mkts" ] && [ -z "$plugs" ]; then
+  echo "FAIL no marketplaces AND no enabled plugins read from the settings — nothing was updated."
+  echo "     Either the settings are unreadable or $PY does not run; this is NOT an up-to-date brain."
+  exit 1
+fi
+
 # 1) marketplaces
-for m in $(marketplaces); do
+for m in $mkts; do
   if claude plugin marketplace update "$m" >/dev/null 2>&1; then
     echo "OK   marketplace $m refreshed"
   else
@@ -166,7 +180,7 @@ for m in $(marketplaces); do
 done
 
 # 2) plugins
-for p in $(enabled_plugins); do
+for p in $plugs; do
   before=$(installed_version "$p")
   out=$(claude plugin update "$p" 2>&1)
   after=$(installed_version "$p")
