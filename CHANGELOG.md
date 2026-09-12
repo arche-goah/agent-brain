@@ -7,6 +7,24 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+## 1.3.35 — 2026-09-12
+
+> **BETA-PHASE TAG, replaces v1.3.34 on `brain-core-next`.** Two strands land together
+> because they were built the same day and both touch what a PR is allowed to do:
+> the promise carrier (a conduct gate) and the content guard plus supply-chain
+> hardening (a repository gate). `brain-core` stays on v1.3.32 until the operator
+> releases after the beta.
+>
+> **Repository settings that are NOT in this diff** and were set on 2026-09-12 by the
+> operator's decision: ruleset `main-protection` (1 approval incl. code owner, stale
+> dismiss, required checks `leaks` / `lint` / `contract` / `portability` on three OS /
+> `shellcheck`, deletion and non-fast-forward blocked, bypass for repository admins
+> only), secret scanning with push protection, Dependabot security updates and the
+> dependency graph, CodeQL default setup, an Actions policy of GitHub-owned plus
+> verified actions, and `sha_pinning_required` — that last one only after this tag's
+> content made every workflow reference a SHA, verified by counting the unpinned
+> `uses:` lines on main rather than trusting the claim.
+
 - **Content guard — the malicious-content classes a text repo can carry, as a CI gate.** With a third collaborator on the public core (2026-09-12), a PR is now the normal way content arrives, and this repo ships hooks that run silently in every consuming brain plus text that becomes model instruction. `scripts/content-guard.py` (stdlib, no network) refuses nine classes, each a search: binary files, invisible/bidi characters and mid-file BOMs, mixed-script words (homoglyphs), prompt-injection markers, `curl | sh`, decode-and-exec, `eval`/`new Function`/`vm.runIn*`/`exec(`, network calls inside `helpers/`, and opaque base64-ish blobs. Baseline on this repo: 0 findings after two deliberate exclusions the fixture pins (a regex LITERAL naming curl inside secret-guard is a description, not a call; Playwright's `$$eval` is a selector). Suppression is visible only — an inline `content-guard-ok: <reason>` or the `scripts/content-guard-allow.txt` ratchet — never by editing a pattern. Fixture `scripts/content-guard-test.py`: one negative control, one positive control per class, both suppression paths, and the proof that the allow list is class-specific.
 - **CI hardening around it:** the workflow token is read-only by declaration (`permissions: contents: read`), every action is pinned by commit SHA with the version as a comment (a tag can be moved), `.github/dependabot.yml` proposes the bumps, `.github/CODEOWNERS` names what a review must not wave through, a `shellcheck --severity=error` job covers the update path's shell, and `dependency-review-action` gates a PR's manifest changes against the advisory database (no manifest exists today — the seat is there for the first one). Repo-side, set by the operator the same day: a ruleset on `main` (1 approving review incl. code owner, required checks `leaks`/`lint`/`contract`/`portability (3 OS)`, admin bypass only), secret scanning + push protection, CodeQL default setup (JavaScript, Python, Actions), Dependabot security updates, Actions policy "GitHub-owned and verified only". Still open on the repo side: `sha_pinning_required` flips on only after this PR is on `main`, otherwise it would turn `main` red first.
 - **A promise bound to a condition kept being obeyed after the condition was gone — new `helpers/promise-gate.cjs`.** Measured on a collaborating instance 2026-09-11: the operator granted permission for ONE unattended task while he slept ("no commit, no push, no bash"). The task finished, the operator was back in the chat and awake, and the promise was still in force — so the mandatory commit step of `session-close` was silently skipped to avoid breaking it, and the close was reported as complete. This is not rule density: a promise is one more text in context, replayed as stimulus-response instead of checked causally. The condition IS the why, which is exactly what `rules/thinking-protocol.md` already demands under "Mechanism over memory". The gate fires when a first-person commitment and the condition that bounds it appear in the SAME sentence, and asks for the promise to be stated with its expiry. Pairing is per sentence on purpose — turn-level pairing reproduces the false-positive class the premise gate measured its way out of.
