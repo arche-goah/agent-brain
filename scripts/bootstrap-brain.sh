@@ -113,6 +113,15 @@ cp "$CORE_SRC/templates/MEMORY.md" docs/maintenance/memory-seed-referenz.md
 # where it stays open — without the register, the class-discipline rules reach a
 # fresh brain as prose only.
 cp "$CORE_SRC/templates/invariants.md" docs/maintenance/invariants.md
+# Brain-scan checklist + order list from day one (collaborator request 2026-09-13): the
+# scan workflow reads both by fixed path and the bootup counts the open orders — a brain
+# without them runs its first scan against nothing and the two brains' reports do not
+# line up. The SECTIONS and the state model are the shared shape; the items are the
+# instance's to grow.
+# The target name is German because the workflows read that exact path in every
+# instance; the TEMPLATE is English-named because this repo is public-bound (rule 7).
+cp "$CORE_SRC/templates/brain-scan-checklist.md" docs/maintenance/brain-scan-checklist.md
+cp "$CORE_SRC/templates/brain-scan-orders.md" docs/maintenance/brain-scan-auftraege.md
 
 # .gitattributes BEFORE the first commit: Git for Windows defaults to core.autocrlf=true
 # and then checks out CRLF. The workflow tool rejects a script with CR ("script contains
