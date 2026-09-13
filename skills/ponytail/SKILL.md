@@ -4,9 +4,13 @@ description: >
   Forces the laziest solution that actually works: YAGNI, stdlib before custom
   code, native before dependencies, one line before fifty. Levels: lite, full
   (default), ultra. Use on ANY coding task (writing, refactoring, fixing,
-  reviewing, choosing dependencies) and when the user says "ponytail", "be
-  lazy", "yagni", "do less", or complains about over-engineering or bloat.
-  NOT for non-coding requests.
+  reviewing, choosing dependencies) AND on any build task that leaves an
+  artefact with a construction — TouchDesigner networks and nodes, shaders,
+  MCP setups, configs, scripts, pipelines — the ladder applies there word for
+  word (operator decision 2026-09-13, scope A, under A/B test). Also when the
+  user says "ponytail", "be lazy", "yagni", "do less", or complains about
+  over-engineering or bloat. NOT for prose, research, decisions, or anything
+  that has no artefact to over-build.
 argument-hint: "[lite|full|ultra]"
 license: MIT
 ---
