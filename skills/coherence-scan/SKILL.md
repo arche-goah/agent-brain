@@ -23,7 +23,11 @@ contradictions and propose resolutions; consolidate redundancy toward
 behavior-shaping skills (session-close, caveman, ponytail, plus whatever the
 instance's auto-fire table marks as behavior-shaping — that list is instance
 knowledge, never hardcoded here),
-`.claude/settings.json` (hooks/permissions), the hard-rules blocks of the domain docs.
+`.claude/settings.json` (hooks/permissions), the hard-rules blocks of the domain docs,
+`.claude/rules/mechanism-rules.json` (the guard's rule data is a norm too),
+`config/machines/*.md` (device profiles), and every instance skill copy under
+`.claude/skills/*/SKILL.md` (a brain-side copy of a plugin skill is a second anchoring
+by construction — its drift from the plugin is a coherence finding).
 
 **OUTSIDE the scope (never "clean up"):**
 - `session-log.md` + `decision-log.md` — append-only PROTOCOLS (operator directive
@@ -63,6 +67,13 @@ Workflow({ scriptPath: "core/workflows/coherence-scan.js"
 
 Phases: inventory (corpus copy + manifest) → analysis (5 lenses + 4 scenario traces
 in parallel) → merge/dedup → adversarial verify (batches) → register.
+
+**Intermediate data lives on disk, under `<scratch>/findings/`** (`lens-<slug>.json`,
+`merged.json`, `verify-batch<n>.json`): every stage writes its bulk there and the next
+stage reads it from the file; only a path, a measured count and a title index cross an
+agent boundary (rules/intelligence.md, "only the producer writes" — measured 2026-09-13:
+relayed through the prompt, 6 of 9 lenses never reached the merge). A lens file missing
+on disk aborts the run loudly; fix the cause, then resume with `resumeFromRunId`.
 
 ## Output & fix path (HARD)
 
