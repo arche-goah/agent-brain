@@ -62,6 +62,15 @@ const DEFAULTS = {
   cooldownPrompts: 5,   // a file named within the last n prompts is not named again
   maxBytes: 1200,       // pointer block
   topicMaxBytes: 4000,  // one injected topic index
+  // SHARED MEMORY, topic-time (operator order 2026-09-13: while working a specific topic,
+  // always reconcile with the shared record too, filtered by freshness/date — an
+  // automatic companion). The same trigger that loads the brain's own topic index loads the shared
+  // record's topic INDEX — routing lines only, never a body — restricted to entries dated
+  // within `sharedDays`, once per session. The index carries a date per line since the
+  // same day (`· 2026-09-13` from the author, `· ~2026-09-13` from git); an index without
+  // any date is injected whole, because "no date" must not read as "nothing new".
+  sharedDays: 14,
+  sharedMaxBytes: 3000,
   exclude: [],          // regexes on file names
   stopwords: ('a an the and or but if then else of to in on at for from by with without ' +
     'as is are was were be been being do does did done have has had not no yes it its ' +
@@ -151,7 +160,8 @@ function toolMode(input, root, cfg, memDir) {
   const subject = tool === 'Skill' ? String(ti.skill || '') : tool;
   const key = tool === 'Skill' ? 'skills' : 'tools';
   const wanted = Object.keys(cfg.topics).filter((file) => (cfg.topics[file][key] || []).some((rx) => rx.test(subject)));
-  if (!wanted.length) return;
+  const sharedWanted = Object.keys(cfg.sharedTopics).filter((t) => (cfg.sharedTopics[t][key] || []).some((rx) => rx.test(subject)));
+  if (!wanted.length && !sharedWanted.length) return;
   const { state, stateFile, sid } = loadState(root, input);
   const fresh = wanted.filter((f) => !state.topics.includes(f));
   const blocks = [];
@@ -164,8 +174,23 @@ function toolMode(input, root, cfg, memDir) {
     blocks.push(`topic index memory/${file} — ${fm.description || ''}\n${cap(entries.join('\n'), cfg.topicMaxBytes)}`);
     state.topics.push(file);
   }
+  // Shared record, same trigger, freshness-filtered. The cutoff is a plain ISO string
+  // compare — the index lines carry ISO dates, so no parsing and no locale.
+  const sharedFresh = sharedWanted.filter((t) => !state.shared.includes(t));
+  const sharedRec = [];
+  const cutoff = isoDaysAgo(cfg.sharedDays);
+  for (const topic of sharedFresh) {
+    const sel = sharedIndex(cfg.sharedRepo, topic, cutoff);
+    if (!sel) continue;
+    const { lines, total, dated } = sel;
+    state.shared.push(topic);
+    sharedRec.push({ topic, n: lines.length, total });
+    if (!lines.length) continue;
+    const why = dated ? `${lines.length} of ${total} entries dated since ${cutoff}` : `${total} entries, none dated — shown whole`;
+    blocks.push(`shared-memory ${topic} — ${why} (${topic}/INDEX.md in the shared repo)\n${cap(lines.join('\n'), cfg.sharedMaxBytes)}`);
+  }
   record(root, { session: sid, n: state.n, trigger: tool === 'Skill' ? `skill:${subject}` : `tool:${subject}`,
-    record_only: RECORD_ONLY, topics: fresh.map((file) => ({ file, hits: 0, score: 0 })), files: [] });
+    record_only: RECORD_ONLY, topics: fresh.map((file) => ({ file, hits: 0, score: 0 })), files: [], shared: sharedRec });
   if (!blocks.length) return;
   try { fs.writeFileSync(stateFile, JSON.stringify(state)); } catch (e) { /* once-per-session degrades */ }
   if (RECORD_ONLY) return;
@@ -176,9 +201,31 @@ function toolMode(input, root, cfg, memDir) {
 function loadState(root, input) {
   const sid = String(input.session_id || 'nosession').replace(/[^A-Za-z0-9_-]/g, '_');
   const stateFile = path.join(root, '.claude-state', `memory-recall-${sid}.json`);
-  let state = { n: 0, seen: {}, topics: [] };
+  let state = { n: 0, seen: {}, topics: [], shared: [] };
   try { state = Object.assign(state, JSON.parse(fs.readFileSync(stateFile, 'utf8'))); } catch (e) { /* fresh */ }
+  if (!Array.isArray(state.shared)) state.shared = [];
   return { state, stateFile, sid };
+}
+
+// YYYY-MM-DD for `days` ago, in UTC — the same calendar the generator stamps with.
+function isoDaysAgo(days) {
+  const d = new Date(Date.now() - Math.max(0, days) * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+
+// The shared record's per-topic INDEX.md: routing lines, dated by the generator
+// (`… · 2026-09-13` or `… · ~2026-09-13`). Returns null when there is no such index —
+// a brain that does not take part in shared memory must see nothing, not an error.
+function sharedIndex(repo, topic, cutoff) {
+  if (!repo) return null;
+  let text;
+  try { text = fs.readFileSync(path.join(repo, topic, 'INDEX.md'), 'utf8'); } catch (e) { return null; }
+  const all = text.replace(/\r/g, '').split('\n').filter((l) => /^- \[/.test(l));
+  const dateOf = (l) => { const m = /·\s*~?(\d{4}-\d{2}-\d{2})\s*$/.exec(l); return m ? m[1] : ''; };
+  const dated = all.some((l) => dateOf(l));
+  let lines = dated ? all.filter((l) => dateOf(l) >= cutoff) : all.slice();
+  if (dated) lines.sort((a, b) => dateOf(b).localeCompare(dateOf(a)));
+  return { lines, total: all.length, dated };
 }
 
 function record(root, rec) {
@@ -211,7 +258,28 @@ function loadConfig(root) {
     exclude: list('exclude').map((s) => { try { return new RegExp(s, 'i'); } catch (e) { return null; } }).filter(Boolean),
     stop: new Set(list('stopwords').map((w) => fold(String(w)))),
     topics: parseTopics(c.topics),
+    sharedDays: num('sharedDays'), sharedMaxBytes: num('sharedMaxBytes'),
+    // Which tool/skill means which shared TOPIC FOLDER is instance data, like `topics`.
+    // The repo path: env first (fixtures and unusual layouts), then config, then the
+    // convention every brain of this ecosystem uses.
+    sharedTopics: parseSharedTopics(c.sharedTopics),
+    sharedRepo: process.env.SHARED_MEMORY_REPO || (typeof c.sharedRepo === 'string' && c.sharedRepo)
+      || path.join(os.homedir(), 'Projects', 'brain-shared-memory'),
   };
+}
+
+// { "grandma3": { "tools": ["^mcp__grandma3__"], "skills": ["^grandma3"] } } — keys are
+// topic FOLDERS of the shared repo, not files.
+function parseSharedTopics(t) {
+  const out = {};
+  if (!t || typeof t !== 'object') return out;
+  for (const topic of Object.keys(t)) {
+    if (!/^[a-z0-9-]+$/.test(topic)) continue;
+    const rx = (arr) => (Array.isArray(arr) ? arr : [])
+      .map((s) => { try { return new RegExp(s, 'i'); } catch (e) { return null; } }).filter(Boolean);
+    out[topic] = { tools: rx(t[topic].tools), skills: rx(t[topic].skills) };
+  }
+  return out;
 }
 
 // { "index-rig.md": { "tools": ["^mcp__mikrotik__"], "skills": ["^rig-health-check$"] } }
