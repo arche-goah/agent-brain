@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **Topic-time recall also reads the SHARED record, freshness-filtered.** Operator order 2026-09-13: working a topic must always reconcile with shared memory, not only with the brain's own logs, memories and docs — an automatic companion, in the operator's words. The same tool/skill trigger that injects the brain's own `index-<topic>.md` now also injects the shared repo's `<topic>/INDEX.md` — routing lines only, never a body — restricted to entries dated within `sharedDays` (default 14) by the date the generator stamps per line since the same day, newest first, once per session, capped at `sharedMaxBytes` (3000). An index without any date is shown whole and says so, because "no date" must not read as "nothing new"; a brain without a shared repo sees nothing and no error. Which tool means which shared topic FOLDER is instance data (`sharedTopics` in `memory-recall.json`, same shape as `topics`); the repo path is `SHARED_MEMORY_REPO`, then config, then the ecosystem convention. The record line carries a `shared` tally so `memory-usage.py --precision` can judge this half too. Measured on the proving brain: `mcp__grandma3__gma3_info` injects `12 of 70 entries dated since 2026-08-30`, 2935 bytes. Fixture +5 (fresh lines in, stale line out, once per session, missing repo silent, undated index whole, record tally).
+
 - **`helpers/memory-recall.cjs` — the READ side of memory, at prompt time and at tool
   time (operator order 2026-09-09/10, alpha on the proving instance first).** The harness
   loads one memory file per session, `MEMORY.md`, and only its first 200 lines / 25 KB;

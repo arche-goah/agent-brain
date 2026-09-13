@@ -140,5 +140,37 @@ run_hook c13 "MikroTik VLAN multicast" t3
 case "$OUT" in *'topic index'*) bad "13 topic re-injected by prompt after tool";; *) ok "13 prompt path sees the tool path's state";; esac
 rm "$BRAIN/.claude/rules/memory-recall.json"
 
+# 14-18. SHARED memory at tool time (2026-09-13): the same trigger injects the shared
+# record's topic INDEX, freshness-filtered by the dates the generator stamps per line.
+# Both directions again: the fresh lines must come, the stale line must not, and a
+# brain without a shared repo must see nothing at all.
+SHARED="$T/shared"; mkdir -p "$SHARED/grandma3"
+TODAY=$(date -u +%F)
+printf -- '# grandma3 — index\n\n- [fresh one](../grandma3/fresh-one.md) — recent · for: x · %s\n- [old one](../grandma3/old-one.md) — ancient · ~2026-01-01\n- [fresh two](../grandma3/fresh-two.md) — also recent · ~%s\n' "$TODAY" "$TODAY" > "$SHARED/grandma3/INDEX.md"
+printf '{"sharedTopics":{"grandma3":{"tools":["^mcp__grandma3__"]}},"sharedDays":14}\n' > "$BRAIN/.claude/rules/memory-recall.json"
+run_shared() { # $1 session, $2 tool, $3 repo path (may be missing), $4.. extra
+  local session="$1" tool="$2" repo="$3"; shift 3
+  OUT=$(printf '{"session_id":"%s","tool_name":"%s","tool_input":{},"cwd":"%s","hook_event_name":"PreToolUse"}' \
+        "$session" "$tool" "$(native "$BRAIN")" \
+      | SHARED_MEMORY_REPO="$(native "$repo")" CLAUDE_MEMORY_DIR="$(native "$MEM")" CLAUDE_PROJECT_DIR="$(native "$BRAIN")" node "$HOOK" --tool "$@" 2>"$T/err")
+  RC=$?
+}
+run_shared sh1 mcp__grandma3__gma3_info "$SHARED"
+case "$OUT" in *'shared-memory grandma3'*'2 of 3 entries dated since'*'fresh one'*'fresh two'*) ok "14 mapped tool injects the shared topic index, fresh lines only";; *) bad "14 shared index not injected: ${OUT:0:200}";; esac
+case "$OUT" in *'old one'*) bad "14 stale line leaked past the freshness cutoff";; *) ok "14 stale line filtered";; esac
+[ "$RC" = 0 ] || bad "14 exit code $RC"
+run_shared sh1 mcp__grandma3__gma3_info "$SHARED"
+[ -z "$OUT" ] && ok "15 shared topic once per session" || bad "15 shared injected twice: ${OUT:0:120}"
+run_shared sh2 mcp__grandma3__gma3_info "$T/nowhere"
+[ -z "$OUT" ] && [ "$RC" = 0 ] && ok "16 no shared repo: silent, exit 0" || bad "16 missing repo produced output or rc=$RC: ${OUT:0:120}"
+printf -- '# grandma3 — index\n\n- [undated a](../grandma3/a.md) — no date at all\n- [undated b](../grandma3/b.md) — none here either\n' > "$SHARED/grandma3/INDEX.md"
+run_shared sh3 mcp__grandma3__gma3_info "$SHARED"
+case "$OUT" in *'2 entries, none dated'*'undated a'*'undated b'*) ok "17 an undated index is shown whole, and says so";; *) bad "17 undated index mishandled: ${OUT:0:200}";; esac
+run_shared sh4 mcp__grandma3__gma3_info "$SHARED" --record
+[ -z "$OUT" ] && ok "18 shared path honours --record" || bad "18 record mode printed"
+logtext=$(cat "$BRAIN/.claude-state/memory-recall.jsonl")
+case "$logtext" in *'"shared":[{"topic":"grandma3"'*) ok "18 record line carries the shared tally";; *) bad "18 record line lacks the shared tally";; esac
+rm "$BRAIN/.claude/rules/memory-recall.json"
+
 [ $fail = 0 ] && echo "test-memory-recall: all green" || echo "test-memory-recall: FAILURES"
 exit $fail
