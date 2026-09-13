@@ -60,11 +60,22 @@ function listMd(dir) {
   );
 }
 function readFileSafe(p) { try { return fs.readFileSync(p, 'utf8'); } catch (e) { return null; } }
+// The manifest is a TRACKED file (the common 3-way base must travel between machines),
+// and this script runs as a Stop and SessionEnd hook. Measured 2026-09-13 on two
+// machines: an export that changed no file still rewrote `lastSync`, so the manifest was
+// dirty after every close commit — one line of diff, every session, and `git pull
+// --ff-only` on the other machine failed on it. So `lastSync` now means "the tracked set
+// last changed", and a save whose `files` equal what was loaded writes nothing.
+let loadedFiles = null;
 function loadManifest() {
-  try { return JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }
-  catch (e) { return { files: {}, lastSync: null }; }
+  try {
+    const m = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    loadedFiles = JSON.stringify(m.files || {});
+    return m;
+  } catch (e) { loadedFiles = null; return { files: {}, lastSync: null }; }
 }
 function saveManifest(m) {
+  if (loadedFiles !== null && JSON.stringify(m.files) === loadedFiles) return;
   m.lastSync = nowISO();
   fs.mkdirSync(snapshotDir, { recursive: true });
   fs.writeFileSync(manifestPath, JSON.stringify(m, null, 2) + '\n');

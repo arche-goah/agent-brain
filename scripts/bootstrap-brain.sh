@@ -139,6 +139,8 @@ cat > .gitignore <<'EOF'
 .env
 .env.*
 .claude-state/
+# Written by the SessionEnd hook AFTER the close commit — tracked, it dirties every session.
+.claude/HANDOFF.md
 .DS_Store
 __pycache__/
 node_modules/

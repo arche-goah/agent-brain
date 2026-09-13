@@ -93,6 +93,26 @@ rc=$?
 [ "$rc" -eq 0 ] && ok "memory-sync export runs on a fresh root" \
   || bad "memory-sync export failed: ${out:0:100}"
 
+# The manifest is tracked and the export runs as a Stop/SessionEnd hook: an export that
+# changed nothing must not rewrite it (measured 2026-09-13: `lastSync` alone made the
+# tree dirty after every close commit). Both directions — unchanged memory leaves the
+# manifest byte-identical, a changed file changes it.
+MS="$ROOT/$(cd "$ROOT" && resolve helpers/memory-sync.cjs)"
+mkdir -p "$T/live"; printf 'one\n' > "$T/live/note.md"
+manifest="$T/m/docs/memory-snapshot/.sync-manifest.json"
+(cd "$T/m" && CLAUDE_PROJECT_DIR="$T/m" CLAUDE_MEMORY_DIR="$T/live" node "$MS" export >/dev/null 2>&1)
+[ -f "$manifest" ] && ok "memory-sync export writes the manifest on first export" \
+  || bad "memory-sync export wrote no manifest"
+before=$(cat "$manifest" 2>/dev/null)
+sleep 1   # lastSync is an ISO timestamp; an unchanged export must not depend on the second
+(cd "$T/m" && CLAUDE_PROJECT_DIR="$T/m" CLAUDE_MEMORY_DIR="$T/live" node "$MS" export >/dev/null 2>&1)
+[ "$(cat "$manifest")" = "$before" ] && ok "memory-sync export leaves the manifest untouched without a memory change" \
+  || bad "memory-sync export rewrote the manifest although nothing changed"
+printf 'two\n' > "$T/live/note.md"
+(cd "$T/m" && CLAUDE_PROJECT_DIR="$T/m" CLAUDE_MEMORY_DIR="$T/live" node "$MS" export >/dev/null 2>&1)
+[ "$(cat "$manifest")" != "$before" ] && ok "memory-sync export updates the manifest on a memory change" \
+  || bad "memory-sync export missed a changed memory file"
+
 echo
 [ "$fail" -eq 0 ] && echo "session-helper fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
