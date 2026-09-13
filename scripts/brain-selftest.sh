@@ -36,15 +36,24 @@ if [ "$(basename "$(dirname "$SELFDIR")")" = "core" ]; then
 else
   DEFAULT_ROOT="$(cd "$SELFDIR/.." && pwd)"
 fi
+# `--fixtures-only` runs section 2 and nothing else. It exists so the expensive half can
+# be handed to cached-verdict.sh as a COMMAND — that script caches a process, not a shell
+# function. Not a user-facing mode: the full run calls it through the cache.
+FIXTURES_ONLY=0
+if [ "${1:-}" = "--fixtures-only" ]; then FIXTURES_ONLY=1; shift; fi
+
 ROOT="${1:-${CLAUDE_PROJECT_DIR:-$DEFAULT_ROOT}}"
 cd "$ROOT" || exit 1
 fail=0
 unproven=0
 
+if [ "$FIXTURES_ONLY" -eq 0 ]; then
 echo "brain self-test — $ROOT"
 echo
+fi
 
 # --- 1. wired hooks point at files that exist --------------------------------
+if [ "$FIXTURES_ONLY" -eq 0 ]; then
 echo "hooks wired in settings.json:"
 "$PY" - "$ROOT" <<'PY' 2>/dev/null || echo "  (settings unreadable)"
 import json, os, re, sys
@@ -77,10 +86,81 @@ sys.exit(1 if missing else 0)
 PY
 [ $? -ne 0 ] && fail=1
 echo
+fi
 
 # --- 2. fixtures: the only proof that a mechanism actually fires -------------
-echo "fixtures (effect proof):"
+# The parent prints this header before delegating, so the --fixtures-only child must not
+# print it again — the cached output is replayed verbatim underneath it.
+[ "$FIXTURES_ONLY" -eq 0 ] && echo "fixtures (effect proof):"
 shopt -s nullglob
+
+# The expensive half runs through cached-verdict.sh, keyed on CONTENT rather than on a
+# clock. Measured 2026-09-13 on a full brain: this section was 93.6 s of a 102.5 s
+# session-start hook that is killed at 30 s — so it was killed at EVERY start, 41 times
+# across 33 transcripts since 2026-08-21, and the line it prints reached nobody.
+#
+# Why a content key and not "once a day": these fixtures build sandbox repos and stub gh.
+# They read no brain state, so their answer can only change when the core commit, the
+# fixture files or the tooling change. A 24 h stamp is wrong in both directions — it
+# skips right after a core update, the one moment the answer CAN change, and re-runs all
+# week when nothing did. Same inputs, same answer, no reason to pay for it twice.
+#
+# Backgrounding a MISS is for the session-start hook ONLY, and the caller says so with
+# BRAIN_SELFTEST_BG=1. Someone running brain-check by hand is asking a question and wants
+# the answer, not a note that it will arrive next time — defaulting to background would
+# turn every deliberate run into a deferral. The hook has the opposite need: it is killed
+# at 30 s, so on a miss it must hand the work off and report the previous verdict.
+# This distinction is not cosmetic: the self-test's own fixture caught it immediately,
+# because a cold cache made the hand-tool skip line disappear from a run that is supposed
+# to report it.
+BG_FLAG=""
+[ "${BRAIN_SELFTEST_BG:-0}" = "1" ] && BG_FLAG="--background-on-miss"
+if [ "$FIXTURES_ONLY" -eq 0 ] && [ -f "$SELFDIR/cached-verdict.sh" ]; then
+  fixture_key=$(FK_ROOT="$ROOT" "$PY" - <<'PY' 2>/dev/null
+import glob, hashlib, os, subprocess
+h = hashlib.sha256()
+root = os.environ["FK_ROOT"]
+# The core commit: a submodule bump changes every fixture's meaning at once.
+for d in ("core", "."):
+    p = os.path.join(root, d)
+    try:
+        h.update(subprocess.run(["git", "-C", p, "rev-parse", "HEAD"],
+                                capture_output=True, text=True, timeout=10).stdout.encode())
+    except Exception:
+        pass
+# The fixtures themselves, by content — a renamed or edited test must re-run.
+pats = ("scripts/test-*.sh", "core/scripts/test-*.sh", "scripts/*-test.sh",
+        "core/scripts/*-test.sh", "scripts/*-test.py", "core/scripts/*-test.py")
+for pat in pats:
+    for f in sorted(glob.glob(os.path.join(root, pat))):
+        h.update(os.path.basename(f).encode())
+        try:
+            with open(f, "rb") as fh:
+                h.update(hashlib.sha256(fh.read()).digest())
+        except OSError:
+            pass
+# The tooling: the same scripts genuinely behave differently across bash/git versions,
+# which is the whole reason the OS-trap register exists.
+for cmd in (["bash", "--version"], ["git", "--version"]):
+    try:
+        h.update(subprocess.run(cmd, capture_output=True, text=True,
+                                timeout=10).stdout.split("\n")[0].encode())
+    except Exception:
+        pass
+print(h.hexdigest())
+PY
+  )
+  if [ -n "$fixture_key" ]; then
+    bash "$SELFDIR/cached-verdict.sh" fixtures --key "$fixture_key" $BG_FLAG \
+      -- bash "$0" --fixtures-only "$ROOT"
+    [ $? -ne 0 ] && fail=1
+    shopt -u nullglob
+    echo
+    exit_after_fixtures=1
+  fi
+fi
+
+if [ "${exit_after_fixtures:-0}" -eq 0 ]; then
 # Fixtures live in BOTH places: a brain carries its own under scripts/, and the
 # consumed core ships its suites under core/scripts/. Measured 2026-08-20: run against
 # a brain, this found only the brain's own and reported every core mechanism as
@@ -155,6 +235,12 @@ for t in scripts/*-test.py core/scripts/*-test.py; do
 done
 shopt -u nullglob
 echo
+fi
+# End of the cacheable half. Everything above depends only on the core commit, the
+# fixture files and the tooling — nothing here reads brain state, so the same inputs
+# cannot produce a different answer. Everything BELOW reads the brain as it is right now
+# and must never be cached.
+if [ "$FIXTURES_ONLY" -eq 1 ]; then exit "$fail"; fi
 
 # --- 3. core self-checks -----------------------------------------------------
 echo "core checks:"
