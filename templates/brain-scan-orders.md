@@ -33,7 +33,7 @@ the prose around them may be in your language:
   origin: operator
   <what exactly, measured state, what "done" means; pointers to the plan or the finding>
 
-## Open (derived — proposals, need an OK)
+## Proposed (derived)
 
 - [ ] **<title of the finding>** — derived (<date>, found by <scan/session>).
   id: <slug>

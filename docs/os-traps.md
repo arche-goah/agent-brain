@@ -148,7 +148,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1
+known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -242,3 +242,24 @@ OS-1, OS-2 and OS-3 all shipped unnoticed — CI ran them on Linux, where none o
 can reproduce. CI carried the same list a second time, one step per suite. Fixed by
 globbing in all three runners: the OS gate went from 5 suites to 12, brain-selftest from 8
 to 15.
+
+## OS-7 — a GNU-only regex extension in a portable script matches nothing on BSD and says nothing
+
+shape: B
+
+invariant: `sed` alternation written as `\|` (and its relatives `\+`, `\?`) is a GNU
+extension. BSD sed on macOS treats it as a literal and the pattern matches NOTHING —
+silently, exit 0, an empty range. A reader built on it reports "no open orders" on a list
+that has them. Alternation in sed is written with `-E` and a bare `|`, which both
+implementations share; the same holds for grep (`-E` over `\|`).
+pattern:   sed[^#]*\\\|
+paths:     --include=*.sh scripts helpers
+known:
+instances: 1
+repeat:    no
+status:    closed
+note:      2026-09-13: the session-bootup order-list reader gained a second heading language
+and was written with `\|`. Measured on macOS: 0 lines for the German AND the English list,
+where 1 was expected in each — the fixture written for the heading change caught the sed
+change instead. GNU CI would have been green. Fixed with `-E`; class searched across core and
+the proving instance (scripts, helpers, hooks): no other site.

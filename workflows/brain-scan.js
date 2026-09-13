@@ -72,7 +72,7 @@ const assertCount = (machine, claimed, what) => {
 phase('Context')
 const ctx = await agent(
   `Read (1) ${AUFTRAEGE}, (2) ${CHECKLIST}, (3) the newest existing report in ${REPORT_DIR}/ (ls, then read the newest scan-*.md; if none exists: last_scan_date = null, prev_open = []).
-Return via StructuredOutput: orders = ONLY the items from the section "Offen (bestellt)" (open, ordered) that are operator-ordered — the origin marker is any of these three forms: "origin: operator", the literal "von: Operator", or "von: <the operator's documented name>" (e.g. "von: Emil"); all three count as ordered, "derived"/"abgeleitet" never does — and that are (a) unfinished (checkbox [ ] — skip [x]) AND (b) carry NO "eigene Session"/"EIGENE-SESSION" (own-session) note (the scan never touches such projects, only reports them as open). Full wording; last_scan_date; prev_open = unresolved finding titles from the last report. The return value is raw data.`,
+Return via StructuredOutput: orders = ONLY the items from the section headed "Offen (bestellt)" or "Open (ordered)" (the same section, German or English template) that are operator-ordered — the origin marker is any of these three forms: "origin: operator", the literal "von: Operator", or "von: <the operator's documented name>" (e.g. "von: Emil"); all three count as ordered, "derived"/"abgeleitet" never does — and that are (a) unfinished (checkbox [ ] — skip [x]) AND (b) carry NO "eigene Session"/"EIGENE-SESSION" (own-session) note (the scan never touches such projects, only reports them as open). Full wording; last_scan_date; prev_open = unresolved finding titles from the last report. The return value is raw data.`,
   { label: 'context', phase: 'Context', model: 'haiku', schema: {
     type: 'object', required: ['orders', 'prev_open'],
     properties: {
@@ -141,7 +141,7 @@ const allFindings = scans.flatMap(s => s.findings.map(f => `[${f.severity}${f.st
 const summary = await agent(
   `You are the report agent of the brain scan of ${DATE}. Input below. Tasks:
 1. Write ${REPORT}: header (date, last scan ${ctx.last_scan_date || 'never'}), overall state in 3-5 sentences, findings sorted P0>P1>P2>INFO (RECURRING marked), OK checks as a short list **with state \`configured\`/\`verified\`** (checklist section 0; an OK without a state is itself a P1 finding against the scan), fix protocol (ordered tasks + status + verify), new proposals (derived).
-2. Update ${AUFTRAEGE} via Edit: move successfully implemented ordered items to "Erledigt" (done, with date ${DATE}); failed/braucht-eigene-session items stay open with a note; append NEW derived proposals (only real ones, deduplicated against existing) under "Vorgeschlagen" (proposed). NEVER fill the section "Offen (bestellt)" yourself.
+2. Update ${AUFTRAEGE} via Edit: move successfully implemented ordered items to "Erledigt" (done, with date ${DATE}); failed/braucht-eigene-session items stay open with a note; append NEW derived proposals (only real ones, deduplicated against existing) under "Vorgeschlagen" / "Proposed (derived)" (whichever heading the list uses). NEVER fill the section "Offen (bestellt)" / "Open (ordered)" yourself.
 3. StructuredOutput: summary = 4-6 sentences overall state incl. P0/P1 counts, findings = the 10 most important.
 
 Scan findings:\n${allFindings.join('\n')}\n\nScan summaries:\n${scans.map(s => `- ${s.summary}`).join('\n')}\n\nFix results:\n${JSON.stringify(fixResults)}`,
