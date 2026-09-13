@@ -5,6 +5,10 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## Unreleased
+
+- **The shared-memory register carries a date per entry, and can be asked what is new.** Operator order 2026-09-13: a session must be able to ask "what changed in the shared record since I last looked, in the topic I am working on" — at bootup and mid-session. Measured that day: 0 of 240 entries carried a `date` field; every date lived in a filename or in prose, which a filter cannot read. So `date: YYYY-MM-DD` joins `von`/`audience`/`topic` as a required frontmatter field (README of the shared repo, same ratchet in `shared-memory-lint.py`, baseline re-snapshotted there so legacy files are exempt exactly once). `shared-memory-index.py` reads the field and, for a file without it, falls back to the last git commit touching the file — one `git log --name-only` pass, no back-fill — and marks that case `~` in the index line so "the author dated this" and "only git could say" stay distinguishable. Every topic line ends with its date, every root topic line names the newest, and `--since YYYY-MM-DD [--topic]` prints matching entries newest first with a count line that always states how many are undated. Also fixed: the generator listed its own per-topic `INDEX.md` as an entry, invisible until a date made the line stand out. Fixtures +6 (index, git date pinned via `GIT_COMMITTER_DATE`) and +3 (lint), all green.
+
 ## 1.3.36 — 2026-09-12
 
 > **BETA-PHASE TAG on `brain-core-next`.** Second beta of the day: v1.3.35 shipped the

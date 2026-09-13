@@ -334,12 +334,23 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
                 f["frontmatter"].append({"file": rel, "issue": f"metadata.type '{t}' invalid",
                                          "allowed": sorted(VALID_TYPES)})
             # The convention fields, ratcheted: required unless the file predates it.
-            missing = [k for k in ("von", "audience", "topic") if not meta.get(k)]
+            # `date` joined on 2026-09-13 (operator: a date that is not in the FIELD is not
+            # register-capable, and 0 of 240 files had one). Same ratchet, same baseline:
+            # the baseline was re-snapshotted that day, so every file from before carries
+            # the exemption once and clicks out of it the first time it is touched.
+            missing = [k for k in ("von", "audience", "topic", "date") if not meta.get(k)]
             if missing and not legacy:
                 f["frontmatter"].append({"file": rel, "issue": "convention fields missing",
                                          "fields": missing,
-                                         "note": "since 2026-08-21; add them or, for a "
+                                         "note": "von/audience/topic since 2026-08-21, date "
+                                                 "since 2026-09-13; add them or, for a "
                                                  "genuinely old file, add it to the baseline"})
+            # A date that is present but not ISO is worse than none: the index would
+            # neither filter on it nor fall back to git for it.
+            d = str(meta.get("date", "") or "")
+            if d and not re.match(r"^\d{4}-\d{2}-\d{2}$", d):
+                f["frontmatter"].append({"file": rel, "issue": "metadata.date not YYYY-MM-DD",
+                                         "date": d})
             if not missing and legacy:
                 f["baseline"].append({"file": rel,
                                       "issue": "carries the fields but is still in the baseline",
@@ -453,7 +464,9 @@ def write_baseline(repo: Path, baseline_path: Path | None = None) -> int:
         fm = frontmatter(p.read_text(encoding="utf-8", errors="replace"))
         meta = (fm or {}).get("metadata")
         meta = meta if isinstance(meta, dict) else {}
-        if any(not meta.get(k) for k in ("von", "audience", "topic")):
+        # The same tuple as the check — a baseline written against a shorter list would
+        # leave every file that lacks only the newest field permanently red.
+        if any(not meta.get(k) for k in ("von", "audience", "topic", "date")):
             rows.append(p.relative_to(repo).as_posix())
     baseline_path = baseline_path or baseline_for(repo)
     baseline_path.write_text(
