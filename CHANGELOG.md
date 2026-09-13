@@ -5,6 +5,10 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## Unreleased
+
+- **`onboarding-verify.sh` no longer writes its report into the brain root.** Line 15 put `onboarding-report.txt` at `$BRAIN/`, and with no brain resolved at `$PWD` — which, from inside a brain that does not live under `~/Projects/*-brain`, IS the brain root. Every such run violated the root whitelist of `rules/working-rules.md`; measured three times on one instance (two mv/rm traces, one brain-scan finding), never on the instance that only ran the script from the core checkout. The report is an artifact and gets an artifact's place: `docs/maintenance/onboarding-report-<host>-<date>.txt` inside the verified brain (directory created; host and date in the name so two machines never overwrite each other), `--out <file>` overrides. The working directory now counts as the brain when it is one (`core/` plus `.claude/settings.json`), ahead of the `~/Projects` glob — that is the incident's path, where check 5 had also reported "no brain found" for the brain it stood in. With no brain anywhere the report still lands in the working directory, under the new name. No whitelist exception. Fixture `onboarding-verify-test.sh` runs the real script against throwaway brains, both directions: no `onboarding-report.txt` in the root, the file under `docs/maintenance/`, `--out` wins and suppresses the default, the working-directory-is-a-brain path, and the no-brain fallback. `docs/onboarding-contract.md` and `ONBOARDING.md` name the new path.
+
 ## 1.3.37 — 2026-09-13
 
 > **BETA-PHASE TAG on `brain-core-next`.** Four strands from one day, all reviewed by the
