@@ -117,14 +117,18 @@ BG_FLAG=""
 [ "${BRAIN_SELFTEST_BG:-0}" = "1" ] && BG_FLAG="--background-on-miss"
 if [ "$FIXTURES_ONLY" -eq 0 ] && [ -f "$SELFDIR/cached-verdict.sh" ]; then
   fixture_key=$(FK_ROOT="$ROOT" "$PY" - <<'PY' 2>/dev/null
-import glob, hashlib, os, subprocess
+import hashlib, os, subprocess
+from pathlib import Path
 h = hashlib.sha256()
-root = os.environ["FK_ROOT"]
+# pathlib throughout, not os.path.join: every path here goes straight to the filesystem,
+# so separators would be fine either way — but the OS-1 ratchet in docs/os-traps.md
+# counts the FORM, and two new os.path.join sites turned four CI jobs red. Path objects
+# are the form the register recommends, and they read better anyway.
+root = Path(os.environ["FK_ROOT"])
 # The core commit: a submodule bump changes every fixture's meaning at once.
 for d in ("core", "."):
-    p = os.path.join(root, d)
     try:
-        h.update(subprocess.run(["git", "-C", p, "rev-parse", "HEAD"],
+        h.update(subprocess.run(["git", "-C", str(root / d), "rev-parse", "HEAD"],
                                 capture_output=True, text=True, timeout=10).stdout.encode())
     except Exception:
         pass
@@ -132,11 +136,10 @@ for d in ("core", "."):
 pats = ("scripts/test-*.sh", "core/scripts/test-*.sh", "scripts/*-test.sh",
         "core/scripts/*-test.sh", "scripts/*-test.py", "core/scripts/*-test.py")
 for pat in pats:
-    for f in sorted(glob.glob(os.path.join(root, pat))):
-        h.update(os.path.basename(f).encode())
+    for f in sorted(root.glob(pat)):
+        h.update(f.name.encode())
         try:
-            with open(f, "rb") as fh:
-                h.update(hashlib.sha256(fh.read()).digest())
+            h.update(hashlib.sha256(f.read_bytes()).digest())
         except OSError:
             pass
 # The tooling: the same scripts genuinely behave differently across bash/git versions,
