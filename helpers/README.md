@@ -9,7 +9,7 @@ below, installed at USER level via `scripts/install-statusline.sh`) and
 | Script | Event | Purpose |
 |--------|-------|---------|
 | session-bootup.sh | SessionStart | fast local sanity check (git/memory/settings/symlinks/brain-scan/tasks) |
-| session-closing.sh | SessionEnd | HANDOFF.md with real git data + line in docs/maintenance/session-log.md |
+| session-closing.sh | SessionEnd (+ `--pre-commit` from the session-close skill) | HANDOFF.md with real git data + line in docs/maintenance/session-log.md; the skill writes the line before the close commit, the hook only when no stamp says it is already there |
 | memory-sync.cjs | SessionStart/SessionEnd/PreCompact | auto-memory <-> docs/memory-snapshot sync |
 | file-guard.cjs | PreToolUse (Edit/Write) | protects sensitive files + branch gate: edits in a core checkout only on a feature branch (pin/main blocks) |
 | mechanism-guard.cjs | PreToolUse (Bash) | blocks known ad-hoc shortcuts; rules are instance data (`.claude/rules/mechanism-rules.json`) |
