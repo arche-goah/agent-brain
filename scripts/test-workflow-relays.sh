@@ -8,10 +8,18 @@
 # one. The helpers `relay()` and `assertCount()` replace that; this fixture keeps them
 # honest and keeps a new bare site from appearing.
 #
-# Three checks:
+# Four checks:
 #   1. no `JSON.stringify(...).slice(` in workflows/ — the bare-relay pattern itself
 #   2. no relay() in workflows/ carries bulk (a five-digit char limit) — the fourth site
-#   3. the helpers behave: relay marks a cut, assertCount aborts on a mismatch
+#   3. no `${JSON.stringify(<data variable>)}` interpolated into a prompt — the same cut
+#      without even a limit to cut at
+#   4. the helpers behave: relay marks a cut, assertCount aborts on a mismatch
+#
+# Check 3 closes the other half of the same gap: brain-scan's real site was
+# `${JSON.stringify(fixResults)}` — no `.slice(`, so check 1 never saw it, and no limit,
+# so check 2 had nothing to measure. A data variable stringified straight into a prompt
+# is bulk by construction; stringifying an UPPERCASE constant (a schema, a prepared
+# index) is the legitimate use and stays allowed.
 #
 # Check 2 exists because check 1 was not the class. Measured 2026-09-13: three workflows
 # had replaced the bare pattern with relay(..., 50000) and read green here, while a real
@@ -47,7 +55,17 @@ else
   ok "no relay() in workflows/ carries bulk (every limit below 10000 chars)"
 fi
 
-# ── 3. helper behaviour ────────────────────────────────────────────────────
+# ── 3. no data variable stringified straight into a prompt ─────────────────
+# Uppercase = schema/prepared index (legitimate); lowercase = the run's own data.
+raw="$(grep -rEn '\$\{JSON\.stringify\([a-z]' "$ROOT/workflows" || true)"
+if [ -n "$raw" ]; then
+  bad "data variable stringified into a prompt — no limit, no marker, a silent cut:"
+  printf '%s\n' "$raw" | sed 's/^/         /'
+else
+  ok "no \${JSON.stringify(<data variable>)} in workflows/"
+fi
+
+# ── 4. helper behaviour ────────────────────────────────────────────────────
 out="$(node -e '
 const lines = []
 const log = m => lines.push(m)
