@@ -199,12 +199,15 @@ From 24 failure memories:
 
 ## Live systems / operator surfaces (HARD, operator order 2026-07-12 — pointer since 2026-08-01, coherence-scan K-08)
 
-Before any done/passed claim about a live-operable artifact (MA3 show, rig,
-show setup, operator surface): read the memory `verify-and-never-stop` IN FULL and
+Before any done/passed claim about a live-operable artifact (a show file, a rig,
+a show setup, an operator surface): read `references/live-system-pass-bar.md` and
 apply the PASS bar — the WHOLE function in its CURRENT state, EVERY control element
-individually, after diagnostic interventions first RESTORE + re-verify of the whole,
-proof on multiple fixtures/channels. A green partial test on a broken whole is a
-false pass.
+individually, on MULTIPLE objects, through TWO independent read paths, after
+diagnostic interventions first RESTORE + re-verify of the whole. A green partial
+test on a broken whole is a false pass. If the instance carries its own bar on top
+(e.g. a memory named `verify-and-never-stop`, or a device suite's readback
+procedure), read that in addition — the reference is the part that holds on every
+rig, not a replacement for the rig's own.
 
 ## When To Apply
 

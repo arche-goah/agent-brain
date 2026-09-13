@@ -183,7 +183,7 @@ state the agent can dissolve itself. Two rules, in this order:
    the bigger hammer and is rarely the one required; asking for it by reflex costs the
    operator their session context for nothing. Name which one you need and why.
 2. **Arm the watcher in the SAME turn, then keep working.**
-   `scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s]`, started in the
+   `core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s]`, started in the
    background (Bash `run_in_background`), exits when the server writes a fresh boot
    stamp — the agent is re-invoked and runs the verification by itself. Never end a turn
    on "tell me when you've reconnected".
