@@ -118,8 +118,10 @@ cp "$CORE_SRC/templates/invariants.md" docs/maintenance/invariants.md
 # without them runs its first scan against nothing and the two brains' reports do not
 # line up. The SECTIONS and the state model are the shared shape; the items are the
 # instance's to grow.
+# The target name is German because the workflows read that exact path in every
+# instance; the TEMPLATE is English-named because this repo is public-bound (rule 7).
 cp "$CORE_SRC/templates/brain-scan-checklist.md" docs/maintenance/brain-scan-checklist.md
-cp "$CORE_SRC/templates/brain-scan-auftraege.md" docs/maintenance/brain-scan-auftraege.md
+cp "$CORE_SRC/templates/brain-scan-orders.md" docs/maintenance/brain-scan-auftraege.md
 
 # .gitattributes BEFORE the first commit: Git for Windows defaults to core.autocrlf=true
 # and then checks out CRLF. The workflow tool rejects a script with CR ("script contains
