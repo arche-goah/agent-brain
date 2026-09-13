@@ -5,6 +5,10 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## Unreleased
+
+- **Brain-scan checklist and order list are bootstrapped into every new brain.** Collaborator request 2026-09-13: his first brain-scan ran without either file — the workflow reads `docs/maintenance/brain-scan-checklist.md` and `brain-scan-auftraege.md` by fixed path, the bootup counts the open orders from the second, and the core created neither. Two brains that scan against different structures produce reports nobody can line up. `templates/` now carries both as the SHAPE, in English, with instance items stripped: the configured/verified state model, six sections with one declared behaviour check each, and the order list's `id`/`class`/`reach`/`origin` convention with the operator/derived rule spelled out. `bootstrap-brain.sh` copies them from day one. New checklist item, found on two brains the same day: no `npx` MCP server on `@latest` in `.mcp.json`.
+
 ## 1.3.36 — 2026-09-12
 
 > **BETA-PHASE TAG on `brain-core-next`.** Second beta of the day: v1.3.35 shipped the
