@@ -115,6 +115,12 @@ shopt -s nullglob
 # to report it.
 BG_FLAG=""
 [ "${BRAIN_SELFTEST_BG:-0}" = "1" ] && BG_FLAG="--background-on-miss"
+# The mode belongs to THIS call, never to the fixtures it runs. Exported, it reached
+# brain-selftest-test.sh, whose nested self-test on a throwaway brain then deferred its
+# cold-cache miss to the background and printed no hand-tool skip line — so the fixture
+# failed at every session start and passed by hand, and the content-keyed cache kept the
+# red verdict (measured 2026-09-13). BG_FLAG above already carries the decision.
+unset BRAIN_SELFTEST_BG
 if [ "$FIXTURES_ONLY" -eq 0 ] && [ -f "$SELFDIR/cached-verdict.sh" ]; then
   fixture_key=$(FK_ROOT="$ROOT" "$PY" - <<'PY' 2>/dev/null
 import hashlib, os, subprocess
