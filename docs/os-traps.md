@@ -148,7 +148,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1
+known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-onboarding-leak-check.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -169,6 +169,11 @@ never crosses into node as data — node receives the harness file as an ARGUMEN
 converts argv) and the lens files by NAME through env, which is the comparison the helper
 under test makes (names, not directories). No path is opened by the native process.
 
+2026-09-13, test-onboarding-leak-check.sh: the temp dir is a BRAIN handed to a bash
+script (BRAIN_DIR and the argument), never a path a native process has to open; the
+report goes to --out inside the same temp dir. Its one pipe-grep carries -a, because the
+line it extracts is the verdict the fixture judges (OS-5).
+
 ## OS-5 — grep swallows a report line by calling the stream binary
 
 shape: B
@@ -180,7 +185,7 @@ the diagnostic replaces exactly the output it was asked to produce, and only in 
 failure path, where nobody has a second copy.
 pattern:   \| *grep -[b-zA-Z]
 paths:     --include=*.sh scripts helpers
-known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=5 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1
+known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-onboarding-leak-check.sh=1
 instances: 3
 repeat:    yes
 status:    closed

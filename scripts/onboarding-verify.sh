@@ -165,10 +165,30 @@ fi
 # 8 Leak check across the own brain: no FOREIGN home paths may have landed in it
 # (templates and copied examples are the usual carrier).
 if [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then
-  me=$(id -un)
-  # Filters: the own username is this brain's business; /Users/Shared is a macOS
-  # system path; pure-punctuation "names" are doc ellipsis placeholders, not users.
-  hits=$(grep -rhoE '/(Users|home)/[A-Za-z0-9._-]+' "$BRAIN" --exclude-dir=.git --exclude-dir=core --exclude-dir=node_modules 2>/dev/null | grep -vE "^/(Users|home)/$me$" | grep -v '^/Users/Shared$' | grep -vE '^/(Users|home)/[._-]+$' | sort -u | head -3 | tr '\n' ' ')
+  # The own home paths are REMOVED FROM THE TEXT before anything is extracted, instead
+  # of being filtered out afterwards. Measured 2026-09-13 on a Windows machine whose user
+  # profile carries a space ("<first> <last>"): the extraction pattern stops at the space,
+  # so the hit was the first name only, the after-the-fact filter compared it against the
+  # full name from `id -un`, never matched, and the own home path read as a foreign leak on
+  # every run. Stripping first is what makes a name with a space work at all. Both spellings
+  # count: `id -un` and the basename of $HOME can differ (domain logins).
+  me=$(id -un); myhome=$(basename "$HOME")
+  # A brain can own more than one machine. Its other usernames are INSTANCE knowledge and
+  # are declared in .claude/rules/leak-names.json ("own_home_names"); measured 2026-09-13:
+  # twelve occurrences of the first machine's username in docs and skill copies of a
+  # two-machine brain, none of them a leak. Missing file or missing key = empty list, the
+  # check then only knows the machine it runs on (that is the single-machine case).
+  own_extra=$(sed -n '/"own_home_names"/,/]/p' "$BRAIN/.claude/rules/leak-names.json" 2>/dev/null | grep -aoE '"[^"]+"' | grep -av own_home_names | tr -d '"')
+  # Onboarding reports are this check's OWN output, and a multi-PC brain archives the
+  # reports of its other machines — the home path in them is the same brain on another
+  # computer, not a foreign one. (In that measurement the freshly written report was among
+  # the hits: the check reported the file it had created one line earlier.)
+  # Filters that stay: /Users/Shared is a macOS system path; pure-punctuation "names" are
+  # doc ellipsis placeholders, not users.
+  hits=$(grep -rhE '/(Users|home)/' "$BRAIN" --exclude-dir=.git --exclude-dir=core --exclude-dir=node_modules --exclude='onboarding-report*' 2>/dev/null \
+    | sed -e "s|/Users/$me||g" -e "s|/home/$me||g" -e "s|/Users/$myhome||g" -e "s|/home/$myhome||g" \
+    | { if [ -n "$own_extra" ]; then sed $(for n in $own_extra; do printf ' -e s|/Users/%s||g -e s|/home/%s||g' "$n" "$n"; done); else cat; fi } \
+    | grep -aohE '/(Users|home)/[A-Za-z0-9._-]+' | grep -av '^/Users/Shared$' | grep -avE '^/(Users|home)/[._-]+$' | sort -u | head -3 | tr '\n' ' ')
   check 8 "Leak check brain" $([ -z "$hits" ] && echo 0 || echo 1) "${hits:-no foreign home paths in the own brain}"
 else
   check 8 "Leak check brain" 1 "no brain directory to scan"

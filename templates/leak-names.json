@@ -1,5 +1,7 @@
 {
   "_comment": "Instance watch list for core/scripts/leak-scan.py. Put every person, show, venue and rig name here that must never appear in a shared repo — lowercase, word-boundary matched case-insensitively. The core scanner ships WITHOUT names on purpose: a public guard must not name whom it protects. Empty lists are valid (the generic patterns for home paths, IPs, MACs and secrets always apply).",
   "names": [],
-  "instances": []
+  "instances": [],
+  "_comment_own_home_names": "Usernames this brain owns on its OTHER machines, lowercase — read by core/scripts/onboarding-verify.sh (check 8, foreign home paths). The machine running the check contributes its own username automatically; a multi-PC brain carries the home paths of its other machines in docs and device profiles, and those are the same brain on another computer, not a leak. Empty is valid on a single-machine brain.",
+  "own_home_names": []
 }
