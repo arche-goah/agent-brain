@@ -1,20 +1,38 @@
 #!/usr/bin/env bash
 # onboarding-verify.sh — checks the onboarding contract (docs/onboarding-contract.md)
-# and writes onboarding-report.txt INTO the verified brain (the report describes that
-# brain's state, so it belongs there — not in this repo's checkout). Read-only apart
-# from the report file. Exit 0 = every mandatory check green.
+# and writes the report INTO the verified brain (the report describes that brain's
+# state, so it belongs there — not in this repo's checkout), as
+# docs/maintenance/onboarding-report-<host>-<date>.txt: never in the brain root (the
+# root whitelist in rules/working-rules.md has no seat for it — measured three times
+# on one instance), host and date in the name so two machines never overwrite each
+# other. Read-only apart from the report file. Exit 0 = every mandatory check green.
 #
-# Call: bash scripts/onboarding-verify.sh [path-to-your-brain]
-# Without an argument the brain is looked up via BRAIN_DIR or under ~/Projects/*-brain.
+# Call: bash scripts/onboarding-verify.sh [path-to-your-brain] [--out <file>]
+# Without a path the brain is BRAIN_DIR, else the working directory when that IS a
+# brain (core/ plus .claude/settings.json), else the first ~/Projects/*-brain. With no
+# brain found the report lands in the working directory. --out overrides the path.
 set -uo pipefail
 fail=0
 
 # Resolve the brain FIRST — the report lands inside it.
-BRAIN="${1:-${BRAIN_DIR:-}}"
+BRAIN=""; OUT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --out) OUT="${2:?--out needs a path}"; shift 2 ;;
+    *) BRAIN="$1"; shift ;;
+  esac
+done
+[ -n "$BRAIN" ] || BRAIN="${BRAIN_DIR:-}"
+# The working directory counts when it is a brain: a brain outside ~/Projects run
+# without an argument used to fall through to $PWD — the brain root — for the report,
+# and check 5 reported "no brain found" for the very brain it was standing in.
+if [ -z "$BRAIN" ] && [ -d "$PWD/core" ] && [ -f "$PWD/.claude/settings.json" ]; then BRAIN="$PWD"; fi
 if [ -z "$BRAIN" ]; then BRAIN=$(ls -d "$HOME"/Projects/*-brain 2>/dev/null | head -1); fi
-if [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then REPORT="$BRAIN/onboarding-report.txt"
-else REPORT="$PWD/onboarding-report.txt"; fi
-
+NAME="onboarding-report-${HOSTNAME:-$(hostname)}-$(date +%F).txt"
+if [ -n "$OUT" ]; then REPORT="$OUT"
+elif [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then REPORT="$BRAIN/docs/maintenance/$NAME"
+else REPORT="$PWD/$NAME"; fi
+mkdir -p "$(dirname "$REPORT")"
 {
 echo "=== Onboarding verify $(date '+%F %T') ==="
 echo "Host: $(uname -s) $(uname -m), node $(node --version 2>/dev/null || echo MISSING)"
