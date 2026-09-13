@@ -52,10 +52,13 @@ def check(name: str, counts: dict, category: str, want: int) -> None:
 
 
 def fm(name: str, *, typ="reference", von="emil-macos", audience="alle-collaborator",
-       topic="ops", body="body") -> str:
+       topic="ops", date="2026-09-13", body="body") -> str:
+    # `date` is part of the convention since 2026-09-13, so a VALID fixture entry
+    # carries one; pass date="" to build the legacy shape on purpose.
     meta = "\n".join(
         f"  {k}: {v}" for k, v in
-        (("type", typ), ("von", von), ("audience", audience), ("topic", topic)) if v)
+        (("type", typ), ("von", von), ("audience", audience), ("topic", topic),
+         ("date", date)) if v)
     return f'---\nname: {name}\ndescription: "d"\nmetadata:\n{meta}\n---\n\n{body}\n'
 
 
@@ -306,6 +309,26 @@ def main() -> int:
         else:
             bad(f"28 remedy not named: {res[:1]}")
         (repo / "ops" / "nudge.md").unlink()
+
+        # 29-31. `date` joined the convention on 2026-09-13 — same ratchet as the other
+        #     three fields, so both directions get a case, plus the shape check.
+        (repo / "ops" / "INDEX.md").unlink(missing_ok=True)
+        idx.write_text(keep + "- [Old](ops/old.md) — o\n", encoding="utf-8")
+        (repo / "ops" / "old.md").write_text(fm("old", date=""), encoding="utf-8")
+        check("29 a new file without `date` is a convention finding",
+              run(repo), "frontmatter", 1)
+        b3 = tmp / "date-baseline.txt"
+        b3.write_text("ops/old.md\n", encoding="utf-8")
+        check("30 NEGATIVE: the same file in the baseline is exempt",
+              run(repo, b3), "frontmatter", 0)
+        (repo / "ops" / "old.md").write_text(fm("old", date="13.09.2026"), encoding="utf-8")
+        res = sml.lint(repo, b3)["findings"]["frontmatter"]
+        if any(f.get("issue") == "metadata.date not YYYY-MM-DD" for f in res):
+            ok("31 a date in the wrong shape is named, not silently unfilterable")
+        else:
+            bad(f"31 wrong-shape date not flagged: {res}")
+        (repo / "ops" / "old.md").unlink()
+        idx.write_text(keep, encoding="utf-8")
 
     return 1 if fails else 0
 

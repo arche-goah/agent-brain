@@ -52,8 +52,8 @@ def build_repo(root, n_entries, index_text):
     (root / "INDEX.md").write_text(index_text, encoding="utf-8", newline="\n")
 
 
-def run_main(repo, write=False):
-    argv = ["shared-memory-index.py", "--repo", str(repo)] + (["--write"] if write else [])
+def run_main_args(repo, extra):
+    argv = ["shared-memory-index.py", "--repo", str(repo)] + list(extra)
     old = sys.argv
     sys.argv = argv
     buf = io.StringIO()
@@ -63,6 +63,10 @@ def run_main(repo, write=False):
     finally:
         sys.argv = old
     return buf.getvalue()
+
+
+def run_main(repo, write=False):
+    return run_main_args(repo, ["--write"] if write else [])
 
 
 print("shared-memory-index:")
@@ -109,6 +113,40 @@ with tempfile.TemporaryDirectory() as td:
     out = run_main(repo)
     ok("6 a larger lookup reports MORE EXPENSIVE, never 'cheaper'",
        "MORE EXPENSIVE" in out and "x CHEAPER" not in out, out.strip()[-160:])
+
+with tempfile.TemporaryDirectory() as td:
+    # 7-11. FRESHNESS (2026-09-13). The operator's order: the register must be filterable
+    # by date. Two sources, told apart in the index; the git date is pinned in the fixture
+    # so the assertions do not drift with the calendar.
+    import os, subprocess
+    repo = Path(td) / "repo"
+    (repo / "ops").mkdir(parents=True)
+    (repo / "ops" / "dated.md").write_text(
+        entry("dated", "Has a date.").replace("  topic: ops\n", "  topic: ops\n  date: 2026-09-01\n"),
+        encoding="utf-8", newline="\n")
+    (repo / "ops" / "undated.md").write_text(entry("undated", "No date."), encoding="utf-8", newline="\n")
+    (repo / "ops" / "INDEX.md").write_text("# ops\n", encoding="utf-8", newline="\n")
+    (repo / "INDEX.md").write_text("# Index\n", encoding="utf-8", newline="\n")
+    env = dict(os.environ, GIT_AUTHOR_DATE="2026-08-20T12:00:00", GIT_COMMITTER_DATE="2026-08-20T12:00:00")
+    for cmd in (["init", "-q"], ["add", "-A"],
+                ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"]):
+        subprocess.run(["git", "-C", str(repo)] + cmd, env=env, check=False, capture_output=True)
+    root, topics, entries = smi.build(repo)
+    by = {e["name"]: e for e in entries}
+    ok("7 a frontmatter date is shown as the author's",
+       smi.date_mark(by["dated"]) == "2026-09-01", smi.date_mark(by.get("dated", {})))
+    ok("8 a file without the field gets its git date, marked ~",
+       smi.date_mark(by["undated"]) == "~2026-08-20", smi.date_mark(by.get("undated", {})))
+    ok("9 the topic INDEX.md is not an entry", "INDEX" not in by, str(sorted(by)))
+    ok("10 root names the newest date per topic", "newest 2026-09-01" in root, root)
+    s1 = [e["name"] for e in smi.since(entries, "2026-08-21")]
+    s2 = [e["name"] for e in smi.since(entries, "2026-08-01")]
+    ok("11 since() filters by the resolved date and sorts newest first",
+       s1 == ["dated"] and s2 == ["dated", "undated"], f"{s1} / {s2}")
+    # 12. the CLI's count line is the measurement, and it always states the undated count
+    out = run_main_args(repo, ["--since", "2026-08-21"])
+    ok("12 --since prints the count line with the undated count",
+       "since 2026-08-21: 1 entry, 0 undated" in out, out.strip()[-160:])
 
 print()
 if fails:
