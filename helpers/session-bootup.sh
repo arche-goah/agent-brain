@@ -438,7 +438,15 @@ fi
 # Open ordered tasks in the brain-scan gate
 au="$R/docs/maintenance/brain-scan-auftraege.md"
 if [[ -f "$au" ]]; then
-  sed -n '/## Offen/,/## Vorgeschlagen/p' "$au" | grep '^- \[ \]' 2>/dev/null | head -3 | cut -c1-110 | sed 's/^- \[ \]/task OPEN:/'
+  # Both heading languages: the instance list may be German ("## Offen (bestellt)" /
+  # "## Vorgeschlagen"), the core template is English ("## Open (ordered)" /
+  # "## Proposed"). Measured by a collaborator 2026-09-13: with the English template this
+  # line returned 0 while one open order sat in the section — a reader and a template
+  # that name different strings make the list invisible without an error.
+  # -E, not `\|`: alternation with a backslash-pipe is a GNU extension — BSD sed on macOS
+  # matches nothing and says nothing (measured 2026-09-13: the fixture returned 0 for both
+  # languages). Extended regex with a bare `|` is what both implementations share.
+  sed -n -E '/^## (Offen|Open)/,/^## (Vorgeschlagen|Proposed)/p' "$au" | grep '^- \[ \]' 2>/dev/null | head -3 | cut -c1-110 | sed 's/^- \[ \]/task OPEN:/'
 fi
 
 # Shared memory: what other instances/collaborators pushed since this instance last
