@@ -80,6 +80,20 @@ jobs:
             echo "Resolve the interpreter into \$PY instead of calling python3 directly."
             exit 1
           fi
+      # Ratchet (2026-09-13): the rules are read ONLY from inside a brain, where the
+      # core is the `core/` submodule (bootstrap-brain.sh names it, always). A core
+      # path without that prefix resolves against the brain root, where nothing lives
+      # — measured: six mentions in rules/*.md, three with the prefix, three without.
+      # Every scripts/ or helpers/ mention in rules/*.md carries `core/`; a path that
+      # legitimately points elsewhere (.claude/skills/<x>/scripts/) has its own prefix.
+      - name: rules name core paths with the core/ prefix
+        run: |
+          hits=$(grep -nE '(^|[^/])(scripts|helpers)/' rules/*.md || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "Write core/scripts/… or core/helpers/… — the rules load from the brain, not from the core checkout."
+            exit 1
+          fi
       - name: helpers parse (node syntax check)
         run: |
           sudo apt-get update && sudo apt-get install -y nodejs

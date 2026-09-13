@@ -175,7 +175,7 @@ validation). And a number the model is asked to REPORT is a claim; the same numb
 computed in the script is a measurement — the script-side count wins, with an
 abort (not a warning) on mismatch. **Carried, not only stated:** the workflows use
 `relay()` (a cut is logged AND marked inside the payload, so truncated data cannot
-read as complete) and `assertCount()` (a mismatch throws); `scripts/test-workflow-relays.sh`
+read as complete) and `assertCount()` (a mismatch throws); `core/scripts/test-workflow-relays.sh`
 fails on a new bare `JSON.stringify(...).slice(...)` relay site.
 
 ## Repeat Runs (CANONICAL place — skills point here)
@@ -197,7 +197,7 @@ the question already:**
 3. **Only then re-run** — and only if it can be named which question the artifacts
    do not answer.
 
-**Mechanically carried:** `helpers/freshness-gate.cjs` (PreToolUse/Workflow) denies a
+**Mechanically carried:** `core/helpers/freshness-gate.cjs` (PreToolUse/Workflow) denies a
 relaunch whose last completed run is younger than the threshold and cost real tokens,
 and demands exactly this sequence — read artifacts, declare reuse, or relaunch with
 `// FRESHNESS-OK: <the unanswered question>`. Resume (`resumeFromRunId`) passes freely.
