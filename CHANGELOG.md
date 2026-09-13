@@ -5,7 +5,14 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
-## Unreleased
+## 1.3.37 — 2026-09-13
+
+> **BETA-PHASE TAG on `brain-core-next`.** Four strands from one day, all reviewed by the
+> collaborator with a Windows counter-measurement (#130) and a reader check (#133): the
+> session-start hook survives its own timeout, the shared-memory register carries a date
+> per entry and can be asked what is new, bootup and close carry the read and write side
+> of shared memory as one class, and the brain-scan templates ship with every new brain.
+> `brain-core` stays on v1.3.32 until the operator releases.
 
 - **Shared memory is read at bootup by topic and freshness, and its delivery is checked at close.** The operator's order of 2026-09-13 names read AND write, bootup to closing, as one class. Measured before: the bootup reported a commit count (level 1), the close skill asked in prose whether a finding reaches past this machine, and nothing mechanical sat between "written" and "delivered". Now `shared-memory-check.sh` follows its commit line with a freshness line from the register — `N entries dated since <last check> — ops 13, core 7, …` plus the `--since` query for the list — and stays silent when nothing is dated after the last check, so the line cannot become noise. `session-closing.sh` measures the shared repo at close: uncommitted files or unpushed commits produce a `FAIL shared-memory:` line the close skill reads, a "NOT delivered" section in HANDOFF.md, and a `shared=dirty:N,unpushed:M` field in the session-log line; a clean repo is silence. Neither helper had a fixture before — a mechanism without one is a claim about itself — so both got one, every property in both directions: `test-shared-memory-check.sh` (line with the right tally on fresh entries; silence on a current cursor; silence when the repo moved but nothing is dated after the check; silent seeding) and `test-session-closing.sh` (clean is silent; edited-not-committed fails; committed-not-pushed fails; pushed is silent again; no shared repo invents nothing). Measured on the real brain with a backdated cursor: `21 entries dated since 2026-09-12 — ops 13, core 7, show-tools 1`.
 
