@@ -2,8 +2,10 @@
 
 > Target state as a file + a check against it (order fidelity #6: a gate that only
 > checks its own change cannot see that the whole is broken).
-> `scripts/onboarding-verify.sh` checks every line and writes `onboarding-report.txt`
-> into the verified brain.
+> `scripts/onboarding-verify.sh` checks every line and writes
+> `docs/maintenance/onboarding-report-<host>-<date>.txt` into the verified brain —
+> never into its root (an artifact has no seat in the root whitelist); `--out <file>`
+> overrides the place.
 >
 > **The default scope is ONLY the core brain** (brain-core plugin + own brain with
 > the `core/` submodule). Additional suites — tool-domain plugins from your

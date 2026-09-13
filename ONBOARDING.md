@@ -143,7 +143,8 @@ bash scripts/onboarding-verify.sh ~/Projects/<your-name>-brain
 ```
 
 This checks the 11 points of `docs/onboarding-contract.md` and writes
-`onboarding-report.txt` into your brain. Suite checks (6+7) read `SKIP` on a
+`docs/maintenance/onboarding-report-<host>-<date>.txt` into your brain (never into
+its root; `--out <file>` picks another place). Suite checks (6+7) read `SKIP` on a
 core-only onboarding — that is correct, not red. Send the report back to whoever
 invited you; it answers "does it run on your machine?" without screenshots.
 
