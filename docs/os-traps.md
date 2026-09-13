@@ -148,7 +148,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1
+known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -164,6 +164,10 @@ discriminator case — and all three go through `native()`. The discriminator is
 it matters here more than usual: it asserts SILENCE, and an unresolvable path produces
 silence too, so without `native()` that case would pass on Windows for the wrong reason
 and certify a fixture that sees only one world state.
+2026-09-13, test-coherence-scan-files.sh baselined after the same review: the temp dir
+never crosses into node as data — node receives the harness file as an ARGUMENT (Git Bash
+converts argv) and the lens files by NAME through env, which is the comparison the helper
+under test makes (names, not directories). No path is opened by the native process.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
