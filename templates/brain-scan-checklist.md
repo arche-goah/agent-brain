@@ -69,6 +69,7 @@ the deny — not from the scan, the scan is read-only). → maximum `configured`
 
 - [ ] `memory-lint.py` runs with exit 0 (index, frontmatter, links, limits, snapshot).
 - [ ] `MEMORY.md` under 200 lines / 25 KB — the harness reads nothing past that.
+- [ ] No index entry line over 400 characters (`memory-lint.py` limits — measured to fire on a real brain; an index line that carries the lesson instead of pointing at the file is what pushes MEMORY.md to its cap).
 - [ ] Every memory file is linked from `MEMORY.md` or from a topic sub-index `index-<topic>.md` that `MEMORY.md` links.
 - [ ] The repo snapshot (`docs/memory-snapshot/`) matches the live memory (`core/helpers/memory-sync.cjs export`).
 

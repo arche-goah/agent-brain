@@ -5,6 +5,11 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## Unreleased
+
+- **Ponytail's scope names build tasks with an artefact, not only code.** The skill said "NOT for non-coding requests" while one instance fired it as the only engineering-discipline carrier on TouchDesigner networks, shaders, MCP setups and configs — and had deleted its second carrier for exactly that reason (collaborator finding from a full audit, 2026-09-13). Operator decision the same day: scope A, the ladder applies word for word wherever something with a construction gets built; prose, research and decisions stay out. Explicitly under A/B test — the operator ordered a comparison to verify it, tracked in the proving brain's order list; if the wider scope produces worse work on non-code artefacts, this line moves back.
+- **Checklist template §5 carries the 400-character index-entry limit.** `memory-dream` cites it as "checklist limit", `memory-lint.py` enforces it (measured to fire on a real brain the day the template shipped), and the template stripped it by mistake. Same collaborator audit.
+
 ## 1.3.37 — 2026-09-13
 
 > **BETA-PHASE TAG on `brain-core-next`.** Four strands from one day, all reviewed by the
