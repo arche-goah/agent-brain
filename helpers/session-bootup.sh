@@ -487,7 +487,17 @@ fi
 # on the colleague's: a template entry reaches only brains bootstrapped after it lands,
 # a bootup call reaches every brain that consumes the core. An instance cannot forget
 # what it does not have to remember.
-# Cost measured on a full brain: ~6 s, one line of output when everything is fine.
+# Cost: the "~6 s" this comment carried until 2026-09-13 was stale by then — measured
+# that day on a full brain, the self-test alone took 93.6 s against this hook's 30 s
+# timeout, and the bootup had been killed at every start for three weeks (41 times in 33
+# transcripts on one machine; the same on a Windows brain). The first lines of the
+# summary arrive, this one never did. BRAIN_SELFTEST_BG=1 is what changed: the fixture
+# half of the self-test is cached by CONTENT (core commit + fixture files + tooling) in
+# scripts/cached-verdict.sh, and on a cache miss the hook hands the work to the
+# background and reports the previous verdict with its age. Measured after: 1.7 s on a
+# hit, the same on a miss. Only the session-start hook sets this flag — a hand-run
+# brain-check keeps measuring in the foreground, because a person running it wants an
+# answer, not a deferral.
 # It never fails the bootup — a broken check must not keep a session from starting.
 # The `|| true` is load-bearing for VISIBILITY, not only for robustness — do not tidy it
 # away. A sibling instance measured (2026-08-20) that the harness injects the content of
@@ -496,7 +506,7 @@ fi
 # quiet exactly in the case where it has something to say. Swallowing the code is what
 # keeps the message.
 if [[ -f "$HERE/../scripts/brain-check.sh" ]]; then
-  CLAUDE_PROJECT_DIR="$R" bash "$HERE/../scripts/brain-check.sh" --brief 2>/dev/null || true
+  CLAUDE_PROJECT_DIR="$R" BRAIN_SELFTEST_BG=1 bash "$HERE/../scripts/brain-check.sh" --brief 2>/dev/null || true
 fi
 
 echo "=== END BOOTUP ==="
