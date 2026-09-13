@@ -72,4 +72,30 @@ else
   echo "shared-memory: ${COUNT:-?} new commits since last start (${AUTHORS:-unknown}) — ${FILES:-see git log}"
 fi
 
+# FRESHNESS BY TOPIC (operator order 2026-09-13). The commit count above says that
+# SOMETHING moved; it does not say what a session working on grandMA3 or the core needs
+# to read. The register carries a date per entry since the same day, and the generator
+# can be asked `--since`. Keyed on the date of the last successful check — a session that
+# closed and reopened the same day sees today's entries again, which is the cheap side
+# of the error. One generator call, one git pass; silence when it has nothing to add.
+SINCE_DAY=""
+if [[ -f "$STATE_FILE" ]]; then
+  SINCE_DAY=$(grep -o '"lastCheckedAt" *: *"[^"]*"' "$STATE_FILE" 2>/dev/null \
+    | sed -E 's/.*"([0-9]{4}-[0-9]{2}-[0-9]{2}).*/\1/')
+fi
+GEN="$(dirname "${BASH_SOURCE[0]:-$0}")/../scripts/shared-memory-index.py"
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+if [[ -n "$SINCE_DAY" && -f "$GEN" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; then
+  FRESH=$("$PY" "$GEN" --repo "$REPO" --since "$SINCE_DAY" 2>/dev/null)
+  # Per-topic tally from the entry lines (`- <date> [topic] …`); the generator's own count
+  # line is the total. awk, not a second generator run per topic.
+  BY_TOPIC=$(printf '%s\n' "$FRESH" | awk '/^- /{ if (match($0, /\[[a-z0-9-]+\]/)) t[substr($0, RSTART+1, RLENGTH-2)]++ }
+    END { for (k in t) printf "%s %d, ", k, t[k] }' | sed 's/, $//')
+  TOTAL=$(printf '%s\n' "$FRESH" | sed -n 's/^since [0-9-]*: \([0-9]*\) entr.*/\1/p')
+  if [[ -n "$TOTAL" && "$TOTAL" != "0" ]]; then
+    echo "shared-memory: $TOTAL entr$([[ "$TOTAL" == 1 ]] && echo y || echo ies) dated since $SINCE_DAY — ${BY_TOPIC:-see --since} (list: core/scripts/shared-memory-index.py --since $SINCE_DAY [--topic <t>])"
+  fi
+fi
+
 write_state
