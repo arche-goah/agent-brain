@@ -8,9 +8,17 @@
 # one. The helpers `relay()` and `assertCount()` replace that; this fixture keeps them
 # honest and keeps a new bare site from appearing.
 #
-# Two checks:
+# Three checks:
 #   1. no `JSON.stringify(...).slice(` in workflows/ — the bare-relay pattern itself
-#   2. the helpers behave: relay marks a cut, assertCount aborts on a mismatch
+#   2. no relay() in workflows/ carries bulk (a five-digit char limit) — the fourth site
+#   3. the helpers behave: relay marks a cut, assertCount aborts on a mismatch
+#
+# Check 2 exists because check 1 was not the class. Measured 2026-09-13: three workflows
+# had replaced the bare pattern with relay(..., 50000) and read green here, while a real
+# run cut 241,137 chars down to 60,000 and lost 6 of 9 producers — marked in the payload,
+# and still lost. A marker turns a silent cut into a loud one; it does not deliver the
+# data. Bulk belongs in a file the consumer reads (assertFiles), and a relay limit is an
+# index limit — four digits, not five.
 #
 # Deliberately uses no temp directory: OS-3 in docs/os-traps.md — a shell path handed to
 # a native process needs cygpath, and the cheapest way not to get that wrong is not to
@@ -30,7 +38,16 @@ else
   ok "no bare JSON.stringify(...).slice( in workflows/"
 fi
 
-# ── 2. helper behaviour ────────────────────────────────────────────────────
+# ── 2. no bulk relay anywhere in workflows/ ────────────────────────────────
+hits="$(grep -rEn 'relay\(.*,[[:space:]]*[0-9]{5,}[[:space:]]*,' "$ROOT/workflows" || true)"
+if [ -n "$hits" ]; then
+  bad "relay() with a bulk limit (>= 10000 chars) — write the data to a file and gate the consumer with assertFiles(); only an index travels through a prompt:"
+  printf '%s\n' "$hits" | sed 's/^/         /'
+else
+  ok "no relay() in workflows/ carries bulk (every limit below 10000 chars)"
+fi
+
+# ── 3. helper behaviour ────────────────────────────────────────────────────
 out="$(node -e '
 const lines = []
 const log = m => lines.push(m)

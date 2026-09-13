@@ -8,7 +8,8 @@
 #
 # The platform-independent entry point is the workflow tool, directly in the
 # session:
-#     Workflow({ scriptPath: "core/workflows/brain-scan.js", args: { date: "<YYYY-MM-DD>" } })
+#     Workflow({ scriptPath: "core/workflows/brain-scan.js",
+#                args: { date: "<YYYY-MM-DD>", scratch: "<session scratchpad>/brain-scan-<date>" } })
 # (verified 2026-08-04 on Windows/Git-Bash together with coherence-scan). The scan
 # itself is platform-neutral — only this scheduling wrapper around it is not.
 #
