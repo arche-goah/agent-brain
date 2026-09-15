@@ -165,10 +165,72 @@ fi
 # 8 Leak check across the own brain: no FOREIGN home paths may have landed in it
 # (templates and copied examples are the usual carrier).
 if [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then
-  me=$(id -un)
-  # Filters: the own username is this brain's business; /Users/Shared is a macOS
-  # system path; pure-punctuation "names" are doc ellipsis placeholders, not users.
-  hits=$(grep -rhoE '/(Users|home)/[A-Za-z0-9._-]+' "$BRAIN" --exclude-dir=.git --exclude-dir=core --exclude-dir=node_modules 2>/dev/null | grep -vE "^/(Users|home)/$me$" | grep -v '^/Users/Shared$' | grep -vE '^/(Users|home)/[._-]+$' | sort -u | head -3 | tr '\n' ' ')
+  # The own home paths are REMOVED FROM THE TEXT before anything is extracted, instead
+  # of being filtered out afterwards. Measured 2026-09-13 on a Windows machine whose user
+  # profile carries a space ("<first> <last>"): the extraction pattern stops at the space,
+  # so the hit was the first name only, the after-the-fact filter compared it against the
+  # full name from `id -un`, never matched, and the own home path read as a foreign leak on
+  # every run. Stripping first is what makes a name with a space work at all. Both spellings
+  # count: `id -un` and the basename of $HOME can differ (domain logins).
+  me=$(id -un); myhome=$(basename "$HOME")
+  # A brain can own more than one machine. Its other usernames are INSTANCE knowledge and
+  # are declared in .claude/rules/leak-names.json ("own_home_names"); measured 2026-09-13:
+  # twelve occurrences of the first machine's username in docs and skill copies of a
+  # two-machine brain, none of them a leak. Missing file or missing key = empty list, the
+  # check then only knows the machine it runs on (that is the single-machine case).
+  own_extra=$(sed -n '/"own_home_names"/,/]/p' "$BRAIN/.claude/rules/leak-names.json" 2>/dev/null | grep -aoE '"[^"]+"' | grep -av own_home_names | tr -d '"\r')
+  # Onboarding reports are this check's OWN output, and a multi-PC brain archives the
+  # reports of its other machines — the home path in them is the same brain on another
+  # computer, not a foreign one. (In that measurement the freshly written report was among
+  # the hits: the check reported the file it had created one line earlier.)
+  # Filters that stay: /Users/Shared is a macOS system path; pure-punctuation "names" are
+  # doc ellipsis placeholders, not users.
+  # The strip is a WHOLE-NAME match: a name counts only when the next character could not
+  # continue a username (the extraction charset below). A prefix match turned a correct
+  # FAIL into a silent OK — a foreign user whose name merely STARTS with the running
+  # user's name lost its home path before extraction (review 2026-09-13). awk's index()
+  # matches literally, so a "." in a name is a dot and not "any character"; names travel
+  # through ENVIRON one per line, so a space inside a name does not split it; both sides
+  # are lowercased, so a declared lowercase name also strips a capitalised Windows profile.
+  # WHAT IS SCANNED: only what git TRACKS, when the brain is a repo. An untracked or
+  # ignored file cannot reach a remote, so it cannot leak — and scanning it produced a
+  # false positive that no strip could have caught (measured 2026-09-15, second Windows
+  # machine): a local state log held the harness's own scratchpad path, and that path
+  # spells the running profile in the Windows 8.3 SHORT form. `id -un` and the basename of
+  # $HOME only ever return the long form, and the tilde is outside the extraction charset
+  # below, so the token was cut there and the brain's OWN home path surfaced as a foreign
+  # hit. Tracked-only removes the whole class instead of teaching the strip one more
+  # spelling. The submodule is a single gitlink entry to git, so `core` drops out by
+  # itself, and ignored trees (node_modules, local state) likewise. A brain that is not a
+  # repo yet keeps the directory scan, with the local state directory excluded.
+  if git -C "$BRAIN" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # -z/-0 because a tracked path may contain a space; -r so that an empty file list does
+    # not become a grep with no operands, which would read stdin and hang.
+    # The own reports are dropped by BASENAME, in any directory. A pathspec exclude
+    # (':!:onboarding-report*') is anchored at the repo root and missed the default report
+    # location docs/maintenance/ — measured 2026-09-15: a tracked report there read as a
+    # foreign leak again, the exact self-report #144 removed.
+    scan_brain() { ( cd "$BRAIN" && git ls-files -z 2>/dev/null \
+      | grep -avzE '(^|/)onboarding-report[^/]*$' \
+      | xargs -0 -r grep -ahE '/(Users|home)/' 2>/dev/null ); }
+  else
+    scan_brain() { grep -rhE '/(Users|home)/' "$BRAIN" --exclude-dir=.git --exclude-dir=core --exclude-dir=node_modules --exclude-dir=.claude-state --exclude='onboarding-report*' 2>/dev/null; }
+  fi
+  hits=$(scan_brain \
+    | OWN_NAMES="$(printf '%s\n%s\n%s' "$me" "$myhome" "$own_extra")" awk '
+        BEGIN { n = split(ENVIRON["OWN_NAMES"], raw, "\n")
+                for (i = 1; i <= n; i++) if (raw[i] != "") { own[++k] = "/users/" tolower(raw[i]); own[++k] = "/home/" tolower(raw[i]) } }
+        { for (i = 1; i <= k; i++) {
+            line = $0; low = tolower(line); out = ""; L = length(own[i])
+            while ((j = index(low, own[i])) > 0) {
+              c = substr(low, j + L, 1)
+              out = out substr(line, 1, j - 1) ((c != "" && c ~ /[a-z0-9._-]/) ? substr(line, j, L) : "")
+              line = substr(line, j + L); low = substr(low, j + L)
+            }
+            $0 = out line
+          }
+          print }' \
+    | grep -aohE '/(Users|home)/[A-Za-z0-9._-]+' | grep -av '^/Users/Shared$' | grep -avE '^/(Users|home)/[._-]+$' | sort -u | head -3 | tr '\n' ' ')
   check 8 "Leak check brain" $([ -z "$hits" ] && echo 0 || echo 1) "${hits:-no foreign home paths in the own brain}"
 else
   check 8 "Leak check brain" 1 "no brain directory to scan"
