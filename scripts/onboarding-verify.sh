@@ -192,7 +192,26 @@ if [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then
   # matches literally, so a "." in a name is a dot and not "any character"; names travel
   # through ENVIRON one per line, so a space inside a name does not split it; both sides
   # are lowercased, so a declared lowercase name also strips a capitalised Windows profile.
-  hits=$(grep -rhE '/(Users|home)/' "$BRAIN" --exclude-dir=.git --exclude-dir=core --exclude-dir=node_modules --exclude='onboarding-report*' 2>/dev/null \
+  # WHAT IS SCANNED: only what git TRACKS, when the brain is a repo. An untracked or
+  # ignored file cannot reach a remote, so it cannot leak — and scanning it produced a
+  # false positive that no strip could have caught (measured 2026-09-15, second Windows
+  # machine): a local state log held the harness's own scratchpad path, and that path
+  # spells the running profile in the Windows 8.3 SHORT form. `id -un` and the basename of
+  # $HOME only ever return the long form, and the tilde is outside the extraction charset
+  # below, so the token was cut there and the brain's OWN home path surfaced as a foreign
+  # hit. Tracked-only removes the whole class instead of teaching the strip one more
+  # spelling. The submodule is a single gitlink entry to git, so `core` drops out by
+  # itself, and ignored trees (node_modules, local state) likewise. A brain that is not a
+  # repo yet keeps the directory scan, with the local state directory excluded.
+  if git -C "$BRAIN" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # -z/-0 because a tracked path may contain a space; -r so that an empty file list does
+    # not become a grep with no operands, which would read stdin and hang.
+    scan_brain() { ( cd "$BRAIN" && git ls-files -z -- . ':!:onboarding-report*' 2>/dev/null \
+      | xargs -0 -r grep -ahE '/(Users|home)/' 2>/dev/null ); }
+  else
+    scan_brain() { grep -rhE '/(Users|home)/' "$BRAIN" --exclude-dir=.git --exclude-dir=core --exclude-dir=node_modules --exclude-dir=.claude-state --exclude='onboarding-report*' 2>/dev/null; }
+  fi
+  hits=$(scan_brain \
     | OWN_NAMES="$(printf '%s\n%s\n%s' "$me" "$myhome" "$own_extra")" awk '
         BEGIN { n = split(ENVIRON["OWN_NAMES"], raw, "\n")
                 for (i = 1; i <= n; i++) if (raw[i] != "") { own[++k] = "/users/" tolower(raw[i]); own[++k] = "/home/" tolower(raw[i]) } }

@@ -89,15 +89,21 @@ esac
 
 # ── 4. the strip is a whole name, not a prefix ─────────────────────────────
 # Review 2026-09-13: `s|/Users/$me||g` had no boundary, so a foreign user whose name
-# STARTS with the running user's name lost its home path before extraction — main said
-# FAIL, the branch said OK. Built from the RUNNING user's name, so it holds on every
-# machine; the declared-name side is covered in 5.
+# STARTS with an own name lost its home path before extraction — main said FAIL, the
+# branch said OK.
+# The stand-in is the DECLARED "othermachine", not the running user's name. Built from
+# $me this case could not pass on the very machine class the fix is for (measured
+# 2026-09-15, Windows profile with a space): it asserts that "${me}ia" appears in the
+# output, while the extraction charset `[A-Za-z0-9._-]+` has no space and can only ever
+# return the first word. The FAIL fired correctly there — the assertion was unreachable,
+# not the strip broken. A space-free own name tests the same property on every machine.
+# The running user's name stays covered by 1 (silent) and the space/case side by 5.
 rm "$BRAIN/docs/maintenance/similar.md"
-printf 'a stranger with a longer name: /%s/%sia/Projects/y\n' "$U" "$me" > "$BRAIN/docs/maintenance/prefix.md"
+printf 'a stranger with a longer name: /%s/othermachineia/Projects/y\n' "$U" > "$BRAIN/docs/maintenance/prefix.md"
 out="$(line8 prefix)"
 case "$out" in
-  FAIL*"${me}ia"*) ok "a foreign name that starts with the running user's name is still a leak" ;;
-  *)               bad "prefix of the running user's name stripped a foreign home path: $out" ;;
+  FAIL*othermachineia*) ok "a foreign name that starts with an own name is still a leak" ;;
+  *)                    bad "prefix of an own name stripped a foreign home path: $out" ;;
 esac
 rm "$BRAIN/docs/maintenance/prefix.md"
 
@@ -116,6 +122,44 @@ case "$out" in
   FAIL*aXb*) ok "a dot in a declared name is a dot, not a wildcard" ;;
   *)         bad "a dot in a declared name matched another character: $out" ;;
 esac
+
+# ── 6. only what git TRACKS is scanned ─────────────────────────────────────
+# Measured 2026-09-15 on the second Windows machine: the single own-path false positive
+# left on that machine came out of a local state log — untracked and gitignored, so it
+# can never reach a remote, and it carried the harness's scratchpad path in the Windows
+# 8.3 SHORT form of the running profile. No strip built from `id -un` can know that
+# spelling. Scanning only tracked files removes the class; the check keeps its reach over
+# everything that can actually leave the machine. Both directions, because "scan less" is
+# exactly the kind of fix that can go silent in the wrong direction.
+if command -v git >/dev/null 2>&1; then
+  RB="$TMP/repobrain"
+  mkdir -p "$RB/.claude/rules" "$RB/docs/maintenance"
+  printf '{}\n' > "$RB/.claude/settings.json"
+  printf '{\n  "names": [],\n  "instances": [],\n  "own_home_names": []\n}\n' \
+    > "$RB/.claude/rules/leak-names.json"
+  git -C "$RB" init -q >/dev/null 2>&1
+  rline8() {
+    BRAIN_DIR="$RB" bash "$VERIFY" "$RB" --out "$TMP/report-$1.txt" 2>/dev/null \
+      | grep -aE '^(OK|FAIL)[[:space:]]+8 ' || echo "MISSING line 8 ($1)"
+  }
+  # untracked: present in the working tree, invisible to the check
+  printf 'local scratch note: /%s/strangerx/Projects/y\n' "$U" > "$RB/docs/maintenance/untracked.md"
+  out="$(rline8 untracked)"
+  case "$out" in
+    OK*) ok "an untracked file is not scanned — it cannot reach a remote" ;;
+    *)   bad "untracked file reported as a leak: $out" ;;
+  esac
+  # the SAME file, now tracked: loud, and named
+  git -C "$RB" add docs/maintenance/untracked.md >/dev/null 2>&1
+  out="$(rline8 tracked)"
+  case "$out" in
+    FAIL*strangerx*) ok "the same file tracked is reported, and named" ;;
+    FAIL*)           bad "tracked leak reported but not named: $out" ;;
+    *)               bad "a tracked foreign path was NOT reported — the check went blind: $out" ;;
+  esac
+else
+  ok "git not available — tracked-only scan not exercised (skipped, not assumed)"
+fi
 
 [ "$fail" -eq 0 ] && echo "test-onboarding-leak-check: all checks passed"
 exit "$fail"

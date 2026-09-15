@@ -272,3 +272,35 @@ and was written with `\|`. Measured on macOS: 0 lines for the German AND the Eng
 where 1 was expected in each — the fixture written for the heading change caught the sed
 change instead. GNU CI would have been green. Fixed with `-E`; class searched across core and
 the proving instance (scripts, helpers, hooks): no other site.
+
+## OS-8 — one identity, two platform spellings: the own user profile as long name and as 8.3 short name
+
+shape: A (borderline — see note)
+
+invariant: Code that decides "is this path MINE" never derives the answer from a single
+spelling of the username. On Windows the same profile has a long name and an 8.3 short
+name (six characters plus tilde-digit), both produced by the platform and both appearing
+in real paths; `id -un` and the basename of $HOME return only the long one. A comparison
+built on that alone answers "foreign" for the machine it is running on.
+pattern:   \$\(id -un\)
+paths:     --include=*.sh scripts helpers
+known:     scripts/onboarding-verify.sh=1 scripts/test-onboarding-leak-check.sh=1
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-09-15 on the second Windows machine (emil-workstation), in check 8
+of onboarding-verify.sh. The Claude Code harness hands its scratchpad root out in the SHORT
+spelling; a local guard log had recorded it, and the leak check reported the brain's own home
+path as a foreign leak — the exact failure the surrounding fix set out to remove, one spelling
+further on. Teaching the strip the short name would not have been enough on its own: the tilde
+is outside the extraction charset `[A-Za-z0-9._-]+`, so the token is cut there before any
+comparison happens. Closed by scope instead: the scan now reads only git-TRACKED files when the
+brain is a repo, and an untracked or ignored file cannot reach a remote, so the short spelling
+stops being reachable at all. Measured after the change on that machine: no tracked file
+contains the short form, and the own-path hit is gone while both genuine foreign hits remain.
+The baseline counts the sites that ask "who am I" from `id -un`; a new one is read with one
+question: can this identity appear under a second spelling on the platform it runs on?
+Shape is filed as A because the platform supplies a second form of a value the program did not
+control — but it is a borderline case: nothing is reshaped IN TRANSIT here, both spellings are
+valid at the same time and the program simply knows one of them. If the maintainers read that
+as a fourth shape rather than a variant of A, this entry is the place to name it.
