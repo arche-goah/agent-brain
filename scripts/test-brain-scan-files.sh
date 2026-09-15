@@ -59,7 +59,7 @@ done
 # `scratch` while scripts/brain-scan.sh still passed only the date — the scheduled scan
 # would have died at its first line, and `claude -p` exits 0 on that.
 RUNNER="$ROOT/scripts/brain-scan.sh"
-if grep -E "Workflow\(\{name:'brain-scan'" "$RUNNER" | grep -q "scratch:"; then
+if grep -Eq "Workflow\(\{name:'brain-scan'.*scratch:" "$RUNNER"; then
   ok "the headless runner passes scratch to the workflow"
 else
   bad "scripts/brain-scan.sh calls the workflow without scratch — the scheduled scan throws at its first line"
