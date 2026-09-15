@@ -54,6 +54,21 @@ for stage in scan fixes report; do
     bad "stage '${stage}' has no assertFiles() gate — it could report on a partial set silently"
   fi
 done
+# The headless runner is a CALLER of the workflow and must satisfy the same contract.
+# Measured 2026-09-13 (review of this change): the workflow started to throw without
+# `scratch` while scripts/brain-scan.sh still passed only the date — the scheduled scan
+# would have died at its first line, and `claude -p` exits 0 on that.
+RUNNER="$ROOT/scripts/brain-scan.sh"
+if grep -E "Workflow\(\{name:'brain-scan'" "$RUNNER" | grep -q "scratch:"; then
+  ok "the headless runner passes scratch to the workflow"
+else
+  bad "scripts/brain-scan.sh calls the workflow without scratch — the scheduled scan throws at its first line"
+fi
+if grep -q -- '--add-dir "\$SCRATCH"' "$RUNNER"; then
+  ok "the headless runner grants the session access to its scratch dir"
+else
+  bad "scripts/brain-scan.sh does not --add-dir its scratch — the agents cannot write their findings there"
+fi
 if [ "$(grep -c 'OUTPUT — you are the producer, you write' "$WF")" -ge 2 ]; then
   ok "scan agents and fix agents are both instructed to write their output to a file"
 else

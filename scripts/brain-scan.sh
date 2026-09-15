@@ -62,8 +62,15 @@ cd "$REPO" || exit 1
 # 0 (=infinite) so a hung run cannot pile up under the scheduler; an outer value
 # (instance wrapper, manual run) wins over the default.
 export CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS="${CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS:-5400000}"
+# The workflow throws without `scratch` (its producers write their findings there), and a
+# headless run has no session scratchpad to name. So the runner makes one and hands it to
+# the session twice: in the args, and via --add-dir so the agents may write and read it.
+# Not under .claude-state/: the template's deny list blocks Read/Edit there, and the report
+# agent must read the files. Left behind on purpose — a run's findings are the artifacts the
+# repeat-run rule reads before anyone scans again; the OS clears the temp dir.
+SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/brain-scan-$DATE.XXXXXX") || exit 1
 {
-  echo "=== brain-scan start $(date '+%F %T') ==="
+  echo "=== brain-scan start $(date '+%F %T') scratch=$SCRATCH ==="
   # `--allowedTools Workflow` is required: without it the headless run stalls at the
   # harness gate "Review dynamic workflow before running" and only returns
   # {"error": "Review dynamic workflow before running"} — measured 2026-08-06, even for
@@ -71,8 +78,8 @@ export CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS="${CLAUDE_CODE_PRINT_BG_WAIT_CEILING
   # not enough. The list is additive (Bash/Read/Edit stay allowed), and the flag is
   # variadic — the prompt must come BEFORE it, or it swallows it.
   "$CLAUDE" -p \
-    "Run the saved workflow 'brain-scan': Workflow({name:'brain-scan', args:{date:'$DATE'}, run_in_background:false}). This is an ordered, recurring task (docs/maintenance/brain-scan-auftraege.md, F10 from: operator 2026-07-29). Wait for the result and print ONLY at the end: report path, summary, topFindings." \
-    --permission-mode acceptEdits --allowedTools Workflow
+    "Run the saved workflow 'brain-scan': Workflow({name:'brain-scan', args:{date:'$DATE', scratch:'$SCRATCH'}, run_in_background:false}). This is an ordered, recurring task (docs/maintenance/brain-scan-auftraege.md, F10 from: operator 2026-07-29). Wait for the result and print ONLY at the end: report path, summary, topFindings." \
+    --add-dir "$SCRATCH" --permission-mode acceptEdits --allowedTools Workflow
   rc=$?
   # Due stays due as long as no report sits on disk — the next run gates on that itself
   # now (freshness = newest report). Finding 2026-08-04: `claude -p` returned exit 0
