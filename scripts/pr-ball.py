@@ -57,7 +57,7 @@ def moves(data, now, min_hours):
             if others and others[-1].get("state") == "CHANGES_REQUESTED":
                 at = ts(others[-1]["submittedAt"])
                 if last_commit is None or at > last_commit:
-                    since, kind = at, "yours — changes requested"
+                    since, kind = at, "yours - changes requested"
         else:
             mine = [ts(r["submittedAt"]) for r in reviews if login(r.get("author")) == me]
             touched = mine + [ts(c.get("createdAt")) for c in nodes(pr, "comments")
@@ -67,7 +67,7 @@ def moves(data, now, min_hours):
             if (mine or requested or mentioned) and last_commit is not None:
                 last_touch = max(touched) if touched else None
                 if last_touch is None or last_commit > last_touch:
-                    since, kind = last_commit, "review — new commits since your last look" if last_touch else "review — asked, not looked at yet"
+                    since, kind = last_commit, "review - new commits since your last look" if last_touch else "review - asked, not looked at yet"
         if since is None:
             continue
         hours = (now - since).total_seconds() / 3600
@@ -88,7 +88,9 @@ def main():
         return 0  # offline / gh error / no JSON: silence, never a false line
     found = moves(data, now, a.min_hours)
     if found:
-        print("!! PR waiting on you: " + " · ".join(found[:6]))
+        # ASCII only: Python prints through the console code page on Windows, and a dash
+        # or middle dot arrived there as a replacement character (Windows runner, 2026-09-15).
+        print("!! PR waiting on you: " + " | ".join(found[:6]))
     return 0
 
 
