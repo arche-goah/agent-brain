@@ -178,16 +178,34 @@ if [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then
   # twelve occurrences of the first machine's username in docs and skill copies of a
   # two-machine brain, none of them a leak. Missing file or missing key = empty list, the
   # check then only knows the machine it runs on (that is the single-machine case).
-  own_extra=$(sed -n '/"own_home_names"/,/]/p' "$BRAIN/.claude/rules/leak-names.json" 2>/dev/null | grep -aoE '"[^"]+"' | grep -av own_home_names | tr -d '"')
+  own_extra=$(sed -n '/"own_home_names"/,/]/p' "$BRAIN/.claude/rules/leak-names.json" 2>/dev/null | grep -aoE '"[^"]+"' | grep -av own_home_names | tr -d '"\r')
   # Onboarding reports are this check's OWN output, and a multi-PC brain archives the
   # reports of its other machines — the home path in them is the same brain on another
   # computer, not a foreign one. (In that measurement the freshly written report was among
   # the hits: the check reported the file it had created one line earlier.)
   # Filters that stay: /Users/Shared is a macOS system path; pure-punctuation "names" are
   # doc ellipsis placeholders, not users.
+  # The strip is a WHOLE-NAME match: a name counts only when the next character could not
+  # continue a username (the extraction charset below). A prefix match turned a correct
+  # FAIL into a silent OK — a foreign user whose name merely STARTS with the running
+  # user's name lost its home path before extraction (review 2026-09-13). awk's index()
+  # matches literally, so a "." in a name is a dot and not "any character"; names travel
+  # through ENVIRON one per line, so a space inside a name does not split it; both sides
+  # are lowercased, so a declared lowercase name also strips a capitalised Windows profile.
   hits=$(grep -rhE '/(Users|home)/' "$BRAIN" --exclude-dir=.git --exclude-dir=core --exclude-dir=node_modules --exclude='onboarding-report*' 2>/dev/null \
-    | sed -e "s|/Users/$me||g" -e "s|/home/$me||g" -e "s|/Users/$myhome||g" -e "s|/home/$myhome||g" \
-    | { if [ -n "$own_extra" ]; then sed $(for n in $own_extra; do printf ' -e s|/Users/%s||g -e s|/home/%s||g' "$n" "$n"; done); else cat; fi } \
+    | OWN_NAMES="$(printf '%s\n%s\n%s' "$me" "$myhome" "$own_extra")" awk '
+        BEGIN { n = split(ENVIRON["OWN_NAMES"], raw, "\n")
+                for (i = 1; i <= n; i++) if (raw[i] != "") { own[++k] = "/users/" tolower(raw[i]); own[++k] = "/home/" tolower(raw[i]) } }
+        { for (i = 1; i <= k; i++) {
+            line = $0; low = tolower(line); out = ""; L = length(own[i])
+            while ((j = index(low, own[i])) > 0) {
+              c = substr(low, j + L, 1)
+              out = out substr(line, 1, j - 1) ((c != "" && c ~ /[a-z0-9._-]/) ? substr(line, j, L) : "")
+              line = substr(line, j + L); low = substr(low, j + L)
+            }
+            $0 = out line
+          }
+          print }' \
     | grep -aohE '/(Users|home)/[A-Za-z0-9._-]+' | grep -av '^/Users/Shared$' | grep -avE '^/(Users|home)/[._-]+$' | sort -u | head -3 | tr '\n' ' ')
   check 8 "Leak check brain" $([ -z "$hits" ] && echo 0 || echo 1) "${hits:-no foreign home paths in the own brain}"
 else

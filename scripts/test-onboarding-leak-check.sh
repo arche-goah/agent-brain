@@ -87,5 +87,35 @@ case "$out" in
   *)                 bad "a similar name slipped through the strip: $out" ;;
 esac
 
+# ── 4. the strip is a whole name, not a prefix ─────────────────────────────
+# Review 2026-09-13: `s|/Users/$me||g` had no boundary, so a foreign user whose name
+# STARTS with the running user's name lost its home path before extraction — main said
+# FAIL, the branch said OK. Built from the RUNNING user's name, so it holds on every
+# machine; the declared-name side is covered in 5.
+rm "$BRAIN/docs/maintenance/similar.md"
+printf 'a stranger with a longer name: /%s/%sia/Projects/y\n' "$U" "$me" > "$BRAIN/docs/maintenance/prefix.md"
+out="$(line8 prefix)"
+case "$out" in
+  FAIL*"${me}ia"*) ok "a foreign name that starts with the running user's name is still a leak" ;;
+  *)               bad "prefix of the running user's name stripped a foreign home path: $out" ;;
+esac
+rm "$BRAIN/docs/maintenance/prefix.md"
+
+# ── 5. declared names: spaces, case and dots ───────────────────────────────
+printf '{\n  "names": [],\n  "instances": [],\n  "own_home_names": ["othermachine", "first last", "a.b"]\n}\n' \
+  > "$BRAIN/.claude/rules/leak-names.json"
+printf 'profile /%s/First Last/AppData and /%s/A.B/x\n' "$U" "$U" > "$BRAIN/docs/maintenance/declared.md"
+out="$(line8 declared)"
+case "$out" in
+  OK*) ok "a declared name with a space and different case is stripped as one name" ;;
+  *)   bad "declared name with space/case read as a leak: $out" ;;
+esac
+printf 'someone else: /%s/aXb/x\n' "$U" > "$BRAIN/docs/maintenance/dot.md"
+out="$(line8 dot)"
+case "$out" in
+  FAIL*aXb*) ok "a dot in a declared name is a dot, not a wildcard" ;;
+  *)         bad "a dot in a declared name matched another character: $out" ;;
+esac
+
 [ "$fail" -eq 0 ] && echo "test-onboarding-leak-check: all checks passed"
 exit "$fail"
