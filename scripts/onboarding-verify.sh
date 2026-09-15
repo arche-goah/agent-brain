@@ -206,7 +206,12 @@ if [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then
   if git -C "$BRAIN" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     # -z/-0 because a tracked path may contain a space; -r so that an empty file list does
     # not become a grep with no operands, which would read stdin and hang.
-    scan_brain() { ( cd "$BRAIN" && git ls-files -z -- . ':!:onboarding-report*' 2>/dev/null \
+    # The own reports are dropped by BASENAME, in any directory. A pathspec exclude
+    # (':!:onboarding-report*') is anchored at the repo root and missed the default report
+    # location docs/maintenance/ — measured 2026-09-15: a tracked report there read as a
+    # foreign leak again, the exact self-report #144 removed.
+    scan_brain() { ( cd "$BRAIN" && git ls-files -z 2>/dev/null \
+      | grep -avzE '(^|/)onboarding-report[^/]*$' \
       | xargs -0 -r grep -ahE '/(Users|home)/' 2>/dev/null ); }
   else
     scan_brain() { grep -rhE '/(Users|home)/' "$BRAIN" --exclude-dir=.git --exclude-dir=core --exclude-dir=node_modules --exclude-dir=.claude-state --exclude='onboarding-report*' 2>/dev/null; }

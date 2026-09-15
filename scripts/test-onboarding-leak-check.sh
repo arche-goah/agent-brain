@@ -157,6 +157,19 @@ if command -v git >/dev/null 2>&1; then
     FAIL*)           bad "tracked leak reported but not named: $out" ;;
     *)               bad "a tracked foreign path was NOT reported — the check went blind: $out" ;;
   esac
+  # a TRACKED own report at its default location (docs/maintenance/) stays silent. A
+  # pathspec exclude is anchored at the repo root and missed it — measured 2026-09-15:
+  # the report read as a foreign leak again, the self-report #144 set out to remove.
+  git -C "$RB" rm -q --cached docs/maintenance/untracked.md >/dev/null 2>&1
+  rm "$RB/docs/maintenance/untracked.md"
+  printf 'Shell start — marker in /%s/reportonly/.bashrc\n' "$U" \
+    > "$RB/docs/maintenance/onboarding-report-oldmachine-2026-01-01.txt"
+  git -C "$RB" add docs/maintenance/onboarding-report-oldmachine-2026-01-01.txt >/dev/null 2>&1
+  out="$(rline8 nestedreport)"
+  case "$out" in
+    OK*) ok "a tracked own report below the root is not a leak" ;;
+    *)   bad "a tracked own report in docs/maintenance read as a leak: $out" ;;
+  esac
 else
   ok "git not available — tracked-only scan not exercised (skipped, not assumed)"
 fi
