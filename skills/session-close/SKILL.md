@@ -76,10 +76,12 @@ then an explicit release follows.
      changed a SHARED tool, corrected a SHARED claim, or answered another instance's
      question almost always has something.
    - After this: no further live CHANGES (measuring stays allowed).
-2. **Mechanical close:**
+2. **Mechanical close — BEFORE the commit in step 4, never after it:**
    ```bash
-   bash "$CLAUDE_PROJECT_DIR"/core/helpers/session-closing.sh
+   bash "$CLAUDE_PROJECT_DIR"/core/helpers/session-closing.sh --pre-commit --session "${CLAUDE_SESSION_ID}"
    ```
+   `--pre-commit` writes the session-log line without post-commit state (the close commit
+   carries it) and leaves an untracked stamp, so the SessionEnd hook does not write it again.
    ```bash
    node "$CLAUDE_PROJECT_DIR"/core/helpers/memory-sync.cjs export
    ```
@@ -130,5 +132,6 @@ then an explicit release follows.
   (incident "70 files uncommitted"). The instance therefore carries it as a base rule
   in `.claude/rules/feedback.md` (always loaded); this step 4 is the **verification
   point**, not the source.
-- The SessionEnd hook still runs on the real exit anyway (idempotent: HANDOFF is
-  overwritten; the session log dedupes identical lines in the script itself).
+- The SessionEnd hook still runs on the real exit anyway (HANDOFF is overwritten — it is
+  gitignored; the session log is left alone when step 2's stamp says this session already
+  wrote its line, so no hook touches a tracked file after the close commit).

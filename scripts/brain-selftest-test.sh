@@ -55,7 +55,9 @@ printf '#!/usr/bin/env bash\ntouch "%s/EXECUTED"\nexit 0\n' "$TMP" \
   > "$TMP/brain/scripts/danger-test.sh"
 
 report="$TMP/out.txt"
-bash "$HERE/brain-selftest.sh" "$TMP/brain" > "$report" 2>&1
+# A foreground run by construction: this fixture asserts what a hand run prints, so the
+# caller's hook mode (BRAIN_SELFTEST_BG, see the probe at the end) must not decide it.
+BRAIN_SELFTEST_BG= bash "$HERE/brain-selftest.sh" "$TMP/brain" > "$report" 2>&1
 
 section=$(sed -n '/executables nothing calls/,/without a trigger;/p' "$report")
 if [[ -z "$section" ]]; then
@@ -107,6 +109,19 @@ else
   bad "the hand tool was skipped without saying so — silence is not a report"
 fi
 
+# --- the caller's hook mode does not reach the fixtures -------------------------
+# The session-start hook sets BRAIN_SELFTEST_BG=1 for ITS call. Measured 2026-09-13: the
+# variable was inherited by every fixture, this file's nested run deferred its work, the
+# skip line above went missing, and the self-test was red at every start and green by
+# hand. A probe fixture that fails when it sees the variable, run in hook mode.
+printf '#!/usr/bin/env bash\n[ -z "${BRAIN_SELFTEST_BG:-}" ]\n' > "$TMP/brain/scripts/test-env-probe.sh"
+probe=$(cd "$TMP/brain" && BRAIN_SELFTEST_BG=1 bash "$HERE/brain-selftest.sh" --fixtures-only "$TMP/brain" 2>&1)
+if grep -q 'ok  test-env-probe' <<<"$probe"; then
+  ok "a fixture run in hook mode does not inherit BRAIN_SELFTEST_BG"
+else
+  bad "a fixture inherited the caller's BRAIN_SELFTEST_BG — hook mode leaked into the proof"
+fi
+
 # NOT asserted here, deliberately: "no comment in brain-selftest.sh names a script that
 # it would thereby clear". I wrote that check and it fired on `brain-check.sh` (named in
 # a comment that legitimately describes the relationship between the two) and on the
@@ -118,4 +133,4 @@ fi
 
 echo
 if (( fails )); then echo "brain-selftest-test: $fails FAILURE(S)"; exit 1; fi
-echo "brain-selftest-test: all 7 checks passed"
+echo "brain-selftest-test: all 8 checks passed"
