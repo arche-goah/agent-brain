@@ -148,7 +148,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1
+known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -176,6 +176,11 @@ path. The three arrived together because the producer-writes fix covered the rem
 three workflows at once; the review is per file regardless, and the shared construction
 is what makes it short.
 
+2026-09-13, test-onboarding-leak-check.sh: the temp dir is a BRAIN handed to a bash
+script (BRAIN_DIR and the argument), never a path a native process has to open; the
+report goes to --out inside the same temp dir. Its one pipe-grep carries -a, because the
+line it extracts is the verdict the fixture judges (OS-5).
+
 ## OS-5 — grep swallows a report line by calling the stream binary
 
 shape: B
@@ -187,7 +192,7 @@ the diagnostic replaces exactly the output it was asked to produce, and only in 
 failure path, where nobody has a second copy.
 pattern:   \| *grep -[b-zA-Z]
 paths:     --include=*.sh scripts helpers
-known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=5 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1
+known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -274,3 +279,35 @@ and was written with `\|`. Measured on macOS: 0 lines for the German AND the Eng
 where 1 was expected in each — the fixture written for the heading change caught the sed
 change instead. GNU CI would have been green. Fixed with `-E`; class searched across core and
 the proving instance (scripts, helpers, hooks): no other site.
+
+## OS-8 — one identity, two platform spellings: the own user profile as long name and as 8.3 short name
+
+shape: A (borderline — see note)
+
+invariant: Code that decides "is this path MINE" never derives the answer from a single
+spelling of the username. On Windows the same profile has a long name and an 8.3 short
+name (six characters plus tilde-digit), both produced by the platform and both appearing
+in real paths; `id -un` and the basename of $HOME return only the long one. A comparison
+built on that alone answers "foreign" for the machine it is running on.
+pattern:   \$\(id -un\)
+paths:     --include=*.sh scripts helpers
+known:     scripts/onboarding-verify.sh=1 scripts/test-onboarding-leak-check.sh=1
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-09-15 on the second Windows machine (emil-workstation), in check 8
+of onboarding-verify.sh. The Claude Code harness hands its scratchpad root out in the SHORT
+spelling; a local guard log had recorded it, and the leak check reported the brain's own home
+path as a foreign leak — the exact failure the surrounding fix set out to remove, one spelling
+further on. Teaching the strip the short name would not have been enough on its own: the tilde
+is outside the extraction charset `[A-Za-z0-9._-]+`, so the token is cut there before any
+comparison happens. Closed by scope instead: the scan now reads only git-TRACKED files when the
+brain is a repo, and an untracked or ignored file cannot reach a remote, so the short spelling
+stops being reachable at all. Measured after the change on that machine: no tracked file
+contains the short form, and the own-path hit is gone while both genuine foreign hits remain.
+The baseline counts the sites that ask "who am I" from `id -un`; a new one is read with one
+question: can this identity appear under a second spelling on the platform it runs on?
+Shape is filed as A because the platform supplies a second form of a value the program did not
+control — but it is a borderline case: nothing is reshaped IN TRANSIT here, both spellings are
+valid at the same time and the program simply knows one of them. If the maintainers read that
+as a fourth shape rather than a variant of A, this entry is the place to name it.
