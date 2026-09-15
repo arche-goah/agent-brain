@@ -36,16 +36,22 @@ stage.
 
 1. `DATE=$(date +%F)` (never estimate). Briefly announce which stages run fresh and
    which reports are reused.
-2. **Stage 1** `Workflow({scriptPath: brain-scan.js, args:{date}})` — runs as always,
-   including its fix phase (ONLY operator-ordered items — `origin: operator` /
-   `von: Operator` / documented-name form; order fidelity). Read the result.
-3. **Stage 2** `Workflow({scriptPath: memory-dream.js, args:{date}})` — read-only.
-   Read the result.
+   Every stage gets its own `scratch` folder: each agent writes its bulk output to a
+   file there and the next stage reads the files, so nothing bulky travels inside a
+   prompt ("only the producer writes", `rules/intelligence.md`). One subfolder per
+   stage keeps the file names of two stages from colliding.
+2. **Stage 1** `Workflow({scriptPath: brain-scan.js, args:{date, scratch:
+   "<session scratchpad>/brain-scan-<date>"}})` — runs as always, including its fix
+   phase (ONLY operator-ordered items — `origin: operator` / `von: Operator` /
+   documented-name form; order fidelity). Read the result.
+3. **Stage 2** `Workflow({scriptPath: memory-dream.js, args:{date, scratch:
+   "<session scratchpad>/memory-dream-<date>"}})` — read-only. Read the result.
 4. **Stage 3** `Workflow({scriptPath: coherence-scan.js, args:{date, scratch:
    "<session scratchpad>/coherence-<date>"}})` — read-only, register with proposals.
    Read the result. Stages 1-3 may run in parallel (all read-only towards each other);
    on a tight budget, run them sequentially cheap → expensive.
 5. **Stage 4 synthesis** `Workflow({scriptPath: full-audit-synthesis.js, args:{date,
+   scratch:"<session scratchpad>/synthesis-<date>",
    reports:{brain:"<path>", memory:"<path>", coherence:"<path>"}}})` — dedups
    across scans, splits the catalog into (a) **mechanically uncontroversial fixes**
    (doc==reality drift, dead paths) and (b) a **decision agenda** (everything where a

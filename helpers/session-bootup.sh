@@ -252,6 +252,21 @@ if [[ -n "$prs" ]]; then
   n=$(printf '%s\n' "$prs" | wc -l | tr -d ' ')
   echo "open PRs ($n shown): $(printf '%s' "$prs" | tr '\n' ';' | sed 's/;/ · /g')"
 fi
+# Whose MOVE is each PR (2026-09-15): the line above names PRs, the shared-memory check
+# names new commits — neither says "the next move is yours". A changes-requested review sat
+# two days unanswered while both sides saw those lines. scripts/pr-ball.py reads GitHub's
+# own review/commit timestamps and prints one line only when a move has been open for 24 h.
+# One GraphQL call, offline-silent like the search above.
+if [[ -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
+  gh api graphql -f q="user:$eco_owner is:pr is:open" -f query='query($q: String!) { viewer { login }
+    search(query: $q, type: ISSUE, first: 40) { nodes { ... on PullRequest {
+      number isDraft body repository { name } author { login }
+      commits(last: 1) { nodes { commit { committedDate } } }
+      reviews(last: 30) { nodes { author { login } state submittedAt } }
+      comments(last: 30) { nodes { author { login } createdAt } }
+      reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } } } } } } } }' 2>/dev/null \
+    | "$PY" "$HERE/../scripts/pr-ball.py" 2>/dev/null
+fi
 
 # Memory limits (enforced since Claude Code v2.1.83: 200 lines / 25 KB — CHANGELOG entry
 # "MEMORY.md index now truncates at 25KB as well as 200 lines" is in the 2.1.83 block.

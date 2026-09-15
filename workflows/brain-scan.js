@@ -1,12 +1,12 @@
 export const meta = {
   name: 'brain-scan',
   description: 'Brain scan & agentic self-improvement: checklist audit + SOTA delta + ordered fixes + report',
-  whenToUse: 'Recurring self-audit of the brain setup. Call with args {date:"YYYY-MM-DD"}.',
+  whenToUse: 'Recurring self-audit of the brain setup. Call with args {date:"YYYY-MM-DD", scratch:"<abs. scratch dir>"}.',
   phases: [
     { title: 'Context', detail: 'Order list + checklist + latest report', model: 'haiku' },
-    { title: 'Scan', detail: '5 repo checks + 2 SOTA delta checks in parallel', model: 'haiku' },
-    { title: 'Fixes', detail: 'ONLY operator-ordered items (origin: operator / von: Operator / von: <name>), sequential with verify' },
-    { title: 'Report', detail: 'Write scan report, update the order list' },
+    { title: 'Scan', detail: '5 repo checks + 2 SOTA delta checks in parallel; each writes its findings to a file', model: 'haiku' },
+    { title: 'Fixes', detail: 'ONLY operator-ordered items (origin: operator / von: Operator / von: <name>), sequential with verify; each writes its protocol to a file' },
+    { title: 'Report', detail: 'Write scan report from the files, update the order list' },
   ],
 }
 
@@ -23,9 +23,38 @@ const REPORT_DIR = `${REPO}/docs/research/brain-scan`
 
 let A = args
 if (typeof A === 'string') { try { A = JSON.parse(A) } catch (e) { A = null } }
-if (!A || !A.date) throw new Error('brain-scan requires args {date:"YYYY-MM-DD"} — fetch the date via Bash `date +%F` and pass it in')
+if (!A || !A.date || !A.scratch) throw new Error('brain-scan requires args {date:"YYYY-MM-DD", scratch:"<abs. path>"} — date via Bash `date +%F`, scratch = session scratchpad subfolder')
 const DATE = A.date
 const REPORT = `${REPORT_DIR}/scan-${DATE}.md`
+// Every stage's bulk output lives here; the report stage reads it from disk.
+const FINDINGS_DIR = `${A.scratch}/findings`
+
+// Shape of ONE finding as it is written to the scan files. Prompt text now, not a
+// StructuredOutput schema: the findings travel to the report through the files.
+const FINDING_ITEM = {
+  type: 'object', required: ['severity', 'title'],
+  properties: {
+    severity: { type: 'string', enum: ['P0', 'P1', 'P2', 'INFO', 'OK'] },
+    title: { type: 'string', description: '1 sentence, concrete, with file path/evidence' },
+    state: {
+      type: 'string', enum: ['configured', 'verified'],
+      description: 'Required when severity is OK (checklist section 0): configured = precondition read/parsed · verified = the declared behavior check was actually run. Schema/existence checks are NEVER verified.',
+    },
+  },
+}
+// What a scan agent returns: a path, measured counts, a summary. The counts are
+// routing-critical (they decide the report's numbers), so they stay schema-validated
+// instead of living only in the file.
+const SCAN_RESULT_SCHEMA = {
+  type: 'object', required: ['file', 'finding_count', 'summary'],
+  properties: {
+    file: { type: 'string', description: 'path of the JSON file you wrote' },
+    finding_count: { type: 'number', description: 'length of the findings array IN THE FILE, measured after writing' },
+    p0_count: { type: 'number', description: 'number of P0 findings in the file, measured' },
+    p1_count: { type: 'number', description: 'number of P1 findings in the file, measured' },
+    summary: { type: 'string' },
+  },
+}
 
 const FINDINGS_SCHEMA = {
   type: 'object',
@@ -68,6 +97,29 @@ const assertCount = (machine, claimed, what) => {
   }
 }
 
+// ── Producer-writes helpers (begin) — extracted VERBATIM by scripts/test-brain-scan-files.sh
+// Bulk data never crosses an agent boundary inside a prompt: the agent that PRODUCES
+// findings (or a fix protocol) writes them to a file under FINDINGS_DIR, and the report
+// agent reads the files itself. Across the boundary travel only a path, a count and a
+// status. Measured 2026-09-13 on a coherence-scan run: 241,137 chars relayed through one
+// prompt, 60,000 arrived, and the counts stayed green because they matched while the
+// content did not. Here the report prompt carried every finding line of 8 scans plus
+// `JSON.stringify(fixResults)` — unbounded, with no marker if it was cut.
+const fileName = (p) => String(p).replace(/\\/g, '/').split('/').pop()
+// `expected` is what the script STARTED; `found` is what a consumer reports it read
+// from disk (its ls, not its memory). Compared by file name: script and agent may
+// spell the same directory differently (separators, drive forms) while the names
+// inside one directory are unique. Any gap aborts — a scan section whose file is
+// missing did not run, and a report over the rest reads exactly like a full one.
+const assertFiles = (expected, found, what) => {
+  const have = new Set((found || []).map(fileName))
+  const missing = expected.filter(f => !have.has(fileName(f)))
+  if (missing.length) {
+    throw new Error(`${what}: ${missing.length} of ${expected.length} file(s) missing — ${missing.map(fileName).join(', ')}. Aborting instead of continuing on a partial corpus (rules/intelligence.md, "only the producer writes").`)
+  }
+}
+// ── Producer-writes helpers (end)
+
 // ── Phase 1: Context ───────────────────────────────────────────────────────
 phase('Context')
 const ctx = await agent(
@@ -109,49 +161,82 @@ Name explicitly WHICH servers you found in the result — a section about server
 ]
 
 phase('Scan')
+const scanFile = (slug) => `${FINDINGS_DIR}/scan-${slug}.json`
+const scanFiles = SCANS.map(s => scanFile(s.slug))
 const scanResults = await parallel(SCANS.map(s => () =>
-  agent(`${SCAN_COMMON}\n\n${s.prompt}`, { label: `scan:${s.slug}`, phase: 'Scan', model: 'haiku', schema: FINDINGS_SCHEMA })
+  agent(`${SCAN_COMMON}\n\n${s.prompt}\n\nOUTPUT — you are the producer, you write: save your findings as JSON to ${scanFile(s.slug)} (mkdir -p ${FINDINGS_DIR}) with exactly this shape: {"section": "${s.slug}", "summary": "<3 sentences>", "findings": [<objects>]} where every object satisfies this JSON schema: ${JSON.stringify(FINDING_ITEM)}. The findings array is this scan's data and travels ONLY through that file — nothing of it comes back through your return value. After writing, MEASURE the file: count the findings array and the P0/P1 entries in it (node -e or jq, not from memory). Return via StructuredOutput: file (the path you wrote), finding_count, p0_count, p1_count (all measured), summary.`,
+    { label: `scan:${s.slug}`, phase: 'Scan', model: 'haiku', schema: SCAN_RESULT_SCHEMA })
 ))
 const scans = scanResults.filter(Boolean)
-log(`${scans.length}/${SCANS.length} scans done`)
+// First gate, claim level, before any report tokens are spent: every started scan
+// returned and named its file. A null (agent died/skipped) is a missing file.
+assertFiles(scanFiles, scanResults.map(r => r && r.file), 'scan: section files reported')
+const rawCount = scans.reduce((n, r) => n + r.finding_count, 0)
+log(`${scans.length}/${SCANS.length} scans wrote their file, ${rawCount} findings on disk`)
 
 // ── Phase 3: Fixes (ordered only, sequential) ─────────────────────────────
 phase('Fixes')
 const fixResults = []
-for (const order of ctx.orders) {
+const fixFile = (i) => `${FINDINGS_DIR}/fix-${i + 1}.json`
+const fixFiles = ctx.orders.map((o, i) => fixFile(i))
+for (const [i, order] of ctx.orders.entries()) {
   const r = await agent(
     `You are implementing a task ORDERED by the operator in the repo ${REPO}:\n"${order}"\n
-Rules (HARD): CLAUDE.md + .claude/rules/ apply in full (ponytail, order fidelity, no scope creep — ONLY this task). NO live-rig/network/show-hardware access from the brain scan — if the task needs live writes, abort with status "braucht-eigene-session". After implementation, VERIFY (test/measurement, do not assert). No git commit/push. StructuredOutput.`,
+Rules (HARD): CLAUDE.md + .claude/rules/ apply in full (ponytail, order fidelity, no scope creep — ONLY this task). NO live-rig/network/show-hardware access from the brain scan — if the task needs live writes, abort with status "braucht-eigene-session". After implementation, VERIFY (test/measurement, do not assert). No git commit/push.
+OUTPUT — you are the producer, you write: save your protocol as JSON to ${fixFile(i)} (mkdir -p ${FINDINGS_DIR}) as {"order": "<the task verbatim>", "status": "<your status>", "detail": "<what you did + how you verified it, or why not>"}. The detail is this stage's data and travels ONLY through that file. Write the file EVEN IF you failed or aborted — a missing file aborts the run.
+Return via StructuredOutput: file (the path you wrote), order, status.`,
     { label: `fix:${order.slice(0, 40)}`, phase: 'Fixes', schema: {
-      type: 'object', required: ['order', 'status', 'detail'],
+      type: 'object', required: ['file', 'order', 'status'],
       properties: {
+        file: { type: 'string', description: 'path of the JSON file you wrote' },
         order: { type: 'string' },
         status: { type: 'string', enum: ['umgesetzt-verifiziert', 'fehlgeschlagen', 'braucht-eigene-session'] },
-        detail: { type: 'string', description: 'what was done + how it was verified, or why not' },
       },
     } },
   )
   if (r) fixResults.push(r)
   log(`Fix "${order.slice(0, 50)}": ${r ? r.status : 'agent-error'}`)
 }
+// Same gate for the fix stage: a fix agent that died leaves no file, and a protocol
+// missing from the report is indistinguishable from a task that was never ordered.
+assertFiles(fixFiles, fixResults.map(r => r && r.file), 'fixes: protocol files reported')
 
 // ── Phase 4: Report ───────────────────────────────────────────────────────
 phase('Report')
-const allFindings = scans.flatMap(s => s.findings.map(f => `[${f.severity}${f.state ? '/' + f.state : ''}] ${f.title}`))
+const dataFiles = [...scanFiles, ...fixFiles]
 const summary = await agent(
-  `You are the report agent of the brain scan of ${DATE}. Input below. Tasks:
+  `You are the report agent of the brain scan of ${DATE}. Tasks:
 1. Write ${REPORT}: header (date, last scan ${ctx.last_scan_date || 'never'}), overall state in 3-5 sentences, findings sorted P0>P1>P2>INFO (RECURRING marked), OK checks as a short list **with state \`configured\`/\`verified\`** (checklist section 0; an OK without a state is itself a P1 finding against the scan), fix protocol (ordered tasks + status + verify), new proposals (derived).
 2. Update ${AUFTRAEGE} via Edit: move successfully implemented ordered items to "Erledigt" (done, with date ${DATE}); failed/braucht-eigene-session items stay open with a note; append NEW derived proposals (only real ones, deduplicated against existing) under "Vorgeschlagen" / "Proposed (derived)" (whichever heading the list uses). NEVER fill the section "Offen (bestellt)" / "Open (ordered)" yourself.
-3. StructuredOutput: summary = 4-6 sentences overall state incl. P0/P1 counts, findings = the 10 most important.
+3. StructuredOutput: files_read (every data file you actually read, from your ls), summary = 4-6 sentences overall state incl. P0/P1 counts, findings = the 10 most important, finding_count = the summed length of the scan files' findings arrays, MEASURED (node -e or jq), never estimated.
 
-Scan findings:\n${allFindings.join('\n')}\n\nScan summaries:\n${scans.map(s => `- ${s.summary}`).join('\n')}\n\nFix results:\n${JSON.stringify(fixResults)}`,
-  { label: 'report', phase: 'Report', schema: FINDINGS_SCHEMA },
+DATA BASIS ON DISK — read these COMPLETELY before writing, never from memory of an earlier stage. They lie in ${FINDINGS_DIR}/: the scan sections ${scanFiles.map(fileName).join(', ')}${fixFiles.length ? ` and the fix protocols ${fixFiles.map(fileName).join(', ')}` : ' (no ordered tasks ran, so there are no fix protocols)'}.
+STEP 1: ls ${FINDINGS_DIR} — if one of these files is missing, STOP: return files_read = what exists, finding_count = 0, findings = [] (the script aborts on that; never report on a partial set).
+STEP 2: read them all, then write the report.
+AUTHORITATIVE number (machine-derived from the validated returns): ${rawCount} findings across ${scans.length} scan sections. If a file's own summary deviates, this number wins.`,
+  { label: 'report', phase: 'Report', schema: {
+    type: 'object',
+    required: ['files_read', 'summary', 'findings'],
+    properties: {
+      files_read: { type: 'array', items: { type: 'string' }, maxItems: 40 },
+      finding_count: { type: 'number' },
+      ...FINDINGS_SCHEMA.properties,
+    },
+  } },
 )
+if (summary) {
+  // Second gate, measured: what the consumer found on disk, against what was started.
+  assertFiles(dataFiles, summary.files_read, 'report: data files read from disk')
+  assertCount(rawCount, summary.finding_count, 'brain-scan findings read by the report')
+}
 
 return {
   date: DATE,
   report: REPORT,
-  ordersExecuted: fixResults,
+  // Status and order per fix, not the protocols — those stay in their files.
+  ordersExecuted: fixResults.map(r => ({ order: r.order, status: r.status, file: r.file })),
+  findings: rawCount,
+  findingsDir: FINDINGS_DIR,
   summary: summary ? summary.summary : null,
-  topFindings: summary ? summary.findings.map(f => `[${f.severity}] ${f.title}`) : allFindings.slice(0, 15),
+  topFindings: summary ? summary.findings.map(f => `[${f.severity}] ${f.title}`) : [],
 }
