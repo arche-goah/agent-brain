@@ -19,6 +19,10 @@ Inspired by Claude Code's /dream command. Automatically cleans, optimizes, and m
 **Workflow variant (since 2026-08-01, building block for full-audit):** The analysis
 part (steps 1-2 + findings collection) is formalized as `core/workflows/memory-dream.js` —
 STRICTLY read-only, writes `docs/research/memory-dream/report-<date>.md` with proposals.
+Call it with `args:{date:"<YYYY-MM-DD>", scratch:"<session scratchpad>/memory-dream-<date>"}`:
+the analysis agents write their findings into that folder and the report agent reads them
+from there, so no findings travel inside a prompt ("only the producer writes",
+`rules/intelligence.md`).
 Fixes (steps 3-7 below) run ONLY after operator OK, or when the operator explicitly
 triggers "aufraeumen" (clean up) / "dream" — and even then: never edit the snapshot
 directly, changes go via auto-memory + memory-sync export.

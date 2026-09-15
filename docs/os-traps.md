@@ -148,7 +148,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1
+known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -168,6 +168,13 @@ and certify a fixture that sees only one world state.
 never crosses into node as data — node receives the harness file as an ARGUMENT (Git Bash
 converts argv) and the lens files by NAME through env, which is the comparison the helper
 under test makes (names, not directories). No path is opened by the native process.
+2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
+test-full-audit-synthesis-files.sh baselined on the same review and the same construction
+— they are the per-workflow siblings of the coherence fixture: harness file as an
+argument, data file names through env, nothing that the native process has to open by
+path. The three arrived together because the producer-writes fix covered the remaining
+three workflows at once; the review is per file regardless, and the shared construction
+is what makes it short.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
