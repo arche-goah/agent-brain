@@ -106,7 +106,50 @@ fi
 # The lock is a DIRECTORY: mkdir is atomic on every filesystem we run on, unlike a
 # test-then-touch on a file, which two sessions starting together will both win.
 # Per machine, not per session — that is the point.
-if ! mkdir "$LOCK" 2>/dev/null; then
+#
+# A lock whose holder is gone is REAPED, not honoured. Before this, a run killed without
+# its EXIT trap firing (SIGKILL, sleep-then-shutdown, a hook timeout that takes the whole
+# process group) left the directory behind, and every later session printed "another
+# session is measuring now" and replayed the verdict of the dead run — measured
+# 2026-09-18 on a real brain: an 18 h old red fixture verdict, no measuring process
+# alive, re-served at every start. Same answer the shared-memory watcher already gives
+# (a PID in the lock, `kill -0`), plus an age ceiling, because after a reboot the dead
+# holder's PID can belong to some unrelated process and `kill -0` alone would keep the
+# wedge. The holder writes an owner token next to the PID so that a run which outlived
+# the ceiling and got reaped does not delete its successor's lock on the way out.
+# Accepted residue: two sessions that find the same corpse in the same instant can both
+# reap it and both measure. The cost is one duplicate run, never a wedge — and the lock
+# exists to save work, not to guard correctness (a re-run stores the same verdict).
+LOCK_MAX_MIN="${CACHED_VERDICT_LOCK_MAX_MIN:-60}"
+TOKEN="$$-$(now)-${RANDOM:-0}"
+lock_is_stale() {
+  local pid
+  # `find -mmin` rather than `stat`/`date -r`: BSD and GNU agree on it.
+  [ -n "$(find "$LOCK" -maxdepth 0 -mmin +"$LOCK_MAX_MIN" 2>/dev/null)" ] && return 0
+  pid=$(cat "$LOCK/pid" 2>/dev/null)
+  if [ -z "$pid" ]; then
+    # Between mkdir and the pid write a live holder has no pid yet. Only a pid-less lock
+    # older than a minute is a corpse.
+    [ -n "$(find "$LOCK" -maxdepth 0 -mmin +1 2>/dev/null)" ]
+    return
+  fi
+  ! kill -0 "$pid" 2>/dev/null
+}
+release_lock() {
+  [ "$(cat "$LOCK/token" 2>/dev/null)" = "$TOKEN" ] && rm -rf "$LOCK"
+  return 0
+}
+claim_lock() {
+  mkdir "$LOCK" 2>/dev/null || return 1
+  echo "$TOKEN" > "$LOCK/token"
+  echo "$$" > "$LOCK/pid"
+}
+if ! claim_lock && lock_is_stale; then
+  echo "   (a previous run left its lock behind and is gone — reclaiming it)"
+  rm -rf "$LOCK"
+  claim_lock || true
+fi
+if [ "$(cat "$LOCK/token" 2>/dev/null)" != "$TOKEN" ]; then
   # Someone else is measuring right now. Do not queue and do not duplicate the work:
   # report what we have, clearly marked, and let their run land for the next start.
   if read_meta; then
@@ -116,7 +159,7 @@ if ! mkdir "$LOCK" 2>/dev/null; then
   echo "   (skipped: another session is measuring this right now, and there is no previous result yet)"
   exit 0
 fi
-trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+trap release_lock EXIT INT TERM
 
 # Capture and store, then REPLAY to stdout. Capturing without replaying would make a
 # fresh run silent while a cached one talks — the caller would see output only when
@@ -138,9 +181,12 @@ if [ "$BG" -eq 1 ]; then
   # the background run still holds, or a second session starts the same work seconds later.
   trap - EXIT INT TERM
   (
-    trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+    trap release_lock EXIT INT TERM
     run_and_store "$@"
   ) >/dev/null 2>&1 &
+  # The holder is now the child, so the lock must name the child — the parent exits in a
+  # moment and a parent PID would read as a dead holder while the work is still running.
+  echo "$!" > "$LOCK/pid"
   if read_meta; then
     emit_cached "out of date, re-measuring in the background; this is the previous result"
     exit $?

@@ -26,7 +26,8 @@ eq()   { [ "$2" = "$3" ] && ok "$1" || bad "$1" "expected [$2], got [$3]"; }
 COUNTER="$TMP/runs"
 : > "$COUNTER"
 probe() { printf '#!/usr/bin/env bash\necho run >> "%s"\necho "payload %s"\nexit %s\n' "$COUNTER" "$1" "${2:-0}" > "$TMP/p.sh"; chmod +x "$TMP/p.sh"; }
-runs()  { grep -c . "$COUNTER" 2>/dev/null || echo 0; }
+# grep -c prints 0 AND exits 1 on no match, so `|| echo 0` would print a second 0.
+runs()  { local n; n=$(grep -c . "$COUNTER" 2>/dev/null); echo "${n:-0}"; }
 
 echo "property 1: same key -> the work happens once, and the reuse is announced"
 probe first
@@ -96,12 +97,58 @@ has  "the next call serves the finished verdict" "payload bg" "$out6"
 has  "and marks it as reused" "(reused: unchanged" "$out6"
 eq   "the background run executed exactly once" "1" "$(runs)"
 
-echo "property 7: a lock left behind by a crashed run does not wedge the check forever"
-# Not yet true — recorded as a known limit rather than asserted as a pass. A stale lock
-# directory currently makes every later session report the previous verdict instead of
-# measuring. It is visible (the line says another session is measuring) rather than
-# silent, which is why this ships as a limit and not as a blocker.
-echo "  --   known limit: a stale lock directory is reported, not reaped (see header)"
+echo "property 7: a lock left behind by a dead run is reaped; a live one is honoured"
+# The occasion (2026-09-18): a lock directory outlived its run, and every later session
+# replayed an 18 h old red verdict as "another session is measuring now". Each case below
+# pairs a lock that MUST be reaped with one that must be left alone.
+LK="$CACHED_VERDICT_STATE/verdict-p7.lock"
+probe fresh
+sh -c 'exit 0' & dead=$!; wait "$dead"
+fresh_lock() { rm -rf "$LK"; mkdir -p "$LK"; [ -n "${1:-}" ] && echo "$1" > "$LK/pid"; }
+old_lock()   { fresh_lock "${1:-}"; touch -t 202001010000 "$LK"; }
+
+: > "$COUNTER"; fresh_lock "$dead"
+out7=$(bash "$CV" p7 --key K -- "$TMP/p.sh")
+eq    "dead holder: the check runs" "1" "$(runs)"
+has   "dead holder: the reclaim is announced" "reclaiming it" "$out7"
+[ -d "$LK" ] && bad "dead holder: lock released after the run" "lock dir still there" \
+             || ok "dead holder: lock released after the run"
+
+: > "$COUNTER"; fresh_lock "$$"
+out7=$(bash "$CV" p7 --key K2 -- "$TMP/p.sh")
+eq    "live holder: the check does NOT run" "0" "$(runs)"
+has   "live holder: it says another session is measuring" "another session is measuring" "$out7"
+[ "$(cat "$LK/pid" 2>/dev/null)" = "$$" ] && ok "live holder: its lock is left untouched" \
+                                          || bad "live holder: its lock is left untouched" "lock gone or rewritten"
+
+: > "$COUNTER"; fresh_lock
+bash "$CV" p7 --key K3 -- "$TMP/p.sh" >/dev/null
+eq    "pid-less fresh lock (holder mid-claim): honoured" "0" "$(runs)"
+: > "$COUNTER"; old_lock
+bash "$CV" p7 --key K3 -- "$TMP/p.sh" >/dev/null
+eq    "pid-less old lock: reaped" "1" "$(runs)"
+
+# After a reboot the dead holder's PID can be reused by an unrelated live process;
+# `kill -0` then says alive forever. The age ceiling is what ends that wedge.
+: > "$COUNTER"; old_lock "$$"
+bash "$CV" p7 --key K4 -- "$TMP/p.sh" >/dev/null
+eq    "live pid but past the age ceiling: reaped" "1" "$(runs)"
+rm -rf "$LK"
+
+echo "property 8: a background run's lock names the CHILD, so it is not reaped mid-run"
+# The parent returns at once; a lock still naming the parent would read as dead and let
+# the very next session start the same work in parallel.
+printf '#!/usr/bin/env bash\necho run >> "%s"\nsleep 3\necho slowbg\n' "$COUNTER" > "$TMP/slowbg.sh"
+chmod +x "$TMP/slowbg.sh"
+: > "$COUNTER"
+bash "$CV" p8 --key K --background-on-miss -- "$TMP/slowbg.sh" >/dev/null 2>&1
+sleep 0.5
+bash "$CV" p8 --key K2 --background-on-miss -- "$TMP/slowbg.sh" >/dev/null 2>&1
+sleep 0.5
+eq    "second call while the child runs does not start a second run" "1" "$(runs)"
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do [ -d "$CACHED_VERDICT_STATE/verdict-p8.lock" ] || break; sleep 0.5; done
+[ -d "$CACHED_VERDICT_STATE/verdict-p8.lock" ] && bad "the child releases the lock when done" "lock dir still there" \
+                                                || ok "the child releases the lock when done"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "cached-verdict-test: all checks passed"; exit 0; fi
