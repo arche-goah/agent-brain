@@ -148,6 +148,32 @@ with tempfile.TemporaryDirectory() as td:
     ok("12 --since prints the count line with the undated count",
        "since 2026-08-21: 1 entry, 0 undated" in out, out.strip()[-160:])
 
+with tempfile.TemporaryDirectory() as td:
+    # 13-15. SELF-INGEST (2026-09-21, reported by the other instance). The root page the
+    # generator writes carries topic pointers `- [ops](ops/INDEX.md) — n entries`. They are
+    # `- [` lines pointing at real files that are not fact files, so the carry rule read
+    # them as foreign and copied them into "Not one-fact entries" — one more generation per
+    # run, three standing in the shared repo when it was found. A genuine unmanaged line
+    # must still survive, otherwise the fix trades one silent loss for another.
+    repo = Path(td) / "repo"
+    build_repo(repo, 2, "# Index\n\n- [ops](ops/INDEX.md) — 2 entries\n"
+                        "- [tools](ops/tools/README.md) — delivery copy\n")
+    (repo / "ops" / "tools").mkdir(parents=True, exist_ok=True)
+    (repo / "ops" / "tools" / "README.md").write_text("# tools\n", encoding="utf-8", newline="\n")
+    run_main(repo, write=True)
+    first = (repo / "INDEX.md").read_text(encoding="utf-8")
+    run_main(repo, write=True)
+    second = (repo / "INDEX.md").read_text(encoding="utf-8")
+    # Asserted on the SECOND page on purpose: on a fresh repo `ops/INDEX.md` does not exist
+    # yet while the old root is read, so the first run carries nothing and a first-page
+    # assertion passes even with the defect in place. The generation starts at run two.
+    ok("13 the generator does not carry its own topic pointers",
+       second.count("- [ops](ops/INDEX.md)") == 1, second)
+    ok("14 a genuine unmanaged line is still carried",
+       "ops/tools/README.md" in first and "ops/tools/README.md" in second, second)
+    ok("15 a second run reproduces the same page (no generations)",
+       first == second, second)
+
 print()
 if fails:
     print(f"shared-memory-index: {len(fails)} fixture(s) FAILED")
