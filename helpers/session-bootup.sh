@@ -245,9 +245,15 @@ for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json")
         r = (m.get("source") or {}).get("repo", "")
         if "/" in r: print(r.split("/")[0]); raise SystemExit
 ' 2>/dev/null)
-prs=""
-[[ -n "$eco_owner" ]] && prs=$(gh search prs --owner "$eco_owner" --state open --json repository,number,title \
-      --jq '.[] | "\(.repository.nameWithOwner | split("/")[1])#\(.number) \(.title)"' 2>/dev/null | head -6)
+prs="" prs_rc=0
+# A failed search says so (2026-09-22): silence here read as "no PR needs anything" while
+# the search had not run at all — and the PR-move line below then had nothing to read.
+if [[ -n "$eco_owner" ]]; then
+  prs=$(gh search prs --owner "$eco_owner" --state open --json repository,number,title \
+      --jq '.[] | "\(.repository.nameWithOwner | split("/")[1])#\(.number) \(.title)"' 2>/dev/null) || prs_rc=$?
+  prs=$(printf '%s' "$prs" | head -6)
+  (( prs_rc )) && echo "open PRs: NOT checked - gh search failed (rc=$prs_rc, offline or not logged in); PR moves unknown too"
+fi
 if [[ -n "$prs" ]]; then
   n=$(printf '%s\n' "$prs" | wc -l | tr -d ' ')
   echo "open PRs ($n shown): $(printf '%s' "$prs" | tr '\n' ';' | sed 's/;/ · /g')"
@@ -257,7 +263,7 @@ fi
 # two days unanswered while both sides saw those lines. scripts/pr-ball.py reads GitHub's
 # own review/commit timestamps and prints one line only when a move has been open for 24 h.
 # One GraphQL call, offline-silent like the search above.
-if [[ -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
+if [[ -n "$eco_owner" && $prs_rc -eq 0 && -f "$HERE/../scripts/pr-ball.py" ]]; then
   gh api graphql -f q="user:$eco_owner is:pr is:open" -f query='query($q: String!) { viewer { login }
     search(query: $q, type: ISSUE, first: 40) { nodes { ... on PullRequest {
       number isDraft body repository { name } author { login }
