@@ -65,6 +65,8 @@ FM_DESC = re.compile(r'^description:\s*"?(.*?)"?\s*$', re.M)
 FM_NAME = re.compile(r"^name:\s*(.+?)\s*$", re.M)
 FM_FIELD = re.compile(r"^\s+(von|audience|topic|date):\s*(.+?)\s*$", re.M)
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# `<topic>/INDEX.md` — a page this generator writes itself (see the carry rule in build()).
+TOPIC_INDEX = re.compile(r"^[^/]+/" + re.escape(INDEX_NAME) + r"$")
 
 
 # FRESHNESS. The operator's order (2026-09-13): a session must be able to ask "what is
@@ -206,16 +208,28 @@ def build(repo: Path) -> tuple[str, dict[str, str], list[dict]]:
     # write: one such line existed (a nested README), and regenerating without it would
     # have silently dropped a real entry. They are carried through VERBATIM: this
     # generator may not own them, but it must not lose them either.
+    # A generator may not re-ingest its own output. The topic pointers it writes into the
+    # root (`- [ops](ops/INDEX.md) — 98 entries`) are `- [` lines pointing at real files
+    # that are not fact files, so the rule below read them as foreign and copied them down
+    # into "Not one-fact entries" — one more generation on every run (measured 2026-09-21
+    # in the shared repo: three generations standing, a fourth added by the run that found
+    # it; reported by bojan-main, who had removed the newest set by hand). Matched by
+    # PATTERN, not against the current topic list, so a pointer of a topic that no longer
+    # exists is dropped as well. The `seen` guard closes the same class one level up: a
+    # duplicate line already in the old index is carried once, not twice.
     managed = {e["path"] for e in entries}
     carried = []
+    seen = set()
     old_index = repo / INDEX_NAME
     if old_index.is_file():
         for line in old_index.read_text(encoding="utf-8", errors="replace").splitlines():
             if not line.startswith("- ["):
                 continue
             targets = re.findall(r"\]\(([^)]+\.md)\)", line)
-            if targets and not any(t in managed for t in targets) \
-                    and all((repo / t).is_file() for t in targets):
+            if targets and not any(t in managed or TOPIC_INDEX.match(t) for t in targets) \
+                    and all((repo / t).is_file() for t in targets) \
+                    and line not in seen:
+                seen.add(line)
                 carried.append(line)
 
     # ── root: topic pointers, and nothing else (see the note at DISCRIMINATOR_CHARS) ──
