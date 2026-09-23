@@ -32,6 +32,9 @@ mkdir -p "$T/docs/research/brain-scan" "$T/docs/maintenance"
 printf -- '- [P1] fixture-finding\n' > "$T/docs/research/brain-scan/scan-fixture.md"
 printf '%s\t%s\tsmoke-fixture\tfail\tnote\n' "$(date +%s)" "$(date '+%F %T')" \
   > "$T/docs/maintenance/scheduled-runs.tsv"
+# A brain-scan fail OLDER than the fresh report: superseded, must stay silent.
+printf '%s\t%s\tbrain-scan\tfail\tsuperseded\n' "$(( $(date +%s) - 3600 ))" "old" \
+  >> "$T/docs/maintenance/scheduled-runs.tsv"
 
 # 1) session-bootup: must run through to END on every OS AND compute the report age.
 #    The v1.2.0 breakage ended exactly here: aborted mid-body, output silently cut off.
@@ -40,6 +43,32 @@ case "$out" in *"=== END BOOTUP ==="*) ok "bootup runs through to END";; *) bad 
 case "$out" in *"latest report 0d ago"*) ok "bootup computes report age (stat branch)";; *) bad "report age missing/wrong";; esac
 case "$out" in *"scheduled run FAILED: smoke-fixture"*) ok "bootup failure channel";; *) bad "failure channel silent";; esac
 case "$out" in *"aborted early"*) bad "bootup itself reports an abort";; *) ok "no abort marker";; esac
+case "$out" in *"brain-scan DUE"*|*"brain-scan OVERDUE"*) bad "fresh report announced as due";; *) ok "fresh report: no due line";; esac
+case "$out" in *"FAILED: brain-scan"*) bad "brain-scan fail older than the report still voiced";; *) ok "brain-scan fail superseded by newer report";; esac
+
+# 1b) due/overdue line (operator 2026-09-23: session start says it, the scan runs in-session).
+#     Old report -> OVERDUE; a brain-scan fail NEWER than it stays voiced (negative control
+#     for the superseding rule above); no report at all -> DUE.
+TD="$T/due-instance"
+mkdir -p "$TD/docs/research/brain-scan" "$TD/docs/maintenance"
+printf -- '- [P1] old\n' > "$TD/docs/research/brain-scan/scan-old.md"
+touch -t 202001010000 "$TD/docs/research/brain-scan/scan-old.md"
+printf '%s\t%s\tbrain-scan\tfail\tnewer\n' "$(date +%s)" "$(date '+%F %T')" > "$TD/docs/maintenance/scheduled-runs.tsv"
+out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"!! brain-scan OVERDUE"*) ok "old report: overdue line";; *) bad "old report: no overdue line";; esac
+case "$out" in *"FAILED: brain-scan"*) ok "brain-scan fail newer than the report stays voiced";; *) bad "newer brain-scan fail swallowed";; esac
+# The DUE band (7-13 d) and the edge below it — pins the DUE/OVERDUE boundary (review of
+# #153 on Windows). mtime via Python: `touch -d` parses differently on GNU and BSD.
+_age() { "$PY" -c "import os,sys,time; t=time.time()-int(sys.argv[2])*86400; os.utime(sys.argv[1],(t,t))" "$TD/docs/research/brain-scan/scan-old.md" "$1"; }
+_age 8
+out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"!! brain-scan OVERDUE"*) bad "8 d report read as overdue";; *"!! brain-scan DUE: latest report 8d ago"*) ok "8 d report: due, not overdue";; *) bad "8 d report: no due line";; esac
+_age 6
+out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"brain-scan DUE"*|*"brain-scan OVERDUE"*) bad "6 d report announced as due";; *) ok "6 d report: no due line";; esac
+rm -f "$TD/docs/research/brain-scan/scan-old.md" "$TD/docs/maintenance/scheduled-runs.tsv"
+out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"!! brain-scan DUE: no report yet"*) ok "no report: due line";; *) bad "no report: no due line";; esac
 
 # 2) brain-scan freshness gate: a fresh report -> exit 0, WITHOUT starting a run
 #    (CLAUDE_BIN points at true; if run.log appeared, the gate would be broken).
@@ -286,6 +315,17 @@ out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || 
 case "$out" in
   *"!! deadline $_d3 in 3 d"*) ok "bootup computes deadline distance (<7 d escalates)";;
   *) bad "bootup deadline math missing: $(printf '%s' "$out" | grep -ai deadline | tail -1)";;
+esac
+# The other side of the threshold: 10 d out must NOT escalate — without this a bootup that
+# escalated every deadline would pass the check above (same boundary gap as the brain-scan
+# DUE band, found in the review of #153).
+_d10="$("$PY" -c 'import datetime;print(datetime.date.today()+datetime.timedelta(days=10))')"
+printf '## %s — fixture deadline\n' "$_d10" > "$T/docs/business/deadlines.md"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in
+  *"!! deadline"*) bad "deadline 10 d out escalated (threshold is <7 d)";;
+  *"deadlines: next $_d10 in 10 d"*) ok "deadline 10 d out stays a plain line";;
+  *) bad "deadline 10 d out: $(printf '%s' "$out" | grep -ai deadline | tail -1)";;
 esac
 
 # 13) hook coverage: a template hook that no settings scope wires must be reported
