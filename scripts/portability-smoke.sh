@@ -316,6 +316,17 @@ case "$out" in
   *"!! deadline $_d3 in 3 d"*) ok "bootup computes deadline distance (<7 d escalates)";;
   *) bad "bootup deadline math missing: $(printf '%s' "$out" | grep -ai deadline | tail -1)";;
 esac
+# The other side of the threshold: 10 d out must NOT escalate — without this a bootup that
+# escalated every deadline would pass the check above (same boundary gap as the brain-scan
+# DUE band, found in the review of #153).
+_d10="$("$PY" -c 'import datetime;print(datetime.date.today()+datetime.timedelta(days=10))')"
+printf '## %s — fixture deadline\n' "$_d10" > "$T/docs/business/deadlines.md"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in
+  *"!! deadline"*) bad "deadline 10 d out escalated (threshold is <7 d)";;
+  *"deadlines: next $_d10 in 10 d"*) ok "deadline 10 d out stays a plain line";;
+  *) bad "deadline 10 d out: $(printf '%s' "$out" | grep -ai deadline | tail -1)";;
+esac
 
 # 13) hook coverage: a template hook that no settings scope wires must be reported
 #     (the v1.3.12 class-gate shipped consumed-but-wired-nowhere on a live brain);
