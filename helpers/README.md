@@ -4,7 +4,9 @@ Everything here is wired up as a hook (`.claude/settings.json` hooks) — don't 
 anything else here; ghost hooks were an audit finding (claude-flow import, 19 files
 deleted, git history has them). Two exceptions: `statusline.cjs` (not a hook, table
 below, installed at USER level via `scripts/install-statusline.sh`) and
-`run-record.sh` (helper for scheduled jobs, called from launchers).
+`run-record.sh` and `power-source.sh` (helpers for scheduled jobs, called from
+launchers — the second answers `ac`/`battery`/`unknown` on macOS, Linux and Windows,
+so a launcher can skip a token-spending run on a sleeping laptop).
 
 | Script | Event | Purpose |
 |--------|-------|---------|

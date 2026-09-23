@@ -50,6 +50,33 @@ else
   bad "scan-gate: rc=$rc run.log=$([ -f "$T/docs/research/brain-scan/run.log" ] && echo created || echo missing)"
 fi
 
+# 2b) brain-scan battery gate: due (no report) but on battery -> skip line, no run.
+#     A separate instance, because $T holds a fresh report and would exit at the
+#     freshness gate before the battery gate is reached.
+TB="$T/battery-instance"
+mkdir -p "$TB"
+BRAIN_DIR="$TB" BRAIN_SCAN_POWER=battery CLAUDE_BIN="$(command -v true)" bash "$CORE/scripts/brain-scan.sh"; rc=$?
+log="$(cat "$TB/docs/research/brain-scan/run.log" 2>/dev/null)"
+case "$rc:$log" in
+  0:*"skipped"*"on battery"*) case "$log" in *"brain-scan start"*) bad "scan-gate: battery => run started anyway";; *) ok "scan-gate: battery => skip, no run";; esac ;;
+  *) bad "scan-gate battery: rc=$rc log=$(printf '%s' "$log" | tail -1)" ;;
+esac
+# Negative control: the same due instance on mains must START a run (CLAUDE_BIN=true
+# produces no report, so the runner logs start + "no report") — else the gate skips always.
+BRAIN_DIR="$TB" BRAIN_SCAN_POWER=ac CLAUDE_BIN="$(command -v true)" bash "$CORE/scripts/brain-scan.sh"
+case "$(cat "$TB/docs/research/brain-scan/run.log" 2>/dev/null)" in
+  *"brain-scan start"*) ok "scan-gate: ac => run starts" ;;
+  *) bad "scan-gate: ac => no run started" ;;
+esac
+
+# 2c) power-source detector runs on every OS and answers with one of its three words
+#     (the real reader: pmset / sysfs / PowerShell — a CI runner has no battery).
+ps_out="$(sh "$CORE/helpers/power-source.sh" 2>&1)"; rc=$?
+case "$rc:$ps_out" in
+  0:ac|0:battery|0:unknown) ok "power-source answers '$ps_out'" ;;
+  *) bad "power-source: rc=$rc out=$ps_out" ;;
+esac
+
 # 3) run-record: one ok line and one fail line land as TSV columns in the instance.
 BRAIN_DIR="$T" sh "$CORE/helpers/run-record.sh" smoke2 ok "note a"
 BRAIN_DIR="$T" sh "$CORE/helpers/run-record.sh" smoke2 fail "note b"

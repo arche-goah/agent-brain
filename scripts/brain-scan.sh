@@ -51,6 +51,17 @@ if [[ -z "${BRAIN_SCAN_FORCE:-}" ]]; then
     [[ "$m" =~ ^[0-9]+$ ]] || m=0
     (( $(date +%s) - m < INTERVAL )) && exit 0
   fi
+  # Due, but on battery: skip, the run stays due and fires on the next start on mains.
+  # A scheduled start on battery is a start on a sleeping laptop — the agents freeze
+  # with every sleep and get restarted as "stalled" (measured 2026-09-23: 90 min, 2.34M
+  # tokens, no report). Details and policy: helpers/power-source.sh. Not a run-record
+  # `fail` — nothing failed, and the bootup's report age still shows an overdue scan.
+  # BRAIN_SCAN_POWER overrides the detector (test seam for portability-smoke).
+  power="${BRAIN_SCAN_POWER:-$(sh "$CORE/helpers/power-source.sh")}"
+  if [[ "$power" == battery ]]; then
+    echo "=== brain-scan skipped $(date '+%F %T'): on battery, stays due ===" >> "$LOG_DIR/run.log"
+    exit 0
+  fi
 fi
 
 DATE=$(date +%F)
