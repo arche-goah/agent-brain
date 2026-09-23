@@ -57,6 +57,15 @@ printf '%s\t%s\tbrain-scan\tfail\tnewer\n' "$(date +%s)" "$(date '+%F %T')" > "$
 out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
 case "$out" in *"!! brain-scan OVERDUE"*) ok "old report: overdue line";; *) bad "old report: no overdue line";; esac
 case "$out" in *"FAILED: brain-scan"*) ok "brain-scan fail newer than the report stays voiced";; *) bad "newer brain-scan fail swallowed";; esac
+# The DUE band (7-13 d) and the edge below it — pins the DUE/OVERDUE boundary (review of
+# #153 on Windows). mtime via Python: `touch -d` parses differently on GNU and BSD.
+_age() { "$PY" -c "import os,sys,time; t=time.time()-int(sys.argv[2])*86400; os.utime(sys.argv[1],(t,t))" "$TD/docs/research/brain-scan/scan-old.md" "$1"; }
+_age 8
+out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"!! brain-scan OVERDUE"*) bad "8 d report read as overdue";; *"!! brain-scan DUE: latest report 8d ago"*) ok "8 d report: due, not overdue";; *) bad "8 d report: no due line";; esac
+_age 6
+out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"brain-scan DUE"*|*"brain-scan OVERDUE"*) bad "6 d report announced as due";; *) ok "6 d report: no due line";; esac
 rm -f "$TD/docs/research/brain-scan/scan-old.md" "$TD/docs/maintenance/scheduled-runs.tsv"
 out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
 case "$out" in *"!! brain-scan DUE: no report yet"*) ok "no report: due line";; *) bad "no report: no due line";; esac
