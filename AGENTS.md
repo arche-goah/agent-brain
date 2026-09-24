@@ -116,3 +116,23 @@ session start.
    out; the shared memory is read by every instance at session start, so a finding that
    only lands here reaches the other instance days late or never. The entry is generated
    and carries no text of its own — adding a line by hand drifts by the next trap.
+
+11. **Merging into `main` meets two walls — one on GitHub, one on the machine** (measured
+   2026-09-24, #158). Read both before searching for a third.
+   - **GitHub (ruleset `main-protection`):** a merge needs one approving review from a code
+     owner, and `.github/CODEOWNERS` names ONE account. A PR opened by any other account:
+     the code owner approves (`gh pr review <n> --approve`), then merges. A PR opened BY the
+     code-owner account — from any machine or instance that uses it — can never be approved:
+     GitHub forbids self-approval, and an approval from a non-owner does not count. For those
+     the configured path is the admin bypass, `gh pr merge <n> --squash --admin`, after the
+     change works on macOS AND Windows and CI is green. Without `--admin` the refusal reads
+     `the base branch policy prohibits the merge` — that is the missing approval, not red CI.
+   - **The machine (Claude Code permissions):** the bypass call itself may never leave the
+     machine. With no `allow` rule matching `gh pr merge`, the auto-mode classifier decides —
+     and it refused `--admin` on one instance while another merged the same way all day,
+     because that one's `settings.json` allows `Bash(gh pr *)`. The refusal reads
+     `Permission for this action was denied by the Claude Code auto mode classifier`. That
+     is an instance permission, granted or withheld by that brain's operator (rule 9: every
+     instance's `settings.json` differs) — not a repo defect, so do not debug it here.
+   Merge with `--match-head-commit <sha>` of the state you reviewed, so a push that lands
+   between review and merge cannot ride along unread.
