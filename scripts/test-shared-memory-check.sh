@@ -75,6 +75,16 @@ out="$(run_check)"
 hasnt "no line on the seeding run" "shared-memory:" "$out"
 [ -s "$STATE" ] && ok "cursor written" || bad "cursor written" "state file missing"
 
+echo "fetch fails (offline): the check says it did not look, the cursor stays"
+# Measured 2026-09-22: a silent fetch failure read as "nothing new" for a whole session.
+printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "2026-09-05T08:00:00Z"\n}\n' "$OLD_SHA" > "$STATE"
+git_q -C "$SHARED" remote set-url origin "$TMP/gone.git"
+out="$(run_check)"
+has   "one NOT-checked line" "shared-memory: NOT checked" "$out"
+hasnt "no commit line from stale refs" "new commit" "$out"
+grep -q "$OLD_SHA" "$STATE" && ok "cursor not advanced" || bad "cursor not advanced" "state moved on a failed fetch"
+git_q -C "$SHARED" remote set-url origin "$REMOTE"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "test-shared-memory-check: all checks passed"; exit 0; fi
 echo "test-shared-memory-check: $fails check(s) FAILED"; exit 1
