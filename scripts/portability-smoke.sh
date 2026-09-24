@@ -357,6 +357,41 @@ case "$out" in
   *) bad "bootup hook-coverage line missing";;
 esac
 
+# 13a) auto-fire coverage: an enabled plugin's skill missing from the instance's
+#      auto-fire table is reported; a DEPRECATED pointer, an ignored id and a
+#      DISABLED plugin are not; a covered table is silent (three brain-scans in a
+#      row found the hand-kept table short on a live brain).
+AF="$T/afbrain"; AC="$T/afcfg"; AP="$AC/plugins/cache/p"
+mkdir -p "$AF/.claude/rules" "$AP/.claude-plugin" "$AP/skills/new-one" "$AP/skills/old-one" "$AP/skills/quiet-one" \
+  "$AC/plugins/cache/off/.claude-plugin" "$AC/plugins/cache/off/skills/hidden"
+printf '{"name":"px"}\n' > "$AP/.claude-plugin/plugin.json"
+printf '{"name":"off"}\n' > "$AC/plugins/cache/off/.claude-plugin/plugin.json"
+printf -- '---\nname: new-one\ndescription: does things\n---\n' > "$AP/skills/new-one/SKILL.md"
+printf -- '---\nname: old-one\ndescription: DEPRECATED pointer\n---\n' > "$AP/skills/old-one/SKILL.md"
+printf -- '---\nname: quiet-one\ndescription: manual only\n---\n' > "$AP/skills/quiet-one/SKILL.md"
+printf -- '---\nname: hidden\ndescription: x\n---\n' > "$AC/plugins/cache/off/skills/hidden/SKILL.md"
+"$PY" -c 'import json,sys; c=sys.argv[1]; json.dump({"plugins":{"px@m":[{"installPath":c+"/plugins/cache/p"}],"off@m":[{"installPath":c+"/plugins/cache/off"}]}},open(c+"/plugins/installed_plugins.json","w"))' "$AC"
+printf '{"enabledPlugins":{"px@m":true,"off@m":false}}\n' > "$AC/settings.json"
+printf '| x | `px:other` |\n<!-- auto-fire-ignore: px:quiet-one -->\n' > "$AF/.claude/rules/intelligence-instance.md"
+_af="$(CLAUDE_CONFIG_DIR="$AC" "$PY" "$CORE/scripts/auto-fire-coverage.py" "$AF" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 1 ] && [ "$_af" = "px:new-one" ]; then
+  ok "auto-fire-coverage names exactly the uncovered enabled skill (exit 1)"
+else
+  bad "auto-fire-coverage missing case: rc=$_rc out='$(printf '%s' "$_af" | tr '\n' ' ')'"
+fi
+out="$(CLAUDE_PROJECT_DIR="$AF" CLAUDE_CONFIG_DIR="$AC" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in
+  *"!! skills not in the auto-fire table"*px:new-one*) ok "bootup voices skills missing from the auto-fire table";;
+  *) bad "bootup auto-fire-coverage line missing";;
+esac
+printf '| x | `px:new-one` |\n<!-- auto-fire-ignore: px:quiet-one -->\n' > "$AF/.claude/rules/intelligence-instance.md"
+_af="$(CLAUDE_CONFIG_DIR="$AC" "$PY" "$CORE/scripts/auto-fire-coverage.py" "$AF" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ] && [ -z "$_af" ]; then
+  ok "auto-fire-coverage stays silent on a covered table"
+else
+  bad "auto-fire-coverage false alarm: rc=$_rc out='$_af'"
+fi
+
 # --- 12. the mechanisms prove themselves, on every OS ------------------------
 # Fixtures instead of assertions about fixtures: each suite runs every helper it covers
 # in BOTH directions. A helper that stops firing on one platform is otherwise invisible
