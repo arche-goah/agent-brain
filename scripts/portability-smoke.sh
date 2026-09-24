@@ -466,6 +466,31 @@ case "$_hc" in
   *) bad "hook-coverage went blind: an unregistered helper was accepted";;
 esac
 
+# leak-scan --root: the scan measures the tree it is pointed at, with THAT tree's watch
+# list. Before 2026-09-23 a brain calling core/scripts/leak-scan.py scanned the core
+# submodule (ROOT = the script's own checkout) while reading names from the cwd — every
+# brain re-measurement along that path was a pseudo-measurement. The home path is built
+# at run time so this file does not trip the core's own leak-scan.
+LR="$T/leakroot"
+mkdir -p "$LR/.claude/rules" "$LR/docs"
+printf '{"names": ["zzfixturename"]}\n' > "$LR/.claude/rules/leak-names.json"
+printf 'owner zzfixturename at /%s/%s/x\n' Users zzfixtureuser > "$LR/docs/note.md"
+_ls="$(cd "$T" && "$PY" "$CORE/scripts/leak-scan.py" --root "$LR" --only docs 2>&1)"; rc=$?
+case "$_ls" in *"[person] docs/note.md"*) _p=1;; *) _p=0;; esac
+case "$_ls" in *"[home_path] docs/note.md"*) _h=1;; *) _h=0;; esac
+if [ "$rc" = 1 ] && [ "$_p" = 1 ] && [ "$_h" = 1 ]; then
+  ok "leak-scan --root scans the caller's tree with its watch list"
+else
+  bad "leak-scan --root: rc=$rc person=$_p home=$_h $(printf '%s' "$_ls" | head -3)"
+fi
+# Negative control: the same call WITHOUT --root, from inside that tree, must not see it —
+# the default stays the scanner's own checkout (suites and CI unchanged).
+_ls="$(cd "$LR" && "$PY" "$CORE/scripts/leak-scan.py" --only docs 2>&1)"
+case "$_ls" in
+  *"docs/note.md"*) bad "leak-scan default root changed: it scanned the cwd";;
+  *) ok "leak-scan default root stays the scanner's checkout";;
+esac
+
 echo
 if [ "$fail" -eq 0 ]; then echo "portability-smoke: ALL checks passed"; else echo "portability-smoke: FAILURE (see FAIL lines)"; fi
 exit "$fail"
