@@ -143,10 +143,32 @@ for name in manual:
         invoke = re.compile(
             r'(?:bash|sh|node|python3?|\$PY|\$PYTHON|\./|exec |subprocess[^\n]*?)'
             r'[^\n]{0,40}' + re.escape(name))
+        # A FIXTURE IS NOT A SCHEDULER. The note below already says being USED by
+        # another tool is fine — and then this check reported exactly that case,
+        # because a hand tool with an effect proof is CALLED by its own test. The two
+        # mechanisms pulled against each other: brain-selftest demands a fixture for
+        # every mechanism, this one flagged the fixture as a contradiction, so doing
+        # the right thing produced a permanent candidate on every instance. Measured
+        # 2026-09-24 on emil-workstation: `onboarding-verify.sh` (hand-run by
+        # construction, checks a freshly bootstrapped brain once) reported against
+        # `test-onboarding-leak-check.sh`, its own fixture.
+        #
+        # The predicate is the one brain-selftest.sh already uses for the same blind
+        # spot — three naming shapes, all of them the fixture layer, not a mechanism.
+        # Kept as a literal copy rather than a shared import: the two runners have no
+        # common module today, and inventing one for four lines is the bigger change.
+        def is_fixture(basename):
+            return (basename.startswith("test-")
+                    or basename.endswith(("-test.sh", "-test.py")))
+
         callers = [p for p, t in sources.items()
                    if p.endswith((".sh", ".py", ".cjs")) and invoke.search(t)
-                   and os.path.basename(p) != name]
+                   and os.path.basename(p) != name
+                   and not is_fixture(os.path.basename(p))]
         if callers:
+            # Report a REAL caller, not merely the first match: before this filter the
+            # reported name could be a fixture while an actual scheduler sat further
+            # down the list, which points the reader at the harmless half of the find.
             note("allowlist-contradiction", f"{name} is invoked by "
                  f"{os.path.basename(callers[0])}",
                  "it is declared hand-run, but a script actually starts it — one of "
