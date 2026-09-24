@@ -159,7 +159,15 @@ if [ "$(cat "$LOCK/token" 2>/dev/null)" != "$TOKEN" ]; then
   echo "   (skipped: another session is measuring this right now, and there is no previous result yet)"
   exit 0
 fi
-trap release_lock EXIT INT TERM
+# A signal only MARKS the run; the lock goes on EXIT. A trap that merely cleans up lets bash
+# carry on after it — measured 2026-09-24: the session-start hook was killed at its 30 s
+# timeout, TERM reached the fixture run and this script alike, the handler released the
+# lock, and execution continued into the store: one line of output with rc 143, filed
+# under the CURRENT key as if it were the answer. Every later start replayed that red
+# verdict as "unchanged" and named no failing check, because none had failed.
+INTERRUPTED=0
+trap release_lock EXIT
+trap 'INTERRUPTED=1' INT TERM HUP
 
 # Capture and store, then REPLAY to stdout. Capturing without replaying would make a
 # fresh run silent while a cached one talks — the caller would see output only when
@@ -170,6 +178,14 @@ run_and_store() {
   tmp="$OUT.$$"
   "$@" > "$tmp" 2>&1
   rc=$?
+  # An interrupted run measured nothing. Storing it would turn "cut off" into "failed" and
+  # keep it for as long as the key holds; keeping the previous verdict and re-measuring at
+  # the next call is the honest answer.
+  if [ "$INTERRUPTED" -eq 1 ]; then
+    rm -f "$tmp"
+    echo "   (interrupted before it finished — nothing stored, the next call measures again)"
+    return "$rc"
+  fi
   mv -f "$tmp" "$OUT" 2>/dev/null || true
   printf '%s|%s|%s\n' "$KEY" "$(now)" "$rc" > "$META"
   [ -f "$OUT" ] && cat "$OUT"
@@ -179,9 +195,10 @@ run_and_store() {
 if [ "$BG" -eq 1 ]; then
   # Detach, and hand the lock to the child: the parent's EXIT trap must not remove a lock
   # the background run still holds, or a second session starts the same work seconds later.
-  trap - EXIT INT TERM
+  trap - EXIT INT TERM HUP
   (
-    trap release_lock EXIT INT TERM
+    trap release_lock EXIT
+    trap 'INTERRUPTED=1' INT TERM HUP
     run_and_store "$@"
   ) >/dev/null 2>&1 &
   # The holder is now the child, so the lock must name the child — the parent exits in a

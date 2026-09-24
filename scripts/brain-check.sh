@@ -76,7 +76,15 @@ fi
 
 # Something is off: the summary alone would be a shrug, so the detail follows.
 echo "!! brain-check: needs a look"
-printf '%s\n' "$self_out" | grep -aE '^  !!|FAILURE' | head -8
+# The failing check, its detail lines (indented eight), and whether the verdict is a
+# stored one — "red" alone tells the operator nothing (operator, 2026-09-24: "ich mag
+# genau wissen, was anschlaegt"). A red result that names no check is itself a defect of
+# the check, and says so instead of leaving a bare FAILURE line to be guessed at.
+printf '%s\n' "$self_out" | grep -aE '^  !!|^        |^   \(reused:|FAILURE' | head -16
+if [ "$rc" -ne 0 ] && ! printf '%s\n' "$self_out" | grep -aq '^  !!'; then
+  echo "  !!  red, but no check is named as failing — the stored result is incomplete," \
+       "not a finding; report it as a defect of the self-test"
+fi
 # The space before the count is part of the shape brain-friction.py prints
 # (`allowlist-contradiction (1):`). Without it in the pattern the range never opens, so
 # the brief mode announced "needs a look" and then said NOTHING about what to look at —
