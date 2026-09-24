@@ -542,6 +542,28 @@ case "$_ls" in
   *) ok "leak-scan default root stays the scanner's checkout";;
 esac
 
+# --- ecosystem-sync --write records the CURRENT plugin set --------------------
+# A plugin pinned in the lockfile but no longer installed (a beta swaps one channel for
+# another) was reported as drift and --write kept it, so the drift could never clear and
+# handover-gate stayed red on every run. --write must drop it; a plain run still reports it.
+EB="$T/ecobrain"; EC="$T/ecocfg"
+mkdir -p "$EB/config" "$EC/plugins"
+printf '{"core_contract":null,"repos":{},"plugins":{"_gemessen":"x","gone@m":{"version":"1"},"here@m":{"version":"2","commit":null}}}
+' > "$EB/config/ecosystem.json"
+printf '{"plugins":{"here@m":[{"version":"2"}]}}
+' > "$EC/plugins/installed_plugins.json"
+_es="$(cd "$EB" && CLAUDE_CONFIG_DIR="$EC" "$PY" "$CORE/scripts/ecosystem-sync.py" 2>&1)"
+case "$_es" in
+  *"plugin gone@m: pinned but not installed"*) ok "ecosystem-sync reports an uninstalled pinned plugin";;
+  *) bad "ecosystem-sync missed the uninstalled plugin: $(printf '%s' "$_es" | tail -2)";;
+esac
+(cd "$EB" && CLAUDE_CONFIG_DIR="$EC" "$PY" "$CORE/scripts/ecosystem-sync.py" --write >/dev/null 2>&1)
+_es="$(cd "$EB" && CLAUDE_CONFIG_DIR="$EC" "$PY" "$CORE/scripts/ecosystem-sync.py" 2>&1)"
+case "$_es:$(cat "$EB/config/ecosystem.json")" in
+  *"in sync"*'"_gemessen"'*) ok "ecosystem-sync --write drops it and keeps instance annotations";;
+  *) bad "ecosystem-sync after --write: $(printf '%s' "$_es" | tail -2)";;
+esac
+
 echo
 if [ "$fail" -eq 0 ]; then echo "portability-smoke: ALL checks passed"; else echo "portability-smoke: FAILURE (see FAIL lines)"; fi
 exit "$fail"

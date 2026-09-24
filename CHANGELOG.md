@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **`ecosystem-sync.py --write` drops a plugin that is no longer installed.** Measured on 2026-09-24 on a Windows brain in the beta: `brain-core@arche-goah` is deliberately uninstalled, and `brain-core-next` replaces it. The lockfile kept the old entry, and every run reported `plugin brain-core@arche-goah: pinned but not installed`. The script says to "record it with --write once the state is intended", but `--write` updated only the installed plugins and never removed one. So the drift could not be cleared, and `handover-gate.sh` failed on every run. A gate that is always red stops meaning anything. A plain run still reports the missing plugin, and `--write` now removes it. Keys that start with `_` are instance annotations and are kept. New fixture in `portability-smoke.sh`: the missing plugin is reported; after `--write` the plugin is gone, the lockfile reads in sync and the annotation is still there. Against the previous script the second check fails.
+
 ## 1.3.39 — 2026-09-24
 
 - **AGENTS.md rule 11: merging into `main` meets two walls.** Measured 2026-09-24 on #158: a PR opened by the code-owner account cannot be approved (GitHub forbids self-approval, CODEOWNERS names one account), so its path is the admin bypass; and on an instance whose `settings.json` has no `allow` rule for that call, the auto-mode classifier refuses the bypass before it leaves the machine, while another instance with `Bash(gh pr *)` allowed merges the same way. The knowledge lived only in one instance's private memory, so the second instance searched for the cause on GitHub. The rule quotes both refusals verbatim, says which one is an instance permission, and asks for `--match-head-commit` on the reviewed state.
