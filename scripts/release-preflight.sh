@@ -85,8 +85,12 @@ if [ "$MODE" = "local" ]; then
   fi
 
   # 5. race guard, second half: someone else's release PR means comment THERE, not tag here
+  # gh resolves the repo from its working directory, not from $ROOT — run it IN $ROOT,
+  # or a preflight started from another checkout (brain -> suite) asks the wrong repo
+  # and reports that repo's green as this one's (measured 2026-09-23: agent-brain
+  # answered for touchdesigner-suite).
   if command -v gh >/dev/null 2>&1; then
-    OPEN="$(gh pr list --state open --json headRefName,title \
+    OPEN="$(cd "$ROOT" && gh pr list --state open --json headRefName,title \
       --jq '[.[] | select((.headRefName | startswith("release/")) or (.title | startswith("chore: release")))] | length' 2>/dev/null || echo "?")"
     if [ "$OPEN" = "0" ]; then
       ok "no competing open release PR"
