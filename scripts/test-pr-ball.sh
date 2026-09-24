@@ -63,9 +63,41 @@ expect_line "reviewer: a formal review request fires without a mention" \
   "$(pr reviewer '{"number":7,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"maint"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-13T16:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[{"requestedReviewer":{"login":"reviewer"}}]}}')" \
   "core#7 review - asked"
 
-# 8. under 24 h: a fresh move is normal work, not a stall
-expect_silent "fresh: a move open for 2 h stays silent" \
-  "$(pr author '{"number":9,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-15T05:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"maint"},"state":"CHANGES_REQUESTED","submittedAt":"2026-09-15T06:00:00Z"}]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')"
+# 8. under 24 h: a fresh move is NAMED (2026-09-22: a 4 h old "OK for merge" went unseen
+#    behind the old 24 h floor), only without the stall marker
+out="$(run fresh "$(pr author '{"number":9,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-15T05:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"maint"},"state":"CHANGES_REQUESTED","submittedAt":"2026-09-15T06:00:00Z"}]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')")"
+case "$out" in
+  "PR waiting on you: core#9 yours - changes requested, 2 h") ok "fresh: a 2 h move is named, without !!" ;;
+  *) bad "fresh: expected the move without !!, got: ${out:-<silence>}" ;;
+esac
+
+# 8b. the stall marker is there once a move is 24 h old
+expect_line "stall: a 40 h move carries !!" \
+  "$(pr author '{"number":143,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-13T15:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"maint"},"state":"CHANGES_REQUESTED","submittedAt":"2026-09-13T16:00:00Z"}]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" \
+  "!! PR waiting on you:"
+
+# 13. the measured case 2026-09-22: my PR, a collaborator COMMENTS "OK for merge" after my
+#     last commit (no formal review — the ruleset leaves them none) — the move is mine
+expect_line "author: a comment by someone else after my last commit" \
+  "$(pr author '{"number":150,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T20:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"peer"},"createdAt":"2026-09-15T04:00:00Z"}]},"reviewRequests":{"nodes":[]}}')" \
+  "core#150 yours - reply since your last commit, 4 h"
+
+# 14. I answered the comment: the move went back
+expect_silent "author: my own comment after theirs hands the move back" \
+  "$(pr author '{"number":150,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T20:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"peer"},"createdAt":"2026-09-15T04:00:00Z"},{"author":{"login":"author"},"createdAt":"2026-09-15T05:00:00Z"}]},"reviewRequests":{"nodes":[]}}')"
+
+# 15. a comment older than my last commit is answered by that commit
+expect_silent "author: a comment before my last commit is not a move" \
+  "$(pr author '{"number":150,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-15T06:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"peer"},"createdAt":"2026-09-15T04:00:00Z"}]},"reviewRequests":{"nodes":[]}}')"
+
+# 16. a bot comment is nobody's move
+expect_silent "author: a bot comment is not a reply" \
+  "$(pr author '{"number":150,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T20:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"github-actions"},"createdAt":"2026-09-15T04:00:00Z"}]},"reviewRequests":{"nodes":[]}}')"
+
+# 17. an APPROVED review after my last commit is a move too (merge is next)
+expect_line "author: an approval after my last commit" \
+  "$(pr author '{"number":151,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T20:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"peer"},"state":"APPROVED","submittedAt":"2026-09-15T02:00:00Z"}]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" \
+  "core#151 yours - reply since your last commit, 6 h"
 
 # 9. drafts never count
 expect_silent "draft: never a move" \

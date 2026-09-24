@@ -27,9 +27,15 @@ STATE_FILE="${SHARED_MEMORY_STATE:-${CLAUDE_PROJECT_DIR:-.}/config/shared-memory
 # take part in shared memory must not be nagged about it every single start.
 [[ -d "$REPO/.git" ]] || exit 0
 
-# Offline or fetch failure — silent, no false alarm. Nothing is lost: the marker only
-# advances on success, so the missed commits surface at the next successful check.
-git -C "$REPO" fetch -q origin main 2>/dev/null || exit 0
+# Offline or fetch failure — ONE line saying the check did not run. The marker only
+# advances on success, so nothing is lost for the next start; but silence here read as
+# "nothing new" for a whole session (measured 2026-09-22: every network line of the
+# bootup missing, three foreign commits incl. a merge OK unseen until the operator asked).
+# A check that could not look must never look like a check that found nothing.
+if ! git -C "$REPO" fetch -q origin main 2>/dev/null; then
+  echo "shared-memory: NOT checked - fetch failed (offline?). Retry: bash core/helpers/shared-memory-check.sh"
+  exit 0
+fi
 
 REMOTE_HEAD=$(git -C "$REPO" rev-parse origin/main 2>/dev/null) || exit 0
 [[ -n "$REMOTE_HEAD" ]] || exit 0
