@@ -229,6 +229,12 @@ def main() -> int:
         # not plugins — same convention as _comment/_role in the repos section.
         if not name.startswith("_") and name not in now_plugins:
             drift.append(f"plugin {name}: pinned but not installed")
+            # --write promises "record the current state"; keeping an uninstalled plugin
+            # made this drift permanent — measured 2026-09-24 on a brain in a beta
+            # (brain-core swapped for brain-core-next): handover-gate red on every run,
+            # and the advice below could not clear it.
+            if args.write:
+                del pinned_plugins[name]
     # Counted after the merge, so a first run reports what it recorded, not what it found.
     n_plugins = sum(1 for k in pinned_plugins if not k.startswith("_"))
 
