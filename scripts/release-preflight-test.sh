@@ -78,6 +78,28 @@ check "ci mode catches the v1.2.0 class" 1 $?
 RELEASE_PREFLIGHT_ROOT="$R" bash "$S" 2.0.0 >/dev/null 2>&1
 check "malformed tag rejected" 2 $?
 
+# 10. check 5 asks the repo UNDER TEST, not the caller's checkout: started from this
+#     (GitHub) checkout against a fixture whose origin is a bare local repo, gh must not
+#     answer — a green "no competing open release PR" here is the caller's repo speaking.
+R="$(mkrepo 2.0.0)"
+OUT="$(cd "$(dirname "$S")" && RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"
+case "$OUT" in *"no competing open release PR"*) rc=1;; *) rc=0;; esac
+check "release-PR check queries the repo under test" 0 $rc
+
+# 10b. the same property without network or login (review emil-macos on #155): with an
+#      unauthenticated gh both the old and the fixed script print "?", so 10 alone cannot
+#      tell them apart. A stub gh first on PATH records where it was started; it must be $R.
+STUB="$TMP/gh-stub"; mkdir -p "$STUB"
+printf '#!/usr/bin/env bash
+pwd -P > "%s/gh-cwd"
+echo 0
+' "$TMP" > "$STUB/gh"
+chmod +x "$STUB/gh"
+rm -f "$TMP/gh-cwd"
+(cd "$(dirname "$S")" && PATH="$STUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >/dev/null 2>&1)
+[ "$(cat "$TMP/gh-cwd" 2>/dev/null)" = "$(cd "$R" && pwd -P)" ] && rc=0 || rc=1
+check "gh runs inside the repo under test (stub, network-free)" 0 $rc
+
 echo
 echo "$pass/$((pass+fail)) passed"
 [ "$fail" -eq 0 ]
