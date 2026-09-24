@@ -24,6 +24,15 @@ import sys
 import tempfile
 from pathlib import Path
 
+# OS-9: a Python script whose stdout another program reads pins it — on Windows a
+# redirected stdout otherwise takes the ANSI codepage and CRLF, and the runner that
+# collects fixture output would see different bytes per platform. The duty is the
+# producer's; a consumer cannot repair bytes that already left wrong.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):  # a stream that cannot be reconfigured
+    pass
+
 HERE = Path(__file__).resolve().parent
 SCANNER = HERE / "brain-friction.py"
 
@@ -61,7 +70,7 @@ def scan(root):
 
 CALL = "#!/bin/bash\nbash scripts/handtool.sh\n"
 
-print("brain-friction — allowlist-contradiction:")
+print("brain-friction: allowlist-contradiction")
 
 # 1. a fixture calling the hand tool is not a scheduler
 with tempfile.TemporaryDirectory() as td:
