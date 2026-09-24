@@ -311,3 +311,40 @@ Shape is filed as A because the platform supplies a second form of a value the p
 control — but it is a borderline case: nothing is reshaped IN TRANSIT here, both spellings are
 valid at the same time and the program simply knows one of them. If the maintainers read that
 as a fourth shape rather than a variant of A, this entry is the place to name it.
+
+## OS-9 — a Python script whose stdout another program parses leaves it to the platform
+
+shape: A
+
+invariant: A Python script whose output is READ by another program pins its stdout —
+`sys.stdout.reconfigure(encoding="utf-8", newline="\n")`. Unpinned, Python on Windows
+gives a redirected stdout the ANSI codepage and CRLF line endings, so the same program
+emits different bytes per platform. The consumer never learns this: a shell regex `.*`
+stops at the first invalid byte instead of failing, and a trailing CR turns an extracted
+number into a string. Both end as a WRONG VALUE, not as an error.
+pattern:   print\(.*[^\x00-\x7F]
+paths:     --include=*.py scripts helpers
+known:     scripts/brain-friction.py=3 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/os-traps-export.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
+instances: 1
+repeat:    no
+status:    open
+note:      Measured 2026-09-24 on emil-workstation (Windows 11, Git Bash, Python 3.14),
+core v1.3.38. `brain-check.sh --brief` — the form the session-start hook runs — printed
+`[: 1<0x97> decide each, none of them is a verdict.: integer expression expected` and then
+took its "needs a look" branch, while a hand-run `brain-check.sh` was green. Cause:
+`brain-friction.py` wrote its headline em dash as the single cp1252 byte 0x97 and ended
+its lines CRLF; the `sed` that lifts the candidate count out could consume neither. So the
+brain raised a permanent false alarm at every session start, and the operator had to be
+told "needs a look" about a machine that was fine. Fixed at the PRODUCER — a consumer
+cannot repair bytes that already left wrong.
+The FORM of the measurement matters and cost a wrong check first: through a plain `>` file
+redirect the same script ended LF, through a PIPE it ended CRLF. brain-check.sh reads it in
+a command substitution, i.e. a pipe, so the gate in `scripts/portability-smoke.sh` pipes too
+— written with `>` it would have been green against exactly this defect. The CR half of that
+gate reads bytes in Python rather than `grep "$(printf '\r')"`: the substitution hands grep
+an EMPTY pattern, which matches every file and reports LF for a file full of CRLF.
+`known` is a baseline of SITES (like OS-2), not of defects: 13 files print non-ASCII today
+and only `brain-friction.py` is parsed by another program, so the rest are correct as they
+stand. The baseline exists so a NEW site is read with one question before it ships: does
+anything PARSE this output? Left `open` deliberately — the 12 unpinned sites are fine only
+as long as that answer stays no.

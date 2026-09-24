@@ -70,6 +70,16 @@ import shlex
 import sys
 from pathlib import Path
 
+# Second site of OS-9 (docs/os-traps.md): scripts/brain-selftest.sh reads this output, so
+# the platform must not decide its encoding or its line endings. It survives today only
+# because that consumer counts ASCII-pattern LINES instead of extracting a number — the
+# same unpinned stdout broke brain-check.sh on Windows. Pinned here as the pair fix, not
+# as a precaution: a consumer that changes what it extracts must not have to know this.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):  # a stream that cannot be reconfigured
+    pass
+
 FIELDS = ("invariant", "pattern", "check", "paths", "known", "instances", "repeat",
           "status", "note", "mechanizable")
 

@@ -466,6 +466,57 @@ case "$_hc" in
   *) bad "hook-coverage went blind: an unregistered helper was accepted";;
 esac
 
+# brain-friction.py is READ by brain-check.sh, so its stdout is an interface, not prose.
+# Measured 2026-09-24 on a Windows brain (core v1.3.38): unpinned, Python wrote the
+# headline's em dash as the single cp1252 byte 0x97 and ended every line CRLF. The `sed`
+# that extracts the candidate count could consume neither, brain-check.sh compared
+# `1<0x97> decide each, ...` against 0, printed `integer expression expected` and took its
+# "needs a look" branch — a permanent false alarm at every session start, while a hand-run
+# brain-check stayed green. Asserted on the BYTES, because that is what the consumer reads.
+# Through a PIPE, deliberately: brain-check.sh reads this script in a command
+# substitution, and the form differs. Measured the same day: unpinned, a plain `>` file
+# redirect ended LF while the pipe ended CRLF, so a check written with `>` would have
+# been green against the very defect it exists for.
+_fr="$T/friction.out"
+"$PY" "$CORE/scripts/brain-friction.py" "$CORE" 2>/dev/null | cat > "$_fr" || true
+if [ ! -s "$_fr" ]; then
+  bad "brain-friction wrote nothing — the byte assertions below would be vacuous"
+else
+  # The CR test reads BYTES in Python, not `grep "$(printf '\r')"`: measured the same day,
+  # the command substitution handed grep an empty pattern, so that form matched every file
+  # and reported LF for a file full of CRLF.
+  if ! "$PY" -c "import sys; sys.exit(1 if b'\r' in open(sys.argv[1],'rb').read() else 0)" "$_fr"; then
+    bad "brain-friction stdout carries CR — the count sed reads ends up non-numeric"
+  else
+    ok "brain-friction stdout is LF, the form its consumer parses"
+  fi
+  if "$PY" -c "import sys; open(sys.argv[1],encoding='utf-8').read()" "$_fr" 2>/dev/null; then
+    ok "brain-friction stdout is UTF-8, not the platform codepage"
+  else
+    bad "brain-friction stdout is not UTF-8 — a regex .* stops at the invalid byte"
+  fi
+fi
+
+# ... and when it says so, it must say WHAT. The brief branch extracts the candidate block
+# with a `sed` range; its opening pattern had no room for the space brain-friction.py
+# prints before the count, so the range never opened and the hook announced "needs a look"
+# with nothing under it. A verdict with no detail is the shape this whole file exists for,
+# and it had no fixture because the branch only runs when a candidate actually exists —
+# so the fixture below MAKES one: a script declared hand-run that another script starts.
+mkdir -p "$T/frictionbrain/.claude/rules" "$T/frictionbrain/scripts"
+printf '{ "manual": ["tool-a.sh"] }\n' > "$T/frictionbrain/.claude/rules/manual-tools.json"
+printf '#!/usr/bin/env bash\necho a\n' > "$T/frictionbrain/scripts/tool-a.sh"
+printf '#!/usr/bin/env bash\nbash scripts/tool-a.sh\n' > "$T/frictionbrain/scripts/caller.sh"
+_bc="$(CLAUDE_PROJECT_DIR="$T/frictionbrain" bash "$CORE/scripts/brain-check.sh" --brief "$T/frictionbrain" 2>&1)"
+case "$_bc" in
+  *"needs a look"*) ok "brief mode reports a friction candidate at all";;
+  *) bad "brief mode stayed green on a brain with a declared-but-called hand tool";;
+esac
+case "$_bc" in
+  *tool-a.sh*) ok "brief mode names WHAT to look at, not only that one should";;
+  *) bad "brief mode said 'needs a look' and named nothing — the candidate block is swallowed";;
+esac
+
 echo
 if [ "$fail" -eq 0 ]; then echo "portability-smoke: ALL checks passed"; else echo "portability-smoke: FAILURE (see FAIL lines)"; fi
 exit "$fail"
