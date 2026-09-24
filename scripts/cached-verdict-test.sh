@@ -150,6 +150,45 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do [ -d "$CACHED_VERDICT_STATE/verdict-p8.l
 [ -d "$CACHED_VERDICT_STATE/verdict-p8.lock" ] && bad "the child releases the lock when done" "lock dir still there" \
                                                 || ok "the child releases the lock when done"
 
+echo "property 9: a run cut off by a signal stores nothing; a finished failure still does"
+# The occasion (2026-09-24): the session-start hook hit its timeout, TERM landed mid-run,
+# and the cleanup trap let the script carry on into the store — one line of output and
+# rc 143 became the verdict under the current key. The pid file lets the fixture kill
+# the payload itself without pkill, which Git Bash on Windows does not ship.
+printf '#!/usr/bin/env bash\necho $$ > "%s/payload.pid"\necho "  ok  first"\nsleep 20\necho "  ok  second"\n' "$TMP" > "$TMP/cut.sh"
+chmod +x "$TMP/cut.sh"
+wait_pid() { for _ in $(seq 1 30); do [ -s "$TMP/payload.pid" ] && return 0; sleep 0.2; done; return 1; }
+cut_off() { # <runner pid>: the group kill a hook timeout delivers, done by hand
+  wait_pid; kill -TERM "$1" "$(cat "$TMP/payload.pid")" 2>/dev/null; rm -f "$TMP/payload.pid"
+}
+seed() { printf 'OLD|%s|0\n' "$(date +%s)" > "$CACHED_VERDICT_STATE/verdict-$1.meta"
+         echo "  ok  previous" > "$CACHED_VERDICT_STATE/verdict-$1.out"; }
+
+seed p9f
+bash "$CV" p9f --key NEW -- "$TMP/cut.sh" > "$TMP/p9f.out" 2>&1 & fg_pid=$!
+cut_off "$fg_pid"; wait "$fg_pid" 2>/dev/null
+eq  "foreground cut off: the previous meta is kept" "OLD" "$(cut -d'|' -f1 "$CACHED_VERDICT_STATE/verdict-p9f.meta")"
+has "foreground cut off: the previous output is kept" "previous" "$(cat "$CACHED_VERDICT_STATE/verdict-p9f.out")"
+has "foreground cut off: it says nothing was stored" "nothing stored" "$(cat "$TMP/p9f.out")"
+[ -d "$CACHED_VERDICT_STATE/verdict-p9f.lock" ] && bad "foreground cut off: lock released" "lock dir still there" \
+                                                 || ok "foreground cut off: lock released"
+
+seed p9b
+bash "$CV" p9b --key NEW --background-on-miss -- "$TMP/cut.sh" >/dev/null 2>&1
+wait_pid; child=$(cat "$CACHED_VERDICT_STATE/verdict-p9b.lock/pid" 2>/dev/null)
+cut_off "$child"
+for _ in $(seq 1 20); do [ -d "$CACHED_VERDICT_STATE/verdict-p9b.lock" ] || break; sleep 0.2; done
+eq  "background cut off: the previous meta is kept" "OLD" "$(cut -d'|' -f1 "$CACHED_VERDICT_STATE/verdict-p9b.meta")"
+[ -d "$CACHED_VERDICT_STATE/verdict-p9b.lock" ] && bad "background cut off: lock released" "lock dir still there" \
+                                                 || ok "background cut off: lock released"
+
+# Counter-check: a run that FINISHES with a failure is a verdict and must be stored.
+probe finished 1
+seed p9c
+bash "$CV" p9c --key NEW -- "$TMP/p.sh" >/dev/null 2>&1
+eq  "finished failure: stored under the new key" "NEW|1" \
+    "$(cut -d'|' -f1,3 "$CACHED_VERDICT_STATE/verdict-p9c.meta")"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "cached-verdict-test: all checks passed"; exit 0; fi
 echo "cached-verdict-test: $fails check(s) FAILED"; exit 1
