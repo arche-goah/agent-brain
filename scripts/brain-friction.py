@@ -26,6 +26,21 @@ import os
 import re
 import sys
 
+# This script's stdout is PARSED by scripts/brain-check.sh (a `sed` for the candidate
+# count). On Windows, Python's stdout is neither UTF-8 nor LF once it is redirected: it
+# takes the ANSI codepage and translates newlines. Measured 2026-09-24 on a Windows brain,
+# core v1.3.38: the headline's em dash left this script as the single byte 0x97 and every
+# line ended CRLF, so the extracting `sed` could consume neither -- a regex `.*` stops at
+# an invalid byte. brain-check.sh then compared `1<0x97> decide each, ...` against 0, said
+# `integer expression expected`, and took its "needs a look" branch. The session-start hook
+# runs exactly that path, so the brain raised a permanent false alarm while a hand-run
+# brain-check was green. The PRODUCER pins the form; a consumer cannot repair bytes that
+# already left wrong (core register docs/os-traps.md, form A and OS-2).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):  # a stream that cannot be reconfigured
+    pass
+
 ROOT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1
                        else os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
 os.chdir(ROOT)
