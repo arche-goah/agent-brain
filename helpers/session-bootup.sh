@@ -306,6 +306,14 @@ if [[ -f "$HERE/../scripts/hook-coverage.py" ]]; then
   [[ -n "$hc" ]] && echo "!! hooks in the core template but not wired here: ${hc//$'\n'/ · } — ask the operator to add the line(s) to .claude/settings.json (source: core/templates/settings.json), then restart Claude Code"
 fi
 
+# Enabled plugin skills the auto-fire table omits (measured on the Windows instance:
+# three brain-scans in a row found the hand-kept table short after plugin updates).
+# Repeats every session until a row (or an auto-fire-ignore) is added; never edits.
+if [[ -f "$HERE/../scripts/auto-fire-coverage.py" ]]; then
+  afc=$("$PY" "$HERE/../scripts/auto-fire-coverage.py" "$R" 2>/dev/null)
+  [[ -n "$afc" ]] && echo "!! skills not in the auto-fire table (.claude/rules/intelligence-instance.md): ${afc//$'\n'/ · } — add a pattern row, or list the id in <!-- auto-fire-ignore: ... --> if it must not auto-fire"
+fi
+
 # Statusline selfheal (operator directive 2026-08-10): the statusline lives at user
 # level (~/.claude) so it renders in ALL projects — which is exactly why it doesn't
 # migrate along by itself. The carrier is this bootup (lives in the repo): the first
