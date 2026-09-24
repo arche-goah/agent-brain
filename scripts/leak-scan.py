@@ -16,8 +16,8 @@ Classes it refuses:
 Deliberately allowed: loopback, 0.0.0.0, the RFC 5737 documentation ranges (192.0.2.x,
 198.51.100.x, 203.0.113.x) and RFC 3849 (2001:db8::) — those exist to be written down.
 
-Usage: scripts/leak-scan.py [--json]
-Exit 0 = clean, 1 = findings.
+Usage: scripts/leak-scan.py [--json] [--root DIR] [--only PATH ...]
+Exit 0 = clean, 1 = findings, 2 = bad --root.
 """
 from __future__ import annotations
 
@@ -39,17 +39,16 @@ SKIP_SUFFIX = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".gz", ".ico", "
 #   {"names": ["..."], "instances": ["..."]}
 # Core and suite CI scan without a list — the generic patterns (home paths, IPs,
 # secrets) still apply there; person names simply cannot occur in shared repos.
-def _instance_list():
+def _instance_list(root):
     import json as _json
     try:
-        with open(".claude/rules/leak-names.json", encoding="utf-8") as f:
+        with open(root / ".claude/rules/leak-names.json", encoding="utf-8") as f:
             d = _json.load(f)
         return ([str(n).lower() for n in d.get("names", [])],
                 [str(i).lower() for i in d.get("instances", [])])
     except Exception:
         return ([], [])
 
-NAMES, INSTANCES = _instance_list()
 
 # /Users/Shared is a real macOS system path used for IPC with the console, not a
 # person's home directory.
@@ -83,12 +82,17 @@ CHECKS = [
 ]
 # Empty lists must contribute NO pattern — "|".join([]) compiles to "" and an
 # empty regex matches every line (measured while building this: full-tree false red).
-if NAMES:
-    CHECKS.append(("person",
-                   re.compile("|".join(rf"\b{re.escape(n)}\b" for n in NAMES), re.I)))
-if INSTANCES:
-    CHECKS.append(("instance",
-                   re.compile("|".join(re.escape(i) for i in INSTANCES), re.I)))
+def add_instance_checks(root):
+    """Person and instance patterns come from the SCAN ROOT's watch list — the tree being
+    scanned, not the cwd and not the scanner's own checkout (the two used to disagree:
+    files from the scanner's checkout, names from the cwd)."""
+    names, instances = _instance_list(root)
+    if names:
+        CHECKS.append(("person",
+                       re.compile("|".join(rf"\b{re.escape(n)}\b" for n in names), re.I)))
+    if instances:
+        CHECKS.append(("instance",
+                       re.compile("|".join(re.escape(i) for i in instances), re.I)))
 
 
 def files(only=None):
@@ -126,8 +130,20 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--only", nargs="*", metavar="PATH",
-                    help="restrict the scan to these subpaths (relative to the repo root)")
+                    help="restrict the scan to these subpaths (relative to the scan root)")
+    ap.add_argument("--root", metavar="DIR",
+                    help="tree to scan (default: the checkout this script lives in). A brain "
+                         "scanning ITSELF through its core/ submodule must pass --root . — "
+                         "without it the scan measures the submodule (measured 2026-09-23)")
     args = ap.parse_args()
+
+    global ROOT
+    if args.root:
+        ROOT = Path(args.root).resolve()
+        if not ROOT.is_dir():
+            print(f"leak-scan: --root {args.root} is not a directory", file=sys.stderr)
+            return 2
+    add_instance_checks(ROOT)
 
     findings = []
     for path in files(args.only):
