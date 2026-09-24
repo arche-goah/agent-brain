@@ -77,6 +77,11 @@ fi
 # Something is off: the summary alone would be a shrug, so the detail follows.
 echo "!! brain-check: needs a look"
 printf '%s\n' "$self_out" | grep -aE '^  !!|FAILURE' | head -8
-printf '%s\n' "$fric_out" | sed -n '/^[a-z-]*([0-9]*):/,$p' | head -12
+# The space before the count is part of the shape brain-friction.py prints
+# (`allowlist-contradiction (1):`). Without it in the pattern the range never opens, so
+# the brief mode announced "needs a look" and then said NOTHING about what to look at —
+# measured 2026-09-24 on a Windows brain, but the miss is OS-independent and had simply
+# never been exercised: this branch only runs when a candidate exists.
+printf '%s\n' "$fric_out" | sed -n '/^[a-z-]* *([0-9]*):/,$p' | head -12
 echo "   full run: bash $HERE/brain-check.sh"
 exit "$rc"
