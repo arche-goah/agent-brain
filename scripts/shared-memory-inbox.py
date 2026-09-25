@@ -47,7 +47,12 @@ REPO_DEFAULT = _idx.REPO_DEFAULT
 # Spellings of "everyone" measured in the repo's headings and `audience` fields.
 EVERYONE = {"alle", "all", "everyone", "alle-collaborator"}
 SKIP_FILES = {"INDEX.md", "LOG.md", "README.md", "PEOPLE.md"}
-HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*·\s*(.+?)\s+—\s+(.+)$")
+# Measured 2026-09-25 across all LOGs: `## <date> · <von> — <title>` is one of FOUR live
+# shapes. Half of the September headings use an ASCII hyphen (`## <date> <von> - <title>`),
+# older ones carry a time note and no title (`## <date> (Abend) — <von>`). A pattern for
+# the first shape alone dropped every message of the second — silently.
+HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[·—-]\s*)?"
+                     r"([\w-]+)(?:\s+[—-]\s+(.*?))?\s*$")
 TEXT_CAP = 200
 
 
@@ -94,8 +99,9 @@ def log_items(repo: Path, a: str, b: str, me: set[str]) -> tuple[list[tuple], st
         if not m:
             continue
         date, sender, title = m.groups()
+        title = title or ""
         if for_us(sender, addressees(title), me):
-            items.append((date, topic, sender.strip(), first_sentence(title, TEXT_CAP)))
+            items.append((date, topic, sender, first_sentence(title or "(no title)", TEXT_CAP)))
     return items, "\n".join(added)
 
 

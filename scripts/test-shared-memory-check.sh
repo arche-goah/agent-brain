@@ -93,7 +93,9 @@ printf '%s\n' "# Log" "" \
   "## 2026-09-25 · peer — AN me-mac: question for me" "body" "" \
   "## 2026-09-25 · peer — AN alle: news for everyone" "body" "" \
   "## 2026-09-25 · peer — AN third: not for me" "body" "" \
-  "## 2026-09-25 · me-mac — AN peer: my own answer" "body" > "$SHARED/ops/LOG.md"
+  "## 2026-09-25 · me-mac — AN peer: my own answer" "body" "" \
+  "## 2026-09-25 peer - AN me-mac: ascii hyphen shape" "body" "" \
+  "## 2026-09-25 (evening) — peer" "untitled shape" > "$SHARED/ops/LOG.md"
 printf -- '---\nname: f-mine\ndescription: "File addressed to me."\nmetadata:\n  type: reference\n  von: peer\n  audience: me-mac\n  topic: ops\n  date: 2026-09-25\n---\n\nbody\n' > "$SHARED/ops/f-mine.md"
 printf -- '---\nname: f-other\ndescription: "File for a third party."\nmetadata:\n  type: reference\n  von: peer\n  audience: third\n  topic: ops\n  date: 2026-09-25\n---\n\nbody\n' > "$SHARED/ops/f-other.md"
 git_q -C "$SHARED" add -A; git_q -C "$SHARED" commit -qm inbox; git_q -C "$SHARED" push -q origin HEAD:main
@@ -102,6 +104,8 @@ out="$(SHARED_MEMORY_SELF=me-mac run_check)"
 has   "inbox header, filtered" "shared-memory inbox (for this instance)" "$out"
 has   "heading addressed to me" "peer: AN me-mac: question for me" "$out"
 has   "heading addressed to everyone" "AN alle: news for everyone" "$out"
+has   "ascii-hyphen heading shape (half of Sept 2026)" "peer: AN me-mac: ascii hyphen shape" "$out"
+has   "untitled heading shape, sender kept" "peer: (no title)" "$out"
 has   "fact file addressed to me, with its description" "File addressed to me. (ops/f-mine.md)" "$out"
 hasnt "heading for a third party" "not for me" "$out"
 hasnt "my own heading" "my own answer" "$out"
