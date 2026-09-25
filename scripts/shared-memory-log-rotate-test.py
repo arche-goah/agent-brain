@@ -103,10 +103,12 @@ with tempfile.TemporaryDirectory() as tmp:
         + f"\n## 2026-09-20 · me-mac — old long entry\n\n{long_body}\n"
         + f"\n## 2026-11-03 · me-mac — AN peer: new long entry\n\n{long_body}\n"
         + f"\n## 2026-11-03 · peer — AN me-mac: foreign long entry\n\n{long_body}\n"
+        + f"\n## 2026-11-04 me-mac - AN peer: ascii hyphen shape\n\n{long_body}\n"
         + "\n## 2026-11-03 · me-mac — AN peer: short\n\nDatei: `ops/x.md`.\n",
         encoding="utf-8", newline="\n")
     rc, out = run(repo, "--check", "--today", "2026-11-05", self_="me-mac")
-    ok("own new long entry reported", "1 own LOG entry over 300 B" in out and "2026-11-03 me-mac" in out, out)
+    ok("own new long entry reported", "2 own LOG entries over 300 B" in out and "2026-11-03 me-mac" in out, out)
+    ok("ascii-hyphen heading shape recognised as own", "2026-11-04 me-mac" in out, out)
     ok("foreign long entry not reported", "peer (" not in out, out)
     ok("entry before the cap date not reported", "2026-09-20" not in out.split("over 300 B")[-1], out)
 
