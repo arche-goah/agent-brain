@@ -95,6 +95,14 @@ sleep 6
 SECOND=$(grep -c '^FOUND:' "$OUT" || true)
 WORKSTATION_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
+# A LOG-only commit carries no `von:` field; its heading names sender and title
+# (measured 2026-09-25: reported as "unknown party" while the heading said who and what).
+printf '# Log\n\n## 2026-09-25 · bojan-workstation — AN alle: log-only message\n\nbody\n' > "$OTHER/domain/LOG.md"
+git -C "$OTHER" add -A
+git -C "$OTHER" commit -qm "log only"
+git -C "$OTHER" push -q origin main
+sleep 6
+
 # Braces + redirect: the shell prints its own "Terminated" job message on wait,
 # which reads like a test failure in the log and is not one.
 { kill "$WATCHER"; wait "$WATCHER"; } 2>/dev/null || true
@@ -125,5 +133,10 @@ if grep -q 'from .*emil-workstation' <<<"$WORKSTATION_LINE" \
   echo "PASS: an entry von: emil-workstation is NOT reported as the colleague"
 else
   echo "FAIL: our own workstation read as someone else: $WORKSTATION_LINE"; fail=1
+fi
+if grep -q 'bojan-workstation: AN alle: log-only message' "$OUT"; then
+  echo "PASS: a LOG-only commit is reported with sender and title"
+else
+  echo "FAIL: LOG-only commit reported without what it says"; fail=1
 fi
 exit "$fail"
