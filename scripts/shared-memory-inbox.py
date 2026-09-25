@@ -44,7 +44,8 @@ first_sentence = _idx.first_sentence
 read_entry = _idx.read_entry
 REPO_DEFAULT = _idx.REPO_DEFAULT
 
-EVERYONE = {"alle", "all", "everyone", "alle-collaborator", "jeder"}
+# Spellings of "everyone" measured in the repo's headings and `audience` fields.
+EVERYONE = {"alle", "all", "everyone", "alle-collaborator"}
 SKIP_FILES = {"INDEX.md", "LOG.md", "README.md", "PEOPLE.md"}
 HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*·\s*(.+?)\s+—\s+(.+)$")
 TEXT_CAP = 200
