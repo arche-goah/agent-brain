@@ -7,6 +7,18 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **The shared memory's LOGs rotate by month, and new LOG entries stay short.** Measured 2026-09-25: `ops/LOG.md` held 146,019 bytes thirteen days after it was started. That is 98 entries of ~1.5 KB each, and only 34 of them point to a fact file. `grandma3/LOG.md` is at 54,760 bytes. The lint had flagged "LOG over rotation size" with a fix text, but nothing ran the lint and nothing did the fix. A file that size no longer fits one read, so a reader sees part of the protocol without noticing. Operator decision the same day: a LOG may rotate, with clean pointers both ways and nothing lost, and entries are kept as short as possible so that a month fits the limit. New `scripts/shared-memory-log-rotate.py`. `--write` moves every entry of a closed month verbatim, in order, to `<topic>/archive/LOG-<YYYY-MM>.md`, which points back. The LOG keeps its preamble plus one `Earlier months:` line that links every archive. `archive/` was already outside the fact-file set of the lint and the index generator. The move is computed in memory and written only if every original entry appears exactly once afterwards. Entries are cut only at dated headings, so an undated sub-heading travels with its entry. `--check` runs from `helpers/session-bootup.sh`, is read-only and stays silent unless something is due. It names a due rotation, and it names own entries (`SHARED_MEMORY_SELF`) dated 2026-09-26 or later that exceed 300 bytes. The budget is measured: at the September rate `ops` gets ~225 entries a month, and 60,000 / 225 ≈ 265 bytes each. So an entry is a heading plus one line, and the substance goes into a fact file. The lint's fix text now names the script. OS-2 baseline gains the new pinned write site. Fixture `scripts/shared-memory-log-rotate-test.py` covers:
+  - due and not due;
+  - every block exactly once, byte for byte;
+  - the sub-heading travels with its entry;
+  - preamble and both pointers are kept;
+  - LF only;
+  - a rerun moves nothing;
+  - the next month appends and still has one pointer line;
+  - an own long entry is named, while a foreign one and one before the cap date are not.
+
+  Dry run against a copy of the real repo with `--today 2026-10-02`: 227 entries before, 227 after; `ops/LOG.md` goes from 146 KB to 275 bytes.
+
 ## 1.3.40 — 2026-09-24
 
 - **brain-scan: a CVE counts as P0/P1 only if the advisory is found and the installed version is affected.** The CVE rule has existed since 2026-08-13. The brain-scan of 2026-09-24 on a Windows brain broke the same class anyway. Two numbers that had been refuted on 2026-08-13 came back as P1. A third came back as P0 with "CVSS 9.0" and the label "unconfirmed". Its advisory was in GitHub's global database all along (`gh api "/advisories?cve_id=..."`): rated MEDIUM, affecting "Context7 through 2.1.2", while 4.1.1 was pinned. The rule named only the affected repo's own advisories, so the agent never looked where the record was. It also compared no version, and it let an unconfirmed number keep P0. The rule now looks in the global advisory database first. A confirmed CVE takes its severity from the advisory and is P0/P1 only if the installed version is inside the affected range; otherwise it is INFO with both versions named. An unconfirmed number is capped at P2. This is still prompt text: a workflow script cannot read the finding files to enforce it. `test-brain-scan-files.sh` is green.
