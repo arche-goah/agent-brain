@@ -104,4 +104,13 @@ if [[ -n "$SINCE_DAY" && -f "$GEN" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; 
   fi
 fi
 
+# THE INBOX (operator order 2026-09-25). Count and topic tally say THAT something moved;
+# what was addressed to this side sank unless the operator said "read it". The inbox
+# prints sender plus the author's own heading/description per entry, filtered on
+# SHARED_MEMORY_SELF — the main information lands in the startup message itself.
+INBOX="$(dirname "${BASH_SOURCE[0]:-$0}")/../scripts/shared-memory-inbox.py"
+if [[ -f "$INBOX" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; then
+  "$PY" "$INBOX" --repo "$REPO" --from "$LAST_SEEN" --to "$REMOTE_HEAD" 2>/dev/null
+fi
+
 write_state
