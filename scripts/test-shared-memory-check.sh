@@ -53,6 +53,7 @@ echo "positive control: cursor behind, checked before the fresh entries"
 printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "2026-09-05T08:00:00Z"\n}\n' "$OLD_SHA" > "$STATE"
 out="$(run_check)"
 has "the commit line still comes first" "new commit" "$out"
+hasnt "the git account is not named as if it were a party" "start (t)" "$out"
 has "the freshness line counts the dated entries" "2 entries dated since 2026-09-05" "$out"
 has "and tallies core" "core 1" "$out"
 has "and tallies ops" "ops 1" "$out"
@@ -84,6 +85,38 @@ has   "one NOT-checked line" "shared-memory: NOT checked" "$out"
 hasnt "no commit line from stale refs" "new commit" "$out"
 grep -q "$OLD_SHA" "$STATE" && ok "cursor not advanced" || bad "cursor not advanced" "state moved on a failed fetch"
 git_q -C "$SHARED" remote set-url origin "$REMOTE"
+
+echo "inbox: what was addressed to this instance is printed, the rest is not (2026-09-25)"
+# One LOG with four headings and two fact files, pushed after the cursor. The instance is
+# `me-mac`; `peer` writes to it, to everyone, and to a third party; `me-mac` writes itself.
+mkdir -p "$SHARED/ops"
+printf '%s\n' "# Log" "" \
+  "## 2026-09-25 · peer — AN me-mac: question for me" "body" "" \
+  "## 2026-09-25 · peer — AN alle: news for everyone" "body" "" \
+  "## 2026-09-25 · peer — AN third: not for me" "body" "" \
+  "## 2026-09-25 · me-mac — AN peer: my own answer" "body" "" \
+  "## 2026-09-25 peer - AN me-mac: ascii hyphen shape" "body" "" \
+  "## 2026-09-25 (evening) — peer" "untitled shape" > "$SHARED/ops/LOG.md"
+printf -- '---\nname: f-mine\ndescription: "File addressed to me."\nmetadata:\n  type: reference\n  von: peer\n  audience: me-mac\n  topic: ops\n  date: 2026-09-25\n---\n\nbody\n' > "$SHARED/ops/f-mine.md"
+printf -- '---\nname: f-other\ndescription: "File for a third party."\nmetadata:\n  type: reference\n  von: peer\n  audience: third\n  topic: ops\n  date: 2026-09-25\n---\n\nbody\n' > "$SHARED/ops/f-other.md"
+git_q -C "$SHARED" add -A; git_q -C "$SHARED" commit -qm inbox; git_q -C "$SHARED" push -q origin HEAD:main
+printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "2026-09-05T08:00:00Z"\n}\n' "$OLD_SHA" > "$STATE"
+out="$(SHARED_MEMORY_SELF=me-mac run_check)"
+has   "inbox header, filtered" "shared-memory inbox (for this instance)" "$out"
+has   "heading addressed to me" "peer: AN me-mac: question for me" "$out"
+has   "heading addressed to everyone" "AN alle: news for everyone" "$out"
+has   "ascii-hyphen heading shape (half of Sept 2026)" "peer: AN me-mac: ascii hyphen shape" "$out"
+has   "untitled heading shape, sender kept" "peer: (no title)" "$out"
+has   "fact file addressed to me, with its description" "File addressed to me. (ops/f-mine.md)" "$out"
+hasnt "heading for a third party" "not for me" "$out"
+hasnt "my own heading" "my own answer" "$out"
+hasnt "fact file for a third party" "File for a third party" "$out"
+printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "2026-09-05T08:00:00Z"\n}\n' "$OLD_SHA" > "$STATE"
+out="$(SHARED_MEMORY_SELF= run_check)"
+has   "self unset: header says it is unfiltered" "unfiltered - set SHARED_MEMORY_SELF" "$out"
+has   "and nothing is dropped" "not for me" "$out"
+out="$(SHARED_MEMORY_SELF=me-mac run_check)"
+hasnt "cursor current: inbox silent" "shared-memory inbox" "$out"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "test-shared-memory-check: all checks passed"; exit 0; fi

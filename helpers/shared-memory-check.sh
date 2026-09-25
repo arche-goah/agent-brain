@@ -69,13 +69,13 @@ COUNT=$(git -C "$REPO" rev-list --count "$LAST_SEEN..$REMOTE_HEAD" -- . 2>/dev/n
 # between lines (measured 2026-08-16: "a.md,b.md c.md,d.md"). tr+sed joins correctly.
 FILES=$(git -C "$REPO" diff --name-only "$LAST_SEEN" "$REMOTE_HEAD" -- . 2>/dev/null \
   | grep -v '^INDEX\.md$' | head -5 | tr '\n' '|' | sed 's/|/, /g; s/, $//')
-AUTHORS=$(git -C "$REPO" log --format='%an' "$LAST_SEEN..$REMOTE_HEAD" -- . 2>/dev/null \
-  | sort -u | tr '\n' '|' | sed 's/|/, /g; s/, $//')
-
+# No git author names here (2026-09-25): two parties push under one account, so `%an`
+# names accounts, not parties — the watcher learned that on 2026-08-22. Who sent what is
+# the inbox's job below, from the `von:` fields and LOG headings.
 if [[ "$COUNT" == "1" ]]; then
-  echo "shared-memory: 1 new commit since last start (${AUTHORS:-unknown}) — ${FILES:-see git log}"
+  echo "shared-memory: 1 new commit since last start — ${FILES:-see git log}"
 else
-  echo "shared-memory: ${COUNT:-?} new commits since last start (${AUTHORS:-unknown}) — ${FILES:-see git log}"
+  echo "shared-memory: ${COUNT:-?} new commits since last start — ${FILES:-see git log}"
 fi
 
 # FRESHNESS BY TOPIC (operator order 2026-09-13). The commit count above says that
@@ -102,6 +102,15 @@ if [[ -n "$SINCE_DAY" && -f "$GEN" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; 
   if [[ -n "$TOTAL" && "$TOTAL" != "0" ]]; then
     echo "shared-memory: $TOTAL entr$([[ "$TOTAL" == 1 ]] && echo y || echo ies) dated since $SINCE_DAY — ${BY_TOPIC:-see --since} (list: core/scripts/shared-memory-index.py --since $SINCE_DAY [--topic <t>])"
   fi
+fi
+
+# THE INBOX (operator order 2026-09-25). Count and topic tally say THAT something moved;
+# what was addressed to this side sank unless the operator said "read it". The inbox
+# prints sender plus the author's own heading/description per entry, filtered on
+# SHARED_MEMORY_SELF — the main information lands in the startup message itself.
+INBOX="$(dirname "${BASH_SOURCE[0]:-$0}")/../scripts/shared-memory-inbox.py"
+if [[ -f "$INBOX" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; then
+  "$PY" "$INBOX" --repo "$REPO" --from "$LAST_SEEN" --to "$REMOTE_HEAD" 2>/dev/null
 fi
 
 write_state
