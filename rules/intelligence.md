@@ -47,7 +47,8 @@ to.)
 ## Session End
 
 The operator triggers skill `session-close` ("close the session" and similar): persist
-open work into auto-memory, write handoff/session log, export, clearance.
+open work (states into their ledger, lessons plus pointers into auto-memory), write
+handoff/session log, export, check every repo the session wrote to, clearance.
 The SessionEnd hook does the same mechanically as a best-effort fallback (does not
 fire on a hard kill). NO `memory/session_*.md` files — memory lives in auto-memory
 (harness).
