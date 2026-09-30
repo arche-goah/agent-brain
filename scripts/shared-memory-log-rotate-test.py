@@ -111,6 +111,8 @@ with tempfile.TemporaryDirectory() as tmp:
     ok("ascii-hyphen heading shape recognised as own", "2026-11-04 me-mac" in out, out)
     ok("foreign long entry not reported", "peer (" not in out, out)
     ok("entry before the cap date not reported", "2026-09-20" not in out.split("over 300 B")[-1], out)
+    rc, out = run(repo, "--check", "--today", "2026-11-05", self_="")
+    ok("self unset: no entry is called own", "over 300 B" not in out, out)
 
 if fails:
     print(f"\nshared-memory-log-rotate-test: {len(fails)} FAILED")

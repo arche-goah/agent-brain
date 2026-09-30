@@ -127,6 +127,10 @@ def logs(repo: Path) -> list[Path]:
 
 
 def over_cap(p: dict, me: set[str]) -> list[str]:
+    # Without SHARED_MEMORY_SELF no entry can be told to be OWN; reporting all of them would
+    # name other instances' entries as "own", which this side cannot shorten.
+    if not me:
+        return []
     hits = []
     for b in p["blocks"]:
         m = re.match(r"^## (\d{4}-\d{2}-\d{2})", b)
@@ -137,7 +141,7 @@ def over_cap(p: dict, me: set[str]) -> list[str]:
             continue
         s = BLOCK_SENDER.match(b)
         sender = s.group(1).strip() if s else "?"
-        if me and not (set(re.split(r"[^\w-]+", sender.lower())) & me):
+        if not (set(re.split(r"[^\w-]+", sender.lower())) & me):
             continue
         hits.append(f"{p['log'].parent.name} {m.group(1)} {sender} ({size} B)")
     return hits
