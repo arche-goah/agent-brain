@@ -83,6 +83,16 @@ grep -q '"old"' "$B5/config/shared-memory-state.json" && ok "verify: shared-memo
 grep -q "5.*Brain+hooks.*appears" "$B5/docs/maintenance/$NAME" 2>/dev/null && ok "verify: bootup still ran (check 5 sees its output)" \
   || bad "verify: check 5 did not see the bootup output"
 
+# --- 6 a config dir with a SPACE (Windows profile "First Last"): an installed suite is
+# found, not split into "/.../First" + "Last/..." and reported MISSING (os-traps OS-10).
+SP="$T/cfg space"; B6="$T/brain6"; make_brain "$B6"
+mkdir -p "$SP/plugins/cache/mkt/brain-core/1.0.0/skills/a" "$SP/plugins/cache/mkt/suite-x/1.0.0/skills/b"
+touch "$SP/plugins/cache/mkt/brain-core/1.0.0/skills/a/SKILL.md" "$SP/plugins/cache/mkt/suite-x/1.0.0/skills/b/SKILL.md"
+printf '{}
+' > "$SP/plugins/cache/mkt/suite-x/1.0.0/.mcp.json"
+( cd "$B6" && HOME="$T/home" CLAUDE_CONFIG_DIR="$SP" env -u BRAIN_DIR bash "$V" "$B6" >/dev/null 2>&1 )
+grep -q "3 Plugin skills — core=present, suites=present (suite-x )" "$B6/docs/maintenance/$NAME" 2>/dev/null   && ok "space in path: suite found by its name"   || bad "space in path: $(grep ' 3 Plugin skills' "$B6/docs/maintenance/$NAME" 2>/dev/null)"
+
 echo
 if (( fails )); then echo "onboarding-verify-test: $fails FAILURE(S)"; exit 1; fi
-echo "onboarding-verify-test: all 11 checks passed"
+echo "onboarding-verify-test: all checks passed"

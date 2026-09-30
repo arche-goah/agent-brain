@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **`onboarding-verify` checks 3, 6, 7 no longer split a path at a space.** (test: T1) The loops over the cached suite directories were `for d in $suite_dirs`, which walks the fragments of a Windows profile path with a space in the user name: check 3 reported an installed suite MISSING and named the first fragment as a suite. The three loops now read the list line by line. New fixture with a config dir containing a space (red against the old script with the same symptom); registered as `docs/os-traps.md` OS-10 with a search over every `for x in $list;` loop.
+
 ## 1.3.41 — 2026-09-30
 
 - **`last30days` is removed from the core.** (test: T0) Reading the code behind eight open CodeQL alerts (2026-09-30) found that it read the X and Truth Social session cookies from Firefox and Safari on every run unless `FROM_BROWSER=off`, and that `setup --github` posted the full `gh` CLI token to a third party (details: #172, which this supersedes). It is vendored third-party code, measured unused on the operator's machines (no invocations in the Windows brain's transcripts), and its setup installs `yt-dlp` via Homebrew unasked. Proposed by the operator's Windows brain and the operator; the collaborators were asked in the shared memory before merge. Whoever needs it installs it from its upstream repo. Removed: `skills/last30days/`, its line in `NOTICE`, its row in `skills/REGISTRY.md` (regenerated, 25 skills). Instances that still have `FROM_BROWSER=off` set can drop it after updating.
