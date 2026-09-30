@@ -105,6 +105,20 @@ case "${1:-status}" in
 
     INTERVAL="${2:-300}"
 
+    # A watcher OUTLIVES ITS SESSION unless it checks (measured 2026-09-30 on macOS): the
+    # process that had started it was gone, and the orphan kept polling and holding the
+    # lock. `kill -0` on its pid stayed true, so every new
+    # session read "already armed by another session" and skipped — the machine was
+    # covered by a watcher whose output reached nobody, while it looked armed. The
+    # session is not visible from here, but its process tree is: the parent we were
+    # started by. When it is gone we are an orphan, and an orphan exits (the EXIT trap
+    # frees the lock, the next arm claims it). Checked before every poll, so an orphan
+    # never advances the cursor for a reader that no longer exists, and every TICK
+    # seconds while sleeping. `$PPID` is fixed at startup; `kill -0` works in Git Bash.
+    PARENT=$PPID
+    TICK="${SHARED_MEMORY_WATCH_TICK:-5}"
+    orphaned() { ! kill -0 "$PARENT" 2>/dev/null; }
+
     # A MISSING cursor used to be silent: the find condition required a non-empty
     # cursor, so with no state file the loop polled forever and reported nothing —
     # armed, green-looking, blind. Initialize loudly instead, and say what the
@@ -121,6 +135,7 @@ case "${1:-status}" in
     fi
 
     while true; do
+      orphaned && exit 0
       git -C "$REPO" fetch -q origin main 2>/dev/null
       REMOTE_HEAD=$(git -C "$REPO" rev-parse origin/main 2>/dev/null)
       LAST_SEEN=$(read_sha)
@@ -152,7 +167,10 @@ case "${1:-status}" in
         fi
       fi
 
-      sleep "$INTERVAL"
+      for (( slept = 0; slept < INTERVAL; slept += TICK )); do
+        sleep "$TICK"
+        orphaned && exit 0
+      done
     done ;;
 
   *)
