@@ -130,7 +130,13 @@ check 4 "Output style" $([ -n "$st" ] && echo 0 || echo 1) "${st:-caveman.md not
 
 # 5 Own brain + bootup hook
 if [ -n "$BRAIN" ] && [ -f "$BRAIN/.claude/settings.json" ] && grep -q "core/helpers/session-bootup.sh" "$BRAIN/.claude/settings.json" 2>/dev/null; then
-  out=$(cd "$BRAIN" && /bin/zsh core/helpers/session-bootup.sh 2>/dev/null || bash core/helpers/session-bootup.sh 2>/dev/null)
+  # The bootup advances the shared-memory cursor; a verify run is no session and must not
+  # mark entries as seen that no session ever showed (bojan-reiselaptop, 2026-09-30).
+  # A throwaway copy keeps the output identical and the real cursor untouched.
+  sm_tmp=$(mktemp)
+  cp "$BRAIN/config/shared-memory-state.json" "$sm_tmp" 2>/dev/null || : > "$sm_tmp"
+  out=$(cd "$BRAIN" && export SHARED_MEMORY_STATE="$sm_tmp" && { /bin/zsh core/helpers/session-bootup.sh 2>/dev/null || bash core/helpers/session-bootup.sh 2>/dev/null; })
+  rm -f "$sm_tmp"
   echo "$out" | grep -q "BRAIN BOOTUP CHECK"; b_ok=$?
   check 5 "Brain+hooks" $b_ok "$BRAIN (bootup output $([ $b_ok -eq 0 ] && echo appears || echo MISSING))"
 else
