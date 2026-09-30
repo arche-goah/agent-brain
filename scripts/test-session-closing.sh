@@ -117,6 +117,26 @@ n=$(lines); hook S5 >/dev/null
 [ -z "$(git -C "$B2" status --porcelain)" ] && ok "git status empty after a keyless close" || bad "git status empty after a keyless close" "$(git -C "$B2" status --porcelain)"
 [ "$(lines)" -eq "$n" ] && ok "no second line" || bad "no second line" "$n -> $(lines)"
 
+# --- a CLI subcommand is not a session (2026-09-30, measured on Windows and macOS) -------
+# `claude mcp list` fires SessionEnd with reason "other" and a transcript_path whose file
+# was never written. The hook logged a session that never existed and dirtied the tree.
+echo "CLI subcommand: transcript_path given, file missing -> nothing written"
+tr_hook() { (cd "$B2" && printf '{"session_id":"%s","transcript_path":"%s","hook_event_name":"SessionEnd","reason":"other"}' "$1" "$2" | CLAUDE_PROJECT_DIR="$B2" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" 2>&1); }
+rm -f "$B2/.claude/HANDOFF.md"
+n=$(lines); tr_hook S6 "$TMP/never-written.jsonl" >/dev/null
+[ "$(lines)" -eq "$n" ] && ok "no session-log line for a CLI subcommand" || bad "no session-log line for a CLI subcommand" "$n -> $(lines)"
+[ -f "$B2/.claude/HANDOFF.md" ] && bad "no HANDOFF for a CLI subcommand" "written" || ok "no HANDOFF for a CLI subcommand"
+[ -z "$(git -C "$B2" status --porcelain)" ] && ok "tree stays clean" || bad "tree stays clean" "$(git -C "$B2" status --porcelain)"
+echo "negative control: the transcript exists -> a real session, the line is written"
+: > "$TMP/real.jsonl"
+n=$(lines); tr_hook S7 "$TMP/real.jsonl" >/dev/null
+[ "$(lines)" -eq $((n + 1)) ] && ok "real session still logged" || bad "real session still logged" "$n -> $(lines)"
+echo "Windows shape: an escaped backslash path resolves too"
+winpath=$(printf '%s' "$TMP/real.jsonl" | sed 's#/#\\\\#g')   # JSON text: each separator as an escaped backslash
+git_q -C "$B2" add -A; git_q -C "$B2" commit -qm "S7"
+n=$(lines); tr_hook S8 "$winpath" >/dev/null
+[ "$(lines)" -eq $((n + 1)) ] && ok "backslash-escaped existing transcript counts as a session" || bad "backslash-escaped existing transcript counts as a session" "$n -> $(lines)"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "test-session-closing: all checks passed"; exit 0; fi
 echo "test-session-closing: $fails check(s) FAILED"; exit 1
