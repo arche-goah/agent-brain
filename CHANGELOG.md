@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **Time-word rule: true relative time words are welcome, session history is a source.** (test: T0) `rules/thinking-protocol.md` said "not measured → OMIT"; the operator refinement of 2026-08-19 (time words wanted when true, the running session counts as a source, no forced clock precision) lived only in one instance. Harmonized text, same invariant: an unmeasured time word stays forbidden.
+
 ## 1.3.42 — 2026-09-30
 
 - **Session start names open code-scanning alerts.** (test: T2) Measured 2026-09-30: eight CodeQL alerts in a vendored skill of this core had stood open since the first public cut (2026-08-13), because nothing ever showed them. Behind them sat worse than the alerts said — browser session cookies read silently on every run, a full `gh` token posted to a third party. New `scripts/code-scanning-alerts.sh <owner>`: per non-archived repo of the ecosystem owner (derived from the marketplace, as for the PR line), the open alerts and the folders they sit in, one `!!` line only when something is open. A repo without a scanner (404) or access (403) is skipped; a failed repo listing says `NOT checked` instead of going silent. One call per repo — 7.7 s for 15 repos — so the bootup runs it through `cached-verdict.sh` with a 6 h window and a background refresh, and prints only when there is a line to act on; a reused result carries its age. Fixture `test-code-scanning-alerts.sh` with a fake `gh`: named with folder, clean repo silent, no-scanner repo skipped, failed listing says so. Real bootup on the proving brain: `!! code scanning: 8 open alert(s) — agent-brain 8 (skills/last30days)` plus `(reused: …, measured 31s ago)`.
