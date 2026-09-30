@@ -55,10 +55,18 @@ with tempfile.TemporaryDirectory() as tmp:
         tool_line("Bash", command=f"sed -n 1,20p {memp}/bash-me.md"),
         tool_line("Bash", command=f"echo hi > {memp}/orphan.md"),
         tool_line("Read", file_path=f"{memp}/MEMORY.md"),
+        # a sibling repo whose NAME ends in "memory" is not the memory dir (measured 2026-09-30:
+        # brain-shared-memory/README.md and PEOPLE.md were 17 of 56 "opened, not named")
+        tool_line("Read", file_path=f"{root.as_posix()}/brain-shared-memory/README.md"),
+        tool_line("Bash", command=f"cat {root.as_posix()}/brain-shared-memory/PEOPLE.md"),
     ]) + "\n", encoding="utf-8")
     (tdir / "s2.jsonl").write_text(tool_line("Read", file_path=f"{memp}/read-me.md") + "\n", encoding="utf-8")
 
     per = mu.scan(tdir)
+    if not {"README.md", "PEOPLE.md"} & set(per["s1"]):
+        ok("0 a *-memory/ sibling repo is not the memory dir")
+    else:
+        bad(f"0 foreign repo counted: {dict(per['s1'])}")
     rep = mu.usage_report(per, tdir, mem)
     by = {r["file"]: r for r in rep["per_file"]}
     # 1
