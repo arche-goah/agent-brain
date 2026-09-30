@@ -27,6 +27,13 @@ fs.writeFileSync(path.join(tdir, 's1.jsonl'), [
   user([{ type: 'tool_result', content: 'fader mapping executor' }]),
   user('nothing relevant here at all'),
 ].join('\n') + '\n');
+// tool side: a topic index mapped to an MCP tool family; a second session calls it twice
+fs.writeFileSync(path.join(mem, 'index-net.md'), '---\nname: index-net\ndescription: "Topic index network"\n---\n- [Vlan](network-vlan.md) - trunk\n');
+fs.mkdirSync(path.join(tmp, '.claude', 'rules'), { recursive: true });
+fs.writeFileSync(path.join(tmp, '.claude', 'rules', 'memory-recall.json'),
+  JSON.stringify({ topics: { 'index-net.md': { tools: ['^mcp__net__'] } } }));
+const toolUse = (name) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'x', name, input: {} }] } });
+fs.writeFileSync(path.join(tdir, 's2.jsonl'), [toolUse('mcp__net__health'), toolUse('mcp__net__health'), toolUse('mcp__other__x')].join('\n') + '\n');
 fs.writeFileSync(path.join(tmp, '.claude-state', 'memory-recall.jsonl'),
   JSON.stringify({ session: 's1', trigger: 'prompt', files: [{ file: 'fader-mapping.md' }, { file: 'network-vlan.md' }], topics: [] }) + '\n');
 
@@ -49,16 +56,30 @@ ok('words say what matched', w.includes('fader') && w.includes('mapping'), JSON.
 ok('fidelity counted against the live log', /fidelity: 1 of 2/.test(r.stdout), r.stdout);
 
 // the prompt matches four words: fader, mapping, executor, page
+const s2 = r.recs.filter((x) => x.session === 's2');
+ok('tool side: mapped MCP tool names its topic index once per session',
+  s2.length === 1 && s2[0].topics[0].file === 'index-net.md' && /tool:mcp__net__health/.test(s2[0].trigger), JSON.stringify(s2));
+ok('tool calls counted (3)', /3 tool calls/.test(r.stdout), r.stdout);
+r = run('--truth', 'index-net.md=mcp__net__');
+ok('--truth: s2 worked on the topic and was named -> precision 1, recall 1',
+  /1 of 2 sessions worked on it/.test(r.stdout) && /replay named 1, precision 1\.00, recall 1\.00/.test(r.stdout), r.stdout);
+r = run('--truth', 'index-net.md=mcp__nowhere__');
+ok('--truth negative: nobody worked on it -> precision 0, recall undefined',
+  /0 of 2 sessions/.test(r.stdout) && /replay named 1, precision 0\.00, recall -/.test(r.stdout), r.stdout);
+
+r = run('--no-tool');
+ok('--no-tool: the tool side names nothing', !r.recs.some((x) => x.session === 's2'), JSON.stringify(r.recs));
+
 r = run('--stop', 'fader,mapping');
 const left = (r.recs.flatMap((x) => x.files).find((d) => d.file === 'fader-mapping.md') || {}).words || [];
 ok('--stop removes exactly those words', !left.includes('fader') && left.includes('page'), JSON.stringify(left));
 r = run('--stop', 'fader,mapping,executor,page');
-ok('--stop on every matched word takes the naming away', r.recs.length === 0, JSON.stringify(r.recs));
+ok('--stop on every matched word takes the naming away', r.recs.filter((x) => x.session === 's1').length === 0, JSON.stringify(r.recs));
 
 r = run('--set', 'minHits=5');
-ok('--set minHits=5 names nothing on a 4-word match', r.recs.length === 0, JSON.stringify(r.recs));
+ok('--set minHits=5 names nothing on a 4-word match', r.recs.filter((x) => x.session === 's1').length === 0, JSON.stringify(r.recs));
 r = run('--set', 'minHits=4');
-ok('--set minHits=4 still names it (boundary)', r.recs.length === 1, JSON.stringify(r.recs));
+ok('--set minHits=4 still names it (boundary)', r.recs.filter((x) => x.session === 's1').length === 1, JSON.stringify(r.recs));
 
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log(fail ? `memory-recall-replay-test: ${fail} FAILED` : 'memory-recall-replay-test: all green');
