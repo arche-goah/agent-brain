@@ -123,7 +123,10 @@ echo "inbox, UNPULLED: a peer pushes from another clone, this checkout only fetc
 # in the working tree yet and dropped out silently, a changed one was read in its old form.
 # The blocks above push from the checked clone itself, so the file was always on disk.
 CUR=$(git -C "$SHARED" rev-parse HEAD)
-git_q -C "$TMP" clone -q "$REMOTE" peer
+# -b main: the bare repo's HEAD may name a branch that was never pushed (git default
+# `master` on the CI runners) — the clone was then empty and its push was rejected.
+git_q -C "$TMP" clone -q -b main "$REMOTE" peer
+[ -f "$TMP/peer/ops/f-mine.md" ] && ok "precondition: peer clone has the shared state" || bad "precondition: peer clone has the shared state" "empty clone"
 printf -- '---\nname: f-unpulled\ndescription: "Pushed elsewhere, for me."\nmetadata:\n  type: reference\n  von: peer\n  audience: me-mac\n  topic: ops\n  date: 2026-09-30\n---\n\nbody\n' > "$TMP/peer/ops/f-unpulled.md"
 sed 's/File addressed to me\./Changed text, for me./' "$TMP/peer/ops/f-mine.md" > "$TMP/peer/ops/f-mine.tmp" && mv "$TMP/peer/ops/f-mine.tmp" "$TMP/peer/ops/f-mine.md"
 git_q -C "$TMP/peer" add -A; git_q -C "$TMP/peer" commit -qm "peer push"; git_q -C "$TMP/peer" push -q origin HEAD:main
