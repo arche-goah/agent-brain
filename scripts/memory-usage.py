@@ -20,6 +20,10 @@ traceability — always there, never edited):
 on every prompt) with the transcripts: of the files the hook NAMED, how many were opened
 in the same session (precision); of the files a session OPENED, how many the hook had
 named (recall). That is the number the injection is armed on — measure, then arm.
+Only single-file POINTERS are judged here. A topic index is injected whole, so it is never
+opened — "opened" cannot judge it (measured 2026-09-30: 0.04 under this measure, 0.72
+against the sessions that worked on the topic). Topic indexes are counted and handed to
+`scripts/memory-recall-replay.cjs --truth`.
 
 Usage:
   memory-usage.py [--dir TRANSCRIPTS] [--memory MEMDIR] [--state STATEFILE]
@@ -123,7 +127,8 @@ def usage_report(per_session: dict[str, Counter], tdir: Path, memdir: Path) -> d
 
 
 def precision_report(per_session: dict[str, Counter], state: Path) -> dict:
-    named: dict[str, set] = defaultdict(set)   # session -> files the hook named
+    named: dict[str, set] = defaultdict(set)   # session -> POINTER files the hook named
+    topics_named = 0                            # topic namings: judged by the replay's --truth
     n_rec = 0
     if state.exists():
         with state.open(encoding="utf-8", errors="ignore") as fh:
@@ -133,22 +138,25 @@ def precision_report(per_session: dict[str, Counter], state: Path) -> dict:
                 except ValueError:
                     continue
                 n_rec += 1
-                for it in rec.get("files", []) + rec.get("topics", []):
-                    named[str(rec.get("session", ""))].add(str(it.get("file", "")))
+                sid = str(rec.get("session", ""))
+                named[sid]                      # a session with records but no pointer is judged too
+                topics_named += len(rec.get("topics", []))
+                for it in rec.get("files", []):
+                    named[sid].add(str(it.get("file", "")))
     tp = fp = fn = 0
     sessions_seen = 0
     for sid, files in named.items():
-        opened = set(per_session.get(sid, Counter()))
         if sid not in per_session:
             continue          # a session without a transcript (fixture, manual run) cannot be judged
+        opened = {f for f in per_session[sid] if f != "MEMORY.md" and not f.startswith("index-")}
         sessions_seen += 1
         tp += len(files & opened)
         fp += len(files - opened)
-        fn += len(opened - files - {"MEMORY.md"})
+        fn += len(opened - files)
     prec = tp / (tp + fp) if tp + fp else None
     rec = tp / (tp + fn) if tp + fn else None
-    return {"records": n_rec, "sessions_judged": sessions_seen, "named_and_opened": tp,
-            "named_not_opened": fp, "opened_not_named": fn,
+    return {"records": n_rec, "sessions_judged": sessions_seen, "topics_named": topics_named,
+            "named_and_opened": tp, "named_not_opened": fp, "opened_not_named": fn,
             "precision": None if prec is None else round(prec, 3),
             "recall": None if rec is None else round(rec, 3)}
 
@@ -184,7 +192,11 @@ def main(argv=None) -> int:
         p = report["precision"]
         print(f"recall hook: {p['records']} records, {p['sessions_judged']} sessions judged · "
               f"named+opened {p['named_and_opened']} · named-only {p['named_not_opened']} · "
-              f"opened-only {p['opened_not_named']} · precision {p['precision']} · recall {p['recall']}")
+              f"opened-only {p['opened_not_named']} · precision {p['precision']} · recall {p['recall']} "
+              f"(pointers only)")
+        if p["topics_named"]:
+            print(f"  {p['topics_named']} topic-index namings not judged here — an injected index is never "
+                  f"opened; judge them with memory-recall-replay.cjs --truth <index>=<regex>")
     return 0
 
 
