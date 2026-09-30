@@ -102,9 +102,31 @@ git -C "$OTHER" add -A
 git -C "$OTHER" commit -qm "log only"
 git -C "$OTHER" push -q origin main
 sleep 6
+LOG_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
 # Braces + redirect: the shell prints its own "Terminated" job message on wait,
 # which reads like a test failure in the log and is not one.
+{ kill "$WATCHER"; wait "$WATCHER"; } 2>/dev/null || true
+
+# --- a foreign entry that arrives with an OWN pull is still reported -----------------
+# (measured 2026-09-30: a request addressed to this instance was pushed, our checkout
+# pulled it in before an own push, the watcher saw the new head reachable from HEAD and
+# advanced silently.) Our own push alone must stay silent.
+git -C "$WORK" pull -q origin main
+printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "x"\n}\n' "$(git -C "$WORK" rev-parse HEAD)" > "$STATE"
+git -C "$OTHER" pull -q origin main
+printf '\n## 2026-09-30 · bojan-workstation — AN me-ws: pulled request\n\nbody\n' >> "$OTHER/domain/LOG.md"
+git -C "$OTHER" add -A; git -C "$OTHER" commit -qm "request"; git -C "$OTHER" push -q origin main
+git -C "$WORK" pull -q origin main
+printf -- '---\nname: own\nmetadata:\n  von: me-ws\n---\n\nown one\n' > "$WORK/domain/own.md"
+git -C "$WORK" add -A; git -C "$WORK" commit -qm "own one"; git -C "$WORK" push -q origin main
+OUT2="$TMP/out2.txt"
+SHARED_MEMORY_SELF=me-ws bash "$WATCH" watch 2 > "$OUT2" 2>&1 &
+WATCHER=$!
+sleep 4
+printf -- '---\nname: own2\nmetadata:\n  von: me-ws\n---\n\nown two\n' > "$WORK/domain/own2.md"
+git -C "$WORK" add -A; git -C "$WORK" commit -qm "own two"; git -C "$WORK" push -q origin main
+sleep 4
 { kill "$WATCHER"; wait "$WATCHER"; } 2>/dev/null || true
 
 echo "--- watcher output ---"
@@ -138,5 +160,25 @@ if grep -q 'bojan-workstation: AN alle: log-only message' "$OUT"; then
   echo "PASS: a LOG-only commit is reported with sender and title"
 else
   echo "FAIL: LOG-only commit reported without what it says"; fail=1
+fi
+# The FOUND line itself names the LOG sender (measured 2026-09-30): once SHARED_MEMORY_SELF
+# is set, the inbox lines below it only show entries for THIS instance, so a LOG entry
+# addressed elsewhere left nothing on screen but "unknown party".
+if grep -q 'from .*bojan-workstation' <<<"$LOG_LINE"; then
+  echo "PASS: a LOG-only commit names its sender in the FOUND line"
+else
+  echo "FAIL: LOG-only FOUND line without sender: $LOG_LINE"; fail=1
+fi
+echo "--- watcher output, pulled-in case ---"
+cat "$OUT2"
+if grep -q 'bojan-workstation: AN me-ws: pulled request' "$OUT2"; then
+  echo "PASS: a foreign entry pulled in before an own push is reported"
+else
+  echo "FAIL: foreign entry swallowed by the own pull"; fail=1
+fi
+if [[ "$(grep -c '^FOUND:' "$OUT2")" -eq 1 ]]; then
+  echo "PASS: the own push afterwards stays silent"
+else
+  echo "FAIL: expected exactly one FOUND in the pulled-in case"; fail=1
 fi
 exit "$fail"
