@@ -498,6 +498,12 @@ fi
 # the session runs. Silent when the repo is not cloned or nothing is new — an instance
 # that does not take part must not be nagged, and a clean check is not a line.
 [[ -f "$HERE/shared-memory-check.sh" ]] && bash "$HERE/shared-memory-check.sh" 2>/dev/null
+# LOG rotation and entry length (operator decision 2026-09-25): the lint named an
+# oversized LOG with a fix text nobody ran, because nothing ran the lint. This is the
+# trigger — read-only, silent unless a month is due or an own entry is over the cap.
+if [[ -d "${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}/.git" ]]; then
+  "$PY" "$HERE/../scripts/shared-memory-log-rotate.py" --check 2>/dev/null
+fi
 
 # Deadlines (only if the file exists). "Present — check it" was presence, not effect:
 # the bootup NAMED the file but never computed, so a date one day away looked exactly

@@ -130,7 +130,13 @@ check 4 "Output style" $([ -n "$st" ] && echo 0 || echo 1) "${st:-caveman.md not
 
 # 5 Own brain + bootup hook
 if [ -n "$BRAIN" ] && [ -f "$BRAIN/.claude/settings.json" ] && grep -q "core/helpers/session-bootup.sh" "$BRAIN/.claude/settings.json" 2>/dev/null; then
-  out=$(cd "$BRAIN" && /bin/zsh core/helpers/session-bootup.sh 2>/dev/null || bash core/helpers/session-bootup.sh 2>/dev/null)
+  # The bootup advances the shared-memory cursor; a verify run is no session and must not
+  # mark entries as seen that no session ever showed (bojan-reiselaptop, 2026-09-30).
+  # A throwaway copy keeps the output identical and the real cursor untouched.
+  sm_tmp=$(mktemp)
+  cp "$BRAIN/config/shared-memory-state.json" "$sm_tmp" 2>/dev/null || : > "$sm_tmp"
+  out=$(cd "$BRAIN" && export SHARED_MEMORY_STATE="$sm_tmp" && { /bin/zsh core/helpers/session-bootup.sh 2>/dev/null || bash core/helpers/session-bootup.sh 2>/dev/null; })
+  rm -f "$sm_tmp"
   echo "$out" | grep -q "BRAIN BOOTUP CHECK"; b_ok=$?
   check 5 "Brain+hooks" $b_ok "$BRAIN (bootup output $([ $b_ok -eq 0 ] && echo appears || echo MISSING))"
 else
@@ -210,13 +216,23 @@ if [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then
     # (':!:onboarding-report*') is anchored at the repo root and missed the default report
     # location docs/maintenance/ — measured 2026-09-15: a tracked report there read as a
     # foreign leak again, the exact self-report #144 removed.
+    # `git grep -I` skips BINARY files, and only those: measured 2026-09-30, a tracked vendor
+    # manual (PDF) carries its authors' home paths in its metadata, which made check 8 red on
+    # every machine of that brain, and no own_home_names entry could fix it. git's binary test
+    # (a NUL byte) is the same on every OS; plain `grep -I` is not — BSD grep on macOS also
+    # skipped a text file with one Latin-1 byte (CI, 2026-09-30), a silent hole in the scan.
+    # `[/]`, not a leading `/`: Git Bash rewrites an argument that starts with `/` into a
+    # Windows path before the native git.exe sees it, and the pattern then matches nothing.
     scan_brain() { ( cd "$BRAIN" && git ls-files -z 2>/dev/null \
       | grep -avzE '(^|/)onboarding-report[^/]*$' \
-      | xargs -0 -r grep -ahE '/(Users|home)/' 2>/dev/null ); }
+      | xargs -0 -r git grep -I -h -E '[/](Users|home)/' -- 2>/dev/null ); }
   else
     scan_brain() { grep -rhE '/(Users|home)/' "$BRAIN" --exclude-dir=.git --exclude-dir=core --exclude-dir=node_modules --exclude-dir=.claude-state --exclude='onboarding-report*' 2>/dev/null; }
   fi
-  hits=$(scan_brain \
+  # LC_ALL=C for the whole chain: under a UTF-8 locale the BSD tools on macOS dropped a line
+  # carrying one Latin-1 byte (CI, 2026-09-30), so a foreign path next to it went unseen.
+  # The extraction charset is ASCII anyway; byte semantics lose nothing here.
+  hits=$(export LC_ALL=C; scan_brain \
     | OWN_NAMES="$(printf '%s\n%s\n%s' "$me" "$myhome" "$own_extra")" awk '
         BEGIN { n = split(ENVIRON["OWN_NAMES"], raw, "\n")
                 for (i = 1; i <= n; i++) if (raw[i] != "") { own[++k] = "/users/" tolower(raw[i]); own[++k] = "/home/" tolower(raw[i]) } }

@@ -41,7 +41,13 @@ add_posix() { # $1 = profile file
 add_powershell() { # $1 = powershell.exe | pwsh
   local exe="$1" pp pp_u brain_w pol
   command -v "$exe" >/dev/null 2>&1 || return 0
-  pp=$("$exe" -NoProfile -Command 'Write-Output $PROFILE' 2>/dev/null | tr -d '\r' | tail -1)
+  # Without the inherited PSModulePath: started from a PowerShell 7 parent, powershell.exe
+  # inherits pwsh's module path, cannot load Microsoft.PowerShell.Security, and
+  # Get-ExecutionPolicy fails (measured 2026-09-30). Each shell rebuilds its own default.
+  # `|| true` on every query: under set -euo pipefail one failing call used to end the whole
+  # script silently, with the pwsh profile unwritten and no measurement line.
+  ps_run() { env -u PSModulePath "$exe" -NoProfile -Command "$1"; }
+  pp=$(ps_run 'Write-Output $PROFILE' 2>/dev/null | tr -d '\r' | tail -1) || true
   [ -n "$pp" ] || return 0
   pp_u=$(cygpath -u "$pp" 2>/dev/null || printf '%s' "$pp")
   mkdir -p "$(dirname "$pp_u")"
@@ -55,9 +61,11 @@ add_powershell() { # $1 = powershell.exe | pwsh
     } >> "$pp_u"
     echo "NEW  $pp ($exe)"
   fi
-  pol=$("$exe" -NoProfile -Command 'Get-ExecutionPolicy' 2>/dev/null | tr -d '\r' | tail -1)
-  if [ "$pol" = "Restricted" ]; then
-    if "$exe" -NoProfile -Command 'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force' >/dev/null 2>&1; then
+  pol=$(ps_run 'Get-ExecutionPolicy' 2>/dev/null | tr -d '\r' | tail -1) || true
+  if [ -z "$pol" ]; then
+    echo "WARN ExecutionPolicy of $exe could not be read — if it is Restricted, $exe loads no profile"
+  elif [ "$pol" = "Restricted" ]; then
+    if ps_run 'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force' >/dev/null 2>&1; then
       echo "SET  ExecutionPolicy CurrentUser=RemoteSigned (was Restricted — with that, $exe would NEVER have loaded a profile)"
     else
       echo "WARN ExecutionPolicy is Restricted and could not be set — $exe loads no profile this way (group policy?)"

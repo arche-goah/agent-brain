@@ -312,7 +312,7 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
             f["limits"].append({"issue": "LOG over rotation size",
                                 "file": log.relative_to(repo).as_posix(), "bytes": size,
                                 "max": LOG_ROTATE_BYTES,
-                                "fix": "split into LOG-<month>.md, keep the pointer"})
+                                "fix": "shared-memory-log-rotate.py --write (closed months to archive/LOG-<month>.md, pointer kept)"})
 
     for p in files:
         rel = p.relative_to(repo).as_posix()
