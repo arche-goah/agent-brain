@@ -170,6 +170,28 @@ if command -v git >/dev/null 2>&1; then
     OK*) ok "a tracked own report below the root is not a leak" ;;
     *)   bad "a tracked own report in docs/maintenance read as a leak: $out" ;;
   esac
+
+  # ── 7. a tracked BINARY is not scanned, a text file with a stray byte still is ──
+  # Measured 2026-09-30 on a third Windows machine: a tracked vendor manual (PDF) carries
+  # its authors' home paths in its metadata; check 8 was red on every machine of that
+  # brain. A binary (NUL byte) is skipped. The negative control is a TEXT file with an
+  # invalid UTF-8 byte: a UTF-8 locale would call it binary too, so it must stay loud.
+  printf '%%PDF-1.4\n\000\001\002 /Author (/%s/pdfauthor/Documents/manual.indd)\n' "$U" \
+    > "$RB/docs/maintenance/manual.pdf"
+  git -C "$RB" add docs/maintenance/manual.pdf >/dev/null 2>&1
+  out="$(rline8 binary)"
+  case "$out" in
+    OK*) ok "a tracked binary file is not scanned" ;;
+    *)   bad "a home path inside a tracked binary read as a leak: $out" ;;
+  esac
+  printf 'latin-1 note \351t\351: /%s/latinuser/Projects\n' "$U" \
+    > "$RB/docs/maintenance/latin1.md"
+  git -C "$RB" add docs/maintenance/latin1.md >/dev/null 2>&1
+  out="$(rline8 latin1)"
+  case "$out" in
+    FAIL*latinuser*) ok "a text file with a non-UTF-8 byte is still scanned, and named" ;;
+    *)               bad "a text file with a stray byte went unscanned: $out" ;;
+  esac
 else
   ok "git not available — tracked-only scan not exercised (skipped, not assumed)"
 fi
