@@ -102,6 +102,7 @@ git -C "$OTHER" add -A
 git -C "$OTHER" commit -qm "log only"
 git -C "$OTHER" push -q origin main
 sleep 6
+LOG_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
 # Braces + redirect: the shell prints its own "Terminated" job message on wait,
 # which reads like a test failure in the log and is not one.
@@ -138,5 +139,13 @@ if grep -q 'bojan-workstation: AN alle: log-only message' "$OUT"; then
   echo "PASS: a LOG-only commit is reported with sender and title"
 else
   echo "FAIL: LOG-only commit reported without what it says"; fail=1
+fi
+# The FOUND line itself names the LOG sender (measured 2026-09-30): once SHARED_MEMORY_SELF
+# is set, the inbox lines below it only show entries for THIS instance, so a LOG entry
+# addressed elsewhere left nothing on screen but "unknown party".
+if grep -q 'from .*bojan-workstation' <<<"$LOG_LINE"; then
+  echo "PASS: a LOG-only commit names its sender in the FOUND line"
+else
+  echo "FAIL: LOG-only FOUND line without sender: $LOG_LINE"; fail=1
 fi
 exit "$fail"
