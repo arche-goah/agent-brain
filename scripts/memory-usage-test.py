@@ -102,11 +102,13 @@ with tempfile.TemporaryDirectory() as tmp:
     ]) + "\n", encoding="utf-8")
     p = mu.precision_report(per, state)
     # s1: named {read-me, orphan}, opened {read-me, bash-me, MEMORY.md} -> tp 1, fp 1, fn 1 (bash-me)
-    # s2: named {index-x}, opened {read-me} -> tp 0, fp 1, fn 1
-    exp = {"records": 3, "sessions_judged": 2, "named_and_opened": 1, "named_not_opened": 2, "opened_not_named": 2}
+    # s2: a topic index only -> NOT a pointer, not judged as named; opened {read-me} -> fn 1
+    #     (an injected index is never opened; "opened" cannot judge it — replay --truth does)
+    exp = {"records": 3, "sessions_judged": 2, "topics_named": 1,
+           "named_and_opened": 1, "named_not_opened": 1, "opened_not_named": 2}
     got = {k: p[k] for k in exp}
-    if got == exp and p["precision"] == round(1 / 3, 3) and p["recall"] == round(1 / 3, 3):
-        ok("4 precision/recall joined correctly, ghost session skipped")
+    if got == exp and p["precision"] == round(1 / 2, 3) and p["recall"] == round(1 / 3, 3):
+        ok("4 precision/recall over pointers only, topic counted apart, ghost session skipped")
     else:
         bad(f"4 precision: {p}")
     # 5
