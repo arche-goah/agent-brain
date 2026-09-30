@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+## 1.3.42 — 2026-09-30
+
 - **`onboarding-verify` checks 3, 6, 7 no longer split a path at a space.** (test: T1) The loops over the cached suite directories were `for d in $suite_dirs`, which walks the fragments of a Windows profile path with a space in the user name: check 3 reported an installed suite MISSING and named the first fragment as a suite. The three loops now read the list line by line. New fixture with a config dir containing a space (red against the old script with the same symptom); registered as `docs/os-traps.md` OS-10 with a search over every `for x in $list;` loop.
 
 - **`onboarding-verify` check 12: shared-memory self.** (test: T1) The session-start inbox and the LOG rotation tell own entries from others' only through `SHARED_MEMORY_SELF`, and nothing set it — not bootstrap, not the template; an instance ran unfiltered until someone read the bootup hint. With a shared-memory checkout present the verifier now demands the name in the brain's `env` block (or the environment) and says where to put it; without a checkout it SKIPs. Fixture covers SKIP / FAIL / OK. Measured on Windows: live verify reads the instance name from the brain settings.
