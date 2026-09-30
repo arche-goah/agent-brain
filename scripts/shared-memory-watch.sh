@@ -142,7 +142,18 @@ case "${1:-status}" in
 
       if [[ -n "$REMOTE_HEAD" && -n "$LAST_SEEN" && "$REMOTE_HEAD" != "$LAST_SEEN" ]]; then
         if git -C "$REPO" merge-base --is-ancestor "$REMOTE_HEAD" HEAD 2>/dev/null; then
-          write_sha "$REMOTE_HEAD"     # ours — advance silently, keep watching
+          # Reachable from HEAD is not the same as "ours": the pull before an own push
+          # brings every foreign commit pushed in between into HEAD, and a silent advance
+          # then skipped them (measured 2026-09-30 — a request addressed to this instance
+          # was never reported). The inbox reads the range and drops the own entries by
+          # SHARED_MEMORY_SELF; whatever it still prints came from someone else.
+          PULLED=$("$PY" "$HERE/shared-memory-inbox.py" --repo "$REPO" --from "$LAST_SEEN" \
+                     --to "$REMOTE_HEAD" 2>/dev/null)
+          if [[ -n "$PULLED" ]]; then
+            echo "FOUND: entries from others arrived with an own pull — see below"
+            printf '%s\n' "$PULLED"
+          fi
+          write_sha "$REMOTE_HEAD"     # cursor advances, keep watching
         else
           COUNT=$(git -C "$REPO" rev-list --count "$LAST_SEEN..$REMOTE_HEAD" -- . 2>/dev/null)
           FILES=$(git -C "$REPO" diff --name-only "$LAST_SEEN" "$REMOTE_HEAD" -- . 2>/dev/null \
