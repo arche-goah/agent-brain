@@ -1,13 +1,13 @@
 # Skill Registry
 
-**Total skills:** 26
-**Generated:** 2026-08-30
+**Total skills:** 25
+**Generated:** 2026-09-30
 
 > Auto-generated from the `.claude/skills/*/SKILL.md` files via `core/scripts/regen-skill-registry.py` — **do not maintain by hand**. Re-run the script after changing a skill.
 
 Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (each with YAML frontmatter `name` + `description`). This registry is the human-readable overview.
 
-## Other (26)
+## Other (25)
 
 | Skill | Short description |
 |-------|--------------------|
@@ -23,7 +23,6 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 | full-audit | Overall audit conductor — orchestrates brain-scan (conformance), memory-dream (memory hygiene) and coherence-scan (norm contradictions) as … |
 | json-canvas | Create and edit JSON Canvas files (.canvas) with nodes, edges, groups, and connections |
 | kohaerenz-scan | DEPRECATED pointer (LA1 rename 2026-08-14) — the norm-stack coherence audit now lives in the skill … |
-| last30days | Research what people actually say about any topic in the last 30 days |
 | memory-dream | Memory hygiene and maintenance - merge duplicates, resolve contradictions, update stale info, compress index, optimize … |
 | ollama-fallback | Local Claude Code setup with Ollama + Qwen3 Coder as a backup on rate limits, … |
 | parallel-research-agent | Spawns 3-5 sub-agents for parallel research tasks |
@@ -40,4 +39,4 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 
 ---
 
-**26 skills** across 1 groups.
+**25 skills** across 1 groups.
