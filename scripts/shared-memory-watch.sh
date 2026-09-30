@@ -40,6 +40,9 @@ STATE_FILE="${SHARED_MEMORY_STATE:-${CLAUDE_PROJECT_DIR:-.}/config/shared-memory
 LOCK_DIR="${SHARED_MEMORY_LOCK_DIR:-${CLAUDE_PROJECT_DIR:-.}/.claude-state}"
 LOCK="$LOCK_DIR/shared-memory-watch.pid"
 mkdir -p "$LOCK_DIR"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 
 read_sha() {
   [[ -f "$STATE_FILE" ]] || return 1
@@ -141,6 +144,10 @@ case "${1:-status}" in
               done \
             | sort -u | tr '\n' '|' | sed 's/|/, /g; s/, $//')
           echo "FOUND: ${COUNT:-?} new commit(s) from ${PARTIES:-unknown party (no von: field)} — ${FILES:-see git log}"
+          # What the commits SAY, not only that they exist (2026-09-25): a LOG-only
+          # commit has no `von:` field, so the line above read "unknown party" for a
+          # message whose heading names sender and title. Same reader as the session start.
+          "$PY" "$HERE/shared-memory-inbox.py" --repo "$REPO" --from "$LAST_SEEN" --to "$REMOTE_HEAD" 2>/dev/null
           write_sha "$REMOTE_HEAD"     # cursor advances, watch CONTINUES
         fi
       fi
