@@ -278,75 +278,11 @@ def get_config() -> dict[str, Any]:
     else:
         config['_CONFIG_SOURCE'] = 'env_only'
 
-    # Extract browser credentials if configured
-    browser_creds = extract_browser_credentials(config)
-    for key, value in browser_creds.items():
-        if not config.get(key):
-            config[key] = value
-            config[f"_{key}_SOURCE"] = "browser"
-
+    # Browser cookie extraction removed (brain core, 2026-09-30): with FROM_BROWSER unset it
+    # read the X and Truth Social session cookies from Firefox and Safari silently on EVERY
+    # run, with FROM_BROWSER=auto also Chrome via the Keychain. Credentials now come only
+    # from what the operator sets explicitly (AUTH_TOKEN/CT0, XAI_API_KEY, ...).
     return config
-
-
-# ---------------------------------------------------------------------------
-# Browser cookie extraction
-# ---------------------------------------------------------------------------
-
-COOKIE_DOMAINS: dict[str, dict[str, Any]] = {
-    "x": {
-        "domain": ".x.com",
-        "cookies": ["auth_token", "ct0"],
-        "mapping": {"auth_token": "AUTH_TOKEN", "ct0": "CT0"},
-    },
-    "truthsocial": {
-        "domain": ".truthsocial.com",
-        "cookies": ["_session_id"],
-        "mapping": {"_session_id": "TRUTHSOCIAL_TOKEN"},
-    },
-}
-
-
-def extract_browser_credentials(config: dict[str, Any]) -> dict[str, str]:
-    """Extract auth cookies from local browsers.
-
-    Default behavior (FROM_BROWSER unset): tries Firefox and Safari only.
-    These read local files silently with no system dialogs.  Chrome is
-    skipped because ``security find-generic-password`` triggers a macOS
-    Keychain prompt that cannot be reliably suppressed.
-
-    Set ``FROM_BROWSER=auto`` to also try Chrome (accepts the dialog),
-    or ``FROM_BROWSER=off`` to disable extraction entirely.
-    """
-    from_browser = (config.get("FROM_BROWSER") or "").strip().lower()
-    if from_browser == "off":
-        return {}
-    try:
-        from . import cookie_extract
-    except ImportError:
-        return {}
-    # Determine which browsers to try
-    if from_browser in ("firefox", "chrome", "safari"):
-        browsers = [from_browser]
-    elif from_browser == "auto":
-        browsers = ["firefox", "safari", "chrome"]
-    else:
-        # Default: silent browsers only (no Keychain dialog)
-        browsers = ["firefox", "safari"]
-    extracted: dict[str, str] = {}
-    for _service, spec in COOKIE_DOMAINS.items():
-        if all(config.get(env_key) for env_key in spec["mapping"].values()):
-            continue
-        for browser in browsers:
-            try:
-                cookies = cookie_extract.extract_cookies(browser, spec["domain"], spec["cookies"])
-            except Exception:
-                continue
-            if cookies:
-                for cookie_name, env_key in spec["mapping"].items():
-                    if cookie_name in cookies and not config.get(env_key):
-                        extracted[env_key] = cookies[cookie_name]
-                break  # Found cookies for this service, stop trying browsers
-    return extracted
 
 
 def get_x_source_with_method(config: dict[str, Any]) -> tuple[str | None, str]:

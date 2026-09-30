@@ -30,33 +30,18 @@ def is_first_run(config: Dict[str, Any]) -> bool:
 def run_auto_setup(config: Dict[str, Any]) -> Dict[str, Any]:
     """Perform the auto-setup actions.
 
-    - Runs cookie extraction in auto mode for all registered domains
     - Checks if yt-dlp is installed
+
+    Browser cookie extraction is removed (brain core, 2026-09-30); `cookies_found` stays
+    in the result, always empty, so callers keep working.
 
     Returns:
         Dict with keys:
-          cookies_found: {source_name: browser_name} for each source where cookies were found
+          cookies_found: always {} — no browser is read
           ytdlp_installed: bool
           env_written: bool (always False here — caller writes config separately)
     """
-    from . import cookie_extract
-    from .env import COOKIE_DOMAINS
-
     cookies_found: Dict[str, str] = {}
-
-    for source_name, spec in COOKIE_DOMAINS.items():
-        domain = spec["domain"]
-        cookie_names = spec["cookies"]
-
-        try:
-            result = cookie_extract.extract_cookies_with_source("auto", domain, cookie_names)
-        except Exception as exc:
-            logger.debug("Cookie extraction failed for %s: %s", source_name, exc)
-            continue
-
-        if result is not None:
-            _cookies, browser_name = result
-            cookies_found[source_name] = browser_name
 
     # Check yt-dlp availability and install via Homebrew if missing
     ytdlp_action: str
@@ -148,6 +133,28 @@ def write_setup_config(env_path: Path, from_browser: str = "auto") -> bool:
         return False
 
 
+def save_api_key(env_path: Path, key: str) -> bool:
+    """Append SCRAPECREATORS_API_KEY to the .env unless it is set there already.
+
+    The auth flows used to print the key to stdout for the model to copy into the .env —
+    that put the secret into the session transcript (brain core, 2026-09-30).
+    """
+    try:
+        env_path = Path(env_path)
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+        content = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
+        if any(l.strip().startswith("SCRAPECREATORS_API_KEY=") for l in content.splitlines()):
+            return True
+        with open(env_path, "a", encoding="utf-8") as f:
+            if content and not content.endswith("\n"):
+                f.write("\n")
+            f.write(f"SCRAPECREATORS_API_KEY={key}\n")
+        return True
+    except OSError as exc:
+        logger.error("Failed to save the API key to %s: %s", env_path, exc)
+        return False
+
+
 def get_setup_status_text(results: Dict[str, Any]) -> str:
     """Return a human-readable summary of auto-setup results.
 
@@ -166,7 +173,7 @@ def get_setup_status_text(results: Dict[str, Any]) -> str:
         for source, browser in cookies_found.items():
             lines.append(f"  - {source.upper()} cookies found in {browser}")
     else:
-        lines.append("  - No browser cookies found for X/Twitter")
+        lines.append("  - X/Twitter: browser cookies are not read; set AUTH_TOKEN/CT0 or XAI_API_KEY")
 
     ytdlp_action = results.get("ytdlp_action", "")
     if ytdlp_action == "installed":
@@ -239,44 +246,6 @@ def run_openclaw_setup(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# PAT auth flow (GitHub token via ScrapeCreators)
-# ---------------------------------------------------------------------------
-
-_PAT_BASE = "https://api.scrapecreators.com/v1/github/pat"
-
-
-def auth_with_pat(github_token: str) -> Optional[Dict[str, Any]]:
-    """Authenticate with ScrapeCreators using a GitHub PAT.
-
-    POSTs the token to the PAT auth endpoint. ScrapeCreators verifies it
-    against GitHub's API, creates/finds the account, and returns an API key.
-
-    Returns:
-        Dict with api_key, github_username, etc. on success, None on failure.
-    """
-    try:
-        req = Request(f"{_PAT_BASE}/auth", data=b"", method="POST")
-        req.add_header("Authorization", f"Bearer {github_token}")
-        with urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-    except HTTPError as exc:
-        if exc.code == 422:
-            logger.warning("PAT auth: insufficient scope — user needs user:email")
-        else:
-            logger.warning("PAT auth failed: %s", exc)
-        return None
-    except (URLError, OSError) as exc:
-        logger.warning("PAT auth request failed: %s", exc)
-        return None
-
-    if not data.get("api_key"):
-        logger.warning("PAT auth returned no api_key: %s", data)
-        return None
-
-    return data
-
-
-# ---------------------------------------------------------------------------
 # Device auth flow (GitHub OAuth via ScrapeCreators)
 # ---------------------------------------------------------------------------
 
@@ -308,7 +277,7 @@ def run_device_auth() -> Optional[Tuple[str, str, str, int]]:
     interval = data.get("interval", 5)
 
     if not device_code or not user_code:
-        logger.warning("Device auth returned incomplete response: %s", data)
+        logger.warning("Device auth returned incomplete response (keys: %s)", sorted(data))
         return None
 
     return (device_code, user_code, verification_uri or "", interval)
@@ -481,55 +450,3 @@ def run_full_device_auth(timeout: int = 300) -> Dict[str, Any]:
         }
 
     return {"status": "success", "method": "device", "api_key": api_key, "user_code": user_code, "clipboard_ok": clipboard_ok}
-
-
-# ---------------------------------------------------------------------------
-# Unified GitHub auth: PAT first, device flow fallback
-# ---------------------------------------------------------------------------
-
-
-def run_github_auth(timeout: int = 300) -> Dict[str, Any]:
-    """Try PAT auth via gh CLI, fall back to device flow.
-
-    1. Check for `gh` CLI
-    2. If found, run `gh auth token` to get a PAT
-    3. POST PAT to ScrapeCreators — if it works, done
-    4. If PAT fails for any reason, fall through to device flow
-
-    Returns JSON-serializable dict with status, method, and api_key.
-    """
-    import sys
-
-    # Step 1: Try PAT via gh CLI
-    gh_path = shutil.which("gh")
-    if gh_path:
-        try:
-            result = subprocess.run(
-                ["gh", "auth", "token"],
-                capture_output=True, text=True, timeout=10,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                token = result.stdout.strip()
-                print("Found gh CLI — trying PAT auth...", file=sys.stderr)
-                pat_result = auth_with_pat(token)
-                if pat_result and pat_result.get("api_key"):
-                    return {
-                        "status": "success",
-                        "method": "pat",
-                        "api_key": pat_result["api_key"],
-                        "github_username": pat_result.get("github_username", ""),
-                    }
-                # PAT failed — might be insufficient scope
-                print(
-                    "PAT auth didn't work (scope or endpoint issue). "
-                    "Falling back to GitHub device flow...",
-                    file=sys.stderr,
-                )
-        except Exception as exc:
-            logger.debug("gh auth token failed: %s", exc)
-
-    # Step 2: Fall back to device flow
-    if not gh_path:
-        print("gh CLI not found — using GitHub device flow...", file=sys.stderr)
-
-    return run_full_device_auth(timeout=timeout)

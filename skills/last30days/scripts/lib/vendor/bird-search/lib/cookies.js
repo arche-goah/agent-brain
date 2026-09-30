@@ -68,11 +68,13 @@ function pickCookieValue(cookies, name) {
     if (matches.length === 0) {
         return null;
     }
-    const preferred = matches.find((c) => (c.domain ?? '').endsWith('x.com'));
+    // Exact host or a real subdomain: a bare endsWith('x.com') also matched 'evil-x.com'.
+    const onHost = (c, host) => { const d = (c.domain ?? '').replace(/^\./, ''); return d === host || d.endsWith(`.${host}`); };
+    const preferred = matches.find((c) => onHost(c, 'x.com'));
     if (preferred?.value) {
         return preferred.value;
     }
-    const twitter = matches.find((c) => (c.domain ?? '').endsWith('twitter.com'));
+    const twitter = matches.find((c) => onHost(c, 'twitter.com'));
     if (twitter?.value) {
         return twitter.value;
     }
@@ -140,8 +142,9 @@ export async function extractCookiesFromFirefox(profile) {
 export async function resolveCredentials(options) {
     const warnings = [];
     const cookies = buildEmpty();
-    const disableBrowserCookies = envFlagEnabled('BIRD_DISABLE_BROWSER_COOKIES') ||
-        envFlagEnabled('LAST30DAYS_DISABLE_BROWSER_COOKIES');
+    // Browser cookies are never read in the brain core (2026-09-30), whatever the env says:
+    // credentials come only from CLI args or AUTH_TOKEN/CT0.
+    const disableBrowserCookies = true;
     const cookieTimeoutMs = typeof options.cookieTimeoutMs === 'number' &&
         Number.isFinite(options.cookieTimeoutMs) &&
         options.cookieTimeoutMs > 0

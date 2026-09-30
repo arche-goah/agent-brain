@@ -1,15 +1,28 @@
 """Shared logging utilities for last30days skill."""
 
 import os
+import re
 import sys
 
 DEBUG = os.environ.get("LAST30DAYS_DEBUG", "").lower() in ("1", "true", "yes")
 
+# A value after a secret-looking name, a Bearer token, or an sc_/sk-/xai- style key.
+# Output from this skill runs inside an agent session and lands in its transcript
+# (brain core, 2026-09-30): nothing that looks like a credential leaves unmasked.
+_SECRET = re.compile(
+    r"(?i)((?:token|key|secret|password|passwd|auth|cookie|ct0|bearer)[\"']?\s*[:=]?\s*[\"']?)[^\s\"',}]{6,}"
+    r"|\b(?:sc|sk|xai|ghp|gho|github_pat)[_-][A-Za-z0-9_\-]{8,}"
+)
+
+
+def redact(msg: str) -> str:
+    return _SECRET.sub(lambda m: (m.group(1) or "") + "***", str(msg))
+
 
 def debug(msg: str) -> None:
-    """Log debug message to stderr (only when LAST30DAYS_DEBUG is set)."""
+    """Log debug message to stderr (only when LAST30DAYS_DEBUG is set), secrets masked."""
     if DEBUG:
-        sys.stderr.write(f"[DEBUG] {msg}\n")
+        sys.stderr.write(f"[DEBUG] {redact(msg)}\n")
         sys.stderr.flush()
 
 

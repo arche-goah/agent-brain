@@ -34,9 +34,15 @@ def _deliver_findings(topic_name: str, counts: dict) -> None:
     message = _format_delivery_message(topic_name, counts, mode)
     
     try:
-        if "hooks.slack.com" in channel:
+        # Host compared exactly, https only: a substring test also matched
+        # `http://elsewhere/?hooks.slack.com` and sent the findings there in clear text.
+        from urllib.parse import urlparse
+        url = urlparse(channel)
+        if url.scheme != "https":
+            return
+        if url.hostname == "hooks.slack.com":
             _send_slack_webhook(channel, message)
-        elif channel.startswith("https://"):
+        else:
             _send_generic_webhook(channel, message)
     except Exception as e:
         # Don't fail the research run if delivery fails

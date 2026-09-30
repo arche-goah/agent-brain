@@ -541,21 +541,20 @@ def main() -> int:
             results = setup_wizard.run_openclaw_setup(config)
             print(json.dumps(results))
             return 0
-        if "--github" in extra_argv:
-            results = setup_wizard.run_github_auth()
-            print(json.dumps(results))
-            return 0
-        if "--device-auth" in extra_argv:
+        if "--github" in extra_argv or "--device-auth" in extra_argv:
             results = setup_wizard.run_full_device_auth()
+            # The key goes into the config file, never to stdout (it would land in the
+            # session transcript) — brain core, 2026-09-30.
+            key = results.pop("api_key", None)
+            if key:
+                saved = setup_wizard.save_api_key(env.CONFIG_FILE, key)
+                results["api_key_saved_to"] = str(env.CONFIG_FILE) if saved else None
             print(json.dumps(results))
             return 0
         sys.stderr.write("Running auto-setup...\n")
         results = setup_wizard.run_auto_setup(config)
-        from_browser = "auto"
-        if results.get("cookies_found"):
-            first_browser = next(iter(results["cookies_found"].values()))
-            from_browser = first_browser
-        setup_wizard.write_setup_config(env.CONFIG_FILE, from_browser=from_browser)
+        # No browser is read any more (brain core, 2026-09-30); record that in the config.
+        setup_wizard.write_setup_config(env.CONFIG_FILE, from_browser="off")
         results["env_written"] = True
         sys.stderr.write(setup_wizard.get_setup_status_text(results) + "\n")
         return 0

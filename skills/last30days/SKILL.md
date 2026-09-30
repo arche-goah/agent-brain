@@ -319,7 +319,7 @@ Common patterns:
 - Always active: Reddit, Hacker News, Polymarket
 - If gh CLI is installed (check `which gh`): add GitHub
 - If digg-pp-cli is installed (check `which digg-pp-cli`): add Digg
-- If AUTH_TOKEN/CT0 or XAI_API_KEY or FROM_BROWSER is set, or xurl CLI is installed and authenticated: add X
+- If AUTH_TOKEN/CT0 or XAI_API_KEY is set, or xurl CLI is installed and authenticated: add X
 - If yt-dlp is installed (check `which yt-dlp`): add YouTube
 - If SCRAPECREATORS_API_KEY is set and INCLUDE_SOURCES contains tiktok: add TikTok
 - If SCRAPECREATORS_API_KEY is set and INCLUDE_SOURCES contains instagram: add Instagram
@@ -1404,12 +1404,11 @@ Headlines should be specific and newsy ("BULLY dropped and it's dominating", "Eu
 
 If the research output contains a `**🔍 Research Coverage:**` block, render it verbatim right before the stats block. This tells the user which core sources are missing and how to unlock them. Do NOT render this block if it is absent from the output (100% coverage = no nudge).
 
-**Just-in-time X unlock:** If X returned 0 results because no X auth is configured (no AUTH_TOKEN/CT0, no XAI_API_KEY, no FROM_BROWSER), offer to set it up right there:
+**Just-in-time X unlock:** If X returned 0 results because no X auth is configured (no AUTH_TOKEN/CT0, no XAI_API_KEY), offer to set it up right there. Browser cookies are never read (removed in the brain core, 2026-09-30) — do not offer it:
 
 **Call AskUserQuestion:**
 Question: "X/Twitter wasn't searched. Want to unlock it?"
 Options:
-- "Scan my browser cookies (free)" - Get consent, run cookie scan, write BROWSER_CONSENT=true + FROM_BROWSER=auto to .env
 - "I have an xAI API key" - Ask them to paste it, write XAI_API_KEY to .env
 - "Skip for now"
 
