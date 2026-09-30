@@ -82,12 +82,16 @@ const DEFAULTS = {
     'up down out off run runs ran check plan step file files').split(/\s+/),
 };
 
-let data = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (c) => { data += c; });
-process.stdin.on('end', () => { try { main(); } catch (e) { /* never block a prompt */ } process.exit(0); });
+// Required as a module (scripts/memory-recall-replay.cjs), the hook does not read stdin.
+if (require.main === module) {
+  let data = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (c) => { data += c; });
+  process.stdin.on('end', () => { try { main(data); } catch (e) { /* never block a prompt */ } process.exit(0); });
+}
+module.exports = { loadConfig, liveDir, loadCorpus, scorePrompt, pick };
 
-function main() {
+function main(data) {
   let input = {};
   try { input = JSON.parse(data || '{}'); } catch (e) { return; }
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
@@ -100,31 +104,12 @@ function main() {
 
   const docs = loadCorpus(memDir, cfg);
   if (!docs.length) return;
-  const df = new Map();
-  for (const d of docs) for (const t of new Set(d.tokens.map((x) => x.t))) df.set(t, (df.get(t) || 0) + 1);
-  const idf = (t) => Math.log((docs.length + 1) / ((df.get(t) || 0) + 1)) + 1;
-  const ptoks = [...new Set(tokenize(prompt, cfg.stop))];
+  const ptoks = scorePrompt(docs, prompt, cfg);
   if (!ptoks.length) return;
-
-  for (const d of docs) {
-    let score = 0; const hit = new Set();
-    for (const p of ptoks) {
-      for (const { t, w } of d.tokens) {
-        if (matches(p, t)) { score += idf(t) * w; hit.add(p); }
-      }
-    }
-    d.score = score; d.hits = hit.size;
-  }
-  const rank = (list, minHits, n) => list.filter((d) => d.hits >= minHits)
-    .sort((a, b) => b.score - a.score || a.file.localeCompare(b.file)).slice(0, n);
 
   const { state, stateFile, sid } = loadState(root, input);
   state.n += 1;
-
-  const topics = rank(docs.filter((d) => d.topic), cfg.topicMinHits, cfg.topicK)
-    .filter((d) => !state.topics.includes(d.file));
-  const files = rank(docs.filter((d) => !d.topic), cfg.minHits, cfg.k)
-    .filter((d) => !(d.file in state.seen) || state.n - state.seen[d.file] > cfg.cooldownPrompts);
+  const { topics, files } = pick(docs, state, cfg);
 
   // record line: what was named, with scores — the join key for the precision measurement
   record(root, {
@@ -152,6 +137,36 @@ function main() {
   }
   out.push('</memory-recall>');
   process.stdout.write(out.join('\n') + '\n');
+}
+
+// Scores every doc against the prompt in place: score, hits, and `words` = the prompt
+// tokens that matched (what the replay reports). Returns the prompt tokens.
+function scorePrompt(docs, prompt, cfg) {
+  const df = new Map();
+  for (const d of docs) for (const t of new Set(d.tokens.map((x) => x.t))) df.set(t, (df.get(t) || 0) + 1);
+  const idf = (t) => Math.log((docs.length + 1) / ((df.get(t) || 0) + 1)) + 1;
+  const ptoks = [...new Set(tokenize(prompt, cfg.stop))];
+  for (const d of docs) {
+    let score = 0; const hit = new Set();
+    for (const p of ptoks) {
+      for (const { t, w } of d.tokens) {
+        if (matches(p, t)) { score += idf(t) * w; hit.add(p); }
+      }
+    }
+    d.score = score; d.hits = hit.size; d.words = [...hit];
+  }
+  return ptoks;
+}
+
+// What one prompt names, given the session state (a topic once, a file after cooldown).
+function pick(docs, state, cfg) {
+  const rank = (list, minHits, n) => list.filter((d) => d.hits >= minHits)
+    .sort((a, b) => b.score - a.score || a.file.localeCompare(b.file)).slice(0, n);
+  const topics = rank(docs.filter((d) => d.topic), cfg.topicMinHits, cfg.topicK)
+    .filter((d) => !state.topics.includes(d.file));
+  const files = rank(docs.filter((d) => !d.topic), cfg.minHits, cfg.k)
+    .filter((d) => !(d.file in state.seen) || state.n - state.seen[d.file] > cfg.cooldownPrompts);
+  return { topics, files };
 }
 
 function toolMode(input, root, cfg, memDir) {
