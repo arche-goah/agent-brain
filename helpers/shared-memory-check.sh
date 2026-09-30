@@ -93,7 +93,8 @@ GEN="$(dirname "${BASH_SOURCE[0]:-$0}")/../scripts/shared-memory-index.py"
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 if [[ -n "$SINCE_DAY" && -f "$GEN" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; then
-  FRESH=$("$PY" "$GEN" --repo "$REPO" --since "$SINCE_DAY" 2>/dev/null)
+  # --ref: this check only fetched; the new entries are in REMOTE_HEAD, not on disk yet.
+  FRESH=$("$PY" "$GEN" --repo "$REPO" --since "$SINCE_DAY" --ref "$REMOTE_HEAD" 2>/dev/null)
   # Per-topic tally from the entry lines (`- <date> [topic] …`); the generator's own count
   # line is the total. awk, not a second generator run per topic.
   BY_TOPIC=$(printf '%s\n' "$FRESH" | awk '/^- /{ if (match($0, /\[[a-z0-9-]+\]/)) t[substr($0, RSTART+1, RLENGTH-2)]++ }

@@ -113,11 +113,17 @@ def file_items(repo: Path, a: str, b: str, me: set[str], log_text: str) -> list[
             continue
         rel = parts[-1]
         p = repo / rel
-        if not rel.endswith(".md") or "/" not in rel or p.name in SKIP_FILES or not p.is_file():
+        if not rel.endswith(".md") or "/" not in rel or p.name in SKIP_FILES:
             continue
         if rel in log_text or p.name in log_text:
             continue
-        e = read_entry(p, repo)
+        # The blob at `b`, not the file on disk: the caller only FETCHES, so a new file is
+        # not in the working tree yet and a changed one is still the old version there
+        # (measured on the workstation 2026-09-30: 9 lines instead of 10).
+        blob = git(repo, "show", f"{b}:{rel}")
+        if not blob:
+            continue
+        e = read_entry(p, repo, text=blob)
         if not for_us(e["von"], e["audience"] or None, me):
             continue
         text = first_sentence(e["desc"] or e["name"], TEXT_CAP)

@@ -118,6 +118,23 @@ has   "and nothing is dropped" "not for me" "$out"
 out="$(SHARED_MEMORY_SELF=me-mac run_check)"
 hasnt "cursor current: inbox silent" "shared-memory inbox" "$out"
 
+echo "inbox, UNPULLED: a peer pushes from another clone, this checkout only fetches"
+# Measured on the workstation 2026-09-30: the check only fetches, so a new fact file is not
+# in the working tree yet and dropped out silently, a changed one was read in its old form.
+# The blocks above push from the checked clone itself, so the file was always on disk.
+CUR=$(git -C "$SHARED" rev-parse HEAD)
+git_q -C "$TMP" clone -q "$REMOTE" peer
+printf -- '---\nname: f-unpulled\ndescription: "Pushed elsewhere, for me."\nmetadata:\n  type: reference\n  von: peer\n  audience: me-mac\n  topic: ops\n  date: 2026-09-30\n---\n\nbody\n' > "$TMP/peer/ops/f-unpulled.md"
+sed 's/File addressed to me\./Changed text, for me./' "$TMP/peer/ops/f-mine.md" > "$TMP/peer/ops/f-mine.tmp" && mv "$TMP/peer/ops/f-mine.tmp" "$TMP/peer/ops/f-mine.md"
+git_q -C "$TMP/peer" add -A; git_q -C "$TMP/peer" commit -qm "peer push"; git_q -C "$TMP/peer" push -q origin HEAD:main
+printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "2026-09-05T08:00:00Z"\n}\n' "$CUR" > "$STATE"
+out="$(SHARED_MEMORY_SELF=me-mac run_check)"
+[ -e "$SHARED/ops/f-unpulled.md" ] && bad "precondition: file not pulled" "it is on disk" || ok "precondition: new file is NOT on disk"
+has   "a new file pushed elsewhere is printed" "Pushed elsewhere, for me. (ops/f-unpulled.md)" "$out"
+has   "a changed file is read in its NEW form" "Changed text, for me." "$out"
+# freshness line, same class: it read the working tree too (4 instead of 5 before the fix)
+has   "freshness counts the unpulled entry" "5 entries dated since 2026-09-05" "$out"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "test-shared-memory-check: all checks passed"; exit 0; fi
 echo "test-shared-memory-check: $fails check(s) FAILED"; exit 1

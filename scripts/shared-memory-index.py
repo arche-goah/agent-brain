@@ -82,13 +82,13 @@ TOPIC_INDEX = re.compile(r"^[^/]+/" + re.escape(INDEX_NAME) + r"$")
 # WRONG date for a file that was edited later (a later addendum moves it), which is
 # precisely why the field exists: the author says what the entry is dated, git only says
 # when it last changed. Marked `~` in the index line so a reader can tell the two apart.
-def git_dates(repo: Path) -> dict[str, str]:
+def git_dates(repo: Path, ref: str | None = None) -> dict[str, str]:
     """One pass, newest first, so the FIRST time a path appears is its latest commit."""
     import subprocess
     out: dict[str, str] = {}
     try:
         log = subprocess.run(
-            ["git", "-C", str(repo), "log", "--format=%cs", "--name-only", "--", "*.md"],
+            ["git", "-C", str(repo), "log", "--format=%cs", "--name-only", *([ref] if ref else []), "--", "*.md"],
             capture_output=True, text=True, timeout=30).stdout
     except Exception:
         return out
@@ -101,9 +101,35 @@ def git_dates(repo: Path) -> dict[str, str]:
     return out
 
 
-def fact_files(repo: Path) -> list[Path]:
+def blobs_at(repo: Path, ref: str) -> dict[str, str]:
+    """rel path -> content of every .md at `ref`, in ONE git process. A caller that only
+    FETCHED (the session-start check) has the new state in refs, not in the working tree:
+    reading the disk there missed new entries and read changed ones in their old form
+    (measured on the workstation 2026-09-30)."""
+    import subprocess
+    names = subprocess.run(["git", "-C", str(repo), "-c", "core.quotepath=off", "ls-tree", "-r",
+                            "--name-only", ref], capture_output=True, text=True,
+                           encoding="utf-8").stdout.splitlines()
+    names = [n for n in names if n.endswith(".md")]
+    raw = subprocess.run(["git", "-C", str(repo), "cat-file", "--batch"],
+                         input="".join(f"{ref}:{n}\n" for n in names).encode("utf-8"),
+                         capture_output=True).stdout
+    out, pos = {}, 0
+    for n in names:
+        nl = raw.index(b"\n", pos)
+        header = raw[pos:nl].split()
+        pos = nl + 1
+        if len(header) < 3 or header[1] != b"blob":
+            continue
+        size = int(header[2])
+        out[n] = raw[pos:pos + size].decode("utf-8", errors="replace")
+        pos += size + 1
+    return out
+
+
+def fact_files(repo: Path, rels: list[str] | None = None) -> list[Path]:
     out = []
-    for p in sorted(repo.rglob("*.md")):
+    for p in sorted(repo / r for r in rels) if rels is not None else sorted(repo.rglob("*.md")):
         rel = p.relative_to(repo)
         if ".git" in rel.parts or "archive" in rel.parts:
             continue
@@ -129,8 +155,11 @@ def first_sentence(text: str, cap: int) -> str:
     return cut.rstrip() + "…"
 
 
-def read_entry(p: Path, repo: Path, gitdates: dict[str, str] | None = None) -> dict:
-    text = p.read_text(encoding="utf-8", errors="replace")
+def read_entry(p: Path, repo: Path, gitdates: dict[str, str] | None = None,
+               text: str | None = None) -> dict:
+    # `text` given: the content comes from git (a fetched, not yet pulled commit), not disk.
+    if text is None:
+        text = p.read_text(encoding="utf-8", errors="replace")
     head = text.split("\n---", 1)[0] if text.startswith("---") else ""
     desc_m = FM_DESC.search(head)
     name_m = FM_NAME.search(head)
@@ -181,9 +210,14 @@ def since(entries: list[dict], day: str) -> list[dict]:
     return sorted(hits, key=lambda e: (e["date"], e["name"]), reverse=True)
 
 
-def build(repo: Path) -> tuple[str, dict[str, str], list[dict]]:
-    gitdates = git_dates(repo)
-    entries = [read_entry(p, repo, gitdates) for p in fact_files(repo)]
+def build(repo: Path, ref: str | None = None) -> tuple[str, dict[str, str], list[dict]]:
+    gitdates = git_dates(repo, ref)
+    if ref:
+        blobs = blobs_at(repo, ref)
+        entries = [read_entry(p, repo, gitdates, text=blobs[p.relative_to(repo).as_posix()])
+                   for p in fact_files(repo, list(blobs))]
+    else:
+        entries = [read_entry(p, repo, gitdates) for p in fact_files(repo)]
     by_topic: dict[str, list[dict]] = {}
     for e in entries:
         by_topic.setdefault(e["topic"], []).append(e)
@@ -263,12 +297,17 @@ def main() -> int:
                          "— the freshness filter for a bootup or a topic-time recall; "
                          "writes nothing")
     ap.add_argument("--topic", help="with --since: restrict to one topic folder")
+    ap.add_argument("--ref", help="with --since: read the entries at this git ref (e.g. a "
+                                  "fetched origin/main) instead of the working tree")
     a = ap.parse_args()
+    if a.ref and a.write:
+        print("ERROR: --ref is read-only; it does not combine with --write", file=sys.stderr)
+        return 2
     if not a.repo.is_dir():
         print(f"ERROR: repo not found: {a.repo}", file=sys.stderr)
         return 2
 
-    root, topics, entries = build(a.repo)
+    root, topics, entries = build(a.repo, a.ref)
     if a.since:
         if not ISO_DATE.match(a.since):
             print(f"ERROR: --since wants YYYY-MM-DD, got {a.since!r}", file=sys.stderr)
