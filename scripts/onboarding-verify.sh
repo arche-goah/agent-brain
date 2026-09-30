@@ -109,16 +109,20 @@ suite_name() {
   printf '%s' "$b"
 }
 suite_names=""
-for d in $suite_dirs; do suite_names="$suite_names$(suite_name "$d") "; done
+# Loops over suite_dirs read it LINE by line: a bare `for d in $suite_dirs` splits on
+# spaces, and a Windows profile name often has one ("First Last") — the check then
+# looked for skills in the first path fragment and reported an installed suite MISSING
+# (measured 2026-09-30, docs/os-traps.md OS-10).
+while IFS= read -r d; do [ -n "$d" ] && suite_names="$suite_names$(suite_name "$d") "; done <<< "$suite_dirs"
 
 # 3 Skills from the core plugin (suite skills only when a suite is installed)
 s1=""; [ -n "$bc_dir" ] && s1=$(find "$bc_dir" -name "SKILL.md" 2>/dev/null | head -1)
 if [ -n "$suite_dirs" ]; then
   s2=""
-  for d in $suite_dirs; do
+  while IFS= read -r d; do
     s2=$(find "$d" -name "SKILL.md" 2>/dev/null | head -1)
     [ -n "$s2" ] || break
-  done
+  done <<< "$suite_dirs"
   check 3 "Plugin skills" $(( $([ -n "$s1" ] && echo 0 || echo 1) || $([ -n "$s2" ] && echo 0 || echo 1) )) "core=$([ -n "$s1" ] && echo present || echo MISSING), suites=$([ -n "$s2" ] && echo present || echo MISSING) ($suite_names)"
 else
   check 3 "Plugin skills" $([ -n "$s1" ] && echo 0 || echo 1) "core=$([ -n "$s1" ] && echo present || echo MISSING), suites=none installed"
@@ -148,7 +152,7 @@ if [ -n "$suite_dirs" ]; then
   # 6 Runtime deps of the suites: a suite that declares npm dependencies needs
   # node_modules (the plugin's install hook puts them into the plugin data dir).
   d_ok=0; d_detail=""
-  for d in $suite_dirs; do
+  while IFS= read -r d; do
     name=$(suite_name "$d")
     if [ -f "$d/package.json" ] || [ -f "$d/mcp/package.json" ]; then
       nm=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins" -maxdepth 6 -type d -name "node_modules" -path "*$name*" 2>/dev/null | head -1)
@@ -157,7 +161,7 @@ if [ -n "$suite_dirs" ]; then
     else
       d_detail="$d_detail$name=no-npm-deps "
     fi
-  done
+  done <<< "$suite_dirs"
   check 6 "Suite runtime deps" $d_ok "$d_detail"
 
   # 7 Suite MCP startable (without the device/console: server source + node)
@@ -282,6 +286,24 @@ if [ -z "$ss" ] && command -v powershell.exe >/dev/null 2>&1; then
 fi
 if [ -n "$ss" ]; then check 11 "Shell start" 0 "marker in $ss"
 else check 11 "Shell start" 1 "missing — run bash scripts/setup-shell-start.sh <brain>"; fi
+
+# 12 Instance name for the shared memory — the bootup inbox and the LOG rotation tell
+# OWN entries from others' only through SHARED_MEMORY_SELF. Unset, the inbox shows every
+# entry unfiltered and the rotation cannot name the own over-cap entries. Nothing set it:
+# not bootstrap, not the template (measured 2026-09-30 on a Windows instance, where it had
+# been missing since the inbox shipped). The name is the operator's party vocabulary, so
+# the verifier demands it instead of guessing it.
+smr="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
+if [ ! -d "$smr" ]; then skip 12 "Shared-memory self" "no shared-memory checkout at $smr"
+else
+  self="${SHARED_MEMORY_SELF:-}"
+  for f in "$BRAIN/.claude/settings.local.json" "$BRAIN/.claude/settings.json"; do
+    [ -n "$self" ] && break
+    [ -f "$f" ] && self=$("$PY" -c 'import json,sys; print((json.load(open(sys.argv[1], encoding="utf-8")).get("env") or {}).get("SHARED_MEMORY_SELF", ""))' "$f" 2>/dev/null | tr -d '\r')
+  done
+  if [ -n "$self" ]; then check 12 "Shared-memory self" 0 "SHARED_MEMORY_SELF=$self"
+  else check 12 "Shared-memory self" 1 "unset — add \"SHARED_MEMORY_SELF\": \"<your-instance-name>\" to the env block of $BRAIN/.claude/settings.json (the name you sign shared-memory entries with)"; fi
+fi
 
 echo
 if [ "$fail" -eq 0 ]; then echo "VERIFY: ALL MANDATORY CHECKS GREEN — send the report back to whoever invited you."
