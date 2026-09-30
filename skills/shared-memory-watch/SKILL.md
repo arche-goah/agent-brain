@@ -49,10 +49,14 @@ core never hardcodes an instance path.
 - **One watcher per machine.** The lock in `.claude-state/` stops three parallel
   sessions from hammering the same fetch and all reacting to the same commit. A second
   arm says so and exits instead of doubling.
-- **Your own pushes are not events.** The discriminator is reachability from the local
-  checkout, not the author name — one operator's name is identical on their Mac and
-  their Windows workstation, so a name filter would swallow the other own instance,
-  which is exactly the signal wanted.
+- **Your own pushes are not events — but what your pull brought along is.** Never the
+  git author name: one operator's name is identical on their Mac and their Windows
+  workstation, so a name filter would swallow the other own instance, which is exactly
+  the signal wanted. A new head reachable from the local checkout is NOT proof of
+  "ours" either: the pull before an own push carries every foreign commit pushed in
+  between (measured 2026-09-30 — a request to this instance was skipped that way). For
+  such a range the watcher asks the inbox reader, which drops the own entries by
+  `SHARED_MEMORY_SELF`, and reports whatever is left.
 - **A missing cursor is a loud abort, never a silent idle.** Watching blind and
   watching nothing look the same from outside; the script refuses instead.
 - **Missed windows still surface.** The cursor is a file and only advances on a
