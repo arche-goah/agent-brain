@@ -26,6 +26,9 @@ Never summarises: every printed text is the author's own heading or description,
 sentence boundary. Read-only. Exit 0 always (an advisory reader, not a gate).
 
 Usage: shared-memory-inbox.py --from SHA [--to SHA] [--repo DIR] [--self a,b] [--max N]
+       shared-memory-inbox.py --from SHA [--to SHA] [--repo DIR] --senders
+--senders prints every sender in the range, one per line, UNFILTERED — the live watcher
+names the party of a find with it, including LOG entries addressed to someone else.
 """
 from __future__ import annotations
 
@@ -140,11 +143,19 @@ def main() -> int:
     ap.add_argument("--to", dest="b", default="origin/main")
     ap.add_argument("--self", dest="me", default=os.environ.get("SHARED_MEMORY_SELF", ""))
     ap.add_argument("--max", type=int, default=12)
+    ap.add_argument("--senders", action="store_true", help="print the senders only, unfiltered")
     args = ap.parse_args()
     # OS-9: the text is the authors' own (umlauts, dashes) and a hook reads it. Unpinned,
     # Windows writes the ANSI codepage and dies on the first unencodable character.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
-    me = tokens(args.me.replace(",", " "))
+    me = set() if args.senders else tokens(args.me.replace(",", " "))
+
+    if args.senders:
+        logs, log_text = log_items(args.repo, args.a, args.b, me)
+        found = logs + file_items(args.repo, args.a, args.b, me, log_text)
+        for sender in sorted({i[2] for i in found if i[2] and i[2] != "?"}):
+            print(sender)
+        return 0
 
     logs, log_text = log_items(args.repo, args.a, args.b, me)
     items = logs + file_items(args.repo, args.a, args.b, me, log_text)

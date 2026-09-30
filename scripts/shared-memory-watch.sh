@@ -151,12 +151,17 @@ case "${1:-status}" in
           # two of the three parties share one account, so `%an` cannot tell them apart
           # (measured 2026-08-22 — a session reported our own Windows machine as "the
           # colleague"). Falls back to a visibly unknown party rather than to a name.
-          PARTIES=$(git -C "$REPO" diff --name-only "$LAST_SEEN" "$REMOTE_HEAD" -- . 2>/dev/null \
+          # A LOG entry has no `von:` line — its HEADING names the sender. Those come from
+          # the inbox reader's heading parser (four live shapes), unfiltered, so a LOG entry
+          # addressed to someone else still names who wrote it (measured 2026-09-30).
+          PARTIES=$({ git -C "$REPO" diff --name-only "$LAST_SEEN" "$REMOTE_HEAD" -- . 2>/dev/null \
             | grep '\.md$' \
             | while read -r f; do
                 git -C "$REPO" show "$REMOTE_HEAD:$f" 2>/dev/null \
                   | sed -n 's/^[[:space:]]*von:[[:space:]]*//p' | head -1
-              done \
+              done
+              "$PY" "$HERE/shared-memory-inbox.py" --repo "$REPO" --from "$LAST_SEEN" \
+                --to "$REMOTE_HEAD" --senders 2>/dev/null | tr -d '\r'; } \
             | sort -u | tr '\n' '|' | sed 's/|/, /g; s/, $//')
           echo "FOUND: ${COUNT:-?} new commit(s) from ${PARTIES:-unknown party (no von: field)} — ${FILES:-see git log}"
           # What the commits SAY, not only that they exist (2026-09-25): a LOG-only
