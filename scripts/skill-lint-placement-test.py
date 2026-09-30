@@ -27,6 +27,11 @@ from pathlib import Path
 
 FM = "---\nname: {name}\ndescription: {desc}\n{extra}---\n\n# {name}\n\nbody\n"
 HERE = Path(__file__).resolve().parent
+# Children print non-ASCII (em dashes in finding texts, the regen summary line). On
+# Windows a redirected child stdout is the ANSI codepage, so decoding it as UTF-8
+# raised on byte 0x97 before a single check ran (OS-9). Pin the children, not the
+# decoder: then every OS hands us the same bytes.
+CHILD_ENV = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
 
 
 def write_skill(d: Path, name: str, desc: str, extra: str = "") -> None:
@@ -101,7 +106,7 @@ def build(root: Path, with_drafts: bool) -> bool:
 
 
 def run(linter: Path, root: Path) -> dict:
-    env = dict(os.environ, BRAIN_DIR=str(root))
+    env = dict(CHILD_ENV, BRAIN_DIR=str(root))
     p = subprocess.run([sys.executable, str(linter), "--json",
                         "--skills", str(root / ".claude" / "skills")],
                        capture_output=True, text=True, encoding="utf-8", env=env)
@@ -116,6 +121,16 @@ def skills_of(rep: dict, cat: str):
 
 
 def main() -> int:
+    # A crash must still leave a FAIL line: portability-smoke reports only lines that
+    # start with FAIL, so a bare traceback showed up as "FAIL <suite>:" with no reason.
+    try:
+        return _main()
+    except Exception as e:  # noqa: BLE001 - reported, then exit 1
+        print(f"  FAIL  fixture crashed: {type(e).__name__}: {e}")
+        return 1
+
+
+def _main() -> int:
     if len(sys.argv) > 3:
         print(__doc__.strip().splitlines()[-3], file=sys.stderr)
         return 2
@@ -158,7 +173,7 @@ def main() -> int:
 
         if old is not None:
             rep_old = run(old, root)
-            print("OLD linter on the SAME tree — negative control")
+            print("OLD linter on the SAME tree - negative control")
             check("old linter knows neither category",
                   [rep_old["findings"].get("placement"),
                    rep_old["findings"].get("provenance")], [None, None])
@@ -173,7 +188,8 @@ def main() -> int:
         if regen.is_file():
             p = subprocess.run([sys.executable, str(regen), "--skills",
                                 str(root / ".claude" / "skills")],
-                               capture_output=True, text=True, encoding="utf-8")
+                               capture_output=True, text=True, encoding="utf-8",
+                               env=CHILD_ENV)
             reg = (root / ".claude" / "skills" / "REGISTRY.md").read_text(encoding="utf-8")
             check("regen-skill-registry leaves drafts out, keeps the rest",
                   [p.returncode, "_draft-" in reg or "good-draft" in reg,
@@ -182,13 +198,13 @@ def main() -> int:
         root2 = Path(tmp) / "brain2"
         build(root2, with_drafts=False)
         if old is not None:
-            print("regression guard — tree without drafts, shared categories must match")
+            print("regression guard - tree without drafts, shared categories must match")
             a, b = run(old, root2), run(new, root2)
             for cat in ("frontmatter", "budget", "collisions", "dead_refs", "registry",
                         "body_size"):
                 check(f"{cat} unchanged", b["findings"][cat], a["findings"][cat])
 
-        print("opt-out — no skill-placement.json means no ratchet, drafts still checked")
+        print("opt-out - no skill-placement.json means no ratchet, drafts still checked")
         (root2 / ".claude" / "rules" / "skill-placement.json").unlink()
         c = run(new, root2)
         check("placement silent without the config", c["findings"].get("placement"), [])
