@@ -164,7 +164,7 @@ phase('Scan')
 const scanFile = (slug) => `${FINDINGS_DIR}/scan-${slug}.json`
 const scanFiles = SCANS.map(s => scanFile(s.slug))
 const scanResults = await parallel(SCANS.map(s => () =>
-  agent(`${SCAN_COMMON}\n\n${s.prompt}\n\nOUTPUT — you are the producer, you write: save your findings as JSON to ${scanFile(s.slug)} (mkdir -p ${FINDINGS_DIR}) with exactly this shape: {"section": "${s.slug}", "summary": "<3 sentences>", "findings": [<objects>]} where every object satisfies this JSON schema: ${JSON.stringify(FINDING_ITEM)}. The findings array is this scan's data and travels ONLY through that file — nothing of it comes back through your return value. After writing, MEASURE the file: count the findings array and the P0/P1 entries in it (node -e or jq, not from memory). Return via StructuredOutput: file (the path you wrote), finding_count, p0_count, p1_count (all measured), summary.`,
+  agent(`${SCAN_COMMON}\n\n${s.prompt}\n\nOUTPUT — you are the producer, you write exactly ONE file, the path named here, and no other; any path you report back is exactly this one: save your findings as JSON to ${scanFile(s.slug)} (mkdir -p ${FINDINGS_DIR}) with exactly this shape: {"section": "${s.slug}", "summary": "<3 sentences>", "findings": [<objects>]} where every object satisfies this JSON schema: ${JSON.stringify(FINDING_ITEM)}. The findings array is this scan's data and travels ONLY through that file — nothing of it comes back through your return value. After writing, MEASURE the file: count the findings array and the P0/P1 entries in it (node -e or jq, not from memory). Return via StructuredOutput: file (the path you wrote), finding_count, p0_count, p1_count (all measured), summary.`,
     { label: `scan:${s.slug}`, phase: 'Scan', model: 'haiku', schema: SCAN_RESULT_SCHEMA })
 ))
 const scans = scanResults.filter(Boolean)
@@ -183,7 +183,7 @@ for (const [i, order] of ctx.orders.entries()) {
   const r = await agent(
     `You are implementing a task ORDERED by the operator in the repo ${REPO}:\n"${order}"\n
 Rules (HARD): CLAUDE.md + .claude/rules/ apply in full (ponytail, order fidelity, no scope creep — ONLY this task). NO live-rig/network/show-hardware access from the brain scan — if the task needs live writes, abort with status "braucht-eigene-session". After implementation, VERIFY (test/measurement, do not assert). No git commit/push.
-OUTPUT — you are the producer, you write: save your protocol as JSON to ${fixFile(i)} (mkdir -p ${FINDINGS_DIR}) as {"order": "<the task verbatim>", "status": "<your status>", "detail": "<what you did + how you verified it, or why not>"}. The detail is this stage's data and travels ONLY through that file. Write the file EVEN IF you failed or aborted — a missing file aborts the run.
+OUTPUT — you are the producer, you write exactly ONE file, the path named here, and no other; any path you report back is exactly this one: save your protocol as JSON to ${fixFile(i)} (mkdir -p ${FINDINGS_DIR}) as {"order": "<the task verbatim>", "status": "<your status>", "detail": "<what you did + how you verified it, or why not>"}. The detail is this stage's data and travels ONLY through that file. Write the file EVEN IF you failed or aborted — a missing file aborts the run.
 Return via StructuredOutput: file (the path you wrote), order, status.`,
     { label: `fix:${order.slice(0, 40)}`, phase: 'Fixes', schema: {
       type: 'object', required: ['file', 'order', 'status'],
