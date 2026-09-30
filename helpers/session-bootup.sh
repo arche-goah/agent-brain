@@ -273,6 +273,16 @@ if [[ -n "$eco_owner" && $prs_rc -eq 0 && -f "$HERE/../scripts/pr-ball.py" ]]; t
       reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } } } } } } } }' 2>/dev/null \
     | "$PY" "$HERE/../scripts/pr-ball.py" 2>/dev/null
 fi
+# Open code-scanning alerts across the owner's repos (operator order 2026-09-30): eight
+# CodeQL alerts in the core stood open for seven weeks because nothing showed them. One
+# call per repo (~7.7 s measured), so cached for 6 h and refreshed in the background —
+# foreign state, time is the only key. Printed only when there is something to act on;
+# a reused result carries its age (cached-verdict's own line).
+if [[ -n "$eco_owner" && -f "$HERE/../scripts/code-scanning-alerts.sh" && -f "$HERE/../scripts/cached-verdict.sh" ]]; then
+  csa=$(bash "$HERE/../scripts/cached-verdict.sh" code-scanning --max-age 21600 --background-on-miss \
+        -- bash "$HERE/../scripts/code-scanning-alerts.sh" "$eco_owner" 2>/dev/null)
+  if grep -qE '^(!! )?code scanning' <<< "$csa"; then printf '%s\n' "$csa"; fi
+fi
 
 # Memory limits (enforced since Claude Code v2.1.83: 200 lines / 25 KB — CHANGELOG entry
 # "MEMORY.md index now truncates at 25KB as well as 200 lines" is in the 2.1.83 block.
