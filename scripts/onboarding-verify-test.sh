@@ -83,6 +83,23 @@ grep -q '"old"' "$B5/config/shared-memory-state.json" && ok "verify: shared-memo
 grep -q "5.*Brain+hooks.*appears" "$B5/docs/maintenance/$NAME" 2>/dev/null && ok "verify: bootup still ran (check 5 sees its output)" \
   || bad "verify: check 5 did not see the bootup output"
 
+# --- 6 check 12: shared-memory self — skip without a checkout, red unset, green set ----
+B6="$T/brain6"; make_brain "$B6"
+( cd "$B6" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
+    SHARED_MEMORY_REPO="$T/no-such-repo" bash "$V" "$B6" >/dev/null 2>&1 )
+grep -q "^SKIP 12 Shared-memory self" "$B6/docs/maintenance/$NAME" && ok "self: no checkout, SKIP" \
+  || bad "self: no checkout did not SKIP"
+mkdir -p "$T/smr"
+( cd "$B6" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
+    SHARED_MEMORY_REPO="$T/smr" bash "$V" "$B6" >/dev/null 2>&1 )
+grep -q "^FAIL 12 Shared-memory self" "$B6/docs/maintenance/$NAME" && ok "self: unset, FAIL" \
+  || bad "self: unset did not FAIL"
+printf '{"env":{"SHARED_MEMORY_SELF":"me-test"}}\n' > "$B6/.claude/settings.json"
+( cd "$B6" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
+    SHARED_MEMORY_REPO="$T/smr" bash "$V" "$B6" >/dev/null 2>&1 )
+grep -q "^OK   12 Shared-memory self — SHARED_MEMORY_SELF=me-test" "$B6/docs/maintenance/$NAME" && ok "self: set in settings env, OK" \
+  || bad "self: set in settings env not seen"
+
 echo
 if (( fails )); then echo "onboarding-verify-test: $fails FAILURE(S)"; exit 1; fi
-echo "onboarding-verify-test: all 11 checks passed"
+echo "onboarding-verify-test: all checks passed"

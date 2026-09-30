@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **`onboarding-verify` check 12: shared-memory self.** (test: T1) The session-start inbox and the LOG rotation tell own entries from others' only through `SHARED_MEMORY_SELF`, and nothing set it — not bootstrap, not the template; an instance ran unfiltered until someone read the bootup hint. With a shared-memory checkout present the verifier now demands the name in the brain's `env` block (or the environment) and says where to put it; without a checkout it SKIPs. Fixture covers SKIP / FAIL / OK. Measured on Windows: live verify reads the instance name from the brain settings.
+
 ## 1.3.41 — 2026-09-30
 
 - **`last30days` is removed from the core.** (test: T0) Reading the code behind eight open CodeQL alerts (2026-09-30) found that it read the X and Truth Social session cookies from Firefox and Safari on every run unless `FROM_BROWSER=off`, and that `setup --github` posted the full `gh` CLI token to a third party (details: #172, which this supersedes). It is vendored third-party code, measured unused on the operator's machines (no invocations in the Windows brain's transcripts), and its setup installs `yt-dlp` via Homebrew unasked. Proposed by the operator's Windows brain and the operator; the collaborators were asked in the shared memory before merge. Whoever needs it installs it from its upstream repo. Removed: `skills/last30days/`, its line in `NOTICE`, its row in `skills/REGISTRY.md` (regenerated, 25 skills). Instances that still have `FROM_BROWSER=off` set can drop it after updating.
