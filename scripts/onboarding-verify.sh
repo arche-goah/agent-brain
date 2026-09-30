@@ -287,6 +287,24 @@ fi
 if [ -n "$ss" ]; then check 11 "Shell start" 0 "marker in $ss"
 else check 11 "Shell start" 1 "missing — run bash scripts/setup-shell-start.sh <brain>"; fi
 
+# 12 Instance name for the shared memory — the bootup inbox and the LOG rotation tell
+# OWN entries from others' only through SHARED_MEMORY_SELF. Unset, the inbox shows every
+# entry unfiltered and the rotation cannot name the own over-cap entries. Nothing set it:
+# not bootstrap, not the template (measured 2026-09-30 on a Windows instance, where it had
+# been missing since the inbox shipped). The name is the operator's party vocabulary, so
+# the verifier demands it instead of guessing it.
+smr="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
+if [ ! -d "$smr" ]; then skip 12 "Shared-memory self" "no shared-memory checkout at $smr"
+else
+  self="${SHARED_MEMORY_SELF:-}"
+  for f in "$BRAIN/.claude/settings.local.json" "$BRAIN/.claude/settings.json"; do
+    [ -n "$self" ] && break
+    [ -f "$f" ] && self=$("$PY" -c 'import json,sys; print((json.load(open(sys.argv[1], encoding="utf-8")).get("env") or {}).get("SHARED_MEMORY_SELF", ""))' "$f" 2>/dev/null | tr -d '\r')
+  done
+  if [ -n "$self" ]; then check 12 "Shared-memory self" 0 "SHARED_MEMORY_SELF=$self"
+  else check 12 "Shared-memory self" 1 "unset — add \"SHARED_MEMORY_SELF\": \"<your-instance-name>\" to the env block of $BRAIN/.claude/settings.json (the name you sign shared-memory entries with)"; fi
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then echo "VERIFY: ALL MANDATORY CHECKS GREEN — send the report back to whoever invited you."
 else echo "VERIFY: RED — work through the FAIL lines above (a Claude Code session in the brain can drive the fixes)."; fi

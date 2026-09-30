@@ -93,6 +93,23 @@ printf '{}
 ( cd "$B6" && HOME="$T/home" CLAUDE_CONFIG_DIR="$SP" env -u BRAIN_DIR bash "$V" "$B6" >/dev/null 2>&1 )
 grep -q "3 Plugin skills — core=present, suites=present (suite-x )" "$B6/docs/maintenance/$NAME" 2>/dev/null   && ok "space in path: suite found by its name"   || bad "space in path: $(grep ' 3 Plugin skills' "$B6/docs/maintenance/$NAME" 2>/dev/null)"
 
+# --- 7 check 12: shared-memory self — skip without a checkout, red unset, green set ----
+B7="$T/brain7"; make_brain "$B7"
+( cd "$B7" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
+    SHARED_MEMORY_REPO="$T/no-such-repo" bash "$V" "$B7" >/dev/null 2>&1 )
+grep -q "^SKIP 12 Shared-memory self" "$B7/docs/maintenance/$NAME" && ok "self: no checkout, SKIP" \
+  || bad "self: no checkout did not SKIP"
+mkdir -p "$T/smr"
+( cd "$B7" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
+    SHARED_MEMORY_REPO="$T/smr" bash "$V" "$B7" >/dev/null 2>&1 )
+grep -q "^FAIL 12 Shared-memory self" "$B7/docs/maintenance/$NAME" && ok "self: unset, FAIL" \
+  || bad "self: unset did not FAIL"
+printf '{"env":{"SHARED_MEMORY_SELF":"me-test"}}\n' > "$B7/.claude/settings.json"
+( cd "$B7" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
+    SHARED_MEMORY_REPO="$T/smr" bash "$V" "$B7" >/dev/null 2>&1 )
+grep -q "^OK   12 Shared-memory self — SHARED_MEMORY_SELF=me-test" "$B7/docs/maintenance/$NAME" && ok "self: set in settings env, OK" \
+  || bad "self: set in settings env not seen"
+
 echo
 if (( fails )); then echo "onboarding-verify-test: $fails FAILURE(S)"; exit 1; fi
 echo "onboarding-verify-test: all checks passed"
