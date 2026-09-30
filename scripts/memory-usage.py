@@ -47,7 +47,9 @@ DIR_DEFAULT = _CFG / "projects" / _SLUG
 MEM_DEFAULT = DIR_DEFAULT / "memory"
 STATE_DEFAULT = _INSTANCE / ".claude-state" / "memory-recall.jsonl"
 
-MEM_PATH = re.compile(r"memory[\\/]([A-Za-z0-9._-]+\.md)")
+# The directory is exactly `memory`: `brain-shared-memory/README.md` is a sibling repo and
+# was counted as a memory open (measured 2026-09-30, 17 of 56 "opened, not named").
+MEM_PATH = re.compile(r"(?<![\w.-])memory[\\/]([A-Za-z0-9._-]+\.md)")
 READERS = re.compile(r"^\s*(cat|sed|head|tail|grep|less|ugrep)\b")
 
 
