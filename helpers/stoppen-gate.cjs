@@ -3,7 +3,7 @@
  * Stop hook: stopping is the exception, not the rhythm (T1 item 3).
  *
  * The anti-pattern (operator order 2026-08-08): a reply that ENDS by handing
- * the next step back as a question ("Soll ich ...?", "Womit weitermachen?")
+ * the next step back as a question ("Shall I ...?", "What should I continue with?")
  * when the three-condition test does not hold. Stopping is right ONLY when all
  * three hold, AND-linked: (1) it is a DECISION, not a work step; (2) it blocks
  * the work NOW; (3) only the operator can make it (goal/money/hardware/risk).
@@ -24,11 +24,13 @@
  * Language layering (language-agnostic contract, operator order 2026-08-19):
  * the engine's built-ins are ENGLISH; every further language is DATA, not code —
  * instance file .claude/rules/stop-patterns.json: {"patterns": ["<regex>", ...]},
- * merged in. The German block below is the operator-language EXAMPLE pack of the
- * mechanism, not a special case — Czech, French, Spanish work identically via the
- * instance file. It ships inline ONLY until this hook moves to the core (T3): a
- * CLASS fix (a new question shape) lands in the English built-ins first, a
- * language pack only ever adds a language.
+ * merged in. German, Czech, French, Spanish all work the same way through that
+ * file; no language is a special case in this engine. A CLASS fix (a new question
+ * or handoff shape) lands in the English built-ins first, a language pack only ever
+ * adds a language. The German pack that used to ship inline here moved out (T3);
+ * scripts/test-stoppen-gate.sh writes it as an instance file and is the reference
+ * copy. scripts/english-only.py holds the layering: this file is no longer exempt,
+ * so German that creeps back into the engine fails CI.
  */
 const fs = require('fs');
 const path = require('path');
@@ -46,7 +48,7 @@ const TAIL_BYTES = 4 * 1024 * 1024;
 const TAIL_CHARS = 400; // only the closing stretch of the final text counts
 
 // Permission-handback questions. Deliberately NOT matched: bare "GO?" (release
-// gate), option questions without "ich" ("welcher Kanal?"), AskUserQuestion.
+// gate), option questions without a first-person handback ("which channel?"), AskUserQuestion.
 // ENGINE built-ins — English only (language-agnostic contract, header above).
 const BUILTIN_PATTERNS = [
   // Shape 1: the closing QUESTION. The obvious form, and the only one this gate saw
@@ -72,28 +74,8 @@ const BUILTIN_PATTERNS = [
   '\\bwaiting (on|for) (you|your (word|answer|reply|go-ahead))\\b',
 ];
 
-// Operator-language EXAMPLE pack (German). Belongs in
-// .claude/rules/stop-patterns.json as instance data; inline only until the hook
-// moves to the core — then this block becomes the shipped example file.
-const LANGUAGE_PACK_DE = [
-  '\\bsoll ich\\b[^?\\n]{0,140}\\?',
-  '\\bsollen wir\\b[^?\\n]{0,140}\\?',
-  '\\bm(ö|oe)chtest du,? dass ich\\b[^?\\n]{0,140}\\?',
-  '\\bwillst du,? dass ich\\b[^?\\n]{0,140}\\?',
-  '\\bdarf ich\\b[^?\\n]{0,140}\\?',
-  '\\bwomit (soll ich )?(weitermachen|starten|anfangen|beginnen)\\b[^?\\n]{0,60}\\?',
-  '\\b(weitermachen|fortfahren)\\?',
-  // Shape 2 in this language. Same function, no question mark.
-  '\\bsag (mir )?(bitte )?bescheid\\b[^.\\n]{0,80}[.!]',
-  '\\bgib (mir )?(bitte )?bescheid\\b[^.\\n]{0,80}[.!]',
-  '\\bmelde dich\\b[^.\\n]{0,80}[.!]',
-  '\\b(liegt|liegen) (jetzt |damit |weiterhin )?(bei|beim) (dir|euch|ihm|ihr|kollegen|dem kollegen|der workstation|workstation)\\b',
-  '\\bwenn du (willst|magst|moechtest|möchtest),? (dann )?(mache|baue|nehme|schreibe) ich\\b',
-  '\\bzwei wege\\b[^.\\n]{0,120}\\boder\\b[^.\\n]{0,120}[.!]',
-];
-
 function loadPatterns(cwd) {
-  const patterns = [...BUILTIN_PATTERNS, ...LANGUAGE_PACK_DE];
+  const patterns = [...BUILTIN_PATTERNS];
   try {
     const p = path.join(cwd, '.claude', 'rules', 'stop-patterns.json');
     const extra = JSON.parse(fs.readFileSync(p, 'utf8'));
