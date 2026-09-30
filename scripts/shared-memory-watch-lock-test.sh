@@ -5,11 +5,12 @@
 # and that is exactly where it failed: two sessions on one machine both armed, `status`
 # showed one of them, and the invisible one kept polling the same cursor.
 #
-# Three properties. Property 3 is the actual negative control — it is the one the
-# unfixed script FAILS; 1 and 2 pass either way and are kept as regression guards.
+# Four properties. Properties 3 and 4 are the negative controls — each is red against
+# the script before its fix; 1 and 2 pass either way and are kept as regression guards.
 #   1. RACE      — N sessions arming at once leave exactly ONE watcher running
 #   2. STALE     — a lock whose owner died is claimable again, not a permanent block
 #   3. OWNERSHIP — an exiting watcher never deletes a lock that names someone else
+#   4. ORPHAN    — a watcher whose parent is gone exits and frees the lock
 #
 # Usage: shared-memory-watch-lock-test.sh [path-to-watch.sh]   (exit 0 = all pass)
 #
@@ -112,6 +113,39 @@ if [[ -e "$LOCKFILE" ]] && [[ "$(cat "$LOCKFILE" 2>/dev/null)" == "$$" ]]; then
 else
   echo "FAIL: exiting watcher deleted a lock it did not own — next session arms a duplicate"; fail=1
 fi
+
+# --- property 4: ORPHAN (measured 2026-09-30) ---------------------------------
+# The process that had started a watcher was gone; the watcher kept polling and kept the
+# lock, so every later session was refused "already armed by another session" while
+# nobody read the output. Reproduced: a parent shell starts the watcher in the
+# background and dies; the watcher must exit and free the lock within a few ticks.
+export SHARED_MEMORY_WATCH_TICK=1
+rm -f "$LOCKFILE"              # property 3 left a lock naming this live test shell
+bash -c 'bash "$1" watch 60 > "$2" 2>&1 & echo $! > "$3"; sleep 2; cat "$4" > "$5" 2>/dev/null' \
+  _ "$WATCH" "$TMP/out.orphan" "$TMP/orphan.pid" "$LOCKFILE" "$TMP/orphan.held"
+O=$(cat "$TMP/orphan.pid")
+# Setup proof: the orphan must have HELD the lock (read while its parent still lived),
+# or the check below passes for a watcher that was refused at the door and never was
+# the case under test — the first version of this property did exactly that.
+if [[ "$(cat "$TMP/orphan.held" 2>/dev/null)" != "$O" ]]; then
+  echo "SETUP FAILED: the orphan candidate never held the lock"; cat "$TMP/out.orphan"; exit 1
+fi
+sleep 4
+echo "--- orphan: the watcher's parent exited"
+if kill -0 "$O" 2>/dev/null; then
+  echo "FAIL: orphaned watcher still running (pid $O) — it holds the lock for nobody"; fail=1
+  kill "$O" 2>/dev/null || true
+else
+  echo "PASS: orphaned watcher exited"
+fi
+bash "$WATCH" watch 60 > "$TMP/out.after" 2>&1 &
+N2=$!; sleep 2
+if kill -0 "$N2" 2>/dev/null && ! grep -q 'skipping duplicate' "$TMP/out.after"; then
+  echo "PASS: next session claims the lock"
+else
+  echo "FAIL: next session refused — the orphan's lock survived"; fail=1
+fi
+{ kill "$N2"; wait "$N2"; } 2>/dev/null || true
 
 echo "--- verdict"; [[ $fail -eq 0 ]] && echo "ALL PASSED" || echo "FAILURES ABOVE"
 exit "$fail"
