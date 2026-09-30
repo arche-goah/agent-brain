@@ -83,21 +83,31 @@ grep -q '"old"' "$B5/config/shared-memory-state.json" && ok "verify: shared-memo
 grep -q "5.*Brain+hooks.*appears" "$B5/docs/maintenance/$NAME" 2>/dev/null && ok "verify: bootup still ran (check 5 sees its output)" \
   || bad "verify: check 5 did not see the bootup output"
 
-# --- 6 check 12: shared-memory self — skip without a checkout, red unset, green set ----
-B6="$T/brain6"; make_brain "$B6"
-( cd "$B6" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
-    SHARED_MEMORY_REPO="$T/no-such-repo" bash "$V" "$B6" >/dev/null 2>&1 )
-grep -q "^SKIP 12 Shared-memory self" "$B6/docs/maintenance/$NAME" && ok "self: no checkout, SKIP" \
+# --- 6 a config dir with a SPACE (Windows profile "First Last"): an installed suite is
+# found, not split into "/.../First" + "Last/..." and reported MISSING (os-traps OS-10).
+SP="$T/cfg space"; B6="$T/brain6"; make_brain "$B6"
+mkdir -p "$SP/plugins/cache/mkt/brain-core/1.0.0/skills/a" "$SP/plugins/cache/mkt/suite-x/1.0.0/skills/b"
+touch "$SP/plugins/cache/mkt/brain-core/1.0.0/skills/a/SKILL.md" "$SP/plugins/cache/mkt/suite-x/1.0.0/skills/b/SKILL.md"
+printf '{}
+' > "$SP/plugins/cache/mkt/suite-x/1.0.0/.mcp.json"
+( cd "$B6" && HOME="$T/home" CLAUDE_CONFIG_DIR="$SP" env -u BRAIN_DIR bash "$V" "$B6" >/dev/null 2>&1 )
+grep -q "3 Plugin skills — core=present, suites=present (suite-x )" "$B6/docs/maintenance/$NAME" 2>/dev/null   && ok "space in path: suite found by its name"   || bad "space in path: $(grep ' 3 Plugin skills' "$B6/docs/maintenance/$NAME" 2>/dev/null)"
+
+# --- 7 check 12: shared-memory self — skip without a checkout, red unset, green set ----
+B7="$T/brain7"; make_brain "$B7"
+( cd "$B7" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
+    SHARED_MEMORY_REPO="$T/no-such-repo" bash "$V" "$B7" >/dev/null 2>&1 )
+grep -q "^SKIP 12 Shared-memory self" "$B7/docs/maintenance/$NAME" && ok "self: no checkout, SKIP" \
   || bad "self: no checkout did not SKIP"
 mkdir -p "$T/smr"
-( cd "$B6" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
-    SHARED_MEMORY_REPO="$T/smr" bash "$V" "$B6" >/dev/null 2>&1 )
-grep -q "^FAIL 12 Shared-memory self" "$B6/docs/maintenance/$NAME" && ok "self: unset, FAIL" \
+( cd "$B7" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
+    SHARED_MEMORY_REPO="$T/smr" bash "$V" "$B7" >/dev/null 2>&1 )
+grep -q "^FAIL 12 Shared-memory self" "$B7/docs/maintenance/$NAME" && ok "self: unset, FAIL" \
   || bad "self: unset did not FAIL"
-printf '{"env":{"SHARED_MEMORY_SELF":"me-test"}}\n' > "$B6/.claude/settings.json"
-( cd "$B6" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
-    SHARED_MEMORY_REPO="$T/smr" bash "$V" "$B6" >/dev/null 2>&1 )
-grep -q "^OK   12 Shared-memory self — SHARED_MEMORY_SELF=me-test" "$B6/docs/maintenance/$NAME" && ok "self: set in settings env, OK" \
+printf '{"env":{"SHARED_MEMORY_SELF":"me-test"}}\n' > "$B7/.claude/settings.json"
+( cd "$B7" && HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR -u SHARED_MEMORY_SELF \
+    SHARED_MEMORY_REPO="$T/smr" bash "$V" "$B7" >/dev/null 2>&1 )
+grep -q "^OK   12 Shared-memory self — SHARED_MEMORY_SELF=me-test" "$B7/docs/maintenance/$NAME" && ok "self: set in settings env, OK" \
   || bad "self: set in settings env not seen"
 
 echo

@@ -351,3 +351,34 @@ and only `brain-friction.py` is parsed by another program, so the rest are corre
 stand. The baseline exists so a NEW site is read with one question before it ships: does
 anything PARSE this output? Left `open` deliberately — the 12 unpinned sites are fine only
 as long as that answer stays no.
+
+## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
+
+shape: A
+
+invariant: A shell loop over a list of PATHS reads the list line by line
+(`while IFS= read -r d; do ...; done <<< "$list"`), never as `for d in $list`. The bare
+form splits on every space, and Windows hands out profile paths with spaces as the normal
+case (`C:\Users\First Last`), while macOS and Linux home paths almost never carry one. The
+loop then walks path FRAGMENTS, and whatever it checks there reports the real directory as
+missing — a wrong verdict, not an error.
+pattern:   for [A-Za-z_]+ in \$[A-Za-z_]+;
+paths:     --include=*.sh scripts helpers
+known:     scripts/brain-update.sh=2 scripts/handover-gate.sh=1 scripts/suite-install.sh=1
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-09-30 on a Windows instance whose profile name has a space, core
+v1.3.41. `onboarding-verify.sh` check 3 reported `suites=MISSING (<First> grandma3 )` for an
+installed suite: the `find` result `/c/Users/<First> <Last>/.claude/plugins/cache/...` was
+split into `/c/Users/<First>` (no SKILL.md there, so MISSING, and the first fragment's
+basename showed up as a suite name) and a relative tail. Checks 6 and 7 walked the same
+fragments. Fixed at the three loops over `suite_dirs`; the fixture in
+`onboarding-verify-test.sh` builds a config dir with a space and was red against the old
+script with the same symptom. The baseline holds the sites that are CORRECT: the two in
+`brain-update.sh` and the one in `suite-install.sh` loop over marketplace/plugin/suite
+NAMES, which carry no space. `handover-gate.sh` loops over suite PATHS from
+`config/ecosystem.json` and is correct only while those paths are written with `~` (the
+split happens before the tilde is expanded) — an absolute path with a space there would
+reproduce this trap. A new site is read with one question: can an element of this list be a
+path?
