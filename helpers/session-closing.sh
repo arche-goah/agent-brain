@@ -48,6 +48,12 @@ if [ "$pre_commit" -eq 0 ] && [ ! -t 0 ]; then
   # stdin open must not hang a 10 s hook.
   input=""; IFS= read -r -t 3 -d '' input || true
   sid=$(printf '%s' "$input" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+  # A CLI subcommand is not a session (measured 2026-09-30 on Windows and macOS):
+  # `claude mcp list` fires SessionEnd with a transcript_path whose file was never
+  # written. Logging it counted a session that never existed and dirtied the tree.
+  # An escaped JSON backslash becomes `/`, which Git Bash resolves as well.
+  tpath=$(printf '%s' "$input" | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 | sed 's#\\\\#/#g')
+  if [ -n "$tpath" ] && [ ! -f "$tpath" ]; then exit 0; fi
 fi
 
 # 1) HANDOFF.md — only evidenced facts, no placeholders
