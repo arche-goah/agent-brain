@@ -70,6 +70,19 @@ const assertFiles = (expected, found, what) => {
     throw new Error(`${what}: ${missing.length} of ${expected.length} file(s) missing — ${missing.map(fileName).join(', ')}. Aborting instead of continuing on a partial corpus (rules/intelligence.md, "only the producer writes").`)
   }
 }
+// The report is the deliverable, and a returned path is a claim. Measured 2026-10-02 on a
+// Windows brain: the harness denied the report agent its Write, the agent returned
+// report_path "" and the workflow finished as a normal success. The script has no file
+// access, so the gate is: the path must be EXACTLY the one the script named, and the
+// writer must return the byte count it MEASURED (wc -c) — empty path or 0 bytes aborts.
+const assertReport = (expected, claimedPath, bytes, what) => {
+  if (!claimedPath || fileName(claimedPath) !== fileName(expected)) {
+    throw new Error(`${what}: report path is "${claimedPath || ''}", expected ${fileName(expected)} — the report was not written where the script asked. Aborting instead of returning a run without its deliverable.`)
+  }
+  if (!(Number(bytes) > 0)) {
+    throw new Error(`${what}: ${fileName(expected)} measured at ${bytes === undefined ? 'no' : bytes} bytes — an empty or unmeasured report is not a report. Aborting.`)
+  }
+}
 // ── Producer-writes helpers (end)
 
 // ── Phase 1: Catalog (1 agent — needs ALL reports at once, no fan-out) ─────
@@ -141,12 +154,13 @@ EVERY implementation needs the operator (promotion to the list's own operator ma
 THEN append the P0/P1 measures to ${AUFTRAEGE} under the existing proposed-items structure
 as 1-line items, origin "abgeleitet (full-audit ${DATE})" (abgeleitet = derived), with a
 pointer to ${OUT} — implement NOTHING, change no existing entries.
-Return via StructuredOutput: files_read (every data file you actually read, from your ls), report_path, mech_count, decision_count, appended.`,
+After writing, MEASURE the report: run \`wc -c < ${OUT}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.
+Return via StructuredOutput: files_read (every data file you actually read, from your ls), report_path, report_bytes, mech_count, decision_count, appended.`,
   { label: 'report', phase: 'Report', schema: {
-    type: 'object', required: ['files_read', 'report_path'],
+    type: 'object', required: ['files_read', 'report_path', 'report_bytes'],
     properties: {
       files_read: { type: 'array', items: { type: 'string' }, maxItems: 20 },
-      report_path: { type: 'string' }, mech_count: { type: 'number' }, decision_count: { type: 'number' }, appended: { type: 'number' },
+      report_path: { type: 'string' }, report_bytes: { type: 'number' }, mech_count: { type: 'number' }, decision_count: { type: 'number' }, appended: { type: 'number' },
     },
   } },
 )
@@ -155,6 +169,7 @@ if (!rep) throw new Error('Report agent failed')
 assertFiles([CATALOG], rep.files_read, 'report: catalog read from disk')
 assertCount(mech.length, rep.mech_count, 'full-audit mechanical measures')
 assertCount(dec.length, rep.decision_count, 'full-audit decision agenda')
+assertReport(OUT, rep.report_path, rep.report_bytes, 'full-audit overall report')
 
 return {
   gesamt_report: rep.report_path,

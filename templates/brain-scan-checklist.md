@@ -73,10 +73,27 @@ the deny — not from the scan, the scan is read-only). → maximum `configured`
 - [ ] Every memory file is linked from `MEMORY.md` or from a topic sub-index `index-<topic>.md` that `MEMORY.md` links.
 - [ ] The repo snapshot (`docs/memory-snapshot/`) matches the live memory (`core/helpers/memory-sync.cjs export`).
 
-## 6. Shared memory (if this brain takes part)
+## 6. Git & repo hygiene
+
+**Behaviour check:** the `git` / `du` queries are measurements of the real state → `verified`.
+
+- [ ] `main` is pushed; no branch carries work that exists nowhere else.
+- [ ] The repo root holds only the whitelist (`core/rules/working-rules.md` plus the instance extension) — anything else is a finding.
+- [ ] No junk tracked or lying around: `.DS_Store`, `__pycache__`, large log folders, built artefacts.
+- [ ] No new binaries over 5 MB in git.
+
+## 7. SOTA delta (web, lightweight)
+
+**Behaviour check:** none possible (claims by others about other systems) → at most `configured`, every claim with a source. A delta becomes `verified` only when it is re-measured in this setup — and then in the affected section, not here.
+
+- [ ] Claude Code changelog since the last scan: breaking changes or features that break setup assumptions (hooks API, skills budget, permissions, memory limits).
+- [ ] MCP spec / security: new CVE patterns or deprecations that touch the servers this brain runs.
+
+## 8. Shared memory (if this brain takes part)
 
 **Behaviour check:** `python3 core/scripts/shared-memory-lint.py --repo <shared repo>` exits 0.
 
 - [ ] The shared-memory clone exists, is on `main`, and has no uncommitted or unpushed changes at session close (the close hook reports it).
 - [ ] Every entry this brain wrote carries `von` / `audience` / `topic` / `date` (README convention of the shared repo).
 - [ ] The session-start check reads what is new by topic since the last look (`shared-memory-check.sh` line present at bootup).
+- [ ] No request addressed to this brain stays unanswered: `shared-memory-inbox.py --open` lists 0, or every listed request has a dated note why it waits.

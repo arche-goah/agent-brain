@@ -118,6 +118,19 @@ const assertFiles = (expected, found, what) => {
     throw new Error(`${what}: ${missing.length} of ${expected.length} file(s) missing — ${missing.map(fileName).join(', ')}. Aborting instead of continuing on a partial corpus (rules/intelligence.md, "only the producer writes").`)
   }
 }
+// The report is the deliverable, and a returned path is a claim. Measured 2026-10-02 on a
+// Windows brain: the harness denied the report agent its Write, the agent returned
+// report_path "" and the workflow finished as a normal success. The script has no file
+// access, so the gate is: the path must be EXACTLY the one the script named, and the
+// writer must return the byte count it MEASURED (wc -c) — empty path or 0 bytes aborts.
+const assertReport = (expected, claimedPath, bytes, what) => {
+  if (!claimedPath || fileName(claimedPath) !== fileName(expected)) {
+    throw new Error(`${what}: report path is "${claimedPath || ''}", expected ${fileName(expected)} — the report was not written where the script asked. Aborting instead of returning a run without its deliverable.`)
+  }
+  if (!(Number(bytes) > 0)) {
+    throw new Error(`${what}: ${fileName(expected)} measured at ${bytes === undefined ? 'no' : bytes} bytes — an empty or unmeasured report is not a report. Aborting.`)
+  }
+}
 // ── Producer-writes helpers (end)
 
 // ── Phase 1: Context ───────────────────────────────────────────────────────
@@ -152,6 +165,10 @@ const SCANS = [
   { slug: 'skills', prompt: `Section 2 (Skills). Two sources, both count: instance skills under ${REPO}/.claude/skills/ (may be empty — instance skills are optional) AND the core skills under ${REPO}/core/skills/, which are loaded as brain-core:<name>. Measure listing size (sum of frontmatter descriptions in characters), check symlinks, reconcile against the auto-fire table in ${REPO}/.claude/rules/intelligence-instance.md (legacy name in not-yet-migrated brains: intelligence-instanz.md — use whichever exists). An empty .claude/skills/ is NOT a finding; an auto-fire row without an existing skill is.` },
   { slug: 'docs', prompt: `Section 4 (Docs vs. reality). ${REPO}/CLAUDE.md + ${REPO}/.claude/rules/*.md against system reality (check versions via Bash), reference files, .mcp.json reconciliation.` },
   { slug: 'memory', prompt: `Section 5 (Memory). The auto-memory directory ($HOME/.claude/projects/<project path, "/" replaced by "-">/memory/) + ${REPO}/docs/memory-snapshot/ (measure limits, diff, manifest, index completeness).` },
+  // Numbers follow templates/brain-scan-checklist.md (0-8). Until 2026-10-05 the template
+  // had 6 = Shared memory and no git/SOTA sections, so the section named here as 6 was not
+  // the one a template-based brain had as 6, and no agent ever scanned shared memory.
+  { slug: 'shared-memory', prompt: `The checklist section titled "Shared memory" (number 8 in the core template; an older instance checklist may number it differently or not have it — then say so as one INFO finding and scan the items below anyway). Shared repo: $SHARED_MEMORY_REPO, default $HOME/Projects/brain-shared-memory; if it is not cloned, that is ONE INFO finding and you stop. Measure: \`python3 ${REPO}/core/scripts/shared-memory-lint.py --repo <repo>\` (every non-zero line is a finding); \`git -C <repo> status --short\` and unpushed commits; \`python3 ${REPO}/core/scripts/shared-memory-inbox.py --open --repo <repo> --to origin/main\` — every listed request is a P1 finding with its date and sender (an unanswered request is the failure this section exists for).` },
   { slug: 'git-hygiene', prompt: `Section 6 (Git & repo hygiene). git status/branch/remote distance, root whitelist, junk files, large binaries (git ls-files + du).` },
   { slug: 'sota-claude-code', prompt: `Section 7, Claude Code part. Load WebSearch/WebFetch via ToolSearch "select:WebSearch,WebFetch". Changelog/release notes since ${ctx.last_scan_date || '2026-07-29'}: breaking changes in the hooks API, skills budget, permissions, memory limits, subagents. Report only setup-relevant deltas, with source. ${CVE_RULE}` },
   { slug: 'sota-mcp-security', prompt: `Section 7, MCP/security part. Load WebSearch/WebFetch via ToolSearch "select:WebSearch,WebFetch".
@@ -209,7 +226,7 @@ const summary = await agent(
   `You are the report agent of the brain scan of ${DATE}. Tasks:
 1. Write ${REPORT}: header (date, last scan ${ctx.last_scan_date || 'never'}), overall state in 3-5 sentences, findings sorted P0>P1>P2>INFO (RECURRING marked), OK checks as a short list **with state \`configured\`/\`verified\`** (checklist section 0; an OK without a state is itself a P1 finding against the scan), fix protocol (ordered tasks + status + verify), new proposals (derived).
 2. Update ${AUFTRAEGE} via Edit: move successfully implemented ordered items to "Erledigt" (done, with date ${DATE}); failed/braucht-eigene-session items stay open with a note; append NEW derived proposals (only real ones, deduplicated against existing) under "Vorgeschlagen" / "Proposed (derived)" (whichever heading the list uses). NEVER fill the section "Offen (bestellt)" / "Open (ordered)" yourself.
-3. StructuredOutput: files_read (every data file you actually read, from your ls), summary = 4-6 sentences overall state incl. P0/P1 counts, findings = the 10 most important, finding_count = the summed length of the scan files' findings arrays, MEASURED (node -e or jq), never estimated.
+3. StructuredOutput: files_read (every data file you actually read, from your ls), summary = 4-6 sentences overall state incl. P0/P1 counts, findings = the 10 most important, finding_count = the summed length of the scan files' findings arrays, MEASURED (node -e or jq), never estimated; report_path = the path you wrote in task 1; report_bytes = the output of \`wc -c < ${REPORT}\` after writing. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.
 
 DATA BASIS ON DISK — read these COMPLETELY before writing, never from memory of an earlier stage. They lie in ${FINDINGS_DIR}/: the scan sections ${scanFiles.map(fileName).join(', ')}${fixFiles.length ? ` and the fix protocols ${fixFiles.map(fileName).join(', ')}` : ' (no ordered tasks ran, so there are no fix protocols)'}.
 STEP 1: ls ${FINDINGS_DIR} — if one of these files is missing, STOP: return files_read = what exists, finding_count = 0, findings = [] (the script aborts on that; never report on a partial set).
@@ -217,19 +234,23 @@ STEP 2: read them all, then write the report.
 AUTHORITATIVE number (machine-derived from the validated returns): ${rawCount} findings across ${scans.length} scan sections. If a file's own summary deviates, this number wins.`,
   { label: 'report', phase: 'Report', schema: {
     type: 'object',
-    required: ['files_read', 'summary', 'findings'],
+    required: ['files_read', 'summary', 'findings', 'report_path', 'report_bytes'],
     properties: {
       files_read: { type: 'array', items: { type: 'string' }, maxItems: 40 },
       finding_count: { type: 'number' },
+      report_path: { type: 'string' },
+      report_bytes: { type: 'number' },
       ...FINDINGS_SCHEMA.properties,
     },
   } },
 )
-if (summary) {
-  // Second gate, measured: what the consumer found on disk, against what was started.
-  assertFiles(dataFiles, summary.files_read, 'report: data files read from disk')
-  assertCount(rawCount, summary.finding_count, 'brain-scan findings read by the report')
-}
+// A failed report agent used to fall through `if (summary)` and return as a success with
+// the report path the SCRIPT had named — the same silent hole as memory-dream's empty path.
+if (!summary) throw new Error('Report agent failed')
+// Second gate, measured: what the consumer found on disk, against what was started.
+assertFiles(dataFiles, summary.files_read, 'report: data files read from disk')
+assertCount(rawCount, summary.finding_count, 'brain-scan findings read by the report')
+assertReport(REPORT, summary.report_path, summary.report_bytes, 'brain-scan report')
 
 return {
   date: DATE,
