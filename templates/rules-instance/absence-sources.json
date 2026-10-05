@@ -1,0 +1,7 @@
+{
+  "_comment": "Instance data for core/helpers/absence-gate.cjs (Stop check): the source roots an absence claim ('documented nowhere', 'never measured') must have searched in the same turn. Roots: relative to the project root, absolute, or starting with ~. An empty list keeps the gate inert. claim_patterns / scope_markers EXTEND the English built-ins (regexes, case-insensitive) — put the instance's other languages here. Register the check in stop-checks.json with mode=record first and read .claude-state/absence-gate.jsonl before switching to block.",
+  "roots": [],
+  "_example_roots": ["docs/", "~/.claude/projects/<project-slug>/memory/", "~/Projects/<shared-memory-repo>", "~/Projects/<tool-suite>"],
+  "claim_patterns": [],
+  "scope_markers": []
+}
