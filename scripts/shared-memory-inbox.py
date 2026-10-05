@@ -136,10 +136,104 @@ def file_items(repo: Path, a: str, b: str, me: set[str], log_text: str) -> list[
     return items
 
 
+def log_section_senders(text: str) -> list[tuple[str, str]]:
+    """A LOG.md split into (sender, section text) by its headings."""
+    out, sender, buf = [], "", []
+    for line in text.splitlines():
+        m = HEADING.match(line)
+        if m:
+            if buf:
+                out.append((sender, "\n".join(buf)))
+            sender, buf = m.group(2), [line]
+        else:
+            buf.append(line)
+    if buf:
+        out.append((sender, "\n".join(buf)))
+    return out
+
+
+# Which files are REQUESTS (as opposed to reports addressed to us): a file name that starts
+# with one of these words, or frontmatter `status: open`. Words are data — the instance adds
+# its own languages via SHARED_MEMORY_REQUEST_PREFIXES (comma-separated), same convention
+# as SHARED_MEMORY_SELF. `status:` answered/done/decided/info always wins over the name.
+REQUEST_PREFIXES = ("request", "question")
+CLOSED_STATUS = {"answered", "done", "decided", "info", "closed"}
+FM_STATUS = re.compile(r"^\s+status:\s*([\w-]+)", re.M)
+
+
+def open_items(repo: Path, ref: str, me: set[str], days: int,
+               prefixes: tuple[str, ...] = REQUEST_PREFIXES) -> list[tuple]:
+    """Requests addressed to this instance BY NAME that nothing of ours answers yet.
+
+    WHY (2026-10-05): the range inbox above only shows what arrived since the cursor. A
+    session that sees it and does not relay it moves the cursor anyway — measured: three
+    requests from a collaborator were shown once at a start, never answered, and the next
+    start said nothing at all. Seen is not done. This list does not use the cursor.
+
+    Addressed by name: `audience` names one of SELF (a broadcast to everyone is not a
+    request waiting on this side). Answered: any of our own fact files, or a LOG section
+    under one of our headings, names the request's file stem. Cheap, explicit, and wrong
+    only in the safe direction — an answer that never names the request keeps it listed.
+    """
+    if not me:
+        return []
+    today = git(repo, "log", "-1", "--format=%as", ref).strip()
+    try:
+        from datetime import date, timedelta
+        floor = (date.fromisoformat(today) - timedelta(days=days)).isoformat()
+    except ValueError:
+        floor = ""
+    # Prefilter in ONE git call: only files whose frontmatter names us at all. Reading every
+    # blob of the repo one `git show` at a time took ~10 s (measured 2026-10-05, ~600 files).
+    rx = r"^[[:space:]]+audience:.*(" + "|".join(re.escape(t) for t in sorted(me)) + r")"
+    cand = {h.split(":", 1)[1] for h in
+            git(repo, "grep", "-l", "-i", "-E", rx, ref, "--", "*.md").splitlines() if ":" in h}
+    items = []
+    for rel in sorted(cand):
+        p = repo / rel
+        if "/" not in rel or p.name in SKIP_FILES:
+            continue
+        blob = git(repo, "show", f"{ref}:{rel}")
+        e = read_entry(p, repo, text=blob)
+        if not e["audience"] or not (tokens(e["audience"]) & me) or tokens(e["von"]) & me:
+            continue
+        head = blob.split("\n---", 1)[0] if blob.startswith("---") else ""
+        st = FM_STATUS.search(head)
+        status = st.group(1).lower() if st else ""
+        if status in CLOSED_STATUS:
+            continue
+        if status != "open" and not p.stem.lower().startswith(prefixes):
+            continue
+        when = e["date"] or git(repo, "log", "-1", "--format=%as", ref, "--", rel).strip()
+        if floor and when and when < floor:
+            continue
+        stem = p.stem
+        answered = False
+        for hit in git(repo, "grep", "-l", "-F", stem, ref, "--", "*.md").splitlines():
+            hrel = hit.split(":", 1)[1] if ":" in hit else hit
+            if hrel == rel or hrel.endswith("INDEX.md"):
+                continue
+            htext = git(repo, "show", f"{ref}:{hrel}")
+            if hrel.endswith("LOG.md"):
+                answered = any(tokens(s) & me and stem in body
+                               for s, body in log_section_senders(htext))
+            else:
+                answered = bool(tokens(read_entry(repo / hrel, repo, text=htext)["von"]) & me)
+            if answered:
+                break
+        if not answered:
+            text = first_sentence(e["desc"] or e["name"], TEXT_CAP)
+            items.append((when or "?", e["topic"], e["von"] or "?", f"{text} ({rel})"))
+    return items
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--repo", type=Path, default=REPO_DEFAULT)
-    ap.add_argument("--from", dest="a", required=True, help="last seen commit")
+    ap.add_argument("--from", dest="a", help="last seen commit (range mode)")
+    ap.add_argument("--open", action="store_true",
+                    help="list requests addressed to SELF that nothing of ours answers yet")
+    ap.add_argument("--days", type=int, default=30, help="--open: look back this many days")
     ap.add_argument("--to", dest="b", default="origin/main")
     ap.add_argument("--self", dest="me", default=os.environ.get("SHARED_MEMORY_SELF", ""))
     ap.add_argument("--max", type=int, default=12)
@@ -149,6 +243,24 @@ def main() -> int:
     # Windows writes the ANSI codepage and dies on the first unencodable character.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     me = set() if args.senders else tokens(args.me.replace(",", " "))
+
+    if args.open:
+        if not me:
+            print("shared-memory open requests: not checked - SHARED_MEMORY_SELF unset")
+            return 0
+        extra = os.environ.get("SHARED_MEMORY_REQUEST_PREFIXES", "")
+        prefixes = REQUEST_PREFIXES + tuple(w.strip().lower() for w in extra.split(",") if w.strip())
+        found = sorted(open_items(args.repo, args.b, me, args.days, prefixes),
+                       key=lambda i: i[0])
+        # Always one line, also for zero: a clean check that prints nothing cannot be told
+        # apart from a check that did not run (operator order 2026-10-05).
+        print(f"shared-memory open requests to this instance: {len(found)}"
+              + ("" if found else f" (last {args.days} days)"))
+        for date, topic, sender, text in found[:args.max]:
+            print(f"  - {date} [{topic}] {sender}: {text}")
+        return 0
+    if not args.a:
+        ap.error("--from is required unless --open")
 
     if args.senders:
         logs, log_text = log_items(args.repo, args.a, args.b, me)
