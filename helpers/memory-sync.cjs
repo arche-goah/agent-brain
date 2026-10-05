@@ -15,7 +15,8 @@
  *   status        show per-file state, no changes
  *   push          export, then git add/commit/push docs/memory-snapshot
  *   pull          git pull, then import
- *   prune         remove snapshot files whose live counterpart was deleted.
+ *   prune         remove snapshot files whose live counterpart was deleted, and
+ *                 manifest entries whose file exists on neither side.
  *                 DELIBERATELY not part of export: on a machine that never imported,
  *                 "snapshot-only" is indistinguishable from "deleted here" — auto-
  *                 deleting on export could drop the other machine's memories. Run
@@ -198,6 +199,17 @@ function doPrune() {
       delete m.files[name];
       removed++;
       log(`[memory-sync] prune: ${name} (no live counterpart)`);
+    }
+  }
+  // Manifest ghosts: an entry whose file exists on NEITHER side (memory deleted and the
+  // snapshot copy removed outside prune). The loop above only walks snapshot files, so
+  // such an entry stayed forever — memory-lint.py reports it and names prune as the fix.
+  // Dropping it loses nothing: the entry is a hash of content that no longer exists.
+  for (const name of Object.keys(m.files)) {
+    if (!fs.existsSync(path.join(snapshotDir, name)) && !fs.existsSync(path.join(live, name))) {
+      delete m.files[name];
+      removed++;
+      log(`[memory-sync] prune: ${name} (manifest entry without a file)`);
     }
   }
   saveManifest(m);
