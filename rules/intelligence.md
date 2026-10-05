@@ -108,7 +108,14 @@ check fires at the start of the WORK, not at the start of the session; the
 unexpected sub-job is exactly where improvisation happens) — intelligent analysis yes, but in this sequence:**
 
 1. **Is there a skill that covers this?** Use it. Never improvise alongside an
-   existing skill, not even "just this once".
+   existing skill, not even "just this once". That rank belongs to VERIFIED
+   skills only: a skill that contradicts the ledger, a primary source or a
+   live measurement LOSES — re-read the source before following the skill
+   (incident 2026-08-19, `macro5001`: written from session memory a day AFTER
+   the decision it silently omits, then followed instead of that decision).
+   A DRAFT (`_draft-<name>`, `status: draft`, `provenance:` per step —
+   CONVENTIONS §11) may be used, but it outranks nothing either: a prototype,
+   not an authority.
 2. **Does the skill COVER this task — the procedure, not just the topic?**
    Measured gap (operator finding 2026-08-20): a loaded skill answered step 1
    with "yes", step 2 asked only about TOOLS, and step 3 fires only when there

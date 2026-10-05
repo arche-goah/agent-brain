@@ -214,6 +214,22 @@ Two consequences that are not optional:
   out, what remains is core *plus* private instance. Deciding the core by subtraction ships
   somebody's private data.
 
+**How a prototype becomes a suite skill — the PR path, and the expiry after it:**
+
+1. **Prototype as a DRAFT, not as a skill.** Directory `_draft-<name>`, frontmatter
+   `status: draft` plus `provenance:` naming a source per procedure step —
+   `measured <date> <how>` · `derived from <ref>` · `assumed`. A step without a
+   source is a guess, not a procedure. Drafts stay OUT of REGISTRY.md, and a
+   draft never wins against a primary source, a ledger or a live measurement.
+2. **The way in:** branch `skills/<name>` in the domain suite repo, CI green
+   (skill-lint, leak-scan), a counter-read where a second party works the repo,
+   then merge — tag and marketplace pin follow the release discipline, because
+   a merged skill that no pin delivers reaches no instance.
+3. **The local draft EXPIRES on adoption — delete it in the same move.** A copy
+   left behind is shadow authority: it wins exactly when nobody checks
+   (measured 2026-08-19, `macro5001`: an instance followed its own local skill
+   instead of re-reading the decision the skill silently dropped).
+
 ## 12. Staying compatible — and how anyone can check it
 
 Prose is not the contract; `suite-check.py` is. Sections 1–11 describe what it enforces.
