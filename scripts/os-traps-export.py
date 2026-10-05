@@ -65,7 +65,7 @@ def render(entries: list[dict], register_rel: str) -> str:
         'signpost for the other instance."',
         "metadata:",
         "  type: reference",
-        "  von: emil-workstation",
+        "  von: alex-workstation",
         "  audience: alle",
         "  topic: core",
         "---",

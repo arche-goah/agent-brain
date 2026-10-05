@@ -30,6 +30,10 @@ Before each of these actions, internal thinking is REQUIRED:
      carries without it. (Incident: "completed yesterday" claimed for an event
      whose install record said SAME day — "yesterday" was derived from the phrase
      "next session" in a note, never from a timestamp.)
+     The rule targets UNMEASURED time words, not time words as such (operator
+     refinement 2026-08-19): a relative time word that is true is welcome, and the
+     running session's own history counts as a source — what happened earlier in
+     this conversation is measured by the transcript. No forced clock-time precision.
    - **Separate in the report:** measured / derived / assumed. No action is taken
      on assumptions.
    - **Self-tally is not a measurement:** The prose summary of an agent or a report
@@ -76,10 +80,14 @@ Before each of these actions, internal thinking is REQUIRED:
 
 A fix hits the instance the incident names; the class stays open and comes back
 (measured on a proving instance: five classes, up to 15 single fixes of the same
-root in 12 days). A found defect therefore counts as done only when the CLASS is
-addressed: (1) name the invariant, not the anecdote, (2) enumerate by SEARCH, not
-by recollection, (3) close or register every found site. The class question is a
-search, not speculation — executed, it returns measurements.
+root in 12 days). A found defect therefore counts as done only when the FINDING
+CLASS is addressed: (1) name the invariant, not the anecdote, (2) enumerate by
+SEARCH, not by recollection, (3) close or register every found site. The
+finding-class question is a search, not speculation — executed, it returns
+measurements. It is NOT the procedure-class question ("is my activity
+repeatable, is there a skill?"), which is asked up front and needs no data —
+`rules/intelligence.md`, Knowledge Carriers, keeps the two apart; letting the
+front one shape how observations are read is the failure it names.
 
 This rule deliberately does NOT carry the mechanics. They live in:
 - skill `verification-before-completion` (the Class Gate, runs at "done"),

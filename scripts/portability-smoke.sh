@@ -201,6 +201,12 @@ if [ "$_rc" -eq 0 ]; then
 else
   bad "shared-memory watch negative control failed on this OS: $(printf '%s' "$_smw" | tr '\n' ' ' | tail -c 400)"
 fi
+_smo="$(bash "$CORE/scripts/shared-memory-open-requests-test.sh" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ]; then
+  ok "shared-memory open requests survive the cursor; a clean start prints a line"
+else
+  bad "shared-memory open-requests fixture failed on this OS: $(printf '%s' "$_smo" | grep FAIL | tr '\n' ' ' | tail -c 400)"
+fi
 
 # 10) invariant-check: pure-Python runner against a fixture register. Three cases in
 #     one fixture: a matching baseline (ok), a NEW site (drift, exit 1), and an

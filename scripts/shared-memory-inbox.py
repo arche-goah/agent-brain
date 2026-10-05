@@ -16,7 +16,7 @@ TWO SOURCES, because the repo carries messages in two places:
 A fact file whose path the new LOG text already names is not printed twice.
 
 WHO "THIS INSTANCE" IS comes from SHARED_MEMORY_SELF (instance data, e.g. the `env` block
-of the instance's settings.json): comma-separated tokens such as `emil-macos,emil`. An
+of the instance's settings.json): comma-separated tokens such as `alex-macos,alex`. An
 entry is dropped when its sender is one of them; it is kept when its addressees name one
 of them or everyone (`alle`, `all`, `everyone`, …), or when it names no addressee at all.
 Unset: nothing is filtered and the header says so — a filter that silently guesses
@@ -136,10 +136,149 @@ def file_items(repo: Path, a: str, b: str, me: set[str], log_text: str) -> list[
     return items
 
 
+def log_section_senders(text: str) -> list[tuple[str, str]]:
+    """A LOG.md split into (sender, section text) by its headings."""
+    out, sender, buf = [], "", []
+    for line in text.splitlines():
+        m = HEADING.match(line)
+        if m:
+            if buf:
+                out.append((sender, "\n".join(buf)))
+            sender, buf = m.group(2), [line]
+        else:
+            buf.append(line)
+    if buf:
+        out.append((sender, "\n".join(buf)))
+    return out
+
+
+# Which files are REQUESTS (as opposed to reports addressed to us): a file name that starts
+# with one of these words, or frontmatter `status: open`. Words are data — the instance adds
+# its own languages via SHARED_MEMORY_REQUEST_PREFIXES (comma-separated), same convention
+# as SHARED_MEMORY_SELF. `status:` answered/done/decided/info always wins over the name.
+REQUEST_PREFIXES = ("request", "question")
+CLOSED_STATUS = {"answered", "done", "decided", "info", "closed"}
+FM_STATUS = re.compile(r"^\s+status:\s*([\w-]+)", re.M)
+
+
+def open_items(repo: Path, ref: str, me: set[str], days: int,
+               prefixes: tuple[str, ...] = REQUEST_PREFIXES) -> list[tuple]:
+    """Requests addressed to this instance BY NAME that nothing of ours answers yet.
+
+    WHY (2026-10-05): the range inbox above only shows what arrived since the cursor. A
+    session that sees it and does not relay it moves the cursor anyway — measured: three
+    requests from a collaborator were shown once at a start, never answered, and the next
+    start said nothing at all. Seen is not done. This list does not use the cursor.
+
+    Addressed by name: `audience` names one of SELF (a broadcast to everyone is not a
+    request waiting on this side). Answered: any of our own fact files, or a LOG section
+    under one of our headings, names the request's file stem. Cheap, explicit, and wrong
+    only in the safe direction — an answer that never names the request keeps it listed.
+    """
+    if not me:
+        return []
+    today = git(repo, "log", "-1", "--format=%as", ref).strip()
+    try:
+        from datetime import date, timedelta
+        floor = (date.fromisoformat(today) - timedelta(days=days)).isoformat()
+    except ValueError:
+        floor = ""
+    # Prefilter in ONE git call: only files whose frontmatter names us at all. Reading every
+    # blob of the repo one `git show` at a time took ~10 s (measured 2026-10-05, ~600 files).
+    rx = r"^[[:space:]]+audience:.*(" + "|".join(re.escape(t) for t in sorted(me)) + r")"
+    cand = {h.split(":", 1)[1] for h in
+            git(repo, "grep", "-l", "-i", "-E", rx, ref, "--", "*.md").splitlines() if ":" in h}
+    items = []
+    for rel in sorted(cand):
+        p = repo / rel
+        if "/" not in rel or p.name in SKIP_FILES:
+            continue
+        blob = git(repo, "show", f"{ref}:{rel}")
+        e = read_entry(p, repo, text=blob)
+        if not e["audience"] or not (tokens(e["audience"]) & me) or tokens(e["von"]) & me:
+            continue
+        head = blob.split("\n---", 1)[0] if blob.startswith("---") else ""
+        st = FM_STATUS.search(head)
+        status = st.group(1).lower() if st else ""
+        if status in CLOSED_STATUS:
+            continue
+        # `status: open` marks a request only when it is addressed to us ALONE — a status
+        # broadcast to three parties carries the same field (Windows check on #193, finding 2).
+        only_us = not (tokens(e["audience"]) - me)
+        if not p.stem.lower().startswith(prefixes) and not (status == "open" and only_us):
+            continue
+        when = e["date"] or git(repo, "log", "-1", "--format=%as", ref, "--", rel).strip()
+        if floor and when and when < floor:
+            continue
+        stem = p.stem
+        answered = False
+        for hit in git(repo, "grep", "-l", "-F", stem, ref, "--", "*.md").splitlines():
+            hrel = hit.split(":", 1)[1] if ":" in hit else hit
+            if hrel == rel or hrel.endswith("INDEX.md"):
+                continue
+            htext = git(repo, "show", f"{ref}:{hrel}")
+            if hrel.endswith("LOG.md"):
+                answered = any(tokens(s) & me and stem in body
+                               for s, body in log_section_senders(htext))
+            else:
+                # Ours, or anyone's file that declares itself the answer (`answers: <stem>`) —
+                # a request to "either of two machines" is closed by the one that answered
+                # (Windows check on #193, finding 1).
+                hhead = htext.split("\n---", 1)[0] if htext.startswith("---") else ""
+                answered = (bool(tokens(read_entry(repo / hrel, repo, text=htext)["von"]) & me)
+                            or bool(re.search(r"^\s+answers:.*" + re.escape(stem), hhead, re.M)))
+            if answered:
+                break
+        if not answered:
+            text = first_sentence(e["desc"] or e["name"], TEXT_CAP)
+            items.append((when or "?", e["topic"], e["von"] or "?", f"{text} ({rel})"))
+    return items + log_only_items(repo, ref, me, floor)
+
+
+def log_only_items(repo: Path, ref: str, me: set[str], floor: str) -> list[tuple]:
+    """Messages to us BY NAME that live only as a LOG heading (no fact file named in the body).
+
+    The shape of the 2026-10-04 incident and of finding 3 of the Windows check on #193: once
+    the cursor passes such a heading, nothing else carries it. Open until one of OUR later
+    headings (any topic, same day or later) is addressed to the sender — a reply in the
+    conversation stream. Wrong only in the safe direction: an answer given elsewhere keeps
+    it listed until we next write to that party.
+    """
+    heads: list[tuple] = []  # (date, topic, sender, to_tokens, title, body)
+    for rel in git(repo, "ls-tree", "-r", "--name-only", ref).splitlines():
+        if not (rel.endswith("/LOG.md") or rel == "LOG.md"):
+            continue
+        topic = rel.split("/")[0] if "/" in rel else "root"
+        for i, (sender, body) in enumerate(log_section_senders(git(repo, "show", f"{ref}:{rel}"))):
+            m = HEADING.match(body.splitlines()[0]) if body else None
+            if not m:
+                continue
+            date, _, title = m.groups()
+            to = addressees(title or "")
+            heads.append((date, topic, i, sender, tokens(to) if to else set(), title or "", body))
+    items = []
+    for date, topic, idx, sender, to, title, body in heads:
+        if not (to & me) or tokens(sender) & me or (floor and date < floor):
+            continue
+        if re.search(r"[\w./-]+\.md\b", "\n".join(body.splitlines()[1:])):
+            continue  # points at a fact file — the file path above judges it
+        # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
+        # another LOG cannot be ordered, so it does not count (safe direction).
+        replied = any(tokens(s) & me and tokens(sender) & t
+                      and (d > date or (tp == topic and j > idx))
+                      for d, tp, j, s, t, _, _ in heads)
+        if not replied:
+            items.append((date, topic, sender, first_sentence(title, TEXT_CAP) + " (LOG)"))
+    return items
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--repo", type=Path, default=REPO_DEFAULT)
-    ap.add_argument("--from", dest="a", required=True, help="last seen commit")
+    ap.add_argument("--from", dest="a", help="last seen commit (range mode)")
+    ap.add_argument("--open", action="store_true",
+                    help="list requests addressed to SELF that nothing of ours answers yet")
+    ap.add_argument("--days", type=int, default=30, help="--open: look back this many days")
     ap.add_argument("--to", dest="b", default="origin/main")
     ap.add_argument("--self", dest="me", default=os.environ.get("SHARED_MEMORY_SELF", ""))
     ap.add_argument("--max", type=int, default=12)
@@ -149,6 +288,24 @@ def main() -> int:
     # Windows writes the ANSI codepage and dies on the first unencodable character.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     me = set() if args.senders else tokens(args.me.replace(",", " "))
+
+    if args.open:
+        if not me:
+            print("shared-memory open requests: not checked - SHARED_MEMORY_SELF unset")
+            return 0
+        extra = os.environ.get("SHARED_MEMORY_REQUEST_PREFIXES", "")
+        prefixes = REQUEST_PREFIXES + tuple(w.strip().lower() for w in extra.split(",") if w.strip())
+        found = sorted(open_items(args.repo, args.b, me, args.days, prefixes),
+                       key=lambda i: i[0])
+        # Always one line, also for zero: a clean check that prints nothing cannot be told
+        # apart from a check that did not run (operator order 2026-10-05).
+        print(f"shared-memory open requests to this instance: {len(found)}"
+              + ("" if found else f" (last {args.days} days)"))
+        for date, topic, sender, text in found[:args.max]:
+            print(f"  - {date} [{topic}] {sender}: {text}")
+        return 0
+    if not args.a:
+        ap.error("--from is required unless --open")
 
     if args.senders:
         logs, log_text = log_items(args.repo, args.a, args.b, me)

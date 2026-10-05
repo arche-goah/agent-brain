@@ -27,7 +27,7 @@ exceed `configured`, and the report says so — presence is not effect.
 the deny — not from the scan, the scan is read-only). → maximum `configured`.
 
 - [ ] No wildcard grants (`Edit(**)`, `Read(**)`) in `.claude/settings.json` / `.claude/settings.local.json`.
-- [ ] Deny list covers at least: `.env*`, `.claude-state/**`, and every secret-carrying file of this instance.
+- [ ] Deny list covers at least: `.env*` (read + edit), `.claude-state/**` (EDIT only — the mechanisms write their measurement logs there and session-close must read `promises.jsonl`; a read deny blocks that while an edit deny is what protects the logs), and every secret-carrying file of this instance.
 - [ ] No script that is both Bash-allowlisted AND editable without a prompt (write-then-execute). Name deliberate exceptions here, with the reason.
 - [ ] No secrets in plain text in `.mcp.json`, tracked configs, or new commits (`python3 core/scripts/leak-scan.py --root .` — without `--root` it scans the core checkout, not this brain).
 - [ ] No `npx` MCP server on `@latest` in `.mcp.json` — every one carries a fixed version (`npm view <pkg> version` on the day it was set; bump deliberately). *(mechanical: `grep -n '@latest' .mcp.json` must be empty)*

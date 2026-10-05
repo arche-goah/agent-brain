@@ -86,7 +86,7 @@ OUT="$(cd "$(dirname "$S")" && RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1
 case "$OUT" in *"no competing open release PR"*) rc=1;; *) rc=0;; esac
 check "release-PR check queries the repo under test" 0 $rc
 
-# 10b. the same property without network or login (review emil-macos on #155): with an
+# 10b. the same property without network or login (review alex-macos on #155): with an
 #      unauthenticated gh both the old and the fixed script print "?", so 10 alone cannot
 #      tell them apart. A stub gh first on PATH records where it was started; it must be $R.
 STUB="$TMP/gh-stub"; mkdir -p "$STUB"
