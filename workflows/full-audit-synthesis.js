@@ -95,7 +95,7 @@ Build the cross-scan measure catalog:
 - Do NOT duplicate points already marked [x] done in the order file or already open
   there — count them under skipped_existing instead.
 
-OUTPUT — you are the producer, you write: save the catalog as JSON to ${CATALOG} (mkdir -p ${A.scratch}) with exactly this shape: {"summary": "<3-5 sentences incl. dedupe balance>", "skipped_existing": <number>, "massnahmen": [<objects>]} where every object satisfies this JSON schema: ${JSON.stringify(MASSNAHME_ITEM)}. Sources and proposals are this stage's data and travel ONLY through that file — none of them come back through your return value.
+OUTPUT — you are the producer, you write exactly ONE file, the path named here, and no other; any path you report back is exactly this one: save the catalog as JSON to ${CATALOG} (mkdir -p ${A.scratch}) with exactly this shape: {"summary": "<3-5 sentences incl. dedupe balance>", "skipped_existing": <number>, "massnahmen": [<objects>]} where every object satisfies this JSON schema: ${JSON.stringify(MASSNAHME_ITEM)}. Sources and proposals are this stage's data and travel ONLY through that file — none of them come back through your return value.
 After writing, MEASURE the file (node -e or jq, not from memory).
 Return via StructuredOutput: file (the path you wrote), summary, skipped_existing, and massnahmen = the INDEX only — prio + typ + titel verbatim as written in the file.`,
   { label: 'catalog', phase: 'Catalog', schema: {

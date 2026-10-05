@@ -77,6 +77,17 @@ Rules:
   model sees before loading the skill.
 - Code, comments, docstrings, SKILL.md, README, commit messages: English.
 - Instance docs and memory: the owner's language.
+- **Detectors that read natural language are layered: engine English, every language
+  is data.** A gate or check that matches prose (`stoppen-gate`, `premise-gate`,
+  `promise-gate`) carries English built-ins only; each further language — German,
+  Czech, French, anything — lives in the instance's `.claude/rules/<name>-patterns.json`
+  and is merged in, never replacing the built-ins. A CLASS fix (a new shape the
+  detector must see) goes into the English built-ins first; a language file only ever
+  adds a language. `scripts/english-only.py` holds this for German mechanically (an
+  engine is not in its skip set, so a German pack inside it fails CI); its header
+  states that other languages are outside its detection. One documented exception:
+  `recall-gate`'s `recall-tools.json` REPLACES its defaults (tool names and word lists
+  share one file, see its header) — a language added there must restate the English.
 
 ## 4. MCP servers
 
@@ -213,6 +224,22 @@ Two consequences that are not optional:
 - **The core is an explicit include-list, not a leftover.** After every suite has moved
   out, what remains is core *plus* private instance. Deciding the core by subtraction ships
   somebody's private data.
+
+**How a prototype becomes a suite skill — the PR path, and the expiry after it:**
+
+1. **Prototype as a DRAFT, not as a skill.** Directory `_draft-<name>`, frontmatter
+   `status: draft` plus `provenance:` naming a source per procedure step —
+   `measured <date> <how>` · `derived from <ref>` · `assumed`. A step without a
+   source is a guess, not a procedure. Drafts stay OUT of REGISTRY.md, and a
+   draft never wins against a primary source, a ledger or a live measurement.
+2. **The way in:** branch `skills/<name>` in the domain suite repo, CI green
+   (skill-lint, leak-scan), a counter-read where a second party works the repo,
+   then merge — tag and marketplace pin follow the release discipline, because
+   a merged skill that no pin delivers reaches no instance.
+3. **The local draft EXPIRES on adoption — delete it in the same move.** A copy
+   left behind is shadow authority: it wins exactly when nobody checks
+   (measured 2026-08-19, `macro5001`: an instance followed its own local skill
+   instead of re-reading the decision the skill silently dropped).
 
 ## 12. Staying compatible — and how anyone can check it
 

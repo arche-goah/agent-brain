@@ -19,6 +19,30 @@ CHECKS:
                    meaningful tokens) — two skills that fire on the same thing
   4. dead_refs     references/*, scripts/* referenced in the SKILL.md exist
   5. registry      REGISTRY.md <-> directories (both directions)
+  6. placement     a tool-domain skill that lives in the private brain instead of the
+                   domain's suite (CONVENTIONS §11) — plus the ratchet direction:
+                   a baseline entry that is no longer needed has to LEAVE the baseline
+  7. provenance    a skill whose frontmatter carries no `provenance:` — a procedure
+                   whose steps name no source is a draft, not a verified skill
+
+WHY 6+7 (measured 2026-08-19/20, incident `macro5001`): an instance wrote four skills
+out of its own live-session memory, straight into its private brain. One of them was
+written a DAY AFTER the decision it silently contradicts, and the instance then followed
+its own skill instead of re-reading the primary source. Two rules already said this was
+wrong — CONVENTIONS §11 ("a new capability never starts life inside a private brain")
+and the skill-first order — and neither had a carrier: this linter checked STRUCTURE
+only, never placement and never where a step's content came from. Prose lost against a
+file on disk, which is the whole class.
+
+Both checks are a RATCHET, not a verdict on the existing set (same shape as
+english-legacy.txt): `.claude/rules/skill-placement.json` freezes the skills that
+predate the rule. Without that file the placement check has no domain vocabulary and
+the provenance check applies to DRAFTS only — a brain that has not opted in stays
+green instead of going permanently red, which is what gets a linter ignored.
+
+Draft convention (the reason a draft may exist at all): directory `_draft-<name>` with
+`status: draft` + `provenance:` in the frontmatter. A draft may be used, but it never
+wins against a primary source, a ledger or a live measurement.
 
 Usage: skill-lint.py [--skills DIR] [--json] [--collision-threshold 0.35] [--ctx 200000]
 Exit 0 = clean, 1 = findings, 2 = unreadable.
@@ -43,6 +67,11 @@ NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REF_RE = re.compile(r"(?<![\w/.-])(?:references|scripts|assets)/[A-Za-z0-9._/-]*[A-Za-z0-9_-]")
 REG_LINK = re.compile(r"`?([a-z0-9][a-z0-9-]*)/SKILL\.md`?|\|\s*`?([a-z0-9][a-z0-9-]*)`?\s*\|")
 MAX_NAME, MAX_DESC, MAX_BODY_LINES = 64, 1024, 500
+DRAFT_PREFIX = "_draft-"
+# Instance data, not core knowledge: WHICH tool domains this brain has suites for, and
+# WHICH pre-existing skills the ratchet exempts. Same split as premise-patterns.json /
+# time-patterns.json — vocabulary is instance-owned, the mechanism is not.
+PLACEMENT_CFG = ROOT / ".claude/rules/skill-placement.json"
 
 # tokens that say nothing about trigger similarity
 STOP = set("""use when the a an and or for of to in on with without this that these those
@@ -83,13 +112,33 @@ def tokens(s: str) -> set[str]:
     return {w for w in re.findall(r"[a-zA-Zaeoeuess]{4,}", s.lower()) if w not in STOP}
 
 
+def placement_cfg(path: Path) -> tuple[list[str], set[str], bool]:
+    """(tool_domains, legacy_baseline, opted_in). Absent/broken file = not opted in."""
+    try:
+        cfg = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return [], set(), False
+    return ([str(t).lower() for t in cfg.get("tool_domains", [])],
+            {str(s) for s in cfg.get("legacy", [])}, True)
+
+
+def domain_hits(haystack: str, domains: list[str]) -> list[str]:
+    """Whole-token match only. Substring matching turns 'osc' into a hit inside
+    'kiosk' and 'dmx' into one inside any hex blob; the false positives are what
+    stops people running a linter."""
+    low = haystack.lower()
+    return sorted({d for d in domains
+                   if re.search(rf"(?<![a-z0-9]){re.escape(d)}(?![a-z0-9])", low)})
+
+
 def lint(skills: Path, thresh: float, ctx: int) -> dict:
     # `body_size` is INFO, not a defect — deliberately does NOT feed into the exit code.
     # A linter that stays permanently red over non-defects gets ignored.
     f: dict[str, list] = {k: [] for k in
                           ("frontmatter", "budget", "collisions", "dead_refs", "registry",
-                           "body_size")}
+                           "placement", "provenance", "body_size")}
     meta: dict[str, dict] = {}
+    domains, legacy, opted_in = placement_cfg(PLACEMENT_CFG)
 
     # Skills that live in a suite repo are mounted here as symlinks. On a CI runner the
     # sibling repo is not checked out, so the link dangles. That is not a defect of THIS
@@ -107,11 +156,15 @@ def lint(skills: Path, thresh: float, ctx: int) -> dict:
         text = sk.read_text(encoding="utf-8", errors="replace")
         fm = frontmatter(text)
         name, desc = fm.get("name", ""), fm.get("description", "")
+        # A draft directory carries the prefix; its `name:` is the skill it will become,
+        # so the identity checks below compare against the STRIPPED name.
+        is_draft = d.name.startswith(DRAFT_PREFIX)
+        base = d.name[len(DRAFT_PREFIX):] if is_draft else d.name
 
         if not name:
             f["frontmatter"].append({"skill": d.name, "issue": "name missing"})
         else:
-            if name != d.name:
+            if name != base:
                 f["frontmatter"].append({"skill": d.name, "issue": "name != directory",
                                          "name": name})
             if not NAME_RE.match(name):
@@ -149,7 +202,14 @@ def lint(skills: Path, thresh: float, ctx: int) -> dict:
                 f["dead_refs"].append({"skill": d.name, "ref": ref})
 
         meta[d.name] = {"name": name, "desc": desc, "cost": len(name) + len(desc),
-                        "tok": tokens(desc)}
+                        "tok": tokens(desc),
+                        # A skill mounted from a suite is a SYMLINK here; a skill born in
+                        # this brain is a real directory. That is the whole placement
+                        # discriminator, and it is a fact on disk rather than a judgement.
+                        "local": not d.is_symlink(), "draft": is_draft,
+                        "status": fm.get("status", ""),
+                        "prov": bool(fm.get("provenance", "").strip()),
+                        "domains": domain_hits(f"{name} {desc}", domains)}
 
     # 2. listing budget
     total = sum(m["cost"] for m in meta.values())
@@ -190,6 +250,46 @@ def lint(skills: Path, thresh: float, ctx: int) -> dict:
                                     "shared": sorted(inter)[:12]})
     f["collisions"].sort(key=lambda x: -x["jaccard"])
 
+    # 6./7. placement + provenance (see module docstring for the incident)
+    for skill, m in sorted(meta.items()):
+        if m["draft"]:
+            # A draft is by definition new, so the baseline never covers it. Both
+            # halves matter: `status: draft` is what stops it outranking a primary
+            # source, `provenance` is what makes its steps checkable at all.
+            if m["status"] != "draft":
+                f["provenance"].append({"skill": skill, "issue":
+                                        f"{DRAFT_PREFIX} directory without 'status: draft'"})
+            if not m["prov"]:
+                f["provenance"].append({"skill": skill, "issue":
+                                        "draft without 'provenance:' — a step without a "
+                                        "source is not a procedure"})
+            continue
+        if not m["local"] or skill in legacy:
+            continue  # lives in a suite (linted there), or predates the rule
+        if m["domains"]:
+            f["placement"].append({"skill": skill, "issue":
+                                   "tool-domain skill born in the private brain — "
+                                   "CONVENTIONS §11 puts it in that domain's suite",
+                                   "domains": m["domains"]})
+        if opted_in and not m["prov"]:
+            f["provenance"].append({"skill": skill, "issue":
+                                    "new local skill without 'provenance:' — name a "
+                                    "source per procedure step (measured/derived/assumed)"})
+
+    # The ratchet only counts if the baseline can SHRINK. Without these two, a frozen
+    # list quietly becomes a permanent exemption — the failure mode english-legacy.txt
+    # was built to avoid.
+    for stale in sorted(legacy - set(meta)):
+        f["placement"].append({"skill": stale, "issue":
+                               "baseline names a skill that no longer exists — "
+                               "remove the line, the baseline only shrinks"})
+    for skill in sorted(legacy & set(meta)):
+        m = meta[skill]
+        if not m["local"] or (m["prov"] and not m["domains"]):
+            f["placement"].append({"skill": skill, "issue":
+                                   "baseline entry is no longer needed (moved to a suite "
+                                   "or carries provenance) — remove the line"})
+
     # 5. registry <-> directories
     reg = skills / "REGISTRY.md"
     if not reg.is_file():
@@ -197,7 +297,10 @@ def lint(skills: Path, thresh: float, ctx: int) -> dict:
     else:
         rt = reg.read_text(encoding="utf-8", errors="replace")
         listed = {m for pair in REG_LINK.findall(rt) for m in pair if m}
-        for miss in sorted(set(meta) - listed):
+        # Drafts stay OUT of the registry on purpose: the registry is the list of
+        # verified skills, and a draft that appears there has already won the rank it
+        # is not supposed to have.
+        for miss in sorted(s for s in set(meta) - listed if not meta[s]["draft"]):
             f["registry"].append({"issue": "skill not in REGISTRY.md", "skill": miss})
         for extra in sorted(listed - set(meta)):
             if extra in {"skills", "claude"} or extra in elsewhere:
@@ -207,6 +310,7 @@ def lint(skills: Path, thresh: float, ctx: int) -> dict:
 
     return {"findings": f, "counts": {k: len(v) for k, v in f.items()},
             "scanned": len(meta), "elsewhere": elsewhere,
+            "placement_ratchet": opted_in,
             "budget_pct": round(pct)}
 
 
@@ -242,8 +346,12 @@ def main() -> int:
                 print("   " + json.dumps(it, ensure_ascii=False))
             if len(items) > 15:
                 print(f"   ... and {len(items) - 15} more")
+        if not rep["placement_ratchet"]:
+            print(f"   placement/provenance ratchet not enabled "
+                  f"({PLACEMENT_CFG} absent) — drafts are still checked")
         if hard == 0:
-            print("no defects (frontmatter, budget, collisions, refs, registry).")
+            print("no defects (frontmatter, budget, collisions, refs, registry, "
+                  "placement, provenance).")
     hard = sum(v for k, v in rep["counts"].items() if k != "body_size")
     return 1 if hard else 0
 

@@ -29,7 +29,7 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 | playwright-skill | Complete browser automation with Playwright |
 | ponytail | Forces the laziest solution that actually works: YAGNI, stdlib before custom code, native before dependencies, … |
 | repo-recon | Rapidly orient in a large, unfamiliar codebase — map structure, languages, entry points, build/test/run commands, … |
-| session-close | Close a session cleanly — persist open work to memory, write handoff + session log, … |
+| session-close | Close a session cleanly — persist open work (states to their ledger, lessons to memory), … |
 | session-insights | Self-analysis of Claude Code sessions |
 | shared-memory-tidy | Tidy-up pass over the shared-memory repo — run the deterministic lint, then the judging workflow, … |
 | shared-memory-watch | Live watch on the shared-memory repo while a session runs — arms the persistent watcher … |
