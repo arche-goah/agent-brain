@@ -113,6 +113,18 @@ printf 'two\n' > "$T/live/note.md"
 [ "$(cat "$manifest")" != "$before" ] && ok "memory-sync export updates the manifest on a memory change" \
   || bad "memory-sync export missed a changed memory file"
 
+# prune heals a manifest ghost: an entry whose file is gone from BOTH sides (memory
+# deleted, snapshot copy removed by hand or by git) was never touched by prune, which
+# only walked the snapshot files — memory-lint names it, so its fix must exist. The
+# live entry beside it must survive (prune never drops a manifest line that still has
+# a file).
+node -e 'const f=process.argv[1],m=JSON.parse(require("fs").readFileSync(f,"utf8"));m.files["ghost.md"]={hash:"x",updated:"t"};require("fs").writeFileSync(f,JSON.stringify(m))' "$manifest"
+(cd "$T/m" && CLAUDE_PROJECT_DIR="$T/m" CLAUDE_MEMORY_DIR="$T/live" node "$MS" prune >/dev/null 2>&1)
+grep -q '"ghost.md"' "$manifest" && bad "memory-sync prune left a manifest entry without any file" \
+  || ok "memory-sync prune drops a manifest entry without any file"
+grep -q '"note.md"' "$manifest" && ok "memory-sync prune keeps a manifest entry that has its file" \
+  || bad "memory-sync prune dropped a live entry"
+
 echo
 [ "$fail" -eq 0 ] && echo "session-helper fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

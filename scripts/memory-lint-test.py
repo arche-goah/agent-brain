@@ -20,10 +20,25 @@ def memfile(d, name, body="x"):
         fh.write(f"---\nname: {name}\ndescription: t\nmetadata:\n  type: project\n---\n{body}\n")
 
 
-def run(d):
-    p = subprocess.run([sys.executable, LINT, "--memory", d, "--json"],
-                       capture_output=True, text=True)
+def run(d, snap=None):
+    cmd = [sys.executable, LINT, "--memory", d, "--json"]
+    if snap:
+        cmd += ["--snapshot", snap]
+    p = subprocess.run(cmd, capture_output=True, text=True)
     return json.loads(p.stdout)["findings"]
+
+
+def snapshot(d, mirror, manifest):
+    """Snapshot dir next to the memory: copies of `mirror` (byte-identical to the live
+    files) plus a manifest listing `manifest`."""
+    snap = os.path.join(d, "snap")
+    os.makedirs(snap)
+    for name in mirror:
+        with open(os.path.join(d, name), "rb") as src, open(os.path.join(snap, name), "wb") as dst:
+            dst.write(src.read())
+    with open(os.path.join(snap, ".sync-manifest.json"), "w", encoding="utf-8") as fh:
+        json.dump({"files": {n: {"hash": "x", "updated": "t"} for n in manifest}}, fh)
+    return snap
 
 
 def case(title, fn):
@@ -102,6 +117,43 @@ def t_plain_index_unchanged(d):
     return (not f["index_drift"] and not f["limits"], f"{f}")
 
 
+# --- manifest -> file direction (brain-scan 2026-09-07, B-28) -----------------------
+# A manifest entry whose file exists neither in the snapshot nor in the live memory is a
+# ghost: the manifest claims a mirrored memory that is gone. Measured on a proving brain:
+# `traeger-landkarte.md` stood in the manifest for weeks, and the linter said "all clean"
+# because it only compared live -> snapshot. "Manifest lies" and "all in sync" got the
+# same symbol.
+
+def t_manifest_ghost_reported(d):
+    memfile(d, "one")
+    idx(d, ["- [One](one.md) — o"])
+    snap = snapshot(d, ["one.md", "MEMORY.md"], ["one.md", "MEMORY.md", "ghost.md"])
+    f = run(d, snap)
+    hit = [x for x in f["snapshot_drift"] if x.get("file") == "ghost.md"]
+    return (len(hit) == 1 and len(f["snapshot_drift"]) == 1, f"snapshot_drift={f['snapshot_drift']}")
+
+
+def t_manifest_in_sync_is_clean(d):
+    # negative control: same layout without the ghost -> nothing to report
+    memfile(d, "one")
+    idx(d, ["- [One](one.md) — o"])
+    snap = snapshot(d, ["one.md", "MEMORY.md"], ["one.md", "MEMORY.md"])
+    f = run(d, snap)
+    return (not f["snapshot_drift"], f"snapshot_drift={f['snapshot_drift']}")
+
+
+def t_live_only_not_double_reported(d):
+    # manifest names a file that is live but missing from the snapshot: that is the
+    # existing "missing from the repo snapshot" finding (export restores it) — exactly
+    # one finding, not a second one as a ghost.
+    memfile(d, "one"); memfile(d, "two")
+    idx(d, ["- [One](one.md) — o", "- [Two](two.md) — t"])
+    snap = snapshot(d, ["one.md", "MEMORY.md"], ["one.md", "two.md", "MEMORY.md"])
+    f = run(d, snap)
+    hit = [x for x in f["snapshot_drift"] if x.get("file") == "two.md"]
+    return (len(hit) == 1 and len(f["snapshot_drift"]) == 1, f"snapshot_drift={f['snapshot_drift']}")
+
+
 if __name__ == "__main__":
     results = [
         case("sub-index entries count as indexed", t_subindex_counts),
@@ -111,5 +163,8 @@ if __name__ == "__main__":
         case("overlong entry inside sub-index reported", t_long_line_in_subindex),
         case("no recursion beyond one level", t_no_recursion),
         case("plain index without sub-index unchanged", t_plain_index_unchanged),
+        case("manifest entry without any file reported", t_manifest_ghost_reported),
+        case("manifest in sync stays clean", t_manifest_in_sync_is_clean),
+        case("live-only manifest entry reported once, not as ghost", t_live_only_not_double_reported),
     ]
     sys.exit(0 if all(results) else 1)
