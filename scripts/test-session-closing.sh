@@ -137,6 +137,58 @@ git_q -C "$B2" add -A; git_q -C "$B2" commit -qm "S7"
 n=$(lines); tr_hook S8 "$winpath" >/dev/null
 [ "$(lines)" -eq $((n + 1)) ] && ok "backslash-escaped existing transcript counts as a session" || bad "backslash-escaped existing transcript counts as a session" "$n -> $(lines)"
 
+# --- neighbour repos (coherence-scan 2026-09-18 §P1-12) --------------------------------
+# The rules send tool changes to suite repos next to the brain; the close checked only the
+# brain's own tree. A suite patch left uncommitted passed a close that said "persisted".
+# The repos come from the brain's ecosystem lockfile, which already lists them.
+echo "neighbour repos: a dirty suite from config/ecosystem.json is named at close"
+B4="$TMP/brain4"; mkdir -p "$B4/.claude" "$B4/docs/maintenance" "$B4/config"
+git_q -C "$B4" init -q; : > "$B4/README.md"; git_q -C "$B4" add -A; git_q -C "$B4" commit -qm brain
+SUITE="$TMP/suite"; SREMOTE="$TMP/suite-remote.git"
+git_q init -q --bare "$SREMOTE"; git_q -C "$TMP" clone -q "$SREMOTE" suite
+: > "$SUITE/tool.py"; git_q -C "$SUITE" add -A; git_q -C "$SUITE" commit -qm seed; git_q -C "$SUITE" push -q -u origin HEAD:main
+printf '{"repos":{"my-suite":{"path":"%s"},"the-brain":{"path":"%s"},"gone":{"path":"%s"}}}\n' \
+  "$SUITE" "$B4" "$TMP/does-not-exist" > "$B4/config/ecosystem.json"
+run4() { (cd "$B4" && CLAUDE_PROJECT_DIR="$B4" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" --pre-commit 2>&1 </dev/null); }
+
+echo "negative control: suite clean and pushed"
+out="$(run4)"
+hasnt "no neighbour FAIL on a clean suite" "FAIL neighbour" "$out"
+
+echo "positive control 1: a tool patched but not committed"
+echo "patch" >> "$SUITE/tool.py"
+out="$(run4)"
+has   "FAIL line names the suite" "FAIL neighbour repo my-suite: 1 uncommitted file(s)" "$out"
+has   "HANDOFF says it was not delivered" "Neighbour repo my-suite: NOT delivered" "$(cat "$B4/.claude/HANDOFF.md")"
+hasnt "the brain itself is not reported as a neighbour (step 4 covers it)" "neighbour repo the-brain" "$out"
+hasnt "a listed path that does not exist is skipped" "neighbour repo gone" "$out"
+
+echo "positive control 2: committed on a work branch, not pushed"
+git_q -C "$SUITE" checkout -q -b work; git_q -C "$SUITE" add -A; git_q -C "$SUITE" commit -qm "local only"
+out="$(run4)"
+has "FAIL line names the unpushed commit" "1 unpushed commit(s)" "$out"
+
+echo "negative control 2: pushed -> silence again"
+git_q -C "$SUITE" push -q origin work
+out="$(run4)"
+hasnt "no neighbour FAIL once pushed" "FAIL neighbour" "$out"
+
+echo "negative control 3: a stale local branch that is not checked out stays silent"
+git_q -C "$SUITE" checkout -q -b stale; : > "$SUITE/old.py"; git_q -C "$SUITE" add -A; git_q -C "$SUITE" commit -qm "squash-merged long ago"
+git_q -C "$SUITE" checkout -q work
+out="$(run4)"
+hasnt "no neighbour FAIL for a branch nobody works on" "FAIL neighbour" "$out"
+
+echo "~ in a recorded path resolves against HOME"
+echo "again" >> "$SUITE/tool.py"
+printf '{"repos":{"my-suite":{"path":"~/suite"}}}\n' > "$B4/config/ecosystem.json"
+out="$(cd "$B4" && HOME="$TMP" CLAUDE_PROJECT_DIR="$B4" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" --pre-commit 2>&1 </dev/null)"
+has "tilde path is followed" "FAIL neighbour repo my-suite" "$out"
+
+echo "no lockfile: nothing to check, nothing printed"
+rm -f "$B4/config/ecosystem.json"
+out="$(run4)"
+hasnt "no neighbour line without config/ecosystem.json" "neighbour repo" "$out"
 # --- fold cadence (B-17): the skill step bounds the log it writes ------------------------
 # Measured on the proving brain: the log grew 26 KB -> 81 KB -> 153 KB between weekly
 # scans because the fold only ever ran by hand. With the instance threshold set, the

@@ -95,6 +95,41 @@ if [ -d "$SM_REPO/.git" ]; then
   fi
 fi
 
+# 2b) neighbour repos — the brain's commit gate saw ONE working tree, while the rules send
+# every tool change to a suite repo next to it ("commits go THERE"). Coherence-scan
+# 2026-09-18 §P1-12: a suite patched on a work branch stayed uncommitted on the machine,
+# the close said "persisted — you can shut down", and the other machine never saw it.
+# The repos are the ones the brain already records in its ecosystem lockfile
+# (config/ecosystem.json, written by scripts/ecosystem-sync.py) — no second list. The
+# brain root itself is step 4 of the skill; the shared-memory repo has its own line above.
+# A repo another session left dirty is reported too: the line says what is on the disk,
+# the skill decides whose it is.
+eco=config/ecosystem.json
+if [ -f "$eco" ] && command -v node >/dev/null 2>&1; then
+  self=$(pwd -P)
+  sm_real=$(cd "$SM_REPO" 2>/dev/null && pwd -P)
+  node -e 'const r=(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).repos)||{};for(const [n,v] of Object.entries(r)){if(v&&v.path)console.log(n+"\t"+v.path)}' "$eco" 2>/dev/null |
+  while IFS="$(printf '\t')" read -r name p; do
+    p=$(printf '%s' "$p" | tr -d '\r')
+    case "$p" in "~"|"~/"*) p="$HOME${p#\~}" ;; esac
+    [ -e "$p/.git" ] || continue
+    real=$(cd "$p" 2>/dev/null && pwd -P) || continue
+    [ "$real" = "$self" ] && continue
+    [ -n "$sm_real" ] && [ "$real" = "$sm_real" ] && continue
+    n_dirty=$(git -C "$p" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    # HEAD, not --branches: suite clones keep stale local branches (squash-merged PRs,
+    # history branches) that are on no remote and never will be — measured 2026-09-30 on
+    # the proving brain, three suites each with a permanent "unpushed" count that no
+    # session could clear. What a session leaves behind is on the branch it worked on.
+    n_unpushed=$(git -C "$p" log HEAD --not --remotes --oneline 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${n_dirty:-0}" -gt 0 ] || [ "${n_unpushed:-0}" -gt 0 ]; then
+      echo "FAIL neighbour repo $name: ${n_dirty} uncommitted file(s), ${n_unpushed} unpushed commit(s) in $p — if this session wrote there, commit and push before the session ends, or say why not"
+      printf '\n## Neighbour repo %s: NOT delivered\n%s uncommitted, %s unpushed in %s.\n' \
+        "$name" "$n_dirty" "$n_unpushed" "$p" >> .claude/HANDOFF.md
+    fi
+  done
+fi
+
 # 3) session-log: one line per session (lightweight change log) — see the header.
 log=docs/maintenance/session-log.md
 branch=$(git branch --show-current 2>/dev/null)
