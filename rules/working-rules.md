@@ -76,7 +76,7 @@ instance and every colleague files it the same way and lists stay compatible:
    - `reach:` project | brain | shared (see 3.)
    - `origin:` operator | derived (derived = proposal, needs an OK). Legacy lists
      may still carry the instance's documented operator name as the value
-     (e.g. `origin: Emil`) or the older `von: <name>` marker — aggregators and
+     (e.g. `origin: Alex`) or the older `von: <name>` marker — aggregators and
      scan prompts MUST match both forms; new entries write `operator`.
 2. **Every overview above the detail lists is GENERATED, never hand-maintained.**
    A second hand-kept list drifts — measured repeatedly. Aggregation is a script's

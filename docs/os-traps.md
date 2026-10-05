@@ -302,7 +302,7 @@ known:     scripts/onboarding-verify.sh=1 scripts/test-onboarding-leak-check.sh=
 instances: 1
 repeat:    no
 status:    closed
-note:      Measured 2026-09-15 on the second Windows machine (emil-workstation), in check 8
+note:      Measured 2026-09-15 on the second Windows machine (alex-workstation), in check 8
 of onboarding-verify.sh. The Claude Code harness hands its scratchpad root out in the SHORT
 spelling; a local guard log had recorded it, and the leak check reported the brain's own home
 path as a foreign leak — the exact failure the surrounding fix set out to remove, one spelling
@@ -335,7 +335,7 @@ known:     scripts/brain-friction.py=3 scripts/dep-install.py=2 scripts/ecosyste
 instances: 1
 repeat:    no
 status:    open
-note:      Measured 2026-09-24 on emil-workstation (Windows 11, Git Bash, Python 3.14),
+note:      Measured 2026-09-24 on alex-workstation (Windows 11, Git Bash, Python 3.14),
 core v1.3.38. `brain-check.sh --brief` — the form the session-start hook runs — printed
 `[: 1<0x97> decide each, none of them is a verdict.: integer expression expected` and then
 took its "needs a look" branch, while a hand-run `brain-check.sh` was green. Cause:

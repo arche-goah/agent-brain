@@ -21,7 +21,7 @@ git -C "$B" init -q; git -C "$B" -c user.email=t@t -c user.name=t commit -q --al
 # -a: this count IS the verdict, and Git Bash may call the bootup's stream binary (OS-5).
 run() { (cd "$B" && CLAUDE_PROJECT_DIR="$B" BRAIN_SELFTEST_BG=1 bash "$BOOTUP" 2>/dev/null | grep -ac '^task OPEN:'); }
 
-printf '# Orders\n\n## Offen (bestellt)\n\n- [ ] **deutsche Bestellung** — von: Emil\n  id: a\n\n## Vorgeschlagen (abgeleitet)\n\n- [ ] **Vorschlag** — abgeleitet\n  id: b\n\n## Erledigt\n\n- [x] **fertig**\n' > "$B/docs/maintenance/brain-scan-auftraege.md"
+printf '# Orders\n\n## Offen (bestellt)\n\n- [ ] **deutsche Bestellung** — von: Alex\n  id: a\n\n## Vorgeschlagen (abgeleitet)\n\n- [ ] **Vorschlag** — abgeleitet\n  id: b\n\n## Erledigt\n\n- [x] **fertig**\n' > "$B/docs/maintenance/brain-scan-auftraege.md"
 [ "$(run)" = 1 ] && ok "1 German headings: one open order counted, the proposal not" || bad "1 German list: got $(run) task OPEN lines"
 
 cp "$ROOT/templates/brain-scan-orders.md" "$B/docs/maintenance/brain-scan-auftraege.md"

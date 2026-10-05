@@ -76,7 +76,7 @@ run_case rule-plus-instruction '"Ein Motorfader haelt nie von selbst.\n\n1. **Pu
 # --- negative controls: each half alone stays silent ---
 run_case rule-alone '"Im Konflikt gewinnt immer der, der zuletzt loslaesst."' - allow
 run_case action-alone '"Layout gebaut, gelintet, 0 Probleme."' Write allow
-run_case quoted-rule '"Emil sagte: \"das gewinnt immer der Motor\" — daher die Frage."' AskUserQuestion allow
+run_case quoted-rule '"Alex sagte: \"das gewinnt immer der Motor\" — daher die Frage."' AskUserQuestion allow
 run_case plain-observation '"Von 270 Hand-Paketen trugen 0 den Pult-Wert."' Write allow
 run_case talk-about-the-rule '"Die Formulierung `immer wenn` ist genau das Muster."' Write allow
 
