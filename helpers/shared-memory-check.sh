@@ -58,8 +58,26 @@ if [[ -z "$LAST_SEEN" ]]; then
   exit 0
 fi
 
-# Already current. A check that came back clean is silence, not a line.
+# OPEN REQUESTS (2026-10-05) — independent of the cursor. The cursor moves when a start
+# SHOWS an entry, not when anyone answers it: measured, three requests addressed to this
+# instance were shown once, never relayed, and every later start was silent. So every start
+# lists what is addressed to us by name and not yet answered, new or not.
+open_requests() {
+  local inbox py
+  inbox="$(dirname "${BASH_SOURCE[0]:-$0}")/../scripts/shared-memory-inbox.py"
+  py=python3
+  "$py" -c 'import sys' >/dev/null 2>&1 || py=python
+  [[ -f "$inbox" ]] && "$py" -c 'import sys' >/dev/null 2>&1 || return 0
+  "$py" "$inbox" --open --repo "$REPO" --to "$REMOTE_HEAD" 2>/dev/null
+}
+
+# Already current. Clean is ONE line, not silence (operator order 2026-10-05: "zumindest
+# hören 'nichts neues'") — a start that prints nothing cannot be told apart from a check
+# that never ran. The earlier rule "a clean check is silence" was right for briefing prose,
+# wrong for a carrier the operator relies on to know the channel is alive.
 if [[ "$LAST_SEEN" == "$REMOTE_HEAD" ]]; then
+  echo "shared-memory: nothing new since last start"
+  open_requests
   exit 0
 fi
 
@@ -113,5 +131,6 @@ INBOX="$(dirname "${BASH_SOURCE[0]:-$0}")/../scripts/shared-memory-inbox.py"
 if [[ -f "$INBOX" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; then
   "$PY" "$INBOX" --repo "$REPO" --from "$LAST_SEEN" --to "$REMOTE_HEAD" 2>/dev/null
 fi
+open_requests
 
 write_state
