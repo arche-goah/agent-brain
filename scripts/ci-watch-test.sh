@@ -26,9 +26,25 @@ case "${CI_WATCH_STUB:?}" in
               if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
               else touch "$f"; echo '[{"bucket":"pending"},{"bucket":"pass"}]'; fi ;;
   gh_broken)  echo "HTTP 500 boom" >&2; exit 1 ;;
-  ref_green)  echo '[{"headBranch":"v9.9.9","status":"completed","conclusion":"success"}]' ;;
-  ref_red)    echo '[{"headBranch":"v9.9.9","status":"completed","conclusion":"failure"}]' ;;
-  ref_absent) echo '[{"headBranch":"main","status":"completed","conclusion":"success"}]' ;;
+  # Ref mode resolves the ref's commit via `gh api repos/<r>/commits/<ref>` first.
+  ref_green)  [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+              echo '[{"headBranch":"v9.9.9","headSha":"abc123","status":"completed","conclusion":"success"}]' ;;
+  ref_red)    [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+              echo '[{"headBranch":"v9.9.9","headSha":"abc123","status":"completed","conclusion":"failure"}]' ;;
+  ref_absent) [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+              echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success"}]' ;;
+  # 2026-10-05: a fast second workflow finished green on the same push while CI went red.
+  # The old code took runs[0] (newest of ANY workflow) and said green.
+  ref_mixed)  [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+              echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"dynamic"},
+                     {"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"failure","name":"CI"}]' ;;
+  # ...and a green run of an OLDER commit must not count for the current tip.
+  ref_oldsha) [[ "${1:-}" == api ]] && { echo new999; exit 0; }
+              echo '[{"headBranch":"main","headSha":"old111","status":"completed","conclusion":"success"}]' ;;
+  # one workflow of the tip still running: not a verdict yet.
+  ref_partial) [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+              echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"dynamic"},
+                     {"headBranch":"main","headSha":"abc123","status":"in_progress","conclusion":"","name":"CI"}]' ;;
   # A conflicted PR: `pr checks` sees nothing (GitHub never creates the run),
   # `pr view --json mergeable` names the reason. Two flavors: gh error wording / empty list.
   pr_conflict)      if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then echo "CONFLICTING"
@@ -97,6 +113,9 @@ check "green checks + stale conflict read heals to green"             pr_green_c
 check "ref (tag) success"               ref_green  0 ref v9.9.9
 check "ref (tag) failure"               ref_red    1 ref v9.9.9
 check "ref never appears = timeout(2)"  ref_absent 2 ref v9.9.9 2
+check "ref: green side-workflow + red CI on the same commit = RED"  ref_mixed   1 ref main
+check "ref: green run of an OLDER commit does not count = timeout(2)" ref_oldsha 2 ref main 2
+check "ref: one workflow of the tip still running = no verdict, timeout(2)" ref_partial 2 ref main 2
 check "gh hard error in ref mode"       gh_broken  2 ref v9.9.9
 
 echo
