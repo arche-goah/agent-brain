@@ -140,19 +140,35 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     exit 0
   fi
 
-  # ref mode: match the run's headBranch FIELD — tag runs land there too.
-  json=$(gh run list -R "$REPO" --limit 30 --json headBranch,status,conclusion 2>&1) \
+  # ref mode: the verdict belongs to the commit the ref points at NOW, across EVERY
+  # workflow that ran on it. Until 2026-10-05 this took runs[0] — the newest run of ANY
+  # workflow on the branch: measured, a one-minute "dynamic" run on main reported success
+  # while the five-minute CI run of the same push was still going and then went red, and
+  # a run of an OLDER commit counted for a newer tip. Both read as "main is green".
+  # The commits endpoint resolves a branch AND a tag (peeled) to its commit.
+  sha=$(gh api "repos/$REPO/commits/$TARGET" --jq .sha 2>/dev/null)
+  if [[ -z "$sha" ]]; then
+    if (( warned_no_run == 0 )); then
+      echo "ci-watch: ref '$TARGET' not resolvable on $REPO yet — waiting" >&2
+      warned_no_run=1
+    fi
+    sleep "$POLL"; continue
+  fi
+  json=$(gh run list -R "$REPO" --limit 50 --json headBranch,headSha,status,conclusion,name 2>&1) \
     || fail_unknown "gh run list failed: $(head -c 200 <<<"$json")"
   verdict=$("$PY" -c '
 import json, sys
-ref = sys.argv[1]
-runs = [r for r in json.load(sys.stdin) if r.get("headBranch") == ref]
+ref, sha = sys.argv[1], sys.argv[2]
+runs = [r for r in json.load(sys.stdin) if r.get("headBranch") == ref and r.get("headSha") == sha]
 if not runs:
     print("none - -")
+elif any(r.get("status") != "completed" for r in runs):
+    print("found in_progress -")
 else:
-    r = runs[0]  # newest first
-    print("found", r.get("status") or "-", r.get("conclusion") or "-")
-' "$TARGET" <<<"$json" 2>/dev/null) || fail_unknown "unparseable gh run list output"
+    bad = [r.get("conclusion") for r in runs
+           if r.get("conclusion") not in ("success", "skipped", "neutral")]
+    print("found completed", bad[0] if bad else "success")
+' "$TARGET" "$sha" <<<"$json" 2>/dev/null) || fail_unknown "unparseable gh run list output"
   read -r found status conclusion <<<"$verdict"
 
   if [[ "$found" == "none" ]]; then
