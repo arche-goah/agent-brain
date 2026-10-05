@@ -76,7 +76,7 @@ run_case promise-word '"I promise to stay off the rig while the show is running.
 run_case commitment-alone '"I will not touch the desk."' allow
 run_case condition-alone '"The export runs until the colleague answers."' allow
 run_case positive-commitment '"I will rebuild the layout while the render finishes."' allow
-run_case quoted-promise '"Emil sagte: \"ich fasse nichts an, solange es laeuft\" — daher die Frage."' allow
+run_case quoted-promise '"Alex sagte: \"ich fasse nichts an, solange es laeuft\" — daher die Frage."' allow
 run_case plain-report '"Committed and pushed; the fixture is green for now."' allow
 
 # --- the pairing must be per SENTENCE, not per turn: a commitment in one sentence and

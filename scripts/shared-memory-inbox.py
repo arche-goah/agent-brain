@@ -16,7 +16,7 @@ TWO SOURCES, because the repo carries messages in two places:
 A fact file whose path the new LOG text already names is not printed twice.
 
 WHO "THIS INSTANCE" IS comes from SHARED_MEMORY_SELF (instance data, e.g. the `env` block
-of the instance's settings.json): comma-separated tokens such as `emil-macos,emil`. An
+of the instance's settings.json): comma-separated tokens such as `alex-macos,alex`. An
 entry is dropped when its sender is one of them; it is kept when its addressees name one
 of them or everyone (`alle`, `all`, `everyone`, …), or when it names no addressee at all.
 Unset: nothing is filtered and the header says so — a filter that silently guesses
