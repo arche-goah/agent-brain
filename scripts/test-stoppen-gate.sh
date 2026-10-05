@@ -55,7 +55,7 @@ run_case en-want-me '"Tests are green. Do you want me to tag the release?"' bloc
 # Negative direction
 run_case clean '"Erledigt und verifiziert, Messwert im Log. Bericht folgt unten."' allow "$CWD"
 run_case quoted '"Die Regel verbietet Schlussfragen wie \"soll ich weitermachen?\" am Turn-Ende."' allow "$CWD"
-run_case option-q '"Offene Frage an Emil: welcher Kanal ist gemeint?"' allow "$CWD"
+run_case option-q '"Offene Frage an Alex: welcher Kanal ist gemeint?"' allow "$CWD"
 
 # Language-as-data contract: a Czech pattern in the instance file must grip
 # identically — no code change, same key (T3: examples are EXAMPLES).

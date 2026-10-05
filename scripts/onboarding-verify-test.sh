@@ -68,7 +68,7 @@ run "$T/nowhere"
   || bad "no brain: report not in the working directory"
 
 # --- 5 a verify run is no session: the shared-memory cursor stays where it was -------
-# (bojan-reiselaptop 2026-09-30: check 5 ran the bootup, which moved the cursor past
+# (sam-reiselaptop 2026-09-30: check 5 ran the bootup, which moved the cursor past
 # entries no session had shown.) The stub bootup advances the cursor like the real one.
 B5="$T/brain5"; make_brain "$B5"; mkdir -p "$B5/core/helpers" "$B5/config"
 printf '{"hooks":{"SessionStart":[{"hooks":[{"command":"core/helpers/session-bootup.sh"}]}]}}\n' > "$B5/.claude/settings.json"
