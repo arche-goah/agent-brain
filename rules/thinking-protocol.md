@@ -30,6 +30,10 @@ Before each of these actions, internal thinking is REQUIRED:
      carries without it. (Incident: "completed yesterday" claimed for an event
      whose install record said SAME day — "yesterday" was derived from the phrase
      "next session" in a note, never from a timestamp.)
+     The rule targets UNMEASURED time words, not time words as such (operator
+     refinement 2026-08-19): a relative time word that is true is welcome, and the
+     running session's own history counts as a source — what happened earlier in
+     this conversation is measured by the transcript. No forced clock-time precision.
    - **Separate in the report:** measured / derived / assumed. No action is taken
      on assumptions.
    - **Self-tally is not a measurement:** The prose summary of an agent or a report
