@@ -1,6 +1,6 @@
 ---
 name: session-close
-description: Close a session cleanly — persist open work to memory, write handoff + session log, run the memory export, then give the explicit release "you can shut down". Use when the operator says "session abschliessen", "beende die session", "session beenden", "ich fahre jetzt (dann) alles runter", "kann ich die session beenden?", "wir sind fertig fuer heute", "mach schluss", "shutdown" — or the English equivalents "close the session", "end the session", "I'm shutting everything down now", "can I end the session?", "we're done for today", "wrap it up". NOT on a mere topic change.
+description: Close a session cleanly — persist open work (states to their ledger, lessons to memory), write handoff + session log, run the memory export, then give the explicit release "you can shut down". Use when the operator says "session abschliessen", "beende die session", "session beenden", "ich fahre jetzt (dann) alles runter", "kann ich die session beenden?", "wir sind fertig fuer heute", "mach schluss", "shutdown" — or the English equivalents "close the session", "end the session", "I'm shutting everything down now", "can I end the session?", "we're done for today", "wrap it up". NOT on a mere topic change.
 ---
 
 # Session Close (active shutdown)
@@ -12,9 +12,13 @@ then an explicit release follows.
 ## Procedure (in this order)
 
 1. **Secure open work (semantic — no script can do this):**
-   - Write unfinished orders / intermediate states / decisions of this session as memory,
-     or update existing memories (observe the auto-memory rules; maintain the MEMORY.md
-     index). Do not store anything already finished a second time.
+   - Unfinished orders and intermediate STATES go into the list that owns them — the
+     domain ledger or order list (Project Work Ledgers rule) — not into memory. Memory
+     gets what this session LEARNED (a lesson, observe the auto-memory rules and the
+     MEMORY.md index) plus a pointer to where the state lives. A state written to both
+     becomes two hand-kept copies; the next session updates the ledger, and the memory
+     keeps asserting the old state at every start. Do not store anything already
+     finished a second time.
    - **Research leaves a carrier (2026-08-21):** if this session read a live system in
      bulk (reference showfile, device readouts, exports, doc sweeps), the FINDINGS get a
      file before the close — memory file (instance), ledger entry, suite reference
@@ -93,6 +97,14 @@ then an explicit release follows.
    ```bash
    node "$CLAUDE_PROJECT_DIR"/core/helpers/memory-sync.cjs export
    ```
+   **If this session deleted, merged or renamed a memory file: run `memory-sync.cjs prune`
+   BEFORE `export`.** Export only adds and updates; a snapshot copy of a deleted memory
+   stays, and the next session's import brings the memory back.
+   `session-closing.sh` also writes `.claude/HANDOFF.md` (git state, last commits,
+   unpushed count — the HANDOFF step 4 checks) and prints a `FAIL` line for every repo
+   that is dirty or has unpushed commits on its checked-out branch: the shared-memory
+   repo, and every neighbour repo the brain records in `config/ecosystem.json` (suites
+   the rules send tool changes to). Each such line is handled in step 4.
 3. **Session log, semantic + decision log (since 2026-07-31, AFTER step 2):**
    - Append a short entry to `docs/maintenance/session-log.md`: 2-4 indented lines
      directly below the mechanical line from step 2 — the session's topic, decisions
@@ -121,8 +133,18 @@ then an explicit release follows.
      "Forgot" is not a reason — the 2026-08-01 incident (70 files uncommitted after
      close) must not happen again; asking and getting a "not now" is a fine outcome,
      silently forgetting is not.
-   - Then a quick check: `.claude/HANDOFF.md` fresh (timestamp), `docs/memory-snapshot/`
-     export ran (memory-sync output), working tree clean or the remainder justified.
+   - **The gate covers every repo this session wrote to, not only the brain.** Tool
+     changes go to suite repos next to the brain; a suite patch left uncommitted passes a
+     close that only looked at the brain's tree (coherence-scan 2026-09-18). For each
+     `FAIL neighbour repo` / `FAIL shared-memory` line from step 2: commit and push under
+     that repo's own rules, or name it in the close report with a reason (another
+     session's work counts as a reason — say so). A repo this session wrote to that the
+     lockfile does not list is checked by hand (`git status`) and named.
+   - Then a quick check: `.claude/HANDOFF.md` fresh (timestamp — written by
+     `session-closing.sh` in step 2), `docs/memory-snapshot/` export ran and a second
+     `memory-sync.cjs export` leaves it without a diff (anything else means a memory
+     changed after step 2 — export and commit it with the close), working tree clean or
+     the remainder justified.
 5. **Close report to the operator:** 3-5 lines — what was persisted, what stays open
    (with its location), then explicitly: "Persisted — you can shut down." Only after
    this report is the session closed. If the setup shares memory across instances, the
@@ -142,4 +164,8 @@ then an explicit release follows.
   point**, not the source.
 - The SessionEnd hook still runs on the real exit anyway (HANDOFF is overwritten — it is
   gitignored; the session log is left alone when step 2's stamp says this session already
-  wrote its line, so no hook touches a tracked file after the close commit).
+  wrote its line). An instance may also run `memory-sync.cjs export` at SessionEnd; it
+  touches `docs/memory-snapshot/` only when a memory changed after step 2 (an unchanged
+  export writes nothing, manifest included) — which is why step 4 re-runs the export and
+  expects no diff. With that check passed, no hook touches a tracked file after the close
+  commit.
