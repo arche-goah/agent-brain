@@ -17,6 +17,14 @@ Detection is the dual grep from the 2026-08-13 language invariant: umlauts alone
 blind to ASCII-transliterated German ("fuer", "gehoert"), so both classes count.
 Word list is deliberately conservative — a false red teaches ignoring.
 
+DETECTION BOUNDARY, deliberate and stated (T3, 2026-09-30): this ratchet recognises
+GERMAN drift only. French, Czech or Spanish text would pass unseen. That is a choice,
+not an oversight: German is the one measured drift source of the fleet that writes
+here, and a detector for languages nobody writes in would carry unmeasured word lists
+— the false reds this file warns about. The day a second working language writes to
+this repo, its detector belongs here the same way: umlaut-class + transliteration-class
+grep for THAT language, measured on real drift before it can fail a build.
+
 Since 2026-08-14 (LA1 audit) the ratchet also checks NAMES: a German token in a
 tracked file's PATH fails, regardless of content — the audit's trigger was that
 `rules/arbeitsregeln.md` sat invisible in a content-only check. Known legacy paths
@@ -46,11 +54,11 @@ TEXT_SUFFIX = {".md", ".py", ".sh", ".cjs", ".js", ".json", ".yml", ".yaml",
 # fixture ships a second language to prove that a language is data, and the stop
 # fixture feeds transliterated German to the orthography check. In both the German
 # IS the subject under test — translating it would delete the test.
-# stoppen-gate.cjs and its fixture join them on the same terms, and only on those terms:
-# the hook's prose is English, and its three flagged lines are the German entries of the
-# language pack — detection patterns, the same category as this file's own word list. The
-# fixture feeds German sentences BECAUSE they are what the pack must match. Neither file
-# may carry German explanation; if one ever does, it belongs out of this set again.
+# test-stoppen-gate.sh joins them on the same terms: it writes the German stop-pattern
+# pack as an instance file and feeds the sentences that pack must match. The HOOK itself
+# (stoppen-gate.cjs) left this set when its inline German pack moved out to instance data
+# (T3) — keeping an engine OUT of the skip set is what holds the layering "engine
+# built-ins English, every language is data": German creeping back into it fails here.
 # test-promise-gate.sh enters on exactly those terms (2026-09-12): its prose is English,
 # its German is the instance pattern file it writes and the sentences that file must
 # match — and its discriminator DEPENDS on German, because it proves the hit comes from
@@ -58,7 +66,7 @@ TEXT_SUFFIX = {".md", ".py", ".sh", ".cjs", ".js", ".json", ".yml", ".yaml",
 SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py",
               "skill-lint.py", "test-premise-gate.sh", "test-promise-gate.sh",
               "test-stop-checks.sh",
-              "stoppen-gate.cjs", "test-stoppen-gate.sh"}
+              "test-stoppen-gate.sh"}
 
 UMLAUT = re.compile(r"[äöüßÄÖÜ]")
 # Transliterated / bare German that does not occur in technical English. Extend only

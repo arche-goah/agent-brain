@@ -30,6 +30,7 @@
 # instance knowledge), and the hook fallback stays (a session that dies without the skill
 # still leaves a trace).
 set -u
+HERE="$(cd "$(dirname "$0")" && pwd)"   # before the cd below: $0 may be relative
 R="${CLAUDE_PROJECT_DIR:-$PWD}"
 cd "$R" || exit 0
 TS=$(date '+%F %T')
@@ -133,6 +134,22 @@ fi
 log=docs/maintenance/session-log.md
 branch=$(git branch --show-current 2>/dev/null)
 if [ "$pre_commit" -eq 1 ]; then
+  # Fold cadence (brain-scan B-17, decided 2026-08-22 on the proving brain): the log is
+  # written here anyway, so it is bounded here — continuously, instead of in rare bursts
+  # after a weekly scan finds the threshold torn (measured: 26 KB -> 81 KB -> 153 KB
+  # between scans, no fold ran without a person). The threshold is instance data
+  # (`SESSION_LOG_FOLD_MAX_BYTES` in the brain's settings env); unset = no fold, as
+  # before. Runs only in the skill step, BEFORE the close commit, so the commit carries
+  # log and fold file together; the hook path never folds (it must not touch a tracked
+  # file after that commit). A refusal is a WARN line, never a failed close.
+  if [ -n "${SESSION_LOG_FOLD_MAX_BYTES:-}" ]; then
+    PY=python3
+    "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+    fold_out=$("$PY" "$HERE/../scripts/session-log-fold.py" --root "$R" \
+      --max-bytes "$SESSION_LOG_FOLD_MAX_BYTES" --apply 2>&1) \
+      && printf '%s\n' "$fold_out" \
+      || printf 'WARN session-log fold: %s\n' "$fold_out"
+  fi
   mkdir -p .claude-state
   printf '%s\n' "$sid" > "$stamp"
   echo "- $TS | $branch | close${sm_line:+ | $sm_line}" >> "$log"

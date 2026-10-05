@@ -98,10 +98,32 @@ are EVIDENCE, never the carrier. When an insight is worth keeping:
    procedure — the causal model then loads exactly when the task class fires,
    instead of being recalled from memory.
 3. **The trigger is a per-task question, not a repetition counter.** At the
-   moment of doing a task, ask: "is this task's CLASS generalizable /
+   moment of doing a task, ask: "is this task's PROCEDURE CLASS generalizable /
    repeatable?" If yes, a skill/tool is due — propose it (build directly only
    where tool-first is ordered). Waiting to notice "done manually 3x" across
    sessions never fires: nothing counts repetitions.
+
+**Two class questions, two names — never one word for both** (operator
+instruction 2026-08-20). The core asks "class" in two places, and they are
+different questions:
+
+| | **Procedure class** | **Finding class** |
+|---|---|---|
+| Question | Is the ACTIVITY I am about to do repeatable? Is there a skill for it? | Is the DEFECT I found a one-off or a class? |
+| Object | my own way of working | the thing out there |
+| Place | FRONT, before the first move (#3 above, skill-first below) | BACK, at "done" (`thinking-protocol.md` Class Discipline, `verification-before-completion`) |
+| Why there | choosing a tool needs only the order, no data | needs data to be checked against |
+
+The boundary between them: the procedure class must NEVER pre-shape how data
+is read. When READING observations the order is reversed — first the single
+case **with all its subordinate clauses**, then the mechanism, and the class
+last, and only if it survives every single case. The subordinate clauses are
+what condensing drops first, and they carry the causality ("stays where I let
+go", "even when no finger holds it"). (Incident 2026-08-20: the front question
+slid from "which procedure do I use" to "what is this case in general" before a
+single observation was in; a summary built on that guess was refuted by the
+operator's second observation in the same message, and a decision draft had
+already been stacked on it.)
 
 **Skill-first order of inquiry (operator order 2026-08-19), on EVERY task,
 before the first move — and a task that ARISES mid-session is a task (the
@@ -109,7 +131,14 @@ check fires at the start of the WORK, not at the start of the session; the
 unexpected sub-job is exactly where improvisation happens) — intelligent analysis yes, but in this sequence:**
 
 1. **Is there a skill that covers this?** Use it. Never improvise alongside an
-   existing skill, not even "just this once".
+   existing skill, not even "just this once". That rank belongs to VERIFIED
+   skills only: a skill that contradicts the ledger, a primary source or a
+   live measurement LOSES — re-read the source before following the skill
+   (incident 2026-08-19, `macro5001`: written from session memory a day AFTER
+   the decision it silently omits, then followed instead of that decision).
+   A DRAFT (`_draft-<name>`, `status: draft`, `provenance:` per step —
+   CONVENTIONS §11) may be used, but it outranks nothing either: a prototype,
+   not an authority.
 2. **Does the skill COVER this task — the procedure, not just the topic?**
    Measured gap (operator finding 2026-08-20): a loaded skill answered step 1
    with "yes", step 2 asked only about TOOLS, and step 3 fires only when there

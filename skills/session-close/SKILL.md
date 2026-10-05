@@ -86,6 +86,14 @@ then an explicit release follows.
    ```
    `--pre-commit` writes the session-log line without post-commit state (the close commit
    carries it) and leaves an untracked stamp, so the SessionEnd hook does not write it again.
+   **It also bounds the log:** when the instance sets `SESSION_LOG_FOLD_MAX_BYTES` (its
+   settings `env`), a log above that size gets its oldest whole days folded down to half
+   of it by `scripts/session-log-fold.py` — entries moved byte-identically into
+   `docs/maintenance/session-log-folds/<id>.md`, one `- FOLD` marker line in their place,
+   reassembly verified before and after. That is not a clean-up of an append-only
+   protocol: nothing is edited, merged or dropped, and today's entries never move. The
+   fold line (or a `WARN session-log fold:` refusal) appears in the output; the fold file
+   goes into the close commit with the log. Unset = no fold. The hook path never folds.
    ```bash
    node "$CLAUDE_PROJECT_DIR"/core/helpers/memory-sync.cjs export
    ```
