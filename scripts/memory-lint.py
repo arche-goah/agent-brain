@@ -27,7 +27,9 @@ CHECKS (all read-only, no writes, stdlib only):
   4. dead-links     [[wikilink]] without a target file
   5. limits         MEMORY.md max 200 lines / 25600 bytes (enforced by harness)
                     + index ENTRY max 400 characters (checklist §5)
-  6. snapshot-drift Auto-Memory <-> docs/memory-snapshot/ (our DOUBLE STRUCTURE)
+  6. snapshot-drift Auto-Memory <-> docs/memory-snapshot/ (our DOUBLE STRUCTURE),
+                    plus manifest -> file: a `.sync-manifest.json` entry with no file
+                    on either side (a ghost)
 
 Usage: memory-lint.py [--memory DIR] [--snapshot DIR] [--json]
 Exit 0 = clean, 1 = findings, 2 = unreadable.
@@ -201,7 +203,16 @@ def lint(mem: Path, snap: Path | None) -> dict:
                     (snap / ".sync-manifest.json").read_text(encoding="utf-8")).get("files", {}))
             except Exception:
                 mirrored = {p.name for p in snap.glob("*.md")}   # no manifest -> evaluate everything
-            snap_files = {p.name for p in snap.glob("*.md")} & mirrored
+            present = {p.name for p in snap.glob("*.md")}
+            snap_files = present & mirrored
+            # Manifest -> file: an entry whose file is in NEITHER the snapshot nor the
+            # live memory is a ghost. The intersection above drops it silently, so
+            # "manifest lies" and "all in sync" printed the same "all clean" (measured
+            # 2026-09-07: a deleted memory stayed in the manifest for weeks). A live file
+            # missing from the snapshot is the "missing" finding below, not a ghost.
+            for ghost in sorted(mirrored - present - {s + ".md" for s in stems} - {INDEX}):
+                f["snapshot_drift"].append({"issue": "manifest entry without a file", "file": ghost,
+                                            "fix": "memory-sync.cjs prune"})
             for miss in sorted({s + ".md" for s in stems} - snap_files):
                 f["snapshot_drift"].append({"issue": "missing from the repo snapshot", "file": miss,
                                             "fix": "node core/helpers/memory-sync.cjs export"})
