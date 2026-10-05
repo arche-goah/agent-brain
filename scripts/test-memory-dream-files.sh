@@ -87,6 +87,14 @@ m = run([])
 console.log(m && m.includes('2 of 2') ? 'PASS nothing-found-loud' : 'FAIL nothing-found-loud: ' + m)
 m = run(all.map(n => 'C:\\Users\\someone\\scratch\\findings\\' + n))
 console.log(m === null ? 'PASS directory-spelling-ignored' : 'FAIL directory-spelling-ignored: ' + m)
+// assertReport: the 2026-10-02 incident (Write denied, path "" returned as success).
+const rr = (p, b) => { try { assertReport('/scratch/report-2026-10-05.md', p, b, 'fixture'); return null } catch (e) { return e.message } }
+console.log(rr('/scratch/report-2026-10-05.md', 1234) === null ? 'PASS report-written-silent' : 'FAIL report-written-silent')
+console.log(rr('C:\\x\\report-2026-10-05.md', 10) === null ? 'PASS report-directory-spelling-ignored' : 'FAIL report-directory-spelling-ignored')
+console.log(rr('', 0) !== null ? 'PASS empty-report-path-loud' : 'FAIL empty-report-path-loud')
+console.log(rr('/scratch/other.md', 50) !== null ? 'PASS wrong-report-path-loud' : 'FAIL wrong-report-path-loud')
+console.log(rr('/scratch/report-2026-10-05.md', 0) !== null ? 'PASS zero-byte-report-loud' : 'FAIL zero-byte-report-loud')
+console.log(rr('/scratch/report-2026-10-05.md', undefined) !== null ? 'PASS unmeasured-report-loud' : 'FAIL unmeasured-report-loud')
 JS
 
 out="$(FOUND_ALL="$FOUND_ALL" FOUND_ONE_MISSING="$FOUND_ONE_MISSING" node "$TMP/harness.js" 2>&1)" \

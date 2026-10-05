@@ -90,6 +90,19 @@ const assertFiles = (expected, found, what) => {
     throw new Error(`${what}: ${missing.length} of ${expected.length} file(s) missing — ${missing.map(fileName).join(', ')}. Aborting instead of continuing on a partial corpus (rules/intelligence.md, "only the producer writes").`)
   }
 }
+// The report is the deliverable, and a returned path is a claim. Measured 2026-10-02 on a
+// Windows brain: the harness denied the report agent its Write, the agent returned
+// report_path "" and the workflow finished as a normal success. The script has no file
+// access, so the gate is: the path must be EXACTLY the one the script named, and the
+// writer must return the byte count it MEASURED (wc -c) — empty path or 0 bytes aborts.
+const assertReport = (expected, claimedPath, bytes, what) => {
+  if (!claimedPath || fileName(claimedPath) !== fileName(expected)) {
+    throw new Error(`${what}: report path is "${claimedPath || ''}", expected ${fileName(expected)} — the report was not written where the script asked. Aborting instead of returning a run without its deliverable.`)
+  }
+  if (!(Number(bytes) > 0)) {
+    throw new Error(`${what}: ${fileName(expected)} measured at ${bytes === undefined ? 'no' : bytes} bytes — an empty or unmeasured report is not a report. Aborting.`)
+  }
+}
 // ── Producer-writes helpers (end)
 
 // ── Phase 1: Analysis (2 independent perspectives) ────────────────────────
@@ -126,12 +139,13 @@ Structure: header (file/line counts, limits), findings by severity with proposal
 "Merge/delete candidates" as a table, closing section "Implementation ONLY after operator OK —
 respect the snapshot rule: memory changes via auto-memory + memory-sync export, never
 docs/memory-snapshot/ directly". NO change to memory files.
-Return via StructuredOutput: files_read (every data file you actually read, from your ls), report_path, p0_count, p1_count, finding_count.`,
+After writing, MEASURE the report: run \`wc -c < ${REPORT}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.
+Return via StructuredOutput: files_read (every data file you actually read, from your ls), report_path, report_bytes, p0_count, p1_count, finding_count.`,
   { label: 'report', phase: 'Report', schema: {
-    type: 'object', required: ['files_read', 'report_path', 'finding_count'],
+    type: 'object', required: ['files_read', 'report_path', 'report_bytes', 'finding_count'],
     properties: {
       files_read: { type: 'array', items: { type: 'string' }, maxItems: 20 },
-      report_path: { type: 'string' }, p0_count: { type: 'number' }, p1_count: { type: 'number' }, finding_count: { type: 'number' },
+      report_path: { type: 'string' }, report_bytes: { type: 'number' }, p0_count: { type: 'number' }, p1_count: { type: 'number' }, finding_count: { type: 'number' },
     },
   } },
 )
@@ -142,5 +156,6 @@ assertFiles(lensFiles, rep.files_read, 'report: analysis files read from disk')
 const p0Machine = analyses.reduce((n, r) => n + (r.p0_count || 0), 0)
 const p1Machine = analyses.reduce((n, r) => n + (r.p1_count || 0), 0)
 assertCount(rawCount, rep.finding_count, 'memory-dream findings read by the report')
+assertReport(REPORT, rep.report_path, rep.report_bytes, 'memory-dream report')
 
 return { report: rep.report_path, befunde: rawCount, p0: p0Machine, p1: p1Machine }

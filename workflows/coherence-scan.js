@@ -101,6 +101,19 @@ const assertFiles = (expected, found, what) => {
     throw new Error(`${what}: ${missing.length} of ${expected.length} file(s) missing — ${missing.map(fileName).join(', ')}. Aborting instead of continuing on a partial corpus (rules/intelligence.md, "only the producer writes").`)
   }
 }
+// The report is the deliverable, and a returned path is a claim. Measured 2026-10-02 on a
+// Windows brain: the harness denied the report agent its Write, the agent returned
+// report_path "" and the workflow finished as a normal success. The script has no file
+// access, so the gate is: the path must be EXACTLY the one the script named, and the
+// writer must return the byte count it MEASURED (wc -c) — empty path or 0 bytes aborts.
+const assertReport = (expected, claimedPath, bytes, what) => {
+  if (!claimedPath || fileName(claimedPath) !== fileName(expected)) {
+    throw new Error(`${what}: report path is "${claimedPath || ''}", expected ${fileName(expected)} — the report was not written where the script asked. Aborting instead of returning a run without its deliverable.`)
+  }
+  if (!(Number(bytes) > 0)) {
+    throw new Error(`${what}: ${fileName(expected)} measured at ${bytes === undefined ? 'no' : bytes} bytes — an empty or unmeasured report is not a report. Aborting.`)
+  }
+}
 // ── Producer-writes helpers (end)
 
 // ── Phase 1: Inventory ─────────────────────────────────────────────────────
@@ -239,12 +252,13 @@ phase('Register')
 const p0Machine = surviving.filter(f => f.severity === 'P0').length
 const p1Machine = surviving.filter(f => f.severity === 'P1').length
 const report = await agent(
-  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.\nDATA BASIS ON DISK — read ALL of these completely before writing, never from memory of earlier stages: ${MERGED} (the consolidated findings, full text) and ${verifyFiles.join(', ')} (verdicts with reasoning). The findings that survived verification (index; REFUTED ones are already removed by the script — write exactly these, nothing more, nothing less): ${relay(surviving, 8000, 'surviving index')}\n\nAUTHORITATIVE numbers (machine-derived from the verified index): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if a summary in the files deviates from them, the index wins. Return them unchanged — a deviation in your returned counts aborts the run.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — explicitly: EVERY fix needs the operator's decision.\nTHEN append the P0/P1 findings to ${AUFTRAEGE} under the existing structure as proposal items, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), 1 line each with a pointer to the register — implement NONE of it.\nReturn via StructuredOutput: files_read (every data file you read, from your ls), report_path, findings_written (count the finding entries in the register you wrote — measure, e.g. grep -c on the finding headings), p0_count, p1_count, appended_orders.`,
+  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.\nDATA BASIS ON DISK — read ALL of these completely before writing, never from memory of earlier stages: ${MERGED} (the consolidated findings, full text) and ${verifyFiles.join(', ')} (verdicts with reasoning). The findings that survived verification (index; REFUTED ones are already removed by the script — write exactly these, nothing more, nothing less): ${relay(surviving, 8000, 'surviving index')}\n\nAUTHORITATIVE numbers (machine-derived from the verified index): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if a summary in the files deviates from them, the index wins. Return them unchanged — a deviation in your returned counts aborts the run.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — explicitly: EVERY fix needs the operator's decision.\nTHEN append the P0/P1 findings to ${AUFTRAEGE} under the existing structure as proposal items, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), 1 line each with a pointer to the register — implement NONE of it.\nAfter writing, MEASURE the register: run \`wc -c < ${REGISTER}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.\nReturn via StructuredOutput: files_read (every data file you read, from your ls), report_path, report_bytes, findings_written (count the finding entries in the register you wrote — measure, e.g. grep -c on the finding headings), p0_count, p1_count, appended_orders.`,
   { label: 'register', phase: 'Register', schema: {
-    type: 'object', required: ['files_read', 'report_path', 'findings_written', 'p0_count', 'p1_count'],
+    type: 'object', required: ['files_read', 'report_path', 'report_bytes', 'findings_written', 'p0_count', 'p1_count'],
     properties: {
       files_read: { type: 'array', items: { type: 'string' }, maxItems: 20 },
       report_path: { type: 'string' },
+      report_bytes: { type: 'number' },
       findings_written: { type: 'number' },
       p0_count: { type: 'number' }, p1_count: { type: 'number' },
       appended_orders: { type: 'number' },
@@ -256,6 +270,7 @@ assertFiles([MERGED, ...verifyFiles], report.files_read, 'register: data files r
 assertCount(surviving.length, report.findings_written, 'coherence-scan register findings')
 assertCount(p0Machine, report.p0_count, 'coherence-scan P0')
 assertCount(p1Machine, report.p1_count, 'coherence-scan P1')
+assertReport(REGISTER, report.report_path, report.report_bytes, 'coherence-scan register')
 
 return {
   register: report.report_path,
