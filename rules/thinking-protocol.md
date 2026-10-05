@@ -80,10 +80,14 @@ Before each of these actions, internal thinking is REQUIRED:
 
 A fix hits the instance the incident names; the class stays open and comes back
 (measured on a proving instance: five classes, up to 15 single fixes of the same
-root in 12 days). A found defect therefore counts as done only when the CLASS is
-addressed: (1) name the invariant, not the anecdote, (2) enumerate by SEARCH, not
-by recollection, (3) close or register every found site. The class question is a
-search, not speculation — executed, it returns measurements.
+root in 12 days). A found defect therefore counts as done only when the FINDING
+CLASS is addressed: (1) name the invariant, not the anecdote, (2) enumerate by
+SEARCH, not by recollection, (3) close or register every found site. The
+finding-class question is a search, not speculation — executed, it returns
+measurements. It is NOT the procedure-class question ("is my activity
+repeatable, is there a skill?"), which is asked up front and needs no data —
+`rules/intelligence.md`, Knowledge Carriers, keeps the two apart; letting the
+front one shape how observations are read is the failure it names.
 
 This rule deliberately does NOT carry the mechanics. They live in:
 - skill `verification-before-completion` (the Class Gate, runs at "done"),
