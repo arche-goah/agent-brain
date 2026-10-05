@@ -202,7 +202,10 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
         status = st.group(1).lower() if st else ""
         if status in CLOSED_STATUS:
             continue
-        if status != "open" and not p.stem.lower().startswith(prefixes):
+        # `status: open` marks a request only when it is addressed to us ALONE — a status
+        # broadcast to three parties carries the same field (Windows check on #193, finding 2).
+        only_us = not (tokens(e["audience"]) - me)
+        if not p.stem.lower().startswith(prefixes) and not (status == "open" and only_us):
             continue
         when = e["date"] or git(repo, "log", "-1", "--format=%as", ref, "--", rel).strip()
         if floor and when and when < floor:
@@ -218,12 +221,54 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
                 answered = any(tokens(s) & me and stem in body
                                for s, body in log_section_senders(htext))
             else:
-                answered = bool(tokens(read_entry(repo / hrel, repo, text=htext)["von"]) & me)
+                # Ours, or anyone's file that declares itself the answer (`answers: <stem>`) —
+                # a request to "either of two machines" is closed by the one that answered
+                # (Windows check on #193, finding 1).
+                hhead = htext.split("\n---", 1)[0] if htext.startswith("---") else ""
+                answered = (bool(tokens(read_entry(repo / hrel, repo, text=htext)["von"]) & me)
+                            or bool(re.search(r"^\s+answers:.*" + re.escape(stem), hhead, re.M)))
             if answered:
                 break
         if not answered:
             text = first_sentence(e["desc"] or e["name"], TEXT_CAP)
             items.append((when or "?", e["topic"], e["von"] or "?", f"{text} ({rel})"))
+    return items + log_only_items(repo, ref, me, floor)
+
+
+def log_only_items(repo: Path, ref: str, me: set[str], floor: str) -> list[tuple]:
+    """Messages to us BY NAME that live only as a LOG heading (no fact file named in the body).
+
+    The shape of the 2026-10-04 incident and of finding 3 of the Windows check on #193: once
+    the cursor passes such a heading, nothing else carries it. Open until one of OUR later
+    headings (any topic, same day or later) is addressed to the sender — a reply in the
+    conversation stream. Wrong only in the safe direction: an answer given elsewhere keeps
+    it listed until we next write to that party.
+    """
+    heads: list[tuple] = []  # (date, topic, sender, to_tokens, title, body)
+    for rel in git(repo, "ls-tree", "-r", "--name-only", ref).splitlines():
+        if not (rel.endswith("/LOG.md") or rel == "LOG.md"):
+            continue
+        topic = rel.split("/")[0] if "/" in rel else "root"
+        for i, (sender, body) in enumerate(log_section_senders(git(repo, "show", f"{ref}:{rel}"))):
+            m = HEADING.match(body.splitlines()[0]) if body else None
+            if not m:
+                continue
+            date, _, title = m.groups()
+            to = addressees(title or "")
+            heads.append((date, topic, i, sender, tokens(to) if to else set(), title or "", body))
+    items = []
+    for date, topic, idx, sender, to, title, body in heads:
+        if not (to & me) or tokens(sender) & me or (floor and date < floor):
+            continue
+        if re.search(r"[\w./-]+\.md\b", "\n".join(body.splitlines()[1:])):
+            continue  # points at a fact file — the file path above judges it
+        # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
+        # another LOG cannot be ordered, so it does not count (safe direction).
+        replied = any(tokens(s) & me and tokens(sender) & t
+                      and (d > date or (tp == topic and j > idx))
+                      for d, tp, j, s, t, _, _ in heads)
+        if not replied:
+            items.append((date, topic, sender, first_sentence(title, TEXT_CAP) + " (LOG)"))
     return items
 
 
