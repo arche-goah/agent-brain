@@ -55,7 +55,10 @@ rule file.
 
 **Audit rule:** session-log + decision-log are PROTOCOLS, not a fact-knowledge base —
 append-only history, never "clean up"/consolidate, never treat facts from them as
-current state.
+current state. A FOLD is not a clean-up: it moves old entries byte-identically into an
+immutable fold file and leaves a marker line — nothing is edited or dropped. The
+session log is folded at session close above the instance's threshold
+(`SESSION_LOG_FOLD_MAX_BYTES`, skill `session-close` step 2).
 
 ## Project Work Ledgers (operator decision 2026-08-13)
 
