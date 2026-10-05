@@ -71,8 +71,8 @@ open_requests() {
   "$py" "$inbox" --open --repo "$REPO" --to "$REMOTE_HEAD" 2>/dev/null
 }
 
-# Already current. Clean is ONE line, not silence (operator order 2026-10-05: "zumindest
-# hören 'nichts neues'") — a start that prints nothing cannot be told apart from a check
+# Already current. Clean is ONE line, not silence (operator order 2026-10-05: "at least
+# tell me 'nothing new'") — a start that prints nothing cannot be told apart from a check
 # that never ran. The earlier rule "a clean check is silence" was right for briefing prose,
 # wrong for a carrier the operator relies on to know the channel is alive.
 if [[ "$LAST_SEEN" == "$REMOTE_HEAD" ]]; then
