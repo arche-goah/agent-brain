@@ -55,7 +55,10 @@ rule file.
 
 **Audit rule:** session-log + decision-log are PROTOCOLS, not a fact-knowledge base —
 append-only history, never "clean up"/consolidate, never treat facts from them as
-current state.
+current state. A FOLD is not a clean-up: it moves old entries byte-identically into an
+immutable fold file and leaves a marker line — nothing is edited or dropped. The
+session log is folded at session close above the instance's threshold
+(`SESSION_LOG_FOLD_MAX_BYTES`, skill `session-close` step 2).
 
 ## Project Work Ledgers (operator decision 2026-08-13)
 
@@ -73,7 +76,7 @@ instance and every colleague files it the same way and lists stay compatible:
    - `reach:` project | brain | shared (see 3.)
    - `origin:` operator | derived (derived = proposal, needs an OK). Legacy lists
      may still carry the instance's documented operator name as the value
-     (e.g. `origin: Emil`) or the older `von: <name>` marker — aggregators and
+     (e.g. `origin: Alex`) or the older `von: <name>` marker — aggregators and
      scan prompts MUST match both forms; new entries write `operator`.
 2. **Every overview above the detail lists is GENERATED, never hand-maintained.**
    A second hand-kept list drifts — measured repeatedly. Aggregation is a script's

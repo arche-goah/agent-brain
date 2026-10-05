@@ -85,19 +85,19 @@ push_from_other() {   # $1 = file, $2 = message, $3 = von: party (optional)
   git -C "$OTHER" push -q origin main
 }
 
-push_from_other b.md "colleague one" blurredvision-win
+push_from_other b.md "colleague one" kim-win
 sleep 6
 FIRST=$(grep -c '^FOUND:' "$OUT" || true)
 COLLEAGUE_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
-push_from_other c.md "colleague two" emil-workstation
+push_from_other c.md "colleague two" alex-workstation
 sleep 6
 SECOND=$(grep -c '^FOUND:' "$OUT" || true)
 WORKSTATION_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
 # A LOG-only commit carries no `von:` field; its heading names sender and title
 # (measured 2026-09-25: reported as "unknown party" while the heading said who and what).
-printf '# Log\n\n## 2026-09-25 · bojan-workstation — AN alle: log-only message\n\nbody\n' > "$OTHER/domain/LOG.md"
+printf '# Log\n\n## 2026-09-25 · sam-workstation — AN alle: log-only message\n\nbody\n' > "$OTHER/domain/LOG.md"
 git -C "$OTHER" add -A
 git -C "$OTHER" commit -qm "log only"
 git -C "$OTHER" push -q origin main
@@ -115,7 +115,7 @@ LOG_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 git -C "$WORK" pull -q origin main
 printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "x"\n}\n' "$(git -C "$WORK" rev-parse HEAD)" > "$STATE"
 git -C "$OTHER" pull -q origin main
-printf '\n## 2026-09-30 · bojan-workstation — AN me-ws: pulled request\n\nbody\n' >> "$OTHER/domain/LOG.md"
+printf '\n## 2026-09-30 · sam-workstation — AN me-ws: pulled request\n\nbody\n' >> "$OTHER/domain/LOG.md"
 git -C "$OTHER" add -A; git -C "$OTHER" commit -qm "request"; git -C "$OTHER" push -q origin main
 git -C "$WORK" pull -q origin main
 printf -- '---\nname: own\nmetadata:\n  von: me-ws\n---\n\nown one\n' > "$WORK/domain/own.md"
@@ -145,18 +145,18 @@ else echo "FAIL: no second report — watcher died after the first find"; fail=1
 # as the colleague. Measured incident 2026-08-22 — a session reported our own Windows
 # machine as "the colleague" and the record would have credited him with decisions that
 # were never put to him.
-if grep -q 'from .*blurredvision-win' <<<"$COLLEAGUE_LINE"; then
-  echo "PASS: an entry von: blurredvision-win is reported as that party"
+if grep -q 'from .*kim-win' <<<"$COLLEAGUE_LINE"; then
+  echo "PASS: an entry von: kim-win is reported as that party"
 else
   echo "FAIL: party missing or wrong for the colleague's entry: $COLLEAGUE_LINE"; fail=1
 fi
-if grep -q 'from .*emil-workstation' <<<"$WORKSTATION_LINE" \
-   && ! grep -q 'blurredvision' <<<"$WORKSTATION_LINE"; then
-  echo "PASS: an entry von: emil-workstation is NOT reported as the colleague"
+if grep -q 'from .*alex-workstation' <<<"$WORKSTATION_LINE" \
+   && ! grep -q 'kim' <<<"$WORKSTATION_LINE"; then
+  echo "PASS: an entry von: alex-workstation is NOT reported as the colleague"
 else
   echo "FAIL: our own workstation read as someone else: $WORKSTATION_LINE"; fail=1
 fi
-if grep -q 'bojan-workstation: AN alle: log-only message' "$OUT"; then
+if grep -q 'sam-workstation: AN alle: log-only message' "$OUT"; then
   echo "PASS: a LOG-only commit is reported with sender and title"
 else
   echo "FAIL: LOG-only commit reported without what it says"; fail=1
@@ -164,14 +164,14 @@ fi
 # The FOUND line itself names the LOG sender (measured 2026-09-30): once SHARED_MEMORY_SELF
 # is set, the inbox lines below it only show entries for THIS instance, so a LOG entry
 # addressed elsewhere left nothing on screen but "unknown party".
-if grep -q 'from .*bojan-workstation' <<<"$LOG_LINE"; then
+if grep -q 'from .*sam-workstation' <<<"$LOG_LINE"; then
   echo "PASS: a LOG-only commit names its sender in the FOUND line"
 else
   echo "FAIL: LOG-only FOUND line without sender: $LOG_LINE"; fail=1
 fi
 echo "--- watcher output, pulled-in case ---"
 cat "$OUT2"
-if grep -q 'bojan-workstation: AN me-ws: pulled request' "$OUT2"; then
+if grep -q 'sam-workstation: AN me-ws: pulled request' "$OUT2"; then
   echo "PASS: a foreign entry pulled in before an own push is reported"
 else
   echo "FAIL: foreign entry swallowed by the own pull"; fail=1

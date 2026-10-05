@@ -196,7 +196,6 @@
       "Read(./.env.*)",
       "Edit(./.env)",
       "Edit(./.env.*)",
-      "Read(.claude-state/**)",
       "Edit(.claude-state/**)"
     ]
   },

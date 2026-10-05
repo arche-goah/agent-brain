@@ -85,7 +85,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=3 scripts/shared-memory-lint.py=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 helpers/session-bootup.sh=8
+known:     scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 helpers/session-bootup.sh=8
 instances: 5
 repeat:    yes
 status:    closed
@@ -148,7 +148,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-code-scanning-alerts.sh=1
+known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-absence-gate.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -175,6 +175,12 @@ return goes back through `cygpath -u` in the script under test. No native proces
 reaches bash — the fake `gh` is a bash script that reads its answers from `FAKE_DIR`, and
 the script under test is bash. No native process opens it; green on Windows (Git Bash) the
 same day.
+2026-10-05, test-absence-gate.sh baselined after the same review: paths cross into node in
+four places — the transcript, the cwd, the roots inside the instance file, and the paths
+inside the recorded tool inputs (the gate resolves those to decide coverage). All four go
+through `native()`. Here it matters in BOTH directions: an unresolvable root is never
+covered (a must-allow case would block), an unresolvable transcript reads empty (a
+must-block case would pass silently). Windows run still owed at baseline time.
 2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
 test-full-audit-synthesis-files.sh baselined on the same review and the same construction
 — they are the per-workflow siblings of the coherence fixture: harness file as an
@@ -302,7 +308,7 @@ known:     scripts/onboarding-verify.sh=1 scripts/test-onboarding-leak-check.sh=
 instances: 1
 repeat:    no
 status:    closed
-note:      Measured 2026-09-15 on the second Windows machine (emil-workstation), in check 8
+note:      Measured 2026-09-15 on the second Windows machine (alex-workstation), in check 8
 of onboarding-verify.sh. The Claude Code harness hands its scratchpad root out in the SHORT
 spelling; a local guard log had recorded it, and the leak check reported the brain's own home
 path as a foreign leak — the exact failure the surrounding fix set out to remove, one spelling
@@ -335,7 +341,7 @@ known:     scripts/brain-friction.py=3 scripts/dep-install.py=2 scripts/ecosyste
 instances: 1
 repeat:    no
 status:    open
-note:      Measured 2026-09-24 on emil-workstation (Windows 11, Git Bash, Python 3.14),
+note:      Measured 2026-09-24 on alex-workstation (Windows 11, Git Bash, Python 3.14),
 core v1.3.38. `brain-check.sh --brief` — the form the session-start hook runs — printed
 `[: 1<0x97> decide each, none of them is a verdict.: integer expression expected` and then
 took its "needs a look" branch, while a hand-run `brain-check.sh` was green. Cause:

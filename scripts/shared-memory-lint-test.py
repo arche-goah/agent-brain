@@ -51,7 +51,7 @@ def check(name: str, counts: dict, category: str, want: int) -> None:
         bad(f"{name}: {category}={got}, expected {want}")
 
 
-def fm(name: str, *, typ="reference", von="emil-macos", audience="alle-collaborator",
+def fm(name: str, *, typ="reference", von="alex-macos", audience="alle-collaborator",
        topic="ops", date="2026-09-13", body="body") -> str:
     # `date` is part of the convention since 2026-09-13, so a VALID fixture entry
     # carries one; pass date="" to build the legacy shape on purpose.
@@ -268,7 +268,7 @@ def main() -> int:
 
         # 25. and the rows carry the fields the lenses target their reads with
         row = next((r for r in inv["files"] if r["path"] == "ops/alpha.md"), None)
-        if row and row["von"] == "emil-macos" and row["topic"] == "ops" and row["indexed"]:
+        if row and row["von"] == "alex-macos" and row["topic"] == "ops" and row["indexed"]:
             ok("25 inventory row carries von / topic / indexed")
         else:
             bad(f"25 inventory row incomplete: {row}")

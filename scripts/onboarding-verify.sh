@@ -135,7 +135,7 @@ check 4 "Output style" $([ -n "$st" ] && echo 0 || echo 1) "${st:-caveman.md not
 # 5 Own brain + bootup hook
 if [ -n "$BRAIN" ] && [ -f "$BRAIN/.claude/settings.json" ] && grep -q "core/helpers/session-bootup.sh" "$BRAIN/.claude/settings.json" 2>/dev/null; then
   # The bootup advances the shared-memory cursor; a verify run is no session and must not
-  # mark entries as seen that no session ever showed (bojan-reiselaptop, 2026-09-30).
+  # mark entries as seen that no session ever showed (sam-reiselaptop, 2026-09-30).
   # A throwaway copy keeps the output identical and the real cursor untouched.
   sm_tmp=$(mktemp)
   cp "$BRAIN/config/shared-memory-state.json" "$sm_tmp" 2>/dev/null || : > "$sm_tmp"

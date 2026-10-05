@@ -236,8 +236,8 @@ const LENS_INDEX_SCHEMA = {
           // cost validation: a file is written freehand, so FINDINGS_SCHEMA below is
           // only a description there, not a constraint. Measured on the first run of the
           // restructured pass — two of four lenses wrote owner as free prose
-          // ("emil-macos (author of the entry; blurredvision-win co-signed …)"), and
-          // by_owner, which routes who may act, counted "emil-macos" as an owner class.
+          // ("alex-macos (author of the entry; kim-win co-signed …)"), and
+          // by_owner, which routes who may act, counted "alex-macos" as an owner class.
           // The index IS schema-validated, so the routing-critical field is constrained
           // here even when the prose in the file drifts.
           owner: { type: 'string', enum: ['us', 'other-party', 'operator', 'both'],
@@ -264,7 +264,7 @@ OUTPUT — two steps, in this order:
 \`owner\` — in the file AND in the index — is exactly one of \`us\`, \`other-party\`,
 \`operator\`, \`both\`. It is a ROUTING class, not a name: it answers who may act, not who
 wrote the entry. WHO wrote it goes in the finding's sources (\`von\`). Writing
-"emil-macos (author, …)" there breaks the report's grouping, which is the one thing that
+"alex-macos (author, …)" there breaks the report's grouping, which is the one thing that
 decides what gets done and what only gets proposed.`,
     { label: `lens:${l.slug}`, phase: 'Analysis', schema: LENS_INDEX_SCHEMA })
     .then(r => (r && r.count && r.index && r.index.length === r.count

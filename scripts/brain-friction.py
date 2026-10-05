@@ -149,7 +149,7 @@ for name in manual:
         # mechanisms pulled against each other: brain-selftest demands a fixture for
         # every mechanism, this one flagged the fixture as a contradiction, so doing
         # the right thing produced a permanent candidate on every instance. Measured
-        # 2026-09-24 on emil-workstation: `onboarding-verify.sh` (hand-run by
+        # 2026-09-24 on alex-workstation: `onboarding-verify.sh` (hand-run by
         # construction, checks a freshly bootstrapped brain once) reported against
         # `test-onboarding-leak-check.sh`, its own fixture.
         #

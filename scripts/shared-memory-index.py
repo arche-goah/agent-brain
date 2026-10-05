@@ -247,7 +247,7 @@ def build(repo: Path, ref: str | None = None) -> tuple[str, dict[str, str], list
     # that are not fact files, so the rule below read them as foreign and copied them down
     # into "Not one-fact entries" — one more generation on every run (measured 2026-09-21
     # in the shared repo: three generations standing, a fourth added by the run that found
-    # it; reported by bojan-main, who had removed the newest set by hand). Matched by
+    # it; reported by sam-main, who had removed the newest set by hand). Matched by
     # PATTERN, not against the current topic list, so a pointer of a topic that no longer
     # exists is dropped as well. The `seen` guard closes the same class one level up: a
     # duplicate line already in the old index is carried once, not twice.
