@@ -121,6 +121,8 @@ def main() -> None:
     skills: dict[str, tuple[str, str, bool]] = {}
     for skill_md in SKILLS_DIR.glob("*/SKILL.md"):
         folder = skill_md.parent.name
+        if folder.startswith("_draft-"):
+            continue  # drafts stay out of the registry (CONVENTIONS §11, skill-lint.py)
         skills[folder] = load_skill(skill_md)
 
     total = len(skills)
