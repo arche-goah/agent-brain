@@ -77,6 +77,17 @@ Rules:
   model sees before loading the skill.
 - Code, comments, docstrings, SKILL.md, README, commit messages: English.
 - Instance docs and memory: the owner's language.
+- **Detectors that read natural language are layered: engine English, every language
+  is data.** A gate or check that matches prose (`stoppen-gate`, `premise-gate`,
+  `promise-gate`) carries English built-ins only; each further language — German,
+  Czech, French, anything — lives in the instance's `.claude/rules/<name>-patterns.json`
+  and is merged in, never replacing the built-ins. A CLASS fix (a new shape the
+  detector must see) goes into the English built-ins first; a language file only ever
+  adds a language. `scripts/english-only.py` holds this for German mechanically (an
+  engine is not in its skip set, so a German pack inside it fails CI); its header
+  states that other languages are outside its detection. One documented exception:
+  `recall-gate`'s `recall-tools.json` REPLACES its defaults (tool names and word lists
+  share one file, see its header) — a language added there must restate the English.
 
 ## 4. MCP servers
 
