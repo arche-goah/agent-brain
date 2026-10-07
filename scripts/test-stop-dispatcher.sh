@@ -103,6 +103,47 @@ OUT3="$(printf '{"transcript_path":"%s","stop_hook_active":true,"cwd":"%s"}' \
   | CLAUDE_PROJECT_DIR="$(native "$CFG")" node "$D" 2>/dev/null)"
 [ -z "$OUT3" ] && ok "silent on the re-issue pass" || bad "blocked twice: $OUT3"
 
+# --- turn kind: a notification turn reaches every check as such; "skip" sits it out ---
+# A probe check that always blocks and names the turn kind it was handed. Two entries:
+# SKIPPER opts out of notification turns, PLAIN does not (the default).
+PROBE="$T/probe.cjs"
+printf '%s\n' "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{let k='none';try{k=JSON.parse(d).turn_kind||'none'}catch(e){}console.log(JSON.stringify({decision:'block',reason:'kind='+k}))});" > "$PROBE"
+CFG2="$(mktemp -d)"
+mkdir -p "$CFG2/.claude/rules"
+printf '{"checks":[{"label":"SKIPPER","marker":"SKIP-PROBE","cmd":"%s","mode":"block","onNotification":"skip"},{"label":"PLAIN","marker":"PLAIN-PROBE","cmd":"%s","mode":"block"}]}' \
+  "$(native "$PROBE")" "$(native "$PROBE")" > "$CFG2/.claude/rules/stop-checks.json"
+trap 'rm -rf "$T" "$CFG" "$CFG2"' EXIT
+feed2() {
+  printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$1")" "$(native "$CFG2")" \
+    | CLAUDE_PROJECT_DIR="$(native "$CFG2")" node "$D" 2>/dev/null
+}
+NOTE='<system-reminder>\n[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>\n</system-reminder>'
+TN="$T/notif.jsonl"
+{ printf '%s\n' '{"message":{"role":"user","content":"frage"}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}'
+  printf '{"message":{"role":"user","content":"%s"}}\n' "$NOTE"
+  printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"CI green."}]}}'; } > "$TN"
+OUT4="$(feed2 "$TN")"
+case "$OUT4" in *'SKIP-PROBE'*) bad "skip check ran on a notification turn: $OUT4";; *) ok "onNotification:skip sits out a notification turn";; esac
+case "$OUT4" in *'[PLAIN-PROBE]'*) ok "a check without the setting still runs";; *) bad "default check skipped: $OUT4";; esac
+case "$OUT4" in *'kind=notification'*) ok "checks are told turn_kind=notification";; *) bad "turn_kind not handed over: $OUT4";; esac
+
+TO="$T/oper.jsonl"
+{ cat "$TN"; printf '%s\n' '{"message":{"role":"user","content":"next"}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}'; } > "$TO"
+OUT5="$(feed2 "$TO")"
+case "$OUT5" in *'SKIP-PROBE'*'PLAIN-PROBE'*|*'PLAIN-PROBE'*'SKIP-PROBE'*) ok "both run on an operator turn";; *) bad "operator turn lost a check: $OUT5";; esac
+case "$OUT5" in *'kind=operator'*) ok "checks are told turn_kind=operator";; *) bad "operator kind missing: $OUT5";; esac
+
+# A frame plus the operator's own words is the operator — and hook feedback after a
+# notification does not turn it into an operator turn.
+TM="$T/mixed.jsonl"
+{ printf '%s\n' '{"message":{"role":"user","content":"frage"}}'
+  printf '{"message":{"role":"user","content":"%s and please go on"}}\n' "$NOTE"
+  printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}'; } > "$TM"
+case "$(feed2 "$TM")" in *'kind=operator'*) ok "frame + operator words = operator";; *) bad "mixed record read as notification";; esac
+TF="$T/feedback.jsonl"
+{ cat "$TN"; printf '%s\n' '{"message":{"role":"user","content":"Stop hook feedback:\nx"}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"re"}]}}'; } > "$TF"
+case "$(feed2 "$TF")" in *'kind=notification'*) ok "hook feedback keeps the notification kind";; *) bad "hook feedback flipped the kind";; esac
+
 echo
 [ "$fail" -eq 0 ] && echo "stop-dispatcher fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
