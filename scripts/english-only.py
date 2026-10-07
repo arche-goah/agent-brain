@@ -63,9 +63,12 @@ TEXT_SUFFIX = {".md", ".py", ".sh", ".cjs", ".js", ".json", ".yml", ".yaml",
 # its German is the instance pattern file it writes and the sentences that file must
 # match — and its discriminator DEPENDS on German, because it proves the hit comes from
 # the data by running the same German sentence without that file and requiring silence.
+# test-open-items-gate.sh enters on the same terms (2026-10-07): its German is the
+# instance pattern file it writes ("nichts offen", "geparkt") and the reply that file must
+# accept, and one case runs that German reply WITHOUT the file and requires a block.
 SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py",
               "skill-lint.py", "test-premise-gate.sh", "test-promise-gate.sh",
-              "test-stop-checks.sh",
+              "test-open-items-gate.sh", "test-stop-checks.sh",
               "test-stoppen-gate.sh"}
 
 UMLAUT = re.compile(r"[äöüßÄÖÜ]")

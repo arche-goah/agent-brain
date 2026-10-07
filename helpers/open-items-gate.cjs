@@ -6,10 +6,10 @@
  * shared-memory requests and six open PRs; the first reply said "nine older requests,
  * nothing new since the last start" and named none. The data side was already fixed
  * (open requests ignore the cursor); the relay side had no carrier at all — a rule in
- * prose ("relevance beats completeness") even covered the omission. Operator: "IMMER
- * wenn es unbehandelte punkte die uns betreffen gibt, MUSST du das berichten ...
- * aufmerksamkeit muss sich erhöhen, nicht verringern." And: it has to hold on Windows
- * and macOS for everyone, or it goes under again.
+ * prose ("relevance beats completeness") even covered the omission. The operator's rule:
+ * every unhandled point that concerns us MUST be reported, and attention rises with every
+ * repeat, never falls. And: it has to hold on Windows and macOS for everyone, or it goes
+ * under again.
  *
  * What it reads — the TRANSCRIPT, not a state file, so it also sees a bootup that never
  * arrived: the latest SessionStart record of `core/helpers/session-bootup.sh`.
