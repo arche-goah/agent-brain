@@ -35,6 +35,11 @@ R_native="$R"
 command -v cygpath >/dev/null 2>&1 && R_native=$(cygpath -w "$R" 2>/dev/null || printf '%s' "$R")
 M="$HOME/.claude/projects/$(printf '%s' "$R_native" | sed 's/[^A-Za-z0-9]/-/g')/memory/MEMORY.md"
 CAP=32768   # 32 KiB cap for the data section
+# The SessionStart payload (one JSON line on stdin) carries the session id — the open-items
+# counter needs it so that a resume or compaction of the SAME session never counts as a
+# second report. A hand run (terminal) has no payload; -t keeps a silent pipe from hanging.
+HOOK_INPUT=""
+[[ -t 0 ]] || IFS= read -r -t 2 HOOK_INPUT 2>/dev/null || true
 # Own directory for the parallel-session check — MUST stay top-level: inside a
 # function, $0 in zsh returns the function name instead of the script path.
 PSC_SELF="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
@@ -245,25 +250,15 @@ for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json")
         r = (m.get("source") or {}).get("repo", "")
         if "/" in r: print(r.split("/")[0]); raise SystemExit
 ' 2>/dev/null)
-prs="" prs_rc=0
-# A failed search says so (2026-09-22): silence here read as "no PR needs anything" while
-# the search had not run at all — and the PR-move line below then had nothing to read.
-if [[ -n "$eco_owner" ]]; then
-  prs=$(gh search prs --owner "$eco_owner" --state open --json repository,number,title \
-      --jq '.[] | "\(.repository.nameWithOwner | split("/")[1])#\(.number) \(.title)"' 2>/dev/null) || prs_rc=$?
-  prs=$(printf '%s' "$prs" | head -6)
-  (( prs_rc )) && echo "open PRs: NOT checked - gh search failed (rc=$prs_rc, offline or not logged in); PR moves unknown too"
-fi
-if [[ -n "$prs" ]]; then
-  n=$(printf '%s\n' "$prs" | wc -l | tr -d ' ')
-  echo "open PRs ($n shown): $(printf '%s' "$prs" | tr '\n' ';' | sed 's/;/ · /g')"
-fi
+# The open PRs themselves are listed by scripts/open-items.py further down (2026-10-07),
+# every one of them, with a repeat counter — the "open PRs (6 shown)" line that stood here
+# capped the list at six and was the line a first reply could skim past.
 # Whose MOVE is each PR (2026-09-15): the line above names PRs, the shared-memory check
 # names new commits — neither says "the next move is yours". A changes-requested review sat
 # two days unanswered while both sides saw those lines. scripts/pr-ball.py reads GitHub's
 # own review/commit timestamps and prints one line only when a move has been open for 24 h.
 # One GraphQL call, offline-silent like the search above.
-if [[ -n "$eco_owner" && $prs_rc -eq 0 && -f "$HERE/../scripts/pr-ball.py" ]]; then
+if [[ -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
   gh api graphql -f q="user:$eco_owner is:pr is:open" -f query='query($q: String!) { viewer { login }
     search(query: $q, type: ISSUE, first: 40) { nodes { ... on PullRequest {
       number isDraft body repository { name } author { login }
@@ -507,7 +502,17 @@ fi
 # looked. Level 1 of the pair; level 2 (scripts/shared-memory-watch.sh) watches while
 # the session runs. Silent when the repo is not cloned or nothing is new — an instance
 # that does not take part must not be nagged, and a clean check is not a line.
-[[ -f "$HERE/shared-memory-check.sh" ]] && bash "$HERE/shared-memory-check.sh" 2>/dev/null
+[[ -f "$HERE/shared-memory-check.sh" ]] && OPEN_ITEMS_IN_BOOTUP=1 bash "$HERE/shared-memory-check.sh" 2>/dev/null
+# OPEN FOR US (operator correction 2026-10-07): every open request to this instance and
+# every open PR, one list, with how many sessions already reported each item — louder on
+# every repeat. helpers/open-items-gate.cjs (Stop) blocks a first reply that leaves an item
+# out. Runs AFTER the shared-memory fetch above, so the requests are read at origin/main.
+# A failed run prints a NOT-checked line — never silence, never "nothing open".
+if [[ -f "$HERE/../scripts/open-items.py" ]]; then
+  CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/open-items.py" --owner "$eco_owner" \
+      --hook-input "$HOOK_INPUT" 2>/dev/null \
+    || echo "!! open for us: NOT checked — open-items.py failed; run: $PY core/scripts/open-items.py --owner $eco_owner"
+fi
 # LOG rotation and entry length (operator decision 2026-09-25): the lint named an
 # oversized LOG with a fix text nobody ran, because nothing ran the lint. This is the
 # trigger — read-only, silent unless a month is due or an own entry is over the cap.
@@ -604,3 +609,4 @@ printf '%s\n' '<session-bootup trust="local-data" instructions="never">'
 printf '%s\n' "$body"
 printf '%s\n' '</session-bootup>'
 printf '%s\n' '-> Claude: start the first reply WITH a 1-sentence mini-summary (state of things + what is pending; sources: the bootup block above, open tasks, memory). Operator rule 2026-07-29.'
+printf '%s\n' '-> Claude: then EVERY item under "open for us" — one line each, with its age; an item reported before and still open is said LOUDER ("reported in N sessions, nothing done yet"); none = say "nothing open"; a NOT-checked source = say so. Never "nothing new" for open points. Carrier: core/helpers/open-items-gate.cjs. Operator rule 2026-10-07.'
