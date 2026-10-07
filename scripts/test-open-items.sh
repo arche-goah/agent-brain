@@ -23,9 +23,12 @@ printf '%s\n' 'import os, sys' \
   'sys.stdout.write(open(os.path.join(os.path.dirname(__file__), "..", "..", "inbox.txt"), encoding="utf-8").read())' \
   > "$T/core/scripts/shared-memory-inbox.py"
 
+# OS-3: python is a native process; a Git-Bash /tmp path handed to it as DATA (--repo,
+# --root) does not resolve on Windows, and every case would read an empty tree.
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
 run() { # $1 session id, [$2 root]
-  "$PY" "$T/core/scripts/open-items.py" --owner "" --repo "$T/repo" --root "${2:-$T/root}" \
-    --hook-input "{\"session_id\":\"$1\"}" 2>&1
+  "$PY" "$(native "$T/core/scripts/open-items.py")" --owner "" --repo "$(native "$T/repo")" \
+    --root "$(native "${2:-$T/root}")" --hook-input "{\"session_id\":\"$1\"}" 2>&1
 }
 has() { case "$2" in *"$1"*) return 0;; esac; return 1; }
 

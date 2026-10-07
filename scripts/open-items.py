@@ -5,10 +5,10 @@ WHY (operator correction 2026-10-07, proving brain): the session start listed ni
 shared-memory requests to this instance and six open PRs — and the first reply of the
 session relayed none of them ("nine older requests, nothing new since the last start").
 The data side had been fixed two days earlier (the open-request list ignores the cursor,
-"seen is not done"); the relay side never was. Operator, verbatim: "IMMER wenn es
-unbehandelte punkte die uns betreffen gibt, MUSST du das berichten ... wenn es eine
-session davor schon berichtet hat und wir haben nicht darauf eingegangen ... muss das
-weiterhin berichtet werden ... aufmerksamkeit muss sich erhöhen, nicht verringern."
+"seen is not done"); the relay side never was. The operator's rule, in English: every
+unhandled point that concerns us MUST be reported; if there is truly nothing, say so; a
+point an earlier session already reported that is still open keeps being reported —
+attention has to rise with every repeat, not fall.
 
 So this script is the ONE list of open points at session start:
   * open shared-memory requests addressed to this instance (shared-memory-inbox --open,
@@ -114,6 +114,9 @@ def main():
         "SHARED_MEMORY_REPO", str(Path.home() / "Projects" / "brain-shared-memory")))
     ap.add_argument("--root", default=os.environ.get("CLAUDE_PROJECT_DIR", "."))
     a = ap.parse_args()
+    # OS-9: the bootup and the Stop gate parse this output, and the item texts carry the
+    # authors' umlauts and dashes. Unpinned, Windows writes the ANSI codepage.
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 
     root = Path(a.root)
     try:
@@ -158,8 +161,9 @@ def main():
     saved = True
     try:
         state_dir.mkdir(parents=True, exist_ok=True)
-        seen_file.write_text(json.dumps({"items": keep, "last_run": now.isoformat(timespec="seconds")},
-                                        indent=1), encoding="utf-8")
+        # OS-2: pinned line ending, so the file reads the same on every platform.
+        with open(seen_file, "w", encoding="utf-8", newline="\n") as f:
+            json.dump({"items": keep, "last_run": now.isoformat(timespec="seconds")}, f, indent=1)
     except OSError:
         saved = False  # the list still prints; the lost escalation is said out loud below
 
