@@ -79,9 +79,8 @@ const CONFIG = path.join(ROOT, '.claude', 'rules', 'stop-checks.json');
 const DEFAULT_HEADER = 'STOP-CHECKS ({n})';
 const TAIL_BYTES = 4 * 1024 * 1024;
 const HOOK_ECHO = /^\s*Stop hook feedback/;
-// A notification record is nothing BUT harness frames: strip them, and no operator text
-// is left. A record that carries a frame AND words of the operator is an operator turn.
-const FRAMES = /<system-reminder>[\s\S]*?<\/system-reminder>|<task-notification>[\s\S]*?<\/task-notification>/g;
+// One definition of "notification record", shared with every gate's cooldown count.
+const { isNotification } = require('./turn-kind.cjs');
 
 function recordText(msg) {
   if (typeof msg.content === 'string') return msg.content;
@@ -106,7 +105,7 @@ function turnKind(transcriptPath) {
       if (!d.message || d.message.role !== 'user') continue;
       const t = recordText(d.message);
       if (t === null || HOOK_ECHO.test(t)) continue;
-      kind = /<task-notification>/.test(t) && !t.replace(FRAMES, '').trim() ? 'notification' : 'operator';
+      kind = isNotification(t) ? 'notification' : 'operator';
     }
     return kind;
   } catch (e) {
