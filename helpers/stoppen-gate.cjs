@@ -178,6 +178,12 @@ process.stdin.on('end', () => {
     return allow(); // transcript unreadable — never block because of that
   }
   if (hits.length === 0) return allow();
+  // The first reply after a session start ASKS on purpose (operator order 2026-10-07):
+  // "n items I can handle — shall I?" is the one OK the agent must get before it starts on
+  // something the session was not opened for. That turn belongs to open-items-gate.
+  try {
+    if (require('./open-items-gate.cjs').firstTurnOwnsQuestion(input.transcript_path)) return allow();
+  } catch (e) { /* no sibling gate — judge as before */ }
 
   console.log(JSON.stringify({
     decision: 'block',

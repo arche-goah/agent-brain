@@ -68,8 +68,39 @@ printf '%s\n' '{"parked":["grandma"]}' > "$T/root/.claude/rules/open-items.json"
 printf '%s\n' 'shared-memory open requests to this instance: 1' \
   '  - 2026-09-08 [grandma3] peer-c: Rueckfrage (grandma3/rueckfrage-2026-09-08.md)' > "$T/inbox.txt"
 out=$(run f)
-has "open for us: 0 (+1 parked)" "$out" && ok "parked counted apart" || bad "parked count: $out"
+has "open for us: 0 — ai 0 · human 0 · unclassified 0 (+1 parked)" "$out" && ok "parked counted apart" || bad "parked count: $out"
 has "[parked] rueckfrage-2026-09-08.md" "$out" && ok "parked line kept" || bad "parked line missing: $out"
+
+# WHO acts: circle field in the request file (read at origin/main), a request addressed to
+# a person by name, an agent class from --classify, and the rest printed as '?'.
+GIT() { git -C "$T/repo" -c user.name=t -c user.email=t@t "$@" >/dev/null 2>&1; }
+rm -rf "$T/repo" && mkdir -p "$T/repo/core" "$T/repo/ops" && GIT init -q
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: peer-b' '  circle: C' '---' 'body' > "$T/repo/core/anfrage-c-2026-09-13.md"
+printf '%s\n' '---' 'name: b' 'metadata:' '  von: peer-b' '  circle: E' '---' 'body' > "$T/repo/ops/anfrage-e-2026-09-26.md"
+printf '%s\n' '---' 'name: c' 'metadata:' '  von: peer-c' '---' 'body' > "$T/repo/ops/anfrage-x-2026-09-06.md"
+GIT add -A && GIT commit -q -m init && GIT update-ref refs/remotes/origin/main HEAD
+printf '%s\n' '{"humans":["Opname"]}' > "$T/root/.claude/rules/open-items.json"
+printf '%s\n' 'shared-memory open requests to this instance: 5' \
+  '  - 2026-09-13 [core] peer-b: ANFRAGE an inst-a (core/anfrage-c-2026-09-13.md)' \
+  '  - 2026-09-26 [ops] peer-b: ANFRAGE an inst-a (ops/anfrage-e-2026-09-26.md)' \
+  '  - 2026-09-06 [ops] peer-c: ANFRAGE an Opname-mac, braucht Netz (ops/anfrage-x-2026-09-06.md)' \
+  '  - 2026-09-08 [ops] peer-c: Rueckfrage an Opname (ops/rueckfrage-y-2026-09-08.md)' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: Check OK (LOG)' > "$T/inbox.txt"
+out=$(run h)
+has "[request|ai] 2026-09-13" "$out" && ok "circle C = ai" || bad "circle C: $out"
+has "[request|human] 2026-09-26" "$out" && ok "circle E = human" || bad "circle E: $out"
+has "[request|human] 2026-09-08" "$out" && ok "addressed to a person = human" || bad "person: $out"
+has "[request|?] 2026-09-06" "$out" && ok "no data = '?'" || bad "unclassified: $out"
+has "[request|?] 2026-09-06" "$out" && ok "machine id built from the name is not the person" || bad "machine id read as a person: $out"
+has "unclassified 2" "$out" && ok "header counts the '?'" || bad "header: $(head -1 <<<"$out")"
+has "classify every '?' item" "$out" && ok "'?' asks for --classify" || bad "no classify hint: $out"
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" \
+  --classify 'anfrage-x-2026-09-06.md=human:needs the operator net definition' >/dev/null 2>&1
+out=$(run i)
+has "[request|human] 2026-09-06" "$out" && ok "--classify by file name sticks" || bad "classify lost: $out"
+has "needs the operator net definition" "$out" && ok "the reason is printed" || bad "reason missing: $out"
+out=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --classify 'x=maybe' 2>&1)
+has "bad --classify" "$out" && ok "bad class refused" || bad "bad class accepted: $out"
 
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
