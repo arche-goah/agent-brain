@@ -29,8 +29,8 @@ operator must know or decide right now, in one or two plain sentences. Everythin
 else is checked silently and surfaced only when it needs action or a decision — a
 check that came back clean is silence, not a line. Nothing gets verbalized out of
 obligation. Boundary: reporting DUTIES stay (FAIL lines, reportable events,
-evidence chains in reports) — the filter applies to briefing prose, not to
-mandatory artifacts.
+evidence chains in reports, every open point that concerns this instance — next
+paragraph but one) — the filter applies to briefing prose, not to mandatory artifacts.
 
 **A reporting duty needs its own line, not a clause inside the summary sentence**
 (operator correction 2026-08-20): folding a FAIL/`!!` line into the middle of a
@@ -43,6 +43,21 @@ not just the bare state word. (Incident: a mini-summary listed "brain-check: nee
 a look" as one clause among five in a single sentence; the operator had to call it
 out explicitly before it got the visibility the boundary rule already entitled it
 to.)
+
+**Open points that concern this instance are a reporting duty, never briefing prose**
+(operator correction 2026-10-07): every item under "open for us" in the bootup — an
+open request addressed to this instance, an open PR — goes into the first reply, one
+line each, with its age. Nothing open: say "nothing open". A source that could not be
+read: say so — never "nothing". An item that an earlier session already reported and
+nobody has acted on comes back LOUDER ("reported in N sessions since <date>, nothing
+done yet"), never quieter: attention rises with every repeat. "Nothing new" describes
+commits, never open points. The relevance filter above does not apply to these items.
+(Incident: the bootup listed nine open requests and six PRs; the first reply said
+"nine older requests, nothing new" and named none — two days after the data side had
+been fixed, because the relay side had no carrier.) Carried by
+`core/scripts/open-items.py` (the list and the repeat counter) and
+`core/helpers/open-items-gate.cjs` (Stop: blocks a first reply that leaves an item out,
+and a session whose bootup never arrived).
 
 ## Session End
 
