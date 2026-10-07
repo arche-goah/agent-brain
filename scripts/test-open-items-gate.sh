@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Fixture test for helpers/open-items-gate.cjs — both directions.
 # The must-block case is the incident itself (2026-10-07): the bootup listed open points,
-# the first reply said "older requests, nothing new" and named none. Also: a cancelled or
-# missing bootup blocks, a later turn and a compaction never do, and the "nothing open" /
-# "not checked" / "parked" phrasing works in English built-ins and, as DATA only, German.
+# the first reply said "older requests, nothing new" and named none. The required form
+# (operator, same day): "n I can handle — shall I?" (one OK) + "n need you" (up to three
+# named, more offered), repeats said. Also: an unclassified item blocks until the agent's
+# class file holds it; a cancelled or missing bootup blocks; a later turn and a compaction
+# never do; stoppen-gate leaves exactly the opening question alone — and only that one.
+# German phrasing grips only as instance DATA (one case runs it without the file).
 # Usage: bash scripts/test-open-items-gate.sh (exit 0 = pass)
 set -u
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
-G="$(cd "$(dirname "$0")" && pwd)/../helpers/open-items-gate.cjs"
+D="$(cd "$(dirname "$0")" && pwd)/../helpers"
+G="$D/open-items-gate.cjs"
+SG="$D/stoppen-gate.cjs"
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
@@ -30,10 +35,10 @@ boot_cancel() {
 user() { printf '{"message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
 asst() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
 
-check() { # $1 name, $2 transcript file, $3 block|allow, $4 cwd, [$5 stop_hook_active]
+check() { # $1 name, $2 transcript, $3 block|allow, $4 cwd, [$5 stop_hook_active], [$6 gate]
   local out
   out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"cwd":"%s"}' \
-    "$(native "$2")" "${5:-false}" "$(native "$4")" | node "$G" 2>&1)"
+    "$(native "$2")" "${5:-false}" "$(native "$4")" | node "${6:-$G}" 2>&1)"
   if [ "$3" = block ]; then
     case "$out" in *'"decision":"block"'*) ok "$1 blocks";; *) bad "$1 did not block: '$out'";; esac
   else
@@ -43,75 +48,108 @@ check() { # $1 name, $2 transcript file, $3 block|allow, $4 cwd, [$5 stop_hook_a
 
 EN="$T/cwd-en"; mkdir -p "$EN"
 DE="$T/cwd-de"; mkdir -p "$DE/.claude/rules"
-printf '%s\n' '{"nothing_patterns":["nichts offen"],"failed_patterns":["nicht gepr(ü|ue)ft","gescheitert"],"parked_patterns":["geparkt"]}' \
+printf '%s\n' '{"nothing_patterns":["nichts offen"],"failed_patterns":["nicht gepr(ü|ue)ft","gescheitert"],"parked_patterns":["geparkt"],"offer_patterns":["\\bsoll ich\\b[^?\\n]{0,160}\\?"],"repeat_patterns":["bereits .{0,40}gemeldet","weiterhin offen"]}' \
   > "$DE/.claude/rules/open-items.json"
 
 NL=$'\n'
-BLOCK="=== BRAIN BOOTUP CHECK ===${NL}open for us: 2 (+1 parked) — EVERY item goes into the first reply${NL}- [request] 2026-09-05 show-tools/anfrage-td-2026-09-05.md — peer-b: ANFRAGE — !! reported in 3 sessions since 2026-10-01, nothing done yet${NL}- [PR] 2026-10-07 claude-marketplace#61 — someone: pin(td) — first report${NL}- [parked] grandma3-suite#112${NL}=== END BOOTUP ==="
+H1="- [request|human] 2026-09-05 show-tools/anfrage-td-2026-09-05.md — peer-b: ANFRAGE — !! reported in 3 sessions since 2026-10-01, nothing done yet (circle E)"
+H2="- [request|human] 2026-09-08 event-network/anfrage-bridge-2026-09-08.md — peer-c: Rueckfrage — first report (addressed to a person)"
+A1="- [PR|ai] 2026-10-07 claude-marketplace#61 — someone: pin(td) — first report (PR: review/merge is agent work)"
+A2="- [request|ai] 2026-09-13 core/anfrage-fixtures-2026-09-13.md — peer-d: ANFRAGE — first report (circle C)"
+BLOCK="=== BRAIN BOOTUP CHECK ===${NL}open for us: 4 — ai 2 · human 2 · unclassified 0 (+1 parked)${NL}${H1}${NL}${H2}${NL}${A1}${NL}${A2}${NL}- [parked] grandma3-suite#112${NL}=== END BOOTUP ==="
+
+GOOD_EN="2 items I can handle myself (the marketplace pin, an answer on the fixtures) — shall I go ahead?
+2 need you:
+- 2026-09-05 the workstation needs the TD work split — already reported, still open
+- 2026-09-08 a question about the bridge device
+grandMA stays parked (#112)."
+GOOD_DE="2 Punkte kann ich selbst beantworten — soll ich?
+2 Anliegen brauchen dich:
+- 5.9. die Workstation braucht die TD-Arbeitsteilung — bereits mehrfach gemeldet
+- 8.9. Rueckfrage zum Brueckengeraet
+grandMA bleibt geparkt."
 
 # 1 — the incident: items listed, the reply names none of them.
-f="$T/1.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Brain sauber. 9 aeltere Anfragen, nichts Neues seit letztem Start."; } > "$f"
-check "incident reply (names no item)" "$f" block "$EN"
+f="$T/1.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Brain clean. 9 older requests, nothing new since the last start."; } > "$f"
+check "incident reply" "$f" block "$EN"
 
-# 2 — every item named (ISO date, PR number, parked word).
-f="$T/2.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Open: request of 2026-09-05 from the workstation; marketplace #61 pin. Parked: grandMA #112."; } > "$f"
-check "all items named" "$f" allow "$EN"
+# 2 — the required form, English built-ins.
+f="$T/2.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; } > "$f"
+check "required form (EN)" "$f" allow "$EN"
 
-# 3 — German date form and German parked word, with the instance file.
-f="$T/3.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Anfrage vom 5.9. (Workstation), PR #61. grandMA geparkt."; } > "$f"
-check "German date + parked word via instance data" "$f" allow "$DE"
-check "German parked word without instance data" "$f" block "$EN"
+# 3 — the same form in German: only through instance data.
+f="$T/3.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_DE"; } > "$f"
+check "required form (DE) with instance data" "$f" allow "$DE"
+check "required form (DE) without instance data" "$f" block "$EN"
 
-# 4 — one item left out.
-f="$T/4.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "PR #61 is open. Parked: #112."; } > "$f"
-check "one request left out" "$f" block "$EN"
+# 4 — an operator item left out.
+f="$T/4.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "${GOOD_EN/- 2026-09-08 a question about the bridge device/}"; } > "$f"
+check "operator item left out" "$f" block "$EN"
 
-# 5 — the bootup was cancelled by the hook timeout.
-f="$T/5.jsonl"; { boot_cancel; user "stand?"; asst "All good."; } > "$f"
+# 5 — no question for the items the agent could handle.
+f="$T/5.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "${GOOD_EN/ — shall I go ahead?/.}"; } > "$f"
+check "no opening question" "$f" block "$EN"
+
+# 6 — repeats not said.
+f="$T/6.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "${GOOD_EN/ — already reported, still open/}"; } > "$f"
+check "repeat not said" "$f" block "$EN"
+
+# 7 — more than three operator items: count + offer, no list needed.
+MANY="open for us: 5 — ai 0 · human 5 · unclassified 0"
+for d in 01 02 03 04 05; do MANY="${MANY}${NL}- [request|human] 2026-09-${d} ops/req-${d}.md — peer-b: x — first report"; done
+f="$T/7a.jsonl"; { boot_ok startup "$MANY"; user "stand?"; asst "5 items need you directly — shall I list them?"; } > "$f"
+check "more than three: count + offer" "$f" allow "$EN"
+f="$T/7b.jsonl"; { boot_ok startup "$MANY"; user "stand?"; asst "5 items need you directly."; } > "$f"
+check "more than three: no offer" "$f" block "$EN"
+
+# 8 — an unclassified item blocks until the class file holds it.
+Q="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-09-06 event-network/anfrage-net-2026-09-06.md — peer-c: ANFRAGE — first report"
+f="$T/8.jsonl"; { boot_ok startup "$Q"; user "stand?"; asst "1 needs you: 2026-09-06 the network definition."; } > "$f"
+check "unclassified item" "$f" block "$EN"
+CL="$T/cwd-cls"; mkdir -p "$CL/.claude-state"
+printf '%s\n' '{"anfrage-net-2026-09-06.md":{"class":"human","why":"needs the operator net definition"}}' > "$CL/.claude-state/open-items-class.json"
+check "classified via the class file" "$f" allow "$CL"
+
+# 9 — the bootup did not arrive.
+f="$T/9a.jsonl"; { boot_cancel; user "stand?"; asst "All good."; } > "$f"
 check "cancelled bootup" "$f" block "$EN"
-
-# 6 — no bootup record at all, first prompt.
-f="$T/6.jsonl"; { user "stand?"; asst "All good."; } > "$f"
+f="$T/9b.jsonl"; { user "stand?"; asst "All good."; } > "$f"
 check "missing bootup" "$f" block "$EN"
-
-# 7 — bootup from an older core without the block.
-f="$T/7.jsonl"; { boot_ok startup "=== BRAIN BOOTUP CHECK ===${NL}open PRs (6 shown): a#1${NL}=== END BOOTUP ==="; user "stand?"; asst "All good."; } > "$f"
+f="$T/9c.jsonl"; { boot_ok startup "=== BRAIN BOOTUP CHECK ===${NL}open PRs (6 shown): a#1${NL}=== END BOOTUP ==="; user "stand?"; asst "All good."; } > "$f"
 check "bootup without open-items block" "$f" block "$EN"
 
-# 8 — second turn: not the first reply any more.
-f="$T/8.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Open: 2026-09-05, #61, parked #112."; user "next"; asst "Done."; } > "$f"
+# 10 — later turns, compaction, re-issue, non-prompt user records.
+f="$T/10a.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "next"; asst "Done."; } > "$f"
 check "second turn" "$f" allow "$EN"
-
-# 9 — compaction is the same session.
-f="$T/9.jsonl"; { boot_ok compact "$BLOCK"; user "go on"; asst "Continuing."; } > "$f"
+f="$T/10b.jsonl"; { boot_ok compact "$BLOCK"; user "go on"; asst "Continuing."; } > "$f"
 check "compaction" "$f" allow "$EN"
-
-# 10 — re-issued answer.
-f="$T/1.jsonl"
-check "stop_hook_active" "$f" allow "$EN" true
-
-# 11 — hook feedback and task notifications are not operator prompts.
-f="$T/11.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Short."; user "Stop hook feedback: something"; asst "Longer."; user "<task-notification>x</task-notification>"; asst "Still nothing."; } > "$f"
+check "stop_hook_active" "$T/1.jsonl" allow "$EN" true
+f="$T/10c.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Short."; user "Stop hook feedback: x"; asst "Longer."; user "<task-notification>x</task-notification>"; asst "Still nothing."; } > "$f"
 check "feedback/notification turns stay inside the first turn" "$f" block "$EN"
 
-# 12 — nothing open: must be said.
-NOTHING="open for us: 0 — EVERY item goes into the first reply${NL}- nothing open (requests and PRs both read)"
-f="$T/12a.jsonl"; { boot_ok startup "$NOTHING"; user "stand?"; asst "Nothing open. Brain clean."; } > "$f"
+# 11 — nothing open; a failed source.
+NOTHING="open for us: 0 — ai 0 · human 0 · unclassified 0${NL}- nothing open (requests and PRs both read)"
+f="$T/11a.jsonl"; { boot_ok startup "$NOTHING"; user "stand?"; asst "Nothing open. Brain clean."; } > "$f"
 check "nothing open, said" "$f" allow "$EN"
-f="$T/12b.jsonl"; { boot_ok startup "$NOTHING"; user "stand?"; asst "Brain clean."; } > "$f"
+f="$T/11b.jsonl"; { boot_ok startup "$NOTHING"; user "stand?"; asst "Brain clean."; } > "$f"
 check "nothing open, not said" "$f" block "$EN"
-f="$T/12c.jsonl"; { boot_ok startup "$NOTHING"; user "stand?"; asst "Nichts offen."; } > "$f"
+f="$T/11c.jsonl"; { boot_ok startup "$NOTHING"; user "stand?"; asst "Nichts offen."; } > "$f"
 check "nothing open in German via instance data" "$f" allow "$DE"
+FAILED="open for us: 0 — ai 0 · human 0 · unclassified 0${NL}!! open for us: PR search NOT checked — this is not 'nothing open'"
+f="$T/11d.jsonl"; { boot_ok startup "$FAILED"; user "stand?"; asst "Brain clean."; } > "$f"
+check "failed source not said" "$f" block "$EN"
+f="$T/11e.jsonl"; { boot_ok startup "$FAILED"; user "stand?"; asst "PR search not checked (offline)."; } > "$f"
+check "failed source said" "$f" allow "$EN"
 
-# 13 — a source that could not be read must be reported as such.
-FAILED="open for us: 0 — EVERY item goes into the first reply${NL}!! open for us: PR search NOT checked — this is not 'nothing open'"
-f="$T/13a.jsonl"; { boot_ok startup "$FAILED"; user "stand?"; asst "Brain clean."; } > "$f"
-check "failed source not mentioned" "$f" block "$EN"
-f="$T/13b.jsonl"; { boot_ok startup "$FAILED"; user "stand?"; asst "PR search not checked (offline)."; } > "$f"
-check "failed source mentioned" "$f" allow "$EN"
-
-# 14 — a PR number that only PREFIXES another must not count (#6 vs #61).
-f="$T/14.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "2026-09-05 request, PR #610, parked."; } > "$f"
+# 12 — a PR number that only PREFIXES another must not count (#61 vs #610).
+H3="- [PR|human] 2026-10-07 claude-marketplace#61 — someone: pin — first report"
+P="open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${H3}"
+f="$T/12.jsonl"; { boot_ok startup "$P"; user "stand?"; asst "1 needs you: PR #610."; } > "$f"
 check "#610 does not name #61" "$f" block "$EN"
+
+# 13 — stoppen-gate: the opening question passes, a closing question elsewhere does not.
+check "stoppen-gate leaves the opening question alone" "$T/2.jsonl" allow "$EN" false "$SG"
+f="$T/13.jsonl"; { boot_ok startup "$P"; user "stand?"; asst "1 needs you: PR #61. Shall I start on the refactor?"; } > "$f"
+check "stoppen-gate still judges when no opening question is due" "$f" block "$EN" false "$SG"
 
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

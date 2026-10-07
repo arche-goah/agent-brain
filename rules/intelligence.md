@@ -46,18 +46,24 @@ to.)
 
 **Open points that concern this instance are a reporting duty, never briefing prose**
 (operator correction 2026-10-07): every item under "open for us" in the bootup — an
-open request addressed to this instance, an open PR — goes into the first reply, one
-line each, with its age. Nothing open: say "nothing open". A source that could not be
-read: say so — never "nothing". An item that an earlier session already reported and
-nobody has acted on comes back LOUDER ("reported in N sessions since <date>, nothing
-done yet"), never quieter: attention rises with every repeat. "Nothing new" describes
-commits, never open points. The relevance filter above does not apply to these items.
+open request addressed to this instance, an open PR — reaches the first reply, split by
+WHO has to act. Items the agent can answer or handle itself (its own circle): the count
+and ONE question whether to go ahead — a session usually starts for another reason, so
+the agent starts none of them without that OK. Items that need the operator: the count;
+up to three, one short bullet each (what it is about, who needs what); more than three,
+the offer to list them — a wall of items at session start intimidates. Nothing open: say
+"nothing open". A source that could not be read: say so — never "nothing". An item that
+an earlier session already reported and nobody has acted on is said LOUDER ("reported in
+N sessions since <date>, nothing done yet"), never quieter: attention rises with every
+repeat. "Nothing new" describes commits, never open points. The relevance filter above
+does not apply to these items.
 (Incident: the bootup listed nine open requests and six PRs; the first reply said
 "nine older requests, nothing new" and named none — two days after the data side had
 been fixed, because the relay side had no carrier.) Carried by
-`core/scripts/open-items.py` (the list and the repeat counter) and
-`core/helpers/open-items-gate.cjs` (Stop: blocks a first reply that leaves an item out,
-and a session whose bootup never arrived).
+`core/scripts/open-items.py` (the list, the class per item — automatic from `circle:`
+and the addressee, otherwise the agent's `--classify` — and the repeat counter) and
+`core/helpers/open-items-gate.cjs` (Stop: blocks a first reply without that form, with an
+unclassified item, or in a session whose bootup never arrived).
 
 ## Session End
 
