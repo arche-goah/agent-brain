@@ -283,6 +283,13 @@ if [[ -n "$eco_owner" && -f "$HERE/../scripts/code-scanning-alerts.sh" && -f "$H
         -- bash "$HERE/../scripts/code-scanning-alerts.sh" "$eco_owner" 2>/dev/null)
   if grep -qE '^(!! )?code scanning' <<< "$csa"; then printf '%s\n' "$csa"; fi
 fi
+# One system (operator order 2026-10-08): where and why this brain's core behaviour differs
+# from the shared core — hooks from development checkouts without an expiry, instance hooks
+# without a reason to live only here, files edited inside core/. Measured on the proving
+# brain: 12 of 31 hook entries ran from unmerged checkouts, unnoticed because all of them worked.
+if [[ -f "$HERE/../scripts/local-machinery.py" ]]; then
+  "$PY" "$HERE/../scripts/local-machinery.py" --repo "$R" 2>/dev/null || true
+fi
 
 # Memory limits (enforced since Claude Code v2.1.83: 200 lines / 25 KB — CHANGELOG entry
 # "MEMORY.md index now truncates at 25KB as well as 200 lines" is in the 2.1.83 block.

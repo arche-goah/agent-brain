@@ -175,6 +175,27 @@ explicit `# MECHANISM-OK: <reason>` marker. The rules for it are instance knowle
 `.claude/rules/mechanism-rules.json` (every newly discovered shortcut gets added
 there — the system learns, not just the agent).
 
+## One System, Not Local Workarounds (HARD, operator order 2026-10-08)
+
+Every brain runs the same released core. A mechanism that would help every brain — a
+gate, a check, a hook, a script — is built IN the core (or in the owning suite) as a
+PR, never as a local copy that works here and nowhere else. "Essential", in the
+operator's word: a local fix is a fix nobody else gets, and a brain that runs its own
+machinery measures a different system than its collaborators do.
+
+Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machinery.json`:
+- **instance** — machinery that can only live in this brain (it acts on this operator's
+  hardware, services or projects). The entry says why; "not yet ported" is not a reason.
+- **alpha** — a development checkout under test, with an expiry date and what is being
+  measured. Past the date: merge, extend with a reason, or unwire.
+
+**Mechanically carried:** `scripts/local-machinery.py` runs at every session start and
+names every hook that is neither core nor declared, every expired alpha, and every file
+edited inside `core/` (the pin check sees moved commits, not edits in place). Measured on
+the proving brain the day the rule was written: 12 of 31 hook entries ran from unmerged
+checkouts, 8 from instance scripts — at least four of those general mechanisms — and
+nothing had reported it, because every one of them worked.
+
 ## A Needed Reload Is Not a Wait State (operator order 2026-08-06, sharpened 2026-08-14)
 
 A change to a tool that only takes effect after the server reloads ends many turns with
