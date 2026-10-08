@@ -1,0 +1,5 @@
+{
+  "_comment": "Read by core scripts/local-machinery.py at every session start. A hook that does not run from the core is declared here, or the start says so. instance: path as written in the hook -> why it can only live in THIS brain (a general mechanism belongs in the core as a PR). alpha: path or prefix of a development checkout -> until (YYYY-MM-DD) + what is being measured; past the date the start gets loud.",
+  "instance": {},
+  "alpha": {}
+}
