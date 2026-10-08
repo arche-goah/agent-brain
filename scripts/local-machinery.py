@@ -127,9 +127,9 @@ def main(argv):
     if expired:
         print(f"!! local machinery: {len(set(expired))} alpha(s) past their date, still wired: {short(expired)} — merge, extend with a reason, or unwire")
     if outside:
-        print(f"!! local machinery: {len(set(outside))} hook(s) run from outside this brain and outside the core, undeclared: {short(outside)} — declare as alpha with a date (.claude/rules/local-machinery.json) or move to the core")
+        print(f"!! local machinery: {len(set(outside))} hook(s) run from outside this brain and outside the core, undeclared: {short(outside)} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR")
     if undeclared:
-        print(f"local machinery: {len(set(undeclared))} instance hook(s) without a reason to live only here: {short(undeclared)} — general? core PR; instance-only? declare why")
+        print(f"local machinery: {len(set(undeclared))} instance hook(s) without a reason to live only here: {short(undeclared)} — for the AI: classify each; general = core PR, instance-only = declare why")
     return 0
 
 
