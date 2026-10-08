@@ -189,6 +189,15 @@ Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machin
 - **alpha** — a development checkout under test, with an expiry date and what is being
   measured. Past the date: merge, extend with a reason, or unwire.
 
+**The finding addresses the AI, not the operator** (operator, same day: "the human does not
+have to be bothered every time something deviates, but there should be a classification and
+analysis of what deviates, why, whether that makes sense, and whether something should move
+into the core as a PR"). On every reported deviation the agent: (1) reads what the machinery
+does and why it is local, (2) judges whether that makes sense, (3) decides — core-worthy =
+open the core PR (or name the open one) and declare it as alpha until merged; instance-only =
+declare it with the reason; obsolete = unwire. The declaration IS the written analysis. The
+operator hears only what needs his decision under the instance's own rules.
+
 **Mechanically carried:** `scripts/local-machinery.py` runs at every session start and
 names every hook that is neither core nor declared, every expired alpha, and every file
 edited inside `core/` (the pin check sees moved commits, not edits in place). Measured on
