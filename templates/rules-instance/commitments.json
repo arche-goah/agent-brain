@@ -1,0 +1,12 @@
+{
+  "_comment": "Instance data for core scripts/commitments.py: phrasing of a commitment about future behaviour in this brain's language (English is built in) and first-person words. Example values are German; replace or empty them.",
+  "patterns": [
+    "\\bab jetzt\\b",
+    "\\bk(ue|ü)nftig\\b",
+    "\\bvon nun an\\b"
+  ],
+  "first_person": [
+    "\\b(ich|wir)\\b"
+  ],
+  "stopwords": []
+}

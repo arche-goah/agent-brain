@@ -85,7 +85,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4
+known:     helpers/session-bootup.sh=8 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5
 instances: 5
 repeat:    yes
 status:    closed
@@ -123,6 +123,8 @@ of a file the script opens (settings, stop-checks, declarations, the core checko
 it prints only plugin id, version and style name.
 2026-10-09, always-loaded.py baselined after that review: the four joins build paths it
 only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
+2026-10-09, commitments.py baselined after that review: the five joins build the transcript
+dir, a session file and the instance data path it opens; it reports session ids, never a path.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
