@@ -346,7 +346,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-check.py=3 scripts/local-machinery.py=4 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/os-traps-export.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
+known:     scripts/brain-friction.py=3 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-check.py=3 scripts/local-machinery.py=5 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/os-traps-export.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
 status:    open
@@ -370,7 +370,7 @@ and only `brain-friction.py` is parsed by another program, so the rest are corre
 stand. The baseline exists so a NEW site is read with one question before it ships: does
 anything PARSE this output? 2026-10-09 local-machinery.py: yes — the session start reads
 it — so it pins stdout like brain-friction.py, and the four sites are counted after that
-fix. Left `open` deliberately — the 12 unpinned sites are fine only
+fix (five with the tool-source line). Left `open` deliberately — the 12 unpinned sites are fine only
 as long as that answer stays no.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
