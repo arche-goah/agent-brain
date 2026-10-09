@@ -133,6 +133,8 @@ has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder
 has "2026-09-28 suite-x#1" "$out" && ok "shown date = opened date" || bad "date: $out"
 has "[parked] grandma-suite#7" "$out" && ok "parked PR on the parked line" || bad "parked PR: $out"
 has "(+3 waiting on others or a date)" "$out" && ok "header counts the waits apart" || bad "wait header: $(head -1 <<<"$out")"
+outc=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=2 run p3)
+has "- [wait] 3 waiting on others or a date: " "$outc" && [ -z "$(line '|wait] ' "$outc")" ] && ok "many waits collapse into one line" || bad "collapse: $outc"
 l1=$(line 'suite-x#1 ' "$out2")
 has "waiting on peer" "$l1" && ! has "reported in" "$l1" && ok "a wait does not count up" || bad "a wait was counted: $l1"
 has "!! reported in 2 sessions" "$(line 'core#6 ' "$out2")" && ok "past wait counts up" || bad "past wait count: $(line 'core#6 ' "$out2")"

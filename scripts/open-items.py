@@ -405,8 +405,16 @@ def main():
             age = f"!! {i['overdue']} — that date has passed; " + age
         why = f" ({i['why']})" if i["why"] else ""
         print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{why}")
-    for i in waiting:
-        print(f"- [{i['kind']}|wait] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {i['wait']}")
+    # Waiting items need no relay; above a handful, one line keeps the start readable
+    # (Windows check 2026-10-09: 20 own PRs waiting on that very check filled 20 lines).
+    collapse = int(os.environ.get("OPEN_ITEMS_WAIT_COLLAPSE", "5") or 5)
+    if len(waiting) > collapse:
+        print(f"- [wait] {len(waiting)} waiting on others or a date: "
+              + ", ".join(i["ref"].rsplit("/", 1)[-1] for i in waiting[:12])
+              + (f" (+{len(waiting) - 12})" if len(waiting) > 12 else ""))
+    else:
+        for i in waiting:
+            print(f"- [{i['kind']}|wait] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {i['wait']}")
     if parked:
         print(f"- [parked] {', '.join(i['ref'].rsplit('/', 1)[-1] for i in parked)}")
     if count["?"]:
