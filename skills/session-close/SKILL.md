@@ -29,6 +29,14 @@ then an explicit release follows.
      `python3 core/scripts/transcript-recall.py <keyword>` (interpreter per instance rule).
    - If anything came up in `docs/maintenance/brain-scan-auftraege.md` or project order
      lists: update the entries.
+   - **LOOSE COMMITMENTS — none leaves the session (2026-10-09):** run
+     `python3 core/scripts/commitments.py --session <this session id>` (interpreter per
+     instance rule). Every line `loose commitment: …` is a promise about future behaviour
+     made only in chat. Per line: write it where rules live (instance rule if it concerns
+     this brain only, a core PR if it holds for every brain) or say in the close report that
+     it is dropped and why. The close is complete when the summary says `loose=0` or every
+     remaining line is named as dropped. The brain-scan (effect-check E6) catches what a
+     session without a clean close left behind.
    - **STANDING PROMISES — say per line whether the condition still holds (2026-09-12):**
      If `.claude-state/promises.jsonl` exists, read it and go through the promises made
      in this session. Each row carries the promise and what bound it. For every one:

@@ -12,13 +12,35 @@
    discipline).
 2. **Pragmatism > perfection** - no half measures.
 3. YOU MUST **NEVER endanger social accounts** - only official APIs, never
-   post/delete/change on your own authority.
+   post/delete/change on your own authority. AI-generated content that goes online is
+   labelled as such (operator base rule).
 4. **Skills ALWAYS fire automatically** - never wait for slash commands. Scan all
    skills semantically.
 5. **Parallel agents** for 2+ independent tasks that are each substantial in their
    own right (observe the cost/model-routing rule in `rules/intelligence.md`
    — multi-agent costs ~15x chat tokens); small stuff sequentially in the session.
 6. **Existing files:** ALWAYS read first, then edit.
+7. **Commit-ready means committed** (operator decision 2026-08-01): commit continuously and
+   on your own; whatever is not committed is named WITH its reason. Where and when it is
+   pushed stays instance policy (skill `session-close`); whether finished work is committed
+   does not.
+8. **Shell commands are atomic and must match a permission pattern** (operator decisions
+   2026-08-01 / 2026-10-07): Claude Code approves a Bash call by matching its text against
+   allow patterns, so a compound chain (`cd <dir> && git push`, `a; b`) matches none of them
+   and turns into a prompt or a denial. Issue commands one by one; work in another directory
+   through the tool's own flag (`git -C <abs-path> push`), never through `cd … &&`. Multi-line
+   content goes into a file that is then run or applied — no shell heredocs, which also
+   trip the harness's obfuscation heuristics.
+9. **A PR is opened together with its CI watch** (operator decision 2026-10-09): whoever
+   opens a pull request arms `core/scripts/ci-watch.sh pr <repo> <n>` in the same turn
+   (background) and reads the result before calling the PR ready. A red check found days
+   later is a check nobody watched (measured: a PR sat red while the session reported
+   the others green).
+10. **A commitment about future behaviour becomes rule text in the same turn** (operator
+    decision 2026-10-09): "from now on I will…" said only in chat binds nothing and is
+    invisible to every check. Write it where rules live — the instance's rules if it is
+    about this brain only, a core PR if it holds for every brain — so the local-machinery
+    inventory sees it and its reach can be checked like any other carrier.
 
 ## File Rules
 
@@ -41,6 +63,21 @@ YOU MUST comply with these rules:
 - NEVER use code fragments as file names (flex, mb-6, BigInt(0), void)
 - Delete junk files immediately when discovered
 
+**A baseline stays generic** (operator decision 2026-09-06): how one concrete setup uses
+a general baseline goes into its own file that REFERENCES the baseline instead of
+copying it.
+
+**Identity is written, state is read** (operator decision 2026-08-05): what a tool can
+read live (link, lease, address in use, version, counters) is never frozen into labels,
+configs or docs. A snapshot that must be written carries its date and source.
+
+**Files the operator opens are versioned, never overwritten under the same name**
+(operator decision 2026-10-04): every output the operator opens, loads or prints carries
+a version and a timestamp in its name; a new iteration is a new file. **An operated
+artifact is saved as a dated copy before AND after every rebuild** (operator decision
+2026-08-03, sharpened 2026-09-18) — that needs no approval, and the missing save is the
+defect; a bare overwrite stays the operator's call.
+
 The folder mapping (what goes where) is instance knowledge — table in the instance
 rule file.
 
@@ -59,6 +96,13 @@ current state. A FOLD is not a clean-up: it moves old entries byte-identically i
 immutable fold file and leaves a marker line — nothing is edited or dropped. The
 session log is folded at session close above the instance's threshold
 (`SESSION_LOG_FOLD_MAX_BYTES`, skill `session-close` step 2).
+
+**Archive and compact by relevance, never by age** (operator decision 2026-08-30): only
+what lives on completely ELSEWHERE (successor plus pointers in both directions) is moved
+out; deleting is outside the agent's mandate. Exception for logs (operator decision
+2026-09-25): a log may rotate by period, with clean pointers and nothing lost — sorting
+log lines by relevance would mean judging the record. Keep log entries short (heading
+plus one line, the content in a fact file) so one period fits the limit.
 
 ## Project Work Ledgers (operator decision 2026-08-13)
 
@@ -84,7 +128,9 @@ instance and every colleague files it the same way and lists stay compatible:
 3. **`reach: shared`** marks an entry for the org's shared-memory repo as soon
    as more than one brain works the project: exported as one-file-one-fact WITH a
    back-reference to the source `id`. The export is a deliberate act at session
-   close (leak discipline) — nothing propagates itself.
+   close (leak discipline) — nothing propagates itself. Exception: a DECISION whose
+   reach goes beyond this brain is pushed in the same pass it is made (operator
+   decision 2026-09-06) — documented internally is not arrived.
 4. **Decisions are pointers, not copies.** The full why lives in the domain change
    log / decision log (Session Traceability above); a `class: decision` entry
    only references it. No second maintenance.
@@ -107,7 +153,8 @@ same topic lands in the same layout:
    suite conventions: AGENTS.md, leak-scan, release-preflight + tag CI).
    Operator orders, hardware context and intermediate states => the PRIVATE
    brain. A project that starts as "just a folder" in the brain gets the
-   decision recorded, not skipped.
+   decision recorded, not skipped. The reverse holds too: a folder is no proof
+   of a realised project — ask before treating it as one (operator base rule).
 2. **The instance ledger is born with the first order:**
    `docs/<domain>/offene-punkte.md` (or the instance's equivalent) per the
    Project Work Ledgers rule — field convention `id`/`class`/`reach`/`origin`
@@ -168,6 +215,26 @@ built second path passes all three — and is still wrong, because the question
 take it"** — or **"there is no defined path" → it gets DISCUSSED.** A third case does
 not exist. No "I'll quickly do it differently and mention it": the questioning must
 come FROM THE AGENT, BEFORE acting.
+**"DISCUSSED" does not mean "end the turn on a question".** It means the question is
+raised through the channel that fits it (step 3 below) while the ordered work goes on.
+
+**ASK OR ACT — the one ordered procedure** (coherence finding 2026-09-18: the decision
+was spread over a dozen rules on three ranks, and the stop gate and this section gave
+opposite answers for the same case). Every other rule about asking or stopping points
+here. Take the FIRST step that applies:
+1. **Irreversible or externally effective** (deploy, publish, push to a public repo,
+   send, delete, a write to a live system outside its agreed frame, money, hardware):
+   its gate applies — the operator's word first, regardless of confidence.
+2. **Needed to fulfil the order as specified** and a defined path exists: take it, in the
+   order's space. An interrupted defined path: restore it (THIRD CASE above).
+3. **Adjacent** — useful, but not needed for the order, or no defined path exists: write
+   it where it is decided without blocking (the instance's ledger as `origin: derived`,
+   or the shared-memory channel for another party), and CONTINUE the ordered work. The
+   operator hears it in the next report, as a proposal with a recommendation.
+4. **Otherwise** (reversible, own terrain, inside the order): do it and report.
+A question ENDS the turn only when the next step of the order cannot proceed without the
+answer AND the answer belongs to the operator — the instance names its list of
+operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
 
 **Mechanically secured:** `core/helpers/mechanism-guard.cjs` (PreToolUse/Bash) blocks
 shortcuts for which a documented path exists, and demands either the process or an
@@ -175,11 +242,51 @@ explicit `# MECHANISM-OK: <reason>` marker. The rules for it are instance knowle
 `.claude/rules/mechanism-rules.json` (every newly discovered shortcut gets added
 there — the system learns, not just the agent).
 
+## One System, Not Local Workarounds (HARD, operator order 2026-10-08)
+
+Every brain runs the same released core. A mechanism that would help every brain — a
+gate, a check, a hook, a script — is built IN the core (or in the owning suite) as a
+PR, never as a local copy that works here and nowhere else. "Essential", in the
+operator's word: a local fix is a fix nobody else gets, and a brain that runs its own
+machinery measures a different system than its collaborators do.
+
+Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machinery.json`:
+- **instance** — machinery that can only live in this brain (it acts on this operator's
+  hardware, services or projects). The entry says why AND names as `evidence` the
+  instance-specific token the item relies on (a host, device, person or project name); the
+  checker verifies the token is really in the item. "Not yet ported" is not a reason, and a
+  reason without evidence is a self-declaration nobody checked (measured 2026-10-09: three
+  items declared instance-only were general).
+- **alpha** — a development checkout under test, with an expiry date and what is being
+  measured. Past the date: merge, extend with a reason, or unwire.
+
+**The finding addresses the AI, not the operator** (operator, same day: "the human does not
+have to be bothered every time something deviates, but there should be a classification and
+analysis of what deviates, why, whether that makes sense, and whether something should move
+into the core as a PR"). On every reported deviation the agent: (1) reads what the machinery
+does and why it is local, (2) judges whether that makes sense, (3) decides — core-worthy =
+open the core PR (or name the open one) and declare it as alpha until merged; instance-only =
+declare it with the reason; obsolete = unwire. The declaration IS the written analysis. The
+operator hears only what needs his decision under the instance's own rules.
+
+**Mechanically carried:** `core/scripts/local-machinery.py` runs at every session start. It
+inventories EVERY carrier of behaviour — the search space is the invariant, not the last
+incident: hooks, stop checks, MCP servers, git hooks, scheduled jobs, extra plugins, skills,
+workflows, output styles, agents, commands, rule sections, scripts — and names every item
+that is neither core nor declared with evidence, every undeclared item that contains none of
+the instance's `identity_tokens` (presumably general), every near-duplicate of a core tool
+under another name, every expired alpha, and every file edited inside `core/` (the pin check
+sees moved commits, not edits in place); one summary line counts each class. A new carrier
+type gets a planted case and a negative control in its fixture. Measured on
+the proving brain the day the rule was written: 12 of 31 hook entries ran from unmerged
+checkouts, 8 from instance scripts — at least four of those general mechanisms — and
+nothing had reported it, because every one of them worked.
+
 ## A Needed Reload Is Not a Wait State (operator order 2026-08-06, sharpened 2026-08-14)
 
 A change to a tool that only takes effect after the server reloads ends many turns with
 "this needs a restart" — and then the agent waits for a human reply. That is a wait
-state the agent can dissolve itself. Two rules, in this order:
+state the agent can dissolve itself. Three rules, in this order:
 
 1. **Ask for the smallest reload that does the job.** A changed or added MCP tool needs
    the CLIENT to re-read the tool list — an `/mcp` reconnect. A full Claude restart is
@@ -190,13 +297,23 @@ state the agent can dissolve itself. Two rules, in this order:
    background (Bash `run_in_background`), exits when the server writes a fresh boot
    stamp — the agent is re-invoked and runs the verification by itself. Never end a turn
    on "tell me when you've reconnected".
+3. **The same holds for EVERY action expected from someone else** (operator decisions
+   2026-09-10 and 2026-10-05): re-plugging a cable, switching a device on, a check
+   requested from another machine or another party. Build the measurement, arm the
+   watcher on the measurable state, THEN give the instruction — and the instruction
+   says what will NOT move (a default state produces no change). A request is an
+   opening move, not a hand-off: before every turn end ask "what do I expect from whom,
+   and how will I learn that it has arrived?" Where every probe is forbidden, the
+   instruction stands without a watcher.
 
 **Proof is the server's own boot stamp, never its reachability** — a stale server answers
 too, with the OLD code. The stamp is the suite's half of the contract: an MCP server
 writes a small file at startup whose content changes on every boot, and documents its
 path in its AGENTS.md (grandma3-suite: `<GMA3_IPC_DIR>/mcp-boot.json`). A server without
-a stamp cannot be waited on — that missing carrier is itself the finding, and the waiter
-says so instead of reporting green.
+a stamp cannot be PROVEN back — that missing carrier is itself the finding, and the waiter
+says so instead of reporting green. Until its suite adds one, the same script's
+`--process <pattern>` mode is the stopgap on macOS/Linux (all old pids of this session's
+children gone, a new one up); on Windows it refuses, and the finding stays open either way.
 
 ## Order Fidelity (Auftragstreue) (HARD)
 
@@ -234,3 +351,39 @@ says so instead of reporting green.
 6. **Overall state beats single test.** A gate that only checks one's own change
    cannot see that the whole is broken. For artifacts with an operating surface:
    **target state as a file + check against it.**
+7. **A question is not an approval; own notes are not orders; the machine is part of
+   the order** (operator decision 2026-08-18). When the operator asks what a plan
+   MEANS, it is not ordered yet: answer, then wait. A ledger or memory entry proves
+   that the TOPIC came from the operator — never its scope, time or machine; those are
+   asked, not filled in. For hardware-bound tools, settle WHICH machine first.
+8. **Test material comes from the order, never from the disk** (operator decision
+   2026-09-25): the operator's own files are used only when named or already part of
+   the running order. A test that needs more material asks which — it does not search
+   the disk and pick.
+9. **An ordered audit orders its clear fixes** (operator decision 2026-09-02): clear
+   (one correct version) plus safe (reversible, no live system, no shared carrier) =
+   do it, do not present it. Structural changes against a documented operator decision
+   stay proposals.
+10. **What the operator just criticised is not re-released unseen** (operator decision
+    2026-08-19): the corrected iteration waits for the operator's review.
+
+## Working Across Parties
+
+For brains that share carriers (core, suites, shared memory) with other operators and
+their AIs:
+
+1. **Name the party, never a role word** (operator decision 2026-09-12): with more than
+   one collaborator, "the colleague", "the other side" or "the other session" identifies
+   nobody — use the proper name. The person and their AI are named apart ("<name>" vs.
+   "<name>'s AI"): a proposal of an AI is not a decision of its person. Machine ids stay
+   in data fields; a git author is no proof of the party (accounts can look alike).
+2. **Responsibility is assigned only by the operator** (operator decision 2026-08-19). An
+   assignment is STATE with a date — measure it (`core/scripts/parallel-sessions.sh`, the
+   shared-memory record) before leaving work out, never recall it (2026-08-21). A new
+   domain inherits no owner.
+3. **The owner of a domain decides its domain questions** (operator decision
+   2026-09-06): a technical question in another party's domain is neither pre-decided
+   here nor put to this operator — it goes to that party, or is decided together later.
+4. **Judge the sum, not the single change** (operator decision 2026-08-31): what counts
+   is what all of this side's changes together mean for the other party — four small
+   interventions are one big one.

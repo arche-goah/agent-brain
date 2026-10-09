@@ -85,7 +85,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 helpers/session-bootup.sh=8
+known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5
 instances: 5
 repeat:    yes
 status:    closed
@@ -110,6 +110,21 @@ or matched against forward-slashed text? If it only ever reaches the filesystem,
 fine and gets counted; if it reaches a reader or a comparison, it needs `as_posix()` or
 a literal `/`. `.sh` is in the search because the defect was found inside a python
 block embedded in a shell script, where a `*.py` search could not see it.
+2026-10-09, local-machinery.py rework (carrier inventory): one join is left — the default
+path of the declarations file, which is only opened. Every path the script REPORTS or
+matches against a declaration key is built with `pathlib` and leaves as `.as_posix()` (item
+ids, `rel_id`) or with backslashes replaced; the scheduled-job search compares the brain path
+in both separator forms, lowercased. Before the rework: all five joins build the path
+of a file the script opens (settings, stop-checks, declarations, the core checkout and its
+`.git`); none is printed or compared. The paths it REPORTS come from git porcelain
+(already forward-slashed) and from hook command strings.
+2026-10-09: the caveman check moved out of session-bootup.sh into caveman-armed.py
+(bootup 8 -> 4, new file 6). Same review: every join builds a path the script opens;
+it prints only plugin id, version and style name.
+2026-10-09, always-loaded.py baselined after that review: the four joins build paths it
+only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
+2026-10-09, commitments.py baselined after that review: the five joins build the transcript
+dir, a session file and the instance data path it opens; it reports session ids, never a path.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -121,7 +136,7 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1
+known:     scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/brain-scan-prep.py=3
 instances: 3
 repeat:    yes
 status:    closed
@@ -136,7 +151,10 @@ baseline writer carried it unnoticed. The pattern deliberately matches correct s
 "is there a new place that writes a tracked file" is the question a grep can answer, "did
 the author think about line endings" is not. Proven in use the same day: the seventh site
 (os-traps-export.py, which generates this register's own signpost) surfaced as drift on the
-first run after it was written, was read, and was correct.
+first run after it was written, was read, and was correct. 2026-10-09: invariant-index.py read the same way — it pins newline="\n", and its fixture asserts LF bytes.
+first run after it was written, was read, and was correct. 2026-10-09: brain-scan-prep.py
+(three writes into the scan's scratch dir; one of them, the report head, is concatenated
+into a tracked report) surfaced on its first run and was pinned before it shipped.
 
 ## OS-3 — a fixture hands a shell path to a native process
 
@@ -148,7 +166,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-absence-gate.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-turn-kind.sh=1 scripts/test-local-machinery.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-always-loaded.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-watch-supervisor.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -181,6 +199,26 @@ inside the recorded tool inputs (the gate resolves those to decide coverage). Al
 through `native()`. Here it matters in BOTH directions: an unresolvable root is never
 covered (a must-allow case would block), an unresolvable transcript reads empty (a
 must-block case would pass silently). Windows run still owed at baseline time.
+2026-10-09, test-live-read-gate.sh baselined after the same review: paths cross into node in
+five places — the transcript, the project dir (env), the absolute required path inside the
+instance file, the `filePath` of each delivered-Read record, and the path inside each `cat`
+command the gate resolves. All five go through `native()` (one `$NT` for the temp dir). Both
+directions matter here too: an unresolvable delivered record never covers the file (a
+must-allow case would block), an unresolvable transcript reads empty (a must-block case would
+still block, but for the wrong reason — which is why the fixture also runs every must-block
+case against an always-allow stub). The stub and the padding script take their paths as
+ARGUMENTS, which Git Bash converts. Windows run owed at baseline time.
+2026-10-09, test-transcript-archive.sh baselined after the same review: the temp dir
+reaches the script under test through CLAUDE_CONFIG_DIR and argv, and inside it only bash,
+`find`, `du` and `tar` (all MSYS) open it; the script converts both paths with `cygpath -u`
+where it exists, because GNU tar reads the colon of `C:\...` as host:path. The one native
+program, `git -C <dir>` (the refusal check), receives the dir as an ARGUMENT, which Git Bash
+converts. Windows run still owed at baseline time.
+2026-10-09, test-wait-mcp-reconnect.sh baselined after the same review: the temp dir holds
+the stamp files, written and read by bash (`echo`, `cat`) only; the process cases start
+bash children and never hand a path to a native process. Windows run still owed at
+baseline time (the process cases are designed to SKIP there and to check the refusal).
+
 2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
 test-full-audit-synthesis-files.sh baselined on the same review and the same construction
 — they are the per-workflow siblings of the coherence fixture: harness file as an
@@ -194,6 +232,28 @@ script (BRAIN_DIR and the argument), never a path a native process has to open; 
 report goes to --out inside the same temp dir. Its one pipe-grep carries -a, because the
 line it extracts is the verdict the fixture judges (OS-5).
 
+2026-10-09, test-local-machinery.sh: the temp dir reaches python only as the `--repo`
+ARGUMENT (Git Bash converts argv) and git as `-C` arguments; the hook commands inside the
+fixture JSON name `$CLAUDE_PROJECT_DIR` or a fictitious `/elsewhere/...` prefix that is
+compared as text, never opened. No native process opens a temp path from data.
+Rework 2026-10-09 (carrier coverage): now four temp paths DO travel as data — the suite path
+in `.mcp.json` and in an alpha key, the plugin install path in `installed_plugins.json`, the
+brain path inside a planted LaunchAgents plist, and the global hooks dir in the git config
+named by `GIT_CONFIG_GLOBAL` (itself an env value a native git reads). Every one goes through
+`nat()` (cygpath -m). `--home` and `--repo` stay argv.
+2026-10-09, test-caveman-armed.sh: the installPath written into installed_plugins.json is
+data a native python opens, so it goes through `nat()` (cygpath -m), and so does
+CLAUDE_CONFIG_DIR; the brain dir reaches python only as its working directory.
+2026-10-09, test-always-loaded.sh: the temp dir reaches python only as the `--repo` and
+`--memory` ARGUMENTS (Git Bash converts argv); no path travels inside data.
+2026-10-09, the three collab-watch fixtures, after the review question: test-watch-supervisor.sh
+hands its temp dir only to bash. test-collab-watch-plan.sh hands the config path to python
+as an ARGUMENT only — directly, and through `COLLAB_WATCH_CONFIG`, which the bash arm script
+reads and passes on as argv (Git Bash converts argv). test-repo-activity-watch.sh: `FAKE_DIR`
+and the state dir are read by bash only (the fake `gh` is bash); the clone root reaches the
+native `git` only as a `-C` argument; the python filter gets JSON on stdin, never a path. No
+native process opens a temp path from data. Windows run owed by the workstation check.
+
 ## OS-5 — grep swallows a report line by calling the stream binary
 
 shape: B
@@ -205,7 +265,7 @@ the diagnostic replaces exactly the output it was asked to produce, and only in 
 failure path, where nobody has a second copy.
 pattern:   \| *grep -[b-zA-Z]
 paths:     --include=*.sh scripts helpers
-known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1
+known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-live-read-gate.sh=2
 instances: 3
 repeat:    yes
 status:    closed
@@ -220,6 +280,9 @@ apart from the rest, and the rest are greps whose output
 nobody reads as a verdict. They stay listed rather than changed, because `-a` on a line
 that never renders anything is noise — but a NEW pipe-grep must be looked at, and the
 question is one word long: does this line end up in front of a human?
+2026-10-09, test-live-read-gate.sh baselined after that question: both pipe-greps are
+`grep -q` predicates on the hook's JSON (the deny decision, the continuation offset); their
+output is never printed, only the exit status decides the case.
 
 ## OS-6 — `python -` runs the file you passed as an argument
 
@@ -337,7 +400,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/os-traps-export.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
+known:     scripts/brain-friction.py=3 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=7 scripts/os-traps-export.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
 status:    open
@@ -359,7 +422,11 @@ an EMPTY pattern, which matches every file and reports LF for a file full of CRL
 `known` is a baseline of SITES (like OS-2), not of defects: 13 files print non-ASCII today
 and only `brain-friction.py` is parsed by another program, so the rest are correct as they
 stand. The baseline exists so a NEW site is read with one question before it ships: does
-anything PARSE this output? Left `open` deliberately — the 12 unpinned sites are fine only
+anything PARSE this output? 2026-10-09 commitments.py: yes — effect-check E6 reads its summary line — and it pins stdout like brain-friction.py. 2026-10-09 local-machinery.py: yes — the session start reads
+it — so it pins stdout like brain-friction.py (the pin stays). Its sites left the baseline in
+the carrier rework of the same day: the em-dash lines now live in a MESSAGES table and reach
+`print()` through `format()`, which this pattern cannot see — the pin, not the count, is what
+carries this file. Left `open` deliberately — the 12 unpinned sites are fine only
 as long as that answer stays no.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name

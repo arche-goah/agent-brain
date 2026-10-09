@@ -64,6 +64,10 @@ fi
 # lists what is addressed to us by name and not yet answered, new or not.
 open_requests() {
   local inbox py
+  # Inside the bootup, scripts/open-items.py lists these (with PRs and a repeat counter) as
+  # the ONE open list (2026-10-07). Two lists of the same items are noise, and noise is what
+  # a first reply learns to skim. Run by hand, this check still lists them itself.
+  [[ "${OPEN_ITEMS_IN_BOOTUP:-}" == 1 ]] && return 0
   inbox="$(dirname "${BASH_SOURCE[0]:-$0}")/../scripts/shared-memory-inbox.py"
   py=python3
   "$py" -c 'import sys' >/dev/null 2>&1 || py=python
@@ -76,7 +80,9 @@ open_requests() {
 # that never ran. The earlier rule "a clean check is silence" was right for briefing prose,
 # wrong for a carrier the operator relies on to know the channel is alive.
 if [[ "$LAST_SEEN" == "$REMOTE_HEAD" ]]; then
-  echo "shared-memory: nothing new since last start"
+  # "nothing new" is about COMMITS only — it never means "nothing open" (2026-10-07: a first
+  # reply read it that way and dropped nine open requests). The open list follows separately.
+  echo "shared-memory: nothing new since last start (about commits only — open points are listed separately, new or not)"
   open_requests
   exit 0
 fi

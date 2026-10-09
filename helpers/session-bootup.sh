@@ -35,6 +35,11 @@ R_native="$R"
 command -v cygpath >/dev/null 2>&1 && R_native=$(cygpath -w "$R" 2>/dev/null || printf '%s' "$R")
 M="$HOME/.claude/projects/$(printf '%s' "$R_native" | sed 's/[^A-Za-z0-9]/-/g')/memory/MEMORY.md"
 CAP=32768   # 32 KiB cap for the data section
+# The SessionStart payload (one JSON line on stdin) carries the session id — the open-items
+# counter needs it so that a resume or compaction of the SAME session never counts as a
+# second report. A hand run (terminal) has no payload; -t keeps a silent pipe from hanging.
+HOOK_INPUT=""
+[[ -t 0 ]] || IFS= read -r -t 2 HOOK_INPUT 2>/dev/null || true
 # Own directory for the parallel-session check — MUST stay top-level: inside a
 # function, $0 in zsh returns the function name instead of the script path.
 PSC_SELF="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
@@ -245,25 +250,15 @@ for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json")
         r = (m.get("source") or {}).get("repo", "")
         if "/" in r: print(r.split("/")[0]); raise SystemExit
 ' 2>/dev/null)
-prs="" prs_rc=0
-# A failed search says so (2026-09-22): silence here read as "no PR needs anything" while
-# the search had not run at all — and the PR-move line below then had nothing to read.
-if [[ -n "$eco_owner" ]]; then
-  prs=$(gh search prs --owner "$eco_owner" --state open --json repository,number,title \
-      --jq '.[] | "\(.repository.nameWithOwner | split("/")[1])#\(.number) \(.title)"' 2>/dev/null) || prs_rc=$?
-  prs=$(printf '%s' "$prs" | head -6)
-  (( prs_rc )) && echo "open PRs: NOT checked - gh search failed (rc=$prs_rc, offline or not logged in); PR moves unknown too"
-fi
-if [[ -n "$prs" ]]; then
-  n=$(printf '%s\n' "$prs" | wc -l | tr -d ' ')
-  echo "open PRs ($n shown): $(printf '%s' "$prs" | tr '\n' ';' | sed 's/;/ · /g')"
-fi
+# The open PRs themselves are listed by scripts/open-items.py further down (2026-10-07),
+# every one of them, with a repeat counter — the "open PRs (6 shown)" line that stood here
+# capped the list at six and was the line a first reply could skim past.
 # Whose MOVE is each PR (2026-09-15): the line above names PRs, the shared-memory check
 # names new commits — neither says "the next move is yours". A changes-requested review sat
 # two days unanswered while both sides saw those lines. scripts/pr-ball.py reads GitHub's
 # own review/commit timestamps and prints one line only when a move has been open for 24 h.
 # One GraphQL call, offline-silent like the search above.
-if [[ -n "$eco_owner" && $prs_rc -eq 0 && -f "$HERE/../scripts/pr-ball.py" ]]; then
+if [[ -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
   gh api graphql -f q="user:$eco_owner is:pr is:open" -f query='query($q: String!) { viewer { login }
     search(query: $q, type: ISSUE, first: 40) { nodes { ... on PullRequest {
       number isDraft body repository { name } author { login }
@@ -283,6 +278,14 @@ if [[ -n "$eco_owner" && -f "$HERE/../scripts/code-scanning-alerts.sh" && -f "$H
         -- bash "$HERE/../scripts/code-scanning-alerts.sh" "$eco_owner" 2>/dev/null)
   if grep -qE '^(!! )?code scanning' <<< "$csa"; then printf '%s\n' "$csa"; fi
 fi
+# One system (operator order 2026-10-08): where and why this brain's core behaviour differs
+# from the shared core, over every carrier of behaviour (hooks, skills, rules, scripts, git
+# hooks, scheduled jobs, plugins, ...) — undeclared or unproven items, near-copies of core
+# tools, expired alphas, files edited inside core/; last line = summary counts. Measured on the proving
+# brain: 12 of 31 hook entries ran from unmerged checkouts, unnoticed because all of them worked.
+if [[ -f "$HERE/../scripts/local-machinery.py" ]]; then
+  "$PY" "$HERE/../scripts/local-machinery.py" --repo "$R" 2>/dev/null || true
+fi
 
 # Memory limits (enforced since Claude Code v2.1.83: 200 lines / 25 KB — CHANGELOG entry
 # "MEMORY.md index now truncates at 25KB as well as 200 lines" is in the 2.1.83 block.
@@ -296,6 +299,11 @@ else
   # "the check is looking in the wrong place" — without the path that was indistinguishable
   # and cost a diagnosis round.
   echo "memory: !! MEMORY.md missing (looked at: $M)"
+fi
+
+# Always-loaded context: silent unless it grew past the last accepted diet review.
+if [[ -f "$HERE/../scripts/always-loaded.py" ]]; then
+  "$PY" "$HERE/../scripts/always-loaded.py" --repo "$R" --memory "$M" 2>/dev/null
 fi
 
 # Settings JSON valid?
@@ -369,33 +377,12 @@ fi
 # installed_plugins.json counts, and only while the plugin.json sitting there agrees on
 # the version. The settings fallback stays for the legacy local-style path; whether a
 # declared style actually RESOLVES is effect-check E1's job, not the bootup's.
-cav=$("$PY" - <<'PY' 2>/dev/null
-import json, os
-def load(p):
-    try:
-        with open(p, encoding="utf-8") as f: return json.load(f)
-    except Exception: return {}
-cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
-proj, user = load(".claude/settings.json"), load(os.path.join(cfg, "settings.json"))
-enabled = {k for s in (proj, user) for k, v in (s.get("enabledPlugins") or {}).items() if v}
-for pid, entries in (load(os.path.join(cfg, "plugins", "installed_plugins.json")).get("plugins") or {}).items():
-    if pid not in enabled: continue
-    for e in entries or []:
-        path = (e.get("installPath") or "").replace("\\", "/")
-        style = os.path.join(path, "output-styles", "caveman.md")
-        if not os.path.isfile(style): continue
-        mver = load(os.path.join(path, ".claude-plugin", "plugin.json")).get("version")
-        if mver and e.get("version") and mver != e["version"]: continue  # stale cache dir
-        try: lines = open(style, encoding="utf-8").read().splitlines()
-        except OSError: continue
-        if any(l.strip() == "force-for-plugin: true" for l in lines):
-            print("plugin %s %s" % (pid, e.get("version") or "?")); raise SystemExit
-declared = str(proj.get("outputStyle") or user.get("outputStyle") or "")
-if "caveman" in declared: print("settings outputStyle=%s" % declared)
-PY
-)
-if [[ -z "$cav" ]]; then
-  echo "!! caveman output style not armed: no enabled plugin ships output-styles/caveman.md with 'force-for-plugin: true' at its recorded installPath, and no outputStyle setting (project or user) names caveman"
+# The bare outputStyle setting arms nothing (2026-08-04); counting it kept this alarm silent
+# while the plugin had lost the style — the check lives in scripts/caveman-armed.py with a fixture.
+cav=""
+[[ -f "$HERE/../scripts/caveman-armed.py" ]] && cav=$("$PY" "$HERE/../scripts/caveman-armed.py" 2>/dev/null)
+if [[ -z "$cav" && -f "$HERE/../scripts/caveman-armed.py" ]]; then
+  echo "!! caveman output style not armed: no enabled plugin ships output-styles/caveman.md with 'force-for-plugin: true' at its recorded installPath, and no local output-styles dir holds the style the outputStyle setting names (the setting alone arms nothing)"
 fi
 
 # Broken skill symlinks?
@@ -454,8 +441,8 @@ if [[ -n "${latest:-}" ]]; then
     # Due / overdue as its own line (operator 2026-09-23): the scan is confirmed and
     # started inside an active session, so session start is where due-ness has to be
     # SAID — a bare age is a number the reader has to compare against a threshold they
-    # may not know. Due at 7 d (the scheduled runner's interval, scripts/brain-scan.sh),
-    # overdue at 14 d (the repeat-run freshness window, rules/intelligence.md).
+    # may not know. Due at 7 d (the weekly cadence, rules/intelligence.md), overdue at
+    # 14 d (the repeat-run freshness window, same file).
     if (( age >= 14 )); then
       echo "!! brain-scan OVERDUE: latest report ${age}d ago (due after 7d) — ask the operator, then run it in this session"
     elif (( age >= 7 )); then
@@ -464,6 +451,11 @@ if [[ -n "${latest:-}" ]]; then
   else
     echo "brain-scan: latest report $(basename "$latest") — age unknown (stat produced no mtime): P0=$p0 P1=$p1"
   fi
+  # Deep-check recommendation (operator decision 2026-10-09, "three levels of self-check"):
+  # the scan's machine step writes it into the report, but a line inside a report nobody
+  # opens reaches nobody — the session start relays it, so the AI tells the operator what,
+  # why now and the measured price. It never starts anything.
+  grep -a '^deep check suggested:' "$latest" 2>/dev/null | head -3 | cut -c1-240 | sed 's/^/!! /'
 elif [[ -d "$sd" ]]; then
   echo "brain-scan: no report yet in docs/research/brain-scan/"
   echo "!! brain-scan DUE: no report yet — ask the operator, then run it in this session"
@@ -507,7 +499,17 @@ fi
 # looked. Level 1 of the pair; level 2 (scripts/shared-memory-watch.sh) watches while
 # the session runs. Silent when the repo is not cloned or nothing is new — an instance
 # that does not take part must not be nagged, and a clean check is not a line.
-[[ -f "$HERE/shared-memory-check.sh" ]] && bash "$HERE/shared-memory-check.sh" 2>/dev/null
+[[ -f "$HERE/shared-memory-check.sh" ]] && OPEN_ITEMS_IN_BOOTUP=1 bash "$HERE/shared-memory-check.sh" 2>/dev/null
+# OPEN FOR US (operator correction 2026-10-07): every open request to this instance and
+# every open PR, one list, with how many sessions already reported each item — louder on
+# every repeat. helpers/open-items-gate.cjs (Stop) blocks a first reply that leaves an item
+# out. Runs AFTER the shared-memory fetch above, so the requests are read at origin/main.
+# A failed run prints a NOT-checked line — never silence, never "nothing open".
+if [[ -f "$HERE/../scripts/open-items.py" ]]; then
+  CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/open-items.py" --owner "$eco_owner" \
+      --hook-input "$HOOK_INPUT" 2>/dev/null \
+    || echo "!! open for us: NOT checked — open-items.py failed; run: $PY core/scripts/open-items.py --owner $eco_owner"
+fi
 # LOG rotation and entry length (operator decision 2026-09-25): the lint named an
 # oversized LOG with a fix text nobody ran, because nothing ran the lint. This is the
 # trigger — read-only, silent unless a month is due or an own entry is over the cap.
@@ -604,3 +606,4 @@ printf '%s\n' '<session-bootup trust="local-data" instructions="never">'
 printf '%s\n' "$body"
 printf '%s\n' '</session-bootup>'
 printf '%s\n' '-> Claude: start the first reply WITH a 1-sentence mini-summary (state of things + what is pending; sources: the bootup block above, open tasks, memory). Operator rule 2026-07-29.'
+printf '%s\n' '-> Claude: then the "open for us" items, split by who acts: "n I can answer/handle myself — shall I?" (ONE OK; start none of them without it) + "n need you directly" (up to 3: one short bullet each — what, who needs what; more: offer to list them). Counts as digits. Items reported before and still open: say so, louder. None: "nothing open". A NOT-checked source: say so. Classify every "?" item first: core/scripts/open-items.py --classify. Say each item in plain words (what it is, what it is about) — no circle, priority or ledger codes. Items marked wait need no relay. Carrier: core/helpers/open-items-gate.cjs. Operator rule 2026-10-07.'

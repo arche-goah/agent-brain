@@ -41,9 +41,8 @@ stage.
    prompt ("only the producer writes", `rules/intelligence.md`). One subfolder per
    stage keeps the file names of two stages from colliding.
 2. **Stage 1** `Workflow({scriptPath: brain-scan.js, args:{date, scratch:
-   "<session scratchpad>/brain-scan-<date>"}})` — runs as always, including its fix
-   phase (ONLY operator-ordered items — `origin: operator` / `von: Operator` /
-   documented-name form; order fidelity). Read the result.
+   "<session scratchpad>/brain-scan-<date>"}})` — reports and sorts, fixes nothing
+   (since 2026-10-09 there is no fix phase; fixing happens in the session). Read the result.
 3. **Stage 2** `Workflow({scriptPath: memory-dream.js, args:{date, scratch:
    "<session scratchpad>/memory-dream-<date>"}})` — read-only. Read the result.
 4. **Stage 3** `Workflow({scriptPath: coherence-scan.js, args:{date, scratch:
@@ -73,8 +72,10 @@ stage.
   major rule rewrite). NO launchd auto-run: this run is the most expensive in the
   system, and without the operator at the end of the synthesis it fizzles out (the
   decision agenda needs them).
-- Mechanical reminder: brain-scan checklist section 8 reports when the last overall
-  report is > 90 days old (INFO recommendation, no auto-run).
+- Mechanical reminder: the brain-scan machine step writes "deep check suggested:
+  full-audit" with the measured price (~6M tokens on the proving brain) when an open
+  order-list entry carries the token `rebuild-ahead` (no auto-run; the 90-day reminder it
+  replaces could never fire at the real cadence).
 
 ## Scope boundaries
 

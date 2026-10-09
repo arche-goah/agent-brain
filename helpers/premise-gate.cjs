@@ -41,6 +41,9 @@
  */
 const fs = require('fs');
 const path = require('path');
+// A harness notification (task done, watcher event) is not an operator turn — it must not
+// count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
+const { isNotification } = require('./turn-kind.cjs');
 
 // stdin is read to its END, never on a timer. Measured 2026-08-20 while building
 // this gate: with `setTimeout(..., 0)` the same input on the same file blocked once
@@ -145,7 +148,7 @@ function analyze(transcriptPath) {
         if (OWN_ECHO.test(msg.content)) events.push({ gate: true });
         continue;
       }
-      events.push({ boundary: true });
+      if (!isNotification(msg.content)) events.push({ boundary: true });
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {

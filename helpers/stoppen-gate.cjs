@@ -34,6 +34,9 @@
  */
 const fs = require('fs');
 const path = require('path');
+// A harness notification (task done, watcher event) is not an operator turn — it must not
+// count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
+const { isNotification } = require('./turn-kind.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -126,7 +129,7 @@ function analyze(transcriptPath) {
         if (OWN_ECHO.test(msg.content)) events.push({ gate: true });
         continue;
       }
-      events.push({ boundary: true });
+      if (!isNotification(msg.content)) events.push({ boundary: true });
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -178,6 +181,18 @@ process.stdin.on('end', () => {
     return allow(); // transcript unreadable — never block because of that
   }
   if (hits.length === 0) return allow();
+  // The first reply after a session start ASKS on purpose (operator order 2026-10-07):
+  // "n items I can handle — shall I?" is the one OK the agent must get before it starts on
+  // something the session was not opened for. That turn belongs to open-items-gate.
+  // Same class, wider: a question a RULE orders ("brain-scan DUE — ask the operator") is the
+  // rule being followed. Measured 2026-10-09: this gate blocked exactly that question.
+  try {
+    const oi = require('./open-items-gate.cjs');
+    if (oi.firstTurnOwnsQuestion(input.transcript_path)) return allow();
+    const norm = (s) => s.toLowerCase().replace(/[-_]+/g, ' ');
+    const tailText = norm(stripQuoted(analyze(input.transcript_path).finalText).slice(-TAIL_CHARS));
+    if (oi.mandatedTopics(input.transcript_path).some((t) => tailText.includes(norm(t)))) return allow();
+  } catch (e) { /* no sibling gate — judge as before */ }
 
   console.log(JSON.stringify({
     decision: 'block',

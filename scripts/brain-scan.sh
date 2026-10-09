@@ -1,6 +1,10 @@
 #!/bin/zsh
 # Brain-Scan launcher — ONLY for the SCHEDULED run on macOS/Linux.
 #
+# NOT the default (operator decision 2026-09-23, rules/intelligence.md "Session Start"):
+# the brain-scan runs in an active session on the operator's OK. This launcher is for an
+# instance that explicitly opts into a scheduler and records that in its own rules.
+#
 # == PLATFORM (clarified 2026-08-04, operator decision) ==========================
 # This script requires zsh AND a scheduler (launchd/cron). Neither exists on
 # Windows — it is NOT the way there and is not being ported either: a ported

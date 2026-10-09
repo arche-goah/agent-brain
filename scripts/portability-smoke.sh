@@ -45,18 +45,20 @@ case "$out" in *"scheduled run FAILED: smoke-fixture"*) ok "bootup failure chann
 case "$out" in *"aborted early"*) bad "bootup itself reports an abort";; *) ok "no abort marker";; esac
 case "$out" in *"brain-scan DUE"*|*"brain-scan OVERDUE"*) bad "fresh report announced as due";; *) ok "fresh report: no due line";; esac
 case "$out" in *"FAILED: brain-scan"*) bad "brain-scan fail older than the report still voiced";; *) ok "brain-scan fail superseded by newer report";; esac
+case "$out" in *"deep check suggested"*) bad "a report without a deep-check line still produced one";; *) ok "no deep-check line when the report has none";; esac
 
 # 1b) due/overdue line (operator 2026-09-23: session start says it, the scan runs in-session).
 #     Old report -> OVERDUE; a brain-scan fail NEWER than it stays voiced (negative control
 #     for the superseding rule above); no report at all -> DUE.
 TD="$T/due-instance"
 mkdir -p "$TD/docs/research/brain-scan" "$TD/docs/maintenance"
-printf -- '- [P1] old\n' > "$TD/docs/research/brain-scan/scan-old.md"
+printf -- '- [P1] old\ndeep check suggested: coherence-scan — 6 new dated rule lines — measured price: ~2.6M\n' > "$TD/docs/research/brain-scan/scan-old.md"
 touch -t 202001010000 "$TD/docs/research/brain-scan/scan-old.md"
 printf '%s\t%s\tbrain-scan\tfail\tnewer\n' "$(date +%s)" "$(date '+%F %T')" > "$TD/docs/maintenance/scheduled-runs.tsv"
 out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
 case "$out" in *"!! brain-scan OVERDUE"*) ok "old report: overdue line";; *) bad "old report: no overdue line";; esac
 case "$out" in *"FAILED: brain-scan"*) ok "brain-scan fail newer than the report stays voiced";; *) bad "newer brain-scan fail swallowed";; esac
+case "$out" in *"!! deep check suggested: coherence-scan"*) ok "the report's deep-check line reaches the session start";; *) bad "deep-check line in the report not relayed at session start";; esac
 # The DUE band (7-13 d) and the edge below it — pins the DUE/OVERDUE boundary (review of
 # #153 on Windows). mtime via Python: `touch -d` parses differently on GNU and BSD.
 _age() { "$PY" -c "import os,sys,time; t=time.time()-int(sys.argv[2])*86400; os.utime(sys.argv[1],(t,t))" "$TD/docs/research/brain-scan/scan-old.md" "$1"; }
