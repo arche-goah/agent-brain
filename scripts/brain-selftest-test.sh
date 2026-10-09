@@ -26,7 +26,7 @@ bad() { echo "  FAIL $*"; fails=$((fails + 1)); }
 mkdir -p "$TMP/brain/scripts" "$TMP/brain/.github/workflows" "$TMP/brain/docs"
 cd "$TMP/brain" || exit 1
 
-for s in called-by-ci run-by-a-script only-documented named-in-a-comment; do
+for s in called-by-ci run-by-a-script only-documented named-in-a-comment launched-by-mcp; do
   printf '#!/usr/bin/env bash\necho %s\n' "$s" > "scripts/$s.sh"
 done
 
@@ -44,6 +44,9 @@ YML
 
 printf '#!/usr/bin/env bash\nbash scripts/run-by-a-script.sh\n' > scripts/caller.sh
 printf 'The file scripts/only-documented.sh exists and is described here.\n' > docs/notes.md
+# An MCP server launcher: the client starts it from .mcp.json (measured 2026-10-09: it was
+# reported as "mentioned in documentation only").
+printf '{ "mcpServers": { "probe": { "command": "scripts/launched-by-mcp.sh" } } }\n' > .mcp.json
 
 # A hand tool wearing a fixture's name. The runner globs by name shape, so without a
 # contract it EXECUTES this; on a real instance the equivalent script queried physical
@@ -80,6 +83,12 @@ if listed run-by-a-script; then
   bad "a script invoked from another script is reported as untriggered"
 else
   ok "a call from another script counts as wiring"
+fi
+
+if listed launched-by-mcp; then
+  bad "an MCP server launcher named in .mcp.json is reported as untriggered"
+else
+  ok "a launcher in .mcp.json counts as wiring"
 fi
 
 # --- NEGATIVE: the half that a silent detector would also pass ----------------
