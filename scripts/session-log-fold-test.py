@@ -133,8 +133,82 @@ def t_second_fold_keeps_first_marker(d):
     return (new.count("- FOLD ") == 2 and reassembled(d, log) == text, new[:300])
 
 
+# --- decision log: same engine, `--log decision` ---------------------------------------
+DHEAD = ("# Decision log\n\n> Pillar decisions, newest first.\n\nEntry format:\n\n"
+         "```\n## YYYY-MM-DD — title\n```\n\n")
+
+
+def dentry(day):
+    return f"## 2026-01-{day:02d} — decision {day}\n\nwhy and what was discarded {PAD}\n\n"
+
+
+def dlog(d, text):
+    log = Path(d) / "docs" / "maintenance" / "decision-log.md"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_bytes(text.encode("utf-8"))
+    return log
+
+
+def dreassembled(d, log):
+    text = log.read_bytes().decode("utf-8")
+    for f in sorted((Path(d) / "docs" / "maintenance" / "decision-log-folds").glob("*.md")):
+        children = f.read_bytes().decode("utf-8").split("\n\n", 1)[1]
+        marker = next(l for l in text.splitlines(keepends=True) if l.startswith("## FOLD " + f.stem))
+        text = text.replace(marker, children, 1)
+    return text
+
+
+def t_decision_newest_first_lossless(d):
+    text = DHEAD + "".join(dentry(i) for i in range(10, 0, -1))
+    log = dlog(d, text)
+    rc, out = run(d, "--log", "decision", "--before", "2026-01-05", "--apply")
+    new = log.read_bytes().decode()
+    ok = (rc == 0 and new.startswith(DHEAD) and new.count("## FOLD ") == 1
+          and "| 2026-01-01 .. 2026-01-04 |" in new and "## 2026-01-05" in new
+          and "## 2026-01-04" not in new and dreassembled(d, log) == text)
+    return (ok, out + " | " + new[-300:])
+
+
+def t_decision_guard_refused(d):
+    # negative control: a non-entry heading between old entries is a guard, never folded
+    text = DHEAD + dentry(9) + dentry(3) + "## Notes on the format\n\nkept\n\n" + dentry(2)
+    log = dlog(d, text)
+    rc, out = run(d, "--log", "decision", "--before", "2026-01-05", "--apply")
+    return (rc == 1 and "refused" in out and log.read_bytes().decode() == text
+            and not (Path(d) / "docs" / "maintenance" / "decision-log-folds").exists(), out)
+
+
+def t_decision_max_bytes_keeps_newest(d):
+    text = DHEAD + "".join(dentry(i) for i in range(10, 0, -1))
+    log = dlog(d, text)
+    rc, out = run(d, "--log", "decision", "--max-bytes", "1200", "--apply")
+    new = log.read_bytes().decode()
+    return (rc == 0 and "## 2026-01-10" in new and "## 2026-01-01" not in new
+            and dreassembled(d, log) == text, out)
+
+
+def t_profiles_do_not_cross(d):
+    # the session default never touches the decision log, and vice versa
+    stext = "".join(entry(i) for i in range(1, 11))
+    dtext = DHEAD + "".join(dentry(i) for i in range(10, 0, -1))
+    slog, dl = brain(d, stext), dlog(d, dtext)
+    run(d, "--before", "2026-01-05", "--apply")
+    d_untouched = dl.read_bytes().decode() == dtext
+    s_after = slog.read_bytes()
+    run(d, "--log", "decision", "--before", "2026-01-05", "--apply")
+    return (d_untouched and slog.read_bytes() == s_after and "## FOLD " in dl.read_bytes().decode(),
+            "a profile wrote into the other log")
+
+
 if __name__ == "__main__":
     results = [
+        case("decision log, newest first: folds old entries, head and template intact, lossless",
+             t_decision_newest_first_lossless),
+        case("decision log: a guard heading between entries is refused (negative control)",
+             t_decision_guard_refused),
+        case("decision log: --max-bytes folds the oldest, keeps the newest",
+             t_decision_max_bytes_keeps_newest),
+        case("session and decision profiles never write into each other's log", t_profiles_do_not_cross),
         case("under the threshold: no-op", t_under_threshold_noop),
         case("over the threshold: folds, byte-exact reassembly", t_over_threshold_folds_lossless),
         case("hysteresis: folds oldest days, keeps the newest", t_hysteresis_keeps_newest),

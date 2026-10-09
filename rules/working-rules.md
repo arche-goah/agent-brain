@@ -195,8 +195,10 @@ state the agent can dissolve itself. Two rules, in this order:
 too, with the OLD code. The stamp is the suite's half of the contract: an MCP server
 writes a small file at startup whose content changes on every boot, and documents its
 path in its AGENTS.md (grandma3-suite: `<GMA3_IPC_DIR>/mcp-boot.json`). A server without
-a stamp cannot be waited on — that missing carrier is itself the finding, and the waiter
-says so instead of reporting green.
+a stamp cannot be PROVEN back — that missing carrier is itself the finding, and the waiter
+says so instead of reporting green. Until its suite adds one, the same script's
+`--process <pattern>` mode is the stopgap on macOS/Linux (all old pids of this session's
+children gone, a new one up); on Windows it refuses, and the finding stays open either way.
 
 ## Order Fidelity (Auftragstreue) (HARD)
 
