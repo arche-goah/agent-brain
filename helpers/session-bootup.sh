@@ -306,6 +306,12 @@ if [[ -f "$HERE/../scripts/always-loaded.py" ]]; then
   "$PY" "$HERE/../scripts/always-loaded.py" --repo "$R" --memory "$M" 2>/dev/null
 fi
 
+# Questions to the operator that were never settled (question-gate.cjs): listed every
+# start until answered/dropped — a postponed question must not scroll away for good.
+if command -v node >/dev/null 2>&1 && [[ -f "$HERE/question-gate.cjs" ]]; then
+  CLAUDE_PROJECT_DIR="$R" node "$HERE/question-gate.cjs" list 2>/dev/null
+fi
+
 # Clock: silent unless the system time is off against the outside (one HEAD, 3 s cap,
 # silent offline). A wrong clock corrupts commit timestamps and every since= cursor.
 if [[ -f "$HERE/../scripts/clock-skew.py" ]]; then

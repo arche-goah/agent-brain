@@ -1,0 +1,4 @@
+{
+  "_comment": "Instance data for core helpers/question-gate.cjs: how a question to the operator (a proposal awaiting a yes/no or a choice) is phrased in this brain's language. English is built in. Regexes, case-insensitive; the sentence must also end in '?'. Example for German: \\bsoll ich\\b, \\bwillst du\\b, \\bjetzt\\b.*\\boder\\b.",
+  "question_patterns": []
+}
