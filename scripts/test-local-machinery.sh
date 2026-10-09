@@ -69,6 +69,11 @@ grep -q 'instance script(s) without a declared reason to live only here: scripts
 printf '{"instance":{"scripts/rig-check.sh":"probes this venue only"}}' > "$T/b/.claude/rules/local-machinery.json"
 out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
 [[ -z "$out" ]] && ok "declared-script-silent" || bad "declared-script-silent: $out"
+printf '{"alpha":{"scripts/rig-check.sh":{"until":"2026-10-20","why":"core port"}}}' > "$T/b/.claude/rules/local-machinery.json"
+out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
+[[ -z "$out" ]] && ok "alpha-script-in-date-silent" || bad "alpha-script-in-date-silent: $out"
+out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-21)
+grep -q 'past their date.*scripts/rig-check.sh' <<< "$out" && ok "alpha-script-expired-loud" || bad "alpha-script-expired-loud: $out"
 rm -rf "$T/b/scripts" "$T/b/core/scripts" "$T/b/.claude/rules/local-machinery.json"
 
 # Tool sources: an MCP server path or a skill symlink into a suite checkout. The path inside

@@ -224,6 +224,15 @@ def main(argv):
     # general tools lived only in the instance. A same-named copy is loud; an undeclared
     # instance script is a classification job for the AI.
     shadows, loose = scan_scripts(a.repo, inst)
+    undated = []
+    for rel in list(loose):
+        hit_a = next((k for k in alpha if k in rel), None)
+        if hit_a:
+            loose.remove(rel)
+            until = str((alpha[hit_a] or {}).get("until", ""))
+            if not until or until < a.today:
+                undated.append(f"{hit_a} (until {until or '?'})")
+    expired.extend(x for x in undated if x not in expired)
     if shadows:
         print(f"!! local machinery: {len(shadows)} instance script(s) shadow a core script of the same name: {short(shadows)} — call core/scripts/… and remove the copy, or rename it if it is a different tool")
     if loose:
