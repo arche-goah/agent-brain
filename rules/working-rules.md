@@ -20,6 +20,17 @@
    own right (observe the cost/model-routing rule in `rules/intelligence.md`
    — multi-agent costs ~15x chat tokens); small stuff sequentially in the session.
 6. **Existing files:** ALWAYS read first, then edit.
+7. **Commit-ready means committed** (operator decision 2026-08-01): commit continuously and
+   on your own; whatever is not committed is named WITH its reason. Where and when it is
+   pushed stays instance policy (skill `session-close`); whether finished work is committed
+   does not.
+8. **Shell commands are atomic and must match a permission pattern** (operator decisions
+   2026-08-01 / 2026-10-07): Claude Code approves a Bash call by matching its text against
+   allow patterns, so a compound chain (`cd <dir> && git push`, `a; b`) matches none of them
+   and turns into a prompt or a denial. Issue commands one by one; work in another directory
+   through the tool's own flag (`git -C <abs-path> push`), never through `cd … &&`. Multi-line
+   content goes into a file that is then run or applied — no shell heredocs, which also
+   trip the harness's obfuscation heuristics.
 
 ## File Rules
 
