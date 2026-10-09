@@ -306,6 +306,12 @@ if [[ -f "$HERE/../scripts/always-loaded.py" ]]; then
   "$PY" "$HERE/../scripts/always-loaded.py" --repo "$R" --memory "$M" 2>/dev/null
 fi
 
+# Clock: silent unless the system time is off against the outside (one HEAD, 3 s cap,
+# silent offline). A wrong clock corrupts commit timestamps and every since= cursor.
+if [[ -f "$HERE/../scripts/clock-skew.py" ]]; then
+  "$PY" "$HERE/../scripts/clock-skew.py" 2>/dev/null
+fi
+
 # Settings JSON valid?
 for f in .claude/settings.json .claude/settings.local.json; do
   # settings.local.json is optional — "not present" is not an error. Without this
