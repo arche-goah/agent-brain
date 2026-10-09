@@ -1,6 +1,6 @@
 ---
 name: backlog-catch-up
-description: Sort a large backlog of old open points (derived proposals, open requests, local deviations from the core) into seven exits so the operator gets at most three real decisions instead of a wall of items. Use when the session start shows many old open items at once — typically the first start after a core update made them visible —, when a ledger has grown stale ("68 Vorschläge liegen"), or when the operator says "räum die liegengebliebenen Punkte auf" / "catch up on the backlog". NOT for a single new item (answer it) and NOT for the shared-memory repo's own hygiene (shared-memory-tidy).
+description: Sort a large backlog of old open points (derived proposals, open requests, local deviations from the core) into seven exits so the operator gets at most three real decisions instead of a wall of items. Use when the session start shows many old open items at once — typically the first start after a core update made them visible —, when a ledger has grown stale, or when the operator says "catch up on the backlog" or German "raeum die liegengebliebenen Punkte auf", "aufholen", "Altlast sortieren". NOT for a single new item (answer it) and NOT for the shared-memory repo's own hygiene (shared-memory-tidy).
 ---
 
 # Backlog Catch-Up
