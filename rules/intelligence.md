@@ -23,6 +23,27 @@ stalls when the machine sleeps, and costs tokens nobody ordered. `core/scripts/b
 stays only for an instance that explicitly opts into a scheduler and says so in its own
 rules.
 
+**Three levels of self-check — every brain knows all three, and their price** (operator
+decisions 2026-10-09, after an audit of the audit process):
+1. **Session start** — every session, mechanical, near-free: open items, deviations from
+   the core, register drift, growth of the always-loaded context. Reports only what is off.
+2. **Brain-scan** — weekly, on the operator's OK (above). It first checks what became of
+   the last run's findings, then the boundary between instance and core, then the
+   checklist; every finding leaves with an exit (skill `backlog-catch-up`). It does not
+   fix inside the run — fixing happens in the session with the operator.
+3. **Deep check** — only on a reason: `coherence-scan` (contradictions between rules),
+   `memory-dream` (memory hygiene), `full-audit` (all of them plus synthesis, before a big
+   restructuring). The AI RECOGNISES the reason and TELLS the operator — what, why now, and
+   the measured price — and never starts it on its own. Reasons: five or more new dated
+   rules since the last coherence register; the memory index near its limit or
+   contradictions found in passing; a restructuring of the core or the instance ahead;
+   a brain-scan finding that comes back for the third time. The price is not the same on
+   every subscription: measured on one brain (2026-08/10, tokens per run) brain-scan
+   ~1.5M, memory-dream ~0.6M, coherence-scan ~2.6M, a full audit ~6M. Say it in plain
+   words ("about four times a brain-scan"), and let the operator weigh it against their
+   plan. Collaborators may not know the deep check exists — the instance's AI is how they
+   learn it.
+
 **The summary is written for the operator, not relayed from the machine** (operator
 correction 2026-08-13): hook output is Claude's input, never chat vocabulary — no
 `!!` markers, return codes, internal tags or hook phrasing in the summary. Translate
