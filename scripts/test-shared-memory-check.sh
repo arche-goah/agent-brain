@@ -138,6 +138,20 @@ has   "a changed file is read in its NEW form" "Changed text, for me." "$out"
 # freshness line, same class: it read the working tree too (4 instead of 5 before the fix)
 has   "freshness counts the unpulled entry" "5 entries dated since 2026-09-05" "$out"
 
+echo "cursor default: runtime state in .claude-state/, an old config/ cursor is taken over once"
+# 2026-10-09: the default cursor lived in config/ and was tracked, so every start left the
+# working tree dirty. A brain upgrading must keep its cursor (no replay, nothing lost).
+P="$TMP/proj"; mkdir -p "$P/config"
+printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "legacy"\n}\n' "$CUR" > "$P/config/shared-memory-state.json"
+out="$(CLAUDE_PROJECT_DIR="$P" SHARED_MEMORY_REPO="$SHARED_NATIVE" SHARED_MEMORY_SELF=me-mac bash "$CHECK" 2>&1)"
+[ -f "$P/.claude-state/shared-memory-state.json" ] && ok "legacy cursor taken over into .claude-state/" \
+  || bad "legacy cursor taken over into .claude-state/" "no file at the new path"
+grep -q '"legacy"' "$P/config/shared-memory-state.json" && ok "the old file is left as it was" \
+  || bad "the old file is left as it was" "it was rewritten"
+# The legacy cursor sits BEFORE the peer push: if it was used, that entry is still reported
+# (a fresh baseline at HEAD would swallow it — the loss this migration prevents).
+has   "the taken-over cursor is the one in use" "Pushed elsewhere, for me." "$out"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "test-shared-memory-check: all checks passed"; exit 0; fi
 echo "test-shared-memory-check: $fails check(s) FAILED"; exit 1

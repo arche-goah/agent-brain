@@ -70,16 +70,16 @@ run "$T/nowhere"
 # --- 5 a verify run is no session: the shared-memory cursor stays where it was -------
 # (sam-reiselaptop 2026-09-30: check 5 ran the bootup, which moved the cursor past
 # entries no session had shown.) The stub bootup advances the cursor like the real one.
-B5="$T/brain5"; make_brain "$B5"; mkdir -p "$B5/core/helpers" "$B5/config"
+B5="$T/brain5"; make_brain "$B5"; mkdir -p "$B5/core/helpers" "$B5/.claude-state"
 printf '{"hooks":{"SessionStart":[{"hooks":[{"command":"core/helpers/session-bootup.sh"}]}]}}\n' > "$B5/.claude/settings.json"
 printf '%s\n' '#!/usr/bin/env bash' \
   'echo "=== BRAIN BOOTUP CHECK ==="' \
-  'echo "{\"lastSeenSha\": \"new\"}" > "${SHARED_MEMORY_STATE:-config/shared-memory-state.json}"' \
+  'echo "{\"lastSeenSha\": \"new\"}" > "${SHARED_MEMORY_STATE:-.claude-state/shared-memory-state.json}"' \
   > "$B5/core/helpers/session-bootup.sh"
-echo '{"lastSeenSha": "old"}' > "$B5/config/shared-memory-state.json"
+echo '{"lastSeenSha": "old"}' > "$B5/.claude-state/shared-memory-state.json"
 run "$B5" "$B5"
-grep -q '"old"' "$B5/config/shared-memory-state.json" && ok "verify: shared-memory cursor untouched" \
-  || bad "verify: shared-memory cursor advanced ($(cat "$B5/config/shared-memory-state.json"))"
+grep -q '"old"' "$B5/.claude-state/shared-memory-state.json" && ok "verify: shared-memory cursor untouched" \
+  || bad "verify: shared-memory cursor advanced ($(cat "$B5/.claude-state/shared-memory-state.json"))"
 grep -q "5.*Brain+hooks.*appears" "$B5/docs/maintenance/$NAME" 2>/dev/null && ok "verify: bootup still ran (check 5 sees its output)" \
   || bad "verify: check 5 did not see the bootup output"
 
