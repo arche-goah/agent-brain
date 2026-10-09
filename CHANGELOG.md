@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **ollama-fallback carries no machine state.** (test: T0) Brain-scan 2026-10-09: the public skill held one instance's install state (version, path, pulled models, dated). Replaced by how to read the state live.
+
 - **The brain-scan can run with the scripts of a core under test.** (test: T1) `args.core` (default `<brain>/core`) points the machine step, the shared-memory lint and the inbox at a dev checkout; without it a brain testing an unreleased core measured with its old installed tools while claiming to test the new ones (found when the first run of the rebuilt scan was prepared, 2026-10-09).
 
 - **Three findings of the Windows check of the 1.4.0 candidate, fixed.** (test: T1) Measured on the workstation 2026-10-09 (all green, three observations): many waiting items collapse into one start line (above 5, `OPEN_ITEMS_WAIT_COLLAPSE`); `always-loaded.py --memory <directory>` is refused instead of measuring the directory entry; `commitments.py` says when it checked English phrasing only (a brain in another language without instance data reported found=0 as if clean). Fixture cases for each.
