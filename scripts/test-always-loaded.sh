@@ -23,6 +23,8 @@ grow "$T/MEMORY.md" 10
 out=$(run); grep -q '+2510' <<< "$out" && ok "memory-index-counted" || bad "memory-index-counted: $out"
 out=$(run --accept); grep -q 'baseline set: 4810' <<< "$out" && ok "accept-sets-baseline" || bad "accept-sets-baseline: $out"
 out=$(run); [[ -z "$out" ]] && ok "after-accept-silent" || bad "after-accept-silent: $out"
+mkdir -p "$T/memdir"; out=$("$PY" "$HERE/always-loaded.py" --repo "$T/b" --memory "$T/memdir")
+grep -q 'must be the MEMORY.md file, not a directory' <<< "$out" && ok "directory-as-memory-refused" || bad "directory-as-memory-refused: $out"
 
 (( fail )) && { echo "test-always-loaded: FAILED"; exit 1; }
 echo "test-always-loaded: all checks passed"

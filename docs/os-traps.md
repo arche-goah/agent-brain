@@ -400,7 +400,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=7 scripts/os-traps-export.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
+known:     scripts/brain-friction.py=3 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=7 scripts/os-traps-export.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
 status:    open
@@ -422,7 +422,7 @@ an EMPTY pattern, which matches every file and reports LF for a file full of CRL
 `known` is a baseline of SITES (like OS-2), not of defects: 13 files print non-ASCII today
 and only `brain-friction.py` is parsed by another program, so the rest are correct as they
 stand. The baseline exists so a NEW site is read with one question before it ships: does
-anything PARSE this output? 2026-10-09 local-machinery.py: yes — the session start reads
+anything PARSE this output? 2026-10-09 commitments.py: yes — effect-check E6 reads its summary line — and it pins stdout like brain-friction.py. 2026-10-09 local-machinery.py: yes — the session start reads
 it — so it pins stdout like brain-friction.py (the pin stays). Its sites left the baseline in
 the carrier rework of the same day: the em-dash lines now live in a MESSAGES table and reach
 `print()` through `format()`, which this pattern cannot see — the pin, not the count, is what

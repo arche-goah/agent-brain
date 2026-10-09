@@ -162,12 +162,17 @@ def main(argv):
                 carried += 1
             else:
                 loose.append({"session": os.path.basename(f)[:8], "at": ts[:16], "sentence": sent[:200]})
+    # Without instance phrasing only English is matched — in a brain that speaks another
+    # language "found=0" is a coverage gap, not a result (Windows check 2026-10-09).
+    scope = "all" if data.get("patterns") else "english-only"
     if a.json:
-        print(json.dumps({"found": total, "carried": carried, "loose": loose}, ensure_ascii=False))
+        print(json.dumps({"found": total, "carried": carried, "loose": loose, "phrasing": scope}, ensure_ascii=False))
         return 0
     for l in loose:
         print(f"loose commitment: {l['at']} session {l['session']}: {l['sentence']}")
-    print(f"commitments summary: found={total} carried={carried} loose={len(loose)}")
+    if scope == "english-only":
+        print("commitments: only English phrasing checked — add this brain's language in .claude/rules/commitments.json (template in core templates/rules-instance/)")
+    print(f"commitments summary: found={total} carried={carried} loose={len(loose)} phrasing={scope}")
     return 0
 
 

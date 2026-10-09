@@ -76,6 +76,7 @@ check(r["found"] == 0, "a quoted mention is not a commitment")
 
 r = run([say("Ab jetzt sage ich im Chat Tiefenpruefung.")])
 check(r["found"] == 0, "German phrasing needs instance data")
+check(r.get("phrasing") == "english-only", "a run without instance phrasing says it checked English only")
 
 r = run([say("Ab jetzt sage ich im Chat Tiefenpruefung.")],
         data={"patterns": [r"\bab jetzt\b"], "first_person": [r"\b(ich|wir)\b"]})

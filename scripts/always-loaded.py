@@ -50,6 +50,11 @@ def main(argv):
     ap.add_argument("--accept", action="store_true")
     ap.add_argument("--slack", type=int, default=2048)
     a = ap.parse_args(argv)
+    if a.memory and os.path.isdir(a.memory):
+        # a directory sizes as 0 or as its entry table, never the index (Windows check
+        # 2026-10-09: a folder passed by hand "grew" 6 KB seconds after the baseline)
+        print(f"always-loaded: --memory must be the MEMORY.md file, not a directory: {a.memory}")
+        return 0
     state = os.path.join(a.repo, ".claude-state", "always-loaded.json")
     now = measure(a.repo, a.memory)
     try:
