@@ -1,0 +1,12 @@
+{
+  "_comment": [
+    "Expected tool count per MCP server, checked by core/scripts/mcp-toolcount.py.",
+    "Copy to .claude/rules/mcp-expected.json in the brain and fill in the servers of its .mcp.json.",
+    "A deviation in EITHER direction is a finding: a tool that vanished after a move, or one",
+    "that was added without being written down. Update this file deliberately, in the same",
+    "commit that changes the tool surface. List only servers that start without hardware or",
+    "a running application - a server that needs one fails here for the wrong reason.",
+    "Keys starting with _ are ignored."
+  ],
+  "example-server": 7
+}
