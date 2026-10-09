@@ -56,6 +56,21 @@ printf 'y\n' >> "$T/b/core/rule.md"
 out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
 grep -q 'core file(s) edited inside core/: rule.md' <<< "$out" && ok "edited-core-loud" || bad "edited-core-loud: $out"
 
+# Scripts outside hooks: a same-named copy of a core script is loud; an undeclared instance
+# script is listed for classification; a declared one and a fixture are silent.
+mk "$(H "$(C 'node \"$CLAUDE_PROJECT_DIR/core/helpers/a.cjs\"')")" '' '' >/dev/null
+mkdir -p "$T/b/core/scripts" "$T/b/scripts/hooks"
+printf 'x\n' > "$T/b/core/scripts/invariant-check.py"; printf 'x\n' > "$T/b/scripts/invariant-check.py"
+out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
+grep -q '^!! local machinery: 1 instance script(s) shadow a core script of the same name: scripts/invariant-check.py' <<< "$out" && ok "shadow-copy-loud" || bad "shadow-copy-loud: $out"
+rm -f "$T/b/scripts/invariant-check.py"; printf 'x\n' > "$T/b/scripts/rig-check.sh"; printf 'x\n' > "$T/b/scripts/test-rig-check.sh"
+out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
+grep -q 'instance script(s) without a declared reason to live only here: scripts/rig-check.sh$\|instance script(s) without a declared reason to live only here: scripts/rig-check.sh ' <<< "$out" && ! grep -q 'test-rig-check' <<< "$out" && ok "undeclared-script-listed-fixture-skipped" || bad "undeclared-script-listed-fixture-skipped: $out"
+printf '{"instance":{"scripts/rig-check.sh":"probes this venue only"}}' > "$T/b/.claude/rules/local-machinery.json"
+out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
+[[ -z "$out" ]] && ok "declared-script-silent" || bad "declared-script-silent: $out"
+rm -rf "$T/b/scripts" "$T/b/core/scripts" "$T/b/.claude/rules/local-machinery.json"
+
 # Tool sources: an MCP server path or a skill symlink into a suite checkout. The path inside
 # .mcp.json is DATA for a native python, so it goes through cygpath on Windows (OS-3).
 nat() { cygpath -m "$1" 2>/dev/null || printf '%s' "$1"; }

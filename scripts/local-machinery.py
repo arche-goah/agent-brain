@@ -83,6 +83,37 @@ def classify(cmd, repo):
     return "instance"
 
 
+SCRIPT_EXT = (".sh", ".py", ".cjs", ".js", ".mjs", ".ps1")
+
+
+def scan_scripts(repo, inst):
+    """(shadows, undeclared) over the instance's scripts/ tree. Fixtures (test-*, *-test.*)
+    belong to the script they test and are not listed on their own."""
+    import pathlib
+    root = pathlib.Path(repo)
+    core_names = set()
+    for d in ("scripts", "helpers"):
+        base = root / "core" / d
+        if base.is_dir():
+            core_names |= {p.name for p in base.rglob("*") if p.is_file()}
+    shadows, loose = [], []
+    base = root / "scripts"
+    if not base.is_dir():
+        return shadows, loose
+    for p in sorted(base.rglob("*")):
+        if not p.is_file() or p.suffix not in SCRIPT_EXT or "__pycache__" in p.parts:
+            continue
+        rel = p.relative_to(root).as_posix()
+        if p.name in core_names:
+            shadows.append(rel)
+            continue
+        if p.name.startswith("test-") or "-test." in p.name:
+            continue
+        if not any(k in rel for k in inst):
+            loose.append(rel)
+    return shadows, loose
+
+
 def tool_sources_off_main(repo):
     """Hooks are not the only way local code enters a brain: MCP servers (`.mcp.json`) and skill
     symlinks run straight from suite working trees. Those are fine on main and unreleased code on
@@ -186,6 +217,17 @@ def main(argv):
         off_main.append(f"{os.path.basename(top)}@{br}")
     if off_main:
         print(f"!! local machinery: {len(off_main)} tool source checkout(s) not on main feed this brain (MCP server or skill symlink): {short(off_main)} — unreleased code in every session; switch the checkout back to main, or declare it as alpha")
+
+    # Hooks are not the only local machinery: scripts run by hand or from a checklist never show
+    # up in settings. Measured 2026-10-09 on the proving brain: two stale copies of core scripts
+    # (seven and eight weeks behind) were what the brain-scan checklist actually ran, and ~15
+    # general tools lived only in the instance. A same-named copy is loud; an undeclared
+    # instance script is a classification job for the AI.
+    shadows, loose = scan_scripts(a.repo, inst)
+    if shadows:
+        print(f"!! local machinery: {len(shadows)} instance script(s) shadow a core script of the same name: {short(shadows)} — call core/scripts/… and remove the copy, or rename it if it is a different tool")
+    if loose:
+        print(f"local machinery: {len(loose)} instance script(s) without a declared reason to live only here: {short(loose)} — for the AI: classify each; general = core PR, instance-only = declare why")
 
     if expired:
         print(f"!! local machinery: {len(set(expired))} alpha(s) past their date, still wired: {short(expired)} — merge, extend with a reason, or unwire")
