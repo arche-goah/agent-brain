@@ -85,13 +85,25 @@ push_from_other() {   # $1 = file, $2 = message, $3 = von: party (optional)
   git -C "$OTHER" push -q origin main
 }
 
+# Wait until the watcher has reported N finds, up to a deadline — never a fixed sleep. The
+# fixed 6 s was the flake: on a slow Windows runner one poll cycle (git fetch + log + parse)
+# outlasted it, the line below read the PREVIOUS find, and the test failed with correct
+# watcher output (measured 2026-10-09: tag CI v1.4.1 attempt 1 red, last FOUND line still
+# named the prior push; attempt 2 green). The deadline keeps a dead watcher a FAIL, not a hang.
+wait_found() {   # $1 = expected FOUND count
+  local i=0
+  while [ "$(grep -c '^FOUND:' "$OUT" 2>/dev/null || true)" -lt "$1" ] && [ "$i" -lt 45 ]; do
+    sleep 1; i=$((i + 1))
+  done
+}
+
 push_from_other b.md "colleague one" kim-win
-sleep 6
+wait_found 1
 FIRST=$(grep -c '^FOUND:' "$OUT" || true)
 COLLEAGUE_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
 push_from_other c.md "colleague two" alex-workstation
-sleep 6
+wait_found 2
 SECOND=$(grep -c '^FOUND:' "$OUT" || true)
 WORKSTATION_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
@@ -101,7 +113,7 @@ printf '# Log\n\n## 2026-09-25 · sam-workstation — AN alle: log-only message\
 git -C "$OTHER" add -A
 git -C "$OTHER" commit -qm "log only"
 git -C "$OTHER" push -q origin main
-sleep 6
+wait_found 3
 LOG_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
 # Braces + redirect: the shell prints its own "Terminated" job message on wait,
@@ -123,10 +135,14 @@ git -C "$WORK" add -A; git -C "$WORK" commit -qm "own one"; git -C "$WORK" push 
 OUT2="$TMP/out2.txt"
 SHARED_MEMORY_SELF=me-ws bash "$WATCH" watch 2 > "$OUT2" 2>&1 &
 WATCHER=$!
-sleep 4
+# Positive part: wait for the pulled-in request itself (same deadline rule as wait_found).
+i=0; while ! grep -q 'pulled request' "$OUT2" 2>/dev/null && [ "$i" -lt 45 ]; do sleep 1; i=$((i + 1)); done
 printf -- '---\nname: own2\nmetadata:\n  von: me-ws\n---\n\nown two\n' > "$WORK/domain/own2.md"
 git -C "$WORK" add -A; git -C "$WORK" commit -qm "own two"; git -C "$WORK" push -q origin main
-sleep 4
+# Silence cannot be waited FOR; give it two poll cycles (2 s each) plus slack, so a slow
+# runner errs toward "not yet reported" — which can only make the silence check pass
+# spuriously, never fail spuriously.
+sleep 6
 { kill "$WATCHER"; wait "$WATCHER"; } 2>/dev/null || true
 
 echo "--- watcher output ---"

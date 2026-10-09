@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **`shared-memory-watch-test.sh` waits for the watcher, not for the clock.** (test: T0) Tag CI of v1.4.1, attempt 1: the Windows runner failed "LOG-only commit reported without what it says" — the last FOUND line still named the previous push, so the watcher had not reported yet when the fixed `sleep 6` ran out; attempt 2 was green, the same content green four times on Windows. Reproduced on macOS by slowing the poll to 8 s: the old test fails four checks, the new one passes all eight. Positive checks now wait until the expected FOUND count / line appears (45 s deadline, a dead watcher stays a FAIL); the one silence check keeps a fixed grace, which can only make it pass spuriously, never fail spuriously. Fixture only.
+
 ## 1.4.1 — 2026-10-09
 
 Patch release, the follow-ups to 1.4.0: findings of the first coherence scan and brain-check on the rebuilt core, the first live run of collab-watch, and the Windows check of the candidate. One new function (agreed with the operator): the core update names rule text that still waits for a core state. Checked as one candidate (#228) on macOS and on Windows (Workstation smoke: ALL checks passed). Two entries run in every session (test: T2): the shared-memory cursor move and the open-items LOG fix; the question-gate (T2) came in on main since 1.4.0.
