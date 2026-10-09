@@ -23,6 +23,24 @@ question ("update available — shall I run it?"), never as a generic "what's ne
 This applies to ALL chat output that renders machine artifacts, not just the
 session start.
 
+**Kind and matter in plain words, never a priority or ledger code** (operator
+correction 2026-10-08): every note from an AI to a human — session-start report,
+chat, a proposal, shared-memory prose to a collaborator — says WHAT it is (task,
+proposal, serious problem, acute need for action, note) and what it is about, in
+words. Priority grades (P0/P1/P2) and ledger ids (an audit's finding numbers,
+order-list ids) are lookup handles: at most a trailing reference in parentheses,
+never the word that carries the meaning. Same class as the `!!` markers above: a
+handle the machine needs is not vocabulary the reader has.
+The same holds for EVERY internal classification scheme, not only priorities and ids
+(operator, 2026-10-09: "technical terms that mainly serve internal and AI logic —
+always weigh whether the human really needs the code, or whether it hinders more than
+it helps"): decision-circle letters, test classes, gate names, finding classes. Say
+what the code MEANS for the reader — "the AIs settle this among themselves", "this
+decision needs you", "needs a run on both machines before release" — and keep the
+code in the data field where a machine reads it. The test before using one: would
+the reader understand the sentence with the code deleted? If not, the code was
+carrying the meaning and has to be translated.
+
 **Relevance beats completeness** (operator correction 2026-08-13, second pass —
 translating everything is not the point either): a briefing names ONLY what the
 operator must know or decide right now, in one or two plain sentences. Everything

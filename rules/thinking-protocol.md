@@ -142,6 +142,12 @@ They asserted their precedence only themselves.
    old one, the new one wins — MANDATORY along the way: actively search the old
    spots in the same pass (grep across CLAUDE.md, rules/, memory, skills, checklist)
    and mark them as superseded. A new rule without back-propagation is unfinished.
+   **Decide its reach in the same pass** (operator instruction 2026-10-08): does it
+   hold for every brain (core PR), for one tool suite (PR there), or only for this
+   operator and instance (stays in the instance)? The instance's record of the
+   correction names the reach in one line. Measured on a proving brain the same day:
+   18 of 24 general-looking operator rules existed only in the instance — written
+   down twice (protocol + compact rule), never asked where they belong.
 3. **On a DISCOVERED, non-harmonizable contradiction** (scan, chance find):
    do NOT decide yourself — explain, discuss with the operator, decide case by case
    which instruction is adopted going forward; then apply step 2.
