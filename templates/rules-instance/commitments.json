@@ -1,0 +1,6 @@
+{
+  "_comment": "Instance data for core scripts/commitments.py: how a commitment about future behaviour is phrased in this brain's language (English is built in), the first-person words of that language, and extra stopwords. Regexes, case-insensitive. Empty lists = English only.",
+  "patterns": [],
+  "first_person": [],
+  "stopwords": []
+}

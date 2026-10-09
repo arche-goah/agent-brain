@@ -7,7 +7,11 @@ Before each of these actions, internal thinking is REQUIRED:
 2. **Before a plan change** - If an approach does not work, first analyze WHY
 3. **Before reporting done** - Check whether ALL requirements are fulfilled
 4. **After error messages** - Do not fix immediately, first understand the cause
-5. **After a user correction** - First check whether the user is right, then act
+5. **After a user correction** - First check whether the user is right, then act.
+   A remark the operator REPEATS about how an artifact looks or behaves is an
+   unresolved misunderstanding, not a nuance (operator decision 2026-10-05): stop,
+   mirror the current function and the presumed expectation in one sentence, get the
+   yes, then continue.
 
 ## Anti-Hallucination Rules
 
@@ -36,6 +40,13 @@ Before each of these actions, internal thinking is REQUIRED:
      this conversation is measured by the transcript. No forced clock-time precision.
    - **Separate in the report:** measured / derived / assumed. No action is taken
      on assumptions.
+   - **"Only derived" is no answer** (operator decision 2026-09-06): a claim that
+     needs a measurement gets measured. If hardware or access is missing, say so and
+     name what is needed — never weaken the claim and leave it standing.
+   - **Absence is measured on every level** (operator decision 2026-08-10): "X is
+     missing / empty" needs every layer that can carry X read first (user, project and
+     local settings, plugin contributions). Absence on one level is a
+     presence-not-effect error.
    - **Self-tally is not a measurement:** The prose summary of an agent or a report
      (counts, "X of Y", "Z are missing") is checked against the machine result
      before acting on it — for workflows: `result`/`logs` of the run record
@@ -88,6 +99,12 @@ measurements. It is NOT the procedure-class question ("is my activity
 repeatable, is there a skill?"), which is asked up front and needs no data —
 `rules/intelligence.md`, Knowledge Carriers, keeps the two apart; letting the
 front one shape how observations are read is the failure it names.
+
+**Goal before class** (operator decision 2026-08-06): the class question comes AFTER
+the goal and level question — what is this for, is it still the bigger goal, is this
+the right object? Whatever gets a mechanical carrier dominates attention, because
+countable sites feel like results; so every new carrier is asked which axis it
+weakens.
 
 This rule deliberately does NOT carry the mechanics. They live in:
 - skill `verification-before-completion` (the Class Gate, runs at "done"),
@@ -142,6 +159,16 @@ They asserted their precedence only themselves.
    old one, the new one wins — MANDATORY along the way: actively search the old
    spots in the same pass (grep across CLAUDE.md, rules/, memory, skills, checklist)
    and mark them as superseded. A new rule without back-propagation is unfinished.
+   **Decide its reach in the same pass** (operator instruction 2026-10-08): does it
+   hold for every brain (core PR), for one tool suite (PR there), or only for this
+   operator and instance (stays in the instance)? The instance's record of the
+   correction names the reach in one line. Measured on a proving brain the same day:
+   18 of 24 general-looking operator rules existed only in the instance — written
+   down twice (protocol + compact rule), never asked where they belong.
 3. **On a DISCOVERED, non-harmonizable contradiction** (scan, chance find):
    do NOT decide yourself — explain, discuss with the operator, decide case by case
    which instruction is adopted going forward; then apply step 2.
+   Boundary (operator decision 2026-09-30): a contradiction inside the instance's OWN
+   rules for which the agent has a clear recommendation is not an open decision —
+   apply it, mark the old spot superseded, report. Present it only when the
+   recommendation itself is uncertain or the rule belongs to another party.

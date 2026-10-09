@@ -82,7 +82,9 @@ else
       [ -n "${pid:-}" ] || continue
       pver=${pver%$'\r'}     # python writes CRLF on Windows; the CR lands in the last field
       ppath=${ppath//\\//}   # installPath is stored in platform notation; test needs '/'
-      grep -q "\"$pid\"" "$PROJ_SET" "$USER_SET" 2>/dev/null || continue   # enabled somewhere
+      # enabled somewhere — the VALUE must be true: a key set to false matched the old bare
+      # grep, and E1 stayed green for a disabled channel (ledger KS-51, 2026-09-18)
+      grep -qE "\"$pid\"[[:space:]]*:[[:space:]]*true" "$PROJ_SET" "$USER_SET" 2>/dev/null || continue
       [ -f "$ppath/output-styles/$style.md" ] || continue
       mver=$(jget "$ppath/.claude-plugin/plugin.json" version)
       [ -z "$mver" ] || [ "$mver" = "$pver" ] || continue                  # stale cache dir
@@ -176,6 +178,18 @@ done
 dangling=$(printf '%s' "$dangling" | tr ' ' '\n' | sort -u | tr '\n' ' ')
 if [ -n "${dangling// /}" ]; then say WARN E5 "Rule Pointers" "$checked checked, resolve nowhere:$dangling"
 else say OK E5 "Rule Pointers" "$checked/$checked resolvable"; fi
+
+# E6 Loose commitments: a promise about future behaviour made in chat binds nothing unless a
+#    rule carries it (core rule "a commitment becomes rule text in the same turn", measured
+#    2026-10-09: two commitments of the last two weeks lived only in chat). WARN, not ROT —
+#    the answer is to write the rule or drop the commitment, in the session.
+if [ -f "$CORE/scripts/commitments.py" ]; then
+  cm=$(cd "$BRAIN" && "$PY" "$CORE/scripts/commitments.py" --repo "$BRAIN" --days "${COMMITMENT_DAYS:-14}" 2>/dev/null)
+  loose=$(printf '%s\n' "$cm" | sed -n 's/^commitments summary: .*loose=\([0-9]*\).*/\1/p')
+  if [ -z "$loose" ]; then say INFO E6 "Loose Commitments" "not checked (no transcripts readable)"
+  elif [ "$loose" -gt 0 ]; then say WARN E6 "Loose Commitments" "$loose in ${COMMITMENT_DAYS:-14} days without a rule carrying them: $(printf '%s\n' "$cm" | grep -a '^loose commitment' | head -3 | cut -c1-160 | tr '\n' ' ')"
+  else say OK E6 "Loose Commitments" "$(printf '%s\n' "$cm" | sed -n 's/^commitments summary: //p')"; fi
+fi
 
 echo "=== EFFECT: $([ $fail -eq 0 ] && echo "ALL GREEN" || echo "AT LEAST ONE ROT") ==="
 exit $fail

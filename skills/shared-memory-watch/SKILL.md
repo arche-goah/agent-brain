@@ -17,6 +17,10 @@ a quiet one. Two levels close that, and they are one mechanism, not two:
 Both share ONE cursor (`config/shared-memory-state.json` in the instance), so they
 never double-report, and nothing falls between them.
 
+**Watching more than shared memory** (PRs, comments, merges, parallel sessions)? Use skill
+`collab-watch`: its `scripts/collab-watch.sh` arms this watcher together with the others
+(own cursor and lock under `COLLAB_WATCH_STATE`) — do not arm both.
+
 ## When to arm, unasked
 
 1. **Right after your own push that expects a reaction** — a question to another

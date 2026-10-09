@@ -9,7 +9,7 @@
 ## Errors & Debugging
 
 4. **Debug tools FIRST** - On bugs, always check console logs + network requests first (Playwright), THEN read code.
-5. **3-Loop Limit** - At most 3 attempts to fix the same error. After that: choose a different approach or inform the user.
+5. **3-Loop Limit** - At most 3 attempts to fix the same error. After that: choose a different approach or inform the user. Boundary: a different approach means a different FIX for the same path — a different ACCESS path (substitute route, direct HTTP/SSH instead of the tool) is Mechanism Discipline's third case (working-rules.md), gated.
 6. **Green-Run Gate** - A task is only done once build/tests run green. Code written =/= task done.
 
 ## Design & Visuals
@@ -22,7 +22,7 @@
 
 10. **Status updates on long tasks** - For tasks taking >30 seconds, keep the user informed continuously.
 11. **No scope creep** - Only do what was asked. No "nice-to-have" features.
-12. **Autonomous resolution** - Keep going until the problem is solved. Ask only on real blockers. Boundary: order fidelity (Auftragstreue) #5 (working-rules.md) — "keep going" means on the ordered assignment, not on a new one.
+12. **Autonomous resolution** - Keep going until the problem is solved. Ask only on real blockers. Boundary: order fidelity (Auftragstreue) #5 (working-rules.md) — "keep going" means on the ordered assignment, not on a new one. Never suggest a break, sleep or wrapping up — the counterpart is an AI, and ending a session is the operator's call (operator base rule).
 
 ## Code Quality
 

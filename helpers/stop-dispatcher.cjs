@@ -29,7 +29,8 @@
  *       "args":    ["--record"],            // optional argv for the child
  *       "extract": "Touched this turn:\\s*(.+)",    // optional capture from the block
  *       "template":"{1} -> class? register?",       // {1}.. = capture groups
- *       "basename": true                    // optional: paths in {1} to basenames
+ *       "basename": true,                   // optional: paths in {1} to basenames
+ *       "onNotification": "skip"            // optional: sit out notification turns
  *     }]
  *   }
  *
@@ -50,6 +51,17 @@
  * documentation) for a report tool to read back. Switching a noisy-but-usually-right
  * check from blocking to recording is a one-word change in the config.
  *
+ * TURN KIND (2026-10-07). Not every turn answers the operator: a background task that
+ * finishes, a watcher event, a CI verdict arrives as a user record of its own, and the
+ * reply to it ends a turn like any other. Measured on the proving brain: 39 of 164 real
+ * Stop-check firings (24 %) in 2026-09-07..10-06 landed on such a notification turn,
+ * spread across five checks — so the cut belongs here, not in one gate. The dispatcher
+ * reads which record OPENED the running turn and hands every check `turn_kind`
+ * ("operator" | "notification" | "unknown") in its stdin payload. A check entry may say
+ * `"onNotification": "skip"` to sit those turns out; without it every check runs as
+ * before — the default changes nothing, and each switch is a measured, per-check
+ * decision in the instance config.
+ *
  * Fails open by design: a broken dispatcher silently disables every check at once, so
  * its fixture run (`scripts/test-stop-dispatcher.sh`) is the only proof they still
  * fire and belongs in the recurring audit, not in someone's memory.
@@ -65,6 +77,41 @@ process.stdin.on('data', (c) => { data += c; });
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const CONFIG = path.join(ROOT, '.claude', 'rules', 'stop-checks.json');
 const DEFAULT_HEADER = 'STOP-CHECKS ({n})';
+const TAIL_BYTES = 4 * 1024 * 1024;
+const HOOK_ECHO = /^\s*Stop hook feedback/;
+// One definition of "notification record", shared with every gate's cooldown count.
+const { isNotification } = require('./turn-kind.cjs');
+
+function recordText(msg) {
+  if (typeof msg.content === 'string') return msg.content;
+  if (!Array.isArray(msg.content) || msg.content.some((b) => b.type === 'tool_result')) return null;
+  const t = msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  return t || null;
+}
+
+/** Which record opened the running turn: the operator, or a harness notification. */
+function turnKind(transcriptPath) {
+  try {
+    const size = fs.statSync(transcriptPath).size;
+    const start = Math.max(0, size - TAIL_BYTES);
+    const fd = fs.openSync(transcriptPath, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    let kind = 'unknown';
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.trim()) continue;
+      let d;
+      try { d = JSON.parse(line); } catch (e) { continue; }
+      if (!d.message || d.message.role !== 'user') continue;
+      const t = recordText(d.message);
+      if (t === null || HOOK_ECHO.test(t)) continue;
+      kind = isNotification(t) ? 'notification' : 'operator';
+    }
+    return kind;
+  } catch (e) {
+    return 'unknown';
+  }
+}
 
 function loadConfig() {
   try {
@@ -149,7 +196,10 @@ process.stdin.on('end', async () => {
   const cfg = loadConfig();
   if (cfg.checks.length === 0) process.exit(0);
 
-  const results = (await Promise.all(cfg.checks.map((c) => run(c, data))))
+  const kind = input.transcript_path ? turnKind(input.transcript_path) : 'unknown';
+  const payload = JSON.stringify({ ...input, turn_kind: kind });
+  const due = cfg.checks.filter((c) => !(kind === 'notification' && c.onNotification === 'skip'));
+  const results = (await Promise.all(due.map((c) => run(c, payload))))
     .filter(Boolean);
   if (results.length === 0) process.exit(0);
 

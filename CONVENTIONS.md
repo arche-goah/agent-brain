@@ -202,7 +202,9 @@ entry — not with a shell error deep inside a workflow.
 New tool domain (a new MCP server, a new device family, a new application):
 **create a new suite repo per §2.** Do not add it to the core. Do not add it to a private
 brain. Register it in the shared marketplace so the other side installs it with one
-command.
+command — build it marketplace-ready from the first file (operator decision
+2026-10-06); the cut into the marketplace is due at the latest when a second person
+needs it, earlier whenever the author wants (§13, ownership).
 
 ## 11. Where does this new thing go? (the placement gate)
 
@@ -311,6 +313,16 @@ released pin. Giving:
 branch → CI green → PR → merge → **tag → marketplace pin**. Only the pin makes a change
 visible to the other side — "I pushed" never means "something changed for you"; the
 receiver stays in control.
+
+**Ownership of a suite** (operator decisions 2026-08-31 to 2026-09-13). Every tool
+domain has one lead maintainer, assigned by the core's code owner; a new domain is
+unassigned until then — ownership is never derived. In their suite the lead decides
+alone: merge without a counter-check, tag, and the marketplace pin (their pin PR IS the
+decision; the marketplace merges it technically), graded per the core's AGENTS.md #5.
+Whoever works on a suite gets `write` there and branches IN the repo, so each side can
+push to the other's branch. Outside the core, another party's PR is merged by its
+author; merging someone else's work is announced first. Shared carriers — core,
+marketplace, shared memory, the contract — belong to nobody alone.
 
 **The one hard gate.** On personal GitHub accounts (no org) there is no enforceable merge
 gate; CI reports but cannot block. Therefore `handover-gate.sh`, run locally **from the

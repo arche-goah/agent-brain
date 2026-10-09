@@ -1,6 +1,6 @@
 ---
 name: autonomous-run
-description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstaendig durch" / "work through the next 2 h on your own") — fix the reserve pool up front, arm the watchdog WITH a deadline, set ScheduleWakeup after every step, finish at REMAINING 0 (or earlier only via the explicit "pool empty" report) and report the measured time evidence. Use when the operator orders a run over a DURATION ("zieh das 2h durch" / "push it through for 2h", "arbeite n minuten/stunden autonom" / "work n minutes/hours autonomously", "/loop <auftrag>"). NOT for normal orders — there the rule is order done, then check-in.
+description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstaendig durch" / "work through the next 2 h on your own") — fix the reserve pool up front, arm the watchdog WITH a deadline, set ScheduleWakeup after every step, finish at REMAINING 0 (or earlier only via the explicit "pool empty" or "BLOCKED" report) and report the measured time evidence. Use when the operator orders a run over a DURATION ("zieh das 2h durch" / "push it through for 2h", "arbeite n minuten/stunden autonom" / "work n minutes/hours autonomously", "/loop <auftrag>"). NOT for normal orders — there the rule is order done, then check-in.
 ---
 
 # Autonomous Run (time-boxed)
@@ -21,7 +21,7 @@ description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstae
 | | **Normal operation (default)** | **Autonomous run** |
 |---|---|---|
 | Trigger | any normal request | the operator names a **DURATION** ("2h autonom" / "2h autonomously", "arbeite n min durch" / "work through n min") or calls `/loop <auftrag>` |
-| End | **order done → check-in with the operator** | **when the time is up** (`remaining` = 0) — or earlier ONLY through the explicit "pool empty, time was still left" report (step 4) |
+| End | **order done → check-in with the operator** | **when the time is up** (`remaining` = 0) — or earlier ONLY through the explicit "pool empty, time was still left" report (step 4) or the BLOCKED end (hard gate 6) |
 | Tasks | exactly the order | the order **+ the reserve pool agreed up front** |
 | Deriving own follow-up tasks | **no** | yes, but ONLY from the pool |
 
@@ -109,8 +109,17 @@ The `disarm` output is the evidence that belongs in the report:
    (On 2026-08-02, "10:15/10:45" was reported; reality was 09:15/09:43.)
 5. **Do not finish because the work feels done** — the run ends at `remaining` = 0, or
    earlier ONLY through the explicit "pool empty, time was still left" report of step 4
-   (that is order fidelity #3 applied inside a time-boxed run, not a contradiction of it).
-   Nothing else ends it.
+   (that is order fidelity #3 applied inside a time-boxed run, not a contradiction of it),
+   or through the BLOCKED end below. Nothing else ends it.
+6. **BLOCKED end — items remain, none can run** (coherence finding 2026-09-18): every
+   remaining item, main order and pool alike, depends on a defined path that is
+   interrupted, and restoring it needs the operator (a `/mcp` reconnect, a device, a
+   decision). Waking up every few minutes to find nothing doable only keeps the watchdog
+   green; building a substitute path is gated (working-rules, Mechanism Discipline). So:
+   report `BLOCKED: <path> — <what restores it, who>` with the remaining items, arm a
+   watcher on the path itself (the instance's reconnect or link waiter) so the run can
+   resume when it comes back, then `disarm` and `ScheduleWakeup(stop: true)`. The report
+   goes through the instance's channel for an absent operator.
 
 ## Read time, do not compute it
 
