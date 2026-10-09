@@ -36,7 +36,16 @@ set -uo pipefail
 # Overridable so the watcher can run against a sandbox repo in the test. A find path
 # nobody has ever SEEN fire is indistinguishable from a broken one.
 REPO="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
-STATE_FILE="${SHARED_MEMORY_STATE:-${CLAUDE_PROJECT_DIR:-.}/config/shared-memory-state.json}"
+# Runtime cursor in .claude-state/ (same move as helpers/shared-memory-check.sh, which
+# shares it); an old config/ cursor is copied once so nothing is replayed or lost.
+STATE_FILE="${SHARED_MEMORY_STATE:-}"
+if [[ -z "$STATE_FILE" ]]; then
+  STATE_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude-state/shared-memory-state.json"
+  _legacy="${CLAUDE_PROJECT_DIR:-.}/config/shared-memory-state.json"
+  if [[ ! -f "$STATE_FILE" && -f "$_legacy" ]]; then
+    mkdir -p "$(dirname "$STATE_FILE")" && cp "$_legacy" "$STATE_FILE"
+  fi
+fi
 LOCK_DIR="${SHARED_MEMORY_LOCK_DIR:-${CLAUDE_PROJECT_DIR:-.}/.claude-state}"
 LOCK="$LOCK_DIR/shared-memory-watch.pid"
 mkdir -p "$LOCK_DIR"

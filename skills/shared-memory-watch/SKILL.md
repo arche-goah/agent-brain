@@ -14,7 +14,7 @@ a quiet one. Two levels close that, and they are one mechanism, not two:
 | 1 | `helpers/shared-memory-check.sh`, called by `session-bootup.sh` | the gap **between** sessions — reports what arrived since this instance last looked |
 | 2 | `scripts/shared-memory-watch.sh`, driven by `Monitor` | the time **inside** a running session — reports each new commit as it lands |
 
-Both share ONE cursor (`config/shared-memory-state.json` in the instance), so they
+Both share ONE cursor (`.claude-state/shared-memory-state.json` in the instance — runtime state, untracked; an old `config/` cursor is taken over once), so they
 never double-report, and nothing falls between them.
 
 **Watching more than shared memory** (PRs, comments, merges, parallel sessions)? Use skill

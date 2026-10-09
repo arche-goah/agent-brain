@@ -21,7 +21,17 @@
 set -uo pipefail
 
 REPO="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
-STATE_FILE="${SHARED_MEMORY_STATE:-${CLAUDE_PROJECT_DIR:-.}/config/shared-memory-state.json}"
+# The cursor is runtime state: it lives in .claude-state/, not in config/ (a tracked
+# config/ cursor dirtied the working tree on every start — measured 2026-10-09). A brain
+# that still has the old file gets it copied once, so no find is replayed or lost.
+STATE_FILE="${SHARED_MEMORY_STATE:-}"
+if [[ -z "$STATE_FILE" ]]; then
+  STATE_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude-state/shared-memory-state.json"
+  _legacy="${CLAUDE_PROJECT_DIR:-.}/config/shared-memory-state.json"
+  if [[ ! -f "$STATE_FILE" && -f "$_legacy" ]]; then
+    mkdir -p "$(dirname "$STATE_FILE")" && cp "$_legacy" "$STATE_FILE"
+  fi
+fi
 
 # Not cloned (fresh machine, onboarding not done) — silent. An instance that does not
 # take part in shared memory must not be nagged about it every single start.
