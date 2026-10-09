@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **The brain-scan report agent writes the report itself, not an intermediate file.** (test: T1) First real run of the rebuilt scan (2026-10-09): the harness refused the report agent's Write of `findings/report-body.md` ("Subagents should return findings as text, not write report files"); the run then correctly aborted on the count gate (deep-check lines 0 vs 1) instead of returning a report it never wrote. The old scan wrote `scan-<date>.md` directly and passed. Now the body goes straight into the deliverable and the script-written head is prepended by one shell command.
+
 - **The brain-scan can run with the scripts of a core under test.** (test: T1) `args.core` (default `<brain>/core`) points the machine step, the shared-memory lint and the inbox at a dev checkout; without it a brain testing an unreleased core measured with its old installed tools while claiming to test the new ones (found when the first run of the rebuilt scan was prepared, 2026-10-09).
 
 - **Three findings of the Windows check of the 1.4.0 candidate, fixed.** (test: T1) Measured on the workstation 2026-10-09 (all green, three observations): many waiting items collapse into one start line (above 5, `OPEN_ITEMS_WAIT_COLLAPSE`); `always-loaded.py --memory <directory>` is refused instead of measuring the directory entry; `commitments.py` says when it checked English phrasing only (a brain in another language without instance data reported found=0 as if clean). Fixture cases for each.
