@@ -161,7 +161,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-turn-kind.sh=1 scripts/test-local-machinery.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-always-loaded.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-turn-kind.sh=1 scripts/test-local-machinery.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-always-loaded.sh=1 scripts/test-live-read-gate.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -194,6 +194,15 @@ inside the recorded tool inputs (the gate resolves those to decide coverage). Al
 through `native()`. Here it matters in BOTH directions: an unresolvable root is never
 covered (a must-allow case would block), an unresolvable transcript reads empty (a
 must-block case would pass silently). Windows run still owed at baseline time.
+2026-10-09, test-live-read-gate.sh baselined after the same review: paths cross into node in
+five places — the transcript, the project dir (env), the absolute required path inside the
+instance file, the `filePath` of each delivered-Read record, and the path inside each `cat`
+command the gate resolves. All five go through `native()` (one `$NT` for the temp dir). Both
+directions matter here too: an unresolvable delivered record never covers the file (a
+must-allow case would block), an unresolvable transcript reads empty (a must-block case would
+still block, but for the wrong reason — which is why the fixture also runs every must-block
+case against an always-allow stub). The stub and the padding script take their paths as
+ARGUMENTS, which Git Bash converts. Windows run owed at baseline time.
 2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
 test-full-audit-synthesis-files.sh baselined on the same review and the same construction
 — they are the per-workflow siblings of the coherence fixture: harness file as an
@@ -233,7 +242,7 @@ the diagnostic replaces exactly the output it was asked to produce, and only in 
 failure path, where nobody has a second copy.
 pattern:   \| *grep -[b-zA-Z]
 paths:     --include=*.sh scripts helpers
-known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1
+known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-live-read-gate.sh=2
 instances: 3
 repeat:    yes
 status:    closed
@@ -248,6 +257,9 @@ apart from the rest, and the rest are greps whose output
 nobody reads as a verdict. They stay listed rather than changed, because `-a` on a line
 that never renders anything is noise — but a NEW pipe-grep must be looked at, and the
 question is one word long: does this line end up in front of a human?
+2026-10-09, test-live-read-gate.sh baselined after that question: both pipe-greps are
+`grep -q` predicates on the hook's JSON (the deny decision, the continuation offset); their
+output is never printed, only the exit status decides the case.
 
 ## OS-6 — `python -` runs the file you passed as an argument
 
