@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Instance data for core/scripts/collab-watch.sh (skill collab-watch). Copy to",
+    ".claude/rules/collab-watch.json and replace every <placeholder> — the plan step refuses",
+    "a file that still carries one, instead of arming a watch whose API calls fail silently.",
+    "",
+    "shared_memory   the local clone of the org's shared-memory repo (may start with ~). Drop",
+    "                the block if there is none.",
+    "repo_watches    one entry per poll cadence. `tag` names the cursor and the lock — unique.",
+    "                A repo appears in ONE entry only. List the repos where collaborators",
+    "                actually talk: the core, the suites they own, the marketplace.",
+    "parallel_sessions  watch Claude sessions joining/leaving this brain's repo.",
+    "parties         who is who. id = the `von:`/sender value in the shared-memory repo,",
+    "                github = the account that pushes, label = the name used in prose,",
+    "                kind = self (the operator's own machines) | peer (a collaborator).",
+    "                Two own machines share one account — that is why scopes select by",
+    "                party and a login filter is never the default.",
+    "",
+    "Intervals in seconds, minimum 30. Change cadence HERE, not in a script or a rule."
+  ],
+  "shared_memory": { "repo": "~/Projects/<shared-memory-repo>", "interval": 120 },
+  "repo_watches": [
+    { "tag": "core", "repos": ["<owner>/<core-repo>"], "interval": 300 },
+    { "tag": "suites", "repos": ["<owner>/<suite-a>", "<owner>/<suite-b>"], "interval": 300 }
+  ],
+  "parallel_sessions": { "interval": 60 },
+  "parties": [
+    { "id": "<operator>-<machine-1>", "github": "<operator-login>", "label": "this machine", "kind": "self" },
+    { "id": "<operator>-<machine-2>", "github": "<operator-login>", "label": "the other own machine", "kind": "self" },
+    { "id": "<peer>-<machine>", "github": "<peer-login>", "label": "<Peer>", "kind": "peer" }
+  ]
+}

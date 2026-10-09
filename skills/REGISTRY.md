@@ -1,13 +1,13 @@
 # Skill Registry
 
-**Total skills:** 25
-**Generated:** 2026-09-30
+**Total skills:** 26
+**Generated:** 2026-10-09
 
 > Auto-generated from the `.claude/skills/*/SKILL.md` files via `core/scripts/regen-skill-registry.py` — **do not maintain by hand**. Re-run the script after changing a skill.
 
 Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (each with YAML frontmatter `name` + `description`). This registry is the human-readable overview.
 
-## Other (25)
+## Other (26)
 
 | Skill | Short description |
 |-------|--------------------|
@@ -17,6 +17,7 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 | code-audit | Systematically audit a large unfamiliar codebase across correctness, error-handling, security surface, dead code, dependencies, and … |
 | codex-review | Codex adversarial review for Claude Code via openai/codex-plugin-cc |
 | coherence-scan | Coherence audit of the entire norm stack (CLAUDE.md, rules, feedback, memory, skills, hooks) — contradictions, … |
+| collab-watch | Watch every collaboration channel at once (new PRs, merges, comments incl |
 | defuddle | Extract clean markdown content from web pages using Defuddle CLI, removing clutter and navigation to … |
 | dependency-audit | Inventory a repo's dependencies across ecosystems (npm, pip, go, cargo, bundler, composer) — versions, dev/prod, … |
 | firecrawl-web | Fetch web content, take screenshots, extract structured data, search the web, and crawl documentation sites |
@@ -39,4 +40,4 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 
 ---
 
-**25 skills** across 1 groups.
+**26 skills** across 1 groups.
