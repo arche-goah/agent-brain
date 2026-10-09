@@ -101,12 +101,18 @@ function turn(tp) {
   return { calls, since, fired };
 }
 
-/** Same liveness test as the watcher scripts' `status`: the pid in the lock answers `kill -0`. */
+/**
+ * Same liveness test as the watcher scripts' `status` (`kill -0` on the pid in the lock),
+ * without a shell. The pid must be digits only. On Windows the lock holds an MSYS pid that
+ * node's process.kill cannot see, so Git's `ps -p` answers there (measured 2026-10-09:
+ * exit 0 for a live watcher, 1 for a dead pid).
+ */
 function alive(lock) {
   try {
-    if (!fs.existsSync(lock)) return false;
-    execFileSync('bash', ['-c', 'p=$(cat "$1" 2>/dev/null); [ -n "$p" ] && kill -0 "$p" 2>/dev/null', '_', lock],
-      { stdio: 'ignore', timeout: 5000 });
+    const pid = fs.readFileSync(lock, 'utf8').trim();
+    if (!/^\d+$/.test(pid)) return false;
+    if (process.platform !== 'win32') { process.kill(Number(pid), 0); return true; }
+    execFileSync('ps', ['-p', pid], { stdio: 'ignore', timeout: 5000 });
     return true;
   } catch (e) { return false; }
 }
