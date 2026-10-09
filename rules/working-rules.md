@@ -31,6 +31,16 @@
    through the tool's own flag (`git -C <abs-path> push`), never through `cd … &&`. Multi-line
    content goes into a file that is then run or applied — no shell heredocs, which also
    trip the harness's obfuscation heuristics.
+9. **A PR is opened together with its CI watch** (operator decision 2026-10-09): whoever
+   opens a pull request arms `core/scripts/ci-watch.sh pr <repo> <n>` in the same turn
+   (background) and reads the result before calling the PR ready. A red check found days
+   later is a check nobody watched (measured: a PR sat red while the session reported
+   the others green).
+10. **A commitment about future behaviour becomes rule text in the same turn** (operator
+    decision 2026-10-09): "from now on I will…" said only in chat binds nothing and is
+    invisible to every check. Write it where rules live — the instance's rules if it is
+    about this brain only, a core PR if it holds for every brain — so the local-machinery
+    inventory sees it and its reach can be checked like any other carrier.
 
 ## File Rules
 
