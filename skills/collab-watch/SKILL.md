@@ -132,5 +132,9 @@ Run them after touching any watcher and when installing on a new machine.
 bash core/scripts/repo-activity-watch.sh status|disarm      # with REPO_ACTIVITY_TAG/STATE_DIR set
 bash core/scripts/shared-memory-watch.sh status|disarm      # with SHARED_MEMORY_LOCK_DIR set
 ```
+The Monitor expires after 30 minutes even with `persistent: true` (measured 2026-10-09, Claude Code 2.1.295,
+Windows instance: expiry notice, then the watcher process was gone) — re-arm on the expiry
+notice; `helpers/watch-gate.cjs` catches a turn that awaits a reaction with no live watcher.
+
 After a `TaskStop` a lock can survive (the trap does not always run); a lock whose PID is
 dead is reclaimed automatically on the next arm.
