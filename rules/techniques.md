@@ -22,7 +22,7 @@
 
 10. **Status updates on long tasks** - For tasks taking >30 seconds, keep the user informed continuously.
 11. **No scope creep** - Only do what was asked. No "nice-to-have" features.
-12. **Autonomous resolution** - Keep going until the problem is solved. Ask only on real blockers. Boundary: order fidelity (Auftragstreue) #5 (working-rules.md) — "keep going" means on the ordered assignment, not on a new one.
+12. **Autonomous resolution** - Keep going until the problem is solved. Ask only on real blockers. Boundary: order fidelity (Auftragstreue) #5 (working-rules.md) — "keep going" means on the ordered assignment, not on a new one. Never suggest a break, sleep or wrapping up — the counterpart is an AI, and ending a session is the operator's call (operator base rule).
 
 ## Code Quality
 

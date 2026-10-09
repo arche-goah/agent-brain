@@ -46,6 +46,24 @@ over no longer worked as a whole.
 - A report of success from an agent or a tool that was not confirmed by a second
   path.
 
+## What the artifact itself must be
+
+The bar above checks a state; these hold for what is handed over (operator decisions
+2026-07-16 and 2026-09-05):
+
+- **Self-contained.** After load or a cold start it runs COMPLETELY by itself; after a
+  rebuild the reload test includes a cold start of the process.
+- **Readable by a stranger.** An unfamiliar operator can operate and extend it without
+  reading up: standard vocabulary, telling names, anything temporary marked as such.
+- **The operator surface is the standalone run, nothing else.** Every element on an
+  operator page answers "does the operator need this WITHOUT the agent, and where in
+  the run?"; measurement internals and developer switches go to expert pages. A pulse
+  that runs and delivers nothing is a defect, so the standalone path carries a
+  self-test on real data.
+- **Hands off while the operator checks a standalone run.** Observe the defect, close
+  it in the tool, deploy, and let the operator run it again. A run the agent helped
+  along proves nothing.
+
 ## Reporting
 
 Name what was operated, on which objects, through which two read paths, and in

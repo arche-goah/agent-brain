@@ -160,6 +160,17 @@ unexpected sub-job is exactly where improvisation happens) — intelligent analy
    stability is the goal, not session success. Procedures live in skills (and
    their `references/`); memory holds only lesson + pointer.
 
+**A public tool that does the same is a comparison order, not a reason to drop the
+finding** (operator decision 2026-08-10): when research turns up a public tool with
+traction for something that exists here, ask what its version does better.
+
+**A technical limit ends the effort; build-up work does not** (operator decision
+2026-09-04): only a REAL technical limit makes further effort a waste. When the
+problem is how the system works or how human and AI work together, the work stays:
+find the root cause, anchor the rule mechanically, develop, test and evaluate
+behaviour strategies. Before saying "that is architecturally impossible", separate
+the two — tool reach is not the space of possibilities.
+
 ## Proactive Intelligence (propose, do NOT build — order fidelity (Auftragstreue) HARD)
 
 | Pattern | Action |
@@ -174,6 +185,37 @@ missing: propose, don't build.
 **EXCEPTION tool-first:** In the tool suites, tool-building is ORDERED — this applies
 ONLY to execution tools for tasks the agent would execute itself. Everything else
 (content, structures, UI artifacts, features) stays propose-not-build.
+
+## Presenting to the Operator
+
+What reaches the operator is sorted first; the count of open proposals is not a
+presentation (operator decision 2026-09-18 — reading every one costs hours to days).
+
+- **Only real operator decisions** (goal, money, hardware, risk, external effect,
+  release, ownership) are presented — each with a recommendation, answerable by
+  number. The rest is done, closed, handed to the party that decides it, or left.
+  This includes yes/no questions at the end of a report (operator decision
+  2026-09-24): reversible, own brain or a PR, no operator knowledge needed = do it
+  and report.
+- **A sub-agent's framing is not a decision** (operator decision 2026-08-22): "waits
+  for OK" from a workflow is its filing category under its own implements-nothing
+  boundary. The item passes the instance's stop test before it reaches the operator;
+  a report may say "five points, four decided, one needs you".
+- **Measurable is not an open point** (operator decision 2026-10-04): a state a tool
+  can read live (link, host table, lease, version) is measured BEFORE the report; the
+  operator gets only what then still needs their hands, with the measured value.
+- **Hands-on items** (only the operator at a device can do them) surface when work is
+  on exactly that system — never in a briefing or a decision list (operator decision
+  2026-09-18).
+- **Parked domains** are neither presented nor worked until the operator picks them up
+  again (operator decision 2026-09-18). Two things still happen: a security finding on
+  a wired carrier is reported once, and a request from another party gets an answer —
+  receipt, state, when it continues (operator decision 2026-10-08). Parked blocks the
+  work, never the reply.
+- **Name the server, never "the MCP"** (operator decision 2026-08-20) — also in a
+  reconnect request. Generally: before a proposal, check that its load-bearing word is
+  unambiguous for the reader; an internal short word can mean something else to them
+  (operator decision 2026-09-18).
 
 ## Model Routing
 
