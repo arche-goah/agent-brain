@@ -161,7 +161,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-turn-kind.sh=1 scripts/test-local-machinery.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-always-loaded.sh=1 scripts/test-live-read-gate.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-turn-kind.sh=1 scripts/test-local-machinery.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-always-loaded.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-wait-mcp-reconnect.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -203,6 +203,17 @@ must-allow case would block), an unresolvable transcript reads empty (a must-blo
 still block, but for the wrong reason — which is why the fixture also runs every must-block
 case against an always-allow stub). The stub and the padding script take their paths as
 ARGUMENTS, which Git Bash converts. Windows run owed at baseline time.
+2026-10-09, test-transcript-archive.sh baselined after the same review: the temp dir
+reaches the script under test through CLAUDE_CONFIG_DIR and argv, and inside it only bash,
+`find`, `du` and `tar` (all MSYS) open it; the script converts both paths with `cygpath -u`
+where it exists, because GNU tar reads the colon of `C:\...` as host:path. The one native
+program, `git -C <dir>` (the refusal check), receives the dir as an ARGUMENT, which Git Bash
+converts. Windows run still owed at baseline time.
+2026-10-09, test-wait-mcp-reconnect.sh baselined after the same review: the temp dir holds
+the stamp files, written and read by bash (`echo`, `cat`) only; the process cases start
+bash children and never hand a path to a native process. Windows run still owed at
+baseline time (the process cases are designed to SKIP there and to check the refusal).
+
 2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
 test-full-audit-synthesis-files.sh baselined on the same review and the same construction
 — they are the per-workflow siblings of the coherence fixture: harness file as an
