@@ -168,6 +168,26 @@ built second path passes all three — and is still wrong, because the question
 take it"** — or **"there is no defined path" → it gets DISCUSSED.** A third case does
 not exist. No "I'll quickly do it differently and mention it": the questioning must
 come FROM THE AGENT, BEFORE acting.
+**"DISCUSSED" does not mean "end the turn on a question".** It means the question is
+raised through the channel that fits it (step 3 below) while the ordered work goes on.
+
+**ASK OR ACT — the one ordered procedure** (coherence finding 2026-09-18: the decision
+was spread over a dozen rules on three ranks, and the stop gate and this section gave
+opposite answers for the same case). Every other rule about asking or stopping points
+here. Take the FIRST step that applies:
+1. **Irreversible or externally effective** (deploy, publish, push to a public repo,
+   send, delete, a write to a live system outside its agreed frame, money, hardware):
+   its gate applies — the operator's word first, regardless of confidence.
+2. **Needed to fulfil the order as specified** and a defined path exists: take it, in the
+   order's space. An interrupted defined path: restore it (THIRD CASE above).
+3. **Adjacent** — useful, but not needed for the order, or no defined path exists: write
+   it where it is decided without blocking (the instance's ledger as `origin: derived`,
+   or the shared-memory channel for another party), and CONTINUE the ordered work. The
+   operator hears it in the next report, as a proposal with a recommendation.
+4. **Otherwise** (reversible, own terrain, inside the order): do it and report.
+A question ENDS the turn only when the next step of the order cannot proceed without the
+answer AND the answer belongs to the operator — the instance names its list of
+operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
 
 **Mechanically secured:** `core/helpers/mechanism-guard.cjs` (PreToolUse/Bash) blocks
 shortcuts for which a documented path exists, and demands either the process or an
