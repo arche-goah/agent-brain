@@ -438,9 +438,24 @@ for base in (".claude", ".github", "core", "scripts", "docs", "config"):
                 if n in text and os.path.basename(p) != n:
                     refs[n].add(p)
 
+# The client starts MCP servers from the ROOT `.mcp.json`, which the walk above never
+# reaches (measured 2026-10-09: a server launcher was reported as "mentioned in
+# documentation only"). Only `command` and `args` count — the launch line, not prose.
+try:
+    servers = (json.load(open(".mcp.json", encoding="utf-8")).get("mcpServers") or {}).values()
+except Exception:
+    servers = []
+for srv in servers:
+    line = " ".join([str(srv.get("command", ""))] + [str(a) for a in srv.get("args") or []])
+    for n in names:
+        if n in line:
+            refs[n].add(".mcp.json")
+
 found = 0
 for n, t in sorted(names.items(), key=lambda kv: kv[1]):
-    kinds = {("wired" if r.endswith("settings.json") or "stop-checks" in r else
+    # `.mcp.json` launches MCP servers: a script named there IS wired. It counted as "doc"
+    # and a server launcher was reported as never invoked (measured 2026-10-09).
+    kinds = {("wired" if r.endswith(("settings.json", ".mcp.json")) or "stop-checks" in r else
               "ci" if r.endswith((".yml", ".yaml")) else
               "called" if r.endswith((".sh", ".py", ".cjs", ".js")) else "doc")
              for r in refs[n]}
