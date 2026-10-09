@@ -15,6 +15,14 @@ READ the output, react to `!!` warnings (report/propose), connect to
 1-sentence mini-summary** (state of affairs + what is potentially coming up — from
 the bootup block, open assignments, memory).
 
+**The brain-scan runs only in an active session, on the operator's OK** (operator
+decision 2026-09-23): the bootup reports it due after 7 days and overdue after 14; the
+first answer asks, and the scan starts in this session once the operator says yes. No
+scheduler starts it unattended — an unattended run has no one to read its findings,
+stalls when the machine sleeps, and costs tokens nobody ordered. `core/scripts/brain-scan.sh`
+stays only for an instance that explicitly opts into a scheduler and says so in its own
+rules.
+
 **The summary is written for the operator, not relayed from the machine** (operator
 correction 2026-08-13): hook output is Claude's input, never chat vocabulary — no
 `!!` markers, return codes, internal tags or hook phrasing in the summary. Translate
