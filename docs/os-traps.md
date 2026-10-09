@@ -85,7 +85,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=8 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5
+known:     helpers/session-bootup.sh=8 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1
 instances: 5
 repeat:    yes
 status:    closed
@@ -110,6 +110,14 @@ or matched against forward-slashed text? If it only ever reaches the filesystem,
 fine and gets counted; if it reaches a reader or a comparison, it needs `as_posix()` or
 a literal `/`. `.sh` is in the search because the defect was found inside a python
 block embedded in a shell script, where a `*.py` search could not see it.
+2026-10-09, local-machinery.py rework (carrier inventory): one join is left — the default
+path of the declarations file, which is only opened. Every path the script REPORTS or
+matches against a declaration key is built with `pathlib` and leaves as `.as_posix()` (item
+ids, `rel_id`) or with backslashes replaced; the scheduled-job search compares the brain path
+in both separator forms, lowercased. Before the rework: all five joins build the path
+of a file the script opens (settings, stop-checks, declarations, the core checkout and its
+`.git`); none is printed or compared. The paths it REPORTS come from git porcelain
+(already forward-slashed) and from hook command strings.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -148,7 +156,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-turn-kind.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-turn-kind.sh=1 scripts/test-local-machinery.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -193,6 +201,16 @@ is what makes it short.
 script (BRAIN_DIR and the argument), never a path a native process has to open; the
 report goes to --out inside the same temp dir. Its one pipe-grep carries -a, because the
 line it extracts is the verdict the fixture judges (OS-5).
+
+2026-10-09, test-local-machinery.sh: the temp dir reaches python only as the `--repo`
+ARGUMENT (Git Bash converts argv) and git as `-C` arguments; the hook commands inside the
+fixture JSON name `$CLAUDE_PROJECT_DIR` or a fictitious `/elsewhere/...` prefix that is
+compared as text, never opened. No native process opens a temp path from data.
+Rework 2026-10-09 (carrier coverage): now four temp paths DO travel as data — the suite path
+in `.mcp.json` and in an alpha key, the plugin install path in `installed_plugins.json`, the
+brain path inside a planted LaunchAgents plist, and the global hooks dir in the git config
+named by `GIT_CONFIG_GLOBAL` (itself an env value a native git reads). Every one goes through
+`nat()` (cygpath -m). `--home` and `--repo` stay argv.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
@@ -359,7 +377,11 @@ an EMPTY pattern, which matches every file and reports LF for a file full of CRL
 `known` is a baseline of SITES (like OS-2), not of defects: 13 files print non-ASCII today
 and only `brain-friction.py` is parsed by another program, so the rest are correct as they
 stand. The baseline exists so a NEW site is read with one question before it ships: does
-anything PARSE this output? Left `open` deliberately — the 12 unpinned sites are fine only
+anything PARSE this output? 2026-10-09 local-machinery.py: yes — the session start reads
+it — so it pins stdout like brain-friction.py (the pin stays). Its sites left the baseline in
+the carrier rework of the same day: the em-dash lines now live in a MESSAGES table and reach
+`print()` through `format()`, which this pattern cannot see — the pin, not the count, is what
+carries this file. Left `open` deliberately — the 12 unpinned sites are fine only
 as long as that answer stays no.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name

@@ -175,6 +175,46 @@ explicit `# MECHANISM-OK: <reason>` marker. The rules for it are instance knowle
 `.claude/rules/mechanism-rules.json` (every newly discovered shortcut gets added
 there — the system learns, not just the agent).
 
+## One System, Not Local Workarounds (HARD, operator order 2026-10-08)
+
+Every brain runs the same released core. A mechanism that would help every brain — a
+gate, a check, a hook, a script — is built IN the core (or in the owning suite) as a
+PR, never as a local copy that works here and nowhere else. "Essential", in the
+operator's word: a local fix is a fix nobody else gets, and a brain that runs its own
+machinery measures a different system than its collaborators do.
+
+Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machinery.json`:
+- **instance** — machinery that can only live in this brain (it acts on this operator's
+  hardware, services or projects). The entry says why AND names as `evidence` the
+  instance-specific token the item relies on (a host, device, person or project name); the
+  checker verifies the token is really in the item. "Not yet ported" is not a reason, and a
+  reason without evidence is a self-declaration nobody checked (measured 2026-10-09: three
+  items declared instance-only were general).
+- **alpha** — a development checkout under test, with an expiry date and what is being
+  measured. Past the date: merge, extend with a reason, or unwire.
+
+**The finding addresses the AI, not the operator** (operator, same day: "the human does not
+have to be bothered every time something deviates, but there should be a classification and
+analysis of what deviates, why, whether that makes sense, and whether something should move
+into the core as a PR"). On every reported deviation the agent: (1) reads what the machinery
+does and why it is local, (2) judges whether that makes sense, (3) decides — core-worthy =
+open the core PR (or name the open one) and declare it as alpha until merged; instance-only =
+declare it with the reason; obsolete = unwire. The declaration IS the written analysis. The
+operator hears only what needs his decision under the instance's own rules.
+
+**Mechanically carried:** `core/scripts/local-machinery.py` runs at every session start. It
+inventories EVERY carrier of behaviour — the search space is the invariant, not the last
+incident: hooks, stop checks, MCP servers, git hooks, scheduled jobs, extra plugins, skills,
+workflows, output styles, agents, commands, rule sections, scripts — and names every item
+that is neither core nor declared with evidence, every undeclared item that contains none of
+the instance's `identity_tokens` (presumably general), every near-duplicate of a core tool
+under another name, every expired alpha, and every file edited inside `core/` (the pin check
+sees moved commits, not edits in place); one summary line counts each class. A new carrier
+type gets a planted case and a negative control in its fixture. Measured on
+the proving brain the day the rule was written: 12 of 31 hook entries ran from unmerged
+checkouts, 8 from instance scripts — at least four of those general mechanisms — and
+nothing had reported it, because every one of them worked.
+
 ## A Needed Reload Is Not a Wait State (operator order 2026-08-06, sharpened 2026-08-14)
 
 A change to a tool that only takes effect after the server reloads ends many turns with
