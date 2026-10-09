@@ -46,7 +46,12 @@ Monitor({ command: "bash core/scripts/shared-memory-watch.sh watch 300",
 `persistent: true` on purpose — the same shape as a PR org-watch. The first version of
 this script exited on the first find, which made every find a re-arm ritual and left
 the window between exit and next arm unwatched while looking armed. It now reports one
-line per find and keeps running; it ends with `TaskStop` or with the session.
+line per find and keeps running; it ends with `TaskStop`, with the session — **or when the
+Monitor expires**: measured 2026-10-09 on the Windows instance (Claude Code 2.1.295), the Monitor tool announced
+"expires in 30m" despite `persistent: true`, delivered the expiry notice after 30 minutes and
+the watcher process was gone at the next look (`status`: "not armed"). Re-arm on the expiry
+notice while the session still waits on someone; `helpers/watch-gate.cjs` blocks a turn that
+expects a reaction with no live watcher, so a missed re-arm surfaces at the next stop.
 
 Paths are overridable (`SHARED_MEMORY_REPO`, `SHARED_MEMORY_STATE`,
 `SHARED_MEMORY_LOCK_DIR`) — the instance decides where its shared repo is cloned; the

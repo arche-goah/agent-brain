@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **The watch skills no longer promise a watch that outlives the Monitor.** (test: T0) `shared-memory-watch` said the watcher "keeps running; it ends with `TaskStop` or with the session". Measured 2026-10-09 on the Windows instance (Claude Code 2.1.295): the Monitor announced "expires in 30m" despite `persistent: true`, sent the expiry notice after 30 minutes, and the watcher process was gone at the next `status` ("not armed"). Both watch skills now say to re-arm on the expiry notice and point at `watch-gate.cjs`, which catches a missed re-arm. Text only.
+
 ## 1.4.0 — 2026-10-09
 
 Minor release, named by the operator: not one big step, but the sum — every brain now sees where it deviates from the shared core, every open point and every loose commitment reaches the operator sorted (at most three real decisions), the brain-scan checks what became of its own findings, and collaboration watching, the live-read gate and the first maintenance tools moved from one instance into the core. Verified on macOS and on a Windows brain (candidate #211, plus re-checks); first real run of the rebuilt brain-scan on the proving brain.
