@@ -27,10 +27,13 @@ printf '%s\n' 'import os, sys' \
 # --root) does not resolve on Windows, and every case would read an empty tree.
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
 mkdir -p "$T/tx"
+# PR source: a saved GraphQL answer with no open PRs, unless a case says otherwise.
+printf '%s\n' '{"data":{"viewer":{"login":"me"},"search":{"issueCount":0,"nodes":[]}}}' > "$T/noprs.json"
+export OPEN_ITEMS_PR_FIXTURE; OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")"
 run() { # $1 session id ("" = hand run), [$2 root]; the transcript path sits next to the others
   local hi="{}"
   [ -n "$1" ] && hi="{\"session_id\":\"$1\",\"transcript_path\":\"$(native "$T/tx/$1.jsonl")\"}"
-  "$PY" "$(native "$T/core/scripts/open-items.py")" --owner "${OWNER:-}" --repo "$(native "$T/repo")" \
+  "$PY" "$(native "$T/core/scripts/open-items.py")" --owner "${OWNER-me}" --repo "$(native "$T/repo")" \
     --root "$(native "${2:-$T/root}")" --hook-input "$hi" 2>&1
 }
 # A transcript in which the list reached a human: the bootup block, then a real prompt.
@@ -61,6 +64,13 @@ out=$(run c); tx c
 has "!! reported in 3 sessions" "$out" && ok "phantom, hand and unread runs do not count" || bad "counter inflated: $out"
 out=$(run d)
 has "!! reported in 4 sessions" "$out" && ok "real sessions keep counting" || bad "real session lost: $out"
+# A hand run never writes the counter — not even with a source skipped (measured 2026-10-09:
+# such a run rewrote the file and every item lost its history).
+tx d; S="$T/root/.claude-state/open-items-seen.json"; before=$(cat "$S")
+OWNER= run "" >/dev/null; run "" >/dev/null
+[ "$(cat "$S")" = "$before" ] && ok "hand runs leave the counter file untouched" || bad "hand run rewrote the counter"
+out=$(run e1)
+has "!! reported in 5 sessions" "$out" && ok "history survives hand runs" || bad "history lost: $out"
 
 # Capped list: the inbox says 3, prints 2 — must read as NOT checked.
 sed -i.bak 's/instance: 2/instance: 3/' "$T/inbox.txt"
@@ -78,6 +88,10 @@ printf '%s\n' 'shared-memory open requests to this instance: 0 (last 36500 days)
 out=$(run e)
 has "- nothing open" "$out" && ok "clean = 'nothing open' said" || bad "clean not said: $out"
 has "open for us: 0" "$out" && ok "clean count 0" || bad "clean count: $out"
+# A source that was never asked is not "nothing open" (measured 2026-10-09: no --owner).
+out=$(OWNER= run e2)
+has "PRs (no owner given) NOT checked" "$out" && ok "no owner = PRs NOT checked" || bad "no owner silent: $out"
+has "- nothing open" "$out" && bad "no owner read as nothing open: $out" || ok "no owner is not 'nothing open'"
 
 # Parked: one line, not dropped, not counted as active.
 mkdir -p "$T/root/.claude/rules"
@@ -122,7 +136,7 @@ has "(+3 waiting on others or a date)" "$out" && ok "header counts the waits apa
 l1=$(line 'suite-x#1 ' "$out2")
 has "waiting on peer" "$l1" && ! has "reported in" "$l1" && ok "a wait does not count up" || bad "a wait was counted: $l1"
 has "!! reported in 2 sessions" "$(line 'core#6 ' "$out2")" && ok "past wait counts up" || bad "past wait count: $(line 'core#6 ' "$out2")"
-unset OPEN_ITEMS_PR_FIXTURE
+OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")"
 
 # WHO acts: circle field in the request file (read at origin/main), a request addressed to
 # a person by name, an agent class from --classify, and the rest printed as '?'.

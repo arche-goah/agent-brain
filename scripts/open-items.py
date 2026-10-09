@@ -169,8 +169,10 @@ def ball(p, me, owners):
 
 
 def prs(owner, owners):
+    # No owner = the source was never asked. Measured 2026-10-09: a run without --owner said
+    # "nothing open (requests and PRs both read)" while twelve PRs were open.
     if not owner:
-        return []
+        return None
     fixture = os.environ.get("OPEN_ITEMS_PR_FIXTURE")  # fixture hook: a saved GraphQL answer
     if fixture:
         rc, out = (0, Path(fixture).read_text(encoding="utf-8")) if Path(fixture).is_file() else (1, "")
@@ -335,7 +337,8 @@ def main():
         return False
 
     req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {})
-    failed = [name for name, v in (("shared-memory requests", req), ("PR search", pr)) if v is None]
+    failed = [name for name, v in (("shared-memory requests", req),
+                                   ("PR search" if a.owner else "PRs (no owner given)", pr)) if v is None]
     items = (req or []) + (pr or [])
 
     today = now.date().isoformat()
@@ -372,8 +375,10 @@ def main():
     for k, v in old.items():
         if k not in keep and ((req is None and "#" not in k) or (pr is None and "#" in k)):
             keep[k] = v
+    # Only the bootup (a real session id) writes the counter. Measured 2026-10-09: a hand run
+    # with a skipped PR source rewrote the file and dropped every item's history.
     saved = save_json(seen_file, {"items": keep, "confirmed": sorted(confirmed)[-300:],
-                                  "last_run": now.isoformat(timespec="seconds")})
+                                  "last_run": now.isoformat(timespec="seconds")}) if sid else True
 
     active = sorted((i for i in items if not i["parked"] and i["cls"] != "wait"), key=lambda i: (-i["n"], i["date"]))
     waiting = [i for i in items if not i["parked"] and i["cls"] == "wait"]
