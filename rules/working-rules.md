@@ -198,7 +198,7 @@ open the core PR (or name the open one) and declare it as alpha until merged; in
 declare it with the reason; obsolete = unwire. The declaration IS the written analysis. The
 operator hears only what needs his decision under the instance's own rules.
 
-**Mechanically carried:** `scripts/local-machinery.py` runs at every session start and
+**Mechanically carried:** `core/scripts/local-machinery.py` runs at every session start and
 names every hook that is neither core nor declared, every expired alpha, and every file
 edited inside `core/` (the pin check sees moved commits, not edits in place). Measured on
 the proving brain the day the rule was written: 12 of 31 hook entries ran from unmerged
