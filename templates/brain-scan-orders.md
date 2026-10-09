@@ -4,11 +4,15 @@
 > start by `session-bootup.sh` (the OPEN count). Lives at
 > `docs/maintenance/brain-scan-auftraege.md`.
 >
-> Rule (order fidelity, HARD): items marked `origin: operator` are IMPLEMENTED at the next
-> scan (with verify + an entry in the scan report). Items marked `origin: derived` are
-> PROPOSALS — the scan does not touch them until the operator changes the origin or deletes
-> them. An empty open list is a success, not an emergency: the scan then reports findings
-> only and refills nothing.
+> Rule (order fidelity, HARD): items marked `origin: operator` are worked in a session with
+> the operator; the scan lists them, it does not execute them (since 2026-10-09 the scan
+> reports and sorts, it never fixes). Items marked `origin: derived` are PROPOSALS. The scan
+> writes every finding that needs a later hand into this list with `id: <key>` and
+> `exit: <exit>`, and at its next run states per earlier finding whether it is done,
+> decided, dropped, still open or vanished — so an entry is closed by ticking it (`[x]`),
+> or by a line saying `decided` or `dropped`. An empty open list is a success, not an
+> emergency. An open entry carrying the token `rebuild-ahead` announces a structural rebuild;
+> the scan then suggests a full audit.
 >
 > This list carries ONLY brain-function work (consistency, carriers, audits). Project or
 > domain work goes to that domain's own ledger (`docs/<domain>/offene-punkte.md` or your
