@@ -28,6 +28,10 @@ export const meta = {
 // ── Configuration ──────────────────────────────────────────────────────────
 // Core rule: never hardcode instance paths — repo via args, default = cwd of the agents.
 const REPO = (typeof args === 'object' && args && args.repo) || '.'
+// The core whose SCRIPTS the scan runs. Default: the brain's installed core. A brain testing an
+// unreleased core (alpha/beta from a dev checkout) passes args.core — otherwise the scan measures
+// with the old installed tools while claiming to test the new ones (2026-10-09).
+const CORE = (typeof args === 'object' && args && args.core) || `${REPO}/core`
 // Both are INSTANCE artifacts and may be missing. If the checklist is missing, the scan
 // runs against the rule files and reports the absence as a finding; if the order list is
 // missing, derived items go into the report. In no case are they improvised into
@@ -181,7 +185,7 @@ const assertExits = (index, nonOk, decisionDue, decisions, what) => {
 // run for reading three files) and the effect-scan agent, and gives the two checklist
 // sections that had no executor (invariant register, self-check) one.
 phase('Machine')
-const PREP_CMD = `python3 ${REPO}/core/scripts/brain-scan-prep.py --repo ${REPO} --out ${FINDINGS_DIR} --today ${DATE}`
+const PREP_CMD = `python3 ${CORE}/scripts/brain-scan-prep.py --repo ${REPO} --core ${CORE} --out ${FINDINGS_DIR} --today ${DATE}`
 const prep = await agent(
   `Run exactly this one command with the Bash tool (timeout 600000 ms; on Windows use \`python\` if \`python3\` is not the real interpreter), and nothing else:
 ${PREP_CMD}
@@ -228,7 +232,7 @@ const SCANS = [
   // Numbers follow templates/brain-scan-checklist.md (0-8). Until 2026-10-05 the template
   // had 6 = Shared memory and no git/SOTA sections, so the section named here as 6 was not
   // the one a template-based brain had as 6, and no agent ever scanned shared memory.
-  { slug: 'shared-memory', prompt: `The checklist section titled "Shared memory" (number 8 in the core template; an older instance checklist may number it differently or not have it — then say so as one INFO finding and scan the items below anyway). Shared repo: $SHARED_MEMORY_REPO, default $HOME/Projects/brain-shared-memory; if it is not cloned, that is ONE INFO finding and you stop. Measure: \`python3 ${REPO}/core/scripts/shared-memory-lint.py --repo <repo>\` (every non-zero line is a finding); \`git -C <repo> status --short\` and unpushed commits; \`python3 ${REPO}/core/scripts/shared-memory-inbox.py --open --repo <repo> --to origin/main\` — every listed request is a P1 finding with its date and sender (an unanswered request is the failure this section exists for).` },
+  { slug: 'shared-memory', prompt: `The checklist section titled "Shared memory" (number 8 in the core template; an older instance checklist may number it differently or not have it — then say so as one INFO finding and scan the items below anyway). Shared repo: $SHARED_MEMORY_REPO, default $HOME/Projects/brain-shared-memory; if it is not cloned, that is ONE INFO finding and you stop. Measure: \`python3 ${CORE}/scripts/shared-memory-lint.py --repo <repo>\` (every non-zero line is a finding); \`git -C <repo> status --short\` and unpushed commits; \`python3 ${CORE}/scripts/shared-memory-inbox.py --open --repo <repo> --to origin/main\` — every listed request is a P1 finding with its date and sender (an unanswered request is the failure this section exists for).` },
   { slug: 'git-hygiene', prompt: `Section 6 (Git & repo hygiene). git status/branch/remote distance, root whitelist, junk files, large binaries (git ls-files + du).` },
   { slug: 'sota-claude-code', prompt: `Section 7, Claude Code part. Load WebSearch/WebFetch via ToolSearch "select:WebSearch,WebFetch". Changelog/release notes since ${LAST_SCAN || '2026-07-29'}: breaking changes in the hooks API, skills budget, permissions, memory limits, subagents. Report only setup-relevant deltas, with source. ${CVE_RULE}` },
   { slug: 'sota-mcp-security', prompt: `Section 7, MCP/security part. Load WebSearch/WebFetch via ToolSearch "select:WebSearch,WebFetch".

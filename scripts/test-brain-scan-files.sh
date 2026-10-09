@@ -103,7 +103,7 @@ sections_covered() { # $1 = workflow, $2 = checklist template
   done
 }
 machine_step() { # $1 = workflow
-  grep -q 'core/scripts/brain-scan-prep.py' "$1" || echo "the machine step does not run brain-scan-prep.py"
+  grep -qE '(core|\$\{CORE\})/scripts/brain-scan-prep.py' "$1" || echo "the machine step does not run brain-scan-prep.py"
   [ -f "$ROOT/scripts/brain-scan-prep.py" ] || echo "scripts/brain-scan-prep.py is not shipped"
 }
 expect() { # $1 = name, $2 = must be empty ("pass") or non-empty ("fail"), $3 = output
