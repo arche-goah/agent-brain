@@ -60,6 +60,7 @@ the deny — not from the scan, the scan is read-only). → maximum `configured`
 - [ ] `CLAUDE.md`: every tool/version claim spot-checked (`which` / `--version`).
 - [ ] Model names in `CLAUDE.md` / rules == the family actually available.
 - [ ] `CLAUDE.md` under 200 lines (guideline; exceeding it is a finding, not an auto-fix).
+- [ ] Always-loaded context (CLAUDE.md + rules + MEMORY.md) reviewed: per section still needed, in this form, in the right place? State, todo and history out to ledgers. After the review: `python3 core/scripts/always-loaded.py --accept` sets the new baseline the session start compares against.
 - [ ] Every referenced file exists (structure diagram, mandatory references, session-start checks).
 - [ ] The MCP table in `.claude/rules/intelligence-instance.md` == `.mcp.json`, both directions.
 

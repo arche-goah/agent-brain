@@ -85,7 +85,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 helpers/session-bootup.sh=8
+known:     scripts/always-loaded.py=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 helpers/session-bootup.sh=8
 instances: 5
 repeat:    yes
 status:    closed
@@ -110,6 +110,8 @@ or matched against forward-slashed text? If it only ever reaches the filesystem,
 fine and gets counted; if it reaches a reader or a comparison, it needs `as_posix()` or
 a literal `/`. `.sh` is in the search because the defect was found inside a python
 block embedded in a shell script, where a `*.py` search could not see it.
+2026-10-09, always-loaded.py baselined after that review: the four joins build paths it
+only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -148,7 +150,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-absence-gate.sh=1
+known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -193,6 +195,9 @@ is what makes it short.
 script (BRAIN_DIR and the argument), never a path a native process has to open; the
 report goes to --out inside the same temp dir. Its one pipe-grep carries -a, because the
 line it extracts is the verdict the fixture judges (OS-5).
+
+2026-10-09, test-always-loaded.sh: the temp dir reaches python only as the `--repo` and
+`--memory` ARGUMENTS (Git Bash converts argv); no path travels inside data.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 

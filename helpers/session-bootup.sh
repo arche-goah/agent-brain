@@ -298,6 +298,11 @@ else
   echo "memory: !! MEMORY.md missing (looked at: $M)"
 fi
 
+# Always-loaded context: silent unless it grew past the last accepted diet review.
+if [[ -f "$HERE/../scripts/always-loaded.py" ]]; then
+  "$PY" "$HERE/../scripts/always-loaded.py" --repo "$R" --memory "$M" 2>/dev/null
+fi
+
 # Settings JSON valid?
 for f in .claude/settings.json .claude/settings.local.json; do
   # settings.local.json is optional — "not present" is not an error. Without this
