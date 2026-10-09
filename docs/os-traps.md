@@ -148,7 +148,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-absence-gate.sh=1
+known:     scripts/test-stoppen-gate.sh=1 scripts/test-guards.sh=2 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-helpers.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=2 scripts/test-suite-plugin-linkage.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-session-closing.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-absence-gate.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-watch-supervisor.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -193,6 +193,14 @@ is what makes it short.
 script (BRAIN_DIR and the argument), never a path a native process has to open; the
 report goes to --out inside the same temp dir. Its one pipe-grep carries -a, because the
 line it extracts is the verdict the fixture judges (OS-5).
+
+2026-10-09, the three collab-watch fixtures, after the review question: test-watch-supervisor.sh
+hands its temp dir only to bash. test-collab-watch-plan.sh hands the config path to python
+as an ARGUMENT only — directly, and through `COLLAB_WATCH_CONFIG`, which the bash arm script
+reads and passes on as argv (Git Bash converts argv). test-repo-activity-watch.sh: `FAKE_DIR`
+and the state dir are read by bash only (the fake `gh` is bash); the clone root reaches the
+native `git` only as a `-C` argument; the python filter gets JSON on stdin, never a path. No
+native process opens a temp path from data. Windows run owed by the workstation check.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
