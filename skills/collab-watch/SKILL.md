@@ -77,14 +77,26 @@ opt-out and holds for that session only.
    it has one, takes over this step).
 2. **Findings go on the PR** (`gh pr comment`): values with date, sources with URL. The
    thread is the shared memory of the collaborating brains.
-3. **Merge by ownership — the instance's merge rules decide**, typically: a repo with one
+3. **Measure CI, do not read it off:** `Monitor` on
+   `bash core/scripts/ci-watch.sh pr <owner/repo> <nr> [timeout_s]` — never an own poll
+   loop on `gh pr checks` (it exits 8 while checks run; an `|| continue` swallows that and
+   the loop spins silently into its timeout). Exit 0 = green, 1 = red, **2 = NOT
+   measurable, which is not green**: no run yet, no run coming (spending limit, Actions
+   off, workflow filter), or — most often — a merge CONFLICT, for which GitHub builds no
+   merge ref and starts no run. Separate them with one look:
+   `gh pr view <nr> --json mergeable` (`CONFLICTING` = rebase, not "CI broken"); an empty
+   `gh run list --branch <branch>` plus an empty check rollup = CI is not firing, a report
+   event for the operator. A second branch as a control comes BEFORE any outage diagnosis.
+4. **Merge by ownership — the instance's merge rules decide**, typically: a repo with one
    responsible owner → that owner merges; a jointly owned core → the maintainers merge
    after a counter-check; otherwise the author merges. Never with own open findings. Merge
-   with `--match-head-commit <reviewed sha>` in the repo's style (merge vs. squash).
-   "CI green" speaks about code, never about whether the author is done.
-4. **Own findings = follow-up PR, never a direct push to main.** Before any commit to a
+   with `--match-head-commit <reviewed sha>` in the repo's style (merge vs. squash);
+   `gh api -X PUT repos/<o>/<r>/pulls/<nr>/merge` is the second legitimate form when the
+   permission layer refuses `gh pr merge` — if both are refused, retry later, never work
+   around it. "CI green" speaks about code, never about whether the author is done.
+5. **Own findings = follow-up PR, never a direct push to main.** Before any commit to a
    public repo: its leak scan, 0 findings.
-5. **Write back:** statements in the instance (rules, memory) that the merged PR refutes are
+6. **Write back:** statements in the instance (rules, memory) that the merged PR refutes are
    corrected in the same move.
 
 **Park boundary:** an open question is NOT a reason to park while a collaborator can decide
