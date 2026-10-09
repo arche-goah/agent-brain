@@ -261,8 +261,14 @@ def reached_a_human(transcript):
 
 
 def lookup(store, it):
-    """The agent's own class wins; it is keyed by the printed id or by the file name."""
-    return store.get(it["id"]) or store.get(it["ref"].rsplit("/", 1)[-1])
+    """The agent's own class wins; it is keyed by the printed id, or — for an entry with its
+    own FILE — by the file name. A LOG entry has no file: its short form "LOG <date> <sender>"
+    names every entry of that sender that day, so a class given to one silently covered the
+    next (measured 2026-10-09, Windows instance: an unread request would have been filed as
+    acknowledged). LOG entries match by their full id only."""
+    if it.get("file"):
+        return store.get(it["id"]) or store.get(it["ref"].rsplit("/", 1)[-1])
+    return store.get(it["id"])
 
 
 def classify(args, cls_file):
@@ -345,7 +351,7 @@ def main():
     keep = {}
     for it in items:
         rec = old.get(it["id"]) or {"first": today, "sessions": []}
-        w = waits.get(it["id"]) or waits.get(it["ref"].rsplit("/", 1)[-1])
+        w = lookup(waits, it)  # same rule as the class: a LOG entry matches by its full id only
         until = (str(w.get("until", "")), str(w.get("why", ""))) if isinstance(w, dict) else it.get("until")
         it["wait"] = None
         if it.get("waiting_on"):

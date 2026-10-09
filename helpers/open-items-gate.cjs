@@ -187,7 +187,12 @@ function parseBlock(text) {
     } else if ((m = /^- \[request\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — (?:[^:]+: (.+?) — )?/.exec(l))) {
       const ref = m[5];
       const base = ref.split('/').pop();
-      items.push({ cls: m[1], ref: `${m[2]}-${m[3]}-${m[4]} ${base}`, key: ref,
+      // A LOG entry has no file name to classify by: the gate must name the id that
+      // open-items.py --classify accepts (ref + ": " + first 40 chars of the text), or the
+      // agent falls back to "LOG <date> <sender>", which covered every entry of that sender
+      // that day (measured 2026-10-09, Windows instance).
+      const shown = /^LOG /.test(base) && m[6] ? `${ref}: ${m[6].slice(0, 40)}` : `${m[2]}-${m[3]}-${m[4]} ${base}`;
+      items.push({ cls: m[1], ref: shown, key: ref,
         base, date: [m[2], m[3], m[4]], words: topicWords(/\.md$/.test(base) ? base : (m[6] || '')), repeat });
     } else if (/^- \[parked\]/.test(l)) parked = true;
     else if (/^- nothing open/.test(l)) nothing = true;

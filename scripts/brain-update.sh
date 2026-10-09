@@ -403,6 +403,18 @@ if [ -f core/scripts/hook-coverage.py ]; then
   fi
 fi
 
+# 4d) pending clauses — rule text that waits for a core state ("once the pin carries it",
+# "until core PR #n lands") turns false silently when the pin moves; nothing else re-reads
+# a rule at that moment (measured 2026-10-09: five such clauses outlived v1.4.0). Reported,
+# never edited: the wording of a rule is the instance's.
+if [ -f core/scripts/pending-clauses.py ]; then
+  pc=$("$PY" core/scripts/pending-clauses.py --repo . 2>/dev/null)
+  if [ -n "$pc" ]; then
+    echo "NOTE rule text still waits for a core state — check it against the new pin:"
+    printf '%s\n' "$pc" | sed 's/^/     /'
+  fi
+fi
+
 # 5) commit + push (own brain repo only — that is where this script lives)
 # `git diff --quiet` answers 0 = clean, 1 = differences, >1 = it could not tell (128 in a
 # non-repo). Testing it with `if !` collapses the last two into "there are changes", and

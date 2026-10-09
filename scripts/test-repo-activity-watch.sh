@@ -76,6 +76,8 @@ has   "new PR"                        "PR acme/one #7: new work (peer)" "$out"
 has   "merge judged by mergedBy"      "MERGED acme/one #5: our PR (merged by peer)" "$out"
 has   "local branch marked"           "#8: made here (op) — branch is LOCAL" "$out"
 hasnt "foreign branch not marked"     "#7: new work (peer) — branch is LOCAL" "$out"
+# 2026-10-09: the mark claimed "a parallel session" for the watching session's own PRs.
+has   "local mark does not name the session" "made on this machine (this session, a parallel one, or by hand)" "$out"
 hasnt "event before the cursor"       "u0" "$out"
 cur=$(tr -d '\r\n' < "$T/state/repo-activity-a-cursor.txt")
 [[ "$cur" == "2026-01-03T00:00:00Z" ]] && ok || bad "cursor advanced to the newest event" "got $cur"

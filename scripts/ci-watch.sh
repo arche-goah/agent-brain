@@ -159,7 +159,11 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
   verdict=$("$PY" -c '
 import json, sys
 ref, sha = sys.argv[1], sys.argv[2]
-runs = [r for r in json.load(sys.stdin) if r.get("headBranch") == ref and r.get("headSha") == sha]
+# A bare commit sha is no branch name: matching headBranch == ref never hit, and the watch
+# waited out its timeout (measured 2026-10-09). A ref that IS the resolved commit matches by sha.
+bare = len(ref) >= 7 and all(c in "0123456789abcdef" for c in ref.lower()) and sha.startswith(ref.lower())
+runs = [r for r in json.load(sys.stdin)
+        if r.get("headSha") == sha and (bare or r.get("headBranch") == ref)]
 if not runs:
     print("none - -")
 elif any(r.get("status") != "completed" for r in runs):
