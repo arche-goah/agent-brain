@@ -372,33 +372,12 @@ fi
 # installed_plugins.json counts, and only while the plugin.json sitting there agrees on
 # the version. The settings fallback stays for the legacy local-style path; whether a
 # declared style actually RESOLVES is effect-check E1's job, not the bootup's.
-cav=$("$PY" - <<'PY' 2>/dev/null
-import json, os
-def load(p):
-    try:
-        with open(p, encoding="utf-8") as f: return json.load(f)
-    except Exception: return {}
-cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
-proj, user = load(".claude/settings.json"), load(os.path.join(cfg, "settings.json"))
-enabled = {k for s in (proj, user) for k, v in (s.get("enabledPlugins") or {}).items() if v}
-for pid, entries in (load(os.path.join(cfg, "plugins", "installed_plugins.json")).get("plugins") or {}).items():
-    if pid not in enabled: continue
-    for e in entries or []:
-        path = (e.get("installPath") or "").replace("\\", "/")
-        style = os.path.join(path, "output-styles", "caveman.md")
-        if not os.path.isfile(style): continue
-        mver = load(os.path.join(path, ".claude-plugin", "plugin.json")).get("version")
-        if mver and e.get("version") and mver != e["version"]: continue  # stale cache dir
-        try: lines = open(style, encoding="utf-8").read().splitlines()
-        except OSError: continue
-        if any(l.strip() == "force-for-plugin: true" for l in lines):
-            print("plugin %s %s" % (pid, e.get("version") or "?")); raise SystemExit
-declared = str(proj.get("outputStyle") or user.get("outputStyle") or "")
-if "caveman" in declared: print("settings outputStyle=%s" % declared)
-PY
-)
-if [[ -z "$cav" ]]; then
-  echo "!! caveman output style not armed: no enabled plugin ships output-styles/caveman.md with 'force-for-plugin: true' at its recorded installPath, and no outputStyle setting (project or user) names caveman"
+# The bare outputStyle setting arms nothing (2026-08-04); counting it kept this alarm silent
+# while the plugin had lost the style — the check lives in scripts/caveman-armed.py with a fixture.
+cav=""
+[[ -f "$HERE/../scripts/caveman-armed.py" ]] && cav=$("$PY" "$HERE/../scripts/caveman-armed.py" 2>/dev/null)
+if [[ -z "$cav" && -f "$HERE/../scripts/caveman-armed.py" ]]; then
+  echo "!! caveman output style not armed: no enabled plugin ships output-styles/caveman.md with 'force-for-plugin: true' at its recorded installPath, and no local output-styles dir holds the style the outputStyle setting names (the setting alone arms nothing)"
 fi
 
 # Broken skill symlinks?
