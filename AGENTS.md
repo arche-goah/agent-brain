@@ -136,3 +136,28 @@ session start.
      instance's `settings.json` differs) — not a repo defect, so do not debug it here.
    Merge with `--match-head-commit <sha>` of the state you reviewed, so a push that lands
    between review and merge cannot ride along unread.
+
+12. **Who merges, who releases** (operator decisions 2026-08-30 to 2026-10-05).
+   - **Contributing:** collaborators get `write` and branch IN this repo — a fork is not
+     the default; `main` is protected by the ruleset, not by missing write access. Anyone
+     opens PRs against `main`; the code owner merges after a counter-check. The code
+     owner's own PRs go to the collaborators for review — requested, never waited on.
+   - **Merge-ready** = works on macOS AND Windows (any party's Windows machine counts),
+     CI green, read, findings settled. CI green is a statement about code, never about
+     being finished. A draft its author put up for "your yes first" is finished with the
+     yes: mark it ready, approve and merge in the same turn.
+   - **Release:** building, merging and measuring run autonomously; a stable tag, a
+     release and the stable marketplace pin are the code owner's decision. Before stable,
+     a beta tag on the testing channel (`<plugin>-next`): cut by the maintaining agent
+     when the state is round — CHANGELOG matched against `git log <last-tag>..main`,
+     preflight and `main` green, nothing half-done — and at most ONE beta tag per work
+     strand. A fix merged after it waits for the next round cut, bridged by a named
+     workaround. A hotfix only for real damage from waiting, and then on the code
+     owner's word.
+   - **Test class on every CHANGELOG entry** `(test: T0|T1|T2)`: **T0** needs no test
+     phase (docs, comments, fixtures, CI, removal); **T1** a macOS + Windows check
+     suffices (runs only when called); **T2** needs runtime (runs by itself in every
+     session — hooks — writes to a shared carrier, or touches the update/install chain)
+     and is stable-ready once it ran without regression on a collaborator's machine and
+     on Windows. A new PR resets a beta tag's clock only when it fixes a regression of
+     that tag.
