@@ -26,7 +26,11 @@ never double-report, and nothing falls between them.
 1. **Right after your own push that expects a reaction** — a question to another
    instance or person, an open point for counter-checking, a preflight someone has to
    answer. Arm in the SAME turn; an expected external trigger gets watched, never
-   waited for.
+   waited for. **Carried by `helpers/watch-gate.cjs`** (Stop hook): a turn that pushed an
+   entry from this instance to another party (not `status: info`/`done`/...) and ends
+   with no live watcher is blocked once. Measured before the gate: 33 of 63 pushes on one
+   instance had no watcher; the prose alone never fired. A pure report that awaits
+   nothing carries `status: info`.
 2. **Once at the beginning of a session that works with shared memory** or
    cross-instance coordination. Not in every arbitrary session — that would be
    constant load without an occasion.

@@ -130,6 +130,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/open-items-gate.cjs\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/watch-gate.cjs\"",
+            "timeout": 15
           }
         ]
       }
