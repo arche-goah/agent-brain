@@ -284,8 +284,9 @@ if [[ -n "$eco_owner" && -f "$HERE/../scripts/code-scanning-alerts.sh" && -f "$H
   if grep -qE '^(!! )?code scanning' <<< "$csa"; then printf '%s\n' "$csa"; fi
 fi
 # One system (operator order 2026-10-08): where and why this brain's core behaviour differs
-# from the shared core — hooks from development checkouts without an expiry, instance hooks
-# without a reason to live only here, files edited inside core/. Measured on the proving
+# from the shared core, over every carrier of behaviour (hooks, skills, rules, scripts, git
+# hooks, scheduled jobs, plugins, ...) — undeclared or unproven items, near-copies of core
+# tools, expired alphas, files edited inside core/; last line = summary counts. Measured on the proving
 # brain: 12 of 31 hook entries ran from unmerged checkouts, unnoticed because all of them worked.
 if [[ -f "$HERE/../scripts/local-machinery.py" ]]; then
   "$PY" "$HERE/../scripts/local-machinery.py" --repo "$R" 2>/dev/null || true
