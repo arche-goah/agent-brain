@@ -1,0 +1,19 @@
+{
+  "_comment": "Instance data for core/helpers/live-read-gate.cjs (PreToolUse). A LIVE system is touched only after its mandatory reading was read COMPLETELY in this session — measured on the line windows the Read tool DELIVERED (a long file takes several Reads with offset/limit), or a Bash cat of a small file. tools = regex on the tool name, bash = regex on the Bash command, required.path = project-relative, absolute or ~/. An empty list keeps the gate inert; no file at all does too. The settings matcher must cover every tool named here (the template wires Bash|mcp__.*).",
+  "_bash_comment": "Make a Bash rule match a TOUCH, not a mention: a network command and a live address in the SAME command, or a live script at a COMMAND position (line start or after ; & | ( ). A grep for an address inside docs, or a commit message that names the script, is reading/writing text and must pass.",
+  "domains": [],
+  "_example_domains": [
+    {
+      "name": "<live-domain>",
+      "tools": ["^mcp__<live-server>__"],
+      "bash": [
+        "(?:^|[;&|(]\\s*)(?:\\S*/)?(?:sudo\\s+)?(ping|nc|ssh|curl)\\b[^\\n;&|]*\\b192\\.0\\.2\\.\\d{1,3}\\b",
+        "(?:^|[;&|(]\\s*)(?:bash\\s+)?(?:\\S*/)?<live-script>(\\.sh)?(\\s|$)"
+      ],
+      "required": [
+        { "path": "docs/<domain>/<ledger>.md", "label": "what the reader must know before touching it" },
+        { "path": "~/.claude/projects/<project-slug>/memory/<topic-index>.md", "label": "lessons for this system" }
+      ]
+    }
+  ]
+}
