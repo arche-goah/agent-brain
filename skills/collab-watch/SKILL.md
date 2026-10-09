@@ -90,10 +90,23 @@ opt-out and holds for that session only.
 4. **Merge by ownership — the instance's merge rules decide**, typically: a repo with one
    responsible owner → that owner merges; a jointly owned core → the maintainers merge
    after a counter-check; otherwise the author merges. Never with own open findings. Merge
-   with `--match-head-commit <reviewed sha>` in the repo's style (merge vs. squash);
-   `gh api -X PUT repos/<o>/<r>/pulls/<nr>/merge` is the second legitimate form when the
-   permission layer refuses `gh pr merge` — if both are refused, retry later, never work
-   around it. "CI green" speaks about code, never about whether the author is done.
+   with `--match-head-commit <reviewed sha>` in the repo's style (merge vs. squash).
+   "CI green" speaks about code, never about whether the author is done.
+   **A refused merge is a decision, not an obstacle:** when the permission layer refuses
+   `gh pr merge`, do NOT re-issue it as `gh api -X PUT …/pulls/<nr>/merge` or any other
+   form — that launders the refusal. Report it and get the operator's word (an earlier
+   version of this step named the API call as a "second legitimate form"; corrected
+   2026-10-09, coherence register of the proving brain).
+   Merge traps, each measured:
+   - `--match-head-commit` needs the FULL 40-character sha — a short sha is rejected by
+     the API ("Could not coerce value … to GitObjectID"), measured 2026-10-09.
+   - `gh pr merge --auto` merges IMMEDIATELY in a repo whose branch protection requires
+     no checks — never use it as "merge when green"; run `scripts/ci-watch.sh` first.
+   - Stacked PRs: merging the base with `--delete-branch` closes every PR stacked on it.
+     Retarget the child to `main` (`gh pr edit <child> --base main`) BEFORE deleting.
+   - A candidate/integration branch merged as one squash: list every contained PR as
+     "(#n)" in the squash body — `pending-clauses.py` finds a PR in the pin by that text,
+     and without it a merged PR reads as "not provably in the pin".
 5. **Own findings = follow-up PR, never a direct push to main.** Before any commit to a
    public repo: its leak scan, 0 findings.
 6. **Write back:** statements in the instance (rules, memory) that the merged PR refutes are
