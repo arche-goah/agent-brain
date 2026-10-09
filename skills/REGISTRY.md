@@ -1,18 +1,19 @@
 # Skill Registry
 
-**Total skills:** 25
-**Generated:** 2026-09-30
+**Total skills:** 26
+**Generated:** 2026-10-09
 
 > Auto-generated from the `.claude/skills/*/SKILL.md` files via `core/scripts/regen-skill-registry.py` — **do not maintain by hand**. Re-run the script after changing a skill.
 
 Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (each with YAML frontmatter `name` + `description`). This registry is the human-readable overview.
 
-## Other (25)
+## Other (26)
 
 | Skill | Short description |
 |-------|--------------------|
 | autonomer-lauf | DEPRECATED pointer (LA1 rename 2026-08-14) — the time-boxed autonomous work run now lives in the … |
 | autonomous-run | Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstaendig durch" / "work through the … |
+| backlog-catch-up | Sort a large backlog of old open points (derived proposals, open requests, local deviations from … |
 | caveman | Level switching for caveman mode (lite \| full \| ultra \| wenyan-*) |
 | code-audit | Systematically audit a large unfamiliar codebase across correctness, error-handling, security surface, dead code, dependencies, and … |
 | codex-review | Codex adversarial review for Claude Code via openai/codex-plugin-cc |
@@ -39,4 +40,4 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 
 ---
 
-**25 skills** across 1 groups.
+**26 skills** across 1 groups.
