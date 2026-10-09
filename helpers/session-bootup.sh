@@ -312,6 +312,12 @@ if command -v node >/dev/null 2>&1 && [[ -f "$HERE/question-gate.cjs" ]]; then
   CLAUDE_PROJECT_DIR="$R" node "$HERE/question-gate.cjs" list 2>/dev/null
 fi
 
+# Clock: silent unless the system time is off against the outside (one HEAD, 3 s cap,
+# silent offline). A wrong clock corrupts commit timestamps and every since= cursor.
+if [[ -f "$HERE/../scripts/clock-skew.py" ]]; then
+  "$PY" "$HERE/../scripts/clock-skew.py" 2>/dev/null
+fi
+
 # Settings JSON valid?
 for f in .claude/settings.json .claude/settings.local.json; do
   # settings.local.json is optional — "not present" is not an error. Without this
