@@ -135,6 +135,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/watch-gate.cjs\"",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/question-gate.cjs\"",
+            "timeout": 10
           }
         ]
       }

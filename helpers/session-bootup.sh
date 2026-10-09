@@ -306,6 +306,12 @@ if [[ -f "$HERE/../scripts/always-loaded.py" ]]; then
   "$PY" "$HERE/../scripts/always-loaded.py" --repo "$R" --memory "$M" 2>/dev/null
 fi
 
+# Questions to the operator that were never settled (question-gate.cjs): listed every
+# start until answered/dropped — a postponed question must not scroll away for good.
+if command -v node >/dev/null 2>&1 && [[ -f "$HERE/question-gate.cjs" ]]; then
+  CLAUDE_PROJECT_DIR="$R" node "$HERE/question-gate.cjs" list 2>/dev/null
+fi
+
 # Settings JSON valid?
 for f in .claude/settings.json .claude/settings.local.json; do
   # settings.local.json is optional — "not present" is not an error. Without this
