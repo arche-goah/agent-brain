@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **collab-watch no longer names a way around a refused merge, and lists the measured merge traps.** (test: T0) Coherence register 2026-10-09 on the proving brain: step 4 called `gh api -X PUT …/pulls/<nr>/merge` "the second legitimate form when the permission layer refuses `gh pr merge`" — re-issuing a refused action in another form launders the refusal, and the instance's own lesson forbids it. Step 4 now says: report it and get the operator's word. Added four traps, each measured: `--match-head-commit` needs the full sha; `--auto` merges at once without required checks; `--delete-branch` on a base closes the PRs stacked on it (retarget first); a candidate squash lists its PRs as "(#n)" so `pending-clauses.py` finds them in the pin. Text only.
+
 ## 1.4.1 — 2026-10-09
 
 Patch release, the follow-ups to 1.4.0: findings of the first coherence scan and brain-check on the rebuilt core, the first live run of collab-watch, and the Windows check of the candidate. One new function (agreed with the operator): the core update names rule text that still waits for a core state. Checked as one candidate (#228) on macOS and on Windows (Workstation smoke: ALL checks passed). Two entries run in every session (test: T2): the shared-memory cursor move and the open-items LOG fix; the question-gate (T2) came in on main since 1.4.0.
