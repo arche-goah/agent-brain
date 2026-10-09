@@ -48,7 +48,7 @@ check() { # $1 name, $2 transcript, $3 block|allow, $4 cwd, [$5 stop_hook_active
 
 EN="$T/cwd-en"; mkdir -p "$EN"
 DE="$T/cwd-de"; mkdir -p "$DE/.claude/rules"
-printf '%s\n' '{"nothing_patterns":["nichts offen"],"failed_patterns":["nicht gepr(ü|ue)ft","gescheitert"],"parked_patterns":["geparkt"],"offer_patterns":["\\bsoll ich\\b[^?\\n]{0,160}\\?"],"repeat_patterns":["bereits .{0,40}gemeldet","weiterhin offen"]}' \
+printf '%s\n' '{"nothing_patterns":["nichts offen"],"failed_patterns":["nicht gepr(ü|ue)ft","gescheitert"],"parked_patterns":["geparkt"],"offer_patterns":["\\bsoll ich\\b[^?\\n]{0,160}\\?"],"repeat_patterns":["bereits .{0,40}gemeldet","schon .{0,40}gemeldet","weiterhin offen"],"generic_words":["anfrage"],"goahead_patterns":["durchziehen"]}' \
   > "$DE/.claude/rules/open-items.json"
 
 NL=$'\n'
@@ -151,5 +151,50 @@ check "#610 does not name #61" "$f" block "$EN"
 check "stoppen-gate leaves the opening question alone" "$T/2.jsonl" allow "$EN" false "$SG"
 f="$T/13.jsonl"; { boot_ok startup "$P"; user "stand?"; asst "1 needs you: PR #61. Shall I start on the refactor?"; } > "$f"
 check "stoppen-gate still judges when no opening question is due" "$f" block "$EN" false "$SG"
+
+# 14 — a request named by its AGE counts (measured false fire 2026-10-09: all items named
+# with "open for 32 days", none with a date). A wrong age does not.
+AGE=$(node -e 'console.log(Math.round((Date.now()-new Date("2026-09-05T12:00:00").getTime())/86400000))')
+H4="- [request|human] 2026-09-05 ops/x-2026-09-05.md — peer-b: ANFRAGE — first report"
+P4="open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${H4}"
+f="$T/14a.jsonl"; { boot_ok startup "$P4"; user "stand?"; asst "1 needs you: peer-b's request, open for $AGE days."; } > "$f"
+check "request named by its age" "$f" allow "$EN"
+f="$T/14b.jsonl"; { boot_ok startup "$P4"; user "stand?"; asst "1 needs you: peer-b's request, open for $((AGE + 10)) days."; } > "$f"
+check "a wrong age names nothing" "$f" block "$EN"
+
+# 15 — a request named by its topic words in plain language, no date, no file name.
+H5="- [request|human] 2026-09-06 show-tools/anfrage-arbeitsteilung-touchdesigner-2026-09-06.md — peer-b: ANFRAGE — first report"
+P5="open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${H5}"
+f="$T/15a.jsonl"; { boot_ok startup "$P5"; user "stand?"; asst "1 needs you: how the TouchDesigner Arbeitsteilung is split."; } > "$f"
+check "request named by its topic words" "$f" allow "$EN"
+f="$T/15b.jsonl"; { boot_ok startup "$P5"; user "stand?"; asst "1 needs you: an Anfrage from peer-b about TouchDesigner."; } > "$f"
+check "one topic word plus the generic kind (instance data) is not enough" "$f" block "$DE"
+
+# 16 — items waiting on others or a date need no relay and no opening question.
+W="open for us: 0 — ai 0 · human 0 · unclassified 0 (+1 waiting on others or a date)${NL}- [PR|wait] 2026-09-28 suite-x#13 — peer: t — waiting on peer: we reviewed or commented after the last commit"
+f="$T/16.jsonl"; { boot_ok startup "$W"; user "stand?"; asst "Brain clean."; } > "$f"
+check "waiting items need no relay" "$f" allow "$EN"
+f="$T/16b.jsonl"; { boot_ok startup "$W"; user "stand?"; asst "Brain clean. Shall I start on the refactor?"; } > "$f"
+check "a waiting item does not own the closing question" "$f" block "$EN" false "$SG"
+
+# 17 — stoppen-gate leaves a question alone that a bootup rule ORDERS ("ask the operator"),
+# on any turn; any other closing question is still judged.
+BS="${P}${NL}!! brain-scan DUE: latest report 9d ago (due after 7d) — ask the operator, then run it in this session"
+f="$T/17a.jsonl"; { boot_ok startup "$BS"; user "stand?"; asst "1 needs you: PR #61."; user "ok"; asst "Done. Shall I start the brain scan now?"; } > "$f"
+check "stoppen-gate leaves the ordered brain-scan question alone" "$f" allow "$EN" false "$SG"
+f="$T/17b.jsonl"; { boot_ok startup "$BS"; user "stand?"; asst "1 needs you: PR #61."; user "ok"; asst "Done. Shall I start the refactor now?"; } > "$f"
+check "stoppen-gate judges a question the rule did not order" "$f" block "$EN" false "$SG"
+f="$T/17c.jsonl"; { boot_ok startup "$P"; user "stand?"; asst "1 needs you: PR #61."; user "ok"; asst "Done. Shall I start the brain scan now?"; } > "$f"
+check "no ordering bootup line, no exception" "$f" block "$EN" false "$SG"
+
+# 18 — the operator's prompt already ordered the work (measured 2026-10-09, German go-ahead
+# "alles durchziehen"): the count and the repeats are still said, the shall-I question is moot.
+GO="8 Punkte kann ich selbst abhandeln, die Freigabe liegt mit deinem Auftrag vor. Davon 5 schon in bis zu 6 Sessions gemeldet. 2 brauchen dich: 2026-09-05 TD-Arbeitsteilung, 2026-09-08 Brueckengeraet. grandMA bleibt geparkt."
+f="$T/18a.jsonl"; { boot_ok startup "$BLOCK"; user "bitte alles durchziehen"; asst "${GO/8 Punkte/2 Punkte}"; } > "$f"
+check "go-ahead in the prompt makes the question moot (instance data)" "$f" allow "$DE"
+f="$T/18b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "${GO/8 Punkte/2 Punkte}"; } > "$f"
+check "no go-ahead, no question" "$f" block "$DE"
+f="$T/18c.jsonl"; { boot_ok startup "$BLOCK"; user "go ahead and handle everything"; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
+check "English go-ahead built in" "$f" allow "$EN"
 
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

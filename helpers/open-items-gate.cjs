@@ -36,10 +36,11 @@
  * The opening question is WANTED here, so `firstTurnOwnsQuestion()` is exported for
  * stoppen-gate: on exactly this turn the closing question belongs to this gate.
  *
- * Language: item references are language-free (a request by its date, a PR by `#<n>`, a
- * count as digits). The phrase patterns are English built-ins; an instance adds its own
- * language as DATA in .claude/rules/open-items.json (`<key>_patterns`, lists of regexes;
- * keys: nothing, failed, parked, offer, repeat).
+ * Language: a PR is named by `#<n>`, a count as digits; a request by its date, its topic
+ * words (file slug), or its age in days. The phrase patterns are English built-ins; an
+ * instance adds its own language as DATA in .claude/rules/open-items.json (`<key>_patterns`,
+ * lists of regexes; keys: nothing, failed, parked, offer, repeat, age_unit, goahead).
+ * Items printed `[...|wait]` (the move is someone else's, or a dated wait) need no relay.
  *
  * Output: {"decision":"block","reason":"... Missing: <what>"} — the dispatcher compresses
  * on "Missing:". Fails open on unreadable input: a crashed gate must not stop a session.
@@ -58,7 +59,17 @@ const BUILTIN = {
   offer: ['\\b(shall|should) i\\b[^?\\n]{0,160}\\?', '\\bdo you want me to\\b[^?\\n]{0,160}\\?',
     '\\bwant (me to|them|it) [^?\\n]{0,160}\\?'],
   repeat: ['\\balready reported\\b', '\\breported (before|in \\d+|\\d+ times)\\b', '\\bstill open\\b'],
+  // the unit after a number that makes it an age ("32 days")
+  age_unit: ['days?\\b', 'd\\b'],
+  // an operator prompt that already orders the work: no shall-I question needed
+  goahead: ['\\bgo ahead\\b', '\\b(handle|do|finish|work through) (it all|them all|all of (it|them)|everything)\\b'],
 };
+
+/** n -> RegExp matching "<n> <day unit>"; units are built-ins plus instance `age_unit_patterns`. */
+function ageMatcher(cwd) {
+  const units = patterns(cwd, 'age_unit').source;
+  return (n) => new RegExp(`(?<!\\d)${n}\\s*(?:${units})`, 'iu');
+}
 
 function patterns(cwd, key) {
   const list = [...BUILTIN[key]];
@@ -85,6 +96,7 @@ function readTurn(tp) {
   const raw = fs.readFileSync(tp, 'utf8');
   let boot = null; // { kind: 'ok'|'cancelled', source, text, ms }
   let prompts = 0;
+  let first = '';
   let total = 0;
   let reply = [];
   for (const line of raw.split('\n')) {
@@ -97,21 +109,21 @@ function readTurn(tp) {
       if (att.type === 'hook_cancelled') boot = { kind: 'cancelled', source, ms: att.durationMs };
       else if (att.type === 'hook_success') boot = { kind: 'ok', source, text: String(att.content || att.stdout || '') };
       else continue;
-      prompts = 0; reply = [];
+      prompts = 0; reply = []; first = '';
       continue;
     }
     const msg = d.message;
     if (!msg) continue;
     if (msg.role === 'user') {
       const t = promptText(msg);
-      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; }
+      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; if (prompts === 1) first = t; }
       continue;
     }
     if (msg.role === 'assistant' && prompts === 1 && Array.isArray(msg.content)) {
       for (const b of msg.content) if (b.type === 'text' && b.text) reply.push(b.text);
     }
   }
-  return { boot, prompts, total, reply: reply.join('\n') };
+  return { boot, prompts, total, first, reply: reply.join('\n') };
 }
 
 /**
@@ -127,8 +139,32 @@ function firstTurnOwnsQuestion(tp) {
     const blk = parseBlock(t.boot.text);
     if (!blk) return false;
     const human = blk.items.filter((it) => it.cls === 'human').length;
-    return blk.items.some((it) => it.cls !== 'human') || human > HUMAN_LIST_MAX;
+    return blk.items.some((it) => it.cls === 'ai' || it.cls === '?') || human > HUMAN_LIST_MAX;
   } catch (e) { return false; }
+}
+
+/**
+ * Topics on which a rule ORDERS a question to the operator: every bootup line that says
+ * "ask the operator" (e.g. "!! brain-scan DUE: ... — ask the operator, then run it").
+ * Returned as lowercase topic keys (the line's label before ':', a trailing ALL-CAPS status
+ * word dropped — "brain-scan", "update available"), for stoppen-gate: a closing
+ * question about such a topic is the rule being followed, not a disguised stop. Measured
+ * 2026-10-09: stoppen-gate blocked exactly that brain-scan question on a proving brain.
+ * Any turn of the session, not only the first — the question may come after other work.
+ */
+function mandatedTopics(tp) {
+  try {
+    const t = readTurn(tp);
+    if (!t || !t.boot || t.boot.kind !== 'ok') return [];
+    const out = [];
+    for (const l of t.boot.text.split('\n')) {
+      if (!/\bask the operator\b/i.test(l)) continue;
+      const m = /^(?:!!\s*)?([^:]+):/.exec(l.trim());
+      const topic = m ? m[1].replace(/\s+[A-Z]{2,}$/, '').trim() : '';
+      if (topic) out.push(topic.toLowerCase());
+    }
+    return out;
+  } catch (e) { return []; }
 }
 
 /** Parse the open-items block out of the bootup text. */
@@ -148,21 +184,54 @@ function parseBlock(text) {
     let m;
     if ((m = /^- \[PR\|(\w+|\?)\] \S+ (\S+?)#(\d+) /.exec(l))) {
       items.push({ cls: m[1], ref: `${m[2]}#${m[3]}`, key: `${m[2]}#${m[3]}`, num: m[3], repeat });
-    } else if ((m = /^- \[request\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — /.exec(l))) {
+    } else if ((m = /^- \[request\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — (?:[^:]+: (.+?) — )?/.exec(l))) {
       const ref = m[5];
-      items.push({ cls: m[1], ref: `${m[2]}-${m[3]}-${m[4]} ${ref.split('/').pop()}`, key: ref,
-        base: ref.split('/').pop(), date: [m[2], m[3], m[4]], repeat });
+      const base = ref.split('/').pop();
+      items.push({ cls: m[1], ref: `${m[2]}-${m[3]}-${m[4]} ${base}`, key: ref,
+        base, date: [m[2], m[3], m[4]], words: topicWords(/\.md$/.test(base) ? base : (m[6] || '')), repeat });
     } else if (/^- \[parked\]/.test(l)) parked = true;
     else if (/^- nothing open/.test(l)) nothing = true;
   }
   return { items, failed, parked, nothing };
 }
 
-function named(item, reply) {
+// Words that name a request's KIND, not its topic — every request carries them. English
+// built-ins; an instance adds its language as DATA (`generic_words` in open-items.json).
+const GENERIC = ['request', 'question', 'answer', 'reply', 'receipt', 'from', 'with'];
+
+/** Topic words of a request: its file slug (or, for a LOG-only request, its own words). */
+function topicWords(s) {
+  return String(s).toLowerCase().replace(/\.md$/, '').replace(/\d{4}-\d{2}-\d{2}/g, ' ')
+    .split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 4 && !/^\d+$/.test(w));
+}
+
+function genericWords(cwd) {
+  const set = new Set(GENERIC);
+  try {
+    const extra = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'rules', 'open-items.json'), 'utf8'));
+    for (const w of extra.generic_words || []) set.add(String(w).toLowerCase());
+  } catch (e) { /* built-ins only */ }
+  return set;
+}
+
+/**
+ * A request counts as named by its date, by its topic words, or by its age. Measured
+ * 2026-10-09: a first reply named all eleven items in plain words with their AGE
+ * ("open for 32 days") and was blocked, because only a date counted — the gate pushed
+ * replies toward file names and dates, against the plain-words rule.
+ */
+function named(item, reply, ageRx, generic) {
   if (item.num) return new RegExp(`#${item.num}(?!\\d)`).test(reply);
   const [y, mo, d] = item.date;
-  return reply.includes(`${y}-${mo}-${d}`) || new RegExp(`(?<!\\d)${mo}-${d}(?!\\d)`).test(reply)
-    || new RegExp(`(?<!\\d)${Number(d)}\\.\\s?${Number(mo)}\\.|(?<!\\d)${d}\\.${mo}\\.`).test(reply);
+  if (reply.includes(`${y}-${mo}-${d}`) || new RegExp(`(?<!\\d)${mo}-${d}(?!\\d)`).test(reply)
+    || new RegExp(`(?<!\\d)${Number(d)}\\.\\s?${Number(mo)}\\.|(?<!\\d)${d}\\.${mo}\\.`).test(reply)) return true;
+  const low = reply.toLowerCase();
+  const words = (item.words || []).filter((w) => !generic.has(w));
+  const hit = words.filter((w) => low.includes(w)).length;
+  if (words.length && hit >= Math.min(2, words.length)) return true;
+  // Age in days, local calendar, one day of slack either way (time zones, midnight).
+  const age = Math.round((Date.now() - new Date(`${y}-${mo}-${d}T12:00:00`).getTime()) / 86400000);
+  return [age - 1, age, age + 1].some((n) => n >= 0 && ageRx(n).test(reply));
 }
 
 const hasNumber = (n, text) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(text);
@@ -204,12 +273,16 @@ function judge(input) {
   const missing = [];
   if (ai.length) {
     if (!hasNumber(ai.length, text)) missing.push(`count of items you can handle (${ai.length})`);
-    if (!patterns(cwd, 'offer').test(text)) missing.push('one question whether to handle them');
+    // The operator's prompt may already be the go-ahead ("work through everything") — then
+    // asking again is a disguised stop; the count still has to be said.
+    if (!patterns(cwd, 'offer').test(text) && !patterns(cwd, 'goahead').test(t.first)) missing.push('one question whether to handle them');
   }
   if (human.length) {
     if (!hasNumber(human.length, text)) missing.push(`count of items that need the operator (${human.length})`);
     if (human.length <= HUMAN_LIST_MAX) {
-      for (const it of human) if (!named(it, text)) missing.push(it.ref);
+      const ageRx = ageMatcher(cwd);
+      const generic = genericWords(cwd);
+      for (const it of human) if (!named(it, text, ageRx, generic)) missing.push(it.ref);
     } else if (!patterns(cwd, 'offer').test(text)) {
       missing.push('the offer to list the operator items');
     }
@@ -225,7 +298,7 @@ function judge(input) {
   return `First reply leaves out the open points from the session start — split by who acts: "n I can handle, shall I?" + "n need you" (up to ${HUMAN_LIST_MAX} named, more offered); repeats said. Missing: ${shown}`;
 }
 
-module.exports = { firstTurnOwnsQuestion };
+module.exports = { firstTurnOwnsQuestion, mandatedTopics };
 
 if (require.main === module) {
   let data = '';

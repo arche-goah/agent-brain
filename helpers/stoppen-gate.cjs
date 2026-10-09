@@ -181,8 +181,14 @@ process.stdin.on('end', () => {
   // The first reply after a session start ASKS on purpose (operator order 2026-10-07):
   // "n items I can handle — shall I?" is the one OK the agent must get before it starts on
   // something the session was not opened for. That turn belongs to open-items-gate.
+  // Same class, wider: a question a RULE orders ("brain-scan DUE — ask the operator") is the
+  // rule being followed. Measured 2026-10-09: this gate blocked exactly that question.
   try {
-    if (require('./open-items-gate.cjs').firstTurnOwnsQuestion(input.transcript_path)) return allow();
+    const oi = require('./open-items-gate.cjs');
+    if (oi.firstTurnOwnsQuestion(input.transcript_path)) return allow();
+    const norm = (s) => s.toLowerCase().replace(/[-_]+/g, ' ');
+    const tailText = norm(stripQuoted(analyze(input.transcript_path).finalText).slice(-TAIL_CHARS));
+    if (oi.mandatedTopics(input.transcript_path).some((t) => tailText.includes(norm(t)))) return allow();
   } catch (e) { /* no sibling gate — judge as before */ }
 
   console.log(JSON.stringify({

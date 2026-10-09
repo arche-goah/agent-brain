@@ -26,9 +26,19 @@ printf '%s\n' 'import os, sys' \
 # OS-3: python is a native process; a Git-Bash /tmp path handed to it as DATA (--repo,
 # --root) does not resolve on Windows, and every case would read an empty tree.
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
-run() { # $1 session id, [$2 root]
-  "$PY" "$(native "$T/core/scripts/open-items.py")" --owner "" --repo "$(native "$T/repo")" \
-    --root "$(native "${2:-$T/root}")" --hook-input "{\"session_id\":\"$1\"}" 2>&1
+mkdir -p "$T/tx"
+run() { # $1 session id ("" = hand run), [$2 root]; the transcript path sits next to the others
+  local hi="{}"
+  [ -n "$1" ] && hi="{\"session_id\":\"$1\",\"transcript_path\":\"$(native "$T/tx/$1.jsonl")\"}"
+  "$PY" "$(native "$T/core/scripts/open-items.py")" --owner "${OWNER:-}" --repo "$(native "$T/repo")" \
+    --root "$(native "${2:-$T/root}")" --hook-input "$hi" 2>&1
+}
+# A transcript in which the list reached a human: the bootup block, then a real prompt.
+# $2 = "notif" writes only a background notification after the bootup (nobody read it).
+tx() {
+  local p='{"type":"user","message":{"role":"user","content":"stand?"}}'
+  [ "${2:-}" = notif ] && p='{"type":"user","message":{"role":"user","content":"<task-notification>done</task-notification>"}}'
+  printf '%s\n' '{"attachment":{"type":"hook_success","hookEvent":"SessionStart","content":"open for us: 2"}}' "$p" > "$T/tx/$1.jsonl"
 }
 has() { case "$2" in *"$1"*) return 0;; esac; return 1; }
 
@@ -36,14 +46,21 @@ printf '%s\n' 'shared-memory open requests to this instance: 2' \
   '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
   '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (LOG)' > "$T/inbox.txt"
 
-out=$(run a)
+out=$(run a); tx a
 has "open for us: 2" "$out" && ok "count line" || bad "count line: $out"
 has "2026-10-05 core/LOG" "$out" && ok "LOG-only request listed" || bad "LOG request missing: $out"
 has "first report" "$out" && ok "first session = first report" || bad "first report: $out"
 out=$(run a)
 has "!! reported in" "$out" && bad "same session counted twice: $out" || ok "same session counts once"
-out=$(run b)
+out=$(run b); tx b
 has "!! reported in 2 sessions" "$out" && ok "new session is louder" || bad "no escalation: $out"
+# Counter inflation (measured 2026-10-09): a session without a transcript, a hand run, and a
+# session where only a background notification followed the bootup never reached a human.
+run ghost >/dev/null; run "" >/dev/null; run nobody >/dev/null; tx nobody notif
+out=$(run c); tx c
+has "!! reported in 3 sessions" "$out" && ok "phantom, hand and unread runs do not count" || bad "counter inflated: $out"
+out=$(run d)
+has "!! reported in 4 sessions" "$out" && ok "real sessions keep counting" || bad "real session lost: $out"
 
 # Capped list: the inbox says 3, prints 2 — must read as NOT checked.
 sed -i.bak 's/instance: 2/instance: 3/' "$T/inbox.txt"
@@ -68,8 +85,44 @@ printf '%s\n' '{"parked":["grandma"]}' > "$T/root/.claude/rules/open-items.json"
 printf '%s\n' 'shared-memory open requests to this instance: 1' \
   '  - 2026-09-08 [grandma3] peer-c: Rueckfrage (grandma3/rueckfrage-2026-09-08.md)' > "$T/inbox.txt"
 out=$(run f)
-has "open for us: 0 — ai 0 · human 0 · unclassified 0 (+1 parked)" "$out" && ok "parked counted apart" || bad "parked count: $out"
-has "[parked] rueckfrage-2026-09-08.md" "$out" && ok "parked line kept" || bad "parked line missing: $out"
+# A REQUEST from another side in a parked domain is not parked away: it gets an answer.
+has "open for us: 1 — ai 1" "$out" && ok "parked-domain request is answerable" || bad "parked request hidden: $out"
+has "answer anyway: receipt, state, when it resumes" "$out" && ok "parked request says how to answer" || bad "parked answer hint: $out"
+has "[parked]" "$out" && bad "request still on the parked line: $out" || ok "request off the parked line"
+
+# Pull requests (a saved GraphQL answer stands in for gh): whose move it is, dated waits,
+# the shown date, parked repos. Viewer = me.
+NOW=$(date +%Y)-12-31; PAST=2020-01-01
+pr() { # repo num author created body lastcommit reviews-json requests-json
+  printf '{"number":%s,"title":"t%s","isDraft":false,"createdAt":"%sT10:00:00Z","body":"%s","author":{"login":"%s"},"repository":{"name":"%s"},"reviewRequests":{"nodes":%s},"latestReviews":{"nodes":%s},"commits":{"nodes":[{"commit":{"committedDate":"%s"}}]},"comments":{"nodes":[]}}' \
+    "$2" "$2" "$4" "$5" "$3" "$1" "$8" "$7" "$6"
+}
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":7,"nodes":[%s,%s,%s,%s,%s,%s,%s]}}}\n' \
+  "$(pr suite-x 1 peer 2026-09-28 '' 2026-09-28T11:00:00Z '[{"author":{"login":"me"},"submittedAt":"2026-10-08T19:45:00Z"}]' '[]')" \
+  "$(pr suite-x 2 peer 2026-09-29 '' 2026-10-09T11:00:00Z '[{"author":{"login":"me"},"submittedAt":"2026-10-08T19:45:00Z"}]' '[]')" \
+  "$(pr owned 3 peer 2026-09-30 '' 2026-09-30T11:00:00Z '[]' '[]')" \
+  "$(pr owned 4 peer 2026-10-01 '' 2026-10-01T11:00:00Z '[]' '[{"requestedReviewer":{"login":"me"}}]')" \
+  "$(pr core 5 me 2026-10-02 "waiting-until: $NOW: alpha measurement" 2026-10-02T11:00:00Z '[]' '[]')" \
+  "$(pr core 6 me 2026-10-03 "waiting-until: $PAST: alpha" 2026-10-03T11:00:00Z '[]' '[]')" \
+  "$(pr grandma-suite 7 peer 2026-10-04 '' 2026-10-04T11:00:00Z '[]' '[]')" > "$T/prs.json"
+printf '%s\n' 'shared-memory open requests to this instance: 0' > "$T/inbox.txt"
+printf '%s\n' '{"parked":["grandma"],"owners":{"owned":"peer"}}' > "$T/root/.claude/rules/open-items.json"
+export OPEN_ITEMS_PR_FIXTURE; OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs.json")"
+out=$(OWNER=me run p1); tx p1; out2=$(OWNER=me run p2)
+line() { grep -F -- "$1" <<<"$2"; }
+has "waiting on peer: we reviewed" "$(line 'suite-x#1 ' "$out")" && ok "approved, no commit since = waiting on author" || bad "approved PR: $(line 'suite-x#1 ' "$out")"
+has "[PR|ai]" "$(line 'suite-x#2 ' "$out")" && ok "commit after our review = our move" || bad "new commit: $(line 'suite-x#2 ' "$out")"
+has "is peer's to merge" "$(line 'owned#3 ' "$out")" && ok "owner's repo, no review asked = waiting" || bad "owner: $(line 'owned#3 ' "$out")"
+has "[PR|ai]" "$(line 'owned#4 ' "$out")" && ok "review asked of us = our move" || bad "requested: $(line 'owned#4 ' "$out")"
+has "waiting until $NOW: alpha measurement" "$(line 'core#5 ' "$out")" && ok "dated wait is quiet" || bad "dated wait: $(line 'core#5 ' "$out")"
+has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder" || bad "past wait: $(line 'core#6 ' "$out")"
+has "2026-09-28 suite-x#1" "$out" && ok "shown date = opened date" || bad "date: $out"
+has "[parked] grandma-suite#7" "$out" && ok "parked PR on the parked line" || bad "parked PR: $out"
+has "(+3 waiting on others or a date)" "$out" && ok "header counts the waits apart" || bad "wait header: $(head -1 <<<"$out")"
+l1=$(line 'suite-x#1 ' "$out2")
+has "waiting on peer" "$l1" && ! has "reported in" "$l1" && ok "a wait does not count up" || bad "a wait was counted: $l1"
+has "!! reported in 2 sessions" "$(line 'core#6 ' "$out2")" && ok "past wait counts up" || bad "past wait count: $(line 'core#6 ' "$out2")"
+unset OPEN_ITEMS_PR_FIXTURE
 
 # WHO acts: circle field in the request file (read at origin/main), a request addressed to
 # a person by name, an agent class from --classify, and the rest printed as '?'.

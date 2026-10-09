@@ -29,7 +29,16 @@ This script is the ONE list of open points at session start:
     the Stop gate blocks the first reply until it is classified;
   * per item, how many sessions already reported it and since when — a per-machine
     counter in .claude-state/open-items-seen.json, keyed by session id, so a resume or a
-    compaction of the same session never counts twice;
+    compaction of the same session never counts twice. A session counts only once its
+    transcript shows the list reached a human (bootup block, then a real prompt); a hand
+    run never counts;
+  * items whose move is NOT ours print as `[...|wait]`, quietly, and do not count up: a PR
+    we reviewed or commented on after its last commit, a PR in a repo that instance data
+    (`owners`: repo -> login) gives to someone else when no review was asked of us, and any
+    item with a dated wait (`waiting`: id -> {until, why} in instance data, or a line
+    `waiting-until: YYYY-MM-DD: <why>` in a PR body). After the date it is louder again;
+  * a REQUEST from another side in a parked domain is not parked away — parked means not
+    worked on, never unanswered; it is listed with how to answer (receipt, state, when);
   * a source that could not be read says so — it never reads as "nothing open";
   * "nothing open" is said explicitly when both sources were read and nothing is open.
 helpers/open-items-gate.cjs (Stop) then checks the first reply against this list.
@@ -124,38 +133,129 @@ def requests(repo):
     return None if unparsed or len(items) != expected else items
 
 
-def prs(owner):
+# One GraphQL search instead of `gh search prs`: the list needs to know whose move it is,
+# and only reviews, review requests, comments and the last commit date say that.
+PR_QUERY = """query($q: String!) { viewer { login }
+  search(query: $q, type: ISSUE, first: 50) { issueCount nodes { ... on PullRequest {
+    number title isDraft createdAt body author { login } repository { name }
+    reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
+    latestReviews(first: 20) { nodes { author { login } submittedAt } }
+    commits(last: 1) { nodes { commit { committedDate } } }
+    comments(last: 20) { nodes { author { login } createdAt } } } } } }"""
+WAIT_MARK = re.compile(r"^\s*waiting-until:\s*(\d{4}-\d{2}-\d{2})\s*:?\s*(.*)$", re.M | re.I)
+
+
+def ball(p, me, owners):
+    """Whose move a PR is. None = ours. Otherwise the reason we are waiting on its author:
+    we reviewed or commented after its last commit, or the repo belongs to someone else
+    (instance data `owners`) and nobody asked us for a review. Measured 2026-10-09: two PRs
+    we had approved were printed as "nothing done yet" in every session after."""
+    author = (p.get("author") or {}).get("login", "")
+    if not me or author == me:
+        return None
+    last = ((p.get("commits") or {}).get("nodes") or [{}])[-1].get("commit", {}).get("committedDate", "")
+    ours = [r.get("submittedAt") or "" for r in (p.get("latestReviews") or {}).get("nodes", [])
+            if (r.get("author") or {}).get("login") == me]
+    ours += [c.get("createdAt") or "" for c in (p.get("comments") or {}).get("nodes", [])
+             if (c.get("author") or {}).get("login") == me]
+    if last and any(t > last for t in ours):
+        return "we reviewed or commented after the last commit"
+    asked = any(((n.get("requestedReviewer") or {}).get("login")) == me
+                for n in (p.get("reviewRequests") or {}).get("nodes", []))
+    owner = owners.get(p["repository"]["name"])
+    if owner and owner != me and not asked:
+        return f"{p['repository']['name']} is {owner}'s to merge and no review was asked of us"
+    return None
+
+
+def prs(owner, owners):
     if not owner:
         return []
-    rc, out = run(["gh", "search", "prs", "--owner", owner, "--state", "open", "--limit", "50",
-                   "--json", "repository,number,title,author,updatedAt,isDraft"])
+    fixture = os.environ.get("OPEN_ITEMS_PR_FIXTURE")  # fixture hook: a saved GraphQL answer
+    if fixture:
+        rc, out = (0, Path(fixture).read_text(encoding="utf-8")) if Path(fixture).is_file() else (1, "")
+    else:
+        rc, out = run(["gh", "api", "graphql", "-f", f"query={PR_QUERY}",
+                       "-F", f"q=user:{owner} is:pr is:open"])
     if rc != 0:
         return None
     try:
-        rows = json.loads(out or "[]")
-    except ValueError:
+        data = json.loads(out or "{}")["data"]
+        me, rows = (data.get("viewer") or {}).get("login", ""), data["search"]["nodes"]
+    except (ValueError, KeyError, TypeError):
         return None
-    return [{"id": f"{p['repository']['name']}#{p['number']}", "kind": "PR",
-             "date": p["updatedAt"][:10], "updated": p["updatedAt"],
-             "who": (p.get("author") or {}).get("login", "?"),
-             "text": p["title"][:100] + (" (draft)" if p.get("isDraft") else ""),
-             "scope": p["repository"]["name"], "ref": f"{p['repository']['name']}#{p['number']}"}
-            for p in rows]
+    items = []
+    for p in rows:
+        if not p.get("number"):
+            continue
+        ref = f"{p['repository']['name']}#{p['number']}"
+        m = WAIT_MARK.search(p.get("body") or "")
+        author = (p.get("author") or {}).get("login", "?")
+        # The shown date is when the PR was OPENED — last activity would reset its age.
+        items.append({"id": ref, "kind": "PR", "date": p["createdAt"][:10], "who": author,
+                      "text": p["title"][:100] + (" (draft)" if p.get("isDraft") else ""),
+                      "scope": p["repository"]["name"], "ref": ref,
+                      "waiting_on": ball(p, me, owners),
+                      "until": (m.group(1), m.group(2).strip()) if m else None})
+    return items
+
+
+# The `why` reaches a human through the first reply, so it says what the circle MEANS, not
+# its letter (operator 2026-10-08/09: no priority, ledger or circle codes towards humans).
+CIRCLE_WORDS = {"A": "the AI handles it alone", "B": "needs the operator's own decision",
+                "C": "the AIs settle it among themselves", "D": "needs one person's word",
+                "E": "needs several people", "F": "a matter between people"}
 
 
 def auto_class(it, repo, human_rx):
     """(class, why) from the data alone, or (None, '') when the data does not say."""
     if it["kind"] == "PR":
-        return "ai", "PR: review/merge is agent work"
+        return "ai", "pull request: review or merge is agent work"
     if it.get("file"):
         rc, blob = run(["git", "-C", repo, "show", f"origin/main:{it['file']}"])
         m = CIRCLE.search(blob.split("\n---", 1)[0]) if rc == 0 else None
         if m:
             c = m.group(1).upper()
-            return ("ai" if c in AI_CIRCLES else "human"), f"circle {c}"
+            return ("ai" if c in AI_CIRCLES else "human"), CIRCLE_WORDS[c]
     if human_rx and human_rx.search(it["text"]):
         return "human", "addressed to a person"
     return None, ""
+
+
+NOT_A_PROMPT = re.compile(r"^\s*(Stop hook feedback|<task-notification|<system-reminder|<local-command|<command-)")
+
+
+def reached_a_human(transcript):
+    """True when this session's transcript shows the open-items block at its start AND a
+    human prompt after it — i.e. the list was really put in front of someone. Measured
+    2026-10-09: a session without any transcript and hand runs of the bootup inside a
+    development session had inflated every counter by two."""
+    try:
+        if not transcript.is_file():
+            return False
+        shown = False
+        with open(transcript, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not shown:
+                    shown = '"SessionStart' in line and "open for us:" in line
+                    continue
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                msg = d.get("message") or {}
+                if msg.get("role") != "user" or d.get("isMeta"):
+                    continue
+                c = msg.get("content")
+                if isinstance(c, list):
+                    if any(b.get("type") == "tool_result" for b in c if isinstance(b, dict)):
+                        continue
+                    c = "\n".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
+                if isinstance(c, str) and c.strip() and not NOT_A_PROMPT.match(c):
+                    return True
+    except OSError:
+        return False
+    return False
 
 
 def lookup(store, it):
@@ -206,9 +306,9 @@ def main():
         except ValueError:
             pass
     now = datetime.datetime.now()
-    # No session id (run by hand): one bucket per hour, so a hand run does not inflate
-    # the counter session after session.
-    sid = hook.get("session_id") or now.strftime("hand-%Y%m%d%H")
+    # No session id = a hand run: it is shown, but it never counts as a report.
+    sid = hook.get("session_id") or ""
+    tdir = Path(hook["transcript_path"]).parent if hook.get("transcript_path") else None
     cfg = load_json(root / ".claude" / "rules" / "open-items.json", {})
     try:
         parked_rx = [re.compile(p, re.I) for p in cfg.get("parked", [])]
@@ -219,10 +319,22 @@ def main():
         parked_rx, human_rx = [], None
 
     seen = load_json(seen_file, {})
-    old, last_run = seen.get("items", {}), seen.get("last_run", "")
+    old = seen.get("items", {})
+    confirmed = set(seen.get("confirmed", []))
     store = load_json(cls_file, {})
+    waits = cfg.get("waiting") or {}  # instance data: {"<id>": {"until": "YYYY-MM-DD", "why": "..."}}
 
-    req, pr = requests(a.repo), prs(a.owner)
+    def counts(s):
+        """A session counts as a report only once its transcript shows the list reached a human.
+        The running session counts now — it is the one reporting."""
+        if s == sid or s in confirmed:
+            return True
+        if tdir is not None and reached_a_human(tdir / f"{s}.jsonl"):
+            confirmed.add(s)
+            return True
+        return False
+
+    req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {})
     failed = [name for name, v in (("shared-memory requests", req), ("PR search", pr)) if v is None]
     items = (req or []) + (pr or [])
 
@@ -230,25 +342,46 @@ def main():
     keep = {}
     for it in items:
         rec = old.get(it["id"]) or {"first": today, "sessions": []}
-        if sid not in rec["sessions"]:
+        w = waits.get(it["id"]) or waits.get(it["ref"].rsplit("/", 1)[-1])
+        until = (str(w.get("until", "")), str(w.get("why", ""))) if isinstance(w, dict) else it.get("until")
+        it["wait"] = None
+        if it.get("waiting_on"):
+            it["wait"] = f"waiting on {it['who']}: {it['waiting_on']}"
+        elif until and until[0] >= today:
+            it["wait"] = f"waiting until {until[0]}" + (f": {until[1]}" if until[1] else "")
+        it["overdue"] = f"waited until {until[0]}" + (f" ({until[1]})" if until[1] else "") if until and until[0] < today else ""
+        # A wait is not a report: the counter only runs while the move is ours.
+        if not it["wait"] and sid and sid not in rec["sessions"]:
             rec["sessions"] = (rec["sessions"] + [sid])[-50:]
         keep[it["id"]] = rec
-        it["first"], it["n"] = rec["first"], len(rec["sessions"])
+        it["first"], it["n"] = rec["first"], sum(1 for s in rec["sessions"] if counts(s))
         it["parked"] = any(r.search(it["scope"]) for r in parked_rx)
         own = lookup(store, it)
         it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx)
         it["cls"] = it["cls"] or "?"
+        # Parked means not WORKED ON, never unanswered: a request from another side in a parked
+        # domain still gets an answer (receipt, state, when it resumes). Measured: one such
+        # question lay 30 days on the parked line.
+        if it["parked"] and it["kind"] == "request":
+            it["parked"] = False
+            it["cls"] = "ai" if it["cls"] == "?" else it["cls"]
+            it["why"] = "parked domain — answer anyway: receipt, state, when it resumes"
+        if it["wait"]:
+            it["cls"] = "wait"
     # A source that failed keeps its old counters — a failed read is not "handled".
     for k, v in old.items():
         if k not in keep and ((req is None and "#" not in k) or (pr is None and "#" in k)):
             keep[k] = v
-    saved = save_json(seen_file, {"items": keep, "last_run": now.isoformat(timespec="seconds")})
+    saved = save_json(seen_file, {"items": keep, "confirmed": sorted(confirmed)[-300:],
+                                  "last_run": now.isoformat(timespec="seconds")})
 
-    active = sorted((i for i in items if not i["parked"]), key=lambda i: (-i["n"], i["date"]))
+    active = sorted((i for i in items if not i["parked"] and i["cls"] != "wait"), key=lambda i: (-i["n"], i["date"]))
+    waiting = [i for i in items if not i["parked"] and i["cls"] == "wait"]
     parked = [i for i in items if i["parked"]]
     count = {c: sum(1 for i in active if i["cls"] == c) for c in ("ai", "human", "?")}
     rep = {c: sum(1 for i in active if i["cls"] == c and i["n"] > 1) for c in ("ai", "human")}
     print(f"open for us: {len(active)} — ai {count['ai']} · human {count['human']} · unclassified {count['?']}"
+          + (f" (+{len(waiting)} waiting on others or a date)" if waiting else "")
           + (f" (+{len(parked)} parked)" if parked else "")
           + (f" — already reported before and still open: ai {rep['ai']} · human {rep['human']}"
              if rep["ai"] or rep["human"] else ""))
@@ -259,11 +392,16 @@ def main():
     if not items and not failed:
         print("- nothing open (requests and PRs both read)")
     for i in active:
-        age = (f"!! reported in {i['n']} sessions since {i['first']}, nothing done yet"
-               if i["n"] > 1 else "first report")
-        moved = " · updated since last start" if i["kind"] == "PR" and last_run and i["updated"] > last_run else ""
+        if i["n"] > 1:
+            age = f"!! reported in {i['n']} sessions since {i['first']}, nothing done yet"
+        else:
+            age = "first report"
+        if i["overdue"]:
+            age = f"!! {i['overdue']} — that date has passed; " + age
         why = f" ({i['why']})" if i["why"] else ""
-        print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{moved}{why}")
+        print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{why}")
+    for i in waiting:
+        print(f"- [{i['kind']}|wait] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {i['wait']}")
     if parked:
         print(f"- [parked] {', '.join(i['ref'].rsplit('/', 1)[-1] for i in parked)}")
     if count["?"]:
