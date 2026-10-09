@@ -121,7 +121,7 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1
+known:     scripts/brain-scan-prep.py=3 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -136,7 +136,9 @@ baseline writer carried it unnoticed. The pattern deliberately matches correct s
 "is there a new place that writes a tracked file" is the question a grep can answer, "did
 the author think about line endings" is not. Proven in use the same day: the seventh site
 (os-traps-export.py, which generates this register's own signpost) surfaced as drift on the
-first run after it was written, was read, and was correct.
+first run after it was written, was read, and was correct. 2026-10-09: brain-scan-prep.py
+(three writes into the scan's scratch dir; one of them, the report head, is concatenated
+into a tracked report) surfaced on its first run and was pinned before it shipped.
 
 ## OS-3 — a fixture hands a shell path to a native process
 

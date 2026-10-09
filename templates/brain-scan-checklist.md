@@ -6,8 +6,21 @@
 > each section are yours — add, remove and sharpen them as your setup grows. Sections and
 > the state model stay; the rest is yours.
 >
-> Lives at `docs/maintenance/brain-scan-checklist.md`. Fixes found by a scan are NOT applied
-> from here — they go to `brain-scan-auftraege.md` and run only with the operator's marker.
+> Lives at `docs/maintenance/brain-scan-checklist.md`.
+>
+> **What a scan does with this file** (operator decisions 2026-10-09, after an audit of the
+> audit process): it first states what became of the LAST run's findings (done / decided /
+> dropped / still open / vanished — `core/scripts/brain-scan-prep.py`, deterministic), then
+> runs the machine checks (sections 0, 9, 10 and the boundary between instance and core),
+> then the agents check sections 1-8. It reports and sorts, it never fixes: every finding
+> leaves with exactly one exit (done already · the AI does it · the other side · parked ·
+> later at the system · drop · operator decision — skill `backlog-catch-up`), at most three
+> operator decisions are presented, and a finding seen a third time without a fix is a
+> decision, not another line. Fixing happens in the session with the operator.
+>
+> **Every section has an executor** — a section nobody runs is a wish, measured twice. If you
+> add a section, give it one in `core/workflows/brain-scan.js` (`SECTION_EXECUTORS`); the
+> core fixture fails on a template section without one.
 
 ## 0. State model: `configured` vs. `verified`
 
@@ -97,3 +110,34 @@ the deny — not from the scan, the scan is read-only). → maximum `configured`
 - [ ] Every entry this brain wrote carries `von` / `audience` / `topic` / `date` (README convention of the shared repo).
 - [ ] The session-start check reads what is new by topic since the last look (`shared-memory-check.sh` line present at bootup).
 - [ ] No request addressed to this brain stays unanswered: `shared-memory-inbox.py --open` lists 0, or every listed request has a dated note why it waits.
+
+## 9. Invariant register (if this brain keeps one)
+
+**Behaviour check:** `python3 core/scripts/invariant-check.py docs/maintenance/invariants.md`
+— run by the scan's machine step, never by an agent. → `verified`.
+
+- [ ] No drift: no new, changed or vanished site in any registered search.
+- [ ] Every class whose verdict is "MECHANISM due" is a finding with an exit — the register's
+  own report is read by nobody else.
+
+## 10. Self-check
+
+**Behaviour check:** `bash core/scripts/brain-selftest.sh` (every mechanism with a proof
+passes it), `core/scripts/local-machinery.py` (behaviour carried outside the core is
+declared, with reason and evidence) and `core/scripts/commitments.py` (no promise about
+future behaviour lives only in chat since the last scan) — all run by the machine step. A
+script missing from an older core is reported once as "not available". → `verified`.
+
+- [ ] The self-test passes; a crash of a check reads as a crash, never as a clean run.
+- [ ] Every hook, script or rule that runs outside the core is declared as instance machinery
+  or as an alpha with an expiry.
+- [ ] No loose commitment since the last scan.
+
+## Deep check (recommendation, never started by the scan)
+
+The machine step writes one line per triggered deep check into the report, with the reason
+and the price measured on the proving brain: `coherence-scan` (five or more new dated rule
+lines since the last coherence register, or a finding back a third time), `memory-dream`
+(memory index at 90 % of its limit), `full-audit` (an open order-list entry carrying the
+token `rebuild-ahead`). The AI tells the operator — what, why now, the price — and starts
+nothing on its own.
