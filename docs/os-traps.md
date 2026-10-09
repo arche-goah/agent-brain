@@ -166,7 +166,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -253,6 +253,10 @@ reads and passes on as argv (Git Bash converts argv). test-repo-activity-watch.s
 and the state dir are read by bash only (the fake `gh` is bash); the clone root reaches the
 native `git` only as a `-C` argument; the python filter gets JSON on stdin, never a path. No
 native process opens a temp path from data. Windows run owed by the workstation check.
+2026-10-09, test-parallel-sessions.sh baselined after the same review: the temp dir reaches
+only bash — the command-line list is read by the script under test through a bash redirect,
+and the repo argument goes to `cd` in bash. No native process opens it; green on Windows the
+same day.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
@@ -459,3 +463,31 @@ NAMES, which carry no space. `handover-gate.sh` loops over suite PATHS from
 split happens before the tilde is expanded) — an absolute path with a space there would
 reproduce this trap. A new site is read with one question: can an element of this list be a
 path?
+
+## OS-11 — a session count by process name counts every CLI call as a session
+
+shape: B
+
+invariant: Whoever counts Claude SESSIONS by process separates a session from a short CLI
+call (`claude plugin list`, `claude --version`, `claude mcp …`) by the command line, never
+by the image name alone. On macOS/Linux the count is repo-exact (`lsof` cwd), so a CLI call
+in another directory never reaches it; Windows has no cwd per process and counts
+machine-wide, where every `claude.exe` started by a script is "a second session". The same
+process name is a different kind of process — shape B.
+pattern:   IMAGENAME eq claude|comm=.*claude
+paths:     --include=*.sh --include=*.py --include=*.cjs scripts helpers
+known:     scripts/parallel-sessions.sh=2
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-10-09 on the Windows instance, 1.4.1 candidate check. During
+`portability-smoke.sh` the collaboration watch reported `!! 2 claude sessions` while one ran
+(operator confirmed). A CIM process log (200 ms) showed `onboarding-verify.sh` starting
+`claude.exe plugin list` and `plugin list --json` — 36 short processes in four minutes.
+Live, with three concurrent `claude plugin list`: the old count said 4 sessions, the new one
+1, and the old one right after the new one still saw 4 (the calls were alive throughout).
+Fixed in `parallel-sessions.sh`: Windows reads command lines via CIM and drops CLI
+subcommands and info flags; `-p` stays counted (a headless run works in the repo); the
+lsof path applies the same filter to `ps -o args=`. The two known sites are the tasklist
+fallback (labelled "CLI calls counted too", used only without powershell.exe) and the
+`ps … comm=` lookup that now filters. Fixture `test-parallel-sessions.sh`.
