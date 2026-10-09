@@ -205,6 +205,12 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   This includes yes/no questions at the end of a report (operator decision
   2026-09-24): reversible, own brain or a PR, no operator knowledge needed = do it
   and report.
+- **The comparative test** (operator decision 2026-10-09): an item goes to the operator
+  only if the operator can decide it BETTER or more cleanly than the AI — because it
+  rests on their goal, taste, money, body, devices or relationships. If measurement,
+  rules and context let the AI decide it as well, the AI decides and reports. Every
+  report that carries open items splits them in one line each: "n I handle myself" ·
+  "m really need you" — and the second number is usually small.
 - **A sub-agent's framing is not a decision** (operator decision 2026-08-22): "waits
   for OK" from a workflow is its filing category under its own implements-nothing
   boundary. The item passes the instance's stop test before it reaches the operator;
