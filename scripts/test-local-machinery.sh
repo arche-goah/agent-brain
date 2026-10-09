@@ -56,5 +56,30 @@ printf 'y\n' >> "$T/b/core/rule.md"
 out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
 grep -q 'core file(s) edited inside core/: rule.md' <<< "$out" && ok "edited-core-loud" || bad "edited-core-loud: $out"
 
+# Tool sources: an MCP server path or a skill symlink into a suite checkout. The path inside
+# .mcp.json is DATA for a native python, so it goes through cygpath on Windows (OS-3).
+nat() { cygpath -m "$1" 2>/dev/null || printf '%s' "$1"; }
+mkdir -p "$T/suite/skills/s1"; printf 'x\n' > "$T/suite/server.js"
+git -C "$T/suite" init -q -b main; git -C "$T/suite" add -A
+git -C "$T/suite" -c user.email=t@t -c user.name=t commit -q -m init
+rm -rf "$T/b/core"
+printf '{"mcpServers":{"s":{"command":"node","args":["%s"]}}}' "$(nat "$T/suite/server.js")" > "$T/b/.mcp.json"
+out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
+[[ -z "$out" ]] && ok "mcp-source-on-main-silent" || bad "mcp-source-on-main-silent: $out"
+git -C "$T/suite" checkout -q -b feat/x
+out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
+grep -q 'suite@feat/x' <<< "$out" && ok "mcp-source-off-main-loud" || bad "mcp-source-off-main-loud: $out"
+printf '{"alpha":{"%s":{"until":"2026-10-20","why":"alpha"}}}' "$(nat "$T/suite")" > "$T/b/.claude/rules/local-machinery.json"
+out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
+[[ -z "$out" ]] && ok "off-main-declared-alpha-silent" || bad "off-main-declared-alpha-silent: $out"
+rm -f "$T/b/.mcp.json" "$T/b/.claude/rules/local-machinery.json"; mkdir -p "$T/b/.claude/skills"
+ln -s "$T/suite/skills/s1" "$T/b/.claude/skills/s1" 2>/dev/null
+if [[ -L "$T/b/.claude/skills/s1" ]]; then
+  out=$("$PY" "$HERE/local-machinery.py" --repo "$T/b" --today 2026-10-08)
+  grep -q 'suite@feat/x' <<< "$out" && ok "skill-symlink-off-main-loud" || bad "skill-symlink-off-main-loud: $out"
+else
+  echo "  SKIP skill-symlink-off-main-loud (no symlinks on this platform)"
+fi
+
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"

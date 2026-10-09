@@ -83,6 +83,39 @@ def classify(cmd, repo):
     return "instance"
 
 
+def tool_sources_off_main(repo):
+    """Hooks are not the only way local code enters a brain: MCP servers (`.mcp.json`) and skill
+    symlinks run straight from suite working trees. Those are fine on main and unreleased code on
+    any other branch. Returns `<checkout>@<branch>` for every source checkout outside this brain
+    that is not on main/master."""
+    import pathlib
+    import subprocess
+    root = pathlib.Path(repo).resolve()
+    paths = []
+    mcp = load(str(root / ".mcp.json")) or {}
+    for srv in (mcp.get("mcpServers") or {}).values():
+        for tok in [srv.get("command") or ""] + [str(x) for x in srv.get("args") or []]:
+            if os.path.isabs(tok) and os.path.exists(tok):
+                paths.append(pathlib.Path(tok))
+    skills = root / ".claude" / "skills"
+    if skills.is_dir():
+        paths += [p.resolve() for p in skills.iterdir() if p.is_symlink()]
+    found = {}
+    for p in paths:
+        d = p if p.is_dir() else p.parent
+        try:
+            top = subprocess.run(["git", "-C", str(d), "rev-parse", "--show-toplevel"],
+                                 capture_output=True, text=True, timeout=10).stdout.strip()
+            if not top or pathlib.Path(top).resolve() == root or top in found:
+                continue
+            br = subprocess.run(["git", "-C", top, "rev-parse", "--abbrev-ref", "HEAD"],
+                                capture_output=True, text=True, timeout=10).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            continue
+        found[top] = br
+    return [(t, b) for t, b in found.items() if b and b not in ("main", "master")]
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=os.environ.get("CLAUDE_PROJECT_DIR") or ".")
@@ -130,6 +163,18 @@ def main(argv):
             edited = []
         if edited:
             print(f"!! local machinery: {len(edited)} core file(s) edited inside core/: {short(edited)} — core changes go as a PR against the core, never edited in place")
+
+    off_main = []
+    for top, br in tool_sources_off_main(a.repo):
+        hit_a = next((k for k in alpha if k.rstrip("/\\") in top.replace("\\", "/")), None)
+        if hit_a:
+            until = str((alpha[hit_a] or {}).get("until", ""))
+            if not until or until < a.today:
+                expired.append(f"{hit_a} (until {until or '?'})")
+            continue
+        off_main.append(f"{os.path.basename(top)}@{br}")
+    if off_main:
+        print(f"!! local machinery: {len(off_main)} tool source checkout(s) not on main feed this brain (MCP server or skill symlink): {short(off_main)} — unreleased code in every session; switch the checkout back to main, or declare it as alpha")
 
     if expired:
         print(f"!! local machinery: {len(set(expired))} alpha(s) past their date, still wired: {short(expired)} — merge, extend with a reason, or unwire")
