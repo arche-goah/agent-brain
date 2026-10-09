@@ -26,6 +26,9 @@ WATCH="${1:-$HERE/shared-memory-watch.sh}"
 N=8
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+# The race and ownership properties test the lock itself: no grace, immediate verdict.
+# The re-arm grace has its own property at the end.
+export WATCH_CLAIM_GRACE=0
 BARE="$TMP/remote.git"; WORK="$TMP/work"
 git -c init.defaultBranch=main init -q --bare "$BARE"
 git -c init.defaultBranch=main init -q "$WORK"
@@ -146,6 +149,26 @@ else
   echo "FAIL: next session refused — the orphan's lock survived"; fail=1
 fi
 { kill "$N2"; wait "$N2"; } 2>/dev/null || true
+
+# --- property 5: RE-ARM GRACE (measured 2026-10-09, Windows instance, twice) ----------
+# A re-arm right after a Monitor expired found the old watcher still alive (it notices its
+# dead parent only at its next tick), skipped, and the channel was blind ~15 s. Reproduced:
+# the lock names a live process that exits after 3 s; with a grace the new watcher must
+# wait and claim, without one it must skip (the negative control of the same setup).
+rearm_case() { # $1 grace → prints "claimed" or "skipped"
+  rm -f "$LOCKFILE"
+  sleep 3 & H=$!; echo "$H" > "$LOCKFILE"
+  WATCH_CLAIM_GRACE="$1" bash "$WATCH" watch 60 > "$TMP/out.rearm$1" 2>&1 &
+  R=$!; sleep 6
+  if kill -0 "$R" 2>/dev/null && ! grep -q 'skipping duplicate' "$TMP/out.rearm$1"; then echo claimed; else echo skipped; fi
+  { kill "$R"; wait "$R"; } 2>/dev/null || true
+  wait "$H" 2>/dev/null || true
+}
+echo "--- re-arm: the old holder exits 3 s after the new arm"
+[[ "$(rearm_case 10)" == claimed ]] && echo "PASS: with a grace the re-arm waits and claims the lock" \
+  || { echo "FAIL: re-arm skipped although the holder was on its way out"; fail=1; }
+[[ "$(rearm_case 0)" == skipped ]] && echo "PASS: control — without a grace the same setup skips" \
+  || { echo "FAIL: control did not skip — the grace case above proves nothing"; fail=1; }
 
 echo "--- verdict"; [[ $fail -eq 0 ]] && echo "ALL PASSED" || echo "FAILURES ABOVE"
 exit "$fail"

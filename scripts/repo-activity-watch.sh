@@ -66,7 +66,20 @@ fi
 # Claim and check in ONE step: `noclobber` makes the redirect fail if the file exists
 # (O_EXCL). Check-then-write leaves a window in which two sessions both pass the check.
 claim() { ( set -o noclobber; echo $$ > "$LOCK" ) 2>/dev/null; }
-if ! claim; then
+# A re-arm right after a Monitor expired finds the OLD watcher still alive: it notices its
+# parent is gone only at its next tick and then frees the lock. Skipping at once left the
+# channel blind until the supervisor restarted it (measured 2026-10-09 on the Windows
+# instance, twice: ~15 s blind, "WATCHER-DIED", then healed). So wait a short grace for a
+# holder that is on its way out; a holder that stays (a real second session) is skipped.
+claim_wait() {
+  local i=0 grace="${WATCH_CLAIM_GRACE:-20}"
+  while ! claim; do
+    lock_owner_alive || { rm -f "$LOCK"; claim && return 0; return 1; }
+    [ "$i" -ge "$grace" ] && return 1
+    sleep 1; i=$((i + 1))
+  done
+}
+if ! claim_wait; then
   if lock_owner_alive; then
     echo "already armed: lock $LOCK names live pid $(cat "$LOCK") — skipping duplicate watcher (a live pid is a process, not proof of a session)"
     exit 0

@@ -93,7 +93,20 @@ case "${1:-status}" in
     # close together both passed the check and both wrote, and the file then named only
     # the last of them while both watchers polled.
     claim() { ( set -o noclobber; echo $$ > "$LOCK" ) 2>/dev/null; }
-    if ! claim; then
+    # Re-arm right after a Monitor expired: the old watcher is still alive until its next
+    # orphan tick (see below) and then frees the lock. Wait a short grace for it instead of
+    # skipping at once — skipping left the channel blind until the supervisor restarted it
+    # (measured 2026-10-09, Windows instance, twice: ~15 s). A real second session keeps
+    # the lock past the grace and is skipped as before.
+    claim_wait() {
+      local i=0 grace="${WATCH_CLAIM_GRACE:-20}"
+      while ! claim; do
+        lock_owner_alive || { rm -f "$LOCK"; claim && return 0; return 1; }
+        [ "$i" -ge "$grace" ] && return 1
+        sleep 1; i=$((i + 1))
+      done
+    }
+    if ! claim_wait; then
       if lock_owner_alive; then
         echo "already armed by another session: pid $(cat "$LOCK") — skipping duplicate watcher"
         exit 0
