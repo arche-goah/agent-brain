@@ -164,9 +164,20 @@ def main(argv):
         if edited:
             print(f"!! local machinery: {len(edited)} core file(s) edited inside core/: {short(edited)} — core changes go as a PR against the core, never edited in place")
 
+    def same_tree(key, top):
+        # Text match first; then the real paths, because one directory has two spellings on
+        # Windows — the 8.3 short name in a temp path vs git's long name (os-traps OS-8).
+        if key.rstrip("/\\").replace("\\", "/") in top.replace("\\", "/"):
+            return True
+        if not os.path.exists(key):
+            return False
+        k = os.path.normcase(os.path.realpath(key)).rstrip("/\\")
+        t = os.path.normcase(os.path.realpath(top))
+        return t == k or t.startswith(k + os.sep)
+
     off_main = []
     for top, br in tool_sources_off_main(a.repo):
-        hit_a = next((k for k in alpha if k.rstrip("/\\") in top.replace("\\", "/")), None)
+        hit_a = next((k for k in alpha if same_tree(k, top)), None)
         if hit_a:
             until = str((alpha[hit_a] or {}).get("until", ""))
             if not until or until < a.today:
