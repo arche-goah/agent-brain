@@ -7,6 +7,8 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **collab-watch no longer names a way around a refused merge, and lists the measured merge traps.** (test: T0) Coherence register 2026-10-09 on the proving brain: step 4 called `gh api -X PUT …/pulls/<nr>/merge` "the second legitimate form when the permission layer refuses `gh pr merge`" — re-issuing a refused action in another form launders the refusal, and the instance's own lesson forbids it. Step 4 now says: report it and get the operator's word. Added four traps, each measured: `--match-head-commit` needs the full sha; `--auto` merges at once without required checks; `--delete-branch` on a base closes the PRs stacked on it (retarget first); a candidate squash lists its PRs as "(#n)" so `pending-clauses.py` finds them in the pin. Text only.
+
 - **`shared-memory-watch-test.sh` waits for the watcher, not for the clock.** (test: T0) Tag CI of v1.4.1, attempt 1: the Windows runner failed "LOG-only commit reported without what it says" — the last FOUND line still named the previous push, so the watcher had not reported yet when the fixed `sleep 6` ran out; attempt 2 was green, the same content green four times on Windows. Reproduced on macOS by slowing the poll to 8 s: the old test fails four checks, the new one passes all eight. Positive checks now wait until the expected FOUND count / line appears (45 s deadline, a dead watcher stays a FAIL); the one silence check keeps a fixed grace, which can only make it pass spuriously, never fail spuriously. Fixture only.
 
 ## 1.4.1 — 2026-10-09
