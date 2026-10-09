@@ -41,6 +41,16 @@
     invisible to every check. Write it where rules live — the instance's rules if it is
     about this brain only, a core PR if it holds for every brain — so the local-machinery
     inventory sees it and its reach can be checked like any other carrier.
+11. **Core PRs: new functionality is discussed first, follow-ups may be pushed** (operator
+    decision 2026-10-09). The core repo is public, so "push to a public repo" alone
+    gated every core branch — and collided with merging core PRs without a word per PR.
+    A core PR that brings NEW functionality (a new gate, hook, script, skill or rule) is
+    agreed with the operator before it is built; usually the order itself is that
+    agreement. A FOLLOW-UP — a fix, a correction, a catch-up inside an agreed strand, the
+    clear findings of an ordered audit — may be pushed and opened without a new word. That
+    is the agreed channel ASK OR ACT step 1 names. Making a repo public, a first
+    publication, a push outside the organisation's repos and a deployment stay gated.
+    Carriers on every push: leak-scan, the English-only ratchet, the instance's name guard.
 
 ## File Rules
 
@@ -222,8 +232,9 @@ raised through the channel that fits it (step 3 below) while the ordered work go
 was spread over a dozen rules on three ranks, and the stop gate and this section gave
 opposite answers for the same case). Every other rule about asking or stopping points
 here. Take the FIRST step that applies:
-1. **Irreversible or externally effective** (deploy, publish, push to a public repo,
-   send, delete, a write to a live system outside its agreed frame, money, hardware):
+1. **Irreversible or externally effective** (deploy, publish, making a repo public, a push
+   to a public repo outside an agreed channel — see Working Rule #11 —, send, delete, a
+   write to a live system outside its agreed frame, money, hardware):
    its gate applies — the operator's word first, regardless of confidence.
 2. **Needed to fulfil the order as specified** and a defined path exists: take it, in the
    order's space. An interrupted defined path: restore it (THIRD CASE above).

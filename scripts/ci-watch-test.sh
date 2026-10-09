@@ -41,6 +41,12 @@ case "${CI_WATCH_STUB:?}" in
   # ...and a green run of an OLDER commit must not count for the current tip.
   ref_oldsha) [[ "${1:-}" == api ]] && { echo new999; exit 0; }
               echo '[{"headBranch":"main","headSha":"old111","status":"completed","conclusion":"success"}]' ;;
+  # 2026-10-09: a bare commit sha as ref — runs carry a branch name, never the sha, so
+  # matching on headBranch alone waited out every timeout.
+  ref_sha)    [[ "${1:-}" == api ]] && { echo abc1234def0; exit 0; }
+              echo '[{"headBranch":"main","headSha":"abc1234def0","status":"completed","conclusion":"success"}]' ;;
+  ref_sha_red) [[ "${1:-}" == api ]] && { echo abc1234def0; exit 0; }
+              echo '[{"headBranch":"main","headSha":"abc1234def0","status":"completed","conclusion":"failure"}]' ;;
   # one workflow of the tip still running: not a verdict yet.
   ref_partial) [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"dynamic"},
@@ -116,6 +122,8 @@ check "ref never appears = timeout(2)"  ref_absent 2 ref v9.9.9 2
 check "ref: green side-workflow + red CI on the same commit = RED"  ref_mixed   1 ref main
 check "ref: green run of an OLDER commit does not count = timeout(2)" ref_oldsha 2 ref main 2
 check "ref: one workflow of the tip still running = no verdict, timeout(2)" ref_partial 2 ref main 2
+check "ref: bare commit sha, run green = GREEN"  ref_sha     0 ref abc1234
+check "ref: bare commit sha, run red = RED"      ref_sha_red 1 ref abc1234
 check "gh hard error in ref mode"       gh_broken  2 ref v9.9.9
 
 echo

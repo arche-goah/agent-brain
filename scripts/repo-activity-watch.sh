@@ -102,9 +102,12 @@ emit() {
         br="${line%%$'\t'*}"; text="${line#*$'\t'}"
         # The account login cannot tell this session, a parallel session on this machine
         # and the operator's other machine apart. The branch can: a PR whose head branch is
-        # a LOCAL branch in this machine's clone was made here.
+        # a LOCAL branch in this machine's clone was made here. WHICH session cannot be read
+        # from the branch: the watching session's own PRs carry the mark too (measured
+        # 2026-10-09 — four own PRs were announced as "a parallel session"). Say only what
+        # the branch proves.
         if [[ -n "$br" ]] && git -C "$clone" rev-parse -q --verify "refs/heads/$br" >/dev/null 2>&1; then
-          text="$text — branch is LOCAL in this machine's clone: a parallel session here (or checked out by hand), not another machine"
+          text="$text — branch is LOCAL in this machine's clone: made on this machine (this session, a parallel one, or by hand), not on another machine"
         fi
         printf '%s\n' "$text" ;;
       *) printf '%s\n' "$line" ;;

@@ -110,6 +110,16 @@ CL="$T/cwd-cls"; mkdir -p "$CL/.claude-state"
 printf '%s\n' '{"anfrage-net-2026-09-06.md":{"class":"human","why":"needs the operator net definition"}}' > "$CL/.claude-state/open-items-class.json"
 check "classified via the class file" "$f" allow "$CL"
 
+# 8b — an unclassified LOG entry: the block names the id --classify needs (ref + first 40
+# chars), not "LOG <date> <sender>", which covered every entry of that sender that day.
+QL="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-10-07 core/LOG 2026-10-07 peer-b — peer-b: AN inst-a: first note — first report"
+f="$T/8b.jsonl"; { boot_ok startup "$QL"; user "stand?"; asst "1 item."; } > "$f"
+out8b="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$f")" "$(native "$EN")" | node "$G" 2>&1)"
+case "$out8b" in
+  *'core/LOG 2026-10-07 peer-b: AN inst-a: first note'*) ok "unclassified LOG entry is named by its full id" ;;
+  *) bad "unclassified LOG entry not named by its full id: '$out8b'" ;;
+esac
+
 # 9 — the bootup did not arrive.
 f="$T/9a.jsonl"; { boot_cancel; user "stand?"; asst "All good."; } > "$f"
 check "cancelled bootup" "$f" block "$EN"
