@@ -29,6 +29,13 @@ import json
 import os
 import sys
 
+# The session start reads this output through a pipe; unpinned, Windows Python emits the
+# em dashes in the cp1252 codepage and ends lines CRLF (core register docs/os-traps.md OS-9).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):  # a stream that cannot be reconfigured
+    pass
+
 
 def load(path):
     try:
