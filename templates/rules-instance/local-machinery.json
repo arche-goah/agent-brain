@@ -1,5 +1,6 @@
 {
-  "_comment": "Read by core scripts/local-machinery.py at every session start. A hook that does not run from the core is declared here, or the start says so. instance: path as written in the hook -> why it can only live in THIS brain (a general mechanism belongs in the core as a PR). alpha: path or prefix of a development checkout -> until (YYYY-MM-DD) + what is being measured; past the date the start gets loud.",
+  "_comment": "Read by core scripts/local-machinery.py at every session start. It inventories every carrier of behaviour in this brain (hooks, stop checks, MCP servers run from the brain, git hooks, scheduled jobs, extra plugins, skills, workflows, output styles, agents, commands, rule sections, scripts) and names each one that is neither core nor declared here. identity_tokens: words only THIS brain has (hosts, IPs, person, device and domain names) - an undeclared item containing none of them is reported as presumably general. instance: id or prefix -> {why, evidence: the instance token the item contains (checked), distinct_from: a core name it only resembles}; a general mechanism belongs in the core as a PR. alpha: id or prefix of a development checkout -> {until (YYYY-MM-DD), why}; past the date the start gets loud.",
+  "identity_tokens": [],
   "instance": {},
   "alpha": {}
 }

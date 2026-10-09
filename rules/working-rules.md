@@ -185,7 +185,11 @@ machinery measures a different system than its collaborators do.
 
 Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machinery.json`:
 - **instance** — machinery that can only live in this brain (it acts on this operator's
-  hardware, services or projects). The entry says why; "not yet ported" is not a reason.
+  hardware, services or projects). The entry says why AND names as `evidence` the
+  instance-specific token the item relies on (a host, device, person or project name); the
+  checker verifies the token is really in the item. "Not yet ported" is not a reason, and a
+  reason without evidence is a self-declaration nobody checked (measured 2026-10-09: three
+  items declared instance-only were general).
 - **alpha** — a development checkout under test, with an expiry date and what is being
   measured. Past the date: merge, extend with a reason, or unwire.
 
@@ -198,9 +202,15 @@ open the core PR (or name the open one) and declare it as alpha until merged; in
 declare it with the reason; obsolete = unwire. The declaration IS the written analysis. The
 operator hears only what needs his decision under the instance's own rules.
 
-**Mechanically carried:** `core/scripts/local-machinery.py` runs at every session start and
-names every hook that is neither core nor declared, every expired alpha, and every file
-edited inside `core/` (the pin check sees moved commits, not edits in place). Measured on
+**Mechanically carried:** `core/scripts/local-machinery.py` runs at every session start. It
+inventories EVERY carrier of behaviour — the search space is the invariant, not the last
+incident: hooks, stop checks, MCP servers, git hooks, scheduled jobs, extra plugins, skills,
+workflows, output styles, agents, commands, rule sections, scripts — and names every item
+that is neither core nor declared with evidence, every undeclared item that contains none of
+the instance's `identity_tokens` (presumably general), every near-duplicate of a core tool
+under another name, every expired alpha, and every file edited inside `core/` (the pin check
+sees moved commits, not edits in place); one summary line counts each class. A new carrier
+type gets a planted case and a negative control in its fixture. Measured on
 the proving brain the day the rule was written: 12 of 31 hook entries ran from unmerged
 checkouts, 8 from instance scripts — at least four of those general mechanisms — and
 nothing had reported it, because every one of them worked.
