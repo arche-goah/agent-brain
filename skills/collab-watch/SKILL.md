@@ -59,7 +59,7 @@ Monitor({ command: "bash core/scripts/collab-watch.sh",
 | Line | First move |
 |---|---|
 | `COMMENT`, `PR`, `MERGED` | open it; handle below |
-| `... branch is LOCAL in this machine's clone` | made on THIS machine (parallel session or hand checkout) — not a collaborator, not the other own machine |
+| `... branch is LOCAL in this machine's clone` | made on THIS machine — this session (check your own PRs first), a parallel session or a hand checkout; not a collaborator, not the other own machine |
 | event under the operator's own account | run `scripts/parallel-sessions.sh` and check local branches BEFORE saying "the other machine" or "foreign" |
 | `FOUND: n new commit(s)` with n>1 | read `git log` of the range for the parties before naming one |
 | `SESSIONS: changed` | own-account work may now come from that session; a PR of a parallel session is handled by its author session |
