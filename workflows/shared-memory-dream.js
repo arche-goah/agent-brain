@@ -1,8 +1,3 @@
-// FRESHNESS-OK: the prior run's artifacts answer what is IN the shared repo; they cannot
-// answer whether the restructured data path carries the findings intact, because they were
-// produced by the old one. Under the old structure the report received 6 of 51 unverified
-// findings and stated '6' as fact. What this run has to show is a lens file per lens whose
-// finding count matches its returned index, and unverified reaching the report complete.
 export const meta = {
   name: 'shared-memory-dream',
   description: 'Judgment pass over the shared-memory repo (read-only): duplicates, contradictions, superseded entries, buried open points — report with proposals, no fixes',

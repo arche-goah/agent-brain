@@ -93,9 +93,10 @@ on disk aborts the run loudly; fix the cause, then resume with `resumeFromRunId`
 
 ## Cadence
 
-On demand + triggered from the brain-scan (checklist section 8): many new
-event/HARD rules since the last register, or last run > 90 days →
-the brain-scan RECOMMENDS the coherence scan (INFO finding, no auto-run).
+On demand + recommended by the brain-scan: its machine step (`scripts/brain-scan-prep.py`)
+writes a "deep check suggested: coherence-scan" line when five or more new dated rule
+lines appeared since the last register, or a finding came back a third time without a
+fix — with the measured price. The AI tells the operator; nothing starts on its own.
 
 **Repeat gate (HARD, since 2026-08-04):** This run is the most expensive single
 workflow in the system (measured: 16 agents, ~1.55M tokens, 39 min). Before every new
