@@ -161,7 +161,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-turn-kind.sh=1 scripts/test-local-machinery.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-always-loaded.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-wait-mcp-reconnect.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=3 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-turn-kind.sh=1 scripts/test-local-machinery.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-always-loaded.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-watch-supervisor.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -241,6 +241,13 @@ data a native python opens, so it goes through `nat()` (cygpath -m), and so does
 CLAUDE_CONFIG_DIR; the brain dir reaches python only as its working directory.
 2026-10-09, test-always-loaded.sh: the temp dir reaches python only as the `--repo` and
 `--memory` ARGUMENTS (Git Bash converts argv); no path travels inside data.
+2026-10-09, the three collab-watch fixtures, after the review question: test-watch-supervisor.sh
+hands its temp dir only to bash. test-collab-watch-plan.sh hands the config path to python
+as an ARGUMENT only — directly, and through `COLLAB_WATCH_CONFIG`, which the bash arm script
+reads and passes on as argv (Git Bash converts argv). test-repo-activity-watch.sh: `FAKE_DIR`
+and the state dir are read by bash only (the fake `gh` is bash); the clone root reaches the
+native `git` only as a `-C` argument; the python filter gets JSON on stdin, never a path. No
+native process opens a temp path from data. Windows run owed by the workstation check.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
