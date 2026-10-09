@@ -171,6 +171,23 @@ has "needs the operator net definition" "$out" && ok "the reason is printed" || 
 out=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --classify 'x=maybe' 2>&1)
 has "bad --classify" "$out" && ok "bad class refused" || bad "bad class accepted: $out"
 
+# Two LOG entries of one sender on one day (measured 2026-10-09, Windows instance): a class
+# given by the short form "LOG <date> <sender>" covered BOTH, so a later real request was
+# filed as acknowledged. LOG entries match by their full id only.
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-07 [core] peer-b: AN inst-a: first note (LOG)' \
+  '  - 2026-10-07 [core] peer-b: AN inst-a: second, a real request (LOG)' > "$T/inbox.txt"
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" \
+  --classify 'LOG 2026-10-07 peer-b=ai:short form' >/dev/null 2>&1
+out=$(run j)
+[ "$(grep -c '\[request|?\] 2026-10-07' <<<"$out")" = 2 ] && ok "short LOG form classifies nothing" \
+  || bad "short LOG form leaked a class: $out"
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" \
+  --classify 'core/LOG 2026-10-07 peer-b: AN inst-a: first note=ai:ack only' >/dev/null 2>&1
+out=$(run k)
+[ "$(grep -c '\[request|ai\] 2026-10-07' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-07' <<<"$out")" = 1 ] \
+  && ok "full LOG id classifies exactly its own entry" || bad "LOG id class spread or missed: $out"
+
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
