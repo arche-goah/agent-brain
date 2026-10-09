@@ -209,6 +209,14 @@ test on a broken whole is a false pass. If the instance carries its own bar on t
 procedure), read that in addition — the reference is the part that holds on every
 rig, not a replacement for the rig's own.
 
+## Artifacts with an appearance (operator decision 2026-10-05)
+
+A render, a model, a layout, a UI — anything judged by LOOKING — goes to the operator
+only after you looked at its CURRENT state yourself and judged it with the operator's
+eyes. Numbers (dimensions, counts, a passing check) never replace the look. When the
+tool or path that produces it changes, first list every output the old path produced,
+so nothing silently drops out.
+
 ## When To Apply
 
 **ALWAYS before:**

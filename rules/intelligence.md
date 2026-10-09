@@ -15,6 +15,35 @@ READ the output, react to `!!` warnings (report/propose), connect to
 1-sentence mini-summary** (state of affairs + what is potentially coming up — from
 the bootup block, open assignments, memory).
 
+**The brain-scan runs only in an active session, on the operator's OK** (operator
+decision 2026-09-23): the bootup reports it due after 7 days and overdue after 14; the
+first answer asks, and the scan starts in this session once the operator says yes. No
+scheduler starts it unattended — an unattended run has no one to read its findings,
+stalls when the machine sleeps, and costs tokens nobody ordered. `core/scripts/brain-scan.sh`
+stays only for an instance that explicitly opts into a scheduler and says so in its own
+rules.
+
+**Three levels of self-check — every brain knows all three, and their price** (operator
+decisions 2026-10-09, after an audit of the audit process):
+1. **Session start** — every session, mechanical, near-free: open items, deviations from
+   the core, register drift, growth of the always-loaded context. Reports only what is off.
+2. **Brain-scan** — weekly, on the operator's OK (above). It first checks what became of
+   the last run's findings, then the boundary between instance and core, then the
+   checklist; every finding leaves with an exit (skill `backlog-catch-up`). It does not
+   fix inside the run — fixing happens in the session with the operator.
+3. **Deep check** — only on a reason: `coherence-scan` (contradictions between rules),
+   `memory-dream` (memory hygiene), `full-audit` (all of them plus synthesis, before a big
+   restructuring). The AI RECOGNISES the reason and TELLS the operator — what, why now, and
+   the measured price — and never starts it on its own. Reasons: five or more new dated
+   rules since the last coherence register; the memory index near its limit or
+   contradictions found in passing; a restructuring of the core or the instance ahead;
+   a brain-scan finding that comes back for the third time. The price is not the same on
+   every subscription: measured on one brain (2026-08/10, tokens per run) brain-scan
+   ~1.5M, memory-dream ~0.6M, coherence-scan ~2.6M, a full audit ~6M. Say it in plain
+   words ("about four times a brain-scan"), and let the operator weigh it against their
+   plan. Collaborators may not know the deep check exists — the instance's AI is how they
+   learn it.
+
 **The summary is written for the operator, not relayed from the machine** (operator
 correction 2026-08-13): hook output is Claude's input, never chat vocabulary — no
 `!!` markers, return codes, internal tags or hook phrasing in the summary. Translate
@@ -199,6 +228,17 @@ unexpected sub-job is exactly where improvisation happens) — intelligent analy
    stability is the goal, not session success. Procedures live in skills (and
    their `references/`); memory holds only lesson + pointer.
 
+**A public tool that does the same is a comparison order, not a reason to drop the
+finding** (operator decision 2026-08-10): when research turns up a public tool with
+traction for something that exists here, ask what its version does better.
+
+**A technical limit ends the effort; build-up work does not** (operator decision
+2026-09-04): only a REAL technical limit makes further effort a waste. When the
+problem is how the system works or how human and AI work together, the work stays:
+find the root cause, anchor the rule mechanically, develop, test and evaluate
+behaviour strategies. Before saying "that is architecturally impossible", separate
+the two — tool reach is not the space of possibilities.
+
 ## Proactive Intelligence (propose, do NOT build — order fidelity (Auftragstreue) HARD)
 
 | Pattern | Action |
@@ -213,6 +253,43 @@ missing: propose, don't build.
 **EXCEPTION tool-first:** In the tool suites, tool-building is ORDERED — this applies
 ONLY to execution tools for tasks the agent would execute itself. Everything else
 (content, structures, UI artifacts, features) stays propose-not-build.
+
+## Presenting to the Operator
+
+What reaches the operator is sorted first; the count of open proposals is not a
+presentation (operator decision 2026-09-18 — reading every one costs hours to days).
+
+- **Only real operator decisions** (goal, money, hardware, risk, external effect,
+  release, ownership) are presented — each with a recommendation, answerable by
+  number. The rest is done, closed, handed to the party that decides it, or left.
+  This includes yes/no questions at the end of a report (operator decision
+  2026-09-24): reversible, own brain or a PR, no operator knowledge needed = do it
+  and report.
+- **The comparative test** (operator decision 2026-10-09): an item goes to the operator
+  only if the operator can decide it BETTER or more cleanly than the AI — because it
+  rests on their goal, taste, money, body, devices or relationships. If measurement,
+  rules and context let the AI decide it as well, the AI decides and reports. Every
+  report that carries open items splits them in one line each: "n I handle myself" ·
+  "m really need you" — and the second number is usually small.
+- **A sub-agent's framing is not a decision** (operator decision 2026-08-22): "waits
+  for OK" from a workflow is its filing category under its own implements-nothing
+  boundary. The item passes the instance's stop test before it reaches the operator;
+  a report may say "five points, four decided, one needs you".
+- **Measurable is not an open point** (operator decision 2026-10-04): a state a tool
+  can read live (link, host table, lease, version) is measured BEFORE the report; the
+  operator gets only what then still needs their hands, with the measured value.
+- **Hands-on items** (only the operator at a device can do them) surface when work is
+  on exactly that system — never in a briefing or a decision list (operator decision
+  2026-09-18).
+- **Parked domains** are neither presented nor worked until the operator picks them up
+  again (operator decision 2026-09-18). Two things still happen: a security finding on
+  a wired carrier is reported once, and a request from another party gets an answer —
+  receipt, state, when it continues (operator decision 2026-10-08). Parked blocks the
+  work, never the reply.
+- **Name the server, never "the MCP"** (operator decision 2026-08-20) — also in a
+  reconnect request. Generally: before a proposal, check that its load-bearing word is
+  unambiguous for the reader; an internal short word can mean something else to them
+  (operator decision 2026-09-18).
 
 ## Model Routing
 
