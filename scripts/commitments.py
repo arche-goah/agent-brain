@@ -62,11 +62,11 @@ def default_dir(repo):
     return os.path.join(cfg, "projects", key)
 
 
-FOLD = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
+FOLD = str.maketrans({"\u00e4": "ae", "\u00f6": "oe", "\u00fc": "ue", "\u00df": "ss"})
 
 
 def words(text, stop):
-    # umlauts folded: chat writes "ändere", repo files often carry "aendere"
+    # umlauts folded: chat writes the umlaut, repo files often carry the ae/oe/ue spelling
     low = text.lower().translate(FOLD)
     return {w for w in re.findall(r"[a-z]{5,}", low) if w not in stop}
 
