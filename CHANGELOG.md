@@ -7,6 +7,10 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+## 1.4.1 — 2026-10-09
+
+Patch release, the follow-ups to 1.4.0: findings of the first coherence scan and brain-check on the rebuilt core, the first live run of collab-watch, and the Windows check of the candidate. One new function (agreed with the operator): the core update names rule text that still waits for a core state. Checked as one candidate (#228) on macOS and on Windows (Workstation smoke: ALL checks passed). Two entries run in every session (test: T2): the shared-memory cursor move and the open-items LOG fix; the question-gate (T2) came in on main since 1.4.0.
+
 - **`ci-watch.sh ref` accepts a bare commit sha.** (test: T1) Measured 2026-10-09: `ci-watch.sh ref <repo> 8c4e344` waited out its whole timeout and reported UNKNOWN on a commit whose CI was green — runs carry a branch name, never the sha, and ref mode matched `headBranch == ref`. A ref of at least 7 hex digits that is a prefix of the resolved commit now matches by sha alone; branch and tag refs are unchanged. Fixture: two new cases (bare sha green / red); live: the old version timed out, the new one reported green on the same sha, `ref main` unchanged.
 
 - **The self-test sees MCP server launchers.** (test: T1) Measured 2026-10-09: a brain's TouchDesigner launcher, started by the client from `.mcp.json`, was reported as "mentioned in documentation only, never invoked" — the detector walks `.claude`, `.github`, `core`, `scripts`, `docs`, `config` and never read the root `.mcp.json`. It now reads `command` and `args` of every server there as wiring (prose elsewhere in the file does not count). Fixture `brain-selftest-test.sh`: new case "a launcher in .mcp.json counts as wiring"; against the old script it fails, against the new one all 8 checks pass.
