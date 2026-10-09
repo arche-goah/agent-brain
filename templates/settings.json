@@ -41,6 +41,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-read-gate.cjs\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
