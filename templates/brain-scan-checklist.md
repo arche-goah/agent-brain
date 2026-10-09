@@ -64,9 +64,7 @@ the deny — not from the scan, the scan is read-only). → maximum `configured`
   demoted to on-demand memory. Measure the always-loaded total and compare with the last scan:
   `wc -l -c CLAUDE.md .claude/rules/*.md core/rules/*.md` plus `MEMORY.md`; growth without a new rule is a
   finding. 200 lines for `CLAUDE.md` is a self-set target, not a technical limit (the documented harness cut
-  applies to `MEMORY.md`, at 200 lines / 25 KB; `CLAUDE.md` loads whole and costs context every session). Clear, rule-neutral cuts: finding + fix.
-- [ ] `CLAUDE.md` under 200 lines (guideline; exceeding it is a finding, not an auto-fix).
-- [ ] Always-loaded context (CLAUDE.md + rules + MEMORY.md) reviewed: per section still needed, in this form, in the right place? State, todo and history out to ledgers. After the review: `python3 core/scripts/always-loaded.py --accept` sets the new baseline the session start compares against.
+  applies to `MEMORY.md`, at 200 lines / 25 KB; `CLAUDE.md` loads whole and costs context every session). Clear, rule-neutral cuts: finding + fix. After the review: `python3 core/scripts/always-loaded.py --accept` sets the baseline the session start compares against.
 - [ ] Every referenced file exists (structure diagram, mandatory references, session-start checks).
 - [ ] The MCP table in `.claude/rules/intelligence-instance.md` == `.mcp.json`, both directions.
 
