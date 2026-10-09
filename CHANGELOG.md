@@ -7,6 +7,7 @@ The marketplace pins tags, never `main`.
 
 ## Unreleased
 
+- **ollama-fallback carries no machine state.** (test: T0) Brain-scan 2026-10-09: the public skill held one instance's install state (version, path, pulled models, dated). Replaced by how to read the state live.
 - **The brain-scan report agent writes the report itself, not an intermediate file.** (test: T1) First real run of the rebuilt scan (2026-10-09): the harness refused the report agent's Write of `findings/report-body.md` ("Subagents should return findings as text, not write report files"); the run then correctly aborted on the count gate (deep-check lines 0 vs 1) instead of returning a report it never wrote. The old scan wrote `scan-<date>.md` directly and passed. Now the body goes straight into the deliverable and the script-written head is prepended by one shell command.
 
 - **The brain-scan can run with the scripts of a core under test.** (test: T1) `args.core` (default `<brain>/core`) points the machine step, the shared-memory lint and the inbox at a dev checkout; without it a brain testing an unreleased core measured with its old installed tools while claiming to test the new ones (found when the first run of the rebuilt scan was prepared, 2026-10-09).

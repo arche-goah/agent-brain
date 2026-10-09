@@ -18,14 +18,13 @@ triggers:
 
 Local Claude Code setup with Ollama + Qwen3 Coder. Setup per the **taki.gpt** reel (DW6kjNrNBXm).
 
-## Status (2026-04-11)
-- **Ollama installed:** YES — v0.20.5 (`brew install ollama`)
-- **Path:** `/opt/homebrew/bin/ollama`
-- **Models pulled:**
-  - `qwen2.5-coder:latest` (4.7 GB) — smoke test PASSED
-  - `gemma3:latest` — pulling in the background (Apache 2.0, top 3 open source 2026)
-- **Service:** localhost:11434
-- **Env var configured:** TBD — see Step 3
+## Check the state first — measure, do not assume
+This skill carries no machine state. Before using it, read it live:
+- `ollama --version` (installed? which version) and `command -v ollama` (path)
+- `ollama list` (which models are pulled)
+- `curl -s localhost:11434/api/version` (service running on the default port)
+Anything an instance wants to remember about its own setup belongs in that instance's
+memory, not here.
 
 ## Model recommendation 2026 (from two video imports of 2026-04 (reports not in repo))
 
