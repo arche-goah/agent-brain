@@ -82,7 +82,9 @@ else
       [ -n "${pid:-}" ] || continue
       pver=${pver%$'\r'}     # python writes CRLF on Windows; the CR lands in the last field
       ppath=${ppath//\\//}   # installPath is stored in platform notation; test needs '/'
-      grep -q "\"$pid\"" "$PROJ_SET" "$USER_SET" 2>/dev/null || continue   # enabled somewhere
+      # enabled somewhere — the VALUE must be true: a key set to false matched the old bare
+      # grep, and E1 stayed green for a disabled channel (ledger KS-51, 2026-09-18)
+      grep -qE "\"$pid\"[[:space:]]*:[[:space:]]*true" "$PROJ_SET" "$USER_SET" 2>/dev/null || continue
       [ -f "$ppath/output-styles/$style.md" ] || continue
       mver=$(jget "$ppath/.claude-plugin/plugin.json" version)
       [ -z "$mver" ] || [ "$mver" = "$pver" ] || continue                  # stale cache dir
