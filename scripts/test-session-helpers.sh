@@ -125,6 +125,54 @@ grep -q '"ghost.md"' "$manifest" && bad "memory-sync prune left a manifest entry
 grep -q '"note.md"' "$manifest" && ok "memory-sync prune keeps a manifest entry that has its file" \
   || bad "memory-sync prune dropped a live entry"
 
+# --- memory-sync: the base is per machine; a pulled snapshot is never overwritten -----
+# Measured 2026-10-10: a machine whose memory had not synced for weeks pulled the other
+# machine's snapshot mid-session; the Stop-hook export then read the TRACKED manifest (the
+# other machine's view) as its base, saw every live file as "changed" and wrote the stale
+# memory over the fresh snapshot. The base now lives in <live>/.sync-base.json. Three cases:
+# no base yet (upgrade path), snapshot moved under an unchanged live, both sides moved.
+ms_run() { (cd "$T/p" && CLAUDE_PROJECT_DIR="$T/p" CLAUDE_MEMORY_DIR="$T/plive" node "$MS" "$1" >/dev/null 2>&1); }
+set_manifest_hash() { # as the other machine's export would have committed it
+  node -e 'const fs=require("fs"),c=require("crypto");const [f,n,p]=process.argv.slice(1);
+    let m={files:{}};try{m=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){}
+    m.files[n]={hash:c.createHash("sha256").update(fs.readFileSync(p,"utf8")).digest("hex"),updated:"t"};
+    fs.writeFileSync(f,JSON.stringify(m))' "$1" "$2" "$3"
+}
+mkdir -p "$T/p/docs/memory-snapshot" "$T/plive"
+pman="$T/p/docs/memory-snapshot/.sync-manifest.json"
+printf 'theirs\n' > "$T/p/docs/memory-snapshot/note.md"; set_manifest_hash "$pman" note.md "$T/p/docs/memory-snapshot/note.md"
+printf 'mine, stale\n' > "$T/plive/note.md"
+ms_run export
+[ "$(cat "$T/p/docs/memory-snapshot/note.md")" = "theirs" ] && ok "memory-sync export without a base leaves a differing snapshot alone" \
+  || bad "memory-sync export without a base overwrote the snapshot (the 2026-10-10 loss)"
+ms_run import
+[ -f "$T/plive/note.incoming.md" ] && ok "memory-sync import without a base keeps both sides (.incoming.md)" \
+  || bad "memory-sync import without a base dropped one side"
+rm -f "$T/plive/note.incoming.md"
+# converge, so a base exists: both sides agree
+printf 'theirs\n' > "$T/plive/note.md"; ms_run export
+[ -f "$T/plive/.sync-base.json" ] && ok "memory-sync writes the per-machine base next to the live memory" \
+  || bad "memory-sync wrote no .sync-base.json"
+# the other machine moves the snapshot (a pull), live untouched
+printf 'theirs v2\n' > "$T/p/docs/memory-snapshot/note.md"; set_manifest_hash "$pman" note.md "$T/p/docs/memory-snapshot/note.md"
+ms_run export
+[ "$(cat "$T/p/docs/memory-snapshot/note.md")" = "theirs v2" ] && ok "memory-sync export keeps a snapshot that moved under an unchanged live" \
+  || bad "memory-sync export undid a pull"
+ms_run import
+[ "$(cat "$T/plive/note.md")" = "theirs v2" ] && [ ! -f "$T/plive/note.incoming.md" ] \
+  && ok "memory-sync import takes the pulled snapshot into an unchanged live" \
+  || bad "memory-sync import did not bring the pulled snapshot in cleanly"
+# both sides move
+printf 'mine v3\n' > "$T/plive/note.md"
+printf 'theirs v3\n' > "$T/p/docs/memory-snapshot/note.md"; set_manifest_hash "$pman" note.md "$T/p/docs/memory-snapshot/note.md"
+ms_run export
+[ "$(cat "$T/p/docs/memory-snapshot/note.md")" = "theirs v3" ] && ok "memory-sync export holds a diverged file instead of overwriting" \
+  || bad "memory-sync export overwrote a diverged snapshot"
+ms_run import
+[ "$(cat "$T/plive/note.md")" = "mine v3" ] && [ "$(cat "$T/plive/note.incoming.md" 2>/dev/null)" = "theirs v3" ] \
+  && ok "memory-sync import keeps the local edit and parks the remote one as .incoming.md" \
+  || bad "memory-sync import lost one side of a diverged file"
+
 echo
 [ "$fail" -eq 0 ] && echo "session-helper fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

@@ -10,7 +10,7 @@ below, installed at USER level via `scripts/install-statusline.sh`) and
 |--------|-------|---------|
 | session-bootup.sh | SessionStart | fast local sanity check (git/memory/settings/symlinks/brain-scan/tasks) |
 | session-closing.sh | SessionEnd (+ `--pre-commit` from the session-close skill) | HANDOFF.md with real git data + line in docs/maintenance/session-log.md; the skill writes the line before the close commit, the hook only when no stamp says it is already there |
-| memory-sync.cjs | SessionStart/SessionEnd/PreCompact | auto-memory <-> docs/memory-snapshot sync |
+| memory-sync.cjs | SessionStart/SessionEnd/PreCompact | auto-memory <-> docs/memory-snapshot sync; 3-way against a per-machine base in `<live>/.sync-base.json` (the tracked manifest only says what the snapshot holds); never overwrites a side that moved since that base |
 | file-guard.cjs | PreToolUse (Edit/Write) | protects sensitive files + branch gate: edits in a core checkout only on a feature branch (pin/main blocks) |
 | mechanism-guard.cjs | PreToolUse (Bash) | blocks known ad-hoc shortcuts; rules are instance data (`.claude/rules/mechanism-rules.json`) |
 | secret-guard.cjs | PreToolUse (Read/Edit/Write/Bash) | blocks secret channels into context/repo; patterns instance-extensible (`.claude/rules/secret-patterns.json`) |
