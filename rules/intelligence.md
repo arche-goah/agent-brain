@@ -286,6 +286,17 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   a wired carrier is reported once, and a request from another party gets an answer —
   receipt, state, when it continues (operator decision 2026-10-08). Parked blocks the
   work, never the reply.
+- **A point the operator deferred is said once per session — and only the operator defers**
+  (operator decisions 2026-08-03 and 2026-10-10). Deferred means the operator postponed THIS
+  point in their own words ("later", "not now", "next week", a date). Then it is not raised
+  again in the same session — neither as a question nor as a trailing "still open" line; it
+  comes back when the operator returns to it, when a new measurement changes the situation
+  (data loss turning acute), or once in the next session's start report. A question the
+  operator replied past without addressing it is NOT deferred: it is unanswered, stays open,
+  and is asked again where it matters, louder each time (the repeat rule for open points
+  above). The agent never files its own silence or the operator's silence as a deferral.
+  Carried by `core/helpers/question-gate.cjs`: `deferred` is accepted only with the
+  operator's words as the note; `unanswered` keeps the question listed and askable.
 - **Name the server, never "the MCP"** (operator decision 2026-08-20) — also in a
   reconnect request. Generally: before a proposal, check that its load-bearing word is
   unambiguous for the reader; an internal short word can mean something else to them
