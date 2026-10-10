@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Refuse a push to main: changes come as pull requests, reviewed by the other side
+# (CONVENTIONS.md §14). This hook is the carrier where the hosting plan cannot protect
+# the branch; where it can, the server rule is the carrier and this one stays as a
+# second fence.
+# Turn on once per clone:  git config core.hooksPath .githooks
+# Emergency:  ALLOW_MAIN_PUSH="<why>" git push  - and write the reason where the
+# collaborators read it.
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ] || [ "$remote_ref" = "refs/heads/master" ]; then
+    if [ -n "${ALLOW_MAIN_PUSH:-}" ]; then
+      echo "pre-push: push to ${remote_ref#refs/heads/} allowed: $ALLOW_MAIN_PUSH" >&2
+    else
+      echo "pre-push: no direct push to ${remote_ref#refs/heads/} - push a branch and open a pull request." >&2
+      exit 1
+    fi
+  fi
+done
+exit 0
