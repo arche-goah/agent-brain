@@ -38,6 +38,10 @@ const WRITE_RX = [
   /(^|[;&|(]\s*|\s)gh\s+release\s+(create|edit)\b/,
   /(^|[;&|(]\s*|\s)git\s+(-C\s+\S+\s+)?(commit|tag)\b[^;&|]*\s(-[a-zA-Z]*m|--message|-F|--file)\b/,
 ];
+// Any commit or tag carries an AUTHOR identity (git config user.name / user.email), message or
+// not. Measured 2026-10-10 in a public core repo: 46 commits carried a full real name and a
+// private address as author — the message checks above never looked there.
+const AUTHOR_RX = /(^|[;&|(]\s*|\s)git\s+(-C\s+("[^"]+"|'[^']+'|\S+)\s+)?(commit|tag)\b/;
 const GH_API_RX = /(^|[;&|(]\s*|\s)gh\s+api\b([^;&|]*)/g;
 const TTL_MS = 24 * 3600 * 1000;
 
@@ -55,7 +59,7 @@ function watchList(root) {
 }
 
 function isWrite(cmd) {
-  if (WRITE_RX.some((rx) => rx.test(cmd))) return true;
+  if (WRITE_RX.some((rx) => rx.test(cmd)) || AUTHOR_RX.test(cmd)) return true;
   for (const m of cmd.matchAll(GH_API_RX)) {
     const args = m[2];
     if (/\s(-f|-F|--field|--raw-field|--input)\b/.test(args)) return true;
@@ -149,9 +153,21 @@ function gate(input) {
   const scan = (text, where) => {
     for (const m of String(text).matchAll(rx)) if (!found.has(m[1].toLowerCase())) found.set(m[1].toLowerCase(), where);
   };
-  scan(cmd, 'the command');
+  // A home path in the command (`git -C /Users/<name>/…`, a --body-file path) is where the
+  // command runs, not text that gets published. Measured 2026-10-10: the guard blocked its own
+  // follow-up commit because the worktree path carried the operator's login name.
+  scan(cmd.replace(/(\/Users\/|\/home\/|[A-Za-z]:[\\/]+Users[\\/]+)[^\/\\\s"']+/g, '$1<home>'), 'the command');
   for (const f of referencedFiles(cmd)) {
     try { scan(fs.readFileSync(path.resolve(cwd, f), 'utf8'), f); } catch (e) { /* unreadable: the write fails too */ }
+  }
+  const a = AUTHOR_RX.exec(cmd);
+  if (a) {
+    const dir = path.resolve(cwd, a[3] ? unquote(a[3]) : '.');
+    try {
+      const ident = execFileSync('git', ['-C', dir, 'var', 'GIT_AUTHOR_IDENT'],
+        { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().replace(/\s+\d+\s+[+-]\d{4}\s*$/, '');
+      scan(ident, 'the commit author - set git config --local user.name/user.email to the account and its noreply address');
+    } catch (e) { /* no identity: git refuses the commit itself */ }
   }
   if (!found.size) return 0;
   const repos = targetRepos(cmd, cwd);
