@@ -81,6 +81,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/core/helpers/session-pull.sh\"",
+            "timeout": 60
+          },
+          {
+            "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/core/helpers/session-bootup.sh\"",
             "timeout": 30
           },
