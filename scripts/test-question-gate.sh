@@ -55,7 +55,7 @@ R="$T/r3"; fresh "$R"
 { user "go"; asst "Done. $Q"; } > "$T/t3.jsonl"
 check "question in the reply being ended (not seen yet)" "$T/t3.jsonl" allow "$R"
 
-for st in answered dropped deferred; do
+for st in answered dropped deferred unanswered; do
   R="$T/r-$st"; fresh "$R"
   check "first run records the question ($st case)" "$T/t1.jsonl" block "$R" >/dev/null
   id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
@@ -64,6 +64,19 @@ for st in answered dropped deferred; do
 done
 R="$T/r-deferred"
 case "$(cli "$R" list)" in *'[deferred]'*) ok "deferred question is listed for the session start";; *) bad "deferred not listed";; esac
+R="$T/r-unanswered"
+case "$(cli "$R" list)" in *'[unanswered]'*) ok "unanswered question is listed for the session start";; *) bad "unanswered not listed";; esac
+# Deferred means the OPERATOR postponed it (operator decision 2026-10-10): the note must carry
+# their words. Measured the same day: overlooked questions were filed as deferred.
+R="$T/r-defer-bare"; fresh "$R"
+check "first run records the question (bare deferred case)" "$T/t1.jsonl" block "$R" >/dev/null
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+out="$(cli "$R" resolve "$id=deferred")"; rc=$?
+case "$rc:$out" in [1-9]*:*"needs the operator's own words"*) ok "deferred without the operator's words is refused";;
+  *) bad "bare deferred accepted (rc=$rc): $out";; esac
+case "$(cli "$R" list)" in *'[open]'*) ok "refused deferral leaves the question open";; *) bad "refused deferral changed the state";; esac
+cli "$R" resolve "$id=deferred:later, not now" >/dev/null && ok "deferred with the operator's words is accepted" \
+  || bad "deferred with words refused"
 R="$T/r-answered"
 [ -z "$(cli "$R" list)" ] && ok "answered question is not listed" || bad "answered still listed"
 case "$(cli "$R" resolve deadbeef=answered)" in *unknown*) ok "unknown id is refused";; *) bad "unknown id accepted";; esac

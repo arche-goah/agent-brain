@@ -22,9 +22,15 @@
  * Gate: block when a question asked BEFORE the operator's latest prompt is still `open` in
  * `.claude-state/open-questions.json` — the operator has had the chance to answer, so this
  * reply is where it gets settled. Settled means one call:
- *   node core/helpers/question-gate.cjs resolve <id>=answered|dropped|deferred[:note]
- * `deferred` keeps it listed at every session start (`list`), so it cannot scroll away, but
- * it is not raised again inside the session (operator rule: a postponed point is said once).
+ *   node core/helpers/question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<words>
+ * Two kinds of "not decided", never one word for both (operator decision 2026-10-10):
+ * - `deferred` = the OPERATOR postponed it in their own words ("later", "not now", a date).
+ *   The note must quote those words - without them the status is refused. Listed at every
+ *   session start, not raised again inside the session (a postponed point is said once).
+ * - `unanswered` = the operator replied without addressing it. That is not a postponement:
+ *   listed at every session start AND asked again where it matters, louder each time.
+ *   Measured 2026-10-10 (Windows instance): questions the operator had simply not answered
+ *   were filed as `deferred` - the gate itself offered no other word for "still open".
  * Questions of the reply being ended are recorded, never blocked — the operator has not
  * seen them yet. Once per turn; a re-issue passes. Fails open without a transcript.
  *
@@ -38,7 +44,7 @@ const { isNotification } = require('./turn-kind.cjs');
 const OWN_ECHO = /QUESTION-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
-const STATUSES = new Set(['open', 'answered', 'dropped', 'deferred']);
+const STATUSES = new Set(['open', 'answered', 'dropped', 'deferred', 'unanswered']);
 const BUILTIN = [
   '\\bshall I\\b', '\\bshould I\\b', '\\bdo you want\\b', '\\bwant me to\\b',
   '\\bwould you like\\b', '\\b(ok|okay) (to|if I)\\b', '\\bgo ahead\\b', '\\bnow or later\\b',
@@ -138,8 +144,9 @@ function gate(input) {
     decision: 'block',
     reason: `QUESTION-GATE: ${pending.length} question(s) to the operator are still open after their reply: ${list}`
       + (pending.length > 5 ? ` (+${pending.length - 5})` : '')
-      + '. Settle each: node core/helpers/question-gate.cjs resolve <id>=answered|dropped|deferred[:note]'
-      + ' — answered = the operator decided it; deferred = still open, listed at every session start.',
+      + '. Settle each: node core/helpers/question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<their words>'
+      + ' - answered = the operator decided it; unanswered = they replied without addressing it (ask again where it'
+      + ' matters); deferred = THEY postponed it, quote their words in the note (an overlooked question is not deferred).',
   }));
 }
 
@@ -151,6 +158,10 @@ function cli(args) {
     for (const a of args.slice(1)) {
       const m = /^([0-9a-f]{8})=(\w+)(?::(.*))?$/.exec(a);
       if (!m || !state[m[1]] || !STATUSES.has(m[2])) { console.log(`unknown id or status: ${a}`); bad = 1; continue; }
+      if (m[2] === 'deferred' && !(m[3] || '').trim()) {
+        console.log(`${m[1]}: deferred needs the operator's own words (deferred:<quote>); an unanswered question is 'unanswered'`);
+        bad = 1; continue;
+      }
       Object.assign(state[m[1]], { status: m[2], note: m[3] || '', resolved: new Date().toISOString() });
       console.log(`${m[1]} -> ${m[2]}`);
     }
@@ -158,13 +169,13 @@ function cli(args) {
     return bad;
   }
   if (args[0] === 'list') {
-    const open = Object.entries(state).filter(([, v]) => v.status === 'open' || v.status === 'deferred');
+    const open = Object.entries(state).filter(([, v]) => ['open', 'deferred', 'unanswered'].includes(v.status));
     if (!open.length) return 0;
     console.log(`open questions to the operator: ${open.length}`);
     for (const [id, v] of open) console.log(`- [${v.status}] ${(v.asked || '').slice(0, 10)} ${id} ${v.q}`);
     return 0;
   }
-  console.log('usage: question-gate.cjs resolve <id>=answered|dropped|deferred[:note] ... | list');
+  console.log('usage: question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<operator words> ... | list');
   return 2;
 }
 
