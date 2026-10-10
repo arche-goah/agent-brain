@@ -346,7 +346,7 @@ cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$T/hookbrain/core/helpers/" 2>/de
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
 case "$_rc:$_hc" in
-  1:*"Stop:"*class-gate.cjs*) ok "hook-coverage flags an unwired template hook (exit 1)";;
+  1:*"Stop:"*stop-dispatcher.cjs*) ok "hook-coverage flags an unwired template hook (exit 1)";;
   *) bad "hook-coverage missing-hook case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
 cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
@@ -481,6 +481,11 @@ fi
 mkdir -p "$T/dispbrain/.claude/rules" "$T/dispbrain/core"
 cp -R "$CORE/helpers" "$T/dispbrain/core/helpers"
 cp -R "$CORE/templates" "$T/dispbrain/core/templates"
+# Its OWN template that demands class-gate as a single Stop hook: the real template wires
+# only the dispatcher since it ships stop-checks.json, and a capability asserted against
+# whatever the real template contains would measure that content instead.
+printf '{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"node \\"$CLAUDE_PROJECT_DIR/core/helpers/class-gate.cjs\\""}]}]}}\n' \
+  > "$T/dispbrain/core/templates/settings.json"
 printf '{"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"node \\"$CLAUDE_PROJECT_DIR/core/helpers/stop-dispatcher.cjs\\""}]}]}}\n' \
   > "$T/dispbrain/.claude/settings.json"
 printf '{"checks":[{"label":"C","marker":"CLASS-GATE","cmd":"core/helpers/class-gate.cjs","mode":"block"}]}\n' \

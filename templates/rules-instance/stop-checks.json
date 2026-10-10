@@ -1,0 +1,88 @@
+{
+  "_comment": "Read by core helpers/stop-dispatcher.cjs: which Stop checks run, and how each finding reads in ONE line. Each template is a plain sentence for the human who reads the feedback too — no ids, commands or arrows; the agent finds details in the hook's own header. An extract that does not match passes the full text through (nothing is swallowed). Labels and templates are instance language: translate them, keep marker and cmd. mode record = never blocks, writes .claude-state/<marker>.jsonl.",
+  "header": "STOP CHECKS ({n})",
+  "checks": [
+    {
+      "label": "UNFINISHED",
+      "marker": "STOP-VERIFIER",
+      "cmd": "core/helpers/stop-verifier.cjs",
+      "mode": "block",
+      "extract": "markers in code written this turn:\\s*([^\\n]+)",
+      "template": "Unfinished spot in new code: {1}",
+      "maxLength": 160
+    },
+    {
+      "label": "SAME BUG ELSEWHERE",
+      "marker": "CLASS-GATE",
+      "cmd": "core/helpers/class-gate.cjs",
+      "mode": "block",
+      "extract": "Touched this turn:\\s*([^\\n]+)",
+      "template": "{1} changed - does the same defect exist anywhere else?",
+      "basename": true,
+      "maxLength": 120
+    },
+    {
+      "label": "CLOSING QUESTION",
+      "marker": "STOPPEN-GATE",
+      "cmd": "core/helpers/stoppen-gate.cjs",
+      "mode": "block",
+      "extract": "Closing question in this reply:\\s*([^\\n]+)",
+      "template": "Closing question \"{1}\" - keep it only if the operator alone can decide it",
+      "maxLength": 120
+    },
+    {
+      "label": "OPEN ITEMS",
+      "marker": "OPEN-ITEMS-GATE",
+      "cmd": "core/helpers/open-items-gate.cjs",
+      "mode": "block",
+      "extract": "Missing:",
+      "template": "The open items from the session start are missing from the first reply",
+      "maxLength": 200
+    },
+    {
+      "label": "WATCHER",
+      "marker": "WATCH-GATE",
+      "cmd": "core/helpers/watch-gate.cjs",
+      "mode": "block",
+      "extract": "WATCH-GATE",
+      "template": "A reaction is expected, but no watcher is running",
+      "maxLength": 200
+    },
+    {
+      "label": "QUESTIONS",
+      "marker": "QUESTION-GATE",
+      "cmd": "core/helpers/question-gate.cjs",
+      "mode": "block",
+      "extract": "(\\d+) question\\(s\\)[\\s\\S]*?[0-9a-f]{8} \"([^\"]+)\"",
+      "template": "{1} question(s) to the operator still unsettled, e.g. \"{2}\"",
+      "maxLength": 200
+    },
+    {
+      "label": "PREMISE",
+      "marker": "PREMISE-GATE",
+      "cmd": "core/helpers/premise-gate.cjs",
+      "mode": "record"
+    },
+    {
+      "label": "PROMISE",
+      "marker": "PROMISE-GATE",
+      "cmd": "core/helpers/promise-gate.cjs",
+      "mode": "record",
+      "args": ["--record"]
+    },
+    {
+      "label": "RECALL",
+      "marker": "RECALL-GATE",
+      "cmd": "core/helpers/recall-gate.cjs",
+      "mode": "record",
+      "args": ["--record"]
+    },
+    {
+      "label": "ABSENCE",
+      "marker": "ABSENCE-GATE",
+      "cmd": "core/helpers/absence-gate.cjs",
+      "mode": "record",
+      "args": ["--record"]
+    }
+  ]
+}
