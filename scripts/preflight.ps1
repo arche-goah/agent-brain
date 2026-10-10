@@ -64,7 +64,9 @@ if ($sshOut -match 'successfully authenticated') {
   else { WARN "ssh-agent service not running — harmless, access is already proven" "Only needed if your key has a passphrase. As ADMINISTRATOR (without admin rights: 'Access is denied'): Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent — then ssh-add" }
 } else {
   # Missing SSH is only fatal when HTTPS does not reach GitHub either (same as preflight.sh).
-  $first = ($sshOut -split "`r?`n" | Where-Object { $_ })[0]
+  # @(...): a one-line SSH message leaves the pipeline as a STRING, and [0] on a string is
+  # its first character (measured on Windows PowerShell 5.1) — docs/os-traps.md OS-12.
+  $first = @($sshOut -split "`r?`n" | Where-Object { $_ })[0]
   $sshFix = "Create a key: ssh-keygen -t ed25519 · show the public key: type $env:USERPROFILE\.ssh\id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
   $httpsUrl = if ($env:PREFLIGHT_HTTPS_URL) { $env:PREFLIGHT_HTTPS_URL } else { 'https://github.com/arche-goah/agent-brain.git' }
   $env:GIT_TERMINAL_PROMPT = '0'; $env:GIT_HTTP_LOW_SPEED_LIMIT = '1'; $env:GIT_HTTP_LOW_SPEED_TIME = '10'

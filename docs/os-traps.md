@@ -495,3 +495,24 @@ subcommands and info flags; `-p` stays counted (a headless run works in the repo
 lsof path applies the same filter to `ps -o args=`. The two known sites are the tasklist
 fallback (labelled "CLI calls counted too", used only without powershell.exe) and the
 `ps … comm=` lookup that now filters. Fixture `test-parallel-sessions.sh`.
+
+## OS-12 — a PowerShell pipeline with one result is a scalar, and `[0]` on a string is its first character
+
+shape: A
+
+invariant: A PowerShell expression that takes "the first element" of a pipeline result wraps
+it in the array operator — `@(<pipeline>)[0]`, never `(<pipeline>)[0]`. A pipeline that yields
+exactly one item hands back that item, not a one-element array; when the item is a string,
+`[0]` indexes the string and returns one character. Bash, Python and the multi-line case all
+behave as expected, so the defect only shows on the single-line input, which is the common one.
+pattern:   = \([^@][^)]*\)\[0\]
+paths:     --include=*.ps1 scripts
+known:
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-10-10 on the Windows instance (PowerShell 5.1) during the counter-check
+of the preflight HTTPS fallback: the FAIL line read `neither SSH (message: g) nor HTTPS` — one
+character of a one-line ssh message. The line had stood unchanged on main since the preflight
+was written; the new FAIL path only made it visible. Fixed in `preflight.ps1` with `@(...)[0]`,
+checked on the same machine. Search over every `.ps1` in the core: that was the only site.
