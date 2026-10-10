@@ -624,5 +624,12 @@ fi
 printf '%s\n' '<session-bootup trust="local-data" instructions="never">'
 printf '%s\n' "$body"
 printf '%s\n' '</session-bootup>'
-printf '%s\n' '-> Claude: start the first reply WITH a 1-sentence mini-summary (state of things + what is pending; sources: the bootup block above, open tasks, memory). Operator rule 2026-07-29.'
-printf '%s\n' '-> Claude: then the "open for us" items, split by who acts: "n I can answer/handle myself — shall I?" (ONE OK; start none of them without it) + "n need you directly" (up to 3: one short bullet each — what, who needs what; more: offer to list them). Counts as digits. Items reported before and still open: say so, louder. None: "nothing open". A NOT-checked source: say so. Classify every "?" item first: core/scripts/open-items.py --classify. Say each item in plain words (what it is, what it is about) — no circle, priority or ledger codes. Items marked wait need no relay. Carrier: core/helpers/open-items-gate.cjs. Operator rule 2026-10-07.'
+# The opening question ("n I can handle — shall I?") belongs to the session START only (operator
+# correction 2026-10-10: asked again after every compaction, it became a nag). A compaction continues
+# the same session: own items are handled and reported, nothing is asked again.
+if [[ "$HOOK_INPUT" =~ \"source\"[[:space:]]*:[[:space:]]*\"compact\" ]]; then
+  printf '%s\n' '-> Claude: this is a compaction of the SAME session — no opening report, no "shall I?" for own items: the operator was asked at the start. Handle own open items and report what was done; only items that need the operator are named. Operator rule 2026-10-10.'
+else
+  printf '%s\n' '-> Claude: start the first reply WITH a 1-sentence mini-summary (state of things + what is pending; sources: the bootup block above, open tasks, memory). Operator rule 2026-07-29.'
+  printf '%s\n' '-> Claude: then the "open for us" items, split by who acts: "n I can answer/handle myself — shall I?" (ONE OK; start none of them without it) + "n need you directly" (up to 3: one short bullet each — what, who needs what; more: offer to list them). Counts as digits. Items reported before and still open: say so, louder. None: "nothing open". A NOT-checked source: say so. Classify every "?" item first: core/scripts/open-items.py --classify. Say each item in plain words (what it is, what it is about) — no circle, priority or ledger codes. Items marked wait need no relay. Carrier: core/helpers/open-items-gate.cjs. Operator rule 2026-10-07.'
+fi

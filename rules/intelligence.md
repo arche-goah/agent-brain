@@ -96,7 +96,12 @@ to.)
 open request addressed to this instance, an open PR — reaches the first reply, split by
 WHO has to act. Items the agent can answer or handle itself (its own circle): the count
 and ONE question whether to go ahead — a session usually starts for another reason, so
-the agent starts none of them without that OK. Items that need the operator: the count;
+the agent starts none of them without that OK. That question is asked ONCE, at the session
+start (startup or resume) — never again later in the same session (operator correction
+2026-10-10: "I want to hear that question mainly at the session start, not again
+and again"). After a compaction, after the operator's go, and for every own item that
+turns up mid-session: handle it and report what was done; a report never ends on "n I can
+handle — shall I?". Items that need the operator: the count;
 up to three, one short bullet each (what it is about, who needs what); more than three,
 the offer to list them — a wall of items at session start intimidates. Nothing open: say
 "nothing open". A source that could not be read: say so — never "nothing". An item that
