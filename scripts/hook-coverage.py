@@ -29,6 +29,7 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 
 def load(path):
@@ -153,9 +154,17 @@ def main():
                 continue  # runs behind a dispatcher, see registered_via_dispatcher()
             missing.append("%s: %s" % (event, cmd))
 
-    for line in missing + narrower + fail_open:
+    # A wired name guard with no names checks nothing and only says so on stderr, where nobody
+    # reads it (measured 2026-10-10 on a Windows instance: leak-names.json was missing).
+    inert = []
+    if any("public-text-guard" in c for pairs in wired.values() for _, c, _f in pairs):
+        names = (load(str(Path(root) / ".claude" / "rules" / "leak-names.json")) or {})
+        if not (names.get("names") or names.get("instances")):
+            inert.append("PreToolUse: public-text-guard.cjs is wired but .claude/rules/leak-names.json has no names - it checks nothing")
+
+    for line in missing + narrower + fail_open + inert:
         print(line)
-    return 1 if (missing or narrower or fail_open) else 0
+    return 1 if (missing or narrower or fail_open or inert) else 0
 
 
 if __name__ == "__main__":
