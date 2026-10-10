@@ -159,7 +159,8 @@ def ball(p, me, owners):
     owner = owners.get(p["repository"]["name"])
     if author == me:
         # Our own PR in a repo someone else merges waits on that owner — unless someone else
-        # reviewed or commented after the last commit, which is ours to answer. Measured
+        # reviewed or commented after our last commit and our last comment: that is ours to
+        # answer. Measured
         # 2026-10-10: two green own PRs in a suite owned by another party were printed as
         # "nothing done yet" in three sessions, because this check ran only for others' PRs.
         if owner and owner != me:
@@ -167,7 +168,10 @@ def ball(p, me, owners):
                       if (r.get("author") or {}).get("login") != me]
             theirs += [c.get("createdAt") or "" for c in (p.get("comments") or {}).get("nodes", [])
                        if (c.get("author") or {}).get("login") != me]
-            if not (last and any(t > last for t in theirs)):
+            # Same rule as pr-ball.py: our own reply after theirs hands the move back.
+            seen = [last] + [c.get("createdAt") or "" for c in (p.get("comments") or {}).get("nodes", [])
+                             if (c.get("author") or {}).get("login") == me]
+            if not (theirs and max(theirs) > max(seen)):
                 return owner, f"{p['repository']['name']} is {owner}'s to merge, our own PR waits on that"
         return None
     ours = [r.get("submittedAt") or "" for r in (p.get("latestReviews") or {}).get("nodes", [])
