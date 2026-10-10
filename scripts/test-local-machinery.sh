@@ -261,5 +261,15 @@ summary=$(run | tail -1)
 grep -q "^local machinery summary: items=$n .*undeclared=$n" <<< "$summary" && ok "coverage-summary-counts-all-$n" || bad "coverage-summary-counts-all-$n: $summary"
 rm -f "$T/fakehome/Library/LaunchAgents/x.plist"
 
+# --- directories Claude Code keeps under ~/.claude/skills are not this brain's machinery ----
+# Measured 2026-10-10 (Windows instance): `synced` (account skills) and `.trash` were the only
+# two items no declaration could carry. A user skill next to them is still reported.
+mkdir -p "$T/fakehome/.claude/skills/synced/b/s" "$T/fakehome/.claude/skills/.trash/1/t" "$T/fakehome/.claude/skills/mine"
+for f in synced/b/s .trash/1/t mine; do printf 'x\n' > "$T/fakehome/.claude/skills/$f/SKILL.md"; done
+listing=$(run --list)
+grep -q '~/.claude/skills/mine' <<< "$listing" && ok "user-skill-in-home-reported" || bad "user-skill-in-home-reported: $listing"
+grep -qE '~/.claude/skills/(synced|\.trash)' <<< "$listing" && bad "harness-skill-dirs-skipped: $listing" || ok "harness-skill-dirs-skipped"
+rm -rf "$T/fakehome/.claude/skills"
+
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"
