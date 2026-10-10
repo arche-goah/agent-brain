@@ -166,12 +166,12 @@ has "[request|?] 2026-09-06" "$out" && ok "no data = '?'" || bad "unclassified: 
 has "[request|?] 2026-09-06" "$out" && ok "machine id built from the name is not the person" || bad "machine id read as a person: $out"
 has "unclassified 2" "$out" && ok "header counts the '?'" || bad "header: $(head -1 <<<"$out")"
 has "classify every '?' item" "$out" && ok "'?' asks for --classify" || bad "no classify hint: $out"
-"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" \
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
   --classify 'anfrage-x-2026-09-06.md=human:needs the operator net definition' >/dev/null 2>&1
 out=$(run i)
 has "[request|human] 2026-09-06" "$out" && ok "--classify by file name sticks" || bad "classify lost: $out"
 has "needs the operator net definition" "$out" && ok "the reason is printed" || bad "reason missing: $out"
-out=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --classify 'x=maybe' 2>&1)
+out=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" --classify 'x=maybe' 2>&1)
 has "bad --classify" "$out" && ok "bad class refused" || bad "bad class accepted: $out"
 
 # Two LOG entries of one sender on one day (measured 2026-10-09, Windows instance): a class
@@ -180,12 +180,20 @@ has "bad --classify" "$out" && ok "bad class refused" || bad "bad class accepted
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
   '  - 2026-10-07 [core] peer-b: AN inst-a: first note (LOG)' \
   '  - 2026-10-07 [core] peer-b: AN inst-a: second, a real request (LOG)' > "$T/inbox.txt"
-"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" \
-  --classify 'LOG 2026-10-07 peer-b=ai:short form' >/dev/null 2>&1
+out=$(run j0)
+has "--classify 'core/LOG 2026-10-07 peer-b: AN inst-a: first note=" "$out" \
+  && ok "hint prints the exact LOG id" || bad "hint lacks the exact id: $out"
+# Measured 2026-10-10: the printed short ref said "classified" and the item stayed '?'.
+cout=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
+  --classify 'LOG 2026-10-07 peer-b=ai:short form' 2>&1); rc=$?
+[ "$rc" = 2 ] && has "matches no open request" "$cout" && ! has "classified:" "$cout" \
+  && ok "unknown id refused, nothing saved" || bad "unknown id accepted (rc=$rc): $cout"
+has "   core/LOG 2026-10-07 peer-b: AN inst-a: second, a real" "$cout" \
+  && ok "refusal lists the exact ids" || bad "no exact ids offered: $cout"
 out=$(run j)
 [ "$(grep -c '\[request|?\] 2026-10-07' <<<"$out")" = 2 ] && ok "short LOG form classifies nothing" \
   || bad "short LOG form leaked a class: $out"
-"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" \
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
   --classify 'core/LOG 2026-10-07 peer-b: AN inst-a: first note=ai:ack only' >/dev/null 2>&1
 out=$(run k)
 [ "$(grep -c '\[request|ai\] 2026-10-07' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-07' <<<"$out")" = 1 ] \
