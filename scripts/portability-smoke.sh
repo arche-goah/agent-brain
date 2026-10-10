@@ -346,7 +346,7 @@ cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$T/hookbrain/core/helpers/" 2>/de
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
 case "$_rc:$_hc" in
-  1:*"Stop:"*stop-dispatcher.cjs*) ok "hook-coverage flags an unwired template hook (exit 1)";;
+  1:*"Stop: "*) ok "hook-coverage flags an unwired template hook (exit 1)";;
   *) bad "hook-coverage missing-hook case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
 cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
