@@ -156,7 +156,15 @@ function gate(input) {
   // A home path in the command (`git -C /Users/<name>/…`, a --body-file path) is where the
   // command runs, not text that gets published. Measured 2026-10-10: the guard blocked its own
   // follow-up commit because the worktree path carried the operator's login name.
-  scan(cmd.replace(/(\/Users\/|\/home\/|[A-Za-z]:[\\/]+Users[\\/]+)[^\/\\\s"']+/g, '$1<home>'), 'the command');
+  // Second form, measured the same day: a scratch path that ENCODES the home dir
+  // (`/private/tmp/…/-Users-<login>-Projects-…`). So every word whose directory exists on
+  // disk counts as a location; the content of handed-over files is still scanned below.
+  const located = cmd.split(/\s+/).map((w) => {
+    const p = unquote(w).replace(/^--?[\w-]+=/, '').replace(/^@/, '');
+    if (!/[\\/]/.test(p)) return w;
+    try { return fs.existsSync(path.dirname(path.resolve(cwd, p))) ? '<path>' : w; } catch (e) { return w; }
+  }).join(' ');
+  scan(located.replace(/(\/Users\/|\/home\/|[A-Za-z]:[\\/]+Users[\\/]+)[^\/\\\s"']+/g, '$1<home>'), 'the command');
   for (const f of referencedFiles(cmd)) {
     try { scan(fs.readFileSync(path.resolve(cwd, f), 'utf8'), f); } catch (e) { /* unreadable: the write fails too */ }
   }
