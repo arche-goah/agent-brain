@@ -349,12 +349,21 @@ def main() -> int:
             return sml.lint(repo, tmp / "empty-baseline.txt", **kw)["findings"][
                 "project_without_area"]
 
+        # 31b. a question/answer THREAD on one subject is one conversation, not a project:
+        #      proposal, follow-up and answer leave the same words once kind-words, ids and
+        #      dates are gone, so they count once (measured on the real repo 2026-10-10).
+        put("proposal-lamp-rig-2026-09-01")
+        put("followup-lamp-rig")
+        put("answer-lamp-rig-2026-09-03")
+        check("31b a three-file Q/A thread on one subject stays silent",
+              {"project_without_area": len(areas())}, "project_without_area", 0)
+
         put("request-kiosk-display-2026-09-01")
-        put("answer-kiosk-display-2026-09-02")
+        put("kiosk-cabling-2026-09-02")
         put("kiosk-power-plan")
         res = areas()
-        if len(res) == 1 and "kiosk" in res[0]["signal"] and res[0]["count"] == 3:
-            ok("32 three catch-all entries sharing a project word -> one advisory")
+        if len(res) == 1 and "kiosk" in res[0]["signal"] and res[0]["threads"] == 3:
+            ok("32 three different subjects sharing a project word -> one advisory")
         else:
             bad(f"32 planted slug cluster: {res}")
 

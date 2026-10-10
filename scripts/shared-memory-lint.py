@@ -234,17 +234,26 @@ def project_clusters(repo: Path, files: list[Path], area_min: int) -> list[dict]
               for o, _ in REPO_URL.findall(t) + REPO_ISSUE.findall(t)}
     areas = {p.relative_to(repo).parts[0] for p in files} - {CATCH_ALL}
     signals: dict[str, set[str]] = {}
+    # A THREAD counts once (measured on the real repo the same day): a proposal, its
+    # follow-up and its answer on one subject (`proposal-x`, `follow-up-x`, `answer-x`) are
+    # three files but one conversation, and clustered at three by construction. Files whose
+    # slug leaves the SAME significant words once kind-words, ids and dates are gone form one
+    # thread; a cluster needs `area_min` distinct threads. A slug with nothing left is its
+    # own thread.
+    thread: dict[str, frozenset] = {}
     for p, t in texts.items():
         rel = p.relative_to(repo)
         if rel.parts[0] != CATCH_ALL:
             continue
-        for w in slug_words(p.stem, skip):
+        words = slug_words(p.stem, skip)
+        thread[rel.as_posix()] = frozenset(words) or frozenset({rel.as_posix()})
+        for w in words:
             signals.setdefault(w, set()).add(rel.as_posix())
         for r in repo_refs(t, owners) - skip:
             signals.setdefault(r, set()).add(rel.as_posix())
     by_set: dict[frozenset, list[str]] = {}
     for sig, fs in signals.items():
-        if len(fs) >= area_min:
+        if len({thread[f] for f in fs}) >= area_min:
             by_set.setdefault(frozenset(fs), []).append(sig)
     # A set inside a larger reported set is the same project seen through a narrower word
     # (`master` inside `template`): its words join the larger finding instead of a second one.
@@ -263,6 +272,7 @@ def project_clusters(repo: Path, files: list[Path], area_min: int) -> list[dict]
                "(folder + LOG.md + a line in the README's area list) and move the entries; "
                f"if the shared word is generic, add it to {GENERIC_NAME}")
         out.append({"signal": " + ".join(sigs), "count": len(fs),
+                    "threads": len({thread[f] for f in fs}),
                     "files": sorted(fs), "fix": fix})
     return out
 
