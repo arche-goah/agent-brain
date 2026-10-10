@@ -96,7 +96,7 @@ mkdir -p "$BRAIN/config/machines"
 printf '{"repos":{"brain":{"path":"%s","kind":"instance"},"core":{"path":"%s/core","kind":"core","remote":"%s"},"clean":{"path":"%s"},"dirty":{"path":"%s"},"nobranch":{"path":"%s"},"diverged":{"path":"%s"},"missing":{"path":"%s","remote":"%s"},"orphan":{"path":"%s"}}}\n' \
   "$BRAIN" "$BRAIN" "$T/r/core.git" "$T/w/clean" "$T/w/dirty" "$T/w/nobranch" "$T/w/diverged" \
   "$T/w/missing" "$T/r/missing.git" "$T/w/orphan" > "$BRAIN/config/ecosystem.json"
-CFG_JSON=$(printf '{"ecosystem":true,"extra":[{"path":"%s"}],"stall_seconds":2,"budget_seconds":40}' "$T/w/extra")
+CFG_JSON=$(printf '{"ecosystem":true,"extra":[{"path":"%s"}],"stall_seconds":20,"budget_seconds":120}' "$T/w/extra")
 
 h_clean=$(head_of "$T/w/clean"); h_dirty=$(head_of "$T/w/dirty"); h_div=$(head_of "$T/w/diverged")
 h_core=$(head_of "$BRAIN/core"); h_brain=$(head_of "$BRAIN"); h_extra=$(head_of "$T/w/extra")
@@ -160,13 +160,18 @@ git -C "$BRAIN" checkout -q -- seed.txt
 git_q clone -q "$T/r/clean.git" "$T/w/hang"
 git -C "$T/w/hang" remote set-url origin "ssh://hang.invalid/x.git"
 printf '#!/bin/sh\nsleep 20\n' > "$T/hang.sh"
-# stall 4 > budget 3: the hang alone spends the budget, so the second repo is not reached;
-# the brain step before it stays far below 3 s.
+# stall 4 > budget 3: the hang alone spends the budget, so the second repo is not reached.
+# The brain is made dirty for this run, so its step is skipped at once and the budget measures
+# the hang only — measured 2026-10-10 on the Windows CI runner: a plain local fetch of the
+# brain alone took longer than 3 s there, spent the budget before the hang was reached, and
+# both assertions below failed for a reason that had nothing to do with the stall limit.
 printf '{"ecosystem":false,"extra":[{"path":"%s"},{"path":"%s"}],"stall_seconds":4,"budget_seconds":3}\n' \
   "$T/w/hang" "$T/w/clean" > "$BRAIN/config/session-pull.json"
+echo x >> "$BRAIN/seed.txt"
 t0=$SECONDS
 (cd "$BRAIN" && CLAUDE_PROJECT_DIR="$BRAIN" GIT_SSH_COMMAND="sh $(native "$T/hang.sh")" bash "$PULL" >/dev/null 2>"$T/err" </dev/null)
 dt=$((SECONDS - t0))
+git -C "$BRAIN" checkout -q -- seed.txt
 has "hanging remote: reported after the stall limit" "hang: fetch failed — no answer within 4s" "$(cat "$T/err")"
 if [ "$dt" -lt 12 ]; then ok "hanging remote: run ended in ${dt}s (stall 4 s, not the 20 s hang)"; else bad "hanging remote: run took ${dt}s" "stall limit not applied"; fi
 has "run budget: the rest is named, not silently dropped" "1 not reached (budget 3s spent)" "$(cat "$T/err")"
@@ -181,5 +186,8 @@ run_pull "$T/broken-pull.sh" >/dev/null
 differ "negative control: without the dirty guard the dirty repo IS pulled" "$(head_of "$T/w/dirty")" "$h_dirty"
 
 echo
+# On a failure, show what the pull itself said in its last run — CI logs otherwise carry only
+# the FAIL line, and a timing failure on a slow runner cannot be told from a logic failure.
+[ "$fails" -eq 0 ] || { echo "--- last session-pull stderr ---"; cat "$T/err" 2>/dev/null; }
 if [ "$fails" -eq 0 ]; then echo "session-pull fixtures: ALL passed"; else echo "session-pull fixtures: $fails FAILED"; fi
 [ "$fails" -eq 0 ]
