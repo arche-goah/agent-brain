@@ -78,7 +78,7 @@ run() { # engine tool transcript [file_path]
   local inp
   inp=$(printf '{"tool_name":"%s","tool_input":{"file_path":"%s"},"transcript_path":"%s"}' "$2" "${4:-}" "$(native "$T/$3")")
   printf '%s' "$inp" | CLAUDE_PROJECT_DIR="$NT/proj" SKILL_GATE_HOME="$NT/fakehome" node "$1" 2>/dev/null \
-    | grep -q '"permissionDecision":"deny"' && echo block || echo allow
+    | grep -aq '"permissionDecision":"deny"' && echo block || echo allow
 }
 expect() { # want tool transcript [file_path] -- label
   local want=$1 tool=$2 tr=$3 fp=$4 label=$5 got
@@ -106,7 +106,7 @@ expect block NotebookEdit           empty.jsonl            "" "instance rule fro
 expect allow Skill                  empty.jsonl            "" "the Skill tool itself is never gated"
 # fail-open: no transcript on disk
 got=$(printf '{"tool_name":"mcp__td__x","tool_input":{},"transcript_path":"%s"}' "$NT/missing.jsonl" \
-  | CLAUDE_PROJECT_DIR="$NT/proj" SKILL_GATE_HOME="$NT/fakehome" node "$GATE" | grep -c deny)
+  | CLAUDE_PROJECT_DIR="$NT/proj" SKILL_GATE_HOME="$NT/fakehome" node "$GATE" | grep -ac deny)
 [ "$got" = 0 ] && ok "fail-open without a transcript" || bad "fail-open without a transcript"
 
 [ "$flipped" = "$must_block" ] && ok "negative control: all $must_block blocking cases allow under the stub" \
