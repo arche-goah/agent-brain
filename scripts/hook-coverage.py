@@ -15,6 +15,10 @@ event in the brain's settings (project, project-local or user scope) references
 that helper file. Matching is by helper filename, so path notation (slashes,
 $CLAUDE_PROJECT_DIR vs absolute) never causes a false alarm.
 
+ALSO REPORTED: a gate the template sets to `"onFailure": "block"` (fail closed when the
+hook cannot start, crashes or times out; Claude Code >= 2.1.295) that this brain wires
+without it - "fails open".
+
 Usage: hook-coverage.py [brain-root]           (default: cwd)
 Output: one line per missing hook — "<event>: <template command>".
 Exit 0 and silent when covered; exit 1 when something is missing.
@@ -51,7 +55,7 @@ def commands_by_event(settings):
             for h in group.get("hooks") or []:
                 cmd = h.get("command") if isinstance(h, dict) else None
                 if cmd:
-                    out.setdefault(event, []).append((matcher, cmd))
+                    out.setdefault(event, []).append((matcher, cmd, h.get("onFailure") or "continue"))
     return out
 
 
@@ -71,7 +75,7 @@ def registered_via_dispatcher(root, wired):
     settings, AND the helper is registered in its config. Either half alone would turn
     this into a way to silence the check by writing a file.
     """
-    if not any("dispatcher" in c for pairs in wired.values() for _, c in pairs):
+    if not any("dispatcher" in c for pairs in wired.values() for _, c, _f in pairs):
         return set()
     cfg = load(os.path.join(root, ".claude", "rules", "stop-checks.json"))
     out = set()
@@ -107,8 +111,9 @@ def main():
 
     missing = []
     narrower = []
+    fail_open = []
     for event, pairs in commands_by_event(template).items():
-        for matcher, cmd in pairs:
+        for matcher, cmd, on_failure in pairs:
             # Any template hook pointing INTO the consumed core counts, not just
             # helpers/. Measured 2026-08-20: brain-check.sh lives in core/scripts, so a
             # brain that never wired it was reported as fully covered — the check that
@@ -120,7 +125,14 @@ def main():
             sub, helper = m.group(1), m.group(2)
             if not os.path.isfile(os.path.join(root, "core", sub, helper)):
                 continue  # not in the consumed core yet: nothing to wire
-            hits = [(m, c) for m, c in wired.get(event, []) if helper in c]
+            hits = [(m, c) for m, c, _f in wired.get(event, []) if helper in c]
+            # A gate the template makes fail CLOSED (onFailure: block, Claude Code >= 2.1.295)
+            # but this brain wires with the default "continue": a crash, a timeout or a
+            # missing script then lets every action through. Field only reaches a brain at
+            # bootstrap, like the hooks themselves, so it is checked the same way.
+            if on_failure == "block" and hits and not any(
+                    f == "block" for _m, c, f in wired.get(event, []) if helper in c):
+                fail_open.append("%s: %s fails open - the template sets \"onFailure\": \"block\"" % (event, helper))
             if hits:
                 # Wired — but a matcher that names fewer tools than the template means
                 # the hook does not run where the template says it must.
@@ -141,9 +153,9 @@ def main():
                 continue  # runs behind a dispatcher, see registered_via_dispatcher()
             missing.append("%s: %s" % (event, cmd))
 
-    for line in missing + narrower:
+    for line in missing + narrower + fail_open:
         print(line)
-    return 1 if (missing or narrower) else 0
+    return 1 if (missing or narrower or fail_open) else 0
 
 
 if __name__ == "__main__":
