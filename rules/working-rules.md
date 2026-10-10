@@ -176,7 +176,12 @@ same topic lands in the same layout:
    repo grow that repo's own auto-memory; the brain memory keeps pointers.
    As soon as a second brain works the project: `reach: shared` entries and
    one-file-one-fact exports to the org's shared-memory repo, with a
-   back-reference to the source `id`.
+   back-reference to the source `id`. **The project gets its own AREA there in
+   the same pass** (operator order 2026-10-10): folder + `LOG.md` + a line in
+   the README's area list — never filed into the catch-all folder "for now".
+   Measured: a catch-all held 150 entries, whole projects among them, because
+   nothing said when an area is due. Carrier: `scripts/shared-memory-lint.py`,
+   check "project without an area".
 5. **Register the ledger with the instance's aggregator.** The generated
    overview sees only registered detail lists — an unregistered domain is
    invisible by construction (deliberate: no silent glob fallback). Adding the
