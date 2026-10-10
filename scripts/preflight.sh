@@ -87,8 +87,19 @@ if printf '%s\n' "$ssh_out" | grep -q "successfully authenticated"; then
       "Only needed if your key has a passphrase: eval \"\$(ssh-agent -s)\" && ssh-add ~/.ssh/id_ed25519 . On Windows, Git Bash fundamentally cannot see the Windows service (named pipe vs. Unix socket) — that stays this way and is not an error."
   fi
 else
-  bad "SSH to GitHub not proven (message: $(printf '%s' "$ssh_out" | head -1))" \
-    "Create a key: ssh-keygen -t ed25519 -C \"$(whoami)\" · show the public key: cat ~/.ssh/id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
+  # Missing SSH is only fatal when HTTPS does not reach GitHub either — measured, not
+  # assumed: one ls-remote against a public repo. No `timeout` (absent on macOS): no
+  # prompt, and the low-speed limit ends a stalled transfer after 10 s.
+  ssh_fix="Create a key: ssh-keygen -t ed25519 -C \"$(whoami)\" · show the public key: cat ~/.ssh/id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
+  https_url="${PREFLIGHT_HTTPS_URL:-https://github.com/arche-goah/agent-brain.git}"
+  if GIT_TERMINAL_PROMPT=0 GIT_HTTP_LOW_SPEED_LIMIT=1 GIT_HTTP_LOW_SPEED_TIME=10 \
+      git ls-remote "$https_url" HEAD >/dev/null 2>&1; then
+    warn "SSH to GitHub not proven, but HTTPS works (ls-remote $https_url)" \
+      "Clones and fetches over HTTPS are fine. Set up SSH if a plugin install or marketplace refresh fails: $ssh_fix"
+  else
+    bad "GitHub not reachable — neither SSH (message: $(printf '%s' "$ssh_out" | head -1)) nor HTTPS ($https_url)" \
+      "Check the network first; then $ssh_fix"
+  fi
 fi
 
 command -v claude >/dev/null 2>&1 && ok "claude CLI $(claude --version 2>/dev/null | head -1)" || bad "claude CLI missing" "install Claude Code (claude.com/claude-code) — then open a NEW terminal, otherwise the shell does not know the 'claude' command"

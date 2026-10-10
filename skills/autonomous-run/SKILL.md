@@ -50,7 +50,7 @@ do, and the deadline lives in the watchdog state. None of them replaces the othe
 | Time up, core **still open** (30-min order, core needs 45) | **push through until the core stands.** The reserve-pool question never arises. Effectively like a normal order that takes longer |
 | Core done **exactly** at expiry | end |
 | **No reserve pool agreed**, core done early | report and stop — invent nothing (order fidelity #3, `core/rules/working-rules.md`) |
-| **No duration named**, only tasks ("push R3-R6 through") | `arm <name> 30` **without** the third number. End = tasks done, not the clock |
+| **No duration named**, only tasks ("push R3-R6 through") | **not an autonomous run** — normal mode: do the order, then check in (hard gate 1). No pool, no wakeup loop |
 
 ⚠ **Never stop just because the minimum time is reached.** The number says "autonomous
 for at least this long", not "stop then".
@@ -120,6 +120,12 @@ The `disarm` output is the evidence that belongs in the report:
    watcher on the path itself (the instance's reconnect or link waiter) so the run can
    resume when it comes back, then `disarm` and `ScheduleWakeup(stop: true)`. The report
    goes through the instance's channel for an absent operator.
+   **Resume after BLOCKED** (the watcher fires, or the next session or wake reads the
+   report): first re-measure the blocker itself — is the path really back? Still down:
+   stay blocked, say so, nothing else. Back: re-read the plan document, `arm` again with
+   the remaining minutes of the original duration (from the `disarm` evidence), and
+   continue with the next open item — main order first, then the pool, which is not
+   extended on resume.
 
 ## Read time, do not compute it
 
