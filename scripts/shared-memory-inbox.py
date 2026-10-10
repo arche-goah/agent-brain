@@ -13,7 +13,9 @@ TWO SOURCES, because the repo carries messages in two places:
                             a receipt), so the fact files alone would miss them.
   fact files (added/changed) frontmatter `von` / `audience` / `description` — lint-enforced
                             since 2026-08-21, the description is the file's own main info.
-A fact file whose path the new LOG text already names is not printed twice.
+A fact file whose path the new LOG text already names is not printed twice. Upkeep is not
+an arrival: a moved entry (rename), a frontmatter-only edit and a pointer rewrite to a file
+the same range moved are skipped (see maintenance_only); a new file or a body edit counts.
 
 WHO "THIS INSTANCE" IS comes from SHARED_MEMORY_SELF (instance data, e.g. the `env` block
 of the instance's settings.json): comma-separated tokens such as `alex-macos,alex`. An
@@ -108,11 +110,62 @@ def log_items(repo: Path, a: str, b: str, me: set[str]) -> tuple[list[tuple], st
     return items, "\n".join(added)
 
 
+def body(text: str) -> str:
+    """The entry below its frontmatter, line endings and outer whitespace normalised."""
+    t = text.replace("\r\n", "\n")
+    if t.startswith("---"):
+        end = t.find("\n---", 3)
+        if end != -1:
+            t = t[end + 4:]
+    return t.strip()
+
+
+def description(text: str) -> str:
+    """The frontmatter `description`, or "" when there is none."""
+    head = text.split("\n---", 1)[0] if text.startswith("---") else ""
+    m = _idx.FM_DESC.search(head)
+    return m.group(1) if m else ""
+
+
+def maintenance_only(old: str, new: str, moves: dict[str, str]) -> bool:
+    """True when a MODIFIED entry changed only in ways that are upkeep, not a post.
+
+    Measured 2026-10-10 on a shared-memory repo with several parties: a tidy-up commit moved
+    23 entries into topic areas, and lint commits added frontmatter fields to old entries.
+    The watcher then reported the touched OLD entries (dated September) as new arrivals from
+    other parties, four times in one day. Two kinds of upkeep produce that, and both are
+    decided here mechanically:
+      - a frontmatter-only edit (a field added, a status corrected, frontmatter given to a
+        file that had none): the body is unchanged. The `description` is the exception —
+        it is the entry's main information and what this reader prints, so a CHANGED one
+        counts as content (a first one, given to a file that had none, is upkeep);
+      - a pointer rewrite: the body differs only where it names a file that the same range
+        MOVED, old path replaced by new path.
+    Anything else in the body is content and still counts — a reply appended to an existing
+    request is exactly what the inbox exists to show."""
+    was = description(old)
+    if was and was != description(new):
+        return False
+    a, b = body(old), body(new)
+    for src, dst in moves.items():
+        a = a.replace(src, dst)
+    return a == b
+
+
 def file_items(repo: Path, a: str, b: str, me: set[str], log_text: str) -> list[tuple]:
     items = []
-    for line in git(repo, "diff", "--name-status", "--diff-filter=AM", a, b).splitlines():
+    # `-M` explicitly: a moved entry is a RENAME (R), which `--diff-filter=AM` leaves out.
+    # git's default would detect it too, but only while `diff.renames` is not switched off in
+    # someone's config — the reader must not depend on that.
+    status = git(repo, "diff", "--name-status", "-M", a, b).splitlines()
+    moves = {}
+    for line in status:
         parts = line.split("\t")
-        if len(parts) < 2:
+        if len(parts) == 3 and parts[0].startswith("R"):
+            moves[parts[1]] = parts[2]
+    for line in status:
+        parts = line.split("\t")
+        if len(parts) < 2 or parts[0][:1] not in ("A", "M"):
             continue
         rel = parts[-1]
         p = repo / rel
@@ -125,6 +178,9 @@ def file_items(repo: Path, a: str, b: str, me: set[str], log_text: str) -> list[
         # (measured on the workstation 2026-09-30: 9 lines instead of 10).
         blob = git(repo, "show", f"{b}:{rel}")
         if not blob:
+            continue
+        if parts[0].startswith("M") and maintenance_only(git(repo, "show", f"{a}:{rel}"),
+                                                         blob, moves):
             continue
         e = read_entry(p, repo, text=blob)
         if not for_us(e["von"], e["audience"] or None, me):

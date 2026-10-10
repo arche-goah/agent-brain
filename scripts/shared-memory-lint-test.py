@@ -330,6 +330,117 @@ def main() -> int:
         (repo / "ops" / "old.md").unlink()
         idx.write_text(keep, encoding="utf-8")
 
+        # 32-40. PROJECT WITHOUT AN AREA (measured 2026-10-10: whole projects filed in the
+        #     catch-all because no rule said when an area is due). Own sandbox, so the cases
+        #     above stay independent of it.
+        repo = build(tmp / "areas")
+        idx = repo / "INDEX.md"
+        base = idx.read_text(encoding="utf-8")
+
+        def put(stem: str, body: str = "body", topic: str = "ops") -> None:
+            (repo / topic).mkdir(exist_ok=True)
+            (repo / topic / f"{stem}.md").write_text(
+                fm(stem, topic=topic, von="kim-win", audience="sam-laptop", body=body),
+                encoding="utf-8")
+            with open(idx, "a", encoding="utf-8", newline="\n") as fh:
+                fh.write(f"- [{stem}]({topic}/{stem}.md) — x\n")
+
+        def areas(**kw) -> list:
+            return sml.lint(repo, tmp / "empty-baseline.txt", **kw)["findings"][
+                "project_without_area"]
+
+        # 31b. a question/answer THREAD on one subject is one conversation, not a project:
+        #      proposal, follow-up and answer leave the same words once kind-words, ids and
+        #      dates are gone, so they count once (measured on the real repo 2026-10-10).
+        put("proposal-lamp-rig-2026-09-01")
+        put("followup-lamp-rig")
+        put("answer-lamp-rig-2026-09-03")
+        check("31b a three-file Q/A thread on one subject stays silent",
+              {"project_without_area": len(areas())}, "project_without_area", 0)
+
+        put("request-kiosk-display-2026-09-01")
+        put("kiosk-cabling-2026-09-02")
+        put("kiosk-power-plan")
+        res = areas()
+        if len(res) == 1 and "kiosk" in res[0]["signal"] and res[0]["threads"] == 3:
+            ok("32 three different subjects sharing a project word -> one advisory")
+        else:
+            bad(f"32 planted slug cluster: {res}")
+
+        # 33. NEGATIVE CONTROL: the check switched off misses the planted case — so 32 is
+        #     the check's doing, not a side effect of another category.
+        check("33 control: check disabled misses the planted cluster",
+              {"project_without_area": len(areas(area_min=0))}, "project_without_area", 0)
+
+        # 34. below the threshold (two files) and generic words stay silent; so does a party
+        #     name taken from von/audience (`kim`) and a request word (`request`)
+        (repo / "ops" / "kiosk-power-plan.md").unlink()
+        put("request-to-kim-alpha")
+        put("request-to-kim-beta")
+        put("lighting-cue-list")
+        check("34 two files, generic words, party names: silent",
+              {"project_without_area": len(areas())}, "project_without_area", 0)
+
+        # 35. the same project repo named in three bodies — URL, issue reference, bare
+        #     owner/repo — is one advisory even with three unrelated slugs
+        put("north-stage-cabling", body="Repo: https://github.com/acme/widget-rig")
+        put("rental-quote", body="See acme/widget-rig#4 for the list.")
+        put("power-budget", body="Numbers live in acme/widget-rig, file docs/power.md.")
+        res = areas()
+        if [r["signal"] for r in res] == ["acme/widget-rig"]:
+            ok("35 three entries naming the same repo -> one advisory")
+        else:
+            bad(f"35 repo cluster: {res}")
+
+        # 36. a path `<topic>/<slug>` is not a repo: the owner must be one the repo writes as
+        #     a URL or an issue reference somewhere
+        for s in ("north-stage-cabling", "rental-quote", "power-budget"):
+            (repo / "ops" / f"{s}.md").unlink()
+        put("north-look", body="see ops/lighting-cue-list.md, https://github.com/acme/widget-rig")
+        put("south-pass", body="see ops/lighting-cue-list.md")
+        put("east-try", body="see ops/lighting-cue-list.md")
+        check("36 topic paths in bodies are not repo references",
+              {"project_without_area": len(areas())}, "project_without_area", 0)
+
+        # 37. the repo's own word list EXTENDS the generic defaults (language data, like the
+        #     supersession markers)
+        put("kiosk-power-plan")
+        (repo / sml.GENERIC_NAME).write_text("# words\nkiosk\n", encoding="utf-8")
+        check("37 a word in the repo's generic list is silent",
+              {"project_without_area": len(areas())}, "project_without_area", 0)
+        (repo / sml.GENERIC_NAME).unlink()
+
+        # 38. the shared word IS an existing area: the advice is to move, not to create
+        put("kiosk-history", topic="kiosk")
+        res = areas()
+        if res and "exists" in res[0]["fix"]:
+            ok("38 existing area named in the advice")
+        else:
+            bad(f"38 existing-area advice missing: {res}")
+
+        # 39. entries already in their area do not count toward a catch-all cluster
+        (repo / "ops" / "kiosk-power-plan.md").unlink()
+        put("kiosk-power-plan", topic="kiosk")
+        check("39 entries in their own area are not clustered",
+              {"project_without_area": len(areas())}, "project_without_area", 0)
+
+        # 40. ADVISORY: the planted cluster prints but does not set the exit code
+        put("kiosk-spare-parts")
+        put("kiosk-transport")
+        put("kiosk-insurance")
+        # the unlinks above left stale index lines; an exact index keeps the run otherwise clean
+        with open(idx, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("# Index\n\n" + "".join(
+                f"- [{p.stem}]({p.relative_to(repo).as_posix()}) — x\n"
+                for p in sml.fact_files(repo)))
+        r = subprocess.run([sys.executable, str(ROOT / "scripts" / "shared-memory-lint.py"),
+                            "--repo", str(repo), "--baseline", str(tmp / "empty-baseline.txt")],
+                           capture_output=True, text=True, encoding="utf-8")
+        if r.returncode == 0 and "project_without_area [advisory]" in r.stdout:
+            ok("40 advisory printed, exit code 0")
+        else:
+            bad(f"40 advisory exit/print wrong: rc={r.returncode} {r.stdout[-400:]}")
+
     return 1 if fails else 0
 
 

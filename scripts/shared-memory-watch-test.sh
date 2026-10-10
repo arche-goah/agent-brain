@@ -116,6 +116,21 @@ git -C "$OTHER" push -q origin main
 wait_found 3
 LOG_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
+# UPKEEP IS NOT AN ARRIVAL (measured 2026-10-10): a foreign commit that only MOVES an old
+# entry into another area and edits the frontmatter of another stays silent. It gets two
+# poll cycles of its own before the next real push, so a false FOUND would land as the 4th
+# line on its own — the 4th line must therefore be the real entry that follows.
+mkdir -p "$OTHER/area"
+git -C "$OTHER" mv domain/b.md area/b.md
+printf -- '---\nname: c\nmetadata:\n  von: alex-workstation\n  status: info\n---\n\ncolleague two\n' > "$OTHER/domain/c.md"
+git -C "$OTHER" add -A
+git -C "$OTHER" commit -qm "upkeep: move b, status on c"
+git -C "$OTHER" push -q origin main
+sleep 6
+push_from_other d.md "colleague four" kim-win
+wait_found 4
+FOURTH_LINE=$(grep '^FOUND:' "$OUT" | sed -n 4p)
+
 # Braces + redirect: the shell prints its own "Terminated" job message on wait,
 # which reads like a test failure in the log and is not one.
 { kill "$WATCHER"; wait "$WATCHER"; } 2>/dev/null || true
@@ -184,6 +199,11 @@ if grep -q 'from .*sam-workstation' <<<"$LOG_LINE"; then
   echo "PASS: a LOG-only commit names its sender in the FOUND line"
 else
   echo "FAIL: LOG-only FOUND line without sender: $LOG_LINE"; fail=1
+fi
+if grep -q 'd\.md' <<<"$FOURTH_LINE" && ! grep -q 'area/b\.md' <<<"$FOURTH_LINE"; then
+  echo "PASS: an upkeep-only foreign commit (move + frontmatter edit) stays silent"
+else
+  echo "FAIL: upkeep reported as an arrival, or the next real entry missed: $FOURTH_LINE"; fail=1
 fi
 echo "--- watcher output, pulled-in case ---"
 cat "$OUT2"

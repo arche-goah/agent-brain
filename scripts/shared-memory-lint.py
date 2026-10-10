@@ -29,6 +29,10 @@ CHECKS (all read-only, no writes, stdlib only):
   6. limits          INDEX entry line longer than the cap; a LOG over the rotation size
   7. archive         entries a NAMED SUCCESSOR supersedes — relevance, never age (see
                      the note at SUPERSESSION_DEFAULT). Age is not in this check at all.
+  8. project-without-area  ADVISORY: >= 3 entries in the catch-all folder (`ops`, or
+                     $SHARED_MEMORY_CATCH_ALL) that share a significant slug word or name
+                     the same project repo — a project filed in the catch-all instead of
+                     its own area (see the note at CATCH_ALL). Never sets the exit code.
 
 RATCHET (same shape as english-only.py, and for the same reason): the audience/topic
 convention was decided on 2026-08-21 with the explicit note that older files are
@@ -52,7 +56,7 @@ where it is, however old.
 
 Usage: shared-memory-lint.py [--repo DIR] [--json] [--write-baseline]
        (--repo defaults to $SHARED_MEMORY_REPO, else ~/Projects/brain-shared-memory)
-Exit 0 = clean, 1 = findings, 2 = unreadable.
+Exit 0 = clean (advisory findings may be printed), 1 = findings, 2 = unreadable.
 """
 from __future__ import annotations
 
@@ -150,6 +154,129 @@ SUPERSESSION_DEFAULT = ["SUPERSEDES", "REPLACES", "SUPERSEDED BY", "REPLACED BY"
 MARKERS_NAME = ".shared-memory-markers.txt"
 
 
+# PROJECT WITHOUT AN AREA (measured 2026-10-10 on a shared-memory repo with several parties):
+# the catch-all folder held 150 entries, among them whole projects — an installation, a
+# template, a suite, a board tool, an audiovisual project — because the repo's README listed
+# five areas and said "do not create areas in advance", so the catch-all became the default.
+# The topic check above cannot see it: `topic` equalled the folder in every one of those
+# files. 23 entries were moved in one commit. This check finds the shape that produced them:
+# three or more catch-all entries that share a significant slug word or name the same
+# project repository.
+#
+# ADVISORY, not a failure: it does not set the exit code. Which entries form a project is
+# a suggestion for the parties who own them — the same reason the archive check reports
+# relations instead of verdicts — and a new check must not turn every existing repo red.
+CATCH_ALL = os.environ.get("SHARED_MEMORY_CATCH_ALL", "ops")
+AREA_MIN = 3
+ADVISORY = {"project_without_area"}
+# Slug words that say what KIND of entry a file is, never which project it belongs to.
+# English only here (this repo is public); a repo written in another language lists its own
+# words in `.shared-memory-generic.txt`, one per line — they EXTEND these defaults. The same
+# file takes `owner/repo` lines for repositories the catch-all is itself about.
+GENERIC_DEFAULT = {
+    "request", "requests", "answer", "answers", "reply", "question", "questions",
+    "proposal", "draft", "status", "state", "update", "note", "notes", "info", "check",
+    "review", "report", "result", "results", "plan", "open", "done", "new", "old", "and",
+    "the", "for", "from", "with", "about", "receipt", "announcement", "decision", "finding",
+    "lesson", "test", "run", "fix", "issue", "follow", "followup", "summary", "handover",
+    "attachment", "warning", "escalation", "welcome", "counter", "windows", "macos",
+    "linux", "mac", "win",
+}
+GENERIC_NAME = ".shared-memory-generic.txt"
+SLUG_SPLIT = re.compile(r"[^a-z0-9]+")
+REPO_URL = re.compile(r"github\.com[/:]([\w.-]+)/([\w.-]+)", re.I)
+REPO_ISSUE = re.compile(r"\b([\w.-]+)/([\w.-]+)#\d+")
+
+
+def load_generic(repo: Path) -> set[str]:
+    try:
+        extra = {ln.strip().lower() for ln in (repo / GENERIC_NAME).read_text(encoding="utf-8")
+                 .splitlines() if ln.strip() and not ln.startswith("#")}
+    except FileNotFoundError:
+        extra = set()
+    return GENERIC_DEFAULT | extra
+
+
+def slug_words(stem: str, skip: set[str]) -> set[str]:
+    """Significant words of a file name: no ids or dates (anything with a digit), nothing
+    shorter than three letters, nothing generic, no party names."""
+    return {w for w in SLUG_SPLIT.split(stem.lower())
+            if len(w) >= 3 and not any(c.isdigit() for c in w) and w not in skip}
+
+
+def repo_refs(text: str, owners: set[str]) -> set[str]:
+    """`owner/repo` names a text points at. A bare `owner/repo` counts only for an owner the
+    repo already writes as a URL or an issue reference somewhere — otherwise every
+    `<topic>/<slug>` path would read as a repository."""
+    refs = {f"{o}/{r}" for o, r in REPO_URL.findall(text) + REPO_ISSUE.findall(text)}
+    if owners:
+        bare = re.compile(r"\b(" + "|".join(re.escape(o) for o in sorted(owners))
+                          + r")/([\w.-]+)", re.I)
+        refs |= {f"{o}/{r}" for o, r in bare.findall(text)}
+    return {r.lower().rstrip(".").removesuffix(".git") for r in refs}
+
+
+def project_clusters(repo: Path, files: list[Path], area_min: int) -> list[dict]:
+    """Catch-all entries that look like one project: >= area_min of them share a slug word
+    or a repository. One finding per distinct file set, labelled with every signal that
+    produced exactly that set."""
+    if area_min <= 0:
+        return []
+    texts = {p: p.read_text(encoding="utf-8", errors="replace") for p in files}
+    skip = load_generic(repo)
+    # Party names are not projects: every `von`/`audience` word is skipped, read from the
+    # files themselves rather than listed — a slug like `request-to-<party>` must not
+    # cluster all requests to one party.
+    for t in texts.values():
+        for v in re.findall(r"^\s+(?:von|audience):\s*(.+)$", t.split("\n---", 1)[0], re.M):
+            skip |= set(SLUG_SPLIT.split(v.lower()))
+    owners = {o.lower() for t in texts.values()
+              for o, _ in REPO_URL.findall(t) + REPO_ISSUE.findall(t)}
+    areas = {p.relative_to(repo).parts[0] for p in files} - {CATCH_ALL}
+    signals: dict[str, set[str]] = {}
+    # A THREAD counts once (measured on the real repo the same day): a proposal, its
+    # follow-up and its answer on one subject (`proposal-x`, `follow-up-x`, `answer-x`) are
+    # three files but one conversation, and clustered at three by construction. Files whose
+    # slug leaves the SAME significant words once kind-words, ids and dates are gone form one
+    # thread; a cluster needs `area_min` distinct threads. A slug with nothing left is its
+    # own thread.
+    thread: dict[str, frozenset] = {}
+    for p, t in texts.items():
+        rel = p.relative_to(repo)
+        if rel.parts[0] != CATCH_ALL:
+            continue
+        words = slug_words(p.stem, skip)
+        thread[rel.as_posix()] = frozenset(words) or frozenset({rel.as_posix()})
+        for w in words:
+            signals.setdefault(w, set()).add(rel.as_posix())
+        for r in repo_refs(t, owners) - skip:
+            signals.setdefault(r, set()).add(rel.as_posix())
+    by_set: dict[frozenset, list[str]] = {}
+    for sig, fs in signals.items():
+        if len({thread[f] for f in fs}) >= area_min:
+            by_set.setdefault(frozenset(fs), []).append(sig)
+    # A set inside a larger reported set is the same project seen through a narrower word
+    # (`master` inside `template`): its words join the larger finding instead of a second one.
+    kept: list[tuple[frozenset, list[str]]] = []
+    for fs, sigs in sorted(by_set.items(), key=lambda kv: (-len(kv[0]), sorted(kv[1]))):
+        host = next((k for k in kept if fs < k[0]), None)
+        if host:
+            host[1].extend(sorted(sigs))
+        else:
+            kept.append((fs, sorted(sigs)))
+    out = []
+    for fs, sigs in kept:
+        existing = sorted(s for s in sigs if s in areas)
+        fix = (f"the area '{existing[0]}' exists: move these entries there" if existing else
+               "if this is one project worked by more than one party: create an area for it "
+               "(folder + LOG.md + a line in the README's area list) and move the entries; "
+               f"if the shared word is generic, add it to {GENERIC_NAME}")
+        out.append({"signal": " + ".join(sigs), "count": len(fs),
+                    "threads": len({thread[f] for f in fs}),
+                    "files": sorted(fs), "fix": fix})
+    return out
+
+
 def supersession_re(repo: Path) -> "re.Pattern[str]":
     try:
         toks = [ln.strip() for ln in (repo / MARKERS_NAME).read_text(encoding="utf-8")
@@ -226,10 +353,10 @@ def fact_files(repo: Path) -> list[Path]:
     return out
 
 
-def lint(repo: Path, baseline_path: Path | None = None) -> dict:
+def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN) -> dict:
     f: dict[str, list] = {k: [] for k in (
         "index_drift", "frontmatter", "name_mismatch", "topic_mismatch",
-        "unresolved_links", "limits", "archive", "baseline")}
+        "unresolved_links", "limits", "archive", "baseline", "project_without_area")}
 
     index_path = repo / INDEX
     if not index_path.is_file():
@@ -416,6 +543,9 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
         f["baseline"].append({"file": miss, "issue": "baseline entry has no file",
                               "fix": "remove the stale line from .shared-memory-legacy.txt"})
 
+    # 8. project without an area (advisory — see the note at CATCH_ALL)
+    f["project_without_area"] = project_clusters(repo, files, area_min)
+
     return {"findings": f, "counts": {k: len(v) for k, v in f.items()}, "scanned": len(files)}
 
 
@@ -498,27 +628,29 @@ def main() -> int:
         return write_baseline(a.repo, a.baseline)
 
     r = lint(a.repo, a.baseline)
-    total = sum(r["counts"].values())
+    total = sum(n for k, n in r["counts"].items() if k not in ADVISORY)
+    advisory = sum(n for k, n in r["counts"].items() if k in ADVISORY)
     if a.json:
         print(json.dumps(r, indent=2, ensure_ascii=False))
         return 1 if total else 0
 
-    if not total:
+    if not total and not advisory:
         print(f"shared-memory-lint: {r['scanned']} file(s) checked, 0 findings")
-        print("all clean (index, frontmatter, topics, links, limits, archive).")
+        print("all clean (index, frontmatter, topics, links, limits, archive, areas).")
         return 0
 
-    print(f"shared-memory-lint: {r['scanned']} file(s) checked, {total} finding(s)\n")
+    print(f"shared-memory-lint: {r['scanned']} file(s) checked, {total} finding(s), "
+          f"{advisory} advisory (does not fail the run)\n")
     for cat, items in r["findings"].items():
         if not items:
             continue
-        print(f"  {cat} ({len(items)}):")
+        print(f"  {cat}{' [advisory]' if cat in ADVISORY else ''} ({len(items)}):")
         for it in items[:20]:
             print("    - " + ", ".join(f"{k}={v}" for k, v in it.items()))
         if len(items) > 20:
             print(f"    … {len(items) - 20} more")
         print()
-    return 1
+    return 1 if total else 0
 
 
 if __name__ == "__main__":

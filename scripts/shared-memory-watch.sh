@@ -176,6 +176,16 @@ case "${1:-status}" in
             printf '%s\n' "$PULLED"
           fi
           write_sha "$REMOTE_HEAD"     # cursor advances, keep watching
+        elif [[ -z "$("$PY" "$HERE/shared-memory-inbox.py" --repo "$REPO" --from "$LAST_SEEN" \
+                       --to "$REMOTE_HEAD" --self "" 2>/dev/null)" ]]; then
+          # UPKEEP IS NOT AN ARRIVAL (measured 2026-10-10): a tidy-up moved 23 old entries into
+          # topic areas and lint commits added frontmatter fields to others; each push was
+          # reported as "new commits from <the parties named in the touched OLD entries>",
+          # four times in one day. The inbox, read UNFILTERED here, is the judge: it skips
+          # renames, frontmatter-only edits and pointer rewrites to moved files, and still
+          # prints every new entry, every body edit and every LOG heading. Nothing printed =
+          # nothing arrived — advance silently.
+          write_sha "$REMOTE_HEAD"
         else
           COUNT=$(git -C "$REPO" rev-list --count "$LAST_SEEN..$REMOTE_HEAD" -- . 2>/dev/null)
           FILES=$(git -C "$REPO" diff --name-only "$LAST_SEEN" "$REMOTE_HEAD" -- . 2>/dev/null \
@@ -187,14 +197,10 @@ case "${1:-status}" in
           # A LOG entry has no `von:` line — its HEADING names the sender. Those come from
           # the inbox reader's heading parser (four live shapes), unfiltered, so a LOG entry
           # addressed to someone else still names who wrote it (measured 2026-09-30).
-          PARTIES=$({ git -C "$REPO" diff --name-only "$LAST_SEEN" "$REMOTE_HEAD" -- . 2>/dev/null \
-            | grep '\.md$' \
-            | while read -r f; do
-                git -C "$REPO" show "$REMOTE_HEAD:$f" 2>/dev/null \
-                  | sed -n 's/^[[:space:]]*von:[[:space:]]*//p' | head -1
-              done
-              "$PY" "$HERE/shared-memory-inbox.py" --repo "$REPO" --from "$LAST_SEEN" \
-                --to "$REMOTE_HEAD" --senders 2>/dev/null | tr -d '\r'; } \
+          # Only the inbox names parties now (2026-10-10): the `von:` of every TOUCHED file
+          # also named the authors of old entries that were merely moved or maintained.
+          PARTIES=$("$PY" "$HERE/shared-memory-inbox.py" --repo "$REPO" --from "$LAST_SEEN" \
+                --to "$REMOTE_HEAD" --senders 2>/dev/null | tr -d '\r' \
             | sort -u | tr '\n' '|' | sed 's/|/, /g; s/, $//')
           echo "FOUND: ${COUNT:-?} new commit(s) from ${PARTIES:-unknown party (no von: field)} — ${FILES:-see git log}"
           # What the commits SAY, not only that they exist (2026-09-25): a LOG-only
