@@ -51,7 +51,7 @@ address the operator by, e.g. "an <name>").
 
 Usage:
   open-items.py --owner <org> [--hook-input '<SessionStart JSON>'] [--repo <shared-memory>]
-  open-items.py --classify '<id>=ai|human[:why]' [...]      (id: as printed, or its file name)
+  open-items.py --classify '<id>=ai|human[:why]' [...]      (id: as in the hint line, or its file name)
 Stdlib only; runs under `python3` or `python` (Windows python.org installer).
 """
 import argparse
@@ -290,17 +290,39 @@ def lookup(store, it):
     return store.get(it["id"])
 
 
-def classify(args, cls_file):
+PR_ID = re.compile(r"^[\w.-]+#\d+$")
+
+
+def classify(args, cls_file, repo):
+    """Store the agent's class per id. A request id that matches no open request is refused:
+    measured 2026-10-10, two calls with the printed short ref of a LOG entry said
+    "classified" and the item stayed '?'. PR ids are not checked (that needs the PR search)."""
     store = load_json(cls_file, {})
     today = datetime.date.today().isoformat()
+    req = requests(repo)
+    known = None if req is None else ({i["id"] for i in req}
+                                      | {i["ref"].rsplit("/", 1)[-1] for i in req if i.get("file")})
+    specs = []
     for spec in args:
         key, _, rest = spec.partition("=")
         cls, _, why = rest.partition(":")
+        key = key.strip()
         if not key or cls not in ("ai", "human"):
             print(f"!! bad --classify '{spec}' — expected '<id>=ai|human[:why]'")
             return 2
-        store[key.strip()] = {"class": cls, "why": why.strip() or "agent's judgement", "at": today}
-        print(f"classified: {key.strip()} = {cls}")
+        if not PR_ID.match(key):
+            if known is None:
+                print(f"!! requests NOT readable - '{key}' saved unchecked")
+            elif key not in known:
+                near = [i["id"] for i in req if key in i["id"]] or [i["id"] for i in req]
+                print(f"!! --classify '{key}' matches no open request - nothing saved. Exact ids:")
+                for n in near[:10]:
+                    print(f"   {n}")
+                return 2
+        specs.append((key, cls, why))
+    for key, cls, why in specs:
+        store[key] = {"class": cls, "why": why.strip() or "agent's judgement", "at": today}
+        print(f"classified: {key} = {cls}")
     if not save_json(cls_file, store):
         print(f"!! class NOT saved ({cls_file})")
         return 1
@@ -324,7 +346,7 @@ def main():
     state_dir = root / ".claude-state"
     seen_file, cls_file = state_dir / "open-items-seen.json", state_dir / "open-items-class.json"
     if a.classify:
-        return classify(a.classify, cls_file)
+        return classify(a.classify, cls_file, a.repo)
 
     hook = {}
     if a.hook_input.strip():
@@ -444,6 +466,10 @@ def main():
         print(f"- [parked] {', '.join(i['ref'].rsplit('/', 1)[-1] for i in parked)}")
     if count["?"]:
         print("!! open for us: classify every '?' item once — core/scripts/open-items.py --classify '<id>=ai|human:<why>'")
+        # The id is not always the printed ref (a LOG entry adds its first 40 characters).
+        for i in active:
+            if i["cls"] == "?":
+                print(f"   --classify '{i['id']}=ai|human:<why>'")
     return 0
 
 
