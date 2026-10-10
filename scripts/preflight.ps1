@@ -63,8 +63,14 @@ if ($sshOut -match 'successfully authenticated') {
   if ($agent -and $agent.Status -eq 'Running') { OK "ssh-agent service running" }
   else { WARN "ssh-agent service not running — harmless, access is already proven" "Only needed if your key has a passphrase. As ADMINISTRATOR (without admin rights: 'Access is denied'): Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent — then ssh-add" }
 } else {
+  # Missing SSH is only fatal when HTTPS does not reach GitHub either (same as preflight.sh).
   $first = ($sshOut -split "`r?`n" | Where-Object { $_ })[0]
-  BAD "SSH to GitHub not proven (message: $first)" "Create a key: ssh-keygen -t ed25519 · show the public key: type $env:USERPROFILE\.ssh\id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
+  $sshFix = "Create a key: ssh-keygen -t ed25519 · show the public key: type $env:USERPROFILE\.ssh\id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
+  $httpsUrl = if ($env:PREFLIGHT_HTTPS_URL) { $env:PREFLIGHT_HTTPS_URL } else { 'https://github.com/arche-goah/agent-brain.git' }
+  $env:GIT_TERMINAL_PROMPT = '0'; $env:GIT_HTTP_LOW_SPEED_LIMIT = '1'; $env:GIT_HTTP_LOW_SPEED_TIME = '10'
+  git ls-remote $httpsUrl HEAD *> $null
+  if ($LASTEXITCODE -eq 0) { WARN "SSH to GitHub not proven, but HTTPS works (ls-remote $httpsUrl)" "Clones and fetches over HTTPS are fine. Set up SSH if a plugin install or marketplace refresh fails: $sshFix" }
+  else { BAD "GitHub not reachable — neither SSH (message: $first) nor HTTPS ($httpsUrl)" "Check the network first; then $sshFix" }
 }
 
 if (Get-Command claude -ErrorAction SilentlyContinue) { OK "claude CLI present" } else { BAD "claude CLI missing" "install Claude Code" }

@@ -25,10 +25,11 @@ Windows: after EVERY installation, open a new terminal. Windows does not propaga
 PATH changes to already-running processes — otherwise the preflight reports tools as
 missing although they are installed, and you install things twice.
 
-**SSH is mandatory, not a recommendation.** A token-/HTTPS-only login looks
-functional but breaks two things: `claude plugin install` (clones over SSH) and the
-automatic marketplace updates (the background refresh cannot use HTTPS credentials).
-The preflight only passes once `ssh -T git@github.com` greets you by name.
+**SSH is recommended; HTTPS is enough to start.** Clones and fetches work over HTTPS.
+Where a plugin install or the background marketplace refresh fails on a machine without
+SSH, setting up SSH is the fix. The preflight measures both: it is green once
+`ssh -T git@github.com` greets you by name, and it reports missing SSH only as a warning
+when an HTTPS `git ls-remote` to GitHub succeeds; it fails only when neither works.
 
 ## 1. Preflight — measure, do not assume
 
@@ -37,7 +38,7 @@ bash scripts/preflight.sh
 ```
 
 It checks OS, Node version, git (plus `core.longpaths` on Windows), Python, `gh`
-login, proven SSH access to GitHub, and the `claude` CLI. It installs nothing. For
+login, access to GitHub (SSH, or HTTPS with a warning), and the `claude` CLI. It installs nothing. For
 every red line it prints the exact fix; run it again after each fix — "I did it" is
 not evidence, only the green re-check is. (On Windows, `scripts/preflight.ps1` is the
 same set of checks for the PowerShell view; the Git Bash edition is authoritative.)
