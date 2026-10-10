@@ -76,6 +76,13 @@ grep -q '^!! local machinery: 1 hook or stop-check target(s) do not exist: stop-
   && ok "missing-stop-check-target-loud-even-when-declared" || bad "missing-stop-check-target-loud-even-when-declared: $out"
 out=$(mk "$(H "$(C 'node \"$CLAUDE_PROJECT_DIR/core/helpers/gone.cjs\"')")" '' '')
 grep -q 'target(s) do not exist: hook: core/helpers/gone.cjs' <<< "$out" && ok "missing-core-hook-target-loud" || bad "missing-core-hook-target-loud: $out"
+# A user-level hook spelled with %USERPROFILE% (cmd /c on Windows): present = silent, gone = loud.
+mkdir -p "$T/fakehome/.claude/helpers"; : > "$T/fakehome/.claude/helpers/toast.cjs"
+out=$(mk "$(H "$(C 'cmd /c node \"%USERPROFILE%\\.claude\\helpers\\toast.cjs\" stop')")" '' '')
+grep -q 'do not exist' <<< "$out" && bad "userprofile-hook-present-silent: $out" || ok "userprofile-hook-present-silent"
+out=$(mk "$(H "$(C 'cmd /c node \"%USERPROFILE%\\.claude\\helpers\\gone.cjs\" stop')")" '' '')
+grep -q 'do not exist.*gone.cjs' <<< "$out" && ok "userprofile-hook-gone-loud" || bad "userprofile-hook-gone-loud: $out"
+rm -f "$T/fakehome/.claude/helpers/toast.cjs"
 
 # Two contradicting places: declared manual, yet wired; declared both instance and alpha.
 mk "$X_HOOK" '' '' >/dev/null

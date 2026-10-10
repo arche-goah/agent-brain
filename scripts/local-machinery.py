@@ -173,6 +173,12 @@ def cmd_target(cmd, C):
     for tok in tokens(cmd):
         for var in ("${CLAUDE_PROJECT_DIR}", "$CLAUDE_PROJECT_DIR", "%CLAUDE_PROJECT_DIR%"):
             tok = tok.replace(var, C.repo_abs)
+        # The home directory spelled the way the shell expands it (`cmd /c` on Windows
+        # takes %USERPROFILE%). Unexpanded, an existing user-level hook read as "missing"
+        # (measured 2026-10-10: toast.cjs present, reported as gone).
+        for var in ("%USERPROFILE%", "${HOME}", "$HOME"):
+            if tok.startswith(var):
+                tok = C.home.as_posix() + tok[len(var):]
         if tok.startswith("~/"):
             tok = C.home.as_posix() + tok[1:]
         p = pathlib.Path(tok)
