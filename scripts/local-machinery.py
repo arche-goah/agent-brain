@@ -322,11 +322,20 @@ def scan_plugins(C):
     return out
 
 
+# Directories Claude Code itself keeps under ~/.claude/skills: `synced` holds the account's
+# claude.ai skills (vendor, kept current by the harness), `.trash` what the harness removed.
+# Neither is machinery of this brain; measured 2026-10-10 on the Windows instance, both were
+# the only two items no declaration could carry. A dot directory is never a loaded skill.
+HARNESS_SKILL_DIRS = {"synced"}
+
+
 def scan_skills(C):
     out = []
     for base in (C.root / ".claude" / "skills", C.home / ".claude" / "skills"):
         if base.is_dir():
             for d in sorted(base.iterdir()):
+                if d.name.startswith(".") or (base.parent.parent == C.home and d.name in HARNESS_SKILL_DIRS):
+                    continue
                 if d.is_dir() and not d.is_symlink():
                     out.append(item("skill", C.rel_id(d), read_tree(d), file=d, name=d.name))
     return out
