@@ -1,0 +1,77 @@
+# Baseline checks for a repo of the "project" or "suite" kind (CONVENTIONS.md §14).
+# Copy to .github/workflows/checks.yml of the new repo; `scripts/repo-check.py` of the
+# core verifies it is there. Ubuntu only: macOS minutes count ten times against the
+# Actions budget of a private repo — add a platform runner only for a check that
+# really needs that platform, and say why next to it.
+#
+# On a plan without branch protection (private repo on a free account) this run is
+# VISIBLE on the pull request but cannot be required. The rule carries it instead:
+# the reviewer reads the result (`core/scripts/ci-watch.sh pr <repo> <n>`), and a red
+# check blocks the merge.
+name: checks
+
+# pull_request for branches, push for main only — an unfiltered push trigger runs
+# every PR branch twice and burns the minute budget.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  # "true" for a repo that is public or may become public: new text must be English.
+  # A private repo whose content is in another language (an operator surface in two
+  # languages, notes) keeps "false".
+  ENGLISH_ONLY: "false"
+  # The public core, pinned to a release tag. Bump the tag deliberately, never `main`.
+  CORE_REPO: arche-goah/agent-brain
+  CORE_REF: v1.4.1
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CORE_REPO }}
+          ref: ${{ env.CORE_REF }}
+          path: .core-checks
+      # Out of the scanned tree: the leak scan walks the working directory.
+      - name: move the core tools out of the repo
+        run: mv .core-checks "$RUNNER_TEMP/core"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Instance data (private addresses, MACs, home paths, listed names) never enters
+      # a shared repo. Names to watch come from .claude/rules/leak-names.json, if present.
+      - name: leak scan
+        run: python3 "$RUNNER_TEMP/core/scripts/leak-scan.py" --root .
+
+      # Text is stored with LF in the index (.gitattributes `* text=auto eol=lf`):
+      # a CRLF file breaks shebangs on Unix and makes every diff a whole-file diff.
+      - name: line endings (LF in the index)
+        run: |
+          bad=$(git ls-files --eol | awk '$1 == "i/crlf" {print $NF}')
+          if [ -n "$bad" ]; then
+            echo "$bad"
+            echo "CRLF in the index - add '* text=auto eol=lf' to .gitattributes and renormalize."
+            exit 1
+          fi
+
+      - name: english only
+        if: env.ENGLISH_ONLY == 'true'
+        run: python3 "$RUNNER_TEMP/core/scripts/english-only.py" --root .
+
+      # The repo's own tests and lints: every checks/*.sh and checks/*.py runs, found by
+      # glob so a new check cannot be forgotten in this file.
+      - name: repo checks (checks/)
+        run: |
+          set -e
+          shopt -s nullglob
+          for s in checks/*.sh; do echo "::group::$s"; bash "$s"; echo "::endgroup::"; done
+          for s in checks/*.py; do echo "::group::$s"; python3 "$s"; echo "::endgroup::"; done

@@ -4,7 +4,8 @@
 > Written in English because it ships with the shared core (decision 2026-08-03: tools
 > and core in English, instance docs and memory in the owner's language).
 >
-> **Scope:** this contract binds the core repo (`agent-brain`) and every tool suite built around it. It
+> **Scope:** this contract binds the core repo (`agent-brain`) and every tool suite built around it;
+> §14 (the setup contract) binds every repo a brain creates or works. It
 > exists so that two people running separate private brains can exchange suites and rule
 > changes without merge work. If a rule here is only true for one person's setup, it does
 > not belong in this file.
@@ -384,3 +385,72 @@ skills only; a core rule drifts → core rules come from the submodule, local ad
 into the instance rule file the guard loads; update breaks near a show → update window is
 never on a show day, rollback per pin; private-repo auto-refresh fails over HTTPS → use
 SSH remotes with a loaded ssh-agent, or run marketplace update manually.
+
+## 14. Every repo: the setup contract
+
+A repo set up by hand gets whatever its first session remembered. Measured 2026-10-10 on
+one account: 7 of 18 private repos had no workflow at all, and branch protection was
+unavailable on every private one (free plan, HTTP 403 "Upgrade to GitHub Pro"); the
+"pull requests only" rule of two project repos lived in a local hook nobody could see.
+This section is what every repo carries from its first commit, by kind.
+`scripts/repo-check.py` checks a repo against it; `templates/repo/` is the starting set.
+
+**The normal case is a plan without branch protection on private repos.** Checks run
+and are visible on every pull request, but cannot be made required. Three things carry
+the rule instead, and together they are the enforcement — not a fallback:
+
+1. the shipped **pre-push hook** refuses a push to `main` in every clone that turned it on;
+2. the **reviewer reads the check result** before approving
+   (`core/scripts/ci-watch.sh pr <repo> <n>`), never "looks green on the page";
+3. **a red check blocks the merge by rule** — merging over red is a decision that is
+   written down with its reason, like any other deviation.
+
+Server-side protection (a ruleset requiring the pull request and the checks) is an
+optional upgrade where the plan allows it — public repos, or a paid plan. Where it is
+on, it replaces nothing above; it adds a fence the server holds.
+
+**Kinds and what each carries:**
+
+| Kind | Recognised by | Access | Change flow | Checks (workflow on `pull_request` + push to `main`) |
+|---|---|---|---|---|
+| core | `core-contract.json` in the root | owner admin; collaborators `write` | branch → PR → CI green → merge per the core's merge rules; server ruleset (public repo) | §7 as is |
+| suite | `.claude-plugin/plugin.json` | owner admin; the suite's main responsible and collaborators `write` | branch → PR → review by the other side → author (or the main responsible) merges after OK; pre-push hook | §7 as is |
+| project repo | none of the others | owner admin; every party working it `write` | branch → PR → review by the other side → author merges after OK; pre-push hook; measurement data of one run = one PR | baseline below |
+| private brain | `core/` submodule + `.claude/` | its operator only | direct push to `main` (one writer); core changes never here (§13) | its own checks; no leak scan — it holds instance data by design |
+| shared memory | `INDEX.md` + area `LOG.md` files | every party's AI `write` | direct append to `main` (append-only log, several writers); its own lint (`shared-memory-lint.py`) | its lint; no leak scan — it names parties by design |
+
+**Access, everywhere:** collaborators get `write` and branch IN the repo — forks are not
+the default (a fork pull request into a private repo starts no Actions run). The owner
+invites with the full handle from the shared memory's people register. Who merges in a
+repo with a main responsible is decided by the operator who owns the repo, recorded where
+both sides read it, never inferred from a git author.
+
+**Baseline checks** (`templates/repo/.github/workflows/checks.yml`, Ubuntu only — macOS
+minutes count ten times against a private repo's budget; a platform runner only where a
+check really needs that platform, with the reason next to it):
+
+- **leak scan** — the core's `scripts/leak-scan.py --root .`, from the core checked out at
+  a pinned release tag;
+- **line endings** — no `i/crlf` in `git ls-files --eol`, with `.gitattributes`
+  `* text=auto eol=lf` in the repo;
+- **english only** — `scripts/english-only.py --root .`, switched on (`ENGLISH_ONLY`) for a
+  repo that is public or may become public; a private repo with content in another
+  language keeps it off;
+- **the repo's own checks** — every `checks/*.sh` and `checks/*.py`, found by glob so a new
+  one cannot be forgotten in the workflow. A repo's tests and lints live there.
+
+**Every clone, once after cloning:**
+
+```
+git clone --recurse-submodules <url>
+git -C <clone> config core.hooksPath .githooks
+```
+
+**Pulling:** `git pull --ff-only` (a pull that would merge is a sign of work on `main`,
+which the flow above rules out — stop and look instead of merging), submodules follow
+their pin (`git submodule update --init --recursive`), never their branch.
+
+**A new repo** starts from `templates/repo/` (workflow, pre-push hook, pull request
+template, `.gitattributes`), gets an `AGENTS.md` stating its own rules, and is checked
+with `scripts/repo-check.py` before the first collaborator is invited. A missing item is
+fixed by pull request like every other change.

@@ -31,8 +31,9 @@ tracked file's PATH fails, regardless of content — the audit's trigger was tha
 (the LA1 deprecation stubs) live in scripts/english-legacy-names.txt and may only
 ever disappear from it, same one-way semantics as the content baseline.
 
-Usage: scripts/english-only.py [--write-baseline]   (run from anywhere; repo = script's repo)
-Exit 0 = clean, 1 = findings.
+Usage: scripts/english-only.py [--write-baseline] [--root DIR]
+  (run from anywhere; repo = script's repo, or DIR)
+Exit 0 = clean, 1 = findings, 2 = bad --root.
 """
 from __future__ import annotations
 
@@ -42,6 +43,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# --root DIR checks another repo (the repo baseline workflow, CONVENTIONS §14); its
+# baselines live at the same place there, scripts/english-legacy*.txt, or are empty.
+if "--root" in sys.argv:
+    _i = sys.argv.index("--root")
+    if _i + 1 >= len(sys.argv) or not Path(sys.argv[_i + 1]).is_dir():
+        print("english-only: --root needs an existing directory", file=sys.stderr)
+        sys.exit(2)
+    ROOT = Path(sys.argv[_i + 1]).resolve()
 BASELINE = ROOT / "scripts" / "english-legacy.txt"
 NAME_BASELINE = ROOT / "scripts" / "english-legacy-names.txt"
 
@@ -119,6 +128,7 @@ def main() -> int:
                     and has_german(p))
 
     if "--write-baseline" in sys.argv:
+        BASELINE.parent.mkdir(parents=True, exist_ok=True)
         with open(BASELINE, "w", encoding="utf-8", newline="\n") as fh:
             fh.write("\n".join(german) + "\n")
         print(f"english-only: baseline written, {len(german)} legacy files")
