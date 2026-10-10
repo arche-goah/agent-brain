@@ -215,6 +215,7 @@ Ask before writing the first file, not after. Answer in order — the first "yes
 | Does it only make sense for one rig, venue, client, or show? | **private brain**, never shared |
 | Does it belong to one tool domain (a device family, an application, a protocol stack)? | **that domain's suite** — or a **new suite repo** if none exists (§2, §10) |
 | Is it a working rule, gate, hook, linter, or an OS-level skill that has nothing to do with a specific tool? | **the core (`agent-brain`)** |
+| Is it shared, non-executable project content of several parties — who is in, which gear, agreements, wiring plans? | **a shared project repo** under the organisation — rules below |
 
 Two consequences that are not optional:
 
@@ -242,6 +243,47 @@ Two consequences that are not optional:
    left behind is shadow authority: it wins exactly when nobody checks
    (measured 2026-08-19, `macro5001`: an instance followed its own local skill
    instead of re-reading the decision the skill silently dropped).
+
+**Shared project repo — the third kind (agreed between two brains 2026-09-22, first case
+2026-10-10):** a repo with no executable code that several parties keep together (who is
+in, which devices they bring, how signals connect, agreements). It runs on no machine and
+belongs to no side alone, so neither "tool" nor "instance" fits; without this paragraph it
+falls through the table above. Rules, in the order they bite:
+
+1. **Place and access** — under the organisation's account, private; the owner invites,
+   the leading side has write. Invitations use the full handle from the shared memory's
+   people register and the yes of the repo's owner; a handle is never formed from a
+   summary, a first name or memory (a handle without its suffix is a different person).
+2. **Names and language** — kebab-case ASCII English for repo, folders, files, headings
+   and field names; free text in a person's file may be that person's language. Field
+   names are never translated, or every evaluation breaks.
+3. **No instance data** (§1) — no addresses, hostnames, IPs, serial numbers, credentials.
+   Device models, firmware versions and connector types are content, not leaks.
+   `scripts/leak-scan.py` runs in CI; no release-preflight, no tag CI — nothing is released.
+4. **Personal data is the sensitive class here**, not trade secrets: the repo collects
+   data ABOUT people. Publishing or exporting is a decision of its own, never a side
+   effect. Whoever creates their file consents to inclusion in the private repo and to
+   nothing else; on request the file is deleted together with the issue it came from, the
+   note stays anonymous. No e-mail, phone or postal addresses — not in free text either.
+5. **One file per person** (`players/<github-handle>.md`), self-maintained, English
+   field names (`handle`, `name`, `role`, `devices`, `brings`, `wants`, `contact` = handle
+   or "via <person>"). Nobody edits another person's file beyond format fixes.
+6. **State carries a date** — every player and device file has `as_of: YYYY-MM-DD`, set
+   by the person on every change; an entry without it counts as unconfirmed, not as wrong
+   (the "identity is written, state is read" rule of `working-rules.md`, applied to a repo
+   where the state is other people's gear).
+7. **Outsiders without a clone or an AI** join through a GitHub issue form with the same
+   fields; a collaborator turns the issue into the file and closes it with the link.
+   Whoever wants no GitHub account tells one person, who enters it with a note.
+8. **Third-party content** (manuals, vendor tables) is linked, never checked in (§2).
+9. **Decisions with reach run through the shared memory** (own topic), with the decision
+   circle named; the repo carries the resulting state, not the discussion.
+10. **The ledger stays private** — open points, orders and intermediate states live in
+    each party's brain (Project Work Ledgers in `working-rules.md`), never in the repo.
+    The repo has no TODO file; every overview in it is the folder itself or generated.
+11. **`AGENTS.md` in the root** says all of this to any agent, in English; changes go
+    branch → PR → CI green → merge, read against by the other party on the first PR and
+    on structure changes.
 
 ## 12. Staying compatible — and how anyone can check it
 
