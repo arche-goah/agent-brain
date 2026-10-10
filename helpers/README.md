@@ -8,7 +8,8 @@ below, installed at USER level via `scripts/install-statusline.sh`) and
 
 | Script | Event | Purpose |
 |--------|-------|---------|
-| session-bootup.sh | SessionStart | fast local sanity check (git/memory/settings/symlinks/brain-scan/tasks) |
+| session-bootup.sh | SessionStart | fast local sanity check (git/memory/settings/symlinks/brain-scan/tasks); one machine line from `scripts/machine-profile.sh` when the instance has `config/machines/` (identity from `config/machines/<key>.md`, tools measured live from `config/machines/probe-tools.txt`) |
+| session-pull.sh | SessionStart (settings template) | opt-in (`config/session-pull.json`, template `templates/session-pull.json`): fast-forwards the brain and every repo `config/ecosystem.json` records, plus `extra` repos it does not carry (shared memory); never the core submodule or any submodule (they follow their pin); dirty/diverged = reported, untouched; no upstream = skipped; missing with a remote = cloned; per-repo stall limit + run budget, no `timeout`; stderr only, exit 0; `- Session pull: off` in the machine profile switches it off on that machine; fixture `scripts/test-session-pull.sh` |
 | session-closing.sh | SessionEnd (+ `--pre-commit` from the session-close skill) | HANDOFF.md with real git data + line in docs/maintenance/session-log.md; the skill writes the line before the close commit, the hook only when no stamp says it is already there |
 | memory-sync.cjs | SessionStart/SessionEnd/PreCompact | auto-memory <-> docs/memory-snapshot sync |
 | file-guard.cjs | PreToolUse (Edit/Write) | protects sensitive files + branch gate: edits in a core checkout only on a feature branch (pin/main blocks) |

@@ -149,6 +149,24 @@ its root; `--out <file>` picks another place). Suite checks (6+7) read `SKIP` on
 core-only onboarding — that is correct, not red. Send the report back to whoever
 invited you; it answers "does it run on your machine?" without screenshots.
 
+## Optional: one brain on several machines
+
+Two opt-in pieces, both off until the brain has their file:
+
+- **Machine profile.** `bash core/scripts/machine-key.sh` prints this machine's key;
+  `cp core/templates/machine-profile.md config/machines/<key>.md` and fill in alias, role
+  and the sender id your shared-memory entries carry. Identity only — which tools a
+  machine has is measured at every session start from `config/machines/probe-tools.txt`
+  (one command name per line), never written into the profile. The session start prints
+  one `machine:` line; once `config/machines/` exists, a machine without a profile is
+  named there with the command to create it.
+- **Session pull.** `cp core/templates/session-pull.json config/session-pull.json` (edit
+  `extra`), and wire `core/helpers/session-pull.sh` as a SessionStart hook (the entry is
+  in `core/templates/settings.json`). Every start then fast-forwards the brain and the
+  repos `config/ecosystem.json` records; dirty or diverged checkouts are only reported,
+  and the core submodule is never pulled — it follows the pin via `brain-update.sh`.
+  `- Session pull: off` in a machine's profile keeps that machine still (a show machine).
+
 ## Afterwards: the maintenance rhythm
 
 - Weekly, never on a show day: `bash core/scripts/brain-update.sh` from your brain —
