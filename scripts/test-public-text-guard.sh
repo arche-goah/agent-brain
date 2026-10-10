@@ -29,16 +29,13 @@ printf '%s\n' "process.stdin.resume(); process.stdin.on('end', () => process.exi
 # --- layout: a brain with a watch list, a fake gh, a public and a private clone ---
 B="$T/brain"; mkdir -p "$B/.claude/rules" "$T/bin"
 printf '{"names": ["zorbalina"], "instances": ["zorba-rig"]}\n' > "$B/.claude/rules/leak-names.json"
-cat > "$T/bin/gh" <<'EOF'
-#!/usr/bin/env bash
-case "$*" in
-  *repos/o/pub*)  echo public ;;
-  *repos/o/priv*) echo private ;;
-  *) exit 1 ;;
-esac
+cat > "$T/bin/fake-gh.cjs" <<'EOF'
+const a = process.argv.slice(2).join(' ');
+if (a.includes('repos/o/pub')) console.log('public');
+else if (a.includes('repos/o/priv')) console.log('private');
+else process.exit(1);
 EOF
-chmod +x "$T/bin/gh"
-export PATH="$T/bin:$PATH"
+export PUBLIC_TEXT_GUARD_FAKE_GH="$NT/bin/fake-gh.cjs"
 git init -q "$T/pubclone" && git -C "$T/pubclone" remote add origin https://github.com/o/pub.git
 git init -q "$T/privclone" && git -C "$T/privclone" remote add origin git@github.com:o/priv.git
 printf 'Thanks to Zorbalina for the review.\n' > "$T/named.md"

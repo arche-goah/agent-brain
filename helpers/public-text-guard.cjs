@@ -115,8 +115,12 @@ function visibility(slug, root) {
   const hit = cache[slug];
   if (hit && Date.now() - hit.at < TTL_MS) return hit.v;
   let v = 'unknown';
+  // Fixture seam: a fake gh as a node script. A shell-script `gh` is not executable for
+  // node on Windows (no .exe), so the real gh would answer instead (measured in CI).
+  const fake = process.env.PUBLIC_TEXT_GUARD_FAKE_GH;
+  const [bin, pre] = fake ? [process.execPath, [fake]] : ['gh', []];
   try {
-    v = execFileSync('gh', ['api', `repos/${slug}`, '--jq', '.visibility'],
+    v = execFileSync(bin, [...pre, 'api', `repos/${slug}`, '--jq', '.visibility'],
       { stdio: ['ignore', 'pipe', 'ignore'], timeout: 6000 }).toString().trim().toLowerCase() || 'unknown';
   } catch (e) { /* offline, no access, no gh: stays unknown */ }
   if (v !== 'unknown') {
