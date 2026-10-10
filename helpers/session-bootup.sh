@@ -313,7 +313,8 @@ if [[ -f "$HERE/../scripts/always-loaded.py" ]]; then
 fi
 
 # Questions to the operator that were never settled (question-gate.cjs): listed every
-# start until answered/dropped — a postponed question must not scroll away for good.
+# start until answered/dropped — neither a question the operator postponed (deferred) nor one
+# they replied past (unanswered) may scroll away for good.
 if command -v node >/dev/null 2>&1 && [[ -f "$HERE/question-gate.cjs" ]]; then
   CLAUDE_PROJECT_DIR="$R" node "$HERE/question-gate.cjs" list 2>/dev/null
 fi
