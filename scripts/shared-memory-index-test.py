@@ -47,9 +47,10 @@ def entry(name, desc, body="text"):
 def build_repo(root, n_entries, index_text):
     (root / "ops").mkdir(parents=True, exist_ok=True)
     for i in range(n_entries):
-        (root / "ops" / f"e{i}.md").write_text(
-            entry(f"e{i}", f"Description number {i}."), encoding="utf-8", newline="\n")
-    (root / "INDEX.md").write_text(index_text, encoding="utf-8", newline="\n")
+        with open(root / "ops" / f"e{i}.md", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(entry(f"e{i}", f"Description number {i}."))
+    with open(root / "INDEX.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(index_text)
 
 
 def run_main_args(repo, extra):
@@ -121,12 +122,14 @@ with tempfile.TemporaryDirectory() as td:
     import os, subprocess
     repo = Path(td) / "repo"
     (repo / "ops").mkdir(parents=True)
-    (repo / "ops" / "dated.md").write_text(
-        entry("dated", "Has a date.").replace("  topic: ops\n", "  topic: ops\n  date: 2026-09-01\n"),
-        encoding="utf-8", newline="\n")
-    (repo / "ops" / "undated.md").write_text(entry("undated", "No date."), encoding="utf-8", newline="\n")
-    (repo / "ops" / "INDEX.md").write_text("# ops\n", encoding="utf-8", newline="\n")
-    (repo / "INDEX.md").write_text("# Index\n", encoding="utf-8", newline="\n")
+    with open(repo / "ops" / "dated.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(entry("dated", "Has a date.").replace("  topic: ops\n", "  topic: ops\n  date: 2026-09-01\n"))
+    with open(repo / "ops" / "undated.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(entry("undated", "No date."))
+    with open(repo / "ops" / "INDEX.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# ops\n")
+    with open(repo / "INDEX.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Index\n")
     env = dict(os.environ, GIT_AUTHOR_DATE="2026-08-20T12:00:00", GIT_COMMITTER_DATE="2026-08-20T12:00:00")
     for cmd in (["init", "-q"], ["add", "-A"],
                 ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"]):
@@ -159,7 +162,8 @@ with tempfile.TemporaryDirectory() as td:
     build_repo(repo, 2, "# Index\n\n- [ops](ops/INDEX.md) — 2 entries\n"
                         "- [tools](ops/tools/README.md) — delivery copy\n")
     (repo / "ops" / "tools").mkdir(parents=True, exist_ok=True)
-    (repo / "ops" / "tools" / "README.md").write_text("# tools\n", encoding="utf-8", newline="\n")
+    with open(repo / "ops" / "tools" / "README.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# tools\n")
     run_main(repo, write=True)
     first = (repo / "INDEX.md").read_text(encoding="utf-8")
     run_main(repo, write=True)

@@ -50,7 +50,8 @@ with tempfile.TemporaryDirectory() as tmp:
     repo = Path(tmp)
     (repo / "ops").mkdir()
     log = repo / "ops" / "LOG.md"
-    log.write_text(LOG, encoding="utf-8", newline="\n")
+    with open(log, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(LOG)
     original = blocks(LOG)
 
     print("check before rotation")
@@ -98,14 +99,15 @@ with tempfile.TemporaryDirectory() as tmp:
 
     print("entry cap")
     long_body = "x" * 400
-    log.write_text(
-        log.read_text(encoding="utf-8")
-        + f"\n## 2026-09-20 · me-mac — old long entry\n\n{long_body}\n"
-        + f"\n## 2026-11-03 · me-mac — AN peer: new long entry\n\n{long_body}\n"
-        + f"\n## 2026-11-03 · peer — AN me-mac: foreign long entry\n\n{long_body}\n"
-        + f"\n## 2026-11-04 me-mac - AN peer: ascii hyphen shape\n\n{long_body}\n"
-        + "\n## 2026-11-03 · me-mac — AN peer: short\n\nDatei: `ops/x.md`.\n",
-        encoding="utf-8", newline="\n")
+    # Read BEFORE opening for write — "w" truncates the file it is about to extend.
+    grown = (log.read_text(encoding="utf-8")
+             + f"\n## 2026-09-20 · me-mac — old long entry\n\n{long_body}\n"
+             + f"\n## 2026-11-03 · me-mac — AN peer: new long entry\n\n{long_body}\n"
+             + f"\n## 2026-11-03 · peer — AN me-mac: foreign long entry\n\n{long_body}\n"
+             + f"\n## 2026-11-04 me-mac - AN peer: ascii hyphen shape\n\n{long_body}\n"
+             + "\n## 2026-11-03 · me-mac — AN peer: short\n\nDatei: `ops/x.md`.\n")
+    with open(log, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(grown)
     rc, out = run(repo, "--check", "--today", "2026-11-05", self_="me-mac")
     ok("own new long entry reported", "2 own LOG entries over 300 B" in out and "2026-11-03 me-mac" in out, out)
     ok("ascii-hyphen heading shape recognised as own", "2026-11-04 me-mac" in out, out)

@@ -71,13 +71,13 @@ def check(cond, title, detail=""):
 if __name__ == "__main__":
     res = []
     with tempfile.TemporaryDirectory() as d:
-        (Path(d) / "s1.jsonl").write_text("\n".join(json.dumps(r) for r in RECORDS) + "\nnot json\n",
-                                          encoding="utf-8", newline="\n")
+        with open(Path(d) / "s1.jsonl", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("\n".join(json.dumps(r) for r in RECORDS) + "\nnot json\n")
         sub = Path(d) / "s1" / "subagents"
         sub.mkdir(parents=True)
-        (sub / "agent-1.jsonl").write_text(json.dumps(user(300, "subagent prompt")) + "\n"
-                                           + json.dumps(asst(400, use("x1", "Bash"))) + "\n",
-                                           encoding="utf-8", newline="\n")
+        with open(sub / "agent-1.jsonl", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(user(300, "subagent prompt")) + "\n"
+                     + json.dumps(asst(400, use("x1", "Bash"))) + "\n")
         rc, out, err = run(d, "--json")
         rep = json.loads(out) if rc == 0 else {}
         day = rep.get("days", {}).get(DAY, {})

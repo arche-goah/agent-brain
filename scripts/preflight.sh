@@ -32,18 +32,21 @@ fi
 
 command -v git >/dev/null 2>&1 && ok "git $(git --version | awk '{print $3}')" || bad "git missing" "install git (git-scm.com)"
 
-# Python: the verify step (leak-scan, suite-check, ecosystem-sync) runs on stock
-# Python. On Windows the PATH often carries ONLY the Microsoft Store stub
-# (python3.exe that opens the Store when called) — so do not trust `command -v`,
-# EXECUTE it.
+# Python: the core scripts need Python 3.9 or newer, stdlib only. 3.9 is the floor
+# because it is the stock macOS /usr/bin/python3, which `python3` falls back to when no
+# newer interpreter is linked under that name (docs/os-traps.md OS-13). On Windows the
+# PATH often carries ONLY the Microsoft Store stub (python3.exe that opens the Store
+# when called) — so do not trust `command -v`, EXECUTE it.
 PY=""
 for c in python3 python; do
   if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys' >/dev/null 2>&1; then PY="$c"; break; fi
 done
-if [ -n "$PY" ]; then
-  ok "python: $PY $("$PY" -c 'import platform; print(platform.python_version())')"
+if [ -z "$PY" ]; then
+  bad "python missing (or only the Microsoft Store stub)" "install Python 3.9 or newer (python.org, tick 'Add python.exe to PATH') — then open a NEW terminal. No extra packages needed, the core scripts are stdlib-only"
+elif "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
+  ok "python: $PY $("$PY" -c 'import platform; print(platform.python_version())') (>= 3.9)"
 else
-  bad "python missing (or only the Microsoft Store stub)" "install Python 3 (python.org, tick 'Add python.exe to PATH') — then open a NEW terminal. No extra packages needed, the core scripts are stdlib-only"
+  bad "python: $PY $("$PY" -c 'import platform; print(platform.python_version())') too old" "install Python 3.9 or newer (python.org / brew install python) — the core scripts need 3.9+"
 fi
 
 # Windows path limit: git ships its OWN switch and ignores the Windows setting
