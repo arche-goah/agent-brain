@@ -37,6 +37,16 @@
  *
  * Fails open (no transcript, no bash, no repo): a gate that cannot measure must not
  * block — its fixture (`scripts/test-watch-gate.sh`) is the proof it still fires.
+ *
+ * HANDOVER (alpha 2026-10-09, coherence register finding P1-11): a CLOSING session cannot
+ * keep a watcher — the Monitor dies with it — yet session-close itself pushes the answers
+ * that expect a reaction. So the closing turn writes the expectation down instead:
+ *   node watch-gate.cjs handover "<what is expected, from whom>"
+ * An entry written in the running turn counts as covered (the gate lets the close end).
+ * The NEXT session inherits it: at a stop with an entry from an earlier turn and no live
+ * watcher, the gate blocks once per turn — "arm a watcher". A live watcher at a stop takes
+ * the entries over and they are cleared (the watcher reports what arrives). `list` shows
+ * them, `drop <id>|all` ends one no longer awaited. File: .claude-state/expected-reactions.json.
  */
 const fs = require('fs');
 const path = require('path');
@@ -49,12 +59,56 @@ const TAIL_BYTES = 4 * 1024 * 1024;
 const CLOSED = new Set(['answered', 'done', 'decided', 'info', 'closed']);
 const PR_WATCH = /\b(watch-pr|ci-watch|collab-watch)\.sh\b/;
 
-let data = '';
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', (c) => { data += c; });
-process.stdin.on('end', () => {
-  try { main(JSON.parse(data || '{}')); } catch (e) { process.exit(0); }
-});
+function rootDir(input) { return process.env.CLAUDE_PROJECT_DIR || (input && input.cwd) || process.cwd(); }
+function handoverFile(root) { return path.join(root, '.claude-state', 'expected-reactions.json'); }
+function loadHandovers(root) {
+  try { const a = JSON.parse(fs.readFileSync(handoverFile(root), 'utf8')); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+}
+function saveHandovers(root, list) {
+  try {
+    fs.mkdirSync(path.dirname(handoverFile(root)), { recursive: true });
+    fs.writeFileSync(handoverFile(root), JSON.stringify(list, null, 2) + '\n');
+    return true;
+  } catch (e) { return false; }
+}
+
+function cli(args) {
+  const root = rootDir();
+  const list = loadHandovers(root);
+  const [cmd, ...rest] = args;
+  if (cmd === 'handover') {
+    const what = rest.join(' ').trim();
+    if (!what) { process.stdout.write('usage: watch-gate.cjs handover "<what is expected, from whom>"\n'); return 2; }
+    const id = require('crypto').createHash('sha1').update(what + Date.now()).digest('hex').slice(0, 8);
+    list.push({ id, what, at: new Date().toISOString(), by: process.env.SHARED_MEMORY_SELF || '' });
+    if (!saveHandovers(root, list)) { process.stdout.write(`!! handover NOT saved (${handoverFile(root)})\n`); return 1; }
+    process.stdout.write(`handover ${id}: ${what}\n`);
+    return 0;
+  }
+  if (cmd === 'list') {
+    for (const h of list) process.stdout.write(`${h.id}  ${String(h.at).slice(0, 16)}  ${h.what}\n`);
+    return 0;
+  }
+  if (cmd === 'drop') {
+    const keep = rest[0] === 'all' ? [] : list.filter((h) => !rest.includes(h.id));
+    if (!saveHandovers(root, keep)) return 1;
+    process.stdout.write(`dropped ${list.length - keep.length}\n`);
+    return 0;
+  }
+  process.stdout.write('usage: watch-gate.cjs handover "<what>" | list | drop <id>|all\n');
+  return 2;
+}
+
+if (process.argv.length > 2) {
+  process.exit(cli(process.argv.slice(2)));
+} else {
+  let data = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (c) => { data += c; });
+  process.stdin.on('end', () => {
+    try { main(JSON.parse(data || '{}')); } catch (e) { process.exit(0); }
+  });
+}
 
 function readTail(p) {
   const size = fs.statSync(p).size;
@@ -169,31 +223,47 @@ function awaiting(repo, since) {
 
 function main(input) {
   if (input.stop_hook_active || !input.transcript_path) process.exit(0);
-  const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  const root = rootDir(input);
   const { calls, since, fired } = turn(input.transcript_path);
   if (fired) process.exit(0);
   const shell = calls.filter((c) => c.name === 'Bash' || c.name === 'PowerShell');
   const missing = [];
+
+  // Handover: an entry written in THIS turn covers the act (a closing session); entries from
+  // earlier turns wait for a watcher — a live one takes them over, none means block once.
+  const handovers = loadHandovers(root);
+  const isNew = (h) => !since || String(h.at) >= since;
+  const covered = handovers.some(isNew);
+  const inherited = handovers.filter((h) => !isNew(h));
+  if (inherited.length) {
+    if (smWatched(root) || prWatched(root, calls)) {
+      saveHandovers(root, handovers.filter(isNew));
+    } else {
+      missing.push(`a reaction expected since an earlier session: ${inherited.slice(0, 3).map((h) => `${h.id} "${h.what}"`).join(', ')} — `
+        + 'arm collab-watch (or shared-memory-watch); `node core/helpers/watch-gate.cjs drop <id>` if no longer awaited');
+    }
+  }
 
   const repo = process.env.SHARED_MEMORY_REPO || path.join(require('os').homedir(), 'Projects', 'brain-shared-memory');
   const repoName = path.basename(repo);
   const smPush = shell.some((c) => /\bgit\b[\s\S]*\bpush\b/.test(c.cmd) && c.cmd.includes(repoName));
   if (smPush && fs.existsSync(repo)) {
     const files = awaiting(repo, since);
-    if (files.length && !smWatched(root)) {
+    if (files.length && !smWatched(root) && !covered) {
       missing.push(`shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
         + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 300", persistent: true}) '
         + '(or collab-watch); mark a pure report `status: info`');
     }
   }
-  if (shell.some((c) => /\bgh\s+pr\s+create\b/.test(c.cmd)) && !prWatched(root, calls)) {
+  if (shell.some((c) => /\bgh\s+pr\s+create\b/.test(c.cmd)) && !prWatched(root, calls) && !covered) {
     missing.push('PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)');
   }
   if (!missing.length) process.exit(0);
   process.stdout.write(JSON.stringify({
     decision: 'block',
     reason: `WATCH-GATE: a reaction is expected and no watcher lives. ${missing.join(' · ')}. `
-      + 'If nothing is awaited, say why in one line and stop again.',
+      + 'If nothing is awaited, say why in one line and stop again. A CLOSING session hands it over instead: '
+      + '`node core/helpers/watch-gate.cjs handover "<what, from whom>"`.',
   }));
   process.exit(0);
 }

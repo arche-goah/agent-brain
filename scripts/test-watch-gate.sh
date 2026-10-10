@@ -98,6 +98,24 @@ check "PR created, watch-pr armed in the turn" "$T/p2.jsonl" allow "$R"
 live_lock "$R/.claude-state/collab-watch/repo-activity-o.pid"
 check "PR created, collab-watch repo watch lives" "$T/p1.jsonl" allow "$R"
 
+# --- handover (alpha 2026-10-09): a closing session writes the expectation down
+H="$T/brain-h"; mkdir -p "$H/.claude-state"
+hcli() { CLAUDE_PROJECT_DIR="$(native "$H")" node "$G" "$@"; }
+fresh; entry close-answer.md ws mac
+out_h="$(hcli handover "reply from mac on close-answer")"
+case "$out_h" in "handover "*) ok "handover CLI records the expectation";; *) bad "handover CLI: '$out_h'";; esac
+{ user "session abschliessen" "2000-01-01T00:00:00Z"; tool Bash "$PUSH"; asst "closed"; } > "$T/h1.jsonl"
+check "closing turn: push covered by a handover written in the turn" "$T/h1.jsonl" allow "$H"
+# Next session: the entry is older than the new prompt, no watcher lives.
+{ user "next session" "2999-01-01T00:00:00Z"; asst "hi"; } > "$T/h2.jsonl"
+check "next session inherits the expectation, no watcher" "$T/h2.jsonl" block "$H"
+live_lock "$H/.claude-state/shared-memory-watch.pid"
+check "next session with a live watcher" "$T/h2.jsonl" allow "$H"
+[ -z "$(hcli list)" ] && ok "a live watcher takes the handover over (list empty)" || bad "handover not cleared: $(hcli list)"
+hcli handover "x" >/dev/null; id="$(hcli list | cut -d' ' -f1)"
+hcli drop "$id" >/dev/null
+[ -z "$(hcli list)" ] && ok "drop <id> ends one" || bad "drop left: $(hcli list)"
+
 # negative control: an always-allow stub must fail every must-block case, or the
 # block assertions above prove nothing
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));
