@@ -322,11 +322,43 @@ def scan_plugins(C):
     return out
 
 
+# Claude Code keeps two directories of its own under ~/.claude/skills. `.trash` (any dot
+# directory) holds what the harness removed - never a loaded skill. `synced/<bucket>/` holds
+# the account's claude.ai skills: mostly vendor skills, but a user's OWN uploads land there
+# too (measured 2026-09-30 on the Mac: six with `creatorType: user`, one of them a stale copy
+# of a suite skill - exactly the local carrier this inventory exists to show). So a synced
+# skill is skipped only when its bucket's manifest.json says it is Anthropic's (`creatorType:
+# anthropic` on one machine, `source: anthropic*` on another - measured 2026-10-10); a user
+# upload, an entry without either field and an unreadable manifest are reported.
+def synced_vendor(bucket):
+    m = load(bucket / "manifest.json")
+    if not isinstance(m, dict):
+        return set()
+    out = set()
+    for e in m.get("skills") or []:
+        if not isinstance(e, dict):
+            continue
+        ct, src = str(e.get("creatorType") or ""), str(e.get("source") or "")
+        if ct == "anthropic" or (not ct and src.startswith("anthropic")):
+            out.update(str(e.get(k)) for k in ("skillId", "name") if e.get(k))
+    return out
+
+
 def scan_skills(C):
     out = []
-    for base in (C.root / ".claude" / "skills", C.home / ".claude" / "skills"):
+    home = C.home / ".claude" / "skills"
+    for base in (C.root / ".claude" / "skills", home):
         if base.is_dir():
             for d in sorted(base.iterdir()):
+                if d.name.startswith("."):
+                    continue
+                if base == home and d.name == "synced" and d.is_dir() and not d.is_symlink():
+                    for bucket in sorted(x for x in d.iterdir() if x.is_dir() and not x.name.startswith(".")):
+                        vendor = synced_vendor(bucket)
+                        for sk in sorted(x for x in bucket.iterdir() if x.is_dir() and not x.name.startswith(".")):
+                            if sk.name not in vendor:
+                                out.append(item("skill", C.rel_id(sk), read_tree(sk), file=sk, name=sk.name))
+                    continue
                 if d.is_dir() and not d.is_symlink():
                     out.append(item("skill", C.rel_id(d), read_tree(d), file=d, name=d.name))
     return out
