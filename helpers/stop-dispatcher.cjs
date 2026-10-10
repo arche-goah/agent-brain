@@ -146,10 +146,29 @@ function compress(check, reason) {
 }
 
 /**
+ * Size-based rotation, one generation: a log at or above the limit is renamed to
+ * `<name>.1.jsonl` (replacing the older generation) and the append starts a fresh file.
+ * Measured 2026-10-09 on the proving brain: one recorder log had grown to 539 KB with
+ * nothing ever trimming it. Limit: `STOP_RECORD_MAX_BYTES` (default 512 KiB, 0 = off).
+ */
+const RECORD_MAX_BYTES = (() => {
+  const n = Number(process.env.STOP_RECORD_MAX_BYTES);
+  return Number.isFinite(n) && n >= 0 && process.env.STOP_RECORD_MAX_BYTES !== '' ? n : 512 * 1024;
+})();
+function rotate(file) {
+  try {
+    if (RECORD_MAX_BYTES > 0 && fs.statSync(file).size >= RECORD_MAX_BYTES) {
+      fs.renameSync(file, file.replace(/\.jsonl$/, '.1.jsonl'));
+    }
+  } catch (e) { /* no file yet, or rotation failed: append as before */ }
+}
+
+/**
  * Append what a recording check found, one JSON object per line.
  *
  * `.claude-state/` is gitignored on purpose: this grows with every session, and the
- * conclusions belong in the invariant register, not in the raw log.
+ * conclusions belong in the invariant register, not in the raw log. It is bounded by
+ * `rotate()` above — the newest generation plus one older stay on disk.
  */
 function record(check, items, payload) {
   try {
@@ -162,6 +181,7 @@ function record(check, items, payload) {
     const lines = items.map((it) => JSON.stringify({
       at: stamp, session, check: check.marker, ...it,
     })).join('\n');
+    rotate(file);
     fs.appendFileSync(file, `${lines}\n`);
   } catch (e) { /* recording must never break a turn */ }
 }
