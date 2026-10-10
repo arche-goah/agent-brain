@@ -8,7 +8,8 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/file-guard.cjs\"",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
@@ -18,7 +19,8 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/mechanism-guard.cjs\"",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
@@ -28,7 +30,8 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/secret-guard.cjs\"",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
@@ -38,7 +41,8 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/freshness-gate.cjs\"",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
@@ -48,7 +52,8 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-read-gate.cjs\"",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },

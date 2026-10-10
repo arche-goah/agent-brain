@@ -356,6 +356,24 @@ if [ "$_rc" -eq 0 ] && [ -z "$_hc" ]; then
 else
   bad "hook-coverage false alarm: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'"
 fi
+#     A gate wired WITHOUT the template's "onFailure": "block" fails open on a crash or a
+#     timeout (Claude Code >= 2.1.295); hook-coverage names it. Strip the field from the
+#     wired copy of mechanism-guard only - the other gates stay silent.
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+for gs in d["hooks"].values():
+    for g in gs:
+        for h in g["hooks"]:
+            if "mechanism-guard" in h.get("command",""): h.pop("onFailure",None)
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$T/hookbrain/.claude/settings.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"PreToolUse: mechanism-guard.cjs fails open"*)
+    case "$_hc" in *file-guard*) bad "hook-coverage fail-open names a gate that carries the field";;
+      *) ok "hook-coverage flags a gate wired without onFailure: block";; esac;;
+  *) bad "hook-coverage fail-open case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
 #     And the bootup voices it: the fixture brain gets the template but an empty
 #     settings file — the !! line is the carrier that repeats until it is fixed.
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
