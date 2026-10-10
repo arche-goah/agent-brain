@@ -128,6 +128,12 @@ why() { if [ "$1" -eq 124 ]; then printf 'no answer within %ss' "$2"; else tail 
 
 n_checked=0; n_updated=0; n_cloned=0; n_look=0; n_late=0
 BEFORE=""; AFTER=""
+LOOKS=""
+# A finding that needs someone: logged like everything else AND kept for the stdout summary
+# at the end — SessionStart stderr does not reach the session's context, so a dirty or
+# diverged repo reported only there would be invisible (success reports itself, failure
+# needs a channel).
+look() { log "$*"; LOOKS="$LOOKS  - $*"$'\n'; n_look=$((n_look + 1)); }
 
 # <label> <dir> — the per-repo rules from the header.
 pull_one() {
@@ -135,7 +141,7 @@ pull_one() {
   BEFORE=""; AFTER=""
   n_checked=$((n_checked + 1))
   if [ -n "$(git -C "$p" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
-    log "$name: uncommitted changes — not pulled, nothing touched"; n_look=$((n_look + 1)); return
+    look "$name: uncommitted changes — not pulled, nothing touched"; return
   fi
   br=$(git -C "$p" symbolic-ref -q --short HEAD 2>/dev/null) || { log "$name: detached HEAD — skipped"; return; }
   rem=$(git -C "$p" config --get "branch.$br.remote" 2>/dev/null)
@@ -144,20 +150,20 @@ pull_one() {
   fi
   net "$STALL" "$p" -C "$p" fetch -q "$rem"; rc=$?
   if [ "$rc" -ne 0 ]; then
-    log "$name: fetch failed — $(why "$rc" "$STALL")"; n_look=$((n_look + 1)); return
+    look "$name: fetch failed — $(why "$rc" "$STALL")"; return
   fi
   read -r ahead behind <<< "$(git -C "$p" rev-list --left-right --count 'HEAD...@{u}' 2>/dev/null)"
   case "$ahead$behind" in ''|*[!0-9]*) log "$name: upstream of '$br' not readable — skipped"; return ;; esac
   [ "$behind" -eq 0 ] && return
   if [ "$ahead" -ne 0 ]; then
-    log "$name ($br): diverged — $ahead local and $behind upstream commits, not pulled"; n_look=$((n_look + 1)); return
+    look "$name ($br): diverged — $ahead local and $behind upstream commits, not pulled"; return
   fi
   BEFORE=$(git -C "$p" rev-parse HEAD)
   if git -C "$p" -c submodule.recurse=false merge -q --ff-only '@{u}' >"$TMPF" 2>&1; then
     AFTER=$(git -C "$p" rev-parse HEAD)
     log "$name ($br): updated ${BEFORE:0:7}..${AFTER:0:7} ($behind commit(s))"; n_updated=$((n_updated + 1))
   else
-    log "$name ($br): fast-forward refused — $(tail -1 "$TMPF")"; n_look=$((n_look + 1)); BEFORE=""
+    look "$name ($br): fast-forward refused — $(tail -1 "$TMPF")"; BEFORE=""
   fi
 }
 
@@ -190,7 +196,7 @@ while IFS="$US" read -r kind name p remote; do
     if [ "$rc" -eq 0 ]; then
       log "$name: cloned from $remote (was missing)"; n_cloned=$((n_cloned + 1))
     else
-      log "$name: clone from $remote failed — $(why "$rc" $((STALL * 4)))"; n_look=$((n_look + 1))
+      look "$name: clone from $remote failed — $(why "$rc" $((STALL * 4)))"
     fi
     continue
   fi
@@ -204,4 +210,8 @@ done <<< "$plan"
 late=""
 [ "$n_late" -gt 0 ] && late=", $n_late not reached (budget ${BUDGET}s spent)"
 log "done in ${SECONDS}s: $n_checked checked, $n_updated updated, $n_cloned cloned, $n_look need a look$late"
+# stdout reaches the session: only what needs a look, never the all-clear (silence = fine).
+if [ "$n_look" -gt 0 ] || [ "$n_late" -gt 0 ]; then
+  printf 'session-pull: %s repo(s) need a look%s\n%s' "$n_look" "$late" "$LOOKS"
+fi
 exit 0

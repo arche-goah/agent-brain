@@ -119,7 +119,12 @@ rm -f "$BRAIN/config/machines/$key.md"
 # the real run
 rc=$(run_pull); err=$(cat "$T/err")
 same "exit 0" "$rc" "0"
-same "stdout stays empty (hook output goes to stderr)" "$(cat "$T/out")" ""
+out=$(cat "$T/out")
+# stdout reaches the session: the findings that need a look go there, the all-clear does not
+has   "stdout: names the repos that need a look" "need a look" "$out"
+has   "stdout: the dirty repo is in it" "dirty: uncommitted changes" "$out"
+has   "stdout: the diverged repo is in it" "diverged (main): diverged" "$out"
+hasnt "stdout: no all-clear lines (updated/cloned stay on stderr)" "updated" "$out"
 same "clean repo behind upstream: fast-forwarded" "$(head_of "$T/w/clean")" "$(git -C "$T/r/clean.git" rev-parse main)"
 has  "clean repo: one 'updated' line" "clean (main): updated" "$err"
 same "dirty repo: HEAD untouched" "$(head_of "$T/w/dirty")" "$h_dirty"
