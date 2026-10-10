@@ -71,6 +71,17 @@ def tokens(s: str) -> set[str]:
     return {t for t in re.split(r"[^\w-]+", s.lower()) if t}
 
 
+def party(sender_id: str) -> set[str]:
+    """The words a reply may use for the sender of a request. Machine ids are `<person>-<machine>`,
+    but replies name the person in prose ("AN Sams KI") — the wording rule wants names, not ids.
+    Measured 2026-10-10: five answered requests stayed open because `sams` never matched
+    `sam-laptop`. So the person part and its possessive count too."""
+    out = set()
+    for t in tokens(sender_id):
+        out |= {t, t.split("-")[0], t.split("-")[0] + "s"}
+    return out
+
+
 def addressees(title: str) -> str | None:
     """`AN x + y: title` -> `x + y`; None when the heading names nobody."""
     m = re.match(r"^(?:AN|An|an|TO|To)\s+([^:]+):", title)
@@ -320,7 +331,7 @@ def log_only_items(repo: Path, ref: str, me: set[str], floor: str) -> list[tuple
             continue  # points at a fact file — the file path above judges it
         # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
         # another LOG cannot be ordered, so it does not count (safe direction).
-        replied = any(tokens(s) & me and tokens(sender) & t
+        replied = any(tokens(s) & me and party(sender) & t
                       and (d > date or (tp == topic and j > idx))
                       for d, tp, j, s, t, _, _ in heads)
         if not replied:
