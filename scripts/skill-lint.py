@@ -12,7 +12,9 @@ drops the rest on multi-line descriptions and still reports score 100.
 
 CHECKS:
   1. frontmatter   name + description present; name == folder name; kebab-case;
-                   reserved word 'claude'; length limits
+                   reserved word 'claude'; length limits; the YAML a host would
+                   reject (a plain value with ': ' or ' #' in it) — Claude Code then
+                   loads the skill with NO description, invisible to auto-fire
   2. budget        sum of name+description against skillListingBudgetFraction —
                    over the limit the listing gets cut off SILENTLY
   3. collisions    pairwise trigger similarity of the descriptions (jaccard over
@@ -108,6 +110,52 @@ def frontmatter(text: str) -> dict:
     return {k: v.strip("\"'") for k, v in out.items()}
 
 
+
+def yaml_problem(text: str) -> str:
+    """Why a YAML parser would reject or cut this frontmatter, '' when it would not.
+
+    The reader above is lenient on purpose; the HOST is not. Measured 2026-10-10: four
+    suite skills had a plain description with ': ' inside, PyYAML says "mapping values are
+    not allowed here", and Claude Code loaded them with NO description (documented:
+    "If the YAML ... doesn't parse, the skill still loads with no fields set"). A fifth was
+    cut at ' #' (a comment) — valid YAML, so only the plain-scalar rule sees it. Both
+    plain-scalar rules run with the stdlib; PyYAML, when installed, adds every other
+    parse error."""
+    if not text.startswith("---"):
+        return ""
+    end = text.find("\n---", 3)
+    if end == -1:
+        return "no closing --- line"
+    block = text[3:end]
+    lines = block.splitlines()
+    for i, raw in enumerate(lines):
+        m = re.match(r"^([A-Za-z0-9_-]+):[ \t]+(.+)$", raw)
+        if not m:
+            continue
+        val = m.group(2).strip()
+        if val[:1] in "\"'|>[{&*!%@`":
+            continue  # quoted, block or flow: not a plain scalar
+        cont = []
+        for nxt in lines[i + 1:]:
+            if not nxt[:1].isspace():
+                break
+            cont.append(nxt.strip())
+        plain = " ".join([val] + cont)
+        if ": " in plain or plain.endswith(":"):
+            return f"'{m.group(1)}': unquoted value contains ': ' — quote it or use >-"
+        if " #" in plain:
+            return f"'{m.group(1)}': unquoted value contains ' #' — the rest is read as a comment"
+    try:
+        import yaml  # optional: the authority on everything the two rules above do not cover
+    except ImportError:
+        return ""
+    try:
+        yaml.safe_load(block)
+    except Exception as e:  # noqa: BLE001 — any parse error is the finding
+        return str(e).splitlines()[0]
+    return ""
+
+
 def tokens(s: str) -> set[str]:
     return {w for w in re.findall(r"[a-zA-Zaeoeuess]{4,}", s.lower()) if w not in STOP}
 
@@ -155,6 +203,10 @@ def lint(skills: Path, thresh: float, ctx: int) -> dict:
             continue
         text = sk.read_text(encoding="utf-8", errors="replace")
         fm = frontmatter(text)
+        bad_yaml = yaml_problem(text)
+        if bad_yaml:
+            f["frontmatter"].append({"skill": d.name, "issue": "frontmatter is not valid YAML "
+                                     "(the host loads it with NO description)", "detail": bad_yaml})
         name, desc = fm.get("name", ""), fm.get("description", "")
         # A draft directory carries the prefix; its `name:` is the skill it will become,
         # so the identity checks below compare against the STRIPPED name.
