@@ -361,9 +361,11 @@ def main() -> int:
     # the generated index shows as changed, or git rewrites the file behind the run.
     # Measured 2026-08-31: 17 of 17 lines CRLF in the root index. Same class as the
     # generators fixed in #34.
-    (a.repo / "INDEX.md").write_text(root, encoding="utf-8", newline="\n")
+    with open(a.repo / "INDEX.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(root)
     for t, v in topics.items():
-        (a.repo / t / "INDEX.md").write_text(v, encoding="utf-8", newline="\n")
+        with open(a.repo / t / "INDEX.md", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(v)
     print(f"\nwritten: INDEX.md + {len(topics)} topic index files")
     return 0
 

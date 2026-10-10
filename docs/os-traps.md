@@ -47,7 +47,8 @@ into a report a fixture greps. The test is never "does it look right in the term
 **B · The same command name is a different program.** Nothing is reshaped; the tool
 itself behaves differently, and usually only in one branch. Members: OS-5 (`grep` decides
 per stream whether it is text), OS-6 (`python3` is an install manager that honours a
-shebang in an argument, while `python` on the same machine does not). Older, same shape:
+shebang in an argument, while `python` on the same machine does not), OS-13 (`python3` is
+3.9 on stock macOS and 3.12+ elsewhere). Older, same shape:
 `stat -c` vs `-f`, `lsof` absent, the Microsoft Store python3 stub.
 *Where to look first:* every tool invoked by bare name in a REPORTING or GUARDING path.
 An interpreter probe that runs `-c 'import sys'` proves the binary starts, never that it
@@ -134,9 +135,9 @@ invariant: Every write of a file that git tracks pins `newline="\n"`. Python tex
 translates `\n` to the platform separator, so the same generator emits LF on macOS and
 CRLF on Windows — against a `.gitattributes` that says LF the whole file reads as
 changed, or git rewrites it behind the run.
-pattern:   \.write_text\(
+pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/brain-scan-prep.py=3
+known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -155,6 +156,13 @@ first run after it was written, was read, and was correct. 2026-10-09: invariant
 first run after it was written, was read, and was correct. 2026-10-09: brain-scan-prep.py
 (three writes into the scan's scratch dir; one of them, the report head, is concatenated
 into a tracked report) surfaced on its first run and was pinned before it shipped.
+2026-10-10: every pinned write moved from `Path.write_text(..., newline="\n")` to
+`with open(path, "w", encoding="utf-8", newline="\n")` — `write_text` takes `newline` only
+from Python 3.10, and stock macOS python3 is 3.9 (OS-13). The pattern grew the `open(…"w"`
+form so the same writes stay visible; the two `open` sites that already pinned
+(always-loaded.py, open-items.py) joined the baseline after the same read. Bytes unchanged:
+`open(newline="\n")` and `write_text(newline="\n")` hand the same argument to the same
+TextIOWrapper.
 
 ## OS-3 — a fixture hands a shell path to a native process
 
@@ -522,3 +530,35 @@ of the preflight HTTPS fallback: the FAIL line read `neither SSH (message: g) no
 character of a one-line ssh message. The line had stood unchanged on main since the preflight
 was written; the new FAIL path only made it visible. Fixed in `preflight.ps1` with `@(...)[0]`,
 checked on the same machine. Search over every `.ps1` in the core: that was the only site.
+
+## OS-13 — `python3` is 3.9 on stock macOS, and a 3.10-only call crashes there
+
+shape: B
+
+invariant: Core Python runs on Python 3.9 or newer — the floor is the stock macOS
+`/usr/bin/python3` (3.9.6), which `python3` resolves to whenever no newer interpreter is
+linked under that name. Elsewhere `python3` is 3.12+, so a 3.10-only call is green on every
+machine that writes or tests it and crashes only there. No 3.10+ stdlib call or keyword:
+`Path.write_text(newline=)` (pin line endings with `open(path, "w", newline="\n")`),
+`zip(strict=)`, `int.bit_count`, `itertools.pairwise`, `aiter`/`anext`, `tomllib`,
+`datetime.UTC`. Syntax (`match`, parenthesised context managers, `except*`) and runtime
+`X | Y` unions without `from __future__ import annotations` are caught by compiling and
+running under 3.9, not by this pattern — CI does both (job `python-floor`).
+pattern:   ^(?!.*\b(open|reconfigure|TextIOWrapper)\()[^#]*\bnewline=|zip\(.*\bstrict=|\.bit_count\(|^\s*(import|from) tomllib|datetime\.UTC\b|^\s*from datetime import[^#]*\bUTC\b|\bpairwise\(|\ba(iter|next)\(
+paths:     --include=*.py scripts helpers skills
+known:
+instances: 32
+repeat:    no
+status:    closed
+note:      Measured 2026-10-10 on a macOS brain: a Homebrew upgrade left python@3.14 without
+an unversioned `python3` link, so `python3` fell back to `/usr/bin/python3` = 3.9.6, and
+`scripts/shared-memory-index.py` died with `TypeError: write_text() got an unexpected
+keyword argument 'newline'`. Under that interpreter 10 of 20 `*-test.py` suites failed the
+same way. All 32 `write_text(..., newline=)` statements (17 files, scripts and fixtures) now
+write through `open()`; afterwards 64 of 64 `.py` files compile and 20 of 20 Python suites
+pass under 3.9.6. The other 3.10+ constructs in the invariant: none found. The pattern uses
+Python `re` syntax (invariant-check.py's engine) — the negative lookahead is what lets it
+see a `newline=` on the CONTINUATION line of a multi-line `write_text(` call while skipping
+`open(`/`reconfigure(`; positive control: on the unfixed tree it hits every such
+statement. Fixtures are in the search on purpose: they run under the same interpreter.
+A new hit is read with one question: does this call exist in Python 3.9?

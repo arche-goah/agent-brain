@@ -469,10 +469,10 @@ def write_baseline(repo: Path, baseline_path: Path | None = None) -> int:
         if any(not meta.get(k) for k in ("von", "audience", "topic", "date")):
             rows.append(p.relative_to(repo).as_posix())
     baseline_path = baseline_path or baseline_for(repo)
-    baseline_path.write_text(
-        "# Files predating the audience/topic convention (2026-08-21). This list may\n"
-        "# only ever SHRINK: carry a file over, then delete its line here.\n"
-        + "\n".join(sorted(rows)) + "\n", encoding="utf-8", newline="\n")
+    with open(baseline_path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Files predating the audience/topic convention (2026-08-21). This list may\n"
+                 "# only ever SHRINK: carry a file over, then delete its line here.\n"
+                 + "\n".join(sorted(rows)) + "\n")
     print(f"baseline written: {len(rows)} legacy file(s) -> {baseline_path}")
     return 0
 

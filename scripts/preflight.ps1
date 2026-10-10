@@ -34,8 +34,8 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 } else { BAD "git missing" "winget install Git.Git" }
 
 # Execute Python instead of merely finding it: the Microsoft Store stub (python3.exe)
-# sits in PATH but only opens the Store. The verify step needs a real Python
-# (stdlib is enough).
+# sits in PATH but only opens the Store. The core scripts need Python 3.9 or newer,
+# stdlib only (docs/os-traps.md OS-13 — same floor as preflight.sh).
 $py = $null
 foreach ($c in @('python3', 'python')) {
   if (Get-Command $c -ErrorAction SilentlyContinue) {
@@ -43,8 +43,13 @@ foreach ($c in @('python3', 'python')) {
     if ($LASTEXITCODE -eq 0) { $py = $c; break }
   }
 }
-if ($py) { OK "python: $py $(& $py -c 'import platform; print(platform.python_version())')" }
-else { BAD "python missing (or only the Microsoft Store stub)" "install Python 3 (python.org, tick 'Add python.exe to PATH') — then open a NEW terminal" }
+if (-not $py) { BAD "python missing (or only the Microsoft Store stub)" "install Python 3.9 or newer (python.org, tick 'Add python.exe to PATH') — then open a NEW terminal" }
+else {
+  $pyv = & $py -c 'import platform; print(platform.python_version())'
+  & $py -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>$null | Out-Null
+  if ($LASTEXITCODE -eq 0) { OK "python: $py $pyv (>= 3.9)" }
+  else { BAD "python: $py $pyv too old" "install Python 3.9 or newer (python.org) — the core scripts need 3.9+" }
+}
 
 if (Get-Command gh -ErrorAction SilentlyContinue) {
   gh auth status *> $null

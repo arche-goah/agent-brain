@@ -147,7 +147,8 @@ def main() -> int:
         return 0
     out.parent.mkdir(parents=True, exist_ok=True)
     # newline="\n": OS-2, in the tool that documents OS-2.
-    out.write_text(text, encoding="utf-8", newline="\n")
+    with open(out, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
     print(f"written: {out} ({len(entries)} entries)")
     return 0
 

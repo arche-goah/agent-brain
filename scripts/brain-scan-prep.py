@@ -383,11 +383,14 @@ def main(argv=None):
     findings, ran = ([], []) if a.skip_machine else machine(repo, core, last_date, a.today)
 
     rc_out = dict(rc, deep_check=deep, ordered_open=[title_of(e) for e in oo], last_scan_date=last_date)
-    (out / "return-channel.json").write_text(json.dumps(rc_out, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    (out / "scan-machine.json").write_text(json.dumps(
-        {"section": "machine", "summary": f"deterministic checks run: {', '.join(ran) or 'none'}",
-         "findings": findings}, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    (out / "report-machine.md").write_text(render(rc, deep, oo), encoding="utf-8", newline="\n")
+    with open(out / "return-channel.json", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(rc_out, indent=1, ensure_ascii=False) + "\n")
+    with open(out / "scan-machine.json", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(
+            {"section": "machine", "summary": f"deterministic checks run: {', '.join(ran) or 'none'}",
+             "findings": findings}, indent=1, ensure_ascii=False) + "\n")
+    with open(out / "report-machine.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(render(rc, deep, oo))
 
     states = {s: sum(1 for r in rc["earlier"] if r["state"] == s)
               for s in ("done", "decided", "dropped", "still-open", "vanished")}

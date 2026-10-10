@@ -16,7 +16,8 @@ Before anything else you need, in this order:
 - **A GitHub account**, with any invitations to your org's private repos accepted.
 - **Node >= 23.6** (nodejs.org) — suite MCP servers rely on native type stripping.
 - **git** (git-scm.com).
-- **Python 3** (stock install, stdlib only — the verify scripts need no packages).
+- **Python 3.9 or newer** (stdlib only — the core scripts need no packages). The stock
+  macOS `/usr/bin/python3` is 3.9 and is enough; the preflight fails below 3.9.
 - **`gh` CLI, logged in over SSH** (`gh auth login`, choose SSH as the protocol —
   gh generates the key and uploads it to GitHub for you).
 - **Claude Code** (claude.com/claude-code).
