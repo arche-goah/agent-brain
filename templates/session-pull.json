@@ -1,0 +1,9 @@
+{
+  "_comment": "Instance file config/session-pull.json — its presence switches helpers/session-pull.sh on. The neighbour repos come from config/ecosystem.json (no second list); 'extra' holds only repos ecosystem.json does not record, such as the shared-memory repo. A missing repo with a 'remote' is cloned. stall_seconds = per-repo limit, budget_seconds = limit for the whole run.",
+  "ecosystem": true,
+  "extra": [
+    { "path": "~/Projects/brain-shared-memory", "remote": "git@github.com:your-org/brain-shared-memory.git" }
+  ],
+  "stall_seconds": 15,
+  "budget_seconds": 45
+}

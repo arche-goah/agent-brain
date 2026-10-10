@@ -57,6 +57,12 @@ gwarn=""
 [[ "$unpushed" -gt 0 ]] && gwarn=" !! NO REMOTE BACKUP for $unpushed commits (F5 open)"
 echo "git: branch=$br uncommitted=$dirty unpushed=$unpushed$gwarn"
 
+# Which machine this is (identity from config/machines/<key>.md) and which tools it has
+# (measured now, never read from a file). Opt-in: silent without config/machines/.
+if [[ -f "$HERE/../scripts/machine-profile.sh" ]]; then
+  bash "$HERE/../scripts/machine-profile.sh" "$R" 2>/dev/null
+fi
+
 # Submodule pin drift (incident 2026-08-13, Windows brain): core/ sat on a PR review
 # branch when a parent commit swept the moving gitlink in as the new pin — the accident
 # was only found chasing a dirty tree afterwards. '+' in `git submodule status` means
