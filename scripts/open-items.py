@@ -312,10 +312,10 @@ def classify(args, cls_file, repo):
             return 2
         if not PR_ID.match(key):
             if known is None:
-                print(f"!! requests NOT readable — '{key}' saved unchecked")
+                print(f"!! requests NOT readable - '{key}' saved unchecked")
             elif key not in known:
                 near = [i["id"] for i in req if key in i["id"]] or [i["id"] for i in req]
-                print(f"!! --classify '{key}' matches no open request — nothing saved. Exact ids:")
+                print(f"!! --classify '{key}' matches no open request - nothing saved. Exact ids:")
                 for n in near[:10]:
                     print(f"   {n}")
                 return 2
