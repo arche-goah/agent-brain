@@ -261,5 +261,24 @@ summary=$(run | tail -1)
 grep -q "^local machinery summary: items=$n .*undeclared=$n" <<< "$summary" && ok "coverage-summary-counts-all-$n" || bad "coverage-summary-counts-all-$n: $summary"
 rm -f "$T/fakehome/Library/LaunchAgents/x.plist"
 
+# --- directories Claude Code keeps under ~/.claude/skills ------------------------------------
+# Measured 2026-10-10 (Windows instance): `.trash` and the account's synced vendor skills were
+# the only items no declaration could carry. But a user's OWN upload also lands in `synced`
+# (Mac, 2026-09-30: six with creatorType user) - that one is a local carrier and stays visible.
+# Vendor is read from the bucket manifest: `creatorType: anthropic` or `source: anthropic*`.
+S="$T/fakehome/.claude/skills"
+mkdir -p "$S/.trash/1/t" "$S/mine" "$S/synced/b/vend-src" "$S/synced/b/vend-ct" "$S/synced/b/own" "$S/synced/b/bare" "$S/synced/c/x"
+for f in .trash/1/t mine synced/b/vend-src synced/b/vend-ct synced/b/own synced/b/bare synced/c/x; do printf 'x\n' > "$S/$f/SKILL.md"; done
+printf '{"skills":[{"skillId":"vend-src","source":"anthropic-example"},{"skillId":"vend-ct","creatorType":"anthropic"},{"skillId":"own","creatorType":"user","source":"anthropic"},{"skillId":"bare"}]}' > "$S/synced/b/manifest.json"
+printf 'not json' > "$S/synced/c/manifest.json"
+listing=$(run --list)
+grep -q '~/.claude/skills/mine' <<< "$listing" && ok "user-skill-in-home-reported" || bad "user-skill-in-home-reported: $listing"
+grep -q '\.trash' <<< "$listing" && bad "trash-skipped: $listing" || ok "trash-skipped"
+grep -qE 'synced/b/vend-(src|ct)' <<< "$listing" && bad "synced-vendor-skipped: $listing" || ok "synced-vendor-skipped"
+grep -q 'synced/b/own' <<< "$listing" && ok "synced-user-upload-reported" || bad "synced-user-upload-reported: $listing"
+grep -q 'synced/b/bare' <<< "$listing" && ok "synced-entry-without-field-reported" || bad "synced-entry-without-field-reported: $listing"
+grep -q 'synced/c/x' <<< "$listing" && ok "synced-unreadable-manifest-reported" || bad "synced-unreadable-manifest-reported: $listing"
+rm -rf "$S"
+
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"
