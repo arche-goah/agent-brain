@@ -24,8 +24,8 @@ def git(repo, *args):
 def setup(d, names=("Zorblax Quint",), instances=("vexmoor",)):
     brain, repo = Path(d) / "brain", Path(d) / "repo"
     (brain / ".claude/rules").mkdir(parents=True)
-    (brain / ".claude/rules/leak-names.json").write_text(
-        json.dumps({"names": list(names), "instances": list(instances)}), encoding="utf-8", newline="\n")
+    with open(brain / ".claude/rules/leak-names.json", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps({"names": list(names), "instances": list(instances)}))
     repo.mkdir()
     git(repo, "init", "-q")
     git(repo, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q",
@@ -34,7 +34,8 @@ def setup(d, names=("Zorblax Quint",), instances=("vexmoor",)):
 
 
 def put(repo, name, text, stage=True):
-    (repo / name).write_text(text, encoding="utf-8", newline="\n")
+    with open(repo / name, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
     if stage:
         git(repo, "add", name)
 

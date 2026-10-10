@@ -171,7 +171,8 @@ def main() -> int:
                 return 1
             for path, text in files.items():
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(text, encoding="utf-8", newline="\n")
+                with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                    fh.write(text)
             moved = sum(len(v) for v in p["move"].values())
             print(f"rotated {p['log'].parent.name}: {moved} entries -> "
                   f"{', '.join(f'{ARCHIVE_DIR}/LOG-{m}.md' for m in sorted(p['move']))}")

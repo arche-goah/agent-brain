@@ -55,15 +55,18 @@ for line in sys.stdin:
 
 def brain(d, mode="normal", expected=None, extra=None):
     root = Path(d)
-    (root / "fake.py").write_text(FAKE, encoding="utf-8", newline="\n")
+    with open(root / "fake.py", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(FAKE)
     servers = {"fake": {"command": sys.executable, "args": ["${CLAUDE_PROJECT_DIR}/fake.py"],
                         "env": {"FAKE_MODE": mode, "FAKE_TAG": "${FAKE_TAG_SRC:-dflt}"}},
                "remote": {"type": "http", "url": "https://example.invalid/mcp"}}
     servers.update(extra or {})
-    (root / ".mcp.json").write_text(json.dumps({"mcpServers": servers}), encoding="utf-8", newline="\n")
+    with open(root / ".mcp.json", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps({"mcpServers": servers}))
     if expected is not None:
         (root / ".claude/rules").mkdir(parents=True)
-        (root / ".claude/rules/mcp-expected.json").write_text(json.dumps(expected), encoding="utf-8", newline="\n")
+        with open(root / ".claude/rules/mcp-expected.json", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(expected))
     return root
 
 

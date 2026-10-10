@@ -74,7 +74,8 @@ print("os-traps-export:")
 
 with tempfile.TemporaryDirectory() as td:
     reg = Path(td) / "os-traps.md"
-    reg.write_text(REGISTER, encoding="utf-8", newline="\n")
+    with open(reg, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(REGISTER)
     dest = Path(td) / "shared" / "core" / "os-trap-register.md"
 
     rc, out, err = run(["--register", str(reg), "--out", str(dest), "--write"])
@@ -101,7 +102,8 @@ with tempfile.TemporaryDirectory() as td:
     # Negative control: a register the parser does not understand must not produce a
     # confident-looking file. Silence plus exit 0 is the failure mode that matters.
     empty = Path(td) / "empty.md"
-    empty.write_text("root: ..\n\nnothing here\n", encoding="utf-8", newline="\n")
+    with open(empty, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("root: ..\n\nnothing here\n")
     rc2, _, err2 = run(["--register", str(empty), "--out", str(dest), "--write"])
     ok("7 a register with no entries fails loudly", rc2 != 0 and "no entries" in err2,
        f"rc={rc2} err={err2[:80]}")
