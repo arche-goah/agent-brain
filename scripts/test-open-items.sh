@@ -107,18 +107,18 @@ has "[parked]" "$out" && bad "request still on the parked line: $out" || ok "req
 # Pull requests (a saved GraphQL answer stands in for gh): whose move it is, dated waits,
 # the shown date, parked repos. Viewer = me.
 NOW=$(date +%Y)-12-31; PAST=2020-01-01
-pr() { # repo num author created body lastcommit reviews-json requests-json
-  printf '{"number":%s,"title":"t%s","isDraft":false,"createdAt":"%sT10:00:00Z","body":"%s","author":{"login":"%s"},"repository":{"name":"%s"},"reviewRequests":{"nodes":%s},"latestReviews":{"nodes":%s},"commits":{"nodes":[{"commit":{"committedDate":"%s"}}]},"comments":{"nodes":[]}}' \
-    "$2" "$2" "$4" "$5" "$3" "$1" "$8" "$7" "$6"
+pr() { # repo num author created body lastcommit reviews-json requests-json [comments-json]
+  printf '{"number":%s,"title":"t%s","isDraft":false,"createdAt":"%sT10:00:00Z","body":"%s","author":{"login":"%s"},"repository":{"name":"%s"},"reviewRequests":{"nodes":%s},"latestReviews":{"nodes":%s},"commits":{"nodes":[{"commit":{"committedDate":"%s"}}]},"comments":{"nodes":%s}}' \
+    "$2" "$2" "$4" "$5" "$3" "$1" "$8" "$7" "$6" "${9:-[]}"
 }
-printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":7,"nodes":[%s,%s,%s,%s,%s,%s,%s]}}}\n' \
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":10,"nodes":[%s,%s,%s,%s,%s,%s,%s,%s,%s,%s]}}}\n' \
   "$(pr suite-x 1 peer 2026-09-28 '' 2026-09-28T11:00:00Z '[{"author":{"login":"me"},"submittedAt":"2026-10-08T19:45:00Z"}]' '[]')" \
   "$(pr suite-x 2 peer 2026-09-29 '' 2026-10-09T11:00:00Z '[{"author":{"login":"me"},"submittedAt":"2026-10-08T19:45:00Z"}]' '[]')" \
   "$(pr owned 3 peer 2026-09-30 '' 2026-09-30T11:00:00Z '[]' '[]')" \
   "$(pr owned 4 peer 2026-10-01 '' 2026-10-01T11:00:00Z '[]' '[{"requestedReviewer":{"login":"me"}}]')" \
   "$(pr core 5 me 2026-10-02 "waiting-until: $NOW: alpha measurement" 2026-10-02T11:00:00Z '[]' '[]')" \
   "$(pr core 6 me 2026-10-03 "waiting-until: $PAST: alpha" 2026-10-03T11:00:00Z '[]' '[]')" \
-  "$(pr grandma-suite 7 peer 2026-10-04 '' 2026-10-04T11:00:00Z '[]' '[]')" > "$T/prs.json"
+  "$(pr grandma-suite 7 peer 2026-10-04 '' 2026-10-04T11:00:00Z '[]' '[]')"   "$(pr owned 8 me 2026-10-05 '' 2026-10-05T11:00:00Z '[]' '[]')"   "$(pr owned 9 me 2026-10-06 '' 2026-10-06T11:00:00Z '[{"author":{"login":"peer"},"submittedAt":"2026-10-07T09:00:00Z"}]' '[]')"   "$(pr owned 10 me 2026-10-06 '' 2026-10-06T11:00:00Z '[{"author":{"login":"peer"},"submittedAt":"2026-10-07T09:00:00Z"}]' '[]' '[{"author":{"login":"me"},"createdAt":"2026-10-07T10:00:00Z"}]')" > "$T/prs.json"
 printf '%s\n' 'shared-memory open requests to this instance: 0' > "$T/inbox.txt"
 printf '%s\n' '{"parked":["grandma"],"owners":{"owned":"peer"}}' > "$T/root/.claude/rules/open-items.json"
 export OPEN_ITEMS_PR_FIXTURE; OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs.json")"
@@ -128,13 +128,16 @@ has "waiting on peer: we reviewed" "$(line 'suite-x#1 ' "$out")" && ok "approved
 has "[PR|ai]" "$(line 'suite-x#2 ' "$out")" && ok "commit after our review = our move" || bad "new commit: $(line 'suite-x#2 ' "$out")"
 has "is peer's to merge" "$(line 'owned#3 ' "$out")" && ok "owner's repo, no review asked = waiting" || bad "owner: $(line 'owned#3 ' "$out")"
 has "[PR|ai]" "$(line 'owned#4 ' "$out")" && ok "review asked of us = our move" || bad "requested: $(line 'owned#4 ' "$out")"
+has "waiting on peer: owned is peer's to merge, our own PR waits on that" "$(line 'owned#8 ' "$out")" && ok "own PR in an owner's repo = waiting on the owner" || bad "own PR, owner: $(line 'owned#8 ' "$out")"
+has "[PR|ai]" "$(line 'owned#9 ' "$out")" && ok "owner reviewed our PR after the last commit = our move" || bad "own PR, review: $(line 'owned#9 ' "$out")"
+has "waiting on peer" "$(line 'owned#10 ' "$out")" && ok "we answered the owner's review = waiting again" || bad "own PR, answered: $(line 'owned#10 ' "$out")"
 has "waiting until $NOW: alpha measurement" "$(line 'core#5 ' "$out")" && ok "dated wait is quiet" || bad "dated wait: $(line 'core#5 ' "$out")"
 has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder" || bad "past wait: $(line 'core#6 ' "$out")"
 has "2026-09-28 suite-x#1" "$out" && ok "shown date = opened date" || bad "date: $out"
 has "[parked] grandma-suite#7" "$out" && ok "parked PR on the parked line" || bad "parked PR: $out"
-has "(+3 waiting on others or a date)" "$out" && ok "header counts the waits apart" || bad "wait header: $(head -1 <<<"$out")"
+has "(+5 waiting on others or a date)" "$out" && ok "header counts the waits apart" || bad "wait header: $(head -1 <<<"$out")"
 outc=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=2 run p3)
-has "- [wait] 3 waiting on others or a date: " "$outc" && [ -z "$(line '|wait] ' "$outc")" ] && ok "many waits collapse into one line" || bad "collapse: $outc"
+has "- [wait] 5 waiting on others or a date: " "$outc" && [ -z "$(line '|wait] ' "$outc")" ] && ok "many waits collapse into one line" || bad "collapse: $outc"
 l1=$(line 'suite-x#1 ' "$out2")
 has "waiting on peer" "$l1" && ! has "reported in" "$l1" && ok "a wait does not count up" || bad "a wait was counted: $l1"
 has "!! reported in 2 sessions" "$(line 'core#6 ' "$out2")" && ok "past wait counts up" || bad "past wait count: $(line 'core#6 ' "$out2")"
