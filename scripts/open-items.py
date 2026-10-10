@@ -34,7 +34,8 @@ This script is the ONE list of open points at session start:
     run never counts;
   * items whose move is NOT ours print as `[...|wait]`, quietly, and do not count up: a PR
     we reviewed or commented on after its last commit, a PR in a repo that instance data
-    (`owners`: repo -> login) gives to someone else when no review was asked of us, and any
+    (`owners`: repo -> login) gives to someone else when no review was asked of us, our own
+    PR in such a repo unless someone else spoke after its last commit, and any
     item with a dated wait (`waiting`: id -> {until, why} in instance data, or a line
     `waiting-until: YYYY-MM-DD: <why>` in a PR body). After the date it is louder again;
   * a REQUEST from another side in a parked domain is not parked away — parked means not
@@ -146,25 +147,39 @@ WAIT_MARK = re.compile(r"^\s*waiting-until:\s*(\d{4}-\d{2}-\d{2})\s*:?\s*(.*)$",
 
 
 def ball(p, me, owners):
-    """Whose move a PR is. None = ours. Otherwise the reason we are waiting on its author:
-    we reviewed or commented after its last commit, or the repo belongs to someone else
-    (instance data `owners`) and nobody asked us for a review. Measured 2026-10-09: two PRs
-    we had approved were printed as "nothing done yet" in every session after."""
+    """Whose move a PR is. None = ours. Otherwise (party, reason): for another's PR we wait on
+    its author — we reviewed or commented after its last commit, or the repo belongs to
+    someone else (instance data `owners`) and nobody asked us for a review; for our own PR in
+    such a repo we wait on the owner. Measured 2026-10-09: two PRs we had approved were
+    printed as "nothing done yet" in every session after."""
     author = (p.get("author") or {}).get("login", "")
-    if not me or author == me:
+    if not me:
         return None
     last = ((p.get("commits") or {}).get("nodes") or [{}])[-1].get("commit", {}).get("committedDate", "")
+    owner = owners.get(p["repository"]["name"])
+    if author == me:
+        # Our own PR in a repo someone else merges waits on that owner — unless someone else
+        # reviewed or commented after the last commit, which is ours to answer. Measured
+        # 2026-10-10: two green own PRs in a suite owned by another party were printed as
+        # "nothing done yet" in three sessions, because this check ran only for others' PRs.
+        if owner and owner != me:
+            theirs = [r.get("submittedAt") or "" for r in (p.get("latestReviews") or {}).get("nodes", [])
+                      if (r.get("author") or {}).get("login") != me]
+            theirs += [c.get("createdAt") or "" for c in (p.get("comments") or {}).get("nodes", [])
+                       if (c.get("author") or {}).get("login") != me]
+            if not (last and any(t > last for t in theirs)):
+                return owner, f"{p['repository']['name']} is {owner}'s to merge, our own PR waits on that"
+        return None
     ours = [r.get("submittedAt") or "" for r in (p.get("latestReviews") or {}).get("nodes", [])
             if (r.get("author") or {}).get("login") == me]
     ours += [c.get("createdAt") or "" for c in (p.get("comments") or {}).get("nodes", [])
              if (c.get("author") or {}).get("login") == me]
     if last and any(t > last for t in ours):
-        return "we reviewed or commented after the last commit"
+        return author, "we reviewed or commented after the last commit"
     asked = any(((n.get("requestedReviewer") or {}).get("login")) == me
                 for n in (p.get("reviewRequests") or {}).get("nodes", []))
-    owner = owners.get(p["repository"]["name"])
     if owner and owner != me and not asked:
-        return f"{p['repository']['name']} is {owner}'s to merge and no review was asked of us"
+        return author, f"{p['repository']['name']} is {owner}'s to merge and no review was asked of us"
     return None
 
 
@@ -355,7 +370,7 @@ def main():
         until = (str(w.get("until", "")), str(w.get("why", ""))) if isinstance(w, dict) else it.get("until")
         it["wait"] = None
         if it.get("waiting_on"):
-            it["wait"] = f"waiting on {it['who']}: {it['waiting_on']}"
+            it["wait"] = "waiting on {}: {}".format(*it["waiting_on"])
         elif until and until[0] >= today:
             it["wait"] = f"waiting until {until[0]}" + (f": {until[1]}" if until[1] else "")
         it["overdue"] = f"waited until {until[0]}" + (f" ({until[1]})" if until[1] else "") if until and until[0] < today else ""
