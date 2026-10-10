@@ -55,7 +55,7 @@ entry core/request-either.md sam-laptop "me-mac, kim-win" "EITHER-ONE asks eithe
 printf -- '---\nname: x\ndescription: "answer"\nmetadata:\n  type: project\n  von: kim-win\n  audience: sam-laptop\n  topic: core\n  answers: request-either\n---\n\nbody\n' > "$WORK/core/kim-answer.md"
 # Dates are TODAY: a fixed date falls out of the 30-day window and the test would tip silently.
 D=$(date +%Y-%m-%d)
-printf '# Log\n\n## %s · me-mac — AN sam-laptop: answer\n\nSee request-answered: done.\n\n## %s · sam-laptop — AN me-mac: ping\n\nAbout request-open-one again.\n\n## %s · kim-win — AN me-mac: LOGONLY-OPEN please check something\n\nno file behind this one\n\n## %s · sam-laptop — AN me-mac: LOGONLY-REPLIED quick question\n\nno file either\n\n## %s · me-mac — AN sam-laptop: reply\n\nanswered in the stream\n' "$D" "$D" "$D" "$D" "$D" > "$WORK/core/LOG.md"
+printf '# Log\n\n## %s · me-mac — AN sam-laptop: answer\n\nSee request-answered: done.\n\n## %s · sam-laptop — AN me-mac: ping\n\nAbout request-open-one again.\n\n## %s · kim-win — AN me-mac: LOGONLY-OPEN please check something\n\nno file behind this one\n\n## %s · sam-laptop — AN me-mac: LOGONLY-REPLIED quick question\n\nno file either\n\n## %s · me-mac — AN sam-laptop: reply\n\nanswered in the stream\n\n## %s · ana-win — AN me-mac: LOGONLY-BYNAME a question\n\nno file\n\n## %s · me-mac — AN Anas KI: answer by name\n\nthe reply names the person, not the machine id\n' "$D" "$D" "$D" "$D" "$D" "$D" "$D" > "$WORK/core/LOG.md"
 git -C "$WORK" add -A
 git -C "$WORK" commit -qm seed
 git -C "$WORK" push -q origin HEAD:main
@@ -65,7 +65,7 @@ grep -q 'OPEN-ONE' <<<"$OUT" && pass "unanswered request is listed" || fail "una
 grep -q 'STATUS-ONE' <<<"$OUT" && pass "status: open counts as a request" || fail "status open missing"
 grep -q 'ANSWERED-ONE' <<<"$OUT" && fail "request named in OUR log section still listed" || pass "our answer closes the request"
 # The foreign LOG section names request-open-one too — that must NOT count as our answer.
-for x in REPORT-ONE BROADCAST-ONE MINE-ONE CLOSED-ONE LOCAL-ONE STATUSCAST-ONE EITHER-ONE LOGONLY-REPLIED; do
+for x in REPORT-ONE BROADCAST-ONE MINE-ONE CLOSED-ONE LOCAL-ONE STATUSCAST-ONE EITHER-ONE LOGONLY-REPLIED LOGONLY-BYNAME; do
   grep -q "$x" <<<"$OUT" && fail "$x must not be listed" || pass "$x not listed"
 done
 grep -q 'LOGONLY-OPEN' <<<"$OUT" && pass "a request that lives only as a LOG heading is listed" || fail "LOG-only request missing"
