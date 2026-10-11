@@ -1,0 +1,2 @@
+# Text in the index is LF on every platform; the checks workflow fails on CRLF.
+* text=auto eol=lf

@@ -98,12 +98,22 @@ check "PR created, watch-pr armed in the turn" "$T/p2.jsonl" allow "$R"
 live_lock "$R/.claude-state/collab-watch/repo-activity-o.pid"
 check "PR created, collab-watch repo watch lives" "$T/p1.jsonl" allow "$R"
 
+# --- a reload asked of the human (class measured 2026-10-11: "/mcp reconnect" asked, no waiter armed, noticed only when the operator said so)
+{ user "update the plugin"; tool Bash "claude plugin install x"; asst "Installed. Please run /mcp to reconnect."; } > "$T/r1.jsonl"
+check "reload asked, no waiter" "$T/r1.jsonl" block "$R"
+{ user "update the plugin"; tool Bash "bash core/scripts/wait-mcp-reconnect.sh ~/.x/mcp-boot.json 900" bg; asst "Please run /mcp to reconnect."; } > "$T/r2.jsonl"
+check "reload asked, waiter armed in the turn" "$T/r2.jsonl" allow "$R"
+{ user "what is the state?"; tool Bash "git status"; asst "Clean. Nothing to reload."; } > "$T/r3.jsonl"
+check "no reload asked" "$T/r3.jsonl" allow "$R"
+{ user "update the plugin"; tool Bash "claude plugin install x"; asst "Bitte /reload-plugins."; } > "$T/r4.jsonl"
+check "reload-plugins asked, no waiter" "$T/r4.jsonl" block "$R"
+
 # negative control: an always-allow stub must fail every must-block case, or the
 # block assertions above prove nothing
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));
 ' > "$T/stub.cjs"
 G0="$G"; G="$T/stub.cjs"; before=$fail; fail=0
-for c in t1 t2 p1; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+for c in t1 t2 p1 r1 r4; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
 caught=$fail; G="$G0"; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed every must-block case"
 
