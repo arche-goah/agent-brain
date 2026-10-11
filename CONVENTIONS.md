@@ -297,7 +297,13 @@ falls through the table above. Rules, in the order they bite:
     on structure changes. Who merges: once the author reported it done and the other side
     said OK, CI is green and the reviewed commit is the head, whichever party gets to it
     first (operator decision 2026-10-11 — a ready PR must not wait for one particular
-    person); releases (tag, pin) stay with the repo's owner.
+    person); releases (tag, pin) stay with the repo's owner. In a suite with a beta channel the
+    second OK is the check at the head on every `required_os` (a machine of the operator
+    counts), not the suite owner's approval — the owner's word belongs to the stable pin. A merge
+    checked on ONE system only (macOS only, or Windows only) is allowed solely as a beta,
+    labelled with that system ("macOS beta" / "Windows beta") and with the other system's
+    verification open in the check table; it never reaches stable, which needs a `pass` on every
+    required system.
 
 ## 12. Staying compatible — and how anyone can check it
 
@@ -447,8 +453,8 @@ on, it replaces nothing above; it adds a fence the server holds.
 | Kind | Recognised by | Access | Change flow | Checks (workflow on `pull_request` + push to `main`) |
 |---|---|---|---|---|
 | core | `core-contract.json` in the root | owner admin; collaborators `write` | branch → PR → CI green → merge per the core's merge rules; server ruleset (public repo) | §7 as is |
-| suite | `.claude-plugin/plugin.json` | owner admin; the suite's main responsible and collaborators `write` | branch → PR → review by the other side → author (or the main responsible) merges after OK; pre-push hook | §7 as is |
-| project repo | none of the others | owner admin; every party working it `write` | branch → PR → review by the other side → author merges after OK; pre-push hook; measurement data of one run = one PR | baseline below |
+| suite | `.claude-plugin/plugin.json` | owner admin; the suite's main responsible and collaborators `write` | branch → PR → second OK (the other side's review; in a suite with a beta channel the check at the head on every required OS, §11) → whoever gets there first merges; stable pin = the main responsible with the operator; pre-push hook | §7 as is |
+| project repo | none of the others | owner admin; every party working it `write` | branch → PR → review by the other side → whoever gets there first merges after the OK (§11); pre-push hook; measurement data of one run = one PR | baseline below |
 | private brain | `core/` submodule + `.claude/` | its operator only | direct push to `main` (one writer); core changes never here (§13) | its own checks; no leak scan — it holds instance data by design |
 | shared memory | `INDEX.md` + area `LOG.md` files | every party's AI `write` | direct append to `main` (append-only log, several writers); its own lint (`shared-memory-lint.py`) | its lint; no leak scan — it names parties by design |
 
