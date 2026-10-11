@@ -162,19 +162,26 @@ session start.
      tag, no new tag and no new commit. A scope suffix in the tag would force the manifest
      to carry it too, and promoting to stable on the same commit would then need a different
      commit. So the scope is visible where it can change without code: (1) the check state
-     of every tag as one **generated table** — result lines per check (system, machine, date,
-     commit, ok) live in the repo, a script renders `PLATFORMS`-style rows with a macOS and a
-     Windows column (`beta <machine> <date> <commit>`, `unchecked`, `not needed — <reason>`,
-     `red`), never hand-kept; heavy-metal's `platform_check.py` + `platforms_table.py` are
-     the pattern; (2) the GitHub release of the tag is marked pre-release and its title and
+     of every tag as one **generated table** that never names a system in its shape: a
+     **list of checks** (id + what is checked), and **results — one line per check and
+     device**: `check | device | os | software | commit | date | result | note`, where the
+     result is `pass`, `fail — <what>` or `n/a — <why>`; the header carries
+     `required_os: <system, system>`. The OS is a field every device enters, not a column, so
+     a new system or a second device on the same system changes no table. Results live in
+     the repo, a script renders them, never hand-kept; heavy-metal's `platform_check.py` +
+     `platforms_table.py` are the pattern for producing the lines. Entries are appended,
+     never overwritten, and an open `fail` keeps the check red. The **owner's word has its
+     own section** (what the owner judged, in the owner's words) — it is a condition for
+     stable, not a checked line; (2) the GitHub release of the tag is marked pre-release and its title and
      text carry the scope ("beta — checked on macOS, Windows unchecked") and the rendered
      table; (3) the `<plugin>-next` entry's description says the same. It applies to every
-     beta; a pure T0 beta counts as both systems once both CI runs are green. A tag is never
-     re-cut when the other platform catches up — only the result lines change (a data
+     beta; a pure T0 beta counts as every required system once the CI runs are green. A tag is
+     never re-cut when another system catches up — only the result lines change (a data
      change, its author merges at once). **Stable** = the stable marketplace pin moves to
-     the tag once every row is green on BOTH systems and no regression was reported; a
-     platform nobody can check stays `unchecked` and blocks stable, unless the code owner
-     records it as `not needed — <reason>` — no silent tick. Stable pin and release stay
+     the tag once every check has a `pass` on every `required_os`, no `fail` is open and the
+     owner's word is recorded; a required system nobody can check keeps its checks without
+     a `pass` and blocks stable, unless the code owner records `n/a — <reason>` — no silent
+     tick. Stable pin and release stay
      the code owner's decision. Pull requests are collected: merging goes on continuously,
      but a beta is cut per round (one per work strand, above) and a pin follows a release,
      never a tag cut — no tag per PR, no pin per tag.
