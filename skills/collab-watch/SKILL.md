@@ -87,9 +87,14 @@ opt-out and holds for that session only.
    `gh pr view <nr> --json mergeable` (`CONFLICTING` = rebase, not "CI broken"); an empty
    `gh run list --branch <branch>` plus an empty check rollup = CI is not firing, a report
    event for the operator. A second branch as a control comes BEFORE any outage diagnosis.
-4. **Merge by ownership — the instance's merge rules decide**, typically: a repo with one
-   responsible owner → that owner merges; a jointly owned core → the maintainers merge
-   after a counter-check; otherwise the author merges. Never with own open findings. Merge
+4. **Merge when both sides said yes — whoever comes first** (operator decision 2026-10-11:
+   a ready PR that waits for one particular person "hangs for nothing"). Shared work is
+   merged by whichever party gets to it first, once ALL of these hold: the author reported
+   it done (or verified it live), the other side reviewed it OK, CI is green, the repo's
+   conventions are met, and the reviewed commit IS the head. Leave a one-line comment in
+   the PR saying who merged and on which two OKs. Exceptions are the instance's merge rules
+   (a jointly owned core: its maintainers merge after the counter-check); releases (tag,
+   pin) stay with the repo's owner. Never with own open findings. Merge
    with `--match-head-commit <reviewed sha>` in the repo's style (merge vs. squash).
    "CI green" speaks about code, never about whether the author is done.
    **A refused merge is a decision, not an obstacle:** when the permission layer refuses
