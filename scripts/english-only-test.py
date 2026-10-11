@@ -6,6 +6,7 @@ with an untracked .py the note names it and the exit stays 0; an untracked file 
 suffix the ratchet never reads stays unnamed. The script runs from a copy inside a
 throwaway git repo, because it judges the repo it sits in.
 """
+import os
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.stdout.reconfigure(encoding="utf-8", newline="\n")   # the smoke greps these lines
 fails = 0
 
 
@@ -24,8 +26,11 @@ def check(name, cond, detail=""):
 
 
 def run(repo):
+    # The script prints an em dash; on Windows a redirected stdout uses the ANSI codepage
+    # unless pinned (docs/os-traps.md OS-9), so the child is pinned to UTF-8 here.
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
     p = subprocess.run([sys.executable, str(repo / "scripts" / "english-only.py")],
-                       capture_output=True, text=True, encoding="utf-8")
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     return p.returncode, p.stdout
 
 
