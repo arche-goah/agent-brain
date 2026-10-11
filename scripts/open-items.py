@@ -128,7 +128,8 @@ def requests(repo):
         date, topic, von, text, rel = m.groups()
         # A LOG-only request has no file; its identity is date + sender + its own words.
         ref = rel if rel != "LOG" else f"{topic}/LOG {date} {von.strip()}"
-        items.append({"id": ref if rel != "LOG" else f"{ref}: {text[:40]}", "kind": "request",
+        # rstrip: --classify strips its key, so an id cut right after a blank could never be matched.
+        items.append({"id": ref if rel != "LOG" else f"{ref}: {text[:40].rstrip()}", "kind": "request",
                       "date": date, "who": von.strip(), "text": text[:100], "scope": topic,
                       "ref": ref, "file": rel if rel != "LOG" else ""})
     # An inbox line this parser cannot read must not vanish — the exact defect this list
@@ -422,7 +423,8 @@ def main():
     ap.add_argument("--repo", default=os.environ.get(
         "SHARED_MEMORY_REPO", str(Path.home() / "Projects" / "brain-shared-memory")))
     ap.add_argument("--root", default=os.environ.get("CLAUDE_PROJECT_DIR", "."))
-    ap.add_argument("--classify", nargs="+", metavar="ID=ai|human[:why]")
+    # extend: the hint prints one --classify per item; with the default action only the last one counted.
+    ap.add_argument("--classify", nargs="+", action="extend", metavar="ID=ai|human[:why]")
     a = ap.parse_args()
     # OS-9: the bootup and the Stop gate parse this output, and the item texts carry the
     # authors' umlauts and dashes. Unpinned, Windows writes the ANSI codepage.
