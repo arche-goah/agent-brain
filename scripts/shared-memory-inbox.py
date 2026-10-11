@@ -150,6 +150,13 @@ def log_items(repo: Path, a: str, b: str, me: set[str]) -> tuple[list[tuple], st
         added.append(text)
         m = HEADING.match(text)
         if not m:
+            # A dated heading that matches no known shape is NEVER dropped: it is printed as
+            # unparsed, whoever it is for (we cannot know). Dropping it was the silent failure
+            # behind every new heading shape (2026-09-25 two shapes, 2026-10-11 a third): the
+            # watcher said "nothing arrived" while the answer sat in the log.
+            um = re.match(r"^##\s+(\d{4}-\d{2}-\d{2})\b", text)
+            if um:
+                items.append((um.group(1), topic, "?", "UNPARSED LOG HEADING — " + first_sentence(text, TEXT_CAP)))
             continue
         date, sender, title = m.groups()
         title = title or ""

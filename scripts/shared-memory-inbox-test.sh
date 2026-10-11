@@ -109,4 +109,29 @@ S=$("$PY" "$INBOX" --repo "$W" --from "$B" --to "$C" --senders 2>&1)
 U=$("$PY" "$INBOX" --repo "$W" --from "$B" --to "$C" --self '' 2>&1)
 [[ -z "$U" ]] && pass "an upkeep-only range prints nothing" || fail "upkeep-only range printed: $U"
 
+# A LOG heading that names the SESSION after the sender (`<von> (<session>) — AN <x>: <title>`)
+# is a message like any other. Measured 2026-10-11: it matched no heading shape and was dropped
+# silently, even unfiltered. NEGATIVE CONTROL: the unpatched reader must FAIL these two.
+printf '\n## 2026-10-11 · sam-laptop (docs-session) — AN kim-win: QUALIFIED-ONE reply from a second session\nBody.\n' >> "$W/ops/LOG.md"
+git -C "$W" add -A
+git -C "$W" commit -qm qualified-heading
+D=$(git -C "$W" rev-parse HEAD)
+Q=$("$PY" "$INBOX" --repo "$W" --from "$C" --to "$D" --self '' 2>&1)
+grep -q 'QUALIFIED-ONE' <<<"$Q" && pass "a heading with a session after the sender is reported" \
+  || fail "qualified heading dropped: $Q"
+Q=$("$PY" "$INBOX" --repo "$W" --from "$C" --to "$D" --self kim-win 2>&1)
+grep -q 'QUALIFIED-ONE' <<<"$Q" && pass "the same heading reaches its addressee (--self kim-win)" \
+  || fail "qualified heading missed its addressee: $Q"
+
+# A heading of a shape nobody has seen yet is printed as UNPARSED, never dropped — filtered or not.
+printf '\n## 2026-10-11 sam-laptop: [a shape no pattern knows] NEWSHAPE-ONE\nBody.\n' >> "$W/ops/LOG.md"
+git -C "$W" add -A
+git -C "$W" commit -qm unknown-shape
+E=$(git -C "$W" rev-parse HEAD)
+for who in '' kim-win; do
+  Q=$("$PY" "$INBOX" --repo "$W" --from "$D" --to "$E" --self "$who" 2>&1)
+  grep -q 'UNPARSED LOG HEADING' <<<"$Q" && pass "an unknown heading shape is reported as unparsed (--self '$who')" \
+    || fail "unknown heading shape dropped (--self '$who'): $Q"
+done
+
 exit $FAIL

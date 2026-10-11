@@ -5,7 +5,7 @@
 # Level 1 (helpers/shared-memory-check.sh, called from session-bootup) covers session
 # boundaries; this one covers everything in between.
 #
-#   scripts/shared-memory-watch.sh watch [interval_s]   # default 300
+#   scripts/shared-memory-watch.sh watch [interval_s]   # default 60 (see below)
 #   scripts/shared-memory-watch.sh status
 #   scripts/shared-memory-watch.sh disarm
 #
@@ -125,7 +125,7 @@ case "${1:-status}" in
     trap 'if [[ "$(cat "$LOCK" 2>/dev/null)" == "$$" ]]; then rm -f "$LOCK"; fi' EXIT
     [[ -d "$REPO/.git" ]] || { echo "ERROR: shared-memory repo not cloned: $REPO"; exit 1; }
 
-    INTERVAL="${2:-300}"
+    INTERVAL="${2:-60}"
 
     # A watcher OUTLIVES ITS SESSION unless it checks (measured 2026-09-30 on macOS): the
     # process that had started it was gone, and the orphan kept polling and holding the
