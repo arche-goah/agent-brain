@@ -168,6 +168,16 @@ out=$(run); [[ -z "$out" ]] && ok "core-suite-disabled-plugins-silent" || bad "c
 printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
 out=$(run); grep -q 'plugin:td@m' <<< "$out" && ! grep -q 'brain-core' <<< "$out" && ! grep -q 'off@m' <<< "$out" \
   && ok "unlisted-plugin-reported" || bad "unlisted-plugin-reported: $out"
+# The marketplace plugin of a listed suite is the defined way, even when ecosystem.json does not
+# name it yet (measured 2026-10-11).
+mkdir -p "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin"
+printf '{"plugins":[{"name":"td","source":{"source":"github","repo":"o/td-suite"}}]}' \
+  > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
+printf '{"repos":{"td-suite":{"kind":"suite"}}}' > "$T/b/config/ecosystem.json"
+out=$(run); ! grep -q 'plugin:td@m' <<< "$out" && ok "marketplace-plugin-of-listed-suite-silent" || bad "marketplace-plugin-of-listed-suite-silent: $out"
+printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
+out=$(run); grep -q 'plugin:td@m' <<< "$out" && ok "marketplace-plugin-of-unlisted-repo-reported" || bad "marketplace-plugin-of-unlisted-repo-reported: $out"
+rm -rf "$T/fakehome/.claude/plugins/marketplaces"
 
 # --- git hooks: global hooksPath outside the brain ----------------------------------------
 mk "$CORE_HOOK" '' '' >/dev/null; git -C "$T/b" init -q
@@ -209,6 +219,21 @@ if [[ -L "$T/b/.claude/skills/s1" ]]; then
 else
   echo "  SKIP skill-symlink-off-main-loud (no symlinks on this platform)"
 fi
+
+# --- a clone of a suite that ships as a plugin (operator order 2026-10-11) ----------------
+git -C "$T/suite" checkout -q main
+git -C "$T/suite" remote add origin https://github.com/o/suite.git
+rm -rf "$T/b/.claude/skills/s1"
+printf '{"mcpServers":{"s":{"command":"node","args":["%s"]}}}' "$(nat "$T/suite/server.js")" > "$T/b/.mcp.json"
+out=$(run); [[ -z "$out" ]] && ok "clone-of-unpublished-suite-silent" || bad "clone-of-unpublished-suite-silent: $out"
+mkdir -p "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin"
+printf '{"plugins":[{"name":"suite","source":{"source":"github","repo":"o/suite"}}]}' \
+  > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
+out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" && grep -q 'clone=1' <<< "$out" \
+  && ok "clone-of-published-suite-loud-even-on-main" || bad "clone-of-published-suite-loud-even-on-main: $out"
+decl "$(printf '{"alpha":{"%s":{"until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
+out=$(run); [[ -z "$out" ]] && ok "clone-declared-alpha-silent" || bad "clone-declared-alpha-silent: $out"
+rm -rf "$T/fakehome/.claude/plugins/marketplaces" "$T/b/.mcp.json" "$T/b/.claude/rules/local-machinery.json"
 
 # --- carrier coverage: one planted item per carrier, each reported, each control red -----
 rm -rf "$T/b"; mkdir -p "$T/b/.claude/rules" "$T/b/.claude/hooks" "$T/b/.claude/skills/myskill" \
