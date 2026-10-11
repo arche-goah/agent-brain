@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5
+known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=13
 instances: 5
 repeat:    yes
 status:    closed
@@ -137,7 +137,7 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1
+known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -174,7 +174,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=4 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=2 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=4 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -236,6 +236,11 @@ files are printed back by node unchanged and used by bash and as `git` argv, nev
 native process. The one path that does travel as data — the hang script inside
 `GIT_SSH_COMMAND`, which native git hands to its shell — goes through `native()`. Windows run
 still owed at baseline time.
+2026-10-11, test-open-items-wake.sh baselined after the same review: paths cross into python
+as data in three places — `--repo`, `--root` and `OPEN_ITEMS_PR_FIXTURE` — all through
+`native()`; the script path is an argument and goes through it too. The fixture's own `git -C`
+calls are bash argv (converted). Python then runs `git -C <repo>` with the native path it was
+given. Windows run still owed at baseline time.
 
 2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
 test-full-audit-synthesis-files.sh baselined on the same review and the same construction

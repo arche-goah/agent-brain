@@ -439,6 +439,13 @@ elif [ "$pin_dirty" -eq 1 ]; then
   fi
 fi
 
+# 6) tell the other devices which state this one now runs (shared-memory devices/<id>.json;
+#    writes only on a change, a silent no-op without a shared-memory clone or device id).
+#    An update is exactly the moment the recorded state goes stale — operator order 2026-10-11.
+if [ -f "$BRAIN/core/scripts/device-status.py" ]; then
+  CLAUDE_PROJECT_DIR="$BRAIN" "$PY" "$BRAIN/core/scripts/device-status.py" report 2>/dev/null | tr -d '\r' || true
+fi
+
 echo
 # A FAIL line must reach the exit code — a scheduler or one-word update that
 # prints DONE and exits 0 over a red line is the "false green" class again.

@@ -38,6 +38,13 @@ EOF
 export PUBLIC_TEXT_GUARD_FAKE_GH="$NT/bin/fake-gh.cjs"
 git init -q "$T/pubclone" && git -C "$T/pubclone" remote add origin https://github.com/o/pub.git
 git init -q "$T/privclone" && git -C "$T/privclone" remote add origin git@github.com:o/priv.git
+for c in pubclone privclone; do
+  git -C "$T/$c" config user.name "acct"; git -C "$T/$c" config user.email "1+acct@users.noreply.github.com"
+done
+git init -q "$T/namedclone" && git -C "$T/namedclone" remote add origin https://github.com/o/pub.git
+git -C "$T/namedclone" config user.name "Zorbalina Example"; git -C "$T/namedclone" config user.email "z@example.org"
+git init -q "$T/namedpriv" && git -C "$T/namedpriv" remote add origin https://github.com/o/priv.git
+git -C "$T/namedpriv" config user.name "Zorbalina Example"; git -C "$T/namedpriv" config user.email "z@example.org"
 printf 'Thanks to Zorbalina for the review.\n' > "$T/named.md"
 printf 'Thanks for the review.\n' > "$T/clean.md"
 
@@ -74,6 +81,18 @@ expect "commit message in a public clone blocks"            block "$T/pubclone" 
 expect "git -C into a public clone blocks"                  block "$T" "git -C $NT/pubclone commit -am \"zorbalina asked\""
 expect "commit message in a private clone passes"           allow "$T/privclone" 'git commit -m "fix for zorbalina"'
 expect "commit message file in a public clone blocks"       block "$T/pubclone" "git commit -F $NT/named.md"
+expect "named commit AUTHOR in a public clone blocks"       block "$T/namedclone" 'git commit -m "clean message"'
+expect "named author via git -C, no message flag, blocks"   block "$T" "git -C $NT/namedclone commit --amend --no-edit"
+expect "named author in a private clone passes"             allow "$T/namedpriv" 'git commit -m "clean message"'
+expect "neutral author in a public clone passes"            allow "$T/pubclone" 'git commit -m "clean message"'
+# home paths built at run time: a literal one would trip the core's own leak-scan
+U="Users"; HOME_MAC="/$U/zorbalina"; HOME_WIN="C:\\$U\\zorbalina"
+expect "a name only in a home path passes"                  allow "$T" "gh pr create -R o/pub --title fix --body-file $HOME_MAC/clean.md"
+expect "a name only in a Windows home path passes"          allow "$T" "gh pr comment 1 -R o/pub --body-file $HOME_WIN\\clean.md"
+expect "a name in the text next to a home path still blocks" block "$T" "gh pr comment 1 -R o/pub --body \"hi zorbalina\" --repo o/pub"
+mkdir -p "$T/scratch-Users-zorbalina-proj" && printf 'clean\n' > "$T/scratch-Users-zorbalina-proj/b.md"
+expect "a name inside an existing path passes"              allow "$T" "gh pr create -R o/pub --title fix --body-file $NT/scratch-Users-zorbalina-proj/b.md"
+expect "a slash word in the text is no path, still blocks"  block "$T" 'gh pr comment 1 -R o/pub --body "see zorbalina/notes"'
 
 # no watch list: nothing to check against
 rc=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 1 -R o/pub --body zorbalina"}}' \
