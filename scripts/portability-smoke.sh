@@ -340,7 +340,8 @@ esac
 #     (the v1.3.12 class-gate shipped consumed-but-wired-nowhere on a live brain);
 #     a fully wired brain must stay silent. CLAUDE_CONFIG_DIR points into the
 #     fixture so the runner's real user settings can never leak into the check.
-mkdir -p "$T/hookbrain/core/templates" "$T/hookbrain/core/helpers" "$T/hookbrain/.claude" "$T/nocfg"
+mkdir -p "$T/hookbrain/core/templates" "$T/hookbrain/core/helpers" "$T/hookbrain/.claude/rules" "$T/nocfg"
+printf '{"names": ["placeholder"], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
 cp "$CORE/templates/settings.json" "$T/hookbrain/core/templates/"
 cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$T/hookbrain/core/helpers/" 2>/dev/null
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
@@ -374,6 +375,14 @@ case "$_rc:$_hc" in
   *) bad "hook-coverage fail-open case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
 cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+#     The name guard wired with an EMPTY watch list checks nothing - named, not silent.
+printf '{"names": [], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"public-text-guard.cjs is wired but"*"checks nothing"*) ok "hook-coverage flags a name guard with an empty watch list";;
+  *) bad "hook-coverage inert-guard case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+printf '{"names": ["placeholder"], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
 #     And the bootup voices it: the fixture brain gets the template but an empty
 #     settings file — the !! line is the carrier that repeats until it is fixed.
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
