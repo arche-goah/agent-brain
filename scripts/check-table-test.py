@@ -17,15 +17,15 @@ def doc(rows: list[str], owner: str = "Looks good to me.", req: str = "macOS, Wi
             "## Results\n\n%s%s\n\n## The owner's word\n\n%s\n" % (req, HEAD, "\n".join(rows), owner))
 
 
-def row(check, device, os_, date, result):
-    return "| %s | %s | %s | 1.0 | abc | %s | %s | |" % (check, device, os_, date, result)
+def row(check, device, os_, date, result, commit="abc"):
+    return "| %s | %s | %s | 1.0 | %s | %s | %s | |" % (check, device, os_, commit, date, result)
 
 
-def run(text: str) -> tuple[int, str]:
+def run(text: str, *extra: str) -> tuple[int, str]:
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "t.md"
         p.write_text(text, encoding="utf-8")
-        r = subprocess.run([sys.executable, TOOL, "verdict", str(p)], capture_output=True, text=True, encoding="utf-8")
+        r = subprocess.run([sys.executable, TOOL, "verdict", str(p), *extra], capture_output=True, text=True, encoding="utf-8")
         return r.returncode, r.stdout
 
 
@@ -79,6 +79,27 @@ case("n/a with a reason satisfies the OS", rc, 0, out)
 
 rc, out = run(doc(ALL + [row("c1", "lin1", "Linux", "2026-10-11", "fail — odd")], req="macOS, Windows"))
 case("an OS that is not required still keeps a fail open", rc, 1, out, "RED")
+
+# --cells: the per-cell view (off by default). Cases from the heavy-metal session's own stable rule.
+def cells(rows):
+    return run(doc(rows), "--cells")[1]
+
+
+MAC = [row("c1", "m", "macOS", "2026-10-11", "pass", "k1"), row("c2", "m", "macOS", "2026-10-11", "pass", "k1")]
+c = cells(MAC + [row("c1", "a", "Windows", "2026-10-11", "pass", "c1"), row("c1", "b", "Windows", "2026-10-12", "pass", "c2")])
+case("cells: passes on two different commits, two devices = STABLE", int("c1 | Windows | STABLE" in c), 1, c)
+c = cells(MAC + [row("c1", "a", "Windows", "2026-10-11", "pass", "c1"), row("c1", "a", "Windows", "2026-10-12", "pass", "c1")])
+case("cells: the same commit twice = BETA, latest pass named", int("c1 | Windows | BETA" in c and "latest pass a 2026-10-12 c1" in c), 1, c)
+c = cells(MAC + [row("c1", "a", "Windows", "2026-10-11", "pass", "c1"), row("c1", "b", "Windows", "2026-10-12", "fail — x", "c2")])
+case("cells: a later fail on a second device = RED", int("c1 | Windows | RED" in c), 1, c)
+c = cells(MAC + [row("c1", "a", "Windows", "2026-10-11", "pass", "c1"), row("c1", "b", "Windows", "2026-10-12", "fail — x", "c2"),
+                 row("c1", "b", "Windows", "2026-10-13", "pass", "c3")])
+case("cells: fail resolved by a later pass is not red, but not stable either (fail since first pass) = BETA",
+     int("c1 | Windows | BETA" in c and "a fail since the first pass" in c), 1, c)
+c = cells(MAC)
+case("cells: nothing recorded = LACKS", int("c1 | Windows | LACKS" in c), 1, c)
+rc, out = run(doc(ALL))
+case("cells are off by default (no cell lines without --cells)", int("cell  " not in out), 1, out)
 
 VER = [r.replace("| macOS |", "| macOS 26.0 |").replace("| Windows |", "| Windows 11 Pro 23H2 (10.0.22631) |") for r in ALL]
 rc, out = run(doc(VER))
