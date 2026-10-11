@@ -94,6 +94,23 @@ grep -q '^REPO core 300 acme/core$' <<<"$dry" && ok || bad "--dry-run output: $d
 COLLAB_WATCH_CONFIG="$T/good.json" COLLAB_WATCH_SCOPE=op-win bash "$HERE/collab-watch.sh" --dry-run >/dev/null 2>&1
 [[ $? -eq 64 ]] && ok || bad "arm script passes the scope refusal through (rc 64)"
 
+echo "topics widen a party scope, both directions (measured 2026-10-11: a one-collaborator scope"
+echo "dropped every PR of the operator's other machine in the repo the session owned)"
+filt() { printf '%s\n' "$2" | COLLAB_WATCH_CONFIG="$T/good.json" COLLAB_WATCH_SCOPE=bob COLLAB_WATCH_TOPICS="$1" \
+           bash "$HERE/collab-watch.sh" --filter-stdin 2>/dev/null | tr -d '\r'; }
+own_topic='FOUND: 1 new commit(s) from op-win — suite/LOG.md, suite/plan.md'
+own_other='FOUND: 1 new commit(s) from op-win — core/LOG.md'
+[[ "$(filt suite "$own_topic")" == "$own_topic" ]] && ok || bad "topic: own other machine in the topic folder must pass"
+[[ -z "$(filt '' "$own_topic")" ]] && ok || bad "no topic: own other machine must stay dropped (old scope)"
+[[ -z "$(filt suite "$own_other")" ]] && ok || bad "topic: a find outside the topic folder must stay dropped"
+[[ -z "$(filt sui "$own_topic")" ]] && ok || bad "topic: a prefix of a folder name is not the folder"
+peer='FOUND: 1 new commit(s) from bob-win — core/LOG.md'
+[[ "$(filt suite "$peer")" == "$peer" ]] && ok || bad "topic: the scoped party still passes everywhere"
+lf() { COLLAB_WATCH_CONFIG="$T/good.json" COLLAB_WATCH_SCOPE=bob COLLAB_WATCH_TOPICS="$1" bash "$HERE/collab-watch.sh" --logins-for "$2" 2>/dev/null | tr -d '\r'; }
+[[ "$(lf suites suites)" == "-" ]] && ok || bad "topic tag: repo watch reports every login"
+[[ "$(lf suites core)" == "bob-lights" ]] && ok || bad "other tag: repo watch keeps the party filter"
+[[ "$(lf '' suites)" == "bob-lights" ]] && ok || bad "no topic: party filter unchanged"
+
 echo
 if [[ $fails -eq 0 ]]; then echo "test-collab-watch-plan: all $checks checks passed"; exit 0; fi
 echo "test-collab-watch-plan: $fails of $checks checks FAILED"; exit 1
