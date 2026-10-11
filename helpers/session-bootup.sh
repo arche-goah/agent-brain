@@ -535,6 +535,13 @@ fi
 if [[ -d "${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}/.git" ]]; then
   "$PY" "$HERE/../scripts/shared-memory-log-rotate.py" --check 2>/dev/null
 fi
+# Which device runs which core (operator order 2026-10-11): one line, only when a device is
+# behind its pin, runs a core that differs from its plugin, carries local core edits, has not
+# reported for two weeks, or never reported. Reads the LOCAL clone the fetch above refreshed —
+# no network of its own (measured 0.04 s). Full table: core/scripts/device-status.py [--person p].
+if [[ -d "${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}/.git" && -f "$HERE/../scripts/device-status.py" ]]; then
+  "$PY" "$HERE/../scripts/device-status.py" table --brief 2>/dev/null
+fi
 
 # Deadlines (only if the file exists). "Present — check it" was presence, not effect:
 # the bootup NAMED the file but never computed, so a date one day away looked exactly

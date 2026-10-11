@@ -107,6 +107,12 @@ then an explicit release follows.
    ```bash
    node "$CLAUDE_PROJECT_DIR"/core/helpers/memory-sync.cjs export
    ```
+   ```bash
+   python3 "$CLAUDE_PROJECT_DIR"/core/scripts/device-status.py report
+   ```
+   (interpreter per instance rule) Records which core, plugin channel and suites this device runs into the shared memory
+   (`devices/<device>.json`; written only when something changed). The other devices read it
+   with `device-status.py [--person <p>|--device <id>|--os <os>]`.
    **If this session deleted, merged or renamed a memory file: run `memory-sync.cjs prune`
    BEFORE `export`.** Export only adds and updates; a snapshot copy of a deleted memory
    stays, and the next session's import brings the memory back.

@@ -25,7 +25,7 @@
 | 9 | `suite-check.py .` in the core checkout | the contract is verifiable on YOUR side, not only at the sender's |
 | 10 | `ecosystem-sync.py` | your state is nameable (repo x commit x version) |
 | 11 | shell start into the brain | marker `brain shell-start` in the shell profile — a bare `claude` in a fresh terminal starts IN the brain, not as a bare `$HOME` session |
-| 12 | shared-memory self | *only with a shared-memory checkout:* `SHARED_MEMORY_SELF` set in the brain's `env` block — the session-start inbox filters to entries for this instance, the LOG rotation can name its own entries |
+| 12 | shared-memory self | *only with a shared-memory checkout:* `SHARED_MEMORY_SELF` set in the brain's `env` block — the session-start inbox filters to entries for this instance, the LOG rotation can name its own entries. Its FIRST token is this device's id: it must be listed in the shared memory's `parties.json`, and `scripts/device-status.py report` records under it which core, plugin channel and suites the device runs (`devices/<id>.json` — one file per device, written by that tool only, versions/commits/dates, never a path) |
 
 Negative control (part of the acceptance, not of everyday use): deliberately break
 one check (e.g. disable the plugin) — the verifier MUST turn red. A verifier that
