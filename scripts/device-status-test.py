@@ -93,7 +93,7 @@ try:
     check("a-suite" in doc["suites"] and "own-project" not in doc["suites"], "suites recorded, own projects left out")
     check(str(tmp) not in devfile.read_text(encoding="utf-8") and "/secret" not in devfile.read_text(encoding="utf-8"),
           "no path in the device file")
-    check(git("rev-list", "--count", "origin/HEAD", cwd=shared) == str(commits()), "report pushed")
+    check(git("rev-list", "--count", "HEAD", cwd=bare) == str(commits()), "report pushed")
     rc, out = ds("report")
     check(rc == 0 and commits() == n0 + 1 and "unchanged" in out, "NEGATIVE: unchanged state does not commit again")
     rc, out = ds("report", "--dry-run")
