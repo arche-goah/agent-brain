@@ -164,6 +164,22 @@ def kind(result: str) -> tuple[str, str]:
     return "other", text
 
 
+def owner_open_questions(owner: str) -> list[str]:
+    """Table rows of the owner section (question | answer) whose answer is empty or a placeholder such as `open`.
+    A section that exists is not a word that was given: every row must carry an answer."""
+    lines = owner.splitlines()
+    rows = []
+    for i, line in enumerate(lines):
+        if not line.strip().startswith("|") or is_separator(line):
+            continue
+        if i + 1 < len(lines) and is_separator(lines[i + 1]):
+            continue                    # the header row
+        c = cells(line)
+        if c and c[0]:
+            rows.append((c[0], c[1] if len(c) > 1 else ""))
+    return [q for q, a in rows if a.strip().lower() in PLACEHOLDERS | {"open", "?"}]
+
+
 def verdict(model: dict) -> tuple[bool, list[str]]:
     required = model["required_os"]
     # latest entry per (check, device): later date wins, equal dates keep file order
@@ -200,8 +216,11 @@ def verdict(model: dict) -> tuple[bool, list[str]]:
     for s in model["skipped"]:
         lines.append("note  skipped %s: not a result line" % s)
     owner = model["owner"].strip()
-    owner_ok = owner.lower() not in PLACEHOLDERS and not re.fullmatch(r"_.*_", owner)
-    if not owner_ok:
+    open_q = owner_open_questions(owner)
+    owner_ok = owner.lower() not in PLACEHOLDERS and not re.fullmatch(r"_.*_", owner) and not open_q
+    for q in open_q:
+        lines.append("OWNER open question: %s" % q)
+    if not owner_ok and not open_q:
         lines.append("OWNER the owner's word is not recorded")
     ready = lacking_total == 0 and red_total == 0 and owner_ok and bool(model["checks"])
     if not model["checks"]:

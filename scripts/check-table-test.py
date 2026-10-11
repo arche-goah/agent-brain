@@ -50,6 +50,16 @@ case("one check lacks Windows = not ready, names the system", rc, 1, out, "no pa
 rc, out = run(doc(ALL, owner="_not yet recorded_"))
 case("owner's word missing = not ready", rc, 1, out, "owner's word is not recorded")
 
+OWNER_TBL = "Intro.\n\n| Question | Suite owner |\n|---|---|\n| Does X belong? | %s |\n| Anything to change? | fine |"
+rc, out = run(doc(ALL, owner=OWNER_TBL % "open"))
+case("owner section with an `open` row = not ready, names the question", rc, 1, out, "open question: Does X belong?")
+
+rc, out = run(doc(ALL, owner=OWNER_TBL % ""))
+case("owner section with an empty answer = not ready", rc, 1, out, "open question")
+
+rc, out = run(doc(ALL, owner=OWNER_TBL % "yes, as written"))
+case("owner section with every row answered = ready", rc, 0, out)
+
 rc, out = run(doc(ALL + [row("c1", "win1", "Windows", "2026-10-12", "fail — crashes")]))
 case("later fail on the same device reopens the check", rc, 1, out, "RED")
 
