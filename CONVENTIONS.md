@@ -101,6 +101,16 @@ Rules:
   a usable message, not silently do nothing.
 - Every tool is testable read-only against a device that does not exist yet (dry run or
   clear connection error).
+- **The server is the only way in, and the suite says so mechanically.** A suite whose
+  server has internals an agent could reach around it (an IPC file, the server's source
+  started by hand, a GUI driver) ships `mechanism-rules.json` at its root:
+  `{"tool": "<suite>", "rules": [{"pattern", "was", "instead", "target": "command"|"path"}]}`.
+  The core's `mechanism-guard` finds it in a clone (via `.mcp.json`) and in an enabled
+  plugin alike. Developing the tool itself is the legitimate exception — it is declared per
+  command with `# MECHANISM-OK: <reason>`, never silent.
+- **Testing an unreleased branch live is a documented path** in the suite's `AGENTS.md`
+  (how to point the session's MCP at a clone on that branch, for plugin users too). Where it
+  cannot be done, the agent reports — it does not start the server on its own.
 
 ## 5. Skills
 
@@ -360,11 +370,31 @@ branch → CI green → PR → merge → **tag → marketplace pin**. Only the p
 visible to the other side — "I pushed" never means "something changed for you"; the
 receiver stays in control.
 
+**Beta changes in a suite ride a channel, not a clone** (operator decision 2026-10-11:
+"no local extra branches that then drift in every instance"). A suite's plugin is run
+from the marketplace; an unreleased change is checked on the **same artifact on every
+machine**: the suite's `<plugin>-next` entry (same shape as `brain-core-next`, created
+when the first beta tag exists — no pin in advance), the stable plugin disabled meanwhile
+(same skill names), then back. The first switch needs a **new session** for a plugin whose
+dependencies are installed by its SessionStart hook: before a session starts it has none and
+its server exits at once, so `/reload-plugins` plus `/mcp` is not enough (measured on the
+Windows instance, 2026-10-11). Tag form, platform scope and the generated check table
+follow AGENTS.md #12 (the tag stays `vX.Y.Z`; beta is the channel). A beta (the tag plus
+the `<plugin>-next` pin) is collaboration logic, not a program-function decision: any
+collaborating instance may cut it under the round rule of AGENTS.md #12, without waiting
+for the lead maintainer; the **stable** tag and pin stay with the lead maintainer and the
+operator. A live check by cloning the suite, switching a branch,
+pointing an `.mcp.json` at it or starting the server by hand is NOT a way to test a change
+— it multiplies the setups the owner must reason about; if the channel does not exist yet,
+that is reported as the missing step, and the check waits.
+
 **Ownership of a suite** (operator decisions 2026-08-31 to 2026-09-13). Every tool
 domain has one lead maintainer, assigned by the core's code owner; a new domain is
 unassigned until then — ownership is never derived. In their suite the lead decides
-alone: merge without a counter-check, tag, and the marketplace pin (their pin PR IS the
-decision; the marketplace merges it technically), graded per the core's AGENTS.md #5.
+alone: merge without a counter-check, the stable tag, and the stable marketplace pin (their
+pin PR IS the decision; the marketplace merges it technically), graded per the core's
+AGENTS.md #5. A suite's beta channel and beta tags are the exception (see "Beta changes in
+a suite" above): collaboration logic, run like the core.
 Whoever works on a suite gets `write` there and branches IN the repo, so each side can
 push to the other's branch. Outside the core, another party's PR is merged by its
 author; merging someone else's work is announced first. Shared carriers — core,

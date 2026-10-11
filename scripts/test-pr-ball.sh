@@ -99,6 +99,35 @@ expect_line "author: an approval after my last commit" \
   "$(pr author '{"number":151,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T20:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"peer"},"state":"APPROVED","submittedAt":"2026-09-15T02:00:00Z"}]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" \
   "core#151 yours - reply since your last commit, 6 h"
 
+# 18-22. ONE login, several instances (measured 2026-10-11: the operator's other machine
+#     opened a test fix under the same account and waited for a second OK that this line
+#     never showed — it read the PR as our own). Each text carries the poster's instance key.
+KMAC="$(PYTHONPATH="$ROOT/scripts" "$PY" -c 'import instance_key as k; print(k.key_for("mac"))')"
+KWS="$(PYTHONPATH="$ROOT/scripts" "$PY" -c 'import instance_key as k; print(k.key_for("ws"))')"
+krun() { printf '%s' "$2" | SHARED_MEMORY_SELF=mac "$PY" "$BALL" --now "$NOW"; }
+kexpect_line() { out="$(krun "$1" "$2")"; case "$out" in *"$3"*) ok "$1" ;; *) bad "$1 — got: ${out:-<silence>}" ;; esac; }
+kexpect_silent() { out="$(krun "$1" "$2")"; [ -z "$out" ] && ok "$1" || bad "$1 — expected silence, got: $out"; }
+
+kexpect_line "sibling: a PR by the other instance under our login is our review" \
+  "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" \
+  "suite#117 review - asked, not looked at yet"
+
+kexpect_silent "self: a PR carrying our own key stays ours (no reply yet)" \
+  "$(pr acct '{"number":115,"isDraft":false,"body":"fix <!-- instance-key: '"$KMAC"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')"
+
+kexpect_line "sibling reply: an OK from the other instance under our login is a move on our PR" \
+  "$(pr acct '{"number":115,"isDraft":false,"body":"<!-- instance-key: '"$KMAC"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"acct"},"createdAt":"2026-09-15T04:00:00Z","body":"Windows: OK <!-- instance-key: '"$KWS"' -->"}]},"reviewRequests":{"nodes":[]}}')" \
+  "suite#115 yours - reply since your last commit"
+
+kexpect_line "sibling review: our comment on the other instance's PR is a look, a newer commit asks again" \
+  "$(pr acct '{"number":117,"isDraft":false,"body":"<!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-15T06:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"acct"},"createdAt":"2026-09-15T04:00:00Z","body":"looked <!-- instance-key: '"$KMAC"' -->"}]},"reviewRequests":{"nodes":[]}}')" \
+  "suite#117 review - new commits since your last look"
+
+# Negative control: without SHARED_MEMORY_SELF the old login-only rule holds — the sibling
+# PR reads as our own and stays silent. This is exactly the blindness the key removes.
+out="$(printf '%s' "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" | env -u SHARED_MEMORY_SELF "$PY" "$BALL" --now "$NOW")"
+[ -z "$out" ] && ok "no own key: login-only rule unchanged (sibling PR silent)" || bad "no own key: expected the old silence, got: $out"
+
 # 9. drafts never count
 expect_silent "draft: never a move" \
   "$(pr author '{"number":10,"isDraft":true,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-13T15:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"maint"},"state":"CHANGES_REQUESTED","submittedAt":"2026-09-13T16:00:00Z"}]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')"

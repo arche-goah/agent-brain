@@ -114,6 +114,49 @@ mg_probe "mechanism-guard/heredoc through eval" \
   'eval \"$(cat <<EOF\nfixture-shortcut --now\nEOF\n)\"' block
 rm -rf "$MG"
 
+# --- mechanism-guard: TOOL rules — a tool declares its own internals ------------------
+# Incident 2026-10-11: a session on a second machine could not take the defined path and
+# built its own client, wrote probes into the tool's IPC file and drove the GUI. The guard
+# only knew instance rules. A tool now ships `mechanism-rules.json` at its root, and the
+# guard finds it on BOTH ways a tool arrives: a clone referenced in .mcp.json, and an
+# enabled plugin. Each way gets a block AND an allow, and a disabled plugin must stay out.
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+TR=$(mktemp -d)
+mkdir -p "$TR/suite/mcp/src" "$TR/proj/.claude" "$TR/fakeuser/.claude/plugins" \
+         "$TR/fakeuser/plug-on" "$TR/fakeuser/plug-off"
+: > "$TR/suite/mcp/src/index.ts"
+printf '%s' '{"tool":"fixture-suite","rules":[{"pattern":"fixture-ipc\\.txt$","target":"path","was":"ipc","instead":"the MCP tools"},{"pattern":"\\bfixture-server-by-hand\\b","was":"server by hand","instead":"the MCP server"}]}' \
+  > "$TR/suite/mechanism-rules.json"
+printf '{"mcpServers":{"fx":{"command":"node","args":["%s"]}}}' "$(native "$TR/suite/mcp/src/index.ts")" \
+  > "$TR/proj/.mcp.json"
+printf '%s' '{"tool":"fixture-plugin","rules":[{"pattern":"\\bfixture-plugin-internal\\b","was":"plugin internal","instead":"its MCP tools"}]}' \
+  > "$TR/fakeuser/plug-on/mechanism-rules.json"
+printf '%s' '{"tool":"fixture-off","rules":[{"pattern":"\\bfixture-disabled-internal\\b","was":"x","instead":"y"}]}' \
+  > "$TR/fakeuser/plug-off/mechanism-rules.json"
+printf '{"version":2,"plugins":{"on@fx":[{"installPath":"%s"}],"off@fx":[{"installPath":"%s"}]}}' \
+  "$(native "$TR/fakeuser/plug-on")" "$(native "$TR/fakeuser/plug-off")" > "$TR/fakeuser/.claude/plugins/installed_plugins.json"
+printf '%s' '{"enabledPlugins":{"on@fx":true,"off@fx":false}}' > "$TR/fakeuser/.claude/settings.json"
+tr_probe() { # $1 name, $2 tool_name, $3 field (command|file_path), $4 value, $5 block|allow
+  local out helper
+  helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
+  out=$(printf '{"tool_name":"%s","tool_input":{"%s":"%s"}}' "$2" "$3" "$4" \
+        | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$helper" 2>&1)
+  if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
+    [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked what it should allow"
+  else
+    [ "$5" = allow ] && ok "$1 allows" || bad "$1 did NOT block: ${out:0:80}"
+  fi
+}
+tr_probe "mechanism-guard/tool rule via .mcp.json clone (command)" Bash command "fixture-server-by-hand --x" block
+tr_probe "mechanism-guard/tool rule via clone (path, Write)" Write file_path "$(native "$TR")/x/fixture-ipc.txt" block
+tr_probe "mechanism-guard/tool rule via clone (path, Edit)" Edit file_path "$(native "$TR")/x/fixture-ipc.txt" block
+tr_probe "mechanism-guard/path rule ignores commands" Bash command "cat notes-about-fixture-ipc.txt.md" allow
+tr_probe "mechanism-guard/ordinary Write" Write file_path "$(native "$TR")/x/readme.md" allow
+tr_probe "mechanism-guard/tool rule via enabled plugin" Bash command "fixture-plugin-internal now" block
+tr_probe "mechanism-guard/disabled plugin stays out" Bash command "fixture-disabled-internal now" allow
+tr_probe "mechanism-guard/tool rule + MECHANISM-OK marker" Bash command "fixture-server-by-hand  # MECHANISM-OK: developing the tool" allow
+rm -rf "$TR"
+
 # --- freshness-gate: only the Workflow tool concerns it ----------------------
 # The blocking case needs a completed expensive run in this session's record, which a
 # fixture cannot fake without inventing a run id. What IS provable here: it stays out

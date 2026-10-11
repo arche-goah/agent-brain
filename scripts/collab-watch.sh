@@ -14,6 +14,13 @@
 # Config: $COLLAB_WATCH_CONFIG, default <instance>/.claude/rules/collab-watch.json
 #         (template: templates/rules-instance/collab-watch.json)
 # Scope:  $COLLAB_WATCH_SCOPE = all (default) | peers | <party label/id/login>
+# Topics: $COLLAB_WATCH_TOPICS = space-separated topics this session owns (e.g. "grandma3 grandma").
+#         A topic widens the party scope, it never narrows it: a repo watch whose TAG is a topic
+#         reports every login, and a shared-memory find that touches a `<topic>/` folder passes
+#         whoever wrote it. WHY (measured 2026-10-11): a session scoped to one collaborator owned
+#         the grandMA work; the party filter dropped every PR event under the operator's own
+#         login — the other machine's test fix and its "please review" — because one login
+#         carries both of the operator's machines and a login filter cannot keep one of them.
 # State:  $COLLAB_WATCH_STATE, default <instance>/.claude-state/collab-watch — cursors AND
 #         locks of every channel. Its own shared-memory cursor on purpose: sharing the cursor
 #         of the session-start check lets ANY session's start consume a find before the
@@ -26,6 +33,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTANCE="${CLAUDE_PROJECT_DIR:-$PWD}"
 CONFIG="${COLLAB_WATCH_CONFIG:-$INSTANCE/.claude/rules/collab-watch.json}"
 SCOPE="${COLLAB_WATCH_SCOPE:-all}"
+TOPICS="${COLLAB_WATCH_TOPICS:-}"
 STATE="${COLLAB_WATCH_STATE:-$INSTANCE/.claude-state/collab-watch}"
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
@@ -49,11 +57,12 @@ fi
 # `$!` the filter's pid, and the cleanup would kill the filter while the watch kept polling.
 sm_scope_filter() {
   if [[ "$ONLY_PARTIES" != "-" ]]; then
-    awk -v list="$ONLY_PARTIES" \
-      'BEGIN { n = split(list, p, " ") }
+    awk -v list="$ONLY_PARTIES" -v topics="$TOPICS" \
+      'BEGIN { n = split(list, p, " "); m = split(topics, t, " ") }
        /^FOUND:/ {
          if (index($0, "unknown party")) { print; fflush(); next }
          for (i = 1; i <= n; i++) if (index($0, p[i])) { print; fflush(); next }
+         for (j = 1; j <= m; j++) if (index($0, " " t[j] "/") || index($0, "," t[j] "/")) { print; fflush(); next }
          next
        }
        { print; fflush() }'
@@ -61,6 +70,16 @@ sm_scope_filter() {
     cat
   fi
 }
+# A repo watch whose tag is one of this session's topics reports every login.
+logins_for_tag() {
+  case " $TOPICS " in
+    *" $1 "*) echo "-" ;;
+    *) echo "$ONLY_LOGINS" ;;
+  esac
+}
+# Fixture seam: run only the shared-memory filter over stdin, arm nothing.
+if [[ "${1:-}" == "--filter-stdin" ]]; then sm_scope_filter; exit 0; fi
+if [[ "${1:-}" == "--logins-for" ]]; then logins_for_tag "${2:-}"; exit 0; fi
 exec > >(sm_scope_filter)
 
 mkdir -p "$STATE"
@@ -97,7 +116,7 @@ while read -r kind a b rest; do
       pids+=($!); armed+=("shared-memory ${a}s") ;;
     REPO)
       REPO_ACTIVITY_STATE_DIR="$STATE" REPO_ACTIVITY_TAG="$a" GH_WATCH_REPOS="$rest" \
-        GH_SELF_LOGIN="-" GH_ONLY_LOGINS="$ONLY_LOGINS" \
+        GH_SELF_LOGIN="-" GH_ONLY_LOGINS="$(logins_for_tag "$a")" \
         bash "$HERE/watch-supervisor.sh" "repos-$a" \
         bash "$HERE/repo-activity-watch.sh" "$b" &
       pids+=($!); armed+=("$a [$rest] ${b}s") ;;
@@ -110,7 +129,7 @@ done <<<"$PLAN"
 
 echo "NOTE: collaboration watch armed, scope=$SCOPE ($SCOPE_LABEL) — $(IFS=';'; echo "${armed[*]}") (state: $STATE)"
 if [[ "$ONLY_LOGINS" != "-" ]]; then
-  echo "NOTE: reporting ONLY $ONLY_LOGINS (parties: $ONLY_PARTIES) — everything else, the operator's own other machines included, is dropped and NOT replayed after switching back"
+  echo "NOTE: reporting ONLY $ONLY_LOGINS (parties: $ONLY_PARTIES)${TOPICS:+ plus everything in topics: $TOPICS} — everything else, the operator's own other machines included, is dropped and NOT replayed after switching back"
 fi
 
 # The watch lives and dies with the session that armed it. A plain `wait` never returns
