@@ -137,7 +137,7 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1
+known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/changelog-assemble.py=1 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -427,7 +427,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=7 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
+known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=7 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
 status:    open
@@ -567,3 +567,25 @@ see a `newline=` on the CONTINUATION line of a multi-line `write_text(` call whi
 `open(`/`reconfigure(`; positive control: on the unfixed tree it hits every such
 statement. Fixtures are in the search on purpose: they run under the same interpreter.
 A new hit is read with one question: does this call exist in Python 3.9?
+
+## OS-14 — a Python program that starts `bash` gets WSL's bash on Windows, not Git Bash
+
+shape: B
+
+invariant: Python code never starts `bash` by bare name. On Windows `C:\Windows\System32\bash.exe`
+(the WSL launcher) comes before Git Bash in the PATH a native Python child sees, so
+`subprocess.run(["bash", ...])` reaches WSL — on a machine without a distribution it fails
+with "Windows Subsystem for Linux has no installed distributions", on one with a distribution
+it runs the script in a different system with different paths. A check that needs a shell
+script runs in a shell fixture (bash calls bash), or the Python side runs the logic itself.
+pattern:   ["']bash["']\s*,|\[\s*["']bash["']
+paths:     --include=*.py scripts helpers skills
+known:
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-10-11 in CI (windows-latest): `changelog-assemble-test.py` ran
+`release-preflight.sh` through `["bash", ...]` and failed on WSL, while a Windows workstation
+with a different PATH order was green — the runner, not the machine, showed it. The round trip
+moved into `release-preflight-test.sh`; the pattern then has zero hits in scripts, helpers and
+skills.
