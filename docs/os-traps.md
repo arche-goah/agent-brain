@@ -567,3 +567,25 @@ see a `newline=` on the CONTINUATION line of a multi-line `write_text(` call whi
 `open(`/`reconfigure(`; positive control: on the unfixed tree it hits every such
 statement. Fixtures are in the search on purpose: they run under the same interpreter.
 A new hit is read with one question: does this call exist in Python 3.9?
+
+## OS-14 — a Python program that starts `bash` gets WSL's bash on Windows, not Git Bash
+
+shape: B
+
+invariant: Python code never starts `bash` by bare name. On Windows `C:\Windows\System32\bash.exe`
+(the WSL launcher) comes before Git Bash in the PATH a native Python child sees, so
+`subprocess.run(["bash", ...])` reaches WSL — on a machine without a distribution it fails
+with "Windows Subsystem for Linux has no installed distributions", on one with a distribution
+it runs the script in a different system with different paths. A check that needs a shell
+script runs in a shell fixture (bash calls bash), or the Python side runs the logic itself.
+pattern:   ["']bash["']\s*,|\[\s*["']bash["']
+paths:     --include=*.py scripts helpers skills
+known:
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-10-11 in CI (windows-latest): `changelog-assemble-test.py` ran
+`release-preflight.sh` through `["bash", ...]` and failed on WSL, while a Windows workstation
+with a different PATH order was green — the runner, not the machine, showed it. The round trip
+moved into `release-preflight-test.sh`; the pattern then has zero hits in scripts, helpers and
+skills.
