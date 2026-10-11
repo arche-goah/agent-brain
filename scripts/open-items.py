@@ -66,6 +66,8 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from instance_key import is_self, self_key  # noqa: E402
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*\(([^()]+\.md|LOG)\)\s*$")
 # The inbox defaults to a 30-day window. An open request does not stop being open because
 # it is old — measured 2026-10-07: a 32-day-old request to this instance fell out of the
@@ -143,9 +145,9 @@ PR_QUERY = """query($q: String!) { viewer { login }
   search(query: $q, type: ISSUE, first: 50) { issueCount nodes { ... on PullRequest {
     number title isDraft createdAt body author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
-    latestReviews(first: 20) { nodes { author { login } submittedAt } }
+    latestReviews(first: 20) { nodes { author { login } submittedAt body } }
     commits(last: 1) { nodes { commit { committedDate } } }
-    comments(last: 20) { nodes { author { login } createdAt } } } } } }"""
+    comments(last: 20) { nodes { author { login } createdAt body } } } } } }"""
 WAIT_MARK = re.compile(r"^\s*waiting-until:\s*(\d{4}-\d{2}-\d{2})\s*:?\s*(.*)$", re.M | re.I)
 
 
@@ -158,8 +160,26 @@ def ball(p, me, owners):
     author = (p.get("author") or {}).get("login", "")
     if not me:
         return None
+    # One login can carry several instances (instance_key.py): a text is ours only with our
+    # login AND no foreign instance key. A sibling instance's PR is a hand-over to us.
+    my_key = self_key()
+
+    def ours(node):
+        return is_self((node.get("author") or {}).get("login", ""), me, node.get("body"), my_key)
+
     last = ((p.get("commits") or {}).get("nodes") or [{}])[-1].get("commit", {}).get("committedDate", "")
     owner = owners.get(p["repository"]["name"])
+    reviews = (p.get("latestReviews") or {}).get("nodes", [])
+    comments = (p.get("comments") or {}).get("nodes", [])
+    touched = [r.get("submittedAt") or "" for r in reviews if ours(r)]
+    touched += [c.get("createdAt") or "" for c in comments if ours(c)]
+    if author == me and not ours(p):
+        # A sibling instance's PR (same login, another key): ours to look at, whatever repo
+        # it sits in — the sibling asked us, not the repo's owner. Our own look after its
+        # last commit hands the move back to the sibling.
+        if last and any(t > last for t in touched):
+            return author, "we reviewed or commented after the sibling instance's last commit"
+        return None
     if author == me:
         # Our own PR in a repo someone else merges waits on that owner — unless someone else
         # reviewed or commented after our last commit and our last comment: that is ours to
@@ -167,21 +187,14 @@ def ball(p, me, owners):
         # 2026-10-10: two green own PRs in a suite owned by another party were printed as
         # "nothing done yet" in three sessions, because this check ran only for others' PRs.
         if owner and owner != me:
-            theirs = [r.get("submittedAt") or "" for r in (p.get("latestReviews") or {}).get("nodes", [])
-                      if (r.get("author") or {}).get("login") != me]
-            theirs += [c.get("createdAt") or "" for c in (p.get("comments") or {}).get("nodes", [])
-                       if (c.get("author") or {}).get("login") != me]
+            theirs = [r.get("submittedAt") or "" for r in reviews if not ours(r)]
+            theirs += [c.get("createdAt") or "" for c in comments if not ours(c)]
             # Same rule as pr-ball.py: our own reply after theirs hands the move back.
-            seen = [last] + [c.get("createdAt") or "" for c in (p.get("comments") or {}).get("nodes", [])
-                             if (c.get("author") or {}).get("login") == me]
+            seen = [last] + [c.get("createdAt") or "" for c in comments if ours(c)]
             if not (theirs and max(theirs) > max(seen)):
                 return owner, f"{p['repository']['name']} is {owner}'s to merge, our own PR waits on that"
         return None
-    ours = [r.get("submittedAt") or "" for r in (p.get("latestReviews") or {}).get("nodes", [])
-            if (r.get("author") or {}).get("login") == me]
-    ours += [c.get("createdAt") or "" for c in (p.get("comments") or {}).get("nodes", [])
-             if (c.get("author") or {}).get("login") == me]
-    if last and any(t > last for t in ours):
+    if last and any(t > last for t in touched):
         return author, "we reviewed or commented after the last commit"
     asked = any(((n.get("requestedReviewer") or {}).get("login")) == me
                 for n in (p.get("reviewRequests") or {}).get("nodes", []))
