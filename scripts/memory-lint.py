@@ -43,6 +43,14 @@ import sys
 import time
 from pathlib import Path
 
+# The session start parses this output. Left to the platform, Windows' console code page
+# wrote the "…" of a truncated entry as one byte that is not UTF-8, and the operator saw
+# "braucht-neu�" (measured 2026-10-11; os-traps OS-9).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):  # a stream that cannot be reconfigured
+    pass
+
 # Auto-Memory path: Claude Code mints the project path into a folder name (/ -> -).
 # Core rule: never hardcode an instance path — it is derived from the INSTANCE root
 # (cwd or BRAIN_DIR), NOT from this script's own checkout: that sits as a submodule

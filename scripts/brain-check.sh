@@ -41,8 +41,15 @@ cd "$ROOT" || exit 1
 STAMP=".claude-state/brain-check.stamp"
 
 rc=0
-self_out=$(bash "$HERE/brain-selftest.sh" "$ROOT" 2>&1) || rc=1
-fric_out=$("$PY" "$HERE/brain-friction.py" "$ROOT" 2>&1) || rc=1
+if [ -n "${BRAIN_CHECK_STUB_SELF:-}" ]; then
+  # Fixture seam: a stored self-test output stands in for the run, so the brief rendering
+  # is testable without a brain (scripts/test-brain-check-brief.sh).
+  self_out=$(cat "$BRAIN_CHECK_STUB_SELF"); rc="${BRAIN_CHECK_STUB_RC:-1}"
+  fric_out="0 friction candidate(s) — decide each, none of them is a verdict."
+else
+  self_out=$(bash "$HERE/brain-selftest.sh" "$ROOT" 2>&1) || rc=1
+  fric_out=$("$PY" "$HERE/brain-friction.py" "$ROOT" 2>&1) || rc=1
+fi
 mkdir -p .claude-state
 date '+%Y-%m-%d %H:%M' > "$STAMP"
 
@@ -80,7 +87,13 @@ echo "!! brain-check: needs a look"
 # stored one — "red" alone tells the operator nothing (operator, 2026-09-24: "ich mag
 # genau wissen, was anschlaegt"). A red result that names no check is itself a defect of
 # the check, and says so instead of leaving a bare FAILURE line to be guessed at.
-printf '%s\n' "$self_out" | grep -aE '^  !!|^        |^   \(reused:|FAILURE' | head -16
+# Detail lines carry a fixture's own output, and a Python traceback inside it is noise here:
+# the operator saw a bare "~~~~^^^^" line where the failing check's name should have stood
+# (measured 2026-10-11, Windows). Traceback frames and caret lines go; the FAIL lines stay.
+# The cache key of a reused verdict is a handle for the machine, not a word for the reader.
+printf '%s\n' "$self_out" | grep -aE '^  !!|^        |^   \(reused:|FAILURE' \
+  | grep -avE '^[[:space:]]*(Traceback \(most recent|File "|[~^[:space:]]+$)' \
+  | sed -E 's/, key [0-9a-f]{6,}\)/)/' | head -16
 if [ "$rc" -ne 0 ] && ! printf '%s\n' "$self_out" | grep -aq '^  !!'; then
   echo "  !!  red, but no check is named as failing — the stored result is incomplete," \
        "not a finding; report it as a defect of the self-test"
