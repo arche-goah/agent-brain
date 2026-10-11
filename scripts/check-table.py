@@ -187,6 +187,45 @@ def owner_open_questions(owner: str) -> list[str]:
     return [q for q, a in rows if a.strip().lower() in PLACEHOLDERS | {"open", "?"}]
 
 
+def cell_states(model: dict, min_commits: int = 2) -> list[str]:
+    """Optional per-cell view (`verdict --cells`): one line per check and required OS.
+    RED    an open fail on any device of that OS (the latest entry of a device is a fail)
+    STABLE passes on that OS were recorded on at least `min_commits` DIFFERENT commits (same check, any device of
+           that OS) and no fail on that OS for that check since its first pass
+    BETA   at least one pass, no open fail, not stable — names device, date and commit of the latest pass
+    N/A    only `n/a — <reason>` entries      LACKS  nothing recorded
+    A cell state, not a release word: whether a tag may go stable stays with the verdict and the owner."""
+    out = []
+    ordered = [r for _i, r in sorted(enumerate(model["results"]), key=lambda t: (t[1]["date"], t[0]))]
+    for cid, _text in model["checks"]:
+        for o in model["required_os"]:
+            ent = [r for r in ordered if r["check"] == cid and same_family(r["os"], o)]
+            latest: dict = {}
+            for r in ent:
+                latest[r["device"]] = r
+            red = [d for d, r in latest.items() if kind(r["result"])[0] == "fail"]
+            passes = [r for r in ent if kind(r["result"])[0] == "pass"]
+            nas = [r for r in ent if kind(r["result"])[0] == "na" and kind(r["result"])[1]]
+            if red:
+                state, detail = "RED", "open fail on %s" % ", ".join(red)
+            elif passes:
+                first = ent.index(passes[0])
+                fail_after = any(kind(r["result"])[0] == "fail" for r in ent[first:])
+                commits = {r["commit"] for r in passes if r["commit"].strip()}
+                last = passes[-1]
+                if len(commits) >= min_commits and not fail_after:
+                    state, detail = "STABLE", "passes on %d commits" % len(commits)
+                else:
+                    why = "a fail since the first pass" if fail_after else "passes on %d commit(s)" % len(commits)
+                    state, detail = "BETA", "%s; latest pass %s %s %s" % (why, last["device"], last["date"], last["commit"])
+            elif nas:
+                state, detail = "N/A", nas[-1]["result"]
+            else:
+                state, detail = "LACKS", "nothing recorded"
+            out.append("cell  %s | %s | %s | %s" % (cid, o, state, detail))
+    return out
+
+
 def verdict(model: dict) -> tuple[bool, list[str]]:
     required = model["required_os"]
     # latest entry per (check, device): later date wins, equal dates keep file order
@@ -259,6 +298,8 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     v = sub.add_parser("verdict")
     v.add_argument("file", nargs="?")
+    v.add_argument("--cells", action="store_true", help="also print one line per check and required OS (off by default)")
+    v.add_argument("--min-commits", type=int, default=2, help="different commits a STABLE cell needs (with --cells)")
     r = sub.add_parser("render")
     for p in (v, r):
         p.add_argument("--results")
@@ -287,6 +328,8 @@ def main(argv=None) -> int:
         print(render(model, a.title))
         return 0
     ready, lines = verdict(model)
+    if a.cells:
+        lines = lines[:-1] + cell_states(model, a.min_commits) + lines[-1:]
     print("\n".join(lines))
     return 0 if ready else 1
 
