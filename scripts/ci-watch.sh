@@ -13,7 +13,8 @@
 # and branches alike), enumerates every terminal state, and cannot end silently:
 # exit 0 = all green · 1 = something failed/cancelled/timed out in CI · 2 = could
 # not measure (no run appeared, bad repo, gh error, timeout) — 2 is loud on purpose,
-# "unknown" must never be read as green.
+# "unknown" must never be read as green · 3 = the repo has no Actions workflow at all,
+# so there is nothing to wait for — also NOT green: whoever merges on it says so.
 #
 # Usage:
 #   scripts/ci-watch.sh pr  <owner/repo> <pr-number> [timeout_s]
@@ -80,6 +81,24 @@ pr_conflicting_check() {
   fi
 }
 
+# "No checks / no run" is also what a repo WITHOUT any workflow shows, forever — the watch
+# then waited its whole timeout (measured 2026-10-11: 900 s on a private repo with no
+# .github/workflows, while a merge guard demanded the watch). Asked once, on the first empty
+# round: zero workflows ends the watch at once with its own verdict. Any other answer
+# (a count, an error, an unreadable reply) keeps waiting — only an explicit 0 is proof.
+noci_probed=0
+no_ci_check() {
+  (( noci_probed )) && return 0
+  (( conflict_seen )) && return 0       # a pending conflict verdict goes first
+  noci_probed=1
+  local n
+  n=$(gh api "repos/$REPO/actions/workflows" --jq .total_count 2>/dev/null) || return 0
+  if [[ "$n" == "0" ]]; then
+    echo "CI-WATCH NO-CI: $REPO has no Actions workflow — nothing to wait for (not green)"
+    exit 3
+  fi
+}
+
 while :; do
   now=$(date +%s)
   if (( now >= deadline )); then
@@ -101,6 +120,7 @@ while :; do
       # watch honestly if the checks genuinely never appear.
       if grep -qi "no checks reported" <<<"$json"; then
         pr_conflicting_check
+        no_ci_check
         if (( warned_no_run == 0 )); then
           echo "ci-watch: no checks on PR #$TARGET yet (a just-pushed branch can take a" \
                "moment) — waiting" >&2
@@ -121,6 +141,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # empty at the deadline, the timeout says so, and that IS the honest verdict.
     if (( total == 0 )); then
       pr_conflicting_check
+      no_ci_check
       if (( warned_no_run == 0 )); then
         echo "ci-watch: PR #$TARGET reports zero checks yet — waiting" >&2
         warned_no_run=1
@@ -176,6 +197,7 @@ else:
   read -r found status conclusion <<<"$verdict"
 
   if [[ "$found" == "none" ]]; then
+    no_ci_check
     if (( warned_no_run == 0 )); then
       echo "ci-watch: no run for ref '$TARGET' yet (a just-pushed tag can take a moment) — waiting" >&2
       warned_no_run=1

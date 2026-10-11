@@ -105,6 +105,8 @@ cp "$CORE_SRC/templates/feedback.md" .claude/rules/feedback.md
 cp "$CORE_SRC/templates/rules-instance/working-rules-instance.md" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/intelligence-instance.md" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/mechanism-rules.json" .claude/rules/
+# The settings template wires ONE Stop hook, the dispatcher; without this file it runs nothing.
+cp "$CORE_SRC/templates/rules-instance/stop-checks.json" .claude/rules/
 cp "$CORE_SRC/templates/leak-names.json" .claude/rules/leak-names.json
 # MEMORY.md seed: Claude Code creates Auto-Memory itself — the seed documents the format.
 mkdir -p docs/maintenance

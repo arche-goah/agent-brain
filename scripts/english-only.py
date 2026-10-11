@@ -105,6 +105,33 @@ def tracked_files():
     return [ROOT / p for p in out.stdout.split("\0") if p]
 
 
+def untracked_candidates():
+    """New text files this check CANNOT see — the blind spot that makes a local run lie.
+
+    The ratchet reads `git ls-files`, so a file that is not staged yet is not in its input.
+    Measured twice in one session (2026-08-30): a new script was written, the local run said
+    clean, and CI went red the moment the file was staged. A checker that is silent about
+    what it did not examine prints the same word for "clean" and "not looked". So these are
+    NAMED, never failed: they may be scratch files, and a checker that blocks on what it
+    cannot judge is worse than one that says so.
+    """
+    out = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", "--others",
+                          "--exclude-standard"],
+                         capture_output=True, text=True, timeout=30)
+    return sorted(p for p in out.stdout.split("\0")
+                  if p and Path(p).suffix.lower() in TEXT_SUFFIX
+                  and Path(p).name not in SKIP_NAMES)
+
+
+def unseen_note() -> str:
+    unseen = untracked_candidates()
+    if not unseen:
+        return ""
+    shown = ", ".join(unseen[:5]) + (" …" if len(unseen) > 5 else "")
+    return (f"   note: {len(unseen)} untracked file(s) NOT checked — stage them and re-run "
+            f"before trusting this: {shown}")
+
+
 def has_german(path: Path) -> bool:
     try:
         text = path.read_text(encoding="utf-8")
@@ -167,11 +194,16 @@ def main() -> int:
             findings.append(f"STALE NAME ENTRY: {entry} — path gone, remove from "
                             "english-legacy-names.txt")
 
+    note = unseen_note()
     if findings:
         for f in findings:
             print(f"!! {f}")
+        if note:
+            print(note)
         return 1
     print(f"english-only: clean — {len(baseline)} legacy files awaiting sweep, 0 drift")
+    if note:
+        print(note)
     return 0
 
 

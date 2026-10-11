@@ -284,7 +284,10 @@ falls through the table above. Rules, in the order they bite:
     The repo has no TODO file; every overview in it is the folder itself or generated.
 11. **`AGENTS.md` in the root** says all of this to any agent, in English; changes go
     branch → PR → CI green → merge, read against by the other party on the first PR and
-    on structure changes.
+    on structure changes. Who merges: once the author reported it done and the other side
+    said OK, CI is green and the reviewed commit is the head, whichever party gets to it
+    first (operator decision 2026-10-11 — a ready PR must not wait for one particular
+    person); releases (tag, pin) stay with the repo's owner.
 
 ## 12. Staying compatible — and how anyone can check it
 
