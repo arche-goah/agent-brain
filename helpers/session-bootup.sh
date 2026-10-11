@@ -286,8 +286,8 @@ if [[ -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
     search(query: $q, type: ISSUE, first: 40) { nodes { ... on PullRequest {
       number isDraft body repository { name } author { login }
       commits(last: 1) { nodes { commit { committedDate } } }
-      reviews(last: 30) { nodes { author { login } state submittedAt } }
-      comments(last: 30) { nodes { author { login } createdAt } }
+      reviews(last: 30) { nodes { author { login } state submittedAt body } }
+      comments(last: 30) { nodes { author { login } createdAt body } }
       reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } } } } } } } }' 2>/dev/null \
     | "$PY" "$HERE/../scripts/pr-ball.py" 2>/dev/null
 fi
