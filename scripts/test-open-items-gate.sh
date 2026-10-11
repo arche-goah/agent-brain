@@ -113,11 +113,21 @@ check "classified via the class file" "$f" allow "$CL"
 # 8b — an unclassified LOG entry: the block names the id --classify needs (ref + first 40
 # chars), not "LOG <date> <sender>", which covered every entry of that sender that day.
 QL="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-10-07 core/LOG 2026-10-07 peer-b — peer-b: AN inst-a: first note — first report"
-f="$T/8b.jsonl"; { boot_ok startup "$QL"; user "stand?"; asst "1 item."; } > "$f"
+f8b="$T/8b.jsonl"; f="$f8b"; { boot_ok startup "$QL"; user "stand?"; asst "1 item."; } > "$f"
 out8b="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$f")" "$(native "$EN")" | node "$G" 2>&1)"
 case "$out8b" in
   *'core/LOG 2026-10-07 peer-b: AN inst-a: first note'*) ok "unclassified LOG entry is named by its full id" ;;
   *) bad "unclassified LOG entry not named by its full id: '$out8b'" ;;
+esac
+
+# 8c — a class stored the sanctioned way (--classify stores the FULL id of a LOG-only entry) is found by the gate.
+CL2="$T/cwd-cls-full"; mkdir -p "$CL2/.claude-state"
+printf '%s
+' '{"core/LOG 2026-10-07 peer-b: AN inst-a: first note":{"class":"ai","why":"stored by --classify"}}' > "$CL2/.claude-state/open-items-class.json"
+out8c="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$f8b")" "$(native "$CL2")" | node "$G" 2>&1)"
+case "$out8c" in
+  *'Classify every open item'*) bad "class stored under the full LOG id was not found: '$out8c'" ;;
+  *) ok "class stored under the full LOG id is found" ;;
 esac
 
 # 9 — the bootup did not arrive.

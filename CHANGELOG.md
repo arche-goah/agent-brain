@@ -21,6 +21,10 @@ The marketplace pins tags, never `main`.
   behind a blank, the id kept the blank while `--classify` strips its key, so that item could never be classified
   ("matches no open request"). Now `action="extend"` and the id is `rstrip`ped. Fixture `test-open-items.sh` has the
   case; it goes red without the fix.
+  The Stop gate had the same split from the other side: for a LOG-only request it looked up the class only under
+  the short key (`core/LOG <date> <sender>`), which `--classify` refuses, so a class given the sanctioned way was never
+  found and the first reply stayed blocked (measured 2026-10-11: three requests stayed `?` after `--classify`). The gate now
+  also looks under the full id `--classify` stores; `test-open-items-gate.sh` case 8c, red without the fix.
 
 ## 1.4.2 — 2026-10-10
 
