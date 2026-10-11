@@ -440,3 +440,13 @@ their AIs:
 4. **Judge the sum, not the single change** (operator decision 2026-08-31): what counts
    is what all of this side's changes together mean for the other party — four small
    interventions are one big one.
+5. **One finding, one builder** (operator correction 2026-10-11: "you crossed each other
+   there for nothing — that costs time"). Whoever reports a finding on a PR says in the same
+   comment whether they build the fix ("PR follows" / "the author's" / "open for anyone").
+   Whoever wants to build a fix for SOMEONE ELSE's finding first reads the repo's open PRs
+   (`gh pr list --state open`) and the thread: an existing PR or a claim means counter-check,
+   not build; nothing there means one line in the thread ("building it"), then build. And
+   nothing is merged over an open finding in its thread — read the comments in full, never
+   through a tool that cuts them short. Measured the day the rule was written: one finding,
+   two fixes from two machines three minutes apart (one closed), and a merge over the finding
+   because a reader showed 200 characters of the comment.
