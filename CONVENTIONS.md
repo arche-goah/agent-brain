@@ -374,7 +374,9 @@ receiver stays in control.
 from the marketplace; an unreleased change is checked on the **same artifact on every
 machine**: the suite's `<plugin>-next` entry (same shape as `brain-core-next`, created
 when the first beta tag exists — no pin in advance), the stable plugin disabled meanwhile
-(same skill names), then back. Tag form, platform scope and the generated check table
+(same skill names), then back. A switch takes effect in a **new session**: a suite's
+dependencies arrive through its SessionStart hook, so an `/mcp` reconnect alone does not
+load the beta (measured on the Windows instance, 2026-10-11). Tag form, platform scope and the generated check table
 follow AGENTS.md #12 (the tag stays `vX.Y.Z`; beta is the channel). A beta (the tag plus
 the `<plugin>-next` pin) is collaboration logic, not a program-function decision: any
 collaborating instance may cut it under the round rule of AGENTS.md #12, without waiting
