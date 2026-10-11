@@ -53,6 +53,12 @@ Monitor({ command: "bash core/scripts/collab-watch.sh",
   folder, then pass from EVERY party — the operator's other machine included. Without it a
   one-collaborator scope drops the other own machine's PRs in the very repo the session owns
   (measured 2026-10-11).
+- **Leaving an item to another session is a hand-over, delivered to THAT session.** When
+  several sessions on one machine split the work by topic, an item one of them declines goes
+  to the session that owns the topic (session message, or a shared-memory note in its topic
+  folder its watch reports) — never only back to the sender ("ask the other session"). An
+  answer to the sender alone reaches nobody who acts: measured 2026-10-11, three points of the
+  operator's other machine lay unworked for hours this way until the operator asked.
 - **Never add an author filter on the operator's login.** All own machines push under one
   account; the filter would swallow the other own machine — the very signal wanted.
 - **"already armed"** names a live PID, not a session. Check `ps` and its parent chain
