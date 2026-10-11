@@ -60,6 +60,7 @@ try:
     git("init", "-q", cwd=core)
     write(core / "f.txt", "x")
     git("add", "-A", cwd=core); git("commit", "-q", "-m", "c", cwd=core); git("tag", "v1.0.0", cwd=core)
+    git("remote", "add", "origin", "https://example.invalid/o/r.git", cwd=core)  # the core's repo = the core plugin's repo
     write(brain / ".claude" / "settings.json", {"enabledPlugins": {"brain-core@mkt": True, "other@mkt": False}})
     # the suite plugin is enabled only in the LOCAL layer (a beta channel on one machine)
     write(brain / ".claude" / "settings.local.json", {"enabledPlugins": {"a-plugin@mkt": True}})
@@ -101,6 +102,7 @@ try:
           "a suite with an enabled plugin (settings.local.json layer) reports the plugin's installed version, not the record's")
     check(doc["suites"]["b-suite"]["version"] == "v0.9.0" and doc["suites"]["b-suite"]["source"] == "record",
           "NEGATIVE: a suite without a plugin keeps the record's version, marked as record")
+    check("r" not in doc["suites"], "NEGATIVE: the core's own plugin is not listed as a suite")
     check(str(tmp) not in devfile.read_text(encoding="utf-8") and "/secret" not in devfile.read_text(encoding="utf-8"),
           "no path in the device file")
     check(git("rev-list", "--count", "HEAD", cwd=bare) == str(commits()), "report pushed")

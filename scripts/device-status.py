@@ -23,6 +23,13 @@ leaves the commit local and says so.
 """
 import argparse, datetime, json, os, re, subprocess, sys
 
+# The session start parses this output; left to the platform, Windows' console code page
+# mangles the dashes in these lines (os-traps OS-9).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):  # a stream that cannot be reconfigured
+    pass
+
 REFRESH_DAYS = 7          # rewrite an unchanged report after this long, so "age" stays meaningful
 STALE_DAYS = 14           # --brief names a device whose last report is older
 OS_VALUES = ("macos", "windows", "linux")
@@ -84,6 +91,8 @@ def gather(brain, cfg):
     installed = (load(os.path.join(cfg, "plugins", "installed_plugins.json"), {}) or {}).get("plugins") or {}
     plugins = []
     live = {}  # suite repo name -> version of its enabled plugin on this device
+    _, core_url = run(["git", "-C", core, "remote", "get-url", "origin"])
+    core_repo = re.sub(r"\.git$", "", core_url.rstrip("/")).rsplit("/", 1)[-1]
     for pid in enabled:
         rec = installed.get(pid) or []
         name, _, mkt = pid.partition("@")
@@ -102,7 +111,9 @@ def gather(brain, cfg):
         for e in mp.get("plugins") or []:
             if e.get("name") == name and isinstance(e.get("source"), dict):
                 repo = str(e["source"].get("repo") or "").rsplit("/", 1)[-1]
-        if repo and installed_v:
+        # The core's own plugin is not a suite: the core has its block above (measured on the
+        # Windows run: the core channel showed up under "suites").
+        if repo and installed_v and repo != core_repo:
             live[repo] = {"version": "v" + installed_v.lstrip("v"), "commit": "", "source": "plugin " + pid}
     eco = load(os.path.join(brain, "config", "ecosystem.json"), {}) or {}
     suites = {}
