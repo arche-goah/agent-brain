@@ -142,7 +142,7 @@ def main() -> int:
     # that does not exist. No self, no write — a dry run shows the placeholder.
     sender = os.environ.get("SHARED_MEMORY_SELF", "").split(",")[0].strip()
     if a.write and not sender:
-        print("ERROR: SHARED_MEMORY_SELF unset — the entry's sender (`von`) is this instance's "
+        print("ERROR: SHARED_MEMORY_SELF unset - the entry's sender (`von`) is this instance's "
               "name, instance data this tool does not guess", file=sys.stderr)
         return 2
     text = render(entries, f"docs/{a.register.name}", sender or "<SHARED_MEMORY_SELF>")
