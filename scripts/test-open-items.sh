@@ -19,6 +19,7 @@ bad() { echo "  FAIL $1"; fail=1; }
 mkdir -p "$T/core/scripts" "$T/repo/.git" "$T/root"
 cp "$SRC" "$T/core/scripts/open-items.py"
 cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
+cp "$(dirname "$SRC")/project_dir.py" "$T/core/scripts/project_dir.py"
 # The fake inbox prints whatever $T/inbox.txt holds.
 printf '%s\n' 'import os, sys' \
   'sys.stdout.write(open(os.path.join(os.path.dirname(__file__), "..", "..", "inbox.txt"), encoding="utf-8").read())' \

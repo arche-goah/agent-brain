@@ -256,6 +256,14 @@ def log_section_senders(text: str) -> list[tuple[str, str]]:
             if buf:
                 out.append((sender, "\n".join(buf)))
             sender, buf = m.group(2), [line]
+        elif re.match(r"^##\s+\d{4}-\d{2}-\d{2}\b", line):
+            # A dated heading no shape recognises still ENDS the previous section. Glued on, its
+            # text read as the previous sender's — a reply under an unknown heading looked like
+            # a second message of whoever wrote the entry above it (same class as the dropped
+            # heading: unknown input must stay visible, never be absorbed).
+            if buf:
+                out.append((sender, "\n".join(buf)))
+            sender, buf = "?", [line]
         else:
             buf.append(line)
     if buf:

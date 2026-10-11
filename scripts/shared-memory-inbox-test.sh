@@ -134,4 +134,18 @@ for who in '' kim-win; do
     || fail "unknown heading shape dropped (--self '$who'): $Q"
 done
 
+# The section splitter must not absorb it either: an unknown dated heading ENDS the section above
+# it. Absorbed, its text read as a second message of the sender of the entry before it.
+SEC=$("$PY" - "$INBOX" <<'PYEOF'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("inbox", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+text = ("## 2026-10-11 · sam-laptop — AN kim-win: first\nA.\n\n"
+        "## 2026-10-11 kim-win: [unknown shape]\nB.\n")
+print(",".join(s for s, _ in m.log_section_senders(text)))
+PYEOF
+)
+[[ "$SEC" == "sam-laptop,?" ]] && pass "an unknown heading ends the section above it (senders: $SEC)" \
+  || fail "unknown heading absorbed into the previous section (senders: $SEC)"
+
 exit $FAIL

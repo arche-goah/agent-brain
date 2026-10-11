@@ -75,4 +75,36 @@ grep -q 'no cursor found' <<<"$OUT" && fail "watcher from a foreign cwd lost the
   && fail "a second state directory was created outside the brain" \
   || pass "no state directory outside the brain"
 
+# The Python twin resolves the same way (open-items.py takes its default root from it).
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+cp "$HERE/project_dir.py" "$SUB/project_dir.py"
+for cwd in "$TMP" "$SUB"; do
+  R=$( cd "$cwd" && unset CLAUDE_PROJECT_DIR; PYTHONDONTWRITEBYTECODE=1 "$PY" -c        'import sys; sys.path.insert(0, sys.argv[1]); from project_dir import resolve_project_dir as r; print(r(sys.argv[1]))' "$SUB" )
+  [[ "$R" -ef "$BRAIN" ]] && pass "python twin from $(basename "$cwd") -> the brain"     || fail "python twin resolved to: $R"
+done
+
+# CLASS CHECK by search, not by the cases above: no script may build a state path from the
+# caller's cwd — `${CLAUDE_PROJECT_DIR:-.}/.claude-state`, `...:-$PWD}/.claude-state`, or a
+# bare relative `.claude-state` default. A new script with the old form fails here.
+scan() { # dir -> lines
+  grep -rnE '(:-\.|:-\$PWD)\}?/\.claude-state|STATE_DIR="?\.claude-state|:-\.claude-state\}' "$1" \
+    --include='*.sh' --include='*.py' --include='*.cjs' 2>/dev/null \
+    | grep -vE '/(test-[^/]*|[^/]*-test\.(sh|py))(:|$)' | grep -v '/project-dir-test.sh:' || true
+}
+HITS=$(scan "$HERE")
+[[ -z "$HITS" ]] && pass "class check: no script builds a state path from the caller's cwd" \
+  || fail "class check: cwd-built state path in: $HITS"
+mkdir -p "$TMP/planted"
+printf 'STATE="${CLAUDE_PROJECT_DIR:-.}/.claude-state/x.json"\n' > "$TMP/planted/bad.sh"
+[[ -n "$(scan "$TMP/planted")" ]] && pass "class check: a planted old-style path is caught" \
+  || fail "class check: planted old-style path NOT caught — the scan is blind"
+
+# loop-watchdog: state in the brain, not in core/ (the old `cd "$(dirname "$0")/.."` target).
+mkdir -p "$SUB"; cp "$HERE/loop-watchdog.sh" "$SUB/"
+( cd "$TMP" && unset CLAUDE_PROJECT_DIR; bash "$SUB/loop-watchdog.sh" arm testloop 30 >/dev/null 2>&1 )
+[[ -f "$BRAIN/.claude-state/loop-watchdog.state" && ! -e "$BRAIN/core/.claude-state" ]] \
+  && pass "loop-watchdog keeps its state in the brain" \
+  || fail "loop-watchdog state not in the brain (core/.claude-state exists: $([[ -e "$BRAIN/core/.claude-state" ]] && echo yes || echo no))"
+
 exit $FAIL
