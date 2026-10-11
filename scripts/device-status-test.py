@@ -98,6 +98,17 @@ try:
     check(rc == 0 and commits() == n0 + 1 and "unchanged" in out, "NEGATIVE: unchanged state does not commit again")
     rc, out = ds("report", "--dry-run")
     check(commits() == n0 + 1, "NEGATIVE: --dry-run writes nothing")
+    # a brain whose core/ is a copied folder, not a checkout of its own (a fixture brain run with the real
+    # session env), has nothing to measure and must not overwrite the device file — two shapes: no repo
+    # at all, and a folder inside some other repo
+    before = devfile.read_text(encoding="utf-8")
+    for fake in (tmp / "fakebrain", shared / "fakebrain"):
+        write(fake / "core" / "x.txt", "x")
+        p = subprocess.run([sys.executable, str(SCRIPT), "report"], capture_output=True, text=True,
+                           env={**env, "CLAUDE_PROJECT_DIR": str(fake)})
+        check(p.returncode == 0 and "not a git checkout" in p.stdout and commits() == n0 + 1
+              and devfile.read_text(encoding="utf-8") == before,
+              f"NEGATIVE: core/ without its own checkout ({fake.parent.name}) reports nothing, writes nothing")
     env.pop("SHARED_MEMORY_SELF")
     write(brain / ".claude" / "settings.json", {"enabledPlugins": {"brain-core@mkt": True, "other@mkt": False},
                                                "env": {"SHARED_MEMORY_SELF": "alpha-mac,alpha"}})

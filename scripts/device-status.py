@@ -116,6 +116,14 @@ def report(args):
     if not os.path.isdir(os.path.join(repo, ".git")):
         print("device-status: not reported - no shared-memory clone (" + os.path.basename(repo) + ")")
         return 0
+    # A brain whose core/ is not a git checkout of its own has nothing to report — and a fixture
+    # brain (copied helpers under a temp dir, run with the real session env) must never write the
+    # operator's device file with its empty state (guard measured against portability-smoke).
+    core = os.path.join(brain, "core")
+    rc, top = run(["git", "-C", core, "rev-parse", "--show-toplevel"])
+    if rc != 0 or os.path.realpath(top) != os.path.realpath(core):
+        print("device-status: not reported - " + os.path.basename(brain) + "/core is not a git checkout (nothing to measure)")
+        return 0
     cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
     state = gather(brain, cfg)
     today = datetime.date.today().isoformat()
