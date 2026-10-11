@@ -33,6 +33,10 @@ CHECKS (all read-only, no writes, stdlib only):
                      $SHARED_MEMORY_CATCH_ALL) that share a significant slug word or name
                      the same project repo — a project filed in the catch-all instead of
                      its own area (see the note at CATCH_ALL). Never sets the exit code.
+  9. audience        entries dated AUDIENCE_SINCE or later, when the repo carries
+                     parties.json: every `audience` token resolves (device, person:<p>,
+                     os:<os>, everyone); a Windows check — fact file or LOG heading — goes
+                     to os:windows unless it says `one-machine: <why>`.
 
 RATCHET (same shape as english-only.py, and for the same reason): the audience/topic
 convention was decided on 2026-08-21 with the explicit note that older files are
@@ -67,7 +71,20 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from importlib import import_module  # noqa: E402
+
+_parties = import_module("shared-memory-parties")
+
 REPO_DEFAULT = Path(os.environ.get("SHARED_MEMORY_REPO", Path.home() / "Projects/brain-shared-memory"))
+
+# Audience categories (operator order 2026-10-11; scripts/shared-memory-parties.py): from this
+# date on, every `audience` token of a fact file and every addressee of a LOG heading must
+# resolve against the repo's parties.json, and a Windows check names `os:windows` unless the
+# writer says one machine is needed. Older entries are not re-judged — the same ratchet idea as
+# the legacy baseline, keyed on the entry's own date. No parties.json: both checks are skipped
+# (there is nothing to resolve against), never reported as clean findings.
+AUDIENCE_SINCE = "2026-10-11"
 
 # The ratchet baseline lives IN the repo it describes, never next to this script.
 # THIS repo is public; the shared-memory repo is private. A baseline sitting here would
@@ -353,10 +370,50 @@ def fact_files(repo: Path) -> list[Path]:
     return out
 
 
+def audience_findings(f: dict, where: str, audience: str, what: str, parties: dict,
+                      known: set[str], escape: str = "", unknown: bool = True) -> None:
+    """9. Every audience token resolves; a Windows check is not sent to one Windows device.
+    `what` is the text that states the request (slug + description, or a heading title);
+    `escape` is where the writer may say why one machine is needed (`one-machine: <why>`).
+    `unknown=False` for LOG headings: their addressees are prose ("AN <name> and <name>'s
+    AI"), so only the Windows check applies there, not the token check."""
+    for t in sorted(_parties.tokens(audience) - known) if unknown else ():
+        f["audience"].append({"where": where, "issue": "audience token unknown", "token": t,
+                              "fix": "a device id, person:<person> or os:<macos|windows|linux> "
+                                     "from parties.json, or an everyone spelling"})
+    one = _parties.windows_check_to_one_device(what, audience, parties)
+    if one and not _parties.ONE_MACHINE.search(escape):
+        f["audience"].append({"where": where, "issue": "a Windows check goes to one machine",
+                              "device": one,
+                              "fix": "address os:windows so every Windows machine can run it — "
+                                     "unless one machine is needed: then say why "
+                                     "(`one-machine: <why>`)"})
+
+
+def log_audience(f: dict, rel: str, text: str, parties: dict, known: set[str]) -> None:
+    """9. for LOG headings dated AUDIENCE_SINCE or later: the addressees after `AN`."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = _parties.HEADING.match(line)
+        if not m or m.group(1) < AUDIENCE_SINCE:
+            continue
+        to = _parties.addressees(m.group(3) or "")
+        if to is None:
+            continue
+        section = []
+        for nxt in lines[i + 1:]:
+            if _parties.HEADING.match(nxt):
+                break
+            section.append(nxt)
+        audience_findings(f, f"{rel}: {line[:80]}", to, m.group(3) or "", parties, known,
+                          escape="\n".join([line] + section), unknown=False)
+
+
 def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN) -> dict:
     f: dict[str, list] = {k: [] for k in (
         "index_drift", "frontmatter", "name_mismatch", "topic_mismatch",
-        "unresolved_links", "limits", "archive", "baseline", "project_without_area")}
+        "unresolved_links", "limits", "archive", "baseline", "project_without_area",
+        "audience")}
 
     index_path = repo / INDEX
     if not index_path.is_file():
@@ -374,6 +431,8 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
     rels = {p.relative_to(repo).as_posix() for p in files}
     stems = {p.stem for p in files}
     baseline = load_baseline(baseline_path or baseline_for(repo))
+    parties = _parties.load(repo)
+    known = _parties.known(parties)
     supersedes = supersession_re(repo)
     superseded: dict[str, list] = {}
 
@@ -430,10 +489,13 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
                                 "chars": len(raw), "max": MAX_INDEX_LINE,
                                 "entry": raw[:70] + "…"})
 
-    # 6b. LOG rotation candidates
+    # 6b. LOG rotation candidates (and 9. audience categories of LOG headings)
     for log in sorted(repo.rglob(LOG_NAME)):
         if ".git" in log.relative_to(repo).parts:
             continue
+        if parties:
+            log_audience(f, log.relative_to(repo).as_posix(),
+                         log.read_text(encoding="utf-8", errors="replace"), parties, known)
         size = log.stat().st_size
         if size > LOG_ROTATE_BYTES:
             f["limits"].append({"issue": "LOG over rotation size",
@@ -491,6 +553,11 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
             if meta.get("topic") and folder and meta["topic"] != folder:
                 f["topic_mismatch"].append({"file": rel, "topic": meta["topic"],
                                             "folder": folder})
+            # 9. audience categories (see AUDIENCE_SINCE)
+            if parties and not legacy and str(meta.get("date", "")) >= AUDIENCE_SINCE:
+                audience_findings(f, rel, str(meta.get("audience") or ""),
+                                  f"{p.stem}\n{fm.get('description') or ''}", parties, known,
+                                  escape=text)
 
         # 5. dead wikilinks — targets are name slugs, resolved across the whole repo.
         # Code is stripped first (a bash `[[ … ]]` is not a link), and a target may
