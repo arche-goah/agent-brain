@@ -68,6 +68,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from instance_key import is_self, self_key  # noqa: E402
+from project_dir import resolve_project_dir  # noqa: E402
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*\(([^()]+\.md|LOG)\)\s*$")
 # The inbox defaults to a 30-day window. An open request does not stop being open because
 # it is old — measured 2026-10-07: a 32-day-old request to this instance fell out of the
@@ -435,7 +436,7 @@ def main():
     ap.add_argument("--hook-input", default="")
     ap.add_argument("--repo", default=os.environ.get(
         "SHARED_MEMORY_REPO", str(Path.home() / "Projects" / "brain-shared-memory")))
-    ap.add_argument("--root", default=os.environ.get("CLAUDE_PROJECT_DIR", "."))
+    ap.add_argument("--root", default=resolve_project_dir(HERE))
     # extend: the hint prints one --classify per item; with the default action only the last one counted.
     ap.add_argument("--classify", nargs="+", action="extend", metavar="ID=ai|human[:why]")
     a = ap.parse_args()

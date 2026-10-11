@@ -38,7 +38,7 @@ never double-report, and nothing falls between them.
 ## How to arm
 
 ```
-Monitor({ command: "bash core/scripts/shared-memory-watch.sh watch 300",
+Monitor({ command: "bash core/scripts/shared-memory-watch.sh watch 60",
           description: "new commits in the shared-memory repo from other instances",
           persistent: true })
 ```
@@ -52,6 +52,13 @@ Monitor expires**: measured 2026-10-09 on the Windows instance (Claude Code 2.1.
 the watcher process was gone at the next look (`status`: "not armed"). Re-arm on the expiry
 notice while the session still waits on someone; `helpers/watch-gate.cjs` blocks a turn that
 expects a reaction with no live watcher, so a missed re-arm surfaces at the next stop.
+
+**The poll interval must be a small fraction of the shortest expiry ever seen** (measured
+2026-10-11, same instance, Claude Code 2.1.296: the Monitor announced "expires in 5m", not 30m —
+the expiry is the harness's and changes between versions). With the old default of 300 s an
+arm polled ONCE before it expired, and a reply pushed a minute after the arm waited a full
+re-arm cycle. The default is 60 s; never copy a longer number from an older note, and when the
+announced expiry shrinks again, shrink the interval with it.
 
 Paths are overridable (`SHARED_MEMORY_REPO`, `SHARED_MEMORY_STATE`,
 `SHARED_MEMORY_LOCK_DIR`) — the instance decides where its shared repo is cloned; the

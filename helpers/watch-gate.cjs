@@ -188,7 +188,7 @@ function main(input) {
     const files = awaiting(repo, since);
     if (files.length && !smWatched(root)) {
       missing.push(`shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
-        + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 300", persistent: true}) '
+        + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 60", persistent: true}) '
         + '(or collab-watch); mark a pure report `status: info`');
     }
   }

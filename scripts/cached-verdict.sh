@@ -55,7 +55,8 @@ case "$NAME" in
   ""|*/*|*..*) echo "cached-verdict: bad name '$NAME'" >&2; exit 64 ;;
 esac
 
-STATE_DIR="${CACHED_VERDICT_STATE:-.claude-state}"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/project-dir.sh"   # not the caller's cwd
+STATE_DIR="${CACHED_VERDICT_STATE:-$(resolve_project_dir "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")/.claude-state}"
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 OUT="$STATE_DIR/verdict-$NAME.out"
 META="$STATE_DIR/verdict-$NAME.meta"
