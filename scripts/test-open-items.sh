@@ -158,6 +158,9 @@ printf '%s\n' '# LOG' '' '## 2026-10-11 · mac — AN ws: checked 2222222' 'ok' 
 has "[PR|ai]" "$(line 'core#12 ' "$(smrun m2)")" && ok "negative control: an older head or a foreign text naming the head stays our move" || bad "stale/foreign sha: $(line 'core#12 ' "$(smrun m2)")"
 printf '%s\n' '# LOG' '' '## 2026-10-11 · mac — AN ws: checked abcdef1 OK' 'ok' > "$T/repo/core/LOG.md"
 has "our check of this head is in the shared memory" "$(line 'core#12 ' "$(smrun m3)")" && ok "own LOG section naming this head = waiting" || bad "sm LOG: $(line 'core#12 ' "$(smrun m3)")"
+# The real setting is a comma list "<device>,<alias>,…" (macOS check of #286): the device token counts.
+sml=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sm.json")" SHARED_MEMORY_SELF="mac,person:x,os:macos" OWNER=me run m4)
+has "our check of this head is in the shared memory" "$(line 'core#12 ' "$sml")" && ok "self as a comma list: the device token counts" || bad "comma-list self: $(line 'core#12 ' "$sml")"
 rm -rf "$T/repo/core"
 has "waiting until $NOW: alpha measurement" "$(line 'core#5 ' "$out")" && ok "dated wait is quiet" || bad "dated wait: $(line 'core#5 ' "$out")"
 has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder" || bad "past wait: $(line 'core#6 ' "$out")"

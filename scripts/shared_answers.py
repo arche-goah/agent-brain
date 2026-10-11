@@ -27,7 +27,10 @@ def default_repo():
 
 
 def own_shared_shas(repo=None):
-    me = os.environ.get("SHARED_MEMORY_SELF", "").strip()
+    # The setting is a comma list, "<device>,<alias>,…": the device is the first token (the one
+    # `von:` and LOG headings carry; device-status.py and the inbox read it the same way).
+    # Measured on the macOS instance 2026-10-11: the whole string matched 0 shas, the first token 125.
+    me = os.environ.get("SHARED_MEMORY_SELF", "").split(",")[0].strip()
     root = Path(repo or default_repo())
     if not me or not (root / ".git").is_dir():
         return set()
