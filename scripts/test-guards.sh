@@ -141,7 +141,7 @@ tr_probe() { # $1 name, $2 tool_name, $3 field (command|file_path), $4 value, $5
   helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
   out=$(printf '{"tool_name":"%s","tool_input":{"%s":"%s"}}' "$2" "$3" "$4" \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$helper" 2>&1)
-  if printf '%s' "$out" | grep -q '"permissionDecision": *"deny"'; then
+  if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
     [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked what it should allow"
   else
     [ "$5" = allow ] && ok "$1 allows" || bad "$1 did NOT block: ${out:0:80}"
