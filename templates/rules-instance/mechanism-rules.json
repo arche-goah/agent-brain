@@ -9,6 +9,6 @@
     "_comment": "Example rule 2 (generic, fine to keep): waiting for CI with a hand-built poll loop. scripts/ci-watch.sh enumerates every terminal state and knows that `gh pr checks` exits 8 while checks are still pending; an ad-hoc loop reads that exit as an error, swallows it and ends silently, which looks exactly like still running. The negative lookahead lets a command through that calls ci-watch.sh itself, even in a compound with sleep.",
     "pattern": "^(?![\\s\\S]*ci-watch\\.sh)[\\s\\S]*?(?:while\\s+true|until\\s|for\\s*\\(\\(|\\bsleep\\s+\\d+)[\\s\\S]*\\bgh\\s+(?:pr\\s+checks|run\\s+(?:list|view|watch))\\b",
     "was": "waiting for CI with a hand-built poll loop",
-    "stattdessen": "scripts/ci-watch.sh pr <owner/repo> <nr> (or ref <owner/repo> <ref>), started via Monitor. Exit 0 = all green, 1 = something failed in CI, 2 = could NOT be measured - 2 is loud on purpose and is not green."
+    "stattdessen": "scripts/ci-watch.sh pr <owner/repo> <nr> (or ref <owner/repo> <ref>), started via Monitor. Exit 0 = all green, 1 = something failed in CI, 2 = could NOT be measured - 2 is loud on purpose and is not green, 3 = the repo has no Actions workflow at all (nothing to wait for, also not green)."
   }
 ]

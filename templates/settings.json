@@ -144,33 +144,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/stop-verifier.cjs\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/class-gate.cjs\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/stoppen-gate.cjs\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/open-items-gate.cjs\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/watch-gate.cjs\"",
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/question-gate.cjs\"",
-            "timeout": 10
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/stop-dispatcher.cjs\"",
+            "timeout": 20
           }
         ]
       }

@@ -79,6 +79,17 @@ case "${CI_WATCH_STUB:?}" in
                       if [[ -f "$f.view" ]]; then echo "MERGEABLE"
                       else touch "$f.view"; echo "CONFLICTING"; fi
                     else echo '[{"bucket":"pass"}]'; fi ;;
+  # 2026-10-11: a repo with no workflow at all looks like "not registered yet" forever.
+  # `gh api repos/<r>/actions/workflows --jq .total_count` is the one question that tells them apart.
+  pr_noci)          if [[ "${1:-}" == api ]]; then echo 0; else echo '[]'; fi ;;
+  pr_noci_nochecks) if [[ "${1:-}" == api ]]; then echo 0
+                    else echo "no checks reported on the 'feature' branch" >&2; exit 1; fi ;;
+  # negative controls: workflows exist (2) / the count cannot be read — keep waiting.
+  pr_zero_hasci)    if [[ "${1:-}" == api ]]; then echo 2; else echo '[]'; fi ;;
+  pr_zero_apierr)   if [[ "${1:-}" == api ]]; then echo "HTTP 403" >&2; exit 1; else echo '[]'; fi ;;
+  ref_noci)         if [[ "${1:-}" == api && "${2:-}" == */actions/workflows ]]; then echo 0
+                    elif [[ "${1:-}" == api ]]; then echo abc123
+                    else echo '[]'; fi ;;
 esac
 STUB
 chmod +x "$TMP/gh"
@@ -125,7 +136,14 @@ check "ref: one workflow of the tip still running = no verdict, timeout(2)" ref_
 check "ref: bare commit sha, run green = GREEN"  ref_sha     0 ref abc1234
 check "ref: bare commit sha, run red = RED"      ref_sha_red 1 ref abc1234
 check "gh hard error in ref mode"       gh_broken  2 ref v9.9.9
+check "pr: repo without workflows = NO-CI(3) at once" pr_noci          3 pr 12 30
+grep -q "not green" "$TMP/out" && echo "  OK   no-CI verdict says not green" \
+  || { echo "  FAIL no-CI verdict does not say not green"; fails=$((fails+1)); }
+check "pr: 'no checks' wording + no workflows = NO-CI(3)" pr_noci_nochecks 3 pr 12 30
+check "pr: zero checks, workflows exist = wait, timeout(2)" pr_zero_hasci 2 pr 12 2
+check "pr: zero checks, count unreadable = wait, timeout(2)" pr_zero_apierr 2 pr 12 2
+check "ref: repo without workflows = NO-CI(3)"         ref_noci        3 ref main 30
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
-echo "ci-watch-test: all 20 checks passed"
+echo "ci-watch-test: all 26 checks passed"

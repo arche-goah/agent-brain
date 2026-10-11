@@ -46,8 +46,10 @@ helpers/open-items-gate.cjs (Stop) then checks the first reply against this list
 
 Items that vanish (answered, merged, closed) take their counter and class with them.
 Instance data `.claude/rules/open-items.json`: "parked" (regexes on request topic / PR
-repo — parked domains stay on one line, never dropped) and "humans" (names a request can
-address the operator by, e.g. "an <name>").
+repo — parked domains stay on one line, never dropped; an entry may instead be
+{"match", "wake_on", "since"}: when a wake_on party — GitHub login or shared-memory `von`
+id — moves in that domain after `since`, one operator item asks whether to unpark) and
+"humans" (names a request can address the operator by, e.g. "an <name>").
 
 Usage:
   open-items.py --owner <org> [--hook-input '<SessionStart JSON>'] [--repo <shared-memory>]
@@ -217,7 +219,91 @@ def prs(owner, owners):
                       "text": p["title"][:100] + (" (draft)" if p.get("isDraft") else ""),
                       "scope": p["repository"]["name"], "ref": ref,
                       "waiting_on": ball(p, me, owners),
-                      "until": (m.group(1), m.group(2).strip()) if m else None})
+                      "until": (m.group(1), m.group(2).strip()) if m else None,
+                      "events": pr_events(p)})
+    return items
+
+
+def pr_events(p):
+    """(login, ISO date) of every move the PR data shows: opened, last commit (by its author),
+    comments, reviews. Only the wake-up check reads it."""
+    author = (p.get("author") or {}).get("login", "")
+    last = ((p.get("commits") or {}).get("nodes") or [{}])[-1].get("commit", {}).get("committedDate", "")
+    ev = [(author, p.get("createdAt", "")), (author, last)]
+    for c in (p.get("comments") or {}).get("nodes") or []:
+        ev.append(((c.get("author") or {}).get("login", ""), c.get("createdAt", "")))
+    for r in (p.get("latestReviews") or {}).get("nodes") or []:
+        ev.append(((r.get("author") or {}).get("login", ""), r.get("submittedAt", "")))
+    return [(who, when) for who, when in ev if who and when]
+
+
+# Parked domains (operator order 2026-10-11). A domain is often parked because ANOTHER party
+# paused it; when that party moves again, nothing said so — its new PRs were filed on the
+# parked line like every other. An entry in `parked` may therefore be an object:
+#   {"match": "<regex>", "wake_on": ["<login or von id>", ...], "since": "YYYY-MM-DD"}
+# and a plain string stays a plain parked regex. New activity of a wake_on party AFTER `since`
+# in the parked domain becomes one operator item. Keeping it parked = move `since` forward.
+def parked_rules(cfg):
+    rules = []
+    for e in cfg.get("parked", []):
+        if isinstance(e, str):
+            rules.append((re.compile(e, re.I), None, e))
+        elif isinstance(e, dict) and e.get("match"):
+            wake = None
+            if e.get("wake_on") and e.get("since"):
+                wake = {"who": {str(w).lower() for w in e["wake_on"]}, "since": str(e["since"])}
+            rules.append((re.compile(e["match"], re.I), wake, str(e.get("name") or e["match"])))
+    return rules
+
+
+FM_FIELD = re.compile(r"^[^:]+:([^:]+):\s+(von|date):\s*(.+?)\s*$")
+LOG_HEAD = re.compile(r"^[^:]+:[^:]+:## (\d{4}-\d{2}-\d{2}) · ([^\s—]+)")
+
+
+def wake_items(rules, prs_list, repo):
+    """One operator item per parked domain whose wake_on party moved after `since`.
+    Sources: the PR events already fetched, plus two git calls on the shared-memory repo
+    (fact-file frontmatter `von:`/`date:` and LOG headings in the parked topic folders)."""
+    rules = [r for r in rules if r[1]]
+    if not rules:
+        return []
+    dirs, fm, heads = [], {}, []
+    if (Path(repo) / ".git").exists():
+        rc, out = run(["git", "-C", repo, "ls-tree", "-d", "--name-only", "origin/main"])
+        dirs = out.split() if rc == 0 else []
+        hit = [d for d in dirs if any(rx.search(d) for rx, _, _ in rules)]
+        if hit:
+            rc, out = run(["git", "-C", repo, "grep", "-E", "-e", r"^[[:space:]]+(von|date):",
+                           "origin/main", "--", *[f"{d}/*.md" for d in hit]])
+            for line in (out.splitlines() if rc == 0 else []):
+                m = FM_FIELD.match(line)
+                if m:
+                    fm.setdefault(m.group(1), {}).setdefault(m.group(2), m.group(3).strip("\"'"))
+            rc, out = run(["git", "-C", repo, "grep", "-E", r"^## [0-9]{4}-[0-9]{2}-[0-9]{2} · ",
+                           "origin/main", "--", *[f"{d}/LOG.md" for d in hit]])
+            heads = [(line.split(":")[1], *LOG_HEAD.match(line).groups())
+                     for line in (out.splitlines() if rc == 0 else []) if LOG_HEAD.match(line)]
+    items = []
+    for rx, wake, label in rules:
+        seen = []  # (date, party, what)
+        for it in prs_list or []:
+            if rx.search(it["scope"]):
+                for who, when in it.get("events", []):
+                    if who.lower() in wake["who"] and when[:10] > wake["since"]:
+                        seen.append((when[:10], who, f"PR {it['ref']}"))
+        for path, f in fm.items():
+            if rx.search(path.split("/")[0]) and f.get("von", "").lower() in wake["who"] \
+                    and f.get("date", "")[:10] > wake["since"]:
+                seen.append((f["date"][:10], f["von"], f"shared memory {path}"))
+        for path, date, sender in heads:
+            if rx.search(path.split("/")[0]) and sender.lower() in wake["who"] and date > wake["since"]:
+                seen.append((date, sender, f"LOG heading in {path}"))
+        if seen:
+            date, who, what = max(seen)
+            items.append({"id": f"wake:{label}", "kind": "wake", "date": date, "who": who,
+                          "text": f"parked domain {label}: {who} is active again ({what}, {len(seen)} move(s) "
+                                  f"since {wake['since']}) - ask the operator whether to unpark",
+                          "scope": "", "ref": label, "file": ""})
     return items
 
 
@@ -360,12 +446,13 @@ def main():
     tdir = Path(hook["transcript_path"]).parent if hook.get("transcript_path") else None
     cfg = load_json(root / ".claude" / "rules" / "open-items.json", {})
     try:
-        parked_rx = [re.compile(p, re.I) for p in cfg.get("parked", [])]
+        rules = parked_rules(cfg)
+        parked_rx = [rx for rx, _, _ in rules]
         names = [re.escape(n) for n in cfg.get("humans", [])]
         # "an <name>" / "to <name>", but not a machine id built from the name (name-macos).
         human_rx = re.compile(r"\b(an|to|for)\s+(" + "|".join(names) + r")\b(?![-\w])") if names else None
     except re.error:
-        parked_rx, human_rx = [], None
+        rules, parked_rx, human_rx = [], [], None
 
     seen = load_json(seen_file, {})
     old = seen.get("items", {})
@@ -386,7 +473,7 @@ def main():
     req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {})
     failed = [name for name, v in (("shared-memory requests", req),
                                    ("PR search" if a.owner else "PRs (no owner given)", pr)) if v is None]
-    items = (req or []) + (pr or [])
+    items = (req or []) + (pr or []) + wake_items(rules, pr, a.repo)
 
     today = now.date().isoformat()
     keep = {}
@@ -416,6 +503,8 @@ def main():
             it["parked"] = False
             it["cls"] = "ai" if it["cls"] == "?" else it["cls"]
             it["why"] = "parked domain — answer anyway: receipt, state, when it resumes"
+        if it["kind"] == "wake":   # unparking is the operator's call, never the agent's
+            it["parked"], it["cls"], it["why"] = False, "human", "the party that paused it moved again"
         if it["wait"]:
             it["cls"] = "wait"
     # A source that failed keeps its old counters — a failed read is not "handled".
