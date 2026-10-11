@@ -256,6 +256,18 @@ has "--classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, 
 out=$(run m)
 [ "$(grep -c '\[request|ai\] 2026-10-09' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-09' <<<"$out")" = 1 ] \
   && ok "a class on the first colliding id leaves the second open" || bad "collision class spread: $out"
+# The first one is answered and leaves the inbox: the second takes over the bare id. It must not
+# inherit the first one's class (measured 2026-10-11 on the merged suffix: it did, "first only").
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
+out=$(run m2)
+has "[request|?] 2026-10-09" "$out" && ! has "first only" "$out" \
+  && ok "the second request, alone under the bare id, does not inherit the first one's class" || bad "class inherited: $out"
+# Negative control: the SAME text keeps its class (a class is not lost by a re-run).
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (LOG)' > "$T/inbox.txt"
+out=$(run m3)
+has "[request|ai] 2026-10-09" "$out" && ok "the classified text keeps its class" || bad "own class lost: $out"
 
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
