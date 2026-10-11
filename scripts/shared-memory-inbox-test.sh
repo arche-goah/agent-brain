@@ -136,9 +136,11 @@ done
 
 # The section splitter must not absorb it either: an unknown dated heading ENDS the section above
 # it. Absorbed, its text read as a second message of the sender of the entry before it.
-SEC=$("$PY" - "$INBOX" <<'PYEOF'
-import importlib.util, sys
-spec = importlib.util.spec_from_file_location("inbox", sys.argv[1])
+# The reader path goes in the ENVIRONMENT, never as argv of `python -` (OS-6: a file argument with a
+# shebang is executed instead of the stdin program on a Windows python3).
+SEC=$(INBOX_PATH="$INBOX" "$PY" - <<'PYEOF'
+import importlib.util, os
+spec = importlib.util.spec_from_file_location("inbox", os.environ["INBOX_PATH"])
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 text = ("## 2026-10-11 · sam-laptop — AN kim-win: first\nA.\n\n"
         "## 2026-10-11 kim-win: [unknown shape]\nB.\n")

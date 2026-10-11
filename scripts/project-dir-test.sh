@@ -90,7 +90,7 @@ done
 scan() { # dir -> lines
   grep -rnE '(:-\.|:-\$PWD)\}?/\.claude-state|STATE_DIR="?\.claude-state|:-\.claude-state\}' "$1" \
     --include='*.sh' --include='*.py' --include='*.cjs' 2>/dev/null \
-    | grep -vE '/(test-[^/]*|[^/]*-test\.(sh|py))(:|$)' | grep -v '/project-dir-test.sh:' || true
+    | grep -avE '/(test-[^/]*|[^/]*-test\.(sh|py))(:|$)' | grep -av '/project-dir-test.sh:' || true
 }
 HITS=$(scan "$HERE")
 [[ -z "$HITS" ]] && pass "class check: no script builds a state path from the caller's cwd" \
