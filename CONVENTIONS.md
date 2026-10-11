@@ -100,6 +100,16 @@ Rules:
   a usable message, not silently do nothing.
 - Every tool is testable read-only against a device that does not exist yet (dry run or
   clear connection error).
+- **The server is the only way in, and the suite says so mechanically.** A suite whose
+  server has internals an agent could reach around it (an IPC file, the server's source
+  started by hand, a GUI driver) ships `mechanism-rules.json` at its root:
+  `{"tool": "<suite>", "rules": [{"pattern", "was", "instead", "target": "command"|"path"}]}`.
+  The core's `mechanism-guard` finds it in a clone (via `.mcp.json`) and in an enabled
+  plugin alike. Developing the tool itself is the legitimate exception — it is declared per
+  command with `# MECHANISM-OK: <reason>`, never silent.
+- **Testing an unreleased branch live is a documented path** in the suite's `AGENTS.md`
+  (how to point the session's MCP at a clone on that branch, for plugin users too). Where it
+  cannot be done, the agent reports — it does not start the server on its own.
 
 ## 5. Skills
 
