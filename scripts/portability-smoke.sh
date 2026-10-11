@@ -357,6 +357,27 @@ if [ "$_rc" -eq 0 ] && [ -z "$_hc" ]; then
 else
   bad "hook-coverage false alarm: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'"
 fi
+#     A template permission into the core that no scope grants is reported (measured
+#     2026-10-11: a Windows brain without `Bash(node core/helpers/*)` could not run
+#     `question-gate.cjs resolve` by itself); a BROADER glob counts as granted.
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8")); d["permissions"]["allow"]=[]
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$T/hookbrain/.claude/settings.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*'permissions: "Bash(node core/helpers/*)" from the core template is not granted'*) ok "hook-coverage names a core permission the brain does not grant";;
+  *) bad "hook-coverage permission case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+d["permissions"]["allow"]=["Bash(node core/*)","Bash(python3 core/*)","Bash(bash core/*)","Bash(core/scripts/*)"]
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$T/hookbrain/.claude/settings.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_hc" in
+  *permissions:*) bad "hook-coverage permission false alarm with broader globs: '$(printf '%s' "$_hc" | grep -a permissions: | head -1)'";;
+  *) ok "hook-coverage accepts a broader glob as granted";;
+esac
+cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
 #     A gate wired WITHOUT the template's "onFailure": "block" fails open on a crash or a
 #     timeout (Claude Code >= 2.1.295); hook-coverage names it. Strip the field from the
 #     wired copy of mechanism-guard only - the other gates stay silent.

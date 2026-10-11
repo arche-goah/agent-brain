@@ -302,6 +302,18 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   above). The agent never files its own silence or the operator's silence as a deferral.
   Carried by `core/helpers/question-gate.cjs`: `deferred` is accepted only with the
   operator's words as the note; `unanswered` keeps the question listed and askable.
+  **The agent closes its own question once its work has answered it** (operator decision
+  2026-10-11: "yes, the AI may close its own settled questions — but set it up cleanly,
+  document and justify it"): a question the agent asked, then settled by measuring, building
+  or reading instead of waiting, is resolved `answered` by the agent with the resolution in
+  the note; only `deferred` needs the operator's words. Justification: the gate exists so
+  that a question does not scroll away unanswered — a question the work has answered is not
+  that case, and a human made to close it by hand is pure friction (measured 2026-10-11 on a
+  Windows brain: the agent's `resolve` call was refused by the harness classifier because
+  that brain lacked the template's `Bash(node core/helpers/*)` permission, and the operator
+  had to run it; the macOS brain, which carries the permission, closed three such questions
+  the same day). The permission is part of the template; `hook-coverage.py` now reports a
+  brain that does not grant it, like an unwired hook.
 - **Name the server, never "the MCP"** (operator decision 2026-08-20) — also in a
   reconnect request. Generally: before a proposal, check that its load-bearing word is
   unambiguous for the reader; an internal short word can mean something else to them
