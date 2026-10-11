@@ -159,8 +159,8 @@ if core_pin and os.path.isdir("core"):
             ahead = False
     if sub != core_pin:
         if ahead:
-            print(f"__AHEAD__core rules {sub} is AHEAD of the pin {core_pin} -- "
-                  f"verification checkout; brain-update.sh would move it back")
+            print(f"__AHEAD__core checkout {sub} is ahead of the pin {core_pin}: a verification "
+                  f"checkout, fine while you test a PR; brain-update.sh puts it back on the pin")
         else:
             stale.append(f"core rules {sub or 'unknown'} -> {core_pin}")
 plugs = load(os.path.join(cfg, "plugins", "installed_plugins.json")).get("plugins") or {}
@@ -252,7 +252,7 @@ if suites:
 PY
 )
 if [[ -n "$supd" ]]; then
-  echo "!! suite update available: $supd — ask the operator; consumer checkouts: bash core/scripts/suite-install.sh <suite> (a developer checkout refuses safely — pull it by hand)"
+  echo "!! suite update available: $supd — ask the operator; consumer checkouts: bash core/scripts/suite-install.sh SUITE (a developer checkout refuses safely — pull it by hand)"
 fi
 
 # Open PRs across the ecosystem (operator order 2026-08-13): NAME them at session
@@ -456,7 +456,8 @@ if [[ -n "${PSC_SELF:-}" && -f "$PSC_SELF/../scripts/parallel-sessions.sh" ]]; t
   if [[ $ps_rc -eq 2 ]]; then
     echo "!! parallel-sessions: check not performable — collision state UNKNOWN, do not count as green"
   else
-    grep '^!!' <<<"$ps_out" || true
+    # `note:` = the machine-wide count without lsof (Windows): says what it knows, no `!!`.
+    grep -E '^!!|^note:' <<<"$ps_out" || true
   fi
 fi
 

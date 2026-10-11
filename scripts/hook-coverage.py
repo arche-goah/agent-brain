@@ -31,6 +31,13 @@ import re
 import sys
 from pathlib import Path
 
+# The session start parses this output; left to the platform, Windows' console code page
+# mangles the dashes in these lines (os-traps OS-9).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):  # a stream that cannot be reconfigured
+    pass
+
 
 def load(path):
     try:

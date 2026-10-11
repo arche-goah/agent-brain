@@ -579,11 +579,13 @@ def main():
     if parked:
         print(f"- [parked] {', '.join(i['ref'].rsplit('/', 1)[-1] for i in parked)}")
     if count["?"]:
-        print("!! open for us: classify every '?' item once — core/scripts/open-items.py --classify '<id>=ai|human:<why>'")
+        # No angle brackets in these hints: the session start escapes < and > to protect its
+        # own wrapper, so '<id>' reached the operator as '&lt;id&gt;' (measured 2026-10-11).
+        print("!! open for us: classify every '?' item once — core/scripts/open-items.py --classify 'ID=ai|human:WHY'")
         # The id is not always the printed ref (a LOG entry adds its first 40 characters).
         for i in active:
             if i["cls"] == "?":
-                print(f"   --classify '{i['id']}=ai|human:<why>'")
+                print(f"   --classify '{i['id']}=ai|human:WHY'")
     return 0
 
 
