@@ -54,6 +54,12 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/public-text-guard.cjs\"",
             "timeout": 10,
             "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/instance-key-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },

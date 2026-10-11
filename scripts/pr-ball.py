@@ -32,6 +32,10 @@ import argparse
 import json
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from instance_key import is_self, self_key  # noqa: E402
 
 
 def ts(s):
@@ -50,10 +54,20 @@ def is_bot(name):
     return name.endswith("[bot]") or name in ("github-actions", "dependabot")
 
 
-def moves(data, now):
+def moves(data, now, my_key=""):
     me = login((data.get("data") or {}).get("viewer"))
     if not me:
         return []
+
+    # "Mine" is login AND instance key: one login can carry several instances (the operator's
+    # other machine), and a node with another instance's key is THEIR move, not ours.
+    def mine(node, text_field="body"):
+        return is_self(login(node.get("author")), me, node.get(text_field), my_key)
+
+    def other(node):
+        who = login(node.get("author"))
+        return bool(who) and not mine(node)
+
     out = []
     for pr in nodes((data.get("data") or {}), "search"):
         if not pr or pr.get("isDraft"):
@@ -62,11 +76,9 @@ def moves(data, now):
         commits = nodes(pr, "commits")
         last_commit = ts(((commits[-1] if commits else {}).get("commit") or {}).get("committedDate"))
         reviews = [r for r in nodes(pr, "reviews") if r and r.get("submittedAt")]
-        author = login(pr.get("author"))
         since, kind = None, None
-        if author == me:
-            others = sorted((r for r in reviews if login(r.get("author")) not in ("", me)),
-                            key=lambda r: ts(r["submittedAt"]))
+        if mine(pr):
+            others = sorted((r for r in reviews if other(r)), key=lambda r: ts(r["submittedAt"]))
             if others and others[-1].get("state") == "CHANGES_REQUESTED":
                 at = ts(others[-1]["submittedAt"])
                 if last_commit is None or at > last_commit:
@@ -75,18 +87,22 @@ def moves(data, now):
                 comments = [c for c in nodes(pr, "comments") if c and c.get("createdAt")]
                 theirs = [ts(r["submittedAt"]) for r in others] + [
                     ts(c["createdAt"]) for c in comments
-                    if login(c.get("author")) not in ("", me) and not is_bot(login(c.get("author")))]
+                    if other(c) and not is_bot(login(c.get("author")))]
                 seen = [t for t in [last_commit] + [ts(c["createdAt"]) for c in comments
-                                                    if login(c.get("author")) == me] if t]
+                                                    if mine(c)] if t]
                 if theirs and (not seen or max(theirs) > max(seen)):
                     since, kind = max(theirs), "yours - reply since your last commit"
         else:
-            mine = [ts(r["submittedAt"]) for r in reviews if login(r.get("author")) == me]
-            touched = mine + [ts(c.get("createdAt")) for c in nodes(pr, "comments")
-                              if c and login(c.get("author")) == me and c.get("createdAt")]
+            my_reviews = [ts(r["submittedAt"]) for r in reviews if mine(r)]
+            touched = my_reviews + [ts(c.get("createdAt")) for c in nodes(pr, "comments")
+                                    if c and mine(c) and c.get("createdAt")]
             requested = any(login(n.get("requestedReviewer")) == me for n in nodes(pr, "reviewRequests") if n)
             mentioned = f"@{me}" in (pr.get("body") or "").lower()
-            if (mine or requested or mentioned) and last_commit is not None:
+            # Another instance under OUR login opened it: that is a hand-over between the
+            # operator's machines, so it is our move just like a review request (measured
+            # 2026-10-11: the other machine's test fix waited for a second OK nobody was shown).
+            sibling = login(pr.get("author")) == me
+            if (my_reviews or requested or mentioned or sibling) and last_commit is not None:
                 last_touch = max(touched) if touched else None
                 if last_touch is None or last_commit > last_touch:
                     since, kind = last_commit, "review - new commits since your last look" if last_touch else "review - asked, not looked at yet"
@@ -108,7 +124,7 @@ def main():
     except Exception:
         # The bootup reports a failed gh call itself; here no JSON stays silence.
         return 0
-    found = moves(data, now)
+    found = moves(data, now, self_key())
     if found:
         # ASCII only: Python prints through the console code page on Windows, and a dash
         # or middle dot arrived there as a replacement character (Windows runner, 2026-09-15).
