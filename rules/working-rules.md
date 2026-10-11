@@ -406,6 +406,13 @@ their AIs:
    nobody — use the proper name. The person and their AI are named apart ("<name>" vs.
    "<name>'s AI"): a proposal of an AI is not a decision of its person. Machine ids stay
    in data fields; a git author is no proof of the party (accounts can look alike).
+   **One login can carry several instances** (operator order 2026-10-11, after a hand-over
+   between the operator's own machines lay unseen until the operator asked on every side):
+   every PR, comment and review an AI posts carries its instance key
+   (`<!-- instance-key: … -->`, a hash, names nobody — `helpers/instance-key-gate.cjs`
+   refuses the post without it), and every check that decides "is this mine?" decides by
+   login AND key (`scripts/instance_key.py`). A PR from a sibling instance under the same
+   login is a hand-over to us, not our own.
 2. **Responsibility is assigned only by the operator** (operator decision 2026-08-19). An
    assignment is STATE with a date — measure it (`core/scripts/parallel-sessions.sh`, the
    shared-memory record) before leaving work out, never recall it (2026-08-21). A new
