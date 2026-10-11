@@ -137,6 +137,14 @@ def requests(repo):
         items.append({"id": ref if rel != "LOG" else f"{ref}: {text[:40].rstrip()}", "kind": "request",
                       "date": date, "who": von.strip(), "text": text[:100], "scope": topic,
                       "ref": ref, "file": rel if rel != "LOG" else ""})
+    # Two LOG entries of one sender on one day can share their first 40 chars (measured
+    # 2026-10-11: "AN a, b, c-" twice) — one id would carry one class and one counter for both.
+    # The later one in inbox order gets " (n)"; the first keeps its old id, so stored classes hold.
+    seen = {}
+    for it in items:
+        n = seen[it["id"]] = seen.get(it["id"], 0) + 1
+        if n > 1:
+            it["id"] = f"{it['id']} ({n})"
     # An inbox line this parser cannot read must not vanish — the exact defect this list
     # exists to stop. It reports itself as a failed read instead.
     return None if unparsed or len(items) != expected else items

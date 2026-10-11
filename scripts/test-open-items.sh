@@ -243,6 +243,20 @@ out=$(run l)
 [ "$(grep -c '\[request|ai\] 2026-10-08' <<<"$out")" = 2 ] \
   && ok "id cut at a blank and a second --classify flag both stick" || bad "classify lost: $out"
 
+# Measured 2026-10-11, Windows instance: two LOG entries of one sender on one day with the same first
+# 40 chars got ONE id — one class covered both. The second gets " (2)", each classifies alone.
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (LOG)' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
+out=$(run m0)
+has "--classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst- (2)=" "$out" \
+  && ok "colliding LOG ids are told apart" || bad "colliding ids: $out"
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
+  --classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-=ai:first only' >/dev/null 2>&1
+out=$(run m)
+[ "$(grep -c '\[request|ai\] 2026-10-09' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-09' <<<"$out")" = 1 ] \
+  && ok "a class on the first colliding id leaves the second open" || bad "collision class spread: $out"
+
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
