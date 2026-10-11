@@ -137,7 +137,7 @@ if [[ -n "$SINCE_DAY" && -f "$GEN" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; 
     END { for (k in t) printf "%s %d, ", k, t[k] }' | sed 's/, $//')
   TOTAL=$(printf '%s\n' "$FRESH" | sed -n 's/^since [0-9-]*: \([0-9]*\) entr.*/\1/p')
   if [[ -n "$TOTAL" && "$TOTAL" != "0" ]]; then
-    echo "shared-memory: $TOTAL entr$([[ "$TOTAL" == 1 ]] && echo y || echo ies) dated since $SINCE_DAY — ${BY_TOPIC:-see --since} (list: core/scripts/shared-memory-index.py --since $SINCE_DAY [--topic <t>])"
+    echo "shared-memory: $TOTAL entr$([[ "$TOTAL" == 1 ]] && echo y || echo ies) dated since $SINCE_DAY — ${BY_TOPIC:-see --since} (list: core/scripts/shared-memory-index.py --since $SINCE_DAY [--topic TOPIC])"
   fi
 fi
 

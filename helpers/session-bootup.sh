@@ -252,7 +252,7 @@ if suites:
 PY
 )
 if [[ -n "$supd" ]]; then
-  echo "!! suite update available: $supd — ask the operator; consumer checkouts: bash core/scripts/suite-install.sh <suite> (a developer checkout refuses safely — pull it by hand)"
+  echo "!! suite update available: $supd — ask the operator; consumer checkouts: bash core/scripts/suite-install.sh SUITE (a developer checkout refuses safely — pull it by hand)"
 fi
 
 # Open PRs across the ecosystem (operator order 2026-08-13): NAME them at session
