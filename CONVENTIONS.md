@@ -374,11 +374,12 @@ receiver stays in control.
 from the marketplace; an unreleased change is checked on the **same artifact on every
 machine**: the suite's `<plugin>-next` entry (same shape as `brain-core-next`, created
 when the first beta tag exists — no pin in advance), the stable plugin disabled meanwhile
-(same skill names), then back. Tag form, platform scope and `releases/<tag>.md` follow
-AGENTS.md #12. A live check by cloning the suite, switching a branch, pointing an `.mcp.json`
-at it or starting the server by hand is NOT a way to test a change — it multiplies the
-setups the owner must reason about; if the channel does not exist yet, that is reported
-as the missing step, and the check waits.
+(same skill names), then back. Tag form, platform scope and the generated check table
+follow AGENTS.md #12 (the tag stays `vX.Y.Z`; beta is the channel). Tag and pin of a suite
+are its lead maintainer's act. A live check by cloning the suite, switching a branch,
+pointing an `.mcp.json` at it or starting the server by hand is NOT a way to test a change
+— it multiplies the setups the owner must reason about; if the channel does not exist yet,
+that is reported as the missing step, and the check waits.
 
 **Ownership of a suite** (operator decisions 2026-08-31 to 2026-09-13). Every tool
 domain has one lead maintainer, assigned by the core's code owner; a new domain is
