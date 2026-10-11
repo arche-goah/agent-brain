@@ -48,6 +48,11 @@ Monitor({ command: "bash core/scripts/collab-watch.sh",
   drops events for good (cursors advance before the filter). **Before arming a filtered
   scope, count the same window unfiltered once** — unfiltered n>0 and filtered 0 means
   the filter is suspect, not the world quiet.
+- **A session that owns a topic arms it too:** `COLLAB_WATCH_TOPICS="<topic> …"` next to a
+  party scope. A repo watch whose tag is a topic, and a shared-memory find in a `<topic>/`
+  folder, then pass from EVERY party — the operator's other machine included. Without it a
+  one-collaborator scope drops the other own machine's PRs in the very repo the session owns
+  (measured 2026-10-11).
 - **Never add an author filter on the operator's login.** All own machines push under one
   account; the filter would swallow the other own machine — the very signal wanted.
 - **"already armed"** names a live PID, not a session. Check `ps` and its parent chain
