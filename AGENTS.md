@@ -166,7 +166,11 @@ session start.
      commit, ok) live in the repo, a script renders `PLATFORMS`-style rows with a macOS and a
      Windows column (`beta <machine> <date> <commit>`, `unchecked`, `not needed — <reason>`,
      `red`), never hand-kept; heavy-metal's `platform_check.py` + `platforms_table.py` are
-     the pattern; (2) the GitHub release of the tag is marked pre-release and its title and
+     the pattern. **A cell holds one entry per checking machine** — a second checker on the
+     same system (the suite owner's own desk next to the operator's machine) is appended,
+     never overwritten, and **any red entry turns the row red**; and the **owner's word has
+     its own rows** (what the owner judged, in the owner's words) — it is the condition for
+     stable, not a checked cell; (2) the GitHub release of the tag is marked pre-release and its title and
      text carry the scope ("beta — checked on macOS, Windows unchecked") and the rendered
      table; (3) the `<plugin>-next` entry's description says the same. It applies to every
      beta; a pure T0 beta counts as both systems once both CI runs are green. A tag is never
