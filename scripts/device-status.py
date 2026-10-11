@@ -72,7 +72,10 @@ def gather(brain, cfg):
     _, tag = run(["git", "-C", core, "describe", "--tags", "--always"])
     _, commit = run(["git", "-C", core, "rev-parse", "--short=12", "HEAD"])
     rc, dirty = run(["git", "-C", core, "status", "--porcelain"])
-    settings = [load(os.path.join(brain, ".claude", "settings.json"), {}), load(os.path.join(cfg, "settings.json"), {})]
+    # All three layers Claude Code reads: a plugin enabled only in settings.local.json (a beta
+    # channel switched on for one machine) was invisible here (measured 2026-10-11, macOS).
+    settings = [load(os.path.join(brain, ".claude", "settings.local.json"), {}),
+                load(os.path.join(brain, ".claude", "settings.json"), {}), load(os.path.join(cfg, "settings.json"), {})]
     enabled = []
     for s in settings:
         for k, v in (s.get("enabledPlugins") or {}).items():
@@ -80,6 +83,7 @@ def gather(brain, cfg):
                 enabled.append(k)
     installed = (load(os.path.join(cfg, "plugins", "installed_plugins.json"), {}) or {}).get("plugins") or {}
     plugins = []
+    live = {}  # suite repo name -> version of its enabled plugin on this device
     for pid in enabled:
         rec = installed.get(pid) or []
         name, _, mkt = pid.partition("@")
@@ -89,16 +93,30 @@ def gather(brain, cfg):
             if e.get("name") == name:
                 pin = (e.get("source") or {}).get("ref", "") if isinstance(e.get("source"), dict) else ""
                 break
-        plugins.append({"plugin": pid, "installed": rec[0].get("version", "") if rec else "", "pin": pin})
+        installed_v = rec[0].get("version", "") if rec else ""
+        plugins.append({"plugin": pid, "installed": installed_v, "pin": pin})
+        # The suite this plugin ships: the marketplace names its repo. Its installed version is the
+        # suite's LIVE version on this device (measured 2026-10-11 on a Windows brain: the record said
+        # v1.1.20 while v1.1.29 ran — a record is written, a state is read).
+        repo = ""
+        for e in mp.get("plugins") or []:
+            if e.get("name") == name and isinstance(e.get("source"), dict):
+                repo = str(e["source"].get("repo") or "").rsplit("/", 1)[-1]
+        if repo and installed_v:
+            live[repo] = {"version": "v" + installed_v.lstrip("v"), "commit": "", "source": "plugin " + pid}
     eco = load(os.path.join(brain, "config", "ecosystem.json"), {}) or {}
     suites = {}
     # Shared tools only (kind suite/plugin): an instance or project repo is this operator's own work, not a version
     # the other devices need to match. A commit field that is not a sha (free text in the record) is dropped.
+    # An enabled plugin of the suite wins over the record; a suite known only by its plugin is listed too.
     for name, r in sorted((eco.get("repos") or {}).items()):
         if isinstance(r, dict) and r.get("kind") in ("suite", "plugin"):
             sha = r.get("commit") or ""
-            suites[name] = {"version": r.get("version") or "",
-                            "commit": sha[:12] if re.fullmatch(r"[0-9a-f]{7,40}", sha) else ""}
+            suites[name] = live.get(name) or {"version": r.get("version") or "",
+                                               "commit": sha[:12] if re.fullmatch(r"[0-9a-f]{7,40}", sha) else "",
+                                               "source": "record"}
+    for name, v in live.items():
+        suites.setdefault(name, v)
     return {
         "core": {"tag": tag, "commit": commit, "local_edits": bool(rc == 0 and dirty)},
         "plugins": plugins,
@@ -263,7 +281,8 @@ def table(args):
             for p in rep.get("plugins") or []:
                 print(f"  plugin {p['plugin']}: {p.get('installed') or '-'} (pin {p.get('pin') or '-'})")
             for name, s in sorted((rep.get("suites") or {}).items()):
-                print(f"  suite  {name}: {s.get('version') or '-'} {s.get('commit') or ''}".rstrip())
+                tag = " (from the record, not measured)" if s.get("source") == "record" else ""
+                print(f"  suite  {name}: {s.get('version') or '-'} {s.get('commit') or ''}".rstrip() + tag)
             for prob in problems(r):
                 print(f"  off: {prob}")
     return 0
