@@ -20,7 +20,13 @@ check() { # name, output, expect: line|no-line, [extra text that must appear]
   if [ -n "${4:-}" ] && [[ "$2" != *"$4"* ]]; then echo "FAIL $1 (missing: $4)"; fail=1; return; fi
   echo "ok   $1"
 }
-run() { CLAUDE_PROJECT_DIR="$TMP" SHARED_MEMORY_REPO="$TMP/no-shared-memory" bash "$BOOT" < /dev/null 2>/dev/null; }
+# The brain path travels as an env var and reaches python as a settings path: stated natively
+# (OS-3), on Git Bash a /tmp path would resolve nowhere and the settings case would pass for
+# the wrong reason (default limit instead of the file's).
+native() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+run() { CLAUDE_PROJECT_DIR="$(native "$TMP")" SHARED_MEMORY_REPO="$(native "$TMP")/no-shared-memory" bash "$BOOT" < /dev/null 2>/dev/null; }
 
 out="$(BOOTUP_TIMEOUT_S=0 run)"
 check "limit exceeded: line appears"            "$out" line "of its 0 s limit"
