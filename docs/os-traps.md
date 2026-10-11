@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5
+known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=13
 instances: 5
 repeat:    yes
 status:    closed
@@ -137,7 +137,7 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1
+known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1
 instances: 3
 repeat:    yes
 status:    closed
