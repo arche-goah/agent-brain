@@ -163,6 +163,9 @@ with tempfile.TemporaryDirectory() as d:
           "print('!! shadow: scripts/x.py has the name of a core script')\nprint('local machinery summary: shadow=1')\n")
     write(stub / "scripts/commitments.py",
           "print('loose commitment: from now on I do X')\nprint('commitments summary: found=1 carried=0 loose=1')\n")
+    write(stub / "scripts/fork-drift.py",
+          "print('!! fork pal/core branch fix/lost (no PR, last commit 2026-09-01): 1 commit(s) not in the core')\n"
+          "print('fork drift summary: 1 fork(s) of org/core, 1 finding(s)')\n")
     write(stub / "scripts/brain-selftest.sh", "echo '  !!  fixture x failed'\necho 'SELF-TEST: FAILURE'\nexit 1\n")
     write(stub / "scripts/effect-check.sh", "echo 'ROT  E3  Hook Targets — 1 missing'\necho 'OK   E1  Style — ok'\n"
                                             "echo 'WARN E6  Loose Commitments — 1'\nexit 1\n")
@@ -178,6 +181,7 @@ with tempfile.TemporaryDirectory() as d:
     check(has("P1", "effect-check E3") and has("OK", "effect-check E1"), "effect-check ROT -> P1, OK lines summarised")
     check(not any("E6" in t for t in T), "effect-check E6 is not doubled when commitments ran directly")
     check(has("P1", "invariant register drift") and has("P2", "MECHANISM due"), "register drift P1, mechanism due P2")
+    check(has("P2", "fork-drift: !! fork pal/core branch fix/lost"), "unlanded fork work is a P2 finding")
     check(not any(t.startswith("not available") for t in T), "a complete core reports nothing as unavailable")
     check(summ.get("machine_p1") == sum(1 for s in T.values() if s == "P1"), "summary P1 count = file P1 count")
 
@@ -186,6 +190,15 @@ with tempfile.TemporaryDirectory() as d:
     _, _, _, mach, _ = run(b, core=crashcore)
     check(any("brain-selftest.sh did not complete (rc=2)" in f["title"] for f in mach["findings"]),
           "a crashed check reads as a crash, not as a finding about the brain")
+
+    offline = Path(d) / "offlinecore"
+    write(offline / "scripts/fork-drift.py",
+          "import sys\nprint('fork drift summary: NOT checked - GitHub could not be read')\nsys.exit(2)\n")
+    _, _, _, mach, _ = run(b, core=offline)
+    fd = [f for f in mach["findings"] if f["title"].startswith("fork-drift")]
+    check(len(fd) == 1 and fd[0]["severity"] == "P2" and "NOT checked" in fd[0]["title"]
+          and "did not complete" not in fd[0]["title"],
+          "fork-drift without GitHub reads as 'not checked', not as a crash and not as 'no drift'")
 
 print(f"brain-scan-prep-test: {'all checks passed' if not fails else f'{fails} FAILED'}")
 sys.exit(1 if fails else 0)

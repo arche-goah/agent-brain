@@ -276,6 +276,19 @@ Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machin
 - **alpha** — a development checkout under test, with an expiry date and what is being
   measured. Past the date: merge, extend with a reason, or unwire.
 
+**A fork is not a place for work** (operator direction 2026-10-11: the core exists to give
+everyone the same state; a time-boxed local alpha is how a new feature reaches it, but an
+unnoticed drift away from it must not happen — the default is not to turn off, but to find
+the common way and build on it). Core work happens on a branch IN the core repo — every
+collaborator has write access there, so a branch is seen, gets CI and reaches the others;
+a fork branch gets none of that and is forgotten. A brain consumes the core only from the
+org repo at the released pin, never from a fork. Finished work is a PR in the repo;
+everything else is a declared alpha with an expiry. Measured the day the rule was written:
+two collaborator forks, their main far behind, about twenty leftover branches of merged
+PRs, one fix that had lived only on a fork branch for six weeks, and one open PR still
+served from a fork. Carried by `core/scripts/fork-drift.py` in the brain-scan's machine
+checks: it names fork work that never reached the core and a core consumed from a fork.
+
 **The finding addresses the AI, not the operator** (operator, same day: "the human does not
 have to be bothered every time something deviates, but there should be a classification and
 analysis of what deviates, why, whether that makes sense, and whether something should move
