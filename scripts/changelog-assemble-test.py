@@ -2,12 +2,11 @@
 """Fixture for scripts/changelog-assemble.py — both directions, in throwaway repos.
 
 Must: fragments land sorted under the new version header, old ## Unreleased entries come
-along and the header goes, fragments are deleted, README.md stays, release-preflight's
-leftover check is green afterwards. Must refuse: an existing version section, nothing to
+along and the header goes, fragments are deleted, README.md stays (preflight green after
+the cut: release-preflight-test.sh). Must refuse: an existing version section, nothing to
 release, a version with a leading v. Negative control: a no-op stub leaves the fragments.
 Usage: python3 scripts/changelog-assemble-test.py (exit 0 = pass)
 """
-import os
 import pathlib
 import subprocess
 import sys
@@ -55,12 +54,8 @@ check("the released sections stay below", text.find("## 1.1.0") < text.find("## 
 left = sorted(p.name for p in (d / "changelog.d").iterdir())
 check("fragments deleted, README kept", left == ["README.md"], left)
 
-pre = HERE / "release-preflight.sh"
-(d / ".claude-plugin").mkdir()
-(d / ".claude-plugin" / "plugin.json").write_text('{"version":"1.1.0"}\n', encoding="utf-8")
-r = subprocess.run(["bash", str(pre), "--ci-tag", "v1.1.0"], capture_output=True, text=True,
-                   env={**os.environ, "RELEASE_PREFLIGHT_ROOT": d.as_posix()})
-check("release-preflight is green after the cut", r.returncode == 0, r.stdout)
+# "release-preflight is green after the cut" lives in release-preflight-test.sh: a Python
+# child calling `bash` on a Windows runner gets WSL's bash.exe, not Git Bash (measured in CI).
 
 d = repo(HEAD + old, {"x.md": "- **x.** (test: T0)\n"})
 rc, out, text = run(d, "1.1.0")

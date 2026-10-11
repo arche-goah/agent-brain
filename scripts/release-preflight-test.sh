@@ -119,6 +119,16 @@ printf '# Changelog\n\n## Unreleased\n\n- not released\n\n## 2.0.0 — 2026-01-0
 RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --ci-tag v2.0.0 >/dev/null 2>&1
 check "an entry under Unreleased fails" 1 $?
 
+# 13. after a real cut by changelog-assemble.py the leftover check is green (the round trip)
+PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+R="$(mkrepo 2.1.0)"
+printf '# Changelog\n\n## 2.0.0 — 2026-01-01\n\n- entry\n' > "$R/CHANGELOG.md"
+mkdir -p "$R/changelog.d"; printf -- '- **new.** (test: T0)\n' > "$R/changelog.d/new.md"
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }  # OS-3
+"$PY" "$(native "$(dirname "$S")/changelog-assemble.py")" 2.1.0 --root "$(native "$R")" >/dev/null 2>&1
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --ci-tag v2.1.0 >/dev/null 2>&1
+check "preflight green after a real changelog-assemble cut" 0 $?
+
 echo
 echo "$pass/$((pass+fail)) passed"
 [ "$fail" -eq 0 ]
