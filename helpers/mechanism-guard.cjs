@@ -49,25 +49,102 @@ function stripHeredocs(cmd) {
   );
 }
 
-function loadRules() {
-  const p = `${process.env.CLAUDE_PROJECT_DIR || '.'}/.claude/rules/mechanism-rules.json`;
-  try {
-    const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .filter((r) => r && r.pattern && r.was && r.stattdessen)
-      .map((r) => ({ re: new RegExp(r.pattern), was: r.was, stattdessen: r.stattdessen }));
-  } catch (_) {
-    return [];
+// TOOL RULES (added 2026-10-11): a tool environment that is meant to be driven through its MCP
+// server — not through its internals (IPC files, the server's source run by hand, GUI drivers) —
+// declares those internals ITSELF, in a `mechanism-rules.json` at the tool's root. Incident: a
+// session on a second machine could not take the defined path (its MCP came from the released
+// plugin, the request assumed a clone) and built its own client, wrote probes straight into the
+// server's IPC file and drove the GUI. Nothing stopped it: this guard only knew the instance's
+// own rules, and the tool declared nothing. The instance cannot be expected to know every tool's
+// internals; the tool can. So the guard finds tool rule files on both ways a tool arrives:
+//   - a server script referenced in <project>/.mcp.json (a clone): walk up from the script;
+//   - an enabled plugin (installed_plugins.json + enabledPlugins): its install root.
+// Tool rule file: {"tool": "<name>", "rules": [{"pattern", "was", "instead", "target"}]}.
+// target "command" (default) = the Bash/Monitor command; target "path" = the file a Write/Edit
+// touches. Instance rules keep their format and may use "target" too.
+const path = require('path');
+const os = require('os');
+
+function readJson(p) {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return null; }
+}
+
+function compile(list, source) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((r) => r && r.pattern && r.was && (r.stattdessen || r.instead))
+    .map((r) => {
+      try {
+        return { re: new RegExp(r.pattern), was: r.was, instead: r.stattdessen || r.instead,
+                 target: r.target === 'path' ? 'path' : 'command', source };
+      } catch (_) { return null; }
+    })
+    .filter(Boolean);
+}
+
+function walkUpFor(start, name, maxUp) {
+  let dir = start;
+  for (let i = 0; i <= maxUp; i++) {
+    const cand = path.join(dir, name);
+    if (fs.existsSync(cand)) return cand;
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
   }
+  return null;
+}
+
+function toolRuleFiles(project) {
+  const found = new Set();
+  // 1. clones: every path-like argument of an MCP server in the project's .mcp.json
+  const mcp = readJson(path.join(project, '.mcp.json'));
+  for (const srv of Object.values((mcp && mcp.mcpServers) || {})) {
+    for (const a of [srv && srv.command, ...((srv && srv.args) || [])]) {
+      if (typeof a !== 'string' || !/[\\/]/.test(a)) continue;
+      const abs = path.isAbsolute(a) ? a : path.join(project, a);
+      if (!fs.existsSync(abs)) continue;
+      const f = walkUpFor(path.dirname(abs), 'mechanism-rules.json', 6);
+      if (f) found.add(f);
+    }
+  }
+  // 2. enabled plugins: project settings decide over user settings
+  const home = os.homedir();
+  const enabled = Object.assign({},
+    ((readJson(path.join(home, '.claude', 'settings.json')) || {}).enabledPlugins) || {},
+    ((readJson(path.join(project, '.claude', 'settings.json')) || {}).enabledPlugins) || {},
+    ((readJson(path.join(project, '.claude', 'settings.local.json')) || {}).enabledPlugins) || {});
+  const installed = (readJson(path.join(home, '.claude', 'plugins', 'installed_plugins.json')) || {}).plugins || {};
+  for (const [name, entries] of Object.entries(installed)) {
+    if (enabled[name] !== true || !Array.isArray(entries)) continue;
+    for (const e of entries) {
+      const f = e && e.installPath && path.join(e.installPath, 'mechanism-rules.json');
+      if (f && fs.existsSync(f)) found.add(f);
+    }
+  }
+  return [...found];
+}
+
+function loadRules() {
+  const project = process.env.CLAUDE_PROJECT_DIR || '.';
+  const rules = compile(readJson(`${project}/.claude/rules/mechanism-rules.json`), 'this instance');
+  let files = [];
+  try { files = toolRuleFiles(project); } catch (_) { files = []; }
+  for (const f of files) {
+    const data = readJson(f);
+    if (data && Array.isArray(data.rules)) rules.push(...compile(data.rules, data.tool || path.dirname(f)));
+  }
+  return rules;
 }
 
 let input = '';
 process.stdin.on('data', (d) => (input += d));
 process.stdin.on('end', () => {
   let cmd = '';
+  let filePath = '';
   try {
-    cmd = (JSON.parse(input).tool_input || {}).command || '';
+    const ti = JSON.parse(input).tool_input || {};
+    cmd = ti.command || '';
+    filePath = (ti.file_path || ti.notebook_path || '').replace(/\\/g, '/');
   } catch (_) {
     process.exit(0);
   }
@@ -75,13 +152,18 @@ process.stdin.on('end', () => {
 
   const stripped = stripHeredocs(cmd);
   for (const r of loadRules()) {
-    if (r.re.test(stripped)) {
+    const hit = r.target === 'path' ? (filePath && r.re.test(filePath)) : (cmd && r.re.test(stripped));
+    if (hit) {
+      const how = r.target === 'path'
+        ? `A file write cannot carry the marker. If the documented path really doesn't fit, do it as a\n` +
+          `shell command that ends with "# MECHANISM-OK: <justification>" — visible and justified.`
+        : `If the documented path really doesn't fit: repeat the command with a comment\n` +
+          `"# MECHANISM-OK: <justification>" — the justification then belongs in the\n` +
+          `change log. A silent deviation is not intended.`;
       const msg =
-        `MECHANISM CHECK: ${r.was}\n\n` +
-        `The setup has a documented path for this:\n  ${r.stattdessen}\n\n` +
-        `If the documented path really doesn't fit: repeat the command with a comment\n` +
-        `"# MECHANISM-OK: <justification>" — the justification then belongs in the\n` +
-        `change log. A silent deviation is not intended.`;
+        `MECHANISM CHECK (${r.source}): ${r.was}\n\n` +
+        `The setup has a documented path for this:\n  ${r.instead}\n\n` + how;
+      cmd = cmd || `write ${filePath}`;
       try {
         fs.appendFileSync(
           `${process.env.CLAUDE_PROJECT_DIR || '.'}/.claude-state/mechanism-guard.log`,
