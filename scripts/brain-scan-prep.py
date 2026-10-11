@@ -184,7 +184,9 @@ def deep_checks(repo, rc, orders, mem_dir):
     def say(check, reason):
         why.setdefault(check, []).append(reason)
 
-    regs = sorted((repo / "docs/research/coherence-scan").glob("register-*.md"), key=report_date)
+    # kohaerenz-scan/ = the folder before the LA1 rename (2026-08-14); registers written there still count
+    regs = sorted([p for d in ("coherence-scan", "kohaerenz-scan")
+                   for p in (repo / "docs/research" / d).glob("register-*.md")], key=report_date)
     last_reg = report_date(regs[-1]) if regs else None
     rule_files = [repo / "CLAUDE.md"] + sorted((repo / ".claude/rules").glob("*.md"))
     n = dated_lines_after([p for p in rule_files if p.is_file()], last_reg)
