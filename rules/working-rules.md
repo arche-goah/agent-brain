@@ -252,11 +252,20 @@ A question ENDS the turn only when the next step of the order cannot proceed wit
 answer AND the answer belongs to the operator — the instance names its list of
 operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
 
-**Mechanically secured:** `core/helpers/mechanism-guard.cjs` (PreToolUse/Bash) blocks
-shortcuts for which a documented path exists, and demands either the process or an
-explicit `# MECHANISM-OK: <reason>` marker. The rules for it are instance knowledge:
-`.claude/rules/mechanism-rules.json` (every newly discovered shortcut gets added
-there — the system learns, not just the agent).
+**Mechanically secured:** `core/helpers/mechanism-guard.cjs` (PreToolUse on
+Bash/Monitor and Write/Edit) blocks shortcuts for which a documented path exists, and
+demands either the process or an explicit `# MECHANISM-OK: <reason>` marker. Two sources
+of rules: the instance's own (`.claude/rules/mechanism-rules.json` — rig, doc paths) and
+the TOOL's own: a tool that is meant to be driven through its MCP server ships
+`mechanism-rules.json` at its root naming its internals (IPC files, running its server by
+hand, GUI drivers), and the guard finds it whether the tool arrives as a clone in
+`.mcp.json` or as an enabled plugin. Every newly discovered shortcut gets added where it
+belongs — the system learns, not just the agent. (Incident 2026-10-11: a defined path was
+not available on a second machine; the session built its own client and wrote straight
+into the tool's IPC file instead of reporting. Not available = report, THIRD CASE above.)
+**A request to another machine names the defined path AS IT EXISTS THERE** — read how that
+machine runs the tool (clone or plugin, version) before writing the steps; a step that only
+works on the sender's setup turns the receiver's next move into improvisation.
 
 ## One System, Not Local Workarounds (HARD, operator order 2026-10-08)
 
