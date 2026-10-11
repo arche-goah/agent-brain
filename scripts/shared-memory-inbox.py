@@ -23,6 +23,10 @@ entry is dropped when its sender is one of them; it is kept when its addressees 
 of them or everyone (`alle`, `all`, `everyone`, …), or when it names no addressee at all.
 Unset: nothing is filtered and the header says so — a filter that silently guesses
 "who am I" would drop exactly the entry it guessed wrong about.
+A device id in SELF that the repo's `parties.json` knows also answers to `person:<p>` and
+`os:<o>` — the audience categories (scripts/shared-memory-parties.py, operator order
+2026-10-11): a request to `os:windows` reaches every Windows device, `person:<p>` every
+device of that person.
 
 Never summarises: every printed text is the author's own heading or description, cut at a
 sentence boundary. Read-only. Exit 0 always (an advisory reader, not a gate).
@@ -48,16 +52,14 @@ _idx = import_module("shared-memory-index")
 first_sentence = _idx.first_sentence
 read_entry = _idx.read_entry
 REPO_DEFAULT = _idx.REPO_DEFAULT
+# Audience categories (`os:<os>`, `person:<p>`) and the tokenizer that keeps them whole.
+_parties = import_module("shared-memory-parties")
 
 # Spellings of "everyone" measured in the repo's headings and `audience` fields.
-EVERYONE = {"alle", "all", "everyone", "alle-collaborator"}
+EVERYONE = _parties.EVERYONE
 SKIP_FILES = {"INDEX.md", "LOG.md", "README.md", "PEOPLE.md"}
-# Measured 2026-09-25 across all LOGs: `## <date> · <von> — <title>` is one of FOUR live
-# shapes. Half of the September headings use an ASCII hyphen (`## <date> <von> - <title>`),
-# older ones carry a time note and no title (`## <date> (Abend) — <von>`). A pattern for
-# the first shape alone dropped every message of the second — silently.
-HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[·—-]\s*)?"
-                     r"([\w-]+)(?:\s+[—-]\s+(.*?))?\s*$")
+# The four live heading shapes — see the note at shared-memory-parties.HEADING.
+HEADING = _parties.HEADING
 TEXT_CAP = 200
 
 
@@ -106,7 +108,7 @@ def snapshot(repo: Path, ref: str) -> dict[str, str]:
 
 
 def tokens(s: str) -> set[str]:
-    return {t for t in re.split(r"[^\w-]+", s.lower()) if t}
+    return _parties.tokens(s)
 
 
 def party(sender_id: str) -> set[str]:
@@ -120,10 +122,7 @@ def party(sender_id: str) -> set[str]:
     return out
 
 
-def addressees(title: str) -> str | None:
-    """`AN x + y: title` -> `x + y`; None when the heading names nobody."""
-    m = re.match(r"^(?:AN|An|an|TO|To)\s+([^:]+):", title)
-    return m.group(1) if m else None
+addressees = _parties.addressees
 
 
 def for_us(sender: str, to: str | None, me: set[str]) -> bool:
@@ -310,7 +309,9 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             continue
         # `status: open` marks a request only when it is addressed to us ALONE — a status
         # broadcast to three parties carries the same field (Windows check on #193, finding 2).
-        only_us = not (tokens(e["audience"]) - me)
+        # A category (`os:…`, `person:…`) reaches several devices, so it is never "us alone".
+        aud = tokens(e["audience"])
+        only_us = not (aud - me) and not any(_parties.is_category(t) for t in aud)
         if not p.stem.lower().startswith(prefixes) and not (status == "open" and only_us):
             continue
         when = e["date"] or git(repo, "log", "-1", "--format=%as", ref, "--", rel).strip()
@@ -392,6 +393,10 @@ def main() -> int:
     # Windows writes the ANSI codepage and dies on the first unencodable character.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     me = set() if args.senders else tokens(args.me.replace(",", " "))
+    # A known device in SELF also answers to its person and OS (`person:<p>`, `os:<o>`),
+    # read from the repo's parties.json at the ref this run reads. No file: SELF as given.
+    if me:
+        me = _parties.expand_self(me, _parties.load(args.repo, args.b))
 
     if args.open:
         if not me:
