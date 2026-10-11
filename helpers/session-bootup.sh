@@ -345,6 +345,12 @@ if [[ -f "$HERE/../scripts/clock-skew.py" ]]; then
   "$PY" "$HERE/../scripts/clock-skew.py" 2>/dev/null
 fi
 
+# Orphans: processes an earlier session left running (no parent, >1 h, from a session
+# folder). Reports only, never ends one; wanted services are declared by the instance.
+if [[ -f "$HERE/../scripts/orphan-check.py" ]]; then
+  "$PY" "$HERE/../scripts/orphan-check.py" --repo "$R" 2>/dev/null
+fi
+
 # Settings JSON valid?
 for f in .claude/settings.json .claude/settings.local.json; do
   # settings.local.json is optional — "not present" is not an error. Without this
