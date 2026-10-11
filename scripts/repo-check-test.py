@@ -56,6 +56,9 @@ with tempfile.TemporaryDirectory() as td:
 
     planted = {
         "workflow": lambda r: shutil.rmtree(r / ".github" / "workflows"),
+        "job_timeout": lambda r: (r / ".github" / "workflows" / "checks.yml").write_text(
+            (r / ".github" / "workflows" / "checks.yml").read_text(encoding="utf-8")
+            .replace("    timeout-minutes: 10\n", ""), encoding="utf-8"),
         "pre_push": lambda r: (r / ".githooks" / "pre-push").unlink(),
         "pr_template": lambda r: (r / ".github" / "pull_request_template.md").unlink(),
         "gitattributes": lambda r: (r / ".gitattributes").write_text("* text=auto\n"),

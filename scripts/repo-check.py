@@ -37,9 +37,9 @@ KINDS = ("core", "suite", "project", "brain", "shared-memory")
 # need neither the pre-push fence nor a PR template — and they carry instance data by
 # design, so the leak scan is not their baseline either.
 NEEDS = {
-    "core":          {"workflow", "leak_scan", "pr_flow", "protection"},
-    "suite":         {"workflow", "leak_scan", "pr_flow", "pre_push", "protection"},
-    "project":       {"workflow", "leak_scan", "pr_flow", "pre_push", "pr_template",
+    "core":          {"workflow", "leak_scan", "pr_flow", "protection"},   # public: its minutes are free
+    "suite":         {"workflow", "job_timeout", "leak_scan", "pr_flow", "pre_push", "protection"},
+    "project":       {"workflow", "job_timeout", "leak_scan", "pr_flow", "pre_push", "pr_template",
                       "gitattributes", "protection"},
     "brain":         {"gitattributes"},
     "shared-memory": {"gitattributes"},
@@ -70,6 +70,29 @@ def git(repo: Path, *args: str) -> str:
 def workflows(repo: Path) -> list[Path]:
     d = repo / ".github" / "workflows"
     return sorted(p for p in d.glob("*.y*ml")) if d.is_dir() else []
+
+
+def jobs_without_timeout(text: str) -> list[str]:
+    """Names of the jobs in one workflow file that carry no `timeout-minutes` (a job without one runs to
+    GitHub's 6 h default, and a timed-out job still bills every minute in a private repo). Reads the
+    `jobs:` block by indentation — job names sit one level under it — so it needs no YAML parser."""
+    m = re.search(r"^jobs\s*:\s*$", text, re.M)
+    if not m:
+        return []
+    body = text[m.end():].splitlines()
+    names, blocks = [], {}
+    cur = None
+    for line in body:
+        if line.strip() and not line.startswith(" "):
+            break                                  # the next top-level key ends the jobs block
+        jm = re.match(r"^( {2}|\t)([\w.-]+)\s*:\s*$", line)
+        if jm:
+            cur = jm.group(2)
+            names.append(cur)
+            blocks[cur] = []
+        elif cur is not None:
+            blocks[cur].append(line)
+    return [n for n in names if not any(re.match(r"^\s+timeout-minutes\s*:", l) for l in blocks[n])]
 
 
 def github_slug(repo: Path) -> str:
@@ -128,6 +151,9 @@ def check(repo: Path, kind: str, slug: str, offline: bool) -> list[tuple[str, st
     wf = workflows(repo)
     texts = {p: p.read_text(encoding="utf-8", errors="replace") for p in wf}
     put("workflow", bool(wf), ", ".join(p.name for p in wf) or "no .github/workflows/*.yml")
+    bare = [f"{p.name}:{j}" for p, t in texts.items() for j in jobs_without_timeout(t)]
+    put("job_timeout", not bare, "every job has timeout-minutes" if not bare
+        else "no timeout-minutes (runs to the 6 h default, billed): " + ", ".join(bare))
     put("leak_scan", any("leak-scan" in t for t in texts.values()),
         "a workflow runs leak-scan.py" if any("leak-scan" in t for t in texts.values())
         else "no workflow runs leak-scan.py")
