@@ -66,7 +66,28 @@ printf '%s\n' '{"patterns": [
   "\\b(liegt|liegen) (jetzt |damit |weiterhin )?(bei|beim) (dir|euch|ihm|ihr|kollegen|dem kollegen|der workstation|workstation)\\b",
   "\\bwenn du (willst|magst|moechtest|möchtest),? (dann )?(mache|baue|nehme|schreibe) ich\\b",
   "\\bzwei wege\\b[^.\\n]{0,120}\\boder\\b[^.\\n]{0,120}[.!]"
+], "announce_patterns": [
+  "\\b(mache|baue|pruefe|prüfe|schreibe|lese|teste|starte) (ich )?(das |es |sie |ihn |den |die )?(jetzt|gleich|als n(ä|ae)chstes)\\b",
+  "\\b(arbeite|mache) (ich )?weiter\\b",
+  "\\bweiter (laut|mit|am|an der)\\b",
+  "\\bals n(ä|ae)chstes (kommt|mache|baue|pruefe|prüfe|gehe)\\b"
 ]}' > "$DE/.claude/rules/stop-patterns.json"
+
+# Like run_case, with JSONL records of the running turn BEFORE the final text ($5).
+run_case_turn() { # $1 name, $2 final text (JSON string), $3 expect, $4 cwd, $5 records
+  local tr="$T/$1.jsonl"
+  printf '%s\n' '{"message":{"role":"user","content":"frage"}}' > "$tr"
+  printf '%s\n' "$5" >> "$tr"
+  printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$2" >> "$tr"
+  local out
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' \
+          "$(native "$tr")" "$(native "$4")" | node "$G" 2>&1)"
+  if [ "$3" = "block" ]; then
+    case "$out" in *"STOPPEN-GATE"*) ok "$1 blocks";; *) bad "$1 did not block: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 allows" || bad "$1 blocked wrongly: '$out'"
+  fi
+}
 
 # German via the instance file
 run_case de-soll-ich '"Bericht fertig. Soll ich das jetzt umsetzen?"' block "$DE"
@@ -109,6 +130,31 @@ run_case gate-stated \
   '"Release bleibt gesperrt. Pin auf v1.3.25, Bedingung ist deine Unterschrift."' allow "$DE"
 run_case report-plain \
   '"brain-check: 22 Fixtures gruen, 0 ohne Wirkungsnachweis, 0 ohne Ausloeser."' allow "$DE"
+
+# --- the ANNOUNCEMENT shape: the turn ends on "doing it now" and nothing runs ---------
+# Measured 2026-10-11, the German sentences are verbatim from that session.
+BG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_bg1","name":"Bash","input":{"command":"x","run_in_background":true}}]}}'
+END='{"message":{"role":"user","content":"<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>toolu_bg1</tool-use-id>\n<status>completed</status>\n</task-notification>"}}'
+MON='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_m1","name":"Monitor","input":{"command":"x"}}]}}'
+WAKE='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_w1","name":"ScheduleWakeup","input":{"delaySeconds":600}}]}}'
+FG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_f1","name":"Bash","input":{"command":"x"}}]}}'
+run_case en-announce '"Tests are green. Next, I will write the Windows request."' block "$CWD"
+run_case en-announce-now '"The fixture passes. Doing that now."' block "$CWD"
+run_case de-announce-mache '"Gate gefixt. Mache das jetzt, dann die Windows-Pruefbitte."' block "$DE"
+run_case de-announce-weiter '"Beide Hinweise geklaert. Arbeite weiter am Handoff."' block "$DE"
+run_case de-announce-laut '"Bis dahin weiter laut Handoff: Gate-Test und Guard-Check."' block "$DE"
+run_case de-announce-no-pack '"Beide Hinweise geklaert. Arbeite weiter am Handoff."' allow "$CWD"
+# A foreground tool call earlier in the turn does not make the closing announcement true.
+run_case_turn de-announce-after-fg '"Gemessen. Als Naechstes kommt die Memory-Sicherung."' block "$DE" "$FG"
+# NEGATIVE: a running waiter is what the announcement waits for.
+run_case_turn waiter-bash-live '"CI laeuft. Mache das jetzt, sobald sie gruen ist."' allow "$DE" "$BG"
+run_case_turn waiter-monitor-live '"Watcher scharf. Next, I will read the answer."' allow "$CWD" "$MON"
+run_case_turn waiter-wakeup '"Wakeup gesetzt. Arbeite weiter in zehn Minuten."' allow "$DE" "$WAKE"
+# ...but a waiter that already reported its end waits for nothing.
+run_case_turn waiter-ended '"CI gruen. Arbeite weiter am Handoff."' block "$DE" "$BG
+$END"
+run_case de-done '"Erledigt und committet, Test gruen."' allow "$DE"
+run_case announce-quoted '"Die Regel trifft Saetze wie \"arbeite weiter am Handoff\" am Zugende."' allow "$DE"
 
 run_case cs-mam '"Hotovo. Mám to teď nasadit?"' block "$T/cwd-cs"
 run_case cs-clean '"Hotovo a ověřeno, výsledek je v logu."' allow "$T/cwd-cs"
