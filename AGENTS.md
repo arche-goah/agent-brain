@@ -154,6 +154,30 @@ session start.
      strand. A fix merged after it waits for the next round cut, bridged by a named
      workaround. A hotfix only for real damage from waiting, and then on the code
      owner's word.
+   - **A beta names its platform scope — in the state table, not in the tag** (operator
+     decision 2026-10-11, worked out by both instances; corrected after measuring
+     `release-preflight.sh`, which demands manifest `version` == tag and a CHANGELOG section
+     of that name). The tag stays `vX.Y.Z`: **beta is a channel, not a name** — the
+     `<plugin>-next` marketplace entry pins the tag, the stable entry later pins the SAME
+     tag, no new tag and no new commit. A scope suffix in the tag would force the manifest
+     to carry it too, and promoting to stable on the same commit would then need a different
+     commit. So the scope is visible where it can change without code: (1) the check state
+     of every tag as one **generated table** — result lines per check (system, machine, date,
+     commit, ok) live in the repo, a script renders `PLATFORMS`-style rows with a macOS and a
+     Windows column (`beta <machine> <date> <commit>`, `unchecked`, `not needed — <reason>`,
+     `red`), never hand-kept; heavy-metal's `platform_check.py` + `platforms_table.py` are
+     the pattern; (2) the GitHub release of the tag is marked pre-release and its title and
+     text carry the scope ("beta — checked on macOS, Windows unchecked") and the rendered
+     table; (3) the `<plugin>-next` entry's description says the same. It applies to every
+     beta; a pure T0 beta counts as both systems once both CI runs are green. A tag is never
+     re-cut when the other platform catches up — only the result lines change (a data
+     change, its author merges at once). **Stable** = the stable marketplace pin moves to
+     the tag once every row is green on BOTH systems and no regression was reported; a
+     platform nobody can check stays `unchecked` and blocks stable, unless the code owner
+     records it as `not needed — <reason>` — no silent tick. Stable pin and release stay
+     the code owner's decision. Pull requests are collected: merging goes on continuously,
+     but a beta is cut per round (one per work strand, above) and a pin follows a release,
+     never a tag cut — no tag per PR, no pin per tag.
    - **Test class on every CHANGELOG entry** `(test: T0|T1|T2)`: **T0** needs no test
      phase (docs, comments, fixtures, CI, removal); **T1** a macOS + Windows check
      suffices (runs only when called); **T2** needs runtime (runs by itself in every

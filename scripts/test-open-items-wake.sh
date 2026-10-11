@@ -19,6 +19,7 @@ native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else pri
 
 mkdir -p "$T/core/scripts" "$T/root/.claude/rules" "$T/repo"
 cp "$SRC" "$T/core/scripts/open-items.py"
+cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
 printf '%s\n' 'print("shared-memory open requests to this instance: 0")' > "$T/core/scripts/shared-memory-inbox.py"
 
 # A real git repo standing in for the shared memory, read at origin/main like the real one.

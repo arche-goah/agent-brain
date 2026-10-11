@@ -18,6 +18,7 @@ bad() { echo "  FAIL $1"; fail=1; }
 
 mkdir -p "$T/core/scripts" "$T/repo/.git" "$T/root"
 cp "$SRC" "$T/core/scripts/open-items.py"
+cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
 # The fake inbox prints whatever $T/inbox.txt holds.
 printf '%s\n' 'import os, sys' \
   'sys.stdout.write(open(os.path.join(os.path.dirname(__file__), "..", "..", "inbox.txt"), encoding="utf-8").read())' \
@@ -131,6 +132,15 @@ has "[PR|ai]" "$(line 'owned#4 ' "$out")" && ok "review asked of us = our move" 
 has "waiting on peer: owned is peer's to merge, our own PR waits on that" "$(line 'owned#8 ' "$out")" && ok "own PR in an owner's repo = waiting on the owner" || bad "own PR, owner: $(line 'owned#8 ' "$out")"
 has "[PR|ai]" "$(line 'owned#9 ' "$out")" && ok "owner reviewed our PR after the last commit = our move" || bad "own PR, review: $(line 'owned#9 ' "$out")"
 has "waiting on peer" "$(line 'owned#10 ' "$out")" && ok "we answered the owner's review = waiting again" || bad "own PR, answered: $(line 'owned#10 ' "$out")"
+# One login, two instances (measured 2026-10-11): the sibling's PR in an owner's repo was read
+# as our own and filed as "waiting on the owner". With the instance key it is ours to look at.
+KWS="$("$PY" -c 'import sys; sys.path.insert(0, sys.argv[1]); import instance_key as k; print(k.key_for("ws"))' "$(native "$T/core/scripts")")"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr owned 11 me 2026-10-06 "fix <!-- instance-key: $KWS -->" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-sib.json"
+sib=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF=mac OWNER=me run s1)
+has "[PR|ai]" "$(line 'owned#11 ' "$sib")" && ok "sibling instance's PR = our move, not the owner's" || bad "sibling: $(line 'owned#11 ' "$sib")"
+sib0=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF= OWNER=me run s0)
+has "waiting on peer" "$(line 'owned#11 ' "$sib0")" && ok "negative control: without an own key the old reading (waiting) holds" || bad "no key: $(line 'owned#11 ' "$sib0")"
 has "waiting until $NOW: alpha measurement" "$(line 'core#5 ' "$out")" && ok "dated wait is quiet" || bad "dated wait: $(line 'core#5 ' "$out")"
 has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder" || bad "past wait: $(line 'core#6 ' "$out")"
 has "2026-09-28 suite-x#1" "$out" && ok "shown date = opened date" || bad "date: $out"
