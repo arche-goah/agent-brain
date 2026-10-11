@@ -23,6 +23,10 @@ entry is dropped when its sender is one of them; it is kept when its addressees 
 of them or everyone (`alle`, `all`, `everyone`, …), or when it names no addressee at all.
 Unset: nothing is filtered and the header says so — a filter that silently guesses
 "who am I" would drop exactly the entry it guessed wrong about.
+A device id in SELF that the repo's `parties.json` knows also answers to `person:<p>` and
+`os:<o>` — the audience categories (scripts/shared-memory-parties.py, operator order
+2026-10-11): a request to `os:windows` reaches every Windows device, `person:<p>` every
+device of that person.
 
 Never summarises: every printed text is the author's own heading or description, cut at a
 sentence boundary. Read-only. Exit 0 always (an advisory reader, not a gate).
@@ -48,16 +52,14 @@ _idx = import_module("shared-memory-index")
 first_sentence = _idx.first_sentence
 read_entry = _idx.read_entry
 REPO_DEFAULT = _idx.REPO_DEFAULT
+# Audience categories (`os:<os>`, `person:<p>`) and the tokenizer that keeps them whole.
+_parties = import_module("shared-memory-parties")
 
 # Spellings of "everyone" measured in the repo's headings and `audience` fields.
-EVERYONE = {"alle", "all", "everyone", "alle-collaborator"}
+EVERYONE = _parties.EVERYONE
 SKIP_FILES = {"INDEX.md", "LOG.md", "README.md", "PEOPLE.md"}
-# Measured 2026-09-25 across all LOGs: `## <date> · <von> — <title>` is one of FOUR live
-# shapes. Half of the September headings use an ASCII hyphen (`## <date> <von> - <title>`),
-# older ones carry a time note and no title (`## <date> (Abend) — <von>`). A pattern for
-# the first shape alone dropped every message of the second — silently.
-HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[·—-]\s*)?"
-                     r"([\w-]+)(?:\s+[—-]\s+(.*?))?\s*$")
+# The four live heading shapes — see the note at shared-memory-parties.HEADING.
+HEADING = _parties.HEADING
 TEXT_CAP = 200
 
 
@@ -67,8 +69,46 @@ def git(repo: Path, *args: str) -> str:
     return r.stdout if r.returncode == 0 else ""
 
 
+def snapshot(repo: Path, ref: str) -> dict[str, str]:
+    """Every .md file at `ref` as {path: text}, read with TWO git processes in total.
+
+    WHY: the open-request scan read each candidate, each file naming a request and each LOG
+    with its own `git show` — one process per file, so the session start grew with the
+    repo (measured on a shared-memory repo with several parties: 264 processes, ~5 s of a
+    30 s hook budget, and the budget ran out). `ls-tree` lists the blobs once, one
+    `cat-file --batch` streams them all. The text is decoded as the per-file reads did:
+    UTF-8 with replacement, universal newlines (what `text=True` did to `git show`)."""
+    ls = subprocess.run(["git", "-C", str(repo), "ls-tree", "-r", "-z", ref], capture_output=True)
+    if ls.returncode != 0:
+        return {}
+    blobs = []
+    for entry in ls.stdout.split(b"\0"):
+        meta, _, path = entry.partition(b"\t")
+        parts = meta.split()
+        if len(parts) == 3 and parts[1] == b"blob" and path.endswith(b".md"):
+            blobs.append((parts[2], path.decode("utf-8", "replace")))
+    if not blobs:
+        return {}
+    cat = subprocess.run(["git", "-C", str(repo), "cat-file", "--batch"],
+                         input=b"".join(sha + b"\n" for sha, _ in blobs), capture_output=True)
+    if cat.returncode != 0:
+        return {}
+    out, data, pos = {}, cat.stdout, 0
+    for _, path in blobs:
+        nl = data.index(b"\n", pos)
+        header = data[pos:nl].split()
+        if len(header) != 3:            # "<sha> missing" — never for a blob ls-tree just listed
+            pos = nl + 1
+            continue
+        size = int(header[2])
+        raw = data[nl + 1:nl + 1 + size]
+        pos = nl + 1 + size + 1         # content plus the trailing newline of the batch format
+        out[path] = raw.decode("utf-8", "replace").replace("\r\n", "\n").replace("\r", "\n")
+    return out
+
+
 def tokens(s: str) -> set[str]:
-    return {t for t in re.split(r"[^\w-]+", s.lower()) if t}
+    return _parties.tokens(s)
 
 
 def party(sender_id: str) -> set[str]:
@@ -82,10 +122,7 @@ def party(sender_id: str) -> set[str]:
     return out
 
 
-def addressees(title: str) -> str | None:
-    """`AN x + y: title` -> `x + y`; None when the heading names nobody."""
-    m = re.match(r"^(?:AN|An|an|TO|To)\s+([^:]+):", title)
-    return m.group(1) if m else None
+addressees = _parties.addressees
 
 
 def for_us(sender: str, to: str | None, me: set[str]) -> bool:
@@ -250,17 +287,18 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
         floor = (date.fromisoformat(today) - timedelta(days=days)).isoformat()
     except ValueError:
         floor = ""
-    # Prefilter in ONE git call: only files whose frontmatter names us at all. Reading every
-    # blob of the repo one `git show` at a time took ~10 s (measured 2026-10-05, ~600 files).
-    rx = r"^[[:space:]]+audience:.*(" + "|".join(re.escape(t) for t in sorted(me)) + r")"
-    cand = {h.split(":", 1)[1] for h in
-            git(repo, "grep", "-l", "-i", "-E", rx, ref, "--", "*.md").splitlines() if ":" in h}
+    # All .md texts in two git processes (see snapshot); every search below runs on them in
+    # memory. Prefilter: only files with an `audience` line that names us at all.
+    texts = snapshot(repo, ref)
+    rx = re.compile(r"^[^\S\n]+audience:.*(" + "|".join(re.escape(t) for t in sorted(me)) + r")",
+                    re.I | re.M)
+    cand = {rel for rel, t in texts.items() if rx.search(t)}
     items = []
     for rel in sorted(cand):
         p = repo / rel
         if "/" not in rel or p.name in SKIP_FILES:
             continue
-        blob = git(repo, "show", f"{ref}:{rel}")
+        blob = texts[rel]
         e = read_entry(p, repo, text=blob)
         if not e["audience"] or not (tokens(e["audience"]) & me) or tokens(e["von"]) & me:
             continue
@@ -271,7 +309,9 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             continue
         # `status: open` marks a request only when it is addressed to us ALONE — a status
         # broadcast to three parties carries the same field (Windows check on #193, finding 2).
-        only_us = not (tokens(e["audience"]) - me)
+        # A category (`os:…`, `person:…`) reaches several devices, so it is never "us alone".
+        aud = tokens(e["audience"])
+        only_us = not (aud - me) and not any(_parties.is_category(t) for t in aud)
         if not p.stem.lower().startswith(prefixes) and not (status == "open" and only_us):
             continue
         when = e["date"] or git(repo, "log", "-1", "--format=%as", ref, "--", rel).strip()
@@ -279,11 +319,9 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             continue
         stem = p.stem
         answered = False
-        for hit in git(repo, "grep", "-l", "-F", stem, ref, "--", "*.md").splitlines():
-            hrel = hit.split(":", 1)[1] if ":" in hit else hit
-            if hrel == rel or hrel.endswith("INDEX.md"):
+        for hrel, htext in texts.items():
+            if stem not in htext or hrel == rel or hrel.endswith("INDEX.md"):
                 continue
-            htext = git(repo, "show", f"{ref}:{hrel}")
             if hrel.endswith("LOG.md"):
                 answered = any(tokens(s) & me and stem in body
                                for s, body in log_section_senders(htext))
@@ -299,10 +337,10 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
         if not answered:
             text = first_sentence(e["desc"] or e["name"], TEXT_CAP)
             items.append((when or "?", e["topic"], e["von"] or "?", f"{text} ({rel})"))
-    return items + log_only_items(repo, ref, me, floor)
+    return items + log_only_items(texts, me, floor)
 
 
-def log_only_items(repo: Path, ref: str, me: set[str], floor: str) -> list[tuple]:
+def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tuple]:
     """Messages to us BY NAME that live only as a LOG heading (no fact file named in the body).
 
     The shape of the 2026-10-04 incident and of finding 3 of the Windows check on #193: once
@@ -312,11 +350,11 @@ def log_only_items(repo: Path, ref: str, me: set[str], floor: str) -> list[tuple
     it listed until we next write to that party.
     """
     heads: list[tuple] = []  # (date, topic, sender, to_tokens, title, body)
-    for rel in git(repo, "ls-tree", "-r", "--name-only", ref).splitlines():
+    for rel, text in texts.items():
         if not (rel.endswith("/LOG.md") or rel == "LOG.md"):
             continue
         topic = rel.split("/")[0] if "/" in rel else "root"
-        for i, (sender, body) in enumerate(log_section_senders(git(repo, "show", f"{ref}:{rel}"))):
+        for i, (sender, body) in enumerate(log_section_senders(text)):
             m = HEADING.match(body.splitlines()[0]) if body else None
             if not m:
                 continue
@@ -355,6 +393,10 @@ def main() -> int:
     # Windows writes the ANSI codepage and dies on the first unencodable character.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     me = set() if args.senders else tokens(args.me.replace(",", " "))
+    # A known device in SELF also answers to its person and OS (`person:<p>`, `os:<o>`),
+    # read from the repo's parties.json at the ref this run reads. No file: SELF as given.
+    if me:
+        me = _parties.expand_self(me, _parties.load(args.repo, args.b))
 
     if args.open:
         if not me:

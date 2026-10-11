@@ -132,6 +132,16 @@ with tempfile.TemporaryDirectory() as d:
             check("~2.6M tokens per run" in got[0] and "(2026-09-18)" in got[0], "the line names why and the measured price")
             check(got[0] in head, "the line reaches the report head verbatim")
 
+    # a register in the pre-rename folder kohaerenz-scan/ counts as the last register
+    k = Path(d) / "legacy-register"
+    write(k / "docs/research/kohaerenz-scan/register-2026-09-18.md", "# register\n")
+    write(k / ".claude/rules/feedback.md",
+          "".join(f"- rule {i} (operator 2026-10-0{i + 1})\n" for i in range(5)) + "- older (2026-09-10)\n")
+    _, summ, _, _, _ = run(k, "--skip-machine")
+    got = deep(summ, "coherence-scan")
+    check(bool(got) and "(2026-09-18)" in got[0] and "5 new dated" in got[0],
+          "a register under kohaerenz-scan/ is found: counts only the 5 newer lines, names its date")
+
     # memory index near the limit
     m = Path(d) / "mem"
     write(m / "_mem/MEMORY.md", "- x\n" * 185)

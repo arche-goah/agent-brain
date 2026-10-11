@@ -87,4 +87,32 @@ OUT4="$(SHARED_MEMORY_SELF=me-mac SHARED_MEMORY_REPO="$CLONE" SHARED_MEMORY_STAT
 grep -q 'nothing new since last start' <<<"$OUT4" && pass "clean start prints a line" || fail "clean start silent: $OUT4"
 grep -q 'OPEN-ONE' <<<"$OUT4" && pass "clean start still lists the open request" || fail "open request lost on clean start"
 
+# Cost does not grow with the repo: one git process per file made the session start outgrow
+# its hook budget (measured: 264 processes, ~5 s). A `git` shim on PATH counts the calls of
+# one --open run, then 40 more entries are added and the count must stay the same.
+REAL_GIT="$(command -v git)"
+mkdir -p "$TMP/bin"
+printf '#!/usr/bin/env bash\necho x >> "%s"\nexec "%s" "$@"\n' "$TMP/git-calls" "$REAL_GIT" > "$TMP/bin/git"
+chmod +x "$TMP/bin/git"
+count_calls() {
+  : > "$TMP/git-calls"
+  PATH="$TMP/bin:$PATH" SHARED_MEMORY_SELF=me-mac "$PY" "$INBOX" --open --repo "$WORK" --to HEAD >/dev/null 2>&1
+  wc -l < "$TMP/git-calls" | tr -d ' '
+}
+BEFORE=$(count_calls)
+for i in $(seq 1 20); do
+  entry "core/result-more-$i.md" sam-laptop me-mac "MORE-$i report to me"
+  entry "core/request-more-$i.md" me-mac sam-laptop "MORE-$i my own request"
+done
+git -C "$WORK" add -A
+git -C "$WORK" commit -qm more
+AFTER=$(count_calls)
+if [[ "$BEFORE" == 0 ]]; then
+  echo "SKIP: git shim not used on this platform (process count not measured)"
+elif [[ "$AFTER" -le "$BEFORE" ]]; then
+  pass "git processes do not grow with the repo ($BEFORE -> $AFTER for +40 files)"
+else
+  fail "git processes grow with the repo: $BEFORE -> $AFTER for +40 files"
+fi
+
 exit $FAIL
