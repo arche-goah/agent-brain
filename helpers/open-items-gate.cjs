@@ -192,7 +192,11 @@ function parseBlock(text) {
       // agent falls back to "LOG <date> <sender>", which covered every entry of that sender
       // that day (measured 2026-10-09, Windows instance).
       const shown = /^LOG /.test(base) && m[6] ? `${ref}: ${m[6].slice(0, 40)}` : `${m[2]}-${m[3]}-${m[4]} ${base}`;
-      items.push({ cls: m[1], ref: shown, key: ref,
+      // `full` is the id --classify STORES for a LOG-only entry (ref + 40 chars of its text, trailing blank cut);
+      // the gate looked only under the short `key`, which --classify refuses — so a class given the sanctioned way
+      // was never found (measured 2026-10-11, Windows instance: three requests stayed '?' after --classify).
+      const full = /^LOG /.test(base) && m[6] ? `${ref}: ${m[6].slice(0, 40).trimEnd()}` : null;
+      items.push({ cls: m[1], ref: shown, key: ref, full,
         base, date: [m[2], m[3], m[4]], words: topicWords(/\.md$/.test(base) ? base : (m[6] || '')), repeat });
     } else if ((m = /^- \[wake\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — /.exec(l))) {
       // A parked domain whose pausing party moved again: an operator item, named by the
@@ -269,7 +273,7 @@ function judge(input) {
   try { store = JSON.parse(fs.readFileSync(path.join(cwd, '.claude-state', 'open-items-class.json'), 'utf8')); } catch (e) { /* none yet */ }
   for (const it of blk.items) {
     if (it.cls !== '?') continue;
-    const own = store[it.key] || (it.base && store[it.base]);
+    const own = (it.full && store[it.full]) || store[it.key] || (it.base && store[it.base]);
     if (own && (own.class === 'ai' || own.class === 'human')) it.cls = own.class;
   }
   const unclassified = blk.items.filter((it) => it.cls === '?');
