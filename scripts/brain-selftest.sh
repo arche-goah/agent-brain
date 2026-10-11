@@ -301,7 +301,10 @@ if [ -f core/scripts/effect-check.sh ]; then
   # The core's own presence-vs-effect check (output style, statusline, hook targets,
   # memory transport, rule pointers). It is the closest thing to "does this brain do
   # what it claims" and belongs in a self-test rather than in someone's memory.
-  if ec=$(bash core/scripts/effect-check.sh 2>&1); then
+  # The session-start mode reaches effect-check as EFFECT_CHECK_BG (its transcript scan, E6, is
+  # the slow part and is then served from a time-keyed cache); a hand run keeps measuring.
+  ec_bg=0; [ -n "$BG_FLAG" ] && ec_bg=1
+  if ec=$(EFFECT_CHECK_BG=$ec_bg bash core/scripts/effect-check.sh 2>&1); then
     echo "  ok  effect-check (presence vs effect)"
   else
     echo "  !!  effect-check reports:"

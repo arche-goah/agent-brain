@@ -23,7 +23,7 @@ What it does (read-only on the brain; writes only into --out):
      reports each key appeared; seen twice and not settled = decision-due (if the scan
      finds it again, that is the third time).
   2. MACHINE CHECKS — effect-check, invariant-check (instance register), brain-selftest,
-     local-machinery, commitments; each turned into findings of the scan's finding shape.
+     local-machinery, commitments, fork-drift (network); each turned into findings of the scan's finding shape.
      A script absent from this core checkout is reported ONCE as "not available".
   3. DEEP CHECK — one deterministic line per triggered deep check, with why and the price
      measured on the proving brain. It never starts anything.
@@ -184,7 +184,9 @@ def deep_checks(repo, rc, orders, mem_dir):
     def say(check, reason):
         why.setdefault(check, []).append(reason)
 
-    regs = sorted((repo / "docs/research/coherence-scan").glob("register-*.md"), key=report_date)
+    # kohaerenz-scan/ = the folder before the LA1 rename (2026-08-14); registers written there still count
+    regs = sorted([p for d in ("coherence-scan", "kohaerenz-scan")
+                   for p in (repo / "docs/research" / d).glob("register-*.md")], key=report_date)
     last_reg = report_date(regs[-1]) if regs else None
     rule_files = [repo / "CLAUDE.md"] + sorted((repo / ".claude/rules").glob("*.md"))
     n = dated_lines_after([p for p in rule_files if p.is_file()], last_reg)
@@ -285,6 +287,15 @@ def map_lines(name, rc, out, loud_prefix, summary_prefix, sev):
     return res
 
 
+def map_fork_drift(rc, out):
+    """fork-drift.py exits 2 when GitHub could not be read — an unchecked source, said as such,
+    not a crash of the brain's machinery and never 'no drift'."""
+    if rc == 2:
+        line = next((l.strip() for l in out.splitlines() if l.startswith("fork drift summary:")), out.strip()[:200])
+        return [F("P2", f"fork-drift: {line}")]
+    return map_lines("fork-drift", rc, out, "!!", "fork drift summary:", "P2")
+
+
 def machine(repo, core, last_date, today):
     py = sys.executable or "python3"
     bash = shutil.which("bash") or "bash"
@@ -302,6 +313,8 @@ def machine(repo, core, last_date, today):
         "brain-selftest.sh": ([bash, str(S / "brain-selftest.sh"), str(repo)], 420),
         "local-machinery.py": ([py, str(S / "local-machinery.py"), "--repo", str(repo)], 120),
         "commitments.py": ([py, str(S / "commitments.py"), "--repo", str(repo), "--days", str(days)], 120),
+        # Network (GitHub): here and not at the session start, whose budget is seconds.
+        "fork-drift.py": ([py, str(S / "fork-drift.py"), "--brain", str(repo)], 300),
     }
     missing = [n for n in jobs if not (S / n).is_file()]
     findings = []
@@ -309,7 +322,7 @@ def machine(repo, core, last_date, today):
         findings.append(F("INFO", "no invariant register at docs/maintenance/invariants.md — section not executed"))
         jobs.pop("invariant-check.py")
     run_jobs = {n: j for n, j in jobs.items() if n not in missing}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
         futs = {n: ex.submit(run, cmd, repo, t) for n, (cmd, t) in run_jobs.items()}
         out = {n: f.result() for n, f in futs.items()}
     if "effect-check.sh" in out:
@@ -322,6 +335,8 @@ def machine(repo, core, last_date, today):
         findings += map_lines("local-machinery", *out["local-machinery.py"], "!!", "local machinery summary:", "P1")
     if "commitments.py" in out:
         findings += map_lines("commitments", *out["commitments.py"], "loose commitment", "commitments summary:", "P2")
+    if "fork-drift.py" in out:
+        findings += map_fork_drift(*out["fork-drift.py"])
     if missing:
         findings.append(F("INFO", f"not available in this core checkout: {', '.join(missing)}"))
     return findings, sorted(run_jobs)

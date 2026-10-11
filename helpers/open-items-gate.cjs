@@ -200,6 +200,11 @@ function parseBlock(text) {
       // same words ("session", "close"), so words would let one sentence pass for all.
       items.push({ cls: m[1], ref: `${m[2]}-${m[3]}-${m[4]} ${m[5]}`, key: m[5], base: m[5],
         date: [m[2], m[3], m[4]], words: [], repeat });
+    } else if ((m = /^- \[wake\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — /.exec(l))) {
+      // A parked domain whose pausing party moved again: an operator item, named by the
+      // domain or the date like a request.
+      items.push({ cls: m[1], ref: `parked domain ${m[5]}`, key: `wake:${m[5]}`, base: `wake:${m[5]}`,
+        date: [m[2], m[3], m[4]], words: topicWords(m[5]), repeat });
     } else if (/^- \[parked\]/.test(l)) parked = true;
     else if (/^- nothing open/.test(l)) nothing = true;
   }
