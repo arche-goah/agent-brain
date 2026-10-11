@@ -112,15 +112,46 @@ function turn(tp) {
  * without a shell. The pid must be digits only. On Windows the lock holds an MSYS pid that
  * node's process.kill cannot see, so Git's `ps -p` answers there (measured 2026-10-09:
  * exit 0 for a live watcher, 1 for a dead pid).
+ *
+ * That measurement ran from Git Bash, where `ps` is on PATH. The hook itself does not run
+ * there (measured 2026-10-11, Windows instance): the PATH Claude Code hands to its children
+ * holds `Git\cmd`, not `Git\usr\bin`, so `ps` was ENOENT, every lock read as dead, and the
+ * gate blocked every push of a waiting fact file with the watcher alive. So Git's own
+ * `ps.exe` is found next to the `git.exe` on PATH (`<Git>\cmd\git.exe` -> `<Git>\usr\bin`).
+ * Returns true / false, or null when no `ps` can be run at all — unknown, not dead.
  */
+function psCandidates() {
+  const out = ['ps'];
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (dir && fs.existsSync(path.join(dir, 'git.exe'))) out.push(path.resolve(dir, '..', 'usr', 'bin', 'ps.exe'));
+  }
+  if (process.env.ProgramFiles) out.push(path.join(process.env.ProgramFiles, 'Git', 'usr', 'bin', 'ps.exe'));
+  return [...new Set(out)];
+}
+
 function alive(lock) {
-  try {
-    const pid = fs.readFileSync(lock, 'utf8').trim();
-    if (!/^\d+$/.test(pid)) return false;
-    if (process.platform !== 'win32') { process.kill(Number(pid), 0); return true; }
-    execFileSync('ps', ['-p', pid], { stdio: 'ignore', timeout: 5000 });
-    return true;
-  } catch (e) { return false; }
+  let pid;
+  try { pid = fs.readFileSync(lock, 'utf8').trim(); } catch (e) { return false; }
+  if (!/^\d+$/.test(pid)) return false;
+  if (process.platform !== 'win32') {
+    try { process.kill(Number(pid), 0); return true; } catch (e) { return false; }
+  }
+  for (const ps of psCandidates()) {
+    try {
+      execFileSync(ps, ['-p', pid], { stdio: 'ignore', timeout: 5000 });
+      return true;
+    } catch (e) {
+      if (e.code === 'ENOENT') continue;
+      return false;
+    }
+  }
+  return null;
+}
+
+/** Any lock alive -> true; none alive but one unknown -> null (cannot measure); else false. */
+function anyAlive(locks) {
+  const r = locks.map(alive);
+  return r.includes(true) ? true : (r.includes(null) ? null : false);
 }
 
 function stateDirs(root) {
@@ -129,16 +160,17 @@ function stateDirs(root) {
   return { sm: [process.env.SHARED_MEMORY_LOCK_DIR || base, collab], collab };
 }
 
+// A liveness that cannot be measured counts as watched: the gate fails open (header).
 function smWatched(root) {
-  return stateDirs(root).sm.some((d) => alive(path.join(d, 'shared-memory-watch.pid')));
+  return anyAlive(stateDirs(root).sm.map((d) => path.join(d, 'shared-memory-watch.pid'))) !== false;
 }
 
 function prWatched(root, calls) {
   if (calls.some((c) => (c.name === 'Monitor' || c.bg) && PR_WATCH.test(c.cmd))) return true;
   const dir = stateDirs(root).collab;
-  try {
-    return fs.readdirSync(dir).some((f) => /^repo-activity.*\.pid$/.test(f) && alive(path.join(dir, f)));
-  } catch (e) { return false; }
+  let locks;
+  try { locks = fs.readdirSync(dir).filter((f) => /^repo-activity.*\.pid$/.test(f)).map((f) => path.join(dir, f)); } catch (e) { return false; }
+  return anyAlive(locks) !== false;
 }
 
 function tokens(s) { return new Set(String(s || '').toLowerCase().split(/[\s,;]+/).filter(Boolean)); }

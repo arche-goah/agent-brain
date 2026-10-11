@@ -589,3 +589,27 @@ note:      Measured 2026-10-11 in CI (windows-latest): `changelog-assemble-test.
 with a different PATH order was green — the runner, not the machine, showed it. The round trip
 moved into `release-preflight-test.sh`; the pattern then has zero hits in scripts, helpers and
 skills.
+
+## OS-15 — a hook calls an MSYS tool by bare name, and the hook's PATH has no Git\usr\bin
+
+shape: C
+
+invariant: A helper that runs as a Claude Code hook never starts a Git-Bash tool (`ps`, `kill`,
+`sed`, …) by bare name. On Windows the PATH Claude Code hands its children holds `Git\cmd`, not
+`Git\usr\bin`, so the tool is ENOENT in the hook while every check run from Git Bash (where
+`/usr/bin` is on PATH) finds it. Resolve it from the Git install (`<dir of git.exe>\..\usr\bin`),
+or do the work in node; and an unrunnable tool is "unknown", never a silent "no".
+pattern:   (execFileSync|execSync|spawnSync|execFile|spawn)\(\s*['"](ps|kill|sed|awk|grep|tail|head|find|xargs|cut|tr|sort|uniq|wc|date|stat|ls|cat)\b
+paths:     --include=*.cjs helpers
+known:
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-10-11 on the Windows instance: `watch-gate.cjs` ran `execFileSync('ps', …)`
+to test a watcher's MSYS pid; inside the hook it threw ENOENT, so every lock read as dead and the
+gate blocked a push of a waiting fact file with the shared-memory watcher alive. Its earlier
+measurement (exit 0 live, 1 dead, 2026-10-09) had run from Git Bash — the gate was checked where
+the defect does not live, the form this register calls C. Reproduced: `node` started directly or
+via `Git\usr\bin\bash.exe` gets ENOENT, via `Git\bin\bash.exe` (which adds `usr\bin` to PATH)
+finds it. Fixed in the same pass (`psCandidates()`); fixture `test-watch-gate.sh` runs the gate
+with exactly the hook's PATH (node's dir + `Git\cmd`). Zero hits after the fix.
