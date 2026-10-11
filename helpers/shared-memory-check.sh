@@ -26,8 +26,10 @@ REPO="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
 # that still has the old file gets it copied once, so no find is replayed or lost.
 STATE_FILE="${SHARED_MEMORY_STATE:-}"
 if [[ -z "$STATE_FILE" ]]; then
-  STATE_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude-state/shared-memory-state.json"
-  _legacy="${CLAUDE_PROJECT_DIR:-.}/config/shared-memory-state.json"
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/project-dir.sh"
+  _proj="$(resolve_project_dir "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")"
+  STATE_FILE="$_proj/.claude-state/shared-memory-state.json"
+  _legacy="$_proj/config/shared-memory-state.json"
   if [[ ! -f "$STATE_FILE" && -f "$_legacy" ]]; then
     mkdir -p "$(dirname "$STATE_FILE")" && cp "$_legacy" "$STATE_FILE"
   fi

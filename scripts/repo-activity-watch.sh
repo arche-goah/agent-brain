@@ -33,7 +33,8 @@ PY=python3
 SELF="${GH_SELF_LOGIN:--}"
 ONLY="${GH_ONLY_LOGINS:--}"
 [[ -n "$ONLY" ]] || ONLY="-"
-STATE_DIR="${REPO_ACTIVITY_STATE_DIR:-${CLAUDE_PROJECT_DIR:-.}/.claude-state}"
+. "$HERE/project-dir.sh"   # state path must not depend on the caller's cwd
+STATE_DIR="${REPO_ACTIVITY_STATE_DIR:-$(resolve_project_dir "$HERE")/.claude-state}"
 TAG="${REPO_ACTIVITY_TAG:+-$REPO_ACTIVITY_TAG}"
 CURSOR="$STATE_DIR/repo-activity${TAG}-cursor.txt"
 LOCK="$STATE_DIR/repo-activity${TAG}.pid"

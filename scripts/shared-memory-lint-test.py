@@ -199,6 +199,13 @@ def main() -> int:
             bad(f"16 LOG handling wrong: {c}")
         (repo / "ops" / "LOG.md").write_text("short\n", encoding="utf-8")
         check("17 small LOG is silent", run(repo), "limits", 0)
+        # 17b. a dated LOG heading no shape recognises is a finding (reader drops nothing, the
+        #      writer hears it); a session after the sender is a KNOWN shape. Negative control
+        #      is the pre-fix pattern: it would call the second heading unknown too.
+        (repo / "ops" / "LOG.md").write_text(
+            "## 2026-10-11 · sam-laptop (docs-session) — AN kim-win: known shape\nBody.\n"
+            "\n## 2026-10-11 sam-laptop: [colon form nobody supports]\nBody.\n", encoding="utf-8")
+        check("17b unknown LOG heading flagged, qualified sender accepted", run(repo), "audience", 1)
         (repo / "ops" / "LOG.md").unlink()
 
         # 18. archive: a NAMED SUCCESSOR supersedes an entry -> candidate. Age plays no

@@ -115,9 +115,12 @@ def is_category(token: str) -> bool:
 # to). Measured 2026-09-25 across all LOGs: `## <date> · <von> — <title>` is one of FOUR live
 # shapes. Half of the September headings use an ASCII hyphen (`## <date> <von> - <title>`),
 # older ones carry a time note and no title (`## <date> (Abend) — <von>`). A pattern for
-# the first shape alone dropped every message of the second — silently.
+# the first shape alone dropped every message of the second — silently. A FIFTH shape names
+# the session after the sender: `## <date> · <von> (<session>) — AN <x>: <title>` (measured
+# 2026-10-11: the reply of a second session of one machine id matched nothing and was
+# dropped, even unfiltered — the requester waited for an answer that had already arrived).
 HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[·—-]\s*)?"
-                     r"([\w-]+)(?:\s+[—-]\s+(.*?))?\s*$")
+                     r"([\w-]+)(?:\s*\([^)]*\))?(?:\s+[—-]\s+(.*?))?\s*$")
 
 
 def addressees(title: str) -> str | None:
