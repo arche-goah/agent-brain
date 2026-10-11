@@ -5,7 +5,7 @@
 # Level 1 (helpers/shared-memory-check.sh, called from session-bootup) covers session
 # boundaries; this one covers everything in between.
 #
-#   scripts/shared-memory-watch.sh watch [interval_s]   # default 300
+#   scripts/shared-memory-watch.sh watch [interval_s]   # default 60 (see below)
 #   scripts/shared-memory-watch.sh status
 #   scripts/shared-memory-watch.sh disarm
 #
@@ -38,18 +38,21 @@ set -uo pipefail
 REPO="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
 # Runtime cursor in .claude-state/ (same move as helpers/shared-memory-check.sh, which
 # shares it); an old config/ cursor is copied once so nothing is replayed or lost.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# The state path must not depend on the caller's cwd (scripts/project-dir.sh says why).
+. "$HERE/project-dir.sh"
+PROJECT_DIR="$(resolve_project_dir "$HERE")"
 STATE_FILE="${SHARED_MEMORY_STATE:-}"
 if [[ -z "$STATE_FILE" ]]; then
-  STATE_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude-state/shared-memory-state.json"
-  _legacy="${CLAUDE_PROJECT_DIR:-.}/config/shared-memory-state.json"
+  STATE_FILE="$PROJECT_DIR/.claude-state/shared-memory-state.json"
+  _legacy="$PROJECT_DIR/config/shared-memory-state.json"
   if [[ ! -f "$STATE_FILE" && -f "$_legacy" ]]; then
     mkdir -p "$(dirname "$STATE_FILE")" && cp "$_legacy" "$STATE_FILE"
   fi
 fi
-LOCK_DIR="${SHARED_MEMORY_LOCK_DIR:-${CLAUDE_PROJECT_DIR:-.}/.claude-state}"
+LOCK_DIR="${SHARED_MEMORY_LOCK_DIR:-$PROJECT_DIR/.claude-state}"
 LOCK="$LOCK_DIR/shared-memory-watch.pid"
 mkdir -p "$LOCK_DIR"
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 
@@ -125,7 +128,7 @@ case "${1:-status}" in
     trap 'if [[ "$(cat "$LOCK" 2>/dev/null)" == "$$" ]]; then rm -f "$LOCK"; fi' EXIT
     [[ -d "$REPO/.git" ]] || { echo "ERROR: shared-memory repo not cloned: $REPO"; exit 1; }
 
-    INTERVAL="${2:-300}"
+    INTERVAL="${2:-60}"
 
     # A watcher OUTLIVES ITS SESSION unless it checks (measured 2026-09-30 on macOS): the
     # process that had started it was gone, and the orphan kept polling and holding the

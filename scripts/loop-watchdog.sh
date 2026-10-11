@@ -12,8 +12,10 @@
 #   Check:      scripts/loop-watchdog.sh check     (launchd, every 5 min)
 # State: .claude-state/loop-watchdog.state (not in git).
 set -euo pipefail
-cd "$(dirname "$0")/.."
-STATE_DIR=".claude-state"
+# The state lives in the BRAIN, not in the directory above this script: mounted as the
+# submodule `core/`, that parent is core/ itself (measured 2026-10-11 for the watchers).
+. "$(cd "$(dirname "$0")" && pwd)/project-dir.sh"
+STATE_DIR="$(resolve_project_dir "$(cd "$(dirname "$0")" && pwd)")/.claude-state"
 STATE="$STATE_DIR/loop-watchdog.state"
 mkdir -p "$STATE_DIR"
 

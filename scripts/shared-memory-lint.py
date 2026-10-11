@@ -390,6 +390,19 @@ def audience_findings(f: dict, where: str, audience: str, what: str, parties: di
                                      "(`one-machine: <why>`)"})
 
 
+def log_unknown_headings(f: dict, rel: str, text: str) -> None:
+    """A dated LOG heading no known shape recognises. The inbox reader prints such a line as
+    UNPARSED instead of dropping it; the WRITER hears it here, at the lint. Needs no
+    parties.json — the shape is a property of the log, not of the audience."""
+    for line in text.splitlines():
+        um = re.match(r"^##\s+(\d{4}-\d{2}-\d{2})\b", line)
+        if um and um.group(1) >= AUDIENCE_SINCE and not _parties.HEADING.match(line):
+            f["audience"].append({"where": f"{rel}: {line[:80]}",
+                                  "issue": "LOG heading matches no known shape",
+                                  "fix": "`## <date> · <von> — AN <to>: <title>` "
+                                         "(a `(<session>)` after <von> is allowed)"})
+
+
 def log_audience(f: dict, rel: str, text: str, parties: dict, known: set[str]) -> None:
     """9. for LOG headings dated AUDIENCE_SINCE or later: the addressees after `AN`."""
     lines = text.splitlines()
@@ -493,9 +506,10 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
     for log in sorted(repo.rglob(LOG_NAME)):
         if ".git" in log.relative_to(repo).parts:
             continue
+        log_text = log.read_text(encoding="utf-8", errors="replace")
+        log_unknown_headings(f, log.relative_to(repo).as_posix(), log_text)
         if parties:
-            log_audience(f, log.relative_to(repo).as_posix(),
-                         log.read_text(encoding="utf-8", errors="replace"), parties, known)
+            log_audience(f, log.relative_to(repo).as_posix(), log_text, parties, known)
         size = log.stat().st_size
         if size > LOG_ROTATE_BYTES:
             f["limits"].append({"issue": "LOG over rotation size",

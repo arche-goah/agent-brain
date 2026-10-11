@@ -16,11 +16,12 @@
 # Local checks (all must pass, the summary states its own coverage):
 #   1. plugin.json version == tag version
 #   2. CHANGELOG.md carries a "## X.Y.Z" section
+#   2b. no fragment left in changelog.d/ and nothing under "## Unreleased"
 #   3. the tag does not exist yet, locally or on origin (race guard)
 #   4. HEAD is the pushed origin/main state (a release tags shared history,
 #      never a local variant)
 #   5. no competing open release PR (needs gh; skipped LOUDLY when unavailable)
-# CI mode runs 1+2 against the checked-out tag — a broken tag turns red on the
+# CI mode runs 1, 2 and 2b against the checked-out tag — a broken tag turns red on the
 # repo page instead of failing silently on the next consumer update.
 #
 # Env: RELEASE_PREFLIGHT_ROOT overrides the repo root (tests).
@@ -63,6 +64,16 @@ if grep -qE "^## ${VER//./\\.}( |$)" "$ROOT/CHANGELOG.md" 2>/dev/null; then
   ok "CHANGELOG.md carries a '## $VER' section"
 else
   bad "CHANGELOG.md has no '## $VER' section"
+fi
+
+# 2b. nothing left behind: a fragment in changelog.d/ or an entry still under ## Unreleased
+# would ship in the tag without being in its section (changelog.d/README.md)
+left="$(find "$ROOT/changelog.d" -maxdepth 1 -name '*.md' ! -iname 'readme.md' 2>/dev/null | wc -l | tr -d ' ')"
+unrel="$(awk '/^## Unreleased/{u=1;next} /^## /{u=0} u && NF' "$ROOT/CHANGELOG.md" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$left" = "0" ] && [ "$unrel" = "0" ]; then
+  ok "no CHANGELOG fragment left behind (changelog.d/ empty, ## Unreleased empty)"
+else
+  bad "$left fragment(s) in changelog.d/ and $unrel line(s) under ## Unreleased not in a version section — run: python3 scripts/changelog-assemble.py $VER"
 fi
 
 if [ "$MODE" = "local" ]; then

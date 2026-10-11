@@ -98,6 +98,12 @@ if checks:
         # add a second one — reporting it separately turns one finding into four.
         if "hook-coverage" in text and "hook-coverage" not in path:
             continue
+        # A file that reads stop-checks.json itself knows the indirection: the finding's own
+        # remedy ("unless it knows stop-checks.json") is already applied, so it is not blind.
+        # Measured 2026-10-11 on a Windows instance: hook-coverage.py (which does read the
+        # config, registered_via_dispatcher) was reported blind every session.
+        if "stop-checks" in text:
+            continue
         if "settings.json" in text and re.search(r'hooks?\b', text):
             hits = [n for n in registered if n and n in text]
             if hits:
