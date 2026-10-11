@@ -369,6 +369,17 @@ branch → CI green → PR → merge → **tag → marketplace pin**. Only the p
 visible to the other side — "I pushed" never means "something changed for you"; the
 receiver stays in control.
 
+**Beta changes in a suite ride a channel, not a clone** (operator decision 2026-10-11:
+"no local extra branches that then drift in every instance"). A suite's plugin is run
+from the marketplace; an unreleased change is checked on the **same artifact on every
+machine**: the suite's `<plugin>-next` entry (same shape as `brain-core-next`, created
+when the first beta tag exists — no pin in advance), the stable plugin disabled meanwhile
+(same skill names), then back. Tag form, platform scope and `releases/<tag>.md` follow
+AGENTS.md #12. A live check by cloning the suite, switching a branch, pointing an `.mcp.json`
+at it or starting the server by hand is NOT a way to test a change — it multiplies the
+setups the owner must reason about; if the channel does not exist yet, that is reported
+as the missing step, and the check waits.
+
 **Ownership of a suite** (operator decisions 2026-08-31 to 2026-09-13). Every tool
 domain has one lead maintainer, assigned by the core's code owner; a new domain is
 unassigned until then — ownership is never derived. In their suite the lead decides

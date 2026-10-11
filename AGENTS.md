@@ -154,6 +154,22 @@ session start.
      strand. A fix merged after it waits for the next round cut, bridged by a named
      workaround. A hotfix only for real damage from waiting, and then on the code
      owner's word.
+   - **A beta names its platform scope** (operator decision 2026-10-11, worked out by
+     both instances): the tag is `vX.Y.Z-beta.N.<scope>` with `<scope>` one of `win`,
+     `mac`, `winmac` — where it was **cut and measured**. The scope is a prerelease
+     identifier, not build metadata (`+mac` does not count in SemVer precedence and is
+     awkward in tags and URLs). It applies to **every** beta; a pure T0 beta (docs,
+     fixtures) is `winmac` only when both CI runs are green, otherwise the platform it was
+     cut on. **A tag is never re-cut when the other platform catches up:** the check state
+     lives in `releases/<tag>.md` (one row per check, a macOS and a Windows column, each
+     `beta <machine> <date> <commit>` or `unchecked`), created by the tag cut and extended
+     by whoever checks — a data change, its author merges at once. **Stable** is the same
+     commit under `vX.Y.Z`, set once every row is green on BOTH systems and no regression
+     was reported — no new code, no further beta tag; the stable tag and the marketplace
+     pin stay the code owner's decision. A platform nobody can check leaves its column
+     `unchecked` and blocks stable — no substitute tick. Pull requests are collected: merging
+     goes on continuously, but a beta tag is cut per round (one per work strand, above) and
+     a pin follows a release, never a tag cut — no tag per PR, no pin per tag.
    - **Test class on every CHANGELOG entry** `(test: T0|T1|T2)`: **T0** needs no test
      phase (docs, comments, fixtures, CI, removal); **T1** a macOS + Windows check
      suffices (runs only when called); **T2** needs runtime (runs by itself in every
