@@ -59,6 +59,7 @@ Stdlib only; runs under `python3` or `python` (Windows python.org installer).
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -406,7 +407,19 @@ def lookup(store, it):
     acknowledged). LOG entries match by their full id only."""
     if it.get("file"):
         return store.get(it["id"]) or store.get(it["ref"].rsplit("/", 1)[-1])
-    return store.get(it["id"])
+    entry = store.get(it["id"])
+    # The id of a LOG entry is not unique for good: two entries of one sender and day that start
+    # alike get " (n)" by inbox order, and when the first one closes the second takes over the
+    # bare id — and with it the first one's class (measured 2026-10-11, Windows instance, on the
+    # merged #287). A class therefore remembers the text it was given for; another text under the
+    # same id is unclassified. Classes stored before this carry no text and keep working.
+    if entry and entry.get("text") and entry["text"] != fingerprint(it.get("text", "")):
+        return None
+    return entry
+
+
+def fingerprint(text):
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
 
 PR_ID = re.compile(r"^[\w.-]+#\d+$")
@@ -439,8 +452,11 @@ def classify(args, cls_file, repo):
                     print(f"   {n}")
                 return 2
         specs.append((key, cls, why))
+    texts = {i["id"]: i.get("text", "") for i in (req or []) if not i.get("file")}
     for key, cls, why in specs:
         store[key] = {"class": cls, "why": why.strip() or "agent's judgement", "at": today}
+        if key in texts:
+            store[key]["text"] = fingerprint(texts[key])
         print(f"classified: {key} = {cls}")
     if not save_json(cls_file, store):
         print(f"!! class NOT saved ({cls_file})")
