@@ -80,6 +80,14 @@ case("n/a with a reason satisfies the OS", rc, 0, out)
 rc, out = run(doc(ALL + [row("c1", "lin1", "Linux", "2026-10-11", "fail — odd")], req="macOS, Windows"))
 case("an OS that is not required still keeps a fail open", rc, 1, out, "RED")
 
+VER = [r.replace("| macOS |", "| macOS 26.0 |").replace("| Windows |", "| Windows 11 Pro 23H2 (10.0.22631) |") for r in ALL]
+rc, out = run(doc(VER))
+case("os field with a version still counts as its family (negative control: was read as no pass)", rc, 0, out)
+
+rc, out = run(doc([r.replace("| Windows |", "| Windows 11 Pro 23H2 (10.0.22631) |") for r in ALL[:2]]
+                  + [r.replace("| Windows |", "| WindowsServer |") for r in ALL[2:]]))
+case("a different system whose name merely starts with the family does not count", rc, 1, out, "LACKS c2")
+
 rc, out = run(doc([r.replace("macOS", "macos") for r in ALL]))
 case("OS compare is case-insensitive", rc, 0, out)
 

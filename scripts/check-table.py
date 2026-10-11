@@ -164,6 +164,13 @@ def kind(result: str) -> tuple[str, str]:
     return "other", text
 
 
+def same_family(os_field: str, required: str) -> bool:
+    """The os field names system AND version (`Windows 11 Pro 23H2 (10.0.22631)`, `macOS 26.0`); required_os names
+    the family. They match when the field is the family or starts with it as a whole word, case-insensitive."""
+    f, r = os_field.strip().lower(), required.strip().lower()
+    return bool(r) and (f == r or re.match(re.escape(r) + r"(?![\w])", f) is not None)
+
+
 def owner_open_questions(owner: str) -> list[str]:
     """Table rows of the owner section (question | answer) whose answer is empty or a placeholder such as `open`.
     A section that exists is not a word that was given: every row must carry an answer."""
@@ -195,7 +202,7 @@ def verdict(model: dict) -> tuple[bool, list[str]]:
         for o in required:
             ok = False
             for r in per_dev:
-                if r["os"].strip().lower() != o.lower():
+                if not same_family(r["os"], o):
                     continue
                 k, why = kind(r["result"])
                 if k == "pass" or (k == "na" and why):
