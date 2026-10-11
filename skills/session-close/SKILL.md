@@ -104,6 +104,10 @@ then an explicit release follows.
    protocol: nothing is edited, merged or dropped, and today's entries never move. The
    fold line (or a `WARN session-log fold:` refusal) appears in the output; the fold file
    goes into the close commit with the log. Unset = no fold. The hook path never folds.
+   **It also acknowledges the session audit:** what this session's start listed as a past
+   session ended without this skill, or as a failed session start
+   (`scripts/session-audit.py`, relayed in the first reply), is cleared — that is the
+   one place a finding leaves the list besides `session-audit.py --ack` by hand.
    ```bash
    node "$CLAUDE_PROJECT_DIR"/core/helpers/memory-sync.cjs export
    ```
