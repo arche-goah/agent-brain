@@ -236,26 +236,45 @@ printf '%s\n' 'shared-memory open requests to this instance: 2' \
   '  - 2026-10-08 [core] peer-b: AN inst-a: xxxxxxxxxxxxxxxxxxxxxxxxxxxx tail words (LOG)' \
   '  - 2026-10-08 [core] peer-b: AN inst-a: another one (LOG)' > "$T/inbox.txt"
 out=$(run l0)
+# the id as the hint prints it (a cut text carries its content tag, see below) must classify as printed
+cut=$(grep -ao "\-\-classify 'core/LOG 2026-10-08 peer-b: AN inst-a: xxxx[^=]*" <<<"$out" | head -1 | sed "s/--classify '//")
 "$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
-  --classify 'core/LOG 2026-10-08 peer-b: AN inst-a: xxxxxxxxxxxxxxxxxxxxxxxxxxxx =ai:cut at a blank' \
+  --classify "$cut=ai:cut at a blank" \
   --classify 'core/LOG 2026-10-08 peer-b: AN inst-a: another one=ai:second flag' >/dev/null 2>&1
 out=$(run l)
 [ "$(grep -c '\[request|ai\] 2026-10-08' <<<"$out")" = 2 ] \
   && ok "id cut at a blank and a second --classify flag both stick" || bad "classify lost: $out"
 
 # Measured 2026-10-11, Windows instance: two LOG entries of one sender on one day with the same first
-# 40 chars got ONE id — one class covered both. The second gets " (2)", each classifies alone.
+# 40 chars got ONE id — one class covered both. A rank suffix " (n)" told them apart only while both
+# were open: once the first closed, the second got the bare id and inherited the first's class. The
+# id now carries a tag of the entry's own full text, so it does not depend on the other entry.
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
   '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (LOG)' \
   '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
 out=$(run m0)
-has "--classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst- (2)=" "$out" \
-  && ok "colliding LOG ids are told apart" || bad "colliding ids: $out"
+ids=$(grep -ao "\-\-classify 'core/LOG 2026-10-09 peer-b: [^=]*" <<<"$out" | sed "s/--classify '//")
+[ "$(printf '%s\n' "$ids" | grep -ac .)" = 2 ] && [ "$(printf '%s\n' "$ids" | sort -u | grep -ac .)" = 2 ] \
+  && case "$ids" in *'inst- ('[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]')'*) true;; *) false;; esac \
+  && ok "colliding LOG ids are told apart by a tag of their own text" || bad "colliding ids: $out"
+first=$(printf '%s\n' "$ids" | head -1)
 "$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
-  --classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-=ai:first only' >/dev/null 2>&1
+  --classify "$first=ai:first only" >/dev/null 2>&1
 out=$(run m)
 [ "$(grep -c '\[request|ai\] 2026-10-09' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-09' <<<"$out")" = 1 ] \
   && ok "a class on the first colliding id leaves the second open" || bad "collision class spread: $out"
+# the first is answered and leaves the inbox: the second keeps ITS id and stays unclassified
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
+out=$(run m2)
+[ "$(grep -c '\[request|?\] 2026-10-09' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|ai\] 2026-10-09' <<<"$out")" = 0 ] \
+  && ok "when the first closes, the second inherits no class" || bad "class inherited after the first closed: $out"
+# NEGATIVE: a short LOG text (not cut) keeps the bare id — no tag, old stored classes hold
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a: short one (LOG)' > "$T/inbox.txt"
+out=$(run m3)
+has "--classify 'core/LOG 2026-10-09 peer-b: AN inst-a: short one=" "$out" \
+  && ok "an uncut LOG text keeps its bare id" || bad "short id changed: $out"
 
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"

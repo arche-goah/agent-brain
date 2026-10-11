@@ -59,6 +59,7 @@ Stdlib only; runs under `python3` or `python` (Windows python.org installer).
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -122,6 +123,18 @@ def requests(repo):
     if not m:
         return None
     expected = int(m.group(1))
+
+    def log_id(ref, text):
+        """date + sender + the first 40 chars; when the words were cut, a 5-hex tag of the WHOLE text.
+        Two entries of one sender on one day can share their first 40 chars (measured 2026-10-11:
+        "AN a, b, c-" twice). A rank suffix " (n)" told them apart only while both were open: once
+        the first closed, the second got the bare id and inherited the first's class and counter
+        (measured the same day on the Windows instance). The tag depends on the entry alone."""
+        head = text[:40].rstrip()
+        if len(text.rstrip()) <= 40:
+            return f"{ref}: {head}"
+        tag = hashlib.sha1(text.strip().encode("utf-8")).hexdigest()[:5]
+        return f"{ref}: {head} ({tag})"
     items, unparsed = [], 0
     for line in out.splitlines():
         if not line.lstrip().startswith("- "):
@@ -134,17 +147,9 @@ def requests(repo):
         # A LOG-only request has no file; its identity is date + sender + its own words.
         ref = rel if rel != "LOG" else f"{topic}/LOG {date} {von.strip()}"
         # rstrip: --classify strips its key, so an id cut right after a blank could never be matched.
-        items.append({"id": ref if rel != "LOG" else f"{ref}: {text[:40].rstrip()}", "kind": "request",
+        items.append({"id": ref if rel != "LOG" else log_id(ref, text), "kind": "request",
                       "date": date, "who": von.strip(), "text": text[:100], "scope": topic,
                       "ref": ref, "file": rel if rel != "LOG" else ""})
-    # Two LOG entries of one sender on one day can share their first 40 chars (measured
-    # 2026-10-11: "AN a, b, c-" twice) — one id would carry one class and one counter for both.
-    # The later one in inbox order gets " (n)"; the first keeps its old id, so stored classes hold.
-    seen = {}
-    for it in items:
-        n = seen[it["id"]] = seen.get(it["id"], 0) + 1
-        if n > 1:
-            it["id"] = f"{it['id']} ({n})"
     # An inbox line this parser cannot read must not vanish — the exact defect this list
     # exists to stop. It reports itself as a failed read instead.
     return None if unparsed or len(items) != expected else items
