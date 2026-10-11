@@ -35,7 +35,7 @@ root: ../..
 <!-- Shipped with the core: two classes every brain has, because every brain has sessions.
      Keep them; their tool is in the core. -->
 
-## S-1 — every session ends with the close, or the next start says it did not
+## SES-1 — every session ends with the close, or the next start says it did not
 invariant: a session that ends without the session-close skill (hard kill, crash, closed window) is reported at the next session start until the operator has seen it — a killed session never disappears silently
 check:     python3 core/scripts/session-audit.py --dry-run --all
 mechanizable: tool — scripts/session-audit.py reads the transcripts (they survive any kill); open-items lists each finding as an operator item, the open-items gate forces it into the first reply, the close acks it
@@ -44,7 +44,7 @@ repeat:    no
 status:    closed
 note:      2026-10-11 operator order ("loud, for everyone"); baseline on the proving brain since 2026-09-01: 8 interactive sessions ended without the close.
 
-## S-2 — a failed session start is reported at the next start
+## SES-2 — a failed session start is reported at the next start
 invariant: a session start whose bootup hook was cancelled (timeout) or ended incomplete is reported at the next session start — the start report that never arrived does not vanish
 check:     python3 core/scripts/session-audit.py --dry-run --all
 mechanizable: tool — scripts/session-audit.py reads the SessionStart hook record of every past transcript (hook_cancelled, or output without the bootup's closing marker)
