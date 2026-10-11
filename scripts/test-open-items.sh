@@ -199,6 +199,19 @@ out=$(run k)
 [ "$(grep -c '\[request|ai\] 2026-10-07' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-07' <<<"$out")" = 1 ] \
   && ok "full LOG id classifies exactly its own entry" || bad "LOG id class spread or missed: $out"
 
+# Measured 2026-10-11, Windows instance: an id cut after 40 chars right behind a blank could not be
+# classified (the key is stripped, the id was not), and of several --classify flags only the last counted.
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-08 [core] peer-b: AN inst-a: xxxxxxxxxxxxxxxxxxxxxxxxxxxx tail words (LOG)' \
+  '  - 2026-10-08 [core] peer-b: AN inst-a: another one (LOG)' > "$T/inbox.txt"
+out=$(run l0)
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
+  --classify 'core/LOG 2026-10-08 peer-b: AN inst-a: xxxxxxxxxxxxxxxxxxxxxxxxxxxx =ai:cut at a blank' \
+  --classify 'core/LOG 2026-10-08 peer-b: AN inst-a: another one=ai:second flag' >/dev/null 2>&1
+out=$(run l)
+[ "$(grep -c '\[request|ai\] 2026-10-08' <<<"$out")" = 2 ] \
+  && ok "id cut at a blank and a second --classify flag both stick" || bad "classify lost: $out"
+
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
