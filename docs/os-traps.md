@@ -480,12 +480,14 @@ invariant: A shell loop over a list of PATHS reads the list line by line
 form splits on every space, and Windows hands out profile paths with spaces as the normal
 case (`C:\Users\First Last`), while macOS and Linux home paths almost never carry one. The
 loop then walks path FRAGMENTS, and whatever it checks there reports the real directory as
-missing — a wrong verdict, not an error.
-pattern:   for [A-Za-z_]+ in \$[A-Za-z_]+;
+missing — a wrong verdict, not an error. The same holds for ANY unquoted expansion of a
+variable that holds paths or path globs (`ls $globs`), not only the `for` form: a glob list
+is kept as an array (`a=("$R"/x/*.md)`), never as a space-joined string.
+pattern:   for [A-Za-z_]+ in \$[A-Za-z_]+;|disable=SC2086
 paths:     --include=*.sh scripts helpers
-known:     scripts/brain-update.sh=2 scripts/handover-gate.sh=1 scripts/suite-install.sh=1
-instances: 1
-repeat:    no
+known:     scripts/brain-update.sh=2 scripts/handover-gate.sh=2 scripts/suite-install.sh=1
+instances: 2
+repeat:    yes
 status:    closed
 note:      Measured 2026-09-30 on a Windows instance whose profile name has a space, core
 v1.3.41. `onboarding-verify.sh` check 3 reported `suites=MISSING (<First> grandma3 )` for an
@@ -501,6 +503,15 @@ NAMES, which carry no space. `handover-gate.sh` loops over suite PATHS from
 split happens before the tilde is expanded) — an absolute path with a space there would
 reproduce this trap. A new site is read with one question: can an element of this list be a
 path?
+Second instance 2026-10-12 (PR #309 at 7669f5d, measured on the Windows instance): the
+session start's deep-check relay held the artifact globs as one string and expanded it with
+`ls $arts` under a `shellcheck disable=SC2086`. Under a brain path with a space the glob
+split, nothing matched, and a check already followed was still voiced; the smoke fixture
+built its instance under a path without a space and stayed green on all three CI systems.
+The pattern widens to the SC2086 disable, because shellcheck flags every other unquoted
+expansion and a deliberate split must carry that marker; `handover-gate.sh`'s second count
+is the disable in front of `suite-check.py $suites`, the same `~`-written path list as its
+loop. The fixture instance now carries a space.
 
 ## OS-11 — a session count by process name counts every CLI call as a session
 

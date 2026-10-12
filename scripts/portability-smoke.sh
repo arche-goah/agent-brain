@@ -72,6 +72,33 @@ rm -f "$TD/docs/research/brain-scan/scan-old.md" "$TD/docs/maintenance/scheduled
 out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
 case "$out" in *"!! brain-scan DUE: no report yet"*) ok "no report: due line";; *) bad "no report: no due line";; esac
 
+# 1c) a deep-check suggestion is a snapshot from scan time: an artifact of the named check
+#     dated on or after the report means it was followed -> silent (measured 2026-10-12:
+#     the register written the same day, after the report, was voiced for three days).
+#     Older artifact -> voiced (negative control); no artifact -> voiced. Dates come from
+#     the file names, so the report here carries one. The legacy register folder counts.
+#     The instance path carries a space (os-traps OS-10): measured 2026-10-12 on a Windows
+#     profile path, the artifact glob split there and the followed check was still voiced.
+TS="$T/stale instance"
+mkdir -p "$TS/docs/research/brain-scan" "$TS/docs/research/coherence-scan" "$TS/docs/research/memory-dream"
+printf -- '- [P1] x\ndeep check suggested: coherence-scan — 52 new dated rule lines since the last coherence register (2026-09-18) — measured price: ~2.6M\ndeep check suggested: memory-dream — index near its limit — measured price: ~0.6M\n' \
+  > "$TS/docs/research/brain-scan/scan-2026-10-09.md"
+: > "$TS/docs/research/coherence-scan/register-2026-10-09.md"
+: > "$TS/docs/research/memory-dream/report-2026-09-18.md"
+out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"deep check suggested: coherence-scan"*) bad "coherence-scan suggestion voiced although a register of the report's date exists";; *) ok "deep check followed (register dated like the report): silent";; esac
+case "$out" in *"!! deep check suggested: memory-dream"*) ok "memory-dream suggestion with only an older report stays voiced";; *) bad "memory-dream suggestion swallowed although its last report is older";; esac
+mv "$TS/docs/research/coherence-scan/register-2026-10-09.md" "$TS/docs/research/coherence-scan/register-2026-09-18.md"
+out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"!! deep check suggested: coherence-scan"*) ok "older register: suggestion stays voiced (negative control)";; *) bad "older register swallowed the suggestion";; esac
+rm -f "$TS/docs/research/coherence-scan/register-2026-09-18.md"
+out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"!! deep check suggested: coherence-scan"*) ok "no register: suggestion stays voiced";; *) bad "no register at all swallowed the suggestion";; esac
+mkdir -p "$TS/docs/research/kohaerenz-scan"
+: > "$TS/docs/research/kohaerenz-scan/register-2026-10-10.md"
+out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"deep check suggested: coherence-scan"*) bad "a newer register in the legacy folder is not counted";; *) ok "newer register in the legacy folder: silent";; esac
+
 # 2) brain-scan freshness gate: a fresh report -> exit 0, WITHOUT starting a run
 #    (CLAUDE_BIN points at true; if run.log appeared, the gate would be broken).
 BRAIN_DIR="$T" CLAUDE_BIN="$(command -v true)" bash "$CORE/scripts/brain-scan.sh"; rc=$?
