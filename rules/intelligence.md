@@ -129,7 +129,9 @@ fire on a hard kill). NO `memory/session_*.md` files — memory lives in auto-me
 ## Auto-Organization (ALWAYS)
 
 1. Every new file goes into the right folder immediately (instance folder table).
-2. Every new insight → auto-memory (file + MEMORY.md index). **If an entry asserts a
+2. Every new FACT → auto-memory (file + MEMORY.md index); a new LESSON goes to its
+   strongest carrier (Knowledge Carriers below) and memory keeps at most the pointer —
+   a lesson filed only as memory is recalled as text, not as a mechanism. **If an entry asserts a
    state of the core** (file, rule, helper), it names the submodule state it was
    measured against (tag or commit) — otherwise the note goes silently stale at the
    next core update (measured 2026-08-04: one entry flipped one minute after being
