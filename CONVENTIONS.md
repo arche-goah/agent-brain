@@ -107,7 +107,10 @@ Rules:
   `{"tool": "<suite>", "rules": [{"pattern", "was", "instead", "target": "command"|"path"}]}`.
   The core's `mechanism-guard` finds it in a clone (via `.mcp.json`) and in an enabled
   plugin alike. Developing the tool itself is the legitimate exception — it is declared per
-  command with `# MECHANISM-OK: <reason>`, never silent.
+  command with `# MECHANISM-OK: <reason>`, never silent. A rule whose only legitimate
+  exception is the operator's word adds `"needs_operator_word": true`; the marker then
+  opens it only with a quotation of the operator plus its date, or a pointer to an
+  existing record file (`rules/working-rules.md`, Mechanism Discipline).
 - **Testing an unreleased branch live is a documented path** in the suite's `AGENTS.md`
   (how to point the session's MCP at a clone on that branch, for plugin users too). Where it
   cannot be done, the agent reports — it does not start the server on its own.
