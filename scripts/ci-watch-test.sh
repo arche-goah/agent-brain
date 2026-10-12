@@ -90,6 +90,23 @@ case "${CI_WATCH_STUB:?}" in
   ref_noci)         if [[ "${1:-}" == api && "${2:-}" == */actions/workflows ]]; then echo 0
                     elif [[ "${1:-}" == api ]]; then echo abc123
                     else echo '[]'; fi ;;
+  # 2026-10-12: GitHub left a check-run at status=in_progress WITH conclusion=success
+  # (measured on a suite PR; its workflow run was completed). `pr checks` buckets it as
+  # pending forever; the head commit's check-runs carry the conclusion. The verdict must
+  # come from the FIRST poll: a second `pr checks` call makes the stub fail hard.
+  pr_stale_green|pr_stale_red|pr_stale_running)
+                    f="${CI_WATCH_STATE:?}"
+                    case "$CI_WATCH_STUB" in pr_stale_green) c='"success"' ;; pr_stale_red) c='"failure"' ;; *) c=null ;; esac
+                    if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo '[{"name":"test","conclusion":"success"},{"name":"release-preflight","conclusion":'"$c"'}]'
+                    elif [[ "$CI_WATCH_STUB" != pr_stale_running && -f "$f" ]]; then echo "second poll reached" >&2; exit 1
+                    else touch "$f"; echo '[{"bucket":"pass","name":"test"},{"bucket":"pending","name":"release-preflight"}]'; fi ;;
+  # ...and a pending entry that is a commit STATUS (no check-run of that name) keeps waiting.
+  pr_stale_status)  if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo '[{"name":"test","conclusion":"success"}]'
+                    else echo '[{"bucket":"pass","name":"test"},{"bucket":"pending","name":"ci/external"}]'; fi ;;
 esac
 STUB
 chmod +x "$TMP/gh"
@@ -143,7 +160,15 @@ check "pr: 'no checks' wording + no workflows = NO-CI(3)" pr_noci_nochecks 3 pr 
 check "pr: zero checks, workflows exist = wait, timeout(2)" pr_zero_hasci 2 pr 12 2
 check "pr: zero checks, count unreadable = wait, timeout(2)" pr_zero_apierr 2 pr 12 2
 check "ref: repo without workflows = NO-CI(3)"         ref_noci        3 ref main 30
+check "pr: stale check-run (in_progress + conclusion success) = GREEN on the first poll" pr_stale_green 0 pr 12 30
+grep -q "left the status stale" "$TMP/out" && echo "  OK   stale check-run is named in the output" \
+  || { echo "  FAIL stale check-run not named"; fails=$((fails+1)); }
+check "pr: stale check-run with conclusion failure = RED"           pr_stale_red     1 pr 12 30
+check "pr: check-run genuinely running (conclusion null) = wait, timeout(2)" pr_stale_running 2 pr 12 2
+grep -q "left the status stale" "$TMP/out" && { echo "  FAIL running check-run was called stale"; fails=$((fails+1)); } \
+  || echo "  OK   running check-run was not called stale"
+check "pr: pending commit status without a check-run = wait, timeout(2)" pr_stale_status 2 pr 12 2
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
-echo "ci-watch-test: all 26 checks passed"
+echo "ci-watch-test: all 30 checks passed"
