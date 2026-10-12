@@ -64,6 +64,36 @@ Paths are overridable (`SHARED_MEMORY_REPO`, `SHARED_MEMORY_STATE`,
 `SHARED_MEMORY_LOCK_DIR`) — the instance decides where its shared repo is cloned; the
 core never hardcodes an instance path.
 
+## Silent arm — for an operator who must not be interrupted
+
+Every Monitor event starts a new agent turn, and that turn prints text and tool lines
+into the terminal while the operator is still reading the previous answer. The harm is
+the output itself, not its content. When the instance's rules say "no interruption
+while the operator reads or writes" (an instance rule, not a core default), arm the
+watcher SILENT: the script's stdout goes into a queue file, nothing reaches the
+Monitor's stdout, so no event wakes the agent.
+
+```
+Monitor({ command: "bash core/scripts/shared-memory-watch.sh watch 60 >> <queue-file> 2>&1",
+          description: "silent shared-memory watcher, finds go to the queue file",
+          timeout_ms: <the longest the harness allows> })
+```
+
+- **Queue file location is a measurement, not a guess.** An instance may deny the
+  agent access to its state directory (`.claude-state/**`); then a redirect there is
+  refused by the harness and the Monitor never starts. Use a path the agent may write
+  and read — the session scratchpad suits a watcher, because both end with the session.
+- **The queue is read at a point boundary** — when the current point is finished or
+  the operator asks for the queue — never in between. A find is a queue entry, not an
+  interruption.
+- **Arm silent right after the push, in the same turn.** The watch gate that demands a
+  watcher after a push is satisfied by a silent one; "no watcher at all" is not the way
+  to avoid interrupting.
+- **Before re-arming (expiry, a restart): `disarm` first.** `TaskStop` leaves the lock
+  behind; an arm onto a stale lock exits at once with "already armed" and the Monitor
+  ends with exit 0 and no output — silent and dead, indistinguishable from a quiet
+  watch. After arming, `status` must say `armed`.
+
 ## What the script guarantees
 
 - **One watcher per machine.** The lock in `.claude-state/` stops three parallel
