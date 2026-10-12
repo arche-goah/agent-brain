@@ -404,6 +404,33 @@ case "$_rc:$_hc" in
   *) bad "hook-coverage inert-guard case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
 printf '{"names": ["placeholder"], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
+#     The reverse gap (measured 2026-10-11): a hook wired here whose helper the consumed core
+#     does not ship refuses every call it matches (onFailure: block) - two sessions lost Bash.
+#     Wire one extra gate pointing at a helper that is not in core/helpers: named, exit 1.
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+d["hooks"].setdefault("PreToolUse",[]).append({"matcher":"Bash","hooks":[{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/core/helpers/not-shipped-gate.cjs\"","timeout":10,"onFailure":"block"}]})
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$T/hookbrain/.claude/settings.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"PreToolUse: not-shipped-gate.cjs is wired but the consumed core does not ship it"*) ok "hook-coverage flags a wired hook whose helper the core does not ship";;
+  *) bad "hook-coverage wired-but-missing case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+#     Behind the dispatcher the same gap is silent: a registered stop check whose file is missing
+#     is skipped. Register one that the core does not ship next to the template's checks.
+if [ -f "$CORE/templates/rules-instance/stop-checks.json" ] && grep -q "stop-dispatcher" "$T/hookbrain/.claude/settings.json"; then
+  "$PY" -c 'import json,sys
+src,dst=sys.argv[1],sys.argv[2]; d=json.load(open(src,encoding="utf-8"))
+d["checks"].append({"label":"X","marker":"X-GATE","cmd":"core/helpers/not-shipped-stop.cjs","mode":"block"})
+json.dump(d,open(dst,"w",encoding="utf-8"),indent=2)' "$CORE/templates/rules-instance/stop-checks.json" "$T/hookbrain/.claude/rules/stop-checks.json"
+  _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+  case "$_rc:$_hc" in
+    1:*"Stop: not-shipped-stop.cjs is registered in .claude/rules/stop-checks.json but the consumed core does not ship it"*) ok "hook-coverage flags a registered stop check the core does not ship";;
+    *) bad "hook-coverage stop-check-missing case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+  esac
+  rm -f "$T/hookbrain/.claude/rules/stop-checks.json"
+fi
 #     And the bootup voices it: the fixture brain gets the template but an empty
 #     settings file — the !! line is the carrier that repeats until it is fixed.
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
