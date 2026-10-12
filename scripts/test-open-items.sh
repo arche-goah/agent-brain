@@ -172,6 +172,14 @@ has "- [wait] 5 waiting on others or a date: " "$outc" && [ -z "$(line '|wait] '
 l1=$(line 'suite-x#1 ' "$out2")
 has "waiting on peer" "$l1" && ! has "reported in" "$l1" && ok "a wait does not count up" || bad "a wait was counted: $l1"
 has "!! reported in 2 sessions" "$(line 'core#6 ' "$out2")" && ok "past wait counts up" || bad "past wait count: $(line 'core#6 ' "$out2")"
+has "nothing done yet" "$(line 'core#6 ' "$out2")" && ok "no own move since the first report = nothing done yet" || bad "idle claim: $(line 'core#6 ' "$out2")"
+# "nothing done yet" is a claim (measured 2026-10-12: an own PR with a commit and a comment the
+# same day was printed so in 17 sessions). An own commit after the first report names that move.
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 13 me 2026-10-03 '' "${NOW}T09:00:00Z" '[]' '[]')" > "$T/prs-mv.json"
+OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-mv.json")" OWNER=me run v1 >/dev/null; tx v1
+mv=$(line 'core#13 ' "$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-mv.json")" OWNER=me run v2)")
+has "last own move $NOW — still ours" "$mv" && ! has "nothing done yet" "$mv" && ok "own move since the first report is named, not 'nothing done'" || bad "own move: $mv"
 OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")"
 
 # WHO acts: circle field in the request file (read at origin/main), a request addressed to
