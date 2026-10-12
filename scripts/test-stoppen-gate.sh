@@ -150,6 +150,14 @@ run_case_turn de-announce-after-fg '"Gemessen. Als Naechstes kommt die Memory-Si
 run_case_turn waiter-bash-live '"CI laeuft. Mache das jetzt, sobald sie gruen ist."' allow "$DE" "$BG"
 run_case_turn waiter-monitor-live '"Watcher scharf. Next, I will read the answer."' allow "$CWD" "$MON"
 run_case_turn waiter-wakeup '"Wakeup gesetzt. Arbeite weiter in zehn Minuten."' allow "$DE" "$WAKE"
+# A Workflow always runs in the background; an Agent counts only when started in the
+# background (review finding from the Windows instance).
+WF='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_wf1","name":"Workflow","input":{"name":"x"}}]}}'
+AGBG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_a1","name":"Agent","input":{"prompt":"x","run_in_background":true}}]}}'
+AGFG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_a2","name":"Agent","input":{"prompt":"x"}}]}}'
+run_case_turn waiter-workflow-live '"Scan laeuft. Next, I will read its report."' allow "$CWD" "$WF"
+run_case_turn waiter-agent-bg-live '"Agent laeuft. Next, I will read its report."' allow "$CWD" "$AGBG"
+run_case_turn agent-fg-no-waiter '"Agent fertig. Next, I will read its report."' block "$CWD" "$AGFG"
 # ...but a waiter that already reported its end waits for nothing.
 run_case_turn waiter-ended '"CI gruen. Arbeite weiter am Handoff."' block "$DE" "$BG
 $END"

@@ -82,7 +82,7 @@ const BUILTIN_PATTERNS = [
 // live instance, four times in one session, the operator: "you work on your own, or did you
 // stop again?" and "you always stop. the same failure class again". Neither a question nor
 // a handoff, so shapes 1 and 2 missed every one. Exempt: a background waiter that has not
-// reported its end yet (Bash run_in_background, Monitor, ScheduleWakeup) — then the
+// reported its end yet (Bash or Agent run_in_background, Monitor, Workflow, ScheduleWakeup) — then the
 // announcement waits for something real. Data key: `announce_patterns`.
 const BUILTIN_ANNOUNCE = [
   "\\b(now|next),? i(?:'ll| will)\\b",
@@ -110,8 +110,9 @@ const WAITER_END = /<tool-use-id>(toolu_[A-Za-z0-9]+)<\/tool-use-id>[\s\S]{0,800
 
 function isWaiter(b) {
   if (b.type !== 'tool_use') return false;
-  if (b.name === 'Monitor') return true;
-  return b.name === 'Bash' && b.input && b.input.run_in_background === true;
+  // A Workflow always runs in the background; an Agent only when started so.
+  if (b.name === 'Monitor' || b.name === 'Workflow') return true;
+  return (b.name === 'Bash' || b.name === 'Agent') && b.input && b.input.run_in_background === true;
 }
 
 function textOf(content) {
