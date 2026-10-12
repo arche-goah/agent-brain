@@ -204,10 +204,16 @@ def ball(p, me, owners, shared_shas=frozenset()):
         # 2026-10-10: two green own PRs in a suite owned by another party were printed as
         # "nothing done yet" in three sessions, because this check ran only for others' PRs.
         if owner and owner != me:
-            theirs = [r.get("submittedAt") or "" for r in reviews if not ours(r)]
-            theirs += [c.get("createdAt") or "" for c in comments if not ours(c)]
+            # "Theirs" means another login. A sibling instance on our login speaks for our
+            # side: its reply to the owner hands the move back like our own (measured
+            # 2026-10-12: the sibling's "merge is yours" to the owner made a waiting PR read
+            # as our move, because its foreign key counted it as the other party).
+            def side(node):
+                return ((node.get("author") or {}).get("login") or "").lower() == me.lower()
+            theirs = [r.get("submittedAt") or "" for r in reviews if not side(r)]
+            theirs += [c.get("createdAt") or "" for c in comments if not side(c)]
             # Same rule as pr-ball.py: our own reply after theirs hands the move back.
-            seen = [last] + [c.get("createdAt") or "" for c in comments if ours(c)]
+            seen = [last] + [c.get("createdAt") or "" for c in comments if side(c)]
             if not (theirs and max(theirs) > max(seen)):
                 return owner, f"{p['repository']['name']} is {owner}'s to merge, our own PR waits on that"
         return None

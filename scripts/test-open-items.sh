@@ -143,6 +143,16 @@ sib=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF=mac
 has "[PR|ai]" "$(line 'owned#11 ' "$sib")" && ok "sibling instance's PR = our move, not the owner's" || bad "sibling: $(line 'owned#11 ' "$sib")"
 sib0=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF= OWNER=me run s0)
 has "waiting on peer" "$(line 'owned#11 ' "$sib0")" && ok "negative control: without an own key the old reading (waiting) holds" || bad "no key: $(line 'owned#11 ' "$sib0")"
+# Our own PR in an owner's repo: the owner reviewed, then the SIBLING answered "merge is yours"
+# (measured 2026-10-12, touchdesigner-suite#22). The sibling speaks for our side = waiting on
+# the owner. Negative control: the owner speaks again after the sibling = our move.
+KMAC="$("$PY" -c 'import sys; sys.path.insert(0, sys.argv[1]); import instance_key as k; print(k.key_for("mac"))' "$(native "$T/core/scripts")")"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"nodes":[%s,%s]}}}\n' \
+  "$(pr owned 13 me 2026-10-06 'fix' 2026-10-06T11:00:00Z '[]' '[]' "[{\"author\":{\"login\":\"peer\"},\"createdAt\":\"2026-10-07T09:00:00Z\",\"body\":\"OK\"},{\"author\":{\"login\":\"me\"},\"createdAt\":\"2026-10-07T10:00:00Z\",\"body\":\"merge is yours <!-- instance-key: $KMAC -->\"}]")" \
+  "$(pr owned 14 me 2026-10-06 'fix' 2026-10-06T11:00:00Z '[]' '[]' "[{\"author\":{\"login\":\"me\"},\"createdAt\":\"2026-10-07T09:00:00Z\",\"body\":\"merge is yours <!-- instance-key: $KMAC -->\"},{\"author\":{\"login\":\"peer\"},\"createdAt\":\"2026-10-07T10:00:00Z\",\"body\":\"please rebase\"}]")" > "$T/prs-sibreply.json"
+sr=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sibreply.json")" SHARED_MEMORY_SELF=ws OWNER=me run s2)
+has "waiting on peer" "$(line 'owned#13 ' "$sr")" && ok "sibling's reply to the owner on our own PR = waiting on the owner" || bad "sibling reply: $(line 'owned#13 ' "$sr")"
+has "[PR|ai]" "$(line 'owned#14 ' "$sr")" && ok "negative control: the owner speaks after the sibling = our move" || bad "owner after sibling: $(line 'owned#14 ' "$sr")"
 # The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
 # sibling PRs checked at their heads stayed "our move"). Our text naming THIS head = waiting;
 # an older head, or someone else's text naming it, leaves the move with us.
