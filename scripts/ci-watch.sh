@@ -9,6 +9,9 @@
 #   2. zsh does not word-split unquoted variables: `set -- $pair` kept repo and ref
 #      glued together and every gh call 404'd — swallowed by 2>/dev/null, surfaced
 #      as a wrong rc that was then misread. Errors here are NEVER silenced.
+#   3. (2026-10-12) GitHub can leave a check-run at status=in_progress with a conclusion
+#      already set; `gh pr checks` buckets it as pending forever. pr mode therefore
+#      reads the head commit's check-runs and counts a check-run by its conclusion.
 # This script matches refs via the run's headBranch FIELD from JSON (works for tags
 # and branches alike), enumerates every terminal state, and cannot end silently:
 # exit 0 = all green · 1 = something failed/cancelled/timed out in CI · 2 = could
@@ -102,6 +105,55 @@ no_ci_check() {
   fi
 }
 
+# A check-run can be FINISHED while its status still says in_progress: measured 2026-10-12
+# on a suite PR, check-run `release-preflight` read status=in_progress, conclusion=success,
+# completed_at set — the workflow run was completed/success, GitHub never flipped the
+# check-run's status. `gh pr checks` derives its bucket from the status and reported
+# `pending` for good; the watch waited out its whole timeout and ended UNKNOWN on an
+# all-green PR, and no timeout reaches a check that never flips. The conclusion is the
+# fact: a check-run with a non-null conclusion is finished whatever its status says. So
+# while `pr checks` reports pending entries, the head commit's check-runs are read and
+# every pending entry that names a check-run WITH a conclusion is recounted by that
+# conclusion; a pending entry without a check-run (a commit status) or whose check-run
+# has no conclusion yet keeps its bucket. Any unreadable answer on the way leaves the
+# counts as they were — the fallback is to keep waiting, never to turn green.
+warned_stale=0
+stale_checkrun_recount() {   # reads $json, may lower $pending and raise $bad
+  local sha cr recount stale
+  sha=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null) || return 0
+  [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 0
+  cr=$(gh api "repos/$REPO/commits/$sha/check-runs?per_page=100" \
+         --jq '[.check_runs[] | {name: .name, conclusion: .conclusion}]' 2>/dev/null) || return 0
+  recount=$("$PY" -c '
+import json, sys
+checks = json.load(sys.stdin)
+try:
+    runs = {r.get("name"): r.get("conclusion") for r in json.loads(sys.argv[1])}
+except Exception:
+    runs = {}
+pending = bad = stale = 0
+for c in checks:
+    b = c.get("bucket")
+    if b in ("fail", "cancel"):
+        bad += 1
+    elif b == "pending":
+        concl = runs.get(c.get("name"))
+        if concl is None:
+            pending += 1          # no check-run, or one that is genuinely still running
+        else:
+            stale += 1
+            if concl not in ("success", "skipped", "neutral"):
+                bad += 1
+print(pending, bad, stale)
+' "$cr" <<<"$json" 2>/dev/null) || return 0
+  read -r pending bad stale <<<"$recount"
+  if (( stale > 0 && warned_stale == 0 )); then
+    echo "ci-watch: $stale check-run(s) on PR #$TARGET carry a conclusion while their status" \
+         "still says in_progress (GitHub left the status stale) — counting them by conclusion" >&2
+    warned_stale=1
+  fi
+}
+
 while :; do
   now=$(date +%s)
   if (( now >= deadline )); then
@@ -109,8 +161,9 @@ while :; do
   fi
 
   if [[ "$MODE" == "pr" ]]; then
-    # Buckets are machine-readable: pass|fail|pending|skipping|cancel.
-    json=$(gh pr checks "$TARGET" -R "$REPO" --json bucket 2>&1)
+    # Buckets are machine-readable: pass|fail|pending|skipping|cancel. The name is
+    # carried along so a pending entry can be matched to its check-run (below).
+    json=$(gh pr checks "$TARGET" -R "$REPO" --json bucket,name 2>&1)
     rc=$?
     if (( rc != 0 )); then
       # gh exits 8 while checks are pending — that is a wait, not an error.
@@ -151,6 +204,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
       fi
       sleep "$POLL"; continue
     fi
+    if (( pending > 0 )); then stale_checkrun_recount; fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
     # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
