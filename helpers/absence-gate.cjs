@@ -29,6 +29,9 @@
  * Roots are relative to the project root, absolute, or start with `~`. A brain without
  * that file (or with an empty list) has nothing to check against and this gate stays
  * silent — the template under `templates/rules-instance/` ships empty on purpose.
+ * INERT-WITHOUT: .claude/rules/absence-sources.json roots
+ *   (read by scripts/hook-coverage.py: registered with no file or no roots = reported, unless
+ *   the file says why in `"inert_ok": "<reason>"`)
  * `claim_patterns` and `scope_markers` EXTEND the English built-ins (the layering
  * contract of the premise and promise gates: engine English, languages are data, a
  * class fix lands in the built-ins first).
