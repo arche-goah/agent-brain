@@ -203,9 +203,36 @@ def main():
         if not (names.get("names") or names.get("instances")):
             inert.append("PreToolUse: public-text-guard.cjs is wired but .claude/rules/leak-names.json has no names - it checks nothing")
 
-    for line in missing + narrower + fail_open + inert + not_granted:
+    # The reverse gap: a hook wired HERE whose helper the consumed core does not ship. With
+    # "onFailure": "block" it refuses every call it matches — measured 2026-10-11 on a Windows
+    # instance: instance-key-gate.cjs was wired from the template of an off-pin core checkout;
+    # once core/ went back to its pin the file was gone and every Bash call in two sessions was
+    # refused ("Cannot find module …"), while this check reported nothing. Wiring must follow
+    # the template of the core that is actually consumed.
+    broken = []
+    for event, pairs in wired.items():
+        for _m, cmd, on_failure in pairs:
+            m = re.search(r"core/(helpers|scripts)/([\w.-]+)", cmd)
+            if m and not os.path.isfile(os.path.join(root, "core", m.group(1), m.group(2))):
+                broken.append("%s: %s is wired but the consumed core does not ship it - %s"
+                              % (event, m.group(2), "every call it matches is refused (onFailure: block); unwire it "
+                                 "or update the core" if on_failure == "block" else "the hook errors on every call; unwire it "
+                                 "or update the core"))
+    # Same class behind the dispatcher, with the opposite effect: stop-dispatcher.cjs SKIPS a
+    # registered check whose file is missing (`if (!fs.existsSync(cmd)) return resolve(null)`),
+    # so that gate falls away without a word while the selftest counts it as covered.
+    if any("dispatcher" in c for pairs in wired.values() for _, c, _f in pairs):
+        stop_cfg = load(os.path.join(root, ".claude", "rules", "stop-checks.json"))
+        for check in stop_cfg.get("checks") or []:
+            cmd = check.get("cmd") if isinstance(check, dict) else None
+            if cmd and re.match(r"core/(helpers|scripts)/", cmd) and not os.path.isfile(os.path.join(root, cmd)):
+                broken.append("Stop: %s is registered in .claude/rules/stop-checks.json but the consumed core does not "
+                              "ship it - the dispatcher skips it without a word, so that check never runs"
+                              % os.path.basename(cmd))
+
+    for line in broken + missing + narrower + fail_open + inert + not_granted:
         print(line)
-    return 1 if (missing or narrower or fail_open or inert or not_granted) else 0
+    return 1 if (broken or missing or narrower or fail_open or inert or not_granted) else 0
 
 
 if __name__ == "__main__":
