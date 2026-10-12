@@ -280,7 +280,7 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   "m really need you" — and the second number is usually small.
 - **A sub-agent's framing is not a decision** (operator decision 2026-08-22): "waits
   for OK" from a workflow is its filing category under its own implements-nothing
-  boundary. The item passes the instance's stop test before it reaches the operator;
+  boundary. The item passes ASK OR ACT (`working-rules.md`) and the comparative test above before it reaches the operator;
   a report may say "five points, four decided, one needs you".
 - **Measurable is not an open point** (operator decision 2026-10-04): a state a tool
   can read live (link, host table, lease, version) is measured BEFORE the report; the
