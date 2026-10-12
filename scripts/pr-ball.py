@@ -36,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from instance_key import is_self, self_key  # noqa: E402
+from shared_answers import checked_head, own_shared_shas  # noqa: E402
 
 
 def ts(s):
@@ -54,7 +55,7 @@ def is_bot(name):
     return name.endswith("[bot]") or name in ("github-actions", "dependabot")
 
 
-def moves(data, now, my_key=""):
+def moves(data, now, my_key="", shared_shas=frozenset()):
     me = login((data.get("data") or {}).get("viewer"))
     if not me:
         return []
@@ -74,7 +75,8 @@ def moves(data, now, my_key=""):
             continue
         name = f'{(pr.get("repository") or {}).get("name", "?")}#{pr.get("number")}'
         commits = nodes(pr, "commits")
-        last_commit = ts(((commits[-1] if commits else {}).get("commit") or {}).get("committedDate"))
+        head = (commits[-1] if commits else {}).get("commit") or {}
+        last_commit = ts(head.get("committedDate"))
         reviews = [r for r in nodes(pr, "reviews") if r and r.get("submittedAt")]
         since, kind = None, None
         if mine(pr):
@@ -102,6 +104,10 @@ def moves(data, now, my_key=""):
             # operator's machines, so it is our move just like a review request (measured
             # 2026-10-11: the other machine's test fix waited for a second OK nobody was shown).
             sibling = login(pr.get("author")) == me
+            # Our answer naming THIS head in the shared memory is our look at it
+            # (shared_answers.py) — the request asked for the answer there, not on the PR.
+            if checked_head(head.get("oid"), shared_shas):
+                continue
             if (my_reviews or requested or mentioned or sibling) and last_commit is not None:
                 last_touch = max(touched) if touched else None
                 if last_touch is None or last_commit > last_touch:
@@ -124,7 +130,7 @@ def main():
     except Exception:
         # The bootup reports a failed gh call itself; here no JSON stays silence.
         return 0
-    found = moves(data, now, self_key())
+    found = moves(data, now, self_key(), own_shared_shas())
     if found:
         # ASCII only: Python prints through the console code page on Windows, and a dash
         # or middle dot arrived there as a replacement character (Windows runner, 2026-09-15).

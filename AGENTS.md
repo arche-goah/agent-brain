@@ -19,8 +19,11 @@ session start.
    `core-contract.json` (with a WHY in its history) and one version of alias/deprecation.
 5. **Versions are explicit — and graded by CONTENT, not by habit** (operator order
    2026-08-13: nine minor bumps in four days drifted toward a 2.0 that would mean
-   nothing). Every release: bump `version` in `.claude-plugin/plugin.json`, add a
-   CHANGELOG entry, tag `vX.Y.Z`. The marketplace pins tags, never `main` — an
+   nothing). Every PR writes its CHANGELOG entry as its own file `changelog.d/<slug>.md`,
+   never into `CHANGELOG.md` (a shared `## Unreleased` collided at every second parallel
+   PR; `changelog.d/README.md`). Every release: bump `version` in
+   `.claude-plugin/plugin.json`, run `python3 scripts/changelog-assemble.py X.Y.Z` (moves
+   the fragments under `## X.Y.Z — <date>`), tag `vX.Y.Z`. The marketplace pins tags, never `main` — an
    untagged change reaches nobody. Grading (operator order 2026-08-14, tightening
    the 2026-08-13 wording): **patch (third digit) is the DEFAULT** — fixes, docs,
    rule wording, CI plumbing, AND new capabilities that have not yet PROVEN
@@ -35,7 +38,7 @@ session start.
    `x.10+` and `x.y.10+` are normal — never round to a milestone number for
    aesthetics; 2.0.0 is earned by the step, not by the counter.
    **Mechanically carried:** run `bash scripts/release-preflight.sh vX.Y.Z` BEFORE
-   tagging — it enforces manifest==tag, a CHANGELOG section, no pre-existing tag
+   tagging — it enforces manifest==tag, a CHANGELOG section, no fragment left behind, no pre-existing tag
    (the race guard: an existing tag or open release PR means the release happened
    elsewhere — comment there, never re-cut), and HEAD==origin/main. CI re-checks
    manifest+CHANGELOG on every pushed `v*` tag, so a broken tag turns red on the

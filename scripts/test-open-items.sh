@@ -19,6 +19,8 @@ bad() { echo "  FAIL $1"; fail=1; }
 mkdir -p "$T/core/scripts" "$T/repo/.git" "$T/root"
 cp "$SRC" "$T/core/scripts/open-items.py"
 cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
+cp "$(dirname "$SRC")/project_dir.py" "$T/core/scripts/project_dir.py"
+cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
 # The fake inbox prints whatever $T/inbox.txt holds.
 printf '%s\n' 'import os, sys' \
   'sys.stdout.write(open(os.path.join(os.path.dirname(__file__), "..", "..", "inbox.txt"), encoding="utf-8").read())' \
@@ -141,6 +143,25 @@ sib=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF=mac
 has "[PR|ai]" "$(line 'owned#11 ' "$sib")" && ok "sibling instance's PR = our move, not the owner's" || bad "sibling: $(line 'owned#11 ' "$sib")"
 sib0=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF= OWNER=me run s0)
 has "waiting on peer" "$(line 'owned#11 ' "$sib0")" && ok "negative control: without an own key the old reading (waiting) holds" || bad "no key: $(line 'owned#11 ' "$sib0")"
+# The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
+# sibling PRs checked at their heads stayed "our move"). Our text naming THIS head = waiting;
+# an older head, or someone else's text naming it, leaves the move with us.
+HEAD12=abcdef1234567890abcdef1234567890abcdef12
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 12 me 2026-10-06 "fix <!-- instance-key: $KWS -->" 2026-10-06T11:00:00Z '[]' '[]' | sed "s/\"commit\":{/\"commit\":{\"oid\":\"$HEAD12\",/")" > "$T/prs-sm.json"
+smrun() { OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sm.json")" SHARED_MEMORY_SELF=mac OWNER=me run "$1"; }
+mkdir -p "$T/repo/core"
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: mac' '---' 'Checked at head `abcdef1`: OK.' > "$T/repo/core/antwort.md"
+has "our check of this head is in the shared memory" "$(line 'core#12 ' "$(smrun m1)")" && ok "own shared-memory answer at this head = waiting" || bad "sm answer: $(line 'core#12 ' "$(smrun m1)")"
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: mac' '---' 'Checked at head `1111111`: OK.' > "$T/repo/core/antwort.md"
+printf '%s\n' '# LOG' '' '## 2026-10-11 · mac — AN ws: checked 2222222' 'ok' '' '## 2026-10-11 · ws — AN mac: please check abcdef1' 'x' > "$T/repo/core/LOG.md"
+has "[PR|ai]" "$(line 'core#12 ' "$(smrun m2)")" && ok "negative control: an older head or a foreign text naming the head stays our move" || bad "stale/foreign sha: $(line 'core#12 ' "$(smrun m2)")"
+printf '%s\n' '# LOG' '' '## 2026-10-11 · mac — AN ws: checked abcdef1 OK' 'ok' > "$T/repo/core/LOG.md"
+has "our check of this head is in the shared memory" "$(line 'core#12 ' "$(smrun m3)")" && ok "own LOG section naming this head = waiting" || bad "sm LOG: $(line 'core#12 ' "$(smrun m3)")"
+# The real setting is a comma list "<device>,<alias>,…" (macOS check of #286): the device token counts.
+sml=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sm.json")" SHARED_MEMORY_SELF="mac,person:x,os:macos" OWNER=me run m4)
+has "our check of this head is in the shared memory" "$(line 'core#12 ' "$sml")" && ok "self as a comma list: the device token counts" || bad "comma-list self: $(line 'core#12 ' "$sml")"
+rm -rf "$T/repo/core"
 has "waiting until $NOW: alpha measurement" "$(line 'core#5 ' "$out")" && ok "dated wait is quiet" || bad "dated wait: $(line 'core#5 ' "$out")"
 has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder" || bad "past wait: $(line 'core#6 ' "$out")"
 has "2026-09-28 suite-x#1" "$out" && ok "shown date = opened date" || bad "date: $out"
@@ -221,6 +242,32 @@ out=$(run l0)
 out=$(run l)
 [ "$(grep -c '\[request|ai\] 2026-10-08' <<<"$out")" = 2 ] \
   && ok "id cut at a blank and a second --classify flag both stick" || bad "classify lost: $out"
+
+# Measured 2026-10-11, Windows instance: two LOG entries of one sender on one day with the same first
+# 40 chars got ONE id — one class covered both. The second gets " (2)", each classifies alone.
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (LOG)' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
+out=$(run m0)
+has "--classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst- (2)=" "$out" \
+  && ok "colliding LOG ids are told apart" || bad "colliding ids: $out"
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
+  --classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-=ai:first only' >/dev/null 2>&1
+out=$(run m)
+[ "$(grep -c '\[request|ai\] 2026-10-09' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-09' <<<"$out")" = 1 ] \
+  && ok "a class on the first colliding id leaves the second open" || bad "collision class spread: $out"
+# The first one is answered and leaves the inbox: the second takes over the bare id. It must not
+# inherit the first one's class (measured 2026-10-11 on the merged suffix: it did, "first only").
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
+out=$(run m2)
+has "[request|?] 2026-10-09" "$out" && ! has "first only" "$out" \
+  && ok "the second request, alone under the bare id, does not inherit the first one's class" || bad "class inherited: $out"
+# Negative control: the SAME text keeps its class (a class is not lost by a re-run).
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (LOG)' > "$T/inbox.txt"
+out=$(run m3)
+has "[request|ai] 2026-10-09" "$out" && ok "the classified text keeps its class" || bad "own class lost: $out"
 
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"

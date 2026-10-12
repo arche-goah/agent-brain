@@ -60,17 +60,23 @@ try:
     git("init", "-q", cwd=core)
     write(core / "f.txt", "x")
     git("add", "-A", cwd=core); git("commit", "-q", "-m", "c", cwd=core); git("tag", "v1.0.0", cwd=core)
+    git("remote", "add", "origin", "https://example.invalid/o/r.git", cwd=core)  # the core's repo = the core plugin's repo
     write(brain / ".claude" / "settings.json", {"enabledPlugins": {"brain-core@mkt": True, "other@mkt": False}})
+    # the suite plugin is enabled only in the LOCAL layer (a beta channel on one machine)
+    write(brain / ".claude" / "settings.local.json", {"enabledPlugins": {"a-plugin@mkt": True}})
     write(brain / "config" / "ecosystem.json", {"repos": {
         "a-suite": {"kind": "suite", "version": "v0.2.0", "commit": "abcdef1234567890", "path": "/secret/place"},
+        "b-suite": {"kind": "suite", "version": "v0.9.0", "commit": "fedcba0987654321"},
         "own-project": {"kind": "project", "commit": "1234567"}}})
     cfg = tmp / "cfg"
 
     def channel(installed: str, pin: str) -> None:
         write(cfg / "plugins" / "installed_plugins.json",
-              {"plugins": {"brain-core@mkt": [{"scope": "user", "version": installed, "installPath": str(tmp)}]}})
+              {"plugins": {"brain-core@mkt": [{"scope": "user", "version": installed, "installPath": str(tmp)}],
+                           "a-plugin@mkt": [{"scope": "local", "version": "0.3.0", "installPath": str(tmp)}]}})
         write(cfg / "plugins" / "marketplaces" / "mkt" / ".claude-plugin" / "marketplace.json",
-              {"plugins": [{"name": "brain-core", "source": {"source": "github", "repo": "o/r", "ref": pin}}]})
+              {"plugins": [{"name": "brain-core", "source": {"source": "github", "repo": "o/r", "ref": pin}},
+                           {"name": "a-plugin", "source": {"source": "github", "repo": "o/a-suite", "ref": "v0.3.0"}}]})
 
     env = {**os.environ, **GIT_ENV, "SHARED_MEMORY_REPO": str(shared), "SHARED_MEMORY_SELF": "alpha-mac,alpha",
            "CLAUDE_PROJECT_DIR": str(brain), "CLAUDE_CONFIG_DIR": str(cfg)}
@@ -89,8 +95,14 @@ try:
     devfile = shared / "devices" / "alpha-mac.json"
     check(rc == 0 and devfile.is_file() and commits() == n0 + 1, "first report writes and commits devices/alpha-mac.json")
     doc = json.loads(devfile.read_text(encoding="utf-8"))
-    check(doc["core"]["tag"] == "v1.0.0" and doc["plugins"][0]["pin"] == "v1.0.0", "report carries core tag and pin")
+    core_rec = next((p for p in doc["plugins"] if p["plugin"] == "brain-core@mkt"), {})
+    check(doc["core"]["tag"] == "v1.0.0" and core_rec.get("pin") == "v1.0.0", "report carries core tag and pin")
     check("a-suite" in doc["suites"] and "own-project" not in doc["suites"], "suites recorded, own projects left out")
+    check(doc["suites"]["a-suite"]["version"] == "v0.3.0" and doc["suites"]["a-suite"]["source"] == "plugin a-plugin@mkt",
+          "a suite with an enabled plugin (settings.local.json layer) reports the plugin's installed version, not the record's")
+    check(doc["suites"]["b-suite"]["version"] == "v0.9.0" and doc["suites"]["b-suite"]["source"] == "record",
+          "NEGATIVE: a suite without a plugin keeps the record's version, marked as record")
+    check("r" not in doc["suites"], "NEGATIVE: the core's own plugin is not listed as a suite")
     check(str(tmp) not in devfile.read_text(encoding="utf-8") and "/secret" not in devfile.read_text(encoding="utf-8"),
           "no path in the device file")
     check(git("rev-list", "--count", "HEAD", cwd=bare) == str(commits()), "report pushed")
@@ -98,6 +110,17 @@ try:
     check(rc == 0 and commits() == n0 + 1 and "unchanged" in out, "NEGATIVE: unchanged state does not commit again")
     rc, out = ds("report", "--dry-run")
     check(commits() == n0 + 1, "NEGATIVE: --dry-run writes nothing")
+    # a brain whose core/ is a copied folder, not a checkout of its own (a fixture brain run with the real
+    # session env), has nothing to measure and must not overwrite the device file — two shapes: no repo
+    # at all, and a folder inside some other repo
+    before = devfile.read_text(encoding="utf-8")
+    for fake in (tmp / "fakebrain", shared / "fakebrain"):
+        write(fake / "core" / "x.txt", "x")
+        p = subprocess.run([sys.executable, str(SCRIPT), "report"], capture_output=True, text=True,
+                           env={**env, "CLAUDE_PROJECT_DIR": str(fake)})
+        check(p.returncode == 0 and "not a git checkout" in p.stdout and commits() == n0 + 1
+              and devfile.read_text(encoding="utf-8") == before,
+              f"NEGATIVE: core/ without its own checkout ({fake.parent.name}) reports nothing, writes nothing")
     env.pop("SHARED_MEMORY_SELF")
     write(brain / ".claude" / "settings.json", {"enabledPlugins": {"brain-core@mkt": True, "other@mkt": False},
                                                "env": {"SHARED_MEMORY_SELF": "alpha-mac,alpha"}})
@@ -135,7 +158,9 @@ try:
     rc, out = ds("--device", "nope")
     check(rc != 0 and "unknown device" in out, "unknown device errors")
     rc, out = ds("--device", "alpha-mac")
-    check("suite  a-suite: v0.2.0" in out and "plugin brain-core@mkt" in out, "--device shows plugins and suites")
+    check("suite  a-suite: v0.3.0" in out and "plugin brain-core@mkt" in out, "--device shows plugins and suites")
+    check("suite  b-suite: v0.9.0" in out and "from the record, not measured" in out,
+          "--device marks a suite version that comes from the record")
     rc, out = ds("--person", "alpha", "--os", "windows")
     check(rc == 0 and "alpha-mac" not in out, "filters combine")
 finally:

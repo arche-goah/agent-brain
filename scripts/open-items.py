@@ -33,7 +33,8 @@ This script is the ONE list of open points at session start:
     transcript shows the list reached a human (bootup block, then a real prompt); a hand
     run never counts;
   * items whose move is NOT ours print as `[...|wait]`, quietly, and do not count up: a PR
-    we reviewed or commented on after its last commit, a PR in a repo that instance data
+    we reviewed or commented on after its last commit (or checked at its current head and
+    answered in the shared memory, shared_answers.py), a PR in a repo that instance data
     (`owners`: repo -> login) gives to someone else when no review was asked of us, our own
     PR in such a repo unless someone else spoke after its last commit, and any
     item with a dated wait (`waiting`: id -> {until, why} in instance data, or a line
@@ -58,6 +59,7 @@ Stdlib only; runs under `python3` or `python` (Windows python.org installer).
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -68,6 +70,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from instance_key import is_self, self_key  # noqa: E402
+from project_dir import resolve_project_dir  # noqa: E402
+from shared_answers import checked_head, default_repo, own_shared_shas  # noqa: E402
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*\(([^()]+\.md|LOG)\)\s*$")
 # The inbox defaults to a 30-day window. An open request does not stop being open because
 # it is old — measured 2026-10-07: a 32-day-old request to this instance fell out of the
@@ -134,6 +138,14 @@ def requests(repo):
         items.append({"id": ref if rel != "LOG" else f"{ref}: {text[:40].rstrip()}", "kind": "request",
                       "date": date, "who": von.strip(), "text": text[:100], "scope": topic,
                       "ref": ref, "file": rel if rel != "LOG" else ""})
+    # Two LOG entries of one sender on one day can share their first 40 chars (measured
+    # 2026-10-11: "AN a, b, c-" twice) — one id would carry one class and one counter for both.
+    # The later one in inbox order gets " (n)"; the first keeps its old id, so stored classes hold.
+    seen = {}
+    for it in items:
+        n = seen[it["id"]] = seen.get(it["id"], 0) + 1
+        if n > 1:
+            it["id"] = f"{it['id']} ({n})"
     # An inbox line this parser cannot read must not vanish — the exact defect this list
     # exists to stop. It reports itself as a failed read instead.
     return None if unparsed or len(items) != expected else items
@@ -146,12 +158,11 @@ PR_QUERY = """query($q: String!) { viewer { login }
     number title isDraft createdAt body author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
     latestReviews(first: 20) { nodes { author { login } submittedAt body } }
-    commits(last: 1) { nodes { commit { committedDate } } }
+    commits(last: 1) { nodes { commit { oid committedDate } } }
     comments(last: 20) { nodes { author { login } createdAt body } } } } } }"""
 WAIT_MARK = re.compile(r"^\s*waiting-until:\s*(\d{4}-\d{2}-\d{2})\s*:?\s*(.*)$", re.M | re.I)
 
-
-def ball(p, me, owners):
+def ball(p, me, owners, shared_shas=frozenset()):
     """Whose move a PR is. None = ours. Otherwise (party, reason): for another's PR we wait on
     its author — we reviewed or commented after its last commit, or the repo belongs to
     someone else (instance data `owners`) and nobody asked us for a review; for our own PR in
@@ -167,7 +178,11 @@ def ball(p, me, owners):
     def ours(node):
         return is_self((node.get("author") or {}).get("login", ""), me, node.get("body"), my_key)
 
-    last = ((p.get("commits") or {}).get("nodes") or [{}])[-1].get("commit", {}).get("committedDate", "")
+    head = ((p.get("commits") or {}).get("nodes") or [{}])[-1].get("commit", {})
+    last, oid = head.get("committedDate", ""), (head.get("oid") or "").lower()
+    # Our answer in the shared memory naming THIS head counts like a comment after the last
+    # commit (see own_shared_shas). A sha of an older head does not: a new commit is new work.
+    checked = checked_head(oid, shared_shas)
     owner = owners.get(p["repository"]["name"])
     reviews = (p.get("latestReviews") or {}).get("nodes", [])
     comments = (p.get("comments") or {}).get("nodes", [])
@@ -179,6 +194,8 @@ def ball(p, me, owners):
         # last commit hands the move back to the sibling.
         if last and any(t > last for t in touched):
             return author, "we reviewed or commented after the sibling instance's last commit"
+        if checked:
+            return author, "our check of this head is in the shared memory"
         return None
     if author == me:
         # Our own PR in a repo someone else merges waits on that owner — unless someone else
@@ -196,6 +213,8 @@ def ball(p, me, owners):
         return None
     if last and any(t > last for t in touched):
         return author, "we reviewed or commented after the last commit"
+    if checked:
+        return author, "our check of this head is in the shared memory"
     asked = any(((n.get("requestedReviewer") or {}).get("login")) == me
                 for n in (p.get("reviewRequests") or {}).get("nodes", []))
     if owner and owner != me and not asked:
@@ -203,7 +222,7 @@ def ball(p, me, owners):
     return None
 
 
-def prs(owner, owners):
+def prs(owner, owners, repo=None):
     # No owner = the source was never asked. Measured 2026-10-09: a run without --owner said
     # "nothing open (requests and PRs both read)" while twelve PRs were open.
     if not owner:
@@ -222,6 +241,7 @@ def prs(owner, owners):
     except (ValueError, KeyError, TypeError):
         return None
     items = []
+    shas = own_shared_shas(repo)
     for p in rows:
         if not p.get("number"):
             continue
@@ -232,7 +252,7 @@ def prs(owner, owners):
         items.append({"id": ref, "kind": "PR", "date": p["createdAt"][:10], "who": author,
                       "text": p["title"][:100] + (" (draft)" if p.get("isDraft") else ""),
                       "scope": p["repository"]["name"], "ref": ref,
-                      "waiting_on": ball(p, me, owners),
+                      "waiting_on": ball(p, me, owners, shas),
                       "until": (m.group(1), m.group(2).strip()) if m else None,
                       "events": pr_events(p)})
     return items
@@ -407,7 +427,19 @@ def lookup(store, it):
     acknowledged). LOG entries match by their full id only."""
     if it.get("file"):
         return store.get(it["id"]) or store.get(it["ref"].rsplit("/", 1)[-1])
-    return store.get(it["id"])
+    entry = store.get(it["id"])
+    # The id of a LOG entry is not unique for good: two entries of one sender and day that start
+    # alike get " (n)" by inbox order, and when the first one closes the second takes over the
+    # bare id — and with it the first one's class (measured 2026-10-11, Windows instance, on the
+    # merged #287). A class therefore remembers the text it was given for; another text under the
+    # same id is unclassified. Classes stored before this carry no text and keep working.
+    if entry and entry.get("text") and entry["text"] != fingerprint(it.get("text", "")):
+        return None
+    return entry
+
+
+def fingerprint(text):
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
 
 
 PR_ID = re.compile(r"^[\w.-]+#\d+$")
@@ -440,8 +472,11 @@ def classify(args, cls_file, repo):
                     print(f"   {n}")
                 return 2
         specs.append((key, cls, why))
+    texts = {i["id"]: i.get("text", "") for i in (req or []) if not i.get("file")}
     for key, cls, why in specs:
         store[key] = {"class": cls, "why": why.strip() or "agent's judgement", "at": today}
+        if key in texts:
+            store[key]["text"] = fingerprint(texts[key])
         print(f"classified: {key} = {cls}")
     if not save_json(cls_file, store):
         print(f"!! class NOT saved ({cls_file})")
@@ -453,9 +488,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--owner", default="")
     ap.add_argument("--hook-input", default="")
-    ap.add_argument("--repo", default=os.environ.get(
-        "SHARED_MEMORY_REPO", str(Path.home() / "Projects" / "brain-shared-memory")))
-    ap.add_argument("--root", default=os.environ.get("CLAUDE_PROJECT_DIR", "."))
+    ap.add_argument("--repo", default=default_repo())
+    ap.add_argument("--root", default=resolve_project_dir(HERE))
     # extend: the hint prints one --classify per item; with the default action only the last one counted.
     ap.add_argument("--classify", nargs="+", action="extend", metavar="ID=ai|human[:why]")
     a = ap.parse_args()
@@ -505,7 +539,7 @@ def main():
             return True
         return False
 
-    req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {})
+    req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {}, a.repo)
     ses = sessions(root, a.hook_input)
     failed = [name for name, v in (("shared-memory requests", req),
                                    ("PR search" if a.owner else "PRs (no owner given)", pr),
@@ -601,11 +635,13 @@ def main():
     if parked:
         print(f"- [parked] {', '.join(i['ref'].rsplit('/', 1)[-1] for i in parked)}")
     if count["?"]:
-        print("!! open for us: classify every '?' item once — core/scripts/open-items.py --classify '<id>=ai|human:<why>'")
+        # No angle brackets in these hints: the session start escapes < and > to protect its
+        # own wrapper, so '<id>' reached the operator as '&lt;id&gt;' (measured 2026-10-11).
+        print("!! open for us: classify every '?' item once — core/scripts/open-items.py --classify 'ID=ai|human:WHY'")
         # The id is not always the printed ref (a LOG entry adds its first 40 characters).
         for i in active:
             if i["cls"] == "?":
-                print(f"   --classify '{i['id']}=ai|human:<why>'")
+                print(f"   --classify '{i['id']}=ai|human:WHY'")
     return 0
 
 

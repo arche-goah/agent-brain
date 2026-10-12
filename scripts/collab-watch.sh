@@ -30,7 +30,8 @@
 # Skill: skills/collab-watch/SKILL.md (procedure, handling flow, lessons).
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTANCE="${CLAUDE_PROJECT_DIR:-$PWD}"
+. "$HERE/project-dir.sh"   # config and state must not depend on the caller's cwd
+INSTANCE="$(resolve_project_dir "$HERE")"
 CONFIG="${COLLAB_WATCH_CONFIG:-$INSTANCE/.claude/rules/collab-watch.json}"
 SCOPE="${COLLAB_WATCH_SCOPE:-all}"
 TOPICS="${COLLAB_WATCH_TOPICS:-}"
