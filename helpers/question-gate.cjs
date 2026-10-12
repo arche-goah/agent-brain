@@ -80,10 +80,26 @@ function stripQuoted(t) {
     .replace(/^\s*>.*$/gm, ' ');
 }
 
-function questions(text, rx) {
+function sentences(text) {
   // Emphasis markers around a question ("**shall I?**") would hide the final "?".
   return stripQuoted(text).replace(/\*\*|__/g, '').split(/(?<=[.!?])\s+|\n+/).map((s) => s.replace(/^[\s*\-\d.)]+/, '').trim())
-    .filter((s) => s.endsWith('?') && rx.test(s));
+    .filter(Boolean);
+}
+
+function questions(text, rx) {
+  return sentences(text).filter((s) => s.endsWith('?') && rx.test(s));
+}
+
+/**
+ * The text right before a question, so a later session knows what it is about. Measured
+ * 2026-10-12 (Windows instance): "Do you want it, and when?" stood at three session starts
+ * with nothing else; the operator had decided it the same day it was asked (the ledger held
+ * the order), but no session could tell which topic the bare sentence meant, so none closed it.
+ */
+function contextOf(text, q) {
+  const all = sentences(text);
+  const i = all.indexOf(q);
+  return i > 0 ? all.slice(0, i).join(' ').slice(-160).trim() : '';
 }
 
 function qid(q) { return crypto.createHash('sha1').update(q.toLowerCase().replace(/\s+/g, ' ')).digest('hex').slice(0, 8); }
@@ -137,7 +153,8 @@ function gate(input) {
     for (const q of questions(rep.text, rx)) {
       const id = qid(q);
       if (!state[id]) {
-        state[id] = { q: q.slice(0, 240), asked: new Date().toISOString(), session: input.session_id || '', status: 'open' };
+        state[id] = { q: q.slice(0, 240), about: contextOf(rep.text, q), asked: new Date().toISOString(),
+          session: input.session_id || '', status: 'open' };
         changed = true;
       }
       if (rep.prompt < operator && state[id].status === 'open' && !pending.includes(id)) pending.push(id);
@@ -151,7 +168,7 @@ function gate(input) {
     reason: `QUESTION-GATE: ${pending.length} question(s) to the operator are still open after their reply: ${list}`
       + (pending.length > 5 ? ` (+${pending.length - 5})` : '')
       + '. Settle each: node core/helpers/question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<their words>'
-      + ' - answered = the operator decided it; unanswered = they replied without addressing it (ask again where it'
+      + ' - answered = the operator decided it (also EARLIER: an order already in the ledger or a prior prompt); unanswered = they replied without addressing it (ask again where it'
       + ' matters); deferred = THEY postponed it, quote their words in the note (an overlooked question is not deferred).',
   }));
 }
@@ -178,7 +195,12 @@ function cli(args) {
     const open = Object.entries(state).filter(([, v]) => ['open', 'deferred', 'unanswered'].includes(v.status));
     if (!open.length) return 0;
     console.log(`open questions to the operator: ${open.length}`);
-    for (const [id, v] of open) console.log(`- [${v.status}] ${(v.asked || '').slice(0, 10)} ${id} ${v.q}`);
+    // The context line is what lets the next session match the question to its topic (ledger,
+    // decision log) and close it once settled there; a bare sentence cannot be matched.
+    for (const [id, v] of open) {
+      console.log(`- [${v.status}] ${(v.asked || '').slice(0, 10)} ${id} ${v.q}`);
+      if (v.about) console.log(`    about: ${v.about}`);
+    }
     return 0;
   }
   console.log('usage: question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<operator words> ... | list');
