@@ -16,9 +16,21 @@
  * CORE/INSTANCE SPLIT: this guard is the mechanism (core). The rules themselves are
  * instance knowledge (which rig, which doc paths) and are loaded at runtime from
  *   <project>/.claude/rules/mechanism-rules.json
- * Format: [{ "pattern": "<JS regex>", "was": "...", "stattdessen": "..." }, ...]
+ * Format: [{ "pattern": "<JS regex>", "was": "...", "stattdessen": "...",
+ *           "needs_operator_word": true|false }, ...]
  * If the file is missing or broken, the guard blocks nothing (fail-open, read-only hook).
  * Every newly discovered shortcut gets added there as a rule — the system learns.
+ *
+ * OPERATOR'S WORD (added 2026-10-12): a rule whose documented path is "agree it with the
+ * operator first" may set `needs_operator_word: true`. Then the marker alone does not open
+ * it — its justification has to carry the operator's word in a CHECKABLE form: a quotation
+ * ("…", „…", “…”) plus the date it was said (YYYY-MM-DD), or a pointer to a decision file
+ * (path[:line]) that exists. Incident (2026-09-12): two merges in a shared repo carried the
+ * marker with a verbatim operator quote that stands in no transcript of that day — a real
+ * but unspecific order had been smoothed into a crisp permission while writing the marker.
+ * The guard cannot read the transcript, but it can refuse the shape that lets a paraphrase
+ * pass as a quote: no quote, no date, no file = nothing anyone can check afterwards. Rules
+ * without the flag keep the old behaviour; a brain that never sets it changes nothing.
  */
 const fs = require('fs');
 
@@ -76,7 +88,8 @@ function compile(list, source) {
     .map((r) => {
       try {
         return { re: new RegExp(r.pattern), was: r.was, instead: r.stattdessen || r.instead,
-                 target: r.target === 'path' ? 'path' : 'command', source };
+                 target: r.target === 'path' ? 'path' : 'command', source,
+                 needsOperatorWord: r.needs_operator_word === true };
       } catch (_) { return null; }
     })
     .filter(Boolean);
@@ -136,6 +149,53 @@ function loadRules() {
   return rules;
 }
 
+// The operator's word behind the marker, in the three shapes the guard can check without a
+// transcript. Quote shapes are the ones question-gate.cjs accepts for a deferred question;
+// three characters minimum so an empty pair ("") does not count as a quotation.
+const QUOTE_RE = /"[^"\n]{3,}"|„[^“”"\n]{3,}[“”"]|“[^”\n]{3,}”/;
+const DATE_RE = /\b20\d{2}-\d{2}-\d{2}\b/;
+
+// A pointer is a path-like token (contains a slash) after the marker, optionally with
+// `:line` or `#anchor`; it counts only if the file exists — relative paths resolve against
+// the project. Only record files count (.md/.txt/.json/.jsonl/.yaml): a script or a binary
+// records no decision. A `:line` beyond the file's end is a pointer into nothing.
+const RECORD_FILE_RE = /\.(md|txt|json|jsonl|ya?ml)$/i;
+function pointerExists(text, project) {
+  const tokens = text.match(/(?:~|[A-Za-z]:)?[\w.~-]*[\\/][\w.\\/~-]*(?::\d+)?/g) || [];
+  for (const raw of tokens) {
+    const t = raw.replace(/[),.;:]+$/, '');
+    const m = /^(.*?)(?::(\d+))?$/.exec(t);
+    let p = m[1].replace(/#.*$/, '');
+    if (!RECORD_FILE_RE.test(p)) continue;
+    if (p.startsWith('~')) p = path.join(os.homedir(), p.slice(1));
+    if (!path.isAbsolute(p)) p = path.join(project, p);
+    let st = null;
+    try { st = fs.statSync(p); } catch (_) { continue; }
+    if (!st.isFile()) continue;
+    if (m[2]) {
+      let lines = 0;
+      try { lines = fs.readFileSync(p, 'utf8').split('\n').length; } catch (_) { continue; }
+      if (Number(m[2]) > lines) continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+// What the marker's justification is missing for a rule that needs the operator's word;
+// an empty list means it carries one.
+function operatorWordMissing(justification, project) {
+  const quote = QUOTE_RE.test(justification);
+  const date = DATE_RE.test(justification);
+  if (quote && date) return [];
+  if (pointerExists(justification, project)) return [];
+  const missing = [];
+  if (!quote) missing.push('a quotation of the operator in "…" or „…"');
+  if (!date) missing.push('the date it was said (YYYY-MM-DD)');
+  missing.push('or instead a pointer to a decision file that exists (path[:line])');
+  return missing;
+}
+
 let input = '';
 process.stdin.on('data', (d) => (input += d));
 process.stdin.on('end', () => {
@@ -148,37 +208,57 @@ process.stdin.on('end', () => {
   } catch (_) {
     process.exit(0);
   }
-  if (/MECHANISM-OK:/.test(cmd)) process.exit(0); // deliberate, justified deviation
+  // A marker is a deliberate, justified deviation. It opens every rule as before — except a
+  // rule that needs the operator's word, which reads the justification before it opens.
+  const marker = /MECHANISM-OK:([\s\S]*)$/.exec(cmd);
+  const project = process.env.CLAUDE_PROJECT_DIR || '.';
+  const rules = loadRules();
+  if (marker && !rules.some((r) => r.needsOperatorWord)) process.exit(0);
 
   const stripped = stripHeredocs(cmd);
-  for (const r of loadRules()) {
+  for (const r of rules) {
     const hit = r.target === 'path' ? (filePath && r.re.test(filePath)) : (cmd && r.re.test(stripped));
-    if (hit) {
-      const how = r.target === 'path'
-        ? `A file write cannot carry the marker. If the documented path really doesn't fit, do it as a\n` +
-          `shell command that ends with "# MECHANISM-OK: <justification>" — visible and justified.`
-        : `If the documented path really doesn't fit: repeat the command with a comment\n` +
-          `"# MECHANISM-OK: <justification>" — the justification then belongs in the\n` +
-          `change log. A silent deviation is not intended.`;
-      const msg =
-        `MECHANISM CHECK (${r.source}): ${r.was}\n\n` +
-        `The setup has a documented path for this:\n  ${r.instead}\n\n` + how;
-      cmd = cmd || `write ${filePath}`;
-      try {
-        fs.appendFileSync(
-          `${process.env.CLAUDE_PROJECT_DIR || '.'}/.claude-state/mechanism-guard.log`,
-          `${new Date().toISOString()} BLOCKED: ${cmd.slice(0, 200)}\n`
-        );
-      } catch (_) {}
-      console.log(JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: 'PreToolUse',
-          permissionDecision: 'deny',
-          permissionDecisionReason: msg,
-        },
-      }));
-      process.exit(0);
+    if (!hit) continue;
+    let missing = [];
+    if (marker) {
+      if (!r.needsOperatorWord) continue;
+      missing = operatorWordMissing(marker[1], project);
+      if (missing.length === 0) continue;
     }
+    const how = marker
+      ? `This rule needs the OPERATOR'S WORD behind the marker, and the justification does not carry\n` +
+        `one that can be checked. Missing:\n  - ${missing.join('\n  - ')}\n` +
+        `A paraphrase is not a quotation: write only what the operator actually said, with its date,\n` +
+        `or point at the file where the decision is recorded. If there is no such word, that is the\n` +
+        `finding — report it, do not run the command.`
+      : r.target === 'path'
+      ? `A file write cannot carry the marker. If the documented path really doesn't fit, do it as a\n` +
+        `shell command that ends with "# MECHANISM-OK: <justification>" — visible and justified.`
+      : `If the documented path really doesn't fit: repeat the command with a comment\n` +
+        `"# MECHANISM-OK: <justification>" — the justification then belongs in the\n` +
+        `change log. A silent deviation is not intended.` +
+        (r.needsOperatorWord
+          ? `\nThis rule needs the operator's word: the justification must quote it ("…" plus the\n` +
+            `date YYYY-MM-DD) or point at a decision file that exists (path[:line]).`
+          : '');
+    const msg =
+      `MECHANISM CHECK (${r.source}): ${r.was}\n\n` +
+      `The setup has a documented path for this:\n  ${r.instead}\n\n` + how;
+    cmd = cmd || `write ${filePath}`;
+    try {
+      fs.appendFileSync(
+        `${process.env.CLAUDE_PROJECT_DIR || '.'}/.claude-state/mechanism-guard.log`,
+        `${new Date().toISOString()} BLOCKED: ${cmd.slice(0, 200)}\n`
+      );
+    } catch (_) {}
+    console.log(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: msg,
+      },
+    }));
+    process.exit(0);
   }
   process.exit(0);
 });

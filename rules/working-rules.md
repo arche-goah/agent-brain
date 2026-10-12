@@ -263,6 +263,14 @@ hand, GUI drivers), and the guard finds it whether the tool arrives as a clone i
 belongs — the system learns, not just the agent. (Incident 2026-10-11: a defined path was
 not available on a second machine; the session built its own client and wrote straight
 into the tool's IPC file instead of reporting. Not available = report, THIRD CASE above.)
+**A rule whose documented path is "agree it with the operator first" may demand the
+operator's word behind the marker** (`needs_operator_word: true`, operator decision
+2026-10-12): the justification must then quote the operator — the words in `"…"` or `„…"`
+plus the date they were said — or point at a record file that exists (`path[:line]`);
+otherwise the guard denies and names what is missing. A paraphrase is not a quotation
+(incident 2026-09-12: two merges in a shared repo carried the marker with a verbatim quote
+that stands in no transcript of that day — the gap it should have shown was papered over by
+the invented evidence). Rules without the field behave as before.
 **A request to another machine names the defined path AS IT EXISTS THERE** — read how that
 machine runs the tool (clone or plugin, version) before writing the steps; a step that only
 works on the sender's setup turns the receiver's next move into improvisation.
