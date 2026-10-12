@@ -23,7 +23,9 @@ bad() { echo "  FAIL $1"; fail=1; }
 # tests nothing in the other — so resolution is explicit, and a missing subject is
 # SKIPPED loudly rather than passing quietly.
 resolve() {
-  for cand in "core/$1" "$1"; do
+  # "core/helpers/x" inside the core repo is "helpers/x": without the third form every fixture was
+  # SKIPPED in both layouts and the run still said "ALL passed" (found 2026-10-12)
+  for cand in "core/$1" "$1" "${1#core/}"; do
     [ -f "$cand" ] && { printf '%s' "$cand"; return 0; }
   done
   return 1
@@ -35,7 +37,9 @@ skip() { echo "  --  $1 (not in this layout)"; }
 run_hook() {
   local out hook
   hook=$(resolve "$2") || { skip "$1"; return 0; }
-  out=$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$3" "$ROOT" \
+  # Git Bash on Windows: node cannot open /tmp/... - hand it the Windows form (no cygpath elsewhere: as it is)
+  local tp; tp=$(cygpath -m "$3" 2>/dev/null || printf '%s' "$3")
+  out=$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$tp" "$ROOT" \
         | CLAUDE_PROJECT_DIR="$ROOT" node "$hook" 2>&1)
   if [ "$4" = "block" ]; then
     case "$out" in *"${5:-}"*) ok "$1 blocks";; *) bad "$1 did not block: ${out:0:120}";; esac
@@ -58,6 +62,13 @@ mk "$T/code.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","te
 run_hook "class-gate/code turn" core/helpers/class-gate.cjs "$T/code.jsonl" block "CLASS-GATE"
 mk "$T/doc.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"notiert"},{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"docs/maintenance/session-log.md","new_string":"x"}}]}}'
 run_hook "class-gate/doc turn" core/helpers/class-gate.cjs "$T/doc.jsonl" allow
+# answered in advance: a ⚙ line after the last edit passes - before, every code turn showed the
+# operator a "Stop hook error" even when the answer was already there (2026-10-12)
+mk "$T/answered.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"scripts/hooks/probe.cjs","new_string":"x"}}]}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"fertig.\n\n⚙ no class"}]}}'
+run_hook "class-gate/answered in advance" core/helpers/class-gate.cjs "$T/answered.jsonl" allow
+# ... but an edit AFTER the ⚙ line reopens it
+mk "$T/reopened.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"⚙ no class"},{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"scripts/hooks/probe.cjs","new_string":"x"}}]}}'
+run_hook "class-gate/edit after the answer" core/helpers/class-gate.cjs "$T/reopened.jsonl" block "CLASS-GATE"
 
 # --- stop-verifier: only markers THIS turn wrote count -----------------------
 # The marker word is assembled so this fixture file does not contain it literally —
