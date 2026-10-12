@@ -19,6 +19,15 @@ ALSO REPORTED: a gate the template sets to `"onFailure": "block"` (fail closed w
 hook cannot start, crashes or times out; Claude Code >= 2.1.295) that this brain wires
 without it - "fails open".
 
+ALSO REPORTED: a `permissions.allow` entry of the template that points into the core
+(`Bash(node core/helpers/*)`, `Bash(python3 core/scripts/*)`, ...) which no settings scope
+of this brain grants, verbatim or by a broader glob. Same class as an unwired hook: the
+template reaches a brain once, so a core tool the harness must let the agent run by itself
+(`question-gate.cjs resolve`, `ci-watch.sh`, ...) ends in a permission prompt — or, in auto
+mode, in the classifier refusing it as a workaround. Measured 2026-10-11 on a Windows brain:
+the agent could not close its own answered question, the operator had to run the command by
+hand; the macOS brain, which carries the entry, ran the same command three times that day.
+
 Usage: hook-coverage.py [brain-root]           (default: cwd)
 Output: one line per missing hook — "<event>: <template command>".
 Exit 0 and silent when covered; exit 1 when something is missing.
@@ -30,6 +39,13 @@ import os
 import re
 import sys
 from pathlib import Path
+
+# The session start parses this output; left to the platform, Windows' console code page
+# mangles the dashes in these lines (os-traps OS-9).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):  # a stream that cannot be reconfigured
+    pass
 
 
 def load(path):
@@ -87,6 +103,21 @@ def registered_via_dispatcher(root, wired):
     return out
 
 
+def allow_entries(settings):
+    return [e for e in ((settings.get("permissions") or {}).get("allow") or []) if isinstance(e, str)]
+
+
+def granted(entry, have):
+    """A template entry is granted when a brain scope carries it verbatim, or a broader glob
+    whose fixed prefix the entry starts with (`Bash(node core/*)` covers `Bash(node core/helpers/*)`)."""
+    for h in have:
+        if h == entry:
+            return True
+        if h.endswith("*)") and entry.startswith(h[:-2]):
+            return True
+    return False
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else "."
     template = load(os.path.join(root, "core", "templates", "settings.json"))
@@ -95,13 +126,23 @@ def main():
 
     cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
     wired = {}
+    have_allow = []
     for p in (
         os.path.join(root, ".claude", "settings.json"),
         os.path.join(root, ".claude", "settings.local.json"),
         os.path.join(cfg, "settings.json"),
     ):
-        for event, pairs in commands_by_event(load(p)).items():
+        s = load(p)
+        for event, pairs in commands_by_event(s).items():
             wired.setdefault(event, []).extend(pairs)
+        have_allow.extend(allow_entries(s))
+
+    not_granted = []
+    for entry in allow_entries(template):
+        if re.search(r"core/(helpers|scripts)", entry) and not granted(entry, have_allow):
+            not_granted.append('permissions: "%s" from the core template is not granted here - every run of a core '
+                               'tool it covers ends in a prompt, or in auto mode in the classifier refusing it; add it '
+                               'to .claude/settings.json permissions.allow' % entry)
 
     # A helper can be wired INDIRECTLY: a dispatcher hook runs several checks itself
     # and the settings then name only the dispatcher. Matching on filenames alone
@@ -162,9 +203,9 @@ def main():
         if not (names.get("names") or names.get("instances")):
             inert.append("PreToolUse: public-text-guard.cjs is wired but .claude/rules/leak-names.json has no names - it checks nothing")
 
-    for line in missing + narrower + fail_open + inert:
+    for line in missing + narrower + fail_open + inert + not_granted:
         print(line)
-    return 1 if (missing or narrower or fail_open or inert) else 0
+    return 1 if (missing or narrower or fail_open or inert or not_granted) else 0
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ out=$(run); [[ -z "$out" && -f "$T/b/.claude-state/always-loaded.json" ]] && ok 
 grow "$T/b/CLAUDE.md" 1500
 out=$(run); [[ -z "$out" ]] && ok "within-slack-silent" || bad "within-slack-silent: $out"
 grow "$T/b/.claude/rules/a.md" 1000
-out=$(run); grep -q 'grew 2300 -> 4800 bytes (+2500)' <<< "$out" && ok "creep-in-steps-loud" || bad "creep-in-steps-loud: $out"
+out=$(run); grep -q 'grew from 2300 to 4800 bytes (+2500)' <<< "$out" && ok "creep-in-steps-loud" || bad "creep-in-steps-loud: $out"
 grow "$T/MEMORY.md" 10
 out=$(run); grep -q '+2510' <<< "$out" && ok "memory-index-counted" || bad "memory-index-counted: $out"
 out=$(run --accept); grep -q 'baseline set: 4810' <<< "$out" && ok "accept-sets-baseline" || bad "accept-sets-baseline: $out"

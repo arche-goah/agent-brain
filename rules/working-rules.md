@@ -285,6 +285,14 @@ Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machin
 - **alpha** — a development checkout under test, with an expiry date and what is being
   measured. Past the date: merge, extend with a reason, or unwire.
 
+**A suite that ships as a plugin is consumed as the plugin** (operator order 2026-10-11: no
+special-purpose tinkering — here, at collaborators, in other instances). Its MCP server and
+skills come from the marketplace on every machine; a clone of the suite feeds a brain only to
+check a PR head, as a declared alpha with a date, and goes back afterwards. A suite's name is
+not an instance identity token: it names shared tooling and cannot prove an item instance-only.
+Carried by `core/scripts/local-machinery.py`, class `clone` (a suite clone wired as MCP server
+or skill source while an added marketplace publishes that repo).
+
 **A fork is not a place for work** (operator direction 2026-10-11: the core exists to give
 everyone the same state; a time-boxed local alpha is how a new feature reaches it, but an
 unnoticed drift away from it must not happen — the default is not to turn off, but to find
@@ -432,3 +440,13 @@ their AIs:
 4. **Judge the sum, not the single change** (operator decision 2026-08-31): what counts
    is what all of this side's changes together mean for the other party — four small
    interventions are one big one.
+5. **One finding, one builder** (operator correction 2026-10-11: "you crossed each other
+   there for nothing — that costs time"). Whoever reports a finding on a PR says in the same
+   comment whether they build the fix ("PR follows" / "the author's" / "open for anyone").
+   Whoever wants to build a fix for SOMEONE ELSE's finding first reads the repo's open PRs
+   (`gh pr list --state open`) and the thread: an existing PR or a claim means counter-check,
+   not build; nothing there means one line in the thread ("building it"), then build. And
+   nothing is merged over an open finding in its thread — read the comments in full, never
+   through a tool that cuts them short. Measured the day the rule was written: one finding,
+   two fixes from two machines three minutes apart (one closed), and a merge over the finding
+   because a reader showed 200 characters of the comment.

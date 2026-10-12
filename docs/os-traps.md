@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=13
+known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=15 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7
 instances: 5
 repeat:    yes
 status:    closed
@@ -137,7 +137,7 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1
+known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/changelog-assemble.py=1 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -174,7 +174,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=3 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=4 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=3 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=4 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -207,6 +207,12 @@ inside the recorded tool inputs (the gate resolves those to decide coverage). Al
 through `native()`. Here it matters in BOTH directions: an unresolvable root is never
 covered (a must-allow case would block), an unresolvable transcript reads empty (a
 must-block case would pass silently). Windows run still owed at baseline time.
+2026-10-11, test-pr-ball.sh baselined after the same review: the temp dir crosses into python
+in one place — `SHARED_MEMORY_REPO` (env), the throwaway shared memory `shared_answers.py`
+reads — and goes through `cygpath -m`. It matters for the discriminator: the own-answer case
+asserts SILENCE, and an unresolvable path would read no answer and fire the line instead, so
+the case would fail loudly rather than pass for the wrong reason; the foreign-text control
+asserts a line and would pass either way. Green on Windows (Git Bash) the same day.
 2026-10-09, test-live-read-gate.sh baselined after the same review: paths cross into node in
 five places — the transcript, the project dir (env), the absolute required path inside the
 instance file, the `filePath` of each delivered-Read record, and the path inside each `cat`
@@ -427,7 +433,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=7 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
+known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=7 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
 status:    open
@@ -567,3 +573,49 @@ see a `newline=` on the CONTINUATION line of a multi-line `write_text(` call whi
 `open(`/`reconfigure(`; positive control: on the unfixed tree it hits every such
 statement. Fixtures are in the search on purpose: they run under the same interpreter.
 A new hit is read with one question: does this call exist in Python 3.9?
+
+## OS-14 — a Python program that starts `bash` gets WSL's bash on Windows, not Git Bash
+
+shape: B
+
+invariant: Python code never starts `bash` by bare name. On Windows `C:\Windows\System32\bash.exe`
+(the WSL launcher) comes before Git Bash in the PATH a native Python child sees, so
+`subprocess.run(["bash", ...])` reaches WSL — on a machine without a distribution it fails
+with "Windows Subsystem for Linux has no installed distributions", on one with a distribution
+it runs the script in a different system with different paths. A check that needs a shell
+script runs in a shell fixture (bash calls bash), or the Python side runs the logic itself.
+pattern:   ["']bash["']\s*,|\[\s*["']bash["']
+paths:     --include=*.py scripts helpers skills
+known:
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-10-11 in CI (windows-latest): `changelog-assemble-test.py` ran
+`release-preflight.sh` through `["bash", ...]` and failed on WSL, while a Windows workstation
+with a different PATH order was green — the runner, not the machine, showed it. The round trip
+moved into `release-preflight-test.sh`; the pattern then has zero hits in scripts, helpers and
+skills.
+
+## OS-15 — a hook calls an MSYS tool by bare name, and the hook's PATH has no Git\usr\bin
+
+shape: C
+
+invariant: A helper that runs as a Claude Code hook never starts a Git-Bash tool (`ps`, `kill`,
+`sed`, …) by bare name. On Windows the PATH Claude Code hands its children holds `Git\cmd`, not
+`Git\usr\bin`, so the tool is ENOENT in the hook while every check run from Git Bash (where
+`/usr/bin` is on PATH) finds it. Resolve it from the Git install (`<dir of git.exe>\..\usr\bin`),
+or do the work in node; and an unrunnable tool is "unknown", never a silent "no".
+pattern:   (execFileSync|execSync|spawnSync|execFile|spawn)\(\s*['"](ps|kill|sed|awk|grep|tail|head|find|xargs|cut|tr|sort|uniq|wc|date|stat|ls|cat)\b
+paths:     --include=*.cjs helpers
+known:
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-10-11 on the Windows instance: `watch-gate.cjs` ran `execFileSync('ps', …)`
+to test a watcher's MSYS pid; inside the hook it threw ENOENT, so every lock read as dead and the
+gate blocked a push of a waiting fact file with the shared-memory watcher alive. Its earlier
+measurement (exit 0 live, 1 dead, 2026-10-09) had run from Git Bash — the gate was checked where
+the defect does not live, the form this register calls C. Reproduced: `node` started directly or
+via `Git\usr\bin\bash.exe` gets ENOENT, via `Git\bin\bash.exe` (which adds `usr\bin` to PATH)
+finds it. Fixed in the same pass (`psCandidates()`); fixture `test-watch-gate.sh` runs the gate
+with exactly the hook's PATH (node's dir + `Git\cmd`). Zero hits after the fix.

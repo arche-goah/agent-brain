@@ -159,8 +159,8 @@ if core_pin and os.path.isdir("core"):
             ahead = False
     if sub != core_pin:
         if ahead:
-            print(f"__AHEAD__core rules {sub} is AHEAD of the pin {core_pin} -- "
-                  f"verification checkout; brain-update.sh would move it back")
+            print(f"__AHEAD__core checkout {sub} is ahead of the pin {core_pin}: a verification "
+                  f"checkout, fine while you test a PR; brain-update.sh puts it back on the pin")
         else:
             stale.append(f"core rules {sub or 'unknown'} -> {core_pin}")
 plugs = load(os.path.join(cfg, "plugins", "installed_plugins.json")).get("plugins") or {}
@@ -252,7 +252,7 @@ if suites:
 PY
 )
 if [[ -n "$supd" ]]; then
-  echo "!! suite update available: $supd — ask the operator; consumer checkouts: bash core/scripts/suite-install.sh <suite> (a developer checkout refuses safely — pull it by hand)"
+  echo "!! suite update available: $supd — ask the operator; consumer checkouts: bash core/scripts/suite-install.sh SUITE (a developer checkout refuses safely — pull it by hand)"
 fi
 
 # Open PRs across the ecosystem (operator order 2026-08-13): NAME them at session
@@ -285,7 +285,7 @@ if [[ -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
   gh api graphql -f q="user:$eco_owner is:pr is:open" -f query='query($q: String!) { viewer { login }
     search(query: $q, type: ISSUE, first: 40) { nodes { ... on PullRequest {
       number isDraft body repository { name } author { login }
-      commits(last: 1) { nodes { commit { committedDate } } }
+      commits(last: 1) { nodes { commit { oid committedDate } } }
       reviews(last: 30) { nodes { author { login } state submittedAt body } }
       comments(last: 30) { nodes { author { login } createdAt body } }
       reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } } } } } } } }' 2>/dev/null \
@@ -343,6 +343,12 @@ fi
 # silent offline). A wrong clock corrupts commit timestamps and every since= cursor.
 if [[ -f "$HERE/../scripts/clock-skew.py" ]]; then
   "$PY" "$HERE/../scripts/clock-skew.py" 2>/dev/null
+fi
+
+# Orphans: processes an earlier session left running (no parent, >1 h, from a session
+# folder). Reports only, never ends one; wanted services are declared by the instance.
+if [[ -f "$HERE/../scripts/orphan-check.py" ]]; then
+  "$PY" "$HERE/../scripts/orphan-check.py" --repo "$R" 2>/dev/null
 fi
 
 # Settings JSON valid?
@@ -450,7 +456,8 @@ if [[ -n "${PSC_SELF:-}" && -f "$PSC_SELF/../scripts/parallel-sessions.sh" ]]; t
   if [[ $ps_rc -eq 2 ]]; then
     echo "!! parallel-sessions: check not performable — collision state UNKNOWN, do not count as green"
   else
-    grep '^!!' <<<"$ps_out" || true
+    # `note:` = the machine-wide count without lsof (Windows): says what it knows, no `!!`.
+    grep -E '^!!|^note:' <<<"$ps_out" || true
   fi
 fi
 
@@ -564,6 +571,12 @@ fi
 # reported for two weeks, or never reported. Reads the LOCAL clone the fetch above refreshed —
 # no network of its own (measured 0.04 s). Full table: core/scripts/device-status.py [--person p].
 if [[ -d "${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}/.git" && -f "$HERE/../scripts/device-status.py" ]]; then
+  # This device reports itself first — measured 2026-10-11: the table had run at every start on
+  # two machines and said "never reported" for every device, because nothing ever called
+  # `report`. It writes (one file, commit, push) only when the state changed or the last
+  # report is a week old; the "unchanged" line is swallowed, a write or a WARN stays visible.
+  dev_rep="$(CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/device-status.py" report 2>/dev/null || true)"
+  [[ -n "$dev_rep" && "$dev_rep" != *" unchanged ("* ]] && echo "$dev_rep"
   "$PY" "$HERE/../scripts/device-status.py" table --brief 2>/dev/null
 fi
 

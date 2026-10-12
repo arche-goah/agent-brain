@@ -31,6 +31,12 @@
  *   listed at every session start AND asked again where it matters, louder each time.
  *   Measured 2026-10-10 (Windows instance): questions the operator had simply not answered
  *   were filed as `deferred` - the gate itself offered no other word for "still open".
+ * Who closes (operator decision 2026-10-11): the AGENT resolves its own question as
+ * `answered` once its work has answered it (measured, built, read instead of waited); the
+ * operator's words are needed only for `deferred`. The call needs the template permission
+ * `Bash(node core/helpers/*)` — without it the harness prompts, or its classifier refuses the
+ * call as a workaround (measured 2026-10-11, Windows); hook-coverage.py reports a brain that
+ * lacks it.
  * Questions of the reply being ended are recorded, never blocked — the operator has not
  * seen them yet. Once per turn; a re-issue passes. Fails open without a transcript.
  *

@@ -30,6 +30,14 @@ probe() { node -e 'const {isNotification}=require(process.argv[1]);process.stdou
 [ "$(probe "$NOTE please go on")" = false ] && ok "frames + operator words = operator" || bad "operator words ignored"
 [ "$(probe "go on")" = false ] && ok "plain text = operator" || bad "plain text read as notification"
 [ "$(probe "<system-reminder>x</system-reminder>")" = false ] && ok "a reminder without a task notification is not one" || bad "bare reminder read as notification"
+# A local command (/mcp, /model) runs without the model: its three records are not a prompt.
+[ "$(probe '<local-command-caveat>The command below was run directly in Claude Code.</local-command-caveat>')" = true ] && ok "local-command caveat = not a prompt" || bad "local caveat read as prompt"
+[ "$(probe '<command-name>/mcp</command-name>
+            <command-message>mcp</command-message>
+            <command-args></command-args>')" = true ] && ok "local command name record = not a prompt" || bad "command record read as prompt"
+[ "$(probe '<local-command-stdout>Reconnected to grandma3.</local-command-stdout>')" = true ] && ok "local-command stdout = not a prompt" || bad "local stdout read as prompt"
+[ "$(probe '<command-name>/mcp</command-name> and please also check the PR')" = false ] && ok "command frames + operator words = operator" || bad "operator words after a command ignored"
+[ "$(probe 'Base directory for this skill: x. Do the review.')" = false ] && ok "a skill text record stays a prompt" || bad "skill text read as notification"
 
 # --- the effect on a cooldown ----------------------------------------------------------
 user() { printf '{"message":{"role":"user","content":%s}}\n' "$(js "$1")"; }

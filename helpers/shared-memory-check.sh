@@ -26,8 +26,10 @@ REPO="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
 # that still has the old file gets it copied once, so no find is replayed or lost.
 STATE_FILE="${SHARED_MEMORY_STATE:-}"
 if [[ -z "$STATE_FILE" ]]; then
-  STATE_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude-state/shared-memory-state.json"
-  _legacy="${CLAUDE_PROJECT_DIR:-.}/config/shared-memory-state.json"
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/project-dir.sh"
+  _proj="$(resolve_project_dir "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)")"
+  STATE_FILE="$_proj/.claude-state/shared-memory-state.json"
+  _legacy="$_proj/config/shared-memory-state.json"
   if [[ ! -f "$STATE_FILE" && -f "$_legacy" ]]; then
     mkdir -p "$(dirname "$STATE_FILE")" && cp "$_legacy" "$STATE_FILE"
   fi
@@ -135,7 +137,7 @@ if [[ -n "$SINCE_DAY" && -f "$GEN" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; 
     END { for (k in t) printf "%s %d, ", k, t[k] }' | sed 's/, $//')
   TOTAL=$(printf '%s\n' "$FRESH" | sed -n 's/^since [0-9-]*: \([0-9]*\) entr.*/\1/p')
   if [[ -n "$TOTAL" && "$TOTAL" != "0" ]]; then
-    echo "shared-memory: $TOTAL entr$([[ "$TOTAL" == 1 ]] && echo y || echo ies) dated since $SINCE_DAY — ${BY_TOPIC:-see --since} (list: core/scripts/shared-memory-index.py --since $SINCE_DAY [--topic <t>])"
+    echo "shared-memory: $TOTAL entr$([[ "$TOTAL" == 1 ]] && echo y || echo ies) dated since $SINCE_DAY — ${BY_TOPIC:-see --since} (list: core/scripts/shared-memory-index.py --since $SINCE_DAY [--topic TOPIC])"
   fi
 fi
 

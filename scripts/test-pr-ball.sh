@@ -16,6 +16,10 @@ fail=0
 ok()  { echo "  OK   $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
 [ -f "$BALL" ] || { bad "pr-ball.py not found"; exit 1; }
+# Every case reads an empty throwaway shared memory, never this machine's real clone.
+# OS-3: python is native, so the path it reads is handed over in native form.
+SM="$(mktemp -d)"; trap 'rm -rf "$SM"' EXIT
+export SHARED_MEMORY_REPO; SHARED_MEMORY_REPO="$(command -v cygpath >/dev/null 2>&1 && cygpath -m "$SM" || printf %s "$SM")"
 
 NOW="2026-09-15T08:00:00Z"   # 40 h after 2026-09-13T16:00Z
 run() { printf '%s' "$2" | "$PY" "$BALL" --now "$NOW"; }
@@ -127,6 +131,19 @@ kexpect_line "sibling review: our comment on the other instance's PR is a look, 
 # PR reads as our own and stays silent. This is exactly the blindness the key removes.
 out="$(printf '%s' "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" | env -u SHARED_MEMORY_SELF "$PY" "$BALL" --now "$NOW")"
 [ -z "$out" ] && ok "no own key: login-only rule unchanged (sibling PR silent)" || bad "no own key: expected the old silence, got: $out"
+
+# The check was answered in the shared memory, not on the PR (measured 2026-10-11: the
+# bootup said "agent-brain#279 review - asked, not looked at yet" after the Windows check of
+# that head had been answered there). Our text naming THIS head is the look; an older head
+# or someone else's text naming it is not.
+mkdir -p "$SM/.git" "$SM/core"
+SIB='{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"oid":"abcdef1234567890abcdef1234567890abcdef12","committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}'
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: mac' '---' 'Checked at head `abcdef1`: OK.' > "$SM/core/antwort.md"
+kexpect_silent "shared-memory answer at this head: the sibling PR is looked at" "$(pr acct "$SIB")"
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: ws' '---' 'please check `abcdef1`' > "$SM/core/antwort.md"
+kexpect_line "negative control: a foreign text naming the head is no look of ours" "$(pr acct "$SIB")" \
+  "suite#117 review - asked, not looked at yet"
+rm -rf "$SM/core" "$SM/.git"
 
 # 9. drafts never count
 expect_silent "draft: never a move" \
