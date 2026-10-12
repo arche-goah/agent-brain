@@ -22,11 +22,21 @@
  *                 deleting on export could drop the other machine's memories. Run
  *                 prune consciously right after deleting live memories.
  *
- * Conflict model (per file): 3-way using the manifest hash as the common base.
+ * Conflict model (per file): 3-way against the base THIS MACHINE last synced to.
  *   - only snapshot changed  -> snapshot wins (copy into live)
- *   - only live changed       -> live wins (keep live)
- *   - both changed (DIVERGED) -> keep BOTH: write snapshot copy as <name>.incoming.md
- *                                into live and flag; never overwrite -> no data loss.
+ *   - only live changed       -> live wins (write to snapshot)
+ *   - both changed (DIVERGED) -> keep BOTH: import writes the snapshot copy as
+ *                                <name>.incoming.md into live; export leaves the snapshot
+ *                                alone and flags; never overwrite -> no data loss.
+ *   - base unknown            -> treated as DIVERGED whenever the two sides differ.
+ *
+ * The base lives in <live>/.sync-base.json, per machine and untracked. It used to be
+ * the tracked manifest — which, right after a `git pull`, holds the OTHER machine's view:
+ * every live file on a machine that had not synced for weeks looked "changed", and the
+ * export running as a Stop hook wrote the stale memory over the freshly pulled snapshot
+ * (measured 2026-10-10: 458 lines of the other machine's memory gone from the working
+ * tree, caught before the commit). The tracked manifest now only says what the snapshot
+ * holds (memory-lint reads it); who is ahead is a question each machine answers for itself.
  * Hook-safe: writes progress to stderr, nothing to stdout, always exits 0.
  */
 const fs = require('fs');
@@ -82,6 +92,18 @@ function saveManifest(m) {
   fs.writeFileSync(manifestPath, JSON.stringify(m, null, 2) + '\n');
 }
 
+// The per-machine base: hash per file as THIS machine last saw both sides agree (after an
+// import or export). Lives next to the live memory, never tracked — the tracked manifest
+// travels between machines and therefore cannot be anyone's base (see header).
+function basePath() { return path.join(liveDir(), '.sync-base.json'); }
+function loadBase() {
+  try { return JSON.parse(fs.readFileSync(basePath(), 'utf8')); } catch (e) { return { files: {} }; }
+}
+function saveBase(b) {
+  fs.mkdirSync(liveDir(), { recursive: true });
+  fs.writeFileSync(basePath(), JSON.stringify(b, null, 2) + '\n');
+}
+
 // Multiple Claude Code sessions in the SAME repo each run this hook at their own
 // SessionStart — measured 2026-08-20 (invariant I-7): memory-lint.py, also a
 // SessionStart check, read the manifest while a write here was still in flight and
@@ -104,29 +126,48 @@ function doExport() {
   if (!fs.existsSync(live)) { log(`[memory-sync] no live memory dir (${live}); nothing to export`); return; }
   fs.mkdirSync(snapshotDir, { recursive: true });
   const m = loadManifest();
-  let changed = 0;
+  const b = loadBase();
+  let changed = 0, held = 0, pending = 0;
   for (const name of listMd(live)) {
     const content = readFileSafe(path.join(live, name));
     if (content == null) continue;
     const h = sha(content);
-    const prev = m.files[name];
-    if (!prev || prev.hash !== h) {
-      fs.writeFileSync(path.join(snapshotDir, name), content);
+    const snapPath = path.join(snapshotDir, name);
+    const snapContent = readFileSafe(snapPath);
+    const snapHash = snapContent == null ? null : sha(snapContent);
+    const base = b.files[name];
+
+    if (snapHash === h) { // both sides agree: that IS the base, whatever it was before
+      b.files[name] = { hash: h };
+      m.files[name] = { hash: h, updated: (m.files[name] && m.files[name].updated) || nowISO() };
+      continue;
+    }
+    const liveChanged = !base || base.hash !== h;
+    const snapChanged = snapHash != null && (!base || base.hash !== snapHash);
+    if (snapHash == null || (liveChanged && !snapChanged)) {
+      fs.writeFileSync(snapPath, content);
+      b.files[name] = { hash: h };
       m.files[name] = { hash: h, updated: nowISO() };
       changed++;
       log(`[memory-sync] export: ${name}`);
-    } else if (!fs.existsSync(path.join(snapshotDir, name))) {
-      fs.writeFileSync(path.join(snapshotDir, name), content); // restore missing snapshot copy
+    } else if (!liveChanged) {
+      pending++; // snapshot moved under us (a pull) — import brings it in, export must not undo it
+      log(`[memory-sync] snapshot newer, import pending: ${name}`);
+    } else {
+      held++;
+      log(`[memory-sync] CONFLICT: ${name} changed on both sides — snapshot left untouched, run import`);
     }
   }
+  saveBase(b);
   saveManifest(m);
-  log(`[memory-sync] export done (${changed} file(s) updated)`);
+  log(`[memory-sync] export done (${changed} file(s) updated, ${pending} pending import, ${held} held)`);
 }
 
 function doImport() {
   const live = liveDir();
   fs.mkdirSync(live, { recursive: true });
   const m = loadManifest();
+  const b = loadBase();
   let copied = 0, kept = 0, conflicts = 0;
   for (const name of listMd(snapshotDir)) {
     const snapContent = readFileSafe(path.join(snapshotDir, name));
@@ -134,21 +175,28 @@ function doImport() {
     const snapHash = sha(snapContent);
     const livePath = path.join(live, name);
     const liveContent = readFileSafe(livePath);
-    const base = m.files[name];
+    const base = b.files[name];
+    const entry = m.files[name];
 
     if (liveContent == null) {
       fs.writeFileSync(livePath, snapContent);
-      m.files[name] = { hash: snapHash, updated: nowISO() };
+      b.files[name] = { hash: snapHash };
+      m.files[name] = { hash: snapHash, updated: (entry && entry.updated) || nowISO() };
       copied++; log(`[memory-sync] import (new): ${name}`); continue;
     }
     const liveHash = sha(liveContent);
-    if (liveHash === snapHash) { m.files[name] = { hash: snapHash, updated: (base && base.updated) || nowISO() }; continue; }
+    if (liveHash === snapHash) {
+      b.files[name] = { hash: snapHash };
+      m.files[name] = { hash: snapHash, updated: (entry && entry.updated) || nowISO() };
+      continue;
+    }
 
     const snapChanged = !base || base.hash !== snapHash;
     const liveChanged = !base || base.hash !== liveHash;
     if (snapChanged && !liveChanged) {
       fs.writeFileSync(livePath, snapContent);
-      m.files[name] = { hash: snapHash, updated: nowISO() };
+      b.files[name] = { hash: snapHash };
+      m.files[name] = { hash: snapHash, updated: (entry && entry.updated) || nowISO() };
       copied++; log(`[memory-sync] import (incoming wins): ${name}`);
     } else if (!snapChanged && liveChanged) {
       kept++; log(`[memory-sync] keep local (local newer): ${name}`);
@@ -158,6 +206,7 @@ function doImport() {
       conflicts++; log(`[memory-sync] CONFLICT: ${name} -> kept local + wrote ${path.basename(inc)} (reconcile manually)`);
     }
   }
+  saveBase(b);
   saveManifest(m);
   log(`[memory-sync] import done (${copied} copied, ${kept} kept-local, ${conflicts} conflict(s))`);
   if (conflicts) log(`[memory-sync] ${conflicts} conflict(s): review *.incoming.md in ${live}`);
@@ -166,15 +215,17 @@ function doImport() {
 function doStatus() {
   const live = liveDir();
   const m = loadManifest();
+  const b = loadBase();
   const names = new Set([...listMd(live), ...listMd(snapshotDir)]);
   log(`live:     ${live}`);
   log(`snapshot: ${snapshotDir}`);
   log(`lastSync: ${m.lastSync || '(never)'}`);
+  log(`base:     ${fs.existsSync(basePath()) ? basePath() : '(none yet — differing files count as DIVERGED until the first import/export)'}`);
   log('--- per file ---');
   for (const name of [...names].sort()) {
     const lc = readFileSafe(path.join(live, name));
     const sc = readFileSafe(path.join(snapshotDir, name));
-    const base = m.files[name];
+    const base = b.files[name];
     let state;
     if (lc == null) state = 'snapshot-only (import will add)';
     else if (sc == null) state = 'live-only (export will add)';
@@ -192,11 +243,13 @@ function doPrune() {
   const live = liveDir();
   if (!fs.existsSync(live)) { log('[memory-sync] prune ABORTED: no live memory dir — refusing to prune blind'); return; }
   const m = loadManifest();
+  const b = loadBase();
   let removed = 0;
   for (const name of listMd(snapshotDir)) {
     if (!fs.existsSync(path.join(live, name))) {
       fs.unlinkSync(path.join(snapshotDir, name));
       delete m.files[name];
+      delete b.files[name];
       removed++;
       log(`[memory-sync] prune: ${name} (no live counterpart)`);
     }
@@ -208,10 +261,12 @@ function doPrune() {
   for (const name of Object.keys(m.files)) {
     if (!fs.existsSync(path.join(snapshotDir, name)) && !fs.existsSync(path.join(live, name))) {
       delete m.files[name];
+      delete b.files[name];
       removed++;
       log(`[memory-sync] prune: ${name} (manifest entry without a file)`);
     }
   }
+  saveBase(b);
   saveManifest(m);
   log(`[memory-sync] prune done (${removed} file(s) removed)`);
 }
