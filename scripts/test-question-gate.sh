@@ -66,6 +66,13 @@ R="$T/r-deferred"
 case "$(cli "$R" list)" in *'[deferred]'*) ok "deferred question is listed for the session start";; *) bad "deferred not listed";; esac
 R="$T/r-unanswered"
 case "$(cli "$R" list)" in *'[unanswered]'*) ok "unanswered question is listed for the session start";; *) bad "unanswered not listed";; esac
+# A listed question carries the text before it (measured 2026-10-12: a bare "Do you want it,
+# and when?" stood at three session starts and no session could tell its topic).
+case "$(cli "$R" list)" in *'about: Done.'*) ok "listed question names its context";; *) bad "no context line: $(cli "$R" list)";; esac
+R="$T/r-noctx"; fresh "$R"
+{ user "go"; asst "$Q"; user "something else"; asst "ok"; } > "$T/t-noctx.jsonl"
+check "question without text before it" "$T/t-noctx.jsonl" block "$R" >/dev/null
+case "$(cli "$R" list)" in *'about:'*) bad "empty context printed: $(cli "$R" list)";; *'[open]'*) ok "no text before it = no context line";; *) bad "question not recorded";; esac
 # Deferred means the OPERATOR postponed it (operator decision 2026-10-10): the note must carry
 # their words. Measured the same day: overlooked questions were filed as deferred.
 R="$T/r-defer-bare"; fresh "$R"
