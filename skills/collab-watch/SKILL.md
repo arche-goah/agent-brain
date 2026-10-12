@@ -112,7 +112,9 @@ opt-out and holds for that session only.
    `gh pr merge`, do NOT re-issue it as `gh api -X PUT …/pulls/<nr>/merge` or any other
    form — that launders the refusal. Report it and get the operator's word (an earlier
    version of this step named the API call as a "second legitimate form"; corrected
-   2026-10-09, coherence register of the proving brain).
+   2026-10-09, coherence register of the proving brain). The general rule — no refused
+   action in another form, tool or session — is `rules/working-rules.md`, "A refusal is a
+   decision"; `mechanism-guard` blocks the API merge through the core's `mechanism-rules.json`.
    Merge traps, each measured:
    - `--match-head-commit` needs the FULL 40-character sha — a short sha is rejected by
      the API ("Could not coerce value … to GitObjectID"), measured 2026-10-09.

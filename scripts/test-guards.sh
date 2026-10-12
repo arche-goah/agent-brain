@@ -201,6 +201,29 @@ tr_probe "mechanism-guard/disabled plugin stays out" Bash command "fixture-disab
 tr_probe "mechanism-guard/tool rule + MECHANISM-OK marker" Bash command "fixture-server-by-hand  # MECHANISM-OK: developing the tool" allow
 rm -rf "$TR"
 
+# --- mechanism-guard: the CORE's own rules — a refused action is not re-issued ---------
+# Coherence scan 2026-10-12: a skill named `gh api -X PUT .../pulls/<n>/merge` a "second
+# legitimate form" after the permission layer refused `gh pr merge`. The core ships its own
+# mechanism-rules.json; this reads THAT file (not a copy) through a fake enabled plugin whose
+# install root is the core, so a broken pattern in the shipped file turns this red.
+if CR=$(resolve mechanism-rules.json); then
+  CRD=$(cd "$(dirname "$CR")" && pwd)
+  TR=$(mktemp -d)
+  mkdir -p "$TR/proj/.claude" "$TR/fakeuser/.claude/plugins"
+  printf '{"version":2,"plugins":{"core@fx":[{"installPath":"%s"}]}}' "$(native "$CRD")" \
+    > "$TR/fakeuser/.claude/plugins/installed_plugins.json"
+  printf '%s' '{"enabledPlugins":{"core@fx":true}}' > "$TR/fakeuser/.claude/settings.json"
+  tr_probe "mechanism-guard/core rule: raw API merge" Bash command "gh api -X PUT repos/o/r/pulls/5/merge -f merge_method=merge" block
+  tr_probe "mechanism-guard/core rule: --method PUT form" Bash command "gh api --method PUT repos/o/r/pulls/5/merge" block
+  tr_probe "mechanism-guard/core rule: GET of the merge state" Bash command "gh api repos/o/r/pulls/5/merge" allow
+  tr_probe "mechanism-guard/core rule: gh pr merge itself" Bash command "gh pr merge 5 --squash" allow
+  tr_probe "mechanism-guard/core rule: marker without the operator" Bash command "gh api -X PUT repos/o/r/pulls/5/merge  # MECHANISM-OK: faster" block
+  tr_probe "mechanism-guard/core rule: marker quoting the operator" Bash command "gh api -X PUT repos/o/r/pulls/5/merge  # MECHANISM-OK: operator 2026-10-12 \\\"merge it via the API\\\"" allow
+  rm -rf "$TR"
+else
+  skip "mechanism-guard/core rules (mechanism-rules.json)"
+fi
+
 # --- freshness-gate: only the Workflow tool concerns it ----------------------
 # The blocking case needs a completed expensive run in this session's record, which a
 # fixture cannot fake without inventing a run id. What IS provable here: it stays out
