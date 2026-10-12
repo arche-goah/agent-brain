@@ -77,7 +77,9 @@ case "$out" in *"!! brain-scan DUE: no report yet"*) ok "no report: due line";; 
 #     the register written the same day, after the report, was voiced for three days).
 #     Older artifact -> voiced (negative control); no artifact -> voiced. Dates come from
 #     the file names, so the report here carries one. The legacy register folder counts.
-TS="$T/stale-instance"
+#     The instance path carries a space (os-traps OS-10): measured 2026-10-12 on a Windows
+#     profile path, the artifact glob split there and the followed check was still voiced.
+TS="$T/stale instance"
 mkdir -p "$TS/docs/research/brain-scan" "$TS/docs/research/coherence-scan" "$TS/docs/research/memory-dream"
 printf -- '- [P1] x\ndeep check suggested: coherence-scan — 52 new dated rule lines since the last coherence register (2026-09-18) — measured price: ~2.6M\ndeep check suggested: memory-dream — index near its limit — measured price: ~0.6M\n' \
   > "$TS/docs/research/brain-scan/scan-2026-10-09.md"
