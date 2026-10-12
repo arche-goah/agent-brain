@@ -192,7 +192,10 @@ function parseBlock(text) {
       // agent falls back to "LOG <date> <sender>", which covered every entry of that sender
       // that day (measured 2026-10-09, Windows instance).
       const shown = /^LOG /.test(base) && m[6] ? `${ref}: ${m[6].slice(0, 40)}` : `${m[2]}-${m[3]}-${m[4]} ${base}`;
-      items.push({ cls: m[1], ref: shown, key: ref,
+      // `id` is the key --classify stores under for a LOG entry (that same ref + text id);
+      // the class file is read by it too, or a LOG entry classified mid-session stayed
+      // `?` for the gate (measured 2026-10-12, Windows instance: classified, still blocked).
+      items.push({ cls: m[1], ref: shown, key: ref, id: shown,
         base, date: [m[2], m[3], m[4]], words: topicWords(/\.md$/.test(base) ? base : (m[6] || '')), repeat });
     } else if ((m = /^- \[wake\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — /.exec(l))) {
       // A parked domain whose pausing party moved again: an operator item, named by the
@@ -269,7 +272,7 @@ function judge(input) {
   try { store = JSON.parse(fs.readFileSync(path.join(cwd, '.claude-state', 'open-items-class.json'), 'utf8')); } catch (e) { /* none yet */ }
   for (const it of blk.items) {
     if (it.cls !== '?') continue;
-    const own = store[it.key] || (it.base && store[it.base]);
+    const own = (it.id && store[it.id]) || store[it.key] || (it.base && store[it.base]);
     if (own && (own.class === 'ai' || own.class === 'human')) it.cls = own.class;
   }
   const unclassified = blk.items.filter((it) => it.cls === '?');

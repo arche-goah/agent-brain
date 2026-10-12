@@ -119,6 +119,16 @@ case "$out8b" in
   *'core/LOG 2026-10-07 peer-b: AN inst-a: first note'*) ok "unclassified LOG entry is named by its full id" ;;
   *) bad "unclassified LOG entry not named by its full id: '$out8b'" ;;
 esac
+# 8c — ...and a class stored under that full id (what --classify writes) satisfies the gate.
+# Measured 2026-10-12 (Windows instance): classified via the script, the gate still read the
+# bare ref and blocked the first reply. NEGATIVE: the same ref with another text stays `?`.
+f="$T/8c.jsonl"; { boot_ok startup "$QL"; user "stand?"; asst "1 needs you: the 2026-10-07 note from peer-b."; } > "$f"
+CLL="$T/cwd-cls-log"; mkdir -p "$CLL/.claude-state"
+printf '%s\n' '{"core/LOG 2026-10-07 peer-b: AN inst-a: first note":{"class":"human","why":"asks the operator"}}' > "$CLL/.claude-state/open-items-class.json"
+check "LOG entry classified under its full id" "$f" allow "$CLL"
+CLX="$T/cwd-cls-log-other"; mkdir -p "$CLX/.claude-state"
+printf '%s\n' '{"core/LOG 2026-10-07 peer-b: AN inst-a: another note":{"class":"human","why":"asks the operator"}}' > "$CLX/.claude-state/open-items-class.json"
+check "LOG entry with a class for another text stays unclassified" "$f" block "$CLX"
 
 # 9 — the bootup did not arrive.
 f="$T/9a.jsonl"; { boot_cancel; user "stand?"; asst "All good."; } > "$f"
