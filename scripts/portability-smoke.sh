@@ -106,6 +106,35 @@ case "$rc:$wd" in
   *) bad "watchdog disarm: rc=$rc $wd";;
 esac
 
+# 4b) stale armed watchdog at session start (2026-10-12): a crashed run leaves the state file
+#     armed; the bootup names it ONCE (via `status --brief`) with the disarm command. State
+#     lines: name, max-silence-min, last-beat, start, deadline (0 = open), core-done.
+_wds="$T/.claude-state/loop-watchdog.state"; mkdir -p "$T/.claude-state"; _now=$(date +%s)
+printf '%s\n' smoke-stale 30 "$(( _now - 5400 ))" "$(( _now - 7200 ))" 0 0 > "$_wds"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in
+  *"!! loop-watchdog still armed: 'smoke-stale', last beat 90 min ago (limit 30 min), no deadline"*"loop-watchdog.sh disarm"*) ok "bootup names a stale armed watchdog with the disarm command";;
+  *) bad "bootup stale-watchdog line missing: $(printf '%s' "$out" | grep -a 'loop-watchdog' | tail -1)";;
+esac
+# Deadline passed + core reported done + fresh beat: the script's second alarm class.
+printf '%s\n' smoke-overrun 30 "$_now" "$(( _now - 7200 ))" "$(( _now - 600 ))" 1 > "$_wds"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in
+  *"!! loop-watchdog still armed: 'smoke-overrun'"*"deadline "[0-2][0-9]:[0-5][0-9]" PASSED"*) ok "bootup names a run past its deadline with the core done";;
+  *) bad "bootup overrun-watchdog line missing: $(printf '%s' "$out" | grep -a 'loop-watchdog' | tail -1)";;
+esac
+# Negative controls: a fresh beat with an open core is a live run (even past its deadline —
+# the duration is a floor), and no state file is nothing. Both must stay silent.
+printf '%s\n' smoke-live 30 "$_now" "$(( _now - 7200 ))" "$(( _now - 600 ))" 0 > "$_wds"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"loop-watchdog still armed"*) bad "live run (fresh beat, core open) reported as stale";; *) ok "fresh beat: silent";; esac
+CLAUDE_PROJECT_DIR="$T" bash "$CORE/scripts/loop-watchdog.sh" arm smoke-fresh 30 5 >/dev/null 2>&1
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"loop-watchdog still armed"*) bad "just-armed run reported as stale";; *) ok "just armed (real writer): silent";; esac
+rm -rf "$T/.claude-state"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"loop-watchdog still armed"*) bad "no state file but a stale line";; *) ok "no state file: silent";; esac
+
 # 5) Generators write LF on EVERY OS. Python's text mode translates "\n" into the
 #    platform separator — the same file ended up with CRLF on Windows and LF on macOS
 #    (measured 2026-08-10: 12 CRLF in a freshly generated REGISTRY.md, 65 in an
