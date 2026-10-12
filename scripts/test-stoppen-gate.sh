@@ -158,6 +158,17 @@ AGFG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_a
 run_case_turn waiter-workflow-live '"Scan laeuft. Next, I will read its report."' allow "$CWD" "$WF"
 run_case_turn waiter-agent-bg-live '"Agent laeuft. Next, I will read its report."' allow "$CWD" "$AGBG"
 run_case_turn agent-fg-no-waiter '"Agent fertig. Next, I will read its report."' block "$CWD" "$AGFG"
+# The real flag arrives as the STRING "true" on 2.1.295 (measured, 5 of 6 Agent calls) ...
+AGSTR='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_a3","name":"Agent","input":{"prompt":"x","run_in_background":"true"}}]}}'
+run_case_turn waiter-agent-bg-string-live '"Agent laeuft. Next, I will read its report."' allow "$CWD" "$AGSTR"
+# ... and since 2.1.296 there is no flag at all: the launch RESULT says the agent runs async.
+AGASYNC="$AGFG
+"'{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_a2","content":[{"type":"text","text":"Async agent launched successfully. The agent is working in the background."}]}]}}'
+run_case_turn waiter-agent-async-result-live '"Agent laeuft. Next, I will read its report."' allow "$CWD" "$AGASYNC"
+# NEGATIVE: a sync Agent returns its report as the tool result — foreground, no waiter.
+AGSYNC="$AGFG
+"'{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_a2","content":[{"type":"text","text":"Report: three files checked, all clean."}]}]}}'
+run_case_turn agent-sync-result-no-waiter '"Agent fertig. Next, I will read its report."' block "$CWD" "$AGSYNC"
 # ...but a waiter that already reported its end waits for nothing.
 run_case_turn waiter-ended '"CI gruen. Arbeite weiter am Handoff."' block "$DE" "$BG
 $END"

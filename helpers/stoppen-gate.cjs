@@ -112,14 +112,31 @@ function isWaiter(b) {
   if (b.type !== 'tool_use') return false;
   // A Workflow always runs in the background; an Agent only when started so.
   if (b.name === 'Monitor' || b.name === 'Workflow') return true;
-  return (b.name === 'Bash' || b.name === 'Agent') && b.input && b.input.run_in_background === true;
+  // The flag arrives as boolean true (Bash) or as the STRING "true" (Agent — measured on
+  // Claude Code 2.1.295 transcripts, 5 of 6 calls); a strict === true missed every one.
+  const bg = b.input && b.input.run_in_background;
+  return (b.name === 'Bash' || b.name === 'Agent') && (bg === true || bg === 'true');
 }
+
+// Since Claude Code 2.1.296 the Agent tool carries no run_in_background flag and ALWAYS runs
+// async (measured 2026-10-12: the launch result says so, and a task notification with the
+// tool-use id follows). The harness's own launch text is the proof — an older sync Agent
+// returns its report as the tool result instead and stays a foreground call.
+const ASYNC_LAUNCH = /\bAsync agent launched\b|\bworking in the background\b/;
 
 function textOf(content) {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   return content.map((b) => (typeof b.text === 'string' ? b.text
-    : typeof b.content === 'string' ? b.content : '')).join('\n');
+    : typeof b.content === 'string' ? b.content
+    : Array.isArray(b.content) ? textOf(b.content) : '')).join('\n');
+}
+
+function asyncLaunches(content) {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((b) => b.type === 'tool_result' && b.tool_use_id && ASYNC_LAUNCH.test(textOf([b])))
+    .map((b) => b.tool_use_id);
 }
 
 function stripQuoted(text) {
@@ -157,7 +174,10 @@ function analyze(transcriptPath) {
     try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message;
     if (!msg) continue;
-    if (msg.role === 'user') for (const m of textOf(msg.content).matchAll(WAITER_END)) ended.add(m[1]);
+    if (msg.role === 'user') {
+      for (const m of textOf(msg.content).matchAll(WAITER_END)) ended.add(m[1]);
+      for (const id of asyncLaunches(msg.content)) armed.add(id);
+    }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
         if (isWaiter(b)) armed.add(b.id);
