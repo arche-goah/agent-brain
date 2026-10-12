@@ -22,5 +22,12 @@
     "pattern": "^(?![\\s\\S]*ci-watch\\.sh)[\\s\\S]*?(?:while\\s+true|until\\s|for\\s*\\(\\(|\\bsleep\\s+\\d+)[\\s\\S]*\\bgh\\s+(?:pr\\s+checks|run\\s+(?:list|view|watch))\\b",
     "was": "waiting for CI with a hand-built poll loop",
     "stattdessen": "scripts/ci-watch.sh pr <owner/repo> <nr> (or ref <owner/repo> <ref>), started via Monitor. Exit 0 = all green, 1 = something failed in CI, 2 = could NOT be measured - 2 is loud on purpose and is not green, 3 = the repo has no Actions workflow at all (nothing to wait for, also not green)."
+  },
+  {
+    "_comment": "Example rule 3 (adapt to the instance's release rule, or drop): a documented path that reads 'agree it with the operator first' sets needs_operator_word. Then `# MECHANISM-OK: <text>` alone does not open the rule: the text must quote the operator (\"...\" or „...“) WITH the date it was said (YYYY-MM-DD), or point at a record file that exists (path[:line], .md/.txt/.json). Measured 2026-09-12: two merges carried the marker with a verbatim quote that stands in no transcript of that day — a paraphrase had become a quotation while writing the marker. Rules without the field behave as before. Here: pushing a release tag, a release act most operators reserve.",
+    "pattern": "\\bgit\\b[^\\n]*\\bpush\\b[^\\n]*(--tags\\b|\\brefs/tags/|\\bv\\d+\\.\\d+\\.\\d+\\b)",
+    "was": "pushing a release tag (a release act the operator reserves)",
+    "stattdessen": "The operator's word for this release, quoted with its date, or the decision file it is recorded in - record here where the instance keeps it.",
+    "needs_operator_word": true
   }
 ]
