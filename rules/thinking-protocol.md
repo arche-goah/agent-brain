@@ -124,11 +124,11 @@ the same matter gets DONE, not tabled.
 | HIGH (>90%) | Execute directly, no follow-up question |
 | MEDIUM (60-90%) | Execute, but document the assumptions |
 | LOW (30-60%) | Research first (web search, read the codebase) |
-| UNCERTAIN (<30%) | First resolve it yourself (research/measurement/docs — read-before-ask); ask ONLY if the uncertainty cannot be resolved that way AND the decision belongs to the operator (goal/money/hardware/risk). If the instance carries a stop test (e.g. three-conditions), that test applies. |
+| UNCERTAIN (<30%) | First resolve it yourself (research/measurement/docs — read before asking); ask ONLY if the uncertainty cannot be resolved that way AND the decision belongs to the operator (goal/money/hardware/risk). Whether the question may end the turn is decided by ASK OR ACT (`working-rules.md`, Mechanism Discipline). |
 
 ⚠ **Destructive/irreversible/externally-effective beats confidence** (coherence-scan
 K-13, 2026-08-01): for such actions the respective gate applies (Think-Before-Act #1,
-read-before-ask (b), rig/deploy/social gates) INDEPENDENTLY of how certain the
+ASK OR ACT step 1 in `working-rules.md`, the instance's live-system gates) INDEPENDENTLY of how certain the
 solution appears — >90% confidence is no free pass for a
 switch-chip reset during a show.
 
