@@ -91,10 +91,33 @@ then an explicit release follows.
      that reach, and then this step is one sentence in the close report. A session that
      changed a SHARED tool, corrected a SHARED claim, or answered another instance's
      question almost always has something.
-   - After this: no further live CHANGES (measuring stays allowed).
-2. **Mechanical close — BEFORE the commit in step 4, never after it:**
+   - After this: no further live CHANGES (measuring stays allowed). One exception, because
+     the working rules call the missing save the defect: an operated artifact whose rebuild
+     this session started gets its dated after-copy now, even if the rebuild was interrupted
+     — saving a copy is the last allowed write; finishing the rebuild is not.
+2. **Mechanical close — BEFORE the commit in step 4, never after it.** Run from the brain
+   root, in this order, one command per call: the forms below are repo-relative so they match
+   the template's allow patterns (`Bash(bash core/helpers/*)`, `Bash(node core/helpers/*)`,
+   `Bash(python3 core/scripts/*)`); a `"$CLAUDE_PROJECT_DIR"/core/...` form matched none of
+   them and turned every close into permission prompts while the operator was leaving
+   (coherence scan of a Windows instance, 2026-10-12). The two writers come FIRST and the
+   scan LAST: `device-status.py` commits and pushes into the shared-memory repo and only
+   WARNs when the push fails — run after `session-closing.sh`, its unpushed commit was never
+   seen by the FAIL scan that step 4 relies on.
    ```bash
-   bash "$CLAUDE_PROJECT_DIR"/core/helpers/session-closing.sh --pre-commit --session "${CLAUDE_SESSION_ID}"
+   node core/helpers/memory-sync.cjs export
+   ```
+   ```bash
+   python3 core/scripts/device-status.py report
+   ```
+   (interpreter per instance rule) Records which core, plugin channel and suites this device runs into the shared memory
+   (`devices/<device>.json`; written only when something changed). The other devices read it
+   with `device-status.py [--person <p>|--device <id>|--os <os>]`.
+   **If this session deleted, merged or renamed a memory file: run `memory-sync.cjs prune`
+   BEFORE `export`.** Export only adds and updates; a snapshot copy of a deleted memory
+   stays, and the next session's import brings the memory back.
+   ```bash
+   bash core/helpers/session-closing.sh --pre-commit --session "${CLAUDE_SESSION_ID}"
    ```
    `--pre-commit` writes the session-log line without post-commit state (the close commit
    carries it) and leaves an untracked stamp, so the SessionEnd hook does not write it again.
@@ -106,18 +129,8 @@ then an explicit release follows.
    protocol: nothing is edited, merged or dropped, and today's entries never move. The
    fold line (or a `WARN session-log fold:` refusal) appears in the output; the fold file
    goes into the close commit with the log. Unset = no fold. The hook path never folds.
-   ```bash
-   node "$CLAUDE_PROJECT_DIR"/core/helpers/memory-sync.cjs export
-   ```
-   ```bash
-   python3 "$CLAUDE_PROJECT_DIR"/core/scripts/device-status.py report
-   ```
-   (interpreter per instance rule) Records which core, plugin channel and suites this device runs into the shared memory
-   (`devices/<device>.json`; written only when something changed). The other devices read it
-   with `device-status.py [--person <p>|--device <id>|--os <os>]`.
-   **If this session deleted, merged or renamed a memory file: run `memory-sync.cjs prune`
-   BEFORE `export`.** Export only adds and updates; a snapshot copy of a deleted memory
-   stays, and the next session's import brings the memory back.
+   A `device-status: WARN … push failed` line from above is handled in step 4 like a
+   `FAIL shared-memory` line — the commit is local, not arrived.
    `session-closing.sh` also writes `.claude/HANDOFF.md` (git state, last commits,
    unpushed count — the HANDOFF step 4 checks) and prints a `FAIL` line for every repo
    that is dirty or has unpushed commits on its checked-out branch: the shared-memory
