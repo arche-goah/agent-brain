@@ -28,6 +28,8 @@
  *
  * INPUT IS READ TO ITS END, never on a timer (see file-guard.cjs for the measured reason).
  * Exit 2 = block. No watch list = allow (nothing to check against), said on stderr.
+ * INERT-WITHOUT: .claude/rules/leak-names.json names|instances
+ *   (read by scripts/hook-coverage.py: no file or an empty watch list = reported)
  */
 const fs = require('fs');
 const path = require('path');

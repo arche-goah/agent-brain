@@ -375,7 +375,7 @@ done
 # every session until the operator adds the wiring; the check never edits settings.
 if [[ -f "$HERE/../scripts/hook-coverage.py" ]]; then
   hc=$("$PY" "$HERE/../scripts/hook-coverage.py" "$R" 2>/dev/null)
-  [[ -n "$hc" ]] && echo "!! hooks in the core template but not wired here: ${hc//$'\n'/ · } — ask the operator to add the line(s) to .claude/settings.json (source: core/templates/settings.json), then restart Claude Code"
+  [[ -n "$hc" ]] && echo "!! hooks in the core template but not wired here: ${hc//$'\n'/ · } — ask the operator to add the line(s) to .claude/settings.json (source: core/templates/settings.json), then restart Claude Code; a line about a gate's data file under .claude/rules/ is agent work: fill it, or write \"inert_ok\": \"<reason>\" into it"
 fi
 
 # Enabled plugin skills the auto-fire table omits (measured on the Windows instance:
