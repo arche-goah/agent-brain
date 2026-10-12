@@ -515,15 +515,17 @@ if [[ -n "${latest:-}" ]]; then
   while IFS= read -r dc; do
     chk=${dc#deep check suggested: }; chk=${chk%% *}
     # kohaerenz-scan/ = the register folder before the 2026-08-14 rename; still counts.
+    # The globs expand in the array assignment with "$R" quoted: a brain path with a space
+    # (the normal case for a Windows profile, os-traps OS-10) stays one word. An unmatched
+    # glob stays literal and carries no date, so it compares as "no artifact".
     case "$chk" in
-      coherence-scan) arts="$R/docs/research/coherence-scan/register-*.md $R/docs/research/kohaerenz-scan/register-*.md";;
-      memory-dream)   arts="$R/docs/research/memory-dream/report-*.md";;
-      full-audit)     arts="$R/docs/research/full-audit/gesamt-*.md";;
-      *)              arts="";;
+      coherence-scan) arts=("$R"/docs/research/coherence-scan/register-*.md "$R"/docs/research/kohaerenz-scan/register-*.md);;
+      memory-dream)   arts=("$R"/docs/research/memory-dream/report-*.md);;
+      full-audit)     arts=("$R"/docs/research/full-audit/gesamt-*.md);;
+      *)              arts=();;
     esac
     art_d=""
-    # shellcheck disable=SC2086  # the globs in $arts are meant to expand
-    [[ -n "$arts" ]] && art_d=$(ls $arts 2>/dev/null | sed 's|.*/||' | grep -ao '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' | sort | tail -1)
+    [[ ${#arts[@]} -gt 0 ]] && art_d=$(printf '%s\n' "${arts[@]}" | sed 's|.*/||' | grep -ao '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' | sort | tail -1)
     if [[ -n "$rep_d" && -n "$art_d" && ! "$art_d" < "$rep_d" ]]; then continue; fi
     echo "!! $dc"
   done
