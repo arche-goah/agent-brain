@@ -19,7 +19,10 @@
 # Usage:
 #   scripts/ci-watch.sh pr  <owner/repo> <pr-number> [timeout_s]
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
-# Defaults: timeout 900 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
+# Defaults: timeout 1800 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
+# The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
+# `portability (windows-latest)` ran 13m41s and 14m26s, plus queue time — the old 900 s
+# ended a watch on a run that turned green minutes later (UNKNOWN, honest but useless).
 set -u
 
 # Resolve the Python interpreter: the python.org installer on Windows ships ONLY
@@ -30,7 +33,7 @@ set -u
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 
-MODE="${1:-}"; REPO="${2:-}"; TARGET="${3:-}"; TIMEOUT="${4:-900}"
+MODE="${1:-}"; REPO="${2:-}"; TARGET="${3:-}"; TIMEOUT="${4:-1800}"
 POLL="${CI_WATCH_POLL:-15}"
 
 usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_s]" >&2; exit 2; }
