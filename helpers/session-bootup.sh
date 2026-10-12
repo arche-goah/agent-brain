@@ -502,7 +502,31 @@ if [[ -n "${latest:-}" ]]; then
   # the scan's machine step writes it into the report, but a line inside a report nobody
   # opens reaches nobody — the session start relays it, so the AI tells the operator what,
   # why now and the measured price. It never starts anything.
-  grep -a '^deep check suggested:' "$latest" 2>/dev/null | head -3 | cut -c1-240 | sed 's/^/!! /'
+  # The line is a snapshot from scan time, not a measurement at session start: once the
+  # named check has an artifact dated on or after the report, the suggestion was followed
+  # and stays silent — same rule as the superseded scheduled fail below. (Measured
+  # 2026-10-12 on the macOS instance: the coherence register was written the same day,
+  # AFTER the report, and every start for three days still voiced "52 new rule lines
+  # since 2026-09-18".) Dates are read from the file NAMES, the measure
+  # scripts/brain-scan-prep.py uses to find the last register; a report or artifact
+  # without one cannot be compared and the line is relayed unchanged.
+  rep_d=$(basename "$latest" | grep -ao '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' | head -1)
+  grep -a '^deep check suggested:' "$latest" 2>/dev/null | head -3 | cut -c1-240 |
+  while IFS= read -r dc; do
+    chk=${dc#deep check suggested: }; chk=${chk%% *}
+    # kohaerenz-scan/ = the register folder before the 2026-08-14 rename; still counts.
+    case "$chk" in
+      coherence-scan) arts="$R/docs/research/coherence-scan/register-*.md $R/docs/research/kohaerenz-scan/register-*.md";;
+      memory-dream)   arts="$R/docs/research/memory-dream/report-*.md";;
+      full-audit)     arts="$R/docs/research/full-audit/gesamt-*.md";;
+      *)              arts="";;
+    esac
+    art_d=""
+    # shellcheck disable=SC2086  # the globs in $arts are meant to expand
+    [[ -n "$arts" ]] && art_d=$(ls $arts 2>/dev/null | sed 's|.*/||' | grep -ao '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' | sort | tail -1)
+    if [[ -n "$rep_d" && -n "$art_d" && ! "$art_d" < "$rep_d" ]]; then continue; fi
+    echo "!! $dc"
+  done
 elif [[ -d "$sd" ]]; then
   echo "brain-scan: no report yet in docs/research/brain-scan/"
   echo "!! brain-scan DUE: no report yet — ask the operator, then run it in this session"
