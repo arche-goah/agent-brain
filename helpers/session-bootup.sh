@@ -351,6 +351,15 @@ if [[ -f "$HERE/../scripts/orphan-check.py" ]]; then
   "$PY" "$HERE/../scripts/orphan-check.py" --repo "$R" 2>/dev/null
 fi
 
+# Loop watchdog an earlier autonomous run left armed (measured 2026-10-12: a crashed run
+# leaves .claude-state/loop-watchdog.state, and only the instance's scheduler — if any — ever
+# reads it). One line with the disarm command when the last beat is older than the run's own
+# silence limit; silent when nothing is armed or the beat is fresh (a live run elsewhere).
+# The script decides, the bootup only relays — the state path comes from CLAUDE_PROJECT_DIR.
+if [[ -f "$HERE/../scripts/loop-watchdog.sh" ]]; then
+  CLAUDE_PROJECT_DIR="$R" bash "$HERE/../scripts/loop-watchdog.sh" status --brief 2>/dev/null
+fi
+
 # Settings JSON valid?
 for f in .claude/settings.json .claude/settings.local.json; do
   # settings.local.json is optional — "not present" is not an error. Without this
