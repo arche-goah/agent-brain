@@ -398,6 +398,7 @@ esac
 #     fixture so the runner's real user settings can never leak into the check.
 mkdir -p "$T/hookbrain/core/templates" "$T/hookbrain/core/helpers" "$T/hookbrain/.claude/rules" "$T/nocfg"
 printf '{"names": ["placeholder"], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
+printf '{"domains": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-read.json"
 cp "$CORE/templates/settings.json" "$T/hookbrain/core/templates/"
 cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$T/hookbrain/core/helpers/" 2>/dev/null
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
@@ -460,6 +461,45 @@ case "$_rc:$_hc" in
   *) bad "hook-coverage inert-guard case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
 printf '{"names": ["placeholder"], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
+#     Any gate that declares INERT-WITHOUT in its header (measured 2026-10-12: live-read-gate
+#     wired for weeks without live-read.json in a brain with three live systems). No file ->
+#     named; empty domains without "inert_ok" -> named; filled domains -> silent (control).
+rm -f "$T/hookbrain/.claude/rules/live-read.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"live-read-gate.cjs is wired but .claude/rules/live-read.json does not exist"*) ok "hook-coverage flags a data gate wired without its data file";;
+  *) bad "hook-coverage missing-data case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+printf '{"domains": []}\n' > "$T/hookbrain/.claude/rules/live-read.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"live-read-gate.cjs is wired but .claude/rules/live-read.json has no domains"*) ok "hook-coverage flags empty gate data without an inert_ok reason";;
+  *) bad "hook-coverage empty-data case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+printf '{"domains": [{"name": "x", "tools": ["^mcp__x__"], "required": [{"path": "docs/x.md"}]}]}\n' > "$T/hookbrain/.claude/rules/live-read.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ] && [ -z "$_hc" ]; then
+  ok "hook-coverage stays silent once the gate has data (negative control)"
+else
+  bad "hook-coverage data-present false alarm: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'"
+fi
+printf '{"domains": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-read.json"
+#     Behind the dispatcher too: the template registers absence-gate; without its data it is named.
+if [ -f "$CORE/templates/rules-instance/stop-checks.json" ] && grep -q "absence-gate" "$CORE/templates/rules-instance/stop-checks.json"; then
+  cp "$CORE/templates/rules-instance/stop-checks.json" "$T/hookbrain/.claude/rules/stop-checks.json"
+  _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+  case "$_rc:$_hc" in
+    1:*"Stop: absence-gate.cjs is wired but .claude/rules/absence-sources.json does not exist"*) ok "hook-coverage flags a dispatched data gate without its data";;
+    *) bad "hook-coverage dispatched-data case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+  esac
+  printf '{"roots": ["docs/"]}\n' > "$T/hookbrain/.claude/rules/absence-sources.json"
+  _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+  case "$_hc" in
+    *absence-gate*) bad "hook-coverage names absence-gate although it has roots: '$(printf '%s' "$_hc" | head -1)'";;
+    *) ok "hook-coverage silent on a dispatched gate with data (negative control)";;
+  esac
+  rm -f "$T/hookbrain/.claude/rules/stop-checks.json" "$T/hookbrain/.claude/rules/absence-sources.json"
+fi
 #     The reverse gap (measured 2026-10-11): a hook wired here whose helper the consumed core
 #     does not ship refuses every call it matches (onFailure: block) - two sessions lost Bash.
 #     Wire one extra gate pointing at a helper that is not in core/helpers: named, exit 1.
