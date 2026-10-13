@@ -1,7 +1,6 @@
-- **A request several parties can take says who is asked first, and anyone can claim it.** (test: T1) `priority:` is an ordered list of any audience tokens on a request (a Windows check, a review, …), with an optional default per category in `parties.json`. It is information, not a sequence: there are no timers and no escalation.
-  - The party asked first sees an open request.
-  - Every other party reached sees it as a hint: "optional: priority n, asked first <who>; unclaimed - take it if you can and want".
-  - A request to everyone without a priority is now a hint for everyone; before, it reached nobody's list.
-  - `claims: <stem>` (or `answers:`) records who took it and closes it for all.
+- **A request says who is asked first, anyone can claim it, and either side can settle it.** (test: T1) Operator orders 2026-10-13.
+  - `priority:` (an ordered list of any audience tokens, default per category in `parties.json`) is a hint, not a sequence: no timers, no escalation. Whoever is asked first sees an open request; every other party reached sees "optional: priority n, asked first <who>; unclaimed - take it if you can and want". A request to everyone without a priority is now a hint for everyone (before, it reached nobody's list). `claims: <stem>` records who took it and closes it for all.
+  - Settling: the answerer with `answers:`, the asker with `closes: <stem>` ("received, enough"). A LOG-only request is settled by the asker's later `ERLEDIGT` / `DONE` heading to the same addressee.
+  - A LOG heading marked `(status: info)` is no longer counted as a request. Measured the same day: a collaborator's start listed 22 open requests from this side, several of them info notes or long settled.
 
-  Operator order 2026-10-13. Fixture `shared-memory-audience-test.py`, eight new cases: asked first open · asked later optional with the name before · own priority beats the default · request to everyone reaches all as optional · ranked request to everyone · a claim closes it for all · no priority means no change (control) · open-items reads the hint as a wait, not a duty.
+  Fixture `shared-memory-audience-test.py`, twelve new cases: priority (seven), settling (four: asker's `closes:`, unsettled control, `ERLEDIGT` heading, info heading), open-items reading the hint as a wait.

@@ -41,6 +41,20 @@ priority: kim-pc, person:sam, os:linux # ordered, any tokens (optional)
 - **Default per category:** `parties.json` `"priority": {"os:windows": [...]}` applies to an
   entry addressed to exactly that one category and carrying no `priority:` of its own.
 
+## Settling a request: either side
+
+A request stays open until something settles it, and either side may (operator order
+2026-10-13: "if we gave a satisfying answer, he may say 'fine, done' — or we say 'answered,
+done' and he adds at most 'received and enough'"):
+
+- **The answerer:** an entry with `answers: <request-stem>` (or any entry of the addressee
+  naming it).
+- **The asker:** an entry with `closes: <request-stem>` ("answer received, enough").
+- **A LOG-only request:** the asker writes a later heading to the same addressee whose title
+  starts with `ERLEDIGT` / `DONE` (e.g. `AN <who>: ERLEDIGT — <what>`). It settles that
+  party's earlier LOG requests to them. A heading marked `(status: info)` is a report, never
+  a request.
+
 Only fact files carry a priority — a LOG-only heading has no frontmatter. Name request files
 `request-…` or `question-…`: those prefixes are what every reader recognises.
 

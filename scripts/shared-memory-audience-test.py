@@ -190,6 +190,27 @@ def main() -> int:
               not any("CLAIMED" in o for o in (pc, laptop, mac)))
         check("negative control: without priority a category request stays a plain request",
               "optional" not in line(inbox(repo, "sam-laptop,sam"), "OSWIN"))
+        print("closing (either side may settle a request)")
+        entry(q, "core/request-asked.md", "lee-tower", "kim-pc", "ASKED a question")
+        entry(q, "core/request-still.md", "lee-tower", "kim-pc", "STILL a question")
+        entry(q, "core/thanks.md", "lee-tower", "kim-pc", "answer received, enough")
+        t = q / "core" / "thanks.md"
+        t.write_bytes(t.read_bytes().replace(b"  date:", b"  closes: request-asked\n  date:"))
+        (q / "core" / "LOG.md").write_bytes((
+            f"# Log\n\n## {NEW} · lee-tower — AN kim-pc: LOGASK please run it\n\nx\n"
+            f"\n## {NEW} · lee-tower — AN kim-pc: LOGOPEN another one\n\nx\n"
+            f"\n## {NEW} · lee-tower — AN kim-pc: LOGINFO merged (status: info)\n\nx\n").encode("utf-8"))
+        git(q, "add", "-A")
+        git(q, "commit", "-qm", "asks")
+        with (q / "core" / "LOG.md").open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(f"\n## {NEW} · lee-tower — AN kim-pc: ERLEDIGT — LOGASK answered, thanks\n\nx\n")
+        git(q, "add", "-A")
+        git(q, "commit", "-qm", "closed")
+        pc = inbox(q, "kim-pc,kim")
+        check("the asker's closes: settles a fact-file request", "ASKED" not in pc)
+        check("control: an unsettled request stays", "STILL" in pc)
+        check("the asker's ERLEDIGT heading settles its earlier LOG requests", "LOGASK" not in pc and "LOGOPEN" not in pc)
+        check("an info heading is not a request", "LOGINFO" not in pc)
         oi_mod = load("open-items")
         check("open-items reads an optional line as a hint, not a duty",
               bool(oi_mod.OPTIONAL.match("optional: priority 2, asked first kim-pc; unclaimed - take it if you can and want — x")))

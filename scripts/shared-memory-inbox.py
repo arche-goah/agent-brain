@@ -347,9 +347,11 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
                 # a request to "either of two machines" is closed by the one that answered
                 # (Windows check on #193, finding 1).
                 hhead = htext.split("\n---", 1)[0] if htext.startswith("---") else ""
-                # `claims:` = a candidate took it (2026-10-13): closed for every other candidate.
+                # `claims:` = someone took it; `closes:` = either side says it is settled — the
+                # asker ("answer received, enough") or the answerer ("answered, done"). 2026-10-13.
                 answered = (bool(tokens(read_entry(repo / hrel, repo, text=htext)["von"]) & me)
-                            or bool(re.search(r"^\s+(?:answers|claims):.*" + re.escape(stem), hhead, re.M)))
+                            or bool(re.search(r"^\s+(?:answers|claims|closes):.*" + re.escape(stem),
+                                              hhead, re.M)))
             if answered:
                 break
         if not answered:
@@ -365,6 +367,11 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
                 text = f"optional: to everyone; unclaimed - take it if you can and want — {text}"
             items.append((when or "?", e["topic"], e["von"] or "?", f"{text} ({rel})"))
     return items + log_only_items(texts, me, floor)
+
+
+LOG_INFO = re.compile(r"\bstatus:\s*info\b", re.I)
+# The close word opens the title proper: "AN <who>: ERLEDIGT — …" (or a title without AN).
+LOG_CLOSE = re.compile(r"(?:^|:)\s*(?:ERLEDIGT|GESCHLOSSEN|DONE|CLOSED)\b", re.I)
 
 
 def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tuple]:
@@ -394,6 +401,14 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
             continue
         if re.search(r"[\w./-]+\.md\b", "\n".join(body.splitlines()[1:])):
             continue  # points at a fact file — the file path above judges it
+        if LOG_INFO.search(title) or LOG_CLOSE.search(title):
+            continue  # a report or a close, not a request (measured 2026-10-13: info headings sat open)
+        # The asker may settle it: a later heading of the same party to the same addressee that
+        # starts with a close word ("ERLEDIGT: …") closes its earlier requests there.
+        if any(party(sender) & tokens(s) and t & to and LOG_CLOSE.search(ti or "")
+               and (d > date or (tp == topic and j > idx))
+               for d, tp, j, s, t, ti, _ in heads):
+            continue
         # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
         # another LOG cannot be ordered, so it does not count (safe direction).
         replied = any(tokens(s) & me and party(sender) & t
