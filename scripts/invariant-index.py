@@ -70,7 +70,8 @@ def main(argv):
     text = build(register)
     if "--write" in argv:
         target = register.with_name(register.stem + "-index.md")
-        target.write_text(text, encoding="utf-8", newline="\n")
+        with open(target, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
         print(f"written: {target.name} ({len(text)} chars)")
     else:
         sys.stdout.write(text)

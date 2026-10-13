@@ -33,8 +33,10 @@ This script is the ONE list of open points at session start:
     transcript shows the list reached a human (bootup block, then a real prompt); a hand
     run never counts;
   * items whose move is NOT ours print as `[...|wait]`, quietly, and do not count up: a PR
-    we reviewed or commented on after its last commit, a PR in a repo that instance data
-    (`owners`: repo -> login) gives to someone else when no review was asked of us, and any
+    we reviewed or commented on after its last commit (or checked at its current head and
+    answered in the shared memory, shared_answers.py), a PR in a repo that instance data
+    (`owners`: repo -> login) gives to someone else when no review was asked of us, our own
+    PR in such a repo unless someone else spoke after its last commit, and any
     item with a dated wait (`waiting`: id -> {until, why} in instance data, or a line
     `waiting-until: YYYY-MM-DD: <why>` in a PR body). After the date it is louder again;
   * a REQUEST from another side in a parked domain is not parked away — parked means not
@@ -45,16 +47,19 @@ helpers/open-items-gate.cjs (Stop) then checks the first reply against this list
 
 Items that vanish (answered, merged, closed) take their counter and class with them.
 Instance data `.claude/rules/open-items.json`: "parked" (regexes on request topic / PR
-repo — parked domains stay on one line, never dropped) and "humans" (names a request can
-address the operator by, e.g. "an <name>").
+repo — parked domains stay on one line, never dropped; an entry may instead be
+{"match", "wake_on", "since"}: when a wake_on party — GitHub login or shared-memory `von`
+id — moves in that domain after `since`, one operator item asks whether to unpark) and
+"humans" (names a request can address the operator by, e.g. "an <name>").
 
 Usage:
   open-items.py --owner <org> [--hook-input '<SessionStart JSON>'] [--repo <shared-memory>]
-  open-items.py --classify '<id>=ai|human[:why]' [...]      (id: as printed, or its file name)
+  open-items.py --classify '<id>=ai|human[:why]' [...]      (id: as in the hint line, or its file name)
 Stdlib only; runs under `python3` or `python` (Windows python.org installer).
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -63,6 +68,11 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from instance_key import is_self, self_key  # noqa: E402
+from project_dir import resolve_project_dir  # noqa: E402
+from shared_answers import checked_head, default_repo, own_shared_shas  # noqa: E402
+OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*\(([^()]+\.md|LOG)\)\s*$")
 # The inbox defaults to a 30-day window. An open request does not stop being open because
 # it is old — measured 2026-10-07: a 32-day-old request to this instance fell out of the
@@ -125,9 +135,23 @@ def requests(repo):
         date, topic, von, text, rel = m.groups()
         # A LOG-only request has no file; its identity is date + sender + its own words.
         ref = rel if rel != "LOG" else f"{topic}/LOG {date} {von.strip()}"
-        items.append({"id": ref if rel != "LOG" else f"{ref}: {text[:40]}", "kind": "request",
+        # rstrip: --classify strips its key, so an id cut right after a blank could never be matched.
+        items.append({"id": ref if rel != "LOG" else f"{ref}: {text[:40].rstrip()}", "kind": "request",
                       "date": date, "who": von.strip(), "text": text[:100], "scope": topic,
                       "ref": ref, "file": rel if rel != "LOG" else ""})
+        # A request we are not asked first for, or one to everyone (shared-memory-parties.py
+        # priority): listed, but as a hint — information, not a duty (operator 2026-10-13).
+        q = OPTIONAL.match(text)
+        if q:
+            items[-1]["waiting_on"] = (q.group(1), q.group(2))
+    # Two LOG entries of one sender on one day can share their first 40 chars (measured
+    # 2026-10-11: "AN a, b, c-" twice) — one id would carry one class and one counter for both.
+    # The later one in inbox order gets " (n)"; the first keeps its old id, so stored classes hold.
+    seen = {}
+    for it in items:
+        n = seen[it["id"]] = seen.get(it["id"], 0) + 1
+        if n > 1:
+            it["id"] = f"{it['id']} ({n})"
     # An inbox line this parser cannot read must not vanish — the exact defect this list
     # exists to stop. It reports itself as a failed read instead.
     return None if unparsed or len(items) != expected else items
@@ -139,36 +163,72 @@ PR_QUERY = """query($q: String!) { viewer { login }
   search(query: $q, type: ISSUE, first: 50) { issueCount nodes { ... on PullRequest {
     number title isDraft createdAt body author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
-    latestReviews(first: 20) { nodes { author { login } submittedAt } }
-    commits(last: 1) { nodes { commit { committedDate } } }
-    comments(last: 20) { nodes { author { login } createdAt } } } } } }"""
+    latestReviews(first: 20) { nodes { author { login } submittedAt body } }
+    commits(last: 1) { nodes { commit { oid committedDate } } }
+    comments(last: 20) { nodes { author { login } createdAt body } } } } } }"""
 WAIT_MARK = re.compile(r"^\s*waiting-until:\s*(\d{4}-\d{2}-\d{2})\s*:?\s*(.*)$", re.M | re.I)
 
-
-def ball(p, me, owners):
-    """Whose move a PR is. None = ours. Otherwise the reason we are waiting on its author:
-    we reviewed or commented after its last commit, or the repo belongs to someone else
-    (instance data `owners`) and nobody asked us for a review. Measured 2026-10-09: two PRs
-    we had approved were printed as "nothing done yet" in every session after."""
+def ball(p, me, owners, shared_shas=frozenset()):
+    """Whose move a PR is. None = ours. Otherwise (party, reason): for another's PR we wait on
+    its author — we reviewed or commented after its last commit, or the repo belongs to
+    someone else (instance data `owners`) and nobody asked us for a review; for our own PR in
+    such a repo we wait on the owner. Measured 2026-10-09: two PRs we had approved were
+    printed as "nothing done yet" in every session after."""
     author = (p.get("author") or {}).get("login", "")
-    if not me or author == me:
+    if not me:
         return None
-    last = ((p.get("commits") or {}).get("nodes") or [{}])[-1].get("commit", {}).get("committedDate", "")
-    ours = [r.get("submittedAt") or "" for r in (p.get("latestReviews") or {}).get("nodes", [])
-            if (r.get("author") or {}).get("login") == me]
-    ours += [c.get("createdAt") or "" for c in (p.get("comments") or {}).get("nodes", [])
-             if (c.get("author") or {}).get("login") == me]
-    if last and any(t > last for t in ours):
-        return "we reviewed or commented after the last commit"
+    # One login can carry several instances (instance_key.py): a text is ours only with our
+    # login AND no foreign instance key. A sibling instance's PR is a hand-over to us.
+    my_key = self_key()
+
+    def ours(node):
+        return is_self((node.get("author") or {}).get("login", ""), me, node.get("body"), my_key)
+
+    head = ((p.get("commits") or {}).get("nodes") or [{}])[-1].get("commit", {})
+    last, oid = head.get("committedDate", ""), (head.get("oid") or "").lower()
+    # Our answer in the shared memory naming THIS head counts like a comment after the last
+    # commit (see own_shared_shas). A sha of an older head does not: a new commit is new work.
+    checked = checked_head(oid, shared_shas)
+    owner = owners.get(p["repository"]["name"])
+    reviews = (p.get("latestReviews") or {}).get("nodes", [])
+    comments = (p.get("comments") or {}).get("nodes", [])
+    touched = [r.get("submittedAt") or "" for r in reviews if ours(r)]
+    touched += [c.get("createdAt") or "" for c in comments if ours(c)]
+    if author == me and not ours(p):
+        # A sibling instance's PR (same login, another key): ours to look at, whatever repo
+        # it sits in — the sibling asked us, not the repo's owner. Our own look after its
+        # last commit hands the move back to the sibling.
+        if last and any(t > last for t in touched):
+            return author, "we reviewed or commented after the sibling instance's last commit"
+        if checked:
+            return author, "our check of this head is in the shared memory"
+        return None
+    if author == me:
+        # Our own PR in a repo someone else merges waits on that owner — unless someone else
+        # reviewed or commented after our last commit and our last comment: that is ours to
+        # answer. Measured
+        # 2026-10-10: two green own PRs in a suite owned by another party were printed as
+        # "nothing done yet" in three sessions, because this check ran only for others' PRs.
+        if owner and owner != me:
+            theirs = [r.get("submittedAt") or "" for r in reviews if not ours(r)]
+            theirs += [c.get("createdAt") or "" for c in comments if not ours(c)]
+            # Same rule as pr-ball.py: our own reply after theirs hands the move back.
+            seen = [last] + [c.get("createdAt") or "" for c in comments if ours(c)]
+            if not (theirs and max(theirs) > max(seen)):
+                return owner, f"{p['repository']['name']} is {owner}'s to merge, our own PR waits on that"
+        return None
+    if last and any(t > last for t in touched):
+        return author, "we reviewed or commented after the last commit"
+    if checked:
+        return author, "our check of this head is in the shared memory"
     asked = any(((n.get("requestedReviewer") or {}).get("login")) == me
                 for n in (p.get("reviewRequests") or {}).get("nodes", []))
-    owner = owners.get(p["repository"]["name"])
     if owner and owner != me and not asked:
-        return f"{p['repository']['name']} is {owner}'s to merge and no review was asked of us"
+        return author, f"{p['repository']['name']} is {owner}'s to merge and no review was asked of us"
     return None
 
 
-def prs(owner, owners):
+def prs(owner, owners, repo=None):
     # No owner = the source was never asked. Measured 2026-10-09: a run without --owner said
     # "nothing open (requests and PRs both read)" while twelve PRs were open.
     if not owner:
@@ -187,6 +247,7 @@ def prs(owner, owners):
     except (ValueError, KeyError, TypeError):
         return None
     items = []
+    shas = own_shared_shas(repo)
     for p in rows:
         if not p.get("number"):
             continue
@@ -197,8 +258,97 @@ def prs(owner, owners):
         items.append({"id": ref, "kind": "PR", "date": p["createdAt"][:10], "who": author,
                       "text": p["title"][:100] + (" (draft)" if p.get("isDraft") else ""),
                       "scope": p["repository"]["name"], "ref": ref,
-                      "waiting_on": ball(p, me, owners),
-                      "until": (m.group(1), m.group(2).strip()) if m else None})
+                      "waiting_on": ball(p, me, owners, shas),
+                      "until": (m.group(1), m.group(2).strip()) if m else None,
+                      "events": pr_events(p),
+                      # Our own last move (commit, comment, review) — "nothing done yet" is a claim
+                      # and needs it. Measured 2026-10-12: an own alpha PR with commits and comments
+                      # on the same day was printed as "nothing done yet" in 17 sessions.
+                      "ours": max((w for who, w in pr_events(p) if who == me and w != p.get("createdAt")),
+                                  default="")})
+    return items
+
+
+def pr_events(p):
+    """(login, ISO date) of every move the PR data shows: opened, last commit (by its author),
+    comments, reviews. Only the wake-up check reads it."""
+    author = (p.get("author") or {}).get("login", "")
+    last = ((p.get("commits") or {}).get("nodes") or [{}])[-1].get("commit", {}).get("committedDate", "")
+    ev = [(author, p.get("createdAt", "")), (author, last)]
+    for c in (p.get("comments") or {}).get("nodes") or []:
+        ev.append(((c.get("author") or {}).get("login", ""), c.get("createdAt", "")))
+    for r in (p.get("latestReviews") or {}).get("nodes") or []:
+        ev.append(((r.get("author") or {}).get("login", ""), r.get("submittedAt", "")))
+    return [(who, when) for who, when in ev if who and when]
+
+
+# Parked domains (operator order 2026-10-11). A domain is often parked because ANOTHER party
+# paused it; when that party moves again, nothing said so — its new PRs were filed on the
+# parked line like every other. An entry in `parked` may therefore be an object:
+#   {"match": "<regex>", "wake_on": ["<login or von id>", ...], "since": "YYYY-MM-DD"}
+# and a plain string stays a plain parked regex. New activity of a wake_on party AFTER `since`
+# in the parked domain becomes one operator item. Keeping it parked = move `since` forward.
+def parked_rules(cfg):
+    rules = []
+    for e in cfg.get("parked", []):
+        if isinstance(e, str):
+            rules.append((re.compile(e, re.I), None, e))
+        elif isinstance(e, dict) and e.get("match"):
+            wake = None
+            if e.get("wake_on") and e.get("since"):
+                wake = {"who": {str(w).lower() for w in e["wake_on"]}, "since": str(e["since"])}
+            rules.append((re.compile(e["match"], re.I), wake, str(e.get("name") or e["match"])))
+    return rules
+
+
+FM_FIELD = re.compile(r"^[^:]+:([^:]+):\s+(von|date):\s*(.+?)\s*$")
+LOG_HEAD = re.compile(r"^[^:]+:[^:]+:## (\d{4}-\d{2}-\d{2}) · ([^\s—]+)")
+
+
+def wake_items(rules, prs_list, repo):
+    """One operator item per parked domain whose wake_on party moved after `since`.
+    Sources: the PR events already fetched, plus two git calls on the shared-memory repo
+    (fact-file frontmatter `von:`/`date:` and LOG headings in the parked topic folders)."""
+    rules = [r for r in rules if r[1]]
+    if not rules:
+        return []
+    dirs, fm, heads = [], {}, []
+    if (Path(repo) / ".git").exists():
+        rc, out = run(["git", "-C", repo, "ls-tree", "-d", "--name-only", "origin/main"])
+        dirs = out.split() if rc == 0 else []
+        hit = [d for d in dirs if any(rx.search(d) for rx, _, _ in rules)]
+        if hit:
+            rc, out = run(["git", "-C", repo, "grep", "-E", "-e", r"^[[:space:]]+(von|date):",
+                           "origin/main", "--", *[f"{d}/*.md" for d in hit]])
+            for line in (out.splitlines() if rc == 0 else []):
+                m = FM_FIELD.match(line)
+                if m:
+                    fm.setdefault(m.group(1), {}).setdefault(m.group(2), m.group(3).strip("\"'"))
+            rc, out = run(["git", "-C", repo, "grep", "-E", r"^## [0-9]{4}-[0-9]{2}-[0-9]{2} · ",
+                           "origin/main", "--", *[f"{d}/LOG.md" for d in hit]])
+            heads = [(line.split(":")[1], *LOG_HEAD.match(line).groups())
+                     for line in (out.splitlines() if rc == 0 else []) if LOG_HEAD.match(line)]
+    items = []
+    for rx, wake, label in rules:
+        seen = []  # (date, party, what)
+        for it in prs_list or []:
+            if rx.search(it["scope"]):
+                for who, when in it.get("events", []):
+                    if who.lower() in wake["who"] and when[:10] > wake["since"]:
+                        seen.append((when[:10], who, f"PR {it['ref']}"))
+        for path, f in fm.items():
+            if rx.search(path.split("/")[0]) and f.get("von", "").lower() in wake["who"] \
+                    and f.get("date", "")[:10] > wake["since"]:
+                seen.append((f["date"][:10], f["von"], f"shared memory {path}"))
+        for path, date, sender in heads:
+            if rx.search(path.split("/")[0]) and sender.lower() in wake["who"] and date > wake["since"]:
+                seen.append((date, sender, f"LOG heading in {path}"))
+        if seen:
+            date, who, what = max(seen)
+            items.append({"id": f"wake:{label}", "kind": "wake", "date": date, "who": who,
+                          "text": f"parked domain {label}: {who} is active again ({what}, {len(seen)} move(s) "
+                                  f"since {wake['since']}) - ask the operator whether to unpark",
+                          "scope": "", "ref": label, "file": ""})
     return items
 
 
@@ -268,20 +418,57 @@ def lookup(store, it):
     acknowledged). LOG entries match by their full id only."""
     if it.get("file"):
         return store.get(it["id"]) or store.get(it["ref"].rsplit("/", 1)[-1])
-    return store.get(it["id"])
+    entry = store.get(it["id"])
+    # The id of a LOG entry is not unique for good: two entries of one sender and day that start
+    # alike get " (n)" by inbox order, and when the first one closes the second takes over the
+    # bare id — and with it the first one's class (measured 2026-10-11, Windows instance, on the
+    # merged #287). A class therefore remembers the text it was given for; another text under the
+    # same id is unclassified. Classes stored before this carry no text and keep working.
+    if entry and entry.get("text") and entry["text"] != fingerprint(it.get("text", "")):
+        return None
+    return entry
 
 
-def classify(args, cls_file):
+def fingerprint(text):
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+
+
+PR_ID = re.compile(r"^[\w.-]+#\d+$")
+
+
+def classify(args, cls_file, repo):
+    """Store the agent's class per id. A request id that matches no open request is refused:
+    measured 2026-10-10, two calls with the printed short ref of a LOG entry said
+    "classified" and the item stayed '?'. PR ids are not checked (that needs the PR search)."""
     store = load_json(cls_file, {})
     today = datetime.date.today().isoformat()
+    req = requests(repo)
+    known = None if req is None else ({i["id"] for i in req}
+                                      | {i["ref"].rsplit("/", 1)[-1] for i in req if i.get("file")})
+    specs = []
     for spec in args:
         key, _, rest = spec.partition("=")
         cls, _, why = rest.partition(":")
+        key = key.strip()
         if not key or cls not in ("ai", "human"):
             print(f"!! bad --classify '{spec}' — expected '<id>=ai|human[:why]'")
             return 2
-        store[key.strip()] = {"class": cls, "why": why.strip() or "agent's judgement", "at": today}
-        print(f"classified: {key.strip()} = {cls}")
+        if not PR_ID.match(key):
+            if known is None:
+                print(f"!! requests NOT readable - '{key}' saved unchecked")
+            elif key not in known:
+                near = [i["id"] for i in req if key in i["id"]] or [i["id"] for i in req]
+                print(f"!! --classify '{key}' matches no open request - nothing saved. Exact ids:")
+                for n in near[:10]:
+                    print(f"   {n}")
+                return 2
+        specs.append((key, cls, why))
+    texts = {i["id"]: i.get("text", "") for i in (req or []) if not i.get("file")}
+    for key, cls, why in specs:
+        store[key] = {"class": cls, "why": why.strip() or "agent's judgement", "at": today}
+        if key in texts:
+            store[key]["text"] = fingerprint(texts[key])
+        print(f"classified: {key} = {cls}")
     if not save_json(cls_file, store):
         print(f"!! class NOT saved ({cls_file})")
         return 1
@@ -292,10 +479,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--owner", default="")
     ap.add_argument("--hook-input", default="")
-    ap.add_argument("--repo", default=os.environ.get(
-        "SHARED_MEMORY_REPO", str(Path.home() / "Projects" / "brain-shared-memory")))
-    ap.add_argument("--root", default=os.environ.get("CLAUDE_PROJECT_DIR", "."))
-    ap.add_argument("--classify", nargs="+", metavar="ID=ai|human[:why]")
+    ap.add_argument("--repo", default=default_repo())
+    ap.add_argument("--root", default=resolve_project_dir(HERE))
+    # extend: the hint prints one --classify per item; with the default action only the last one counted.
+    ap.add_argument("--classify", nargs="+", action="extend", metavar="ID=ai|human[:why]")
     a = ap.parse_args()
     # OS-9: the bootup and the Stop gate parse this output, and the item texts carry the
     # authors' umlauts and dashes. Unpinned, Windows writes the ANSI codepage.
@@ -305,7 +492,7 @@ def main():
     state_dir = root / ".claude-state"
     seen_file, cls_file = state_dir / "open-items-seen.json", state_dir / "open-items-class.json"
     if a.classify:
-        return classify(a.classify, cls_file)
+        return classify(a.classify, cls_file, a.repo)
 
     hook = {}
     if a.hook_input.strip():
@@ -319,12 +506,13 @@ def main():
     tdir = Path(hook["transcript_path"]).parent if hook.get("transcript_path") else None
     cfg = load_json(root / ".claude" / "rules" / "open-items.json", {})
     try:
-        parked_rx = [re.compile(p, re.I) for p in cfg.get("parked", [])]
+        rules = parked_rules(cfg)
+        parked_rx = [rx for rx, _, _ in rules]
         names = [re.escape(n) for n in cfg.get("humans", [])]
         # "an <name>" / "to <name>", but not a machine id built from the name (name-macos).
         human_rx = re.compile(r"\b(an|to|for)\s+(" + "|".join(names) + r")\b(?![-\w])") if names else None
     except re.error:
-        parked_rx, human_rx = [], None
+        rules, parked_rx, human_rx = [], [], None
 
     seen = load_json(seen_file, {})
     old = seen.get("items", {})
@@ -342,10 +530,10 @@ def main():
             return True
         return False
 
-    req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {})
+    req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {}, a.repo)
     failed = [name for name, v in (("shared-memory requests", req),
                                    ("PR search" if a.owner else "PRs (no owner given)", pr)) if v is None]
-    items = (req or []) + (pr or [])
+    items = (req or []) + (pr or []) + wake_items(rules, pr, a.repo)
 
     today = now.date().isoformat()
     keep = {}
@@ -355,7 +543,7 @@ def main():
         until = (str(w.get("until", "")), str(w.get("why", ""))) if isinstance(w, dict) else it.get("until")
         it["wait"] = None
         if it.get("waiting_on"):
-            it["wait"] = f"waiting on {it['who']}: {it['waiting_on']}"
+            it["wait"] = "waiting on {}: {}".format(*it["waiting_on"])
         elif until and until[0] >= today:
             it["wait"] = f"waiting until {until[0]}" + (f": {until[1]}" if until[1] else "")
         it["overdue"] = f"waited until {until[0]}" + (f" ({until[1]})" if until[1] else "") if until and until[0] < today else ""
@@ -375,6 +563,8 @@ def main():
             it["parked"] = False
             it["cls"] = "ai" if it["cls"] == "?" else it["cls"]
             it["why"] = "parked domain — answer anyway: receipt, state, when it resumes"
+        if it["kind"] == "wake":   # unparking is the operator's call, never the agent's
+            it["parked"], it["cls"], it["why"] = False, "human", "the party that paused it moved again"
         if it["wait"]:
             it["cls"] = "wait"
     # A source that failed keeps its old counters — a failed read is not "handled".
@@ -403,7 +593,9 @@ def main():
     if not items and not failed:
         print("- nothing open (requests and PRs both read)")
     for i in active:
-        if i["n"] > 1:
+        if i["n"] > 1 and i.get("ours", "")[:10] >= i["first"]:
+            age = f"!! reported in {i['n']} sessions since {i['first']}, last own move {i['ours'][:10]} — still ours"
+        elif i["n"] > 1:
             age = f"!! reported in {i['n']} sessions since {i['first']}, nothing done yet"
         else:
             age = "first report"
@@ -424,7 +616,13 @@ def main():
     if parked:
         print(f"- [parked] {', '.join(i['ref'].rsplit('/', 1)[-1] for i in parked)}")
     if count["?"]:
-        print("!! open for us: classify every '?' item once — core/scripts/open-items.py --classify '<id>=ai|human:<why>'")
+        # No angle brackets in these hints: the session start escapes < and > to protect its
+        # own wrapper, so '<id>' reached the operator as '&lt;id&gt;' (measured 2026-10-11).
+        print("!! open for us: classify every '?' item once — core/scripts/open-items.py --classify 'ID=ai|human:WHY'")
+        # The id is not always the printed ref (a LOG entry adds its first 40 characters).
+        for i in active:
+            if i["cls"] == "?":
+                print(f"   --classify '{i['id']}=ai|human:WHY'")
     return 0
 
 

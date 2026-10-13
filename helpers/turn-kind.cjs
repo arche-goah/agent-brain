@@ -11,11 +11,23 @@
  *
  * A record that carries a frame AND words of the operator is an operator record: only
  * a record that is nothing but frames is a notification.
+ *
+ * A LOCAL command is not a prompt either (measured 2026-10-11, Windows instance): `/mcp` or
+ * `/model` typed in Claude Code runs without the model and leaves three user records —
+ * `<local-command-caveat>`, `<command-name>…<command-args>`, `<local-command-stdout>` — each
+ * nothing but its frames. watch-gate counted the `/mcp` echo as the turn's start, so the
+ * reconnect waiter armed just before it fell out of the turn and the gate reported "no
+ * watcher". A user-typed skill (`/name`) carries the same command frames, but its skill text
+ * follows as a record of its own — that one is plain text and stays the boundary.
  */
 const FRAMES = /<system-reminder>[\s\S]*?<\/system-reminder>|<task-notification>[\s\S]*?<\/task-notification>/g;
+const LOCAL = /<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<local-command-std(?:out|err)>[\s\S]*?<\/local-command-std(?:out|err)>|<command-(?:name|message|args)>[\s\S]*?<\/command-(?:name|message|args)>/g;
+const LOCAL_MARK = /<local-command-(?:caveat|stdout|stderr)>|<command-name>/;
 
 function isNotification(text) {
-  return typeof text === 'string' && /<task-notification>/.test(text) && !text.replace(FRAMES, '').trim();
+  if (typeof text !== 'string') return false;
+  if (/<task-notification>/.test(text) && !text.replace(FRAMES, '').trim()) return true;
+  return LOCAL_MARK.test(text) && !text.replace(FRAMES, '').replace(LOCAL, '').trim();
 }
 
-module.exports = { isNotification, FRAMES };
+module.exports = { isNotification, FRAMES, LOCAL };

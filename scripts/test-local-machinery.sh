@@ -76,6 +76,13 @@ grep -q '^!! local machinery: 1 hook or stop-check target(s) do not exist: stop-
   && ok "missing-stop-check-target-loud-even-when-declared" || bad "missing-stop-check-target-loud-even-when-declared: $out"
 out=$(mk "$(H "$(C 'node \"$CLAUDE_PROJECT_DIR/core/helpers/gone.cjs\"')")" '' '')
 grep -q 'target(s) do not exist: hook: core/helpers/gone.cjs' <<< "$out" && ok "missing-core-hook-target-loud" || bad "missing-core-hook-target-loud: $out"
+# A user-level hook spelled with %USERPROFILE% (cmd /c on Windows): present = silent, gone = loud.
+mkdir -p "$T/fakehome/.claude/helpers"; : > "$T/fakehome/.claude/helpers/toast.cjs"
+out=$(mk "$(H "$(C 'cmd /c node \"%USERPROFILE%\\.claude\\helpers\\toast.cjs\" stop')")" '' '')
+grep -q 'do not exist' <<< "$out" && bad "userprofile-hook-present-silent: $out" || ok "userprofile-hook-present-silent"
+out=$(mk "$(H "$(C 'cmd /c node \"%USERPROFILE%\\.claude\\helpers\\gone.cjs\" stop')")" '' '')
+grep -q 'do not exist.*gone.cjs' <<< "$out" && ok "userprofile-hook-gone-loud" || bad "userprofile-hook-gone-loud: $out"
+rm -f "$T/fakehome/.claude/helpers/toast.cjs"
 
 # Two contradicting places: declared manual, yet wired; declared both instance and alpha.
 mk "$X_HOOK" '' '' >/dev/null
@@ -128,6 +135,19 @@ out=$(run); grep -q '^!! local machinery: 1 undeclared item(s) contain none of t
   && grep -q 'general=1' <<< "$out" && ok "item-without-identity-token-general-loud" || bad "item-without-identity-token-general-loud: $out"
 printf 'ping 203.0.113.70\n' > "$T/b/scripts/rig-check.sh"   # a longer IP is not the token
 out=$(run); grep -q 'presumably general' <<< "$out" && ok "identity-token-word-boundary" || bad "identity-token-word-boundary: $out"
+# --- external (third-party, used as is) and reach analysis as evidence --------------------
+T_ID='"identity_tokens":["rig-switch-a"]'
+decl "{$T_ID,\"external\":{\"scripts/rig-check.sh\":{\"source\":\"vendor pack 1.2\"}}}"
+out=$(run); [[ -z "$out" ]] && ok "external-with-source-silent" || bad "external-with-source-silent: $out"
+decl "{$T_ID,\"external\":{\"scripts/rig-check.sh\":{\"why\":\"someone's\"}}}"
+out=$(run); grep -q 'noevidence=1' <<< "$out" && ok "external-without-source-loud" || bad "external-without-source-loud: $out"
+mkdir -p "$T/b/docs"; printf '| scripts/rig-check.sh | instance |\n' > "$T/b/docs/reach.md"
+decl "{$T_ID,\"instance\":{\"scripts/rig-check.sh\":{\"why\":\"judged\",\"reach\":\"docs/reach.md\"}}}"
+out=$(run); [[ -z "$out" ]] && ok "reach-naming-the-item-silent" || bad "reach-naming-the-item-silent: $out"
+printf 'nothing here\n' > "$T/b/docs/reach.md"
+out=$(run); grep -q 'badevidence=1' <<< "$out" && ok "reach-not-naming-the-item-loud" || bad "reach-not-naming-the-item-loud: $out"
+rm -f "$T/b/docs/reach.md"
+out=$(run); grep -q 'badevidence=1' <<< "$out" && ok "reach-file-missing-loud" || bad "reach-file-missing-loud: $out"
 
 # --- near-duplicates of core tools --------------------------------------------------------
 rm -f "$T/b/.claude/rules/local-machinery.json"
@@ -161,6 +181,16 @@ out=$(run); [[ -z "$out" ]] && ok "core-suite-disabled-plugins-silent" || bad "c
 printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
 out=$(run); grep -q 'plugin:td@m' <<< "$out" && ! grep -q 'brain-core' <<< "$out" && ! grep -q 'off@m' <<< "$out" \
   && ok "unlisted-plugin-reported" || bad "unlisted-plugin-reported: $out"
+# The marketplace plugin of a listed suite is the defined way, even when ecosystem.json does not
+# name it yet (measured 2026-10-11).
+mkdir -p "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin"
+printf '{"plugins":[{"name":"td","source":{"source":"github","repo":"o/td-suite"}}]}' \
+  > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
+printf '{"repos":{"td-suite":{"kind":"suite"}}}' > "$T/b/config/ecosystem.json"
+out=$(run); ! grep -q 'plugin:td@m' <<< "$out" && ok "marketplace-plugin-of-listed-suite-silent" || bad "marketplace-plugin-of-listed-suite-silent: $out"
+printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
+out=$(run); grep -q 'plugin:td@m' <<< "$out" && ok "marketplace-plugin-of-unlisted-repo-reported" || bad "marketplace-plugin-of-unlisted-repo-reported: $out"
+rm -rf "$T/fakehome/.claude/plugins/marketplaces"
 
 # --- git hooks: global hooksPath outside the brain ----------------------------------------
 mk "$CORE_HOOK" '' '' >/dev/null; git -C "$T/b" init -q
@@ -202,6 +232,21 @@ if [[ -L "$T/b/.claude/skills/s1" ]]; then
 else
   echo "  SKIP skill-symlink-off-main-loud (no symlinks on this platform)"
 fi
+
+# --- a clone of a suite that ships as a plugin (operator order 2026-10-11) ----------------
+git -C "$T/suite" checkout -q main
+git -C "$T/suite" remote add origin https://github.com/o/suite.git
+rm -rf "$T/b/.claude/skills/s1"
+printf '{"mcpServers":{"s":{"command":"node","args":["%s"]}}}' "$(nat "$T/suite/server.js")" > "$T/b/.mcp.json"
+out=$(run); [[ -z "$out" ]] && ok "clone-of-unpublished-suite-silent" || bad "clone-of-unpublished-suite-silent: $out"
+mkdir -p "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin"
+printf '{"plugins":[{"name":"suite","source":{"source":"github","repo":"o/suite"}}]}' \
+  > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
+out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" && grep -q 'clone=1' <<< "$out" \
+  && ok "clone-of-published-suite-loud-even-on-main" || bad "clone-of-published-suite-loud-even-on-main: $out"
+decl "$(printf '{"alpha":{"%s":{"until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
+out=$(run); [[ -z "$out" ]] && ok "clone-declared-alpha-silent" || bad "clone-declared-alpha-silent: $out"
+rm -rf "$T/fakehome/.claude/plugins/marketplaces" "$T/b/.mcp.json" "$T/b/.claude/rules/local-machinery.json"
 
 # --- carrier coverage: one planted item per carrier, each reported, each control red -----
 rm -rf "$T/b"; mkdir -p "$T/b/.claude/rules" "$T/b/.claude/hooks" "$T/b/.claude/skills/myskill" \
@@ -253,6 +298,25 @@ done
 summary=$(run | tail -1)
 grep -q "^local machinery summary: items=$n .*undeclared=$n" <<< "$summary" && ok "coverage-summary-counts-all-$n" || bad "coverage-summary-counts-all-$n: $summary"
 rm -f "$T/fakehome/Library/LaunchAgents/x.plist"
+
+# --- directories Claude Code keeps under ~/.claude/skills ------------------------------------
+# Measured 2026-10-10 (Windows instance): `.trash` and the account's synced vendor skills were
+# the only items no declaration could carry. But a user's OWN upload also lands in `synced`
+# (Mac, 2026-09-30: six with creatorType user) - that one is a local carrier and stays visible.
+# Vendor is read from the bucket manifest: `creatorType: anthropic` or `source: anthropic*`.
+S="$T/fakehome/.claude/skills"
+mkdir -p "$S/.trash/1/t" "$S/mine" "$S/synced/b/vend-src" "$S/synced/b/vend-ct" "$S/synced/b/own" "$S/synced/b/bare" "$S/synced/c/x"
+for f in .trash/1/t mine synced/b/vend-src synced/b/vend-ct synced/b/own synced/b/bare synced/c/x; do printf 'x\n' > "$S/$f/SKILL.md"; done
+printf '{"skills":[{"skillId":"vend-src","source":"anthropic-example"},{"skillId":"vend-ct","creatorType":"anthropic"},{"skillId":"own","creatorType":"user","source":"anthropic"},{"skillId":"bare"}]}' > "$S/synced/b/manifest.json"
+printf 'not json' > "$S/synced/c/manifest.json"
+listing=$(run --list)
+grep -q '~/.claude/skills/mine' <<< "$listing" && ok "user-skill-in-home-reported" || bad "user-skill-in-home-reported: $listing"
+grep -q '\.trash' <<< "$listing" && bad "trash-skipped: $listing" || ok "trash-skipped"
+grep -qE 'synced/b/vend-(src|ct)' <<< "$listing" && bad "synced-vendor-skipped: $listing" || ok "synced-vendor-skipped"
+grep -q 'synced/b/own' <<< "$listing" && ok "synced-user-upload-reported" || bad "synced-user-upload-reported: $listing"
+grep -q 'synced/b/bare' <<< "$listing" && ok "synced-entry-without-field-reported" || bad "synced-entry-without-field-reported: $listing"
+grep -q 'synced/c/x' <<< "$listing" && ok "synced-unreadable-manifest-reported" || bad "synced-unreadable-manifest-reported: $listing"
+rm -rf "$S"
 
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"

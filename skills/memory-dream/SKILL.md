@@ -28,11 +28,12 @@ triggers "aufraeumen" (clean up) / "dream" — and even then: never edit the sna
 directly, changes go via auto-memory + memory-sync export.
 
 ## When to use
+On the operator's word ("aufraeumen", "dream", "memory cleanup"). The states below are
+reasons to RECOMMEND it with its price, not to start it (see "Trigger"):
 - Memory index (MEMORY.md) approaching 200 lines
 - Suspected duplicate or contradictory memories
 - After intensive sessions with many new memories
 - Regular maintenance (recommended: weekly)
-- User says "aufraeumen" (clean up), "dream", "memory cleanup"
 
 ## Pipeline
 
@@ -103,11 +104,18 @@ Check CLAUDE.md:
 - CLAUDE.md issues found: X
 ```
 
-## Trigger (clarified 2026-08-01)
-- User says "aufraeumen" (clean up) or "dream" · after sessions with 3+ new memories · MEMORY.md > 150 lines
+## Trigger (clarified 2026-08-01, aligned 2026-10-12)
+- **Starts only on the operator's word:** "aufraeumen" (clean up), "dream", "memory cleanup",
+  or a yes to a recommendation.
+- **A state is a reason to RECOMMEND, never to start:** after sessions with 3+ new memories,
+  MEMORY.md > 150 lines, contradictions found in passing. memory-dream is a deep check
+  (`rules/intelligence.md`, "Three levels of self-check"): the AI names what, why now and the
+  measured price (~0.6M tokens per run on the proving brain) and waits for the yes. Until
+  2026-10-12 this section said the analysis "may run automatically" — that run IS the
+  ~0.6M-token workflow, so the state triggers contradicted the deep-check rule (coherence scan
+  of a Windows instance, 2026-10-12).
 - **Before a repeat run:** `core/rules/intelligence.md` → "Repeat Runs"
   (repeat runs: read the artifacts of the last run → 14-day freshness → only then start).
-- Only the ANALYSIS may run automatically (read-only workflow → report).
-  **Fixes NEVER run automatically** — even on a casual "aufraeumen", first show the
+- **Fixes NEVER run automatically** — even on a casual "aufraeumen", first show the
   report, then wait for operator OK (order fidelity; rule contradictions are in any
   case operator-only, see step 4).

@@ -26,6 +26,12 @@
  *   feels like progress — asked first, the gate rewarded breadth over height
  *   (operator finding 2026-08-06: "I want the big picture, not the microscopic end").
  * - Doc-only and scratch-only turns pass silently; blocks at most once per turn.
+ * - ANSWERED IN ADVANCE passes (2026-10-12): a ⚙ line in the agent's text after the turn's
+ *   last edit IS the answer this gate asks for. Before, the gate blocked every code turn
+ *   regardless - the harness shows every Stop block to the operator as "Stop hook error",
+ *   so even a turn that already carried its ⚙ line put an error line in the operator's
+ *   terminal (operator, same day: "please solve this globally for all my machines").
+ *   The block now only fires when the line is missing.
  *
  * Build threshold (operator decision 2026-08-06): search always · 1 site = done ·
  * 2 = fix both, no mechanism · >=3 or repeat after a fix = build a mechanism.
@@ -59,6 +65,8 @@ const OWN_ECHO = /CLASS-GATE|KLASSEN-GATE/; // legacy marker kept: old echoes st
 // "every time": often enough that a fix chain cannot slip through, rare enough that
 // it never becomes wallpaper.
 const COOLDOWN_TURNS = 3;
+// The answer this gate asks for: a line that starts with the gear (optionally after spaces / a list dash).
+const ANSWER = /^[ \t>*-]*⚙/m;
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const TAIL_BYTES = 4 * 1024 * 1024; // a turn fits in this by orders of magnitude
@@ -104,6 +112,7 @@ function analyze(transcriptPath) {
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
+        if (b.type === 'text' && ANSWER.test(b.text || '')) events.push({ answer: true });
         if (b.type === 'tool_use' && EDIT_TOOLS.has(b.name)) {
           const p = b.input && b.input.file_path;
           if (p) events.push({ file: p });
@@ -116,7 +125,10 @@ function analyze(transcriptPath) {
     if (events[i].boundary) { last = i; break; }
   }
   const files = [];
+  let answered = false;   // a ⚙ line after the turn's last edit (an edit after it reopens the question)
   for (let i = last; i < events.length; i++) {
+    if (events[i].answer) answered = true;
+    if (events[i].file) answered = false;
     if (events[i].file && !files.includes(events[i].file)) files.push(events[i].file);
   }
 
@@ -129,7 +141,7 @@ function analyze(transcriptPath) {
     turnsSinceGate = 0;
     for (let i = lastGate + 1; i < events.length; i++) if (events[i].boundary) turnsSinceGate++;
   }
-  return { files, quiet: turnsSinceGate < COOLDOWN_TURNS };
+  return { files, answered, quiet: turnsSinceGate < COOLDOWN_TURNS };
 }
 
 process.stdin.on('end', () => {
@@ -144,6 +156,8 @@ process.stdin.on('end', () => {
   try {
     const seen = analyze(input.transcript_path);
     if (seen.quiet) return allow(); // cooldown
+    // answered in advance: in the transcript, or in the final message the harness hands over
+    if (seen.answered || ANSWER.test(String(input.last_assistant_message || ''))) return allow();
     touched = seen.files;
   } catch (e) {
     return allow(); // transcript unreadable — never block for that

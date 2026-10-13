@@ -192,7 +192,8 @@ def main() -> None:
     # newline is not optional: text mode translates "\n" to the platform separator, so
     # the same command wrote CRLF on Windows and LF on macOS (measured 2026-08-10:
     # 12 CR lines in a freshly generated REGISTRY.md).
-    REGISTRY.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    with open(REGISTRY, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(lines))
     print(f"Wrote {REGISTRY} — {total} skills across {len([g for g in order if grouped[g]])} groups.")
     if no_desc:
         print("No description (H1 fallback):", ", ".join(no_desc))

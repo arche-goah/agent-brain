@@ -18,6 +18,9 @@ bad() { echo "  FAIL $1"; fail=1; }
 
 mkdir -p "$T/core/scripts" "$T/repo/.git" "$T/root"
 cp "$SRC" "$T/core/scripts/open-items.py"
+cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
+cp "$(dirname "$SRC")/project_dir.py" "$T/core/scripts/project_dir.py"
+cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
 # The fake inbox prints whatever $T/inbox.txt holds.
 printf '%s\n' 'import os, sys' \
   'sys.stdout.write(open(os.path.join(os.path.dirname(__file__), "..", "..", "inbox.txt"), encoding="utf-8").read())' \
@@ -107,18 +110,18 @@ has "[parked]" "$out" && bad "request still on the parked line: $out" || ok "req
 # Pull requests (a saved GraphQL answer stands in for gh): whose move it is, dated waits,
 # the shown date, parked repos. Viewer = me.
 NOW=$(date +%Y)-12-31; PAST=2020-01-01
-pr() { # repo num author created body lastcommit reviews-json requests-json
-  printf '{"number":%s,"title":"t%s","isDraft":false,"createdAt":"%sT10:00:00Z","body":"%s","author":{"login":"%s"},"repository":{"name":"%s"},"reviewRequests":{"nodes":%s},"latestReviews":{"nodes":%s},"commits":{"nodes":[{"commit":{"committedDate":"%s"}}]},"comments":{"nodes":[]}}' \
-    "$2" "$2" "$4" "$5" "$3" "$1" "$8" "$7" "$6"
+pr() { # repo num author created body lastcommit reviews-json requests-json [comments-json]
+  printf '{"number":%s,"title":"t%s","isDraft":false,"createdAt":"%sT10:00:00Z","body":"%s","author":{"login":"%s"},"repository":{"name":"%s"},"reviewRequests":{"nodes":%s},"latestReviews":{"nodes":%s},"commits":{"nodes":[{"commit":{"committedDate":"%s"}}]},"comments":{"nodes":%s}}' \
+    "$2" "$2" "$4" "$5" "$3" "$1" "$8" "$7" "$6" "${9:-[]}"
 }
-printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":7,"nodes":[%s,%s,%s,%s,%s,%s,%s]}}}\n' \
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":10,"nodes":[%s,%s,%s,%s,%s,%s,%s,%s,%s,%s]}}}\n' \
   "$(pr suite-x 1 peer 2026-09-28 '' 2026-09-28T11:00:00Z '[{"author":{"login":"me"},"submittedAt":"2026-10-08T19:45:00Z"}]' '[]')" \
   "$(pr suite-x 2 peer 2026-09-29 '' 2026-10-09T11:00:00Z '[{"author":{"login":"me"},"submittedAt":"2026-10-08T19:45:00Z"}]' '[]')" \
   "$(pr owned 3 peer 2026-09-30 '' 2026-09-30T11:00:00Z '[]' '[]')" \
   "$(pr owned 4 peer 2026-10-01 '' 2026-10-01T11:00:00Z '[]' '[{"requestedReviewer":{"login":"me"}}]')" \
   "$(pr core 5 me 2026-10-02 "waiting-until: $NOW: alpha measurement" 2026-10-02T11:00:00Z '[]' '[]')" \
   "$(pr core 6 me 2026-10-03 "waiting-until: $PAST: alpha" 2026-10-03T11:00:00Z '[]' '[]')" \
-  "$(pr grandma-suite 7 peer 2026-10-04 '' 2026-10-04T11:00:00Z '[]' '[]')" > "$T/prs.json"
+  "$(pr grandma-suite 7 peer 2026-10-04 '' 2026-10-04T11:00:00Z '[]' '[]')"   "$(pr owned 8 me 2026-10-05 '' 2026-10-05T11:00:00Z '[]' '[]')"   "$(pr owned 9 me 2026-10-06 '' 2026-10-06T11:00:00Z '[{"author":{"login":"peer"},"submittedAt":"2026-10-07T09:00:00Z"}]' '[]')"   "$(pr owned 10 me 2026-10-06 '' 2026-10-06T11:00:00Z '[{"author":{"login":"peer"},"submittedAt":"2026-10-07T09:00:00Z"}]' '[]' '[{"author":{"login":"me"},"createdAt":"2026-10-07T10:00:00Z"}]')" > "$T/prs.json"
 printf '%s\n' 'shared-memory open requests to this instance: 0' > "$T/inbox.txt"
 printf '%s\n' '{"parked":["grandma"],"owners":{"owned":"peer"}}' > "$T/root/.claude/rules/open-items.json"
 export OPEN_ITEMS_PR_FIXTURE; OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs.json")"
@@ -128,16 +131,55 @@ has "waiting on peer: we reviewed" "$(line 'suite-x#1 ' "$out")" && ok "approved
 has "[PR|ai]" "$(line 'suite-x#2 ' "$out")" && ok "commit after our review = our move" || bad "new commit: $(line 'suite-x#2 ' "$out")"
 has "is peer's to merge" "$(line 'owned#3 ' "$out")" && ok "owner's repo, no review asked = waiting" || bad "owner: $(line 'owned#3 ' "$out")"
 has "[PR|ai]" "$(line 'owned#4 ' "$out")" && ok "review asked of us = our move" || bad "requested: $(line 'owned#4 ' "$out")"
+has "waiting on peer: owned is peer's to merge, our own PR waits on that" "$(line 'owned#8 ' "$out")" && ok "own PR in an owner's repo = waiting on the owner" || bad "own PR, owner: $(line 'owned#8 ' "$out")"
+has "[PR|ai]" "$(line 'owned#9 ' "$out")" && ok "owner reviewed our PR after the last commit = our move" || bad "own PR, review: $(line 'owned#9 ' "$out")"
+has "waiting on peer" "$(line 'owned#10 ' "$out")" && ok "we answered the owner's review = waiting again" || bad "own PR, answered: $(line 'owned#10 ' "$out")"
+# One login, two instances (measured 2026-10-11): the sibling's PR in an owner's repo was read
+# as our own and filed as "waiting on the owner". With the instance key it is ours to look at.
+KWS="$("$PY" -c 'import sys; sys.path.insert(0, sys.argv[1]); import instance_key as k; print(k.key_for("ws"))' "$(native "$T/core/scripts")")"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr owned 11 me 2026-10-06 "fix <!-- instance-key: $KWS -->" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-sib.json"
+sib=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF=mac OWNER=me run s1)
+has "[PR|ai]" "$(line 'owned#11 ' "$sib")" && ok "sibling instance's PR = our move, not the owner's" || bad "sibling: $(line 'owned#11 ' "$sib")"
+sib0=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF= OWNER=me run s0)
+has "waiting on peer" "$(line 'owned#11 ' "$sib0")" && ok "negative control: without an own key the old reading (waiting) holds" || bad "no key: $(line 'owned#11 ' "$sib0")"
+# The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
+# sibling PRs checked at their heads stayed "our move"). Our text naming THIS head = waiting;
+# an older head, or someone else's text naming it, leaves the move with us.
+HEAD12=abcdef1234567890abcdef1234567890abcdef12
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 12 me 2026-10-06 "fix <!-- instance-key: $KWS -->" 2026-10-06T11:00:00Z '[]' '[]' | sed "s/\"commit\":{/\"commit\":{\"oid\":\"$HEAD12\",/")" > "$T/prs-sm.json"
+smrun() { OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sm.json")" SHARED_MEMORY_SELF=mac OWNER=me run "$1"; }
+mkdir -p "$T/repo/core"
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: mac' '---' 'Checked at head `abcdef1`: OK.' > "$T/repo/core/antwort.md"
+has "our check of this head is in the shared memory" "$(line 'core#12 ' "$(smrun m1)")" && ok "own shared-memory answer at this head = waiting" || bad "sm answer: $(line 'core#12 ' "$(smrun m1)")"
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: mac' '---' 'Checked at head `1111111`: OK.' > "$T/repo/core/antwort.md"
+printf '%s\n' '# LOG' '' '## 2026-10-11 · mac — AN ws: checked 2222222' 'ok' '' '## 2026-10-11 · ws — AN mac: please check abcdef1' 'x' > "$T/repo/core/LOG.md"
+has "[PR|ai]" "$(line 'core#12 ' "$(smrun m2)")" && ok "negative control: an older head or a foreign text naming the head stays our move" || bad "stale/foreign sha: $(line 'core#12 ' "$(smrun m2)")"
+printf '%s\n' '# LOG' '' '## 2026-10-11 · mac — AN ws: checked abcdef1 OK' 'ok' > "$T/repo/core/LOG.md"
+has "our check of this head is in the shared memory" "$(line 'core#12 ' "$(smrun m3)")" && ok "own LOG section naming this head = waiting" || bad "sm LOG: $(line 'core#12 ' "$(smrun m3)")"
+# The real setting is a comma list "<device>,<alias>,…" (macOS check of #286): the device token counts.
+sml=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sm.json")" SHARED_MEMORY_SELF="mac,person:x,os:macos" OWNER=me run m4)
+has "our check of this head is in the shared memory" "$(line 'core#12 ' "$sml")" && ok "self as a comma list: the device token counts" || bad "comma-list self: $(line 'core#12 ' "$sml")"
+rm -rf "$T/repo/core"
 has "waiting until $NOW: alpha measurement" "$(line 'core#5 ' "$out")" && ok "dated wait is quiet" || bad "dated wait: $(line 'core#5 ' "$out")"
 has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder" || bad "past wait: $(line 'core#6 ' "$out")"
 has "2026-09-28 suite-x#1" "$out" && ok "shown date = opened date" || bad "date: $out"
 has "[parked] grandma-suite#7" "$out" && ok "parked PR on the parked line" || bad "parked PR: $out"
-has "(+3 waiting on others or a date)" "$out" && ok "header counts the waits apart" || bad "wait header: $(head -1 <<<"$out")"
+has "(+5 waiting on others or a date)" "$out" && ok "header counts the waits apart" || bad "wait header: $(head -1 <<<"$out")"
 outc=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=2 run p3)
-has "- [wait] 3 waiting on others or a date: " "$outc" && [ -z "$(line '|wait] ' "$outc")" ] && ok "many waits collapse into one line" || bad "collapse: $outc"
+has "- [wait] 5 waiting on others or a date: " "$outc" && [ -z "$(line '|wait] ' "$outc")" ] && ok "many waits collapse into one line" || bad "collapse: $outc"
 l1=$(line 'suite-x#1 ' "$out2")
 has "waiting on peer" "$l1" && ! has "reported in" "$l1" && ok "a wait does not count up" || bad "a wait was counted: $l1"
 has "!! reported in 2 sessions" "$(line 'core#6 ' "$out2")" && ok "past wait counts up" || bad "past wait count: $(line 'core#6 ' "$out2")"
+has "nothing done yet" "$(line 'core#6 ' "$out2")" && ok "no own move since the first report = nothing done yet" || bad "idle claim: $(line 'core#6 ' "$out2")"
+# "nothing done yet" is a claim (measured 2026-10-12: an own PR with a commit and a comment the
+# same day was printed so in 17 sessions). An own commit after the first report names that move.
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 13 me 2026-10-03 '' "${NOW}T09:00:00Z" '[]' '[]')" > "$T/prs-mv.json"
+OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-mv.json")" OWNER=me run v1 >/dev/null; tx v1
+mv=$(line 'core#13 ' "$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-mv.json")" OWNER=me run v2)")
+has "last own move $NOW — still ours" "$mv" && ! has "nothing done yet" "$mv" && ok "own move since the first report is named, not 'nothing done'" || bad "own move: $mv"
 OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")"
 
 # WHO acts: circle field in the request file (read at origin/main), a request addressed to
@@ -163,12 +205,12 @@ has "[request|?] 2026-09-06" "$out" && ok "no data = '?'" || bad "unclassified: 
 has "[request|?] 2026-09-06" "$out" && ok "machine id built from the name is not the person" || bad "machine id read as a person: $out"
 has "unclassified 2" "$out" && ok "header counts the '?'" || bad "header: $(head -1 <<<"$out")"
 has "classify every '?' item" "$out" && ok "'?' asks for --classify" || bad "no classify hint: $out"
-"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" \
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
   --classify 'anfrage-x-2026-09-06.md=human:needs the operator net definition' >/dev/null 2>&1
 out=$(run i)
 has "[request|human] 2026-09-06" "$out" && ok "--classify by file name sticks" || bad "classify lost: $out"
 has "needs the operator net definition" "$out" && ok "the reason is printed" || bad "reason missing: $out"
-out=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --classify 'x=maybe' 2>&1)
+out=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" --classify 'x=maybe' 2>&1)
 has "bad --classify" "$out" && ok "bad class refused" || bad "bad class accepted: $out"
 
 # Two LOG entries of one sender on one day (measured 2026-10-09, Windows instance): a class
@@ -177,16 +219,63 @@ has "bad --classify" "$out" && ok "bad class refused" || bad "bad class accepted
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
   '  - 2026-10-07 [core] peer-b: AN inst-a: first note (LOG)' \
   '  - 2026-10-07 [core] peer-b: AN inst-a: second, a real request (LOG)' > "$T/inbox.txt"
-"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" \
-  --classify 'LOG 2026-10-07 peer-b=ai:short form' >/dev/null 2>&1
+out=$(run j0)
+has "--classify 'core/LOG 2026-10-07 peer-b: AN inst-a: first note=" "$out" \
+  && ok "hint prints the exact LOG id" || bad "hint lacks the exact id: $out"
+# Measured 2026-10-10: the printed short ref said "classified" and the item stayed '?'.
+cout=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
+  --classify 'LOG 2026-10-07 peer-b=ai:short form' 2>&1); rc=$?
+[ "$rc" = 2 ] && has "matches no open request" "$cout" && ! has "classified:" "$cout" \
+  && ok "unknown id refused, nothing saved" || bad "unknown id accepted (rc=$rc): $cout"
+has "   core/LOG 2026-10-07 peer-b: AN inst-a: second, a real" "$cout" \
+  && ok "refusal lists the exact ids" || bad "no exact ids offered: $cout"
 out=$(run j)
 [ "$(grep -c '\[request|?\] 2026-10-07' <<<"$out")" = 2 ] && ok "short LOG form classifies nothing" \
   || bad "short LOG form leaked a class: $out"
-"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" \
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
   --classify 'core/LOG 2026-10-07 peer-b: AN inst-a: first note=ai:ack only' >/dev/null 2>&1
 out=$(run k)
 [ "$(grep -c '\[request|ai\] 2026-10-07' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-07' <<<"$out")" = 1 ] \
   && ok "full LOG id classifies exactly its own entry" || bad "LOG id class spread or missed: $out"
+
+# Measured 2026-10-11, Windows instance: an id cut after 40 chars right behind a blank could not be
+# classified (the key is stripped, the id was not), and of several --classify flags only the last counted.
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-08 [core] peer-b: AN inst-a: xxxxxxxxxxxxxxxxxxxxxxxxxxxx tail words (LOG)' \
+  '  - 2026-10-08 [core] peer-b: AN inst-a: another one (LOG)' > "$T/inbox.txt"
+out=$(run l0)
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
+  --classify 'core/LOG 2026-10-08 peer-b: AN inst-a: xxxxxxxxxxxxxxxxxxxxxxxxxxxx =ai:cut at a blank' \
+  --classify 'core/LOG 2026-10-08 peer-b: AN inst-a: another one=ai:second flag' >/dev/null 2>&1
+out=$(run l)
+[ "$(grep -c '\[request|ai\] 2026-10-08' <<<"$out")" = 2 ] \
+  && ok "id cut at a blank and a second --classify flag both stick" || bad "classify lost: $out"
+
+# Measured 2026-10-11, Windows instance: two LOG entries of one sender on one day with the same first
+# 40 chars got ONE id — one class covered both. The second gets " (2)", each classifies alone.
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (LOG)' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
+out=$(run m0)
+has "--classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst- (2)=" "$out" \
+  && ok "colliding LOG ids are told apart" || bad "colliding ids: $out"
+"$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
+  --classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-=ai:first only' >/dev/null 2>&1
+out=$(run m)
+[ "$(grep -c '\[request|ai\] 2026-10-09' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-09' <<<"$out")" = 1 ] \
+  && ok "a class on the first colliding id leaves the second open" || bad "collision class spread: $out"
+# The first one is answered and leaves the inbox: the second takes over the bare id. It must not
+# inherit the first one's class (measured 2026-10-11 on the merged suffix: it did, "first only").
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
+out=$(run m2)
+has "[request|?] 2026-10-09" "$out" && ! has "first only" "$out" \
+  && ok "the second request, alone under the bare id, does not inherit the first one's class" || bad "class inherited: $out"
+# Negative control: the SAME text keeps its class (a class is not lost by a re-run).
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (LOG)' > "$T/inbox.txt"
+out=$(run m3)
+has "[request|ai] 2026-10-09" "$out" && ok "the classified text keeps its class" || bad "own class lost: $out"
 
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"

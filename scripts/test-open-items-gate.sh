@@ -119,6 +119,16 @@ case "$out8b" in
   *'core/LOG 2026-10-07 peer-b: AN inst-a: first note'*) ok "unclassified LOG entry is named by its full id" ;;
   *) bad "unclassified LOG entry not named by its full id: '$out8b'" ;;
 esac
+# 8c — ...and a class stored under that full id (what --classify writes) satisfies the gate.
+# Measured 2026-10-12 (Windows instance): classified via the script, the gate still read the
+# bare ref and blocked the first reply. NEGATIVE: the same ref with another text stays `?`.
+f="$T/8c.jsonl"; { boot_ok startup "$QL"; user "stand?"; asst "1 needs you: the 2026-10-07 note from peer-b."; } > "$f"
+CLL="$T/cwd-cls-log"; mkdir -p "$CLL/.claude-state"
+printf '%s\n' '{"core/LOG 2026-10-07 peer-b: AN inst-a: first note":{"class":"human","why":"asks the operator"}}' > "$CLL/.claude-state/open-items-class.json"
+check "LOG entry classified under its full id" "$f" allow "$CLL"
+CLX="$T/cwd-cls-log-other"; mkdir -p "$CLX/.claude-state"
+printf '%s\n' '{"core/LOG 2026-10-07 peer-b: AN inst-a: another note":{"class":"human","why":"asks the operator"}}' > "$CLX/.claude-state/open-items-class.json"
+check "LOG entry with a class for another text stays unclassified" "$f" block "$CLX"
 
 # 9 — the bootup did not arrive.
 f="$T/9a.jsonl"; { boot_cancel; user "stand?"; asst "All good."; } > "$f"
@@ -206,5 +216,14 @@ f="$T/18b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "${GO/8 Punkte
 check "no go-ahead, no question" "$f" block "$DE"
 f="$T/18c.jsonl"; { boot_ok startup "$BLOCK"; user "go ahead and handle everything"; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
 check "English go-ahead built in" "$f" allow "$EN"
+
+# Wake-up of a parked domain (operator order 2026-10-11): an operator item like any other —
+# the first reply must name it; leaving it out blocks.
+W1="- [wake|human] 2026-10-20 lightdesk — peer-x: parked domain lightdesk: peer-x is active again (PR desk-suite#9, 1 move(s) since 2026-09-18) - ask the operator whether to unpark — first report (the party that paused it moved again)"
+WB="=== BRAIN BOOTUP CHECK ===${NL}open for us: 1 — ai 0 · human 1 · unclassified 0 (+1 parked)${NL}${W1}${NL}- [parked] desk-suite#3${NL}=== END BOOTUP ==="
+f="$T/19a.jsonl"; { boot_ok startup "$WB"; user "stand?"; asst "1 point needs you: the parked lightdesk domain is active again on the other side - unpark it? The rest stays parked."; } > "$f"
+check "wake-up item named" "$f" allow "$EN"
+f="$T/19b.jsonl"; { boot_ok startup "$WB"; user "stand?"; asst "1 point needs you. Everything else stays parked."; } > "$f"
+check "wake-up item left out" "$f" block "$EN"
 
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

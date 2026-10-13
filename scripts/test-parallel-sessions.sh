@@ -20,6 +20,9 @@ run "$EXE" "$EXE plugin list" "$EXE plugin list --json" "$EXE --version"
 run "$EXE" "$EXE --resume"
 [ "$rc" = 1 ] && case "$out" in *'2 claude sessions'*) true;; *) false;; esac \
   && ok "two sessions are reported" || bad "two sessions: rc=$rc '$out'"
+# machine-wide it cannot say which folder — a note, not a `!!` warning nobody can act on
+case "$out" in 'note: '*) ok "machine-wide count is a note, not a warning";; *) bad "machine-wide line: '$out'";; esac
+case "$out" in *'!!'*) bad "machine-wide line carries !!: '$out'";; *) ok "no !! in the machine-wide line";; esac
 
 run "$EXE" "$EXE -p do-something"
 [ "$rc" = 1 ] && ok "a headless -p run counts as a session" || bad "headless: rc=$rc '$out'"

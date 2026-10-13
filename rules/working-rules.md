@@ -35,7 +35,20 @@
    opens a pull request arms `core/scripts/ci-watch.sh pr <repo> <n>` in the same turn
    (background) and reads the result before calling the PR ready. A red check found days
    later is a check nobody watched (measured: a PR sat red while the session reported
-   the others green).
+   the others green). **Never in the foreground** (operator 2026-10-13: "that blocks every
+   other activity — with several core PRs waiting on CI, hours go by"): a core run takes
+   about 15 minutes, so every CI wait runs detached, one watch per PR in parallel, and the
+   session keeps working until the verdict arrives as a notification. Measured the day the
+   rule was written: 65 of 263 ci-watch calls in three days ran in the foreground. Carried
+   by the core's own `mechanism-rules.json` (`foreground_only`). **And the same holds for
+   every push that starts a run** (operator correction 2026-10-13, "fatal"): a push onto a
+   PR branch, a merge (a push to the base branch), a tag — each gets its `ci-watch.sh
+   pr|ref` in the same turn. Measured that day: five pushes to PR branches, four watched;
+   the fifth went red (runner never acquired) and the operator found it; six merges, none
+   watched. Carried twice: `core/helpers/watch-gate.cjs` blocks a turn end after a push
+   into a checkout with workflows without a ci-watch on that repo, and the standing watch
+   (`repo-activity-watch.sh` inside collab-watch) reports every red run on a watched repo
+   as `CI-RED`, so a red check is seen even when no one armed a watch.
 10. **A commitment about future behaviour becomes rule text in the same turn** (operator
     decision 2026-10-09): "from now on I will…" said only in chat binds nothing and is
     invisible to every check. Write it where rules live — the instance's rules if it is
@@ -51,6 +64,16 @@
     is the agreed channel ASK OR ACT step 1 names. Making a repo public, a first
     publication, a push outside the organisation's repos and a deployment stay gated.
     Carriers on every push: leak-scan, the English-only ratchet, the instance's name guard.
+12. **Two sessions, one working copy: commit by path, never rewrite, never touch the other's
+    operation** (operator direction 2026-10-13, after three incidents in three days). A checkout
+    has one index and one HEAD; git cannot tell sessions apart. While a second session runs on
+    the machine, a session that is not working in its own scratchpad worktree commits only its
+    own paths (`git commit <paths> -m …`), stages only its own paths, never amends, stashes,
+    hard-resets, switches branch or force-pushes there, pulls `--ff-only`, and leaves a rebase
+    or merge it did not start untouched — it messages the session that owns it instead. Branch
+    work goes into `git worktree add` under the scratchpad, which is private by its path. The
+    carrier is `core/helpers/shared-working-copy-guard.cjs`; a deviation needs the marker and is
+    finished in the same turn, so the other session never meets a half-done state.
 
 ## File Rules
 
@@ -176,7 +199,12 @@ same topic lands in the same layout:
    repo grow that repo's own auto-memory; the brain memory keeps pointers.
    As soon as a second brain works the project: `reach: shared` entries and
    one-file-one-fact exports to the org's shared-memory repo, with a
-   back-reference to the source `id`.
+   back-reference to the source `id`. **The project gets its own AREA there in
+   the same pass** (operator order 2026-10-10): folder + `LOG.md` + a line in
+   the README's area list — never filed into the catch-all folder "for now".
+   Measured: a catch-all held 150 entries, whole projects among them, because
+   nothing said when an area is due. Carrier: `core/scripts/shared-memory-lint.py`,
+   check "project without an area".
 5. **Register the ledger with the instance's aggregator.** The generated
    overview sees only registered detail lists — an unregistered domain is
    invisible by construction (deliberate: no silent glob fallback). Adding the
@@ -221,6 +249,20 @@ if the result would be clean. The three questions above do NOT catch this: a cle
 built second path passes all three — and is still wrong, because the question
 "should a second path exist here at all?" is never asked.
 
+**A refusal is a decision, not an obstacle** (operator decision 2026-10-12). An action the
+permission layer refused — a permission rule, the auto-mode classifier, a hook — is NOT
+re-issued in another form: not as another command for the same effect (`gh api -X PUT
+…/pulls/<n>/merge` after a refused `gh pr merge`), not through another tool (PowerShell
+after a refused Bash call, a file edit after a refused command), and not through another
+session or party asked to do it instead (that launders the refusal). The refusal is a
+REPORTING EVENT: say what was refused and what it was for, and name who can take the step
+(the operator, or a party that holds the right on its own). Retrying the same call after
+the operator granted the permission is not a re-issue. (Coherence scan of a Windows
+instance, 2026-10-12: a loaded skill still called the raw API merge a "second legitimate
+form" while `collab-watch` forbade exactly that.) **Carried by** the core's own
+`mechanism-rules.json` (read by `mechanism-guard` from the enabled core plugin): the raw
+API merge is blocked unless the marker quotes the operator.
+
 **THE REQUIRED OUTCOME is binary:** either **"I find the prescribed defined path and
 take it"** — or **"there is no defined path" → it gets DISCUSSED.** A third case does
 not exist. No "I'll quickly do it differently and mention it": the questioning must
@@ -238,20 +280,48 @@ here. Take the FIRST step that applies:
    its gate applies — the operator's word first, regardless of confidence.
 2. **Needed to fulfil the order as specified** and a defined path exists: take it, in the
    order's space. An interrupted defined path: restore it (THIRD CASE above).
-3. **Adjacent** — useful, but not needed for the order, or no defined path exists: write
-   it where it is decided without blocking (the instance's ledger as `origin: derived`,
-   or the shared-memory channel for another party), and CONTINUE the ordered work. The
-   operator hears it in the next report, as a proposal with a recommendation.
-4. **Otherwise** (reversible, own terrain, inside the order): do it and report.
+3. **Needed to fulfil the order, but NO defined path exists** — the "there is no defined
+   path → it gets DISCUSSED" case above. Raise it through the channel that fits it (the
+   instance's ledger plus the next report; the other party's shared-memory channel when
+   the path is theirs to define) AND, if the order can proceed meanwhile, name the
+   assumption you continue under — in that entry and in the report, so the choice is
+   visible and reversible, never silent. If the order cannot proceed without the answer
+   and the answer belongs to the operator, the question ends the turn (last paragraph
+   below). Split out of the adjacent step on 2026-10-12 (operator decision): the two
+   cases shared one step and one outcome — note it and continue — which fits an adjacent
+   idea, but turns a NEEDED subtask without a path into exactly the improvisation this
+   section names.
+4. **Adjacent** — useful, but not needed for the order: write it where it is decided
+   without blocking (the instance's ledger as `origin: derived`, or the shared-memory
+   channel for another party), and CONTINUE the ordered work. The operator hears it in
+   the next report, as a proposal with a recommendation.
+5. **Otherwise** (reversible, own terrain, inside the order): do it and report.
 A question ENDS the turn only when the next step of the order cannot proceed without the
 answer AND the answer belongs to the operator — the instance names its list of
 operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
 
-**Mechanically secured:** `core/helpers/mechanism-guard.cjs` (PreToolUse/Bash) blocks
-shortcuts for which a documented path exists, and demands either the process or an
-explicit `# MECHANISM-OK: <reason>` marker. The rules for it are instance knowledge:
-`.claude/rules/mechanism-rules.json` (every newly discovered shortcut gets added
-there — the system learns, not just the agent).
+**Mechanically secured:** `core/helpers/mechanism-guard.cjs` (PreToolUse on
+Bash/Monitor and Write/Edit) blocks shortcuts for which a documented path exists, and
+demands either the process or an explicit `# MECHANISM-OK: <reason>` marker. Two sources
+of rules: the instance's own (`.claude/rules/mechanism-rules.json` — rig, doc paths) and
+the TOOL's own: a tool that is meant to be driven through its MCP server ships
+`mechanism-rules.json` at its root naming its internals (IPC files, running its server by
+hand, GUI drivers), and the guard finds it whether the tool arrives as a clone in
+`.mcp.json` or as an enabled plugin. Every newly discovered shortcut gets added where it
+belongs — the system learns, not just the agent. (Incident 2026-10-11: a defined path was
+not available on a second machine; the session built its own client and wrote straight
+into the tool's IPC file instead of reporting. Not available = report, THIRD CASE above.)
+**A rule whose documented path is "agree it with the operator first" may demand the
+operator's word behind the marker** (`needs_operator_word: true`, operator decision
+2026-10-12): the justification must then quote the operator — the words in `"…"` or `„…"`
+plus the date they were said — or point at a record file that exists (`path[:line]`);
+otherwise the guard denies and names what is missing. A paraphrase is not a quotation
+(incident 2026-09-12: two merges in a shared repo carried the marker with a verbatim quote
+that stands in no transcript of that day — the gap it should have shown was papered over by
+the invented evidence). Rules without the field behave as before.
+**A request to another machine names the defined path AS IT EXISTS THERE** — read how that
+machine runs the tool (clone or plugin, version) before writing the steps; a step that only
+works on the sender's setup turns the receiver's next move into improvisation.
 
 ## One System, Not Local Workarounds (HARD, operator order 2026-10-08)
 
@@ -267,9 +337,34 @@ Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machin
   instance-specific token the item relies on (a host, device, person or project name); the
   checker verifies the token is really in the item. "Not yet ported" is not a reason, and a
   reason without evidence is a self-declaration nobody checked (measured 2026-10-09: three
-  items declared instance-only were general).
+  items declared instance-only were general). An item that relies on no token — a section of
+  the instance's own rule files, a one-off measurement script — may name as `reach` the
+  written reach analysis that judged it instead; the checker verifies the file names the item.
+- **external** — a third-party skill or plugin used as it is (a vendored skill pack, an
+  official marketplace plugin). Not ours to port to the core; the entry names its `source`.
 - **alpha** — a development checkout under test, with an expiry date and what is being
   measured. Past the date: merge, extend with a reason, or unwire.
+
+**A suite that ships as a plugin is consumed as the plugin** (operator order 2026-10-11: no
+special-purpose tinkering — here, at collaborators, in other instances). Its MCP server and
+skills come from the marketplace on every machine; a clone of the suite feeds a brain only to
+check a PR head, as a declared alpha with a date, and goes back afterwards. A suite's name is
+not an instance identity token: it names shared tooling and cannot prove an item instance-only.
+Carried by `core/scripts/local-machinery.py`, class `clone` (a suite clone wired as MCP server
+or skill source while an added marketplace publishes that repo).
+
+**A fork is not a place for work** (operator direction 2026-10-11: the core exists to give
+everyone the same state; a time-boxed local alpha is how a new feature reaches it, but an
+unnoticed drift away from it must not happen — the default is not to turn off, but to find
+the common way and build on it). Core work happens on a branch IN the core repo — every
+collaborator has write access there, so a branch is seen, gets CI and reaches the others;
+a fork branch gets none of that and is forgotten. A brain consumes the core only from the
+org repo at the released pin, never from a fork. Finished work is a PR in the repo;
+everything else is a declared alpha with an expiry. Measured the day the rule was written:
+two collaborator forks, their main far behind, about twenty leftover branches of merged
+PRs, one fix that had lived only on a fork branch for six weeks, and one open PR still
+served from a fork. Carried by `core/scripts/fork-drift.py` in the brain-scan's machine
+checks: it names fork work that never reached the core and a core consumed from a fork.
 
 **The finding addresses the AI, not the operator** (operator, same day: "the human does not
 have to be bothered every time something deviates, but there should be a classification and
@@ -388,6 +483,13 @@ their AIs:
    nobody — use the proper name. The person and their AI are named apart ("<name>" vs.
    "<name>'s AI"): a proposal of an AI is not a decision of its person. Machine ids stay
    in data fields; a git author is no proof of the party (accounts can look alike).
+   **One login can carry several instances** (operator order 2026-10-11, after a hand-over
+   between the operator's own machines lay unseen until the operator asked on every side):
+   every PR, comment and review an AI posts carries its instance key
+   (`<!-- instance-key: … -->`, a hash, names nobody — `core/helpers/instance-key-gate.cjs`
+   refuses the post without it), and every check that decides "is this mine?" decides by
+   login AND key (`core/scripts/instance_key.py`). A PR from a sibling instance under the same
+   login is a hand-over to us, not our own.
 2. **Responsibility is assigned only by the operator** (operator decision 2026-08-19). An
    assignment is STATE with a date — measure it (`core/scripts/parallel-sessions.sh`, the
    shared-memory record) before leaving work out, never recall it (2026-08-21). A new
@@ -398,3 +500,13 @@ their AIs:
 4. **Judge the sum, not the single change** (operator decision 2026-08-31): what counts
    is what all of this side's changes together mean for the other party — four small
    interventions are one big one.
+5. **One finding, one builder** (operator correction 2026-10-11: "you crossed each other
+   there for nothing — that costs time"). Whoever reports a finding on a PR says in the same
+   comment whether they build the fix ("PR follows" / "the author's" / "open for anyone").
+   Whoever wants to build a fix for SOMEONE ELSE's finding first reads the repo's open PRs
+   (`gh pr list --state open`) and the thread: an existing PR or a claim means counter-check,
+   not build; nothing there means one line in the thread ("building it"), then build. And
+   nothing is merged over an open finding in its thread — read the comments in full, never
+   through a tool that cuts them short. Measured the day the rule was written: one finding,
+   two fixes from two machines three minutes apart (one closed), and a merge over the finding
+   because a reader showed 200 characters of the comment.

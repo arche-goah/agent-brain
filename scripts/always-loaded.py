@@ -74,7 +74,9 @@ def main(argv):
         return 0
     grown = now - int(base.get("bytes", now))
     if grown > a.slack:
-        print(f"always-loaded context grew {base['bytes']} -> {now} bytes (+{grown}) since the review of {base.get('date', '?')} "
+        # "from X to Y", not "X -> Y": the session start escapes > for its own wrapper, so the
+        # arrow reached the operator as "-&gt;" (measured 2026-10-11).
+        print(f"always-loaded context grew from {base['bytes']} to {now} bytes (+{grown}) since the review of {base.get('date', '?')} "
               "— a new rule, or state/todo/history that belongs in a ledger? Diet review, then always-loaded.py --accept")
     return 0
 

@@ -4,7 +4,8 @@
 > Written in English because it ships with the shared core (decision 2026-08-03: tools
 > and core in English, instance docs and memory in the owner's language).
 >
-> **Scope:** this contract binds the core repo (`agent-brain`) and every tool suite built around it. It
+> **Scope:** this contract binds the core repo (`agent-brain`) and every tool suite built around it;
+> §14 (the setup contract) binds every repo a brain creates or works. It
 > exists so that two people running separate private brains can exchange suites and rule
 > changes without merge work. If a rule here is only true for one person's setup, it does
 > not belong in this file.
@@ -100,6 +101,19 @@ Rules:
   a usable message, not silently do nothing.
 - Every tool is testable read-only against a device that does not exist yet (dry run or
   clear connection error).
+- **The server is the only way in, and the suite says so mechanically.** A suite whose
+  server has internals an agent could reach around it (an IPC file, the server's source
+  started by hand, a GUI driver) ships `mechanism-rules.json` at its root:
+  `{"tool": "<suite>", "rules": [{"pattern", "was", "instead", "target": "command"|"path"}]}`.
+  The core's `mechanism-guard` finds it in a clone (via `.mcp.json`) and in an enabled
+  plugin alike. Developing the tool itself is the legitimate exception — it is declared per
+  command with `# MECHANISM-OK: <reason>`, never silent. A rule whose only legitimate
+  exception is the operator's word adds `"needs_operator_word": true`; the marker then
+  opens it only with a quotation of the operator plus its date, or a pointer to an
+  existing record file (`rules/working-rules.md`, Mechanism Discipline).
+- **Testing an unreleased branch live is a documented path** in the suite's `AGENTS.md`
+  (how to point the session's MCP at a clone on that branch, for plugin users too). Where it
+  cannot be done, the agent reports — it does not start the server on its own.
 
 ## 5. Skills
 
@@ -215,6 +229,7 @@ Ask before writing the first file, not after. Answer in order — the first "yes
 | Does it only make sense for one rig, venue, client, or show? | **private brain**, never shared |
 | Does it belong to one tool domain (a device family, an application, a protocol stack)? | **that domain's suite** — or a **new suite repo** if none exists (§2, §10) |
 | Is it a working rule, gate, hook, linter, or an OS-level skill that has nothing to do with a specific tool? | **the core (`agent-brain`)** |
+| Is it shared, non-executable project content of several parties — who is in, which gear, agreements, wiring plans? | **a shared project repo** under the organisation — rules below |
 
 Two consequences that are not optional:
 
@@ -242,6 +257,56 @@ Two consequences that are not optional:
    left behind is shadow authority: it wins exactly when nobody checks
    (measured 2026-08-19, `macro5001`: an instance followed its own local skill
    instead of re-reading the decision the skill silently dropped).
+
+**Shared project repo — the third kind (agreed between two brains 2026-09-22, first case
+2026-10-10):** a repo with no executable code that several parties keep together (who is
+in, which devices they bring, how signals connect, agreements). It runs on no machine and
+belongs to no side alone, so neither "tool" nor "instance" fits; without this paragraph it
+falls through the table above. Rules, in the order they bite:
+
+1. **Place and access** — under the organisation's account, private; the owner invites,
+   the leading side has write. Invitations use the full handle from the shared memory's
+   people register and the yes of the repo's owner; a handle is never formed from a
+   summary, a first name or memory (a handle without its suffix is a different person).
+2. **Names and language** — kebab-case ASCII English for repo, folders, files, headings
+   and field names; free text in a person's file may be that person's language. Field
+   names are never translated, or every evaluation breaks.
+3. **No instance data** (§1) — no addresses, hostnames, IPs, serial numbers, credentials.
+   Device models, firmware versions and connector types are content, not leaks.
+   `scripts/leak-scan.py` runs in CI; no release-preflight, no tag CI — nothing is released.
+4. **Personal data is the sensitive class here**, not trade secrets: the repo collects
+   data ABOUT people. Publishing or exporting is a decision of its own, never a side
+   effect. Whoever creates their file consents to inclusion in the private repo and to
+   nothing else; on request the file is deleted together with the issue it came from, the
+   note stays anonymous. No e-mail, phone or postal addresses — not in free text either.
+5. **One file per person** (`players/<github-handle>.md`), self-maintained, English
+   field names (`handle`, `name`, `role`, `devices`, `brings`, `wants`, `contact` = handle
+   or "via <person>"). Nobody edits another person's file beyond format fixes.
+6. **State carries a date** — every player and device file has `as_of: YYYY-MM-DD`, set
+   by the person on every change; an entry without it counts as unconfirmed, not as wrong
+   (the "identity is written, state is read" rule of `working-rules.md`, applied to a repo
+   where the state is other people's gear).
+7. **Outsiders without a clone or an AI** join through a GitHub issue form with the same
+   fields; a collaborator turns the issue into the file and closes it with the link.
+   Whoever wants no GitHub account tells one person, who enters it with a note.
+8. **Third-party content** (manuals, vendor tables) is linked, never checked in (§2).
+9. **Decisions with reach run through the shared memory** (own topic), with the decision
+   circle named; the repo carries the resulting state, not the discussion.
+10. **The ledger stays private** — open points, orders and intermediate states live in
+    each party's brain (Project Work Ledgers in `working-rules.md`), never in the repo.
+    The repo has no TODO file; every overview in it is the folder itself or generated.
+11. **`AGENTS.md` in the root** says all of this to any agent, in English; changes go
+    branch → PR → CI green → merge, read against by the other party on the first PR and
+    on structure changes. Who merges: once the author reported it done and the other side
+    said OK, CI is green and the reviewed commit is the head, whichever party gets to it
+    first (operator decision 2026-10-11 — a ready PR must not wait for one particular
+    person); releases (tag, pin) stay with the repo's owner. In a suite with a beta channel the
+    second OK is the check at the head on every `required_os` (a machine of the operator
+    counts), not the suite owner's approval — the owner's word belongs to the stable pin. A merge
+    checked on ONE system only (macOS only, or Windows only) is allowed solely as a beta,
+    labelled with that system ("macOS beta" / "Windows beta") and with the other system's
+    verification open in the check table; it never reaches stable, which needs a `pass` on every
+    required system.
 
 ## 12. Staying compatible — and how anyone can check it
 
@@ -314,11 +379,31 @@ branch → CI green → PR → merge → **tag → marketplace pin**. Only the p
 visible to the other side — "I pushed" never means "something changed for you"; the
 receiver stays in control.
 
+**Beta changes in a suite ride a channel, not a clone** (operator decision 2026-10-11:
+"no local extra branches that then drift in every instance"). A suite's plugin is run
+from the marketplace; an unreleased change is checked on the **same artifact on every
+machine**: the suite's `<plugin>-next` entry (same shape as `brain-core-next`, created
+when the first beta tag exists — no pin in advance), the stable plugin disabled meanwhile
+(same skill names), then back. The first switch needs a **new session** for a plugin whose
+dependencies are installed by its SessionStart hook: before a session starts it has none and
+its server exits at once, so `/reload-plugins` plus `/mcp` is not enough (measured on the
+Windows instance, 2026-10-11). Tag form, platform scope and the generated check table
+follow AGENTS.md #12 (the tag stays `vX.Y.Z`; beta is the channel). A beta (the tag plus
+the `<plugin>-next` pin) is collaboration logic, not a program-function decision: any
+collaborating instance may cut it under the round rule of AGENTS.md #12, without waiting
+for the lead maintainer; the **stable** tag and pin stay with the lead maintainer and the
+operator. A live check by cloning the suite, switching a branch,
+pointing an `.mcp.json` at it or starting the server by hand is NOT a way to test a change
+— it multiplies the setups the owner must reason about; if the channel does not exist yet,
+that is reported as the missing step, and the check waits.
+
 **Ownership of a suite** (operator decisions 2026-08-31 to 2026-09-13). Every tool
 domain has one lead maintainer, assigned by the core's code owner; a new domain is
 unassigned until then — ownership is never derived. In their suite the lead decides
-alone: merge without a counter-check, tag, and the marketplace pin (their pin PR IS the
-decision; the marketplace merges it technically), graded per the core's AGENTS.md #5.
+alone: merge without a counter-check, the stable tag, and the stable marketplace pin (their
+pin PR IS the decision; the marketplace merges it technically), graded per the core's
+AGENTS.md #5. A suite's beta channel and beta tags are the exception (see "Beta changes in
+a suite" above): collaboration logic, run like the core.
 Whoever works on a suite gets `write` there and branches IN the repo, so each side can
 push to the other's branch. Outside the core, another party's PR is merged by its
 author; merging someone else's work is announced first. Shared carriers — core,
@@ -342,3 +427,72 @@ skills only; a core rule drifts → core rules come from the submodule, local ad
 into the instance rule file the guard loads; update breaks near a show → update window is
 never on a show day, rollback per pin; private-repo auto-refresh fails over HTTPS → use
 SSH remotes with a loaded ssh-agent, or run marketplace update manually.
+
+## 14. Every repo: the setup contract
+
+A repo set up by hand gets whatever its first session remembered. Measured 2026-10-10 on
+one account: 7 of 18 private repos had no workflow at all, and branch protection was
+unavailable on every private one (free plan, HTTP 403 "Upgrade to GitHub Pro"); the
+"pull requests only" rule of two project repos lived in a local hook nobody could see.
+This section is what every repo carries from its first commit, by kind.
+`scripts/repo-check.py` checks a repo against it; `templates/repo/` is the starting set.
+
+**The normal case is a plan without branch protection on private repos.** Checks run
+and are visible on every pull request, but cannot be made required. Three things carry
+the rule instead, and together they are the enforcement — not a fallback:
+
+1. the shipped **pre-push hook** refuses a push to `main` in every clone that turned it on;
+2. the **reviewer reads the check result** before approving
+   (`core/scripts/ci-watch.sh pr <repo> <n>`), never "looks green on the page";
+3. **a red check blocks the merge by rule** — merging over red is a decision that is
+   written down with its reason, like any other deviation.
+
+Server-side protection (a ruleset requiring the pull request and the checks) is an
+optional upgrade where the plan allows it — public repos, or a paid plan. Where it is
+on, it replaces nothing above; it adds a fence the server holds.
+
+**Kinds and what each carries:**
+
+| Kind | Recognised by | Access | Change flow | Checks (workflow on `pull_request` + push to `main`) |
+|---|---|---|---|---|
+| core | `core-contract.json` in the root | owner admin; collaborators `write` | branch → PR → CI green → merge per the core's merge rules; server ruleset (public repo) | §7 as is |
+| suite | `.claude-plugin/plugin.json` | owner admin; the suite's main responsible and collaborators `write` | branch → PR → second OK (the other side's review; in a suite with a beta channel the check at the head on every required OS, §11) → whoever gets there first merges; stable pin = the main responsible with the operator; pre-push hook | §7 as is |
+| project repo | none of the others | owner admin; every party working it `write` | branch → PR → review by the other side → whoever gets there first merges after the OK (§11); pre-push hook; measurement data of one run = one PR | baseline below |
+| private brain | `core/` submodule + `.claude/` | its operator only | direct push to `main` (one writer); core changes never here (§13) | its own checks; no leak scan — it holds instance data by design |
+| shared memory | `INDEX.md` + area `LOG.md` files | every party's AI `write` | direct append to `main` (append-only log, several writers); its own lint (`shared-memory-lint.py`) | its lint; no leak scan — it names parties by design |
+
+**Access, everywhere:** collaborators get `write` and branch IN the repo — forks are not
+the default (a fork pull request into a private repo starts no Actions run). The owner
+invites with the full handle from the shared memory's people register. Who merges in a
+repo with a main responsible is decided by the operator who owns the repo, recorded where
+both sides read it, never inferred from a git author.
+
+**Baseline checks** (`templates/repo/.github/workflows/checks.yml`, Ubuntu only — macOS
+minutes count ten times against a private repo's budget; a platform runner only where a
+check really needs that platform, with the reason next to it):
+
+- **leak scan** — the core's `scripts/leak-scan.py --root .`, from the core checked out at
+  a pinned release tag;
+- **line endings** — no `i/crlf` in `git ls-files --eol`, with `.gitattributes`
+  `* text=auto eol=lf` in the repo;
+- **english only** — `scripts/english-only.py --root .`, switched on (`ENGLISH_ONLY`) for a
+  repo that is public or may become public; a private repo with content in another
+  language keeps it off;
+- **the repo's own checks** — every `checks/*.sh` and `checks/*.py`, found by glob so a new
+  one cannot be forgotten in the workflow. A repo's tests and lints live there.
+
+**Every clone, once after cloning:**
+
+```
+git clone --recurse-submodules <url>
+git -C <clone> config core.hooksPath .githooks
+```
+
+**Pulling:** `git pull --ff-only` (a pull that would merge is a sign of work on `main`,
+which the flow above rules out — stop and look instead of merging), submodules follow
+their pin (`git submodule update --init --recursive`), never their branch.
+
+**A new repo** starts from `templates/repo/` (workflow, pre-push hook, pull request
+template, `.gitattributes`), gets an `AGENTS.md` stating its own rules, and is checked
+with `scripts/repo-check.py` before the first collaborator is invited. A missing item is
+fixed by pull request like every other change.

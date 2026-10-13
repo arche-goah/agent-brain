@@ -13,7 +13,9 @@ TWO SOURCES, because the repo carries messages in two places:
                             a receipt), so the fact files alone would miss them.
   fact files (added/changed) frontmatter `von` / `audience` / `description` — lint-enforced
                             since 2026-08-21, the description is the file's own main info.
-A fact file whose path the new LOG text already names is not printed twice.
+A fact file whose path the new LOG text already names is not printed twice. Upkeep is not
+an arrival: a moved entry (rename), a frontmatter-only edit and a pointer rewrite to a file
+the same range moved are skipped (see maintenance_only); a new file or a body edit counts.
 
 WHO "THIS INSTANCE" IS comes from SHARED_MEMORY_SELF (instance data, e.g. the `env` block
 of the instance's settings.json): comma-separated tokens such as `alex-macos,alex`. An
@@ -21,6 +23,10 @@ entry is dropped when its sender is one of them; it is kept when its addressees 
 of them or everyone (`alle`, `all`, `everyone`, …), or when it names no addressee at all.
 Unset: nothing is filtered and the header says so — a filter that silently guesses
 "who am I" would drop exactly the entry it guessed wrong about.
+A device id in SELF that the repo's `parties.json` knows also answers to `person:<p>` and
+`os:<o>` — the audience categories (scripts/shared-memory-parties.py, operator order
+2026-10-11): a request to `os:windows` reaches every Windows device, `person:<p>` every
+device of that person.
 
 Never summarises: every printed text is the author's own heading or description, cut at a
 sentence boundary. Read-only. Exit 0 always (an advisory reader, not a gate).
@@ -46,16 +52,14 @@ _idx = import_module("shared-memory-index")
 first_sentence = _idx.first_sentence
 read_entry = _idx.read_entry
 REPO_DEFAULT = _idx.REPO_DEFAULT
+# Audience categories (`os:<os>`, `person:<p>`) and the tokenizer that keeps them whole.
+_parties = import_module("shared-memory-parties")
 
 # Spellings of "everyone" measured in the repo's headings and `audience` fields.
-EVERYONE = {"alle", "all", "everyone", "alle-collaborator"}
+EVERYONE = _parties.EVERYONE
 SKIP_FILES = {"INDEX.md", "LOG.md", "README.md", "PEOPLE.md"}
-# Measured 2026-09-25 across all LOGs: `## <date> · <von> — <title>` is one of FOUR live
-# shapes. Half of the September headings use an ASCII hyphen (`## <date> <von> - <title>`),
-# older ones carry a time note and no title (`## <date> (Abend) — <von>`). A pattern for
-# the first shape alone dropped every message of the second — silently.
-HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[·—-]\s*)?"
-                     r"([\w-]+)(?:\s+[—-]\s+(.*?))?\s*$")
+# The four live heading shapes — see the note at shared-memory-parties.HEADING.
+HEADING = _parties.HEADING
 TEXT_CAP = 200
 
 
@@ -65,14 +69,60 @@ def git(repo: Path, *args: str) -> str:
     return r.stdout if r.returncode == 0 else ""
 
 
+def snapshot(repo: Path, ref: str) -> dict[str, str]:
+    """Every .md file at `ref` as {path: text}, read with TWO git processes in total.
+
+    WHY: the open-request scan read each candidate, each file naming a request and each LOG
+    with its own `git show` — one process per file, so the session start grew with the
+    repo (measured on a shared-memory repo with several parties: 264 processes, ~5 s of a
+    30 s hook budget, and the budget ran out). `ls-tree` lists the blobs once, one
+    `cat-file --batch` streams them all. The text is decoded as the per-file reads did:
+    UTF-8 with replacement, universal newlines (what `text=True` did to `git show`)."""
+    ls = subprocess.run(["git", "-C", str(repo), "ls-tree", "-r", "-z", ref], capture_output=True)
+    if ls.returncode != 0:
+        return {}
+    blobs = []
+    for entry in ls.stdout.split(b"\0"):
+        meta, _, path = entry.partition(b"\t")
+        parts = meta.split()
+        if len(parts) == 3 and parts[1] == b"blob" and path.endswith(b".md"):
+            blobs.append((parts[2], path.decode("utf-8", "replace")))
+    if not blobs:
+        return {}
+    cat = subprocess.run(["git", "-C", str(repo), "cat-file", "--batch"],
+                         input=b"".join(sha + b"\n" for sha, _ in blobs), capture_output=True)
+    if cat.returncode != 0:
+        return {}
+    out, data, pos = {}, cat.stdout, 0
+    for _, path in blobs:
+        nl = data.index(b"\n", pos)
+        header = data[pos:nl].split()
+        if len(header) != 3:            # "<sha> missing" — never for a blob ls-tree just listed
+            pos = nl + 1
+            continue
+        size = int(header[2])
+        raw = data[nl + 1:nl + 1 + size]
+        pos = nl + 1 + size + 1         # content plus the trailing newline of the batch format
+        out[path] = raw.decode("utf-8", "replace").replace("\r\n", "\n").replace("\r", "\n")
+    return out
+
+
 def tokens(s: str) -> set[str]:
-    return {t for t in re.split(r"[^\w-]+", s.lower()) if t}
+    return _parties.tokens(s)
 
 
-def addressees(title: str) -> str | None:
-    """`AN x + y: title` -> `x + y`; None when the heading names nobody."""
-    m = re.match(r"^(?:AN|An|an|TO|To)\s+([^:]+):", title)
-    return m.group(1) if m else None
+def party(sender_id: str) -> set[str]:
+    """The words a reply may use for the sender of a request. Machine ids are `<person>-<machine>`,
+    but replies name the person in prose ("AN Sams KI") — the wording rule wants names, not ids.
+    Measured 2026-10-10: five answered requests stayed open because `sams` never matched
+    `sam-laptop`. So the person part and its possessive count too."""
+    out = set()
+    for t in tokens(sender_id):
+        out |= {t, t.split("-")[0], t.split("-")[0] + "s"}
+    return out
+
+
+addressees = _parties.addressees
 
 
 def for_us(sender: str, to: str | None, me: set[str]) -> bool:
@@ -100,6 +150,13 @@ def log_items(repo: Path, a: str, b: str, me: set[str]) -> tuple[list[tuple], st
         added.append(text)
         m = HEADING.match(text)
         if not m:
+            # A dated heading that matches no known shape is NEVER dropped: it is printed as
+            # unparsed, whoever it is for (we cannot know). Dropping it was the silent failure
+            # behind every new heading shape (2026-09-25 two shapes, 2026-10-11 a third): the
+            # watcher said "nothing arrived" while the answer sat in the log.
+            um = re.match(r"^##\s+(\d{4}-\d{2}-\d{2})\b", text)
+            if um:
+                items.append((um.group(1), topic, "?", "UNPARSED LOG HEADING — " + first_sentence(text, TEXT_CAP)))
             continue
         date, sender, title = m.groups()
         title = title or ""
@@ -108,11 +165,62 @@ def log_items(repo: Path, a: str, b: str, me: set[str]) -> tuple[list[tuple], st
     return items, "\n".join(added)
 
 
+def body(text: str) -> str:
+    """The entry below its frontmatter, line endings and outer whitespace normalised."""
+    t = text.replace("\r\n", "\n")
+    if t.startswith("---"):
+        end = t.find("\n---", 3)
+        if end != -1:
+            t = t[end + 4:]
+    return t.strip()
+
+
+def description(text: str) -> str:
+    """The frontmatter `description`, or "" when there is none."""
+    head = text.split("\n---", 1)[0] if text.startswith("---") else ""
+    m = _idx.FM_DESC.search(head)
+    return m.group(1) if m else ""
+
+
+def maintenance_only(old: str, new: str, moves: dict[str, str]) -> bool:
+    """True when a MODIFIED entry changed only in ways that are upkeep, not a post.
+
+    Measured 2026-10-10 on a shared-memory repo with several parties: a tidy-up commit moved
+    23 entries into topic areas, and lint commits added frontmatter fields to old entries.
+    The watcher then reported the touched OLD entries (dated September) as new arrivals from
+    other parties, four times in one day. Two kinds of upkeep produce that, and both are
+    decided here mechanically:
+      - a frontmatter-only edit (a field added, a status corrected, frontmatter given to a
+        file that had none): the body is unchanged. The `description` is the exception —
+        it is the entry's main information and what this reader prints, so a CHANGED one
+        counts as content (a first one, given to a file that had none, is upkeep);
+      - a pointer rewrite: the body differs only where it names a file that the same range
+        MOVED, old path replaced by new path.
+    Anything else in the body is content and still counts — a reply appended to an existing
+    request is exactly what the inbox exists to show."""
+    was = description(old)
+    if was and was != description(new):
+        return False
+    a, b = body(old), body(new)
+    for src, dst in moves.items():
+        a = a.replace(src, dst)
+    return a == b
+
+
 def file_items(repo: Path, a: str, b: str, me: set[str], log_text: str) -> list[tuple]:
     items = []
-    for line in git(repo, "diff", "--name-status", "--diff-filter=AM", a, b).splitlines():
+    # `-M` explicitly: a moved entry is a RENAME (R), which `--diff-filter=AM` leaves out.
+    # git's default would detect it too, but only while `diff.renames` is not switched off in
+    # someone's config — the reader must not depend on that.
+    status = git(repo, "diff", "--name-status", "-M", a, b).splitlines()
+    moves = {}
+    for line in status:
         parts = line.split("\t")
-        if len(parts) < 2:
+        if len(parts) == 3 and parts[0].startswith("R"):
+            moves[parts[1]] = parts[2]
+    for line in status:
+        parts = line.split("\t")
+        if len(parts) < 2 or parts[0][:1] not in ("A", "M"):
             continue
         rel = parts[-1]
         p = repo / rel
@@ -125,6 +233,9 @@ def file_items(repo: Path, a: str, b: str, me: set[str], log_text: str) -> list[
         # (measured on the workstation 2026-09-30: 9 lines instead of 10).
         blob = git(repo, "show", f"{b}:{rel}")
         if not blob:
+            continue
+        if parts[0].startswith("M") and maintenance_only(git(repo, "show", f"{a}:{rel}"),
+                                                         blob, moves):
             continue
         e = read_entry(p, repo, text=blob)
         if not for_us(e["von"], e["audience"] or None, me):
@@ -145,6 +256,14 @@ def log_section_senders(text: str) -> list[tuple[str, str]]:
             if buf:
                 out.append((sender, "\n".join(buf)))
             sender, buf = m.group(2), [line]
+        elif re.match(r"^##\s+\d{4}-\d{2}-\d{2}\b", line):
+            # A dated heading no shape recognises still ENDS the previous section. Glued on, its
+            # text read as the previous sender's — a reply under an unknown heading looked like
+            # a second message of whoever wrote the entry above it (same class as the dropped
+            # heading: unknown input must stay visible, never be absorbed).
+            if buf:
+                out.append((sender, "\n".join(buf)))
+            sender, buf = "?", [line]
         else:
             buf.append(line)
     if buf:
@@ -162,7 +281,7 @@ FM_STATUS = re.compile(r"^\s+status:\s*([\w-]+)", re.M)
 
 
 def open_items(repo: Path, ref: str, me: set[str], days: int,
-               prefixes: tuple[str, ...] = REQUEST_PREFIXES) -> list[tuple]:
+               prefixes: tuple[str, ...] = REQUEST_PREFIXES, parties: dict | None = None) -> list[tuple]:
     """Requests addressed to this instance BY NAME that nothing of ours answers yet.
 
     WHY (2026-10-05): the range inbox above only shows what arrived since the cursor. A
@@ -183,19 +302,22 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
         floor = (date.fromisoformat(today) - timedelta(days=days)).isoformat()
     except ValueError:
         floor = ""
-    # Prefilter in ONE git call: only files whose frontmatter names us at all. Reading every
-    # blob of the repo one `git show` at a time took ~10 s (measured 2026-10-05, ~600 files).
-    rx = r"^[[:space:]]+audience:.*(" + "|".join(re.escape(t) for t in sorted(me)) + r")"
-    cand = {h.split(":", 1)[1] for h in
-            git(repo, "grep", "-l", "-i", "-E", rx, ref, "--", "*.md").splitlines() if ":" in h}
+    # All .md texts in two git processes (see snapshot); every search below runs on them in
+    # memory. Prefilter: only files with an `audience` line that names us at all.
+    texts = snapshot(repo, ref)
+    # A request to everyone reaches us too (as optional, see below) — 2026-10-13.
+    reach = me | EVERYONE
+    rx = re.compile(r"^[^\S\n]+audience:.*(" + "|".join(re.escape(t) for t in sorted(reach)) + r")",
+                    re.I | re.M)
+    cand = {rel for rel, t in texts.items() if rx.search(t)}
     items = []
     for rel in sorted(cand):
         p = repo / rel
         if "/" not in rel or p.name in SKIP_FILES:
             continue
-        blob = git(repo, "show", f"{ref}:{rel}")
+        blob = texts[rel]
         e = read_entry(p, repo, text=blob)
-        if not e["audience"] or not (tokens(e["audience"]) & me) or tokens(e["von"]) & me:
+        if not e["audience"] or not (tokens(e["audience"]) & reach) or tokens(e["von"]) & me:
             continue
         head = blob.split("\n---", 1)[0] if blob.startswith("---") else ""
         st = FM_STATUS.search(head)
@@ -204,7 +326,9 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             continue
         # `status: open` marks a request only when it is addressed to us ALONE — a status
         # broadcast to three parties carries the same field (Windows check on #193, finding 2).
-        only_us = not (tokens(e["audience"]) - me)
+        # A category (`os:…`, `person:…`) reaches several devices, so it is never "us alone".
+        aud = tokens(e["audience"])
+        only_us = not (aud - me) and not any(_parties.is_category(t) for t in aud)
         if not p.stem.lower().startswith(prefixes) and not (status == "open" and only_us):
             continue
         when = e["date"] or git(repo, "log", "-1", "--format=%as", ref, "--", rel).strip()
@@ -212,11 +336,9 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             continue
         stem = p.stem
         answered = False
-        for hit in git(repo, "grep", "-l", "-F", stem, ref, "--", "*.md").splitlines():
-            hrel = hit.split(":", 1)[1] if ":" in hit else hit
-            if hrel == rel or hrel.endswith("INDEX.md"):
+        for hrel, htext in texts.items():
+            if stem not in htext or hrel == rel or hrel.endswith("INDEX.md"):
                 continue
-            htext = git(repo, "show", f"{ref}:{hrel}")
             if hrel.endswith("LOG.md"):
                 answered = any(tokens(s) & me and stem in body
                                for s, body in log_section_senders(htext))
@@ -225,17 +347,34 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
                 # a request to "either of two machines" is closed by the one that answered
                 # (Windows check on #193, finding 1).
                 hhead = htext.split("\n---", 1)[0] if htext.startswith("---") else ""
+                # `claims:` = someone took it; `closes:` = either side says it is settled — the
+                # asker ("answer received, enough") or the answerer ("answered, done"). 2026-10-13.
                 answered = (bool(tokens(read_entry(repo / hrel, repo, text=htext)["von"]) & me)
-                            or bool(re.search(r"^\s+answers:.*" + re.escape(stem), hhead, re.M)))
+                            or bool(re.search(r"^\s+(?:answers|claims|closes):.*" + re.escape(stem),
+                                              hhead, re.M)))
             if answered:
                 break
         if not answered:
             text = first_sentence(e["desc"] or e["name"], TEXT_CAP)
+            # Priority is information, never a sequence (operator 2026-10-13): whoever is not
+            # asked first sees the task as optional — anyone may claim it at any time.
+            prio = _parties.priority(head, e["audience"], parties or {})
+            r = _parties.rank(prio, me | EVERYONE) if prio else 0
+            if r:
+                text = (f"optional: priority {r + 1}, asked first {', '.join(prio[:r])}; unclaimed"
+                        f" - take it if you can and want — {text}")
+            elif not prio and not (aud & me):
+                text = f"optional: to everyone; unclaimed - take it if you can and want — {text}"
             items.append((when or "?", e["topic"], e["von"] or "?", f"{text} ({rel})"))
-    return items + log_only_items(repo, ref, me, floor)
+    return items + log_only_items(texts, me, floor)
 
 
-def log_only_items(repo: Path, ref: str, me: set[str], floor: str) -> list[tuple]:
+LOG_INFO = re.compile(r"\bstatus:\s*info\b", re.I)
+# The close word opens the title proper: "AN <who>: ERLEDIGT — …" (or a title without AN).
+LOG_CLOSE = re.compile(r"(?:^|:)\s*(?:ERLEDIGT|GESCHLOSSEN|DONE|CLOSED)\b", re.I)
+
+
+def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tuple]:
     """Messages to us BY NAME that live only as a LOG heading (no fact file named in the body).
 
     The shape of the 2026-10-04 incident and of finding 3 of the Windows check on #193: once
@@ -245,11 +384,11 @@ def log_only_items(repo: Path, ref: str, me: set[str], floor: str) -> list[tuple
     it listed until we next write to that party.
     """
     heads: list[tuple] = []  # (date, topic, sender, to_tokens, title, body)
-    for rel in git(repo, "ls-tree", "-r", "--name-only", ref).splitlines():
+    for rel, text in texts.items():
         if not (rel.endswith("/LOG.md") or rel == "LOG.md"):
             continue
         topic = rel.split("/")[0] if "/" in rel else "root"
-        for i, (sender, body) in enumerate(log_section_senders(git(repo, "show", f"{ref}:{rel}"))):
+        for i, (sender, body) in enumerate(log_section_senders(text)):
             m = HEADING.match(body.splitlines()[0]) if body else None
             if not m:
                 continue
@@ -262,9 +401,21 @@ def log_only_items(repo: Path, ref: str, me: set[str], floor: str) -> list[tuple
             continue
         if re.search(r"[\w./-]+\.md\b", "\n".join(body.splitlines()[1:])):
             continue  # points at a fact file — the file path above judges it
+        if LOG_INFO.search(title) or LOG_CLOSE.search(title):
+            continue  # a report or a close, not a request (measured 2026-10-13: info headings sat open)
+        # The asker may settle it: a later heading of the same party to the same addressee whose
+        # title starts with a close word ("AN x: ERLEDIGT — …") and whose text NAMES this
+        # request's title. Naming, not "everything before": one close must not sweep away the
+        # requests that are still open.
+        to_str = addressees(title or "")
+        core_title = (title.split(to_str, 1)[1].lstrip(": ") if to_str else title or "").strip()[:60]
+        if core_title and any(party(sender) & tokens(s) and t & to and LOG_CLOSE.search(ti or "")
+                              and core_title in b and (d > date or (tp == topic and j > idx))
+                              for d, tp, j, s, t, ti, b in heads):
+            continue
         # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
         # another LOG cannot be ordered, so it does not count (safe direction).
-        replied = any(tokens(s) & me and tokens(sender) & t
+        replied = any(tokens(s) & me and party(sender) & t
                       and (d > date or (tp == topic and j > idx))
                       for d, tp, j, s, t, _, _ in heads)
         if not replied:
@@ -288,6 +439,11 @@ def main() -> int:
     # Windows writes the ANSI codepage and dies on the first unencodable character.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     me = set() if args.senders else tokens(args.me.replace(",", " "))
+    # A known device in SELF also answers to its person and OS (`person:<p>`, `os:<o>`),
+    # read from the repo's parties.json at the ref this run reads. No file: SELF as given.
+    parties = _parties.load(args.repo, args.b)
+    if me:
+        me = _parties.expand_self(me, parties)
 
     if args.open:
         if not me:
@@ -295,7 +451,7 @@ def main() -> int:
             return 0
         extra = os.environ.get("SHARED_MEMORY_REQUEST_PREFIXES", "")
         prefixes = REQUEST_PREFIXES + tuple(w.strip().lower() for w in extra.split(",") if w.strip())
-        found = sorted(open_items(args.repo, args.b, me, args.days, prefixes),
+        found = sorted(open_items(args.repo, args.b, me, args.days, prefixes, parties),
                        key=lambda i: i[0])
         # Always one line, also for zero: a clean check that prints nothing cannot be told
         # apart from a check that did not run (operator order 2026-10-05).

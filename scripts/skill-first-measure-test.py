@@ -94,8 +94,8 @@ if __name__ == "__main__":
     res.append(parity())
     with tempfile.TemporaryDirectory() as d:
         for name, recs in (("a.jsonl", IN_RANGE), ("b.jsonl", OUT_OF_RANGE)):
-            (Path(d) / name).write_text("\n".join(json.dumps(r) for r in recs) + "\n",
-                                        encoding="utf-8", newline="\n")
+            with open(Path(d) / name, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("\n".join(json.dumps(r) for r in recs) + "\n")
         p = subprocess.run([sys.executable, SCRIPT, "--dir", d, "--since", "2026-03-01",
                             "--until", "2026-03-31"], capture_output=True, text=True, encoding="utf-8")
         rep = json.loads(p.stdout) if p.returncode == 0 else {}

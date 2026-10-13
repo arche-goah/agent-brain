@@ -1,0 +1,7 @@
+{
+  "_comment": "Instance data for core/helpers/skill-gate.cjs (PreToolUse). A tool is not called before the named skills were loaded in this session (Skill tool, /slash command, or a Read of the SKILL.md). A skill you OWN declares this in its own frontmatter instead (metadata: load-before-tools / load-before-paths) — this file is for skills owned by someone else (core, third-party plugins). tools = regex on the tool name, paths = optional regex on the tool's file path, skills = names as the Skill tool takes them (plugin skills as <plugin>:<skill>). An empty list keeps the file inert.",
+  "rules": [],
+  "_example_rules": [
+    { "skills": ["brain-core:ponytail"], "tools": "^(Edit|Write|MultiEdit)$", "paths": "\\.(py|cjs|js|ts|sh)$" }
+  ]
+}

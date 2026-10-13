@@ -48,6 +48,17 @@ Monitor({ command: "bash core/scripts/collab-watch.sh",
   drops events for good (cursors advance before the filter). **Before arming a filtered
   scope, count the same window unfiltered once** — unfiltered n>0 and filtered 0 means
   the filter is suspect, not the world quiet.
+- **A session that owns a topic arms it too:** `COLLAB_WATCH_TOPICS="<topic> …"` next to a
+  party scope. A repo watch whose tag is a topic, and a shared-memory find in a `<topic>/`
+  folder, then pass from EVERY party — the operator's other machine included. Without it a
+  one-collaborator scope drops the other own machine's PRs in the very repo the session owns
+  (measured 2026-10-11).
+- **Leaving an item to another session is a hand-over, delivered to THAT session.** When
+  several sessions on one machine split the work by topic, an item one of them declines goes
+  to the session that owns the topic (session message, or a shared-memory note in its topic
+  folder its watch reports) — never only back to the sender ("ask the other session"). An
+  answer to the sender alone reaches nobody who acts: measured 2026-10-11, three points of the
+  operator's other machine lay unworked for hours this way until the operator asked.
 - **Never add an author filter on the operator's login.** All own machines push under one
   account; the filter would swallow the other own machine — the very signal wanted.
 - **"already armed"** names a live PID, not a session. Check `ps` and its parent chain
@@ -59,6 +70,7 @@ Monitor({ command: "bash core/scripts/collab-watch.sh",
 | Line | First move |
 |---|---|
 | `COMMENT`, `PR`, `MERGED` | open it; handle below |
+| `CI-RED <repo> <workflow> on <branch> (<event>, <conclusion>) <url>` | a run went red on a watched repo (also `cancelled`: a job that never got a runner ends that way). Open the run; a PR of ours or main: fix or re-run (`gh run rerun <id> --failed`) in the same turn and arm `ci-watch.sh` on it. This line is the net UNDER the per-push ci-watch (working rule #9), not a replacement for arming one |
 | `... branch is LOCAL in this machine's clone` | made on THIS machine — this session (check your own PRs first), a parallel session or a hand checkout; not a collaborator, not the other own machine |
 | event under the operator's own account | run `scripts/parallel-sessions.sh` and check local branches BEFORE saying "the other machine" or "foreign" |
 | `FOUND: n new commit(s)` with n>1 | read `git log` of the range for the parties before naming one |
@@ -87,13 +99,33 @@ opt-out and holds for that session only.
    `gh pr view <nr> --json mergeable` (`CONFLICTING` = rebase, not "CI broken"); an empty
    `gh run list --branch <branch>` plus an empty check rollup = CI is not firing, a report
    event for the operator. A second branch as a control comes BEFORE any outage diagnosis.
-4. **Merge by ownership — the instance's merge rules decide**, typically: a repo with one
-   responsible owner → that owner merges; a jointly owned core → the maintainers merge
-   after a counter-check; otherwise the author merges. Never with own open findings. Merge
-   with `--match-head-commit <reviewed sha>` in the repo's style (merge vs. squash);
-   `gh api -X PUT repos/<o>/<r>/pulls/<nr>/merge` is the second legitimate form when the
-   permission layer refuses `gh pr merge` — if both are refused, retry later, never work
-   around it. "CI green" speaks about code, never about whether the author is done.
+4. **Merge when both sides said yes — whoever comes first** (operator decision 2026-10-11:
+   a ready PR that waits for one particular person "hangs for nothing"). Shared work is
+   merged by whichever party gets to it first, once ALL of these hold: the author reported
+   it done (or verified it live), the other side reviewed it OK, CI is green, the repo's
+   conventions are met, and the reviewed commit IS the head. Leave a one-line comment in
+   the PR saying who merged and on which two OKs. Exceptions are the instance's merge rules
+   (a jointly owned core: its maintainers merge after the counter-check); releases (tag,
+   pin) stay with the repo's owner. Never with own open findings. Merge
+   with `--match-head-commit <reviewed sha>` in the repo's style (merge vs. squash).
+   "CI green" speaks about code, never about whether the author is done.
+   **A refused merge is a decision, not an obstacle:** when the permission layer refuses
+   `gh pr merge`, do NOT re-issue it as `gh api -X PUT …/pulls/<nr>/merge` or any other
+   form — that launders the refusal. Report it and get the operator's word (an earlier
+   version of this step named the API call as a "second legitimate form"; corrected
+   2026-10-09, coherence register of the proving brain). The general rule — no refused
+   action in another form, tool or session — is `rules/working-rules.md`, "A refusal is a
+   decision"; `mechanism-guard` blocks the API merge through the core's `mechanism-rules.json`.
+   Merge traps, each measured:
+   - `--match-head-commit` needs the FULL 40-character sha — a short sha is rejected by
+     the API ("Could not coerce value … to GitObjectID"), measured 2026-10-09.
+   - `gh pr merge --auto` merges IMMEDIATELY in a repo whose branch protection requires
+     no checks — never use it as "merge when green"; run `scripts/ci-watch.sh` first.
+   - Stacked PRs: merging the base with `--delete-branch` closes every PR stacked on it.
+     Retarget the child to `main` (`gh pr edit <child> --base main`) BEFORE deleting.
+   - A candidate/integration branch merged as one squash: list every contained PR as
+     "(#n)" in the squash body — `pending-clauses.py` finds a PR in the pin by that text,
+     and without it a merged PR reads as "not provably in the pin".
 5. **Own findings = follow-up PR, never a direct push to main.** Before any commit to a
    public repo: its leak scan, 0 findings.
 6. **Write back:** statements in the instance (rules, memory) that the merged PR refutes are

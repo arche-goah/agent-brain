@@ -19,8 +19,11 @@ session start.
    `core-contract.json` (with a WHY in its history) and one version of alias/deprecation.
 5. **Versions are explicit — and graded by CONTENT, not by habit** (operator order
    2026-08-13: nine minor bumps in four days drifted toward a 2.0 that would mean
-   nothing). Every release: bump `version` in `.claude-plugin/plugin.json`, add a
-   CHANGELOG entry, tag `vX.Y.Z`. The marketplace pins tags, never `main` — an
+   nothing). Every PR writes its CHANGELOG entry as its own file `changelog.d/<slug>.md`,
+   never into `CHANGELOG.md` (a shared `## Unreleased` collided at every second parallel
+   PR; `changelog.d/README.md`). Every release: bump `version` in
+   `.claude-plugin/plugin.json`, run `python3 scripts/changelog-assemble.py X.Y.Z` (moves
+   the fragments under `## X.Y.Z — <date>`), tag `vX.Y.Z`. The marketplace pins tags, never `main` — an
    untagged change reaches nobody. Grading (operator order 2026-08-14, tightening
    the 2026-08-13 wording): **patch (third digit) is the DEFAULT** — fixes, docs,
    rule wording, CI plumbing, AND new capabilities that have not yet PROVEN
@@ -35,7 +38,7 @@ session start.
    `x.10+` and `x.y.10+` are normal — never round to a milestone number for
    aesthetics; 2.0.0 is earned by the step, not by the counter.
    **Mechanically carried:** run `bash scripts/release-preflight.sh vX.Y.Z` BEFORE
-   tagging — it enforces manifest==tag, a CHANGELOG section, no pre-existing tag
+   tagging — it enforces manifest==tag, a CHANGELOG section, no fragment left behind, no pre-existing tag
    (the race guard: an existing tag or open release PR means the release happened
    elsewhere — comment there, never re-cut), and HEAD==origin/main. CI re-checks
    manifest+CHANGELOG on every pushed `v*` tag, so a broken tag turns red on the
@@ -154,6 +157,37 @@ session start.
      strand. A fix merged after it waits for the next round cut, bridged by a named
      workaround. A hotfix only for real damage from waiting, and then on the code
      owner's word.
+   - **A beta names its platform scope — in the state table, not in the tag** (operator
+     decision 2026-10-11, worked out by both instances; corrected after measuring
+     `release-preflight.sh`, which demands manifest `version` == tag and a CHANGELOG section
+     of that name). The tag stays `vX.Y.Z`: **beta is a channel, not a name** — the
+     `<plugin>-next` marketplace entry pins the tag, the stable entry later pins the SAME
+     tag, no new tag and no new commit. A scope suffix in the tag would force the manifest
+     to carry it too, and promoting to stable on the same commit would then need a different
+     commit. So the scope is visible where it can change without code: (1) the check state
+     of every tag as one **generated table** that never names a system in its shape: a
+     **list of checks** (id + what is checked), and **results — one line per check and
+     device**: `check | device | os | software | commit | date | result | note`, where the
+     result is `pass`, `fail — <what>` or `n/a — <why>`; the header carries
+     `required_os: <system, system>`. The OS is a field every device enters, not a column, so
+     a new system or a second device on the same system changes no table. Results live in
+     the repo, a script renders them, never hand-kept; heavy-metal's `platform_check.py` +
+     `platforms_table.py` are the pattern for producing the lines. Entries are appended,
+     never overwritten, and an open `fail` keeps the check red. The **owner's word has its
+     own section** (what the owner judged, in the owner's words) — it is a condition for
+     stable, not a checked line; (2) the GitHub release of the tag is marked pre-release and its title and
+     text carry the scope ("beta — checked on macOS, Windows unchecked") and the rendered
+     table; (3) the `<plugin>-next` entry's description says the same. It applies to every
+     beta; a pure T0 beta counts as every required system once the CI runs are green. A tag is
+     never re-cut when another system catches up — only the result lines change (a data
+     change, its author merges at once). **Stable** = the stable marketplace pin moves to
+     the tag once every check has a `pass` on every `required_os`, no `fail` is open and the
+     owner's word is recorded; a required system nobody can check keeps its checks without
+     a `pass` and blocks stable, unless the code owner records `n/a — <reason>` — no silent
+     tick. Stable pin and release stay
+     the code owner's decision. Pull requests are collected: merging goes on continuously,
+     but a beta is cut per round (one per work strand, above) and a pin follows a release,
+     never a tag cut — no tag per PR, no pin per tag.
    - **Test class on every CHANGELOG entry** `(test: T0|T1|T2)`: **T0** needs no test
      phase (docs, comments, fixtures, CI, removal); **T1** a macOS + Windows check
      suffices (runs only when called); **T2** needs runtime (runs by itself in every

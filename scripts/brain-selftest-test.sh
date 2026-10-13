@@ -17,6 +17,16 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+# The nested self-test gets its OWN verdict cache. cached-verdict.sh resolves its state
+# directory from where the script lives, so inside a brain the nested run on the throwaway
+# brain shared the brain's real `verdict-fixtures` lock and output. This fixture runs INSIDE
+# the brain's fixture run, which holds that lock — so the nested call always found "another
+# session is measuring", replayed the brain's previous result, and the hand-tool skip line
+# was missing: red at every session start, green in a bare checkout and in CI, where no
+# outer lock exists (measured 2026-10-13: lock held by the running fixture pass, nested
+# output was the brain's cached verdict). Without a lock it would instead have overwritten
+# the brain's cache with the throwaway brain's answer.
+export CACHED_VERDICT_STATE="$TMP/verdict-state"
 
 fails=0
 ok()  { echo "  OK   $*"; }

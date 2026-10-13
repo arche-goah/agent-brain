@@ -9,16 +9,23 @@
 #   2. zsh does not word-split unquoted variables: `set -- $pair` kept repo and ref
 #      glued together and every gh call 404'd — swallowed by 2>/dev/null, surfaced
 #      as a wrong rc that was then misread. Errors here are NEVER silenced.
+#   3. (2026-10-12) GitHub can leave a check-run at status=in_progress with a conclusion
+#      already set; `gh pr checks` buckets it as pending forever. pr mode therefore
+#      reads the head commit's check-runs and counts a check-run by its conclusion.
 # This script matches refs via the run's headBranch FIELD from JSON (works for tags
 # and branches alike), enumerates every terminal state, and cannot end silently:
 # exit 0 = all green · 1 = something failed/cancelled/timed out in CI · 2 = could
 # not measure (no run appeared, bad repo, gh error, timeout) — 2 is loud on purpose,
-# "unknown" must never be read as green.
+# "unknown" must never be read as green · 3 = the repo has no Actions workflow at all,
+# so there is nothing to wait for — also NOT green: whoever merges on it says so.
 #
 # Usage:
 #   scripts/ci-watch.sh pr  <owner/repo> <pr-number> [timeout_s]
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
-# Defaults: timeout 900 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
+# Defaults: timeout 1800 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
+# The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
+# `portability (windows-latest)` ran 13m41s and 14m26s, plus queue time — the old 900 s
+# ended a watch on a run that turned green minutes later (UNKNOWN, honest but useless).
 set -u
 
 # Resolve the Python interpreter: the python.org installer on Windows ships ONLY
@@ -29,7 +36,7 @@ set -u
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 
-MODE="${1:-}"; REPO="${2:-}"; TARGET="${3:-}"; TIMEOUT="${4:-900}"
+MODE="${1:-}"; REPO="${2:-}"; TARGET="${3:-}"; TIMEOUT="${4:-1800}"
 POLL="${CI_WATCH_POLL:-15}"
 
 usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_s]" >&2; exit 2; }
@@ -39,6 +46,7 @@ usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_
 start=$(date +%s)
 deadline=$(( start + TIMEOUT ))
 warned_no_run=0
+gh_fail=0
 
 fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
 
@@ -80,6 +88,73 @@ pr_conflicting_check() {
   fi
 }
 
+# "No checks / no run" is also what a repo WITHOUT any workflow shows, forever — the watch
+# then waited its whole timeout (measured 2026-10-11: 900 s on a private repo with no
+# .github/workflows, while a merge guard demanded the watch). Asked once, on the first empty
+# round: zero workflows ends the watch at once with its own verdict. Any other answer
+# (a count, an error, an unreadable reply) keeps waiting — only an explicit 0 is proof.
+noci_probed=0
+no_ci_check() {
+  (( noci_probed )) && return 0
+  (( conflict_seen )) && return 0       # a pending conflict verdict goes first
+  noci_probed=1
+  local n
+  n=$(gh api "repos/$REPO/actions/workflows" --jq .total_count 2>/dev/null) || return 0
+  if [[ "$n" == "0" ]]; then
+    echo "CI-WATCH NO-CI: $REPO has no Actions workflow — nothing to wait for (not green)"
+    exit 3
+  fi
+}
+
+# A check-run can be FINISHED while its status still says in_progress: measured 2026-10-12
+# on a suite PR, check-run `release-preflight` read status=in_progress, conclusion=success,
+# completed_at set — the workflow run was completed/success, GitHub never flipped the
+# check-run's status. `gh pr checks` derives its bucket from the status and reported
+# `pending` for good; the watch waited out its whole timeout and ended UNKNOWN on an
+# all-green PR, and no timeout reaches a check that never flips. The conclusion is the
+# fact: a check-run with a non-null conclusion is finished whatever its status says. So
+# while `pr checks` reports pending entries, the head commit's check-runs are read and
+# every pending entry that names a check-run WITH a conclusion is recounted by that
+# conclusion; a pending entry without a check-run (a commit status) or whose check-run
+# has no conclusion yet keeps its bucket. Any unreadable answer on the way leaves the
+# counts as they were — the fallback is to keep waiting, never to turn green.
+warned_stale=0
+stale_checkrun_recount() {   # reads $json, may lower $pending and raise $bad
+  local sha cr recount stale
+  sha=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null) || return 0
+  [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 0
+  cr=$(gh api "repos/$REPO/commits/$sha/check-runs?per_page=100" \
+         --jq '[.check_runs[] | {name: .name, conclusion: .conclusion}]' 2>/dev/null) || return 0
+  recount=$("$PY" -c '
+import json, sys
+checks = json.load(sys.stdin)
+try:
+    runs = {r.get("name"): r.get("conclusion") for r in json.loads(sys.argv[1])}
+except Exception:
+    runs = {}
+pending = bad = stale = 0
+for c in checks:
+    b = c.get("bucket")
+    if b in ("fail", "cancel"):
+        bad += 1
+    elif b == "pending":
+        concl = runs.get(c.get("name"))
+        if concl is None:
+            pending += 1          # no check-run, or one that is genuinely still running
+        else:
+            stale += 1
+            if concl not in ("success", "skipped", "neutral"):
+                bad += 1
+print(pending, bad, stale)
+' "$cr" <<<"$json" 2>/dev/null) || return 0
+  read -r pending bad stale <<<"$recount"
+  if (( stale > 0 && warned_stale == 0 )); then
+    echo "ci-watch: $stale check-run(s) on PR #$TARGET carry a conclusion while their status" \
+         "still says in_progress (GitHub left the status stale) — counting them by conclusion" >&2
+    warned_stale=1
+  fi
+}
+
 while :; do
   now=$(date +%s)
   if (( now >= deadline )); then
@@ -87,8 +162,9 @@ while :; do
   fi
 
   if [[ "$MODE" == "pr" ]]; then
-    # Buckets are machine-readable: pass|fail|pending|skipping|cancel.
-    json=$(gh pr checks "$TARGET" -R "$REPO" --json bucket 2>&1)
+    # Buckets are machine-readable: pass|fail|pending|skipping|cancel. The name is
+    # carried along so a pending entry can be matched to its check-run (below).
+    json=$(gh pr checks "$TARGET" -R "$REPO" --json bucket,name 2>&1)
     rc=$?
     if (( rc != 0 )); then
       # gh exits 8 while checks are pending — that is a wait, not an error.
@@ -101,6 +177,7 @@ while :; do
       # watch honestly if the checks genuinely never appear.
       if grep -qi "no checks reported" <<<"$json"; then
         pr_conflicting_check
+        no_ci_check
         if (( warned_no_run == 0 )); then
           echo "ci-watch: no checks on PR #$TARGET yet (a just-pushed branch can take a" \
                "moment) — waiting" >&2
@@ -121,12 +198,14 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # empty at the deadline, the timeout says so, and that IS the honest verdict.
     if (( total == 0 )); then
       pr_conflicting_check
+      no_ci_check
       if (( warned_no_run == 0 )); then
         echo "ci-watch: PR #$TARGET reports zero checks yet — waiting" >&2
         warned_no_run=1
       fi
       sleep "$POLL"; continue
     fi
+    if (( pending > 0 )); then stale_checkrun_recount; fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
     # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
@@ -154,8 +233,17 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     fi
     sleep "$POLL"; continue
   fi
-  json=$(gh run list -R "$REPO" --limit 50 --json headBranch,headSha,status,conclusion,name 2>&1) \
-    || fail_unknown "gh run list failed: $(head -c 200 <<<"$json")"
+  if ! json=$(gh run list -R "$REPO" --limit 50 --json headBranch,headSha,status,conclusion,name 2>&1); then
+    # One failed call is weather, not a verdict (measured 2026-10-13: an HTTP 504 on the
+    # first poll ended a watch on main as UNKNOWN while the run was green; pr mode already
+    # tolerated the same error and this mode gave up at once). Keep polling; only a run of
+    # failures is a measurement.
+    gh_fail=$(( gh_fail + 1 ))
+    if (( gh_fail >= 5 )); then fail_unknown "gh run list failed $gh_fail times in a row: $(head -c 200 <<<"$json")"; fi
+    echo "ci-watch: gh run list failed ($gh_fail/5) — retrying in ${POLL}s: $(head -c 120 <<<"$json")" >&2
+    sleep "$POLL"; continue
+  fi
+  gh_fail=0
   verdict=$("$PY" -c '
 import json, sys
 ref, sha = sys.argv[1], sys.argv[2]
@@ -176,6 +264,7 @@ else:
   read -r found status conclusion <<<"$verdict"
 
   if [[ "$found" == "none" ]]; then
+    no_ci_check
     if (( warned_no_run == 0 )); then
       echo "ci-watch: no run for ref '$TARGET' yet (a just-pushed tag can take a moment) — waiting" >&2
       warned_no_run=1

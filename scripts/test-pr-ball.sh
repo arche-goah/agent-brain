@@ -16,6 +16,10 @@ fail=0
 ok()  { echo "  OK   $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
 [ -f "$BALL" ] || { bad "pr-ball.py not found"; exit 1; }
+# Every case reads an empty throwaway shared memory, never this machine's real clone.
+# OS-3: python is native, so the path it reads is handed over in native form.
+SM="$(mktemp -d)"; trap 'rm -rf "$SM"' EXIT
+export SHARED_MEMORY_REPO; SHARED_MEMORY_REPO="$(command -v cygpath >/dev/null 2>&1 && cygpath -m "$SM" || printf %s "$SM")"
 
 NOW="2026-09-15T08:00:00Z"   # 40 h after 2026-09-13T16:00Z
 run() { printf '%s' "$2" | "$PY" "$BALL" --now "$NOW"; }
@@ -98,6 +102,48 @@ expect_silent "author: a bot comment is not a reply" \
 expect_line "author: an approval after my last commit" \
   "$(pr author '{"number":151,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T20:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"peer"},"state":"APPROVED","submittedAt":"2026-09-15T02:00:00Z"}]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" \
   "core#151 yours - reply since your last commit, 6 h"
+
+# 18-22. ONE login, several instances (measured 2026-10-11: the operator's other machine
+#     opened a test fix under the same account and waited for a second OK that this line
+#     never showed — it read the PR as our own). Each text carries the poster's instance key.
+KMAC="$(PYTHONPATH="$ROOT/scripts" "$PY" -c 'import instance_key as k; print(k.key_for("mac"))')"
+KWS="$(PYTHONPATH="$ROOT/scripts" "$PY" -c 'import instance_key as k; print(k.key_for("ws"))')"
+krun() { printf '%s' "$2" | SHARED_MEMORY_SELF=mac "$PY" "$BALL" --now "$NOW"; }
+kexpect_line() { out="$(krun "$1" "$2")"; case "$out" in *"$3"*) ok "$1" ;; *) bad "$1 — got: ${out:-<silence>}" ;; esac; }
+kexpect_silent() { out="$(krun "$1" "$2")"; [ -z "$out" ] && ok "$1" || bad "$1 — expected silence, got: $out"; }
+
+kexpect_line "sibling: a PR by the other instance under our login is our review" \
+  "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" \
+  "suite#117 review - asked, not looked at yet"
+
+kexpect_silent "self: a PR carrying our own key stays ours (no reply yet)" \
+  "$(pr acct '{"number":115,"isDraft":false,"body":"fix <!-- instance-key: '"$KMAC"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')"
+
+kexpect_line "sibling reply: an OK from the other instance under our login is a move on our PR" \
+  "$(pr acct '{"number":115,"isDraft":false,"body":"<!-- instance-key: '"$KMAC"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"acct"},"createdAt":"2026-09-15T04:00:00Z","body":"Windows: OK <!-- instance-key: '"$KWS"' -->"}]},"reviewRequests":{"nodes":[]}}')" \
+  "suite#115 yours - reply since your last commit"
+
+kexpect_line "sibling review: our comment on the other instance's PR is a look, a newer commit asks again" \
+  "$(pr acct '{"number":117,"isDraft":false,"body":"<!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-15T06:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"acct"},"createdAt":"2026-09-15T04:00:00Z","body":"looked <!-- instance-key: '"$KMAC"' -->"}]},"reviewRequests":{"nodes":[]}}')" \
+  "suite#117 review - new commits since your last look"
+
+# Negative control: without SHARED_MEMORY_SELF the old login-only rule holds — the sibling
+# PR reads as our own and stays silent. This is exactly the blindness the key removes.
+out="$(printf '%s' "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" | env -u SHARED_MEMORY_SELF "$PY" "$BALL" --now "$NOW")"
+[ -z "$out" ] && ok "no own key: login-only rule unchanged (sibling PR silent)" || bad "no own key: expected the old silence, got: $out"
+
+# The check was answered in the shared memory, not on the PR (measured 2026-10-11: the
+# bootup said "agent-brain#279 review - asked, not looked at yet" after the Windows check of
+# that head had been answered there). Our text naming THIS head is the look; an older head
+# or someone else's text naming it is not.
+mkdir -p "$SM/.git" "$SM/core"
+SIB='{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"oid":"abcdef1234567890abcdef1234567890abcdef12","committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}'
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: mac' '---' 'Checked at head `abcdef1`: OK.' > "$SM/core/antwort.md"
+kexpect_silent "shared-memory answer at this head: the sibling PR is looked at" "$(pr acct "$SIB")"
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: ws' '---' 'please check `abcdef1`' > "$SM/core/antwort.md"
+kexpect_line "negative control: a foreign text naming the head is no look of ours" "$(pr acct "$SIB")" \
+  "suite#117 review - asked, not looked at yet"
+rm -rf "$SM/core" "$SM/.git"
 
 # 9. drafts never count
 expect_silent "draft: never a move" \

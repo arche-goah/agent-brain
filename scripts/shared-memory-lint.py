@@ -29,6 +29,14 @@ CHECKS (all read-only, no writes, stdlib only):
   6. limits          INDEX entry line longer than the cap; a LOG over the rotation size
   7. archive         entries a NAMED SUCCESSOR supersedes — relevance, never age (see
                      the note at SUPERSESSION_DEFAULT). Age is not in this check at all.
+  8. project-without-area  ADVISORY: >= 3 entries in the catch-all folder (`ops`, or
+                     $SHARED_MEMORY_CATCH_ALL) that share a significant slug word or name
+                     the same project repo — a project filed in the catch-all instead of
+                     its own area (see the note at CATCH_ALL). Never sets the exit code.
+  9. audience        entries dated AUDIENCE_SINCE or later, when the repo carries
+                     parties.json: every `audience` token resolves (device, person:<p>,
+                     os:<os>, everyone); a Windows check — fact file or LOG heading — goes
+                     to os:windows unless it says `one-machine: <why>`.
 
 RATCHET (same shape as english-only.py, and for the same reason): the audience/topic
 convention was decided on 2026-08-21 with the explicit note that older files are
@@ -52,7 +60,7 @@ where it is, however old.
 
 Usage: shared-memory-lint.py [--repo DIR] [--json] [--write-baseline]
        (--repo defaults to $SHARED_MEMORY_REPO, else ~/Projects/brain-shared-memory)
-Exit 0 = clean, 1 = findings, 2 = unreadable.
+Exit 0 = clean (advisory findings may be printed), 1 = findings, 2 = unreadable.
 """
 from __future__ import annotations
 
@@ -63,7 +71,20 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from importlib import import_module  # noqa: E402
+
+_parties = import_module("shared-memory-parties")
+
 REPO_DEFAULT = Path(os.environ.get("SHARED_MEMORY_REPO", Path.home() / "Projects/brain-shared-memory"))
+
+# Audience categories (operator order 2026-10-11; scripts/shared-memory-parties.py): from this
+# date on, every `audience` token of a fact file and every addressee of a LOG heading must
+# resolve against the repo's parties.json, and a Windows check names `os:windows` unless the
+# writer says one machine is needed. Older entries are not re-judged — the same ratchet idea as
+# the legacy baseline, keyed on the entry's own date. No parties.json: both checks are skipped
+# (there is nothing to resolve against), never reported as clean findings.
+AUDIENCE_SINCE = "2026-10-11"
 
 # The ratchet baseline lives IN the repo it describes, never next to this script.
 # THIS repo is public; the shared-memory repo is private. A baseline sitting here would
@@ -150,6 +171,129 @@ SUPERSESSION_DEFAULT = ["SUPERSEDES", "REPLACES", "SUPERSEDED BY", "REPLACED BY"
 MARKERS_NAME = ".shared-memory-markers.txt"
 
 
+# PROJECT WITHOUT AN AREA (measured 2026-10-10 on a shared-memory repo with several parties):
+# the catch-all folder held 150 entries, among them whole projects — an installation, a
+# template, a suite, a board tool, an audiovisual project — because the repo's README listed
+# five areas and said "do not create areas in advance", so the catch-all became the default.
+# The topic check above cannot see it: `topic` equalled the folder in every one of those
+# files. 23 entries were moved in one commit. This check finds the shape that produced them:
+# three or more catch-all entries that share a significant slug word or name the same
+# project repository.
+#
+# ADVISORY, not a failure: it does not set the exit code. Which entries form a project is
+# a suggestion for the parties who own them — the same reason the archive check reports
+# relations instead of verdicts — and a new check must not turn every existing repo red.
+CATCH_ALL = os.environ.get("SHARED_MEMORY_CATCH_ALL", "ops")
+AREA_MIN = 3
+ADVISORY = {"project_without_area"}
+# Slug words that say what KIND of entry a file is, never which project it belongs to.
+# English only here (this repo is public); a repo written in another language lists its own
+# words in `.shared-memory-generic.txt`, one per line — they EXTEND these defaults. The same
+# file takes `owner/repo` lines for repositories the catch-all is itself about.
+GENERIC_DEFAULT = {
+    "request", "requests", "answer", "answers", "reply", "question", "questions",
+    "proposal", "draft", "status", "state", "update", "note", "notes", "info", "check",
+    "review", "report", "result", "results", "plan", "open", "done", "new", "old", "and",
+    "the", "for", "from", "with", "about", "receipt", "announcement", "decision", "finding",
+    "lesson", "test", "run", "fix", "issue", "follow", "followup", "summary", "handover",
+    "attachment", "warning", "escalation", "welcome", "counter", "windows", "macos",
+    "linux", "mac", "win",
+}
+GENERIC_NAME = ".shared-memory-generic.txt"
+SLUG_SPLIT = re.compile(r"[^a-z0-9]+")
+REPO_URL = re.compile(r"github\.com[/:]([\w.-]+)/([\w.-]+)", re.I)
+REPO_ISSUE = re.compile(r"\b([\w.-]+)/([\w.-]+)#\d+")
+
+
+def load_generic(repo: Path) -> set[str]:
+    try:
+        extra = {ln.strip().lower() for ln in (repo / GENERIC_NAME).read_text(encoding="utf-8")
+                 .splitlines() if ln.strip() and not ln.startswith("#")}
+    except FileNotFoundError:
+        extra = set()
+    return GENERIC_DEFAULT | extra
+
+
+def slug_words(stem: str, skip: set[str]) -> set[str]:
+    """Significant words of a file name: no ids or dates (anything with a digit), nothing
+    shorter than three letters, nothing generic, no party names."""
+    return {w for w in SLUG_SPLIT.split(stem.lower())
+            if len(w) >= 3 and not any(c.isdigit() for c in w) and w not in skip}
+
+
+def repo_refs(text: str, owners: set[str]) -> set[str]:
+    """`owner/repo` names a text points at. A bare `owner/repo` counts only for an owner the
+    repo already writes as a URL or an issue reference somewhere — otherwise every
+    `<topic>/<slug>` path would read as a repository."""
+    refs = {f"{o}/{r}" for o, r in REPO_URL.findall(text) + REPO_ISSUE.findall(text)}
+    if owners:
+        bare = re.compile(r"\b(" + "|".join(re.escape(o) for o in sorted(owners))
+                          + r")/([\w.-]+)", re.I)
+        refs |= {f"{o}/{r}" for o, r in bare.findall(text)}
+    return {r.lower().rstrip(".").removesuffix(".git") for r in refs}
+
+
+def project_clusters(repo: Path, files: list[Path], area_min: int) -> list[dict]:
+    """Catch-all entries that look like one project: >= area_min of them share a slug word
+    or a repository. One finding per distinct file set, labelled with every signal that
+    produced exactly that set."""
+    if area_min <= 0:
+        return []
+    texts = {p: p.read_text(encoding="utf-8", errors="replace") for p in files}
+    skip = load_generic(repo)
+    # Party names are not projects: every `von`/`audience` word is skipped, read from the
+    # files themselves rather than listed — a slug like `request-to-<party>` must not
+    # cluster all requests to one party.
+    for t in texts.values():
+        for v in re.findall(r"^\s+(?:von|audience):\s*(.+)$", t.split("\n---", 1)[0], re.M):
+            skip |= set(SLUG_SPLIT.split(v.lower()))
+    owners = {o.lower() for t in texts.values()
+              for o, _ in REPO_URL.findall(t) + REPO_ISSUE.findall(t)}
+    areas = {p.relative_to(repo).parts[0] for p in files} - {CATCH_ALL}
+    signals: dict[str, set[str]] = {}
+    # A THREAD counts once (measured on the real repo the same day): a proposal, its
+    # follow-up and its answer on one subject (`proposal-x`, `follow-up-x`, `answer-x`) are
+    # three files but one conversation, and clustered at three by construction. Files whose
+    # slug leaves the SAME significant words once kind-words, ids and dates are gone form one
+    # thread; a cluster needs `area_min` distinct threads. A slug with nothing left is its
+    # own thread.
+    thread: dict[str, frozenset] = {}
+    for p, t in texts.items():
+        rel = p.relative_to(repo)
+        if rel.parts[0] != CATCH_ALL:
+            continue
+        words = slug_words(p.stem, skip)
+        thread[rel.as_posix()] = frozenset(words) or frozenset({rel.as_posix()})
+        for w in words:
+            signals.setdefault(w, set()).add(rel.as_posix())
+        for r in repo_refs(t, owners) - skip:
+            signals.setdefault(r, set()).add(rel.as_posix())
+    by_set: dict[frozenset, list[str]] = {}
+    for sig, fs in signals.items():
+        if len({thread[f] for f in fs}) >= area_min:
+            by_set.setdefault(frozenset(fs), []).append(sig)
+    # A set inside a larger reported set is the same project seen through a narrower word
+    # (`master` inside `template`): its words join the larger finding instead of a second one.
+    kept: list[tuple[frozenset, list[str]]] = []
+    for fs, sigs in sorted(by_set.items(), key=lambda kv: (-len(kv[0]), sorted(kv[1]))):
+        host = next((k for k in kept if fs < k[0]), None)
+        if host:
+            host[1].extend(sorted(sigs))
+        else:
+            kept.append((fs, sorted(sigs)))
+    out = []
+    for fs, sigs in kept:
+        existing = sorted(s for s in sigs if s in areas)
+        fix = (f"the area '{existing[0]}' exists: move these entries there" if existing else
+               "if this is one project worked by more than one party: create an area for it "
+               "(folder + LOG.md + a line in the README's area list) and move the entries; "
+               f"if the shared word is generic, add it to {GENERIC_NAME}")
+        out.append({"signal": " + ".join(sigs), "count": len(fs),
+                    "threads": len({thread[f] for f in fs}),
+                    "files": sorted(fs), "fix": fix})
+    return out
+
+
 def supersession_re(repo: Path) -> "re.Pattern[str]":
     try:
         toks = [ln.strip() for ln in (repo / MARKERS_NAME).read_text(encoding="utf-8")
@@ -226,10 +370,63 @@ def fact_files(repo: Path) -> list[Path]:
     return out
 
 
-def lint(repo: Path, baseline_path: Path | None = None) -> dict:
+def audience_findings(f: dict, where: str, audience: str, what: str, parties: dict,
+                      known: set[str], escape: str = "", unknown: bool = True) -> None:
+    """9. Every audience token resolves; a Windows check is not sent to one Windows device.
+    `what` is the text that states the request (slug + description, or a heading title);
+    `escape` is where the writer may say why one machine is needed (`one-machine: <why>`).
+    `unknown=False` for LOG headings: their addressees are prose ("AN <name> and <name>'s
+    AI"), so only the Windows check applies there, not the token check."""
+    for t in sorted(_parties.tokens(audience) - known) if unknown else ():
+        f["audience"].append({"where": where, "issue": "audience token unknown", "token": t,
+                              "fix": "a device id, person:<person> or os:<macos|windows|linux> "
+                                     "from parties.json, or an everyone spelling"})
+    one = _parties.windows_check_to_one_device(what, audience, parties)
+    if one and not _parties.ONE_MACHINE.search(escape):
+        f["audience"].append({"where": where, "issue": "a Windows check goes to one machine",
+                              "device": one,
+                              "fix": "address os:windows so every Windows machine can run it — "
+                                     "unless one machine is needed: then say why "
+                                     "(`one-machine: <why>`)"})
+
+
+def log_unknown_headings(f: dict, rel: str, text: str) -> None:
+    """A dated LOG heading no known shape recognises. The inbox reader prints such a line as
+    UNPARSED instead of dropping it; the WRITER hears it here, at the lint. Needs no
+    parties.json — the shape is a property of the log, not of the audience."""
+    for line in text.splitlines():
+        um = re.match(r"^##\s+(\d{4}-\d{2}-\d{2})\b", line)
+        if um and um.group(1) >= AUDIENCE_SINCE and not _parties.HEADING.match(line):
+            f["audience"].append({"where": f"{rel}: {line[:80]}",
+                                  "issue": "LOG heading matches no known shape",
+                                  "fix": "`## <date> · <von> — AN <to>: <title>` "
+                                         "(a `(<session>)` after <von> is allowed)"})
+
+
+def log_audience(f: dict, rel: str, text: str, parties: dict, known: set[str]) -> None:
+    """9. for LOG headings dated AUDIENCE_SINCE or later: the addressees after `AN`."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = _parties.HEADING.match(line)
+        if not m or m.group(1) < AUDIENCE_SINCE:
+            continue
+        to = _parties.addressees(m.group(3) or "")
+        if to is None:
+            continue
+        section = []
+        for nxt in lines[i + 1:]:
+            if _parties.HEADING.match(nxt):
+                break
+            section.append(nxt)
+        audience_findings(f, f"{rel}: {line[:80]}", to, m.group(3) or "", parties, known,
+                          escape="\n".join([line] + section), unknown=False)
+
+
+def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN) -> dict:
     f: dict[str, list] = {k: [] for k in (
         "index_drift", "frontmatter", "name_mismatch", "topic_mismatch",
-        "unresolved_links", "limits", "archive", "baseline")}
+        "unresolved_links", "limits", "archive", "baseline", "project_without_area",
+        "audience")}
 
     index_path = repo / INDEX
     if not index_path.is_file():
@@ -247,6 +444,8 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
     rels = {p.relative_to(repo).as_posix() for p in files}
     stems = {p.stem for p in files}
     baseline = load_baseline(baseline_path or baseline_for(repo))
+    parties = _parties.load(repo)
+    known = _parties.known(parties)
     supersedes = supersession_re(repo)
     superseded: dict[str, list] = {}
 
@@ -303,10 +502,14 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
                                 "chars": len(raw), "max": MAX_INDEX_LINE,
                                 "entry": raw[:70] + "…"})
 
-    # 6b. LOG rotation candidates
+    # 6b. LOG rotation candidates (and 9. audience categories of LOG headings)
     for log in sorted(repo.rglob(LOG_NAME)):
         if ".git" in log.relative_to(repo).parts:
             continue
+        log_text = log.read_text(encoding="utf-8", errors="replace")
+        log_unknown_headings(f, log.relative_to(repo).as_posix(), log_text)
+        if parties:
+            log_audience(f, log.relative_to(repo).as_posix(), log_text, parties, known)
         size = log.stat().st_size
         if size > LOG_ROTATE_BYTES:
             f["limits"].append({"issue": "LOG over rotation size",
@@ -364,6 +567,11 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
             if meta.get("topic") and folder and meta["topic"] != folder:
                 f["topic_mismatch"].append({"file": rel, "topic": meta["topic"],
                                             "folder": folder})
+            # 9. audience categories (see AUDIENCE_SINCE)
+            if parties and not legacy and str(meta.get("date", "")) >= AUDIENCE_SINCE:
+                audience_findings(f, rel, str(meta.get("audience") or ""),
+                                  f"{p.stem}\n{fm.get('description') or ''}", parties, known,
+                                  escape=text)
 
         # 5. dead wikilinks — targets are name slugs, resolved across the whole repo.
         # Code is stripped first (a bash `[[ … ]]` is not a link), and a target may
@@ -415,6 +623,9 @@ def lint(repo: Path, baseline_path: Path | None = None) -> dict:
     for miss in sorted(baseline - rels):
         f["baseline"].append({"file": miss, "issue": "baseline entry has no file",
                               "fix": "remove the stale line from .shared-memory-legacy.txt"})
+
+    # 8. project without an area (advisory — see the note at CATCH_ALL)
+    f["project_without_area"] = project_clusters(repo, files, area_min)
 
     return {"findings": f, "counts": {k: len(v) for k, v in f.items()}, "scanned": len(files)}
 
@@ -469,16 +680,53 @@ def write_baseline(repo: Path, baseline_path: Path | None = None) -> int:
         if any(not meta.get(k) for k in ("von", "audience", "topic", "date")):
             rows.append(p.relative_to(repo).as_posix())
     baseline_path = baseline_path or baseline_for(repo)
-    baseline_path.write_text(
-        "# Files predating the audience/topic convention (2026-08-21). This list may\n"
-        "# only ever SHRINK: carry a file over, then delete its line here.\n"
-        + "\n".join(sorted(rows)) + "\n", encoding="utf-8", newline="\n")
+    with open(baseline_path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Files predating the audience/topic convention (2026-08-21). This list may\n"
+                 "# only ever SHRINK: carry a file over, then delete its line here.\n"
+                 + "\n".join(sorted(rows)) + "\n")
     print(f"baseline written: {len(rows)} legacy file(s) -> {baseline_path}")
     return 0
 
 
+# --staged (pre-commit): the categories that judge an ENTRY itself. Repo-wide states (index
+# drift, LOG size, baseline, areas) stay with the full run — a gate on them would block every
+# commit for debts the writer did not make.
+STAGED_CATS = ("audience", "frontmatter", "name_mismatch", "topic_mismatch", "unresolved_links")
+
+
+def only_staged(repo: Path, r: dict) -> dict:
+    """Keep the findings the index ADDS: staged fact files, and of a LOG only added headings.
+    WHY (2026-10-13): check 9 existed and never fired — the lint ran only in the weekly scan,
+    and as a gate its 92 old findings would block every commit. Measured: more than a dozen
+    Windows checks went to one machine after the rule was written."""
+    import subprocess
+    diff = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "-U0", "--no-color",
+                           "--diff-filter=AM"], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace").stdout
+    files, added, cur = set(), set(), None
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            cur = line[6:] if line.startswith("+++ b/") else None
+            if cur:
+                files.add(cur)
+        elif line.startswith("+") and cur:
+            added.add((cur, line[1:][:80]))
+
+    def keep(it: dict) -> bool:
+        if it.get("file"):
+            return it["file"] in files
+        rel, _, rest = str(it.get("where", "")).partition(": ")
+        return (rel, rest) in added if rest else rel in files
+
+    found = {k: ([i for i in v if keep(i)] if k in STAGED_CATS else [])
+             for k, v in r["findings"].items()}
+    return {**r, "findings": found, "counts": {k: len(v) for k, v in found.items()}}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--staged", action="store_true",
+                    help="pre-commit: judge only the staged entries and added LOG headings")
     ap.add_argument("--repo", type=Path, default=REPO_DEFAULT)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--write-baseline", action="store_true")
@@ -498,27 +746,34 @@ def main() -> int:
         return write_baseline(a.repo, a.baseline)
 
     r = lint(a.repo, a.baseline)
-    total = sum(r["counts"].values())
+    if a.staged:
+        r = only_staged(a.repo, r)
+    total = sum(n for k, n in r["counts"].items() if k not in ADVISORY)
+    advisory = sum(n for k, n in r["counts"].items() if k in ADVISORY)
     if a.json:
         print(json.dumps(r, indent=2, ensure_ascii=False))
         return 1 if total else 0
 
-    if not total:
+    if not total and not advisory and a.staged:
+        print("shared-memory-lint --staged: the staged entries are clean")
+        return 0
+    if not total and not advisory:
         print(f"shared-memory-lint: {r['scanned']} file(s) checked, 0 findings")
-        print("all clean (index, frontmatter, topics, links, limits, archive).")
+        print("all clean (index, frontmatter, topics, links, limits, archive, areas).")
         return 0
 
-    print(f"shared-memory-lint: {r['scanned']} file(s) checked, {total} finding(s)\n")
+    print(f"shared-memory-lint: {r['scanned']} file(s) checked, {total} finding(s), "
+          f"{advisory} advisory (does not fail the run)\n")
     for cat, items in r["findings"].items():
         if not items:
             continue
-        print(f"  {cat} ({len(items)}):")
+        print(f"  {cat}{' [advisory]' if cat in ADVISORY else ''} ({len(items)}):")
         for it in items[:20]:
             print("    - " + ", ".join(f"{k}={v}" for k, v in it.items()))
         if len(items) > 20:
             print(f"    … {len(items) - 20} more")
         print()
-    return 1
+    return 1 if total else 0
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # repo-activity-watch.sh — one stdout line per collaboration EVENT in a set of GitHub repos:
-# new pull requests, merges, and comments (conversation AND inline review comments, also on
-# pull requests that are already merged). Built for the Monitor tool (`persistent: true`);
+# new pull requests, merges, comments (conversation AND inline review comments, also on
+# pull requests that are already merged) and RED CI runs. Built for the Monitor tool (`persistent: true`);
 # normally started by scripts/collab-watch.sh under scripts/watch-supervisor.sh.
 #
 #   GH_WATCH_REPOS="<owner>/<a> <owner>/<b>" repo-activity-watch.sh [interval_s|once|status|disarm]
@@ -33,7 +33,8 @@ PY=python3
 SELF="${GH_SELF_LOGIN:--}"
 ONLY="${GH_ONLY_LOGINS:--}"
 [[ -n "$ONLY" ]] || ONLY="-"
-STATE_DIR="${REPO_ACTIVITY_STATE_DIR:-${CLAUDE_PROJECT_DIR:-.}/.claude-state}"
+. "$HERE/project-dir.sh"   # state path must not depend on the caller's cwd
+STATE_DIR="${REPO_ACTIVITY_STATE_DIR:-$(resolve_project_dir "$HERE")/.claude-state}"
 TAG="${REPO_ACTIVITY_TAG:+-$REPO_ACTIVITY_TAG}"
 CURSOR="$STATE_DIR/repo-activity${TAG}-cursor.txt"
 LOCK="$STATE_DIR/repo-activity${TAG}.pid"
@@ -66,7 +67,20 @@ fi
 # Claim and check in ONE step: `noclobber` makes the redirect fail if the file exists
 # (O_EXCL). Check-then-write leaves a window in which two sessions both pass the check.
 claim() { ( set -o noclobber; echo $$ > "$LOCK" ) 2>/dev/null; }
-if ! claim; then
+# A re-arm right after a Monitor expired finds the OLD watcher still alive: it notices its
+# parent is gone only at its next tick and then frees the lock. Skipping at once left the
+# channel blind until the supervisor restarted it (measured 2026-10-09 on the Windows
+# instance, twice: ~15 s blind, "WATCHER-DIED", then healed). So wait a short grace for a
+# holder that is on its way out; a holder that stays (a real second session) is skipped.
+claim_wait() {
+  local i=0 grace="${WATCH_CLAIM_GRACE:-20}"
+  while ! claim; do
+    lock_owner_alive || { rm -f "$LOCK"; claim && return 0; return 1; }
+    [ "$i" -ge "$grace" ] && return 1
+    sleep 1; i=$((i + 1))
+  done
+}
+if ! claim_wait; then
   if lock_owner_alive; then
     echo "already armed: lock $LOCK names live pid $(cat "$LOCK") — skipping duplicate watcher (a live pid is a process, not proof of a session)"
     exit 0
@@ -140,6 +154,13 @@ while true; do
       emit "$clone" < <(gh pr list --repo "$full" --state merged --limit 50 \
           --json number,title,mergedBy,mergedAt,headRefName 2>/dev/null \
         | "$PY" "$HERE/repo-activity-filter.py" merged "$full" "$SINCE" "$SELF" "$ONLY")
+      # Red CI runs — the standing net under the per-PR ci-watch. Measured 2026-10-13: five
+      # pushes to PR branches in one session, four with a ci-watch armed, one without; that
+      # run went red (runner never acquired) and the operator found it, because nothing
+      # here looked at CI at all. A merge is a push to main, and main had no watcher either.
+      emit "$clone" < <(gh run list --repo "$full" --limit 50 \
+          --json workflowName,event,headBranch,status,conclusion,createdAt,updatedAt,url 2>/dev/null \
+        | "$PY" "$HERE/repo-activity-filter.py" runs "$full" "$SINCE" "$SELF" "$ONLY")
     done
     [[ "$NEWEST" != "$SINCE" ]] && echo "$NEWEST" > "$CURSOR"
   fi
