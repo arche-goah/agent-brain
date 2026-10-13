@@ -1,6 +1,6 @@
 - **A request says who is asked first, anyone can claim it, and either side can settle it.** (test: T1) Operator orders 2026-10-13.
   - `priority:` (an ordered list of any audience tokens, default per category in `parties.json`) is a hint, not a sequence: no timers, no escalation. Whoever is asked first sees an open request; every other party reached sees "optional: priority n, asked first <who>; unclaimed - take it if you can and want". A request to everyone without a priority is now a hint for everyone (before, it reached nobody's list). `claims: <stem>` records who took it and closes it for all.
-  - Settling: the answerer with `answers:`, the asker with `closes: <stem>` ("received, enough"). A LOG-only request is settled by the asker's later `ERLEDIGT` / `DONE` heading to the same addressee.
+  - Settling: the answerer with `answers:`, the asker with `closes: <stem>` ("received, enough"). A LOG-only request is settled by the asker's later `ERLEDIGT` / `DONE` heading to the same addressee that names its title (never a sweep).
   - A LOG heading marked `(status: info)` is no longer counted as a request. Measured the same day: a collaborator's start listed 22 open requests from this side, several of them info notes or long settled.
 
   Fixture `shared-memory-audience-test.py`, twelve new cases: priority (seven), settling (four: asker's `closes:`, unsettled control, `ERLEDIGT` heading, info heading), open-items reading the hint as a wait.

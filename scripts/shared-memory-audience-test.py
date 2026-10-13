@@ -203,13 +203,15 @@ def main() -> int:
         git(q, "add", "-A")
         git(q, "commit", "-qm", "asks")
         with (q / "core" / "LOG.md").open("a", encoding="utf-8", newline="\n") as fh:
-            fh.write(f"\n## {NEW} · lee-tower — AN kim-pc: ERLEDIGT — LOGASK answered, thanks\n\nx\n")
+            fh.write(f"\n## {NEW} · lee-tower — AN kim-pc: ERLEDIGT — answer received, thanks\n\n"
+                     f"- LOGASK please run it\n")
         git(q, "add", "-A")
         git(q, "commit", "-qm", "closed")
         pc = inbox(q, "kim-pc,kim")
         check("the asker's closes: settles a fact-file request", "ASKED" not in pc)
         check("control: an unsettled request stays", "STILL" in pc)
-        check("the asker's ERLEDIGT heading settles its earlier LOG requests", "LOGASK" not in pc and "LOGOPEN" not in pc)
+        check("the asker's ERLEDIGT heading settles the LOG request it names", "LOGASK" not in pc)
+        check("control: a LOG request the close does not name stays open", "LOGOPEN" in pc)
         check("an info heading is not a request", "LOGINFO" not in pc)
         oi_mod = load("open-items")
         check("open-items reads an optional line as a hint, not a duty",

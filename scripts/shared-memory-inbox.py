@@ -403,11 +403,15 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
             continue  # points at a fact file — the file path above judges it
         if LOG_INFO.search(title) or LOG_CLOSE.search(title):
             continue  # a report or a close, not a request (measured 2026-10-13: info headings sat open)
-        # The asker may settle it: a later heading of the same party to the same addressee that
-        # starts with a close word ("ERLEDIGT: …") closes its earlier requests there.
-        if any(party(sender) & tokens(s) and t & to and LOG_CLOSE.search(ti or "")
-               and (d > date or (tp == topic and j > idx))
-               for d, tp, j, s, t, ti, _ in heads):
+        # The asker may settle it: a later heading of the same party to the same addressee whose
+        # title starts with a close word ("AN x: ERLEDIGT — …") and whose text NAMES this
+        # request's title. Naming, not "everything before": one close must not sweep away the
+        # requests that are still open.
+        to_str = addressees(title or "")
+        core_title = (title.split(to_str, 1)[1].lstrip(": ") if to_str else title or "").strip()[:60]
+        if core_title and any(party(sender) & tokens(s) and t & to and LOG_CLOSE.search(ti or "")
+                              and core_title in b and (d > date or (tp == topic and j > idx))
+                              for d, tp, j, s, t, ti, b in heads):
             continue
         # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
         # another LOG cannot be ordered, so it does not count (safe direction).

@@ -51,9 +51,10 @@ done' and he adds at most 'received and enough'"):
   naming it).
 - **The asker:** an entry with `closes: <request-stem>` ("answer received, enough").
 - **A LOG-only request:** the asker writes a later heading to the same addressee whose title
-  starts with `ERLEDIGT` / `DONE` (e.g. `AN <who>: ERLEDIGT — <what>`). It settles that
-  party's earlier LOG requests to them. A heading marked `(status: info)` is a report, never
-  a request.
+  starts with `ERLEDIGT` / `DONE` (e.g. `AN <who>: ERLEDIGT — <what>`) and lists, in its
+  text, the title of each request it settles. It settles exactly those: a close never sweeps
+  away the ones that are still open. A heading marked `(status: info)` is a report, never a
+  request.
 
 Only fact files carry a priority — a LOG-only heading has no frontmatter. Name request files
 `request-…` or `question-…`: those prefixes are what every reader recognises.
