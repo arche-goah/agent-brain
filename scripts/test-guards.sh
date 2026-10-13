@@ -199,6 +199,27 @@ tr_probe "mechanism-guard/ordinary Write" Write file_path "$(native "$TR")/x/rea
 tr_probe "mechanism-guard/tool rule via enabled plugin" Bash command "fixture-plugin-internal now" block
 tr_probe "mechanism-guard/disabled plugin stays out" Bash command "fixture-disabled-internal now" allow
 tr_probe "mechanism-guard/tool rule + MECHANISM-OK marker" Bash command "fixture-server-by-hand  # MECHANISM-OK: developing the tool" allow
+
+# --- mechanism-guard: the CORE's own rules — a refused action is not re-issued ---------
+# Coherence scan 2026-10-12: a skill named `gh api -X PUT .../pulls/<n>/merge` a "second
+# legitimate form" after the permission layer refused `gh pr merge`. The core ships its own
+# mechanism-rules.json; this reads THAT file (not a copy) through a fake enabled plugin whose
+# install root is the core, so a broken pattern in the shipped file turns this red. It reuses
+# the tool-rule fixture's dir (same fake user), so the plugin list below replaces the one above.
+if CR=$(resolve mechanism-rules.json); then
+  CRD=$(cd "$(dirname "$CR")" && pwd)
+  printf '{"version":2,"plugins":{"core@fx":[{"installPath":"%s"}]}}' "$(native "$CRD")" \
+    > "$TR/fakeuser/.claude/plugins/installed_plugins.json"
+  printf '%s' '{"enabledPlugins":{"core@fx":true}}' > "$TR/fakeuser/.claude/settings.json"
+  tr_probe "mechanism-guard/core rule: raw API merge" Bash command "gh api -X PUT repos/o/r/pulls/5/merge -f merge_method=merge" block
+  tr_probe "mechanism-guard/core rule: --method PUT form" Bash command "gh api --method PUT repos/o/r/pulls/5/merge" block
+  tr_probe "mechanism-guard/core rule: GET of the merge state" Bash command "gh api repos/o/r/pulls/5/merge" allow
+  tr_probe "mechanism-guard/core rule: gh pr merge itself" Bash command "gh pr merge 5 --squash" allow
+  tr_probe "mechanism-guard/core rule: marker without the operator" Bash command "gh api -X PUT repos/o/r/pulls/5/merge  # MECHANISM-OK: faster" block
+  tr_probe "mechanism-guard/core rule: marker quoting the operator" Bash command "gh api -X PUT repos/o/r/pulls/5/merge  # MECHANISM-OK: operator 2026-10-12 \\\"merge it via the API\\\"" allow
+else
+  skip "mechanism-guard/core rules (mechanism-rules.json)"
+fi
 rm -rf "$TR"
 
 # --- freshness-gate: only the Workflow tool concerns it ----------------------

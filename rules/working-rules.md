@@ -226,6 +226,20 @@ if the result would be clean. The three questions above do NOT catch this: a cle
 built second path passes all three — and is still wrong, because the question
 "should a second path exist here at all?" is never asked.
 
+**A refusal is a decision, not an obstacle** (operator decision 2026-10-12). An action the
+permission layer refused — a permission rule, the auto-mode classifier, a hook — is NOT
+re-issued in another form: not as another command for the same effect (`gh api -X PUT
+…/pulls/<n>/merge` after a refused `gh pr merge`), not through another tool (PowerShell
+after a refused Bash call, a file edit after a refused command), and not through another
+session or party asked to do it instead (that launders the refusal). The refusal is a
+REPORTING EVENT: say what was refused and what it was for, and name who can take the step
+(the operator, or a party that holds the right on its own). Retrying the same call after
+the operator granted the permission is not a re-issue. (Coherence scan of a Windows
+instance, 2026-10-12: a loaded skill still called the raw API merge a "second legitimate
+form" while `collab-watch` forbade exactly that.) **Carried by** the core's own
+`mechanism-rules.json` (read by `mechanism-guard` from the enabled core plugin): the raw
+API merge is blocked unless the marker quotes the operator.
+
 **THE REQUIRED OUTCOME is binary:** either **"I find the prescribed defined path and
 take it"** — or **"there is no defined path" → it gets DISCUSSED.** A third case does
 not exist. No "I'll quickly do it differently and mention it": the questioning must
