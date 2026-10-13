@@ -216,6 +216,24 @@ def main() -> int:
         oi_mod = load("open-items")
         check("open-items reads an optional line as a hint, not a duty",
               bool(oi_mod.OPTIONAL.match("optional: priority 2, asked first kim-pc; unclaimed - take it if you can and want — x")))
+        print("lint --staged (pre-commit)")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "old findings")
+        staged = lambda: lint_mod.only_staged(repo, lint_mod.lint(repo))["findings"]["audience"]  # noqa: E731
+        check("nothing staged: old findings stay out of the gate", not staged())
+        entry(repo, "core/win-new.md", "kim-mac", "kim-pc", "please run the Windows check on PR 10")
+        with (repo / "core" / "LOG.md").open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(f"\n## {NEW} · kim-mac — AN kim-pc: Windows-Lauf bitte, PR 11\n\nx\n")
+        git(repo, "add", "-A")
+        got = staged()
+        check("staged fact file with a Windows check to one device: finding",
+              any("win-new" in x["where"] for x in got))
+        check("added LOG heading with a Windows check to one device: finding",
+              any("PR 11" in x["where"] for x in got))
+        check("old LOG heading in the same staged LOG: not judged",
+              not [x for x in got if "PR 9" in x["where"]])
+        check("old fact file not staged: not judged", not [x for x in got if "win-one" in x["where"]])
+        check("only the two new findings", len(got) == 2)
 
     print(f"{'all green' if not fails else f'{fails} failing'}")
     return 1 if fails else 0

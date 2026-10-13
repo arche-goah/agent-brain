@@ -26,7 +26,11 @@ Declarations: `.claude/rules/local-machinery.json`
   {"identity_tokens": ["<host>", "<ip>", "<person>", "<device>", ...]   (or {"hosts": [...], ...}),
    "instance": {"<id or prefix>": {"why": "...", "evidence": "<token the item contains>",
                                    "distinct_from": "<core name it only resembles>"}},
-   "alpha":    {"<id or prefix>": {"until": "YYYY-MM-DD", "why": "<what is being measured>"}}}
+                 (a rule section without a token may name instead "reach": "<repo file>" — the
+                  reach analysis that judged it; the file must exist and contain its heading)
+   "external": {"<id or prefix>": {"source": "<where it comes from>", "why": "..."}},
+                 (third-party skills/plugins used as they are — not ours to port to the core)
+   "alpha":   {"<id or prefix>": {"until": "YYYY-MM-DD", "why": "<what is being measured>"}}}
 An item id is its repo-relative path (`~/` for the user's Claude dir, `<file>#<heading>` for a
 rule section, `plugin:<id>`, `mcp:<server>`, `launchd:<file>`, `schtasks:<task>`). A key
 matches when the id starts with it or a hook command contains it. The old string form
@@ -544,6 +548,7 @@ def identity_matcher(tokens_):
 
 def judge(items, decl, C, today):
     inst, alpha = decl.get("instance") or {}, decl.get("alpha") or {}
+    ext = decl.get("external") or {}
     ident = identity_matcher(decl.get("identity_tokens"))
     core = core_names(C)
     found = {c: [] for c in CLASSES}
@@ -571,12 +576,27 @@ def judge(items, decl, C, today):
                 it["class"] = "expired"
                 found["expired"].append(f"{ka} (until {until or '?'})")
             continue
+        ke = match(ext, it)
+        if ke and not ki:
+            src = (ext[ke] or {}).get("source", "") if isinstance(ext[ke], dict) else ""
+            if not str(src).strip():
+                it["class"] = "noevidence"
+                found["noevidence"].append(f"{it['id']} (external without source)")
+            continue
         d = inst.get(ki) if ki else None
         if ki:
             ev = d.get("evidence") if isinstance(d, dict) else None
             evs = [ev] if isinstance(ev, str) else [e for e in ev or [] if isinstance(e, str)]
             evs = [e for e in evs if len(e.strip()) >= 3]
-            if not evs:
+            reach = d.get("reach") if isinstance(d, dict) else None
+            if not evs and reach:
+                # The reach analysis is the evidence: it must exist and name this item.
+                rf = C.root / str(reach)
+                txt = rf.read_text(encoding="utf-8", errors="replace") if rf.is_file() else ""
+                if it["id"].split("#", 1)[-1] not in txt:
+                    it["class"] = "badevidence"
+                    found["badevidence"].append(f"{it['id']} (reach {reach} does not name it)")
+            elif not evs:
                 it["class"] = "noevidence"
                 found["noevidence"].append(it["id"])
             elif not any(e.lower() in it["content"].lower() for e in evs):

@@ -83,3 +83,9 @@ and its person, never by an `os:` token). A new machine is one line in its perso
   `audience` token resolves; a Windows check (fact file or LOG heading) goes to `os:windows`
   unless the entry says why one machine is needed (`one-machine: <why>`). Older entries are
   not re-judged.
+- `shared-memory-lint.py --staged` — the same checks as a commit gate: only the staged fact
+  files and the LOG headings the commit ADDS are judged (entry checks only, no repo-wide
+  debts). Wire it into the git pre-commit hook of every machine that writes to the shared
+  memory. Without that the rule never fires: measured 2026-10-13, more than a dozen Windows
+  checks went to one machine after the rule was written, because the lint ran only in the
+  weekly scan.
