@@ -7,6 +7,12 @@
       "was": "a PR merge through the raw API (gh api -X PUT .../pulls/<n>/merge) - the usual way to re-issue a merge the permission layer refused for `gh pr merge`",
       "instead": "A refused action is not re-issued in another form (rules/working-rules.md, Mechanism Discipline, 'A refusal is a decision'). Report what was refused and for what; the merge goes through `gh pr merge` once permitted, or through the party/operator who holds the right.",
       "needs_operator_word": true
+    },
+    {
+      "pattern": "(?:\\bci-watch\\.sh\\s+(?:pr|ref)\\b|\\bgh\\s+run\\s+watch\\b|\\bgh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
+      "foreground_only": true,
+      "was": "waiting for CI in the foreground - a core CI run takes about 15 minutes and holds the whole session; several PRs in a row cost hours",
+      "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; the verdict arrives as a notification (Working Rule #9). Several PRs: one detached watch each, in parallel."
     }
   ]
 }
