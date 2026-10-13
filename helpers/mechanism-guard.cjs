@@ -17,7 +17,9 @@
  * instance knowledge (which rig, which doc paths) and are loaded at runtime from
  *   <project>/.claude/rules/mechanism-rules.json
  * Format: [{ "pattern": "<JS regex>", "was": "...", "stattdessen": "...",
- *           "needs_operator_word": true|false }, ...]
+ *           "needs_operator_word": true|false, "foreground_only": true|false }, ...]
+ * `foreground_only: true` = the rule fires only for a command that would hold the session
+ * (Bash without run_in_background); the same command detached is the defined path.
  * If the file is missing or broken, the guard blocks nothing (fail-open, read-only hook).
  * Every newly discovered shortcut gets added there as a rule — the system learns.
  *
@@ -89,7 +91,8 @@ function compile(list, source) {
       try {
         return { re: new RegExp(r.pattern), was: r.was, instead: r.stattdessen || r.instead,
                  target: r.target === 'path' ? 'path' : 'command', source,
-                 needsOperatorWord: r.needs_operator_word === true };
+                 needsOperatorWord: r.needs_operator_word === true,
+                 foregroundOnly: r.foreground_only === true };
       } catch (_) { return null; }
     })
     .filter(Boolean);
@@ -201,9 +204,13 @@ process.stdin.on('data', (d) => (input += d));
 process.stdin.on('end', () => {
   let cmd = '';
   let filePath = '';
+  let background = false;
   try {
-    const ti = JSON.parse(input).tool_input || {};
+    const hin = JSON.parse(input);
+    const ti = hin.tool_input || {};
     cmd = ti.command || '';
+    // Monitor always runs detached; Bash only with run_in_background.
+    background = hin.tool_name === 'Monitor' || ti.run_in_background === true;
     filePath = (ti.file_path || ti.notebook_path || '').replace(/\\/g, '/');
   } catch (_) {
     process.exit(0);
@@ -218,7 +225,7 @@ process.stdin.on('end', () => {
   const stripped = stripHeredocs(cmd);
   for (const r of rules) {
     const hit = r.target === 'path' ? (filePath && r.re.test(filePath)) : (cmd && r.re.test(stripped));
-    if (!hit) continue;
+    if (!hit || (r.foregroundOnly && background)) continue;
     let missing = [];
     if (marker) {
       if (!r.needsOperatorWord) continue;

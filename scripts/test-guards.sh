@@ -217,6 +217,19 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: gh pr merge itself" Bash command "gh pr merge 5 --squash" allow
   tr_probe "mechanism-guard/core rule: marker without the operator" Bash command "gh api -X PUT repos/o/r/pulls/5/merge  # MECHANISM-OK: faster" block
   tr_probe "mechanism-guard/core rule: marker quoting the operator" Bash command "gh api -X PUT repos/o/r/pulls/5/merge  # MECHANISM-OK: operator 2026-10-12 \\\"merge it via the API\\\"" allow
+  # CI is never waited for in the foreground (operator 2026-10-13: a core run takes ~15 min)
+  tr_probe "mechanism-guard/core rule: ci-watch in the foreground" Bash command "bash core/scripts/ci-watch.sh pr o/r 5" block
+  tr_probe "mechanism-guard/core rule: gh run watch in the foreground" Bash command "gh run watch 123 -R o/r" block
+  tr_probe "mechanism-guard/core rule: gh pr checks --watch" Bash command "gh pr checks 5 -R o/r --watch" block
+  tr_probe "mechanism-guard/core rule: gh pr checks once" Bash command "gh pr checks 5 -R o/r" allow
+  tr_probe "mechanism-guard/core rule: ci-watch via Monitor" Monitor command "bash core/scripts/ci-watch.sh pr o/r 5" allow
+  out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
+        | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
+  if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
+    bad "mechanism-guard/core rule: ci-watch with run_in_background blocked what it should allow"
+  else
+    ok "mechanism-guard/core rule: ci-watch with run_in_background allows"
+  fi
 else
   skip "mechanism-guard/core rules (mechanism-rules.json)"
 fi
