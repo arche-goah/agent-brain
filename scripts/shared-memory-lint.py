@@ -688,8 +688,45 @@ def write_baseline(repo: Path, baseline_path: Path | None = None) -> int:
     return 0
 
 
+# --staged (pre-commit): the categories that judge an ENTRY itself. Repo-wide states (index
+# drift, LOG size, baseline, areas) stay with the full run — a gate on them would block every
+# commit for debts the writer did not make.
+STAGED_CATS = ("audience", "frontmatter", "name_mismatch", "topic_mismatch", "unresolved_links")
+
+
+def only_staged(repo: Path, r: dict) -> dict:
+    """Keep the findings the index ADDS: staged fact files, and of a LOG only added headings.
+    WHY (2026-10-13): check 9 existed and never fired — the lint ran only in the weekly scan,
+    and as a gate its 92 old findings would block every commit. Measured: more than a dozen
+    Windows checks went to one machine after the rule was written."""
+    import subprocess
+    diff = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "-U0", "--no-color",
+                           "--diff-filter=AM"], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace").stdout
+    files, added, cur = set(), set(), None
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            cur = line[6:] if line.startswith("+++ b/") else None
+            if cur:
+                files.add(cur)
+        elif line.startswith("+") and cur:
+            added.add((cur, line[1:][:80]))
+
+    def keep(it: dict) -> bool:
+        if it.get("file"):
+            return it["file"] in files
+        rel, _, rest = str(it.get("where", "")).partition(": ")
+        return (rel, rest) in added if rest else rel in files
+
+    found = {k: ([i for i in v if keep(i)] if k in STAGED_CATS else [])
+             for k, v in r["findings"].items()}
+    return {**r, "findings": found, "counts": {k: len(v) for k, v in found.items()}}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--staged", action="store_true",
+                    help="pre-commit: judge only the staged entries and added LOG headings")
     ap.add_argument("--repo", type=Path, default=REPO_DEFAULT)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--write-baseline", action="store_true")
@@ -709,12 +746,17 @@ def main() -> int:
         return write_baseline(a.repo, a.baseline)
 
     r = lint(a.repo, a.baseline)
+    if a.staged:
+        r = only_staged(a.repo, r)
     total = sum(n for k, n in r["counts"].items() if k not in ADVISORY)
     advisory = sum(n for k, n in r["counts"].items() if k in ADVISORY)
     if a.json:
         print(json.dumps(r, indent=2, ensure_ascii=False))
         return 1 if total else 0
 
+    if not total and not advisory and a.staged:
+        print("shared-memory-lint --staged: the staged entries are clean")
+        return 0
     if not total and not advisory:
         print(f"shared-memory-lint: {r['scanned']} file(s) checked, 0 findings")
         print("all clean (index, frontmatter, topics, links, limits, archive, areas).")
