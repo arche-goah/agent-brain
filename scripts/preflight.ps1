@@ -34,8 +34,8 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 } else { BAD "git missing" "winget install Git.Git" }
 
 # Execute Python instead of merely finding it: the Microsoft Store stub (python3.exe)
-# sits in PATH but only opens the Store. The verify step needs a real Python
-# (stdlib is enough).
+# sits in PATH but only opens the Store. The core scripts need Python 3.9 or newer,
+# stdlib only (docs/os-traps.md OS-13 — same floor as preflight.sh).
 $py = $null
 foreach ($c in @('python3', 'python')) {
   if (Get-Command $c -ErrorAction SilentlyContinue) {
@@ -43,8 +43,13 @@ foreach ($c in @('python3', 'python')) {
     if ($LASTEXITCODE -eq 0) { $py = $c; break }
   }
 }
-if ($py) { OK "python: $py $(& $py -c 'import platform; print(platform.python_version())')" }
-else { BAD "python missing (or only the Microsoft Store stub)" "install Python 3 (python.org, tick 'Add python.exe to PATH') — then open a NEW terminal" }
+if (-not $py) { BAD "python missing (or only the Microsoft Store stub)" "install Python 3.9 or newer (python.org, tick 'Add python.exe to PATH') — then open a NEW terminal" }
+else {
+  $pyv = & $py -c 'import platform; print(platform.python_version())'
+  & $py -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>$null | Out-Null
+  if ($LASTEXITCODE -eq 0) { OK "python: $py $pyv (>= 3.9)" }
+  else { BAD "python: $py $pyv too old" "install Python 3.9 or newer (python.org) — the core scripts need 3.9+" }
+}
 
 if (Get-Command gh -ErrorAction SilentlyContinue) {
   gh auth status *> $null
@@ -63,8 +68,16 @@ if ($sshOut -match 'successfully authenticated') {
   if ($agent -and $agent.Status -eq 'Running') { OK "ssh-agent service running" }
   else { WARN "ssh-agent service not running — harmless, access is already proven" "Only needed if your key has a passphrase. As ADMINISTRATOR (without admin rights: 'Access is denied'): Set-Service ssh-agent -StartupType Automatic; Start-Service ssh-agent — then ssh-add" }
 } else {
-  $first = ($sshOut -split "`r?`n" | Where-Object { $_ })[0]
-  BAD "SSH to GitHub not proven (message: $first)" "Create a key: ssh-keygen -t ed25519 · show the public key: type $env:USERPROFILE\.ssh\id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
+  # Missing SSH is only fatal when HTTPS does not reach GitHub either (same as preflight.sh).
+  # @(...): a one-line SSH message leaves the pipeline as a STRING, and [0] on a string is
+  # its first character (measured on Windows PowerShell 5.1) — docs/os-traps.md OS-12.
+  $first = @($sshOut -split "`r?`n" | Where-Object { $_ })[0]
+  $sshFix = "Create a key: ssh-keygen -t ed25519 · show the public key: type $env:USERPROFILE\.ssh\id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
+  $httpsUrl = if ($env:PREFLIGHT_HTTPS_URL) { $env:PREFLIGHT_HTTPS_URL } else { 'https://github.com/arche-goah/agent-brain.git' }
+  $env:GIT_TERMINAL_PROMPT = '0'; $env:GIT_HTTP_LOW_SPEED_LIMIT = '1'; $env:GIT_HTTP_LOW_SPEED_TIME = '10'
+  git ls-remote $httpsUrl HEAD *> $null
+  if ($LASTEXITCODE -eq 0) { WARN "SSH to GitHub not proven, but HTTPS works (ls-remote $httpsUrl)" "Clones and fetches over HTTPS are fine. Set up SSH if a plugin install or marketplace refresh fails: $sshFix" }
+  else { BAD "GitHub not reachable — neither SSH (message: $first) nor HTTPS ($httpsUrl)" "Check the network first; then $sshFix" }
 }
 
 if (Get-Command claude -ErrorAction SilentlyContinue) { OK "claude CLI present" } else { BAD "claude CLI missing" "install Claude Code" }

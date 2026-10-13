@@ -144,6 +144,39 @@ TF="$T/feedback.jsonl"
 { cat "$TN"; printf '%s\n' '{"message":{"role":"user","content":"Stop hook feedback:\nx"}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"re"}]}}'; } > "$TF"
 case "$(feed2 "$TF")" in *'kind=notification'*) ok "hook feedback keeps the notification kind";; *) bad "hook feedback flipped the kind";; esac
 
+# --- recorder logs rotate by size, one generation (both ways) -----------------
+# A probe recorder that always records one row. Limit 200 bytes: a log above it is
+# moved to <name>.1.jsonl and the new row starts a fresh file; a log below it is
+# appended to and no older generation appears.
+REC="$T/rec.cjs"
+printf '%s\n' "console.log(JSON.stringify({record:[{probe:'fresh-row'}]}))" > "$REC"
+CFG3="$(mktemp -d)"
+mkdir -p "$CFG3/.claude/rules" "$CFG3/.claude-state"
+printf '{"checks":[{"label":"REC","marker":"REC-PROBE","cmd":"%s","mode":"record"}]}' \
+  "$(native "$REC")" > "$CFG3/.claude/rules/stop-checks.json"
+trap 'rm -rf "$T" "$CFG" "$CFG2" "$CFG3"' EXIT
+RLOG="$CFG3/.claude-state/rec-probe.jsonl"
+feed3() {
+  printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TR2")" "$(native "$CFG3")" \
+    | STOP_RECORD_MAX_BYTES=200 CLAUDE_PROJECT_DIR="$(native "$CFG3")" node "$D" >/dev/null 2>&1
+}
+printf '{"probe":"small-old-row"}\n' > "$RLOG"
+feed3
+if [ ! -f "$CFG3/.claude-state/rec-probe.1.jsonl" ] && grep -q small-old-row "$RLOG" && grep -q fresh-row "$RLOG"; then
+  ok "a log below the limit is appended to, not rotated"
+else
+  bad "a log below the limit was rotated or lost a row"
+fi
+rm -f "$RLOG"
+for _ in 1 2 3 4 5 6 7 8 9 10; do printf '{"probe":"big-old-row-padding-padding"}\n' >> "$RLOG"; done
+feed3
+if grep -q big-old-row "$CFG3/.claude-state/rec-probe.1.jsonl" 2>/dev/null \
+   && grep -q fresh-row "$RLOG" && ! grep -q big-old-row "$RLOG"; then
+  ok "a log above the limit moves to .1.jsonl and the new row starts a fresh file"
+else
+  bad "a log above the limit was not rotated"
+fi
+
 echo
 [ "$fail" -eq 0 ] && echo "stop-dispatcher fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

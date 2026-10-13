@@ -85,13 +85,25 @@ push_from_other() {   # $1 = file, $2 = message, $3 = von: party (optional)
   git -C "$OTHER" push -q origin main
 }
 
+# Wait until the watcher has reported N finds, up to a deadline — never a fixed sleep. The
+# fixed 6 s was the flake: on a slow Windows runner one poll cycle (git fetch + log + parse)
+# outlasted it, the line below read the PREVIOUS find, and the test failed with correct
+# watcher output (measured 2026-10-09: tag CI v1.4.1 attempt 1 red, last FOUND line still
+# named the prior push; attempt 2 green). The deadline keeps a dead watcher a FAIL, not a hang.
+wait_found() {   # $1 = expected FOUND count
+  local i=0
+  while [ "$(grep -c '^FOUND:' "$OUT" 2>/dev/null || true)" -lt "$1" ] && [ "$i" -lt 45 ]; do
+    sleep 1; i=$((i + 1))
+  done
+}
+
 push_from_other b.md "colleague one" kim-win
-sleep 6
+wait_found 1
 FIRST=$(grep -c '^FOUND:' "$OUT" || true)
 COLLEAGUE_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
 push_from_other c.md "colleague two" alex-workstation
-sleep 6
+wait_found 2
 SECOND=$(grep -c '^FOUND:' "$OUT" || true)
 WORKSTATION_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
 
@@ -101,8 +113,23 @@ printf '# Log\n\n## 2026-09-25 · sam-workstation — AN alle: log-only message\
 git -C "$OTHER" add -A
 git -C "$OTHER" commit -qm "log only"
 git -C "$OTHER" push -q origin main
-sleep 6
+wait_found 3
 LOG_LINE=$(grep '^FOUND:' "$OUT" | tail -1)
+
+# UPKEEP IS NOT AN ARRIVAL (measured 2026-10-10): a foreign commit that only MOVES an old
+# entry into another area and edits the frontmatter of another stays silent. It gets two
+# poll cycles of its own before the next real push, so a false FOUND would land as the 4th
+# line on its own — the 4th line must therefore be the real entry that follows.
+mkdir -p "$OTHER/area"
+git -C "$OTHER" mv domain/b.md area/b.md
+printf -- '---\nname: c\nmetadata:\n  von: alex-workstation\n  status: info\n---\n\ncolleague two\n' > "$OTHER/domain/c.md"
+git -C "$OTHER" add -A
+git -C "$OTHER" commit -qm "upkeep: move b, status on c"
+git -C "$OTHER" push -q origin main
+sleep 6
+push_from_other d.md "colleague four" kim-win
+wait_found 4
+FOURTH_LINE=$(grep '^FOUND:' "$OUT" | sed -n 4p)
 
 # Braces + redirect: the shell prints its own "Terminated" job message on wait,
 # which reads like a test failure in the log and is not one.
@@ -123,10 +150,14 @@ git -C "$WORK" add -A; git -C "$WORK" commit -qm "own one"; git -C "$WORK" push 
 OUT2="$TMP/out2.txt"
 SHARED_MEMORY_SELF=me-ws bash "$WATCH" watch 2 > "$OUT2" 2>&1 &
 WATCHER=$!
-sleep 4
+# Positive part: wait for the pulled-in request itself (same deadline rule as wait_found).
+i=0; while ! grep -q 'pulled request' "$OUT2" 2>/dev/null && [ "$i" -lt 45 ]; do sleep 1; i=$((i + 1)); done
 printf -- '---\nname: own2\nmetadata:\n  von: me-ws\n---\n\nown two\n' > "$WORK/domain/own2.md"
 git -C "$WORK" add -A; git -C "$WORK" commit -qm "own two"; git -C "$WORK" push -q origin main
-sleep 4
+# Silence cannot be waited FOR; give it two poll cycles (2 s each) plus slack, so a slow
+# runner errs toward "not yet reported" — which can only make the silence check pass
+# spuriously, never fail spuriously.
+sleep 6
 { kill "$WATCHER"; wait "$WATCHER"; } 2>/dev/null || true
 
 echo "--- watcher output ---"
@@ -168,6 +199,11 @@ if grep -q 'from .*sam-workstation' <<<"$LOG_LINE"; then
   echo "PASS: a LOG-only commit names its sender in the FOUND line"
 else
   echo "FAIL: LOG-only FOUND line without sender: $LOG_LINE"; fail=1
+fi
+if grep -q 'd\.md' <<<"$FOURTH_LINE" && ! grep -q 'area/b\.md' <<<"$FOURTH_LINE"; then
+  echo "PASS: an upkeep-only foreign commit (move + frontmatter edit) stays silent"
+else
+  echo "FAIL: upkeep reported as an arrival, or the next real entry missed: $FOURTH_LINE"; fail=1
 fi
 echo "--- watcher output, pulled-in case ---"
 cat "$OUT2"

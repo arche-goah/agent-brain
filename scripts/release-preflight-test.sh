@@ -100,6 +100,35 @@ rm -f "$TMP/gh-cwd"
 [ "$(cat "$TMP/gh-cwd" 2>/dev/null)" = "$(cd "$R" && pwd -P)" ] && rc=0 || rc=1
 check "gh runs inside the repo under test (stub, network-free)" 0 $rc
 
+# 11. a fragment left in changelog.d/ -> FAIL; README.md there is no fragment -> PASS (ci mode,
+#     content only, so the git state of the fixture does not matter)
+R="$(mkrepo 2.0.0)"
+mkdir -p "$R/changelog.d"; printf 'how to\n' > "$R/changelog.d/README.md"
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --ci-tag v2.0.0 >/dev/null 2>&1
+check "changelog.d with only README passes" 0 $?
+printf -- '- **forgotten.** (test: T0)\n' > "$R/changelog.d/forgotten.md"
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --ci-tag v2.0.0 >/dev/null 2>&1
+check "a fragment left in changelog.d fails" 1 $?
+
+# 12. an entry still under ## Unreleased -> FAIL; an empty ## Unreleased header -> PASS
+R="$(mkrepo 2.0.0)"
+printf '# Changelog\n\n## Unreleased\n\n## 2.0.0 — 2026-01-01\n\n- entry\n' > "$R/CHANGELOG.md"
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --ci-tag v2.0.0 >/dev/null 2>&1
+check "empty Unreleased header passes" 0 $?
+printf '# Changelog\n\n## Unreleased\n\n- not released\n\n## 2.0.0 — 2026-01-01\n\n- entry\n' > "$R/CHANGELOG.md"
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --ci-tag v2.0.0 >/dev/null 2>&1
+check "an entry under Unreleased fails" 1 $?
+
+# 13. after a real cut by changelog-assemble.py the leftover check is green (the round trip)
+PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+R="$(mkrepo 2.1.0)"
+printf '# Changelog\n\n## 2.0.0 — 2026-01-01\n\n- entry\n' > "$R/CHANGELOG.md"
+mkdir -p "$R/changelog.d"; printf -- '- **new.** (test: T0)\n' > "$R/changelog.d/new.md"
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }  # OS-3
+"$PY" "$(native "$(dirname "$S")/changelog-assemble.py")" 2.1.0 --root "$(native "$R")" >/dev/null 2>&1
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --ci-tag v2.1.0 >/dev/null 2>&1
+check "preflight green after a real changelog-assemble cut" 0 $?
+
 echo
 echo "$pass/$((pass+fail)) passed"
 [ "$fail" -eq 0 ]

@@ -31,7 +31,19 @@
  *       (plain `shared-memory-watch.sh` or the one inside `collab-watch.sh`);
  *   (b) `gh pr create` ran AND no PR-side watcher lives (a `repo-activity-watch` lock of
  *       collab-watch, or a Monitor/background call in this turn on watch-pr.sh,
- *       ci-watch.sh or collab-watch.sh).
+ *       ci-watch.sh or collab-watch.sh);
+ *   (c) the reply asks the human for a reload and no waiter runs (RELOAD_ASK below);
+ *   (d) a `git push` went into a checkout that has Actions workflows (`.github/workflows/`),
+ *       or `gh pr create` / `gh pr merge` named a repo, AND no `ci-watch.sh pr|ref <that
+ *       owner/repo>` was started in this turn (Monitor or run_in_background). Working rule
+ *       #9 said "a PR is opened together with its CI watch"; this carrier knew only (b), and
+ *       a live collab-watch lock satisfied it although collab-watch never looked at CI.
+ *       Measured 2026-10-13 on the macOS instance: five pushes to PR branches in one
+ *       session, four with a ci-watch, the fifth without — its macOS job never got a runner,
+ *       the run sat red for fifteen minutes and the operator found it. A merge is a push to
+ *       the base branch and starts a run there too; six merges that session, none watched.
+ *       A collab-watch lock does NOT satisfy (d): the standing watch reports a red run at
+ *       its next poll, the rule wants the VERDICT of this push read in this turn.
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
  *
@@ -58,6 +70,13 @@ const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const CLOSED = new Set(['answered', 'done', 'decided', 'info', 'closed']);
 const PR_WATCH = /\b(watch-pr|ci-watch|collab-watch)\.sh\b/;
+// A reload the HUMAN has to do (operator order 2026-08-06, sharpened 2026-10-11): the reply names the slash command or says
+// reconnect. The waiter is core/scripts/wait-mcp-reconnect.sh, armed in the same turn BEFORE the request.
+const RELOAD_ASK = /(?:^|[\s`'"(])\/(?:mcp|reload-plugins)\b|\breconnect\b|\bre-?connecten\b|\bwieder verbinden\b/i;
+const RELOAD_WATCH = /\bwait-mcp-reconnect\.sh\b/;
+// (d) the CI watch of a push: `ci-watch.sh pr|ref <owner/repo> …`, and the repo a gh call names.
+const CI_WATCH = /\bci-watch\.sh\s+(?:pr|ref)\s+["']?([\w.-]+\/[\w.-]+)/i;
+const REPO_FLAG = /(?:--repo|-R)[=\s]+["']?([\w.-]+\/[\w.-]+)/;
 
 function rootDir(input) { return process.env.CLAUDE_PROJECT_DIR || (input && input.cwd) || process.cwd(); }
 function handoverFile(root) { return path.join(root, '.claude-state', 'expected-reactions.json'); }
@@ -131,7 +150,7 @@ function promptText(msg) {
 
 /** Tool calls of the running turn, its start time, and whether this gate already fired in it. */
 function turn(tp) {
-  let calls = []; let since = ''; let fired = false;
+  let calls = []; let since = ''; let fired = false; let lastText = '';
   for (const line of readTail(tp)) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
@@ -141,10 +160,12 @@ function turn(tp) {
       if (t === null) continue;
       if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t)) fired = true; continue; }
       if (isNotification(t)) continue;
-      calls = []; since = d.timestamp || ''; fired = false;
+      calls = []; since = d.timestamp || ''; fired = false; lastText = '';
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      const text = msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+      if (text.trim()) lastText = text;
       for (const b of msg.content) {
         if (b.type !== 'tool_use') continue;
         const inp = b.input || {};
@@ -152,7 +173,7 @@ function turn(tp) {
       }
     }
   }
-  return { calls, since, fired };
+  return { calls, since, fired, lastText };
 }
 
 /**
@@ -160,15 +181,46 @@ function turn(tp) {
  * without a shell. The pid must be digits only. On Windows the lock holds an MSYS pid that
  * node's process.kill cannot see, so Git's `ps -p` answers there (measured 2026-10-09:
  * exit 0 for a live watcher, 1 for a dead pid).
+ *
+ * That measurement ran from Git Bash, where `ps` is on PATH. The hook itself does not run
+ * there (measured 2026-10-11, Windows instance): the PATH Claude Code hands to its children
+ * holds `Git\cmd`, not `Git\usr\bin`, so `ps` was ENOENT, every lock read as dead, and the
+ * gate blocked every push of a waiting fact file with the watcher alive. So Git's own
+ * `ps.exe` is found next to the `git.exe` on PATH (`<Git>\cmd\git.exe` -> `<Git>\usr\bin`).
+ * Returns true / false, or null when no `ps` can be run at all — unknown, not dead.
  */
+function psCandidates() {
+  const out = ['ps'];
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (dir && fs.existsSync(path.join(dir, 'git.exe'))) out.push(path.resolve(dir, '..', 'usr', 'bin', 'ps.exe'));
+  }
+  if (process.env.ProgramFiles) out.push(path.join(process.env.ProgramFiles, 'Git', 'usr', 'bin', 'ps.exe'));
+  return [...new Set(out)];
+}
+
 function alive(lock) {
-  try {
-    const pid = fs.readFileSync(lock, 'utf8').trim();
-    if (!/^\d+$/.test(pid)) return false;
-    if (process.platform !== 'win32') { process.kill(Number(pid), 0); return true; }
-    execFileSync('ps', ['-p', pid], { stdio: 'ignore', timeout: 5000 });
-    return true;
-  } catch (e) { return false; }
+  let pid;
+  try { pid = fs.readFileSync(lock, 'utf8').trim(); } catch (e) { return false; }
+  if (!/^\d+$/.test(pid)) return false;
+  if (process.platform !== 'win32') {
+    try { process.kill(Number(pid), 0); return true; } catch (e) { return false; }
+  }
+  for (const ps of psCandidates()) {
+    try {
+      execFileSync(ps, ['-p', pid], { stdio: 'ignore', timeout: 5000 });
+      return true;
+    } catch (e) {
+      if (e.code === 'ENOENT') continue;
+      return false;
+    }
+  }
+  return null;
+}
+
+/** Any lock alive -> true; none alive but one unknown -> null (cannot measure); else false. */
+function anyAlive(locks) {
+  const r = locks.map(alive);
+  return r.includes(true) ? true : (r.includes(null) ? null : false);
 }
 
 function stateDirs(root) {
@@ -177,16 +229,58 @@ function stateDirs(root) {
   return { sm: [process.env.SHARED_MEMORY_LOCK_DIR || base, collab], collab };
 }
 
+// A liveness that cannot be measured counts as watched: the gate fails open (header).
 function smWatched(root) {
-  return stateDirs(root).sm.some((d) => alive(path.join(d, 'shared-memory-watch.pid')));
+  return anyAlive(stateDirs(root).sm.map((d) => path.join(d, 'shared-memory-watch.pid'))) !== false;
 }
 
 function prWatched(root, calls) {
   if (calls.some((c) => (c.name === 'Monitor' || c.bg) && PR_WATCH.test(c.cmd))) return true;
   const dir = stateDirs(root).collab;
-  try {
-    return fs.readdirSync(dir).some((f) => /^repo-activity.*\.pid$/.test(f) && alive(path.join(dir, f)));
-  } catch (e) { return false; }
+  let locks;
+  try { locks = fs.readdirSync(dir).filter((f) => /^repo-activity.*\.pid$/.test(f)).map((f) => path.join(dir, f)); } catch (e) { return false; }
+  return anyAlive(locks) !== false;
+}
+
+function expandHome(p) { return p.replace(/^~(?=$|[\\/])/, require('os').homedir()); }
+/** The checkout a shell call acts on: `git -C <dir>`, else a leading `cd <dir>`, else the project root. */
+function callDir(cmd, root) {
+  let m = /\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
+  if (!m) m = /(?:^|[\n;&|(])\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
+  return m ? expandHome(m[1] || m[2] || m[3]) : root;
+}
+function hasWorkflows(dir) {
+  try { return fs.readdirSync(path.join(dir, '.github', 'workflows')).some((f) => /\.ya?ml$/i.test(f)); } catch (e) { return false; }
+}
+/** owner/repo of `origin` when it is a GitHub remote, '' otherwise (then nothing is required). */
+function originSlug(dir) {
+  let url;
+  try { url = execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000 }).trim(); } catch (e) { return ''; }
+  const m = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/i.exec(url);
+  return m ? m[1].toLowerCase() : '';
+}
+/** Repos whose CI this turn's shell calls set running: a push into a checkout with workflows,
+ *  a PR opened or merged with the repo named (a merge is a push to the base branch). */
+function ciStarted(shell, root) {
+  const out = new Set();
+  for (const c of shell) {
+    const named = /\bgh\s+pr\s+(?:create|merge)\b/.test(c.cmd);
+    if (!named && !/\bgit\b[\s\S]*\bpush\b/.test(c.cmd)) continue;
+    const flag = named && REPO_FLAG.exec(c.cmd);
+    if (flag) { out.add(flag[1].toLowerCase()); continue; }
+    const dir = callDir(c.cmd, root);
+    if (!hasWorkflows(dir)) continue;
+    const slug = originSlug(dir);
+    if (slug) out.add(slug);
+  }
+  return out;
+}
+function ciWatched(calls, slug) {
+  return calls.some((c) => {
+    if (!(c.name === 'Monitor' || c.bg)) return false;
+    const m = CI_WATCH.exec(c.cmd);
+    return !!m && m[1].toLowerCase() === slug;
+  });
 }
 
 function tokens(s) { return new Set(String(s || '').toLowerCase().split(/[\s,;]+/).filter(Boolean)); }
@@ -224,7 +318,7 @@ function awaiting(repo, since) {
 function main(input) {
   if (input.stop_hook_active || !input.transcript_path) process.exit(0);
   const root = rootDir(input);
-  const { calls, since, fired } = turn(input.transcript_path);
+  const { calls, since, fired, lastText } = turn(input.transcript_path);
   if (fired) process.exit(0);
   const shell = calls.filter((c) => c.name === 'Bash' || c.name === 'PowerShell');
   const missing = [];
@@ -251,12 +345,23 @@ function main(input) {
     const files = awaiting(repo, since);
     if (files.length && !smWatched(root) && !covered) {
       missing.push(`shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
-        + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 300", persistent: true}) '
+        + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 60", persistent: true}) '
         + '(or collab-watch); mark a pure report `status: info`');
     }
   }
   if (shell.some((c) => /\bgh\s+pr\s+create\b/.test(c.cmd)) && !prWatched(root, calls) && !covered) {
     missing.push('PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)');
+  }
+  // (c) the reply ends by asking the human for a reload, and nothing waits for it to arrive
+  if (RELOAD_ASK.test(lastText) && !calls.some((c) => RELOAD_WATCH.test(c.cmd))) {
+    missing.push('reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
+      + '(Monitor or run_in_background) BEFORE asking, then say which reload you need');
+  }
+  // (d) a push started a CI run and nothing in this turn watches it
+  for (const slug of ciStarted(shell, root)) {
+    if (ciWatched(calls, slug)) continue;
+    missing.push(`CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
+      + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`);
   }
   if (!missing.length) process.exit(0);
   process.stdout.write(JSON.stringify({

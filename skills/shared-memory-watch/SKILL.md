@@ -38,7 +38,7 @@ never double-report, and nothing falls between them.
 ## How to arm
 
 ```
-Monitor({ command: "bash core/scripts/shared-memory-watch.sh watch 300",
+Monitor({ command: "bash core/scripts/shared-memory-watch.sh watch 60",
           description: "new commits in the shared-memory repo from other instances",
           persistent: true })
 ```
@@ -53,9 +53,46 @@ the watcher process was gone at the next look (`status`: "not armed"). Re-arm on
 notice while the session still waits on someone; `helpers/watch-gate.cjs` blocks a turn that
 expects a reaction with no live watcher, so a missed re-arm surfaces at the next stop.
 
+**The poll interval must be a small fraction of the shortest expiry ever seen** (measured
+2026-10-11, same instance, Claude Code 2.1.296: the Monitor announced "expires in 5m", not 30m —
+the expiry is the harness's and changes between versions). With the old default of 300 s an
+arm polled ONCE before it expired, and a reply pushed a minute after the arm waited a full
+re-arm cycle. The default is 60 s; never copy a longer number from an older note, and when the
+announced expiry shrinks again, shrink the interval with it.
+
 Paths are overridable (`SHARED_MEMORY_REPO`, `SHARED_MEMORY_STATE`,
 `SHARED_MEMORY_LOCK_DIR`) — the instance decides where its shared repo is cloned; the
 core never hardcodes an instance path.
+
+## Silent arm — for an operator who must not be interrupted
+
+Every Monitor event starts a new agent turn, and that turn prints text and tool lines
+into the terminal while the operator is still reading the previous answer. The harm is
+the output itself, not its content. When the instance's rules say "no interruption
+while the operator reads or writes" (an instance rule, not a core default), arm the
+watcher SILENT: the script's stdout goes into a queue file, nothing reaches the
+Monitor's stdout, so no event wakes the agent.
+
+```
+Monitor({ command: "bash core/scripts/shared-memory-watch.sh watch 60 >> <queue-file> 2>&1",
+          description: "silent shared-memory watcher, finds go to the queue file",
+          timeout_ms: <the longest the harness allows> })
+```
+
+- **Queue file location is a measurement, not a guess.** An instance may deny the
+  agent access to its state directory (`.claude-state/**`); then a redirect there is
+  refused by the harness and the Monitor never starts. Use a path the agent may write
+  and read — the session scratchpad suits a watcher, because both end with the session.
+- **The queue is read at a point boundary** — when the current point is finished or
+  the operator asks for the queue — never in between. A find is a queue entry, not an
+  interruption.
+- **Arm silent right after the push, in the same turn.** The watch gate that demands a
+  watcher after a push is satisfied by a silent one; "no watcher at all" is not the way
+  to avoid interrupting.
+- **Before re-arming (expiry, a restart): `disarm` first.** `TaskStop` leaves the lock
+  behind; an arm onto a stale lock exits at once with "already armed" and the Monitor
+  ends with exit 0 and no output — silent and dead, indistinguishable from a quiet
+  watch. After arming, `status` must say `armed`.
 
 ## What the script guarantees
 

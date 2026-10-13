@@ -184,11 +184,24 @@ else say OK E5 "Rule Pointers" "$checked/$checked resolvable"; fi
 #    2026-10-09: two commitments of the last two weeks lived only in chat). WARN, not ROT —
 #    the answer is to write the rule or drop the commitment, in the session.
 if [ -f "$CORE/scripts/commitments.py" ]; then
-  cm=$(cd "$BRAIN" && "$PY" "$CORE/scripts/commitments.py" --repo "$BRAIN" --days "${COMMITMENT_DAYS:-14}" 2>/dev/null)
+  # The transcript scan is the slow part of this file (4.1 s of ~4.5 s, measured 2026-10-11 on a
+  # brain with two weeks of sessions) and runs at every session start. Its input is foreign state
+  # — every new session adds transcript lines — so no content key exists, only time: at session
+  # start (EFFECT_CHECK_BG=1) the verdict comes from a 6 h cache refreshed in the background, and
+  # says so with its age. A hand run keeps measuring now.
+  if [ "${EFFECT_CHECK_BG:-0}" = "1" ] && [ -f "$CORE/scripts/cached-verdict.sh" ]; then
+    cm=$(cd "$BRAIN" && CACHED_VERDICT_STATE="${EFFECT_CHECK_STATE:-$BRAIN/.claude-state}" bash "$CORE/scripts/cached-verdict.sh" \
+           commitments --max-age 21600 --background-on-miss \
+           -- "$PY" "$CORE/scripts/commitments.py" --repo "$BRAIN" --days "${COMMITMENT_DAYS:-14}" 2>/dev/null)
+  else
+    cm=$(cd "$BRAIN" && "$PY" "$CORE/scripts/commitments.py" --repo "$BRAIN" --days "${COMMITMENT_DAYS:-14}" 2>/dev/null)
+  fi
+  reused=$(printf '%s\n' "$cm" | sed -n 's/^ *(\(reused: .*\))$/\1/p' | head -1)
   loose=$(printf '%s\n' "$cm" | sed -n 's/^commitments summary: .*loose=\([0-9]*\).*/\1/p')
-  if [ -z "$loose" ]; then say INFO E6 "Loose Commitments" "not checked (no transcripts readable)"
-  elif [ "$loose" -gt 0 ]; then say WARN E6 "Loose Commitments" "$loose in ${COMMITMENT_DAYS:-14} days without a rule carrying them: $(printf '%s\n' "$cm" | grep -a '^loose commitment' | head -3 | cut -c1-160 | tr '\n' ' ')"
-  else say OK E6 "Loose Commitments" "$(printf '%s\n' "$cm" | sed -n 's/^commitments summary: //p')"; fi
+  if [ -z "$loose" ] && [ "${EFFECT_CHECK_BG:-0}" = "1" ]; then say INFO E6 "Loose Commitments" "first scan running in the background — result at the next session start"
+  elif [ -z "$loose" ]; then say INFO E6 "Loose Commitments" "not checked (no transcripts readable)"
+  elif [ "$loose" -gt 0 ]; then say WARN E6 "Loose Commitments" "$loose in ${COMMITMENT_DAYS:-14} days without a rule carrying them: $(printf '%s\n' "$cm" | grep -a '^loose commitment' | head -3 | cut -c1-160 | tr '\n' ' ')${reused:+ ($reused)}"
+  else say OK E6 "Loose Commitments" "$(printf '%s\n' "$cm" | sed -n 's/^commitments summary: //p')${reused:+ ($reused)}"; fi
 fi
 
 echo "=== EFFECT: $([ $fail -eq 0 ] && echo "ALL GREEN" || echo "AT LEAST ONE ROT") ==="

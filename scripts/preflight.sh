@@ -32,18 +32,21 @@ fi
 
 command -v git >/dev/null 2>&1 && ok "git $(git --version | awk '{print $3}')" || bad "git missing" "install git (git-scm.com)"
 
-# Python: the verify step (leak-scan, suite-check, ecosystem-sync) runs on stock
-# Python. On Windows the PATH often carries ONLY the Microsoft Store stub
-# (python3.exe that opens the Store when called) — so do not trust `command -v`,
-# EXECUTE it.
+# Python: the core scripts need Python 3.9 or newer, stdlib only. 3.9 is the floor
+# because it is the stock macOS /usr/bin/python3, which `python3` falls back to when no
+# newer interpreter is linked under that name (docs/os-traps.md OS-13). On Windows the
+# PATH often carries ONLY the Microsoft Store stub (python3.exe that opens the Store
+# when called) — so do not trust `command -v`, EXECUTE it.
 PY=""
 for c in python3 python; do
   if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys' >/dev/null 2>&1; then PY="$c"; break; fi
 done
-if [ -n "$PY" ]; then
-  ok "python: $PY $("$PY" -c 'import platform; print(platform.python_version())')"
+if [ -z "$PY" ]; then
+  bad "python missing (or only the Microsoft Store stub)" "install Python 3.9 or newer (python.org, tick 'Add python.exe to PATH') — then open a NEW terminal. No extra packages needed, the core scripts are stdlib-only"
+elif "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1; then
+  ok "python: $PY $("$PY" -c 'import platform; print(platform.python_version())') (>= 3.9)"
 else
-  bad "python missing (or only the Microsoft Store stub)" "install Python 3 (python.org, tick 'Add python.exe to PATH') — then open a NEW terminal. No extra packages needed, the core scripts are stdlib-only"
+  bad "python: $PY $("$PY" -c 'import platform; print(platform.python_version())') too old" "install Python 3.9 or newer (python.org / brew install python) — the core scripts need 3.9+"
 fi
 
 # Windows path limit: git ships its OWN switch and ignores the Windows setting
@@ -87,8 +90,19 @@ if printf '%s\n' "$ssh_out" | grep -q "successfully authenticated"; then
       "Only needed if your key has a passphrase: eval \"\$(ssh-agent -s)\" && ssh-add ~/.ssh/id_ed25519 . On Windows, Git Bash fundamentally cannot see the Windows service (named pipe vs. Unix socket) — that stays this way and is not an error."
   fi
 else
-  bad "SSH to GitHub not proven (message: $(printf '%s' "$ssh_out" | head -1))" \
-    "Create a key: ssh-keygen -t ed25519 -C \"$(whoami)\" · show the public key: cat ~/.ssh/id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
+  # Missing SSH is only fatal when HTTPS does not reach GitHub either — measured, not
+  # assumed: one ls-remote against a public repo. No `timeout` (absent on macOS): no
+  # prompt, and the low-speed limit ends a stalled transfer after 10 s.
+  ssh_fix="Create a key: ssh-keygen -t ed25519 -C \"$(whoami)\" · show the public key: cat ~/.ssh/id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
+  https_url="${PREFLIGHT_HTTPS_URL:-https://github.com/arche-goah/agent-brain.git}"
+  if GIT_TERMINAL_PROMPT=0 GIT_HTTP_LOW_SPEED_LIMIT=1 GIT_HTTP_LOW_SPEED_TIME=10 \
+      git ls-remote "$https_url" HEAD >/dev/null 2>&1; then
+    warn "SSH to GitHub not proven, but HTTPS works (ls-remote $https_url)" \
+      "Clones and fetches over HTTPS are fine. Set up SSH if a plugin install or marketplace refresh fails: $ssh_fix"
+  else
+    bad "GitHub not reachable — neither SSH (message: $(printf '%s' "$ssh_out" | head -1)) nor HTTPS ($https_url)" \
+      "Check the network first; then $ssh_fix"
+  fi
 fi
 
 command -v claude >/dev/null 2>&1 && ok "claude CLI $(claude --version 2>/dev/null | head -1)" || bad "claude CLI missing" "install Claude Code (claude.com/claude-code) — then open a NEW terminal, otherwise the shell does not know the 'claude' command"

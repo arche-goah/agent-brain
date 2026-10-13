@@ -245,8 +245,8 @@ def main() -> int:
         # newline is the same class, second instance: text mode translates "\n" to the
         # platform separator, so the same command produced CRLF on Windows and LF on
         # macOS (measured 2026-08-10: 65 CR lines in a freshly written ecosystem.json).
-        LOCK.write_text(json.dumps(lock, indent=2, ensure_ascii=False) + "\n",
-                        encoding="utf-8", newline="\n")
+        with open(LOCK, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(lock, indent=2, ensure_ascii=False) + "\n")
         print(f"ecosystem: recorded {len(lock['repos'])} repos and "
               f"{n_plugins} plugins at core contract {core_now}")
         for name, e in lock["repos"].items():

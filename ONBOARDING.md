@@ -16,7 +16,8 @@ Before anything else you need, in this order:
 - **A GitHub account**, with any invitations to your org's private repos accepted.
 - **Node >= 23.6** (nodejs.org) — suite MCP servers rely on native type stripping.
 - **git** (git-scm.com).
-- **Python 3** (stock install, stdlib only — the verify scripts need no packages).
+- **Python 3.9 or newer** (stdlib only — the core scripts need no packages). The stock
+  macOS `/usr/bin/python3` is 3.9 and is enough; the preflight fails below 3.9.
 - **`gh` CLI, logged in over SSH** (`gh auth login`, choose SSH as the protocol —
   gh generates the key and uploads it to GitHub for you).
 - **Claude Code** (claude.com/claude-code).
@@ -25,10 +26,11 @@ Windows: after EVERY installation, open a new terminal. Windows does not propaga
 PATH changes to already-running processes — otherwise the preflight reports tools as
 missing although they are installed, and you install things twice.
 
-**SSH is mandatory, not a recommendation.** A token-/HTTPS-only login looks
-functional but breaks two things: `claude plugin install` (clones over SSH) and the
-automatic marketplace updates (the background refresh cannot use HTTPS credentials).
-The preflight only passes once `ssh -T git@github.com` greets you by name.
+**SSH is recommended; HTTPS is enough to start.** Clones and fetches work over HTTPS.
+Where a plugin install or the background marketplace refresh fails on a machine without
+SSH, setting up SSH is the fix. The preflight measures both: it is green once
+`ssh -T git@github.com` greets you by name, and it reports missing SSH only as a warning
+when an HTTPS `git ls-remote` to GitHub succeeds; it fails only when neither works.
 
 ## 1. Preflight — measure, do not assume
 
@@ -37,7 +39,7 @@ bash scripts/preflight.sh
 ```
 
 It checks OS, Node version, git (plus `core.longpaths` on Windows), Python, `gh`
-login, proven SSH access to GitHub, and the `claude` CLI. It installs nothing. For
+login, access to GitHub (SSH, or HTTPS with a warning), and the `claude` CLI. It installs nothing. For
 every red line it prints the exact fix; run it again after each fix — "I did it" is
 not evidence, only the green re-check is. (On Windows, `scripts/preflight.ps1` is the
 same set of checks for the PowerShell view; the Git Bash edition is authoritative.)
@@ -147,6 +149,24 @@ This checks the 11 points of `docs/onboarding-contract.md` and writes
 its root; `--out <file>` picks another place). Suite checks (6+7) read `SKIP` on a
 core-only onboarding — that is correct, not red. Send the report back to whoever
 invited you; it answers "does it run on your machine?" without screenshots.
+
+## Optional: one brain on several machines
+
+Two opt-in pieces, both off until the brain has their file:
+
+- **Machine profile.** `bash core/scripts/machine-key.sh` prints this machine's key;
+  `cp core/templates/machine-profile.md config/machines/<key>.md` and fill in alias, role
+  and the sender id your shared-memory entries carry. Identity only — which tools a
+  machine has is measured at every session start from `config/machines/probe-tools.txt`
+  (one command name per line), never written into the profile. The session start prints
+  one `machine:` line; once `config/machines/` exists, a machine without a profile is
+  named there with the command to create it.
+- **Session pull.** `cp core/templates/session-pull.json config/session-pull.json` (edit
+  `extra`), and wire `core/helpers/session-pull.sh` as a SessionStart hook (the entry is
+  in `core/templates/settings.json`). Every start then fast-forwards the brain and the
+  repos `config/ecosystem.json` records; dirty or diverged checkouts are only reported,
+  and the core submodule is never pulled — it follows the pin via `brain-update.sh`.
+  `- Session pull: off` in a machine's profile keeps that machine still (a show machine).
 
 ## Afterwards: the maintenance rhythm
 

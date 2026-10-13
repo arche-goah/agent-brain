@@ -46,6 +46,9 @@
  * Template: templates/rules-instance/live-read.json (ships with no domains).
  * No file → silent no-op. Broken file → no-op, logged to .claude-state/live-read-gate.log
  * (fail-open: a read-only hook must never take the session hostage over its own config).
+ * INERT-WITHOUT: .claude/rules/live-read.json domains
+ *   (read by scripts/hook-coverage.py: wired with no file or no domains = reported, unless the
+ *   file says why in `"inert_ok": "<reason>"` — e.g. a brain with no live systems)
  * The settings matcher must cover every tool a domain names; the template wires
  * `Bash|mcp__.*`, an instance gating other tools widens it.
  *

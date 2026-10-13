@@ -10,10 +10,14 @@
 #   Heartbeat:  scripts/loop-watchdog.sh beat      (on every loop step)
 #   Loop off:   scripts/loop-watchdog.sh disarm
 #   Check:      scripts/loop-watchdog.sh check     (launchd, every 5 min)
+#   Start:      scripts/loop-watchdog.sh status --brief   (session-bootup: one line + exit 1
+#               when an armed state is stale, silent otherwise)
 # State: .claude-state/loop-watchdog.state (not in git).
 set -euo pipefail
-cd "$(dirname "$0")/.."
-STATE_DIR=".claude-state"
+# The state lives in the BRAIN, not in the directory above this script: mounted as the
+# submodule `core/`, that parent is core/ itself (measured 2026-10-11 for the watchers).
+. "$(cd "$(dirname "$0")" && pwd)/project-dir.sh"
+STATE_DIR="$(resolve_project_dir "$(cd "$(dirname "$0")" && pwd)")/.claude-state"
 STATE="$STATE_DIR/loop-watchdog.state"
 mkdir -p "$STATE_DIR"
 
@@ -112,9 +116,33 @@ case "${1:-check}" in
       mv "$STATE" "$STATE.stale"
     fi ;;
   status)
+    if [ "${2:-}" = "--brief" ]; then
+      # Session-start form (measured 2026-10-12: a crashed autonomous run leaves the state
+      # file "armed", and without the instance's scheduler nothing ever says so). Same two
+      # alarm classes as `check`, without notification or rename: silent (exit 0) when no
+      # loop is armed or the last beat is within its own limit — a live run in a parallel
+      # session is not a finding; ONE line and exit 1 when the beat is older than the limit,
+      # or the deadline passed with the core reported done (an open core may overrun, see
+      # header). The caller prints the line as is.
+      [ -f "$STATE" ] || exit 0
+      name=$(sed -n 1p "$STATE"); maxmin=$(sed -n 2p "$STATE"); last=$(sed -n 3p "$STATE")
+      dl=$(sed -n 5p "$STATE" 2>/dev/null || echo 0); dl=${dl:-0}
+      cd_flag=$(sed -n 6p "$STATE" 2>/dev/null || echo 0); cd_flag=${cd_flag:-0}
+      now=$(date +%s); silent=$(( ( now - last ) / 60 ))
+      dl_txt="no deadline"
+      if [ "$dl" -gt 0 ]; then
+        if [ "$now" -ge "$dl" ]; then dl_txt="deadline $(hm "$dl") PASSED"; else dl_txt="deadline $(hm "$dl") open"; fi
+      fi
+      stale=0
+      [ "$silent" -ge "$maxmin" ] && stale=1
+      [ "$dl" -gt 0 ] && [ "$now" -ge "$dl" ] && [ "$cd_flag" = "1" ] && stale=1
+      [ "$stale" -eq 1 ] || exit 0
+      echo "!! loop-watchdog still armed: '$name', last beat ${silent} min ago (limit ${maxmin} min), ${dl_txt} — an earlier autonomous run never disarmed it; if no such run is live, run: core/scripts/loop-watchdog.sh disarm"
+      exit 1
+    fi
     if [ -f "$STATE" ]; then
       echo "armed: $(sed -n 1p "$STATE"), last beat $(( ( $(date +%s) - $(sed -n 3p "$STATE") ) / 60 )) min ago"
       "$0" remaining
     else echo "no loop armed"; fi ;;
-  *) echo "usage: $0 {arm <name> <max-silence-min> [runtime-min]|beat|remaining|disarm|check|status}"; exit 2 ;;
+  *) echo "usage: $0 {arm <name> <max-silence-min> [runtime-min]|beat|remaining|disarm|check|status [--brief]}"; exit 2 ;;
 esac

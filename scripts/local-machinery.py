@@ -26,7 +26,11 @@ Declarations: `.claude/rules/local-machinery.json`
   {"identity_tokens": ["<host>", "<ip>", "<person>", "<device>", ...]   (or {"hosts": [...], ...}),
    "instance": {"<id or prefix>": {"why": "...", "evidence": "<token the item contains>",
                                    "distinct_from": "<core name it only resembles>"}},
-   "alpha":    {"<id or prefix>": {"until": "YYYY-MM-DD", "why": "<what is being measured>"}}}
+                 (a rule section without a token may name instead "reach": "<repo file>" — the
+                  reach analysis that judged it; the file must exist and contain its heading)
+   "external": {"<id or prefix>": {"source": "<where it comes from>", "why": "..."}},
+                 (third-party skills/plugins used as they are — not ours to port to the core)
+   "alpha":   {"<id or prefix>": {"until": "YYYY-MM-DD", "why": "<what is being measured>"}}}
 An item id is its repo-relative path (`~/` for the user's Claude dir, `<file>#<heading>` for a
 rule section, `plugin:<id>`, `mcp:<server>`, `launchd:<file>`, `schtasks:<task>`). A key
 matches when the id starts with it or a hook command contains it. The old string form
@@ -63,7 +67,7 @@ SCRIPT_EXT = (".sh", ".py", ".cjs", ".js", ".mjs", ".ps1")
 TEXT_EXT = SCRIPT_EXT + (".md", ".json", ".txt", ".toml", ".yaml", ".yml", ".plist", ".xml", ".ts")
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "site-packages", ".claude-state"}
 CORE_PLUGIN_PREFIXES = ("brain-core@", "brain-core-next@")  # same as plugin-scope-check.py
-LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "edited", "general", "noevidence", "badevidence")
+LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence")
 CLASSES = LOUD + ("duplicate", "undeclared")
 
 
@@ -173,6 +177,12 @@ def cmd_target(cmd, C):
     for tok in tokens(cmd):
         for var in ("${CLAUDE_PROJECT_DIR}", "$CLAUDE_PROJECT_DIR", "%CLAUDE_PROJECT_DIR%"):
             tok = tok.replace(var, C.repo_abs)
+        # The home directory spelled the way the shell expands it (`cmd /c` on Windows
+        # takes %USERPROFILE%). Unexpanded, an existing user-level hook read as "missing"
+        # (measured 2026-10-10: toast.cjs present, reported as gone).
+        for var in ("%USERPROFILE%", "${HOME}", "$HOME"):
+            if tok.startswith(var):
+                tok = C.home.as_posix() + tok[len(var):]
         if tok.startswith("~/"):
             tok = C.home.as_posix() + tok[1:]
         p = pathlib.Path(tok)
@@ -299,6 +309,12 @@ def scan_plugins(C):
     eco = (load(C.root / "config" / "ecosystem.json") or {}).get("repos") or {}
     known = {r.get("consumer_plugin") for r in eco.values()
              if isinstance(r, dict) and r.get("kind") in ("suite", "core")}
+    # The marketplace plugin of a suite this brain lists IS the defined way to consume it,
+    # even before ecosystem.json names it (measured 2026-10-11: grandma3-next read as undeclared).
+    suites = {k.lower() for k, r in eco.items() if isinstance(r, dict) and r.get("kind") == "suite"}
+    for repo, ids in published_repos(C).items():
+        if repo.split("/")[-1] in suites:
+            known.update(ids)
     installed = (load(C.home / ".claude" / "plugins" / "installed_plugins.json") or {}).get("plugins") or {}
     enabled = {}
     user, project, local = settings_files(C)[2], settings_files(C)[0], settings_files(C)[1]
@@ -316,11 +332,43 @@ def scan_plugins(C):
     return out
 
 
+# Claude Code keeps two directories of its own under ~/.claude/skills. `.trash` (any dot
+# directory) holds what the harness removed - never a loaded skill. `synced/<bucket>/` holds
+# the account's claude.ai skills: mostly vendor skills, but a user's OWN uploads land there
+# too (measured 2026-09-30 on the Mac: six with `creatorType: user`, one of them a stale copy
+# of a suite skill - exactly the local carrier this inventory exists to show). So a synced
+# skill is skipped only when its bucket's manifest.json says it is Anthropic's (`creatorType:
+# anthropic` on one machine, `source: anthropic*` on another - measured 2026-10-10); a user
+# upload, an entry without either field and an unreadable manifest are reported.
+def synced_vendor(bucket):
+    m = load(bucket / "manifest.json")
+    if not isinstance(m, dict):
+        return set()
+    out = set()
+    for e in m.get("skills") or []:
+        if not isinstance(e, dict):
+            continue
+        ct, src = str(e.get("creatorType") or ""), str(e.get("source") or "")
+        if ct == "anthropic" or (not ct and src.startswith("anthropic")):
+            out.update(str(e.get(k)) for k in ("skillId", "name") if e.get(k))
+    return out
+
+
 def scan_skills(C):
     out = []
-    for base in (C.root / ".claude" / "skills", C.home / ".claude" / "skills"):
+    home = C.home / ".claude" / "skills"
+    for base in (C.root / ".claude" / "skills", home):
         if base.is_dir():
             for d in sorted(base.iterdir()):
+                if d.name.startswith("."):
+                    continue
+                if base == home and d.name == "synced" and d.is_dir() and not d.is_symlink():
+                    for bucket in sorted(x for x in d.iterdir() if x.is_dir() and not x.name.startswith(".")):
+                        vendor = synced_vendor(bucket)
+                        for sk in sorted(x for x in bucket.iterdir() if x.is_dir() and not x.name.startswith(".")):
+                            if sk.name not in vendor:
+                                out.append(item("skill", C.rel_id(sk), read_tree(sk), file=sk, name=sk.name))
+                    continue
                 if d.is_dir() and not d.is_symlink():
                     out.append(item("skill", C.rel_id(d), read_tree(d), file=d, name=d.name))
     return out
@@ -500,6 +548,7 @@ def identity_matcher(tokens_):
 
 def judge(items, decl, C, today):
     inst, alpha = decl.get("instance") or {}, decl.get("alpha") or {}
+    ext = decl.get("external") or {}
     ident = identity_matcher(decl.get("identity_tokens"))
     core = core_names(C)
     found = {c: [] for c in CLASSES}
@@ -527,12 +576,27 @@ def judge(items, decl, C, today):
                 it["class"] = "expired"
                 found["expired"].append(f"{ka} (until {until or '?'})")
             continue
+        ke = match(ext, it)
+        if ke and not ki:
+            src = (ext[ke] or {}).get("source", "") if isinstance(ext[ke], dict) else ""
+            if not str(src).strip():
+                it["class"] = "noevidence"
+                found["noevidence"].append(f"{it['id']} (external without source)")
+            continue
         d = inst.get(ki) if ki else None
         if ki:
             ev = d.get("evidence") if isinstance(d, dict) else None
             evs = [ev] if isinstance(ev, str) else [e for e in ev or [] if isinstance(e, str)]
             evs = [e for e in evs if len(e.strip()) >= 3]
-            if not evs:
+            reach = d.get("reach") if isinstance(d, dict) else None
+            if not evs and reach:
+                # The reach analysis is the evidence: it must exist and name this item.
+                rf = C.root / str(reach)
+                txt = rf.read_text(encoding="utf-8", errors="replace") if rf.is_file() else ""
+                if it["id"].split("#", 1)[-1] not in txt:
+                    it["class"] = "badevidence"
+                    found["badevidence"].append(f"{it['id']} (reach {reach} does not name it)")
+            elif not evs:
                 it["class"] = "noevidence"
                 found["noevidence"].append(it["id"])
             elif not any(e.lower() in it["content"].lower() for e in evs):
@@ -568,10 +632,9 @@ def same_tree(key, top):
     return t == k or t.startswith(k + os.sep)
 
 
-def tool_sources_off_main(C):
-    """MCP servers (`.mcp.json`) and skill symlinks run straight from suite working trees.
-    Those are fine on main and unreleased code on any other branch. Returns
-    `(<checkout>, <branch>)` for every source checkout outside this brain not on main/master."""
+def tool_source_tops(C):
+    """Top-level checkouts outside this brain that feed it an MCP server (`.mcp.json`) or a
+    skill symlink -> {top: branch}."""
     paths = []
     for srv in ((load(C.root / ".mcp.json") or {}).get("mcpServers") or {}).values():
         for tok in [srv.get("command") or ""] + [str(x) for x in srv.get("args") or []]:
@@ -586,7 +649,40 @@ def tool_sources_off_main(C):
         if not top or pathlib.Path(top).resolve() == C.root or top in found:
             continue
         found[top] = git("-C", top, "rev-parse", "--abbrev-ref", "HEAD")
-    return [(t, b) for t, b in found.items() if b and b not in ("main", "master")]
+    return found
+
+
+def tool_sources_off_main(C, tops=None):
+    """Suite working trees are fine on main and unreleased code on any other branch. Returns
+    `(<checkout>, <branch>)` for every source checkout not on main/master."""
+    tops = tool_source_tops(C) if tops is None else tops
+    return [(t, b) for t, b in tops.items() if b and b not in ("main", "master")]
+
+
+def published_repos(C):
+    """{'owner/repo': ['plugin@marketplace', ...]} from every marketplace this machine has added."""
+    out = {}
+    for mf in (C.home / ".claude" / "plugins" / "marketplaces").glob("*/.claude-plugin/marketplace.json"):
+        mkt = mf.parent.parent.name
+        for p in (load(mf) or {}).get("plugins") or []:
+            src = p.get("source") if isinstance(p, dict) else None
+            if isinstance(src, dict) and src.get("repo") and p.get("name"):
+                out.setdefault(src["repo"].lower(), []).append(f"{p['name']}@{mkt}")
+    return out
+
+
+def clones_with_plugin(C, tops=None):
+    """A suite that ships as a plugin is consumed as the plugin; a clone feeding the brain is a
+    deviation even on main (operator order 2026-10-11: a clone only to check a PR head, then
+    back). Returns `(<checkout>, <plugins>)` per such checkout."""
+    tops = tool_source_tops(C) if tops is None else tops
+    pub = published_repos(C)
+    out = []
+    for top in tops:
+        m = re.search(r"github\.com[:/]([^/\s]+/[^/\s]+?)(?:\.git)?$", git("-C", top, "remote", "get-url", "origin"))
+        if m and m.group(1).lower() in pub:
+            out.append((top, pub[m.group(1).lower()]))
+    return out
 
 
 def edited_core(C):
@@ -619,6 +715,7 @@ def uniq(xs):
 MESSAGES = {
     "edited": "!! local machinery: {n} core file(s) edited inside core/: {x} — core changes go as a PR against the core, never edited in place",
     "offmain": "!! local machinery: {n} tool source checkout(s) not on main feed this brain (MCP server or skill symlink): {x} — unreleased code in every session; switch the checkout back to main, or declare it as alpha",
+    "clone": "!! local machinery: {n} suite clone(s) feed this brain although the suite ships as a plugin: {x} — consume the plugin (marketplace); a clone is only for checking a PR head, then back — or declare it as alpha with a date",
     "missing": "!! local machinery: {n} hook or stop-check target(s) do not exist: {x} — the check silently stopped running; restore the path, repoint it at the core, or unwire it",
     "wrapper": "!! local machinery: {n} same-named instance wrapper(s) only call the core item: {x} — remove the wrapper and call the core one directly",
     "contradiction": "!! local machinery: {n} item(s) are declared in two contradicting places: {x} — decide which one is true and fix the other",
@@ -654,7 +751,11 @@ def main(argv):
     found["edited"] = edited_core(C)
     found["missing"] = C.missing
     alpha = decl.get("alpha") or {}
-    for top, br in tool_sources_off_main(C):
+    tops = tool_source_tops(C)
+    for top, plugins in clones_with_plugin(C, tops):
+        if not any(same_tree(k, top) for k in alpha):
+            found["clone"].append(f"{os.path.basename(top)} (plugin {'/'.join(plugins)})")
+    for top, br in tool_sources_off_main(C, tops):
         ka = next((k for k in alpha if same_tree(k, top)), None)
         if not ka:
             found["offmain"].append(f"{os.path.basename(top)}@{br}")
@@ -669,7 +770,7 @@ def main(argv):
         for it in items:
             print(f"{it['class']:11} {it['carrier']:12} {it['id']}")
 
-    for cls in ("missing", "edited", "offmain", "shadow", "wrapper", "contradiction", "expired", "outside", "general", "noevidence",
+    for cls in ("missing", "edited", "offmain", "clone", "shadow", "wrapper", "contradiction", "expired", "outside", "general", "noevidence",
                 "badevidence", "duplicate", "undeclared"):
         xs = uniq(found[cls])
         if not xs:

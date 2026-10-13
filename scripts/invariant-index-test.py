@@ -51,7 +51,8 @@ status:    %s
 
 with tempfile.TemporaryDirectory() as d:
     reg = Path(d) / "inv.md"
-    reg.write_text(REGISTER, encoding="utf-8", newline="\n")
+    with open(reg, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(REGISTER)
     text = ii.build(reg)
     lines = [ln for ln in text.splitlines() if ln.startswith("- **")]
     check(len(lines) == 4, "one line per block")

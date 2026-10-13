@@ -114,7 +114,43 @@ with tempfile.TemporaryDirectory() as td:
        "stale-allowlist" in out,
        "the other half of the allowlist block was broken by the filter")
 
+print("brain-friction: blind-to-indirection")
+
+STOP_CHECKS = {"checks": [{"label": "C", "marker": "CLASS-GATE",
+                           "cmd": "core/helpers/class-gate.cjs", "mode": "block"}]}
+BLIND = ("import json\n# reads settings.json hooks and matches class-gate.cjs by name\n"
+         "s = json.load(open('.claude/settings.json'))\n")
+AWARE = BLIND + "cfg = open('.claude/rules/stop-checks.json').read()\n"
+
+
+def build_dispatcher_brain(root, scripts):
+    (root / ".claude" / "rules").mkdir(parents=True)
+    (root / ".claude" / "rules" / "stop-checks.json").write_text(
+        json.dumps(STOP_CHECKS), encoding="utf-8")
+    (root / "scripts").mkdir()
+    for name, body in scripts.items():
+        (root / "scripts" / name).write_text(body, encoding="utf-8")
+
+
+# 5. a checker that reads settings.json and ignores stop-checks.json is blind (negative control)
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    build_dispatcher_brain(root, {"blind-check.py": BLIND})
+    out = scan(root)
+    ok("a checker blind to the dispatcher is reported",
+       "blind-to-indirection" in out and "blind-check.py" in out,
+       "the class this check exists for went silent")
+
+# 6. the same checker that also reads stop-checks.json knows the indirection
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    build_dispatcher_brain(root, {"aware-check.py": AWARE})
+    out = scan(root)
+    ok("a checker that reads stop-checks.json stays silent",
+       "aware-check.py" not in out,
+       "a file that already knows the config was reported blind")
+
 if fails:
     print(f"brain-friction-test: {len(fails)} FAILURE(S)")
     sys.exit(1)
-print("brain-friction-test: all 4 fixtures passed")
+print("brain-friction-test: all 6 fixtures passed")

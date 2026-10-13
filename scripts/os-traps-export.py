@@ -51,7 +51,7 @@ def parse(register: Path) -> list[dict]:
     return out
 
 
-def render(entries: list[dict], register_rel: str) -> str:
+def render(entries: list[dict], register_rel: str, sender: str) -> str:
     by_shape: dict[str, list[dict]] = {}
     for e in entries:
         by_shape.setdefault(e["shape"] or "?", []).append(e)
@@ -65,7 +65,7 @@ def render(entries: list[dict], register_rel: str) -> str:
         'signpost for the other instance."',
         "metadata:",
         "  type: reference",
-        "  von: alex-workstation",
+        f"  von: {sender}",
         "  audience: alle",
         "  topic: core",
         "---",
@@ -136,7 +136,16 @@ def main() -> int:
             return 2
         out = Path(repo) / "core" / "os-trap-register.md"
 
-    text = render(entries, f"docs/{a.register.name}")
+    # The sender is instance data: the first token of SHARED_MEMORY_SELF ("<device>,<alias>,…"),
+    # the name every other own entry carries. Measured 2026-10-11: a fixed placeholder sender in
+    # the generated file made the inbox list this instance's own export as a request from a party
+    # that does not exist. No self, no write — a dry run shows the placeholder.
+    sender = os.environ.get("SHARED_MEMORY_SELF", "").split(",")[0].strip()
+    if a.write and not sender:
+        print("ERROR: SHARED_MEMORY_SELF unset - the entry's sender (`von`) is this instance's "
+              "name, instance data this tool does not guess", file=sys.stderr)
+        return 2
+    text = render(entries, f"docs/{a.register.name}", sender or "<SHARED_MEMORY_SELF>")
     missing = [e["id"] for e in entries if not e["shape"]]
     if missing:
         print(f"WARNING: no shape stated for {', '.join(missing)} — they land under '?'",
@@ -147,7 +156,8 @@ def main() -> int:
         return 0
     out.parent.mkdir(parents=True, exist_ok=True)
     # newline="\n": OS-2, in the tool that documents OS-2.
-    out.write_text(text, encoding="utf-8", newline="\n")
+    with open(out, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
     print(f"written: {out} ({len(entries)} entries)")
     return 0
 

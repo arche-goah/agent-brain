@@ -114,6 +114,127 @@ mg_probe "mechanism-guard/heredoc through eval" \
   'eval \"$(cat <<EOF\nfixture-shortcut --now\nEOF\n)\"' block
 rm -rf "$MG"
 
+# --- mechanism-guard: a rule may demand the OPERATOR'S WORD behind the marker ----------
+# Incident 2026-09-12: two merges in a shared repo carried the marker with a verbatim operator
+# quote that stands in no transcript of that day — an unspecific order smoothed into a crisp
+# permission while writing the marker. A rule with `needs_operator_word: true` opens only when
+# the justification carries something checkable: a quotation PLUS its date, or a pointer to a
+# record file that exists. Every shape is probed in both directions, and the unflagged rule
+# next to it is the control that today's behaviour did not move.
+# The temp dir crosses into node as DATA (CLAUDE_PROJECT_DIR, and the pointer probes resolve
+# files under it), so it is stated natively — OS-3 in docs/os-traps.md.
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+MG="$(native "$(mktemp -d)")"
+mkdir -p "$MG/.claude/rules" "$MG/docs"
+printf '%s' '[{"pattern":"\\bfixture-shortcut\\b","was":"fixture","stattdessen":"the documented path"},{"pattern":"\\bfixture-operator-gate\\b","was":"gated fixture","stattdessen":"agree it with the operator first","needs_operator_word":true}]' \
+  > "$MG/.claude/rules/mechanism-rules.json"
+printf 'decision: fixture\nrecorded 2026-10-12\n' > "$MG/docs/decision.md"
+printf '#!/bin/sh\n' > "$MG/docs/decision.sh"
+mg_probe "mechanism-guard/operator word: no marker" "fixture-operator-gate --now" block
+mg_probe "mechanism-guard/operator word: bare marker" \
+  "fixture-operator-gate --now  # MECHANISM-OK: the operator agreed" block
+mg_probe "mechanism-guard/operator word: quote without date" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator: \"go ahead with the gate\"' block
+mg_probe "mechanism-guard/operator word: date without quote" \
+  "fixture-operator-gate --now  # MECHANISM-OK: agreed on 2026-10-12" block
+mg_probe "mechanism-guard/operator word: empty quote + date" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-10-12: \"\"' block
+mg_probe "mechanism-guard/operator word: quote + date" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-10-12: \"go ahead with the gate\"' allow
+mg_probe "mechanism-guard/operator word: low-9 quotes + date" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-10-12: „go ahead with the gate“' allow
+mg_probe "mechanism-guard/operator word: pointer to an existing record" \
+  "fixture-operator-gate --now  # MECHANISM-OK: decided, see docs/decision.md:2" allow
+mg_probe "mechanism-guard/operator word: pointer beyond the file's end" \
+  "fixture-operator-gate --now  # MECHANISM-OK: see docs/decision.md:40" block
+mg_probe "mechanism-guard/operator word: pointer to a missing file" \
+  "fixture-operator-gate --now  # MECHANISM-OK: see docs/nothing.md" block
+mg_probe "mechanism-guard/operator word: pointer to a script is no record" \
+  "fixture-operator-gate --now  # MECHANISM-OK: see docs/decision.sh" block
+# Controls: the unflagged rule next to a flagged one keeps today's behaviour, in both directions.
+mg_probe "mechanism-guard/operator word: unflagged rule + bare marker (control)" \
+  "fixture-shortcut --now  # MECHANISM-OK: proving the escape hatch" allow
+mg_probe "mechanism-guard/operator word: unflagged rule without marker (control)" \
+  "fixture-shortcut --now" block
+mg_probe "mechanism-guard/operator word: plain command (control)" "git status --short" allow
+rm -rf "$MG"
+
+# --- mechanism-guard: TOOL rules — a tool declares its own internals ------------------
+# Incident 2026-10-11: a session on a second machine could not take the defined path and
+# built its own client, wrote probes into the tool's IPC file and drove the GUI. The guard
+# only knew instance rules. A tool now ships `mechanism-rules.json` at its root, and the
+# guard finds it on BOTH ways a tool arrives: a clone referenced in .mcp.json, and an
+# enabled plugin. Each way gets a block AND an allow, and a disabled plugin must stay out.
+TR=$(mktemp -d)
+mkdir -p "$TR/suite/mcp/src" "$TR/proj/.claude" "$TR/fakeuser/.claude/plugins" \
+         "$TR/fakeuser/plug-on" "$TR/fakeuser/plug-off"
+: > "$TR/suite/mcp/src/index.ts"
+printf '%s' '{"tool":"fixture-suite","rules":[{"pattern":"fixture-ipc\\.txt$","target":"path","was":"ipc","instead":"the MCP tools"},{"pattern":"\\bfixture-server-by-hand\\b","was":"server by hand","instead":"the MCP server"}]}' \
+  > "$TR/suite/mechanism-rules.json"
+printf '{"mcpServers":{"fx":{"command":"node","args":["%s"]}}}' "$(native "$TR/suite/mcp/src/index.ts")" \
+  > "$TR/proj/.mcp.json"
+printf '%s' '{"tool":"fixture-plugin","rules":[{"pattern":"\\bfixture-plugin-internal\\b","was":"plugin internal","instead":"its MCP tools"}]}' \
+  > "$TR/fakeuser/plug-on/mechanism-rules.json"
+printf '%s' '{"tool":"fixture-off","rules":[{"pattern":"\\bfixture-disabled-internal\\b","was":"x","instead":"y"}]}' \
+  > "$TR/fakeuser/plug-off/mechanism-rules.json"
+printf '{"version":2,"plugins":{"on@fx":[{"installPath":"%s"}],"off@fx":[{"installPath":"%s"}]}}' \
+  "$(native "$TR/fakeuser/plug-on")" "$(native "$TR/fakeuser/plug-off")" > "$TR/fakeuser/.claude/plugins/installed_plugins.json"
+printf '%s' '{"enabledPlugins":{"on@fx":true,"off@fx":false}}' > "$TR/fakeuser/.claude/settings.json"
+tr_probe() { # $1 name, $2 tool_name, $3 field (command|file_path), $4 value, $5 block|allow
+  local out helper
+  helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
+  out=$(printf '{"tool_name":"%s","tool_input":{"%s":"%s"}}' "$2" "$3" "$4" \
+        | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$helper" 2>&1)
+  if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
+    [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked what it should allow"
+  else
+    [ "$5" = allow ] && ok "$1 allows" || bad "$1 did NOT block: ${out:0:80}"
+  fi
+}
+tr_probe "mechanism-guard/tool rule via .mcp.json clone (command)" Bash command "fixture-server-by-hand --x" block
+tr_probe "mechanism-guard/tool rule via clone (path, Write)" Write file_path "$(native "$TR")/x/fixture-ipc.txt" block
+tr_probe "mechanism-guard/tool rule via clone (path, Edit)" Edit file_path "$(native "$TR")/x/fixture-ipc.txt" block
+tr_probe "mechanism-guard/path rule ignores commands" Bash command "cat notes-about-fixture-ipc.txt.md" allow
+tr_probe "mechanism-guard/ordinary Write" Write file_path "$(native "$TR")/x/readme.md" allow
+tr_probe "mechanism-guard/tool rule via enabled plugin" Bash command "fixture-plugin-internal now" block
+tr_probe "mechanism-guard/disabled plugin stays out" Bash command "fixture-disabled-internal now" allow
+tr_probe "mechanism-guard/tool rule + MECHANISM-OK marker" Bash command "fixture-server-by-hand  # MECHANISM-OK: developing the tool" allow
+
+# --- mechanism-guard: the CORE's own rules — a refused action is not re-issued ---------
+# Coherence scan 2026-10-12: a skill named `gh api -X PUT .../pulls/<n>/merge` a "second
+# legitimate form" after the permission layer refused `gh pr merge`. The core ships its own
+# mechanism-rules.json; this reads THAT file (not a copy) through a fake enabled plugin whose
+# install root is the core, so a broken pattern in the shipped file turns this red. It reuses
+# the tool-rule fixture's dir (same fake user), so the plugin list below replaces the one above.
+if CR=$(resolve mechanism-rules.json); then
+  CRD=$(cd "$(dirname "$CR")" && pwd)
+  printf '{"version":2,"plugins":{"core@fx":[{"installPath":"%s"}]}}' "$(native "$CRD")" \
+    > "$TR/fakeuser/.claude/plugins/installed_plugins.json"
+  printf '%s' '{"enabledPlugins":{"core@fx":true}}' > "$TR/fakeuser/.claude/settings.json"
+  tr_probe "mechanism-guard/core rule: raw API merge" Bash command "gh api -X PUT repos/o/r/pulls/5/merge -f merge_method=merge" block
+  tr_probe "mechanism-guard/core rule: --method PUT form" Bash command "gh api --method PUT repos/o/r/pulls/5/merge" block
+  tr_probe "mechanism-guard/core rule: GET of the merge state" Bash command "gh api repos/o/r/pulls/5/merge" allow
+  tr_probe "mechanism-guard/core rule: gh pr merge itself" Bash command "gh pr merge 5 --squash" allow
+  tr_probe "mechanism-guard/core rule: marker without the operator" Bash command "gh api -X PUT repos/o/r/pulls/5/merge  # MECHANISM-OK: faster" block
+  tr_probe "mechanism-guard/core rule: marker quoting the operator" Bash command "gh api -X PUT repos/o/r/pulls/5/merge  # MECHANISM-OK: operator 2026-10-12 \\\"merge it via the API\\\"" allow
+  # CI is never waited for in the foreground (operator 2026-10-13: a core run takes ~15 min)
+  tr_probe "mechanism-guard/core rule: ci-watch in the foreground" Bash command "bash core/scripts/ci-watch.sh pr o/r 5" block
+  tr_probe "mechanism-guard/core rule: gh run watch in the foreground" Bash command "gh run watch 123 -R o/r" block
+  tr_probe "mechanism-guard/core rule: gh pr checks --watch" Bash command "gh pr checks 5 -R o/r --watch" block
+  tr_probe "mechanism-guard/core rule: gh pr checks once" Bash command "gh pr checks 5 -R o/r" allow
+  tr_probe "mechanism-guard/core rule: ci-watch via Monitor" Monitor command "bash core/scripts/ci-watch.sh pr o/r 5" allow
+  out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
+        | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
+  if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
+    bad "mechanism-guard/core rule: ci-watch with run_in_background blocked what it should allow"
+  else
+    ok "mechanism-guard/core rule: ci-watch with run_in_background allows"
+  fi
+else
+  skip "mechanism-guard/core rules (mechanism-rules.json)"
+fi
+rm -rf "$TR"
+
 # --- freshness-gate: only the Workflow tool concerns it ----------------------
 # The blocking case needs a completed expensive run in this session's record, which a
 # fixture cannot fake without inventing a run id. What IS provable here: it stays out

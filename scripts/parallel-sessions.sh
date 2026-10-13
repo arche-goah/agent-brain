@@ -52,8 +52,11 @@ count_cmdlines() {
 
 machine_wide() {  # $1 = count, $2 = source
   if [ "$1" -gt 1 ]; then
-    echo "!! $1 claude sessions on this machine ($2) — cannot attribute repo-exact without lsof."
-    echo "   Follow the collision rules: commit after every block, NEVER force-push, hand off via a memory note."
+    # No `!!` here: without lsof this cannot say whether any of them sits in THIS repo, and a
+    # warning nobody can resolve showed up at every second start on Windows (measured
+    # 2026-10-11). Exit 1 still carries "more than one" to the caller; the line says what it
+    # knows and what it does not.
+    echo "note: $1 claude sessions on this machine ($2) — which folders they sit in cannot be told here (no lsof). If one of them is this brain: commit after every block, never force-push, hand off via a memory note."
     exit 1
   fi
   echo "parallel-sessions: $1 claude session on this machine ($2, not repo-exact) — a second one is not possible"

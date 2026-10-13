@@ -15,6 +15,32 @@ READ the output, react to `!!` warnings (report/propose), connect to
 1-sentence mini-summary** (state of affairs + what is potentially coming up — from
 the bootup block, open assignments, memory).
 
+**The first reply has ONE target form — fill the slots, in this order, and nothing else is
+required of it** (operator order 2026-10-12, after a coherence scan counted more than ten
+first-reply requirements spread over this section, each with its own date, and a blocking gate
+behind them). Each slot names the paragraph that defines it; the paragraphs below stay the
+definition, this list is the order and the checklist:
+
+1. **Mini-summary** — one sentence, state + what is coming up (above). Plain words
+   ("The summary is written for the operator", "Kind and matter in plain words").
+2. **The operator's own request** — if the first message carries an order or a question,
+   it is answered or started here, before any housekeeping. A session usually starts for
+   that reason, not for the open points.
+3. **Reporting duties, one line each** — FAIL / self-test failure / an acute warning, each
+   on its own line with the next concrete step ("A reporting duty needs its own line").
+4. **Open points for this instance** — split by who acts: "n I can handle — shall I?" (ONE
+   question, only here) and "m need you" (up to three named, more offered); items reported
+   before said louder; "nothing open" or "could not read" when that is the state ("Open
+   points that concern this instance"). Carried by `open-items-gate.cjs`.
+5. **Due decisions** — a brain-scan or deep check that is due, a deferred point said once,
+   a pending update: each as a direct question with the price where there is one ("Three
+   levels of self-check", "Presenting to the Operator").
+
+Everything else that the bootup showed and that came back clean stays silent ("Relevance
+beats completeness"). Slots that are empty are left out, not announced. A later reply in the
+same session repeats none of slots 3-5 unless the state changed or an unanswered question
+becomes the next step's blocker (then asked again, verbatim — "Presenting to the Operator").
+
 **The brain-scan runs only in an active session, on the operator's OK** (operator
 decision 2026-09-23): the bootup reports it due after 7 days and overdue after 14; the
 first answer asks, and the scan starts in this session once the operator says yes. No
@@ -96,7 +122,12 @@ to.)
 open request addressed to this instance, an open PR — reaches the first reply, split by
 WHO has to act. Items the agent can answer or handle itself (its own circle): the count
 and ONE question whether to go ahead — a session usually starts for another reason, so
-the agent starts none of them without that OK. Items that need the operator: the count;
+the agent starts none of them without that OK. That question is asked ONCE, at the session
+start (startup or resume) — never again later in the same session (operator correction
+2026-10-10: "I want to hear that question mainly at the session start, not again
+and again"). After a compaction, after the operator's go, and for every own item that
+turns up mid-session: handle it and report what was done; a report never ends on "n I can
+handle — shall I?". Items that need the operator: the count;
 up to three, one short bullet each (what it is about, who needs what); more than three,
 the offer to list them — a wall of items at session start intimidates. Nothing open: say
 "nothing open". A source that could not be read: say so — never "nothing". An item that
@@ -124,7 +155,9 @@ fire on a hard kill). NO `memory/session_*.md` files — memory lives in auto-me
 ## Auto-Organization (ALWAYS)
 
 1. Every new file goes into the right folder immediately (instance folder table).
-2. Every new insight → auto-memory (file + MEMORY.md index). **If an entry asserts a
+2. Every new FACT → auto-memory (file + MEMORY.md index); a new LESSON goes to its
+   strongest carrier (Knowledge Carriers below) and memory keeps at most the pointer —
+   a lesson filed only as memory is recalled as text, not as a mechanism. **If an entry asserts a
    state of the core** (file, rule, helper), it names the submodule state it was
    measured against (tag or commit) — otherwise the note goes silently stale at the
    next core update (measured 2026-08-04: one entry flipped one minute after being
@@ -273,7 +306,7 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   "m really need you" — and the second number is usually small.
 - **A sub-agent's framing is not a decision** (operator decision 2026-08-22): "waits
   for OK" from a workflow is its filing category under its own implements-nothing
-  boundary. The item passes the instance's stop test before it reaches the operator;
+  boundary. The item passes ASK OR ACT (`working-rules.md`) and the comparative test above before it reaches the operator;
   a report may say "five points, four decided, one needs you".
 - **Measurable is not an open point** (operator decision 2026-10-04): a state a tool
   can read live (link, host table, lease, version) is measured BEFORE the report; the
@@ -286,6 +319,29 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   a wired carrier is reported once, and a request from another party gets an answer —
   receipt, state, when it continues (operator decision 2026-10-08). Parked blocks the
   work, never the reply.
+- **A point the operator deferred is said once per session — and only the operator defers**
+  (operator decisions 2026-08-03 and 2026-10-10). Deferred means the operator postponed THIS
+  point in their own words ("later", "not now", "next week", a date). Then it is not raised
+  again in the same session — neither as a question nor as a trailing "still open" line; it
+  comes back when the operator returns to it, when a new measurement changes the situation
+  (data loss turning acute), or once in the next session's start report. A question the
+  operator replied past without addressing it is NOT deferred: it is unanswered, stays open,
+  and is asked again where it matters, louder each time (the repeat rule for open points
+  above). The agent never files its own silence or the operator's silence as a deferral.
+  Carried by `core/helpers/question-gate.cjs`: `deferred` is accepted only with the
+  operator's words as the note; `unanswered` keeps the question listed and askable.
+  **The agent closes its own question once its work has answered it** (operator decision
+  2026-10-11: "yes, the AI may close its own settled questions — but set it up cleanly,
+  document and justify it"): a question the agent asked, then settled by measuring, building
+  or reading instead of waiting, is resolved `answered` by the agent with the resolution in
+  the note; only `deferred` needs the operator's words. Justification: the gate exists so
+  that a question does not scroll away unanswered — a question the work has answered is not
+  that case, and a human made to close it by hand is pure friction (measured 2026-10-11 on a
+  Windows brain: the agent's `resolve` call was refused by the harness classifier because
+  that brain lacked the template's `Bash(node core/helpers/*)` permission, and the operator
+  had to run it; the macOS brain, which carries the permission, closed three such questions
+  the same day). The permission is part of the template; `hook-coverage.py` now reports a
+  brain that does not grant it, like an unwired hook.
 - **Name the server, never "the MCP"** (operator decision 2026-08-20) — also in a
   reconnect request. Generally: before a proposal, check that its load-bearing word is
   unambiguous for the reader; an internal short word can mean something else to them

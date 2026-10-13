@@ -15,6 +15,7 @@ Usage: python3 scripts/os-traps-export-test.py   (exit 0 = all fixtures pass)
 import importlib.util
 import io
 import contextlib
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -58,15 +59,23 @@ status:    open
 """
 
 
-def run(args):
-    old = sys.argv
+def run(args, self_="dev-a,alias-a"):
+    old, old_self = sys.argv, os.environ.get("SHARED_MEMORY_SELF")
     sys.argv = ["os-traps-export.py"] + args
+    if self_ is None:
+        os.environ.pop("SHARED_MEMORY_SELF", None)
+    else:
+        os.environ["SHARED_MEMORY_SELF"] = self_
     out, err = io.StringIO(), io.StringIO()
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             rc = ote.main()
     finally:
         sys.argv = old
+        if old_self is None:
+            os.environ.pop("SHARED_MEMORY_SELF", None)
+        else:
+            os.environ["SHARED_MEMORY_SELF"] = old_self
     return rc, out.getvalue(), err.getvalue()
 
 
@@ -74,7 +83,8 @@ print("os-traps-export:")
 
 with tempfile.TemporaryDirectory() as td:
     reg = Path(td) / "os-traps.md"
-    reg.write_text(REGISTER, encoding="utf-8", newline="\n")
+    with open(reg, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(REGISTER)
     dest = Path(td) / "shared" / "core" / "os-trap-register.md"
 
     rc, out, err = run(["--register", str(reg), "--out", str(dest), "--write"])
@@ -101,10 +111,20 @@ with tempfile.TemporaryDirectory() as td:
     # Negative control: a register the parser does not understand must not produce a
     # confident-looking file. Silence plus exit 0 is the failure mode that matters.
     empty = Path(td) / "empty.md"
-    empty.write_text("root: ..\n\nnothing here\n", encoding="utf-8", newline="\n")
+    with open(empty, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("root: ..\n\nnothing here\n")
     rc2, _, err2 = run(["--register", str(empty), "--out", str(dest), "--write"])
     ok("7 a register with no entries fails loudly", rc2 != 0 and "no entries" in err2,
        f"rc={rc2} err={err2[:80]}")
+
+    # The sender is this instance (measured 2026-10-11: a fixed placeholder made the inbox list
+    # the own export as a request from a party that does not exist).
+    ok("8 the sender is the first token of SHARED_MEMORY_SELF",
+       "\n  von: dev-a\n" in text, [l for l in text.split(chr(10)) if "von:" in l][:1])
+    dest2 = Path(td) / "shared2" / "core" / "os-trap-register.md"
+    rc3, _, err3 = run(["--register", str(reg), "--out", str(dest2), "--write"], self_=None)
+    ok("9 negative control: no SHARED_MEMORY_SELF, no write", rc3 != 0 and not dest2.exists()
+       and "SHARED_MEMORY_SELF" in err3, f"rc={rc3} exists={dest2.exists()}")
 
 print()
 if fails:
