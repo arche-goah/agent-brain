@@ -89,6 +89,13 @@ def main():
         write(tdir, "aaaa0007-live", [boot(), user("still typing")], age_h=0)
         write(tdir, "aaaa0008-current", [boot(), user("me")])
         write(tdir, "aaaa0009-old", [boot("cancelled"), user("w")], age_h=24 * 30)
+        full, cut = tmp / "boot-full.txt", tmp / "boot-cut.txt"
+        full.write_text("x\n=== END BOOTUP ===\n", encoding="utf-8")
+        cut.write_text("x\n!! session-bootup aborted early", encoding="utf-8")
+        preview = "<persisted-output>\nOutput too large (10.1KB). Full output saved to: {}\n\nPreview (first 2KB):\nx\n...\n</persisted-output>"
+        write(tdir, "aaaa0010-persisted", [boot(text=preview.format(full)), user("w"), close_skill()])
+        # the incomplete start of aaaa0006 again, its output saved to a file: still reported
+        write(tdir, "aaaa0006-incomplete", [boot(text=preview.format(cut)), user("w"), close_skill()])
         hook = {"session_id": "aaaa0008-current", "transcript_path": str(tdir / "aaaa0008-current.jsonl")}
 
         rc, out = run(["--json"], root, hook)
@@ -97,6 +104,7 @@ def main():
         ok("end:aaaa0002-killed" in found, "a killed session is reported")
         ok("start:aaaa0005-cancelled" in found, "a cancelled session start is reported (even when the session was closed)")
         ok("start:aaaa0006-incomplete" in found, "an incomplete session start is reported")
+        ok(not any("aaaa0010" in f for f in found), "a complete start whose output was saved to a file stays silent")
         ok(not any("aaaa0001" in f for f in found), "a closed session stays silent (negative control)")
         ok(not any("aaaa0003" in f for f in found), "a session without a prompt stays silent")
         ok(not any("aaaa0004" in f for f in found), "a headless run is not 'ended without close'")

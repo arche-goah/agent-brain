@@ -60,6 +60,8 @@ END_MARK = "=== END BOOTUP ==="
 BOOTUP = re.compile(r"session-bootup\.sh")
 CLOSE_SKILL = re.compile(r'"name"\s*:\s*"Skill"\s*,\s*"input"\s*:\s*\{\s*"skill"\s*:\s*"(?:[\w.-]+:)?session-close"')
 CLOSE_STEP = re.compile(r"session-closing\.sh[^\"\n]{0,80}--pre-commit")
+# A large hook output is stored as a preview plus a file; the end marker lives in the file.
+PERSISTED = re.compile(r"<persisted-output>\s*Output too large[^\n]*?Full output saved to:\s*(\S+)")
 NOT_A_PROMPT = re.compile(r"^\s*(<task-notification|<system-reminder|<local-command|<command-name>/(clear|exit|resume)|Stop hook feedback|\[Request interrupted)")
 
 
@@ -123,6 +125,12 @@ def judge(path):
                         start = {"state": "cancelled", "ms": a.get("durationMs") or 0, "source": src}
                     elif a.get("type") == "hook_success":
                         text = str(a.get("content") or a.get("stdout") or "")
+                        p = PERSISTED.search(text)
+                        if p and END_MARK not in text:
+                            try:
+                                text = Path(p.group(1)).read_text(encoding="utf-8", errors="replace")
+                            except OSError:
+                                pass
                         start = {"state": "ok" if END_MARK in text else "incomplete", "ms": a.get("durationMs") or 0,
                                  "source": src}
                 continue
