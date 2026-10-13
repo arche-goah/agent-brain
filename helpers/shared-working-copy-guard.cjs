@@ -54,6 +54,21 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const OP_STATES = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'];
+
+// OS-15: a hook never starts a Git-Bash tool by bare name — on Windows the hook's PATH has no
+// Git\usr\bin. These two run only on macOS/Linux (the win32 branch uses PowerShell) and are
+// resolved to their absolute path; an unresolvable tool makes the count "unknown" (fail-open).
+const PS = ['/bin/ps', '/usr/bin/ps'].find((p) => fs.existsSync(p)) || null;
+const LSOF = ['/usr/sbin/lsof', '/usr/bin/lsof'].find((p) => fs.existsSync(p)) || null;
+
+// A command typed in Git Bash carries MSYS paths (`git -C /c/work/repo`); node resolves
+// `/c/...` against the drive of the cwd and lands in `C:\c\...`. Translate the drive form;
+// an MSYS-only path (`/tmp/...`) stays unresolvable and the call is skipped (fail-open).
+function fromShellPath(p) {
+  if (process.platform !== 'win32') return p;
+  const m = /^\/([a-zA-Z])(\/.*)?$/.exec(p);
+  return m ? `${m[1].toUpperCase()}:${m[2] || '/'}` : p;
+}
 const OWNER_FILE = 'claude-op-owner';
 const SCRATCHPAD_RE = /[\\/]claude-\d+[\\/][^\\/]+[\\/][0-9a-f-]{36}[\\/]/;
 
@@ -81,14 +96,15 @@ function sessions() {
     }
     return out;
   }
-  const ps = spawnSync('ps', ['-axo', 'pid=,comm=,args='], { encoding: 'utf8', timeout: 5000 });
+  if (!PS) return null;
+  const ps = spawnSync(PS, ['-axo', 'pid=,comm=,args='], { encoding: 'utf8', timeout: 5000 });
   if (ps.status !== 0) return null;
   for (const line of (ps.stdout || '').split('\n')) {
     const m = /^\s*(\d+)\s+(\S+)\s+(.*)$/.exec(line);
     if (!m || !/(^|\/)claude$/.test(m[2]) || isCliCall(m[3])) continue;
     let cwd = null;
-    const lsof = spawnSync('lsof', ['-a', '-p', m[1], '-d', 'cwd', '-Fn'], { encoding: 'utf8', timeout: 5000 });
-    if (lsof.status === 0) {
+    const lsof = LSOF ? spawnSync(LSOF, ['-a', '-p', m[1], '-d', 'cwd', '-Fn'], { encoding: 'utf8', timeout: 5000 }) : null;
+    if (lsof && lsof.status === 0) {
       const n = /^n(.*)$/m.exec(lsof.stdout || '');
       if (n) cwd = n[1];
     }
@@ -120,8 +136,8 @@ function gitCalls(cmd, project) {
     let repo = project;
     let i = 0;
     while (i < toks.length && toks[i].startsWith('-')) {
-      if (toks[i] === '-C' && toks[i + 1]) { repo = path.resolve(project, toks[i + 1]); i += 2; continue; }
-      if (toks[i].startsWith('-C') && toks[i].length > 2) { repo = path.resolve(project, toks[i].slice(2)); i += 1; continue; }
+      if (toks[i] === '-C' && toks[i + 1]) { repo = path.resolve(project, fromShellPath(toks[i + 1])); i += 2; continue; }
+      if (toks[i].startsWith('-C') && toks[i].length > 2) { repo = path.resolve(project, fromShellPath(toks[i].slice(2))); i += 1; continue; }
       if (toks[i] === '-c' && toks[i + 1]) { i += 2; continue; }
       i += 1;
     }

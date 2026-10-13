@@ -25,6 +25,11 @@ HELPER=$(resolve helpers/shared-working-copy-guard.cjs) || { echo "  --  helper 
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+
+# OS-3: every path that reaches node as DATA (the JSON command and cwd, CLAUDE_PROJECT_DIR)
+# is stated natively — Git Bash `/tmp/...` does not resolve for a native process, and the
+# guard would skip the call (fail-open) exactly where a must-block case has to block.
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
 REPO="$TMP/shared"
 git init -q "$REPO"
 git -C "$REPO" -c user.name=fixture -c user.email=f@x config commit.gpgsign false
@@ -37,12 +42,13 @@ mkdir -p "$TMP/.claude-state"
 PRIV="$TMP/claude-501/-proj/0f0e0d0c-0b0a-4908-8706-050403020100/scratchpad/wt"
 mkdir -p "$(dirname "$PRIV")"
 git -C "$REPO" worktree add -q "$PRIV" -b fixture-private
+TMP_N=$(native "$TMP"); REPO_N=$(native "$REPO"); PRIV_N=$(native "$PRIV")
 
 # $1 name, $2 sessions fixture ("cwd1;cwd2" or ""), $3 command, $4 block|allow, [$5 session id]
 probe() {
   local out rc sid="${5:-sess-A}"
-  out=$(printf '{"tool_name":"Bash","session_id":"%s","cwd":"%s","tool_input":{"command":"%s"}}' "$sid" "$REPO" "$3" \
-        | SHARED_COPY_FIXTURE_SESSIONS="$2" CLAUDE_PROJECT_DIR="$TMP" node "$HELPER" 2>&1)
+  out=$(printf '{"tool_name":"Bash","session_id":"%s","cwd":"%s","tool_input":{"command":"%s"}}' "$sid" "$REPO_N" "$3" \
+        | SHARED_COPY_FIXTURE_SESSIONS="$2" CLAUDE_PROJECT_DIR="$TMP_N" node "$HELPER" 2>&1)
   rc=$?
   if printf '%s' "$out" | grep -q '"permissionDecision": *"deny"'; then
     [ "$4" = "block" ] && ok "$1 blocks" || bad "$1 blocked what it should allow: $out"
@@ -51,70 +57,70 @@ probe() {
   fi
 }
 
-TWO="$REPO;$TMP/other"
-ONE="$REPO"
+TWO="$REPO_N;$TMP_N/other"
+ONE="$REPO_N"
 
 echo "shared working copy, two sessions:"
-probe "commit without pathspec"      "$TWO" "git -C $REPO commit -m \\\"x\\\""                    block
-probe "commit -a"                    "$TWO" "git -C $REPO commit -a -m x"                         block
-probe "commit --amend"               "$TWO" "git -C $REPO commit --amend --no-edit"              block
-probe "commit by path"               "$TWO" "git -C $REPO commit a.txt -m x"                     allow
-probe "commit by path after --"      "$TWO" "git -C $REPO commit -m x -- a.txt"                  allow
-probe "commit -F file by path"       "$TWO" "git -C $REPO commit -F $TMP/msg a.txt"              allow
-probe "add -A"                       "$TWO" "git -C $REPO add -A"                                 block
-probe "add ."                        "$TWO" "git -C $REPO add ."                                  block
-probe "add by path"                  "$TWO" "git -C $REPO add a.txt b.txt"                        allow
-probe "stash"                        "$TWO" "git -C $REPO stash"                                  block
-probe "reset --hard"                 "$TWO" "git -C $REPO reset --hard HEAD~1"                    block
-probe "reset --soft"                 "$TWO" "git -C $REPO reset --soft HEAD~1"                    allow
-probe "checkout branch"              "$TWO" "git -C $REPO checkout fixture-private"              block
-probe "checkout -b"                  "$TWO" "git -C $REPO checkout -b new"                        block
-probe "checkout -- path"             "$TWO" "git -C $REPO checkout -- a.txt"                      allow
-probe "switch"                       "$TWO" "git -C $REPO switch main"                            block
-probe "rebase"                       "$TWO" "git -C $REPO rebase origin/main"                     block
-probe "merge"                        "$TWO" "git -C $REPO merge topic"                            block
-probe "merge --ff-only"              "$TWO" "git -C $REPO merge --ff-only origin/main"            allow
-probe "pull"                         "$TWO" "git -C $REPO pull"                                   block
-probe "pull --rebase"                "$TWO" "git -C $REPO pull --rebase"                          block
-probe "pull --ff-only"               "$TWO" "git -C $REPO pull --ff-only origin main"             allow
-probe "push --force"                 "$TWO" "git -C $REPO push --force origin main"               block
-probe "push --force-with-lease"      "$TWO" "git -C $REPO push --force-with-lease"                block
-probe "push plain"                   "$TWO" "git -C $REPO push origin main"                       allow
-probe "status / log / diff"          "$TWO" "git -C $REPO status --short; git -C $REPO log -1"    allow
-probe "marker opens"                 "$TWO" "git -C $REPO commit -m x  # MECHANISM-OK: fixture"   allow
+probe "commit without pathspec"      "$TWO" "git -C $REPO_N commit -m \\\"x\\\""                    block
+probe "commit -a"                    "$TWO" "git -C $REPO_N commit -a -m x"                         block
+probe "commit --amend"               "$TWO" "git -C $REPO_N commit --amend --no-edit"              block
+probe "commit by path"               "$TWO" "git -C $REPO_N commit a.txt -m x"                     allow
+probe "commit by path after --"      "$TWO" "git -C $REPO_N commit -m x -- a.txt"                  allow
+probe "commit -F file by path"       "$TWO" "git -C $REPO_N commit -F $TMP_N/msg a.txt"              allow
+probe "add -A"                       "$TWO" "git -C $REPO_N add -A"                                 block
+probe "add ."                        "$TWO" "git -C $REPO_N add ."                                  block
+probe "add by path"                  "$TWO" "git -C $REPO_N add a.txt b.txt"                        allow
+probe "stash"                        "$TWO" "git -C $REPO_N stash"                                  block
+probe "reset --hard"                 "$TWO" "git -C $REPO_N reset --hard HEAD~1"                    block
+probe "reset --soft"                 "$TWO" "git -C $REPO_N reset --soft HEAD~1"                    allow
+probe "checkout branch"              "$TWO" "git -C $REPO_N checkout fixture-private"              block
+probe "checkout -b"                  "$TWO" "git -C $REPO_N checkout -b new"                        block
+probe "checkout -- path"             "$TWO" "git -C $REPO_N checkout -- a.txt"                      allow
+probe "switch"                       "$TWO" "git -C $REPO_N switch main"                            block
+probe "rebase"                       "$TWO" "git -C $REPO_N rebase origin/main"                     block
+probe "merge"                        "$TWO" "git -C $REPO_N merge topic"                            block
+probe "merge --ff-only"              "$TWO" "git -C $REPO_N merge --ff-only origin/main"            allow
+probe "pull"                         "$TWO" "git -C $REPO_N pull"                                   block
+probe "pull --rebase"                "$TWO" "git -C $REPO_N pull --rebase"                          block
+probe "pull --ff-only"               "$TWO" "git -C $REPO_N pull --ff-only origin main"             allow
+probe "push --force"                 "$TWO" "git -C $REPO_N push --force origin main"               block
+probe "push --force-with-lease"      "$TWO" "git -C $REPO_N push --force-with-lease"                block
+probe "push plain"                   "$TWO" "git -C $REPO_N push origin main"                       allow
+probe "status / log / diff"          "$TWO" "git -C $REPO_N status --short; git -C $REPO_N log -1"    allow
+probe "marker opens"                 "$TWO" "git -C $REPO_N commit -m x  # MECHANISM-OK: fixture"   allow
 probe "mention in grep, not a call"  "$TWO" "grep -n 'git commit --amend' README.md"             allow
-probe "private worktree, commit"     "$TWO" "git -C $PRIV commit -m x"                            allow
-probe "private worktree, rebase"     "$TWO" "git -C $PRIV rebase origin/main"                     allow
-probe "two sessions, not this repo"  "$TMP/x;$TMP/y" "git -C $REPO commit -m x"                   block
-probe "count without cwd (windows)"  "-;-"  "git -C $REPO commit -m x"                            block
+probe "private worktree, commit"     "$TWO" "git -C $PRIV_N commit -m x"                            allow
+probe "private worktree, rebase"     "$TWO" "git -C $PRIV_N rebase origin/main"                     allow
+probe "two sessions, not this repo"  "$TMP_N/x;$TMP_N/y" "git -C $REPO_N commit -m x"                   block
+probe "count without cwd (windows)"  "-;-"  "git -C $REPO_N commit -m x"                            block
 
 echo "single session:"
-probe "commit without pathspec"      "$ONE" "git -C $REPO commit -m x"                            allow
-probe "amend"                        "$ONE" "git -C $REPO commit --amend --no-edit"              allow
-probe "rebase"                       "$ONE" "git -C $REPO rebase origin/main"                     allow
-probe "no process list at all"       ""     "git -C $REPO commit -m x"                            allow
+probe "commit without pathspec"      "$ONE" "git -C $REPO_N commit -m x"                            allow
+probe "amend"                        "$ONE" "git -C $REPO_N commit --amend --no-edit"              allow
+probe "rebase"                       "$ONE" "git -C $REPO_N rebase origin/main"                     allow
+probe "no process list at all"       ""     "git -C $REPO_N commit -m x"                            allow
 
 echo "open operation, owner check:"
 GD="$(git -C "$REPO" rev-parse --git-dir)"
 case "$GD" in /*) ;; *) GD="$REPO/$GD";; esac
 # a rebase this session starts (single session lets it through) records the owner
-probe "rebase start records owner"   "$ONE" "git -C $REPO rebase origin/main"                     allow sess-A
+probe "rebase start records owner"   "$ONE" "git -C $REPO_N rebase origin/main"                     allow sess-A
 [ "$(cat "$GD/claude-op-owner" 2>/dev/null)" = "sess-A" ] && ok "owner file = sess-A" || bad "owner file not written: $(cat "$GD/claude-op-owner" 2>/dev/null)"
 mkdir -p "$GD/rebase-merge"
-probe "foreign rebase open: add"     "$TWO" "git -C $REPO add a.txt"                              block sess-B
-probe "foreign rebase open: commit"  "$TWO" "git -C $REPO commit a.txt -m x"                      block sess-B
-probe "foreign rebase open: continue" "$TWO" "git -C $REPO rebase --continue"                     block sess-B
-probe "foreign rebase open: status"  "$TWO" "git -C $REPO status"                                 allow sess-B
-probe "own rebase open: continue"    "$TWO" "git -C $REPO rebase --continue"                      allow sess-A
-probe "own rebase open: add"         "$TWO" "git -C $REPO add a.txt"                              allow sess-A
-probe "foreign rebase, marker"       "$TWO" "git -C $REPO rebase --abort  # MECHANISM-OK: fixture" allow sess-B
-probe "foreign rebase, one session"  "$ONE" "git -C $REPO rebase --continue"                      allow sess-B
+probe "foreign rebase open: add"     "$TWO" "git -C $REPO_N add a.txt"                              block sess-B
+probe "foreign rebase open: commit"  "$TWO" "git -C $REPO_N commit a.txt -m x"                      block sess-B
+probe "foreign rebase open: continue" "$TWO" "git -C $REPO_N rebase --continue"                     block sess-B
+probe "foreign rebase open: status"  "$TWO" "git -C $REPO_N status"                                 allow sess-B
+probe "own rebase open: continue"    "$TWO" "git -C $REPO_N rebase --continue"                      allow sess-A
+probe "own rebase open: add"         "$TWO" "git -C $REPO_N add a.txt"                              allow sess-A
+probe "foreign rebase, marker"       "$TWO" "git -C $REPO_N rebase --abort  # MECHANISM-OK: fixture" allow sess-B
+probe "foreign rebase, one session"  "$ONE" "git -C $REPO_N rebase --continue"                      allow sess-B
 rmdir "$GD/rebase-merge"
-probe "no operation: write passes"   "$TWO" "git -C $REPO add a.txt"                              allow sess-B
+probe "no operation: write passes"   "$TWO" "git -C $REPO_N add a.txt"                              allow sess-B
 [ -e "$GD/claude-op-owner" ] && bad "owner file not cleared after the operation ended" || ok "owner file cleared"
 
 echo "fail-open:"
-probe "not a git repo"               "$TWO" "git -C $TMP/nowhere commit -m x"                     allow
+probe "not a git repo"               "$TWO" "git -C $TMP_N/nowhere commit -m x"                     allow
 probe "broken json"                  "$TWO" ""                                                     allow
 
 exit $fail
