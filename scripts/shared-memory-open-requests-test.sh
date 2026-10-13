@@ -65,12 +65,15 @@ grep -q 'OPEN-ONE' <<<"$OUT" && pass "unanswered request is listed" || fail "una
 grep -q 'STATUS-ONE' <<<"$OUT" && pass "status: open counts as a request" || fail "status open missing"
 grep -q 'ANSWERED-ONE' <<<"$OUT" && fail "request named in OUR log section still listed" || pass "our answer closes the request"
 # The foreign LOG section names request-open-one too — that must NOT count as our answer.
-for x in REPORT-ONE BROADCAST-ONE MINE-ONE CLOSED-ONE LOCAL-ONE STATUSCAST-ONE EITHER-ONE LOGONLY-REPLIED LOGONLY-BYNAME; do
+for x in REPORT-ONE MINE-ONE CLOSED-ONE LOCAL-ONE STATUSCAST-ONE EITHER-ONE LOGONLY-REPLIED LOGONLY-BYNAME; do
   grep -q "$x" <<<"$OUT" && fail "$x must not be listed" || pass "$x not listed"
 done
+# Operator order 2026-10-13: a request to everyone reaches everyone — as optional, never as a duty.
+grep 'BROADCAST-ONE' <<<"$OUT" | grep -q 'optional: to everyone' \
+  && pass "a request to everyone is listed as optional" || fail "broadcast request not listed as optional: $OUT"
 grep -q 'LOGONLY-OPEN' <<<"$OUT" && pass "a request that lives only as a LOG heading is listed" || fail "LOG-only request missing"
-# OPEN-ONE, STATUS-ONE, LOGONLY-OPEN. sam-laptop's "ping" is closed by our later "reply" to sam-laptop.
-grep -q 'open requests to this instance: 3$' <<<"$OUT" && pass "count line says 3" || fail "count line wrong: $(head -1 <<<"$OUT")"
+# OPEN-ONE, STATUS-ONE, LOGONLY-OPEN, BROADCAST-ONE (optional). sam-laptop's "ping" is closed by our later "reply".
+grep -q 'open requests to this instance: 4$' <<<"$OUT" && pass "count line says 4" || fail "count line wrong: $(head -1 <<<"$OUT")"
 
 OUT2="$(SHARED_MEMORY_SELF=me-mac SHARED_MEMORY_REQUEST_PREFIXES=ask "$PY" "$INBOX" --open --repo "$WORK" --to HEAD 2>&1)"
 grep -q 'LOCAL-ONE' <<<"$OUT2" && pass "instance prefix extends the request words" || fail "instance prefix ignored"
