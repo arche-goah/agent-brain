@@ -42,7 +42,16 @@ mkdir -p "$TMP/.claude-state"
 PRIV="$TMP/claude-501/-proj/0f0e0d0c-0b0a-4908-8706-050403020100/scratchpad/wt"
 mkdir -p "$(dirname "$PRIV")"
 git -C "$REPO" worktree add -q "$PRIV" -b fixture-private
+# The Windows shape: `%TEMP%\claude\<project>\<session-uuid>\…`, no uid (measured 2026-10-13).
+PRIVW="$TMP/claude/-proj/0f0e0d0c-0b0a-4908-8706-050403020101/scratchpad/wt"
+mkdir -p "$(dirname "$PRIVW")"
+git -C "$REPO" worktree add -q "$PRIVW" -b fixture-private-win
+# Negative control: a look-alike directory name is no scratchpad.
+LOOK="$TMP/claudette/-proj/0f0e0d0c-0b0a-4908-8706-050403020102/scratchpad/wt"
+mkdir -p "$(dirname "$LOOK")"
+git -C "$REPO" worktree add -q "$LOOK" -b fixture-lookalike
 TMP_N=$(native "$TMP"); REPO_N=$(native "$REPO"); PRIV_N=$(native "$PRIV")
+PRIVW_N=$(native "$PRIVW"); LOOK_N=$(native "$LOOK")
 
 # $1 name, $2 sessions fixture ("cwd1;cwd2" or ""), $3 command, $4 block|allow, [$5 session id]
 probe() {
@@ -91,6 +100,8 @@ probe "marker opens"                 "$TWO" "git -C $REPO_N commit -m x  # MECHA
 probe "mention in grep, not a call"  "$TWO" "grep -n 'git commit --amend' README.md"             allow
 probe "private worktree, commit"     "$TWO" "git -C $PRIV_N commit -m x"                            allow
 probe "private worktree, rebase"     "$TWO" "git -C $PRIV_N rebase origin/main"                     allow
+probe "private worktree, windows shape" "$TWO" "git -C $PRIVW_N commit -m x"                        allow
+probe "look-alike dir is no scratchpad" "$TWO" "git -C $LOOK_N commit -m x"                         block
 probe "two sessions, not this repo"  "$TMP_N/x;$TMP_N/y" "git -C $REPO_N commit -m x"                   block
 probe "count without cwd (windows)"  "-;-"  "git -C $REPO_N commit -m x"                            block
 

@@ -38,7 +38,7 @@
  * SHARED means: a second claude session exists on this machine (process list, CLI calls
  * such as `claude plugin list` filtered out as in scripts/parallel-sessions.sh), AND the
  * target checkout is not private to this session. Private: a path under the harness's
- * scratchpad tree (`…/claude-<uid>/<project>/<session>/…`, e.g. a `git worktree` a
+ * scratchpad tree (`…/claude-<uid>/<project>/<session>/…`, on Windows `…\claude\<project>\<session>\…`, e.g. a `git worktree` a
  * session made for one PR). Repo-exact detection (lsof: another session's cwd IS this
  * checkout) marks shared for sure; without lsof the count alone decides — a checkout
  * both sessions reach via `git -C <path>` (the shared-memory repo) is shared although it
@@ -70,7 +70,9 @@ function fromShellPath(p) {
   return m ? `${m[1].toUpperCase()}:${m[2] || '/'}` : p;
 }
 const OWNER_FILE = 'claude-op-owner';
-const SCRATCHPAD_RE = /[\\/]claude-\d+[\\/][^\\/]+[\\/][0-9a-f-]{36}[\\/]/;
+// `claude-<uid>` on macOS/Linux, plain `claude` on Windows (`%TEMP%\claude\<project>\<session>\`):
+// there is no numeric uid there (measured on a Windows workstation 2026-10-13, OS-trap form A).
+const SCRATCHPAD_RE = /[\\/]claude(?:-\d+)?[\\/][^\\/]+[\\/][0-9a-f-]{36}[\\/]/;
 
 function isCliCall(args) {
   const first = (args || '').trim().split(/\s+/)[1] || '';
