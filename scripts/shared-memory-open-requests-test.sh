@@ -69,7 +69,7 @@ for x in REPORT-ONE MINE-ONE CLOSED-ONE LOCAL-ONE STATUSCAST-ONE EITHER-ONE LOGO
   grep -q "$x" <<<"$OUT" && fail "$x must not be listed" || pass "$x not listed"
 done
 # Operator order 2026-10-13: a request to everyone reaches everyone — as optional, never as a duty.
-grep 'BROADCAST-ONE' <<<"$OUT" | grep -q 'optional: to everyone' \
+grep -a 'BROADCAST-ONE' <<<"$OUT" | grep -aq 'optional: to everyone' \
   && pass "a request to everyone is listed as optional" || fail "broadcast request not listed as optional: $OUT"
 grep -q 'LOGONLY-OPEN' <<<"$OUT" && pass "a request that lives only as a LOG heading is listed" || fail "LOG-only request missing"
 # OPEN-ONE, STATUS-ONE, LOGONLY-OPEN, BROADCAST-ONE (optional). sam-laptop's "ping" is closed by our later "reply".
