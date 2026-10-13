@@ -314,7 +314,11 @@ Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machin
   instance-specific token the item relies on (a host, device, person or project name); the
   checker verifies the token is really in the item. "Not yet ported" is not a reason, and a
   reason without evidence is a self-declaration nobody checked (measured 2026-10-09: three
-  items declared instance-only were general).
+  items declared instance-only were general). An item that relies on no token — a section of
+  the instance's own rule files, a one-off measurement script — may name as `reach` the
+  written reach analysis that judged it instead; the checker verifies the file names the item.
+- **external** — a third-party skill or plugin used as it is (a vendored skill pack, an
+  official marketplace plugin). Not ours to port to the core; the entry names its `source`.
 - **alpha** — a development checkout under test, with an expiry date and what is being
   measured. Past the date: merge, extend with a reason, or unwire.
 
