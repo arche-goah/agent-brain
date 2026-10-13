@@ -70,6 +70,7 @@ Monitor({ command: "bash core/scripts/collab-watch.sh",
 | Line | First move |
 |---|---|
 | `COMMENT`, `PR`, `MERGED` | open it; handle below |
+| `CI-RED <repo> <workflow> on <branch> (<event>, <conclusion>) <url>` | a run went red on a watched repo (also `cancelled`: a job that never got a runner ends that way). Open the run; a PR of ours or main: fix or re-run (`gh run rerun <id> --failed`) in the same turn and arm `ci-watch.sh` on it. This line is the net UNDER the per-push ci-watch (working rule #9), not a replacement for arming one |
 | `... branch is LOCAL in this machine's clone` | made on THIS machine — this session (check your own PRs first), a parallel session or a hand checkout; not a collaborator, not the other own machine |
 | event under the operator's own account | run `scripts/parallel-sessions.sh` and check local branches BEFORE saying "the other machine" or "foreign" |
 | `FOUND: n new commit(s)` with n>1 | read `git log` of the range for the parties before naming one |

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # repo-activity-watch.sh — one stdout line per collaboration EVENT in a set of GitHub repos:
-# new pull requests, merges, and comments (conversation AND inline review comments, also on
-# pull requests that are already merged). Built for the Monitor tool (`persistent: true`);
+# new pull requests, merges, comments (conversation AND inline review comments, also on
+# pull requests that are already merged) and RED CI runs. Built for the Monitor tool (`persistent: true`);
 # normally started by scripts/collab-watch.sh under scripts/watch-supervisor.sh.
 #
 #   GH_WATCH_REPOS="<owner>/<a> <owner>/<b>" repo-activity-watch.sh [interval_s|once|status|disarm]
@@ -154,6 +154,13 @@ while true; do
       emit "$clone" < <(gh pr list --repo "$full" --state merged --limit 50 \
           --json number,title,mergedBy,mergedAt,headRefName 2>/dev/null \
         | "$PY" "$HERE/repo-activity-filter.py" merged "$full" "$SINCE" "$SELF" "$ONLY")
+      # Red CI runs — the standing net under the per-PR ci-watch. Measured 2026-10-13: five
+      # pushes to PR branches in one session, four with a ci-watch armed, one without; that
+      # run went red (runner never acquired) and the operator found it, because nothing
+      # here looked at CI at all. A merge is a push to main, and main had no watcher either.
+      emit "$clone" < <(gh run list --repo "$full" --limit 50 \
+          --json workflowName,event,headBranch,status,conclusion,createdAt,updatedAt,url 2>/dev/null \
+        | "$PY" "$HERE/repo-activity-filter.py" runs "$full" "$SINCE" "$SELF" "$ONLY")
     done
     [[ "$NEWEST" != "$SINCE" ]] && echo "$NEWEST" > "$CURSOR"
   fi
