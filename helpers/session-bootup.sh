@@ -82,11 +82,37 @@ fi
 # the checkout differs from the committed pin; at session start that is either leftover
 # review state or an accidental pin change — both deserve one loud line. Restore command
 # included so the fix does not need a diagnosis round.
+# A DECLARED alpha inside the submodule (.claude/rules/local-machinery.json, "alpha", key
+# <path> or <path>/..., until-date not passed) is the expected state, not an accident: one
+# quiet line instead of the two loud ones (operator 2026-10-13: "if it all fits, do not
+# report it as an error every time"). Past its date it is loud again.
+declared_alpha() {
+  "$PY" - "$1" <<'PY' 2>/dev/null
+import datetime, json, sys
+p = sys.argv[1]
+try:
+    alpha = json.load(open(".claude/rules/local-machinery.json", encoding="utf-8")).get("alpha") or {}
+except Exception:
+    sys.exit()
+today = datetime.date.today().isoformat()
+for k, v in alpha.items():
+    until = str((v or {}).get("until", "")) if isinstance(v, dict) else ""
+    if (k == p or k.startswith(p + "/")) and until >= today:
+        print(f"{k} until {until}"); break
+PY
+}
+core_alpha=""
 while read -r sm_line; do
   [[ "$sm_line" == +* ]] || continue
   sm_sha=${sm_line%% *}; sm_sha=${sm_sha#+}
   sm_path=$(awk '{print $2}' <<<"$sm_line")
   sm_pin=$(git ls-tree HEAD "$sm_path" 2>/dev/null | awk '{print $3}')
+  sm_alpha=$(declared_alpha "$sm_path")
+  if [[ -n "$sm_alpha" ]]; then
+    [[ "$sm_path" == core ]] && core_alpha=1
+    echo "submodule $sm_path runs a declared alpha ($sm_alpha; checkout ${sm_sha:0:7}, pin ${sm_pin:0:7}) — expected, do not commit the pointer; brain-update.sh ends it"
+    continue
+  fi
   echo "!! submodule $sm_path off its committed pin (checkout ${sm_sha:0:7}, pin ${sm_pin:0:7}) — a parent commit now would sweep the checkout in as the new pin; restore: git -C $sm_path checkout ${sm_pin:0:7}"
 done < <(git submodule status 2>/dev/null)
 
@@ -97,7 +123,7 @@ done < <(git submodule status 2>/dev/null)
 # operator before running it (check always, update only after an OK). Offline or
 # no gh: silently skipped — a missing answer is not a finding.
 boot_mark machine-profile+submodules
-upd=$("$PY" - <<'PY' 2>/dev/null
+upd=$(BOOT_CORE_ALPHA="$core_alpha" "$PY" - <<'PY' 2>/dev/null
 import json, os, subprocess, sys
 def load(p):
     try:
@@ -134,7 +160,7 @@ stale = []
 core_channel = next((n for n in ("brain-core-next", "brain-core")
                      if any(k.startswith(n + "@") for k in enabled)), "brain-core")
 core_pin = pins.get(core_channel, "")
-if core_pin and os.path.isdir("core"):
+if core_pin and os.path.isdir("core") and not os.environ.get("BOOT_CORE_ALPHA"):
     sub = ""
     try:
         sub = subprocess.run(["git", "-C", "core", "describe", "--tags"],
