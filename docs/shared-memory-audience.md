@@ -19,6 +19,33 @@ Example: a check that any Windows machine can run goes to `audience: os:windows`
 the one Windows machine the writer happens to remember (measured 2026-10-11: such a request
 went to a machine that was switched off while another party's Windows machines were on).
 
+## Who takes it: ranked candidates
+
+A request to a category reaches several parties. Ranking says who is expected first, so the
+request can go out to everyone as information without the later ones thinking they must act
+now (operator order 2026-10-13). The ranking is per task, never fixed:
+
+```yaml
+audience: os:windows
+candidates: kim-pc, person:sam, person:lee   # ordered, any tokens
+escalate_after: 24                                                 # hours per rank (optional)
+```
+
+- **First candidate:** an open request, as before.
+- **A later candidate:** listed at session start as *waiting*: "queued: candidate 2, after
+  <who is before you>, unclaimed; yours from <time>". It is visible, but not a duty yet.
+- **When nobody before them took it within `rank × escalate_after` hours** (counted from
+  the request's first commit), it becomes that candidate's open request.
+- **Not listed at all:** comes after every listed candidate.
+- **Taking it:** write a short entry with `claims: <request-stem>`, or answer with
+  `answers: <request-stem>`. Either one closes the request for every other candidate.
+- **No `candidates:` in the entry:** the default order from `parties.json` applies
+  (`"candidates": {"os:windows": [...]}`, `"escalate_after_h": 24`), but only for an entry
+  addressed to exactly that one category.
+- Without either, everyone reached is a first candidate (the behaviour before).
+
+Only fact files carry a ranking. A LOG-only heading cannot hold frontmatter.
+
 ## Data: `parties.json` at the shared-memory repo's root
 
 The list of people and machines lives in the shared-memory repo, never in this public repo:

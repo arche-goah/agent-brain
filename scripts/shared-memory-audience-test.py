@@ -151,6 +151,51 @@ def main() -> int:
         check("negative control: no parties.json, no audience findings",
               not lint_mod.lint(plain)["findings"]["audience"])
 
+        print("candidates (ranked takers of a category request)")
+        q = tmp / "queue"
+        q.mkdir()
+        git(q, "init", "-q")
+        git(q, "config", "user.email", "t@local")
+        git(q, "config", "user.name", "T")
+        git(q, "config", "core.autocrlf", "false")
+        pq = dict(PARTIES, candidates={"os:windows": ["kim-pc", "person:sam"]}, escalate_after_h=24)
+        (q / "parties.json").write_text(json.dumps(pq, indent=1), encoding="utf-8")
+        (q / "INDEX.md").write_text("# Index\n", encoding="utf-8")
+        entry(q, "core/request-fresh.md", "lee-tower", "os:windows", "FRESH win check")
+        git(q, "add", "-A")
+        git(q, "commit", "-qm", "fresh")
+        entry(q, "core/request-stale.md", "lee-tower", "os:windows", "STALE win check")
+        git(q, "add", "-A")
+        old = {"GIT_COMMITTER_DATE": "2026-01-01T00:00:00+00:00", "GIT_AUTHOR_DATE": "2026-01-01T00:00:00+00:00"}
+        subprocess.run(["git", "-C", str(q), "commit", "-qm", "stale"], check=True, capture_output=True,
+                       env={**__import__("os").environ, **old})
+        entry(q, "core/request-own-order.md", "lee-tower", "os:windows", "OWNORDER win check")
+        p = q / "core" / "request-own-order.md"
+        p.write_bytes(p.read_bytes().replace(b"  date:", b"  candidates: person:sam, kim-pc\n  date:"))
+        entry(q, "core/request-claimed.md", "lee-tower", "os:windows", "CLAIMED win check")
+        entry(q, "core/claim-it.md", "kim-pc", "lee-tower", "taking it")
+        c = q / "core" / "claim-it.md"
+        c.write_bytes(c.read_bytes().replace(b"  date:", b"  claims: request-claimed\n  date:"))
+        git(q, "add", "-A")
+        git(q, "commit", "-qm", "claimed")
+        line = lambda out, key: next((l for l in out.splitlines() if key in l), "")  # noqa: E731
+        a, b = inbox(q, "kim-pc,kim"), inbox(q, "sam-laptop,sam")
+        check("first candidate: a plain open request", "FRESH" in a and "queued" not in line(a, "FRESH"))
+        check("second candidate, fresh: queued, names who is first",
+              "queued: candidate 2, after kim-pc, unclaimed" in line(b, "FRESH"))
+        check("second candidate, past the escalation time: its own now",
+              "did not claim it" in line(b, "STALE") and "queued" not in line(b, "STALE"))
+        check("the entry's own order wins over the default",
+              "queued" not in line(b, "OWNORDER") and "queued: candidate 2, after person:sam" in line(a, "OWNORDER"))
+        check("a claim by one candidate closes it for every other", "CLAIMED" not in a and "CLAIMED" not in b)
+        check("negative control: without candidates no queue", "queued" not in inbox(repo, "sam-laptop,sam"))
+        oi = subprocess.run([sys.executable, str(ROOT / "scripts" / "open-items.py"), "--help"],
+                            capture_output=True, text=True, encoding="utf-8")
+        oi_mod = load("open-items")
+        check("open-items reads a queued line as waiting on the earlier candidate",
+              bool(oi_mod.QUEUED.match("queued: candidate 2, after kim-pc, unclaimed; yours from 2026-10-14 10:00 UTC — x"))
+              and oi.returncode == 0)
+
     print(f"{'all green' if not fails else f'{fails} failing'}")
     return 1 if fails else 0
 

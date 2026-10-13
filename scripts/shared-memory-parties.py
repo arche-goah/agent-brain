@@ -111,6 +111,43 @@ def is_category(token: str) -> bool:
     return token.startswith(("os:", "person:")) or token in EVERYONE
 
 
+# Who takes a request addressed to a category, in which order (operator order 2026-10-13: "a
+# Windows check is for Windows in general — but with a ranking, so it can go out as info
+# without the third candidate thinking it must act now; the second one should see at session
+# start that it is open and the first has not taken it"). Generic: any task, any tokens.
+#   entry frontmatter  candidates: <token>, <token>, ...   (ordered; device, person:, os:)
+#                      escalate_after: <hours>              (how long each rank waits)
+#   parties.json       "candidates": {"os:windows": [...]}, "escalate_after_h": 24
+#                      (the default order for an entry addressed to exactly that category)
+# Taken: any entry naming the request in `claims:` (or `answers:`) closes it for everyone.
+CANDIDATES = re.compile(r"^\s+candidates:\s*(.+?)\s*$", re.M)
+ESCALATE = re.compile(r"^\s+escalate_after:\s*(\d+)\s*h?\s*$", re.M)
+DEFAULT_ESCALATE_H = 24
+
+
+def queue(head: str, audience: str, parties: dict) -> tuple[list[str], int]:
+    """(ranked candidates, hours each rank waits for the one before). The entry's own
+    `candidates:` wins; else the parties.json default for its single audience category."""
+    m = CANDIDATES.search(head or "")
+    if m:
+        cands = [c.strip().lower() for c in m.group(1).split(",") if c.strip()]
+    else:
+        cats = [t for t in tokens(audience) if is_category(t)]
+        dflt = parties.get("candidates") if isinstance(parties.get("candidates"), dict) else {}
+        cands = [str(c).lower() for c in dflt.get(cats[0], [])] if len(cats) == 1 else []
+    e = ESCALATE.search(head or "")
+    try:
+        hours = int(e.group(1)) if e else int(parties.get("escalate_after_h") or DEFAULT_ESCALATE_H)
+    except (TypeError, ValueError):
+        hours = DEFAULT_ESCALATE_H
+    return cands, hours
+
+
+def rank(cands: list[str], me: set[str]) -> int:
+    """0-based position of the first candidate that is us; not listed = after all of them."""
+    return next((i for i, c in enumerate(cands) if tokens(c) & me), len(cands))
+
+
 # LOG headings — shared by the inbox (who a message is for) and the lint (who a request goes
 # to). Measured 2026-09-25 across all LOGs: `## <date> · <von> — <title>` is one of FOUR live
 # shapes. Half of the September headings use an ASCII hyphen (`## <date> <von> - <title>`),
