@@ -72,6 +72,7 @@ sys.path.insert(0, str(HERE))
 from instance_key import is_self, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
 from shared_answers import checked_head, default_repo, own_shared_shas  # noqa: E402
+OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*\(([^()]+\.md|LOG)\)\s*$")
 # The inbox defaults to a 30-day window. An open request does not stop being open because
 # it is old — measured 2026-10-07: a 32-day-old request to this instance fell out of the
@@ -138,6 +139,11 @@ def requests(repo):
         items.append({"id": ref if rel != "LOG" else f"{ref}: {text[:40].rstrip()}", "kind": "request",
                       "date": date, "who": von.strip(), "text": text[:100], "scope": topic,
                       "ref": ref, "file": rel if rel != "LOG" else ""})
+        # A request we are not asked first for, or one to everyone (shared-memory-parties.py
+        # priority): listed, but as a hint — information, not a duty (operator 2026-10-13).
+        q = OPTIONAL.match(text)
+        if q:
+            items[-1]["waiting_on"] = (q.group(1), q.group(2))
     # Two LOG entries of one sender on one day can share their first 40 chars (measured
     # 2026-10-11: "AN a, b, c-" twice) — one id would carry one class and one counter for both.
     # The later one in inbox order gets " (n)"; the first keeps its old id, so stored classes hold.

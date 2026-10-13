@@ -36,6 +36,12 @@ elif [ "$1" = pr ] && [ "$2" = list ]; then
     case "$1" in --repo) repo="${2#*/}"; shift ;; --state) state="$2"; shift ;; esac; shift
   done
   f="$FAKE_DIR/$repo.$state.json"
+elif [ "$1" = run ] && [ "$2" = list ]; then
+  repo=""
+  while [ $# -gt 0 ]; do
+    case "$1" in --repo) repo="${2#*/}"; shift ;; esac; shift
+  done
+  f="$FAKE_DIR/$repo.runs.json"
 else
   exit 2
 fi
@@ -53,6 +59,16 @@ printf '%s' '[{"number":7,"title":"new work","author":{"login":"peer"},"createdA
               {"number":8,"title":"made here","author":{"login":"op"},"createdAt":"2026-01-02T03:00:00Z","headRefName":"local-branch"}]' > "$D/one.open.json"
 printf '%s' '[{"number":5,"title":"our PR","mergedBy":{"login":"peer"},"mergedAt":"2026-01-02T04:00:00Z","headRefName":"x"}]' > "$D/one.merged.json"
 printf '%s' '[{"created_at":"2026-01-01T12:00:00Z","user":{"login":"peer"},"html_url":"u9","body":"slow channel"}]' > "$D/two.issues-comments.json"
+# CI runs (2026-10-13): a failed PR run, a cancelled PR run that is still the newest on its
+# branch (runner never acquired — the incident), a cancelled main run superseded by a newer
+# one (concurrency, noise), a green run, a running run, and a red run before the cursor.
+printf '%s' '[
+ {"workflowName":"CI","event":"pull_request","headBranch":"peer-branch","status":"completed","conclusion":"failure","createdAt":"2026-01-02T05:00:00Z","updatedAt":"2026-01-02T05:10:00Z","url":"run1"},
+ {"workflowName":"CI","event":"pull_request","headBranch":"local-branch","status":"completed","conclusion":"cancelled","createdAt":"2026-01-02T05:00:00Z","updatedAt":"2026-01-02T05:15:00Z","url":"run2"},
+ {"workflowName":"CI","event":"push","headBranch":"main","status":"completed","conclusion":"cancelled","createdAt":"2026-01-02T06:00:00Z","updatedAt":"2026-01-02T06:00:05Z","url":"run3"},
+ {"workflowName":"CI","event":"push","headBranch":"main","status":"completed","conclusion":"success","createdAt":"2026-01-02T06:00:03Z","updatedAt":"2026-01-02T06:12:00Z","url":"run4"},
+ {"workflowName":"CI","event":"push","headBranch":"main","status":"in_progress","conclusion":"","createdAt":"2026-01-02T07:00:00Z","updatedAt":"2026-01-02T07:00:00Z","url":"run5"},
+ {"workflowName":"CI","event":"push","headBranch":"old","status":"completed","conclusion":"failure","createdAt":"2025-12-30T00:00:00Z","updatedAt":"2025-12-30T00:10:00Z","url":"run6"}]' > "$D/one.runs.json"
 
 # a local clone of "one" carrying local-branch: PR #8 must be marked as made on this machine
 git init -q "$T/clones/one"
@@ -79,6 +95,13 @@ hasnt "foreign branch not marked"     "#7: new work (peer) — branch is LOCAL" 
 # 2026-10-09: the mark claimed "a parallel session" for the watching session's own PRs.
 has   "local mark does not name the session" "made on this machine (this session, a parallel one, or by hand)" "$out"
 hasnt "event before the cursor"       "u0" "$out"
+has   "failed PR run"                 "CI-RED acme/one CI on peer-branch (pull_request, failure) run1" "$out"
+has   "cancelled run, still the newest on its branch" "CI-RED acme/one CI on local-branch (pull_request, cancelled) run2" "$out"
+has   "red run on a local branch is marked" "run2 — branch is LOCAL" "$out"
+hasnt "cancelled run superseded by a newer one (concurrency)" "run3" "$out"
+hasnt "green run"                     "run4" "$out"
+hasnt "running run"                   "run5" "$out"
+hasnt "red run before the cursor"     "run6" "$out"
 cur=$(tr -d '\r\n' < "$T/state/repo-activity-a-cursor.txt")
 [[ "$cur" == "2026-01-03T00:00:00Z" ]] && ok || bad "cursor advanced to the newest event" "got $cur"
 
@@ -86,6 +109,7 @@ echo "round 2: nothing repeats (GitHub's since is inclusive)"
 out=$(run a "acme/one")
 hasnt "newest comment not replayed" "u2" "$out"
 hasnt "no PR replayed" "PR acme/one" "$out"
+hasnt "no red run replayed" "CI-RED" "$out"
 
 echo "negative control: an author filter on the own login swallows the other own machine"
 seed b; out=$(run b "acme/one" GH_SELF_LOGIN=op)
@@ -97,6 +121,7 @@ seed c; out=$(run c "acme/one" GH_ONLY_LOGINS=peer)
 has   "named login reported" "u1 [peer]" "$out"
 hasnt "other login dropped" "[op]" "$out"
 has   "the price is announced" "NOT replayed" "$out"
+has   "a red run passes the login filter (whoever pushed)" "CI-RED acme/one CI on peer-branch" "$out"
 
 echo "negative control: two watches sharing ONE cursor swallow the slower one's event"
 seed d; run d "acme/one" >/dev/null           # advances cursor d to 2026-01-03

@@ -6,6 +6,8 @@ Called by scripts/repo-activity-watch.sh once per repo and channel, with the JSO
   gh api repos/<o>/<r>/issues/comments?since=... | repo-activity-filter.py comments <o>/<r> <since> <self> <only>
   gh pr list --json number,title,author,createdAt,headRefName | ... open   <o>/<r> <since> <self> <only>
   gh pr list --json number,title,mergedBy,mergedAt,headRefName | ... merged <o>/<r> <since> <self> <only>
+  gh run list --json workflowName,event,headBranch,status,conclusion,createdAt,updatedAt,url
+                                                              | ... runs   <o>/<r> <since> <self> <only>
 
 WHY PYTHON AND NOT `gh --jq`: the filter is the one place a watch can look armed and be
 blind, so it needs a fixture on every OS -- and a fixture can fake `gh` (it is just a
@@ -22,6 +24,12 @@ Rules carried here, each one measured on the proving instance:
     request is the event wanted, and an author filter would drop it.
   * The CURSOR line covers every item GitHub returned, reported or filtered -- a filtered
     event is gone for good, also after the filter is lifted. That price is stated, not hidden.
+  * `runs` reports RED runs only (CI-RED lines) and ignores the login filters: a red check
+    on a watched repo is the finding whoever pushed. Its cursor is the newest `updatedAt`
+    of a COMPLETED run -- a running run stamps itself again when it ends, so it re-enters.
+    A cancelled run superseded by a newer run of the same workflow on the same branch is
+    GitHub's concurrency at work and stays silent; a cancelled run that is still the newest
+    is reported (the 2026-10-13 case: a macOS job that never got a runner).
 
 Output: event lines; lines that carry a branch are "<branch>\\t<text>" so the caller can
 mark branches that exist in the local clone; last line "CURSOR <newest timestamp>".
@@ -33,16 +41,48 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # parsed by bash (OS-9)
 
-TS = {"comments": "created_at", "open": "createdAt", "merged": "mergedAt"}
+TS = {"comments": "created_at", "open": "createdAt", "merged": "mergedAt", "runs": "updatedAt"}
+
+# Every terminal state of a workflow run that is not green. `cancelled` is in: a run whose
+# macOS job never got a runner ends as cancelled, not failed (measured 2026-10-13, core PR
+# #267: red for fifteen minutes, found by the operator, because the only watcher was the
+# per-PR ci-watch nobody had armed for that push).
+RED = {"failure", "cancelled", "timed_out", "startup_failure", "action_required"}
 
 
 def login(obj) -> str:
     return (obj or {}).get("login") or "?"
 
 
+def superseded(run: dict, runs: list) -> bool:
+    """A cancelled run is noise when a NEWER run of the same workflow on the same branch
+    exists: GitHub's concurrency cancels the older push's run on purpose (two merges a
+    minute apart). A cancelled run that is still the newest on its branch is the real
+    thing — nobody re-ran it, the branch sits red."""
+    return any(o is not run
+               and o.get("workflowName") == run.get("workflowName")
+               and o.get("headBranch") == run.get("headBranch")
+               and (o.get("createdAt") or "") > (run.get("createdAt") or "")
+               for o in runs)
+
+
+def red_runs(items: list, repo: str, since: str) -> None:
+    """One line per red run newer than the cursor. No login filter here on purpose: a red
+    run on a watched repo concerns whoever watches it, whichever account pushed."""
+    for it in items:
+        if (it.get("updatedAt") or "") <= since or it.get("status") != "completed":
+            continue
+        concl = it.get("conclusion") or ""
+        if concl not in RED or (concl == "cancelled" and superseded(it, items)):
+            continue
+        br = it.get("headBranch") or ""
+        print(f"{br}\tCI-RED {repo} {it.get('workflowName', '?')} on {br} "
+              f"({it.get('event', '?')}, {concl}) {it.get('url', '')}")
+
+
 def main(argv: list) -> int:
     if len(argv) != 6 or argv[1] not in TS:
-        print("usage: repo-activity-filter.py <comments|open|merged> <owner/repo> <since> <self> <only>",
+        print("usage: repo-activity-filter.py <comments|open|merged|runs> <owner/repo> <since> <self> <only>",
               file=sys.stderr)
         return 64
     mode, repo, since, self_login, only = argv[1:]
@@ -59,9 +99,12 @@ def main(argv: list) -> int:
         return 0
 
     key = TS[mode]
+    if mode == "runs":
+        red_runs(items, repo, since)
+        items = [it for it in items if it.get("status") == "completed"]  # a running run moves its stamp again
     for it in items:
         ts = it.get(key) or ""
-        if ts <= since:
+        if ts <= since or mode == "runs":
             continue
         if mode == "comments":
             who = login(it.get("user"))
