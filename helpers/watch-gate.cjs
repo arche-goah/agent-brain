@@ -31,7 +31,19 @@
  *       (plain `shared-memory-watch.sh` or the one inside `collab-watch.sh`);
  *   (b) `gh pr create` ran AND no PR-side watcher lives (a `repo-activity-watch` lock of
  *       collab-watch, or a Monitor/background call in this turn on watch-pr.sh,
- *       ci-watch.sh or collab-watch.sh).
+ *       ci-watch.sh or collab-watch.sh);
+ *   (c) the reply asks the human for a reload and no waiter runs (RELOAD_ASK below);
+ *   (d) a `git push` went into a checkout that has Actions workflows (`.github/workflows/`),
+ *       or `gh pr create` / `gh pr merge` named a repo, AND no `ci-watch.sh pr|ref <that
+ *       owner/repo>` was started in this turn (Monitor or run_in_background). Working rule
+ *       #9 said "a PR is opened together with its CI watch"; this carrier knew only (b), and
+ *       a live collab-watch lock satisfied it although collab-watch never looked at CI.
+ *       Measured 2026-10-13 on the macOS instance: five pushes to PR branches in one
+ *       session, four with a ci-watch, the fifth without — its macOS job never got a runner,
+ *       the run sat red for fifteen minutes and the operator found it. A merge is a push to
+ *       the base branch and starts a run there too; six merges that session, none watched.
+ *       A collab-watch lock does NOT satisfy (d): the standing watch reports a red run at
+ *       its next poll, the rule wants the VERDICT of this push read in this turn.
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
  *
@@ -52,6 +64,9 @@ const PR_WATCH = /\b(watch-pr|ci-watch|collab-watch)\.sh\b/;
 // reconnect. The waiter is core/scripts/wait-mcp-reconnect.sh, armed in the same turn BEFORE the request.
 const RELOAD_ASK = /(?:^|[\s`'"(])\/(?:mcp|reload-plugins)\b|\breconnect\b|\bre-?connecten\b|\bwieder verbinden\b/i;
 const RELOAD_WATCH = /\bwait-mcp-reconnect\.sh\b/;
+// (d) the CI watch of a push: `ci-watch.sh pr|ref <owner/repo> …`, and the repo a gh call names.
+const CI_WATCH = /\bci-watch\.sh\s+(?:pr|ref)\s+["']?([\w.-]+\/[\w.-]+)/i;
+const REPO_FLAG = /(?:--repo|-R)[=\s]+["']?([\w.-]+\/[\w.-]+)/;
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -173,6 +188,47 @@ function prWatched(root, calls) {
   return anyAlive(locks) !== false;
 }
 
+function expandHome(p) { return p.replace(/^~(?=$|[\\/])/, require('os').homedir()); }
+/** The checkout a shell call acts on: `git -C <dir>`, else a leading `cd <dir>`, else the project root. */
+function callDir(cmd, root) {
+  let m = /\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
+  if (!m) m = /(?:^|[\n;&|(])\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
+  return m ? expandHome(m[1] || m[2] || m[3]) : root;
+}
+function hasWorkflows(dir) {
+  try { return fs.readdirSync(path.join(dir, '.github', 'workflows')).some((f) => /\.ya?ml$/i.test(f)); } catch (e) { return false; }
+}
+/** owner/repo of `origin` when it is a GitHub remote, '' otherwise (then nothing is required). */
+function originSlug(dir) {
+  let url;
+  try { url = execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000 }).trim(); } catch (e) { return ''; }
+  const m = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/i.exec(url);
+  return m ? m[1].toLowerCase() : '';
+}
+/** Repos whose CI this turn's shell calls set running: a push into a checkout with workflows,
+ *  a PR opened or merged with the repo named (a merge is a push to the base branch). */
+function ciStarted(shell, root) {
+  const out = new Set();
+  for (const c of shell) {
+    const named = /\bgh\s+pr\s+(?:create|merge)\b/.test(c.cmd);
+    if (!named && !/\bgit\b[\s\S]*\bpush\b/.test(c.cmd)) continue;
+    const flag = named && REPO_FLAG.exec(c.cmd);
+    if (flag) { out.add(flag[1].toLowerCase()); continue; }
+    const dir = callDir(c.cmd, root);
+    if (!hasWorkflows(dir)) continue;
+    const slug = originSlug(dir);
+    if (slug) out.add(slug);
+  }
+  return out;
+}
+function ciWatched(calls, slug) {
+  return calls.some((c) => {
+    if (!(c.name === 'Monitor' || c.bg)) return false;
+    const m = CI_WATCH.exec(c.cmd);
+    return !!m && m[1].toLowerCase() === slug;
+  });
+}
+
 function tokens(s) { return new Set(String(s || '').toLowerCase().split(/[\s,;]+/).filter(Boolean)); }
 
 function field(head, k) {
@@ -231,6 +287,12 @@ function main(input) {
   if (RELOAD_ASK.test(lastText) && !calls.some((c) => RELOAD_WATCH.test(c.cmd))) {
     missing.push('reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
       + '(Monitor or run_in_background) BEFORE asking, then say which reload you need');
+  }
+  // (d) a push started a CI run and nothing in this turn watches it
+  for (const slug of ciStarted(shell, root)) {
+    if (ciWatched(calls, slug)) continue;
+    missing.push(`CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
+      + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`);
   }
   if (!missing.length) process.exit(0);
   process.stdout.write(JSON.stringify({
