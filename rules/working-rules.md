@@ -40,7 +40,15 @@
    about 15 minutes, so every CI wait runs detached, one watch per PR in parallel, and the
    session keeps working until the verdict arrives as a notification. Measured the day the
    rule was written: 65 of 263 ci-watch calls in three days ran in the foreground. Carried
-   by the core's own `mechanism-rules.json` (`foreground_only`).
+   by the core's own `mechanism-rules.json` (`foreground_only`). **And the same holds for
+   every push that starts a run** (operator correction 2026-10-13, "fatal"): a push onto a
+   PR branch, a merge (a push to the base branch), a tag — each gets its `ci-watch.sh
+   pr|ref` in the same turn. Measured that day: five pushes to PR branches, four watched;
+   the fifth went red (runner never acquired) and the operator found it; six merges, none
+   watched. Carried twice: `core/helpers/watch-gate.cjs` blocks a turn end after a push
+   into a checkout with workflows without a ci-watch on that repo, and the standing watch
+   (`repo-activity-watch.sh` inside collab-watch) reports every red run on a watched repo
+   as `CI-RED`, so a red check is seen even when no one armed a watch.
 10. **A commitment about future behaviour becomes rule text in the same turn** (operator
     decision 2026-10-09): "from now on I will…" said only in chat binds nothing and is
     invisible to every check. Write it where rules live — the instance's rules if it is

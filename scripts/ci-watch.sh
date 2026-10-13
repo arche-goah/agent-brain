@@ -46,6 +46,7 @@ usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_
 start=$(date +%s)
 deadline=$(( start + TIMEOUT ))
 warned_no_run=0
+gh_fail=0
 
 fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
 
@@ -232,8 +233,17 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     fi
     sleep "$POLL"; continue
   fi
-  json=$(gh run list -R "$REPO" --limit 50 --json headBranch,headSha,status,conclusion,name 2>&1) \
-    || fail_unknown "gh run list failed: $(head -c 200 <<<"$json")"
+  if ! json=$(gh run list -R "$REPO" --limit 50 --json headBranch,headSha,status,conclusion,name 2>&1); then
+    # One failed call is weather, not a verdict (measured 2026-10-13: an HTTP 504 on the
+    # first poll ended a watch on main as UNKNOWN while the run was green; pr mode already
+    # tolerated the same error and this mode gave up at once). Keep polling; only a run of
+    # failures is a measurement.
+    gh_fail=$(( gh_fail + 1 ))
+    if (( gh_fail >= 5 )); then fail_unknown "gh run list failed $gh_fail times in a row: $(head -c 200 <<<"$json")"; fi
+    echo "ci-watch: gh run list failed ($gh_fail/5) — retrying in ${POLL}s: $(head -c 120 <<<"$json")" >&2
+    sleep "$POLL"; continue
+  fi
+  gh_fail=0
   verdict=$("$PY" -c '
 import json, sys
 ref, sha = sys.argv[1], sys.argv[2]
