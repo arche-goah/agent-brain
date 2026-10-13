@@ -21,6 +21,12 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/mechanism-guard.cjs\"",
             "timeout": 10,
             "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/shared-working-copy-guard.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },

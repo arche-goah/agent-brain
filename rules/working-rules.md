@@ -35,15 +35,20 @@
    opens a pull request arms `core/scripts/ci-watch.sh pr <repo> <n>` in the same turn
    (background) and reads the result before calling the PR ready. A red check found days
    later is a check nobody watched (measured: a PR sat red while the session reported
-   the others green). **The same holds for every push that starts a run** (operator
-   correction 2026-10-13, "fatal"): a push onto a PR branch, a merge (a push to the base
-   branch), a tag — each gets its `ci-watch.sh pr|ref` in the same turn. Measured that
-   day: five pushes to PR branches, four watched; the fifth went red (runner never
-   acquired) and the operator found it; six merges, none watched. Carried twice:
-   `core/helpers/watch-gate.cjs` blocks a turn end after a push into a checkout with
-   workflows without a ci-watch on that repo, and the standing watch
-   (`repo-activity-watch.sh` inside collab-watch) reports every red run on a watched
-   repo as `CI-RED`, so a red check is seen even when no one armed a watch.
+   the others green). **Never in the foreground** (operator 2026-10-13: "that blocks every
+   other activity — with several core PRs waiting on CI, hours go by"): a core run takes
+   about 15 minutes, so every CI wait runs detached, one watch per PR in parallel, and the
+   session keeps working until the verdict arrives as a notification. Measured the day the
+   rule was written: 65 of 263 ci-watch calls in three days ran in the foreground. Carried
+   by the core's own `mechanism-rules.json` (`foreground_only`). **And the same holds for
+   every push that starts a run** (operator correction 2026-10-13, "fatal"): a push onto a
+   PR branch, a merge (a push to the base branch), a tag — each gets its `ci-watch.sh
+   pr|ref` in the same turn. Measured that day: five pushes to PR branches, four watched;
+   the fifth went red (runner never acquired) and the operator found it; six merges, none
+   watched. Carried twice: `core/helpers/watch-gate.cjs` blocks a turn end after a push
+   into a checkout with workflows without a ci-watch on that repo, and the standing watch
+   (`repo-activity-watch.sh` inside collab-watch) reports every red run on a watched repo
+   as `CI-RED`, so a red check is seen even when no one armed a watch.
 10. **A commitment about future behaviour becomes rule text in the same turn** (operator
     decision 2026-10-09): "from now on I will…" said only in chat binds nothing and is
     invisible to every check. Write it where rules live — the instance's rules if it is
@@ -59,6 +64,16 @@
     is the agreed channel ASK OR ACT step 1 names. Making a repo public, a first
     publication, a push outside the organisation's repos and a deployment stay gated.
     Carriers on every push: leak-scan, the English-only ratchet, the instance's name guard.
+12. **Two sessions, one working copy: commit by path, never rewrite, never touch the other's
+    operation** (operator direction 2026-10-13, after three incidents in three days). A checkout
+    has one index and one HEAD; git cannot tell sessions apart. While a second session runs on
+    the machine, a session that is not working in its own scratchpad worktree commits only its
+    own paths (`git commit <paths> -m …`), stages only its own paths, never amends, stashes,
+    hard-resets, switches branch or force-pushes there, pulls `--ff-only`, and leaves a rebase
+    or merge it did not start untouched — it messages the session that owns it instead. Branch
+    work goes into `git worktree add` under the scratchpad, which is private by its path. The
+    carrier is `core/helpers/shared-working-copy-guard.cjs`; a deviation needs the marker and is
+    finished in the same turn, so the other session never meets a half-done state.
 
 ## File Rules
 

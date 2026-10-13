@@ -151,6 +151,71 @@ def main() -> int:
         check("negative control: no parties.json, no audience findings",
               not lint_mod.lint(plain)["findings"]["audience"])
 
+        print("priority (who is asked first - a hint, never a sequence)")
+        q = tmp / "queue"
+        q.mkdir()
+        git(q, "init", "-q")
+        git(q, "config", "user.email", "t@local")
+        git(q, "config", "user.name", "T")
+        git(q, "config", "core.autocrlf", "false")
+        pq = dict(PARTIES, priority={"os:windows": ["kim-pc", "person:sam"]})
+        (q / "parties.json").write_text(json.dumps(pq, indent=1), encoding="utf-8")
+        (q / "INDEX.md").write_text("# Index\n", encoding="utf-8")
+        entry(q, "core/request-default.md", "lee-tower", "os:windows", "DEFAULT win check")
+        entry(q, "core/request-own-order.md", "lee-tower", "os:windows", "OWNORDER win check")
+        p = q / "core" / "request-own-order.md"
+        p.write_bytes(p.read_bytes().replace(b"  date:", b"  priority: person:sam, kim-pc\n  date:"))
+        entry(q, "core/request-review-all.md", "lee-tower", "alle-collaborator", "REVIEWALL please review PR 5")
+        entry(q, "core/request-review-ranked.md", "lee-tower", "alle", "RANKEDALL please review PR 6")
+        p = q / "core" / "request-review-ranked.md"
+        p.write_bytes(p.read_bytes().replace(b"  date:", b"  priority: kim-mac, alle\n  date:"))
+        entry(q, "core/request-claimed.md", "lee-tower", "os:windows", "CLAIMED win check")
+        entry(q, "core/claim-it.md", "sam-laptop", "lee-tower", "taking it")
+        c = q / "core" / "claim-it.md"
+        c.write_bytes(c.read_bytes().replace(b"  date:", b"  claims: request-claimed\n  date:"))
+        git(q, "add", "-A")
+        git(q, "commit", "-qm", "seed")
+        line = lambda out, key: next((x for x in out.splitlines() if key in x), "")  # noqa: E731
+        pc, laptop, mac = inbox(q, "kim-pc,kim"), inbox(q, "sam-laptop,sam"), inbox(q, "kim-mac,kim")
+        check("asked first: a plain open request", "DEFAULT" in pc and "optional" not in line(pc, "DEFAULT"))
+        check("asked later: listed as optional, names who is asked first",
+              "optional: priority 2, asked first kim-pc; unclaimed" in line(laptop, "DEFAULT"))
+        check("the entry's own priority wins over the default",
+              "optional" not in line(laptop, "OWNORDER") and "asked first person:sam" in line(pc, "OWNORDER"))
+        check("a request to everyone without priority reaches everyone as optional",
+              all("optional: to everyone" in line(o, "REVIEWALL") for o in (pc, laptop, mac)))
+        check("a ranked request to everyone: first named is asked, the rest optional",
+              "optional" not in line(mac, "RANKEDALL") and "asked first kim-mac" in line(laptop, "RANKEDALL"))
+        check("a claim by anyone closes it for everyone",
+              not any("CLAIMED" in o for o in (pc, laptop, mac)))
+        check("negative control: without priority a category request stays a plain request",
+              "optional" not in line(inbox(repo, "sam-laptop,sam"), "OSWIN"))
+        print("closing (either side may settle a request)")
+        entry(q, "core/request-asked.md", "lee-tower", "kim-pc", "ASKED a question")
+        entry(q, "core/request-still.md", "lee-tower", "kim-pc", "STILL a question")
+        entry(q, "core/thanks.md", "lee-tower", "kim-pc", "answer received, enough")
+        t = q / "core" / "thanks.md"
+        t.write_bytes(t.read_bytes().replace(b"  date:", b"  closes: request-asked\n  date:"))
+        (q / "core" / "LOG.md").write_bytes((
+            f"# Log\n\n## {NEW} · lee-tower — AN kim-pc: LOGASK please run it\n\nx\n"
+            f"\n## {NEW} · lee-tower — AN kim-pc: LOGOPEN another one\n\nx\n"
+            f"\n## {NEW} · lee-tower — AN kim-pc: LOGINFO merged (status: info)\n\nx\n").encode("utf-8"))
+        git(q, "add", "-A")
+        git(q, "commit", "-qm", "asks")
+        with (q / "core" / "LOG.md").open("a", encoding="utf-8", newline="\n") as fh:
+            fh.write(f"\n## {NEW} · lee-tower — AN kim-pc: ERLEDIGT — answer received, thanks\n\n"
+                     f"- LOGASK please run it\n")
+        git(q, "add", "-A")
+        git(q, "commit", "-qm", "closed")
+        pc = inbox(q, "kim-pc,kim")
+        check("the asker's closes: settles a fact-file request", "ASKED" not in pc)
+        check("control: an unsettled request stays", "STILL" in pc)
+        check("the asker's ERLEDIGT heading settles the LOG request it names", "LOGASK" not in pc)
+        check("control: a LOG request the close does not name stays open", "LOGOPEN" in pc)
+        check("an info heading is not a request", "LOGINFO" not in pc)
+        oi_mod = load("open-items")
+        check("open-items reads an optional line as a hint, not a duty",
+              bool(oi_mod.OPTIONAL.match("optional: priority 2, asked first kim-pc; unclaimed - take it if you can and want — x")))
         print("lint --staged (pre-commit)")
         git(repo, "add", "-A")
         git(repo, "commit", "-qm", "old findings")
