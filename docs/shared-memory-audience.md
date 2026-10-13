@@ -19,32 +19,30 @@ Example: a check that any Windows machine can run goes to `audience: os:windows`
 the one Windows machine the writer happens to remember (measured 2026-10-11: such a request
 went to a machine that was switched off while another party's Windows machines were on).
 
-## Who takes it: ranked candidates
+## Who is asked first: priority (a hint, never a sequence)
 
-A request to a category reaches several parties. Ranking says who is expected first, so the
-request can go out to everyone as information without the later ones thinking they must act
-now (operator order 2026-10-13). The ranking is per task, never fixed:
+Any request that several parties can take — a Windows check, a review, a test run — may say
+who is asked first (operator order 2026-10-13). Priority is INFORMATION: no timers, no
+escalation. Anyone reached may claim the task at any time and decides themselves whether they
+can and want to take one they are not asked first for.
 
 ```yaml
-audience: os:windows
-candidates: kim-pc, person:sam, person:lee   # ordered, any tokens
-escalate_after: 24                                                 # hours per rank (optional)
+audience: alle-collaborator            # or os:windows, person:<p>, devices
+priority: kim-pc, person:sam, os:linux # ordered, any tokens (optional)
 ```
 
-- **First candidate:** an open request, as before.
-- **A later candidate:** listed at session start as *waiting*: "queued: candidate 2, after
-  <who is before you>, unclaimed; yours from <time>". It is visible, but not a duty yet.
-- **When nobody before them took it within `rank × escalate_after` hours** (counted from
-  the request's first commit), it becomes that candidate's open request.
-- **Not listed at all:** comes after every listed candidate.
-- **Taking it:** write a short entry with `claims: <request-stem>`, or answer with
-  `answers: <request-stem>`. Either one closes the request for every other candidate.
-- **No `candidates:` in the entry:** the default order from `parties.json` applies
-  (`"candidates": {"os:windows": [...]}`, `"escalate_after_h": 24`), but only for an entry
-  addressed to exactly that one category.
-- Without either, everyone reached is a first candidate (the behaviour before).
+- **Asked first** (the first priority token that reaches you): an open request, as before.
+- **Everyone else reached:** the request is listed as a hint, not a duty:
+  "optional: priority n, asked first <who>; unclaimed - take it if you can and want".
+- **A request to everyone without `priority:`:** a hint for everyone (before 2026-10-13 such a
+  broadcast request reached nobody's list).
+- **Taking it:** write a short entry with `claims: <request-stem>` (or answer with
+  `answers: <request-stem>`). That is the record; it closes the request for everyone else.
+- **Default per category:** `parties.json` `"priority": {"os:windows": [...]}` applies to an
+  entry addressed to exactly that one category and carrying no `priority:` of its own.
 
-Only fact files carry a ranking. A LOG-only heading cannot hold frontmatter.
+Only fact files carry a priority — a LOG-only heading has no frontmatter. Name request files
+`request-…` or `question-…`: those prefixes are what every reader recognises.
 
 ## Data: `parties.json` at the shared-memory repo's root
 

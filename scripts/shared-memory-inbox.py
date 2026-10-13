@@ -281,8 +281,7 @@ FM_STATUS = re.compile(r"^\s+status:\s*([\w-]+)", re.M)
 
 
 def open_items(repo: Path, ref: str, me: set[str], days: int,
-               prefixes: tuple[str, ...] = REQUEST_PREFIXES, parties: dict | None = None,
-               now=None) -> list[tuple]:
+               prefixes: tuple[str, ...] = REQUEST_PREFIXES, parties: dict | None = None) -> list[tuple]:
     """Requests addressed to this instance BY NAME that nothing of ours answers yet.
 
     WHY (2026-10-05): the range inbox above only shows what arrived since the cursor. A
@@ -306,7 +305,9 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
     # All .md texts in two git processes (see snapshot); every search below runs on them in
     # memory. Prefilter: only files with an `audience` line that names us at all.
     texts = snapshot(repo, ref)
-    rx = re.compile(r"^[^\S\n]+audience:.*(" + "|".join(re.escape(t) for t in sorted(me)) + r")",
+    # A request to everyone reaches us too (as optional, see below) — 2026-10-13.
+    reach = me | EVERYONE
+    rx = re.compile(r"^[^\S\n]+audience:.*(" + "|".join(re.escape(t) for t in sorted(reach)) + r")",
                     re.I | re.M)
     cand = {rel for rel, t in texts.items() if rx.search(t)}
     items = []
@@ -316,7 +317,7 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             continue
         blob = texts[rel]
         e = read_entry(p, repo, text=blob)
-        if not e["audience"] or not (tokens(e["audience"]) & me) or tokens(e["von"]) & me:
+        if not e["audience"] or not (tokens(e["audience"]) & reach) or tokens(e["von"]) & me:
             continue
         head = blob.split("\n---", 1)[0] if blob.startswith("---") else ""
         st = FM_STATUS.search(head)
@@ -353,22 +354,15 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
                 break
         if not answered:
             text = first_sentence(e["desc"] or e["name"], TEXT_CAP)
-            cands, hours = _parties.queue(head, e["audience"], parties or {})
-            r = _parties.rank(cands, me) if cands else 0
+            # Priority is information, never a sequence (operator 2026-10-13): whoever is not
+            # asked first sees the task as optional — anyone may claim it at any time.
+            prio = _parties.priority(head, e["audience"], parties or {})
+            r = _parties.rank(prio, me | EVERYONE) if prio else 0
             if r:
-                # Each rank waits `hours` for the one before, counted from the request's first commit.
-                from datetime import datetime, timedelta, timezone
-                added = git(repo, "log", "--diff-filter=A", "--format=%cI", ref, "--", rel).split()
-                try:
-                    due = datetime.fromisoformat(added[-1]) + timedelta(hours=r * hours)
-                except (IndexError, ValueError):
-                    due = None
-                before = ", ".join(cands[:r])
-                if due and (now or datetime.now(timezone.utc)) < due:
-                    text = (f"queued: candidate {r + 1}, after {before}, unclaimed; "
-                            f"yours from {due.astimezone(timezone.utc):%Y-%m-%d %H:%M} UTC — {text}")
-                else:
-                    text = f"earlier candidates {before} did not claim it — yours now: {text}"
+                text = (f"optional: priority {r + 1}, asked first {', '.join(prio[:r])}; unclaimed"
+                        f" - take it if you can and want — {text}")
+            elif not prio and not (aud & me):
+                text = f"optional: to everyone; unclaimed - take it if you can and want — {text}"
             items.append((when or "?", e["topic"], e["von"] or "?", f"{text} ({rel})"))
     return items + log_only_items(texts, me, floor)
 

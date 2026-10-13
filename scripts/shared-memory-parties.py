@@ -111,41 +111,31 @@ def is_category(token: str) -> bool:
     return token.startswith(("os:", "person:")) or token in EVERYONE
 
 
-# Who takes a request addressed to a category, in which order (operator order 2026-10-13: "a
-# Windows check is for Windows in general — but with a ranking, so it can go out as info
-# without the third candidate thinking it must act now; the second one should see at session
-# start that it is open and the first has not taken it"). Generic: any task, any tokens.
-#   entry frontmatter  candidates: <token>, <token>, ...   (ordered; device, person:, os:)
-#                      escalate_after: <hours>              (how long each rank waits)
-#   parties.json       "candidates": {"os:windows": [...]}, "escalate_after_h": 24
-#                      (the default order for an entry addressed to exactly that category)
-# Taken: any entry naming the request in `claims:` (or `answers:`) closes it for everyone.
-CANDIDATES = re.compile(r"^\s+candidates:\s*(.+?)\s*$", re.M)
-ESCALATE = re.compile(r"^\s+escalate_after:\s*(\d+)\s*h?\s*$", re.M)
-DEFAULT_ESCALATE_H = 24
+# Who is asked first for a request that several parties can take (operator order 2026-10-13):
+# `priority:` is an ordered list of any audience tokens (device, person:, os:, everyone). It is
+# INFORMATION, not a sequence — no timers, no escalation; anyone reached may claim the task at
+# any time, and decides themselves whether they can and want to take a lower-priority one.
+#   entry frontmatter  priority: <token>, <token>, ...
+#   parties.json       "priority": {"os:windows": [...]}   (default for an entry addressed to
+#                      exactly that one category)
+# Taken: an entry naming the request in `claims:` (or `answers:`) closes it for everyone.
+PRIORITY = re.compile(r"^\s+priority:\s*(.+?)\s*$", re.M)
 
 
-def queue(head: str, audience: str, parties: dict) -> tuple[list[str], int]:
-    """(ranked candidates, hours each rank waits for the one before). The entry's own
-    `candidates:` wins; else the parties.json default for its single audience category."""
-    m = CANDIDATES.search(head or "")
+def priority(head: str, audience: str, parties: dict) -> list[str]:
+    """The entry's own `priority:`, else the parties.json default for its single category."""
+    m = PRIORITY.search(head or "")
     if m:
-        cands = [c.strip().lower() for c in m.group(1).split(",") if c.strip()]
-    else:
-        cats = [t for t in tokens(audience) if is_category(t)]
-        dflt = parties.get("candidates") if isinstance(parties.get("candidates"), dict) else {}
-        cands = [str(c).lower() for c in dflt.get(cats[0], [])] if len(cats) == 1 else []
-    e = ESCALATE.search(head or "")
-    try:
-        hours = int(e.group(1)) if e else int(parties.get("escalate_after_h") or DEFAULT_ESCALATE_H)
-    except (TypeError, ValueError):
-        hours = DEFAULT_ESCALATE_H
-    return cands, hours
+        return [c.strip().lower() for c in m.group(1).split(",") if c.strip()]
+    cats = [t for t in tokens(audience) if is_category(t)]
+    dflt = parties.get("priority") if isinstance(parties.get("priority"), dict) else {}
+    return [str(c).lower() for c in dflt.get(cats[0], [])] if len(cats) == 1 else []
 
 
-def rank(cands: list[str], me: set[str]) -> int:
-    """0-based position of the first candidate that is us; not listed = after all of them."""
-    return next((i for i, c in enumerate(cands) if tokens(c) & me), len(cands))
+def rank(prio: list[str], me: set[str]) -> int:
+    """0-based position of the first priority token that reaches us; not listed = after all.
+    `me` must include the everyone spellings for an `alle` entry to match."""
+    return next((i for i, c in enumerate(prio) if tokens(c) & me), len(prio))
 
 
 # LOG headings — shared by the inbox (who a message is for) and the lint (who a request goes
