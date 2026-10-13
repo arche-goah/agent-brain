@@ -243,11 +243,22 @@ here. Take the FIRST step that applies:
    its gate applies — the operator's word first, regardless of confidence.
 2. **Needed to fulfil the order as specified** and a defined path exists: take it, in the
    order's space. An interrupted defined path: restore it (THIRD CASE above).
-3. **Adjacent** — useful, but not needed for the order, or no defined path exists: write
-   it where it is decided without blocking (the instance's ledger as `origin: derived`,
-   or the shared-memory channel for another party), and CONTINUE the ordered work. The
-   operator hears it in the next report, as a proposal with a recommendation.
-4. **Otherwise** (reversible, own terrain, inside the order): do it and report.
+3. **Needed to fulfil the order, but NO defined path exists** — the "there is no defined
+   path → it gets DISCUSSED" case above. Raise it through the channel that fits it (the
+   instance's ledger plus the next report; the other party's shared-memory channel when
+   the path is theirs to define) AND, if the order can proceed meanwhile, name the
+   assumption you continue under — in that entry and in the report, so the choice is
+   visible and reversible, never silent. If the order cannot proceed without the answer
+   and the answer belongs to the operator, the question ends the turn (last paragraph
+   below). Split out of the adjacent step on 2026-10-12 (operator decision): the two
+   cases shared one step and one outcome — note it and continue — which fits an adjacent
+   idea, but turns a NEEDED subtask without a path into exactly the improvisation this
+   section names.
+4. **Adjacent** — useful, but not needed for the order: write it where it is decided
+   without blocking (the instance's ledger as `origin: derived`, or the shared-memory
+   channel for another party), and CONTINUE the ordered work. The operator hears it in
+   the next report, as a proposal with a recommendation.
+5. **Otherwise** (reversible, own terrain, inside the order): do it and report.
 A question ENDS the turn only when the next step of the order cannot proceed without the
 answer AND the answer belongs to the operator — the instance names its list of
 operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
@@ -263,6 +274,14 @@ hand, GUI drivers), and the guard finds it whether the tool arrives as a clone i
 belongs — the system learns, not just the agent. (Incident 2026-10-11: a defined path was
 not available on a second machine; the session built its own client and wrote straight
 into the tool's IPC file instead of reporting. Not available = report, THIRD CASE above.)
+**A rule whose documented path is "agree it with the operator first" may demand the
+operator's word behind the marker** (`needs_operator_word: true`, operator decision
+2026-10-12): the justification must then quote the operator — the words in `"…"` or `„…"`
+plus the date they were said — or point at a record file that exists (`path[:line]`);
+otherwise the guard denies and names what is missing. A paraphrase is not a quotation
+(incident 2026-09-12: two merges in a shared repo carried the marker with a verbatim quote
+that stands in no transcript of that day — the gap it should have shown was papered over by
+the invented evidence). Rules without the field behave as before.
 **A request to another machine names the defined path AS IT EXISTS THERE** — read how that
 machine runs the tool (clone or plugin, version) before writing the steps; a step that only
 works on the sender's setup turns the receiver's next move into improvisation.

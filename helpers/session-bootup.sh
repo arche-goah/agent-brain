@@ -351,6 +351,15 @@ if [[ -f "$HERE/../scripts/orphan-check.py" ]]; then
   "$PY" "$HERE/../scripts/orphan-check.py" --repo "$R" 2>/dev/null
 fi
 
+# Loop watchdog an earlier autonomous run left armed (measured 2026-10-12: a crashed run
+# leaves .claude-state/loop-watchdog.state, and only the instance's scheduler — if any — ever
+# reads it). One line with the disarm command when the last beat is older than the run's own
+# silence limit; silent when nothing is armed or the beat is fresh (a live run elsewhere).
+# The script decides, the bootup only relays — the state path comes from CLAUDE_PROJECT_DIR.
+if [[ -f "$HERE/../scripts/loop-watchdog.sh" ]]; then
+  CLAUDE_PROJECT_DIR="$R" bash "$HERE/../scripts/loop-watchdog.sh" status --brief 2>/dev/null
+fi
+
 # Settings JSON valid?
 for f in .claude/settings.json .claude/settings.local.json; do
   # settings.local.json is optional — "not present" is not an error. Without this
@@ -366,7 +375,7 @@ done
 # every session until the operator adds the wiring; the check never edits settings.
 if [[ -f "$HERE/../scripts/hook-coverage.py" ]]; then
   hc=$("$PY" "$HERE/../scripts/hook-coverage.py" "$R" 2>/dev/null)
-  [[ -n "$hc" ]] && echo "!! hooks in the core template but not wired here: ${hc//$'\n'/ · } — ask the operator to add the line(s) to .claude/settings.json (source: core/templates/settings.json), then restart Claude Code"
+  [[ -n "$hc" ]] && echo "!! hooks in the core template but not wired here: ${hc//$'\n'/ · } — ask the operator to add the line(s) to .claude/settings.json (source: core/templates/settings.json), then restart Claude Code; a line about a gate's data file under .claude/rules/ is agent work: fill it, or write \"inert_ok\": \"<reason>\" into it"
 fi
 
 # Enabled plugin skills the auto-fire table omits (measured on the Windows instance:
@@ -502,7 +511,33 @@ if [[ -n "${latest:-}" ]]; then
   # the scan's machine step writes it into the report, but a line inside a report nobody
   # opens reaches nobody — the session start relays it, so the AI tells the operator what,
   # why now and the measured price. It never starts anything.
-  grep -a '^deep check suggested:' "$latest" 2>/dev/null | head -3 | cut -c1-240 | sed 's/^/!! /'
+  # The line is a snapshot from scan time, not a measurement at session start: once the
+  # named check has an artifact dated on or after the report, the suggestion was followed
+  # and stays silent — same rule as the superseded scheduled fail below. (Measured
+  # 2026-10-12 on the macOS instance: the coherence register was written the same day,
+  # AFTER the report, and every start for three days still voiced "52 new rule lines
+  # since 2026-09-18".) Dates are read from the file NAMES, the measure
+  # scripts/brain-scan-prep.py uses to find the last register; a report or artifact
+  # without one cannot be compared and the line is relayed unchanged.
+  rep_d=$(basename "$latest" | grep -ao '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' | head -1)
+  grep -a '^deep check suggested:' "$latest" 2>/dev/null | head -3 | cut -c1-240 |
+  while IFS= read -r dc; do
+    chk=${dc#deep check suggested: }; chk=${chk%% *}
+    # kohaerenz-scan/ = the register folder before the 2026-08-14 rename; still counts.
+    # The globs expand in the array assignment with "$R" quoted: a brain path with a space
+    # (the normal case for a Windows profile, os-traps OS-10) stays one word. An unmatched
+    # glob stays literal and carries no date, so it compares as "no artifact".
+    case "$chk" in
+      coherence-scan) arts=("$R"/docs/research/coherence-scan/register-*.md "$R"/docs/research/kohaerenz-scan/register-*.md);;
+      memory-dream)   arts=("$R"/docs/research/memory-dream/report-*.md);;
+      full-audit)     arts=("$R"/docs/research/full-audit/gesamt-*.md);;
+      *)              arts=();;
+    esac
+    art_d=""
+    [[ ${#arts[@]} -gt 0 ]] && art_d=$(printf '%s\n' "${arts[@]}" | sed 's|.*/||' | grep -ao '20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]' | sort | tail -1)
+    if [[ -n "$rep_d" && -n "$art_d" && ! "$art_d" < "$rep_d" ]]; then continue; fi
+    echo "!! $dc"
+  done
 elif [[ -d "$sd" ]]; then
   echo "brain-scan: no report yet in docs/research/brain-scan/"
   echo "!! brain-scan DUE: no report yet — ask the operator, then run it in this session"

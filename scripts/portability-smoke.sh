@@ -72,6 +72,33 @@ rm -f "$TD/docs/research/brain-scan/scan-old.md" "$TD/docs/maintenance/scheduled
 out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
 case "$out" in *"!! brain-scan DUE: no report yet"*) ok "no report: due line";; *) bad "no report: no due line";; esac
 
+# 1c) a deep-check suggestion is a snapshot from scan time: an artifact of the named check
+#     dated on or after the report means it was followed -> silent (measured 2026-10-12:
+#     the register written the same day, after the report, was voiced for three days).
+#     Older artifact -> voiced (negative control); no artifact -> voiced. Dates come from
+#     the file names, so the report here carries one. The legacy register folder counts.
+#     The instance path carries a space (os-traps OS-10): measured 2026-10-12 on a Windows
+#     profile path, the artifact glob split there and the followed check was still voiced.
+TS="$T/stale instance"
+mkdir -p "$TS/docs/research/brain-scan" "$TS/docs/research/coherence-scan" "$TS/docs/research/memory-dream"
+printf -- '- [P1] x\ndeep check suggested: coherence-scan — 52 new dated rule lines since the last coherence register (2026-09-18) — measured price: ~2.6M\ndeep check suggested: memory-dream — index near its limit — measured price: ~0.6M\n' \
+  > "$TS/docs/research/brain-scan/scan-2026-10-09.md"
+: > "$TS/docs/research/coherence-scan/register-2026-10-09.md"
+: > "$TS/docs/research/memory-dream/report-2026-09-18.md"
+out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"deep check suggested: coherence-scan"*) bad "coherence-scan suggestion voiced although a register of the report's date exists";; *) ok "deep check followed (register dated like the report): silent";; esac
+case "$out" in *"!! deep check suggested: memory-dream"*) ok "memory-dream suggestion with only an older report stays voiced";; *) bad "memory-dream suggestion swallowed although its last report is older";; esac
+mv "$TS/docs/research/coherence-scan/register-2026-10-09.md" "$TS/docs/research/coherence-scan/register-2026-09-18.md"
+out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"!! deep check suggested: coherence-scan"*) ok "older register: suggestion stays voiced (negative control)";; *) bad "older register swallowed the suggestion";; esac
+rm -f "$TS/docs/research/coherence-scan/register-2026-09-18.md"
+out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"!! deep check suggested: coherence-scan"*) ok "no register: suggestion stays voiced";; *) bad "no register at all swallowed the suggestion";; esac
+mkdir -p "$TS/docs/research/kohaerenz-scan"
+: > "$TS/docs/research/kohaerenz-scan/register-2026-10-10.md"
+out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"deep check suggested: coherence-scan"*) bad "a newer register in the legacy folder is not counted";; *) ok "newer register in the legacy folder: silent";; esac
+
 # 2) brain-scan freshness gate: a fresh report -> exit 0, WITHOUT starting a run
 #    (CLAUDE_BIN points at true; if run.log appeared, the gate would be broken).
 BRAIN_DIR="$T" CLAUDE_BIN="$(command -v true)" bash "$CORE/scripts/brain-scan.sh"; rc=$?
@@ -105,6 +132,35 @@ case "$rc:$wd" in
   0:*"disarmed: 'smoke-loop' ran "[0-2][0-9]:[0-5][0-9]*) ok "watchdog disarm with time proof";;
   *) bad "watchdog disarm: rc=$rc $wd";;
 esac
+
+# 4b) stale armed watchdog at session start (2026-10-12): a crashed run leaves the state file
+#     armed; the bootup names it ONCE (via `status --brief`) with the disarm command. State
+#     lines: name, max-silence-min, last-beat, start, deadline (0 = open), core-done.
+_wds="$T/.claude-state/loop-watchdog.state"; mkdir -p "$T/.claude-state"; _now=$(date +%s)
+printf '%s\n' smoke-stale 30 "$(( _now - 5400 ))" "$(( _now - 7200 ))" 0 0 > "$_wds"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in
+  *"!! loop-watchdog still armed: 'smoke-stale', last beat 90 min ago (limit 30 min), no deadline"*"loop-watchdog.sh disarm"*) ok "bootup names a stale armed watchdog with the disarm command";;
+  *) bad "bootup stale-watchdog line missing: $(printf '%s' "$out" | grep -a 'loop-watchdog' | tail -1)";;
+esac
+# Deadline passed + core reported done + fresh beat: the script's second alarm class.
+printf '%s\n' smoke-overrun 30 "$_now" "$(( _now - 7200 ))" "$(( _now - 600 ))" 1 > "$_wds"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in
+  *"!! loop-watchdog still armed: 'smoke-overrun'"*"deadline "[0-2][0-9]:[0-5][0-9]" PASSED"*) ok "bootup names a run past its deadline with the core done";;
+  *) bad "bootup overrun-watchdog line missing: $(printf '%s' "$out" | grep -a 'loop-watchdog' | tail -1)";;
+esac
+# Negative controls: a fresh beat with an open core is a live run (even past its deadline —
+# the duration is a floor), and no state file is nothing. Both must stay silent.
+printf '%s\n' smoke-live 30 "$_now" "$(( _now - 7200 ))" "$(( _now - 600 ))" 0 > "$_wds"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"loop-watchdog still armed"*) bad "live run (fresh beat, core open) reported as stale";; *) ok "fresh beat: silent";; esac
+CLAUDE_PROJECT_DIR="$T" bash "$CORE/scripts/loop-watchdog.sh" arm smoke-fresh 30 5 >/dev/null 2>&1
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"loop-watchdog still armed"*) bad "just-armed run reported as stale";; *) ok "just armed (real writer): silent";; esac
+rm -rf "$T/.claude-state"
+out="$(CLAUDE_PROJECT_DIR="$T" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"loop-watchdog still armed"*) bad "no state file but a stale line";; *) ok "no state file: silent";; esac
 
 # 5) Generators write LF on EVERY OS. Python's text mode translates "\n" into the
 #    platform separator — the same file ended up with CRLF on Windows and LF on macOS
@@ -342,6 +398,7 @@ esac
 #     fixture so the runner's real user settings can never leak into the check.
 mkdir -p "$T/hookbrain/core/templates" "$T/hookbrain/core/helpers" "$T/hookbrain/.claude/rules" "$T/nocfg"
 printf '{"names": ["placeholder"], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
+printf '{"domains": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-read.json"
 cp "$CORE/templates/settings.json" "$T/hookbrain/core/templates/"
 cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$T/hookbrain/core/helpers/" 2>/dev/null
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
@@ -404,6 +461,72 @@ case "$_rc:$_hc" in
   *) bad "hook-coverage inert-guard case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
 printf '{"names": ["placeholder"], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
+#     Any gate that declares INERT-WITHOUT in its header (measured 2026-10-12: live-read-gate
+#     wired for weeks without live-read.json in a brain with three live systems). No file ->
+#     named; empty domains without "inert_ok" -> named; filled domains -> silent (control).
+rm -f "$T/hookbrain/.claude/rules/live-read.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"live-read-gate.cjs is wired but .claude/rules/live-read.json does not exist"*) ok "hook-coverage flags a data gate wired without its data file";;
+  *) bad "hook-coverage missing-data case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+printf '{"domains": []}\n' > "$T/hookbrain/.claude/rules/live-read.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"live-read-gate.cjs is wired but .claude/rules/live-read.json has no domains"*) ok "hook-coverage flags empty gate data without an inert_ok reason";;
+  *) bad "hook-coverage empty-data case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+printf '{"domains": [{"name": "x", "tools": ["^mcp__x__"], "required": [{"path": "docs/x.md"}]}]}\n' > "$T/hookbrain/.claude/rules/live-read.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ] && [ -z "$_hc" ]; then
+  ok "hook-coverage stays silent once the gate has data (negative control)"
+else
+  bad "hook-coverage data-present false alarm: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'"
+fi
+printf '{"domains": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-read.json"
+#     Behind the dispatcher too: the template registers absence-gate; without its data it is named.
+if [ -f "$CORE/templates/rules-instance/stop-checks.json" ] && grep -q "absence-gate" "$CORE/templates/rules-instance/stop-checks.json"; then
+  cp "$CORE/templates/rules-instance/stop-checks.json" "$T/hookbrain/.claude/rules/stop-checks.json"
+  _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+  case "$_rc:$_hc" in
+    1:*"Stop: absence-gate.cjs is wired but .claude/rules/absence-sources.json does not exist"*) ok "hook-coverage flags a dispatched data gate without its data";;
+    *) bad "hook-coverage dispatched-data case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+  esac
+  printf '{"roots": ["docs/"]}\n' > "$T/hookbrain/.claude/rules/absence-sources.json"
+  _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+  case "$_hc" in
+    *absence-gate*) bad "hook-coverage names absence-gate although it has roots: '$(printf '%s' "$_hc" | head -1)'";;
+    *) ok "hook-coverage silent on a dispatched gate with data (negative control)";;
+  esac
+  rm -f "$T/hookbrain/.claude/rules/stop-checks.json" "$T/hookbrain/.claude/rules/absence-sources.json"
+fi
+#     The reverse gap (measured 2026-10-11): a hook wired here whose helper the consumed core
+#     does not ship refuses every call it matches (onFailure: block) - two sessions lost Bash.
+#     Wire one extra gate pointing at a helper that is not in core/helpers: named, exit 1.
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+d["hooks"].setdefault("PreToolUse",[]).append({"matcher":"Bash","hooks":[{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/core/helpers/not-shipped-gate.cjs\"","timeout":10,"onFailure":"block"}]})
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$T/hookbrain/.claude/settings.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"PreToolUse: not-shipped-gate.cjs is wired but the consumed core does not ship it"*) ok "hook-coverage flags a wired hook whose helper the core does not ship";;
+  *) bad "hook-coverage wired-but-missing case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+#     Behind the dispatcher the same gap is silent: a registered stop check whose file is missing
+#     is skipped. Register one that the core does not ship next to the template's checks.
+if [ -f "$CORE/templates/rules-instance/stop-checks.json" ] && grep -q "stop-dispatcher" "$T/hookbrain/.claude/settings.json"; then
+  "$PY" -c 'import json,sys
+src,dst=sys.argv[1],sys.argv[2]; d=json.load(open(src,encoding="utf-8"))
+d["checks"].append({"label":"X","marker":"X-GATE","cmd":"core/helpers/not-shipped-stop.cjs","mode":"block"})
+json.dump(d,open(dst,"w",encoding="utf-8"),indent=2)' "$CORE/templates/rules-instance/stop-checks.json" "$T/hookbrain/.claude/rules/stop-checks.json"
+  _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+  case "$_rc:$_hc" in
+    1:*"Stop: not-shipped-stop.cjs is registered in .claude/rules/stop-checks.json but the consumed core does not ship it"*) ok "hook-coverage flags a registered stop check the core does not ship";;
+    *) bad "hook-coverage stop-check-missing case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+  esac
+  rm -f "$T/hookbrain/.claude/rules/stop-checks.json"
+fi
 #     And the bootup voices it: the fixture brain gets the template but an empty
 #     settings file — the !! line is the carrier that repeats until it is fixed.
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"

@@ -77,18 +77,66 @@ const BUILTIN_PATTERNS = [
   '\\bwaiting (on|for) (you|your (word|answer|reply|go-ahead))\\b',
 ];
 
-function loadPatterns(cwd) {
-  const patterns = [...BUILTIN_PATTERNS];
+// Shape 3: the ANNOUNCEMENT. The reply says the work goes on ("doing that now", "next I
+// will …") and the turn ends — nothing runs, nobody is waited for. Measured 2026-10-11 on a
+// live instance, four times in one session, the operator: "you work on your own, or did you
+// stop again?" and "you always stop. the same failure class again". Neither a question nor
+// a handoff, so shapes 1 and 2 missed every one. Exempt: a background waiter that has not
+// reported its end yet (Bash or Agent run_in_background, Monitor, Workflow, ScheduleWakeup) — then the
+// announcement waits for something real. Data key: `announce_patterns`.
+const BUILTIN_ANNOUNCE = [
+  "\\b(now|next),? i(?:'ll| will)\\b",
+  "\\bi(?:'ll| will) (now|next)\\b",
+  "\\bi(?:'ll| will) (continue|keep going|move on)\\b",
+  '\\b(continuing|moving on) (with|to)\\b',
+  '\\b(doing|on) (it|that|this) now\\b',
+];
+
+function loadPatterns(cwd, key = 'patterns', builtins = BUILTIN_PATTERNS) {
+  const patterns = [...builtins];
   try {
     const p = path.join(cwd, '.claude', 'rules', 'stop-patterns.json');
     const extra = JSON.parse(fs.readFileSync(p, 'utf8'));
-    if (Array.isArray(extra.patterns)) {
-      for (const s of extra.patterns) {
+    if (Array.isArray(extra[key])) {
+      for (const s of extra[key]) {
         try { new RegExp(s); patterns.push(s); } catch (e) { /* skip broken regex */ }
       }
     }
   } catch (e) { /* no instance file — built-ins only */ }
   return new RegExp(patterns.join('|'), 'giu');
+}
+
+const WAITER_END = /<tool-use-id>(toolu_[A-Za-z0-9]+)<\/tool-use-id>[\s\S]{0,800}?<status>(completed|failed|killed|cancelled|stopped|expired|timeout)/g;
+
+function isWaiter(b) {
+  if (b.type !== 'tool_use') return false;
+  // A Workflow always runs in the background; an Agent only when started so.
+  if (b.name === 'Monitor' || b.name === 'Workflow') return true;
+  // The flag arrives as boolean true (Bash) or as the STRING "true" (Agent — measured on
+  // Claude Code 2.1.295 transcripts, 5 of 6 calls); a strict === true missed every one.
+  const bg = b.input && b.input.run_in_background;
+  return (b.name === 'Bash' || b.name === 'Agent') && (bg === true || bg === 'true');
+}
+
+// Since Claude Code 2.1.296 the Agent tool carries no run_in_background flag and ALWAYS runs
+// async (measured 2026-10-12: the launch result says so, and a task notification with the
+// tool-use id follows). The harness's own launch text is the proof — an older sync Agent
+// returns its report as the tool result instead and stays a foreground call.
+const ASYNC_LAUNCH = /\bAsync agent launched\b|\bworking in the background\b/;
+
+function textOf(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.map((b) => (typeof b.text === 'string' ? b.text
+    : typeof b.content === 'string' ? b.content
+    : Array.isArray(b.content) ? textOf(b.content) : '')).join('\n');
+}
+
+function asyncLaunches(content) {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((b) => b.type === 'tool_result' && b.tool_use_id && ASYNC_LAUNCH.test(textOf([b])))
+    .map((b) => b.tool_use_id);
 }
 
 function stripQuoted(text) {
@@ -118,12 +166,25 @@ function analyze(transcriptPath) {
   }
 
   const events = [];
+  const armed = new Set();
+  const ended = new Set();
   for (const line of lines) {
     if (!line.trim()) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message;
     if (!msg) continue;
+    if (msg.role === 'user') {
+      for (const m of textOf(msg.content).matchAll(WAITER_END)) ended.add(m[1]);
+      for (const id of asyncLaunches(msg.content)) armed.add(id);
+    }
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const b of msg.content) {
+        if (isWaiter(b)) armed.add(b.id);
+        // A wakeup never reports an end; it counts only inside the turn that set it.
+        if (b.type === 'tool_use' && b.name === 'ScheduleWakeup') events.push({ wake: true });
+      }
+    }
     if (msg.role === 'user' && typeof msg.content === 'string') {
       if (HOOK_ECHO.test(msg.content)) {
         if (OWN_ECHO.test(msg.content)) events.push({ gate: true });
@@ -155,7 +216,9 @@ function analyze(transcriptPath) {
     turnsSinceGate = 0;
     for (let i = lastGate + 1; i < events.length; i++) if (events[i].boundary) turnsSinceGate++;
   }
-  return { finalText, quiet: turnsSinceGate < COOLDOWN_TURNS };
+  const waiting = [...armed].some((id) => !ended.has(id))
+    || events.slice(last).some((e) => e.wake);
+  return { finalText, quiet: turnsSinceGate < COOLDOWN_TURNS, waiting };
 }
 
 process.stdin.on('end', () => {
@@ -166,19 +229,37 @@ process.stdin.on('end', () => {
   if (!input.transcript_path) return allow();
 
   let hits = [];
+  let announced = [];
+  const uniq = (found, into) => {
+    for (const h of found || []) {
+      const norm = h.trim().replace(/\s+/g, ' ');
+      if (!into.includes(norm)) into.push(norm);
+    }
+  };
   try {
     const seen = analyze(input.transcriptPath || input.transcript_path);
     if (seen.quiet) return allow();
     if (!seen.finalText) return allow();
     const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     const tail = stripQuoted(seen.finalText).slice(-TAIL_CHARS);
-    const found = tail.match(loadPatterns(cwd)) || [];
-    for (const h of found) {
-      const norm = h.trim().replace(/\s+/g, ' ');
-      if (!hits.includes(norm)) hits.push(norm);
+    uniq(tail.match(loadPatterns(cwd)), hits);
+    if (!hits.length && !seen.waiting) {
+      uniq(tail.match(loadPatterns(cwd, 'announce_patterns', BUILTIN_ANNOUNCE)), announced);
     }
   } catch (e) {
     return allow(); // transcript unreadable — never block because of that
+  }
+  if (announced.length) {
+    console.log(JSON.stringify({
+      decision: 'block',
+      reason:
+        'STOPPEN-GATE (an announcement is not an action — the turn ends and nothing runs).\n' +
+        `Announced in this reply: ${announced.slice(0, 3).join(' · ')}\n` +
+        'No background waiter is running. Either DO the announced step now (tool call in this ' +
+        'turn), or arm the waiter it depends on, or state plainly who or what you wait for. ' +
+        'If that is already true, re-issue the reply unchanged — it will pass.',
+    }));
+    process.exit(0);
   }
   if (hits.length === 0) return allow();
   // The first reply after a session start ASKS on purpose (operator order 2026-10-07):

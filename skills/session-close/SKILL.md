@@ -1,6 +1,6 @@
 ---
 name: session-close
-description: Close a session cleanly — persist open work (states to their ledger, lessons to memory), write handoff + session log, run the memory export, then give the explicit release "you can shut down". Use when the operator says "session abschliessen", "beende die session", "session beenden", "ich fahre jetzt (dann) alles runter", "kann ich die session beenden?", "wir sind fertig fuer heute", "mach schluss", "shutdown" — or the English equivalents "close the session", "end the session", "I'm shutting everything down now", "can I end the session?", "we're done for today", "wrap it up". NOT on a mere topic change.
+description: Close a session cleanly — persist open work (states to their ledger, lessons to their carrier, facts to memory), write handoff + session log, run the memory export, then give the explicit release "you can shut down". Use when the operator says "session abschliessen", "beende die session", "session beenden", "ich fahre jetzt (dann) alles runter", "kann ich die session beenden?", "wir sind fertig fuer heute", "mach schluss", "shutdown" — or the English equivalents "close the session", "end the session", "I'm shutting everything down now", "can I end the session?", "we're done for today", "wrap it up". NOT on a mere topic change.
 ---
 
 # Session Close (active shutdown)
@@ -14,8 +14,10 @@ then an explicit release follows.
 1. **Secure open work (semantic — no script can do this):**
    - Unfinished orders and intermediate STATES go into the list that owns them — the
      domain ledger or order list (Project Work Ledgers rule) — not into memory. Memory
-     gets what this session LEARNED (a lesson, observe the auto-memory rules and the
-     MEMORY.md index) plus a pointer to where the state lives. A state written to both
+     gets the FACTS this session found (observe the auto-memory rules and the MEMORY.md
+     index) plus a pointer to where the state lives; a LESSON goes to its strongest carrier
+     (gate, skill step, rule — Knowledge Carriers in `rules/intelligence.md`), memory keeps
+     at most the pointer to it. A state written to both
      becomes two hand-kept copies; the next session updates the ledger, and the memory
      keeps asserting the old state at every start. Do not store anything already
      finished a second time.
@@ -89,10 +91,33 @@ then an explicit release follows.
      that reach, and then this step is one sentence in the close report. A session that
      changed a SHARED tool, corrected a SHARED claim, or answered another instance's
      question almost always has something.
-   - After this: no further live CHANGES (measuring stays allowed).
-2. **Mechanical close — BEFORE the commit in step 4, never after it:**
+   - After this: no further live CHANGES (measuring stays allowed). One exception, because
+     the working rules call the missing save the defect: an operated artifact whose rebuild
+     this session started gets its dated after-copy now, even if the rebuild was interrupted
+     — saving a copy is the last allowed write; finishing the rebuild is not.
+2. **Mechanical close — BEFORE the commit in step 4, never after it.** Run from the brain
+   root, in this order, one command per call: the forms below are repo-relative so they match
+   the template's allow patterns (`Bash(bash core/helpers/*)`, `Bash(node core/helpers/*)`,
+   `Bash(python3 core/scripts/*)`); a `"$CLAUDE_PROJECT_DIR"/core/...` form matched none of
+   them and turned every close into permission prompts while the operator was leaving
+   (coherence scan of a Windows instance, 2026-10-12). The two writers come FIRST and the
+   scan LAST: `device-status.py` commits and pushes into the shared-memory repo and only
+   WARNs when the push fails — run after `session-closing.sh`, its unpushed commit was never
+   seen by the FAIL scan that step 4 relies on.
    ```bash
-   bash "$CLAUDE_PROJECT_DIR"/core/helpers/session-closing.sh --pre-commit --session "${CLAUDE_SESSION_ID}"
+   node core/helpers/memory-sync.cjs export
+   ```
+   ```bash
+   python3 core/scripts/device-status.py report
+   ```
+   (interpreter per instance rule) Records which core, plugin channel and suites this device runs into the shared memory
+   (`devices/<device>.json`; written only when something changed). The other devices read it
+   with `device-status.py [--person <p>|--device <id>|--os <os>]`.
+   **If this session deleted, merged or renamed a memory file: run `memory-sync.cjs prune`
+   BEFORE `export`.** Export only adds and updates; a snapshot copy of a deleted memory
+   stays, and the next session's import brings the memory back.
+   ```bash
+   bash core/helpers/session-closing.sh --pre-commit --session "${CLAUDE_SESSION_ID}"
    ```
    `--pre-commit` writes the session-log line without post-commit state (the close commit
    carries it) and leaves an untracked stamp, so the SessionEnd hook does not write it again.
@@ -108,18 +133,8 @@ then an explicit release follows.
    session ended without this skill, or as a failed session start
    (`scripts/session-audit.py`, relayed in the first reply), is cleared — that is the
    one place a finding leaves the list besides `session-audit.py --ack` by hand.
-   ```bash
-   node "$CLAUDE_PROJECT_DIR"/core/helpers/memory-sync.cjs export
-   ```
-   ```bash
-   python3 "$CLAUDE_PROJECT_DIR"/core/scripts/device-status.py report
-   ```
-   (interpreter per instance rule) Records which core, plugin channel and suites this device runs into the shared memory
-   (`devices/<device>.json`; written only when something changed). The other devices read it
-   with `device-status.py [--person <p>|--device <id>|--os <os>]`.
-   **If this session deleted, merged or renamed a memory file: run `memory-sync.cjs prune`
-   BEFORE `export`.** Export only adds and updates; a snapshot copy of a deleted memory
-   stays, and the next session's import brings the memory back.
+   A `device-status: WARN … push failed` line from above is handled in step 4 like a
+   `FAIL shared-memory` line — the commit is local, not arrived.
    `session-closing.sh` also writes `.claude/HANDOFF.md` (git state, last commits,
    unpushed count — the HANDOFF step 4 checks) and prints a `FAIL` line for every repo
    that is dirty or has unpushed commits on its checked-out branch: the shared-memory
@@ -180,11 +195,13 @@ then an explicit release follows.
 
 ## Scope
 
-- The commit/push policy is INSTANCE knowledge and lives in the instance's rule file.
-  This skill applies it at close and carries no copy of it — instances differ (one
-  brain commits continuously and pushes its own private `main` freely, another gates
-  every commit), and whichever wording stood here would be wrong for the others.
-- **The commit/push policy must not live here alone.** This skill only loads at session
+- Whether finished work is committed is NOT instance knowledge: Working Rule #7, commit
+  continuously, name what stays uncommitted with its reason. The PUSH policy (where and
+  when) is instance knowledge and lives in the instance's rule file. This skill applies
+  it at close and carries no copy of it — instances differ (one brain pushes its private
+  `main` freely, another asks before pushing a project repo), and whichever wording stood
+  here would be wrong for the others.
+- **The push policy must not live here alone.** This skill only loads at session
   end — a session that ends in a hard kill or a topic change never had it in context
   (incident "70 files uncommitted"). The instance therefore carries it as a base rule
   in `.claude/rules/feedback.md` (always loaded); this step 4 is the **verification

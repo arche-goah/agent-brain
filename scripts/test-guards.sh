@@ -114,13 +114,57 @@ mg_probe "mechanism-guard/heredoc through eval" \
   'eval \"$(cat <<EOF\nfixture-shortcut --now\nEOF\n)\"' block
 rm -rf "$MG"
 
+# --- mechanism-guard: a rule may demand the OPERATOR'S WORD behind the marker ----------
+# Incident 2026-09-12: two merges in a shared repo carried the marker with a verbatim operator
+# quote that stands in no transcript of that day — an unspecific order smoothed into a crisp
+# permission while writing the marker. A rule with `needs_operator_word: true` opens only when
+# the justification carries something checkable: a quotation PLUS its date, or a pointer to a
+# record file that exists. Every shape is probed in both directions, and the unflagged rule
+# next to it is the control that today's behaviour did not move.
+# The temp dir crosses into node as DATA (CLAUDE_PROJECT_DIR, and the pointer probes resolve
+# files under it), so it is stated natively — OS-3 in docs/os-traps.md.
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+MG="$(native "$(mktemp -d)")"
+mkdir -p "$MG/.claude/rules" "$MG/docs"
+printf '%s' '[{"pattern":"\\bfixture-shortcut\\b","was":"fixture","stattdessen":"the documented path"},{"pattern":"\\bfixture-operator-gate\\b","was":"gated fixture","stattdessen":"agree it with the operator first","needs_operator_word":true}]' \
+  > "$MG/.claude/rules/mechanism-rules.json"
+printf 'decision: fixture\nrecorded 2026-10-12\n' > "$MG/docs/decision.md"
+printf '#!/bin/sh\n' > "$MG/docs/decision.sh"
+mg_probe "mechanism-guard/operator word: no marker" "fixture-operator-gate --now" block
+mg_probe "mechanism-guard/operator word: bare marker" \
+  "fixture-operator-gate --now  # MECHANISM-OK: the operator agreed" block
+mg_probe "mechanism-guard/operator word: quote without date" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator: \"go ahead with the gate\"' block
+mg_probe "mechanism-guard/operator word: date without quote" \
+  "fixture-operator-gate --now  # MECHANISM-OK: agreed on 2026-10-12" block
+mg_probe "mechanism-guard/operator word: empty quote + date" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-10-12: \"\"' block
+mg_probe "mechanism-guard/operator word: quote + date" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-10-12: \"go ahead with the gate\"' allow
+mg_probe "mechanism-guard/operator word: low-9 quotes + date" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-10-12: „go ahead with the gate“' allow
+mg_probe "mechanism-guard/operator word: pointer to an existing record" \
+  "fixture-operator-gate --now  # MECHANISM-OK: decided, see docs/decision.md:2" allow
+mg_probe "mechanism-guard/operator word: pointer beyond the file's end" \
+  "fixture-operator-gate --now  # MECHANISM-OK: see docs/decision.md:40" block
+mg_probe "mechanism-guard/operator word: pointer to a missing file" \
+  "fixture-operator-gate --now  # MECHANISM-OK: see docs/nothing.md" block
+mg_probe "mechanism-guard/operator word: pointer to a script is no record" \
+  "fixture-operator-gate --now  # MECHANISM-OK: see docs/decision.sh" block
+# Controls: the unflagged rule next to a flagged one keeps today's behaviour, in both directions.
+mg_probe "mechanism-guard/operator word: unflagged rule + bare marker (control)" \
+  "fixture-shortcut --now  # MECHANISM-OK: proving the escape hatch" allow
+mg_probe "mechanism-guard/operator word: unflagged rule without marker (control)" \
+  "fixture-shortcut --now" block
+mg_probe "mechanism-guard/operator word: plain command (control)" "git status --short" allow
+rm -rf "$MG"
+
 # --- mechanism-guard: TOOL rules — a tool declares its own internals ------------------
 # Incident 2026-10-11: a session on a second machine could not take the defined path and
 # built its own client, wrote probes into the tool's IPC file and drove the GUI. The guard
 # only knew instance rules. A tool now ships `mechanism-rules.json` at its root, and the
 # guard finds it on BOTH ways a tool arrives: a clone referenced in .mcp.json, and an
 # enabled plugin. Each way gets a block AND an allow, and a disabled plugin must stay out.
-native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
 TR=$(mktemp -d)
 mkdir -p "$TR/suite/mcp/src" "$TR/proj/.claude" "$TR/fakeuser/.claude/plugins" \
          "$TR/fakeuser/plug-on" "$TR/fakeuser/plug-off"

@@ -254,7 +254,12 @@ def prs(owner, owners, repo=None):
                       "scope": p["repository"]["name"], "ref": ref,
                       "waiting_on": ball(p, me, owners, shas),
                       "until": (m.group(1), m.group(2).strip()) if m else None,
-                      "events": pr_events(p)})
+                      "events": pr_events(p),
+                      # Our own last move (commit, comment, review) — "nothing done yet" is a claim
+                      # and needs it. Measured 2026-10-12: an own alpha PR with commits and comments
+                      # on the same day was printed as "nothing done yet" in 17 sessions.
+                      "ours": max((w for who, w in pr_events(p) if who == me and w != p.get("createdAt")),
+                                  default="")})
     return items
 
 
@@ -614,7 +619,9 @@ def main():
     if not items and not failed:
         print("- nothing open (requests and PRs both read)")
     for i in active:
-        if i["n"] > 1:
+        if i["n"] > 1 and i.get("ours", "")[:10] >= i["first"]:
+            age = f"!! reported in {i['n']} sessions since {i['first']}, last own move {i['ours'][:10]} — still ours"
+        elif i["n"] > 1:
             age = f"!! reported in {i['n']} sessions since {i['first']}, nothing done yet"
         else:
             age = "first report"

@@ -15,6 +15,32 @@ READ the output, react to `!!` warnings (report/propose), connect to
 1-sentence mini-summary** (state of affairs + what is potentially coming up — from
 the bootup block, open assignments, memory).
 
+**The first reply has ONE target form — fill the slots, in this order, and nothing else is
+required of it** (operator order 2026-10-12, after a coherence scan counted more than ten
+first-reply requirements spread over this section, each with its own date, and a blocking gate
+behind them). Each slot names the paragraph that defines it; the paragraphs below stay the
+definition, this list is the order and the checklist:
+
+1. **Mini-summary** — one sentence, state + what is coming up (above). Plain words
+   ("The summary is written for the operator", "Kind and matter in plain words").
+2. **The operator's own request** — if the first message carries an order or a question,
+   it is answered or started here, before any housekeeping. A session usually starts for
+   that reason, not for the open points.
+3. **Reporting duties, one line each** — FAIL / self-test failure / an acute warning, each
+   on its own line with the next concrete step ("A reporting duty needs its own line").
+4. **Open points for this instance** — split by who acts: "n I can handle — shall I?" (ONE
+   question, only here) and "m need you" (up to three named, more offered); items reported
+   before said louder; "nothing open" or "could not read" when that is the state ("Open
+   points that concern this instance"). Carried by `open-items-gate.cjs`.
+5. **Due decisions** — a brain-scan or deep check that is due, a deferred point said once,
+   a pending update: each as a direct question with the price where there is one ("Three
+   levels of self-check", "Presenting to the Operator").
+
+Everything else that the bootup showed and that came back clean stays silent ("Relevance
+beats completeness"). Slots that are empty are left out, not announced. A later reply in the
+same session repeats none of slots 3-5 unless the state changed or an unanswered question
+becomes the next step's blocker (then asked again, verbatim — "Presenting to the Operator").
+
 **The brain-scan runs only in an active session, on the operator's OK** (operator
 decision 2026-09-23): the bootup reports it due after 7 days and overdue after 14; the
 first answer asks, and the scan starts in this session once the operator says yes. No
@@ -129,7 +155,9 @@ fire on a hard kill). NO `memory/session_*.md` files — memory lives in auto-me
 ## Auto-Organization (ALWAYS)
 
 1. Every new file goes into the right folder immediately (instance folder table).
-2. Every new insight → auto-memory (file + MEMORY.md index). **If an entry asserts a
+2. Every new FACT → auto-memory (file + MEMORY.md index); a new LESSON goes to its
+   strongest carrier (Knowledge Carriers below) and memory keeps at most the pointer —
+   a lesson filed only as memory is recalled as text, not as a mechanism. **If an entry asserts a
    state of the core** (file, rule, helper), it names the submodule state it was
    measured against (tag or commit) — otherwise the note goes silently stale at the
    next core update (measured 2026-08-04: one entry flipped one minute after being
@@ -278,7 +306,7 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   "m really need you" — and the second number is usually small.
 - **A sub-agent's framing is not a decision** (operator decision 2026-08-22): "waits
   for OK" from a workflow is its filing category under its own implements-nothing
-  boundary. The item passes the instance's stop test before it reaches the operator;
+  boundary. The item passes ASK OR ACT (`working-rules.md`) and the comparative test above before it reaches the operator;
   a report may say "five points, four decided, one needs you".
 - **Measurable is not an open point** (operator decision 2026-10-04): a state a tool
   can read live (link, host table, lease, version) is measured BEFORE the report; the

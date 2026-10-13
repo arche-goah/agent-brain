@@ -6,9 +6,28 @@
     "stattdessen": "Addresses come from the network setup (DHCP reservation on the router or similar) — use the instance's documented path; record here where it lives."
   },
   {
+    "_comment": "Example rule 1b (generic, fine to keep): the Windows family of rule 1 - netsh, the NetTCPIP cmdlets and route.exe. Rule 1 only knows macOS/BSD commands; measured on a Windows instance: 'netsh interface ip set address ... static' and 'New-NetIPAddress' passed unseen. PowerShell cmdlets are case-insensitive and the guard compiles without flags, hence the character classes.",
+    "pattern": "\\bnetsh(\\.exe)?\\s+(interface\\s+|int\\s+)?(ipv4|ipv6|ip)\\s+(set|add|delete)\\s+(address|addr|dnsservers?|dns|route)\\b|\\b([Nn]ew|[Ss]et|[Rr]emove)-[Nn]et[Ii][Pp][Aa]ddress\\b|\\b([Nn]ew|[Ss]et|[Rr]emove)-[Nn]et[Rr]oute\\b|\\b[Ss]et-[Nn]et[Ii][Pp][Ii]nterface\\b[^\\n]*-[Dd]hcp|\\b[Ss]et-[Dd]ns[Cc]lient[Ss]erver[Aa]ddress\\b|\\broute(\\.exe)?\\s+(-p\\s+)?(add|delete|change)\\b",
+    "was": "IP/routing/DNS configuration done locally on a Windows device",
+    "stattdessen": "Addresses come from the network setup (DHCP reservation on the router or similar) — use the instance's documented path; record here where it lives."
+  },
+  {
+    "_comment": "Example rule 1c (generic, fine to keep): Linux and VLAN - iproute2 (also over ssh/sudo), NetworkManager, netplan, Windows VLAN cmdlets. Measured on a Windows instance (coherence scan 2026-10-12): 'ssh srv sudo ip addr add', 'nmcli con mod', 'ip link add ... type vlan', 'Set-NetAdapter -VlanID' had 0 hits against rules 1 and 1b. 'ip addr show' stays allowed. A script run by name still passes; that is a guard function, not a pattern.",
+    "pattern": "\\bip\\s+(-\\d\\s+)?(addr|address|a|route|r|link|l)\\s+(add|del|delete|change|replace|set)\\b|\\bnmcli\\s+(c|con|connection)\\s+(mod|modify|add|up|down)\\b|\\bnetplan\\s+(apply|set)\\b|\\b[Ss]et-[Nn]et[Aa]dapter\\b[^\\n]*-[Vv]lan[Ii][Dd]\\b|\\b[Ss]et-[Nn]et[Aa]dapter[Aa]dvanced[Pp]roperty\\b[^\\n]*[Vv][Ll][Aa][Nn]",
+    "was": "IP/VLAN configuration done locally or over ssh (iproute2, nmcli, netplan, Windows VLAN cmdlets)",
+    "stattdessen": "Addresses and VLANs come from the network setup — use the instance's documented path; record here where it lives."
+  },
+  {
     "_comment": "Example rule 2 (generic, fine to keep): waiting for CI with a hand-built poll loop. scripts/ci-watch.sh enumerates every terminal state and knows that `gh pr checks` exits 8 while checks are still pending; an ad-hoc loop reads that exit as an error, swallows it and ends silently, which looks exactly like still running. The negative lookahead lets a command through that calls ci-watch.sh itself, even in a compound with sleep.",
     "pattern": "^(?![\\s\\S]*ci-watch\\.sh)[\\s\\S]*?(?:while\\s+true|until\\s|for\\s*\\(\\(|\\bsleep\\s+\\d+)[\\s\\S]*\\bgh\\s+(?:pr\\s+checks|run\\s+(?:list|view|watch))\\b",
     "was": "waiting for CI with a hand-built poll loop",
     "stattdessen": "scripts/ci-watch.sh pr <owner/repo> <nr> (or ref <owner/repo> <ref>), started via Monitor. Exit 0 = all green, 1 = something failed in CI, 2 = could NOT be measured - 2 is loud on purpose and is not green, 3 = the repo has no Actions workflow at all (nothing to wait for, also not green)."
+  },
+  {
+    "_comment": "Example rule 3 (adapt to the instance's release rule, or drop): a documented path that reads 'agree it with the operator first' sets needs_operator_word. Then `# MECHANISM-OK: <text>` alone does not open the rule: the text must quote the operator (\"...\" or „...“) WITH the date it was said (YYYY-MM-DD), or point at a record file that exists (path[:line], .md/.txt/.json). Measured 2026-09-12: two merges carried the marker with a verbatim quote that stands in no transcript of that day — a paraphrase had become a quotation while writing the marker. Rules without the field behave as before. Here: pushing a release tag, a release act most operators reserve.",
+    "pattern": "\\bgit\\b[^\\n]*\\bpush\\b[^\\n]*(--tags\\b|\\brefs/tags/|\\bv\\d+\\.\\d+\\.\\d+\\b)",
+    "was": "pushing a release tag (a release act the operator reserves)",
+    "stattdessen": "The operator's word for this release, quoted with its date, or the decision file it is recorded in - record here where the instance keeps it.",
+    "needs_operator_word": true
   }
 ]

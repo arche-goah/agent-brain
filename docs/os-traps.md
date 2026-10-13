@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=6 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=15 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7
+known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=11 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=15 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7
 instances: 5
 repeat:    yes
 status:    closed
@@ -126,6 +126,9 @@ it prints only plugin id, version and style name.
 only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
 2026-10-09, commitments.py baselined after that review: the five joins build the transcript
 dir, a session file and the instance data path it opens; it reports session ids, never a path.
+2026-10-11, hook-coverage.py 6 -> 9 after that review: the three new joins only feed
+`os.path.isfile` (is the wired helper / the registered stop check in the consumed core?); the
+lines it prints name the helper's FILE NAME, never a joined path.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -174,7 +177,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=3 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=4 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=4 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -247,6 +250,12 @@ as data in three places — `--repo`, `--root` and `OPEN_ITEMS_PR_FIXTURE` — a
 `native()`; the script path is an argument and goes through it too. The fixture's own `git -C`
 calls are bash argv (converted). Python then runs `git -C <repo>` with the native path it was
 given. Windows run still owed at baseline time.
+2026-10-12, test-guards.sh 3 -> 4 after the same review: the operator-word cases add one
+project dir; it reaches node as CLAUDE_PROJECT_DIR and as the cwd field, and the guard
+resolves the pointer probes' record files under it — all through `native()`. Both
+directions matter: an unresolvable dir loads no rules (every must-block case would pass
+silently) and finds no record file (the must-allow pointer case would block). Windows run
+still owed at baseline time.
 
 2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
 test-full-audit-synthesis-files.sh baselined on the same review and the same construction
@@ -471,12 +480,14 @@ invariant: A shell loop over a list of PATHS reads the list line by line
 form splits on every space, and Windows hands out profile paths with spaces as the normal
 case (`C:\Users\First Last`), while macOS and Linux home paths almost never carry one. The
 loop then walks path FRAGMENTS, and whatever it checks there reports the real directory as
-missing — a wrong verdict, not an error.
-pattern:   for [A-Za-z_]+ in \$[A-Za-z_]+;
+missing — a wrong verdict, not an error. The same holds for ANY unquoted expansion of a
+variable that holds paths or path globs (`ls $globs`), not only the `for` form: a glob list
+is kept as an array (`a=("$R"/x/*.md)`), never as a space-joined string.
+pattern:   for [A-Za-z_]+ in \$[A-Za-z_]+;|disable=SC2086
 paths:     --include=*.sh scripts helpers
-known:     scripts/brain-update.sh=2 scripts/handover-gate.sh=1 scripts/suite-install.sh=1
-instances: 1
-repeat:    no
+known:     scripts/brain-update.sh=2 scripts/handover-gate.sh=2 scripts/suite-install.sh=1
+instances: 2
+repeat:    yes
 status:    closed
 note:      Measured 2026-09-30 on a Windows instance whose profile name has a space, core
 v1.3.41. `onboarding-verify.sh` check 3 reported `suites=MISSING (<First> grandma3 )` for an
@@ -492,6 +503,15 @@ NAMES, which carry no space. `handover-gate.sh` loops over suite PATHS from
 split happens before the tilde is expanded) — an absolute path with a space there would
 reproduce this trap. A new site is read with one question: can an element of this list be a
 path?
+Second instance 2026-10-12 (PR #309 at 7669f5d, measured on the Windows instance): the
+session start's deep-check relay held the artifact globs as one string and expanded it with
+`ls $arts` under a `shellcheck disable=SC2086`. Under a brain path with a space the glob
+split, nothing matched, and a check already followed was still voiced; the smoke fixture
+built its instance under a path without a space and stayed green on all three CI systems.
+The pattern widens to the SC2086 disable, because shellcheck flags every other unquoted
+expansion and a deliberate split must carry that marker; `handover-gate.sh`'s second count
+is the disable in front of `suite-check.py $suites`, the same `~`-written path list as its
+loop. The fixture instance now carries a space.
 
 ## OS-11 — a session count by process name counts every CLI call as a session
 
