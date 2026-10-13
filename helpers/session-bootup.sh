@@ -87,9 +87,9 @@ fi
 # quiet line instead of the two loud ones (operator 2026-10-13: "if it all fits, do not
 # report it as an error every time"). Past its date it is loud again.
 declared_alpha() {
-  "$PY" - "$1" <<'PY' 2>/dev/null
-import datetime, json, sys
-p = sys.argv[1]
+  DA_PATH="$1" "$PY" - <<'PY' 2>/dev/null
+import datetime, json, os, sys
+p = os.environ.get("DA_PATH", "")
 try:
     alpha = json.load(open(".claude/rules/local-machinery.json", encoding="utf-8")).get("alpha") or {}
 except Exception:
