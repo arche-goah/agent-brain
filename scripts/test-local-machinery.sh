@@ -135,6 +135,19 @@ out=$(run); grep -q '^!! local machinery: 1 undeclared item(s) contain none of t
   && grep -q 'general=1' <<< "$out" && ok "item-without-identity-token-general-loud" || bad "item-without-identity-token-general-loud: $out"
 printf 'ping 203.0.113.70\n' > "$T/b/scripts/rig-check.sh"   # a longer IP is not the token
 out=$(run); grep -q 'presumably general' <<< "$out" && ok "identity-token-word-boundary" || bad "identity-token-word-boundary: $out"
+# --- external (third-party, used as is) and reach analysis as evidence --------------------
+T_ID='"identity_tokens":["rig-switch-a"]'
+decl "{$T_ID,\"external\":{\"scripts/rig-check.sh\":{\"source\":\"vendor pack 1.2\"}}}"
+out=$(run); [[ -z "$out" ]] && ok "external-with-source-silent" || bad "external-with-source-silent: $out"
+decl "{$T_ID,\"external\":{\"scripts/rig-check.sh\":{\"why\":\"someone's\"}}}"
+out=$(run); grep -q 'noevidence=1' <<< "$out" && ok "external-without-source-loud" || bad "external-without-source-loud: $out"
+mkdir -p "$T/b/docs"; printf '| scripts/rig-check.sh | instance |\n' > "$T/b/docs/reach.md"
+decl "{$T_ID,\"instance\":{\"scripts/rig-check.sh\":{\"why\":\"judged\",\"reach\":\"docs/reach.md\"}}}"
+out=$(run); [[ -z "$out" ]] && ok "reach-naming-the-item-silent" || bad "reach-naming-the-item-silent: $out"
+printf 'nothing here\n' > "$T/b/docs/reach.md"
+out=$(run); grep -q 'badevidence=1' <<< "$out" && ok "reach-not-naming-the-item-loud" || bad "reach-not-naming-the-item-loud: $out"
+rm -f "$T/b/docs/reach.md"
+out=$(run); grep -q 'badevidence=1' <<< "$out" && ok "reach-file-missing-loud" || bad "reach-file-missing-loud: $out"
 
 # --- near-duplicates of core tools --------------------------------------------------------
 rm -f "$T/b/.claude/rules/local-machinery.json"
