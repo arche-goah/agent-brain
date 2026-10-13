@@ -51,6 +51,16 @@
     is the agreed channel ASK OR ACT step 1 names. Making a repo public, a first
     publication, a push outside the organisation's repos and a deployment stay gated.
     Carriers on every push: leak-scan, the English-only ratchet, the instance's name guard.
+12. **Two sessions, one working copy: commit by path, never rewrite, never touch the other's
+    operation** (operator direction 2026-10-13, after three incidents in three days). A checkout
+    has one index and one HEAD; git cannot tell sessions apart. While a second session runs on
+    the machine, a session that is not working in its own scratchpad worktree commits only its
+    own paths (`git commit <paths> -m …`), stages only its own paths, never amends, stashes,
+    hard-resets, switches branch or force-pushes there, pulls `--ff-only`, and leaves a rebase
+    or merge it did not start untouched — it messages the session that owns it instead. Branch
+    work goes into `git worktree add` under the scratchpad, which is private by its path. The
+    carrier is `core/helpers/shared-working-copy-guard.cjs`; a deviation needs the marker and is
+    finished in the same turn, so the other session never meets a half-done state.
 
 ## File Rules
 
