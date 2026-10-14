@@ -23,6 +23,11 @@ grow "$T/MEMORY.md" 10
 out=$(run); grep -q '+2510' <<< "$out" && ok "memory-index-counted" || bad "memory-index-counted: $out"
 out=$(run --accept); grep -q 'baseline set: 4810' <<< "$out" && ok "accept-sets-baseline" || bad "accept-sets-baseline: $out"
 out=$(run); [[ -z "$out" ]] && ok "after-accept-silent" || bad "after-accept-silent: $out"
+# the hard limit: silent below 90 %, named from 90 %, OVER above — independent of the baseline
+out=$(run --limit 6000); [[ -z "$out" ]] && ok "below-90pct-of-limit-silent" || bad "below-90pct-of-limit-silent: $out"
+out=$(run --limit 5300); grep -q 'at 4810 of 5300 bytes (90 % of the harness limit)' <<< "$out" && ok "at-90pct-of-limit-named" || bad "at-90pct-of-limit-named: $out"
+out=$(run --limit 4000); grep -q 'OVER the harness limit: 4810 of 4000' <<< "$out" && ok "over-limit-loud" || bad "over-limit-loud: $out"
+out=$(run --limit 4000 --accept); grep -q 'OVER the harness limit' <<< "$out" && ok "over-limit-loud-even-on-accept" || bad "over-limit-loud-even-on-accept: $out"
 mkdir -p "$T/memdir"; out=$("$PY" "$HERE/always-loaded.py" --repo "$T/b" --memory "$T/memdir")
 grep -q 'must be the MEMORY.md file, not a directory' <<< "$out" && ok "directory-as-memory-refused" || bad "directory-as-memory-refused: $out"
 
