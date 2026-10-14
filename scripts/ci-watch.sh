@@ -46,6 +46,11 @@ usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_
 start=$(date +%s)
 deadline=$(( start + TIMEOUT ))
 warned_no_run=0
+# An unparseable gh reply is a transient of the run being registered (measured 2026-10-10:
+# 'no checks yet' on one poll, unparseable on the next, 11 green checks a round later).
+# One or two such polls are a wait; three in a row are a verdict (UNKNOWN).
+unparsed=0
+UNPARSED_MAX=${CI_WATCH_UNPARSED_MAX:-3}
 gh_fail=0
 
 fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
@@ -187,11 +192,19 @@ while :; do
       fi
       fail_unknown "gh pr checks failed (rc=$rc): $(head -c 200 <<<"$json")"
     fi
-    counts=$("$PY" -c '
+    if ! counts=$("$PY" -c '
 import json, sys
 b = [c.get("bucket") for c in json.load(sys.stdin)]
 print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x in b))
-' <<<"$json" 2>/dev/null) || fail_unknown "unparseable gh pr checks output"
+' <<<"$json" 2>/dev/null); then
+      unparsed=$((unparsed + 1))
+      if (( unparsed >= UNPARSED_MAX )); then
+        fail_unknown "unparseable gh pr checks output on $unparsed polls in a row: $(head -c 200 <<<"$json")"
+      fi
+      echo "ci-watch: gh pr checks output not parseable yet (poll $unparsed of $UNPARSED_MAX) — waiting" >&2
+      sleep "$POLL"; continue
+    fi
+    unparsed=0
     read -r total pending bad <<<"$counts"
     # Zero checks is the same ambiguity one level on: "this repo has no CI" and "the run
     # is not registered yet" arrive as the same empty list. Wait it out — if it is still
@@ -244,7 +257,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     sleep "$POLL"; continue
   fi
   gh_fail=0
-  verdict=$("$PY" -c '
+  if ! verdict=$("$PY" -c '
 import json, sys
 ref, sha = sys.argv[1], sys.argv[2]
 # A bare commit sha is no branch name: matching headBranch == ref never hit, and the watch
@@ -260,7 +273,15 @@ else:
     bad = [r.get("conclusion") for r in runs
            if r.get("conclusion") not in ("success", "skipped", "neutral")]
     print("found completed", bad[0] if bad else "success")
-' "$TARGET" "$sha" <<<"$json" 2>/dev/null) || fail_unknown "unparseable gh run list output"
+' "$TARGET" "$sha" <<<"$json" 2>/dev/null); then
+    unparsed=$((unparsed + 1))
+    if (( unparsed >= UNPARSED_MAX )); then
+      fail_unknown "unparseable gh run list output on $unparsed polls in a row: $(head -c 200 <<<"$json")"
+    fi
+    echo "ci-watch: gh run list output not parseable yet (poll $unparsed of $UNPARSED_MAX) — waiting" >&2
+    sleep "$POLL"; continue
+  fi
+  unparsed=0
   read -r found status conclusion <<<"$verdict"
 
   if [[ "$found" == "none" ]]; then

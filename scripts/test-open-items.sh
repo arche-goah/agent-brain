@@ -277,9 +277,37 @@ printf '%s\n' 'shared-memory open requests to this instance: 1' \
 out=$(run m3)
 has "[request|ai] 2026-10-09" "$out" && ok "the classified text keeps its class" || bad "own class lost: $out"
 
+# Two alike LOG entries of one sender and day: the second gets " (2)". When the first closes, the
+# second takes the bare id — its counter must start at one, not inherit the first one's (2026-10-11).
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: Windows check for core #196 and #197 OK (LOG)' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: Windows check for core #196 and #197 OK, addendum (LOG)' > "$T/inbox.txt"
+run twin1 >/dev/null; tx twin1; run twin2 >/dev/null; tx twin2; out=$(run twin3); tx twin3
+has "!! reported in 3 sessions" "$(line 'addendum' "$out")" && ok "second alike entry counts while both are open" || bad "twin count: $(line 'addendum' "$out")"
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: Windows check for core #196 and #197 OK, addendum (LOG)' > "$T/inbox.txt"
+out=$(run twin4); tx twin4
+l=$(line 'addendum' "$out")
+has "reported in" "$l" && bad "second entry inherited the first one's counter after it closed: $l" \
+  || ok "after the first closes, the second starts counting at one"
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (LOG)' > "$T/inbox.txt"
+
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
 has "repeat counter NOT saved" "$out" && ok "lost counter is loud" || bad "lost counter silent: $out"
+
+# PR search over several owners (instance data `pr_owners`): one search, every owner a
+# `user:` qualifier (GitHub ORs them), the --owner itself not doubled. Control: no
+# pr_owners = the search is the single owner, as before.
+mkdir -p "$T/root-po/.claude/rules"
+q1=$(OPEN_ITEMS_SHOW_PR_SEARCH=1 OWNER=me run "" "$T/root-po" | sed -n 's/^pr-search: //p')
+[ "$q1" = "user:me is:pr is:open" ] && ok "no pr_owners: the search is the single owner" || bad "single-owner search: '$q1'"
+printf '%s\n' '{"pr_owners": ["Personal", "ME"]}' > "$T/root-po/.claude/rules/open-items.json"
+q2=$(OPEN_ITEMS_SHOW_PR_SEARCH=1 OWNER=me run "" "$T/root-po" | sed -n 's/^pr-search: //p')
+[ "$q2" = "user:me user:Personal is:pr is:open" ] && ok "pr_owners: one search over both owners, --owner not doubled" \
+  || bad "several-owner search: '$q2'"
 
 [ "$fail" = 0 ] && echo "open-items: all cases pass" || { echo "open-items: FAILURES"; exit 1; }

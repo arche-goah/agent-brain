@@ -372,6 +372,21 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
 LOG_INFO = re.compile(r"\bstatus:\s*info\b", re.I)
 # The close word opens the title proper: "AN <who>: ERLEDIGT — …" (or a title without AN).
 LOG_CLOSE = re.compile(r"(?:^|:)\s*(?:ERLEDIGT|GESCHLOSSEN|DONE|CLOSED)\b", re.I)
+# "re <what>" — a reply that opens with the request's title, or the start of it.
+LOG_RE_REF = re.compile(r"\bre\s+([^\n:—]+)", re.I)
+
+
+def names_request(core_title: str, title: str, body: str) -> bool:
+    """Does a later heading refer to THIS request? By its title text anywhere in title or body,
+    or by `re <x>` where x opens the request's title (at least four characters, so a bare
+    `re` or an unrelated short word cannot match by accident)."""
+    if not core_title:
+        return False
+    want, text = core_title.lower(), f"{title}\n{body}".lower()
+    if want in text:
+        return True
+    return any(len(m.group(1).strip()) >= 4 and want.startswith(m.group(1).strip())
+               for m in LOG_RE_REF.finditer(text))
 
 
 def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tuple]:
@@ -379,9 +394,11 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
 
     The shape of the 2026-10-04 incident and of finding 3 of the Windows check on #193: once
     the cursor passes such a heading, nothing else carries it. Open until one of OUR later
-    headings (any topic, same day or later) is addressed to the sender — a reply in the
-    conversation stream. Wrong only in the safe direction: an answer given elsewhere keeps
-    it listed until we next write to that party.
+    headings (any topic, same day or later) to the sender NAMES it — a reply in the
+    conversation stream to THIS request, never to the sender as a whole (measured 2026-10-14
+    by a collaborator's instance: our one answer about X silently closed the same sender's
+    unanswered Y). Wrong only in the safe direction: an answer given elsewhere, or one that
+    does not name what it answers, keeps the request listed.
     """
     heads: list[tuple] = []  # (date, topic, sender, to_tokens, title, body)
     for rel, text in texts.items():
@@ -414,10 +431,13 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
                               for d, tp, j, s, t, ti, b in heads):
             continue
         # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
-        # another LOG cannot be ordered, so it does not count (safe direction).
+        # another LOG cannot be ordered, so it does not count (safe direction). And it NAMES
+        # the request, the same way the asker's close above has to — one reply closes one
+        # request, not every open one of that sender.
         replied = any(tokens(s) & me and party(sender) & t
                       and (d > date or (tp == topic and j > idx))
-                      for d, tp, j, s, t, _, _ in heads)
+                      and names_request(core_title, ti, b)
+                      for d, tp, j, s, t, ti, b in heads)
         if not replied:
             items.append((date, topic, sender, first_sentence(title, TEXT_CAP) + " (LOG)"))
     return items

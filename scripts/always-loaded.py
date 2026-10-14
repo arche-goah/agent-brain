@@ -10,9 +10,16 @@ CLAUDE.md + .claude/rules/*.md + core/rules/*.md + the MEMORY.md index.
 The baseline is ACCEPTED, not rolled: `--accept` sets it (at the diet review). Every start
 compares against it, so slow creep adds up instead of hiding in small daily steps.
 
-Usage: always-loaded.py [--repo DIR] [--memory FILE] [--accept] [--slack BYTES]
-Output: nothing while within the slack (default 2048 bytes) of the baseline or when no
-baseline exists yet (it is created silently); otherwise one line. Exit 0 always.
+The baseline is one half. The other is the HARD limit: Claude Code stops loading the
+always-loaded set above about 150 000 characters, and nothing says so when it happens
+(measured 2026-10-11 on the proving brain: the baseline warning said "+16 KB", the cut
+stood only in a harness message nobody reads). So a second line names the distance to that
+limit, independent of the baseline, from 90 % on, and says "OVER" above it.
+
+Usage: always-loaded.py [--repo DIR] [--memory FILE] [--accept] [--slack BYTES] [--limit BYTES]
+Output: nothing while within the slack (default 2048 bytes) of the baseline, below 90 % of the
+limit (default 150000), or when no baseline exists yet (it is created silently); otherwise one
+line per finding. Exit 0 always.
 State: <repo>/.claude-state/always-loaded.json
 """
 import argparse
@@ -49,6 +56,7 @@ def main(argv):
     ap.add_argument("--memory", default="")
     ap.add_argument("--accept", action="store_true")
     ap.add_argument("--slack", type=int, default=2048)
+    ap.add_argument("--limit", type=int, default=150000)
     a = ap.parse_args(argv)
     if a.memory and os.path.isdir(a.memory):
         # a directory sizes as 0 or as its entry table, never the index (Windows check
@@ -57,6 +65,14 @@ def main(argv):
         return 0
     state = os.path.join(a.repo, ".claude-state", "always-loaded.json")
     now = measure(a.repo, a.memory)
+    # The hard limit does not care about the baseline: say it first, even on the first run.
+    # OS-9 (os-traps.md): the print line stays ASCII; the dash sits on the continuation line.
+    if a.limit > 0 and now >= a.limit:
+        print(f"always-loaded context is OVER the harness limit: {now} of {a.limit} bytes "
+              "— the loader cuts what is above it and says nothing; diet NOW (rule-only text, incidents into the protocol)")
+    elif a.limit > 0 and now * 10 >= a.limit * 9:
+        print(f"always-loaded context is at {now} of {a.limit} bytes ({now * 100 // a.limit} % of the harness limit) "
+              "— diet before the next rule, not after")
     try:
         with open(state, encoding="utf-8") as f:
             base = json.load(f)

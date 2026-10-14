@@ -7,7 +7,10 @@
 # a note to oneself, someone else's entry, a push in an EARLIER turn, a re-issue. A dead
 # pid in the lock (an expired Monitor) must count as not armed. CI side (2026-10-13): a push
 # into a checkout with workflows, a PR or a merge naming a repo, each without a ci-watch on
-# that repo in the turn, must block; a push into a repo without workflows must not.
+# that repo in the turn, must block; a push into a repo without workflows must not. Hand step
+# (2026-10-11): a request to the human in the reply without a waiter in the turn must block; a
+# Monitor or background waiter, a visible "⚙ no watcher:" line, past tense and a quoted request
+# must not. GitHub side: a ticket or a question in a thread without a repo watch must block.
 # Usage: bash scripts/test-watch-gate.sh (exit 0 = pass)
 set -u
 T="$(mktemp -d)"
@@ -157,6 +160,37 @@ check "waiter, then the operator's /mcp echo, then the reply" "$T/r5.jsonl" allo
   user "$CAVEAT"; user "$CMD"; user "$OUT"; asst "Please run /mcp to reconnect again."; } > "$T/r6.jsonl"
 check "negative control: /mcp echo, reload asked, no waiter" "$T/r6.jsonl" block "$R"
 
+# --- a hand step asked of the human (class 2026-10-11: "onPC must be running" asked, no watcher, the operator reported the start)
+{ user "check the desk"; tool Bash "git status"; asst "Please start onPC and load the show; I check the engine afterwards."; } > "$T/h1.jsonl"
+check "hand step asked, no waiter" "$T/h1.jsonl" block "$R"
+{ user "check the desk"; tool Monitor "bash scripts/onpc-watch.sh"; asst "Please start onPC and load the show; the watch reports the engine."; } > "$T/h2.jsonl"
+check "hand step asked, Monitor armed in the turn" "$T/h2.jsonl" allow "$R"
+{ user "check the desk"; tool Bash "bash scripts/wait-link.sh sw-foh 900" bg; asst "Please plug in the uplink cable; the link watch reports when it is up."; } > "$T/h3.jsonl"
+check "hand step asked, background waiter armed" "$T/h3.jsonl" allow "$R"
+{ user "check the desk"; tool Bash "git status"; asst "Could you switch on the router? ⚙ no watcher: office network, no probe allowed from here."; } > "$T/h4.jsonl"
+check "hand step asked, no-watcher line names why" "$T/h4.jsonl" allow "$R"
+{ user "check the desk"; tool Bash "git status"; asst "onPC must be running for the next step."; } > "$T/h5.jsonl"
+check "necessity form (onPC must be running), no waiter" "$T/h5.jsonl" block "$R"
+{ user "check the desk"; tool Bash "git status"; asst "I started onPC through the launcher and the engine answers."; } > "$T/h6.jsonl"
+check "no request, past tense" "$T/h6.jsonl" allow "$R"
+{ user "check the desk"; tool Bash "git status"; asst 'The ledger quotes the old reply "please start onPC" as the incident.'; } > "$T/h7.jsonl"
+check "request only quoted" "$T/h7.jsonl" allow "$R"
+mkdir -p "$R/.claude/rules"; printf '{"hand_step_patterns":["\\\\bzzhandzz\\\\b"]}\n' > "$R/.claude/rules/watch-gate.json"
+{ user "check the desk"; tool Bash "git status"; asst "zzhandzz the desk now."; } > "$T/h8.jsonl"
+check "instance hand-step pattern extends the built-ins" "$T/h8.jsonl" block "$R"
+rm -f "$R/.claude/rules/watch-gate.json"
+
+# --- a ticket or a question posted on GitHub (class 2026-10-11: a ticket opened, covered only by a collab-watch that happened to run)
+{ user "file it"; tool Bash "gh issue create -R o/r --title x --body 'the limit'"; asst "Ticket opened."; } > "$T/i1.jsonl"
+check "issue created, no repo watch" "$T/i1.jsonl" block "$R"
+{ user "ask"; tool Bash "gh pr comment 7 -R o/r --body 'Which head did you test, please?'"; asst "Asked."; } > "$T/i2.jsonl"
+check "question posted as a comment, no repo watch" "$T/i2.jsonl" block "$R"
+{ user "report"; tool Bash "gh pr comment 7 -R o/r --body 'macOS check at abc: 50 pass, 0 fail.'"; asst "Reported."; } > "$T/i3.jsonl"
+check "a comment that only reports" "$T/i3.jsonl" allow "$R"
+live_lock "$R/.claude-state/collab-watch/repo-activity-o.pid"
+check "issue created, collab-watch repo watch lives" "$T/i1.jsonl" allow "$R"
+rm -rf "$R/.claude-state"
+
 # Windows: the hook does not run in Git Bash (measured 2026-10-11) — its PATH holds Git\cmd,
 # not Git\usr\bin, so a bare `ps` is ENOENT and every live watcher read as dead. The gate must
 # find Git's ps.exe itself. Run it with exactly that PATH: node's dir + Git\cmd.
@@ -176,7 +210,7 @@ fi
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));
 ' > "$T/stub.cjs"
 G0="$G"; G="$T/stub.cjs"; before=$fail; fail=0
-for c in t1 t2 p1 r1 r4 c1 c7 m1 p3; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
 caught=$fail; G="$G0"; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed every must-block case"
 

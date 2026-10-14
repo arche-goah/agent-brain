@@ -15,6 +15,10 @@
 #   9. own echo in the last turn                                   -> allow (cooldown)
 #  10. instance claim_patterns extend the built-ins                -> block
 #  11. Read of a file inside each root counts as touching it       -> allow
+#  12. capability absence ("no way from the engine") after one root -> block
+#  13. same capability claim after a search over every root         -> allow
+#  14. epistemic "no way to know yet" is not a capability claim     -> allow
+#  15. the capability claim only quoted                             -> allow
 # Usage: bash scripts/test-absence-gate.sh   (exit 0 = all fixtures pass)
 set -u
 
@@ -106,6 +110,20 @@ run_hook "10 instance claim pattern" "$T/c10.jsonl" block "$T/ext"
 { echo "$U"; tool Read "{\"file_path\":\"$NP/docs/notes.md\"}"; tool Read "{\"file_path\":\"$NS/README.md\"}"
   tool Read "{\"file_path\":\"$NM/ops/LOG.md\"}"; say "$CLAIM"; } > "$T/c11.jsonl"
 run_hook "11 Read inside every root" "$T/c11.jsonl" allow "$P"
+
+CAP='Confirming the message center cannot be done from the engine, it is GUI-only; there is no way to press Back from Lua.'
+{ echo "$U"; echo "$NARROW"; say "$CAP"; } > "$T/c12.jsonl"
+run_hook "12 capability absence, one root searched" "$T/c12.jsonl" block "$P"
+
+{ echo "$U"; echo "$NARROW"; tool Grep '{"pattern":"MessageCenter","path":"docs"}'
+  tool Bash "{\"command\":\"cd $NS && rg -n 'MessageCenter' .\"}"; say "$CAP"; } > "$T/c13.jsonl"
+run_hook "13 capability absence, every root searched" "$T/c13.jsonl" allow "$P"
+
+{ echo "$U"; echo "$NARROW"; say 'There is no way to know yet which of the two counters the desk shows.'; } > "$T/c14.jsonl"
+run_hook "14 epistemic no-way-to-know" "$T/c14.jsonl" allow "$P"
+
+{ echo "$U"; echo "$NARROW"; say 'The ledger quotes the old verdict \"GUI-only, no way from the engine\" as the origin of the fallacy.'; } > "$T/c15.jsonl"
+run_hook "15 capability claim only quoted" "$T/c15.jsonl" allow "$P"
 
 echo
 [ "$fail" -eq 0 ] && echo "absence-gate fixtures: ALL passed" || echo "FAILURE"
