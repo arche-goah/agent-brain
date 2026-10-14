@@ -44,6 +44,23 @@
  *       the base branch and starts a run there too; six merges that session, none watched.
  *       A collab-watch lock does NOT satisfy (d): the standing watch reports a red run at
  *       its next poll, the rule wants the VERDICT of this push read in this turn.
+ *   (e) the reply asks the HUMAN for a hand step — start a program, plug a cable, switch a
+ *       device on, click, accept an invitation — and no waiter was armed in this turn (a
+ *       Monitor, or a Bash/Agent call with run_in_background). Operator 2026-10-11: "it is a
+ *       failure class that watchdogs are not started" — a session asked "onPC must be running"
+ *       and the operator had to report the start himself; (a)-(d) are blind to it, because a
+ *       request in prose makes no tool call. Core rule "A Needed Reload Is Not a Wait State"
+ *       #3: build the measurement, arm the watcher, THEN give the instruction. Where no probe
+ *       is possible (a network the AI may not touch), the reply says so in a visible line
+ *       `⚙ no watcher: <why no probe is possible>` and passes. English built-ins below; an
+ *       instance extends them with its language in `.claude/rules/watch-gate.json`
+ *       (`hand_step_patterns`, `no_watcher_markers`). Quoted text and code are stripped
+ *       before matching (talk ABOUT a request quotes it).
+ *   (f) `gh issue create`, or `gh issue comment` / `gh pr comment` whose body asks something
+ *       (a question mark or "please"), ran AND no PR-side watcher lives (same test as (b)):
+ *       a ticket or a question in a thread expects an answer in that thread, and only the
+ *       standing repo watch reads comments. Measured 2026-10-11: a ticket was opened and was
+ *       covered only by chance, by a collab-watch that happened to be running.
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
  *
@@ -67,6 +84,47 @@ const RELOAD_WATCH = /\bwait-mcp-reconnect\.sh\b/;
 // (d) the CI watch of a push: `ci-watch.sh pr|ref <owner/repo> …`, and the repo a gh call names.
 const CI_WATCH = /\bci-watch\.sh\s+(?:pr|ref)\s+["']?([\w.-]+\/[\w.-]+)/i;
 const REPO_FLAG = /(?:--repo|-R)[=\s]+["']?([\w.-]+\/[\w.-]+)/;
+// (e) a hand step asked of the human. The FORM: an imperative or a necessity aimed at a person
+// or a device the AI cannot operate. English built-ins; other languages are instance data.
+const HAND_STEP_BUILTIN = [
+  '\\b(please|kindly)\\s+(start|launch|open|restart|reboot|plug\\s+in|unplug|re-?plug|switch\\s+on|turn\\s+on|power\\s+on|power\\s+up|connect|press|click|tap|load|install|enable|accept|approve|unlock)\\b',
+  '\\b(can|could|would)\\s+you\\s+(please\\s+)?(start|launch|open|restart|reboot|plug|unplug|re-?plug|switch|turn|power|connect|press|click|tap|load|install|enable|accept|approve|unlock)\\b',
+  '\\b(onpc|desk|console|app|application|program|machine|workstation|laptop|router|switch|device|plugin|show|window|cable|usb)\\s+(must|needs?\\s+to|has\\s+to|should)\\s+(be\\s+)?(running|open|on|started|loaded|connected|plugged\\s+in|visible|powered)\\b',
+  '\\b(start|launch|open|restart|reboot|plug\\s+in|switch\\s+on|turn\\s+on|power\\s+on|connect)\\s+(the\\s+|your\\s+)?(onpc|desk|console|app|application|program|machine|workstation|laptop|router|switch|device|cable|usb|plugin|show)\\b',
+  '\\bI\\s+need\\s+you\\s+to\\b',
+];
+const NO_WATCHER_BUILTIN = ['⚙\\s*no\\s+watcher\\s*:'];
+// (f) a ticket, or a comment that asks something.
+const ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
+const COMMENT = /\bgh\s+(?:issue|pr)\s+comment\b/;
+
+function loadPatterns(root) {
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'watch-gate.json'), 'utf8')); } catch (e) { /* built-ins only */ }
+  const merge = (builtins, extra) => {
+    const out = [...builtins];
+    if (Array.isArray(extra)) for (const p of extra) { try { new RegExp(p); out.push(p); } catch (e) { /* skip */ } }
+    return new RegExp(out.join('|'), 'iu');
+  };
+  return { handStep: merge(HAND_STEP_BUILTIN, cfg.hand_step_patterns), noWatcher: merge(NO_WATCHER_BUILTIN, cfg.no_watcher_markers) };
+}
+
+/** Quoted text and code are talk ABOUT a request, not a request. */
+function stripQuoted(text) {
+  return String(text || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/„[^“”"\n]*[“”"]/g, ' ')
+    .replace(/“[^”]*”/g, ' ')
+    .replace(/"[^"\n]*"/g, ' ')
+    .replace(/^\s*>.*$/gm, ' ');
+}
+
+/** The body text a gh comment/issue command carries, as far as the command line shows it. */
+function ghBody(cmd) {
+  const m = /--body[=\s]+(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(cmd) || /-b[=\s]+(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(cmd);
+  return m ? (m[1] || m[2] || m[3] || '') : cmd; // $(...) bodies: judge the whole command text
+}
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -293,6 +351,23 @@ function main(input) {
     if (ciWatched(calls, slug)) continue;
     missing.push(`CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
       + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`);
+  }
+  // (e) the reply asks the human for a hand step, and nothing in this turn waits for its effect
+  const pats = loadPatterns(root);
+  const waiter = calls.some((c) => c.name === 'Monitor' || c.name === 'ScheduleWakeup' || c.bg);
+  if (!waiter && !pats.noWatcher.test(lastText)) {
+    const m = pats.handStep.exec(stripQuoted(lastText));
+    if (m) {
+      missing.push(`a hand step is asked of the human ("${m[0].trim()}") and no waiter runs — build the measurement `
+        + 'and arm it (Monitor / run_in_background) BEFORE the request, say what will not move; '
+        + 'where no probe is possible, write "⚙ no watcher: <why>"');
+    }
+  }
+  // (f) a ticket or a question posted in a thread, and no standing repo watch reads the answer
+  const asked = shell.some((c) => ISSUE_CREATE.test(c.cmd) || (COMMENT.test(c.cmd) && /[?]|\bplease\b/i.test(ghBody(c.cmd))));
+  if (asked && !prWatched(root, calls)) {
+    missing.push('an issue or a question was posted on GitHub and no repo watch lives — arm collab-watch '
+      + '(or Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr>)');
   }
   if (!missing.length) process.exit(0);
   process.stdout.write(JSON.stringify({
