@@ -17,7 +17,15 @@ The shape this produces:
   INDEX.md            one pointer line per topic. 577 characters — nothing else, see the
                       note at DISCRIMINATOR_CHARS for why no "open" section.
   <topic>/INDEX.md    one routing line per entry in that topic: title, path, and a
-                      discriminator cut from the file's own description.
+                      discriminator cut from the file's own description — plus, since
+                      2026-10-14, what the entry's ROUTING FIELDS say (status when it is
+                      not plain info, who is on the move, what it is related to and what is
+                      related to IT, what it supersedes), and the entries other areas file
+                      here through `topics`.
+  <topic>/OPEN.md     the area's `status: open` entries, one line each: who is on the move,
+                      the age, the title, the path. Written when an area has open entries,
+                      and rewritten (as "nothing open") only where it already exists — so a
+                      stale list never stands and no area gets an empty page it never asked for.
   the file            the full text, where it always was.
 
 Each level has one job, and a reader looking for a show-tools fact never pays for 62
@@ -38,13 +46,23 @@ import argparse
 import os
 import re
 import sys
+from datetime import date as _date
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from importlib import import_module  # noqa: E402
+
+# ONE frontmatter parser for the repo: the lint's. The routing fields are lists, and a
+# second regex parser here would read them differently on the first edge case.
+_lint = import_module("shared-memory-lint")
 
 REPO_DEFAULT = Path(os.environ.get("SHARED_MEMORY_REPO",
                                    Path.home() / "Projects/brain-shared-memory"))
 INDEX_NAME = "INDEX.md"
 ROOT_EXEMPT = {INDEX_NAME, "README.md", "PEOPLE.md"}
 LOG_NAME = "LOG.md"
+OPEN_NAME = _lint.OPEN_NAME
+OPEN_STATUS = "open"
 # A routing line has to let a reader say "not that one" without opening the file. Measured
 # against the real corpus, the first sentence of a description does that in almost every
 # case; the cap is a backstop for descriptions written as one long clause.
@@ -55,18 +73,20 @@ DISCRIMINATOR_CHARS = 220
 # discriminates nothing. The `audience` field does not carry it either — 18 files write a
 # TOPIC there instead of an addressee, next to four spellings of "everyone".
 #
-# There is simply no field in this repo that reliably says "still needs someone". Two ways
-# forward, and both are decisions rather than code: add a status field to the frontmatter
-# convention (agree it with the other party first), or leave "what is open" where it is
-# already tracked — the instances' own ledgers. The second is preferable: a third open
-# list is exactly the drift this generator exists to remove.
+# There was no field in this repo that reliably said "still needs someone", and the two ways
+# forward were both decisions rather than code. The first one was taken on 2026-10-14, by
+# both parties that write the repo: a `status` field (with `next`, `related`, `topics`,
+# `supersedes` — the ROUTING FIELDS, docs/shared-memory-fields.md). What is open is still
+# NOT listed in the root — a root list would grow with the corpus and be read whole every
+# time; the root pointer line carries the COUNT (`· 3 open`), and the list lives per area in
+# `<area>/OPEN.md`, generated from the files, so it cannot drift.
 
 FM_DESC = re.compile(r'^description:\s*"?(.*?)"?\s*$', re.M)
 FM_NAME = re.compile(r"^name:\s*(.+?)\s*$", re.M)
-FM_FIELD = re.compile(r"^\s+(von|audience|topic|date):\s*(.+?)\s*$", re.M)
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-# `<topic>/INDEX.md` — a page this generator writes itself (see the carry rule in build()).
-TOPIC_INDEX = re.compile(r"^[^/]+/" + re.escape(INDEX_NAME) + r"$")
+# `<topic>/INDEX.md` and `<topic>/OPEN.md` — pages this generator writes itself (see the
+# carry rule in build()).
+TOPIC_INDEX = re.compile(r"^[^/]+/(" + re.escape(INDEX_NAME) + "|" + re.escape(OPEN_NAME) + r")$")
 
 
 # FRESHNESS. The operator's order (2026-09-13): a session must be able to ask "what is
@@ -136,7 +156,7 @@ def fact_files(repo: Path, rels: list[str] | None = None) -> list[Path]:
         # A per-topic INDEX.md is an index, not an entry — the lint already knows that,
         # the generator did not: it listed its own output as a dated fact ("INDEX —
         # ~2026-09-13") the first time dates made the line visible.
-        if len(rel.parts) != 2 or rel.name in (LOG_NAME, INDEX_NAME):
+        if len(rel.parts) != 2 or rel.name in (LOG_NAME, INDEX_NAME, OPEN_NAME):
             continue
         out.append(p)
     return out
@@ -163,10 +183,11 @@ def read_entry(p: Path, repo: Path, gitdates: dict[str, str] | None = None,
     head = text.split("\n---", 1)[0] if text.startswith("---") else ""
     desc_m = FM_DESC.search(head)
     name_m = FM_NAME.search(head)
-    fields = dict(FM_FIELD.findall(head))
+    fm = _lint.frontmatter(text) or {}
+    fields = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
     desc = desc_m.group(1) if desc_m else ""
     rel_posix = p.relative_to(repo).as_posix()
-    fm_date = fields.get("date", "")
+    fm_date = str(fields.get("date", "") or "")
     if ISO_DATE.match(fm_date):
         date, date_src = fm_date, "frontmatter"
     elif gitdates and rel_posix in gitdates:
@@ -185,9 +206,31 @@ def read_entry(p: Path, repo: Path, gitdates: dict[str, str] | None = None,
         "topic": p.relative_to(repo).parts[0],
         "name": name_m.group(1) if name_m else p.stem,
         "desc": desc,
-        "audience": fields.get("audience", ""),
-        "von": fields.get("von", ""),
+        "audience": str(fields.get("audience", "") or ""),
+        "von": str(fields.get("von", "") or ""),
+        # the routing fields — absent reads as plain info, unlinked, filed only at home
+        "status": (str(fields.get("status", "") or "").strip().lower() or "info"),
+        "next": _lint.listify(fields.get("next")),
+        "related": _lint.listify(fields.get("related")),
+        "topics": _lint.listify(fields.get("topics")),
+        "supersedes": (_lint.listify(fields.get("supersedes")) or [""])[0],
     }
+
+
+def age_days(e: dict, today: str | None = None) -> str:
+    """`12 d` from the entry's resolved date, "" when it has none."""
+    if not e.get("date"):
+        return ""
+    try:
+        today_d = _date.fromisoformat(today) if today else _date.today()
+        return f"{(today_d - _date.fromisoformat(e['date'])).days} d"
+    except ValueError:
+        return ""
+
+
+def link(e: dict) -> str:
+    """A markdown link to an entry from one level down (`<area>/INDEX.md`)."""
+    return f"[{title_of(e)}](../{e['path']})"
 
 
 def title_of(e: dict) -> str:
@@ -210,7 +253,11 @@ def since(entries: list[dict], day: str) -> list[dict]:
     return sorted(hits, key=lambda e: (e["date"], e["name"]), reverse=True)
 
 
-def build(repo: Path, ref: str | None = None) -> tuple[str, dict[str, str], list[dict]]:
+def build(repo: Path, ref: str | None = None, today: str | None = None
+          ) -> tuple[str, dict[str, str], list[dict], dict[str, str]]:
+    """Returns (root page, {area: index page}, entries, {area: OPEN page}). The OPEN dict
+    holds every area with open entries, plus the areas whose OPEN.md already exists on disk
+    (rewritten as "nothing open" so a stale list never stands)."""
     gitdates = git_dates(repo, ref)
     if ref:
         blobs = blobs_at(repo, ref)
@@ -218,13 +265,64 @@ def build(repo: Path, ref: str | None = None) -> tuple[str, dict[str, str], list
                    for p in fact_files(repo, list(blobs))]
     else:
         entries = [read_entry(p, repo, gitdates) for p in fact_files(repo)]
+    by_path = {e["path"]: e for e in entries}
     by_topic: dict[str, list[dict]] = {}
     for e in entries:
         by_topic.setdefault(e["topic"], []).append(e)
+    # a target written as a bare slug resolves like a wikilink (lint, resolve_target)
+    stems = {e["name"]: e["path"] for e in entries}
+    for e in entries:
+        e["related"] = [r for r in (_lint.resolve_target(t, repo, stems) for t in e["related"]) if r]
+        e["supersedes"] = _lint.resolve_target(e["supersedes"], repo, stems) or "" if e["supersedes"] else ""
+    # ── the routing fields, resolved once ──────────────────────────────────
+    # topics: an entry is FILED into further areas, never copied or moved. Only areas that
+    # exist as folders get a page (the lint names a `topics` value with no area).
+    filed: dict[str, list[dict]] = {}
+    for e in entries:
+        for t in e["topics"]:
+            if t != e["topic"] and (t in by_topic or (repo / t).is_dir()):
+                filed.setdefault(t, []).append(e)
+    # related: the writer links one direction; the generator writes the other one into the
+    # target's index line, so nobody maintains the reverse by hand.
+    linked_from: dict[str, list[dict]] = {}
+    for e in entries:
+        for r in e["related"]:
+            if r in by_path and r != e["path"]:
+                linked_from.setdefault(r, []).append(e)
+    # supersedes: the superseded entry's line points at its successor.
+    successor: dict[str, dict] = {}
+    for e in entries:
+        if e["supersedes"] in by_path and e["supersedes"] != e["path"]:
+            successor[e["supersedes"]] = e
 
-    # ── per-topic index: one routing line per entry ────────────────────────
+    def tail_of(e: dict) -> str:
+        """What the routing fields add to an entry's index line — nothing for an entry that
+        uses none of them, so the lines of 2026-08-30 are unchanged."""
+        parts = []
+        if e["path"] in successor:
+            parts.append(f"superseded by {link(successor[e['path']])}")
+        elif e["status"] != "info":
+            parts.append(e["status"])
+        if e["next"] and e["status"] == OPEN_STATUS:
+            parts.append("next: " + ", ".join(e["next"]))
+        rel = [link(by_path[r]) for r in e["related"] if r in by_path and r != e["path"]]
+        if rel:
+            parts.append("related: " + ", ".join(rel))
+        back = [link(x) for x in linked_from.get(e["path"], [])]
+        if back:
+            parts.append("linked from: " + ", ".join(back))
+        if e["supersedes"] in by_path:
+            parts.append(f"supersedes {link(by_path[e['supersedes']])}")
+        return "".join(f" · {x}" for x in parts)
+
+    # ── per-area index: one routing line per entry, filed entries after the home ones ──
     topic_files = {}
-    for topic, es in sorted(by_topic.items()):
+    open_files: dict[str, str] = {}
+    open_count: dict[str, int] = {}
+    areas = sorted(set(by_topic) | set(filed))
+    for topic in areas:
+        es = by_topic.get(topic, [])
+        more = filed.get(topic, [])
         lines = [f"# {topic} — index", "",
                  f"{len(es)} entries. Routing only: title, path, and enough of the entry's "
                  f"own description to rule it out. The full text is in the file; this list "
@@ -234,8 +332,35 @@ def build(repo: Path, ref: str | None = None) -> tuple[str, dict[str, str], list
             addr = f" · for: {e['audience']}" if e["audience"] else ""
             dm = date_mark(e)
             when = f" · {dm}" if dm else ""
-            lines.append(f"- [{title_of(e)}](../{e['path']}) — {disc}{addr}{when}")
+            lines.append(f"- {link(e)} — {disc}{addr}{when}{tail_of(e)}")
+        if more:
+            lines += ["", f"## Filed here from other areas ({len(more)})", "",
+                      "Entries that name this area in `topics`. They live in their home "
+                      "folder; nothing is copied.", ""]
+            for e in sorted(more, key=lambda x: (x["topic"], x["name"])):
+                disc = first_sentence(e["desc"], DISCRIMINATOR_CHARS)
+                dm = date_mark(e)
+                when = f" · {dm}" if dm else ""
+                lines.append(f"- {link(e)} — {disc}{when}{tail_of(e)} · filed from {e['topic']}")
         topic_files[topic] = "\n".join(lines) + "\n"
+        # ── OPEN.md: the area's open entries, generated, so the list cannot drift ──
+        opens = sorted((x for x in es + more if x["status"] == OPEN_STATUS),
+                       key=lambda x: (x["date"] or "9999", x["name"]))
+        open_count[topic] = len(opens)
+        if opens or (repo / topic / OPEN_NAME).is_file():
+            page = [f"# {topic} — open", "",
+                    f"{len(opens)} open entr{'y' if len(opens) == 1 else 'ies'}: every file "
+                    f"with `status: open` that lives here or is filed here via `topics`. "
+                    f"GENERATED (scripts/shared-memory-index.py), do not hand-edit — change "
+                    f"the entry's `status`/`next` instead.", ""]
+            for e in opens:
+                who = ", ".join(e["next"]) or "nobody named"
+                age = age_days(e, today)
+                home = f" · filed from {e['topic']}" if e["topic"] != topic else ""
+                page.append(f"- next: {who}{' · ' + age if age else ''} — {link(e)}{home}")
+            if not opens:
+                page.append("nothing open.")
+            open_files[topic] = "\n".join(page) + "\n"
 
     # Lines the OLD index carried that this generator does not manage — anything linked
     # from the root that is not a <topic>/<slug>.md fact file. Measured before the first
@@ -271,12 +396,15 @@ def build(repo: Path, ref: str | None = None) -> tuple[str, dict[str, str], list
             "GENERATED by `scripts/shared-memory-index.py` — do not hand-edit; add a file "
             "with proper frontmatter and regenerate. Three levels on purpose: this page "
             "routes by TOPIC, the topic index routes by ENTRY, the file holds the text. "
-            "What is still OPEN is not tracked here — it lives in the instances' ledgers, "
-            "where it is already maintained.",
+            "What is still OPEN is listed per area in `<area>/OPEN.md`, generated from "
+            "the entries' `status: open`; this page carries only the count.",
             "", "## Topics", ""]
-    for topic, es in sorted(by_topic.items()):
+    for topic in areas:
+        es = by_topic.get(topic, [])
         newest = max((e["date"] for e in es if e.get("date")), default="")
         tail = f" · newest {newest}" if newest else ""
+        n_open = open_count.get(topic, 0)
+        tail += f" · {n_open} open" if n_open else ""
         root.append(f"- [{topic}]({topic}/INDEX.md) — {len(es)} entries{tail}")
     if carried:
         root += ["", "## Not one-fact entries", "",
@@ -284,7 +412,7 @@ def build(repo: Path, ref: str | None = None) -> tuple[str, dict[str, str], list
                  "generator manages (attachments, delivery copies). Carried through "
                  "unchanged — edit these lines by hand, they survive regeneration.", ""]
         root += carried
-    return "\n".join(root) + "\n", topic_files, entries
+    return "\n".join(root) + "\n", topic_files, entries, open_files
 
 
 def main() -> int:
@@ -307,7 +435,7 @@ def main() -> int:
         print(f"ERROR: repo not found: {a.repo}", file=sys.stderr)
         return 2
 
-    root, topics, entries = build(a.repo, a.ref)
+    root, topics, entries, opens = build(a.repo, a.ref)
     if a.since:
         if not ISO_DATE.match(a.since):
             print(f"ERROR: --since wants YYYY-MM-DD, got {a.since!r}", file=sys.stderr)
@@ -335,6 +463,8 @@ def main() -> int:
     print(f"root index:        {len(root):>7} chars")
     for t, v in sorted(topics.items()):
         print(f"  {t:<16} {len(v):>7} chars")
+    for t, v in sorted(opens.items()):
+        print(f"  {t + '/' + OPEN_NAME:<24} {v.count(chr(10) + '- ')} open")
     print()
     print(f"one lookup TODAY:  {old_size:>7} chars  (~{old_size//4} tokens) — the whole index")
     print(f"one lookup AFTER:  {lookup_new:>7} chars  (~{lookup_new//4} tokens) — root + the "
@@ -364,9 +494,13 @@ def main() -> int:
     with open(a.repo / "INDEX.md", "w", encoding="utf-8", newline="\n") as fh:
         fh.write(root)
     for t, v in topics.items():
+        (a.repo / t).mkdir(exist_ok=True)
         with open(a.repo / t / "INDEX.md", "w", encoding="utf-8", newline="\n") as fh:
             fh.write(v)
-    print(f"\nwritten: INDEX.md + {len(topics)} topic index files")
+    for t, v in opens.items():
+        with open(a.repo / t / OPEN_NAME, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(v)
+    print(f"\nwritten: INDEX.md + {len(topics)} topic index files + {len(opens)} {OPEN_NAME}")
     return 0
 
 
