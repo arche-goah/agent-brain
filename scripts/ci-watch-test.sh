@@ -26,6 +26,17 @@ case "${CI_WATCH_STUB:?}" in
               if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
               else touch "$f"; echo '[{"bucket":"pending"},{"bucket":"pass"}]'; fi ;;
   gh_broken)  echo "HTTP 500 boom" >&2; exit 1 ;;
+  # 2026-10-10: right after a merge, `pr checks` answered with exit 0 and a reply that was not
+  # the JSON list (the run was being registered); the next poll had 11 green checks. One
+  # unparseable poll is a wait; only a repeat is a verdict.
+  pr_garbage_flip) f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
+              else touch "$f"; echo 'Checks are being registered'; fi ;;
+  pr_garbage) echo 'Checks are being registered' ;;
+  ref_garbage_flip) [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+              f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"headBranch":"v9.9.9","headSha":"abc123","status":"completed","conclusion":"success"}]'
+              else touch "$f"; echo 'not json'; fi ;;
   # Ref mode resolves the ref's commit via `gh api repos/<r>/commits/<ref>` first.
   ref_green)  [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"v9.9.9","headSha":"abc123","status":"completed","conclusion":"success"}]' ;;
@@ -131,6 +142,11 @@ check "pr 'no checks reported' waits, then timeout(2)" pr_nochecks 2 pr 12 2
 check "pr 'no checks' then green"       pr_nochecks_flip 0 pr 12
 check "pr pending then green"           pr_flip    0 pr 12
 check "gh hard error = unknown"         gh_broken  2 pr 12
+check "pr unparseable once, then green" pr_garbage_flip 0 pr 12
+check "pr unparseable three polls = unknown(2)" pr_garbage 2 pr 12 30
+grep -q "3 polls in a row" "$TMP/out" && echo "  OK   unknown names the repeated unparseable reply" \
+  || { echo "  FAIL unknown verdict does not name the repeat"; fails=$((fails+1)); }
+check "ref unparseable once, then green" ref_garbage_flip 0 ref v9.9.9
 check "conflicted PR (no-checks wording) = named unknown(2), no wait" pr_conflict      2 pr 12 30
 grep -q "CONFLICTING" "$TMP/out" && echo "  OK   conflict verdict names CONFLICTING" \
   || { echo "  FAIL conflict verdict does not name CONFLICTING"; fails=$((fails+1)); }
