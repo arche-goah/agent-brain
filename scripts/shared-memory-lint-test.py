@@ -450,6 +450,85 @@ def main() -> int:
         else:
             bad(f"40 advisory exit/print wrong: rc={r.returncode} {r.stdout[-400:]}")
 
+        # 41-49. ROUTING FIELDS (check 10, 2026-10-14). Own sandbox with parties.json and two
+        #     areas (folders with a LOG.md). Every finding is planted once and has its silent
+        #     control: the same shape written correctly.
+        repo = build(tmp / "fields")
+        idx = repo / "INDEX.md"
+        base = idx.read_text(encoding="utf-8")
+        (repo / "ops" / "LOG.md").write_text("log\n", encoding="utf-8")
+        (repo / "grandma3" / "LOG.md").write_text("log\n", encoding="utf-8")
+        (repo / "parties.json").write_text(
+            '{"people": {"kim": {"github": "k", "devices": {"kim-pc": {"os": "windows"}}}}}',
+            encoding="utf-8")
+        bl = tmp / "fields-baseline.txt"
+        bl.write_text("# empty\n", encoding="utf-8")
+
+        def put_fields(stem: str, extra: str, date: str = "2026-10-14") -> None:
+            text = fm(stem, date=date, von="kim-pc", audience="kim-pc").replace(
+                f"  date: {date}\n", f"  date: {date}\n{extra}")
+            (repo / "ops" / f"{stem}.md").write_text(text, encoding="utf-8")
+            idx.write_text(base + f"- [{stem}](ops/{stem}.md) — x\n", encoding="utf-8")
+
+        def fields() -> list:
+            return sml.lint(repo, bl)["findings"]["fields"]
+
+        put_fields("f1", "  status: open\n  next: kim-pc\n  related: [ops/alpha.md, beta]\n"
+                         "  topics: [grandma3]\n  supersedes: ops/alpha.md\n")
+        check("41 control: every field used correctly is silent",
+              {"fields": len(fields())}, "fields", 0)
+        put_fields("f1", "  status: pending\n")
+        res = fields()
+        check("42 a status outside the vocabulary", {"fields": len(res)}, "fields", 1)
+        put_fields("f1", "  status: open\n")
+        res = fields()
+        if len(res) == 1 and res[0]["issue"] == "status open without next":
+            ok("43 open without next (entry dated on/after the rule)")
+        else:
+            bad(f"43 open without next: {res}")
+        put_fields("f1", "  status: open\n", date="2026-10-01")
+        check("44 control: an older open entry without next is not re-judged",
+              {"fields": len(fields())}, "fields", 0)
+        put_fields("f1", "  status: open\n  next: nobody-box\n")
+        res = fields()
+        if len(res) == 1 and res[0]["issue"].startswith("next names no device"):
+            ok("45 next outside parties.json")
+        else:
+            bad(f"45 next outside parties.json: {res}")
+        put_fields("f1", "  related:\n    - ops/alpha.md\n    - ops/vanished.md\n")
+        res = fields()
+        if len(res) == 1 and res[0].get("target") == "ops/vanished.md":
+            ok("46 a dead related path in a block list is named, the live one is not")
+        else:
+            bad(f"46 dead related: {res}")
+        put_fields("f1", "  supersedes: ops/vanished.md\n")
+        check("47 a dead supersedes path", {"fields": len(fields())}, "fields", 1)
+        put_fields("f1", "  topics: [grandma3, nowhere]\n")
+        res = fields()
+        if len(res) == 1 and res[0].get("topic") == "nowhere":
+            ok("48 topics naming no area is named, the real area is not")
+        else:
+            bad(f"48 topics: {res}")
+        # 49. no parties.json: `next` is not resolved (nothing to resolve against), the
+        #     other field checks still run
+        (repo / "parties.json").unlink()
+        put_fields("f1", "  status: open\n  next: nobody-box\n  supersedes: ops/vanished.md\n")
+        res = fields()
+        if len(res) == 1 and res[0]["issue"] == "supersedes points at no file":
+            ok("49 without parties.json next is not judged, dead paths still are")
+        else:
+            bad(f"49 without parties.json: {res}")
+        # 49b. the generated OPEN.md is an index, not an entry: no frontmatter finding, no
+        #      index line demanded
+        (repo / "ops" / "f1.md").unlink()
+        idx.write_text(base, encoding="utf-8")
+        (repo / "ops" / sml.OPEN_NAME).write_text("# ops — open\n\nnothing open.\n", encoding="utf-8")
+        c = sml.lint(repo, bl)["counts"]
+        if c["frontmatter"] == 0 and c["index_drift"] == 0:
+            ok("49b OPEN.md is an index, not an entry")
+        else:
+            bad(f"49b OPEN.md linted as an entry: {c}")
+
     return 1 if fails else 0
 
 
