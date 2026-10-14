@@ -136,7 +136,7 @@ with tempfile.TemporaryDirectory() as td:
     for cmd in (["init", "-q"], ["add", "-A"],
                 ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"]):
         subprocess.run(["git", "-C", str(repo)] + cmd, env=env, check=False, capture_output=True)
-    root, topics, entries = smi.build(repo)
+    root, topics, entries, _ = smi.build(repo)
     by = {e["name"]: e for e in entries}
     ok("7 a frontmatter date is shown as the author's",
        smi.date_mark(by["dated"]) == "2026-09-01", smi.date_mark(by.get("dated", {})))
@@ -179,6 +179,62 @@ with tempfile.TemporaryDirectory() as td:
        "ops/tools/README.md" in first and "ops/tools/README.md" in second, second)
     ok("15 a second run reproduces the same page (no generations)",
        first == second, second)
+
+with tempfile.TemporaryDirectory() as td:
+    # 16-23. ROUTING FIELDS (2026-10-14). Entries that use none of the fields keep the line
+    # shape of 2026-08-30 (control); an entry that uses them gets exactly what it wrote, plus
+    # the direction the generator owns: the back-reference, the "superseded by", the filing
+    # into another area, and the per-area OPEN page.
+    repo = Path(td) / "repo"
+    (repo / "ops").mkdir(parents=True)
+    (repo / "show").mkdir(parents=True)
+
+    def put(area, name, extra="", desc="Plain description."):
+        text = entry(name, desc).replace("  topic: ops\n", f"  topic: {area}\n  date: 2026-10-10\n{extra}")
+        with open(repo / area / f"{name}.md", "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+
+    put("ops", "plain")
+    put("ops", "opened", "  status: open\n  next: kim-pc, sam-laptop\n  related: [show/target.md]\n"
+                         "  topics: [show]\n")
+    put("show", "target", "  status: decided\n  supersedes: show/oldplan.md\n")
+    put("show", "oldplan")
+    with open(repo / "INDEX.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# Index\n")
+    root, topics, entries, opens = smi.build(repo, today="2026-10-14")
+    ops_ix, show_ix = topics["ops"], topics["show"]
+    line = next(ln for ln in ops_ix.splitlines() if "(../ops/plain.md)" in ln)
+    ok("16 control: an entry without fields keeps the old line shape",
+       line == "- [plain](../ops/plain.md) — Plain description. · for: y · 2026-10-10", line)
+    line = next(ln for ln in ops_ix.splitlines() if "(../ops/opened.md)" in ln)
+    ok("17 status, next and related appear on the entry's own line",
+       " · open · next: kim-pc, sam-laptop · related: [target](../show/target.md)" in line, line)
+    line = next(ln for ln in show_ix.splitlines() if ln.startswith("- [target](../show/target.md)"))
+    ok("18 the back-reference is written into the OTHER entry's line",
+       "linked from: [opened](../ops/opened.md)" in line and "decided" in line
+       and "supersedes [oldplan](../show/oldplan.md)" in line, line)
+    line = next(ln for ln in show_ix.splitlines() if "(../show/oldplan.md)" in ln)
+    ok("19 a superseded entry points at its successor",
+       "superseded by [target](../show/target.md)" in line, line)
+    ok("20 an entry is filed into a further area through topics, marked with its home",
+       "## Filed here from other areas (1)" in show_ix
+       and "[opened](../ops/opened.md)" in show_ix and "filed from ops" in show_ix, show_ix)
+    ok("21 OPEN.md lists the open entry with next and age; a closed area gets none",
+       set(opens) == {"ops", "show"} and "- next: kim-pc, sam-laptop · 4 d — [opened](../ops/opened.md)" in opens["ops"]
+       and "filed from ops" in opens["show"], str(opens))
+    ok("22 the root pointer line carries the open count and nothing else new",
+       "- [ops](ops/INDEX.md) — 2 entries · newest 2026-10-10 · 1 open" in root
+       and "- [show](show/INDEX.md) — 2 entries · newest 2026-10-10 · 1 open" in root, root)
+    # 23. a stale OPEN.md is rewritten as "nothing open", a never-written one is not created,
+    #     and the page is not re-ingested as an entry
+    run_main(repo, write=True)
+    put("ops", "opened", "  status: done\n")
+    run_main(repo, write=True)
+    ops_open = (repo / "ops" / "OPEN.md").read_text(encoding="utf-8")
+    _, _, entries2, opens2 = smi.build(repo)
+    ok("23 a stale OPEN.md says nothing open; OPEN.md is not an entry",
+       "nothing open." in ops_open and "OPEN" not in {e["name"] for e in entries2}
+       and "show" in opens2 and "ops" in opens2, ops_open)
 
 print()
 if fails:
