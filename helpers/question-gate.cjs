@@ -40,6 +40,16 @@
  * Questions of the reply being ended are recorded, never blocked — the operator has not
  * seen them yet. Once per turn; a re-issue passes. Fails open without a transcript.
  *
+ * Orphans and evidence (issue #269, operator 2026-10-11: "there is no active session any more
+ * for 'which way do you want' — nobody feels responsible, that is a core bug"): a record keeps
+ * the TRANSCRIPT it came from, so any later session can read what the operator said after the
+ * question. `deferred:<words>` is accepted only when those words stand verbatim in an operator
+ * prompt after the question in that transcript — a note in the agent's own words is refused,
+ * and so is a deferral nobody can check (transcript gone). `adopt <id>` prints the operator's
+ * prompts after the question (bounded) and marks the record adopted, so the session that
+ * starts next settles it from evidence instead of leaving it to the session that no longer
+ * exists; `list` names that call for every record not settled by its own session.
+ *
  * Fixture: scripts/test-question-gate.sh.
  */
 const fs = require('fs');
@@ -154,7 +164,7 @@ function gate(input) {
       const id = qid(q);
       if (!state[id]) {
         state[id] = { q: q.slice(0, 240), about: contextOf(rep.text, q), asked: new Date().toISOString(),
-          session: input.session_id || '', status: 'open' };
+          session: input.session_id || '', status: 'open', transcript: input.transcript_path };
         changed = true;
       }
       if (rep.prompt < operator && state[id].status === 'open' && !pending.includes(id)) pending.push(id);
@@ -173,17 +183,64 @@ function gate(input) {
   }));
 }
 
+/**
+ * The operator's prompts AFTER the reply that asked `q`, read from the record's transcript.
+ * Returns null when the transcript cannot be read or the question is not found in it.
+ */
+function operatorAfter(tp, q, rx) {
+  let lines;
+  try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return null; }
+  const want = qid(q);
+  let seen = false; const out = [];
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    const msg = d.message; if (!msg) continue;
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      if (!seen) {
+        for (const b of msg.content) {
+          if (b.type === 'text' && b.text && questions(b.text, rx).some((x) => qid(x) === want)) seen = true;
+        }
+      }
+      continue;
+    }
+    if (!seen || msg.role !== 'user') continue;
+    const t = promptText(msg);
+    if (t === null || HOOK_ECHO.test(t) || isNotification(t)) continue;
+    out.push(t.trim());
+  }
+  return seen ? out : null;
+}
+
+const squash = (t) => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
 function cli(args) {
   const r = root();
   const state = load(r);
+  const rx = questionRegex(r);
   if (args[0] === 'resolve') {
     let bad = 0;
     for (const a of args.slice(1)) {
       const m = /^([0-9a-f]{8})=(\w+)(?::(.*))?$/.exec(a);
       if (!m || !state[m[1]] || !STATUSES.has(m[2])) { console.log(`unknown id or status: ${a}`); bad = 1; continue; }
-      if (m[2] === 'deferred' && !(m[3] || '').trim()) {
-        console.log(`${m[1]}: deferred needs the operator's own words (deferred:<quote>); an unanswered question is 'unanswered'`);
-        bad = 1; continue;
+      if (m[2] === 'deferred') {
+        const words = (m[3] || '').trim();
+        if (!words) {
+          console.log(`${m[1]}: deferred needs the operator's own words (deferred:<quote>); an unanswered question is 'unanswered'`);
+          bad = 1; continue;
+        }
+        // The words must be the OPERATOR's, after the question — checkable, so checked (#269 gap 4).
+        const after = state[m[1]].transcript ? operatorAfter(state[m[1]].transcript, state[m[1]].q, rx) : undefined;
+        if (after === undefined || after === null) {
+          console.log(`${m[1]}: deferred cannot be checked — the asking transcript is not readable; `
+            + "file it 'unanswered' and ask again, or quote the operator from a prompt of THIS session via adopt");
+          bad = 1; continue;
+        }
+        if (!after.some((p) => squash(p).includes(squash(words)))) {
+          console.log(`${m[1]}: "${words}" is not what the operator wrote after the question (${after.length} prompt(s) read) — `
+            + "a paraphrase is not a quotation; an overlooked question is 'unanswered'");
+          bad = 1; continue;
+        }
       }
       Object.assign(state[m[1]], { status: m[2], note: m[3] || '', resolved: new Date().toISOString() });
       console.log(`${m[1]} -> ${m[2]}`);
@@ -191,19 +248,48 @@ function cli(args) {
     save(r, state);
     return bad;
   }
+  if (args[0] === 'adopt') {
+    // An orphan: the session that asked is gone. The next session takes it WITH the evidence
+    // (#269 gaps 2 and 3): what did the operator write after the question?
+    const id = args[1] || '';
+    const v = state[id];
+    if (!v) { console.log(`unknown id: ${id}`); return 1; }
+    const after = v.transcript ? operatorAfter(v.transcript, v.q, rx) : null;
+    console.log(`${id} [${v.status}] ${v.q}`);
+    if (v.about) console.log(`  about: ${v.about}`);
+    if (after === null) {
+      console.log('  operator prompts after it: transcript not readable or question not found in it — '
+        + 'settle from the ledger or ask again');
+    } else if (!after.length) {
+      console.log('  operator prompts after it: none — the session ended on the question');
+    } else {
+      console.log(`  operator prompts after it (${after.length}, newest last):`);
+      for (const p of after.slice(-5)) console.log(`    > ${p.replace(/\s+/g, ' ').slice(0, 200)}`);
+    }
+    v.adopted = new Date().toISOString();
+    save(r, state);
+    console.log(`  settle: node core/helpers/question-gate.cjs resolve ${id}=answered|dropped|unanswered|deferred:<quote from above>`);
+    return 0;
+  }
   if (args[0] === 'list') {
     const open = Object.entries(state).filter(([, v]) => ['open', 'deferred', 'unanswered'].includes(v.status));
     if (!open.length) return 0;
     console.log(`open questions to the operator: ${open.length}`);
     // The context line is what lets the next session match the question to its topic (ledger,
     // decision log) and close it once settled there; a bare sentence cannot be matched.
+    const today = new Date().toISOString().slice(0, 10);
     for (const [id, v] of open) {
       console.log(`- [${v.status}] ${(v.asked || '').slice(0, 10)} ${id} ${v.q}`);
       if (v.about) console.log(`    about: ${v.about}`);
+      // Asked by an earlier session and still not settled = an orphan: name the one call that
+      // shows what the operator said after it, so this session can settle it from evidence.
+      if ((v.asked || '').slice(0, 10) < today && v.status !== 'deferred') {
+        console.log(`    orphan — settle from evidence: node core/helpers/question-gate.cjs adopt ${id}`);
+      }
     }
     return 0;
   }
-  console.log('usage: question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<operator words> ... | list');
+  console.log('usage: question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<operator words> ... | adopt <id> | list');
   return 2;
 }
 
