@@ -11,9 +11,22 @@
  * testbench runlog. A wrong absence claim is worse than a wrong presence claim: it
  * ends the search, and the next step is to re-measure what was already measured.
  *
+ * The second shape of the class (operator order 2026-10-11, "find the origin of the
+ * fallacy"): "there is no way to do X from the engine", "GUI-only", "not possible
+ * programmatically" is an absence claim about a system's CAPABILITY — made after one
+ * API level was tried while another was, in the author's own words, "untested". Incident:
+ * a desk feature was declared unreachable "architecturally" on 2026-09-04 and stayed
+ * parked for five weeks; the Lua API that reaches it sat in the same instance's own
+ * skill. The documentation gate above never fired, because the sentence said "no way",
+ * not "nowhere documented". Same remedy: search every registered source (API lists,
+ * manuals, measured runlogs) before saying a capability does not exist, or scope the
+ * claim visibly. Epistemic phrases ("no way to know yet") are not capability claims and
+ * stay free.
+ *
  * What fires: BOTH conditions in the same turn.
- *   (a) an absence claim in the assistant's own prose (built-in English patterns,
- *       other languages are instance data — see below);
+ *   (a) an absence claim in the assistant's own prose — documentation absence or
+ *       capability absence (built-in English patterns, other languages are instance
+ *       data — see below);
  *   (b) at least one registered source root that no search of THIS turn covered.
  *       A search covers a root when it ran on the root, inside it, or on a parent of
  *       it. Search calls: Grep and Glob (their `path`, default the project root),
@@ -78,6 +91,17 @@ const BUILTIN_CLAIM = [
   '\\b(there\\s+is|there\'s|there\\s+are)\\s+no\\s+(documentation|record|records|measurement|measurements|mention|reference|source|data)\\s+(of|for|on|about|anywhere)\\b',
   '\\b(does\\s+not|doesn\'t|do\\s+not|don\'t)\\s+exist\\s+anywhere\\b',
   '\\bexists?\\s+nowhere\\b',
+  // Capability absence (2026-10-11): "no way / no API / GUI-only / not possible from the
+  // engine". "no way to know|tell|say" is epistemic, not a capability claim, and stays free.
+  '\\b(there\\s+is|there\'s|there\\s+are)\\s+no\\s+(way|api|hook|verb|command|interface|mechanism|path|route)\\s+(to(?!\\s+(know|tell|say|be\\s+sure))|for|from|via|into|around)\\b',
+  '\\bno\\s+(api|hook|verb|command|interface|mechanism)\\s+(exists|is\\s+available|is\\s+exposed|is\\s+documented)\\b',
+  '\\bno\\s+(programmatic|scripted|scriptable|engine|api|lua|osc)\\s+(way|path|access|route|handle)\\b',
+  '\\b(not|never)\\s+(possible|scriptable|automatable|reachable|controllable|addressable|readable|settable|exposed|accessible)\\s+(from|via|through|by|over|programmatically|in\\s+lua|in\\s+code|without\\s+(a\\s+)?(hand|mouse|click))\\b',
+  '\\bimpossible\\s+(to|from|via|through|by|programmatically)\\b',
+  '\\b(cannot|can\'t|can\\s+not)\\s+be\\s+(done|driven|controlled|read|set|triggered|reached|automated|scripted|opened|closed|confirmed|operated)\\s+(from|via|through|by|over|programmatically|without\\s+(a\\s+)?(hand|mouse|click))\\b',
+  '\\b(gui|ui|mouse|hand|click)[- ]only\\b',
+  '\\bonly\\s+(by|via|through|with)\\s+(hand|mouse|a\\s+click|clicking|the\\s+gui|the\\s+ui|the\\s+desk\\s+surface)\\b',
+  '\\barchitecturally\\s+(impossible|not\\s+possible|out\\s+of\\s+reach|unreachable)\\b',
 ];
 
 const BUILTIN_SCOPE_MARKER = ['⚙\\s*scope\\s*:'];
@@ -291,8 +315,8 @@ process.stdin.on('end', () => {
   }
   if (!due || seen.quiet) return allow();
 
-  const reason = 'ABSENCE-GATE — an absence claim covers every source, but this turn ' +
-    'searched only some of them.\n' +
+  const reason = 'ABSENCE-GATE — an absence claim (documented nowhere / no way to do it) ' +
+    'covers every source, but this turn searched only some of them.\n' +
     `Absence wording: ${claims.slice(0, 3).join(' · ')}\n` +
     `Unsearched roots: ${missing.join(', ')}\n` +
     'Search those before saying it exists nowhere. A narrower search on purpose is ' +
