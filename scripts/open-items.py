@@ -50,7 +50,10 @@ Instance data `.claude/rules/open-items.json`: "parked" (regexes on request topi
 repo — parked domains stay on one line, never dropped; an entry may instead be
 {"match", "wake_on", "since"}: when a wake_on party — GitHub login or shared-memory `von`
 id — moves in that domain after `since`, one operator item asks whether to unpark) and
-"humans" (names a request can address the operator by, e.g. "an <name>").
+"humans" (names a request can address the operator by, e.g. "an <name>"), and "pr_owners"
+(further GitHub accounts or orgs whose open PRs are listed next to --owner's, e.g. the
+operator's personal account when --owner is the org; PR ids stay `<repo>#<n>`, so two
+listed owners with a repo of the same name share one id).
 
 Usage:
   open-items.py --owner <org> [--hook-input '<SessionStart JSON>'] [--repo <shared-memory>]
@@ -228,17 +231,28 @@ def ball(p, me, owners, shared_shas=frozenset()):
     return None
 
 
-def prs(owner, owners, repo=None):
+def pr_search(owner, extra=()):
+    """One search over every owner: GitHub ORs repeated `user:` qualifiers (measured
+    2026-10-14: `user:a` 10 + `user:b` 2 = `user:a user:b` 12). `extra` is instance data
+    (`pr_owners`): an operator whose repos sit under a second account (a personal one next
+    to the org) never saw a PR there at session start (measured the same day)."""
+    names = [owner] + [o for o in extra if o and o.lower() != owner.lower()]
+    return " ".join(f"user:{o}" for o in names) + " is:pr is:open"
+
+
+def prs(owner, owners, repo=None, extra=()):
     # No owner = the source was never asked. Measured 2026-10-09: a run without --owner said
     # "nothing open (requests and PRs both read)" while twelve PRs were open.
     if not owner:
         return None
+    q = pr_search(owner, extra)
+    if os.environ.get("OPEN_ITEMS_PR_QUERY_OUT"):  # fixture hook: which search was asked
+        Path(os.environ["OPEN_ITEMS_PR_QUERY_OUT"]).write_text(q, encoding="utf-8")
     fixture = os.environ.get("OPEN_ITEMS_PR_FIXTURE")  # fixture hook: a saved GraphQL answer
     if fixture:
         rc, out = (0, Path(fixture).read_text(encoding="utf-8")) if Path(fixture).is_file() else (1, "")
     else:
-        rc, out = run(["gh", "api", "graphql", "-f", f"query={PR_QUERY}",
-                       "-F", f"q=user:{owner} is:pr is:open"])
+        rc, out = run(["gh", "api", "graphql", "-f", f"query={PR_QUERY}", "-F", f"q={q}"])
     if rc != 0:
         return None
     try:
@@ -530,7 +544,7 @@ def main():
             return True
         return False
 
-    req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {}, a.repo)
+    req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {}, a.repo, cfg.get("pr_owners") or [])
     failed = [name for name, v in (("shared-memory requests", req),
                                    ("PR search" if a.owner else "PRs (no owner given)", pr)) if v is None]
     items = (req or []) + (pr or []) + wake_items(rules, pr, a.repo)
