@@ -55,7 +55,15 @@ printf '#!/usr/bin/env bash\ntouch "%s/EXECUTED"\nexit 0\n' "$TMP" \
   > "$TMP/brain/scripts/danger-test.sh"
 
 report="$TMP/out.txt"
-bash "$HERE/brain-selftest.sh" "$TMP/brain" > "$report" 2>&1
+# The child must be measured in the FOREGROUND, whatever the caller wanted for itself.
+# BRAIN_SELFTEST_BG=1 is set by session-bootup.sh for the real run, and it was inherited
+# straight through into this fixture: the synthetic brain is always a cold cache, so the
+# child backgrounded its fixture half, printed no hand-tool skip line, and the check below
+# failed at every session start with a cache miss (measured 2026-09-13 on a Windows brain,
+# reproduced with `BRAIN_SELFTEST_BG=1 bash scripts/brain-selftest-test.sh`). A fixture
+# whose verdict depends on the environment of whoever ran it measures the caller, not the
+# tool.
+BRAIN_SELFTEST_BG=0 bash "$HERE/brain-selftest.sh" "$TMP/brain" > "$report" 2>&1
 
 section=$(sed -n '/executables nothing calls/,/without a trigger;/p' "$report")
 if [[ -z "$section" ]]; then
