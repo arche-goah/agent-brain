@@ -286,10 +286,10 @@ has "repeat counter NOT saved" "$out" && ok "lost counter is loud" || bad "lost 
 # `user:` qualifier (GitHub ORs them), the --owner itself not doubled. Control: no
 # pr_owners = the search is the single owner, as before.
 mkdir -p "$T/root-po/.claude/rules"
-q1=$(OPEN_ITEMS_PR_QUERY_OUT="$(native "$T/q1.txt")" OWNER=me run "" "$T/root-po" >/dev/null; cat "$T/q1.txt" 2>/dev/null)
+q1=$(OPEN_ITEMS_SHOW_PR_SEARCH=1 OWNER=me run "" "$T/root-po" | sed -n 's/^pr-search: //p')
 [ "$q1" = "user:me is:pr is:open" ] && ok "no pr_owners: the search is the single owner" || bad "single-owner search: '$q1'"
 printf '%s\n' '{"pr_owners": ["Personal", "ME"]}' > "$T/root-po/.claude/rules/open-items.json"
-q2=$(OPEN_ITEMS_PR_QUERY_OUT="$(native "$T/q2.txt")" OWNER=me run "" "$T/root-po" >/dev/null; cat "$T/q2.txt" 2>/dev/null)
+q2=$(OPEN_ITEMS_SHOW_PR_SEARCH=1 OWNER=me run "" "$T/root-po" | sed -n 's/^pr-search: //p')
 [ "$q2" = "user:me user:Personal is:pr is:open" ] && ok "pr_owners: one search over both owners, --owner not doubled" \
   || bad "several-owner search: '$q2'"
 

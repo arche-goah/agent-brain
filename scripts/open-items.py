@@ -246,8 +246,8 @@ def prs(owner, owners, repo=None, extra=()):
     if not owner:
         return None
     q = pr_search(owner, extra)
-    if os.environ.get("OPEN_ITEMS_PR_QUERY_OUT"):  # fixture hook: which search was asked
-        Path(os.environ["OPEN_ITEMS_PR_QUERY_OUT"]).write_text(q, encoding="utf-8")
+    if os.environ.get("OPEN_ITEMS_SHOW_PR_SEARCH"):  # fixture hook: which search was asked
+        print(f"pr-search: {q}", file=sys.stderr)
     fixture = os.environ.get("OPEN_ITEMS_PR_FIXTURE")  # fixture hook: a saved GraphQL answer
     if fixture:
         rc, out = (0, Path(fixture).read_text(encoding="utf-8")) if Path(fixture).is_file() else (1, "")
