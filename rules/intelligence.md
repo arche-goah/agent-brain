@@ -272,6 +272,14 @@ find the root cause, anchor the rule mechanically, develop, test and evaluate
 behaviour strategies. Before saying "that is architecturally impossible", separate
 the two — tool reach is not the space of possibilities.
 
+**A tool's limit does not stop a suite; it becomes a ticket** (operator decision
+2026-10-11). When a real technical limit of one tool is met, the limit is filed in the SAME
+turn as a ticket in the tool's repo — the problem, what was measured, where the boundary
+runs, what follows from it, and how to replicate it — and the suite keeps running for
+everything the boundary does not touch. Measured on a proving brain: a whole suite sat parked
+for weeks over one tool boundary, and nothing named which work the boundary actually blocked.
+Parking a domain stays the operator's word; a limit the AI met is a ticket, never a park.
+
 ## Proactive Intelligence (propose, do NOT build — order fidelity (Auftragstreue) HARD)
 
 | Pattern | Action |
