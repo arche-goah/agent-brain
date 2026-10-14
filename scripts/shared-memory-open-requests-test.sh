@@ -55,7 +55,13 @@ entry core/request-either.md sam-laptop "me-mac, kim-win" "EITHER-ONE asks eithe
 printf -- '---\nname: x\ndescription: "answer"\nmetadata:\n  type: project\n  von: kim-win\n  audience: sam-laptop\n  topic: core\n  answers: request-either\n---\n\nbody\n' > "$WORK/core/kim-answer.md"
 # Dates are TODAY: a fixed date falls out of the 30-day window and the test would tip silently.
 D=$(date +%Y-%m-%d)
-printf '# Log\n\n## %s · me-mac — AN sam-laptop: answer\n\nSee request-answered: done.\n\n## %s · sam-laptop — AN me-mac: ping\n\nAbout request-open-one again.\n\n## %s · kim-win — AN me-mac: LOGONLY-OPEN please check something\n\nno file behind this one\n\n## %s · sam-laptop — AN me-mac: LOGONLY-REPLIED quick question\n\nno file either\n\n## %s · me-mac — AN sam-laptop: reply\n\nanswered in the stream\n\n## %s · ana-win — AN me-mac: LOGONLY-BYNAME a question\n\nno file\n\n## %s · me-mac — AN Anas KI: answer by name\n\nthe reply names the person, not the machine id\n' "$D" "$D" "$D" "$D" "$D" "$D" "$D" > "$WORK/core/LOG.md"
+# A reply closes only the request it NAMES (title text, or `re <start of it>`), never the
+# sender as a whole (measured 2026-10-14: one answer about X closed the same sender's open Y).
+# So: "ping" and LOGONLY-REPLIED are closed by one reply that names both; LOGONLY-BYNAME by a
+# reply to the person's name that carries the title; LOGONLY-TWIN-A by `re …` while TWIN-B of
+# the same sender stays open; LOGONLY-UNNAMED stays open behind a reply to its sender that
+# names nothing (the old reading closed it — the NEGATIVE CONTROL below proves that).
+printf '# Log\n\n## %s · me-mac — AN sam-laptop: answer\n\nSee request-answered: done.\n\n## %s · sam-laptop — AN me-mac: ping\n\nAbout request-open-one again.\n\n## %s · kim-win — AN me-mac: LOGONLY-OPEN please check something\n\nno file behind this one\n\n## %s · sam-laptop — AN me-mac: LOGONLY-REPLIED quick question\n\nno file either\n\n## %s · me-mac — AN sam-laptop: re LOGONLY-REPLIED quick question\n\nanswered in the stream; and re ping: seen.\n\n## %s · ana-win — AN me-mac: LOGONLY-BYNAME a question\n\nno file\n\n## %s · me-mac — AN Anas KI: answer by name\n\nLOGONLY-BYNAME a question: the reply names the person, not the machine id\n\n## %s · sam-laptop — AN me-mac: LOGONLY-TWIN-A first of two\n\nno file\n\n## %s · sam-laptop — AN me-mac: LOGONLY-TWIN-B second of two\n\nno file\n\n## %s · me-mac — AN sam-laptop: re LOGONLY-TWIN-A first\n\nonly the first one is answered here\n\n## %s · kim-win — AN me-mac: LOGONLY-UNNAMED still waiting\n\nno file\n\n## %s · me-mac — AN kim-win: something else entirely\n\nthis names no request of kim-win\n' "$D" "$D" "$D" "$D" "$D" "$D" "$D" "$D" "$D" "$D" "$D" "$D" > "$WORK/core/LOG.md"
 git -C "$WORK" add -A
 git -C "$WORK" commit -qm seed
 git -C "$WORK" push -q origin HEAD:main
@@ -65,15 +71,31 @@ grep -q 'OPEN-ONE' <<<"$OUT" && pass "unanswered request is listed" || fail "una
 grep -q 'STATUS-ONE' <<<"$OUT" && pass "status: open counts as a request" || fail "status open missing"
 grep -q 'ANSWERED-ONE' <<<"$OUT" && fail "request named in OUR log section still listed" || pass "our answer closes the request"
 # The foreign LOG section names request-open-one too — that must NOT count as our answer.
-for x in REPORT-ONE MINE-ONE CLOSED-ONE LOCAL-ONE STATUSCAST-ONE EITHER-ONE LOGONLY-REPLIED LOGONLY-BYNAME; do
+for x in REPORT-ONE MINE-ONE CLOSED-ONE LOCAL-ONE STATUSCAST-ONE EITHER-ONE LOGONLY-REPLIED LOGONLY-BYNAME LOGONLY-TWIN-A; do
   grep -q "$x" <<<"$OUT" && fail "$x must not be listed" || pass "$x not listed"
 done
+# One reply, one request: the sender's OTHER open request stays listed, and a reply to a sender
+# that names nothing closes nothing.
+grep -q 'LOGONLY-TWIN-B' <<<"$OUT" && pass "a named reply leaves the sender's other request open" \
+  || fail "LOGONLY-TWIN-B swept away by a reply that named only TWIN-A"
+grep -q 'LOGONLY-UNNAMED' <<<"$OUT" && pass "a reply that names no request closes none" \
+  || fail "LOGONLY-UNNAMED closed by an unnamed reply to its sender"
 # Operator order 2026-10-13: a request to everyone reaches everyone — as optional, never as a duty.
 grep -a 'BROADCAST-ONE' <<<"$OUT" | grep -aq 'optional: to everyone' \
   && pass "a request to everyone is listed as optional" || fail "broadcast request not listed as optional: $OUT"
 grep -q 'LOGONLY-OPEN' <<<"$OUT" && pass "a request that lives only as a LOG heading is listed" || fail "LOG-only request missing"
-# OPEN-ONE, STATUS-ONE, LOGONLY-OPEN, BROADCAST-ONE (optional). sam-laptop's "ping" is closed by our later "reply".
-grep -q 'open requests to this instance: 4$' <<<"$OUT" && pass "count line says 4" || fail "count line wrong: $(head -1 <<<"$OUT")"
+# OPEN-ONE, STATUS-ONE, LOGONLY-OPEN, BROADCAST-ONE (optional), LOGONLY-TWIN-B, LOGONLY-UNNAMED.
+# sam-laptop's "ping" is closed by our later reply that says "re ping".
+grep -q 'open requests to this instance: 6$' <<<"$OUT" && pass "count line says 6" || fail "count line wrong: $(head -1 <<<"$OUT")"
+# NEGATIVE CONTROL: the unpatched reader (origin/main before this fix, passed as $1) closed every
+# request of a sender with any later reply to that sender — it must FAIL the two checks above.
+if [[ -n "${1:-}" ]]; then
+  OLD="$(SHARED_MEMORY_SELF=me-mac "$PY" "$1" --open --repo "$WORK" --to HEAD 2>&1)"
+  grep -q 'LOGONLY-TWIN-B' <<<"$OLD" && fail "control: the old reader also keeps TWIN-B — the planted case proves nothing" \
+    || pass "control: the old reader swept TWIN-B away (planted case is real)"
+  grep -q 'LOGONLY-UNNAMED' <<<"$OLD" && fail "control: the old reader also keeps UNNAMED — the planted case proves nothing" \
+    || pass "control: the old reader closed UNNAMED behind an unnamed reply (planted case is real)"
+fi
 
 OUT2="$(SHARED_MEMORY_SELF=me-mac SHARED_MEMORY_REQUEST_PREFIXES=ask "$PY" "$INBOX" --open --repo "$WORK" --to HEAD 2>&1)"
 grep -q 'LOCAL-ONE' <<<"$OUT2" && pass "instance prefix extends the request words" || fail "instance prefix ignored"
