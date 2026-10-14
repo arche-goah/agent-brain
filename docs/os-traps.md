@@ -648,3 +648,24 @@ the defect does not live, the form this register calls C. Reproduced: `node` sta
 via `Git\usr\bin\bash.exe` gets ENOENT, via `Git\bin\bash.exe` (which adds `usr\bin` to PATH)
 finds it. Fixed in the same pass (`psCandidates()`); fixture `test-watch-gate.sh` runs the gate
 with exactly the hook's PATH (node's dir + `Git\cmd`). Zero hits after the fix.
+
+## OS-16 — a fixture bounds a command with `timeout`, which stock macOS does not have
+
+shape: B
+
+invariant: A shell script in the core never calls `timeout`. Stock macOS ships none (GNU
+coreutils via Homebrew names it `gtimeout`), so the call exits 127 there and every check built
+on its output passes or fails for the wrong reason. `perl -e 'alarm …; exec …'` is no substitute
+either: under Git Bash the alarm does not survive the exec and the command runs on (rc 0). Bound a
+command with a background run and a sleeper that kills it (`deadline()` in the two fixtures below).
+pattern:   ^[^#]*(^|[^a-z_`-])timeout [0-9]
+paths:     --include=*.sh scripts helpers
+known:
+instances: 2
+repeat:    no
+status:    closed
+note:      Measured 2026-10-14 on the macOS instance (bash 3.2): `shared-memory-watch-cursor-test.sh`
+(PR #342) failed three checks with `timeout: command not found`; its three "untouched" halves passed
+trivially because the watcher never ran. The search found a second site, `project-dir-test.sh`,
+where the same 127 made "watcher keeps the brain's cursor" pass without a watcher — it now also
+fails when the command did not run. Both fixed in #342; zero hits after the fix.

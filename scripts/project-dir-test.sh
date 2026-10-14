@@ -67,8 +67,21 @@ echo a > "$WORKC/a.md"; g -C "$WORKC" add -A; g -C "$WORKC" commit -qm one; g -C
 mkdir -p "$BRAIN/.claude-state"
 SHA=$(g -C "$WORKC" rev-parse HEAD)
 printf '{\n  "lastSeenSha": "%s"\n}\n' "$SHA" > "$BRAIN/.claude-state/shared-memory-state.json"
+# A deadline without `timeout` (stock macOS has none; measured 2026-10-14 on the macOS
+# instance, exit 127): the command runs in the background, a sleeper kills it.
+deadline() { # $1 = seconds, rest = command
+  local t=$1; shift
+  "$@" & local p=$!
+  ( sleep "$t"; kill "$p" 2>/dev/null ) & local k=$!
+  wait "$p"; local rc=$?
+  kill "$k" 2>/dev/null
+  return $rc
+}
 OUT=$( cd "$TMP" && unset CLAUDE_PROJECT_DIR; SHARED_MEMORY_REPO="$WORKC" WATCH_CLAIM_GRACE=1 \
-       timeout 4 bash "$BRAIN/core/scripts/shared-memory-watch.sh" watch 1 2>&1 )
+       deadline 4 bash "$BRAIN/core/scripts/shared-memory-watch.sh" watch 1 2>&1 )
+# The check below means something only if the watcher RAN: a missing command printed no
+# "no cursor found" either, and passed silently.
+grep -q 'command not found' <<<"$OUT" && fail "watcher did not run: $OUT"
 grep -q 'no cursor found' <<<"$OUT" && fail "watcher from a foreign cwd lost the brain's cursor: $OUT" \
   || pass "watcher from a foreign cwd keeps the brain's cursor"
 [[ -d "$TMP/.claude-state" || -d "$BRAIN/core/.claude-state" ]] \

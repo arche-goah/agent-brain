@@ -40,14 +40,26 @@ SHARED_SHA=$(git -C "$TMP/shared" rev-parse HEAD)
 PROJECT_SHA=$(git -C "$TMP/project" rev-parse HEAD)
 [[ -n "$SHARED_SHA" && -n "$PROJECT_SHA" ]] || { echo "SETUP FAILED: sandbox repos"; exit 1; }
 
+# A deadline without `timeout`: stock macOS has none, and `perl -e alarm ... exec` does
+# not survive the exec under Git Bash (measured 2026-10-14: the command ran on, rc 0).
+# The command runs in the background; a sleeper kills it at the deadline. rc 143 = killed.
+deadline() { # $1 = seconds, rest = command
+  local t=$1; shift
+  "$@" & local p=$!
+  ( sleep "$t"; kill "$p" 2>/dev/null ) & local k=$!
+  wait "$p"; local rc=$?
+  kill "$k" 2>/dev/null
+  return $rc
+}
+
 cursor() { printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "x"\n}\n' "$1" > "$2"; }
 sha_in() { grep -o '"lastSeenSha" *: *"[^"]*"' "$1" | sed -E 's/.*"([^"]*)"$/\1/'; }
 export SHARED_MEMORY_REPO="$TMP/project" WATCH_CLAIM_GRACE=0 SHARED_MEMORY_WATCH_TICK=1
 
 # 1. FOREIGN AT ARM
 STATE="$TMP/state1.json"; cursor "$SHARED_SHA" "$STATE"
-OUT=$(SHARED_MEMORY_STATE="$STATE" SHARED_MEMORY_LOCK_DIR="$TMP/lock1" timeout 20 bash "$WATCH" watch 1 2>&1); rc=$?
-if [[ $rc -ne 0 && $rc -ne 124 ]] && grep -q 'is no commit of' <<<"$OUT"; then pass "foreign cursor at arm is refused"
+OUT=$(SHARED_MEMORY_STATE="$STATE" SHARED_MEMORY_LOCK_DIR="$TMP/lock1" deadline 20 bash "$WATCH" watch 1 2>&1); rc=$?
+if [[ $rc -ne 0 && $rc -ne 143 ]] && grep -q 'is no commit of' <<<"$OUT"; then pass "foreign cursor at arm is refused"
 else fail "foreign cursor at arm (rc=$rc): ${OUT:0:200}"; fi
 [[ "$(sha_in "$STATE")" == "$SHARED_SHA" ]] && pass "foreign cursor at arm left untouched" \
   || fail "foreign cursor at arm was overwritten with $(sha_in "$STATE")"
@@ -55,7 +67,7 @@ else fail "foreign cursor at arm (rc=$rc): ${OUT:0:200}"; fi
 # 2. FOREIGN LATER
 STATE="$TMP/state2.json"; cursor "$PROJECT_SHA" "$STATE"
 OUT2="$TMP/out2.txt"
-SHARED_MEMORY_STATE="$STATE" SHARED_MEMORY_LOCK_DIR="$TMP/lock2" timeout 30 bash "$WATCH" watch 1 > "$OUT2" 2>&1 &
+SHARED_MEMORY_STATE="$STATE" SHARED_MEMORY_LOCK_DIR="$TMP/lock2" bash "$WATCH" watch 1 > "$OUT2" 2>&1 &
 W2=$!
 sleep 3
 cursor "$SHARED_SHA" "$STATE"
@@ -69,7 +81,7 @@ kill "$W2" 2>/dev/null
 # 3. OWN CURSOR (negative control): the watcher still runs and reports
 STATE="$TMP/state3.json"; cursor "$PROJECT_SHA" "$STATE"
 OUT3="$TMP/out3.txt"
-SHARED_MEMORY_STATE="$STATE" SHARED_MEMORY_LOCK_DIR="$TMP/lock3" timeout 40 bash "$WATCH" watch 1 > "$OUT3" 2>&1 &
+SHARED_MEMORY_STATE="$STATE" SHARED_MEMORY_LOCK_DIR="$TMP/lock3" bash "$WATCH" watch 1 > "$OUT3" 2>&1 &
 W3=$!
 sleep 3
 git clone -q "$TMP/project.git" "$TMP/other"
