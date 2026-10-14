@@ -539,6 +539,13 @@ def main():
     keep = {}
     for it in items:
         rec = old.get(it["id"]) or {"first": today, "sessions": []}
+        # The counter remembers the TEXT it counted for (same rule as the class, #294): when the
+        # first of two alike LOG entries closes, the second takes over the bare id — and used to
+        # inherit "reported in N sessions" that nobody had said about it (measured 2026-10-11).
+        fp = fingerprint(it.get("text", ""))
+        if rec.get("text") not in (None, fp):
+            rec = {"first": today, "sessions": []}
+        rec["text"] = fp
         w = lookup(waits, it)  # same rule as the class: a LOG entry matches by its full id only
         until = (str(w.get("until", "")), str(w.get("why", ""))) if isinstance(w, dict) else it.get("until")
         it["wait"] = None

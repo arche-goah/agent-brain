@@ -277,6 +277,23 @@ printf '%s\n' 'shared-memory open requests to this instance: 1' \
 out=$(run m3)
 has "[request|ai] 2026-10-09" "$out" && ok "the classified text keeps its class" || bad "own class lost: $out"
 
+# Two alike LOG entries of one sender and day: the second gets " (2)". When the first closes, the
+# second takes the bare id — its counter must start at one, not inherit the first one's (2026-10-11).
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: Windows-Check fuer Kern #196 und #197 OK (LOG)' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: Windows-Check fuer Kern #196 und #197 OK, Nachtrag (LOG)' > "$T/inbox.txt"
+run twin1 >/dev/null; tx twin1; run twin2 >/dev/null; tx twin2; out=$(run twin3); tx twin3
+has "!! reported in 3 sessions" "$(line 'Nachtrag' "$out")" && ok "second alike entry counts while both are open" || bad "twin count: $(line 'Nachtrag' "$out")"
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: Windows-Check fuer Kern #196 und #197 OK, Nachtrag (LOG)' > "$T/inbox.txt"
+out=$(run twin4); tx twin4
+l=$(line 'Nachtrag' "$out")
+has "reported in" "$l" && bad "second entry inherited the first one's counter after it closed: $l" \
+  || ok "after the first closes, the second starts counting at one"
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (LOG)' > "$T/inbox.txt"
+
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
