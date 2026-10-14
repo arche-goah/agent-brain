@@ -5,6 +5,10 @@
 # Must allow: a question the operator has not seen yet (the reply being ended), a settled
 # question (answered/dropped/deferred), a question inside code or quotes, a plain "why?",
 # a re-issue, a second stop in the same turn. German grips only as instance data.
+# #269 (2026-10-11): a deferral is accepted only with words the operator wrote after the
+# question in the recorded transcript (paraphrase refused, unreadable transcript refused);
+# `adopt <id>` prints the operator's prompts after an orphaned question and marks it;
+# `list` names that call for a question from an earlier day.
 # Usage: bash scripts/test-question-gate.sh (exit 0 = pass)
 set -u
 T="$(mktemp -d)"
@@ -59,7 +63,8 @@ for st in answered dropped deferred unanswered; do
   R="$T/r-$st"; fresh "$R"
   check "first run records the question ($st case)" "$T/t1.jsonl" block "$R" >/dev/null
   id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
-  cli "$R" resolve "$id=$st:fixture" >/dev/null
+  note=fixture; [ "$st" = deferred ] && note="are your watches running?"  # a deferral quotes the operator (#269)
+  cli "$R" resolve "$id=$st:$note" >/dev/null
   check "question settled as $st" "$T/t1.jsonl" allow "$R"
 done
 R="$T/r-deferred"
@@ -82,8 +87,39 @@ out="$(cli "$R" resolve "$id=deferred")"; rc=$?
 case "$rc:$out" in [1-9]*:*"needs the operator's own words"*) ok "deferred without the operator's words is refused";;
   *) bad "bare deferred accepted (rc=$rc): $out";; esac
 case "$(cli "$R" list)" in *'[open]'*) ok "refused deferral leaves the question open";; *) bad "refused deferral changed the state";; esac
+# #269 gap 4: the words must stand in an operator prompt AFTER the question — a paraphrase is refused.
+out="$(cli "$R" resolve "$id=deferred:later, not now")"; rc=$?
+case "$rc:$out" in [1-9]*:*"not what the operator wrote"*) ok "deferred with words the operator never wrote is refused";;
+  *) bad "paraphrased deferral accepted (rc=$rc): $out";; esac
+R="$T/r-defer-quoted"; fresh "$R"
+{ user "check the PRs"; asst "Done. $Q"; user "later, not now please — first the show"; asst "Noted."; } > "$T/t-defer.jsonl"
+check "first run records the question (quoted deferred case)" "$T/t-defer.jsonl" block "$R" >/dev/null
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
 cli "$R" resolve "$id=deferred:later, not now" >/dev/null && ok "deferred with the operator's words is accepted" \
-  || bad "deferred with words refused"
+  || bad "deferred with the operator's own words refused"
+# a record whose transcript is gone cannot prove a deferral
+R="$T/r-defer-gone"; fresh "$R"; cp "$T/t-defer.jsonl" "$T/t-gone.jsonl"
+check "first run records the question (gone transcript case)" "$T/t-gone.jsonl" block "$R" >/dev/null
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+rm -f "$T/t-gone.jsonl"
+out="$(cli "$R" resolve "$id=deferred:later, not now")"; rc=$?
+case "$rc:$out" in [1-9]*:*"cannot be checked"*) ok "deferral without a readable transcript is refused";;
+  *) bad "unverifiable deferral accepted (rc=$rc): $out";; esac
+# #269 gaps 2+3: an orphan is adopted WITH what the operator said after it
+R="$T/r-adopt"; fresh "$R"
+{ user "check the PRs"; asst "Done. $Q"; user "way 1, build it"; asst "Building."; user "and the show?"; asst "ok"; } > "$T/t-adopt.jsonl"
+check "first run records the question (adopt case)" "$T/t-adopt.jsonl" block "$R" >/dev/null
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+out="$(cli "$R" adopt "$id")"
+case "$out" in *'> way 1, build it'*'> and the show?'*'settle: node core/helpers/question-gate.cjs resolve'*) ok "adopt prints the operator's prompts after the question";;
+  *) bad "adopt output: $out";; esac
+grep -q '"adopted"' "$R/.claude-state/open-questions.json" && ok "adopt marks the record" || bad "adopt left no mark"
+# a question asked on an earlier day is listed as an orphan with the adopt call
+node -e '
+const fs=require("fs");const p=process.argv[1];const s=JSON.parse(fs.readFileSync(p,"utf8"));
+for (const k in s) s[k].asked="2020-01-01T00:00:00.000Z";fs.writeFileSync(p,JSON.stringify(s));' "$R/.claude-state/open-questions.json"
+case "$(cli "$R" list)" in *"orphan — settle from evidence: node core/helpers/question-gate.cjs adopt $id"*) ok "an old open question is listed as an orphan with its adopt call";;
+  *) bad "orphan hint missing: $(cli "$R" list)";; esac
 R="$T/r-answered"
 [ -z "$(cli "$R" list)" ] && ok "answered question is not listed" || bad "answered still listed"
 case "$(cli "$R" resolve deadbeef=answered)" in *unknown*) ok "unknown id is refused";; *) bad "unknown id accepted";; esac
