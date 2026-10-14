@@ -26,6 +26,8 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import git_sandbox  # noqa: E402,F401 - the host git config never reaches a fixture repo
 spec = importlib.util.spec_from_file_location("smi", HERE / "shared-memory-index.py")
 smi = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(smi)
