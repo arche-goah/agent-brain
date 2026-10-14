@@ -159,11 +159,32 @@ case "${1:-status}" in
       echo "NOTE: no cursor found — baseline set to ${INIT:0:8}; older commits are NOT reported"
     fi
 
+    # A cursor belongs to ONE repo. Measured 2026-10-14 (Windows instance): the watcher
+    # pointed at a project repo through SHARED_MEMORY_REPO, without SHARED_MEMORY_STATE,
+    # read and wrote the shared memory's default cursor. The session start then printed
+    # "? new commits" (a foreign sha), and the shared-memory channel of collab-watch wrote
+    # its sha back, so the project watcher missed a real commit. A cursor that is no
+    # commit of the watched repo is refused, at arm time and on every poll (a second
+    # writer can swap it later), and never overwritten.
+    foreign_cursor() { # $1 = sha -> 0 if it is no commit of $REPO
+      [[ -n "$1" ]] || return 1
+      git -C "$REPO" cat-file -e "$1^{commit}" 2>/dev/null && return 1
+      git -C "$REPO" fetch -q origin 2>/dev/null
+      ! git -C "$REPO" cat-file -e "$1^{commit}" 2>/dev/null
+    }
+    refuse_foreign() { # $1 = sha
+      echo "ERROR: cursor ${1:0:8} in $STATE_FILE is no commit of $REPO — it belongs to another repo. Give this watch its own cursor file (SHARED_MEMORY_STATE); refusing to read or overwrite this one"
+      exit 1
+    }
+    START_SHA=$(read_sha)
+    foreign_cursor "$START_SHA" && refuse_foreign "$START_SHA"
+
     while true; do
       orphaned && exit 0
       git -C "$REPO" fetch -q origin main 2>/dev/null
       REMOTE_HEAD=$(git -C "$REPO" rev-parse origin/main 2>/dev/null)
       LAST_SEEN=$(read_sha)
+      foreign_cursor "$LAST_SEEN" && refuse_foreign "$LAST_SEEN"
 
       if [[ -n "$REMOTE_HEAD" && -n "$LAST_SEEN" && "$REMOTE_HEAD" != "$LAST_SEEN" ]]; then
         if git -C "$REPO" merge-base --is-ancestor "$REMOTE_HEAD" HEAD 2>/dev/null; then

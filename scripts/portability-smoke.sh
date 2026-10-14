@@ -259,6 +259,12 @@ if [ "$_rc" -eq 0 ]; then
 else
   bad "shared-memory watch negative control failed on this OS: $(printf '%s' "$_smw" | tr '\n' ' ' | tail -c 400)"
 fi
+_smc="$(bash "$CORE/scripts/shared-memory-watch-cursor-test.sh" 2>&1)"; _rc=$?
+if [ "$_rc" -eq 0 ]; then
+  ok "shared-memory watch refuses a cursor of another repo and never overwrites it"
+else
+  bad "shared-memory watch cursor ownership failed on this OS: $(printf '%s' "$_smc" | tr '\n' ' ' | tail -c 400)"
+fi
 _smo="$(bash "$CORE/scripts/shared-memory-open-requests-test.sh" 2>&1)"; _rc=$?
 if [ "$_rc" -eq 0 ]; then
   ok "shared-memory open requests survive the cursor; a clean start prints a line"
