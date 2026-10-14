@@ -15,6 +15,8 @@ import tempfile
 from pathlib import Path
 
 SCRIPT = str(Path(__file__).resolve().parent / "staged-names.py")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import git_sandbox  # noqa: E402,F401 - the host git config never reaches a fixture repo
 
 
 def git(repo, *args):

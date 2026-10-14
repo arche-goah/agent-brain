@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+import git_sandbox  # noqa: E402,F401 - the host git config never reaches a fixture repo
 SPEC = importlib.util.spec_from_file_location("sml", ROOT / "scripts" / "shared-memory-lint.py")
 sml = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(sml)
