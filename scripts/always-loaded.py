@@ -66,7 +66,7 @@ def main(argv):
     state = os.path.join(a.repo, ".claude-state", "always-loaded.json")
     now = measure(a.repo, a.memory)
     # The hard limit does not care about the baseline: say it first, even on the first run.
-    # OS-9 (os-traps.md): no non-ASCII on a print( line — the dash goes on the continuation line.
+    # OS-9 (os-traps.md): the print line stays ASCII; the dash sits on the continuation line.
     if a.limit > 0 and now >= a.limit:
         print(f"always-loaded context is OVER the harness limit: {now} of {a.limit} bytes "
               "— the loader cuts what is above it and says nothing; diet NOW (rule-only text, incidents into the protocol)")
