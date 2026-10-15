@@ -752,7 +752,7 @@ fi
 if (( $(printf '%s' "$body" | wc -c) > CAP )); then
   # The cut keeps the proof lines: the end marker (or abort note) is how session-audit.py tells
   # a finished start from a broken one (2026-10-14: a finished start cut mid-list was reported failed).
-  proof="$(printf '%s' "$body" | grep -E '^(=== END BOOTUP ===|!! session-bootup aborted early|!! session start took)')"
+  proof="$(printf '%s' "$body" | grep -aE '^(=== END BOOTUP ===|!! session-bootup aborted early|!! session start took)')"
   body="$(printf '%s' "$body" | head -c "$CAP")"$'\n[... truncated at 32 KiB]\n'"$proof"
 fi
 
