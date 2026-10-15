@@ -398,7 +398,11 @@ judging stages one or two tiers below without editing the script. Do NOT hardcod
 model version names in docs (they go stale immediately). Multi-agent costs ~15x
 chat tokens — only for broad independent work, orchestration as separate
 phase workflows (research → audit → verify → synthesis), persist each phase's
-result, next phase via `args`.
+result, next phase via `args`. Resume matches cached agents by call ORDER: a script meant
+to be resumable runs no two unawaited `pipeline()` strands side by side, and after a run
+killed by a limit nobody resumes blind — count `started` against `result` in its
+`journal.jsonl` and salvage finished results from there first (measured 2026-07-10: a
+resume of a two-strand run missed the cache for all but six agents, ~8M tokens twice).
 
 **Multi-agent invariant — only the producer writes (measured 2026-08-30, four
 failures in one workflow):** a workflow script has NO filesystem access; whatever
