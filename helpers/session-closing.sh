@@ -16,7 +16,8 @@
 #   - `--pre-commit` (skill step, before its commit) writes the line WITHOUT post-commit
 #     state — the commit that carries the line IS the close commit, nothing is lost — and
 #     leaves an UNTRACKED stamp `.claude-state/session-close.stamp` (the template
-#     .gitignore excludes `.claude-state/`) holding the session id it was given.
+#     .gitignore excludes `.claude-state/`) holding the session id it was given (line 1) and
+#     the log line it wrote (line 2 — the close-turn exception of the Stop gates reads it).
 #   - the hook run consumes the stamp: same id (or a stamp without one) = this session's
 #     line is already written, the log is not touched; the stamp is removed either way, so
 #     a stamp from a session that died after its skill step cannot silence a later one.
@@ -149,10 +150,21 @@ if [ "$pre_commit" -eq 1 ]; then
       --max-bytes "$SESSION_LOG_FOLD_MAX_BYTES" --apply 2>&1) \
       && printf '%s\n' "$fold_out" \
       || printf 'WARN session-log fold: %s\n' "$fold_out"
+  elif [ -f "$log" ]; then
+    # Unset stays "no fold" — but not silently (coherence scan 2026-10-15, P1-2: the variable
+    # was set on no level of a brain whose log kept growing, and nothing said so). The floor
+    # is a nudge, not a threshold: the instance still picks its own number.
+    log_bytes=$(wc -c < "$log" | tr -d ' ')
+    if [ "${log_bytes:-0}" -gt 100000 ]; then
+      echo "WARN session-log fold: SESSION_LOG_FOLD_MAX_BYTES unset, log is $log_bytes bytes — set it in settings env"
+    fi
   fi
   mkdir -p .claude-state
-  printf '%s\n' "$sid" > "$stamp"
-  echo "- $TS | $branch | close${sm_line:+ | $sm_line}" >> "$log"
+  # Line 2 is the log line itself: the Stop gates find this close's entry by it and read its
+  # `open end:` lines (helpers/close-stamp.cjs). The hook below reads line 1 only.
+  close_line="- $TS | $branch | close${sm_line:+ | $sm_line}"
+  printf '%s\n%s\n' "$sid" "$close_line" > "$stamp"
+  echo "$close_line" >> "$log"
   exit 0
 fi
 if [ -f "$stamp" ]; then

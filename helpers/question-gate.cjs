@@ -50,12 +50,19 @@
  * starts next settles it from evidence instead of leaving it to the session that no longer
  * exists; `list` names that call for every record not settled by its own session.
  *
+ * The close turn (coherence scan 2026-10-15, P1-2): skill `session-close` carries an open
+ * question to the next session instead of asking it again while the operator leaves. A close
+ * stamp of this session and turn (close-stamp.cjs) passes exactly the questions the close's
+ * session-log entry lists as an open end, by id or by sentence; an unlisted one still blocks.
+ * The record stays `open`, so the next session start lists it.
+ *
  * Fixture: scripts/test-question-gate.sh.
  */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { isNotification } = require('./turn-kind.cjs');
+const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
 const OWN_ECHO = /QUESTION-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -131,12 +138,16 @@ function scan(tp) {
   if (start > 0) lines.shift();
   const replies = []; // { text, prompt: index of the operator prompt it belongs to }
   let operator = 0; let last = null; let fired = false;
+  let calls = []; let since = ''; // the running turn's shell calls and start (close stamp)
   for (const line of lines) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message; if (!msg) continue;
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-      for (const b of msg.content) if (b.type === 'text' && b.text) last = b.text;
+      for (const b of msg.content) {
+        if (b.type === 'text' && b.text) last = b.text;
+        if (b.type === 'tool_use') calls.push({ cmd: String((b.input || {}).command || '') });
+      }
       continue;
     }
     if (msg.role !== 'user') continue;
@@ -145,19 +156,19 @@ function scan(tp) {
     if (last !== null) { replies.push({ text: last, prompt: operator }); last = null; }
     if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t)) fired = true; continue; }
     if (isNotification(t)) continue;
-    operator++; fired = false;
+    operator++; fired = false; calls = []; since = d.timestamp || '';
   }
   if (last !== null) replies.push({ text: last, prompt: operator });
-  return { replies, operator, fired };
+  return { replies, operator, fired, calls, since };
 }
 
 function gate(input) {
   if (input.stop_hook_active || !input.transcript_path) return;
   const r = root(input.cwd);
   const rx = questionRegex(r);
-  const { replies, operator, fired } = scan(input.transcript_path);
+  const { replies, operator, fired, calls, since } = scan(input.transcript_path);
   const state = load(r);
-  const pending = [];
+  let pending = [];
   let changed = false;
   for (const rep of replies) {
     for (const q of questions(rep.text, rx)) {
@@ -172,6 +183,11 @@ function gate(input) {
   }
   if (changed) { try { save(r, state); } catch (e) { /* state is best effort */ } }
   if (!pending.length || fired) return;
+  // The close turn (close-stamp.cjs): a question its session-log entry lists as an open end —
+  // by id or by its sentence — passes; it stays open in the state and reaches the next start.
+  const ends = closeOpenEnds(r, { sessionId: input.session_id, since, calls });
+  if (ends) pending = pending.filter((id) => !(listed(ends, [id]) || listed(ends, [squash(state[id].q)])));
+  if (!pending.length) return;
   const list = pending.slice(0, 5).map((id) => `${id} "${state[id].q}"`).join(' · ');
   process.stdout.write(JSON.stringify({
     decision: 'block',
@@ -179,7 +195,8 @@ function gate(input) {
       + (pending.length > 5 ? ` (+${pending.length - 5})` : '')
       + '. Settle each: node core/helpers/question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<their words>'
       + ' - answered = the operator decided it (also EARLIER: an order already in the ledger or a prior prompt); unanswered = they replied without addressing it (ask again where it'
-      + ' matters); deferred = THEY postponed it, quote their words in the note (an overlooked question is not deferred).',
+      + ' matters); deferred = THEY postponed it, quote their words in the note (an overlooked question is not deferred).'
+      + (ends ? ' Closing: the close stamp passes a question its session-log entry lists as "open end: question <id> …".' : ''),
   }));
 }
 
