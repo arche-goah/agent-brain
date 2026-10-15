@@ -36,8 +36,14 @@
  *
  * WHAT COUNTS AS LOADED: in this session's transcript, a Skill tool call with that name
  * (qualified or bare), a `/<name>` slash command, or a Read of that SKILL.md (a subagent
- * without the Skill tool can still satisfy the gate). Per transcript, so a subagent loads
- * for itself.
+ * without the Skill tool can still satisfy the gate). A skill-gate.json rule names no file,
+ * so there any `.../skills/<bare name>/SKILL.md` counts.
+ * A call from a subagent: Claude Code (measured on 2.1.301) sends the PARENT session's
+ * `transcript_path` plus `agent_id`, while the subagent writes its own transcript to
+ * `<dir>/<session>/subagents/agent-<agent_id>.jsonl`. Both are read: a skill the subagent
+ * loaded counts, and so does one the parent loaded (as before). Measured on a
+ * collaborator's Windows instance 2026-10-15: two subagents loaded the skill and stayed
+ * blocked, because only the parent transcript was read.
  *
  * Fail-open on everything that is not a declared rule (no transcript, unreadable files,
  * broken config — logged to .claude-state/skill-gate.log): a gate must never take the
@@ -144,11 +150,22 @@ function targetPath(input) {
   return String(i.file_path || i.notebook_path || i.path || '');
 }
 
-/** Names and SKILL.md paths this transcript has loaded. */
-function loaded(transcript) {
+/** The session transcript, plus the subagent's own when the call comes from one and it exists. */
+function transcripts(hook) {
+  const tp = String(hook.transcript_path);
+  const out = [tp];
+  const id = String(hook.agent_id || '');
+  if (!/^[\w-]+$/.test(id)) return out;
+  const sub = path.join(path.dirname(tp), path.basename(tp, '.jsonl'), 'subagents', `agent-${id}.jsonl`);
+  if (fs.existsSync(sub)) out.push(sub); else log(`NO-AGENT-TRANSCRIPT agent=${id}`);
+  return out;
+}
+
+/** Names and SKILL.md paths these transcripts have loaded. */
+function loaded(paths) {
   const names = new Set();
   const files = [];
-  const text = fs.readFileSync(transcript, 'utf8');
+  const text = paths.map((p) => fs.readFileSync(p, 'utf8')).join('\n');
   for (const line of text.split('\n')) {
     if (!line.includes('"Skill"') && !line.includes('SKILL.md') && !line.includes('<command-name>')) continue;
     for (const m of line.matchAll(/<command-name>\/?([^<\s]+)<\/command-name>/g)) names.add(m[1]);
@@ -168,7 +185,11 @@ function satisfied(skill, file, ev) {
   // Bare and qualified forms both count: `/td-mcp-core` and `touchdesigner:td-mcp-core` load the same skill.
   const bare = (n) => n.split(':').pop();
   for (const n of ev.names) if (n === skill || bare(n) === bare(skill)) return true;
-  return Boolean(file) && ev.files.some((f) => same(f, file));
+  if (file) return ev.files.some((f) => same(f, file));
+  // A skill-gate.json rule names no file: a Read of <any>/skills/<bare name>/SKILL.md counts,
+  // as the block message offers.
+  const tail = `/skills/${bare(skill)}/skill.md`.toLowerCase();
+  return ev.files.some((f) => f.replace(/\\/g, '/').toLowerCase().endsWith(tail));
 }
 
 let input = '';
@@ -191,7 +212,7 @@ process.stdin.on('end', () => {
   }
 
   let ev;
-  try { ev = loaded(hook.transcript_path); } catch (e) { log(`ERR transcript ${e.message}`); process.exit(0); }
+  try { ev = loaded(transcripts(hook)); } catch (e) { log(`ERR transcript ${e.message}`); process.exit(0); }
   const missing = [];
   for (const r of hits) {
     r.skills.forEach((s, i) => {
