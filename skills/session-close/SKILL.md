@@ -94,7 +94,13 @@ then an explicit release follows.
    - After this: no further live CHANGES (measuring stays allowed). One exception, because
      the working rules call the missing save the defect: an operated artifact whose rebuild
      this session started gets its dated after-copy now, even if the rebuild was interrupted
-     — saving a copy is the last allowed write; finishing the rebuild is not.
+     — saving a copy is the last allowed write; finishing the rebuild is not. The copy is
+     read back after it is written (its name, size and timestamp): the measurement of the
+     live gate above vouches for the live state, not for a file written after it. A
+     versioned save-as is a copy under any save gate the instance carries; overwriting the
+     operated file needs the instance's word. A resource another session or instance owns
+     in this period is not written at all — the missing copy is then a reporting event plus
+     a "spec not met" ledger entry, never a write into someone else's ownership window.
 2. **Mechanical close — BEFORE the commit in step 4, never after it.** Run from the brain
    root, in this order, one command per call: the forms below are repo-relative so they match
    the template's allow patterns (`Bash(bash core/helpers/*)`, `Bash(node core/helpers/*)`,
@@ -157,6 +163,14 @@ then an explicit release follows.
    - **If the instance has no written rule, ask before committing or pushing.**
      "Close the session" is not by itself a go-ahead; a closing instruction that
      already includes it ("commit and close") is.
+   - **Two sessions, one working copy — measure before the commit** (working rule #12).
+     Run `bash core/scripts/parallel-sessions.sh` first; while a second session is on this
+     machine, stage and commit only this session's paths (`git add <paths>`,
+     `git commit <paths>`), never `git add -A`, never amend, and leave a rebase or merge
+     this session did not start untouched. A core branch of this session lives in a
+     worktree under the scratchpad, never checked out in `core/` (measured 2026-10-11 on a
+     Windows instance: a core branch checked out in the submodule changed the hooks of
+     BOTH sessions, and every Bash call of both was refused until it was moved back).
    - Feature-branch pushes toward an open PR are the technical precondition of review,
      not a merge or release, and count as allowed unless the instance says otherwise.
    - Name whatever stays uncommitted in the close report WITH a reason (secrets/.env,

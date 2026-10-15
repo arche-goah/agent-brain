@@ -277,7 +277,9 @@ here. Take the FIRST step that applies:
 1. **Irreversible or externally effective** (deploy, publish, making a repo public, a push
    to a public repo outside an agreed channel — see Working Rule #11 —, send, delete, a
    write to a live system outside its agreed frame, money, hardware):
-   its gate applies — the operator's word first, regardless of confidence.
+   its gate applies — the operator's word first, regardless of confidence. These are
+   examples; the one authoritative set, and what "agreed frame" means for each live
+   system, is the instance's operator-only list (one place — see the end of this section).
 2. **Needed to fulfil the order as specified** and a defined path exists: take it, in the
    order's space. An interrupted defined path: restore it (THIRD CASE above).
 3. **Needed to fulfil the order, but NO defined path exists** — the "there is no defined
@@ -415,7 +417,8 @@ state the agent can dissolve itself. Three rules, in this order:
 **Proof is the server's own boot stamp, never its reachability** — a stale server answers
 too, with the OLD code. The stamp is the suite's half of the contract: an MCP server
 writes a small file at startup whose content changes on every boot, and documents its
-path in its AGENTS.md (grandma3-suite: `<GMA3_IPC_DIR>/mcp-boot.json`). A server without
+path in its AGENTS.md (the path is suite knowledge and stands only there, never in a core
+rule). A server without
 a stamp cannot be PROVEN back — that missing carrier is itself the finding, and the waiter
 says so instead of reporting green. Until its suite adds one, the same script's
 `--process <pattern>` mode is the stopgap on macOS/Linux (all old pids of this session's
