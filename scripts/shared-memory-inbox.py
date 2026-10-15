@@ -374,6 +374,8 @@ LOG_INFO = re.compile(r"\bstatus:\s*info\b", re.I)
 LOG_CLOSE = re.compile(r"(?:^|:)\s*(?:ERLEDIGT|GESCHLOSSEN|DONE|CLOSED)\b", re.I)
 # "re <what>" — a reply that opens with the request's title, or the start of it.
 LOG_RE_REF = re.compile(r"\bre\s+([^\n:—]+)", re.I)
+# A numbered reference ("#290"), the way PRs and issues are named in titles and answers.
+PR_NUM = re.compile(r"#(\d+)\b")
 
 
 def names_request(core_title: str, title: str, body: str) -> bool:
@@ -391,6 +393,13 @@ def names_request(core_title: str, title: str, body: str) -> bool:
     if m and len(m.group(1).strip()) >= 12:
         wants.append(m.group(1).strip())
     if any(w in text for w in wants):
+        return True
+    # A request about numbered things ("Windows-Pruefung Kern #290 …") is answered by naming those
+    # numbers ("Windows #290 OK"), not by repeating its title (measured 2026-10-15 on a Windows
+    # instance: answered requests of this shape came back open after the naming rule). ALL of the
+    # request's numbers must be named: one answer about #290 does not close a request for #290 + #292.
+    nums = set(PR_NUM.findall(core_title))
+    if nums and nums <= set(PR_NUM.findall(text)):
         return True
     return any(len(x) >= 4 and w.startswith(x)
                for m in LOG_RE_REF.finditer(text) for x in [m.group(1).strip()] for w in wants)
