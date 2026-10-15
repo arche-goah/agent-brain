@@ -173,6 +173,35 @@ ms_run import
   && ok "memory-sync import keeps the local edit and parks the remote one as .incoming.md" \
   || bad "memory-sync import lost one side of a diverged file"
 
+# --- memory-sync: export prunes what was deleted HERE, and holds everything else -------
+# Coherence scan 2026-10-15 (P1-2): the SessionEnd/PreCompact export never pruned, so a memory
+# deleted in a session that closed without the skill came back at the next import. The guard
+# is the per-machine base: only a file this machine synced, unchanged since, was deleted here.
+msq() { (cd "$T/q" && CLAUDE_PROJECT_DIR="$T/q" CLAUDE_MEMORY_DIR="$T/qlive" node "$MS" export >/dev/null 2>&1); }
+qsnap="$T/q/docs/memory-snapshot"
+mkdir -p "$qsnap" "$T/qlive"
+printf 'keep\n' > "$T/qlive/keep.md"; printf 'gone\n' > "$T/qlive/gone.md"; printf 'moved\n' > "$T/qlive/moved.md"
+msq
+rm -f "$T/qlive/gone.md"
+msq
+[ ! -f "$qsnap/gone.md" ] && ok "export prunes the snapshot copy of a memory deleted here" \
+  || bad "export kept the snapshot copy of a memory deleted here (it would come back at the next import)"
+grep -q '"gone.md"' "$qsnap/.sync-manifest.json" && bad "export left the manifest entry of the pruned file" \
+  || ok "export drops the manifest entry of the pruned file"
+[ -f "$qsnap/keep.md" ] && ok "export keeps a memory that still lives" || bad "export pruned a live memory"
+printf 'theirs only\n' > "$qsnap/theirs-only.md"
+msq
+[ -f "$qsnap/theirs-only.md" ] && ok "export holds a snapshot-only file this machine never synced (an import needs it)" \
+  || bad "export pruned a file this machine never imported (the other machine's memory)"
+printf 'moved elsewhere\n' > "$qsnap/moved.md"; rm -f "$T/qlive/moved.md"
+msq
+[ "$(cat "$qsnap/moved.md" 2>/dev/null)" = "moved elsewhere" ] && ok "export holds a file deleted here but changed in the snapshot since (import pending)" \
+  || bad "export pruned a snapshot that moved since this machine synced it"
+mkdir -p "$T/qempty"; mv "$T/qlive/keep.md" "$T/qempty/"
+msq
+[ -f "$qsnap/keep.md" ] && ok "export prunes nothing from an empty live dir (blind)" \
+  || bad "export pruned against an empty live dir"
+
 echo
 [ "$fail" -eq 0 ] && echo "session-helper fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

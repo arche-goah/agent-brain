@@ -17,10 +17,19 @@
  *   pull          git pull, then import
  *   prune         remove snapshot files whose live counterpart was deleted, and
  *                 manifest entries whose file exists on neither side.
- *                 DELIBERATELY not part of export: on a machine that never imported,
- *                 "snapshot-only" is indistinguishable from "deleted here" — auto-
- *                 deleting on export could drop the other machine's memories. Run
+ *                 The UNGUARDED form is not part of export: on a machine that never
+ *                 imported, "snapshot-only" is indistinguishable from "deleted here" —
+ *                 auto-deleting on export could drop the other machine's memories. Run
  *                 prune consciously right after deleting live memories.
+ *                 Export runs the GUARDED form (coherence scan 2026-10-15, P1-2: the
+ *                 SessionEnd/PreCompact export never pruned, so a memory deleted in a
+ *                 session closed without the skill came back at the next import): a
+ *                 snapshot file without a live counterpart goes only when THIS machine's
+ *                 base holds it with the snapshot's exact hash — it was synced here and
+ *                 nobody changed it since, so the live deletion happened here. Without a
+ *                 base entry (never imported here) or with a snapshot that moved since
+ *                 (an import is pending), it is held, exactly like export's own "held".
+ *                 An empty live dir prunes nothing (blind, as prune's own abort).
  *
  * Conflict model (per file): 3-way against the base THIS MACHINE last synced to.
  *   - only snapshot changed  -> snapshot wins (copy into live)
@@ -158,9 +167,30 @@ function doExport() {
       log(`[memory-sync] CONFLICT: ${name} changed on both sides — snapshot left untouched, run import`);
     }
   }
+  const { pruned, kept } = prunePrunable(live, m, b);
   saveBase(b);
   saveManifest(m);
-  log(`[memory-sync] export done (${changed} file(s) updated, ${pending} pending import, ${held} held)`);
+  log(`[memory-sync] export done (${changed} file(s) updated, ${pending} pending import, ${held} held, `
+    + `${pruned} pruned, ${kept} snapshot-only kept)`);
+}
+
+// The guarded prune export runs (header): drop a snapshot copy only when this machine's base
+// proves the memory was synced here unchanged and then deleted here.
+function prunePrunable(live, m, b) {
+  let pruned = 0, kept = 0;
+  if (!listMd(live).length) return { pruned, kept }; // an empty live dir is blind, not a deletion
+  for (const name of listMd(snapshotDir)) {
+    if (fs.existsSync(path.join(live, name))) continue;
+    const snapContent = readFileSafe(path.join(snapshotDir, name));
+    const base = b.files[name];
+    if (snapContent == null || !base || base.hash !== sha(snapContent)) { kept++; continue; }
+    fs.unlinkSync(path.join(snapshotDir, name));
+    delete m.files[name];
+    delete b.files[name];
+    pruned++;
+    log(`[memory-sync] export pruned: ${name} (deleted here, unchanged in the snapshot since this machine synced it)`);
+  }
+  return { pruned, kept };
 }
 
 function doImport() {

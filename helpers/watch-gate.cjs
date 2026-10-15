@@ -64,6 +64,12 @@
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
  *
+ * The close turn (coherence scan 2026-10-15, P1-2): skill `session-close` arms no watcher it
+ * will not be alive to read — it lists each such item as an open end in the session-log entry.
+ * A close stamp of this session and turn (close-stamp.cjs) passes (a), (b), (d) and (f) for
+ * exactly the items that entry lists (`open end: <repo> #<n> …`, the fact file's name for (a));
+ * an unlisted item still blocks. (c) and (e) are requests to the human and are never covered.
+ *
  * Fails open (no transcript, no bash, no repo): a gate that cannot measure must not
  * block — its fixture (`scripts/test-watch-gate.sh`) is the proof it still fires.
  */
@@ -71,6 +77,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { isNotification } = require('./turn-kind.cjs');
+const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
 const OWN_ECHO = /WATCH-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -160,6 +167,15 @@ function turn(tp) {
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message; if (!msg) continue;
     if (msg.role === 'user') {
+      // A tool's output: keep it on its call (the PR / issue URL a gh call printed).
+      if (Array.isArray(msg.content)) {
+        for (const b of msg.content) {
+          if (b.type !== 'tool_result') continue;
+          const c = calls.find((x) => x.id && x.id === b.tool_use_id);
+          if (c) c.out = typeof b.content === 'string' ? b.content
+            : (Array.isArray(b.content) ? b.content.map((x) => x.text || '').join('\n') : '');
+        }
+      }
       const t = promptText(msg);
       if (t === null) continue;
       if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t)) fired = true; continue; }
@@ -173,7 +189,7 @@ function turn(tp) {
       for (const b of msg.content) {
         if (b.type !== 'tool_use') continue;
         const inp = b.input || {};
-        calls.push({ name: b.name, cmd: String(inp.command || ''), bg: !!inp.run_in_background });
+        calls.push({ id: b.id, name: b.name, cmd: String(inp.command || ''), bg: !!inp.run_in_background, out: '' });
       }
     }
   }
@@ -319,12 +335,32 @@ function awaiting(repo, since) {
   return out;
 }
 
+/** The repo NAME part of owner/repo — what an open-end line has to name. */
+function nameOf(slug) { return String(slug || '').split('/').pop(); }
+/** The number a gh call acted on: from the URL it printed, else from its arguments. */
+function ghNumber(c) {
+  const m = /\/(?:pull|issues)\/(\d+)/.exec(c.out || '') || /\bgh\s+(?:issue|pr)\s+(?:comment|merge)\s+(\d+)/.exec(c.cmd);
+  return m ? Number(m[1]) : null;
+}
+/** The repo a gh call acted on: the --repo flag, the URL it printed, else the checkout it ran in. */
+function ghRepo(c, root) {
+  const f = REPO_FLAG.exec(c.cmd);
+  if (f) return f[1].toLowerCase();
+  const u = /github\.com\/([\w.-]+\/[\w.-]+)\/(?:pull|issues)\//.exec(c.out || '');
+  return u ? u[1].toLowerCase() : originSlug(callDir(c.cmd, root));
+}
+/** Every one of these gh calls named as an open end: its repo and, when known, its number. */
+function ghListed(ghCalls, root) {
+  return (ends) => ghCalls.every((c) => listed(ends, [nameOf(ghRepo(c, root)), ghNumber(c)]));
+}
+
 function main(input) {
   if (input.stop_hook_active || !input.transcript_path) process.exit(0);
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const { calls, since, fired, lastText } = turn(input.transcript_path);
   if (fired) process.exit(0);
   const shell = calls.filter((c) => c.name === 'Bash' || c.name === 'PowerShell');
+  // Each finding: its text, and whether a close entry's open-end lines cover it (null = never).
   const missing = [];
 
   const repo = process.env.SHARED_MEMORY_REPO || path.join(require('os').homedir(), 'Projects', 'brain-shared-memory');
@@ -333,24 +369,28 @@ function main(input) {
   if (smPush && fs.existsSync(repo)) {
     const files = awaiting(repo, since);
     if (files.length && !smWatched(root)) {
-      missing.push(`shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
+      missing.push({ text: `shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
         + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 60", persistent: true}) '
-        + '(or collab-watch); mark a pure report `status: info`');
+        + '(or collab-watch); mark a pure report `status: info`',
+      covered: (ends) => files.every((f) => listed(ends, [path.basename(f).replace(/\.md$/, '')])) });
     }
   }
-  if (shell.some((c) => /\bgh\s+pr\s+create\b/.test(c.cmd)) && !prWatched(root, calls)) {
-    missing.push('PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)');
+  const prCreates = shell.filter((c) => /\bgh\s+pr\s+create\b/.test(c.cmd));
+  if (prCreates.length && !prWatched(root, calls)) {
+    missing.push({ text: 'PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)',
+      covered: ghListed(prCreates, root) });
   }
   // (c) the reply ends by asking the human for a reload, and nothing waits for it to arrive
   if (RELOAD_ASK.test(lastText) && !calls.some((c) => RELOAD_WATCH.test(c.cmd))) {
-    missing.push('reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
-      + '(Monitor or run_in_background) BEFORE asking, then say which reload you need');
+    missing.push({ text: 'reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
+      + '(Monitor or run_in_background) BEFORE asking, then say which reload you need', covered: null });
   }
   // (d) a push started a CI run and nothing in this turn watches it
   for (const slug of ciStarted(shell, root)) {
     if (ciWatched(calls, slug)) continue;
-    missing.push(`CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
-      + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`);
+    missing.push({ text: `CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
+      + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`,
+    covered: (ends) => listed(ends, [nameOf(slug)]) });
   }
   // (e) the reply asks the human for a hand step, and nothing in this turn waits for its effect
   const pats = loadPatterns(root);
@@ -358,21 +398,28 @@ function main(input) {
   if (!waiter && !pats.noWatcher.test(lastText)) {
     const m = pats.handStep.exec(stripQuoted(lastText));
     if (m) {
-      missing.push(`a hand step is asked of the human ("${m[0].trim()}") and no waiter runs — build the measurement `
+      missing.push({ text: `a hand step is asked of the human ("${m[0].trim()}") and no waiter runs — build the measurement `
         + 'and arm it (Monitor / run_in_background) BEFORE the request, say what will not move; '
-        + 'where no probe is possible, write "⚙ no watcher: <why>"');
+        + 'where no probe is possible, write "⚙ no watcher: <why>"', covered: null });
     }
   }
   // (f) a ticket or a question posted in a thread, and no standing repo watch reads the answer
-  const asked = shell.some((c) => ISSUE_CREATE.test(c.cmd) || (COMMENT.test(c.cmd) && /[?]|\bplease\b/i.test(ghBody(c.cmd))));
-  if (asked && !prWatched(root, calls)) {
-    missing.push('an issue or a question was posted on GitHub and no repo watch lives — arm collab-watch '
-      + '(or Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr>)');
+  const asks = shell.filter((c) => ISSUE_CREATE.test(c.cmd) || (COMMENT.test(c.cmd) && /[?]|\bplease\b/i.test(ghBody(c.cmd))));
+  if (asks.length && !prWatched(root, calls)) {
+    missing.push({ text: 'an issue or a question was posted on GitHub and no repo watch lives — arm collab-watch '
+      + '(or Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr>)', covered: ghListed(asks, root) });
   }
   if (!missing.length) process.exit(0);
+  // The close turn: a close stamp of this session and turn passes what its entry lists (header).
+  let left = missing;
+  const ends = missing.some((m) => m.covered) ? closeOpenEnds(root, { sessionId: input.session_id, since, calls }) : null;
+  if (ends) left = missing.filter((m) => !(m.covered && m.covered(ends)));
+  if (!left.length) process.exit(0);
   process.stdout.write(JSON.stringify({
     decision: 'block',
-    reason: `WATCH-GATE: a reaction is expected and no watcher lives. ${missing.join(' · ')}. `
+    reason: `WATCH-GATE: a reaction is expected and no watcher lives. ${left.map((m) => m.text).join(' · ')}. `
+      + (ends ? 'The close stamp passes only what its session-log entry lists as "open end: <repo> #<n> - what is awaited" '
+        + '(a shared-memory request by its file name). ' : '')
       + 'If nothing is awaited, say why in one line and stop again.',
   }));
   process.exit(0);

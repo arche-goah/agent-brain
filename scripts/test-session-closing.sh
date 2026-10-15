@@ -86,6 +86,9 @@ has   "pre-commit line is marked close" "| close" "$(tail -1 "$LOG2")"
 hasnt "pre-commit line carries no last:" "last:" "$(tail -1 "$LOG2")"
 hasnt "pre-commit line carries no uncommitted=" "uncommitted=" "$(tail -1 "$LOG2")"
 [ -f "$B2/.claude-state/session-close.stamp" ] && ok "stamp written" || bad "stamp written" "missing"
+# line 2 = the log line itself: the Stop gates find this close's entry by it (close-stamp.cjs)
+[ "$(sed -n 2p "$B2/.claude-state/session-close.stamp")" = "$(tail -1 "$LOG2")" ] && ok "stamp line 2 is the close's log line" \
+  || bad "stamp line 2 is the close's log line" "$(sed -n 2p "$B2/.claude-state/session-close.stamp")"
 [ "$(git -C "$B2" status --porcelain | wc -l | tr -d ' ')" -eq 1 ] && ok "only the log is dirty before the commit" || bad "only the log is dirty before the commit" "$(git -C "$B2" status --porcelain)"
 git_q -C "$B2" add -A; git_q -C "$B2" commit -qm "close"
 
@@ -219,6 +222,23 @@ rm -rf "$B3/docs/maintenance/session-log-folds"; seed_log
 out="$(fold_pre env -u SESSION_LOG_FOLD_MAX_BYTES)"
 hasnt "no fold without a threshold" "session-log fold" "$out"
 hasnt "no FOLD marker without a threshold" "- FOLD " "$(cat "$LOG3")"
+
+# --- unset is not silent (coherence scan 2026-10-15, P1-2): the variable was set on no level
+# of a brain whose log kept growing, and the close said nothing. Still no fold without it.
+echo "fold variable unset, log above the floor -> one WARN line, still no fold"
+big_log() { seed_log; i=0; while [ $i -lt 1300 ]; do printf -- '  padding line %04d xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n' $i >> "$LOG3"; i=$((i + 1)); done; }
+big_log; big_bytes=$(wc -c < "$LOG3" | tr -d ' ')
+out="$(fold_pre env -u SESSION_LOG_FOLD_MAX_BYTES)"
+has   "WARN names the unset variable and the size" "WARN session-log fold: SESSION_LOG_FOLD_MAX_BYTES unset, log is $big_bytes bytes" "$out"
+hasnt "and nothing is folded" "- FOLD " "$(cat "$LOG3")"
+echo "negative control: variable set -> no unset-WARN"
+big_log
+out="$(fold_pre env SESSION_LOG_FOLD_MAX_BYTES=900000)"
+hasnt "no unset-WARN when the instance set a threshold" "MAX_BYTES unset" "$out"
+echo "negative control: unset, log under the floor -> silence"
+seed_log
+out="$(fold_pre env -u SESSION_LOG_FOLD_MAX_BYTES)"
+hasnt "no unset-WARN for a small log" "MAX_BYTES unset" "$out"
 
 echo "negative control: under the threshold -> no fold"
 seed_log

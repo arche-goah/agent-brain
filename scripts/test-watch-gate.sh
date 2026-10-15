@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# covers: watch-gate close-stamp
 # Fixture test for helpers/watch-gate.cjs — both directions.
 # The must-block case is the incident itself (2026-10-09): an answer pushed into the
 # shared-memory repo, addressed to another instance, turn ended, no watcher — the
@@ -44,9 +45,9 @@ tool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","n
 asst() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
 PUSH="cd ~/Projects/brain-shared-memory && git commit -q -m x && git push -q"
 
-check() { # $1 name, $2 transcript, $3 block|allow, $4 project root, [$5 stop_hook_active]
+check() { # $1 name, $2 transcript, $3 block|allow, $4 project root, [$5 stop_hook_active]; $SID = session id
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s}' "$(native "$2")" "${5:-false}" \
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"}' "$(native "$2")" "${5:-false}" "${SID:-}" \
     | CLAUDE_PROJECT_DIR="$(native "$4")" SHARED_MEMORY_REPO="$(native "$SM")" SHARED_MEMORY_SELF="ws" \
       node "$G" 2>&1)"
   if [ "$3" = block ]; then
@@ -191,6 +192,57 @@ live_lock "$R/.claude-state/collab-watch/repo-activity-o.pid"
 check "issue created, collab-watch repo watch lives" "$T/i1.jsonl" allow "$R"
 rm -rf "$R/.claude-state"
 
+# --- the close turn (coherence scan 2026-10-15, P1-2): skill session-close arms no watcher it
+# will not be alive to read and lists each item as an open end instead. A close stamp of this
+# session and turn passes exactly the listed items; a stamp without the listing, another
+# session's stamp, a stamp older than the turn, or no stamp at all still block.
+toolid() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+result() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":%s}]}}\n' "$1" "$(js "$2")"; }
+CLOSE_LINE="- 2026-10-15 10:00:00 | main | close"
+stamp() { # $1 stamp session id, $2 open-end lines of this close's entry (may be empty)
+  mkdir -p "$R/.claude-state" "$R/docs/maintenance"
+  printf '%s\n%s\n' "$1" "$CLOSE_LINE" > "$R/.claude-state/session-close.stamp"
+  { echo "- 2026-10-14 09:00:00 | main | close"; echo "  open end: o/tool-suite #9 listed by an OLDER entry"
+    echo "$CLOSE_LINE"; echo "  topic: fixture close"; [ -n "$2" ] && printf '%s\n' "$2"
+    echo "- 2026-10-16 08:00:00 | main | close"; echo "  open end: o/tool-suite #9 listed by a LATER entry"; } > "$R/docs/maintenance/session-log.md"
+}
+PRE="bash core/helpers/session-closing.sh --pre-commit --session S1"
+{ user "close the session"; tool Bash "$PRE"; toolid tu1 "gh pr create --repo o/tool-suite --title x --body-file b.md"
+  result tu1 "https://github.com/o/tool-suite/pull/9"; asst "Persisted - you can shut down."; } > "$T/cs1.jsonl"
+SID=S1
+stamp S1 "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp + PR and CI listed as open ends" "$T/cs1.jsonl" allow "$R"
+stamp S1 ""
+check "close stamp without the listing (older/later entries do not count)" "$T/cs1.jsonl" block "$R"
+stamp S1 "  open end: o/tool-suite #90 awaits CI"
+check "close stamp listing another PR number (#90 is not #9)" "$T/cs1.jsonl" block "$R"
+stamp S1 "  open end: o/other-suite #9 awaits CI"
+check "close stamp listing the number in another repo" "$T/cs1.jsonl" block "$R"
+stamp OTHER "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp of another session" "$T/cs1.jsonl" block "$R"
+stamp "" "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp without a session id (older harness), close ran in this turn" "$T/cs1.jsonl" allow "$R"
+rm -rf "$R/.claude-state"
+check "no close stamp, entry listed anyway" "$T/cs1.jsonl" block "$R"
+stamp S1 "  open end: o/tool-suite #9 awaits CI and review"
+{ user "close the session"; toolid tu1 "gh pr create --repo o/tool-suite --title x"; result tu1 "https://github.com/o/tool-suite/pull/9"; asst "done"; } > "$T/cs2.jsonl"
+check "close stamp, but this turn never ran the close" "$T/cs2.jsonl" block "$R"
+{ user "close the session" "2099-01-01T00:00:00Z"; tool Bash "$PRE"; toolid tu1 "gh pr create --repo o/tool-suite --title x"
+  result tu1 "https://github.com/o/tool-suite/pull/9"; asst "done"; } > "$T/cs3.jsonl"
+check "close stamp written before the turn began" "$T/cs3.jsonl" block "$R"
+{ user "close the session"; tool Bash "$PRE"; tool Bash "$PUSH"; asst "Persisted - you can shut down."; } > "$T/cs4.jsonl"
+fresh; entry close-request.md ws mac
+stamp S1 "  open end: close-request (shared memory) awaits the answer from mac"
+check "close stamp + shared-memory request listed by its file name" "$T/cs4.jsonl" allow "$R"
+stamp S1 "  open end: some other request"
+check "close stamp, shared-memory request not listed" "$T/cs4.jsonl" block "$R"
+{ user "close the session"; tool Bash "$PRE"; toolid tu1 "gh pr create --repo o/tool-suite --title x"; result tu1 "https://github.com/o/tool-suite/pull/9"
+  asst "Persisted. Please start onPC tomorrow."; } > "$T/cs5.jsonl"
+stamp S1 "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp never covers a hand step asked of the human" "$T/cs5.jsonl" block "$R"
+SID=""
+rm -rf "$R/.claude-state" "$R/docs"
+
 # Windows: the hook does not run in Git Bash (measured 2026-10-11) — its PATH holds Git\cmd,
 # not Git\usr\bin, so a bare `ps` is ENOENT and every live watcher read as dead. The gate must
 # find Git's ps.exe itself. Run it with exactly that PATH: node's dir + Git\cmd.
@@ -210,7 +262,7 @@ fi
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));
 ' > "$T/stub.cjs"
 G0="$G"; G="$T/stub.cjs"; before=$fail; fail=0
-for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2 cs2 cs5; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
 caught=$fail; G="$G0"; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed every must-block case"
 
