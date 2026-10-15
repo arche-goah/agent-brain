@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# covers: question-gate close-stamp
 # Fixture test for helpers/question-gate.cjs — both directions, plus the CLI.
 # The must-block case is the incident (2026-10-09): a proposal ended as a question, the
 # operator's next prompt was about something else, and the question scrolled away.
@@ -26,9 +27,9 @@ user() { printf '{"message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
 asst() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
 tres() { printf '{"message":{"role":"user","content":[{"type":"tool_result","content":"x"}]}}\n'; }
 
-check() { # $1 name, $2 transcript, $3 block|allow, $4 root, [$5 stop_hook_active]
+check() { # $1 name, $2 transcript, $3 block|allow, $4 root, [$5 stop_hook_active]; $SID = session id
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s}' "$(native "$2")" "${5:-false}" \
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"}' "$(native "$2")" "${5:-false}" "${SID:-}" \
     | CLAUDE_PROJECT_DIR="$(native "$4")" node "${GATE:-$G}" 2>&1)"
   if [ "$3" = block ]; then
     case "$out" in *'"decision":"block"'*) ok "$1 blocks";; *) bad "$1 did not block: '$out'";; esac
@@ -141,6 +142,37 @@ R="$T/r7"; fresh "$R"
 check "German question without instance data" "$T/t7.jsonl" allow "$R"
 fresh "$R"; mkdir -p "$R/.claude/rules"; printf '{"question_patterns":["\\\\bsoll ich\\\\b"]}\n' > "$R/.claude/rules/open-questions.json"
 check "German question with instance data" "$T/t7.jsonl" block "$R"
+
+# --- the close turn (coherence scan 2026-10-15, P1-2): an open question is carried to the next
+# session as an open end of the close's session-log entry, not asked again while the operator
+# leaves. A close stamp of this session and turn passes a question listed by id or sentence;
+# a stamp without the listing, another session's stamp, or no stamp still block.
+tool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":%s}}]}}\n' "$(js "$1")"; }
+CLOSE_LINE="- 2026-10-15 10:00:00 | main | close"
+stamp() { # $1 root, $2 stamp session id, $3 open-end line of this close's entry (may be empty)
+  mkdir -p "$1/.claude-state" "$1/docs/maintenance"
+  printf '%s\n%s\n' "$2" "$CLOSE_LINE" > "$1/.claude-state/session-close.stamp"
+  { echo "$CLOSE_LINE"; echo "  topic: fixture close"; [ -n "$3" ] && printf '%s\n' "$3"; } > "$1/docs/maintenance/session-log.md"
+}
+{ user "check the PRs"; asst "Done. $Q"; user "close the session"
+  tool "bash core/helpers/session-closing.sh --pre-commit --session S1"; tres; asst "Persisted - you can shut down."; } > "$T/qc1.jsonl"
+SID=S1
+R="$T/rc"; fresh "$R"
+check "close turn, no stamp: the open question still blocks" "$T/qc1.jsonl" block "$R"
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+stamp "$R" S1 "  open end: question $id (clock check as a PR) - ask at the next start"
+check "close stamp + question listed by id" "$T/qc1.jsonl" allow "$R"
+case "$(cli "$R" list)" in *'[open]'*) ok "a listed question stays open for the next session start";; *) bad "listed question was closed";; esac
+stamp "$R" S1 "  open end: operator question \"$Q\""
+check "close stamp + question listed by its sentence" "$T/qc1.jsonl" allow "$R"
+stamp "$R" S1 ""
+check "close stamp without the listing" "$T/qc1.jsonl" block "$R"
+stamp "$R" OTHER "  open end: question $id"
+check "close stamp of another session" "$T/qc1.jsonl" block "$R"
+{ user "check the PRs"; asst "Done. $Q"; user "close the session"; asst "Persisted - you can shut down."; } > "$T/qc2.jsonl"
+stamp "$R" S1 "  open end: question $id"
+check "close stamp, but this turn never ran the close" "$T/qc2.jsonl" block "$R"
+SID=""
 
 # --- negative control
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));\n' > "$T/stub.cjs"

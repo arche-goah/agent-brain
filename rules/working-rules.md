@@ -49,6 +49,10 @@
    into a checkout with workflows without a ci-watch on that repo, and the standing watch
    (`repo-activity-watch.sh` inside collab-watch) reports every red run on a watched repo
    as `CI-RED`, so a red check is seen even when no one armed a watch.
+   **One exception, the closing turn** (coherence scan 2026-10-15): a session being closed
+   arms no watch it will not live to read — skill `session-close` lists each such push, PR or
+   open question as an `open end:` line in its session-log entry, and the close stamp of that
+   turn lets `watch-gate`/`question-gate` pass exactly the listed items, nothing else.
 10. **A commitment about future behaviour becomes rule text in the same turn** (operator
     decision 2026-10-09): "from now on I will…" said only in chat binds nothing and is
     invisible to every check. Write it where rules live — the instance's rules if it is
