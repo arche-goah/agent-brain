@@ -15,7 +15,7 @@ costs more than one phase; between phases I stay in the loop and check the resul
 | Stage | Workflow | Report | Checks |
 |-------|----------|--------|--------|
 | 1 | `core/workflows/brain-scan.js` | `docs/research/brain-scan/scan-<date>.md` | conformance: reality == target (checklist) |
-| 2 | `core/workflows/memory-dream.js` | `docs/research/memory-dream/report-<date>.md` | memory hygiene (read-only) |
+| 2 | `core/workflows/memory-dream.js` | `docs/research/memory-dream/dream-<date>.md` | memory hygiene (read-only) |
 | 3 | `core/workflows/coherence-scan.js` | `docs/research/coherence-scan/register-<date>.md` | whether the target state is internally consistent (de-bias multi-agent) |
 | 4 | `core/workflows/full-audit-synthesis.js` | `docs/research/full-audit/gesamt-<date>.md` | dedup + measure catalog over 1-3 |
 
