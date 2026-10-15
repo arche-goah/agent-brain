@@ -98,6 +98,11 @@ mkdir -p "$TS/docs/research/kohaerenz-scan"
 : > "$TS/docs/research/kohaerenz-scan/register-2026-10-10.md"
 out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
 case "$out" in *"deep check suggested: coherence-scan"*) bad "a newer register in the legacy folder is not counted";; *) ok "newer register in the legacy folder: silent";; esac
+# dream-<date>.md is the memory-dream deliverable since 2026-10-15 (a subagent cannot write a
+# "report" file); a newer one must silence the suggestion exactly like a register does.
+: > "$TS/docs/research/memory-dream/dream-2026-10-09.md"
+out="$(CLAUDE_PROJECT_DIR="$TS" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
+case "$out" in *"deep check suggested: memory-dream"*) bad "a newer dream-<date>.md is not counted as the memory-dream artifact";; *) ok "newer dream-<date>.md: memory-dream suggestion silent";; esac
 
 # 2) brain-scan freshness gate: a fresh report -> exit 0, WITHOUT starting a run
 #    (CLAUDE_BIN points at true; if run.log appeared, the gate would be broken).
