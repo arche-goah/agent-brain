@@ -302,7 +302,8 @@ ONLY to execution tools for tasks the agent would execute itself. Everything els
 What reaches the operator is sorted first; the count of open proposals is not a
 presentation (operator decision 2026-09-18 — reading every one costs hours to days).
 
-- **Only real operator decisions** (goal, money, hardware, risk, external effect,
+- **Only real operator decisions** (the instance's operator-only list is the one authoritative
+  set — `working-rules.md` ASK OR ACT; examples: goal, money, hardware, risk, external effect,
   release, ownership) are presented — each with a recommendation, answerable by
   number. The rest is done, closed, handed to the party that decides it, or left.
   This includes yes/no questions at the end of a report (operator decision

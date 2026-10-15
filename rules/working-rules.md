@@ -277,7 +277,9 @@ here. Take the FIRST step that applies:
 1. **Irreversible or externally effective** (deploy, publish, making a repo public, a push
    to a public repo outside an agreed channel — see Working Rule #11 —, send, delete, a
    write to a live system outside its agreed frame, money, hardware):
-   its gate applies — the operator's word first, regardless of confidence.
+   its gate applies — the operator's word first, regardless of confidence. These are
+   examples; the one authoritative set, and what "agreed frame" means for each live
+   system, is the instance's operator-only list (one place — see the end of this section).
 2. **Needed to fulfil the order as specified** and a defined path exists: take it, in the
    order's space. An interrupted defined path: restore it (THIRD CASE above).
 3. **Needed to fulfil the order, but NO defined path exists** — the "there is no defined

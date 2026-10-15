@@ -124,7 +124,7 @@ the same matter gets DONE, not tabled.
 | HIGH (>90%) | Execute directly, no follow-up question |
 | MEDIUM (60-90%) | Execute, but document the assumptions |
 | LOW (30-60%) | Research first (web search, read the codebase) |
-| UNCERTAIN (<30%) | First resolve it yourself (research/measurement/docs — read before asking); ask ONLY if the uncertainty cannot be resolved that way AND the decision belongs to the operator (goal/money/hardware/risk). Whether the question may end the turn is decided by ASK OR ACT (`working-rules.md`, Mechanism Discipline). |
+| UNCERTAIN (<30%) | First resolve it yourself (research/measurement/docs — read before asking); ask ONLY if the uncertainty cannot be resolved that way AND the decision belongs to the operator (goal/money/hardware/risk — examples; the one authoritative set is the instance's operator-only list, `working-rules.md` ASK OR ACT). Whether the question may end the turn is decided by ASK OR ACT (`working-rules.md`, Mechanism Discipline). |
 
 ⚠ **Destructive/irreversible/externally-effective beats confidence** (coherence-scan
 K-13, 2026-08-01): for such actions the respective gate applies (Think-Before-Act #1,
