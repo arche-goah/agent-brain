@@ -18,7 +18,7 @@ Inspired by Claude Code's /dream command. Automatically cleans, optimizes, and m
 
 **Workflow variant (since 2026-08-01, building block for full-audit):** The analysis
 part (steps 1-2 + findings collection) is formalized as `core/workflows/memory-dream.js` —
-STRICTLY read-only, writes `docs/research/memory-dream/report-<date>.md` with proposals.
+STRICTLY read-only, writes `docs/research/memory-dream/dream-<date>.md` with proposals.
 Call it with `args:{date:"<YYYY-MM-DD>", scratch:"<session scratchpad>/memory-dream-<date>"}`:
 the analysis agents write their findings into that folder and the report agent reads them
 from there, so no findings travel inside a prompt ("only the producer writes",

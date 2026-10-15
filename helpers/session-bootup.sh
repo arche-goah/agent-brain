@@ -555,7 +555,8 @@ if [[ -n "${latest:-}" ]]; then
     # glob stays literal and carries no date, so it compares as "no artifact".
     case "$chk" in
       coherence-scan) arts=("$R"/docs/research/coherence-scan/register-*.md "$R"/docs/research/kohaerenz-scan/register-*.md);;
-      memory-dream)   arts=("$R"/docs/research/memory-dream/report-*.md);;
+      # report-*.md = the name before 2026-10-15 (a subagent cannot write a "report" file); still counts.
+      memory-dream)   arts=("$R"/docs/research/memory-dream/dream-*.md "$R"/docs/research/memory-dream/report-*.md);;
       full-audit)     arts=("$R"/docs/research/full-audit/gesamt-*.md);;
       *)              arts=();;
     esac

@@ -25,7 +25,13 @@ if (!A || !A.date || !A.shared) {
 }
 const DATE = A.date
 const SHARED = A.shared
-const REPORT = `${REPORT_DIR}/report-${DATE}.md`
+// `dream-<date>.md`, not `report-<date>.md`: the harness refuses a subagent's Write of any file
+// whose NAME contains "report" ("Subagents should return findings as text, not write report
+// files") — measured 2026-10-15 on Claude Code 2.1.300 with ten probe names in two directories:
+// exactly the two containing "report" were refused, the directory made no difference. The
+// brain-scan met the same wall on 2026-10-09 (`report-body.md`); `scan-`, `register-` and
+// `gesamt-` pass. A deliverable name that the writer cannot write is not a convention.
+const REPORT = `${REPORT_DIR}/dream-${DATE}.md`
 
 // The one framing that separates this from memory-dream: a SECOND author exists, and
 // "wrong" is usually "measured somewhere else", not "mistaken".

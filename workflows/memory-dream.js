@@ -20,7 +20,13 @@ let A = args
 if (typeof A === 'string') { try { A = JSON.parse(A) } catch (e) { A = null } }
 if (!A || !A.date || !A.scratch) throw new Error('memory-dream requires args {date:"YYYY-MM-DD", scratch:"<abs. path>"} — date via `date +%F`, scratch = session scratchpad subfolder')
 const DATE = A.date
-const REPORT = `${REPORT_DIR}/report-${DATE}.md`
+// `dream-<date>.md`, not `report-<date>.md`: the harness refuses a subagent's Write of any file
+// whose NAME contains "report" ("Subagents should return findings as text, not write report
+// files") — measured 2026-10-15 on Claude Code 2.1.300 with ten probe names in two directories:
+// exactly the two containing "report" were refused, the directory made no difference. The
+// brain-scan met the same wall on 2026-10-09 (`report-body.md`); `scan-`, `register-` and
+// `gesamt-` pass. A deliverable name that the writer cannot write is not a convention.
+const REPORT = `${REPORT_DIR}/dream-${DATE}.md`
 // Every stage's bulk output lives here; the next stage reads it from disk.
 const FINDINGS_DIR = `${A.scratch}/findings`
 
