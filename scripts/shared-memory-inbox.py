@@ -57,7 +57,9 @@ _parties = import_module("shared-memory-parties")
 
 # Spellings of "everyone" measured in the repo's headings and `audience` fields.
 EVERYONE = _parties.EVERYONE
-SKIP_FILES = {"INDEX.md", "LOG.md", "README.md", "PEOPLE.md"}
+# OPEN.md is a GENERATED view (shared-memory-index.py), like INDEX.md: it carries no `von:` and is
+# not a message. Measured 2026-10-14: eight "[topic] ?: OPEN" lines in one inbox after an index run.
+SKIP_FILES = {"INDEX.md", "OPEN.md", "LOG.md", "README.md", "PEOPLE.md"}
 # The four live heading shapes — see the note at shared-memory-parties.HEADING.
 HEADING = _parties.HEADING
 TEXT_CAP = 200
