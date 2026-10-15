@@ -30,9 +30,17 @@
  *       "extract": "Touched this turn:\\s*(.+)",    // optional capture from the block
  *       "template":"{1} -> class? register?",       // {1}.. = capture groups
  *       "basename": true,                   // optional: paths in {1} to basenames
- *       "onNotification": "skip"            // optional: sit out notification turns
+ *       "onNotification": "skip",           // optional: sit out notification turns
+ *       "onReissue": "run"                  // optional: also run on the re-issue pass
  *     }]
  *   }
+ *
+ * RE-ISSUE PASS (stop_hook_active). By default the dispatcher stays silent once a stop hook
+ * has blocked in the turn — a re-issue passes. A check whose point is that a repetition must
+ * NOT pass (stoppen-gate since 2026-10-15: an operator decision re-issued as closing prose
+ * instead of through the question tool) opts in with `"onReissue": "run"`; only those checks
+ * run then, and each judges the re-issue itself. A check may also answer without blocking but
+ * with a `systemMessage` (a loud let-through); the dispatcher forwards it to the operator.
  *
  * Three properties that are easy to lose and were built in deliberately:
  *
@@ -201,8 +209,10 @@ function run(check, payload) {
           }
           return resolve(null); // a recorder never blocks, by construction
         }
-        resolve(parsed.decision === 'block' && parsed.reason
-          ? { check, reason: parsed.reason } : null);
+        const message = typeof parsed.systemMessage === 'string' && parsed.systemMessage.trim()
+          ? parsed.systemMessage.trim() : null;
+        if (parsed.decision === 'block' && parsed.reason) return resolve({ check, reason: parsed.reason, message });
+        resolve(message ? { check, message } : null);
       });
     child.stdin.end(payload);
   });
@@ -211,17 +221,23 @@ function run(check, payload) {
 process.stdin.on('end', async () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { process.exit(0); }
-  if (input.stop_hook_active) process.exit(0);
-
   const cfg = loadConfig();
-  if (cfg.checks.length === 0) process.exit(0);
+  // The re-issue pass runs only the checks that opted in (header, RE-ISSUE PASS).
+  const reissue = !!input.stop_hook_active;
+  const eligible = cfg.checks.filter((c) => !reissue || c.onReissue === 'run');
+  if (eligible.length === 0) process.exit(0);
 
   const kind = input.transcript_path ? turnKind(input.transcript_path) : 'unknown';
   const payload = JSON.stringify({ ...input, turn_kind: kind });
-  const due = cfg.checks.filter((c) => !(kind === 'notification' && c.onNotification === 'skip'));
-  const results = (await Promise.all(due.map((c) => run(c, payload))))
+  const due = eligible.filter((c) => !(kind === 'notification' && c.onNotification === 'skip'));
+  const answered = (await Promise.all(due.map((c) => run(c, payload))))
     .filter(Boolean);
-  if (results.length === 0) process.exit(0);
+  const notes = answered.filter((r) => r.message).map((r) => `${r.message}   [${r.check.marker}]`);
+  const results = answered.filter((r) => r.reason);
+  if (results.length === 0) {
+    if (notes.length) console.log(JSON.stringify({ systemMessage: notes.join('\n') }));
+    process.exit(0);
+  }
 
   const body = ({ check, reason }) => compress(check, reason)
     // No match => the full original text, never a swallowed finding.
@@ -236,6 +252,8 @@ process.stdin.on('end', async () => {
       + results.map((r) => `· ${r.check.label.padEnd(width)} ${body(r)}`
         + `   [${r.check.marker}]`).join('\n');
 
-  console.log(JSON.stringify({ decision: 'block', reason }));
+  console.log(JSON.stringify(notes.length
+    ? { decision: 'block', reason, systemMessage: notes.join('\n') }
+    : { decision: 'block', reason }));
   process.exit(0);
 });
