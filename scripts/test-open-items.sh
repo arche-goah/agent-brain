@@ -180,6 +180,15 @@ printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}
 OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-mv.json")" OWNER=me run v1 >/dev/null; tx v1
 mv=$(line 'core#13 ' "$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-mv.json")" OWNER=me run v2)")
 has "last own move $NOW — still ours" "$mv" && ! has "nothing done yet" "$mv" && ok "own move since the first report is named, not 'nothing done'" || bad "own move: $mv"
+# A wait dated TODAY is due today, not quiet (measured 2026-10-15: quiet through its own date, a
+# measurement done that day read as missing the next morning — the marker was never moved).
+TODAY=$(date +%Y-%m-%d)
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 14 me 2026-10-03 "waiting-until: $TODAY: third measurement" 2026-10-03T11:00:00Z '[]' '[]')" > "$T/prs-due.json"
+due=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-due.json")" OWNER=me run d1)
+has "!! due today (third measurement) — do it, then move or drop the waiting-until line" "$(line 'core#14 ' "$due")" && ok "wait on its own date is due" || bad "due today: $due"
+has "open for us: 1 — ai 1" "$due" && ok "a due wait counts as ours" || bad "due count: $(head -1 <<<"$due")"
+has "read the work's own record before calling it undone" "$(line 'core#6 ' "$out")" && ok "past wait names the stale-marker reading" || bad "past wording: $(line 'core#6 ' "$out")"
 OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")"
 
 # WHO acts: circle field in the request file (read at origin/main), a request addressed to
