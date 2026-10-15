@@ -38,7 +38,7 @@ This script is the ONE list of open points at session start:
     (`owners`: repo -> login) gives to someone else when no review was asked of us, our own
     PR in such a repo unless someone else spoke after its last commit, and any
     item with a dated wait (`waiting`: id -> {until, why} in instance data, or a line
-    `waiting-until: YYYY-MM-DD: <why>` in a PR body). After the date it is louder again;
+    `waiting-until: YYYY-MM-DD: <why>` in a PR body). On its date it is due, after it louder;
   * a REQUEST from another side in a parked domain is not parked away — parked means not
     worked on, never unanswered; it is listed with how to answer (receipt, state, when);
   * a source that could not be read says so — it never reads as "nothing open";
@@ -565,9 +565,15 @@ def main():
         it["wait"] = None
         if it.get("waiting_on"):
             it["wait"] = "waiting on {}: {}".format(*it["waiting_on"])
-        elif until and until[0] >= today:
+        # The marker's date is the day the work is DUE, so on that day the item is ours again.
+        # Quiet through its own date, it surfaced only the morning after, when the sessions of
+        # the due day had already done the work and closed without moving the marker (measured
+        # 2026-10-15: a measurement done on its date read as missing the next morning).
+        elif until and until[0] > today:
             it["wait"] = f"waiting until {until[0]}" + (f": {until[1]}" if until[1] else "")
-        it["overdue"] = f"waited until {until[0]}" + (f" ({until[1]})" if until[1] else "") if until and until[0] < today else ""
+        why_w = f" ({until[1]})" if until and until[1] else ""
+        it["overdue"] = ("" if not until or until[0] > today else
+                         f"due today{why_w}" if until[0] == today else f"waited until {until[0]}{why_w}")
         # A wait is not a report: the counter only runs while the move is ours.
         if not it["wait"] and sid and sid not in rec["sessions"]:
             rec["sessions"] = (rec["sessions"] + [sid])[-50:]
@@ -620,8 +626,13 @@ def main():
             age = f"!! reported in {i['n']} sessions since {i['first']}, nothing done yet"
         else:
             age = "first report"
-        if i["overdue"]:
-            age = f"!! {i['overdue']} — that date has passed; " + age
+        # A date marker is a claim about the work, the work's record is the measurement: a
+        # passed date says the marker went stale OR the work is missing, never which one.
+        if i["overdue"].startswith("due today"):
+            age = f"!! {i['overdue']} — do it, then move or drop the waiting-until line; " + age
+        elif i["overdue"]:
+            age = (f"!! {i['overdue']} — that date has passed: read the work's own record before calling it "
+                   "undone, then move or drop the waiting-until line; " + age)
         why = f" ({i['why']})" if i["why"] else ""
         print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{why}")
     # Waiting items need no relay; above a handful, one line keeps the start readable
