@@ -65,13 +65,16 @@ entry ops/new-entry.md kim-win "NEW-ONE arrived in this range" "Fresh content."
 # given to a file that had no frontmatter (what a lint pass does), is upkeep.
 entry ops/desc-change.md kim-win "DESCNEW-ONE the revised summary" "Body stays."
 entry ops/no-frontmatter.md kim-win "FIRSTFM-ONE frontmatter added by a lint pass" "Old entry without frontmatter."
+# A generated view (`<topic>/OPEN.md`, written by shared-memory-index.py) has no `von:` and is
+# not a message. Measured 2026-10-14: eight "[topic] ?: OPEN" lines after one index run.
+printf '# ops — open (GENERATED, do not hand-edit)\n\n- [ ] OPENVIEW-ONE an open entry listed by the index\n' > "$W/ops/OPEN.md"
 git -C "$W" add -A
 git -C "$W" commit -qm range
 B=$(git -C "$W" rev-parse HEAD)
 
 # Built-in control: the planted upkeep is visible to the OLD reading.
 OLD=$(git -C "$W" -c diff.renames=false diff --name-status --diff-filter=AM "$A" "$B")
-for f in proj/moved-entry.md ops/old-note.md core/pointer-holder.md ops/no-frontmatter.md; do
+for f in proj/moved-entry.md ops/old-note.md core/pointer-holder.md ops/no-frontmatter.md ops/OPEN.md; do
   grep -q "$f" <<<"$OLD" && pass "control: $f is in the old A/M reading" \
     || fail "control: $f not planted — a silent pass below would prove nothing"
 done
@@ -88,6 +91,8 @@ check_run() { # label output
     || fail "$1: changed description missing: $out"
   grep -q 'FIRSTFM-ONE' <<<"$out" && fail "$1: first frontmatter on an old file reported" \
     || pass "$1: first frontmatter on an old file silent"
+  grep -q 'OPENVIEW-ONE\|OPEN\.md' <<<"$out" && fail "$1: a generated OPEN.md view reported as an arrival" \
+    || pass "$1: generated OPEN.md view silent"
 }
 
 check_run "default config" "$("$PY" "$INBOX" --repo "$W" --from "$A" --to "$B" --self '' --max 20 2>&1)"
