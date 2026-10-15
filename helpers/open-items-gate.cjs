@@ -16,6 +16,11 @@
  *     question whether to go ahead — the agent starts none of them without that OK;
  *   - the number of items that need the operator (class `human`): up to three, each one
  *     named (a short bullet: what, who needs what); more than three, the offer to list them;
+ *   - the number of items of a class the operator approved once for good (class `standing`,
+ *     instance data .claude/rules/open-items-standing.json, full-audit 2026-10-15 on the
+ *     Windows instance) and that they are handled or under way — no question needed; asking
+ *     anyway is not wrong and passes here too. An `ai` item without such a class still needs
+ *     the question;
  *   - that items reported before are STILL open (repeat wording), when any are;
  *   - "nothing open", a NOT-checked source, and the parked line, when the bootup has them.
  *
@@ -39,7 +44,7 @@
  * Language: a PR is named by `#<n>`, a count as digits; a request by its date, its topic
  * words (file slug), or its age in days. The phrase patterns are English built-ins; an
  * instance adds its own language as DATA in .claude/rules/open-items.json (`<key>_patterns`,
- * lists of regexes; keys: nothing, failed, parked, offer, repeat, age_unit, goahead).
+ * lists of regexes; keys: nothing, failed, parked, offer, repeat, age_unit, goahead, handled).
  * Items printed `[...|wait]` (the move is someone else's, or a dated wait) need no relay.
  *
  * Output: {"decision":"block","reason":"... Missing: <what>"} — the dispatcher compresses
@@ -63,6 +68,8 @@ const BUILTIN = {
   age_unit: ['days?\\b', 'd\\b'],
   // an operator prompt that already orders the work: no shall-I question needed
   goahead: ['\\bgo ahead\\b', '\\b(handle|do|finish|work through) (it all|them all|all of (it|them)|everything)\\b'],
+  // items under a standing approval: reported as done or under way
+  handled: ['\\b(handled|handling|answered|answering|done|in progress|under ?way|working on|taken care of|taking care of)\\b'],
 };
 
 /** n -> RegExp matching "<n> <day unit>"; units are built-ins plus instance `age_unit_patterns`. */
@@ -290,6 +297,14 @@ function judge(input) {
     // asking again is a disguised stop; the count still has to be said.
     if (!patterns(cwd, 'offer').test(text) && !patterns(cwd, 'goahead').test(t.first)) missing.push('one question whether to handle them');
   }
+  // A standing approval replaces the question with a report; asking anyway is not wrong.
+  const standing = blk.items.filter((it) => it.cls === 'standing');
+  if (standing.length) {
+    if (!hasNumber(standing.length, text)) missing.push(`count of items handled under a standing approval (${standing.length})`);
+    if (!patterns(cwd, 'handled').test(text) && !patterns(cwd, 'offer').test(text)) {
+      missing.push('that the standing-approval items are handled or under way');
+    }
+  }
   if (human.length) {
     if (!hasNumber(human.length, text)) missing.push(`count of items that need the operator (${human.length})`);
     if (human.length <= HUMAN_LIST_MAX) {
@@ -308,7 +323,7 @@ function judge(input) {
   if (blk.nothing && !patterns(cwd, 'nothing').test(text)) missing.push('"nothing open"');
   if (missing.length === 0) return null;
   const shown = missing.length > 6 ? `${missing.slice(0, 6).join(', ')} +${missing.length - 6} more` : missing.join(', ');
-  return `First reply leaves out the open points from the session start — split by who acts: "n I can handle, shall I?" + "n need you" (up to ${HUMAN_LIST_MAX} named, more offered); repeats said. Missing: ${shown}`;
+  return `First reply leaves out the open points from the session start — split by who acts: "n I can handle, shall I?" + "n need you" (up to ${HUMAN_LIST_MAX} named, more offered) + "n handled under a standing approval" when the list has such items; repeats said. Missing: ${shown}`;
 }
 
 module.exports = { firstTurnOwnsQuestion, mandatedTopics };
