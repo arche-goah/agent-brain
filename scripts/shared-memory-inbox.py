@@ -386,8 +386,8 @@ def names_request(core_title: str, title: str, body: str) -> bool:
         return False
     want, text = core_title.lower(), f"{title}\n{body}".lower()
     # A request that is itself a reply ("re <their topic> — <the news>") is answered by naming
-    # the news, so both forms count (measured 2026-10-15: "re Fork gemessen, …" answered
-    # "re ankuendigung-… — Fork gemessen, …" and the request stayed open for two sessions).
+    # the news, so both forms count (measured 2026-10-15: "re <news>" answered
+    # "re <announcement> — <news>" and the request stayed open for two sessions).
     wants = {want, REPLY_HEAD.sub("", want, count=1).strip()} - {""}
     if any(w in text for w in wants):
         return True
