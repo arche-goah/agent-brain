@@ -374,6 +374,8 @@ LOG_INFO = re.compile(r"\bstatus:\s*info\b", re.I)
 LOG_CLOSE = re.compile(r"(?:^|:)\s*(?:ERLEDIGT|GESCHLOSSEN|DONE|CLOSED)\b", re.I)
 # "re <what>" — a reply that opens with the request's title, or the start of it.
 LOG_RE_REF = re.compile(r"\bre\s+([^\n:—]+)", re.I)
+# The "re <x> — " opening of a request that is itself a reply.
+REPLY_HEAD = re.compile(r"^re\s+[^\n—]+—\s*", re.I)
 
 
 def names_request(core_title: str, title: str, body: str) -> bool:
@@ -383,9 +385,13 @@ def names_request(core_title: str, title: str, body: str) -> bool:
     if not core_title:
         return False
     want, text = core_title.lower(), f"{title}\n{body}".lower()
-    if want in text:
+    # A request that is itself a reply ("re <their topic> — <the news>") is answered by naming
+    # the news, so both forms count (measured 2026-10-15: "re Fork gemessen, …" answered
+    # "re ankuendigung-… — Fork gemessen, …" and the request stayed open for two sessions).
+    wants = {want, REPLY_HEAD.sub("", want, count=1).strip()} - {""}
+    if any(w in text for w in wants):
         return True
-    return any(len(m.group(1).strip()) >= 4 and want.startswith(m.group(1).strip())
+    return any(len(m.group(1).strip()) >= 4 and any(w.startswith(m.group(1).strip()) for w in wants)
                for m in LOG_RE_REF.finditer(text))
 
 
