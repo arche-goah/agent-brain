@@ -89,6 +89,8 @@ def main():
         write(tdir, "aaaa0007-live", [boot(), user("still typing")], age_h=0)
         write(tdir, "aaaa0008-current", [boot(), user("me")])
         write(tdir, "aaaa0009-old", [boot("cancelled"), user("w")], age_h=24 * 30)
+        write(tdir, "aaaa0010-compact", [boot(), user("w"), boot("cancelled", source="compact"), user("more"),
+                                         close_skill()])
         full, cut = tmp / "boot-full.txt", tmp / "boot-cut.txt"
         full.write_text("x\n=== END BOOTUP ===\n", encoding="utf-8")
         cut.write_text("x\n!! session-bootup aborted early", encoding="utf-8")
@@ -107,6 +109,7 @@ def main():
         ok(rc == 0, "runs (exit 0)")
         ok("end:aaaa0002-killed" in found, "a killed session is reported")
         ok("start:aaaa0005-cancelled" in found, "a cancelled session start is reported (even when the session was closed)")
+        ok("start:aaaa0010-compact" not in found, "a bootup re-run after a context compaction that times out is not a failed start")
         ok("start:aaaa0006-incomplete" in found, "an incomplete session start is reported")
         ok(not any("aaaa0010" in f for f in found), "a complete start whose output was saved to a file stays silent")
         ok(not any("aaaa0011" in f for f in found), "a start cut by the 32 KiB cap without an abort note stays silent")

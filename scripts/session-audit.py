@@ -124,6 +124,13 @@ def judge(path):
                     a = {}
                 if a.get("hookEvent") == "SessionStart" and BOOTUP.search(a.get("command") or ""):
                     src = str(a.get("hookName") or "").split(":")[-1]
+                    # The bootup runs again after every context compaction (hookName
+                    # `SessionStart:compact`), under load and often past its budget. Measured
+                    # 2026-10-15: two sessions that started fine, ran for hours and closed were
+                    # reported as "start cancelled" because their compaction re-run timed out
+                    # and overwrote the real start. Only the session's first start counts.
+                    if start is not None and src == "compact":
+                        continue
                     if a.get("type") == "hook_cancelled":
                         start = {"state": "cancelled", "ms": a.get("durationMs") or 0, "source": src}
                     elif a.get("type") == "hook_success":
