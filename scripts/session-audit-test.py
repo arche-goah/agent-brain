@@ -96,6 +96,10 @@ def main():
         write(tdir, "aaaa0010-persisted", [boot(text=preview.format(full)), user("w"), close_skill()])
         # the incomplete start of aaaa0006 again, its output saved to a file: still reported
         write(tdir, "aaaa0006-incomplete", [boot(text=preview.format(cut)), user("w"), close_skill()])
+        # a start that ran through but hit the bootup's own 32 KiB cap (2026-10-14): not a failure
+        capped = tmp / "boot-capped.txt"
+        capped.write_text("x\n   --classify 'a=ai|h\n[... truncated at 32 KiB]", encoding="utf-8")
+        write(tdir, "aaaa0011-capped", [boot(text=preview.format(capped)), user("w"), close_skill()])
         hook = {"session_id": "aaaa0008-current", "transcript_path": str(tdir / "aaaa0008-current.jsonl")}
 
         rc, out = run(["--json"], root, hook)
@@ -105,6 +109,7 @@ def main():
         ok("start:aaaa0005-cancelled" in found, "a cancelled session start is reported (even when the session was closed)")
         ok("start:aaaa0006-incomplete" in found, "an incomplete session start is reported")
         ok(not any("aaaa0010" in f for f in found), "a complete start whose output was saved to a file stays silent")
+        ok(not any("aaaa0011" in f for f in found), "a start cut by the 32 KiB cap without an abort note stays silent")
         ok(not any("aaaa0001" in f for f in found), "a closed session stays silent (negative control)")
         ok(not any("aaaa0003" in f for f in found), "a session without a prompt stays silent")
         ok(not any("aaaa0004" in f for f in found), "a headless run is not 'ended without close'")
@@ -117,17 +122,17 @@ def main():
         ok(out.startswith("!! session audit: 1 session(s) ended without session-close · 2 session start(s) failed"),
            "the bootup summary is its own loud line")
 
-        # The relay: open-items lists them as operator items, the gate makes the first reply name them.
+        # The relay: open-items lists them as agent items (the transcript holds the cause), the gate makes the first reply name them.
         rc2 = subprocess.run([sys.executable, str(OI), "--root", str(root), "--repo", str(tmp / "no-shared"),
                               "--hook-input", json.dumps(hook)], capture_output=True, text=True, encoding="utf-8")
         oi = rc2.stdout
-        lines = [l for l in oi.splitlines() if l.startswith("- [session|human]")]
-        ok(len(lines) == 3, f"open-items lists the three as operator items (got {len(lines)})")
+        lines = [l for l in oi.splitlines() if l.startswith("- [session|ai]")]
+        ok(len(lines) == 3, f"open-items lists the three as agent items (got {len(lines)})")
         ok("!! open for us: 1 past session(s) ended without session-close · 2 session start(s) failed" in oi,
            "open-items prints the loud summary")
 
         if shutil.which("node"):
-            block = "open for us: 3 — ai 0 · human 3 · unclassified 0\n" + "\n".join(lines) + "\n=== END BOOTUP ==="
+            block = "open for us: 3 — ai 3 · human 0 · unclassified 0\n" + "\n".join(lines) + "\n=== END BOOTUP ==="
             tp = tdir.parent / "gate.jsonl"
 
             def gate(reply):
@@ -139,8 +144,8 @@ def main():
                 return p.stdout
             ok('"decision":"block"' in gate("All fine, nothing to report."), "the gate blocks a first reply that names none")
             dates = sorted({l.split()[2] for l in lines})
-            named = "3 need you: " + "; ".join(f"{d} a session needs a look" for d in dates) + "."
-            ok(gate(named).strip() == "", "the gate lets a reply through that names each by its date")
+            named = "Cleared from the transcripts: " + "; ".join(f"{d} hook timeout, session closed" for d in dates) + "."
+            ok(gate(named).strip() == "", "the gate lets a reply through that names each by its date, without asking anyone")
         else:
             print("  SKIP gate cases: node not found")
 

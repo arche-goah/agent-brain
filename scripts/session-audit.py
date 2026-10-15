@@ -25,7 +25,8 @@ A transcript touched in the last LIVE_MIN minutes may be a parallel session stil
 it is left for a later start (said in the summary, never reported as unclosed).
 
 LOUD UNTIL ACKNOWLEDGED. Findings are handed to `scripts/open-items.py` as items of kind
-`session` with class `human` — the operator decides whether anything was lost — so the
+`session` with class `ai` — the cause is in the transcript, so the AI reads it and says
+it; the operator knows no more than the record (operator 2026-10-15) — so the
 open-items Stop gate forces them into the first reply and the repeat counter makes them
 louder at every start. The bootup also prints one `!!` summary line. A finding leaves the
 list only by `--ack`: the session-close skill runs `--ack listed`, which acknowledges what
@@ -57,6 +58,8 @@ from pathlib import Path
 
 LIVE_MIN = 10
 END_MARK = "=== END BOOTUP ==="
+TRUNC = "[... truncated at 32 KiB]"
+ABORT = "session-bootup aborted early"
 BOOTUP = re.compile(r"session-bootup\.sh")
 CLOSE_SKILL = re.compile(r'"name"\s*:\s*"Skill"\s*,\s*"input"\s*:\s*\{\s*"skill"\s*:\s*"(?:[\w.-]+:)?session-close"')
 CLOSE_STEP = re.compile(r"session-closing\.sh[^\"\n]{0,80}--pre-commit")
@@ -131,7 +134,11 @@ def judge(path):
                                 text = Path(p.group(1)).read_text(encoding="utf-8", errors="replace")
                             except OSError:
                                 pass
-                        start = {"state": "ok" if END_MARK in text else "incomplete", "ms": a.get("durationMs") or 0,
+                        # The bootup's own 32 KiB cap cuts the end marker off a start that ran
+                        # through (measured 2026-10-14: 77 classify lines filled the cap) — a cut
+                        # without the abort note is a long report, not a failed start.
+                        done = END_MARK in text or (TRUNC in text and ABORT not in text)
+                        start = {"state": "ok" if done else "incomplete", "ms": a.get("durationMs") or 0,
                                  "source": src}
                 continue
             if '"type":"user"' not in line.replace(" ", "") or "tool_result" in line:
@@ -202,9 +209,13 @@ def findings(verdicts):
     for sid, v in verdicts:
         s = v.get("start")
         if s and s["state"] != "ok":
-            what = (f"its session start was cancelled after {round((s['ms'] or 0) / 1000)} s — the start report never arrived"
+            # The finding carries what the transcript says, so nobody has to be asked
+            # (operator 2026-10-15: "I don't know that either — it has to be cleared up").
+            what = (f"its session start was cancelled by the hook timeout after {round((s['ms'] or 0) / 1000)} s — the start report never arrived"
                     if s["state"] == "cancelled" else
-                    "its session start ended incomplete — checks after the break did not run")
+                    "its session-bootup script aborted partway — checks after the break did not run")
+            what += ("; the session itself ended with session-close, so its work was saved" if v["end"] == "closed"
+                     else "; the session itself ended without session-close — see its own line")
             items.append({"id": f"start:{sid}", "sid": sid, "kind": "start", "when": local(v["first"]), "text": what})
         if v["end"] == "unclosed":
             items.append({"id": f"end:{sid}", "sid": sid, "kind": "end", "when": local(v["last"]),

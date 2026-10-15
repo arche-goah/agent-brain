@@ -720,7 +720,7 @@ body=$(bootup_body 2>&1 | tr -d '\000-\010\013\014\016-\037\177' | sed 's/</\&lt
 # closing marker is the proof that the body ran to completion; the check sits BEFORE the
 # truncation, otherwise it would flag the 32 KiB case itself as an abort.
 [[ "$body" == *"=== END BOOTUP ==="* ]] || \
-  body+=$'\n!! session-bootup aborted early — output INCOMPLETE, checks from here on did NOT run'
+  body+=$'\n!! session-bootup aborted early — output INCOMPLETE, checks from here on did NOT run. Clear the cause in THIS session, before the first reply: rerun core/helpers/session-bootup.sh, find where it stops and why, fix or report it — a later session can only guess (operator 2026-10-15)'
 
 # Time budget report — the limit is this hook's own `timeout` in the brain's settings (project,
 # then local); BOOTUP_TIMEOUT_S overrides it (fixtures). Not found: 30 s, the value the core's
@@ -750,7 +750,10 @@ fi
 # end time budget report
 
 if (( $(printf '%s' "$body" | wc -c) > CAP )); then
-  body="$(printf '%s' "$body" | head -c "$CAP")"$'\n[... truncated at 32 KiB]'
+  # The cut keeps the proof lines: the end marker (or abort note) is how session-audit.py tells
+  # a finished start from a broken one (2026-10-14: a finished start cut mid-list was reported failed).
+  proof="$(printf '%s' "$body" | grep -E '^(=== END BOOTUP ===|!! session-bootup aborted early|!! session start took)')"
+  body="$(printf '%s' "$body" | head -c "$CAP")"$'\n[... truncated at 32 KiB]\n'"$proof"
 fi
 
 # printf instead of zsh's `print -r --`: same semantics (no escape interpretation,

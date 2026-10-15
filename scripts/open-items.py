@@ -378,7 +378,7 @@ def auto_class(it, repo, human_rx):
     if it["kind"] == "PR":
         return "ai", "pull request: review or merge is agent work"
     if it["kind"] == "session":
-        return "human", "only the operator knows whether work was lost"
+        return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it.get("file"):
         rc, blob = run(["git", "-C", repo, "show", f"origin/main:{it['file']}"])
         m = CIRCLE.search(blob.split("\n---", 1)[0]) if rc == 0 else None
@@ -641,8 +641,9 @@ def main():
         print("!! open for us: "
               + " · ".join(([f"{n_end} past session(s) ended without session-close"] if n_end else [])
                            + ([f"{n_start} session start(s) failed"] if n_start else []))
-              + " — name each in the first reply; the operator says whether work was lost;"
-              + " cleared by core/scripts/session-audit.py --ack (session-close does it for what was listed)")
+              + " — clear each before the first reply: read its transcript (session-audit.py --details),"
+              + " say the cause and whether work was lost as measured, never ask the operator;"
+              + " then core/scripts/session-audit.py --ack <id>")
     if not items and not failed:
         print("- nothing open (requests and PRs both read)")
     for i in active:
