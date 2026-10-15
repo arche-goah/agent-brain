@@ -306,14 +306,15 @@ here. Take the FIRST step that applies:
 A question ENDS the turn only when the next step of the order cannot proceed without the
 answer AND the answer belongs to the operator — the instance names its list of
 operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
+Such a question is asked through the question tool, not as closing prose (`intelligence.md`,
+"Presenting to the Operator").
 Named cases (every other turn-end rule points here):
 - **A hand step for the operator** (a command only they may run, a cable, a device): first
   finish the independent reversible work of the turn, arm the watcher on the step's effect,
   then end the turn with the command block as the closing message — only the closing
   message reaches the operator.
 - **A remark the operator repeats** about an artifact (thinking-protocol #5): stop, mirror,
-  get the yes (asked the way an operator decision is asked, see the sentence above) — that
-  ends the turn.
+  get the yes through the question tool (sentence above) — that ends the turn.
 - **A status message inside a long run** is a turn end like any other: allowed, but with
   the continuation armed first (`ScheduleWakeup` in a timed run, a watcher otherwise).
 

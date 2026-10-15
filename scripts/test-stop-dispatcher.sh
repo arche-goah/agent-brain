@@ -177,6 +177,53 @@ else
   bad "a log above the limit was not rotated"
 fi
 
+# --- re-issue pass: only a check that opts in runs (onReissue), a loud let-through is forwarded ---
+# stoppen-gate since 2026-10-15: an operator decision re-issued as closing prose instead of
+# through the question tool must not pass by repetition — so the re-issue has to reach it.
+CFG4="$(mktemp -d)"
+mkdir -p "$CFG4/.claude/rules"
+LOUD="$T/loud.cjs"
+printf '%s\n' "console.log(JSON.stringify({systemMessage:'let through loudly'}))" > "$LOUD"
+trap 'rm -rf "$T" "$CFG" "$CFG2" "$CFG3" "$CFG4"' EXIT
+feed4() { # $1 transcript, $2 stop_hook_active
+  printf '{"transcript_path":"%s","stop_hook_active":%s,"cwd":"%s"}' "$(native "$1")" "$2" "$(native "$CFG4")" \
+    | CLAUDE_PROJECT_DIR="$(native "$CFG4")" node "$D" 2>/dev/null
+}
+printf '{"checks":[{"label":"REISSUE","marker":"REISSUE-PROBE","cmd":"%s","mode":"block","onReissue":"run"},{"label":"PLAIN","marker":"PLAIN-PROBE","cmd":"%s","mode":"block"}]}' \
+  "$(native "$PROBE")" "$(native "$PROBE")" > "$CFG4/.claude/rules/stop-checks.json"
+OUT6="$(feed4 "$TR2" true)"
+case "$OUT6" in *'[REISSUE-PROBE]'*) ok "an opted-in check runs on the re-issue pass";; *) bad "opted-in check silent on re-issue: $OUT6";; esac
+case "$OUT6" in *'PLAIN-PROBE'*) bad "a check without onReissue ran on the re-issue pass: $OUT6";; *) ok "a check without onReissue stays silent on the re-issue pass";; esac
+printf '{"checks":[{"label":"LOUD","marker":"LOUD-PROBE","cmd":"%s","mode":"block"}]}' \
+  "$(native "$LOUD")" > "$CFG4/.claude/rules/stop-checks.json"
+OUT7="$(feed4 "$TR2" false)"
+case "$OUT7" in *'"decision"'*) bad "a let-through turned into a block: $OUT7";;
+  *'let through loudly'*'[LOUD-PROBE]'*) ok "a check's systemMessage reaches the operator without a block";;
+  *) bad "systemMessage swallowed: $OUT7";; esac
+# End to end with the real stoppen-gate and the template's entry: the prose decision question
+# re-issued after the gate's own block blocks again, in full; without onReissue it passes.
+SG=$(cd "$ROOT" && resolve helpers/stoppen-gate.cjs || true)
+if [ -n "$SG" ]; then
+  TQ="$T/reissue.jsonl"
+  { printf '%s\n' '{"message":{"role":"user","content":"frage"}}'
+    printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"The fix is ready. Should I proceed with the merge?"}]}}'
+    printf '%s\n' '{"message":{"role":"user","content":"Stop hook feedback:\nCLOSING QUESTION — Closing question - ask it through the question tool   [STOPPEN-GATE]"}}'
+    printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"The fix is ready. Should I proceed with the merge?"}]}}'; } > "$TQ"
+  sgcfg() { # $1 extra key ("" or ,"onReissue":"run")
+    printf '{"checks":[{"label":"CLOSING QUESTION","marker":"STOPPEN-GATE","cmd":"%s","mode":"block","extract":"Closing question in this reply: *(.+)","template":"Closing question {1}"%s}]}' \
+      "$(native "$ROOT/$SG")" "$1" > "$CFG4/.claude/rules/stop-checks.json"
+  }
+  sgcfg ',"onReissue":"run"'
+  OUT8="$(feed4 "$TQ" true)"
+  case "$OUT8" in *'"decision":"block"'*'question tool'*'[STOPPEN-GATE]'*) ok "stoppen-gate judges its own re-issue behind the dispatcher, reason in full";;
+    *) bad "stoppen-gate re-issue not judged: $OUT8";; esac
+  sgcfg ''
+  OUT9="$(feed4 "$TQ" true)"
+  [ -z "$OUT9" ] && ok "without onReissue the re-issue passes as before" || bad "re-issue judged without opt-in: $OUT9"
+else
+  skip "stoppen-gate end to end"
+fi
+
 echo
 [ "$fail" -eq 0 ] && echo "stop-dispatcher fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
