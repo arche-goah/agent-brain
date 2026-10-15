@@ -36,8 +36,8 @@ definition, this list is the order and the checklist:
    are handled and reported, not asked — the class and the operator's quoted words live in
    the instance file `.claude/rules/open-items-standing.json`. Carried by `open-items-gate.cjs`.
 5. **Due decisions** — a brain-scan or deep check that is due, a deferred point said once,
-   a pending update: each as a direct question with the price where there is one ("Three
-   levels of self-check", "Presenting to the Operator").
+   a pending update: each as a direct question with the price where there is one, asked
+   through the question tool ("Three levels of self-check", "Presenting to the Operator").
 
 Everything else that the bootup showed and that came back clean stays silent ("Relevance
 beats completeness"). Slots that are empty are left out, not announced. A later reply in the
@@ -316,6 +316,17 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   This includes yes/no questions at the end of a report (operator decision
   2026-09-24): reversible, own brain or a PR, no operator knowledge needed = do it
   and report.
+  **Such a decision is asked through the interactive question tool (`AskUserQuestion`)**
+  (order of the Windows instance's operator, 2026-10-15, after a report ended on a prose
+  list he could not answer — "ask me a clean question" — and three decisions then reached
+  him through the tool: "the way you just asked me, cleanly and interactively, I want it
+  always for operator decisions"; both translated): one question per
+  decision, the recommended option first and marked "(Recommended)", options in plain words
+  without codes, several decisions in one call (up to four). A prose question at the end of a
+  reply is for a clarification that is no decision. Where the tool is missing (headless, a
+  scheduled run, a harness without it), prose stays the fallback and the reply says so in one
+  line starting `⚙ no question tool:`. Carried by `stoppen-gate.cjs`: a closing decision
+  question without the tool call or that line is not let through by re-issuing it.
 - **The comparative test** (operator decision 2026-10-09): an item goes to the operator
   only if the operator can decide it BETTER or more cleanly than the AI — because it
   rests on their goal, taste, money, body, devices or relationships. If measurement,

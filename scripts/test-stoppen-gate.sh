@@ -178,6 +178,69 @@ run_case announce-quoted '"Die Regel trifft Saetze wie \"arbeite weiter am Hando
 run_case cs-mam '"Hotovo. Mám to teď nasadit?"' block "$T/cwd-cs"
 run_case cs-clean '"Hotovo a ověřeno, výsledek je v logu."' allow "$T/cwd-cs"
 
+# --- an operator DECISION goes through the question tool, not closing prose ---------------
+# Operator order 2026-10-15 (Windows instance): after a report ended on a prose list of things
+# that needed his word, he asked for "a clean question"; once three decisions came to him
+# through AskUserQuestion he ordered that form for every operator decision. A re-issue of the
+# prose question no longer passes by repetition; after two blocks in one turn it is let
+# through LOUDLY (systemMessage), so a stuck session is never locked.
+run_gate() { # $1 name, $2 final text (JSON), $3 block|allow|loud, $4 cwd, $5 records, $6 stop_hook_active, $7 must appear
+  local tr="$T/$1.jsonl"
+  printf '%s\n' '{"message":{"role":"user","content":"frage"}}' > "$tr"
+  [ -n "$5" ] && printf '%s\n' "$5" >> "$tr"
+  printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$2" >> "$tr"
+  local out
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"cwd":"%s"}' \
+          "$(native "$tr")" "$6" "$(native "$4")" | node "$G" 2>&1)"
+  case "$3" in
+    block) case "$out" in *'"decision":"block"'*STOPPEN-GATE*) ;; *) bad "$1 did not block: '$out'"; return;; esac ;;
+    loud)  case "$out" in *'"decision"'*|'') bad "$1 not a loud let-through: '$out'"; return;; *systemMessage*) ;; *) bad "$1 no systemMessage: '$out'"; return;; esac ;;
+    allow) [ -z "$out" ] || { bad "$1 blocked wrongly: '$out'"; return; } ;;
+  esac
+  if [ -n "${7:-}" ]; then
+    case "$out" in *"$7"*) ;; *) bad "$1: output lacks '$7': '$out'"; return;; esac
+  fi
+  case "$3" in block) ok "$1 blocks";; loud) ok "$1 lets through loudly";; allow) ok "$1 allows";; esac
+}
+DQ='"The fix is ready. Should I proceed with the merge?"'
+ASKQ='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_q1","name":"AskUserQuestion","input":{"questions":[{"question":"Merge the fix now?","options":[{"label":"Merge now (Recommended)"},{"label":"Wait"}]}]}}]}}
+{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_q1","content":"User answered: Merge now"}]}}'
+PRIOR='{"message":{"role":"assistant","content":[{"type":"text","text":"The fix is ready. Should I proceed with the merge?"}]}}'
+ECHO_OWN='{"message":{"role":"user","content":"Stop hook feedback:\nCLOSING QUESTION — Closing question \"Should I proceed with the merge?\" - if only the operator can decide it, ask it through the question tool   [STOPPEN-GATE]"}}'
+ECHO_OTHER='{"message":{"role":"user","content":"Stop hook feedback:\nCLASS — gate.cjs changed - does the same defect exist anywhere else?   [CLASS-GATE]"}}'
+ONE_BLOCK="$PRIOR
+$ECHO_OWN"
+TWO_BLOCKS="$PRIOR
+$ECHO_OWN
+$PRIOR
+$ECHO_OWN"
+# planted: the prose decision question blocks and names the tool
+run_gate ask-prose-no-tool "$DQ" block "$CWD" "" false "question tool (AskUserQuestion)"
+# the same closing prose in a turn that DID call the tool passes
+run_gate ask-through-tool "$DQ" allow "$CWD" "$ASKQ" false
+# the tool is missing here and the reply says so in its one line
+run_gate ask-no-tool-line '"⚙ no question tool: this run is headless.\nThe fix is ready. Should I proceed with the merge?"' allow "$CWD" "" false
+# re-issue without tool and without the line: still blocks, in full (no dispatcher compression line)
+run_gate ask-reissue-blocks "$DQ" block "$CWD" "$ONE_BLOCK" true "re-issuing it unchanged does not pass"
+# third issue in the same turn: let through, loudly
+run_gate ask-third-issue-loud "$DQ" loud "$CWD" "$TWO_BLOCKS" true "without AskUserQuestion"
+# the re-issue that called the tool, or carries the line, passes
+run_gate ask-reissue-with-tool "$DQ" allow "$CWD" "$ONE_BLOCK
+$ASKQ" true
+run_gate ask-reissue-no-tool-line '"⚙ no question tool: scheduled run.\nShould I proceed with the merge?"' allow "$CWD" "$ONE_BLOCK" true
+# unchanged: a re-issue after ANOTHER gate's block passes as it always did
+run_gate reissue-after-other-gate "$DQ" allow "$CWD" "$PRIOR
+$ECHO_OTHER" true
+# unchanged: a clarification that is no permission handback is not judged
+run_gate clarification-question '"Two log files match. Which of them did you mean, the old or the new one?"' allow "$CWD" "" false
+# unchanged: the German pack grips the same way through the instance file
+run_gate de-ask-reissue-blocks '"Bericht fertig. Soll ich das jetzt umsetzen?"' block "$DE" '{"message":{"role":"assistant","content":[{"type":"text","text":"Bericht fertig. Soll ich das jetzt umsetzen?"}]}}
+'"$ECHO_OWN" true "question tool"
+# NEGATIVE CONTROL: a turn with the tool call and an unrelated prose question still passes
+run_gate tool-plus-unrelated-question '"Merged as chosen. Do you want me to tidy the old branch as well?"' allow "$CWD" "$ASKQ" false
+# ... but asking is not doing: an announcement after the tool call is still judged
+run_gate tool-then-announcement '"Merge chosen. Doing that now."' block "$CWD" "$ASKQ" false
+
 echo
 [ "$fail" -eq 0 ] && echo "stoppen-gate fixtures (incl. language-as-data): ALL passed" || echo "FAILURE"
 exit "$fail"

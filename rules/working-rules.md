@@ -305,6 +305,8 @@ here. Take the FIRST step that applies:
 A question ENDS the turn only when the next step of the order cannot proceed without the
 answer AND the answer belongs to the operator — the instance names its list of
 operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
+Such a question is asked through the question tool, not as closing prose (`intelligence.md`,
+"Presenting to the Operator").
 
 **Mechanically secured:** `core/helpers/mechanism-guard.cjs` (PreToolUse on
 Bash/Monitor and Write/Edit) blocks shortcuts for which a documented path exists, and

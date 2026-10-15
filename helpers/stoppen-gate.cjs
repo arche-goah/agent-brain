@@ -13,8 +13,24 @@
  * Mechanics: looks ONLY at the tail of the LAST assistant text of the turn —
  * a closing question is the anti-pattern, a rhetorical question mid-text is
  * not. On a match => ONE block asking to apply the three-condition test: if it
- * genuinely holds, re-issue unchanged (stop_hook_active silences the second
- * pass); otherwise do the work now.
+ * genuinely holds, the decision goes to the operator through the question tool
+ * (next paragraph); otherwise do the work now.
+ *
+ * A real operator decision is ASKED THROUGH THE QUESTION TOOL, not as closing prose
+ * (operator order 2026-10-15 on the Windows instance, after a report had ended on a prose
+ * list of things that needed his word and he answered "ask me a clean question, I do not
+ * know what to tell you"; once the same session put three decisions to him through
+ * AskUserQuestion he ordered it for every operator decision, anchored mechanically).
+ * So: a turn that called AskUserQuestion passes this check whatever its closing prose
+ * says, and so does a reply carrying a line that starts `⚙ no question tool:` (the harness
+ * has no such tool — headless, a scheduled run). Without either, the re-issue of a closing
+ * decision question NO LONGER passes by repetition: the second pass in the same turn blocks
+ * again and names the tool. After two blocks in one turn the third pass is let through with
+ * a loud systemMessage, so a genuinely stuck session is never locked. Until 2026-10-15
+ * stop_hook_active silenced every re-issue here; it now silences only re-issues after
+ * ANOTHER gate's block (this gate did not fire in the turn) and announcement re-issues.
+ * Behind the stop dispatcher the re-issue reaches this gate only when its stop-checks.json
+ * entry carries `"onReissue": "run"` (template default since the same change).
  *
  * Frequency design: fires only on a hit; cooldown of 3 operator turns (higher
  * than time-gate — real operator decisions are WANTED, a gate that fires on
@@ -49,9 +65,14 @@ const OWN_ECHO = /STOPPEN-GATE/;
 const COOLDOWN_TURNS = 3;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const TAIL_CHARS = 400; // only the closing stretch of the final text counts
+// The interactive question tool, and the one line that says it is missing here.
+const QUESTION_TOOL = 'AskUserQuestion';
+const NO_TOOL_LINE = /^[ \t>*_-]*⚙️?\s*no question tool:/imu;
+const MAX_TOOL_BLOCKS = 2; // blocks per turn before a prose decision question is let through
 
 // Permission-handback questions. Deliberately NOT matched: bare "GO?" (release
-// gate), option questions without a first-person handback ("which channel?"), AskUserQuestion.
+// gate), option questions without a first-person handback ("which channel?"). A turn
+// that called AskUserQuestion is not judged on its closing prose at all (header).
 // ENGINE built-ins — English only (language-agnostic contract, header above).
 const BUILTIN_PATTERNS = [
   // Shape 1: the closing QUESTION. The obvious form, and the only one this gate saw
@@ -183,6 +204,7 @@ function analyze(transcriptPath) {
         if (isWaiter(b)) armed.add(b.id);
         // A wakeup never reports an end; it counts only inside the turn that set it.
         if (b.type === 'tool_use' && b.name === 'ScheduleWakeup') events.push({ wake: true });
+        if (b.type === 'tool_use' && b.name === QUESTION_TOOL) events.push({ ask: true });
       }
     }
     if (msg.role === 'user' && typeof msg.content === 'string') {
@@ -218,18 +240,24 @@ function analyze(transcriptPath) {
   }
   const waiting = [...armed].some((id) => !ended.has(id))
     || events.slice(last).some((e) => e.wake);
-  return { finalText, quiet: turnsSinceGate < COOLDOWN_TURNS, waiting };
+  // The running turn only: did it call the question tool, and how often did THIS gate block
+  // in it (the same echo count the cooldown reads, cut at the turn's start).
+  const turn = events.slice(last);
+  const asked = turn.some((e) => e.ask);
+  const gatesThisTurn = turn.filter((e) => e.gate).length;
+  return { finalText, quiet: turnsSinceGate < COOLDOWN_TURNS, waiting, asked, gatesThisTurn };
 }
 
 process.stdin.on('end', () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { return allow(); }
 
-  if (input.stop_hook_active) return allow();
   if (!input.transcript_path) return allow();
+  const reissue = !!input.stop_hook_active;
 
   let hits = [];
   let announced = [];
+  let seen;
   const uniq = (found, into) => {
     for (const h of found || []) {
       const norm = h.trim().replace(/\s+/g, ' ');
@@ -237,13 +265,17 @@ process.stdin.on('end', () => {
     }
   };
   try {
-    const seen = analyze(input.transcriptPath || input.transcript_path);
-    if (seen.quiet) return allow();
+    seen = analyze(input.transcriptPath || input.transcript_path);
+    // A re-issue after ANOTHER gate's block passes as it always did; only a re-issue after
+    // this gate's own block is judged again (and the cooldown it set itself does not count).
+    if (reissue ? seen.gatesThisTurn === 0 : seen.quiet) return allow();
     if (!seen.finalText) return allow();
     const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     const tail = stripQuoted(seen.finalText).slice(-TAIL_CHARS);
-    uniq(tail.match(loadPatterns(cwd)), hits);
-    if (!hits.length && !seen.waiting) {
+    // Asked through the tool, or the tool is missing here and the reply says so: the closing
+    // question is not judged. (An announcement still is — asking is not doing the work.)
+    if (!seen.asked && !NO_TOOL_LINE.test(seen.finalText)) uniq(tail.match(loadPatterns(cwd)), hits);
+    if (!hits.length && !seen.waiting && !reissue) {
       uniq(tail.match(loadPatterns(cwd, 'announce_patterns', BUILTIN_ANNOUNCE)), announced);
     }
   } catch (e) {
@@ -275,6 +307,34 @@ process.stdin.on('end', () => {
     if (oi.mandatedTopics(input.transcript_path).some((t) => tailText.includes(norm(t)))) return allow();
   } catch (e) { /* no sibling gate — judge as before */ }
 
+  const how = `put it to the operator through the question tool (${QUESTION_TOOL}): one question ` +
+    'per decision, the recommended option first and marked "(Recommended)", options in plain ' +
+    'words; several decisions in one call. If this harness has no such tool, say so in one ' +
+    'visible line starting "⚙ no question tool:" and keep the prose question.';
+  if (reissue) {
+    if (seen.gatesThisTurn >= MAX_TOOL_BLOCKS) {
+      // Never lock a stuck session: let it through, but loudly — the omission stays visible.
+      console.log(JSON.stringify({
+        systemMessage:
+          `STOPPEN-GATE: let through after ${seen.gatesThisTurn} blocks in this turn — a decision ` +
+          `question went to the operator as closing prose, without ${QUESTION_TOOL} and without ` +
+          `a "⚙ no question tool:" line. Question: ${hits.slice(0, 3).join(' · ')}`,
+      }));
+      process.exit(0);
+    }
+    // Deliberately WITHOUT the "Closing question in this reply:" line: the stop dispatcher
+    // compresses on it, and this instruction has to reach the agent in full.
+    console.log(JSON.stringify({
+      decision: 'block',
+      reason:
+        'STOPPEN-GATE (a decision for the operator is asked through the question tool, not ' +
+        'as a closing prose question — re-issuing it unchanged does not pass).\n' +
+        `Still closing on: ${hits.slice(0, 3).join(' · ')}\n` +
+        `If only the operator can decide it, ${how} Otherwise do the work now and report.`,
+    }));
+    process.exit(0);
+  }
+
   console.log(JSON.stringify({
     decision: 'block',
     reason:
@@ -282,7 +342,7 @@ process.stdin.on('end', () => {
       `Closing question in this reply: ${hits.slice(0, 3).join(' · ')}\n` +
       'Apply the three-condition test, AND-linked: (1) DECISION, not a work step · ' +
       '(2) blocks the work NOW · (3) only the operator can make it (his goal, money, ' +
-      'hardware, risk). All three hold => re-issue the reply unchanged — it will pass. ' +
+      `hardware, risk). All three hold => ${how} ` +
       'Otherwise: the question is answerable by measurement, docs or rules — do the ' +
       'work now and report the result instead of asking.',
   }));
