@@ -32,7 +32,9 @@ definition, this list is the order and the checklist:
    question, only here — and the one closing question the stop gate lets stand, as
    `stoppen-gate.cjs` already codes it) and "m need you" (up to three named, more offered); items reported
    before said louder; "nothing open" or "could not read" when that is the state ("Open
-   points that concern this instance"). Carried by `open-items-gate.cjs`.
+   points that concern this instance"). Items of a class the operator approved once for good
+   are handled and reported, not asked — the class and the operator's quoted words live in
+   the instance file `.claude/rules/open-items-standing.json`. Carried by `open-items-gate.cjs`.
 5. **Due decisions** — a brain-scan or deep check that is due, a deferred point said once,
    a pending update: each as a direct question with the price where there is one ("Three
    levels of self-check", "Presenting to the Operator").
@@ -123,7 +125,12 @@ to.)
 open request addressed to this instance, an open PR — reaches the first reply, split by
 WHO has to act. Items the agent can answer or handle itself (its own circle): the count
 and ONE question whether to go ahead — a session usually starts for another reason, so
-the agent starts none of them without that OK. That question is asked ONCE, at the session
+the agent starts none of them without that OK — unless the operator approved the item's CLASS
+once for good (a standing approval, full-audit 2026-10-15 on a Windows instance: its rules said
+requests addressed to that machine are handled without asking, and the first reply asked
+anyway). Such a class is declared with the operator's quoted words and date
+in `.claude/rules/open-items-standing.json`; its items are handled and the reply reports what
+was done. That question is asked ONCE, at the session
 start (startup or resume) — never again later in the same session (operator correction
 2026-10-10: "I want to hear that question mainly at the session start, not again
 and again"). After a compaction, after the operator's go, and for every own item that
