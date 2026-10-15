@@ -365,7 +365,11 @@ search) → small model; judge/verify/synthesize/write → session model,
 hard verify stages → higher effort. Reference measurement brain-scan (core PR #30,
 run 2026-08-10): 9 of 11 agents small, ~778k of 1.02M tokens, all results valid.
 Sub-/workflow agents technically INHERIT the session model — the inheritance counts
-as chosen, not as a default without a look. Do NOT hardcode
+as chosen, not as a default without a look. The audit workflows (`memory-dream`,
+`coherence-scan`, `full-audit-synthesis`) take that choice per stage at launch through
+`args.models = {<stage>: '<tier>'}` (stage names in each script's routing block), so
+a session on the top tier can keep the verify stage there and run the collecting and
+judging stages one or two tiers below without editing the script. Do NOT hardcode
 model version names in docs (they go stale immediately). Multi-agent costs ~15x
 chat tokens — only for broad independent work, orchestration as separate
 phase workflows (research → audit → verify → synthesis), persist each phase's

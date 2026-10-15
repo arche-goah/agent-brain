@@ -23,6 +23,13 @@ const DATE = A.date
 const OUT = `${REPORT_DIR}/gesamt-${DATE}.md`
 // The catalog's bulk lives here; the report stage reads it from disk.
 const CATALOG = `${A.scratch}/catalog.json`
+// Model routing per stage (rules/intelligence.md, "Model Routing"): a stage without an
+// entry inherits the session model — that inheritance counts as chosen, not as a default
+// without a look. args.models = { <stage>: 'haiku'|'sonnet'|'opus'|… } sets one stage at a
+// time, so the launching session picks the tier per stage instead of editing the script.
+// Stages: catalog, report.
+const MODELS = (A.models && typeof A.models === 'object') ? A.models : {}
+const modelFor = (stage, fallback) => { const m = MODELS[stage] || fallback; return m ? { model: m } : {} }
 
 // Shape of ONE measure as it is written to the catalog file. Prompt text now, not a
 // StructuredOutput schema: sources and proposals never come back through a return value
@@ -111,7 +118,7 @@ Build the cross-scan measure catalog:
 OUTPUT — you are the producer, you write exactly ONE file, the path named here, and no other; any path you report back is exactly this one: save the catalog as JSON to ${CATALOG} (mkdir -p ${A.scratch}) with exactly this shape: {"summary": "<3-5 sentences incl. dedupe balance>", "skipped_existing": <number>, "massnahmen": [<objects>]} where every object satisfies this JSON schema: ${JSON.stringify(MASSNAHME_ITEM)}. Sources and proposals are this stage's data and travel ONLY through that file — none of them come back through your return value.
 After writing, MEASURE the file (node -e or jq, not from memory).
 Return via StructuredOutput: file (the path you wrote), summary, skipped_existing, and massnahmen = the INDEX only — prio + typ + titel verbatim as written in the file.`,
-  { label: 'catalog', phase: 'Catalog', schema: {
+  { label: 'catalog', phase: 'Catalog', ...modelFor('catalog'), schema: {
     type: 'object', required: ['file', 'summary', 'massnahmen'],
     properties: {
       file: { type: 'string', description: 'path of the JSON file you wrote' },
@@ -156,7 +163,7 @@ as 1-line items, origin "abgeleitet (full-audit ${DATE})" (abgeleitet = derived)
 pointer to ${OUT} — implement NOTHING, change no existing entries.
 After writing, MEASURE the report: run \`wc -c < ${OUT}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.
 Return via StructuredOutput: files_read (every data file you actually read, from your ls), report_path, report_bytes, mech_count, decision_count, appended.`,
-  { label: 'report', phase: 'Report', schema: {
+  { label: 'report', phase: 'Report', ...modelFor('report'), schema: {
     type: 'object', required: ['files_read', 'report_path', 'report_bytes'],
     properties: {
       files_read: { type: 'array', items: { type: 'string' }, maxItems: 20 },
