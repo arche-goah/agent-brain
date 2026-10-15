@@ -1,6 +1,6 @@
 ---
 name: autonomous-run
-description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstaendig durch" / "work through the next 2 h on your own") — fix the reserve pool up front, arm the watchdog WITH a deadline, set ScheduleWakeup after every step, finish at REMAINING 0 (or earlier only via the explicit "pool empty" or "BLOCKED" report) and report the measured time evidence. Use when the operator orders a run over a DURATION ("zieh das 2h durch" / "push it through for 2h", "arbeite n minuten/stunden autonom" / "work n minutes/hours autonomously", "/loop <auftrag>"). NOT for normal orders — there the rule is order done, then check-in.
+description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstaendig durch" / "work through the next 2 h on your own") — fix the reserve pool up front, arm the watchdog WITH a deadline, set ScheduleWakeup after every step, finish at REMAINING 0 (or earlier only via the explicit "pool empty" or "BLOCKED" report) and report the measured time evidence. Use when the operator orders a run over a DURATION ("zieh das 2h durch" / "push it through for 2h", "arbeite n minuten/stunden autonom" / "work n minutes/hours autonomously", "/loop <auftrag>" WITH a stated duration — a bare "/loop <auftrag>" is asked for its duration first and starts no run). NOT for normal orders — there the rule is order done, then check-in.
 ---
 
 # Autonomous Run (time-boxed)
@@ -20,7 +20,7 @@ description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstae
 
 | | **Normal operation (default)** | **Autonomous run** |
 |---|---|---|
-| Trigger | any normal request | the operator names a **DURATION** ("2h autonom" / "2h autonomously", "arbeite n min durch" / "work through n min") or calls `/loop <auftrag>` |
+| Trigger | any normal request | the operator names a **DURATION** ("2h autonom" / "2h autonomously", "arbeite n min durch" / "work through n min"), also as `/loop <auftrag>` with that duration — a bare `/loop <auftrag>` is asked for its duration first (hard gate 1) and starts no run |
 | End | **order done → check-in with the operator** | **when the time is up** (`remaining` = 0) — or earlier ONLY through the explicit "pool empty, time was still left" report (step 4) or the BLOCKED end (hard gate 6) |
 | Tasks | exactly the order | the order **+ the reserve pool agreed up front** |
 | Deriving own follow-up tasks | **no** | yes, but ONLY from the pool |
