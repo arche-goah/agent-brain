@@ -73,20 +73,34 @@ printf '{"type":"user","message":{"role":"user","content":"<command-name>/tdp:td
 readcall "$NT/fakehome/.claude/plugins/cache/mk/tdp/1.0/skills/td-core/SKILL.md" > "$T/loaded-read.jsonl"
 skillcall "tdp:td-plain" > "$T/loaded-other.jsonl"
 skillcall "local-skill" > "$T/loaded-local.jsonl"
+# skill-gate.json rules name no SKILL.md path: a Read of <any>/skills/<bare name>/SKILL.md counts.
+readcall "$NT/fakehome/.claude/plugins/cache/mk/core/1.0/skills/lazy/SKILL.md" > "$T/read-lazy.jsonl"
+readcall "$NT/fakehome/.claude/plugins/cache/mk/core/1.0/skills/eager/SKILL.md" > "$T/read-eager.jsonl"
+# Subagent layout as Claude Code writes it (measured on 2.1.301): the hook event carries the
+# PARENT transcript_path <dir>/<session>.jsonl plus agent_id; the subagent's own transcript is
+# <dir>/<session>/subagents/agent-<agent_id>.jsonl.
+mkdir -p "$T/sess-empty/subagents" "$T/sess-loaded/subagents"
+: > "$T/sess-empty.jsonl"
+skillcall "tdp:td-core" > "$T/sess-loaded.jsonl"
+skillcall "tdp:td-core" > "$T/sess-empty/subagents/agent-a1loaded.jsonl"
+: > "$T/sess-empty/subagents/agent-a2empty.jsonl"
+: > "$T/sess-loaded/subagents/agent-a2empty.jsonl"
+readcall "$NT/somewhere/skills/lazy/SKILL.md" > "$T/sess-empty/subagents/agent-a3readlazy.jsonl"
 
-run() { # engine tool transcript [file_path]
-  local inp
-  inp=$(printf '{"tool_name":"%s","tool_input":{"file_path":"%s"},"transcript_path":"%s"}' "$2" "${4:-}" "$(native "$T/$3")")
+run() { # engine tool transcript [file_path] [agent_id]
+  local inp agent=""
+  [ -n "${5:-}" ] && agent=",\"agent_id\":\"$5\""
+  inp=$(printf '{"tool_name":"%s","tool_input":{"file_path":"%s"},"transcript_path":"%s"%s}' "$2" "${4:-}" "$(native "$T/$3")" "$agent")
   printf '%s' "$inp" | CLAUDE_PROJECT_DIR="$NT/proj" SKILL_GATE_HOME="$NT/fakehome" node "$1" 2>/dev/null \
     | grep -aq '"permissionDecision":"deny"' && echo block || echo allow
 }
-expect() { # want tool transcript [file_path] -- label
-  local want=$1 tool=$2 tr=$3 fp=$4 label=$5 got
-  got=$(run "$GATE" "$tool" "$tr" "$fp")
+expect() { # want tool transcript [file_path] label [agent_id]
+  local want=$1 tool=$2 tr=$3 fp=$4 label=$5 aid=${6:-} got
+  got=$(run "$GATE" "$tool" "$tr" "$fp" "$aid")
   [ "$got" = "$want" ] && ok "$label" || bad "$label (want $want, got $got)"
   if [ "$want" = block ]; then
     must_block=$((must_block + 1))
-    [ "$(run "$STUB" "$tool" "$tr" "$fp")" = allow ] && flipped=$((flipped + 1))
+    [ "$(run "$STUB" "$tool" "$tr" "$fp" "$aid")" = allow ] && flipped=$((flipped + 1))
   fi
 }
 
@@ -104,6 +118,15 @@ expect allow Edit                   empty.jsonl "$NT/proj/a.md" "path filter: .m
 expect allow Edit                   loaded-local.jsonl "$NT/proj/a.py" "project skill loaded"
 expect block NotebookEdit           empty.jsonl            "" "instance rule from skill-gate.json"
 expect allow Skill                  empty.jsonl            "" "the Skill tool itself is never gated"
+expect allow NotebookEdit           read-lazy.jsonl        "" "skill-gate.json rule: Read of the skill's SKILL.md counts (as the block message offers)"
+expect block NotebookEdit           read-eager.jsonl       "" "skill-gate.json rule: Read of a different SKILL.md does not count"
+# subagents: the event names the parent transcript; the subagent's own transcript is read too
+expect allow mcp__td__create_node   sess-empty.jsonl  "" "subagent loaded the skill in its own transcript" a1loaded
+expect block mcp__td__create_node   sess-empty.jsonl  "" "subagent did not load it, parent did not either" a2empty
+expect allow mcp__td__create_node   sess-loaded.jsonl "" "parent loaded it: allow as before" a2empty
+expect allow NotebookEdit           sess-empty.jsonl  "" "subagent read the SKILL.md of a skill-gate.json rule" a3readlazy
+expect block mcp__td__create_node   sess-empty.jsonl  "" "subagent transcript missing: parent alone decides, as before" a9missing
+expect allow mcp__td__create_node   sess-loaded.jsonl "" "subagent transcript missing, parent loaded: allow" a9missing
 # fail-open: no transcript on disk
 got=$(printf '{"tool_name":"mcp__td__x","tool_input":{},"transcript_path":"%s"}' "$NT/missing.jsonl" \
   | CLAUDE_PROJECT_DIR="$NT/proj" SKILL_GATE_HOME="$NT/fakehome" node "$GATE" | grep -ac deny)
