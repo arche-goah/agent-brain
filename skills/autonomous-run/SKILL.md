@@ -51,6 +51,7 @@ do, and the deadline lives in the watchdog state. None of them replaces the othe
 | Core done **exactly** at expiry | end |
 | **No reserve pool agreed**, core done early | report and stop — invent nothing (order fidelity #3, `core/rules/working-rules.md`) |
 | **No duration named**, only tasks ("push R3-R6 through") | **not an autonomous run** — normal mode: do the order, then check in (hard gate 1). No pool, no wakeup loop |
+| **List run** — a task LIST plus the operator's explicit word that the agent continues without them ("I'm away", "work the list alone"); without that word the row above applies and hard gate 1 stands. A skill with its own list loop needs the same word | wakeup yes (a forced turn end arms `ScheduleWakeup`), pool **no**, end = list empty (report and stop) or BLOCKED (hard gate 6, with its reconnect watcher); watchdog armed with a silence limit, no deadline; a skill with its own list loop points here instead of defining its own continuation |
 
 ⚠ **Never stop just because the minimum time is reached.** The number says "autonomous
 for at least this long", not "stop then".
