@@ -40,6 +40,12 @@ stage.
    file there and the next stage reads the files, so nothing bulky travels inside a
    prompt ("only the producer writes", `rules/intelligence.md`). One subfolder per
    stage keeps the file names of two stages from colliding.
+   Decide the model tier per stage at launch (`rules/intelligence.md`, "Model Routing"):
+   stages 2-4 take `args.models = {<stage>: 'haiku'|'sonnet'|'opus'|…}` — collecting
+   and counting stages small, judging stages the session model or one tier below it,
+   the adversarial verify stage never below the session model. A stage without an
+   entry inherits the session model; that inheritance is a choice, say it in the
+   announcement. Stage names are listed at the top of each workflow's routing block.
 2. **Stage 1** `Workflow({scriptPath: brain-scan.js, args:{date, scratch:
    "<session scratchpad>/brain-scan-<date>"}})` — reports and sorts, fixes nothing
    (since 2026-10-09 there is no fix phase; fixing happens in the session). Read the result.
