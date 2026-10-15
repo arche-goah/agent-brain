@@ -136,7 +136,8 @@ switch-chip reset during a show.
 
 1. Explicit user instructions (highest priority)
 2. **HARD core rules** — order fidelity (Auftragstreue), mechanism discipline,
-   evidence-chain-or-silence (`working-rules.md`, top of this file)
+   one system instead of local workarounds (`working-rules.md`),
+   evidence-chain-or-silence (top of this file)
 3. Feedback rules in .claude/rules/feedback.md
 4. Project-specific conventions (existing code)
 5. General best practices
@@ -148,7 +149,9 @@ step 3) — the ranking is no license to decide it oneself.
 
 Rank 2 added on 2026-08-04 (operator decision, coherence-scan P1-2): the HARD blocks
 were not located anywhere in this list at all — neither above nor below feedback.
-They asserted their precedence only themselves.
+They asserted their precedence only themselves. The fourth HARD block, "One System, Not
+Local Workarounds" (operator order 2026-10-08), joined rank 2 on 2026-10-15 — the same
+defect, found by the coherence scan of a Windows instance: a HARD block without a rank.
 
 ## Rule-Conflict Protocol (operator instruction 2026-08-01, from coherence-scan K-19 — CANONICAL place)
 

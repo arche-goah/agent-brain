@@ -29,7 +29,8 @@ definition, this list is the order and the checklist:
 3. **Reporting duties, one line each** — FAIL / self-test failure / an acute warning, each
    on its own line with the next concrete step ("A reporting duty needs its own line").
 4. **Open points for this instance** — split by who acts: "n I can handle — shall I?" (ONE
-   question, only here) and "m need you" (up to three named, more offered); items reported
+   question, only here — and the one closing question the stop gate lets stand, as
+   `stoppen-gate.cjs` already codes it) and "m need you" (up to three named, more offered); items reported
    before said louder; "nothing open" or "could not read" when that is the state ("Open
    points that concern this instance"). Carried by `open-items-gate.cjs`.
 5. **Due decisions** — a brain-scan or deep check that is due, a deferred point said once,
@@ -146,7 +147,8 @@ unclassified item, or in a session whose bootup never arrived).
 ## Session End
 
 The operator triggers skill `session-close` ("close the session" and similar): persist
-open work (states into their ledger, lessons plus pointers into auto-memory), write
+open work (states into their ledger, lessons to their strongest carrier with pointers into
+auto-memory — Knowledge Carriers below), write
 handoff/session log, export, check every repo the session wrote to, clearance.
 The SessionEnd hook does the same mechanically as a best-effort fallback (does not
 fire on a hard kill). NO `memory/session_*.md` files — memory lives in auto-memory
@@ -335,7 +337,11 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   (data loss turning acute), or once in the next session's start report. A question the
   operator replied past without addressing it is NOT deferred: it is unanswered, stays open,
   and is asked again where it matters, louder each time (the repeat rule for open points
-  above). The agent never files its own silence or the operator's silence as a deferral.
+  above). Louder means an own prefix line ("open since N sessions:") BEFORE the
+  byte-identical question sentence — never a rephrasing: the question gate keys a question
+  by its normalised sentence, so a rephrased repeat is a new record (measured 2026-10-15 on
+  a Windows instance: four records for one question, three of them rewordings).
+  The agent never files its own silence or the operator's silence as a deferral.
   Carried by `core/helpers/question-gate.cjs`: `deferred` is accepted only with the
   operator's words as the note; `unanswered` keeps the question listed and askable.
   **The agent closes its own question once its work has answered it** (operator decision
