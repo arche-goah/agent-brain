@@ -64,7 +64,8 @@
     A core PR that brings NEW functionality (a new gate, hook, script, skill or rule) is
     agreed with the operator before it is built; usually the order itself is that
     agreement. A FOLLOW-UP — a fix, a correction, a catch-up inside an agreed strand, the
-    clear findings of an ordered audit — may be pushed and opened without a new word. That
+    clear findings of an ordered audit, the port of instance machinery that already runs,
+    the rule text for a correction the operator gave — may be pushed and opened without a new word. That
     is the agreed channel ASK OR ACT step 1 names. Making a repo public, a first
     publication, a push outside the organisation's repos and a deployment stay gated.
     Carriers on every push: leak-scan, the English-only ratchet, the instance's name guard.
@@ -305,6 +306,15 @@ here. Take the FIRST step that applies:
 A question ENDS the turn only when the next step of the order cannot proceed without the
 answer AND the answer belongs to the operator — the instance names its list of
 operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
+Named cases (every other turn-end rule points here):
+- **A hand step for the operator** (a command only they may run, a cable, a device): first
+  finish the independent reversible work of the turn, arm the watcher on the step's effect,
+  then end the turn with the command block as the closing message — only the closing
+  message reaches the operator.
+- **A remark the operator repeats** about an artifact (thinking-protocol #5): stop, mirror,
+  get the yes — that ends the turn.
+- **A status message inside a long run** is a turn end like any other: allowed, but with
+  the continuation armed first (`ScheduleWakeup` in a timed run, a watcher otherwise).
 
 **Mechanically secured:** `core/helpers/mechanism-guard.cjs` (PreToolUse on
 Bash/Monitor and Write/Edit) blocks shortcuts for which a documented path exists, and
