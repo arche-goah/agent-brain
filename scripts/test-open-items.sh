@@ -21,8 +21,10 @@ cp "$SRC" "$T/core/scripts/open-items.py"
 cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
 cp "$(dirname "$SRC")/project_dir.py" "$T/core/scripts/project_dir.py"
 cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
-# The fake inbox prints whatever $T/inbox.txt holds.
-printf '%s\n' 'import os, sys' \
+# The fake inbox prints whatever $T/inbox.txt holds — in UTF-8, like the real one (OS-9): unpinned,
+# Windows wrote the em dash of an "optional: … —" line in cp1252 and the item read differently than
+# on Linux (measured on PR #355: Windows '?', CI 'wait').
+printf '%s\n' 'import os, sys' 'sys.stdout.reconfigure(encoding="utf-8")' \
   'sys.stdout.write(open(os.path.join(os.path.dirname(__file__), "..", "..", "inbox.txt"), encoding="utf-8").read())' \
   > "$T/core/scripts/shared-memory-inbox.py"
 
@@ -309,13 +311,13 @@ printf '%s\n' 'shared-memory open requests to this instance: 2' \
 # quoted words and date is refused with a line, and its items are asked as before.
 rm -rf "$T/repo" && mkdir -p "$T/repo/core" && GIT init -q
 printf '%s\n' '---' 'name: s1' 'metadata:' '  von: peer-b' '  audience: inst-a' '---' 'body' > "$T/repo/core/request-mine-2026-10-14.md"
-printf '%s\n' '---' 'name: s2' 'metadata:' '  von: peer-b' '  audience: inst-b, alle' '---' 'body' > "$T/repo/core/request-other-2026-10-14.md"
+printf '%s\n' '---' 'name: s2' 'metadata:' '  von: peer-b' '  audience: inst-b, os:shared' '---' 'body' > "$T/repo/core/request-other-2026-10-14.md"
 printf '%s\n' '---' 'name: s3' 'metadata:' '  von: peer-b' '  audience: inst-a' '  circle: E' '---' 'body' > "$T/repo/core/request-person-2026-10-14.md"
 printf '%s\n' '---' 'name: s4' 'metadata:' '  von: peer-b' '  audience: inst-a' '---' 'body' > "$T/repo/core/request-pin-2026-10-14.md"
 GIT add -A && GIT commit -q -m standing && GIT update-ref refs/remotes/origin/main HEAD
 printf '%s\n' 'shared-memory open requests to this instance: 5' \
   '  - 2026-10-14 [core] peer-b: check the fixture run (core/request-mine-2026-10-14.md)' \
-  '  - 2026-10-14 [core] peer-b: optional: to everyone; unclaimed - take it if you can and want — check the other run (core/request-other-2026-10-14.md)' \
+  '  - 2026-10-14 [core] peer-b: check the other run (core/request-other-2026-10-14.md)' \
   '  - 2026-10-14 [core] peer-b: decide the budget (core/request-person-2026-10-14.md)' \
   '  - 2026-10-14 [core] peer-b: move the stable pin (core/request-pin-2026-10-14.md)' \
   '  - 2026-10-14 [core] peer-b: AN inst-a: answer the log question (LOG)' > "$T/inbox.txt"
