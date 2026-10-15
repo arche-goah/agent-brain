@@ -29,9 +29,12 @@ definition, this list is the order and the checklist:
 3. **Reporting duties, one line each** — FAIL / self-test failure / an acute warning, each
    on its own line with the next concrete step ("A reporting duty needs its own line").
 4. **Open points for this instance** — split by who acts: "n I can handle — shall I?" (ONE
-   question, only here) and "m need you" (up to three named, more offered); items reported
+   question, only here — and the one closing question the stop gate lets stand, as
+   `stoppen-gate.cjs` already codes it) and "m need you" (up to three named, more offered); items reported
    before said louder; "nothing open" or "could not read" when that is the state ("Open
-   points that concern this instance"). Carried by `open-items-gate.cjs`.
+   points that concern this instance"). Items of a class the operator approved once for good
+   are handled and reported, not asked — the class and the operator's quoted words live in
+   the instance file `.claude/rules/open-items-standing.json`. Carried by `open-items-gate.cjs`.
 5. **Due decisions** — a brain-scan or deep check that is due, a deferred point said once,
    a pending update: each as a direct question with the price where there is one ("Three
    levels of self-check", "Presenting to the Operator").
@@ -122,7 +125,12 @@ to.)
 open request addressed to this instance, an open PR — reaches the first reply, split by
 WHO has to act. Items the agent can answer or handle itself (its own circle): the count
 and ONE question whether to go ahead — a session usually starts for another reason, so
-the agent starts none of them without that OK. That question is asked ONCE, at the session
+the agent starts none of them without that OK — unless the operator approved the item's CLASS
+once for good (a standing approval, full-audit 2026-10-15 on a Windows instance: its rules said
+requests addressed to that machine are handled without asking, and the first reply asked
+anyway). Such a class is declared with the operator's quoted words and date
+in `.claude/rules/open-items-standing.json`; its items are handled and the reply reports what
+was done. That question is asked ONCE, at the session
 start (startup or resume) — never again later in the same session (operator correction
 2026-10-10: "I want to hear that question mainly at the session start, not again
 and again"). After a compaction, after the operator's go, and for every own item that
@@ -146,7 +154,8 @@ unclassified item, or in a session whose bootup never arrived).
 ## Session End
 
 The operator triggers skill `session-close` ("close the session" and similar): persist
-open work (states into their ledger, lessons plus pointers into auto-memory), write
+open work (states into their ledger, lessons to their strongest carrier with pointers into
+auto-memory — Knowledge Carriers below), write
 handoff/session log, export, check every repo the session wrote to, clearance.
 The SessionEnd hook does the same mechanically as a best-effort fallback (does not
 fire on a hard kill). NO `memory/session_*.md` files — memory lives in auto-memory
@@ -272,6 +281,14 @@ find the root cause, anchor the rule mechanically, develop, test and evaluate
 behaviour strategies. Before saying "that is architecturally impossible", separate
 the two — tool reach is not the space of possibilities.
 
+**A tool's limit does not stop a suite; it becomes a ticket** (operator decision
+2026-10-11). When a real technical limit of one tool is met, the limit is filed in the SAME
+turn as a ticket in the tool's repo — the problem, what was measured, where the boundary
+runs, what follows from it, and how to replicate it — and the suite keeps running for
+everything the boundary does not touch. Measured on a proving brain: a whole suite sat parked
+for weeks over one tool boundary, and nothing named which work the boundary actually blocked.
+Parking a domain stays the operator's word; a limit the AI met is a ticket, never a park.
+
 ## Proactive Intelligence (propose, do NOT build — order fidelity (Auftragstreue) HARD)
 
 | Pattern | Action |
@@ -292,7 +309,8 @@ ONLY to execution tools for tasks the agent would execute itself. Everything els
 What reaches the operator is sorted first; the count of open proposals is not a
 presentation (operator decision 2026-09-18 — reading every one costs hours to days).
 
-- **Only real operator decisions** (goal, money, hardware, risk, external effect,
+- **Only real operator decisions** (the instance's operator-only list is the one authoritative
+  set — `working-rules.md` ASK OR ACT; examples: goal, money, hardware, risk, external effect,
   release, ownership) are presented — each with a recommendation, answerable by
   number. The rest is done, closed, handed to the party that decides it, or left.
   This includes yes/no questions at the end of a report (operator decision
@@ -327,7 +345,11 @@ presentation (operator decision 2026-09-18 — reading every one costs hours to 
   (data loss turning acute), or once in the next session's start report. A question the
   operator replied past without addressing it is NOT deferred: it is unanswered, stays open,
   and is asked again where it matters, louder each time (the repeat rule for open points
-  above). The agent never files its own silence or the operator's silence as a deferral.
+  above). Louder means an own prefix line ("open since N sessions:") BEFORE the
+  byte-identical question sentence — never a rephrasing: the question gate keys a question
+  by its normalised sentence, so a rephrased repeat is a new record (measured 2026-10-15 on
+  a Windows instance: four records for one question, three of them rewordings).
+  The agent never files its own silence or the operator's silence as a deferral.
   Carried by `core/helpers/question-gate.cjs`: `deferred` is accepted only with the
   operator's words as the note; `unanswered` keeps the question listed and askable.
   **The agent closes its own question once its work has answered it** (operator decision
@@ -357,7 +379,11 @@ search) → small model; judge/verify/synthesize/write → session model,
 hard verify stages → higher effort. Reference measurement brain-scan (core PR #30,
 run 2026-08-10): 9 of 11 agents small, ~778k of 1.02M tokens, all results valid.
 Sub-/workflow agents technically INHERIT the session model — the inheritance counts
-as chosen, not as a default without a look. Do NOT hardcode
+as chosen, not as a default without a look. The audit workflows (`memory-dream`,
+`coherence-scan`, `full-audit-synthesis`) take that choice per stage at launch through
+`args.models = {<stage>: '<tier>'}` (stage names in each script's routing block), so
+a session on the top tier can keep the verify stage there and run the collecting and
+judging stages one or two tiers below without editing the script. Do NOT hardcode
 model version names in docs (they go stale immediately). Multi-agent costs ~15x
 chat tokens — only for broad independent work, orchestration as separate
 phase workflows (research → audit → verify → synthesis), persist each phase's

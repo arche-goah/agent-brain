@@ -16,10 +16,12 @@ do NOT delete them, otherwise the rules only sit on disk instead of in context):
 @core/rules/intelligence.md
 - Hooks/helpers: `core/helpers/` (wired up in `.claude/settings.json`).
 - Contract: `core/CONVENTIONS.md` + `core/core-contract.json`. Core changes go
-  as a PR against `agent-brain`, NEVER as a local copy (CONVENTIONS §13). The short
-  path: feature branch directly in the submodule `core/` — the submodule is a
-  full checkout. Only the consumed state (pin/main) is off-limits; `file-guard`
-  blocks edits there mechanically.
+  as a PR against `agent-brain`, NEVER as a local copy (CONVENTIONS §13). The way:
+  a worktree of `core/` under the session scratchpad
+  (`git -C core worktree add <scratchpad>/<name> -b <branch> origin/main`); `core/`
+  itself stays on the pin (working rule #12 — a branch checked out in the submodule
+  changes the hooks of every session on the machine). `file-guard` blocks edits to
+  the consumed state (pin/main) mechanically.
 - Core update: `bash core/scripts/brain-update.sh` — one command, follows the
   marketplace pin on every layer (plugin cache with provenance check, submodule
   remote, `.gitmodules`, tag). Recommended weekly, never on a show day. NOT

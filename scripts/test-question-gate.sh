@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
+# covers: question-gate close-stamp
 # Fixture test for helpers/question-gate.cjs — both directions, plus the CLI.
 # The must-block case is the incident (2026-10-09): a proposal ended as a question, the
 # operator's next prompt was about something else, and the question scrolled away.
 # Must allow: a question the operator has not seen yet (the reply being ended), a settled
 # question (answered/dropped/deferred), a question inside code or quotes, a plain "why?",
 # a re-issue, a second stop in the same turn. German grips only as instance data.
+# #269 (2026-10-11): a deferral is accepted only with words the operator wrote after the
+# question in the recorded transcript (paraphrase refused, unreadable transcript refused);
+# `adopt <id>` prints the operator's prompts after an orphaned question and marks it;
+# `list` names that call for a question from an earlier day.
 # Usage: bash scripts/test-question-gate.sh (exit 0 = pass)
 set -u
 T="$(mktemp -d)"
@@ -22,9 +27,9 @@ user() { printf '{"message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
 asst() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
 tres() { printf '{"message":{"role":"user","content":[{"type":"tool_result","content":"x"}]}}\n'; }
 
-check() { # $1 name, $2 transcript, $3 block|allow, $4 root, [$5 stop_hook_active]
+check() { # $1 name, $2 transcript, $3 block|allow, $4 root, [$5 stop_hook_active]; $SID = session id
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s}' "$(native "$2")" "${5:-false}" \
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"}' "$(native "$2")" "${5:-false}" "${SID:-}" \
     | CLAUDE_PROJECT_DIR="$(native "$4")" node "${GATE:-$G}" 2>&1)"
   if [ "$3" = block ]; then
     case "$out" in *'"decision":"block"'*) ok "$1 blocks";; *) bad "$1 did not block: '$out'";; esac
@@ -59,7 +64,8 @@ for st in answered dropped deferred unanswered; do
   R="$T/r-$st"; fresh "$R"
   check "first run records the question ($st case)" "$T/t1.jsonl" block "$R" >/dev/null
   id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
-  cli "$R" resolve "$id=$st:fixture" >/dev/null
+  note=fixture; [ "$st" = deferred ] && note="are your watches running?"  # a deferral quotes the operator (#269)
+  cli "$R" resolve "$id=$st:$note" >/dev/null
   check "question settled as $st" "$T/t1.jsonl" allow "$R"
 done
 R="$T/r-deferred"
@@ -82,8 +88,39 @@ out="$(cli "$R" resolve "$id=deferred")"; rc=$?
 case "$rc:$out" in [1-9]*:*"needs the operator's own words"*) ok "deferred without the operator's words is refused";;
   *) bad "bare deferred accepted (rc=$rc): $out";; esac
 case "$(cli "$R" list)" in *'[open]'*) ok "refused deferral leaves the question open";; *) bad "refused deferral changed the state";; esac
+# #269 gap 4: the words must stand in an operator prompt AFTER the question — a paraphrase is refused.
+out="$(cli "$R" resolve "$id=deferred:later, not now")"; rc=$?
+case "$rc:$out" in [1-9]*:*"not what the operator wrote"*) ok "deferred with words the operator never wrote is refused";;
+  *) bad "paraphrased deferral accepted (rc=$rc): $out";; esac
+R="$T/r-defer-quoted"; fresh "$R"
+{ user "check the PRs"; asst "Done. $Q"; user "later, not now please — first the show"; asst "Noted."; } > "$T/t-defer.jsonl"
+check "first run records the question (quoted deferred case)" "$T/t-defer.jsonl" block "$R" >/dev/null
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
 cli "$R" resolve "$id=deferred:later, not now" >/dev/null && ok "deferred with the operator's words is accepted" \
-  || bad "deferred with words refused"
+  || bad "deferred with the operator's own words refused"
+# a record whose transcript is gone cannot prove a deferral
+R="$T/r-defer-gone"; fresh "$R"; cp "$T/t-defer.jsonl" "$T/t-gone.jsonl"
+check "first run records the question (gone transcript case)" "$T/t-gone.jsonl" block "$R" >/dev/null
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+rm -f "$T/t-gone.jsonl"
+out="$(cli "$R" resolve "$id=deferred:later, not now")"; rc=$?
+case "$rc:$out" in [1-9]*:*"cannot be checked"*) ok "deferral without a readable transcript is refused";;
+  *) bad "unverifiable deferral accepted (rc=$rc): $out";; esac
+# #269 gaps 2+3: an orphan is adopted WITH what the operator said after it
+R="$T/r-adopt"; fresh "$R"
+{ user "check the PRs"; asst "Done. $Q"; user "way 1, build it"; asst "Building."; user "and the show?"; asst "ok"; } > "$T/t-adopt.jsonl"
+check "first run records the question (adopt case)" "$T/t-adopt.jsonl" block "$R" >/dev/null
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+out="$(cli "$R" adopt "$id")"
+case "$out" in *'> way 1, build it'*'> and the show?'*'settle: node core/helpers/question-gate.cjs resolve'*) ok "adopt prints the operator's prompts after the question";;
+  *) bad "adopt output: $out";; esac
+grep -q '"adopted"' "$R/.claude-state/open-questions.json" && ok "adopt marks the record" || bad "adopt left no mark"
+# a question asked on an earlier day is listed as an orphan with the adopt call
+node -e '
+const fs=require("fs");const p=process.argv[1];const s=JSON.parse(fs.readFileSync(p,"utf8"));
+for (const k in s) s[k].asked="2020-01-01T00:00:00.000Z";fs.writeFileSync(p,JSON.stringify(s));' "$R/.claude-state/open-questions.json"
+case "$(cli "$R" list)" in *"orphan — settle from evidence: node core/helpers/question-gate.cjs adopt $id"*) ok "an old open question is listed as an orphan with its adopt call";;
+  *) bad "orphan hint missing: $(cli "$R" list)";; esac
 R="$T/r-answered"
 [ -z "$(cli "$R" list)" ] && ok "answered question is not listed" || bad "answered still listed"
 case "$(cli "$R" resolve deadbeef=answered)" in *unknown*) ok "unknown id is refused";; *) bad "unknown id accepted";; esac
@@ -105,6 +142,37 @@ R="$T/r7"; fresh "$R"
 check "German question without instance data" "$T/t7.jsonl" allow "$R"
 fresh "$R"; mkdir -p "$R/.claude/rules"; printf '{"question_patterns":["\\\\bsoll ich\\\\b"]}\n' > "$R/.claude/rules/open-questions.json"
 check "German question with instance data" "$T/t7.jsonl" block "$R"
+
+# --- the close turn (coherence scan 2026-10-15, P1-2): an open question is carried to the next
+# session as an open end of the close's session-log entry, not asked again while the operator
+# leaves. A close stamp of this session and turn passes a question listed by id or sentence;
+# a stamp without the listing, another session's stamp, or no stamp still block.
+tool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":%s}}]}}\n' "$(js "$1")"; }
+CLOSE_LINE="- 2026-10-15 10:00:00 | main | close"
+stamp() { # $1 root, $2 stamp session id, $3 open-end line of this close's entry (may be empty)
+  mkdir -p "$1/.claude-state" "$1/docs/maintenance"
+  printf '%s\n%s\n' "$2" "$CLOSE_LINE" > "$1/.claude-state/session-close.stamp"
+  { echo "$CLOSE_LINE"; echo "  topic: fixture close"; [ -n "$3" ] && printf '%s\n' "$3"; } > "$1/docs/maintenance/session-log.md"
+}
+{ user "check the PRs"; asst "Done. $Q"; user "close the session"
+  tool "bash core/helpers/session-closing.sh --pre-commit --session S1"; tres; asst "Persisted - you can shut down."; } > "$T/qc1.jsonl"
+SID=S1
+R="$T/rc"; fresh "$R"
+check "close turn, no stamp: the open question still blocks" "$T/qc1.jsonl" block "$R"
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+stamp "$R" S1 "  open end: question $id (clock check as a PR) - ask at the next start"
+check "close stamp + question listed by id" "$T/qc1.jsonl" allow "$R"
+case "$(cli "$R" list)" in *'[open]'*) ok "a listed question stays open for the next session start";; *) bad "listed question was closed";; esac
+stamp "$R" S1 "  open end: operator question \"$Q\""
+check "close stamp + question listed by its sentence" "$T/qc1.jsonl" allow "$R"
+stamp "$R" S1 ""
+check "close stamp without the listing" "$T/qc1.jsonl" block "$R"
+stamp "$R" OTHER "  open end: question $id"
+check "close stamp of another session" "$T/qc1.jsonl" block "$R"
+{ user "check the PRs"; asst "Done. $Q"; user "close the session"; asst "Persisted - you can shut down."; } > "$T/qc2.jsonl"
+stamp "$R" S1 "  open end: question $id"
+check "close stamp, but this turn never ran the close" "$T/qc2.jsonl" block "$R"
+SID=""
 
 # --- negative control
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));\n' > "$T/stub.cjs"

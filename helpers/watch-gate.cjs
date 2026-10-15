@@ -44,8 +44,31 @@
  *       the base branch and starts a run there too; six merges that session, none watched.
  *       A collab-watch lock does NOT satisfy (d): the standing watch reports a red run at
  *       its next poll, the rule wants the VERDICT of this push read in this turn.
+ *   (e) the reply asks the HUMAN for a hand step — start a program, plug a cable, switch a
+ *       device on, click, accept an invitation — and no waiter was armed in this turn (a
+ *       Monitor, or a Bash/Agent call with run_in_background). Operator 2026-10-11: "it is a
+ *       failure class that watchdogs are not started" — a session asked "onPC must be running"
+ *       and the operator had to report the start himself; (a)-(d) are blind to it, because a
+ *       request in prose makes no tool call. Core rule "A Needed Reload Is Not a Wait State"
+ *       #3: build the measurement, arm the watcher, THEN give the instruction. Where no probe
+ *       is possible (a network the AI may not touch), the reply says so in a visible line
+ *       `⚙ no watcher: <why no probe is possible>` and passes. English built-ins below; an
+ *       instance extends them with its language in `.claude/rules/watch-gate.json`
+ *       (`hand_step_patterns`, `no_watcher_markers`). Quoted text and code are stripped
+ *       before matching (talk ABOUT a request quotes it).
+ *   (f) `gh issue create`, or `gh issue comment` / `gh pr comment` whose body asks something
+ *       (a question mark or "please"), ran AND no PR-side watcher lives (same test as (b)):
+ *       a ticket or a question in a thread expects an answer in that thread, and only the
+ *       standing repo watch reads comments. Measured 2026-10-11: a ticket was opened and was
+ *       covered only by chance, by a collab-watch that happened to be running.
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
+ *
+ * The close turn (coherence scan 2026-10-15, P1-2): skill `session-close` arms no watcher it
+ * will not be alive to read — it lists each such item as an open end in the session-log entry.
+ * A close stamp of this session and turn (close-stamp.cjs) passes (a), (b), (d) and (f) for
+ * exactly the items that entry lists (`open end: <repo> #<n> …`, the fact file's name for (a));
+ * an unlisted item still blocks. (c) and (e) are requests to the human and are never covered.
  *
  * Fails open (no transcript, no bash, no repo): a gate that cannot measure must not
  * block — its fixture (`scripts/test-watch-gate.sh`) is the proof it still fires.
@@ -64,6 +87,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { isNotification } = require('./turn-kind.cjs');
+const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
 const OWN_ECHO = /WATCH-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -77,6 +101,47 @@ const RELOAD_WATCH = /\bwait-mcp-reconnect\.sh\b/;
 // (d) the CI watch of a push: `ci-watch.sh pr|ref <owner/repo> …`, and the repo a gh call names.
 const CI_WATCH = /\bci-watch\.sh\s+(?:pr|ref)\s+["']?([\w.-]+\/[\w.-]+)/i;
 const REPO_FLAG = /(?:--repo|-R)[=\s]+["']?([\w.-]+\/[\w.-]+)/;
+// (e) a hand step asked of the human. The FORM: an imperative or a necessity aimed at a person
+// or a device the AI cannot operate. English built-ins; other languages are instance data.
+const HAND_STEP_BUILTIN = [
+  '\\b(please|kindly)\\s+(start|launch|open|restart|reboot|plug\\s+in|unplug|re-?plug|switch\\s+on|turn\\s+on|power\\s+on|power\\s+up|connect|press|click|tap|load|install|enable|accept|approve|unlock)\\b',
+  '\\b(can|could|would)\\s+you\\s+(please\\s+)?(start|launch|open|restart|reboot|plug|unplug|re-?plug|switch|turn|power|connect|press|click|tap|load|install|enable|accept|approve|unlock)\\b',
+  '\\b(onpc|desk|console|app|application|program|machine|workstation|laptop|router|switch|device|plugin|show|window|cable|usb)\\s+(must|needs?\\s+to|has\\s+to|should)\\s+(be\\s+)?(running|open|on|started|loaded|connected|plugged\\s+in|visible|powered)\\b',
+  '\\b(start|launch|open|restart|reboot|plug\\s+in|switch\\s+on|turn\\s+on|power\\s+on|connect)\\s+(the\\s+|your\\s+)?(onpc|desk|console|app|application|program|machine|workstation|laptop|router|switch|device|cable|usb|plugin|show)\\b',
+  '\\bI\\s+need\\s+you\\s+to\\b',
+];
+const NO_WATCHER_BUILTIN = ['⚙\\s*no\\s+watcher\\s*:'];
+// (f) a ticket, or a comment that asks something.
+const ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
+const COMMENT = /\bgh\s+(?:issue|pr)\s+comment\b/;
+
+function loadPatterns(root) {
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'watch-gate.json'), 'utf8')); } catch (e) { /* built-ins only */ }
+  const merge = (builtins, extra) => {
+    const out = [...builtins];
+    if (Array.isArray(extra)) for (const p of extra) { try { new RegExp(p); out.push(p); } catch (e) { /* skip */ } }
+    return new RegExp(out.join('|'), 'iu');
+  };
+  return { handStep: merge(HAND_STEP_BUILTIN, cfg.hand_step_patterns), noWatcher: merge(NO_WATCHER_BUILTIN, cfg.no_watcher_markers) };
+}
+
+/** Quoted text and code are talk ABOUT a request, not a request. */
+function stripQuoted(text) {
+  return String(text || '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/„[^“”"\n]*[“”"]/g, ' ')
+    .replace(/“[^”]*”/g, ' ')
+    .replace(/"[^"\n]*"/g, ' ')
+    .replace(/^\s*>.*$/gm, ' ');
+}
+
+/** The body text a gh comment/issue command carries, as far as the command line shows it. */
+function ghBody(cmd) {
+  const m = /--body[=\s]+(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(cmd) || /-b[=\s]+(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(cmd);
+  return m ? (m[1] || m[2] || m[3] || '') : cmd; // $(...) bodies: judge the whole command text
+}
 
 function rootDir(input) { return process.env.CLAUDE_PROJECT_DIR || (input && input.cwd) || process.cwd(); }
 function handoverFile(root) { return path.join(root, '.claude-state', 'expected-reactions.json'); }
@@ -156,6 +221,15 @@ function turn(tp) {
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message; if (!msg) continue;
     if (msg.role === 'user') {
+      // A tool's output: keep it on its call (the PR / issue URL a gh call printed).
+      if (Array.isArray(msg.content)) {
+        for (const b of msg.content) {
+          if (b.type !== 'tool_result') continue;
+          const c = calls.find((x) => x.id && x.id === b.tool_use_id);
+          if (c) c.out = typeof b.content === 'string' ? b.content
+            : (Array.isArray(b.content) ? b.content.map((x) => x.text || '').join('\n') : '');
+        }
+      }
       const t = promptText(msg);
       if (t === null) continue;
       if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t)) fired = true; continue; }
@@ -169,7 +243,7 @@ function turn(tp) {
       for (const b of msg.content) {
         if (b.type !== 'tool_use') continue;
         const inp = b.input || {};
-        calls.push({ name: b.name, cmd: String(inp.command || ''), bg: !!inp.run_in_background });
+        calls.push({ id: b.id, name: b.name, cmd: String(inp.command || ''), bg: !!inp.run_in_background, out: '' });
       }
     }
   }
@@ -315,26 +389,46 @@ function awaiting(repo, since) {
   return out;
 }
 
+/** The repo NAME part of owner/repo — what an open-end line has to name. */
+function nameOf(slug) { return String(slug || '').split('/').pop(); }
+/** The number a gh call acted on: from the URL it printed, else from its arguments. */
+function ghNumber(c) {
+  const m = /\/(?:pull|issues)\/(\d+)/.exec(c.out || '') || /\bgh\s+(?:issue|pr)\s+(?:comment|merge)\s+(\d+)/.exec(c.cmd);
+  return m ? Number(m[1]) : null;
+}
+/** The repo a gh call acted on: the --repo flag, the URL it printed, else the checkout it ran in. */
+function ghRepo(c, root) {
+  const f = REPO_FLAG.exec(c.cmd);
+  if (f) return f[1].toLowerCase();
+  const u = /github\.com\/([\w.-]+\/[\w.-]+)\/(?:pull|issues)\//.exec(c.out || '');
+  return u ? u[1].toLowerCase() : originSlug(callDir(c.cmd, root));
+}
+/** Every one of these gh calls named as an open end: its repo and, when known, its number. */
+function ghListed(ghCalls, root) {
+  return (ends) => ghCalls.every((c) => listed(ends, [nameOf(ghRepo(c, root)), ghNumber(c)]));
+}
+
 function main(input) {
   if (input.stop_hook_active || !input.transcript_path) process.exit(0);
   const root = rootDir(input);
   const { calls, since, fired, lastText } = turn(input.transcript_path);
   if (fired) process.exit(0);
   const shell = calls.filter((c) => c.name === 'Bash' || c.name === 'PowerShell');
+  // Each finding: its text, and whether a close entry's open-end lines cover it (null = never).
   const missing = [];
 
   // Handover: an entry written in THIS turn covers the act (a closing session); entries from
   // earlier turns wait for a watcher — a live one takes them over, none means block once.
   const handovers = loadHandovers(root);
   const isNew = (h) => !since || String(h.at) >= since;
-  const covered = handovers.some(isNew);
+  const handedOver = handovers.some(isNew);
   const inherited = handovers.filter((h) => !isNew(h));
   if (inherited.length) {
     if (smWatched(root) || prWatched(root, calls)) {
       saveHandovers(root, handovers.filter(isNew));
     } else {
-      missing.push(`a reaction expected since an earlier session: ${inherited.slice(0, 3).map((h) => `${h.id} "${h.what}"`).join(', ')} — `
-        + 'arm collab-watch (or shared-memory-watch); `node core/helpers/watch-gate.cjs drop <id>` if no longer awaited');
+      missing.push({ text: `a reaction expected since an earlier session: ${inherited.slice(0, 3).map((h) => `${h.id} "${h.what}"`).join(', ')} — `
+        + 'arm collab-watch (or shared-memory-watch); `node core/helpers/watch-gate.cjs drop <id>` if no longer awaited', covered: null });
     }
   }
 
@@ -343,31 +437,59 @@ function main(input) {
   const smPush = shell.some((c) => /\bgit\b[\s\S]*\bpush\b/.test(c.cmd) && c.cmd.includes(repoName));
   if (smPush && fs.existsSync(repo)) {
     const files = awaiting(repo, since);
-    if (files.length && !smWatched(root) && !covered) {
-      missing.push(`shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
+    if (files.length && !smWatched(root) && !handedOver) {
+      missing.push({ text: `shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
         + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 60", persistent: true}) '
-        + '(or collab-watch); mark a pure report `status: info`');
+        + '(or collab-watch); mark a pure report `status: info`',
+      covered: (ends) => files.every((f) => listed(ends, [path.basename(f).replace(/\.md$/, '')])) });
     }
   }
-  if (shell.some((c) => /\bgh\s+pr\s+create\b/.test(c.cmd)) && !prWatched(root, calls) && !covered) {
-    missing.push('PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)');
+  const prCreates = shell.filter((c) => /\bgh\s+pr\s+create\b/.test(c.cmd));
+  if (prCreates.length && !prWatched(root, calls) && !handedOver) {
+    missing.push({ text: 'PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)',
+      covered: ghListed(prCreates, root) });
   }
   // (c) the reply ends by asking the human for a reload, and nothing waits for it to arrive
   if (RELOAD_ASK.test(lastText) && !calls.some((c) => RELOAD_WATCH.test(c.cmd))) {
-    missing.push('reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
-      + '(Monitor or run_in_background) BEFORE asking, then say which reload you need');
+    missing.push({ text: 'reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
+      + '(Monitor or run_in_background) BEFORE asking, then say which reload you need', covered: null });
   }
   // (d) a push started a CI run and nothing in this turn watches it
   for (const slug of ciStarted(shell, root)) {
     if (ciWatched(calls, slug)) continue;
-    missing.push(`CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
-      + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`);
+    missing.push({ text: `CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
+      + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`,
+    covered: (ends) => listed(ends, [nameOf(slug)]) });
+  }
+  // (e) the reply asks the human for a hand step, and nothing in this turn waits for its effect
+  const pats = loadPatterns(root);
+  const waiter = calls.some((c) => c.name === 'Monitor' || c.name === 'ScheduleWakeup' || c.bg);
+  if (!waiter && !pats.noWatcher.test(lastText)) {
+    const m = pats.handStep.exec(stripQuoted(lastText));
+    if (m) {
+      missing.push({ text: `a hand step is asked of the human ("${m[0].trim()}") and no waiter runs — build the measurement `
+        + 'and arm it (Monitor / run_in_background) BEFORE the request, say what will not move; '
+        + 'where no probe is possible, write "⚙ no watcher: <why>"', covered: null });
+    }
+  }
+  // (f) a ticket or a question posted in a thread, and no standing repo watch reads the answer
+  const asks = shell.filter((c) => ISSUE_CREATE.test(c.cmd) || (COMMENT.test(c.cmd) && /[?]|\bplease\b/i.test(ghBody(c.cmd))));
+  if (asks.length && !prWatched(root, calls)) {
+    missing.push({ text: 'an issue or a question was posted on GitHub and no repo watch lives — arm collab-watch '
+      + '(or Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr>)', covered: ghListed(asks, root) });
   }
   if (!missing.length) process.exit(0);
+  // The close turn: a close stamp of this session and turn passes what its entry lists (header).
+  let left = missing;
+  const ends = missing.some((m) => m.covered) ? closeOpenEnds(root, { sessionId: input.session_id, since, calls }) : null;
+  if (ends) left = missing.filter((m) => !(m.covered && m.covered(ends)));
+  if (!left.length) process.exit(0);
   process.stdout.write(JSON.stringify({
     decision: 'block',
-    reason: `WATCH-GATE: a reaction is expected and no watcher lives. ${missing.join(' · ')}. `
-      + 'If nothing is awaited, say why in one line and stop again. A CLOSING session hands it over instead: '
+    reason: `WATCH-GATE: a reaction is expected and no watcher lives. ${left.map((m) => m.text).join(' · ')}. `
+      + (ends ? 'The close stamp passes only what its session-log entry lists as "open end: <repo> #<n> - what is awaited" '
+        + '(a shared-memory request by its file name). ' : '')
+      + 'If nothing is awaited, say why in one line and stop again. A CLOSING session may also hand it over: '
       + '`node core/helpers/watch-gate.cjs handover "<what, from whom>"`.',
   }));
   process.exit(0);

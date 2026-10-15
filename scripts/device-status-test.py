@@ -18,6 +18,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+import git_sandbox  # noqa: E402,F401 - the host git config never reaches a fixture repo
 SCRIPT = ROOT / "scripts" / "device-status.py"
 fails = 0
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",

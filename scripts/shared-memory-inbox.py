@@ -57,7 +57,9 @@ _parties = import_module("shared-memory-parties")
 
 # Spellings of "everyone" measured in the repo's headings and `audience` fields.
 EVERYONE = _parties.EVERYONE
-SKIP_FILES = {"INDEX.md", "LOG.md", "README.md", "PEOPLE.md"}
+# OPEN.md is a GENERATED view (shared-memory-index.py), like INDEX.md: it carries no `von:` and is
+# not a message. Measured 2026-10-14: eight "[topic] ?: OPEN" lines in one inbox after an index run.
+SKIP_FILES = {"INDEX.md", "OPEN.md", "LOG.md", "README.md", "PEOPLE.md"}
 # The four live heading shapes — see the note at shared-memory-parties.HEADING.
 HEADING = _parties.HEADING
 TEXT_CAP = 200
@@ -372,6 +374,37 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
 LOG_INFO = re.compile(r"\bstatus:\s*info\b", re.I)
 # The close word opens the title proper: "AN <who>: ERLEDIGT — …" (or a title without AN).
 LOG_CLOSE = re.compile(r"(?:^|:)\s*(?:ERLEDIGT|GESCHLOSSEN|DONE|CLOSED)\b", re.I)
+# "re <what>" — a reply that opens with the request's title, or the start of it.
+LOG_RE_REF = re.compile(r"\bre\s+([^\n:—]+)", re.I)
+# A numbered reference ("#290"), the way PRs and issues are named in titles and answers.
+PR_NUM = re.compile(r"#(\d+)\b")
+
+
+def names_request(core_title: str, title: str, body: str) -> bool:
+    """Does a later heading refer to THIS request? By its title text anywhere in title or body,
+    or by `re <x>` where x opens the request's title (at least four characters, so a bare
+    `re` or an unrelated short word cannot match by accident)."""
+    if not core_title:
+        return False
+    text = f"{title}\n{body}".lower()
+    wants = [core_title.lower()]
+    # A request that is itself a reply ("re <earlier> — <what>") is answered as "re <what>":
+    # the answer names the request's own matter, not the thread it hangs in (measured
+    # 2026-10-15: such an answer of 2026-10-14 matched nothing and sat open into the next start).
+    m = re.match(r"re\s+[^\n:—]+[—:]\s*(.+)", wants[0])
+    if m and len(m.group(1).strip()) >= 12:
+        wants.append(m.group(1).strip())
+    if any(w in text for w in wants):
+        return True
+    # A request about numbered things ("Windows-Pruefung Kern #290 …") is answered by naming those
+    # numbers ("Windows #290 OK"), not by repeating its title (measured 2026-10-15 on a Windows
+    # instance: answered requests of this shape came back open after the naming rule). ALL of the
+    # request's numbers must be named: one answer about #290 does not close a request for #290 + #292.
+    nums = set(PR_NUM.findall(core_title))
+    if nums and nums <= set(PR_NUM.findall(text)):
+        return True
+    return any(len(x) >= 4 and w.startswith(x)
+               for m in LOG_RE_REF.finditer(text) for x in [m.group(1).strip()] for w in wants)
 
 
 def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tuple]:
@@ -379,9 +412,11 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
 
     The shape of the 2026-10-04 incident and of finding 3 of the Windows check on #193: once
     the cursor passes such a heading, nothing else carries it. Open until one of OUR later
-    headings (any topic, same day or later) is addressed to the sender — a reply in the
-    conversation stream. Wrong only in the safe direction: an answer given elsewhere keeps
-    it listed until we next write to that party.
+    headings (any topic, same day or later) to the sender NAMES it — a reply in the
+    conversation stream to THIS request, never to the sender as a whole (measured 2026-10-14
+    by a collaborator's instance: our one answer about X silently closed the same sender's
+    unanswered Y). Wrong only in the safe direction: an answer given elsewhere, or one that
+    does not name what it answers, keeps the request listed.
     """
     heads: list[tuple] = []  # (date, topic, sender, to_tokens, title, body)
     for rel, text in texts.items():
@@ -408,16 +443,20 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
         # request's title. Naming, not "everything before": one close must not sweep away the
         # requests that are still open.
         to_str = addressees(title or "")
-        core_title = (title.split(to_str, 1)[1].lstrip(": ") if to_str else title or "").strip()[:60]
+        core_full = (title.split(to_str, 1)[1].lstrip(": ") if to_str else title or "").strip()
+        core_title = core_full[:60]
         if core_title and any(party(sender) & tokens(s) and t & to and LOG_CLOSE.search(ti or "")
                               and core_title in b and (d > date or (tp == topic and j > idx))
                               for d, tp, j, s, t, ti, b in heads):
             continue
         # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
-        # another LOG cannot be ordered, so it does not count (safe direction).
+        # another LOG cannot be ordered, so it does not count (safe direction). And it NAMES
+        # the request, the same way the asker's close above has to — one reply closes one
+        # request, not every open one of that sender.
         replied = any(tokens(s) & me and party(sender) & t
                       and (d > date or (tp == topic and j > idx))
-                      for d, tp, j, s, t, _, _ in heads)
+                      and (names_request(core_title, ti, b) or names_request(core_full, ti, b))
+                      for d, tp, j, s, t, ti, b in heads)
         if not replied:
             items.append((date, topic, sender, first_sentence(title, TEXT_CAP) + " (LOG)"))
     return items

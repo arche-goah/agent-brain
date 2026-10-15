@@ -140,7 +140,7 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/changelog-assemble.py=1 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=2 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1
+known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/changelog-assemble.py=1 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=3 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -177,7 +177,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=4 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=4 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-git-sandbox.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -295,6 +295,14 @@ native process opens a temp path from data. Windows run owed by the workstation 
 only bash — the command-line list is read by the script under test through a bash redirect,
 and the repo argument goes to `cd` in bash. No native process opens it; green on Windows the
 same day.
+2026-10-14, test-git-sandbox.sh baselined after the same review: the temp dir crosses into a
+native process as DATA in two places — the global gitconfig path in `GIT_CONFIG_GLOBAL`
+(env, read by git) and the hooks dir written INTO that config file (`core.hooksPath`, read
+by git) — and both go through `nat()`. The repo dirs reach python and git as ARGUMENTS
+(`-C`, argv; Git Bash converts); the hook scripts are sh. It matters in the unsafe
+direction: the negative control asserts that the host hook BLOCKS a plain commit, and an
+unresolvable hooksPath runs no hook, so the control would fail loudly, not pass for the
+wrong reason. Windows run owed at baseline time.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
@@ -451,7 +459,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=7 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
+known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=8 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
 status:    open
@@ -477,7 +485,10 @@ anything PARSE this output? 2026-10-09 commitments.py: yes — effect-check E6 r
 it — so it pins stdout like brain-friction.py (the pin stays). Its sites left the baseline in
 the carrier rework of the same day: the em-dash lines now live in a MESSAGES table and reach
 `print()` through `format()`, which this pattern cannot see — the pin, not the count, is what
-carries this file. Left `open` deliberately — the 12 unpinned sites are fine only
+carries this file. 2026-10-15, open-items.py 7 -> 8 after the same question: the new site is
+the heading of the standing-approval group (`- standing approval — handle these …`); the
+bootup and open-items-gate.cjs parse this output, and the script pins stdout (`OS-9` comment in
+`main()`), so the em dash leaves as UTF-8 on every platform. Left `open` deliberately — the 12 unpinned sites are fine only
 as long as that answer stays no.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
@@ -648,3 +659,24 @@ the defect does not live, the form this register calls C. Reproduced: `node` sta
 via `Git\usr\bin\bash.exe` gets ENOENT, via `Git\bin\bash.exe` (which adds `usr\bin` to PATH)
 finds it. Fixed in the same pass (`psCandidates()`); fixture `test-watch-gate.sh` runs the gate
 with exactly the hook's PATH (node's dir + `Git\cmd`). Zero hits after the fix.
+
+## OS-16 — a fixture bounds a command with `timeout`, which stock macOS does not have
+
+shape: B
+
+invariant: A shell script in the core never calls `timeout`. Stock macOS ships none (GNU
+coreutils via Homebrew names it `gtimeout`), so the call exits 127 there and every check built
+on its output passes or fails for the wrong reason. `perl -e 'alarm …; exec …'` is no substitute
+either: under Git Bash the alarm does not survive the exec and the command runs on (rc 0). Bound a
+command with a background run and a sleeper that kills it (`deadline()` in the two fixtures below).
+pattern:   ^[^#]*(^|[^a-z_`-])timeout [0-9]
+paths:     --include=*.sh scripts helpers
+known:
+instances: 2
+repeat:    no
+status:    closed
+note:      Measured 2026-10-14 on the macOS instance (bash 3.2): `shared-memory-watch-cursor-test.sh`
+(PR #342) failed three checks with `timeout: command not found`; its three "untouched" halves passed
+trivially because the watcher never ran. The search found a second site, `project-dir-test.sh`,
+where the same 127 made "watcher keeps the brain's cursor" pass without a watcher — it now also
+fails when the command did not run. Both fixed in #342; zero hits after the fix.

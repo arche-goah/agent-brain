@@ -1,0 +1,14 @@
+{
+  "_comment": "Instance data for core/scripts/open-items.py and core/helpers/open-items-gate.cjs. Each entry declares a CLASS of open items the operator approved once for good: the session-start list prints them as `standing` in their own group, and the first reply handles them and reports what was done instead of asking \"n I can handle — shall I?\". Only items the agent could handle anyway (`ai`) or that nobody classified yet (`?`) can become `standing`; an item the data gives to a person stays `human`. An `ai` item that matches no class is still asked about. No file, or an empty list, keeps the old behaviour.",
+  "_fields": "name: label printed with each item · kind: request | PR · scope: regex on the request's topic folder or the PR's repo (optional) · audience: tokens, one of which the request's audience must name — its file's `audience:` field or the `AN <who>:` of a LOG heading (optional; never matches a PR) · title: regex on the item text (optional) · excludes: regexes on the item text that keep an item OUT of the class — what stays gated whatever the class says (release, tag, pin, live writes) · granted: the operator's words in quotes plus the date they were said, \"...\" YYYY-MM-DD. An entry without both is refused with a line at session start — the agent cannot grant itself a standing approval.",
+  "classes": [],
+  "_example_classes": [
+    {
+      "name": "shared-memory requests addressed to this machine",
+      "kind": "request",
+      "audience": ["<this-device-id>", "person:<operator>", "os:<this-os>"],
+      "excludes": ["\\b(release|tag|pin|marketplace|publish|deploy)\\b", "\\blive (desk|console|rig)\\b"],
+      "granted": "\"<the operator's words that granted it>\" YYYY-MM-DD"
+    }
+  ]
+}
