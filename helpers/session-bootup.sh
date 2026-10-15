@@ -555,7 +555,8 @@ if [[ -n "${latest:-}" ]]; then
     # glob stays literal and carries no date, so it compares as "no artifact".
     case "$chk" in
       coherence-scan) arts=("$R"/docs/research/coherence-scan/register-*.md "$R"/docs/research/kohaerenz-scan/register-*.md);;
-      memory-dream)   arts=("$R"/docs/research/memory-dream/report-*.md);;
+      # report-*.md = the name before 2026-10-15 (a subagent cannot write a "report" file); still counts.
+      memory-dream)   arts=("$R"/docs/research/memory-dream/dream-*.md "$R"/docs/research/memory-dream/report-*.md);;
       full-audit)     arts=("$R"/docs/research/full-audit/gesamt-*.md);;
       *)              arts=();;
     esac
@@ -765,5 +766,5 @@ if [[ "$HOOK_INPUT" =~ \"source\"[[:space:]]*:[[:space:]]*\"compact\" ]]; then
   printf '%s\n' '-> Claude: this is a compaction of the SAME session — no opening report, no "shall I?" for own items: the operator was asked at the start. Handle own open items and report what was done; only items that need the operator are named. Operator rule 2026-10-10.'
 else
   printf '%s\n' '-> Claude: start the first reply WITH a 1-sentence mini-summary (state of things + what is pending; sources: the bootup block above, open tasks, memory). Operator rule 2026-07-29.'
-  printf '%s\n' '-> Claude: then the "open for us" items, split by who acts: "n I can answer/handle myself — shall I?" (ONE OK; start none of them without it) + "n need you directly" (up to 3: one short bullet each — what, who needs what; more: offer to list them). Counts as digits. Items reported before and still open: say so, louder. None: "nothing open". A NOT-checked source: say so. Classify every "?" item first: core/scripts/open-items.py --classify. Say each item in plain words (what it is, what it is about) — no circle, priority or ledger codes. Items marked wait need no relay. Carrier: core/helpers/open-items-gate.cjs. Operator rule 2026-10-07.'
+  printf '%s\n' '-> Claude: then the "open for us" items, split by who acts: "n I can answer/handle myself — shall I?" (ONE OK; start none of them without it) + "n need you directly" (up to 3: one short bullet each — what, who needs what; more: offer to list them) + items under a standing approval (the operator approved their class once, .claude/rules/open-items-standing.json): handle them and report what was done, no question. Counts as digits. Items reported before and still open: say so, louder. None: "nothing open". A NOT-checked source: say so. Classify every "?" item first: core/scripts/open-items.py --classify. Say each item in plain words (what it is, what it is about) — no circle, priority or ledger codes. Items marked wait need no relay. Carrier: core/helpers/open-items-gate.cjs. Operator rule 2026-10-07.'
 fi

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# covers: watch-gate close-stamp
 # Fixture test for helpers/watch-gate.cjs — both directions.
 # The must-block case is the incident itself (2026-10-09): an answer pushed into the
 # shared-memory repo, addressed to another instance, turn ended, no watcher — the
@@ -7,7 +8,10 @@
 # a note to oneself, someone else's entry, a push in an EARLIER turn, a re-issue. A dead
 # pid in the lock (an expired Monitor) must count as not armed. CI side (2026-10-13): a push
 # into a checkout with workflows, a PR or a merge naming a repo, each without a ci-watch on
-# that repo in the turn, must block; a push into a repo without workflows must not.
+# that repo in the turn, must block; a push into a repo without workflows must not. Hand step
+# (2026-10-11): a request to the human in the reply without a waiter in the turn must block; a
+# Monitor or background waiter, a visible "⚙ no watcher:" line, past tense and a quoted request
+# must not. GitHub side: a ticket or a question in a thread without a repo watch must block.
 # Usage: bash scripts/test-watch-gate.sh (exit 0 = pass)
 set -u
 T="$(mktemp -d)"
@@ -41,9 +45,9 @@ tool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","n
 asst() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
 PUSH="cd ~/Projects/brain-shared-memory && git commit -q -m x && git push -q"
 
-check() { # $1 name, $2 transcript, $3 block|allow, $4 project root, [$5 stop_hook_active]
+check() { # $1 name, $2 transcript, $3 block|allow, $4 project root, [$5 stop_hook_active]; $SID = session id
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s}' "$(native "$2")" "${5:-false}" \
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"}' "$(native "$2")" "${5:-false}" "${SID:-}" \
     | CLAUDE_PROJECT_DIR="$(native "$4")" SHARED_MEMORY_REPO="$(native "$SM")" SHARED_MEMORY_SELF="ws" \
       node "$G" 2>&1)"
   if [ "$3" = block ]; then
@@ -157,6 +161,88 @@ check "waiter, then the operator's /mcp echo, then the reply" "$T/r5.jsonl" allo
   user "$CAVEAT"; user "$CMD"; user "$OUT"; asst "Please run /mcp to reconnect again."; } > "$T/r6.jsonl"
 check "negative control: /mcp echo, reload asked, no waiter" "$T/r6.jsonl" block "$R"
 
+# --- a hand step asked of the human (class 2026-10-11: "onPC must be running" asked, no watcher, the operator reported the start)
+{ user "check the desk"; tool Bash "git status"; asst "Please start onPC and load the show; I check the engine afterwards."; } > "$T/h1.jsonl"
+check "hand step asked, no waiter" "$T/h1.jsonl" block "$R"
+{ user "check the desk"; tool Monitor "bash scripts/onpc-watch.sh"; asst "Please start onPC and load the show; the watch reports the engine."; } > "$T/h2.jsonl"
+check "hand step asked, Monitor armed in the turn" "$T/h2.jsonl" allow "$R"
+{ user "check the desk"; tool Bash "bash scripts/wait-link.sh sw-foh 900" bg; asst "Please plug in the uplink cable; the link watch reports when it is up."; } > "$T/h3.jsonl"
+check "hand step asked, background waiter armed" "$T/h3.jsonl" allow "$R"
+{ user "check the desk"; tool Bash "git status"; asst "Could you switch on the router? ⚙ no watcher: office network, no probe allowed from here."; } > "$T/h4.jsonl"
+check "hand step asked, no-watcher line names why" "$T/h4.jsonl" allow "$R"
+{ user "check the desk"; tool Bash "git status"; asst "onPC must be running for the next step."; } > "$T/h5.jsonl"
+check "necessity form (onPC must be running), no waiter" "$T/h5.jsonl" block "$R"
+{ user "check the desk"; tool Bash "git status"; asst "I started onPC through the launcher and the engine answers."; } > "$T/h6.jsonl"
+check "no request, past tense" "$T/h6.jsonl" allow "$R"
+{ user "check the desk"; tool Bash "git status"; asst 'The ledger quotes the old reply "please start onPC" as the incident.'; } > "$T/h7.jsonl"
+check "request only quoted" "$T/h7.jsonl" allow "$R"
+mkdir -p "$R/.claude/rules"; printf '{"hand_step_patterns":["\\\\bzzhandzz\\\\b"]}\n' > "$R/.claude/rules/watch-gate.json"
+{ user "check the desk"; tool Bash "git status"; asst "zzhandzz the desk now."; } > "$T/h8.jsonl"
+check "instance hand-step pattern extends the built-ins" "$T/h8.jsonl" block "$R"
+rm -f "$R/.claude/rules/watch-gate.json"
+
+# --- a ticket or a question posted on GitHub (class 2026-10-11: a ticket opened, covered only by a collab-watch that happened to run)
+{ user "file it"; tool Bash "gh issue create -R o/r --title x --body 'the limit'"; asst "Ticket opened."; } > "$T/i1.jsonl"
+check "issue created, no repo watch" "$T/i1.jsonl" block "$R"
+{ user "ask"; tool Bash "gh pr comment 7 -R o/r --body 'Which head did you test, please?'"; asst "Asked."; } > "$T/i2.jsonl"
+check "question posted as a comment, no repo watch" "$T/i2.jsonl" block "$R"
+{ user "report"; tool Bash "gh pr comment 7 -R o/r --body 'macOS check at abc: 50 pass, 0 fail.'"; asst "Reported."; } > "$T/i3.jsonl"
+check "a comment that only reports" "$T/i3.jsonl" allow "$R"
+live_lock "$R/.claude-state/collab-watch/repo-activity-o.pid"
+check "issue created, collab-watch repo watch lives" "$T/i1.jsonl" allow "$R"
+rm -rf "$R/.claude-state"
+
+# --- the close turn (coherence scan 2026-10-15, P1-2): skill session-close arms no watcher it
+# will not be alive to read and lists each item as an open end instead. A close stamp of this
+# session and turn passes exactly the listed items; a stamp without the listing, another
+# session's stamp, a stamp older than the turn, or no stamp at all still block.
+toolid() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+result() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":%s}]}}\n' "$1" "$(js "$2")"; }
+CLOSE_LINE="- 2026-10-15 10:00:00 | main | close"
+stamp() { # $1 stamp session id, $2 open-end lines of this close's entry (may be empty)
+  mkdir -p "$R/.claude-state" "$R/docs/maintenance"
+  printf '%s\n%s\n' "$1" "$CLOSE_LINE" > "$R/.claude-state/session-close.stamp"
+  { echo "- 2026-10-14 09:00:00 | main | close"; echo "  open end: o/tool-suite #9 listed by an OLDER entry"
+    echo "$CLOSE_LINE"; echo "  topic: fixture close"; [ -n "$2" ] && printf '%s\n' "$2"
+    echo "- 2026-10-16 08:00:00 | main | close"; echo "  open end: o/tool-suite #9 listed by a LATER entry"; } > "$R/docs/maintenance/session-log.md"
+}
+PRE="bash core/helpers/session-closing.sh --pre-commit --session S1"
+{ user "close the session"; tool Bash "$PRE"; toolid tu1 "gh pr create --repo o/tool-suite --title x --body-file b.md"
+  result tu1 "https://github.com/o/tool-suite/pull/9"; asst "Persisted - you can shut down."; } > "$T/cs1.jsonl"
+SID=S1
+stamp S1 "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp + PR and CI listed as open ends" "$T/cs1.jsonl" allow "$R"
+stamp S1 ""
+check "close stamp without the listing (older/later entries do not count)" "$T/cs1.jsonl" block "$R"
+stamp S1 "  open end: o/tool-suite #90 awaits CI"
+check "close stamp listing another PR number (#90 is not #9)" "$T/cs1.jsonl" block "$R"
+stamp S1 "  open end: o/other-suite #9 awaits CI"
+check "close stamp listing the number in another repo" "$T/cs1.jsonl" block "$R"
+stamp OTHER "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp of another session" "$T/cs1.jsonl" block "$R"
+stamp "" "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp without a session id (older harness), close ran in this turn" "$T/cs1.jsonl" allow "$R"
+rm -rf "$R/.claude-state"
+check "no close stamp, entry listed anyway" "$T/cs1.jsonl" block "$R"
+stamp S1 "  open end: o/tool-suite #9 awaits CI and review"
+{ user "close the session"; toolid tu1 "gh pr create --repo o/tool-suite --title x"; result tu1 "https://github.com/o/tool-suite/pull/9"; asst "done"; } > "$T/cs2.jsonl"
+check "close stamp, but this turn never ran the close" "$T/cs2.jsonl" block "$R"
+{ user "close the session" "2099-01-01T00:00:00Z"; tool Bash "$PRE"; toolid tu1 "gh pr create --repo o/tool-suite --title x"
+  result tu1 "https://github.com/o/tool-suite/pull/9"; asst "done"; } > "$T/cs3.jsonl"
+check "close stamp written before the turn began" "$T/cs3.jsonl" block "$R"
+{ user "close the session"; tool Bash "$PRE"; tool Bash "$PUSH"; asst "Persisted - you can shut down."; } > "$T/cs4.jsonl"
+fresh; entry close-request.md ws mac
+stamp S1 "  open end: close-request (shared memory) awaits the answer from mac"
+check "close stamp + shared-memory request listed by its file name" "$T/cs4.jsonl" allow "$R"
+stamp S1 "  open end: some other request"
+check "close stamp, shared-memory request not listed" "$T/cs4.jsonl" block "$R"
+{ user "close the session"; tool Bash "$PRE"; toolid tu1 "gh pr create --repo o/tool-suite --title x"; result tu1 "https://github.com/o/tool-suite/pull/9"
+  asst "Persisted. Please start onPC tomorrow."; } > "$T/cs5.jsonl"
+stamp S1 "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp never covers a hand step asked of the human" "$T/cs5.jsonl" block "$R"
+SID=""
+rm -rf "$R/.claude-state" "$R/docs"
+
 # Windows: the hook does not run in Git Bash (measured 2026-10-11) — its PATH holds Git\cmd,
 # not Git\usr\bin, so a bare `ps` is ENOENT and every live watcher read as dead. The gate must
 # find Git's ps.exe itself. Run it with exactly that PATH: node's dir + Git\cmd.
@@ -194,7 +280,7 @@ hcli drop "$id" >/dev/null
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));
 ' > "$T/stub.cjs"
 G0="$G"; G="$T/stub.cjs"; before=$fail; fail=0
-for c in t1 t2 p1 r1 r4 c1 c7 m1 p3; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2 cs2 cs5; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
 caught=$fail; G="$G0"; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed every must-block case"
 

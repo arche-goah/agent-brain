@@ -21,6 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import git_sandbox  # noqa: E402,F401 - the host git config never reaches a fixture repo
 
 
 def load(name: str):

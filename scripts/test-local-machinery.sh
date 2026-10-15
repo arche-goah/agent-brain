@@ -246,6 +246,17 @@ out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" && grep -q 'clone=1
   && ok "clone-of-published-suite-loud-even-on-main" || bad "clone-of-published-suite-loud-even-on-main: $out"
 decl "$(printf '{"alpha":{"%s":{"until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
 out=$(run); [[ -z "$out" ]] && ok "clone-declared-alpha-silent" || bad "clone-declared-alpha-silent: $out"
+# The same clone wired outside .mcp.json: `claude mcp add -s local` writes ~/.claude.json
+# projects[<brain>].mcpServers, `-s user` its top-level mcpServers. Both feed this brain.
+rm -f "$T/b/.mcp.json" "$T/b/.claude/rules/local-machinery.json"
+srv="$(printf '{"s":{"command":"node","args":["%s"]}}' "$(nat "$T/suite/server.js")")"
+printf '{"projects":{"%s":{"mcpServers":%s}}}' "$(nat "$T/b")" "$srv" > "$T/fakehome/.claude.json"
+out=$(run); grep -q 'clone=1' <<< "$out" && ok "clone-in-local-scope-loud" || bad "clone-in-local-scope-loud: $out"
+printf '{"projects":{"%s":{"mcpServers":%s}}}' "$(nat "$T/suite")" "$srv" > "$T/fakehome/.claude.json"
+out=$(run); [[ -z "$out" ]] && ok "local-scope-of-another-project-silent" || bad "local-scope-of-another-project-silent: $out"
+printf '{"mcpServers":%s}' "$srv" > "$T/fakehome/.claude.json"
+out=$(run); grep -q 'clone=1' <<< "$out" && ok "clone-in-user-scope-loud" || bad "clone-in-user-scope-loud: $out"
+rm -f "$T/fakehome/.claude.json"
 rm -rf "$T/fakehome/.claude/plugins/marketplaces" "$T/b/.mcp.json" "$T/b/.claude/rules/local-machinery.json"
 
 # --- carrier coverage: one planted item per carrier, each reported, each control red -----

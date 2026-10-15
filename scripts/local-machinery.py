@@ -239,11 +239,26 @@ def scan_stop_checks(C):
 
 # ---------------------------------------------------------------- other carriers
 
+def mcp_servers(C):
+    """Every MCP server wired into this brain, from all three places Claude Code reads: the
+    repo's `.mcp.json`, and `~/.claude.json` — user scope (`mcpServers`) and local scope
+    (`projects[<this brain>].mcpServers`, what `claude mcp add -s local` writes). Reading only
+    `.mcp.json` left a suite clone wired in local scope invisible to every check below."""
+    out = dict((load(C.root / ".mcp.json") or {}).get("mcpServers") or {})
+    cj = load(C.home / ".claude.json") or {}
+    out.update({f"user:{k}": v for k, v in (cj.get("mcpServers") or {}).items()})
+    me = os.path.normcase(os.path.realpath(str(C.root)))
+    for key, proj in (cj.get("projects") or {}).items():
+        if isinstance(proj, dict) and os.path.normcase(os.path.realpath(key)) == me:
+            out.update({f"local:{k}": v for k, v in (proj.get("mcpServers") or {}).items()})
+    return {k: v for k, v in out.items() if isinstance(v, dict)}
+
+
 def scan_mcp(C):
     """MCP servers that run a file inside this brain (servers from suite checkouts are covered
     by the off-main check, package-manager servers are not local machinery)."""
     out = []
-    for name, srv in ((load(C.root / ".mcp.json") or {}).get("mcpServers") or {}).items():
+    for name, srv in mcp_servers(C).items():
         for tok in [srv.get("command") or ""] + [str(x) for x in srv.get("args") or []]:
             p = pathlib.Path(tok) if os.path.isabs(tok) else C.root / tok
             if tok and p.is_file() and C.under(p, C.root) and not C.in_core(p):
@@ -633,10 +648,10 @@ def same_tree(key, top):
 
 
 def tool_source_tops(C):
-    """Top-level checkouts outside this brain that feed it an MCP server (`.mcp.json`) or a
-    skill symlink -> {top: branch}."""
+    """Top-level checkouts outside this brain that feed it an MCP server (any scope, see
+    mcp_servers) or a skill symlink -> {top: branch}."""
     paths = []
-    for srv in ((load(C.root / ".mcp.json") or {}).get("mcpServers") or {}).values():
+    for srv in mcp_servers(C).values():
         for tok in [srv.get("command") or ""] + [str(x) for x in srv.get("args") or []]:
             if os.path.isabs(tok) and os.path.exists(tok):
                 paths.append(pathlib.Path(tok))

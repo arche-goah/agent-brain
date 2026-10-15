@@ -93,16 +93,16 @@ console.log(m === null ? 'PASS directory-spelling-ignored' : 'FAIL directory-spe
 // were green against a workflow without assertReport, because the crash read as a refusal.
 console.log(typeof assertReport === 'function' ? 'PASS assertReport-defined' : 'FAIL assertReport-defined')
 const rr = (p, b) => {
-  try { assertReport('/scratch/report-2026-10-05.md', p, b, 'fixture'); return null }
+  try { assertReport('/scratch/dream-2026-10-05.md', p, b, 'fixture'); return null }
   catch (e) { return (e instanceof Error && !(e instanceof ReferenceError) && /^fixture:/.test(e.message)) ? e.message : 'CRASH' }
 }
 const loud = (m) => m !== null && m !== 'CRASH'
-console.log(rr('/scratch/report-2026-10-05.md', 1234) === null ? 'PASS report-written-silent' : 'FAIL report-written-silent')
-console.log(rr('C:\\x\\report-2026-10-05.md', 10) === null ? 'PASS report-directory-spelling-ignored' : 'FAIL report-directory-spelling-ignored')
+console.log(rr('/scratch/dream-2026-10-05.md', 1234) === null ? 'PASS report-written-silent' : 'FAIL report-written-silent')
+console.log(rr('C:\\x\\dream-2026-10-05.md', 10) === null ? 'PASS report-directory-spelling-ignored' : 'FAIL report-directory-spelling-ignored')
 console.log(loud(rr('', 0)) ? 'PASS empty-report-path-loud' : 'FAIL empty-report-path-loud')
 console.log(loud(rr('/scratch/other.md', 50)) ? 'PASS wrong-report-path-loud' : 'FAIL wrong-report-path-loud')
-console.log(loud(rr('/scratch/report-2026-10-05.md', 0)) ? 'PASS zero-byte-report-loud' : 'FAIL zero-byte-report-loud')
-console.log(loud(rr('/scratch/report-2026-10-05.md', undefined)) ? 'PASS unmeasured-report-loud' : 'FAIL unmeasured-report-loud')
+console.log(loud(rr('/scratch/dream-2026-10-05.md', 0)) ? 'PASS zero-byte-report-loud' : 'FAIL zero-byte-report-loud')
+console.log(loud(rr('/scratch/dream-2026-10-05.md', undefined)) ? 'PASS unmeasured-report-loud' : 'FAIL unmeasured-report-loud')
 JS
 
 out="$(FOUND_ALL="$FOUND_ALL" FOUND_ONE_MISSING="$FOUND_ONE_MISSING" node "$TMP/harness.js" 2>&1)" \

@@ -37,6 +37,11 @@ CHECKS (all read-only, no writes, stdlib only):
                      parties.json: every `audience` token resolves (device, person:<p>,
                      os:<os>, everyone); a Windows check — fact file or LOG heading — goes
                      to os:windows unless it says `one-machine: <why>`.
+  10. fields         the routing fields (docs/shared-memory-fields.md), only where a file
+                     USES them: `status` outside the vocabulary; `status: open` without
+                     `next`; `next` naming no device of parties.json (when it exists);
+                     `related` / `supersedes` pointing at no file; `topics` naming a
+                     folder that is not an area (a folder with a LOG.md).
 
 RATCHET (same shape as english-only.py, and for the same reason): the audience/topic
 convention was decided on 2026-08-21 with the explicit note that older files are
@@ -104,6 +109,30 @@ ROOT_EXEMPT = {INDEX, "README.md", "PEOPLE.md"}
 # A LOG is an append-only protocol, not a fact file: no frontmatter schema, no index
 # line required, but it is the thing that grows without bound, so it gets a size check.
 LOG_NAME = "LOG.md"
+# `<area>/OPEN.md` — the generated list of an area's `status: open` entries (written by
+# shared-memory-index.py). An index, not an entry: neither linted as a fact file nor
+# demanded in the index, same rule as `<area>/INDEX.md`.
+OPEN_NAME = "OPEN.md"
+
+# ROUTING FIELDS (agreed 2026-10-14 between the two parties that write the repo; the
+# proposal of 2026-09-22 quoted the operator: "everything cleanly linked and indexed in
+# itself, so that everyone finds their way everywhere automatically and does not have to
+# search deliberately"). All five are OPTIONAL — an entry without them is as valid as
+# before — and the check fires only where an entry USES one:
+#   status      open | decided | superseded | info (default) — plus the settled values the
+#               inbox reader already understood (answered, done, closed), so one vocabulary
+#               serves both tools
+#   next        who is on the move: device ids from parties.json; REQUIRED when status is open
+#   related     repo-relative paths of entries this one belongs with; the generator writes
+#               the reverse direction into the other entry's index line
+#   topics      further areas this entry is filed into WITHOUT a copy or a move
+#   supersedes  the repo-relative path of the entry this one replaces
+# Lists are written `[a, b]`, `a, b`, or as `- a` block lines under the key.
+# `draft` is in the vocabulary because the repo already used it (one entry, measured
+# 2026-10-14): a proposal not yet sent is neither open for anyone nor plain information.
+VALID_STATUS = {"open", "decided", "superseded", "info", "answered", "done", "closed", "draft"}
+PATH_FIELDS = ("related", "supersedes")
+FIELDS_SINCE = "2026-10-14"
 
 # From the repo's OWN README (section Format), not from the brain's auto-memory schema:
 # this repo has `decision` and does not have `user`. Copying the brain's four across
@@ -314,24 +343,70 @@ def frontmatter(text: str) -> dict | None:
         return None
     out: dict = {}
     section = None
+    last: tuple[dict, str] | None = None   # the key a `- item` block line appends to
     for raw in text[3:end].splitlines():
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
         indented = raw[:1].isspace()
         line = raw.strip()
+        if line.startswith("- ") and last:
+            # block list: `related:` followed by `- a/b.md` lines (any indentation)
+            holder, key = last
+            cur = holder.get(key)
+            holder[key] = (cur if isinstance(cur, list) else []) + [line[2:].strip().strip('"').strip("'")]
+            continue
         if ":" not in line:
             continue
         k, _, v = line.partition(":")
         k, v = k.strip(), v.strip().strip('"').strip("'")
         if indented and section:
             out.setdefault(section, {})[k] = v
+            last = (out[section], k)
         elif v == "":
             section = k
             out.setdefault(k, {})
+            last = (out, k)
         else:
             section = None
             out[k] = v
+            last = (out, k)
     return out
+
+
+def listify(v) -> list[str]:
+    """A list field as the writer wrote it — `[a, b]`, `a, b`, a block list (already a
+    list here) or a single value — as a clean list of strings."""
+    if v is None or v == "" or v == {}:
+        return []
+    if isinstance(v, list):
+        items = v
+    else:
+        s = str(v).strip()
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1]
+        items = s.split(",")
+    return [i.strip().strip('"').strip("'") for i in items if i and i.strip().strip('"').strip("'")]
+
+
+def areas_of(repo: Path) -> set[str]:
+    """An area is a top-level folder that carries a LOG.md — the same definition the
+    'project without an area' advice uses when it says what to create."""
+    return {p.parent.name for p in repo.glob(f"*/{LOG_NAME}")}
+
+
+def resolve_target(target: str, repo: Path, stems: dict[str, str] | None = None) -> str | None:
+    """A `related` / `supersedes` value as a repo-relative path, or None. The convention is
+    the path (`<area>/<slug>.md`); a bare slug or `<area>/<slug>` is accepted the way check
+    5 accepts a wikilink, because that is how the first real entries wrote it."""
+    t = target.strip().strip("[]")
+    if not t:
+        return None
+    if (repo / t).is_file():
+        return t
+    if stems is not None:
+        return stems.get(t.split("/")[-1].removesuffix(".md"))
+    hits = [p.relative_to(repo).as_posix() for p in repo.glob(f"*/{t.split('/')[-1].removesuffix('.md')}.md")]
+    return hits[0] if len(hits) == 1 else None
 
 
 def load_baseline(path: Path) -> set[str]:
@@ -364,10 +439,43 @@ def fact_files(repo: Path) -> list[Path]:
         # consumer of the index STRUCTURE has to know that sub-indexes exist. Without
         # this, generating the two-level index made the linter report all 142 entries as
         # missing from the index and the five new topic indexes as schema-less files.
-        if rel.name in (LOG_NAME, INDEX):
+        if rel.name in (LOG_NAME, INDEX, OPEN_NAME):
             continue
         out.append(p)
     return out
+
+
+def field_findings(f: dict, rel: str, meta: dict, repo: Path, areas: set[str],
+                   devices: set[str] | None) -> None:
+    """10. The routing fields, judged only where the entry uses them. `devices` is None
+    when the repo carries no parties.json — then `next` is not resolved (nothing to resolve
+    against), the other checks still run."""
+    def add(issue: str, **kw) -> None:
+        f["fields"].append({"file": rel, "issue": issue, **kw})
+
+    status = str(meta.get("status", "") or "").strip().lower()
+    if status and status not in VALID_STATUS:
+        add("status outside the vocabulary", status=status, allowed=sorted(VALID_STATUS))
+    nxt = listify(meta.get("next"))
+    # `next` is required with `open` only for entries dated FIELDS_SINCE or later: measured
+    # the day the rule was written, 41 entries already carried `status: open` (the inbox
+    # reader's convention) and none a `next` — judging them would turn the lint red for
+    # debts nobody made. Same ratchet idea as AUDIENCE_SINCE, keyed on the entry's own date.
+    if status == "open" and not nxt and str(meta.get("date", "") or "") >= FIELDS_SINCE:
+        add("status open without next", fix="name who is on the move (`next: <device-id>`)")
+    if devices is not None:
+        for d in nxt:
+            if d.lower() not in devices:
+                add("next names no device of parties.json", device=d)
+    for field in PATH_FIELDS:
+        for target in listify(meta.get(field)):
+            if resolve_target(target, repo) is None:
+                add(f"{field} points at no file", target=target,
+                    fix="a repo-relative path like `<area>/<slug>.md`")
+    for t in listify(meta.get("topics")):
+        if t not in areas:
+            add("topics names a folder that is not an area", topic=t,
+                fix="an area is a folder with a LOG.md; create it or fix the name")
 
 
 def audience_findings(f: dict, where: str, audience: str, what: str, parties: dict,
@@ -426,7 +534,7 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
     f: dict[str, list] = {k: [] for k in (
         "index_drift", "frontmatter", "name_mismatch", "topic_mismatch",
         "unresolved_links", "limits", "archive", "baseline", "project_without_area",
-        "audience")}
+        "audience", "fields")}
 
     index_path = repo / INDEX
     if not index_path.is_file():
@@ -446,6 +554,8 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
     baseline = load_baseline(baseline_path or baseline_for(repo))
     parties = _parties.load(repo)
     known = _parties.known(parties)
+    devices = {d.lower() for d in _parties.devices(parties)} if parties else None
+    areas = areas_of(repo)
     supersedes = supersession_re(repo)
     superseded: dict[str, list] = {}
 
@@ -572,6 +682,8 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
                 audience_findings(f, rel, str(meta.get("audience") or ""),
                                   f"{p.stem}\n{fm.get('description') or ''}", parties, known,
                                   escape=text)
+            # 10. routing fields — no ratchet: they are optional, judged only where used
+            field_findings(f, rel, meta, repo, areas, devices)
 
         # 5. dead wikilinks — targets are name slugs, resolved across the whole repo.
         # Code is stripped first (a bash `[[ … ]]` is not a link), and a target may
@@ -691,7 +803,8 @@ def write_baseline(repo: Path, baseline_path: Path | None = None) -> int:
 # --staged (pre-commit): the categories that judge an ENTRY itself. Repo-wide states (index
 # drift, LOG size, baseline, areas) stay with the full run — a gate on them would block every
 # commit for debts the writer did not make.
-STAGED_CATS = ("audience", "frontmatter", "name_mismatch", "topic_mismatch", "unresolved_links")
+STAGED_CATS = ("audience", "frontmatter", "name_mismatch", "topic_mismatch", "unresolved_links",
+               "fields")
 
 
 def only_staged(repo: Path, r: dict) -> dict:
@@ -759,7 +872,7 @@ def main() -> int:
         return 0
     if not total and not advisory:
         print(f"shared-memory-lint: {r['scanned']} file(s) checked, 0 findings")
-        print("all clean (index, frontmatter, topics, links, limits, archive, areas).")
+        print("all clean (index, frontmatter, topics, links, limits, archive, areas, fields).")
         return 0
 
     print(f"shared-memory-lint: {r['scanned']} file(s) checked, {total} finding(s), "
