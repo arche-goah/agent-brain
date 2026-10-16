@@ -109,7 +109,7 @@ rm -rf "$R/.claude-state"
 OWN="$T/own-state"
 live_lock "$OWN/repo-activity-o.pid"
 check "PR created, own-state collab-watch not registered" "$T/p1.jsonl" block "$R"
-mkdir -p "$R/.claude-state"; echo "$OWN" > "$R/.claude-state/collab-watch-states"
+mkdir -p "$R/.claude-state"; (cygpath -m "$OWN" 2>/dev/null || echo "$OWN") > "$R/.claude-state/collab-watch-states"  # Windows form, as collab-watch.sh writes it
 check "PR created, own-state collab-watch registered" "$T/p1.jsonl" allow "$R"
 live_lock "$OWN/shared-memory-watch.pid"
 check "pushed answer, own-state collab-watch registered" "$T/t1.jsonl" allow "$R"
