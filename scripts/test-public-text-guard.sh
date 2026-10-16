@@ -102,6 +102,9 @@ rc=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 1 -
 rc=$(printf '%s' '{"tool_name":"Edit","tool_input":{"file_path":"x","new_string":"zorbalina"}}' \
      | CLAUDE_PROJECT_DIR="$NT/brain" node "$GATE" >/dev/null 2>&1; echo $?)
 [ "$rc" = 0 ] && ok "non-Bash tool allows" || bad "non-Bash tool allows (rc=$rc)"
+# the PowerShell tool carries the same command and is the same channel (Windows, 2026-10-16)
+rc=$(printf '%s' '{"tool_name":"PowerShell","tool_input":{"command":"gh pr comment 1 -R o/pub --body zorbalina"}}'      | CLAUDE_PROJECT_DIR="$NT/brain" node "$GATE" >/dev/null 2>&1; echo $?)
+[ "$rc" = 2 ] && ok "PowerShell write to a public repo blocks" || bad "PowerShell write to a public repo blocks (rc=$rc)"
 # the visibility answer is cached for the next call
 grep -q '"o/pub"' "$B/.claude-state/repo-visibility.json" 2>/dev/null && ok "visibility cached" || bad "visibility cached"
 

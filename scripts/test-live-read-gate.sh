@@ -102,6 +102,8 @@ check "5 grep/sed only" deny "$T/t5.jsonl" mcp__nettool__health '{}'
 
 # 6. Bash network probe at a configured address, nothing read
 check "6 ping a configured address, nothing read" deny "$T/t1.jsonl" Bash '{"command":"ping -c 1 192.0.2.249"}'
+# 6b. the same probe through the PowerShell tool is the same channel (Windows, 2026-10-16)
+check "6b ping through PowerShell, nothing read" deny "$T/t1.jsonl" PowerShell '{"command":"ping -n 1 192.0.2.249"}'
 
 # 7. Bash that merely MENTIONS the address in a grep: reading, not touching
 check "7 grep for an address in docs" allow "$T/t1.jsonl" Bash '{"command":"grep -rn 192.0.2.249 docs/"}'
