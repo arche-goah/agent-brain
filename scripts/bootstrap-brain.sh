@@ -116,6 +116,8 @@ cp "$CORE_SRC/templates/rules-instance/stop-checks.json" .claude/rules/
 # live-read-gate for weeks without its file, a silent no-op.
 cp "$CORE_SRC/templates/rules-instance/live-read.json" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/absence-sources.json" .claude/rules/
+# Language data of conditional-order-gate (built-ins English; the operator's words go here).
+cp "$CORE_SRC/templates/rules-instance/condition-patterns.json" .claude/rules/
 cp "$CORE_SRC/templates/leak-names.json" .claude/rules/leak-names.json
 # MEMORY.md seed: Claude Code creates Auto-Memory itself — the seed documents the format.
 mkdir -p docs/maintenance
