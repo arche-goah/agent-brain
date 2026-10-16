@@ -129,6 +129,15 @@ check "LOG entry classified under its full id" "$f" allow "$CLL"
 CLX="$T/cwd-cls-log-other"; mkdir -p "$CLX/.claude-state"
 printf '%s\n' '{"core/LOG 2026-10-07 peer-b: AN inst-a: another note":{"class":"human","why":"asks the operator"}}' > "$CLX/.claude-state/open-items-class.json"
 check "LOG entry with a class for another text stays unclassified" "$f" block "$CLX"
+# 8d — a cut that ends on a blank: --classify strips its key, so the gate must strip the id
+# too. Measured 2026-10-16 (macOS instance): "…re HARD " stayed `?` after classifying, every
+# turn end blocked. The 40th character of this text is a blank.
+X28="$(printf 'x%.0s' $(seq 28))"
+QT="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-10-07 core/LOG 2026-10-07 peer-b — peer-b: AN inst-a: ${X28} tail — first report"
+f="$T/8d.jsonl"; { boot_ok startup "$QT"; user "stand?"; asst "1 needs you: the 2026-10-07 note from peer-b."; } > "$f"
+CLT="$T/cwd-cls-log-blank"; mkdir -p "$CLT/.claude-state"
+printf '{"core/LOG 2026-10-07 peer-b: AN inst-a: %s":{"class":"human","why":"asks the operator"}}\n' "$X28" > "$CLT/.claude-state/open-items-class.json"
+check "LOG entry whose 40-char cut ends on a blank is classified" "$f" allow "$CLT"
 
 # 9 — the bootup did not arrive.
 f="$T/9a.jsonl"; { boot_cancel; user "stand?"; asst "All good."; } > "$f"
