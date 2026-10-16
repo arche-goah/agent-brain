@@ -45,8 +45,8 @@
       "marker": "WATCH-GATE",
       "cmd": "core/helpers/watch-gate.cjs",
       "mode": "block",
-      "extract": "WATCH-GATE",
-      "template": "A reaction is expected, but no watcher is running",
+      "extract": "no watcher lives\\. ([^—]+)",
+      "template": "No watcher for an expected reaction: {1}",
       "maxLength": 200
     },
     {

@@ -286,19 +286,41 @@ function hasWorkflows(dir) {
 /** owner/repo of `origin` when it is a GitHub remote, '' otherwise (then nothing is required). */
 function originSlug(dir) {
   let url;
-  try { url = execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000 }).trim(); } catch (e) { return ''; }
+  try { url = execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (e) { return ''; }
   const m = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/i.exec(url);
   return m ? m[1].toLowerCase() : '';
 }
+/** Does the NAMED repo run Actions? A repo without workflows starts no run, so there is nothing
+ *  to watch (measured 2026-10-16 on both the macOS and the Windows instance: `gh pr create` /
+ *  `gh pr merge -R <private repo without CI>` blocked the turn end, with every watcher alive).
+ *  A local checkout of that repo answers first; else one `gh api` call (a 404 = no workflows
+ *  folder). Anything unmeasurable counts as "has CI" — the gate errs toward the watch.
+ *  WATCH_GATE_GH is only a fixture seam (a fake gh); nothing in production sets it. */
+function namedRepoHasWorkflows(slug, dirs) {
+  for (const d of dirs) if (originSlug(d) === slug) return hasWorkflows(d);
+  try {
+    const n = execFileSync(process.env.WATCH_GATE_GH || 'gh',
+      ['api', `repos/${slug}/contents/.github/workflows`, '--jq', 'length'],
+      { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    return n !== '0';
+  } catch (e) {
+    return !/\b404\b|Not Found/i.test(String((e.stderr || '') + (e.stdout || '')));
+  }
+}
 /** Repos whose CI this turn's shell calls set running: a push into a checkout with workflows,
- *  a PR opened or merged with the repo named (a merge is a push to the base branch). */
+ *  a PR opened or merged with the repo named (a merge is a push to the base branch) when that
+ *  repo has workflows. */
 function ciStarted(shell, root) {
   const out = new Set();
   for (const c of shell) {
     const named = /\bgh\s+pr\s+(?:create|merge)\b/.test(c.cmd);
     if (!named && !/\bgit\b[\s\S]*\bpush\b/.test(c.cmd)) continue;
     const flag = named && REPO_FLAG.exec(c.cmd);
-    if (flag) { out.add(flag[1].toLowerCase()); continue; }
+    if (flag) {
+      const slug = flag[1].toLowerCase();
+      if (namedRepoHasWorkflows(slug, [callDir(c.cmd, root), root])) out.add(slug);
+      continue;
+    }
     const dir = callDir(c.cmd, root);
     if (!hasWorkflows(dir)) continue;
     const slug = originSlug(dir);
