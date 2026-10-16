@@ -140,6 +140,10 @@ then an explicit release follows.
    protocol: nothing is edited, merged or dropped, and today's entries never move. The
    fold line (or a `WARN session-log fold:` refusal) appears in the output; the fold file
    goes into the close commit with the log. Unset = no fold. The hook path never folds.
+   **It also acknowledges the session audit:** what this session's start listed as a past
+   session ended without this skill, or as a failed session start
+   (`scripts/session-audit.py`, relayed in the first reply), is cleared — that is the
+   one place a finding leaves the list besides `session-audit.py --ack` by hand.
    A `device-status: WARN … push failed` line from above is handled in step 4 like a
    `FAIL shared-memory` line — the commit is local, not arrived.
    `session-closing.sh` also writes `.claude/HANDOFF.md` (git state, last commits,

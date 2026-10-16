@@ -165,6 +165,16 @@ if [ "$pre_commit" -eq 1 ]; then
   close_line="- $TS | $branch | close${sm_line:+ | $sm_line}"
   printf '%s\n%s\n' "$sid" "$close_line" > "$stamp"
   echo "$close_line" >> "$log"
+  # Session audit (operator order 2026-10-11): what this session's start listed as ended
+  # without a close or as a failed start was put in front of the operator (the open-items
+  # gate forced it into the first reply) and this session ends properly — so it is
+  # acknowledged here. Untracked state only; a failure is a WARN line, never a failed close.
+  if [ -f "$HERE/../scripts/session-audit.py" ]; then
+    PY=python3
+    "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+    "$PY" "$HERE/../scripts/session-audit.py" --root "$R" --ack listed 2>&1 \
+      || echo "WARN session audit: acknowledgement failed — the findings repeat at the next start"
+  fi
   exit 0
 fi
 if [ -f "$stamp" ]; then
