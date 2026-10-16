@@ -412,20 +412,49 @@ def md_carrier(sub, carrier):
 
 
 def sections(text):
-    cur, buf, out = "(top)", [], []
+    # A heading inside an HTML comment is no section: the templates carry their example entry
+    # that way (measured 2026-10-16: feedback.md's "YYYY-MM-DD — <title of the rule>").
+    cur, buf, out, comment = "(top)", [], [], False
     for ln in text.splitlines():
-        m = re.match(r"#{2,3} +(.+?)\s*$", ln)
+        m = None if comment else re.match(r"#{2,3} +(.+?)\s*$", ln)
         if m:
             out.append((cur, buf))
             cur, buf = m.group(1), []
         buf.append(ln)
+        o, c = ln.rfind("<!--"), ln.rfind("-->")
+        if o > c:
+            comment = True
+        elif c > o:
+            comment = False
     out.append((cur, buf))
     return [(h, "\n".join(b)) for h, b in out if "\n".join(b).strip()]
 
 
+TEMPLATES = pathlib.Path(__file__).resolve().parent.parent / "templates"
+
+
+def norm(body):
+    return "\n".join(ln.rstrip() for ln in body.strip().splitlines())
+
+
+def template_sections(rel):
+    """The sections of the core template a brain's rule file was bootstrapped from, normalised."""
+    if rel == "CLAUDE.md":
+        t = TEMPLATES / "CLAUDE.md"
+    elif rel == ".claude/rules/feedback.md":
+        t = TEMPLATES / "feedback.md"
+    elif rel.startswith(".claude/rules/") and rel.count("/") == 2:
+        t = TEMPLATES / "rules-instance" / rel.rsplit("/", 1)[1]
+    else:
+        return {}
+    return {h: norm(b) for h, b in sections(read(t, cap=1 << 21))} if t.is_file() else {}
+
+
 def scan_rules(C):
     """Rule text, one item per ## / ### section: a whole file always contains some instance
-    token, a general rule added to it would hide behind the others."""
+    token, a general rule added to it would hide behind the others. A section still identical
+    to the core template it came from is core by origin, not local machinery (measured
+    2026-10-16: a freshly bootstrapped brain reported 18 template sections as general)."""
     files = [C.root / "CLAUDE.md", C.root / "CLAUDE.local.md", C.home / ".claude" / "CLAUDE.md"]
     for base in (C.root / ".claude" / "rules", C.home / ".claude" / "rules"):
         if base.is_dir():
@@ -435,9 +464,13 @@ def scan_rules(C):
         if not f.is_file():
             continue
         rel, seen = C.rel_id(f), {}
+        tmpl = template_sections(rel)
         for head, body in sections(read(f, cap=1 << 21)):
             seen[head] = seen.get(head, 0) + 1
             sid = f"{rel}#{head}" + (f" ({seen[head]})" if seen[head] > 1 else "")
+            if seen[head] == 1 and tmpl.get(head) == norm(body):
+                C.core_hooks.append(("rule", f"{sid} (template)"))
+                continue
             out.append(item("rule", sid, body))
     return out
 
