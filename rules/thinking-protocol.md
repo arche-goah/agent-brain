@@ -168,6 +168,14 @@ defect, found by the coherence scan of a Windows instance: a HARD block without 
    correction names the reach in one line. Measured on a proving brain the same day:
    18 of 24 general-looking operator rules existed only in the instance — written
    down twice (protocol + compact rule), never asked where they belong.
+   **A HARD rule is checked against every other HARD rule before it is written**
+   (operator decision 2026-10-15): two HARD rules that together forbid every option or
+   demand two incompatible actions in one realistic situation cannot be ranked by the
+   hierarchy above — both sit on the same level. Name the situation and resolve it in
+   the same pass (one rule gets the case, the other points there), or take it to the
+   operator per step 3. Measured: a rig rule allowed port-dropping writes only during
+   load-in, another allowed only port-neutral writes during load-in — read together,
+   never; both stood unflagged for weeks.
 3. **On a DISCOVERED, non-harmonizable contradiction** (scan, chance find):
    do NOT decide yourself — explain, discuss with the operator, decide case by case
    which instruction is adopted going forward; then apply step 2.
