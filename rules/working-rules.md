@@ -305,7 +305,13 @@ here. Take the FIRST step that applies:
 5. **Otherwise** (reversible, own terrain, inside the order): do it and report.
 A question ENDS the turn only when the next step of the order cannot proceed without the
 answer AND the answer belongs to the operator — the instance names its list of
-operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
+operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place:
+`.claude/rules/operator-only.json` (template in `templates/rules-instance/`). Read the list in
+both directions (operator decision 2026-10-16): what is on it goes to the operator; what is NOT
+on it, can be settled cleanly alone or between the AIs, is reversible and documented, the AI
+decides without asking — in every brain. `scripts/decision-readiness.py` names at every session
+start a brain where this cannot hold (rule not loaded, list missing, everyday commits and pushes
+behind a permission dialog, or every check switched off).
 Such a question is asked through the question tool, not as closing prose (`intelligence.md`,
 "Presenting to the Operator").
 Named cases (every other turn-end rule points here):

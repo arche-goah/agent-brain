@@ -1,0 +1,31 @@
+{
+  "_comment": [
+    "THE list of matters only the operator decides (rules/working-rules.md, ASK OR ACT: 'the instance names its",
+    "list of operator-only matters in ONE place'). Every prose rule points here instead of listing its own.",
+    "",
+    "The other direction is the point of this file: everything NOT on this list is decided by the AI — alone, or",
+    "between the AIs of the parties involved — when it is reversible, documented (ledger, change log, shared memory)",
+    "and inside the order. Operator decision 2026-10-16 on a proving brain: only what really needs the operator goes",
+    "to the operator; what can be settled cleanly alone or between the AIs, is reversible and documented, is decided",
+    "without asking — in EVERY brain. On top the comparative test applies (rules/intelligence.md): an item goes to",
+    "the operator only if they can decide it better than the AI.",
+    "",
+    "Edit the labels to this operator's words; keep the list short. A matter you add here makes every AI of this",
+    "brain ask about it. scripts/decision-readiness.py names a missing or empty list at every session start."
+  ],
+  "matters": [
+    { "id": "goal", "label": "goal and direction" },
+    { "id": "money", "label": "money" },
+    { "id": "hardware", "label": "hardware, devices, purchases" },
+    { "id": "risk", "label": "risk the operator carries" },
+    { "id": "external", "label": "external effect: making something public, first publication, deployment, a push outside the organisation's repos, social accounts" },
+    { "id": "release", "label": "release and stable pin of the core" },
+    { "id": "core-new", "label": "new functionality in the core (agreed first; follow-up fixes are free)" },
+    { "id": "live", "label": "intervening in a running show or a live system outside its agreed frame" },
+    { "id": "ownership", "label": "who is responsible for what" },
+    { "id": "taste", "label": "taste: how an artefact looks or sounds" },
+    { "id": "hands", "label": "hand steps at a device, the operator's body" },
+    { "id": "people", "label": "relationships with people (collaborators, clients, venues)" },
+    { "id": "deferred", "label": "topics the operator deferred in their own words" }
+  ]
+}
