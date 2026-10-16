@@ -162,7 +162,9 @@ lived only as instance prose on two brains, measured the same day.
    without regression on every instance that uses it (`scripts/device-status.py` shows which
    instance runs what; changelog entries carry the test level they were checked at,
    `(test: T0/T1/T2)`), on the operator's word for the core, and on the suite owner's word plus the
-   operator's for a suite with an owner.
+   operator's for a suite with an owner. "Verified" is measured, not remembered: every instance that
+   runs the beta has a `device-status.py` report on that beta tag within the period, and no open
+   regression is filed against it. The length of the period is the operator's word.
 
 Every stage is reached by a measurement, not by a statement: a stage claimed without its
 evidence (the declaration, the two head checks, the device reports) is not reached.
