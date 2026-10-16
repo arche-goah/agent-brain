@@ -217,7 +217,7 @@ process.stdin.on('end', () => {
   let hook;
   try { hook = JSON.parse(input); } catch (_) { process.exit(0); }
   const tool = String(hook.tool_name || '');
-  const cmd = tool === 'Bash' ? String((hook.tool_input || {}).command || '') : '';
+  const cmd = (tool === 'Bash' || tool === 'PowerShell') ? String((hook.tool_input || {}).command || '') : '';
 
   const hits = loadDomains().filter((d) =>
     d.tools.some((r) => r.test(tool)) || (cmd && d.bash.some((r) => r.test(cmd))));

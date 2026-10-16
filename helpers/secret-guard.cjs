@@ -200,7 +200,7 @@ function check(toolName, toolInput, safetyLevel, instance) {
   if (['Read', 'Edit', 'Write'].includes(toolName)) {
     return checkFilePath(toolInput && toolInput.file_path, level, instance);
   }
-  if (toolName === 'Bash') {
+  if (toolName === 'Bash' || toolName === 'PowerShell') {
     return checkBashCommand(toolInput && toolInput.command, level, instance);
   }
   return { blocked: false, pattern: null };
@@ -214,7 +214,7 @@ async function main() {
     const data = JSON.parse(input);
     const { tool_name, tool_input, session_id, cwd, permission_mode } = data;
 
-    if (!['Read', 'Edit', 'Write', 'Bash'].includes(tool_name)) {
+    if (!['Read', 'Edit', 'Write', 'Bash', 'PowerShell'].includes(tool_name)) {
       return console.log('{}');
     }
 

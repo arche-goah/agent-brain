@@ -140,7 +140,7 @@ function visibility(slug, root) {
 }
 
 function gate(input) {
-  if (!input || input.tool_name !== 'Bash') return 0;
+  if (!input || !['Bash', 'PowerShell'].includes(input.tool_name)) return 0;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
   if (!isWrite(cmd)) return 0;
   const root = brainRoot(input);
