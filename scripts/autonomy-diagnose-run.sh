@@ -116,13 +116,16 @@ fi
 
 # ---------- claude: present, and every flag the run needs
 CL="${DIAG_CLAUDE:-claude}"
-NEED="--safe-mode --tools --add-dir --permission-prompts --no-session-persistence"
 CLAUDE_OK=""
 if command -v "$CL" >/dev/null 2>&1; then
   cv="$("$CL" --version 2>&1 | head -1)"; echo "claude:      $cv" >> "$OUT/env.txt"
   help="$("$CL" --help 2>&1)"
   missing=""
-  for f in $NEED; do printf '%s' "$help" | grep -q -- "$f" || missing="$missing $f"; done
+  # Every flag the agent run needs; a literal list (no word-split variable) and a shell match (no
+  # grep on help text that may carry control characters — OS-5, OS-10).
+  for f in --safe-mode --tools --add-dir --permission-prompts --no-session-persistence; do
+    case "$help" in *"$f"*) ;; *) missing="$missing $f" ;; esac
+  done
   if [ -z "$missing" ]; then
     CLAUDE_OK=1; result claude ok "$cv"
   else
