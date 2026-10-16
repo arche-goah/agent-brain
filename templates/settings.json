@@ -198,7 +198,7 @@
     "brain-core@your-org": true
   },
   "permissions": {
-    "_comment": "A new brain's default scope is the core ONLY — additional suites are enabled/installed exclusively on explicit operator request. The allowlist covers self-setup and self-analysis (core scripts/helpers, git reads, committing, plugin checks); push and settings edits stay ask.",
+    "_comment": "A new brain's default scope is the core ONLY — additional suites are enabled/installed exclusively on explicit operator request. The allowlist covers self-setup and self-analysis (core scripts/helpers, git reads, committing, plugin checks) and the everyday collaboration path: push (also `git -C <repo>`, the form working rule #8 prescribes for a neighbour repo), pull requests and issues. A push used to stay ask: measured 2026-10-16 on a collaborator's brain, every commit and push raised a dialog the human did not understand, and the AI read push as 'needs the operator' — the merge and publish gates (mechanism-guard, operator-only list) carry the real limits, not a permission dialog. Settings edits stay ask; force pushes are denied.",
     "allow": [
       "Bash(python3 core/scripts/*)",
       "Bash(core/scripts/handover-gate.sh)",
@@ -210,6 +210,19 @@
       "Bash(git diff*)",
       "Bash(git add*)",
       "Bash(git commit*)",
+      "Bash(git -C * add*)",
+      "Bash(git -C * commit*)",
+      "Bash(git -C * status*)",
+      "Bash(git -C * log*)",
+      "Bash(git -C * diff*)",
+      "Bash(git -C * pull --ff-only*)",
+      "Bash(git pull --ff-only*)",
+      "Bash(git push*)",
+      "Bash(git -C * push*)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)",
       "Bash(git submodule status*)",
       "Bash(git submodule update*)",
       "Bash(git --version)",
@@ -229,12 +242,13 @@
     "ask": [
       "Edit(.claude/settings.json)",
       "Edit(.claude/settings.local.json)",
-      "Edit(.mcp.json)",
-      "Bash(git push*)",
-      "Bash(git -C * push*)",
-      "Bash(git * push*)"
+      "Edit(.mcp.json)"
     ],
     "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git -C * push --force*)",
+      "Bash(git -C * push -f*)",
       "Read(./.env)",
       "Read(./.env.*)",
       "Edit(./.env)",

@@ -249,7 +249,12 @@ esac
 #    test builds its own sandbox repo, so this needs no network and no real data.
 #    Level 1 against a repo that is NOT cloned must be silent, not an error: an instance
 #    that does not take part in shared memory gets nagged at every single start otherwise.
-_sm="$(SHARED_MEMORY_REPO="$T/not-cloned" SHARED_MEMORY_STATE="$T/sm-state.json" \
+#    Run as an instance OUTSIDE shared memory: since core #363 the check is loud when the
+#    caller takes part (SHARED_MEMORY_SELF, a collab-watch.json, or the org repo existing), so
+#    the caller's own env must not leak in — measured 2026-10-16 on a macOS instance, where
+#    this case failed only because its shell had SHARED_MEMORY_SELF set (CI has none).
+_sm="$(env -u SHARED_MEMORY_SELF -u SHARED_MEMORY_OWNER CLAUDE_PROJECT_DIR="$T" \
+       SHARED_MEMORY_REPO="$T/not-cloned" SHARED_MEMORY_STATE="$T/sm-state.json" \
        bash "$CORE/helpers/shared-memory-check.sh" 2>&1)"; _rc=$?
 if [ "$_rc" -eq 0 ] && [ -z "$_sm" ]; then
   ok "shared-memory check stays silent without a cloned repo"
