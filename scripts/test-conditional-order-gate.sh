@@ -79,9 +79,9 @@ run_case workflow-de block Workflow '{"scriptPath":"core/workflows/coherence-sca
 # --- English built-ins: external commands trip on the first call
 mk "$T/push-after.jsonl" '"after the mac answers, push it"' 0 ''
 run_case push-after block Bash '{"command":"git push origin feat/x"}'
-mk "$T/merge-delegated.jsonl" '"clear it with Emil first, and merge once he answers"' 0 ''
+mk "$T/merge-delegated.jsonl" '"clear it with Alex first, and merge once he answers"' 0 ''
 run_case merge-delegated block Bash '{"command":"gh pr merge 12 -R o/r --merge"}'
-mk "$T/decides-ps.jsonl" '"Emil decides this one; then publish the comment"' 0 ''
+mk "$T/decides-ps.jsonl" '"Alex decides this one; then publish the comment"' 0 ''
 run_case decides-ps block PowerShell '{"command":"gh pr comment 12 -R o/r --body-file n.md"}'
 mk "$T/claude-p.jsonl" '"wait for the CI, then run the headless check"' 0 ''
 run_case claude-p block Bash '{"command":"claude -p --safe-mode < brief.md > out.md"}'
