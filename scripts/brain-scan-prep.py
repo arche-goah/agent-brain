@@ -23,7 +23,8 @@ What it does (read-only on the brain; writes only into --out):
      reports each key appeared; seen twice and not settled = decision-due (if the scan
      finds it again, that is the third time).
   2. MACHINE CHECKS — effect-check, invariant-check (instance register), brain-selftest,
-     local-machinery, commitments, fork-drift (network); each turned into findings of the scan's finding shape.
+     local-machinery, commitments, fork-drift (network), decision-review (how the brain asked and acted
+     alone, from the transcripts); each turned into findings of the scan's finding shape.
      A script absent from this core checkout is reported ONCE as "not available".
   3. DEEP CHECK — one deterministic line per triggered deep check, with why and the price
      measured on the proving brain. It never starts anything.
@@ -296,6 +297,21 @@ def map_fork_drift(rc, out):
     return map_lines("fork-drift", rc, out, "!!", "fork drift summary:", "P2")
 
 
+def map_decision_review(rc, out):
+    """How often this brain asked its human, how often needlessly, and where it acted alone and was corrected.
+    The numbers are the trend; candidates are hints the scan confirms or rejects; a proposal needs two confirmed."""
+    if rc != 0:
+        return [crash("decision-review", rc, out)]
+    lines = [l.strip() for l in out.splitlines() if l.strip()]
+    res = [F("INFO", "decision-review: " + " · ".join(l for l in lines[:3] if not l.startswith("candidates")))]
+    n = sum(1 for l in out.splitlines() if re.match(r"^  [0-9a-f]{8} ", l))
+    if n:
+        res.append(F("INFO", f"decision-review: {n} candidate(s) — confirm or reject each "
+                             "(core/scripts/decision-review.py --confirm/--reject <id>)"))
+    res += [F("P2", "decision-review: " + l[len("PROPOSAL: "):]) for l in lines if l.startswith("PROPOSAL: ")]
+    return res
+
+
 def machine(repo, core, last_date, today):
     py = sys.executable or "python3"
     bash = shutil.which("bash") or "bash"
@@ -313,6 +329,8 @@ def machine(repo, core, last_date, today):
         "brain-selftest.sh": ([bash, str(S / "brain-selftest.sh"), str(repo)], 420),
         "local-machinery.py": ([py, str(S / "local-machinery.py"), "--repo", str(repo)], 120),
         "commitments.py": ([py, str(S / "commitments.py"), "--repo", str(repo), "--days", str(days)], 120),
+        # Reads every transcript of the window: here and not at the session start.
+        "decision-review.py": ([py, str(S / "decision-review.py"), "--root", str(repo), "--days", str(days)], 300),
         # Network (GitHub): here and not at the session start, whose budget is seconds.
         "fork-drift.py": ([py, str(S / "fork-drift.py"), "--brain", str(repo)], 300),
     }
@@ -337,6 +355,8 @@ def machine(repo, core, last_date, today):
         findings += map_lines("commitments", *out["commitments.py"], "loose commitment", "commitments summary:", "P2")
     if "fork-drift.py" in out:
         findings += map_fork_drift(*out["fork-drift.py"])
+    if "decision-review.py" in out:
+        findings += map_decision_review(*out["decision-review.py"])
     if missing:
         findings.append(F("INFO", f"not available in this core checkout: {', '.join(missing)}"))
     return findings, sorted(run_jobs)
