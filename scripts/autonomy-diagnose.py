@@ -504,11 +504,31 @@ def recall(repo, home, cfg, layers, topic):
             hits.append(f"{rel(f, repo, home)} ({n})")
     out.append(f"- found in: {', '.join(hits) if hits else 'nowhere local — the AI cannot know it was tested'}")
     rec = []
+    wired_live_read = False
     for path, label in layers:
         for event, _, cmd in hook_entries(path):
             if event in ("UserPromptSubmit", "PreToolUse") and re.search(r"recall|memory", cmd, re.I):
                 rec.append(f"{event} `{cmd[:100]}` ({label})")
-    out.append("- hooks that hand memory to the AI before it acts: "
+            if event == "PreToolUse" and "live-read-gate" in cmd:
+                wired_live_read = True
+    # live-read-gate hands memory to the AI too: before a live tool runs, the files its domain lists
+    # must have been read in the session. Measured 2026-10-16: a brain with five desk memories as
+    # mandatory reading was reported "none" here — the hook had been looked for by name only.
+    lr = load(os.path.join(repo, ".claude", "rules", "live-read.json"), {}) or {}
+    for d in [d for d in (lr.get("domains") or []) if isinstance(d, dict)]:
+        req = [str(r.get("path", "")) for r in (d.get("required") or []) if isinstance(r, dict) and r.get("path")]
+        mem = [p for p in req if "memory" in p.replace("\\", "/")]
+        hit = 0
+        for p in req:
+            fp = os.path.expanduser(p)
+            fp = fp if os.path.isabs(fp) else os.path.join(repo, fp)
+            hit += any(rx.search(line) for line in read_lines(fp))
+        state = "wired" if wired_live_read else "NOT wired — the list exists, nothing enforces it"
+        tools = ", ".join(f"`{t}`" for t in (d.get("tools") or [])[:2]) or "its tools"
+        rec.append(f"live-read-gate domain `{d.get('name', '?')}` ({state}): {len(req)} mandatory read(s) before {tools}"
+                   + (f", {len(mem)} of them memory" if mem else "")
+                   + (f", {hit} mention `{topic}`" if hit else f", none mentions `{topic}`"))
+    out.append("- what hands memory to the AI before it acts: "
                + ("; ".join(rec) if rec else "none — memory reaches the AI only through the index loaded at start"))
     out.append("")
     return out

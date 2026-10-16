@@ -66,6 +66,19 @@ expect "hook: core stop dispatcher"     "$R" must 'Stop [*] (project, core)'
 expect "hook: instance guard"           "$R" must 'PreToolUse [Bash] (project, instance)'
 expect "recall: topic found in memory"  "$R" must 'desk.md (1)'
 expect "recall: no recall hook"         "$R" must 'none — memory reaches the AI only through the index'
+# live-read-gate as a recall path: a domain whose mandatory reading is a memory file (measured
+# 2026-10-16: a brain with desk memories as mandatory reading was reported "none" here)
+printf '{"domains": [{"name": "desk", "tools": ["^mcp__desk__"], "required": [{"path": "%s"}]}]}\n' \
+  "$(native "$M/desk.md")" > "$B/.claude/rules/live-read.json"
+R5="$T/liveread.md"
+env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$B" --home "$H" > "$R5"
+expect "recall: live-read domain named"  "$R5" must 'live-read-gate domain `desk` (NOT wired'
+expect "recall: memory counted"          "$R5" must '1 mandatory read(s) before `^mcp__desk__`, 1 of them memory, 1 mention'
+cp "$B/.claude/settings.json" "$T/settings.bak"
+printf '{"hooks": {"PreToolUse": [{"matcher": "mcp__.*", "hooks": [{"type": "command", "command": "node core/helpers/live-read-gate.cjs"}]}]}}\n' > "$B/.claude/settings.json"
+env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$B" --home "$H" > "$R5"
+expect "recall: live-read wired"         "$R5" must 'live-read-gate domain `desk` (wired)'
+cp "$T/settings.bak" "$B/.claude/settings.json"; rm -f "$B/.claude/rules/live-read.json"
 expect "secret line still found"        "$R" must '`.claude/rules/secret.md:3` [push]'
 expect "secret redacted"                "$R" must '[REDACTED]'
 expect "secret not in the report"       "$R" mustnot 'ghp_abcdefghij'
