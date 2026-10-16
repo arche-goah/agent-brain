@@ -53,10 +53,14 @@ case "$first" in *'first run measuring in the background'*) ok "--cached: a firs
 [ $((t1 - t0)) -le 2 ] && ok "--cached returns at once" || bad "--cached took $((t1 - t0)) s"
 n=0; while [ ! -s "$C/.claude-state/brain-check.brief" ] && [ "$n" -lt 50 ]; do sleep 0.2; n=$((n + 1)); done
 [ -s "$C/.claude-state/brain-check.brief" ] && ok "--cached: the background run leaves its result" || bad "no background result"
+# Wait for COMPLETION, not for absence (Windows review of #379): on a slow process start "no temporary file yet"
+# and "the run is finished" look the same, so the check waits until the result file is newer than a marker.
+touch "$C/marker"; sleep 1
 second=$(cached)
 case "$second" in *'brain-selftest-test FAILED'*) ok "--cached: the next start shows the stored result";; *) bad "--cached second: '$second'";; esac
 case "$second" in *'(brain-check: result of '*) ok "--cached: the stored result says when it was measured";; *) bad "no time note: '$second'";; esac
-n=0; while ls "$C/.claude-state/brain-check.brief."* >/dev/null 2>&1 && [ "$n" -lt 50 ]; do sleep 0.2; n=$((n + 1)); done
+n=0; while ! [ "$C/.claude-state/brain-check.brief" -nt "$C/marker" ] && [ "$n" -lt 50 ]; do sleep 0.2; n=$((n + 1)); done
+[ "$C/.claude-state/brain-check.brief" -nt "$C/marker" ] && ok "--cached: the second background run finished" || bad "second background run never finished"
 ls "$C/.claude-state/brain-check.brief."* >/dev/null 2>&1 && bad "a temporary result file was left behind" || ok "--cached: no temporary file left behind"
 
 [ "$fail" = 0 ] && echo "brain-check-brief: all checks passed" || echo "brain-check-brief: FAILURES"
