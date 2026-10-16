@@ -18,6 +18,7 @@ Read-only, no network: it reads the instance's files and the list of PR items op
 Takes part = the shared-memory clone exists, or SHARED_MEMORY_SELF is set, or collab-watch.json exists.
 """
 import argparse, datetime, json, os, re, sys
+from pathlib import Path
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
@@ -36,7 +37,7 @@ def load(path, default=None):
 
 
 def shared_repo():
-    return os.environ.get("SHARED_MEMORY_REPO") or os.path.join(os.path.expanduser("~"), "Projects", "brain-shared-memory")
+    return Path(os.environ.get("SHARED_MEMORY_REPO") or Path.home() / "Projects" / "brain-shared-memory")
 
 
 def self_ids(brain):
@@ -45,7 +46,7 @@ def self_ids(brain):
     for name in ("settings.local.json", "settings.json"):
         if raw:
             break
-        raw = ((load(os.path.join(brain, ".claude", name), {}) or {}).get("env") or {}).get("SHARED_MEMORY_SELF", "")
+        raw = ((load(brain / ".claude" / name, {}) or {}).get("env") or {}).get("SHARED_MEMORY_SELF", "")
     return [t.strip() for t in raw.split(",") if t.strip()]
 
 
@@ -60,7 +61,7 @@ def watched_repos(cfg):
 
 def recent_pr_repos(brain, days):
     """Repos that carried an open PR item for this instance within `days` (open-items-seen.json, written this start)."""
-    seen = load(os.path.join(brain, ".claude-state", "open-items-seen.json"), {}) or {}
+    seen = load(brain / ".claude-state" / "open-items-seen.json", {}) or {}
     cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
     out = {}
     for key, it in (seen.get("items") or {}).items():
@@ -76,11 +77,11 @@ def main():
     ap.add_argument("--root", default=os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
     ap.add_argument("--days", type=int, default=7)
     a = ap.parse_args()
-    brain = a.root
-    cfg_path = os.path.join(brain, ".claude", "rules", "collab-watch.json")
-    clone = os.path.isdir(os.path.join(shared_repo(), ".git"))
+    brain = Path(a.root)
+    cfg_path = brain / ".claude" / "rules" / "collab-watch.json"
+    clone = (shared_repo() / ".git").is_dir()
     ids = self_ids(brain)
-    has_cfg = os.path.isfile(cfg_path)
+    has_cfg = cfg_path.is_file()
     if not (clone or ids or has_cfg):
         return 0  # not part of shared memory: nothing to watch, no nagging
 
