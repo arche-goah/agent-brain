@@ -44,6 +44,22 @@ gone=0
 for _ in 1 2 3 4 5 6; do kill -0 "$CHILD" 2>/dev/null || { gone=1; break; }; sleep 1; done
 [[ $gone -eq 1 ]] && pass "child gone after supervisor TERM" || { flunk "child survived its supervisor"; kill "$CHILD" 2>/dev/null; }
 
+echo "4. child that declines the channel (exit 0 right away, 'already armed') is not restarted"
+# Measured 2026-10-15 (Windows) and 2026-10-16 (macOS): a second arm while the first still ran
+# produced a restart loop — every child skipped with rc=0, every supervisor revived it.
+printf '#!/usr/bin/env bash\necho "already armed: lock names live pid 1"\nexit 0\n' > "$T/skips.sh"
+bash "$SUP" test-skips bash "$T/skips.sh" > "$T/out.skips" 2>&1 &
+R=$!
+sleep 4
+kill "$R" 2>/dev/null; wait "$R" 2>/dev/null
+SKIPS=$(grep -c '^WATCHER-SKIPPED:' "$T/out.skips") || true
+SKIPSTARTS=$(grep -c '^already armed' "$T/out.skips") || true
+SKIPDEATHS=$(grep -c '^WATCHER-DIED:' "$T/out.skips") || true
+[[ "$SKIPS" -eq 1 ]] && pass "skip announced once" || flunk "skip lines: $SKIPS ($(cat "$T/out.skips"))"
+[[ "$SKIPSTARTS" -eq 1 ]] && pass "child started once, not restarted" || flunk "child started $SKIPSTARTS time(s)"
+[[ "$SKIPDEATHS" -eq 0 ]] && pass "no death line for a skip" || flunk "a skip was reported as a death"
+# Control: a child that dies with rc!=0 at once is still a death (case 1 covers it, rc=3).
+
 echo
 [[ $fail -eq 0 ]] && echo "test-watch-supervisor: all checks passed" || echo "test-watch-supervisor: FAILURES above"
 exit "$fail"
