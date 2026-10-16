@@ -63,6 +63,9 @@
  *       a ticket or a question in a thread expects an answer in that thread, and only the
  *       standing repo watch reads comments. Measured 2026-10-11: a ticket was opened and was
  *       covered only by chance, by a collab-watch that happened to be running.
+ *   (g) the brain's `.claude/rules/collab-watch.json` is filled in AND no standing watch lives
+ *       (no live collab-watch lock, no collab-watch armed in this turn) — independent of any
+ *       own act; see standingConfig() below. A close stamp passes it (the session ends).
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
  *
@@ -267,6 +270,35 @@ function stateDirs(root) {
 // A liveness that cannot be measured counts as watched: the gate fails open (header).
 function smWatched(root) {
   return anyAlive(stateDirs(root).sm.map((d) => path.join(d, 'shared-memory-watch.pid'))) !== false;
+}
+
+/**
+ * (g) The standing watch. A brain whose `.claude/rules/collab-watch.json` is filled in CAN watch; this
+ * asks whether it DOES. Cases (a)-(f) demand a watcher only after an own act that expects a reaction,
+ * so a session that never pushes never watched — measured 2026-10-16 on the second macOS machine:
+ * incoming PRs and requests were seen only at the next session start, and nothing answered them.
+ * A Monitor expires after 30 minutes; its locks then read as dead and the next turn end blocks again,
+ * so re-arming is mechanical, not memory. A brain without the file, or with template placeholders
+ * left in it, is not judged here — `core/scripts/watch-readiness.py` names that state at session start.
+ * Declared off: `"standing_watch": "off: <why>"` (an off without a reason blocks).
+ */
+function standingConfig(root) {
+  let raw;
+  try { raw = fs.readFileSync(path.join(root, '.claude', 'rules', 'collab-watch.json'), 'utf8'); } catch (e) { return null; }
+  if (/<[a-z][\w-]*>/i.test(raw.replace(/"_comment"\s*:\s*\[[\s\S]*?\]\s*,?/, ''))) return null;
+  try { const v = JSON.parse(raw).standing_watch; return { setting: typeof v === 'string' ? v.trim() : '' }; } catch (e) { return null; }
+}
+
+function standingWatched(root, calls) {
+  if (calls.some((c) => (c.name === 'Monitor' || c.bg) && /\bcollab-watch\.sh\b/.test(c.cmd))) return true;
+  const locks = [];
+  for (const dir of stateDirs(root).collab) {
+    try {
+      fs.readdirSync(dir).filter((f) => /^(?:repo-activity.*|shared-memory-watch)\.pid$/.test(f))
+        .forEach((f) => locks.push(path.join(dir, f)));
+    } catch (e) { /* dir absent */ }
+  }
+  return locks.length > 0 && anyAlive(locks) !== false;
 }
 
 function prWatched(root, calls) {
@@ -494,6 +526,20 @@ function main(input) {
     missing.push({ text: 'an issue or a question was posted on GitHub and no repo watch lives — arm collab-watch '
       + '(or Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr>)', covered: ghListed(asks, root) });
   }
+  // (g) the brain can watch, and no standing watch lives (never armed, or the Monitor expired)
+  const standing = standingConfig(root);
+  if (standing) {
+    const off = /^off\b/i.test(standing.setting);
+    if (off && !standing.setting.replace(/^off\s*:?\s*/i, '')) {
+      missing.push({ text: '.claude/rules/collab-watch.json says "standing_watch": "off" without a reason — write '
+        + '"off: <why>" (a machine without collaborators, for example), or remove the key', covered: null });
+    } else if (!off && !standingWatched(root, calls)) {
+      missing.push({ text: 'no standing watch lives (never armed, or its Monitor expired) — arm '
+        + 'Monitor({command: "bash core/scripts/collab-watch.sh", timeout_ms: 1800000}) and re-arm at every expiry '
+        + 'notice; a brain that must not watch declares "standing_watch": "off: <why>" in .claude/rules/collab-watch.json',
+      covered: () => true });
+    }
+  }
   if (!missing.length) process.exit(0);
   // The close turn: a close stamp of this session and turn passes what its entry lists (header).
   let left = missing;
@@ -502,7 +548,7 @@ function main(input) {
   if (!left.length) process.exit(0);
   process.stdout.write(JSON.stringify({
     decision: 'block',
-    reason: `WATCH-GATE: a reaction is expected and no watcher lives. ${left.map((m) => m.text).join(' · ')}. `
+    reason: `WATCH-GATE: a watcher is missing. ${left.map((m) => m.text).join(' · ')}. `
       + (ends ? 'The close stamp passes only what its session-log entry lists as "open end: <repo> #<n> - what is awaited" '
         + '(a shared-memory request by its file name). ' : '')
       + 'If nothing is awaited, say why in one line and stop again.',

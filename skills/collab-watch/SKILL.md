@@ -30,6 +30,13 @@ endpoint) — follow a PR under review with `watch-pr.sh`.
    do not ask what is meant.
 2. A PR is announced, or the session starts working on collaborator contributions.
 3. Right after an own push that expects a reaction (question, counter-check request).
+4. **Always, from the first reply of a session, when `.claude/rules/collab-watch.json` is filled in** —
+   the standing watch (operator order 2026-10-16: a machine without it saw incoming PRs and requests only
+   at the next start and answered nothing). Re-arm at every expiry notice. Carried by
+   `core/helpers/watch-gate.cjs` case (g); a brain that must not watch declares
+   `"standing_watch": "off: <why>"` in that file. What the watch reports on the instance's own
+   terrain is handled in the same turn — measure, check, merge or answer with who/when; the
+   "shall I?" question exists once, at session start, for the open points listed there.
 
 ## How to arm
 
