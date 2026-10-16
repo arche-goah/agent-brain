@@ -55,6 +55,7 @@ import os
 import re
 import subprocess
 import sys
+import traceback
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
@@ -123,12 +124,32 @@ def redact(text):
     return SECRET.sub("[REDACTED]", text)
 
 
+# What the brain itself got wrong while being read: a messy brain must not stop the report, and
+# its mess must not vanish either — every unreadable or invalid file becomes a line in section 0.
+PROBLEMS = []
+
+
+def problem(text):
+    if text not in PROBLEMS:
+        PROBLEMS.append(text)
+
+
 def load(path, default=None):
     try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
+        with open(path, encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except FileNotFoundError:
         return default
+    except ValueError as e:
+        problem(f"`{path}` is not valid JSON ({e}) — Claude Code cannot read it either; its settings do not apply")
+        return default
+    except OSError as e:
+        problem(f"`{path}` cannot be read ({e.__class__.__name__}: {e})")
+        return default
+    if default is not None and not isinstance(data, type(default)):
+        problem(f"`{path}` holds a {type(data).__name__}, expected a {type(default).__name__} — ignored")
+        return default
+    return data
 
 
 def run(cmd):
@@ -141,10 +162,21 @@ def run(cmd):
 
 def read_lines(path):
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            return f.read().splitlines()
-    except OSError:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except FileNotFoundError:
         return []
+    except OSError as e:
+        problem(f"`{path}` cannot be read ({e.__class__.__name__}: {e})")
+        return []
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        problem(f"`{path}` is not UTF-8 — read with replacement characters; Claude Code may show garbled text")
+        text = raw.decode("utf-8", errors="replace")
+    return text.splitlines()
 
 
 def size(path):
@@ -168,6 +200,58 @@ def memory_dir(repo, cfg):
     return os.path.join(cfg, "projects", slug, "memory")
 
 
+def imports(path, seen=None, depth=0):
+    """Files a CLAUDE.md pulls in with `@path` lines (Claude Code memory imports), recursively.
+    A rule file that sits on disk but is not imported here is never loaded."""
+    seen = seen if seen is not None else []
+    base = os.path.dirname(path)
+    for line in read_lines(path):
+        m = re.match(r"^@(\S+)\s*$", line.strip())
+        if not m:
+            continue
+        target = os.path.expanduser(m.group(1))
+        target = target if os.path.isabs(target) else os.path.normpath(os.path.join(base, target))
+        if not os.path.isfile(target):
+            problem(f"`{path}` imports `@{m.group(1)}`, which does not exist — that part of the rules is never loaded")
+        if target not in seen:
+            seen.append(target)
+            if depth < 4 and os.path.isfile(target):
+                imports(target, seen, depth + 1)
+    return seen
+
+
+def loaded_files(repo, cfg):
+    files = []
+    for top in (os.path.join(cfg, "CLAUDE.md"), os.path.join(repo, "CLAUDE.md"), os.path.join(repo, "CLAUDE.local.md")):
+        if os.path.isfile(top):
+            files.append(top)
+            files += [f for f in imports(top) if f not in files]
+    files += [f for f in sorted(glob.glob(os.path.join(repo, ".claude", "rules", "*.md"))) if f not in files]
+    files.append(os.path.join(memory_dir(repo, cfg), "MEMORY.md"))
+    return files
+
+
+def hook_entries(path):
+    """(event, matcher, command) for every hook in a settings-shaped file; malformed parts are named."""
+    out = []
+    hk = (load(path, {}) or {}).get("hooks") or {}
+    if not isinstance(hk, dict):
+        problem(f"`{path}`: `hooks` is a {type(hk).__name__}, not an object — no hook in it runs")
+        return out
+    for event, groups in hk.items():
+        if not isinstance(groups, list):
+            problem(f"`{path}`: hooks.{event} is a {type(groups).__name__}, not a list — ignored")
+            continue
+        for g in groups:
+            if not isinstance(g, dict):
+                problem(f"`{path}`: an entry under hooks.{event} is a {type(g).__name__} ({str(g)[:40]}), not an object — ignored")
+                continue
+            for h in g.get("hooks") or []:
+                if isinstance(h, dict):
+                    out.append((event, g.get("matcher", "") or "*", str(h.get("command", ""))))
+    return out
+
+
 def settings_layers(repo, cfg):
     return [(os.path.join(cfg, "settings.json"), "user"),
             (os.path.join(repo, ".claude", "settings.json"), "project"),
@@ -177,7 +261,11 @@ def settings_layers(repo, cfg):
 def enabled_plugins(layers):
     out = {}
     for path, _ in layers:
-        for k, v in ((load(path, {}) or {}).get("enabledPlugins") or {}).items():
+        ep = (load(path, {}) or {}).get("enabledPlugins") or {}
+        if not isinstance(ep, dict):
+            problem(f"`{path}`: `enabledPlugins` is a {type(ep).__name__}, not an object — Claude Code ignores it")
+            continue
+        for k, v in ep.items():
             out[k] = bool(v)  # later layers win
     return [k for k, v in out.items() if v]
 
@@ -188,6 +276,10 @@ def core_state(repo, cfg, layers):
     core = os.path.join(repo, "core")
     if not os.path.isdir(core):
         out += ["- no `core/` directory in the brain — core rules can only come from a plugin", ""]
+    elif not os.listdir(core):
+        problem("`core/` exists but is EMPTY — the core submodule was never initialised (`git submodule update --init`); "
+                "no core rule, helper or hook from it can run")
+        out += ["- `core/` is empty (submodule not initialised)", ""]
     else:
         _, desc = run(["git", "-C", core, "describe", "--tags", "--always"])
         _, commit = run(["git", "-C", core, "rev-parse", "--short=12", "HEAD"])
@@ -214,12 +306,22 @@ def core_state(repo, cfg, layers):
     if not found:
         out.append("- no enabled plugin with 'core' in its name")
     rules = sorted(glob.glob(os.path.join(core, "rules", "*.md")))
-    text = "\n".join("\n".join(read_lines(r)) for r in rules)
-    out += ["", "Question-reducing rules in the loaded core rules (`core/rules/*.md`):", ""]
+    loaded = [os.path.normcase(os.path.normpath(f)) for f in loaded_files(repo, cfg)]
+    # A moved-file stub ("# MOVED: …", "DEPRECATED PATH") only redirects old imports; not loading it is right.
+    rules = [r for r in rules if not re.search(r"^# MOVED:|DEPRECATED PATH", "\n".join(read_lines(r)[:6]), re.M)]
+    on_disk_not_loaded = [r for r in rules if os.path.normcase(os.path.normpath(r)) not in loaded]
+    loaded_rules = [r for r in rules if r not in on_disk_not_loaded]
+    out.append(f"- core rule files: {len(rules)} on disk, {len(loaded_rules)} imported by CLAUDE.md")
+    for r in on_disk_not_loaded:
+        out.append(f"  - NOT LOADED: `{rel(r, repo, repo)}` — on disk, but no `@` import pulls it in; its rules never reach the AI")
+    text = "\n".join("\n".join(read_lines(r)) for r in loaded_rules)
+    disk = "\n".join("\n".join(read_lines(r)) for r in rules)
+    out += ["", "Question-reducing rules in the LOADED core rules:", ""]
     if not rules:
         out.append("- no `core/rules/*.md` found — nothing to check")
     for marker, meaning in CORE_MARKERS:
-        out.append(f"- {'present' if marker in text else 'MISSING'}: \"{marker}\" — {meaning}")
+        state = "present" if marker in text else ("on disk but NOT LOADED" if marker in disk else "MISSING")
+        out.append(f"- {state}: \"{marker}\" — {meaning}")
     out.append("")
     return out
 
@@ -227,11 +329,8 @@ def core_state(repo, cfg, layers):
 # ---------- 2 loaded context
 def loaded_context(repo, home, cfg):
     out = ["## 2 Context loaded at every start", ""]
-    files = [os.path.join(cfg, "CLAUDE.md"), os.path.join(repo, "CLAUDE.md"), os.path.join(repo, "CLAUDE.local.md")]
-    files += sorted(glob.glob(os.path.join(repo, ".claude", "rules", "*.md")))
-    files += sorted(glob.glob(os.path.join(repo, "core", "rules", "*.md")))
-    mem = os.path.join(memory_dir(repo, cfg), "MEMORY.md")
-    files.append(mem)
+    files = loaded_files(repo, cfg)
+    mem = files[-1]
     total = 0
     rows = []
     for f in files:
@@ -319,8 +418,15 @@ def permissions(repo, cfg, layers):
     mode = []
     for path, label in layers:
         perms = (load(path, {}) or {}).get("permissions") or {}
+        if not isinstance(perms, dict):
+            problem(f"`{path}`: `permissions` is a {type(perms).__name__}, not an object — none of its rules apply")
+            continue
         for k in rules:
-            rules[k] += [(r, label) for r in perms.get(k) or [] if isinstance(r, str)]
+            lst = perms.get(k) or []
+            if not isinstance(lst, list):
+                problem(f"`{path}`: `permissions.{k}` is a {type(lst).__name__}, not a list — its rules do not apply")
+                continue
+            rules[k] += [(r, label) for r in lst if isinstance(r, str)]
         if perms.get("defaultMode"):
             mode.append(f"{perms['defaultMode']} ({label})")
     out.append(f"- defaultMode: {', '.join(mode) if mode else 'not set (default: ask for anything not allowed)'}")
@@ -369,13 +475,10 @@ def hooks(repo, cfg, layers):
                 if os.path.isfile(hp):
                     sources.append((hp, f"plugin {pid}"))
     for path, label in sources:
-        for event, groups in ((load(path, {}) or {}).get("hooks") or {}).items():
-            for g in groups if isinstance(groups, list) else []:
-                for h in g.get("hooks") or []:
-                    cmd = str(h.get("command", ""))
-                    where = "core" if re.search(r"core[/\\]helpers|CLAUDE_PLUGIN_ROOT", cmd) else "instance"
-                    n += 1
-                    out.append(f"- {event} [{g.get('matcher', '') or '*'}] ({label}, {where}): `{cmd[:140]}`")
+        for event, matcher, cmd in hook_entries(path):
+            where = "core" if re.search(r"core[/\\]helpers|CLAUDE_PLUGIN_ROOT", cmd) else "instance"
+            n += 1
+            out.append(f"- {event} [{matcher}] ({label}, {where}): `{cmd[:140]}`")
     if not n:
         out.append("- none wired")
     sc = load(os.path.join(repo, ".claude", "rules", "stop-checks.json"), {}) or {}
@@ -402,12 +505,9 @@ def recall(repo, home, cfg, layers, topic):
     out.append(f"- found in: {', '.join(hits) if hits else 'nowhere local — the AI cannot know it was tested'}")
     rec = []
     for path, label in layers:
-        for event, groups in ((load(path, {}) or {}).get("hooks") or {}).items():
-            for g in groups if isinstance(groups, list) else []:
-                for h in g.get("hooks") or []:
-                    cmd = str(h.get("command", ""))
-                    if event in ("UserPromptSubmit", "PreToolUse") and re.search(r"recall|memory", cmd, re.I):
-                        rec.append(f"{event} `{cmd[:100]}` ({label})")
+        for event, _, cmd in hook_entries(path):
+            if event in ("UserPromptSubmit", "PreToolUse") and re.search(r"recall|memory", cmd, re.I):
+                rec.append(f"{event} `{cmd[:100]}` ({label})")
     out.append("- hooks that hand memory to the AI before it acts: "
                + ("; ".join(rec) if rec else "none — memory reaches the AI only through the index loaded at start"))
     out.append("")
@@ -430,16 +530,30 @@ def main(argv):
         print(memory_dir(repo, cfg).replace(os.sep, "/"))
         return 0
     layers = settings_layers(repo, cfg)
-    report = ["# Autonomy diagnose", "",
-              f"Brain `{os.path.basename(repo)}`, read-only, no model. Sections: core state, loaded context, "
-              "brake phrases, permissions, hooks, recall.", ""]
-    report += core_state(repo, cfg, layers)
-    report += loaded_context(repo, a.home, cfg)
-    report += brakes(repo, a.home, cfg)
-    report += permissions(repo, cfg, layers)
-    report += hooks(repo, cfg, layers)
-    report += recall(repo, a.home, cfg, layers, a.topic)
-    text = redact("\n".join(report).rstrip() + "\n")
+    if not os.path.isfile(os.path.join(repo, "CLAUDE.md")):
+        problem(f"no `CLAUDE.md` in `{repo}` — is this the brain folder? Nothing of the brain's rules loads without it")
+    sections = [
+        ("1 Core state", lambda: core_state(repo, cfg, layers)),
+        ("2 Context loaded at every start", lambda: loaded_context(repo, a.home, cfg)),
+        ("3 Brake phrases in local carriers", lambda: brakes(repo, a.home, cfg)),
+        ("4 Permissions", lambda: permissions(repo, cfg, layers)),
+        ("5 Hooks", lambda: hooks(repo, cfg, layers)),
+        ("6 Recall", lambda: recall(repo, a.home, cfg, layers, a.topic)),
+    ]
+    body = []
+    for name, fn in sections:
+        # One section's crash must not cost the others: it becomes a named line instead.
+        try:
+            body += fn()
+        except Exception as e:  # noqa: BLE001 — a report, every failure is data
+            tb = traceback.extract_tb(e.__traceback__)[-1]
+            body += [f"## {name}", "", f"- SECTION FAILED: {e.__class__.__name__}: {e} (line {tb.lineno})", ""]
+            problem(f"section '{name}' crashed: {e.__class__.__name__}: {e} — the rest of the report is complete")
+    head = ["# Autonomy diagnose", "",
+            f"Brain `{os.path.basename(repo)}`, read-only, no model. Python {sys.version.split()[0]} on {sys.platform}.", "",
+            "## 0 Problems found while reading", ""]
+    head += [f"- {p}" for p in PROBLEMS] or ["- none"]
+    text = redact("\n".join(head + [""] + body).rstrip() + "\n")
     if a.out:
         with open(a.out, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)

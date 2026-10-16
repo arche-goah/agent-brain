@@ -26,7 +26,8 @@ expect() { # $1 name, $2 file, $3 must|mustnot, $4 fixed string
 B="$T/brain"; H="$T/home"
 mkdir -p "$B/.claude/rules" "$B/core/rules" "$H/.claude"
 M="$H/.claude/projects/$(slug "$B")/memory"; mkdir -p "$M"
-printf '# Brain\n\n- Kommentare und Push muessen immer Nutzer-Eingabe sein.\n' > "$B/CLAUDE.md"
+printf '# Brain\n\n- Kommentare und Push muessen immer Nutzer-Eingabe sein.\n\n@core/rules/working-rules.md\n' > "$B/CLAUDE.md"
+printf 'The comparative test lives here.\n' > "$B/core/rules/intelligence.md"
 printf '## Regeln\n\nVor jedem Schritt immer den Nutzer fragen.\nPush nur nach explizitem OK.\n' > "$B/.claude/rules/feedback.md"
 printf 'One ordered procedure: ASK OR ACT.\n' > "$B/core/rules/working-rules.md"
 for i in $(seq 1 210); do echo "- [m$i](m$i.md) — entry $i"; done > "$M/MEMORY.md"
@@ -42,7 +43,10 @@ printf '{"permissions": {"ask": ["Bash(git push*)"], "allow": ["Bash(node core/h
 R="$T/planted.md"
 env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$B" --home "$H" > "$R"
 expect "core marker present"            "$R" must '- present: "ASK OR ACT"'
-expect "core marker missing"            "$R" must '- MISSING: "comparative test"'
+expect "core marker on disk, not loaded" "$R" must '- on disk but NOT LOADED: "comparative test"'
+expect "core marker missing"            "$R" must '- MISSING: "Presenting to the Operator"'
+expect "rule file not imported"         "$R" must 'NOT LOADED: `core/rules/intelligence.md`'
+expect "imported file counted"          "$R" must '2 on disk, 1 imported by CLAUDE.md'
 expect "no core plugin"                 "$R" must "no enabled plugin with 'core' in its name"
 expect "memory index over its limit"    "$R" must '210 lines'
 expect "memory over flagged"            "$R" must 'OVER, entries past the cut'
@@ -77,6 +81,37 @@ expect "clean: no core dir"             "$R2" must 'no `core/` directory in the 
 expect "clean: topic nowhere"           "$R2" must 'nowhere local'
 expect "clean: no memory index"         "$R2" must '- memory index: none at'
 expect "clean: no OVER line"            "$R2" mustnot 'OVER'
+
+# --- messy brain: the report still runs through, and every mess is named in section 0
+X="$T/messy"; HX="$T/home3"; mkdir -p "$X/.claude/rules" "$X/core" "$HX/.claude"
+printf '\xef\xbb\xbf# Brain\r\n\r\n@core/rules/working-rules.md\r\nNie selbst pushen.\r\n' > "$X/CLAUDE.md"
+printf '{"permissions": {"allow": ["Bash(git push:*)",]}' > "$X/.claude/settings.json"
+printf '["not", "an", "object"]' > "$X/.claude/settings.local.json"
+printf '{"permissions": {"allow": "Bash(gh pr comment:*)"}, "enabledPlugins": ["x"], "hooks": {"Stop": ["oops", {"hooks": [{"command": "node a.cjs"}]}]}}' > "$HX/.claude/settings.json"
+printf 'Immer den Nutzer fragen, gr\xfc\xdf.\n' > "$X/.claude/rules/latin1.md"
+R3="$T/messy.md"
+env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$X" --home "$HX" > "$R3"; rc=$?
+[ $rc -eq 0 ] && echo "  OK   messy: exit 0" || { echo "  FAIL messy: exit $rc"; fail=1; }
+for s in "## 0 Problems" "## 1 Core state" "## 2 Context" "## 3 Brake" "## 4 Permissions" "## 5 Hooks" "## 6 Recall"; do
+  expect "messy: section '$s' present" "$R3" must "$s"
+done
+expect "messy: invalid JSON named"      "$R3" must 'settings.json` is not valid JSON'
+expect "messy: list instead of object"  "$R3" must 'holds a list, expected a dict'
+expect "messy: allow as string named"   "$R3" must '`permissions.allow` is a str, not a list'
+expect "messy: enabledPlugins wrong"    "$R3" must '`enabledPlugins` is a list, not an object'
+expect "messy: missing import named"    "$R3" must 'imports `@core/rules/working-rules.md`, which does not exist'
+expect "messy: empty core named"        "$R3" must '`core/` exists but is EMPTY'
+expect "messy: non-UTF-8 named"         "$R3" must 'latin1.md` is not UTF-8'
+expect "messy: BOM/CRLF brake found"    "$R3" must '`CLAUDE.md:4` [push]'
+expect "messy: latin-1 brake found"     "$R3" must '`.claude/rules/latin1.md:1`'
+expect "messy: odd hook entry survives" "$R3" must '`node a.cjs`'
+expect "messy: no section crashed"      "$R3" mustnot 'SECTION FAILED'
+N="$T/nobrain"; mkdir -p "$N"
+R4="$T/nobrain.md"
+env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$N" --home "$HX" > "$R4"; rc=$?
+[ $rc -eq 0 ] && echo "  OK   not a brain: exit 0" || { echo "  FAIL not a brain: exit $rc"; fail=1; }
+expect "not a brain: named"             "$R4" must 'no `CLAUDE.md` in'
+expect "clean: section 0 says none"     "$R2" must "## 0 Problems found while reading"
 
 # --- --memory-dir prints the folder the memory index was read from, and nothing else
 md="$(env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$B" --home "$H" --memory-dir)"
