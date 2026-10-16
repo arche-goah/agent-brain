@@ -91,7 +91,10 @@ const PR_WATCH = /\b(watch-pr|ci-watch|collab-watch)\.sh\b/;
 const RELOAD_ASK = /(?:^|[\s`'"(])\/(?:mcp|reload-plugins)\b|\breconnect\b|\bre-?connecten\b|\bwieder verbinden\b/i;
 const RELOAD_WATCH = /\bwait-mcp-reconnect\.sh\b/;
 // (d) the CI watch of a push: `ci-watch.sh pr|ref <owner/repo> …`, and the repo a gh call names.
-const CI_WATCH = /\bci-watch\.sh\s+(?:pr|ref)\s+["']?([\w.-]+\/[\w.-]+)/i;
+// The script path may be quoted (`bash "C:/…/ci-watch.sh" pr …`): the closing quote sits between `.sh`
+// and the blank. Without `["']?` there, a live watch read as none — measured 2026-10-16 on the Windows
+// instance, four WATCH-GATE blocks in one day with every watcher alive.
+const CI_WATCH = /\bci-watch\.sh["']?\s+(?:pr|ref)\s+["']?([\w.-]+\/[\w.-]+)/i;
 const REPO_FLAG = /(?:--repo|-R)[=\s]+["']?([\w.-]+\/[\w.-]+)/;
 // (e) a hand step asked of the human. The FORM: an imperative or a necessity aimed at a person
 // or a device the AI cannot operate. English built-ins; other languages are instance data.
