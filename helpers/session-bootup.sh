@@ -708,7 +708,9 @@ fi
 # keeps the message.
 boot_mark log-lint+deadlines
 if [[ -f "$HERE/../scripts/brain-check.sh" ]]; then
-  CLAUDE_PROJECT_DIR="$R" BRAIN_SELFTEST_BG=1 bash "$HERE/../scripts/brain-check.sh" --brief 2>/dev/null || true
+  # --cached (2026-10-16): the previous run's result now, the next run in the background —
+  # 15 s of a 42 s Windows start were this line even with the self-test verdict reused.
+  CLAUDE_PROJECT_DIR="$R" bash "$HERE/../scripts/brain-check.sh" --cached 2>/dev/null || true
 fi
 
 boot_mark brain-check
