@@ -1,0 +1,33 @@
+{
+  "_comment": [
+    "THE list of matters only the operator decides (rules/working-rules.md, ASK OR ACT: 'the instance names its",
+    "list of operator-only matters in ONE place'). Every prose rule points here instead of listing its own.",
+    "",
+    "Read it in both directions, but not as a stamp. Operator decision 2026-10-16 on a proving brain: only what",
+    "really needs the operator goes to the operator; what can be settled cleanly alone or between the AIs, is",
+    "reversible and documented, is decided without asking — in EVERY brain. The same operator, same day: technical",
+    "questions often need the human too, so this does not sort itself by topic. The test is the comparative test",
+    "(rules/intelligence.md), asked per question: can a measurement or a reversible A/B test decide it? Then run it",
+    "and report the result. Is it a real choice resting on the operator's experience, goal or taste — technical or",
+    "not? Then it goes to the operator, with the options and a recommendation. This list names the matters that",
+    "always go to the operator; it does not make everything else the AI's.",
+    "",
+    "Edit the labels to this operator's words; keep the list short. A matter you add here makes every AI of this",
+    "brain ask about it. scripts/decision-readiness.py names a missing or empty list at every session start."
+  ],
+  "matters": [
+    { "id": "goal", "label": "goal and direction" },
+    { "id": "money", "label": "money" },
+    { "id": "hardware", "label": "hardware, devices, purchases" },
+    { "id": "risk", "label": "risk the operator carries" },
+    { "id": "external", "label": "external effect: making something public, first publication, deployment, a push outside the organisation's repos, social accounts" },
+    { "id": "release", "label": "release and stable pin of the core" },
+    { "id": "core-new", "label": "new functionality in the core (agreed first; follow-up fixes are free)" },
+    { "id": "live", "label": "intervening in a running show or a live system outside its agreed frame" },
+    { "id": "ownership", "label": "who is responsible for what" },
+    { "id": "taste", "label": "taste: how an artefact looks or sounds" },
+    { "id": "hands", "label": "hand steps at a device, the operator's body" },
+    { "id": "people", "label": "relationships with people (collaborators, clients, venues)" },
+    { "id": "deferred", "label": "topics the operator deferred in their own words" }
+  ]
+}
