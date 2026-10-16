@@ -22,6 +22,7 @@ and dates only: never a path (the repo is shared; leak discipline). Commit + pus
 leaves the commit local and says so.
 """
 import argparse, datetime, json, os, re, subprocess, sys
+from pathlib import Path
 
 # The session start parses this output; left to the platform, Windows' console code page
 # mangles the dashes in these lines (os-traps OS-9).
@@ -132,7 +133,30 @@ def gather(brain, cfg):
         "core": {"tag": tag, "commit": commit, "local_edits": bool(rc == 0 and dirty)},
         "plugins": plugins,
         "suites": suites,
+        "watch": {"standing": standing_watch(brain)},
     }
+
+
+def standing_watch(brain):
+    """Can this device keep the standing watch (watch-gate case (g))? Read from its collab-watch.json only — the
+    report runs at session start, before any watch is armed, so "is one alive" is not measurable here.
+    on | off: <why> | template (placeholders left) | not set up. Operator order 2026-10-16: every instance's watch
+    state visible to the others (a machine without one answered nothing all day and nobody saw it)."""
+    try:
+        raw = Path(brain, ".claude", "rules", "collab-watch.json").read_text(encoding="utf-8")
+    except OSError:
+        return "not set up"
+    if re.search(r"<[a-z][\w-]*>", re.sub(r'"_comment"\s*:\s*\[.*?\]\s*,?', "", raw, flags=re.S), re.I):
+        return "template"
+    try:
+        v = json.loads(raw).get("standing_watch")
+    except ValueError:
+        return "not set up"
+    v = v.strip() if isinstance(v, str) else ""
+    if re.match(r"off\b", v, re.I):
+        why = re.sub(r"^off\s*:?\s*", "", v, flags=re.I)
+        return "off: " + why if why else "off (no reason)"
+    return "on"
 
 
 def report(args):
@@ -236,6 +260,9 @@ def problems(row):
             out.append(f"core {tag} vs plugin {p['installed']}")
     if core.get("local_edits"):
         out.append("core has local edits")
+    sw = (r.get("watch") or {}).get("standing")
+    if sw and sw != "on" and not sw.startswith("off: "):
+        out.append(f"standing watch {sw}")
     age = days_since(r.get("reported"))
     if age is not None and age > STALE_DAYS:
         out.append(f"last report {age} d ago")
