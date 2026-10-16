@@ -32,6 +32,7 @@
 # Usage:
 #   scripts/ci-watch.sh pr  <owner/repo> <pr-number> [timeout_s]
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
+#   CI_WATCH_SHA=<pushed sha> scripts/ci-watch.sh pr …   # after a push: wait for THAT head
 # Defaults: timeout 1800 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
 # The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
 # `portability (windows-latest)` ran 13m41s and 14m26s, plus queue time — the old 900 s
@@ -137,6 +138,50 @@ no_ci_check() {
 # conclusion; a pending entry without a check-run (a commit status) or whose check-run
 # has no conclusion yet keeps its bucket. Any unreadable answer on the way leaves the
 # counts as they were — the fallback is to keep waiting, never to turn green.
+# Green checks are only the jobs GitHub has LISTED so far. A workflow run that has started
+# but not yet created its jobs contributes no check at all — measured 2026-10-16 on a core
+# PR: the fast CodeQL run finished with 4 green checks while the main workflow run (created
+# 52 s before the verdict, status in_progress, ten jobs queued) had no check listed yet;
+# the watch said GREEN. So before GREEN, the head commit's workflow RUNS are read: any run
+# that is not completed means no verdict yet. An unreadable answer keeps the old behaviour
+# (the listed checks decide) — the deadline still bounds every wait.
+# A watch armed right after a push reads the PREVIOUS head: for some seconds GitHub still
+# reports the old headRefOid and the old commit's checks. Measured 2026-10-16 on a core PR:
+# a merge of main into the branch was pushed, the watch was armed in the same turn and said
+# `GREEN — 14 checks` within a minute, all 14 of them the old head's; the new head's runs
+# were all pending. CI_WATCH_SHA=<the pushed commit> (full or short) closes it: until the
+# PR's head is that commit, nothing counts. Without it the behaviour is unchanged.
+EXPECTED_SHA="${CI_WATCH_SHA:-}"
+warned_expected=0
+pr_head_not_yet_expected() {   # exit 0 = the PR does not show the expected head yet
+  [[ -n "$EXPECTED_SHA" ]] || return 1
+  local head
+  head=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null) || return 0
+  [[ "$head" == "$EXPECTED_SHA"* ]] && return 1
+  if (( warned_expected == 0 )); then
+    echo "ci-watch: PR #$TARGET still shows head ${head:0:7}, waiting for ${EXPECTED_SHA:0:7}" >&2
+    warned_expected=1
+  fi
+  return 0
+}
+
+warned_open_run=0
+pr_run_still_open() {   # exit 0 = a run of the head commit is still open
+  local sha open
+  sha=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null) || return 1
+  [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 1
+  open=$(gh api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
+           --jq '[.workflow_runs[] | select(.status != "completed")] | length' 2>/dev/null) || return 1
+  [[ "$open" =~ ^[0-9]+$ ]] || return 1
+  (( open > 0 )) || return 1
+  if (( warned_open_run == 0 )); then
+    echo "ci-watch: listed checks on PR #$TARGET are green, but $open workflow run(s) of the" \
+         "head commit are still open (jobs not listed yet) — waiting" >&2
+    warned_open_run=1
+  fi
+  return 0
+}
+
 warned_stale=0
 stale_checkrun_recount() {   # reads $json, may lower $pending and raise $bad
   local sha cr recount stale
@@ -181,6 +226,7 @@ while :; do
   fi
 
   if [[ "$MODE" == "pr" ]]; then
+    if pr_head_not_yet_expected; then sleep "$POLL"; continue; fi
     # Buckets are machine-readable: pass|fail|pending|skipping|cancel. The name is
     # carried along so a pending entry can be matched to its check-run (below).
     json=$(gh pr checks "$TARGET" -R "$REPO" --json bucket,name 2>&1)
@@ -242,6 +288,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # two-consecutive confirmation instead of exiting success.
     pr_conflicting_check
     if (( conflict_seen )); then sleep "$POLL"; continue; fi
+    if pr_run_still_open; then sleep "$POLL"; continue; fi
     echo "CI-WATCH GREEN: $REPO PR #$TARGET — $total checks, none failing"
     exit 0
   fi

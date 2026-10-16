@@ -18,6 +18,14 @@ T="$(mktemp -d)"
 SLEEPERS=()
 trap 'for p in "${SLEEPERS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$T"' EXIT
 G="$(cd "$(dirname "$0")" && pwd)/../helpers/watch-gate.cjs"
+# Offline: a fake gh answers "does the named repo have workflows?" — o/plain has none (404),
+# o/down cannot be measured (network error), every other repo has one.
+# A node script, not a shell script: the gate runs it through node, which works on every OS
+# (Windows node cannot exec a shebang file — OS-3, "a fixture hands a shell script to a native process").
+printf '%s\n' 'const a = process.argv.slice(2).join(" ");' \
+  'if (a.includes("repos/o/plain/")) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }' \
+  'if (a.includes("repos/o/down/")) { process.stderr.write("error connecting to api.github.com\n"); process.exit(1); }' \
+  'process.stdout.write("1\n");' > "$T/fake-gh.cjs"
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
@@ -25,6 +33,7 @@ bad() { echo "  FAIL $1"; fail=1; }
 
 # OS-3: node opens these paths; a Git-Bash /tmp path would not resolve on Windows.
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
+export WATCH_GATE_GH="$(native "$T/fake-gh.cjs")"
 js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 
 SM="$T/brain-shared-memory"
@@ -170,6 +179,16 @@ check "merge, ci-watch ref armed" "$T/m2.jsonl" allow "$R"
 check "PR created with the repo named, reaction watch but no CI watch" "$T/p3.jsonl" block "$R"
 { user "pr"; tool Bash "gh pr create --repo o/r --title x"; tool Bash "bash core/scripts/ci-watch.sh pr o/r 1" bg; } > "$T/p4.jsonl"
 check "PR created, ci-watch armed (also a PR-side watch)" "$T/p4.jsonl" allow "$R"
+# A named repo without workflows starts no run (measured 2026-10-16 on macOS and Windows: a
+# merge into a private repo without CI blocked the turn end with every watcher alive).
+{ user "merge"; tool Bash "gh pr merge 2 -R o/plain --merge"; } > "$T/m3.jsonl"
+check "merge names a repo without workflows (API 404)" "$T/m3.jsonl" allow "$R"
+{ user "merge"; tool Bash "gh pr merge 2 -R o/plain --merge"; } > "$T/m4.jsonl"
+check "merge names a repo whose local checkout has no workflows" "$T/m4.jsonl" allow "$PLAIN"
+{ user "merge"; tool Bash "gh pr merge 2 -R o/r --merge"; } > "$T/m5.jsonl"
+check "negative control: local checkout of the named repo has workflows" "$T/m5.jsonl" block "$CI"
+{ user "merge"; tool Bash "gh pr merge 2 -R o/down --merge"; } > "$T/m6.jsonl"
+check "negative control: workflows not measurable counts as CI" "$T/m6.jsonl" block "$R"
 
 # --- a reload asked of the human (class measured 2026-10-11: "/mcp reconnect" asked, no waiter armed, noticed only when the operator said so)
 { user "update the plugin"; tool Bash "claude plugin install x"; asst "Installed. Please run /mcp to reconnect."; } > "$T/r1.jsonl"

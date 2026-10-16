@@ -183,7 +183,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=5 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-git-sandbox.sh=1 scripts/test-autonomy-diagnose.sh=1 scripts/test-autonomy-diagnose-run.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=5 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-git-sandbox.sh=1 scripts/test-autonomy-diagnose.sh=1 scripts/test-autonomy-diagnose-run.sh=1 scripts/test-watch-readiness.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -384,6 +384,15 @@ into node as data — the repo in the JSON command (`git -C …`), the cwd, and 
 (the guard's log dir) — all through `native()`. It matters in the blocking direction: an
 unresolvable repo makes the guard skip the call (fail-open), so every must-block case would
 pass silently. Windows run owed at baseline time (request in the shared memory).
+2026-10-16, a second spelling of the same class, outside this repo (an instance hook's fixture,
+`test-network-drive-gate.sh`): no temp dir at all, but a LITERAL POSIX path in an env var
+(`export NDG_EXTRA_MOUNTS="/Volumes/<share>|…"`) read by node. Here the path is not left
+unresolved — Git Bash REWRITES an env value that starts with `/` before the native process sees
+it (`C:/Program Files/Git/Volumes/<share>|…`; a leading `|` was rewritten too, a leading `x|`
+was not). Four must-block cases passed silently on Windows. `native()`/`cygpath -m` do not fit
+a fake path that must stay POSIX; `export MSYS2_ENV_CONV_EXCL=<VAR>` exempts that one variable
+and is inert on macOS/Linux. The `mktemp -d` pattern cannot see this spelling; a search for
+`[A-Z_]="/` assignments over core scripts, helpers and one instance brain found no other site.
 
 ## OS-4 — a fixture suite exists but no OS gate runs it
 

@@ -623,6 +623,10 @@ if [[ -f "$HERE/../scripts/open-items.py" ]]; then
       --hook-input "$HOOK_INPUT" 2>/dev/null \
     || echo "!! open for us: NOT checked — open-items.py failed; run: $PY core/scripts/open-items.py --owner $eco_owner"
 fi
+# Watch readiness (operator order 2026-10-16: core functions must run by default on every
+# instance): can a standing watch run here, and does it poll where PRs for us arrive? Reads the
+# PR items open-items.py just stored; silent when ready or outside shared memory.
+[[ -f "$HERE/../scripts/watch-readiness.py" ]] && CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/watch-readiness.py" 2>/dev/null
 # LOG rotation and entry length (operator decision 2026-09-25): the lint named an
 # oversized LOG with a fix text nobody ran, because nothing ran the lint. This is the
 # trigger — read-only, silent unless a month is due or an own entry is over the cap.
