@@ -316,7 +316,7 @@ turn (a workflow, a fan-out of agents, a model run, a push, a PR write) the agen
 condition and shows that it is met, or says why the word is no condition here. Measured on
 a collaborating brain the day the rule was written: "dann coherence scan" — then, after the
 two instances asked had answered — was read as "now", and nine analysis agents ran before
-the answer came. Carried by `helpers/conditional-order-gate.cjs` (PreToolUse); the
+the answer came. Carried by `core/helpers/conditional-order-gate.cjs` (PreToolUse); the
 operator's own words for a condition are instance data (`.claude/rules/condition-patterns.json`).
 Named cases (every other turn-end rule points here):
 - **A hand step for the operator** (a command only they may run, a cable, a device): first
