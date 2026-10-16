@@ -20,10 +20,12 @@ trap 'for p in "${SLEEPERS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$T"' EX
 G="$(cd "$(dirname "$0")" && pwd)/../helpers/watch-gate.cjs"
 # Offline: a fake gh answers "does the named repo have workflows?" — o/plain has none (404),
 # o/down cannot be measured (network error), every other repo has one.
-printf '%s\n' '#!/usr/bin/env bash' \
-  'case "$*" in *repos/o/plain/*) echo "gh: Not Found (HTTP 404)" >&2; exit 1;;' \
-  '  *repos/o/down/*) echo "error connecting to api.github.com" >&2; exit 1;; *) echo 1;; esac' > "$T/fake-gh"
-chmod +x "$T/fake-gh"; export WATCH_GATE_GH="$T/fake-gh"
+# A node script, not a shell script: the gate runs it through node, which works on every OS
+# (Windows node cannot exec a shebang file — OS-3, "a fixture hands a shell script to a native process").
+printf '%s\n' 'const a = process.argv.slice(2).join(" ");' \
+  'if (a.includes("repos/o/plain/")) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }' \
+  'if (a.includes("repos/o/down/")) { process.stderr.write("error connecting to api.github.com\n"); process.exit(1); }' \
+  'process.stdout.write("1\n");' > "$T/fake-gh.cjs"
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
@@ -31,6 +33,7 @@ bad() { echo "  FAIL $1"; fail=1; }
 
 # OS-3: node opens these paths; a Git-Bash /tmp path would not resolve on Windows.
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
+export WATCH_GATE_GH="$(native "$T/fake-gh.cjs")"
 js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 
 SM="$T/brain-shared-memory"

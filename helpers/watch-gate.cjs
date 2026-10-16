@@ -295,12 +295,15 @@ function originSlug(dir) {
  *  `gh pr merge -R <private repo without CI>` blocked the turn end, with every watcher alive).
  *  A local checkout of that repo answers first; else one `gh api` call (a 404 = no workflows
  *  folder). Anything unmeasurable counts as "has CI" — the gate errs toward the watch.
- *  WATCH_GATE_GH is only a fixture seam (a fake gh); nothing in production sets it. */
+ *  WATCH_GATE_GH is only a fixture seam (a fake gh as a node script, run through node: Windows
+ *  node cannot exec a shebang file — measured on the Windows instance, ENOENT with empty stderr);
+ *  nothing in production sets it. */
 function namedRepoHasWorkflows(slug, dirs) {
   for (const d of dirs) if (originSlug(d) === slug) return hasWorkflows(d);
+  const fake = process.env.WATCH_GATE_GH;
+  const args = ['api', `repos/${slug}/contents/.github/workflows`, '--jq', 'length'];
   try {
-    const n = execFileSync(process.env.WATCH_GATE_GH || 'gh',
-      ['api', `repos/${slug}/contents/.github/workflows`, '--jq', 'length'],
+    const n = execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
       { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
     return n !== '0';
   } catch (e) {
