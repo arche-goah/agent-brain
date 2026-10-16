@@ -197,8 +197,10 @@ function parseBlock(text) {
       // A LOG entry has no file name to classify by: the gate must name the id that
       // open-items.py --classify accepts (ref + ": " + first 40 chars of the text), or the
       // agent falls back to "LOG <date> <sender>", which covered every entry of that sender
-      // that day (measured 2026-10-09, Windows instance).
-      const shown = /^LOG /.test(base) && m[6] ? `${ref}: ${m[6].slice(0, 40)}` : `${m[2]}-${m[3]}-${m[4]} ${base}`;
+      // that day (measured 2026-10-09, Windows instance). trimEnd: open-items.py rstrips the
+      // cut and --classify strips its key, so a cut ending on a blank could never match
+      // (measured 2026-10-16, macOS instance).
+      const shown = /^LOG /.test(base) && m[6] ? `${ref}: ${m[6].slice(0, 40).trimEnd()}` : `${m[2]}-${m[3]}-${m[4]} ${base}`;
       // `id` is the key --classify stores under for a LOG entry (that same ref + text id);
       // the class file is read by it too, or a LOG entry classified mid-session stayed
       // `?` for the gate (measured 2026-10-12, Windows instance: classified, still blocked).
