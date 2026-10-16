@@ -96,6 +96,30 @@ check "note addressed to this instance only" "$T/t1.jsonl" allow "$R"
 fresh; entry foreign.md mac ws
 check "entry pulled in from another instance" "$T/t1.jsonl" allow "$R"
 
+# --- LOG.md messages (2026-10-16: a request and its answer, both LOG headings, were invisible)
+logentry() { # $1 heading after the date, e.g. "ws — AN mac: please check"
+  mkdir -p "$SM/ops"; printf '## 2026-10-16 · %s\nbody\n\n' "$1" >> "$SM/ops/LOG.md"
+  git -C "$SM" add -A; git -C "$SM" commit -q -m log
+}
+fresh; logentry "ws — AN mac: please run the fixture"
+check "LOG request to another party, no watcher" "$T/t1.jsonl" block "$R"
+fresh; logentry "ws (second session) — AN mac + win: please check"
+check "LOG request, session-tagged sender, two addressees" "$T/t1.jsonl" block "$R"
+fresh; logentry "ws — AN mac (status: open): fix needed"
+check "LOG request with an open status" "$T/t1.jsonl" block "$R"
+fresh; logentry "ws — AN mac (status: done): re fixture — 27/27"
+check "LOG answer closed with status: done" "$T/t1.jsonl" allow "$R"
+fresh; logentry "ws — AN ws: note to self"
+check "LOG note addressed to this instance only" "$T/t1.jsonl" allow "$R"
+fresh; logentry "mac — AN ws: please take over"
+check "LOG entry from another instance" "$T/t1.jsonl" allow "$R"
+fresh; logentry "ws — status line without an addressee"
+check "LOG heading without AN is no message" "$T/t1.jsonl" allow "$R"
+fresh; logentry "ws — AN mac: please run the fixture"
+live_lock "$R/.claude-state/shared-memory-watch.pid"
+check "LOG request with a live watcher" "$T/t1.jsonl" allow "$R"
+rm -rf "$R/.claude-state"
+
 # --- PR side
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "PR #1"; } > "$T/p1.jsonl"
 check "PR created, no watch" "$T/p1.jsonl" block "$R"
