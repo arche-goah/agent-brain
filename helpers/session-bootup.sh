@@ -627,6 +627,10 @@ fi
 # instance): can a standing watch run here, and does it poll where PRs for us arrive? Reads the
 # PR items open-items.py just stored; silent when ready or outside shared memory.
 [[ -f "$HERE/../scripts/watch-readiness.py" ]] && CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/watch-readiness.py" 2>/dev/null
+# Decision readiness (operator decision 2026-10-16): only what needs the operator goes to the
+# operator — is the rule loaded, is the operator-only list there, and does an everyday commit or
+# push raise a permission dialog (or is every check switched off by Bash(*))? Silent when fine.
+[[ -f "$HERE/../scripts/decision-readiness.py" ]] && CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/decision-readiness.py" 2>/dev/null
 # LOG rotation and entry length (operator decision 2026-09-25): the lint named an
 # oversized LOG with a fix text nobody ran, because nothing ran the lint. This is the
 # trigger — read-only, silent unless a month is due or an own entry is over the cap.
