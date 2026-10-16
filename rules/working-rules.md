@@ -33,19 +33,13 @@
    trip the harness's obfuscation heuristics.
 9. **A PR is opened together with its CI watch** (operator decision 2026-10-09): whoever
    opens a pull request arms `core/scripts/ci-watch.sh pr <repo> <n>` in the same turn
-   (background) and reads the result before calling the PR ready. A red check found days
-   later is a check nobody watched (measured: a PR sat red while the session reported
-   the others green). **Never in the foreground** (operator 2026-10-13: "that blocks every
-   other activity — with several core PRs waiting on CI, hours go by"): a core run takes
+   (background) and reads the result before calling the PR ready. **Never in the foreground** (operator 2026-10-13): a core run takes
    about 15 minutes, so every CI wait runs detached, one watch per PR in parallel, and the
-   session keeps working until the verdict arrives as a notification. Measured the day the
-   rule was written: 65 of 263 ci-watch calls in three days ran in the foreground. Carried
+   session keeps working until the verdict arrives as a notification. Carried
    by the core's own `mechanism-rules.json` (`foreground_only`). **And the same holds for
    every push that starts a run** (operator correction 2026-10-13, "fatal"): a push onto a
    PR branch, a merge (a push to the base branch), a tag — each gets its `ci-watch.sh
-   pr|ref` in the same turn. Measured that day: five pushes to PR branches, four watched;
-   the fifth went red (runner never acquired) and the operator found it; six merges, none
-   watched. Carried twice: `core/helpers/watch-gate.cjs` blocks a turn end after a push
+   pr|ref` in the same turn. Carried twice: `core/helpers/watch-gate.cjs` blocks a turn end after a push
    into a checkout with workflows without a ci-watch on that repo, and the standing watch
    (`repo-activity-watch.sh` inside collab-watch) reports every red run on a watched repo
    as `CI-RED`, so a red check is seen even when no one armed a watch.
@@ -59,8 +53,7 @@
     about this brain only, a core PR if it holds for every brain — so the local-machinery
     inventory sees it and its reach can be checked like any other carrier.
 11. **Core PRs: new functionality is discussed first, follow-ups may be pushed** (operator
-    decision 2026-10-09). The core repo is public, so "push to a public repo" alone
-    gated every core branch — and collided with merging core PRs without a word per PR.
+    decision 2026-10-09).
     A core PR that brings NEW functionality (a new gate, hook, script, skill or rule) is
     agreed with the operator before it is built; usually the order itself is that
     agreement. A FOLLOW-UP — a fix, a correction, a catch-up inside an agreed strand, the
@@ -70,7 +63,7 @@
     publication, a push outside the organisation's repos and a deployment stay gated.
     Carriers on every push: leak-scan, the English-only ratchet, the instance's name guard.
 12. **Two sessions, one working copy: commit by path, never rewrite, never touch the other's
-    operation** (operator direction 2026-10-13, after three incidents in three days). A checkout
+    operation** (operator direction 2026-10-13). A checkout
     has one index and one HEAD; git cannot tell sessions apart. While a second session runs on
     the machine, a session that is not working in its own scratchpad worktree commits only its
     own paths (`git commit <paths> -m …`), stages only its own paths, never amends, stashes,
@@ -80,6 +73,8 @@
     carrier is `core/helpers/shared-working-copy-guard.cjs`; a deviation needs the marker and is
     finished in the same turn, so the other session never meets a half-done state.
 
+History: core/docs/rule-history.md, "Working Rules".
+
 ## File Rules
 
 **Naming:** kebab-case, lowercase, English, no umlauts/spaces.
@@ -88,12 +83,7 @@
 never silently).
 
 **Invariant behind the two dot files:** *What git itself necessarily creates in the
-repo root, a whitelist cannot forbid.* `bootstrap-brain.sh` writes `.gitattributes`
-into every new brain (line-ending class), and it MUST live in root so the rule
-applies repo-wide; `.gitmodules` is created by git as soon as the same script mounts
-`core/` as a submodule (`bootstrap-brain.sh`, `git submodule add`) — the location is
-dictated by git and cannot be moved. Both stood in opposition to the rule that
-produces them.
+repo root, a whitelist cannot forbid.*
 
 YOU MUST comply with these rules:
 - NEVER place files in root (except the whitelist above)
@@ -118,6 +108,8 @@ defect; a bare overwrite stays the operator's call.
 
 The folder mapping (what goes where) is instance knowledge — table in the instance
 rule file.
+
+History: core/docs/rule-history.md, "File Rules".
 
 ## Session Traceability (3 layers)
 
@@ -206,9 +198,7 @@ same topic lands in the same layout:
    one-file-one-fact exports to the org's shared-memory repo, with a
    back-reference to the source `id`. **The project gets its own AREA there in
    the same pass** (operator order 2026-10-10): folder + `LOG.md` + a line in
-   the README's area list — never filed into the catch-all folder "for now".
-   Measured: a catch-all held 150 entries, whole projects among them, because
-   nothing said when an area is due. Carrier: `core/scripts/shared-memory-lint.py`,
+   the README's area list — never filed into the catch-all folder "for now". Carrier: `core/scripts/shared-memory-lint.py`,
    check "project without an area".
 5. **Register the ledger with the instance's aggregator.** The generated
    overview sees only registered detail lists — an unregistered domain is
@@ -220,6 +210,8 @@ same topic lands in the same layout:
 
 None of this is optional per project — a domain that skips a step files
 differently than every other and breaks the cross-instance interface.
+
+History: core/docs/rule-history.md, "Project Lifecycle (operator order 2026-08-14)".
 
 ## Mechanism Discipline (HARD)
 
@@ -250,9 +242,7 @@ working, that is a **REPORTING EVENT, not an occasion to improvise**. Two branch
 - **Everything OTHER than the defined path** (alternative access, substitute path,
   rebuild) stays gated: report → propose → only on explicit instruction.
 **Building an alternative access path is always a DECISION, never a repair** — even
-if the result would be clean. The three questions above do NOT catch this: a cleanly
-built second path passes all three — and is still wrong, because the question
-"should a second path exist here at all?" is never asked.
+if the result would be clean.
 
 **A refusal is a decision, not an obstacle** (operator decision 2026-10-12). An action the
 permission layer refused — a permission rule, the auto-mode classifier, a hook — is NOT
@@ -262,9 +252,7 @@ after a refused Bash call, a file edit after a refused command), and not through
 session or party asked to do it instead (that launders the refusal). The refusal is a
 REPORTING EVENT: say what was refused and what it was for, and name who can take the step
 (the operator, or a party that holds the right on its own). Retrying the same call after
-the operator granted the permission is not a re-issue. (Coherence scan of a Windows
-instance, 2026-10-12: a loaded skill still called the raw API merge a "second legitimate
-form" while `collab-watch` forbade exactly that.) **Carried by** the core's own
+the operator granted the permission is not a re-issue. **Carried by** the core's own
 `mechanism-rules.json` (read by `mechanism-guard` from the enabled core plugin): the raw
 API merge is blocked unless the marker quotes the operator.
 
@@ -275,9 +263,7 @@ come FROM THE AGENT, BEFORE acting.
 **"DISCUSSED" does not mean "end the turn on a question".** It means the question is
 raised through the channel that fits it (step 3 below) while the ordered work goes on.
 
-**ASK OR ACT — the one ordered procedure** (coherence finding 2026-09-18: the decision
-was spread over a dozen rules on three ranks, and the stop gate and this section gave
-opposite answers for the same case). Every other rule about asking or stopping points
+**ASK OR ACT — the one ordered procedure** (coherence finding 2026-09-18). Every other rule about asking or stopping points
 here. Take the FIRST step that applies:
 1. **Irreversible or externally effective** (deploy, publish, making a repo public, a push
    to a public repo outside an agreed channel — see Working Rule #11 —, send, delete, a
@@ -294,10 +280,7 @@ here. Take the FIRST step that applies:
    assumption you continue under — in that entry and in the report, so the choice is
    visible and reversible, never silent. If the order cannot proceed without the answer
    and the answer belongs to the operator, the question ends the turn (last paragraph
-   below). Split out of the adjacent step on 2026-10-12 (operator decision): the two
-   cases shared one step and one outcome — note it and continue — which fits an adjacent
-   idea, but turns a NEEDED subtask without a path into exactly the improvisation this
-   section names.
+   below). (Operator decision 2026-10-12.)
 4. **Adjacent** — useful, but not needed for the order: write it where it is decided
    without blocking (the instance's ledger as `origin: derived`, or the shared-memory
    channel for another party), and CONTINUE the ordered work. The operator hears it in
@@ -321,10 +304,7 @@ Such a question is asked through the question tool, not as closing prose (`intel
 order to an event, and the event comes first — the sequencing word is the operator's
 "not yet", not filler. Before the first expensive or externally effective step of such a
 turn (a workflow, a fan-out of agents, a model run, a push, a PR write) the agent names the
-condition and shows that it is met, or says why the word is no condition here. Measured on
-a collaborating brain the day the rule was written: "dann coherence scan" — then, after the
-two instances asked had answered — was read as "now", and nine analysis agents ran before
-the answer came. Carried by `core/helpers/conditional-order-gate.cjs` (PreToolUse); the
+condition and shows that it is met, or says why the word is no condition here. Carried by `core/helpers/conditional-order-gate.cjs` (PreToolUse); the
 operator's own words for a condition are instance data (`.claude/rules/condition-patterns.json`).
 Named cases (every other turn-end rule points here):
 - **A hand step for the operator** (a command only they may run, a cable, a device): first
@@ -344,20 +324,17 @@ the TOOL's own: a tool that is meant to be driven through its MCP server ships
 `mechanism-rules.json` at its root naming its internals (IPC files, running its server by
 hand, GUI drivers), and the guard finds it whether the tool arrives as a clone in
 `.mcp.json` or as an enabled plugin. Every newly discovered shortcut gets added where it
-belongs — the system learns, not just the agent. (Incident 2026-10-11: a defined path was
-not available on a second machine; the session built its own client and wrote straight
-into the tool's IPC file instead of reporting. Not available = report, THIRD CASE above.)
+belongs — the system learns, not just the agent. Not available = report, THIRD CASE above.
 **A rule whose documented path is "agree it with the operator first" may demand the
 operator's word behind the marker** (`needs_operator_word: true`, operator decision
 2026-10-12): the justification must then quote the operator — the words in `"…"` or `„…"`
 plus the date they were said — or point at a record file that exists (`path[:line]`);
-otherwise the guard denies and names what is missing. A paraphrase is not a quotation
-(incident 2026-09-12: two merges in a shared repo carried the marker with a verbatim quote
-that stands in no transcript of that day — the gap it should have shown was papered over by
-the invented evidence). Rules without the field behave as before.
+otherwise the guard denies and names what is missing. A paraphrase is not a quotation. Rules without the field behave as before.
 **A request to another machine names the defined path AS IT EXISTS THERE** — read how that
 machine runs the tool (clone or plugin, version) before writing the steps; a step that only
 works on the sender's setup turns the receiver's next move into improvisation.
+
+History: core/docs/rule-history.md, "Mechanism Discipline (HARD)".
 
 ## One System, Not Local Workarounds (HARD, operator order 2026-10-08)
 
@@ -372,8 +349,7 @@ Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machin
   hardware, services or projects). The entry says why AND names as `evidence` the
   instance-specific token the item relies on (a host, device, person or project name); the
   checker verifies the token is really in the item. "Not yet ported" is not a reason, and a
-  reason without evidence is a self-declaration nobody checked (measured 2026-10-09: three
-  items declared instance-only were general). An item that relies on no token — a section of
+  reason without evidence is a self-declaration nobody checked. An item that relies on no token — a section of
   the instance's own rule files, a one-off measurement script — may name as `reach` the
   written reach analysis that judged it instead; the checker verifies the file names the item.
 - **external** — a third-party skill or plugin used as it is (a vendored skill pack, an
@@ -381,8 +357,7 @@ Allowed deviations are DECLARED, with the reason, in `.claude/rules/local-machin
 - **alpha** — a development checkout under test, with an expiry date and what is being
   measured. Past the date: merge, extend with a reason, or unwire.
 
-**A suite that ships as a plugin is consumed as the plugin** (operator order 2026-10-11: no
-special-purpose tinkering — here, at collaborators, in other instances). Its MCP server and
+**A suite that ships as a plugin is consumed as the plugin** (operator order 2026-10-11). Its MCP server and
 skills come from the marketplace on every machine; a clone of the suite feeds a brain only to
 check a PR head, as a declared alpha with a date, and goes back afterwards. A suite's name is
 not an instance identity token: it names shared tooling and cannot prove an item instance-only.
@@ -396,39 +371,23 @@ the common way and build on it). Core work happens on a branch IN the core repo 
 collaborator has write access there, so a branch is seen, gets CI and reaches the others;
 a fork branch gets none of that and is forgotten. A brain consumes the core only from the
 org repo at the released pin, never from a fork. Finished work is a PR in the repo;
-everything else is a declared alpha with an expiry. Measured the day the rule was written:
-two collaborator forks, their main far behind, about twenty leftover branches of merged
-PRs, one fix that had lived only on a fork branch for six weeks, and one open PR still
-served from a fork. Carried by `core/scripts/fork-drift.py` in the brain-scan's machine
+everything else is a declared alpha with an expiry. Carried by `core/scripts/fork-drift.py` in the brain-scan's machine
 checks: it names fork work that never reached the core and a core consumed from a fork.
 
-**The finding addresses the AI, not the operator** (operator, same day: "the human does not
-have to be bothered every time something deviates, but there should be a classification and
-analysis of what deviates, why, whether that makes sense, and whether something should move
-into the core as a PR"). On every reported deviation the agent: (1) reads what the machinery
+**The finding addresses the AI, not the operator** (operator decision 2026-10-11). On every reported deviation the agent: (1) reads what the machinery
 does and why it is local, (2) judges whether that makes sense, (3) decides — core-worthy =
 open the core PR (or name the open one) and declare it as alpha until merged; instance-only =
 declare it with the reason; obsolete = unwire. The declaration IS the written analysis. The
 operator hears only what needs his decision under the instance's own rules.
 
-**Mechanically carried:** `core/scripts/local-machinery.py` runs at every session start. It
-inventories EVERY carrier of behaviour — the search space is the invariant, not the last
-incident: hooks, stop checks, MCP servers, git hooks, scheduled jobs, extra plugins, skills,
-workflows, output styles, agents, commands, rule sections, scripts — and names every item
-that is neither core nor declared with evidence, every undeclared item that contains none of
-the instance's `identity_tokens` (presumably general), every near-duplicate of a core tool
-under another name, every expired alpha, and every file edited inside `core/` (the pin check
-sees moved commits, not edits in place); one summary line counts each class. A new carrier
-type gets a planted case and a negative control in its fixture. Measured on
-the proving brain the day the rule was written: 12 of 31 hook entries ran from unmerged
-checkouts, 8 from instance scripts — at least four of those general mechanisms — and
-nothing had reported it, because every one of them worked.
+**Mechanically carried:** `core/scripts/local-machinery.py` runs at every session start. A new carrier
+type gets a planted case and a negative control in its fixture.
+
+History: core/docs/rule-history.md, "One System, Not Local Workarounds (HARD, operator order 2026-10-08)".
 
 ## A Needed Reload Is Not a Wait State (operator order 2026-08-06, sharpened 2026-08-14)
 
-A change to a tool that only takes effect after the server reloads ends many turns with
-"this needs a restart" — and then the agent waits for a human reply. That is a wait
-state the agent can dissolve itself. Three rules, in this order:
+Three rules, in this order:
 
 1. **Ask for the smallest reload that does the job.** A changed or added MCP tool needs
    the CLIENT to re-read the tool list — an `/mcp` reconnect. A full Claude restart is
@@ -457,6 +416,8 @@ a stamp cannot be PROVEN back — that missing carrier is itself the finding, an
 says so instead of reporting green. Until its suite adds one, the same script's
 `--process <pattern>` mode is the stopgap on macOS/Linux (all old pids of this session's
 children gone, a new one up); on Windows it refuses, and the finding stays open either way.
+
+History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operator order 2026-08-06, sharpened 2026-08-14)".
 
 ## Order Fidelity (Auftragstreue) (HARD)
 
@@ -520,8 +481,7 @@ their AIs:
    nobody — use the proper name. The person and their AI are named apart ("<name>" vs.
    "<name>'s AI"): a proposal of an AI is not a decision of its person. Machine ids stay
    in data fields; a git author is no proof of the party (accounts can look alike).
-   **One login can carry several instances** (operator order 2026-10-11, after a hand-over
-   between the operator's own machines lay unseen until the operator asked on every side):
+   **One login can carry several instances** (operator order 2026-10-11):
    every PR, comment and review an AI posts carries its instance key
    (`<!-- instance-key: … -->`, a hash, names nobody — `core/helpers/instance-key-gate.cjs`
    refuses the post without it), and every check that decides "is this mine?" decides by
@@ -537,13 +497,12 @@ their AIs:
 4. **Judge the sum, not the single change** (operator decision 2026-08-31): what counts
    is what all of this side's changes together mean for the other party — four small
    interventions are one big one.
-5. **One finding, one builder** (operator correction 2026-10-11: "you crossed each other
-   there for nothing — that costs time"). Whoever reports a finding on a PR says in the same
+5. **One finding, one builder** (operator correction 2026-10-11). Whoever reports a finding on a PR says in the same
    comment whether they build the fix ("PR follows" / "the author's" / "open for anyone").
    Whoever wants to build a fix for SOMEONE ELSE's finding first reads the repo's open PRs
    (`gh pr list --state open`) and the thread: an existing PR or a claim means counter-check,
    not build; nothing there means one line in the thread ("building it"), then build. And
    nothing is merged over an open finding in its thread — read the comments in full, never
-   through a tool that cuts them short. Measured the day the rule was written: one finding,
-   two fixes from two machines three minutes apart (one closed), and a merge over the finding
-   because a reader showed 200 characters of the comment.
+   through a tool that cuts them short.
+
+History: core/docs/rule-history.md, "Working Across Parties".
