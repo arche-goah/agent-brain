@@ -56,6 +56,7 @@ import re
 import subprocess
 import sys
 import traceback
+from pathlib import Path
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
@@ -491,6 +492,14 @@ def hooks(repo, cfg, layers):
 
 
 # ---------- 6 recall
+def topic_in(path, repo, home, rx):
+    """Does a live-read required path (project-relative, absolute or ~/) mention the topic?"""
+    p = Path(home, path[2:]) if path.startswith("~/") else Path(path)
+    if not p.is_absolute():
+        p = Path(repo, p)
+    return any(rx.search(line) for line in read_lines(str(p)))
+
+
 def recall(repo, home, cfg, layers, topic):
     out = [f"## 6 Recall — where `{topic}` lives, and what hands it to the AI", ""]
     rx = re.compile(topic, re.I)
@@ -508,8 +517,27 @@ def recall(repo, home, cfg, layers, topic):
         for event, _, cmd in hook_entries(path):
             if event in ("UserPromptSubmit", "PreToolUse") and re.search(r"recall|memory", cmd, re.I):
                 rec.append(f"{event} `{cmd[:100]}` ({label})")
+            elif event == "PreToolUse" and "live-read-gate" in cmd:
+                # The live-read gate hands the AI its mandatory reading (often memory files) before the
+                # first live call — a recall carrier the name pattern above does not see. Measured
+                # 2026-10-16 on a Windows brain: this section said "none" while its live-read.json made
+                # the desk's lessons mandatory reading before every desk tool call.
+                lr = load(str(Path(repo, ".claude", "rules", "live-read.json")), {}) or {}
+                doms = [d for d in lr.get("domains", []) if isinstance(d, dict)]
+                req = [r.get("path", "") for d in doms for r in d.get("required", []) if isinstance(r, dict)]
+                hit = [p for p in req if topic_in(p, repo, home, rx)]
+                if doms:
+                    rec.append(f"{event} live-read-gate: {len(doms)} live domain(s), {len(req)} mandatory "
+                               f"reading(s) before the first live call"
+                               + (f", {len(hit)} of them mention the topic" if hit else "") + f" ({label})")
     out.append("- hooks that hand memory to the AI before it acts: "
                + ("; ".join(rec) if rec else "none — memory reaches the AI only through the index loaded at start"))
+    # The list without its enforcer (Windows review of #380): mandatory reading that nothing makes mandatory.
+    lr = load(str(Path(repo, ".claude", "rules", "live-read.json")), {}) or {}
+    doms = [d for d in lr.get("domains", []) if isinstance(d, dict)]
+    if doms and not any("live-read-gate" in r for r in rec):
+        out.append(f"- `.claude/rules/live-read.json` lists {len(doms)} live domain(s), but no `live-read-gate` hook is "
+                   "wired — nothing makes that reading mandatory")
     out.append("")
     return out
 
