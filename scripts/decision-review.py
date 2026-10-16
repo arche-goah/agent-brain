@@ -21,7 +21,9 @@ writes, MCP tools whose name writes). Five cases:
   needed      a question in the register, the next prompt decides/answers it                  right
   unneeded    a question, the next prompt says "just do it / why do you ask"                  stop too often
   referral    no question, but the reply sends the matter to a human ("needs a person's word") stop too often
-              and the next prompt says that was needless (case 3b of the co-sign)
+              and the next prompt says that was needless (case 3b of the co-sign) — or a LATER
+              prompt names the referral itself ("you recommended asking the human"), and the
+              nearest referral among the last replies is the one it corrects
   overreach   an action, and one of the next two prompts corrects it ("why did you not ask")  stop too rarely
               AND names the action (a word of its command or tool); a correction about a
               QUESTION never counts here (guard 3a of the co-sign) — without the action word
@@ -35,11 +37,13 @@ operator-only list; two or more confirmed unneeded/referral of the same group = 
 only — nothing is changed.
 
 Language: built-in patterns are English; further languages are instance data in `.claude/rules/decision-review.json`
-{"unneeded": [...], "overreach": [...], "referral": [...], "action_words": [...]} (regexes, case-insensitive),
+{"unneeded": [...], "overreach": [...], "referral": [...], "referral_correction": [...], "action_words": [...]}
+(regexes, case-insensitive),
 added to the built-ins. Template: core/templates/rules-instance/decision-review.json.
 
 WHERE IT RUNS: the weekly brain-scan, never the session start (a start that reads a 80 MB transcript misses the
-harness's 30 s budget). A per-file cache (size + mtime) in `.claude-state/decision-review.json` keeps reruns cheap.
+harness's 30 s budget). A per-file cache in `.claude-state/decision-review.json` keeps reruns cheap; its key is
+the file (size + mtime) AND the patterns AND the session's registered questions, because it stores verdicts.
 
 Usage:
   decision-review.py [--root R] [--dir D] [--days N] [--json] [--numbers]
@@ -55,7 +59,8 @@ try:
 except (AttributeError, ValueError):
     pass
 
-CACHE_VERSION = 2
+CACHE_VERSION = 3
+REFERRAL_LOOKBACK = 8   # replies searched backwards from a prompt that names a referral
 FRAMES = re.compile(r"<system-reminder>.*?</system-reminder>|<task-notification>.*?</task-notification>", re.S)
 LOCAL = re.compile(r"<local-command-caveat>.*?</local-command-caveat>|<local-command-std(?:out|err)>.*?"
                    r"</local-command-std(?:out|err)>|<command-(?:name|message|args)>.*?</command-(?:name|message|args)>", re.S)
@@ -70,6 +75,10 @@ BUILTIN = {
                   r"\bwho (allowed|told) you\b", r"\bagainst my (order|word|instruction)", r"\bwithout asking\b"],
     "referral": [r"\bneeds? (a|the) (human|person|operator)'?s? (word|decision|ok)\b", r"\bthe operator (has to|must)\b",
                  r"\bask (your|the) (human|operator)\b", r"\ba human (has to|must|enters|decides)\b"],
+    # A prompt that names the referral itself — the late correction, looked up backwards.
+    "referral_correction": [r"\b(recommended|suggested) (asking|to ask) (the|a) (human|person|operator)\b",
+                            r"\bcould have (settled|talked|sorted) (it|this|that)? ?(out )?(between|among) (you|yourselves)",
+                            r"\bcommunication (was|would have been) possible\b"],
     "action_words": [r"\bpush(ed)?\b", r"\bmerg(e|ed)\b", r"\bdelet(e|ed)\b", r"\bpost(ed)?\b", r"\bpublish(ed)?\b",
                      r"\bcomment(ed)?\b", r"\bsav(e|ed)\b", r"\breboot(ed)?\b", r"\bPR\b", r"\brelease\b"],
 }
@@ -207,6 +216,17 @@ def classify(path, evs, register, rx):
         return [evs[j] for j in prompts if j > i][:k]
 
     asked = [q for q in register if squash(q)]
+    referred = set()
+
+    def add_referral(j, prompt, distance):
+        referred.add(j)
+        counts["referral"] += 1
+        text = evs[j][2]
+        m = rx["referral"].search(text)
+        cands.append({"id": cid(path, evs[j][1], "referral"), "case": "referral", "group": "referral",
+                      "line": evs[j][1], "text": text[max(0, m.start() - 60):m.end() + 60].replace("\n", " "),
+                      "reply": prompt[2][:160] + ("" if not distance else " [%d prompt(s) later]" % distance)})
+
     for i, (kind, line, text, extra) in enumerate(evs):
         if kind == "reply":
             nxt = next_prompts(i, 1)
@@ -221,11 +241,18 @@ def classify(path, evs, register, rx):
                     cands.append({"id": cid(path, line, case), "case": case, "group": "question",
                                   "line": line, "text": hits[0][:160], "reply": nxt[0][2][:160]})
             elif rx["referral"].search(text) and rx["unneeded"].search(nxt[0][2]):
-                counts["referral"] += 1
-                m = rx["referral"].search(text)
-                cands.append({"id": cid(path, line, "referral"), "case": "referral", "group": "referral",
-                              "line": line, "text": text[max(0, m.start() - 60):m.end() + 60].replace("\n", " "),
-                              "reply": nxt[0][2][:160]})
+                add_referral(i, nxt[0], 0)
+        elif kind == "prompt" and rx["referral_correction"].search(text):
+            # A late correction (Windows co-sign, measured 2026-10-16: 34 minutes and four prompts
+            # after the referral, as a queued mid-turn message): the prompt names the referral
+            # itself, so look back over the last REFERRAL_LOOKBACK replies for it.
+            before = [j for j in range(i - 1, -1, -1) if evs[j][0] == "reply"][:REFERRAL_LOOKBACK]
+            for j in before:
+                if rx["referral"].search(evs[j][2]):
+                    # the nearest referral is the one corrected; counted already = nothing new
+                    if j not in referred:
+                        add_referral(j, evs[i], sum(1 for k in prompts if j < k < i))
+                    break
         elif kind == "action":
             nxt = next_prompts(i, 2)
             # a correction about a QUESTION is never an overreach: the reply before it asked something
@@ -294,6 +321,8 @@ def main(argv):
         return 0
     d = Path(a.dir) if a.dir else transcript_dir(a.root)
     rx = compile_patterns(a.root)
+    psig = "\n".join("%s=%s" % (k, rx[k].pattern) for k in sorted(rx)) + "\n" + "\n".join(
+        "%s=%s" % (g, r.pattern) for g, r in BASH_RX) + "\n" + MCP_WRITE.pattern
     reg = register_for(a.root)
     cutoff = time.time() - a.days * 86400
     t0 = time.time()
@@ -306,7 +335,13 @@ def main(argv):
             continue
         sessions += 1
         nbytes += st.st_size
-        key = "%d:%d" % (st.st_size, int(st.st_mtime))
+        # The cache holds VERDICTS, so its key carries everything a verdict depends on: the file, the
+        # patterns and this session's registered questions (Windows co-sign finding 1, 2026-10-16:
+        # a key of size + mtime alone kept "unneeded 0" after German patterns were added; an empty
+        # cache said 2).
+        qs = reg.get(f.stem, [])
+        key = "%d:%d:%s" % (st.st_size, int(st.st_mtime),
+                            hashlib.sha1((psig + "\n".join(sorted(qs))).encode("utf-8")).hexdigest()[:12])
         hit = state["cache"].get(f.name)
         if hit and hit.get("key") == key:
             counts, cs = hit["counts"], hit["cands"]

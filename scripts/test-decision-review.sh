@@ -40,6 +40,13 @@ gen "$TX/s-referral.jsonl"  "p:settle it with the other AI" "r:This needs the op
 gen "$TX/s-german.jsonl"    "p:mach weiter" "r:Fertig. Soll ich den Commit pushen?" "p:mach einfach"
 gen "$TX/s-compact.jsonl"   "p:go" "b:git push" "c:the operator asked why did you not ask before the push" "r:Continuing." "p:fine"
 gen "$TX/s-notify.jsonl"    "p:go" "m:mcp__mikrotik__mikrotik_config_write" "n:done without asking, push complete" "r:Written." "q:looks good"
+# Windows co-sign finding 2: the correction comes four prompts later, queued mid-turn, and names the referral
+gen "$TX/s-late.jsonl"      "p:settle the settings with the other AI" "r:A human has to enter the settings change." \
+                            "p:next" "r:ok" "p:next" "r:ok" "p:next" "r:ok" \
+                            "q:you recommended asking the human although communication was possible - needless"
+# a correction that names the referral right after it: counted once, never twice
+gen "$TX/s-once.jsonl"      "p:clear it" "r:This needs the operator's word." "r:Earlier: a human must decide this." \
+                            "p:needless - you recommended asking the human, communication was possible"
 "$PY" -c '
 import json, sys
 json.dump({"a1": {"q": "Shall I tag the release now or wait for the review?", "session": "s-needed", "status": "answered"},
@@ -56,7 +63,7 @@ check() { # $1 name, $2 python expression over d (the --json result)
     echo "  OK   $1"; else echo "  FAIL $1"; fail=1; fi
 }
 case_of() { printf "[x['case'] for x in c if x['transcript']=='%s.jsonl']" "$1"; }
-check "ten sessions read"                          "n['sessions'] == 10"
+check "twelve sessions read"                       "n['sessions'] == 12"
 check "needed question counted"                    "n['questions'] == 4"
 check "needless question (English)"                "'unneeded' in $(case_of s-unneeded)"
 check "needless question (German, instance data)"  "'unneeded' in $(case_of s-german)"
@@ -67,8 +74,16 @@ check "correction without an action: nothing"      "$(case_of s-noaction) == []"
 check "needless referral (case 3b)"                "$(case_of s-referral) == ['referral']"
 check "compaction summary is no prompt"            "$(case_of s-compact) == []"
 check "notification is no prompt, queued prompt is" "$(case_of s-notify) == []"
-check "totals"                                     "n['unneeded'] == 3 and n['overreach'] == 1 and n['unclear'] == 1 and n['referral'] == 1"
+check "late referral found four prompts later"     "$(case_of s-late) == ['referral'] and any('3 prompt(s) later' in x['reply'] for x in c if x['transcript']=='s-late.jsonl')"
+check "referral named right away: counted once"    "$(case_of s-once) == ['referral']"
+check "totals"                                   "n['unneeded'] == 3 and n['overreach'] == 1 and n['unclear'] == 1 and n['referral'] == 3"
 check "MCP write tool counts as an action"         "n['self'] >= 3"
+
+# Windows co-sign finding 1: the cache holds verdicts, so a pattern change must reach transcripts already seen
+printf '{"unneeded": ["mach (es |das )?einfach", "^wait for the review$"]}\n' > "$ROOT/.claude/rules/decision-review.json"
+U="$("$PY" "$S" --root "$NR" --dir "$NTX" --numbers | "$PY" -c "import json,sys; print(json.load(sys.stdin)['unneeded'])")"
+[ "$U" = "4" ] && echo "  OK   a pattern change reaches cached transcripts" || { echo "  FAIL cached verdict survived a pattern change (unneeded=$U)"; fail=1; }
+printf '{"unneeded": ["mach (es |das )?einfach"]}\n' > "$ROOT/.claude/rules/decision-review.json"
 
 # --numbers carries counts only, never a sentence
 NUM="$("$PY" "$S" --root "$NR" --dir "$NTX" --numbers)"
