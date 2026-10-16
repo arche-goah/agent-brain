@@ -141,6 +141,32 @@ Rules:
 - Breaking a documented interface (tool name, config key, hook contract) is a major bump
   and gets a migration note in the changelog. Silent renames are not allowed.
 
+**Release lifecycle — the same three stages for the core and every suite** (operator order
+2026-10-16, translated: "if it really is more of a local test, then time-boxed; then it becomes a
+beta candidate and afterwards stable once it has run verified at everyone's for a while — always
+measurable, verifiable and cleanly tested"). Until then the core's own path from beta to stable
+lived only as instance prose on two brains, measured the same day.
+
+1. **Alpha — local, declared, dated.** A new function runs first on one brain, declared in
+   `.claude/rules/local-machinery.json` as `alpha` with an expiry date and what is being measured
+   (`rules/working-rules.md`, "One System, Not Local Workarounds"). `local-machinery.py` names
+   undeclared and expired items at every session start. At expiry: a PR, an extension with a
+   reason, or unwired.
+2. **Beta — a PR, measured on both systems, merged, shipped on the channel.** The PR is checked at
+   its head on macOS AND Windows (a machine of the operator counts; green Windows CI is not "checked
+   on Windows"), then merged, then shipped with a beta tag through the `-next` channel
+   (`brain-core-next`, `<suite>-next`) — one beta tag per strand, once no important candidate of
+   the strand is still being worked out, never a tag because the board is green. A merge checked on
+   one system only is a labelled beta of that system (§11, item 11).
+3. **Stable — after a verified period at everyone's.** The stable pin moves only after the beta ran
+   without regression on every instance that uses it (`scripts/device-status.py` shows which
+   instance runs what; changelog entries carry the test level they were checked at,
+   `(test: T0/T1/T2)`), on the operator's word for the core, and on the suite owner's word plus the
+   operator's for a suite with an owner.
+
+Every stage is reached by a measurement, not by a statement: a stage claimed without its
+evidence (the declaration, the two head checks, the device reports) is not reached.
+
 ## 7. CI (this is what keeps two setups comparable)
 
 Every shared repo runs on pull request, blocking:
