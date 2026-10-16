@@ -144,8 +144,13 @@ hasnt "and it polled nothing" "COMMENT" "$out"
 
 echo "arm script: TERM tears down the whole tree (a trap that does not exit swallows TERM)"
 printf '%s\n' '{"repo_watches":[{"tag":"arm","repos":["acme/one"],"interval":30}]}' > "$T/arm.json"
+# CLAUDE_PROJECT_DIR: the arm script registers a non-default state dir under its INSTANCE
+# (.claude-state/collab-watch-states). Without an instance of its own this fixture wrote
+# that line into the checkout — found 2026-10-16 by the Windows instance, where the temp
+# path then turned leak-scan red.
+mkdir -p "$T/inst"
 env PATH="$T/bin:$PATH" FAKE_DIR="$D" COLLAB_WATCH_CONFIG="$T/arm.json" COLLAB_WATCH_STATE="$T/armstate" \
-    COLLAB_WATCH_CLONE_ROOT="$T/clones" bash "$HERE/collab-watch.sh" > "$T/arm.out" 2>&1 &
+    COLLAB_WATCH_CLONE_ROOT="$T/clones" CLAUDE_PROJECT_DIR="$T/inst" bash "$HERE/collab-watch.sh" > "$T/arm.out" 2>&1 &
 A=$!
 payload=""
 for _ in $(seq 1 20); do
@@ -154,6 +159,10 @@ for _ in $(seq 1 20); do
   sleep 0.5
 done
 [[ -n "$payload" ]] && kill -0 "$payload" 2>/dev/null && ok || bad "arm script started the repo watch (control)" "$(cat "$T/arm.out")"
+# The registry line lands in the fixture's instance, never in the checkout (finding 2026-10-16).
+[[ -f "$T/inst/.claude-state/collab-watch-states" ]] && ok || bad "registry written in the fixture instance" "missing $T/inst/.claude-state/collab-watch-states"
+[[ -f "$HERE/../.claude-state/collab-watch-states" ]] && grep -q "$T/armstate" "$HERE/../.claude-state/collab-watch-states" 2>/dev/null \
+  && bad "no litter in the checkout" "fixture state dir registered under $HERE/.." || ok
 kill "$A" 2>/dev/null
 gone=0
 for _ in $(seq 1 24); do

@@ -243,10 +243,20 @@ function anyAlive(locks) {
   return r.includes(true) ? true : (r.includes(null) ? null : false);
 }
 
+// A collab-watch armed with its own COLLAB_WATCH_STATE sets that variable on the Monitor
+// command, never in this hook's environment — so the gate looked only at the default
+// directory and blocked with the watch alive (measured 2026-10-15 on the Windows instance).
+// collab-watch.sh registers every non-default state dir in `collab-watch-states` (one path
+// per line); a stale line costs nothing, its locks read as dead.
 function stateDirs(root) {
   const base = path.join(root, '.claude-state');
-  const collab = process.env.COLLAB_WATCH_STATE || path.join(base, 'collab-watch');
-  return { sm: [process.env.SHARED_MEMORY_LOCK_DIR || base, collab], collab };
+  const collab = [process.env.COLLAB_WATCH_STATE || path.join(base, 'collab-watch')];
+  try {
+    for (const l of fs.readFileSync(path.join(base, 'collab-watch-states'), 'utf8').split(/\r?\n/)) {
+      if (l.trim() && !collab.includes(l.trim())) collab.push(l.trim());
+    }
+  } catch (e) { /* no registry: only the default dir */ }
+  return { sm: [process.env.SHARED_MEMORY_LOCK_DIR || base, ...collab], collab };
 }
 
 // A liveness that cannot be measured counts as watched: the gate fails open (header).
@@ -256,10 +266,11 @@ function smWatched(root) {
 
 function prWatched(root, calls) {
   if (calls.some((c) => (c.name === 'Monitor' || c.bg) && PR_WATCH.test(c.cmd))) return true;
-  const dir = stateDirs(root).collab;
-  let locks;
-  try { locks = fs.readdirSync(dir).filter((f) => /^repo-activity.*\.pid$/.test(f)).map((f) => path.join(dir, f)); } catch (e) { return false; }
-  return anyAlive(locks) !== false;
+  const locks = [];
+  for (const dir of stateDirs(root).collab) {
+    try { fs.readdirSync(dir).filter((f) => /^repo-activity.*\.pid$/.test(f)).forEach((f) => locks.push(path.join(dir, f))); } catch (e) { /* dir absent */ }
+  }
+  return locks.length > 0 && anyAlive(locks) !== false;
 }
 
 function expandHome(p) { return p.replace(/^~(?=$|[\\/])/, require('os').homedir()); }
