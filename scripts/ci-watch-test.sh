@@ -131,6 +131,16 @@ case "${CI_WATCH_STUB:?}" in
                     elif [[ "${1:-}" == api ]]; then echo '[{"name":"test","conclusion":"success"},{"name":"release-preflight","conclusion":'"$c"'}]'
                     elif [[ "$CI_WATCH_STUB" != pr_stale_running && -f "$f" ]]; then echo "second poll reached" >&2; exit 1
                     else touch "$f"; echo '[{"bucket":"pass","name":"test"},{"bucket":"pending","name":"release-preflight"}]'; fi ;;
+  # 2026-10-16: the listed checks are all green, but a second workflow run of the head commit
+  # is in_progress and has not listed its jobs yet. pr_run_open: it stays open (no verdict);
+  # pr_run_flip: it completes on the second read (then green).
+  pr_run_open|pr_run_flip)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api && "$*" == *actions/runs* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_run_flip && -f "$f" ]]; then echo 0; else touch "$f"; echo 1; fi
+                    else echo '[{"bucket":"pass","name":"CodeQL"},{"bucket":"pass","name":"Analyze"}]'; fi ;;
   # ...and a pending entry that is a commit STATUS (no check-run of that name) keeps waiting.
   pr_stale_status)  if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
@@ -211,6 +221,8 @@ check "pr: check-run genuinely running (conclusion null) = wait, timeout(2)" pr_
 grep -q "left the status stale" "$TMP/out" && { echo "  FAIL running check-run was called stale"; fails=$((fails+1)); } \
   || echo "  OK   running check-run was not called stale"
 check "pr: pending commit status without a check-run = wait, timeout(2)" pr_stale_status 2 pr 12 2
+check "pr: listed checks green, a workflow run still open = wait, timeout(2)" pr_run_open 2 pr 12 2
+check "pr: listed checks green, the open run completes = GREEN"          pr_run_flip 0 pr 12 30
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
