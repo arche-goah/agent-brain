@@ -5,7 +5,7 @@
 #   bash scripts/brain-check.sh --brief  # both, one summary line — unless something
 #                                        # is wrong, then the full detail follows
 #
-# The session start runs --brief (operator, translated: this has to run at every
+# The session start runs --cached, which is --brief one start late (see below; operator, translated: this has to run at every
 # session start, no exceptions). Full run every time, short output every time:
 # skipping the run when
 # nothing changed would have missed everything that breaks WITHOUT a file changing —
@@ -39,6 +39,29 @@ fi
 ROOT="${CLAUDE_PROJECT_DIR:-$DEFAULT_ROOT}"
 cd "$ROOT" || exit 1
 STAMP=".claude-state/brain-check.stamp"
+
+# --cached: what the SESSION START runs. It prints the brief result of the previous run and
+# starts the next full run in the background, so the start pays a file read, not the run.
+# Measured 2026-10-16 on a Windows brain on v1.4.4: brain-check took 15 s of the bootup even
+# when the self-test verdict was reused (the non-fixture half and brain-friction still ran in
+# the foreground), the whole start 42 s against the hook's 30 s, and past the limit the harness
+# kills the hook and the AI gets no session-start report at all. The run still happens at
+# every start — only its answer arrives one start later, said with its time. A person running
+# brain-check by hand never gets this mode.
+if [ "${1:-}" = "--cached" ]; then
+  mkdir -p .claude-state
+  OUT=".claude-state/brain-check.brief"
+  if [ -s "$OUT" ]; then
+    cat "$OUT"
+    echo "   (brain-check: result of $(cat "$STAMP" 2>/dev/null || echo 'an earlier start'); the next run is measuring in the background)"
+  else
+    echo "brain-check: first run measuring in the background — its result comes at the next session start"
+  fi
+  # $$ in the temporary name: two sessions starting together must not write into one file.
+  ( BRAIN_SELFTEST_BG=1 bash "$HERE/brain-check.sh" --brief > "$OUT.$$" 2>/dev/null
+    mv -f "$OUT.$$" "$OUT" ) >/dev/null 2>&1 &
+  exit 0
+fi
 
 rc=0
 if [ -n "${BRAIN_CHECK_STUB_SELF:-}" ]; then
