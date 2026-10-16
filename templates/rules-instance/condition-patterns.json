@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "Instance data for core/helpers/conditional-order-gate.cjs: regex strings that mark a CONDITION in the",
+    "operator's message — a sequencing word ('then', 'after your answer', 'once X is merged') or a delegated",
+    "decision ('clear it with X', 'X decides'). The built-ins are English; this file carries the operator's",
+    "own language. Example for a German operator: \"\\\\bdann\\\\b\", \"\\\\bdanach\\\\b\", \"\\\\bsobald\\\\b\",",
+    "\"\\\\berst\\\\s+(nach|wenn)\\\\b\", \"\\\\bnach\\\\s+(der|deiner)\\\\s+antwort\\\\b\", \"\\\\bwarte\\\\b\",",
+    "\"\\\\bklaer\\\\w*\\\\s+das\\\\s+mit\\\\b\", \"\\\\b\\\\w+\\\\s+entscheidet\\\\b\".",
+    "A hit costs one line (CONDITION-MET or CONDITION-NONE) before an expensive or external call; keep the",
+    "list to words that really bind an order to an event."
+  ],
+  "condition_patterns": []
+}

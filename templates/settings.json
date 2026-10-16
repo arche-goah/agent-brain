@@ -89,6 +89,17 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Agent|Workflow|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/conditional-order-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
       }
     ],
     "PostToolUse": [

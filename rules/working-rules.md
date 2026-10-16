@@ -305,9 +305,27 @@ here. Take the FIRST step that applies:
 5. **Otherwise** (reversible, own terrain, inside the order): do it and report.
 A question ENDS the turn only when the next step of the order cannot proceed without the
 answer AND the answer belongs to the operator — the instance names its list of
-operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place.
+operator-only matters (goal, money, hardware, risk, external effect, release) in ONE place:
+`.claude/rules/operator-only.json` (template in `core/templates/rules-instance/`). Operator decision
+2026-10-16: only what really needs the operator goes to the operator; what can be settled cleanly
+alone or between the AIs, is reversible and documented, the AI decides — in every brain. Not by
+topic: a technical question can be a real choice. Per question, the comparative test: a
+measurement or a reversible A/B test can decide it → run it and report; it rests on the
+operator's experience, goal or taste → ask, with options and a recommendation. `core/scripts/decision-readiness.py` names at every session
+start a brain where this cannot hold (rule not loaded, list missing, everyday commits and pushes
+behind a permission dialog, or every check switched off).
 Such a question is asked through the question tool, not as closing prose (`intelligence.md`,
 "Presenting to the Operator").
+**An order that names a condition is read with its condition** (operator decision
+2026-10-16): "then", "after the answer", "once it is merged", "clear it with X" bind the
+order to an event, and the event comes first — the sequencing word is the operator's
+"not yet", not filler. Before the first expensive or externally effective step of such a
+turn (a workflow, a fan-out of agents, a model run, a push, a PR write) the agent names the
+condition and shows that it is met, or says why the word is no condition here. Measured on
+a collaborating brain the day the rule was written: "dann coherence scan" — then, after the
+two instances asked had answered — was read as "now", and nine analysis agents ran before
+the answer came. Carried by `core/helpers/conditional-order-gate.cjs` (PreToolUse); the
+operator's own words for a condition are instance data (`.claude/rules/condition-patterns.json`).
 Named cases (every other turn-end rule points here):
 - **A hand step for the operator** (a command only they may run, a cable, a device): first
   finish the independent reversible work of the turn, arm the watcher on the step's effect,
