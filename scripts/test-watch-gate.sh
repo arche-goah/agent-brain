@@ -314,8 +314,31 @@ fi
 # block assertions above prove nothing
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));
 ' > "$T/stub.cjs"
+
+# --- (g) the standing watch: a filled-in collab-watch.json, a turn with no own act at all
+SW="$T/standing"; mkdir -p "$SW/.claude/rules"
+printf '{"shared_memory": {"repo": "~/x", "interval": 120}, "repo_watches": []}\n' > "$SW/.claude/rules/collab-watch.json"
+{ user "wie ist der stand"; asst "Alles gruen."; } > "$T/g1.jsonl"
+check "(g) brain can watch, no standing watch lives" "$T/g1.jsonl" block "$SW"
+live_lock "$SW/.claude-state/collab-watch/repo-activity-core.pid"
+check "(g) a live collab-watch lock" "$T/g1.jsonl" allow "$SW"
+rm -f "$SW/.claude-state/collab-watch/repo-activity-core.pid"; echo 999999 > "$SW/.claude-state/collab-watch/shared-memory-watch.pid"
+check "(g) only a dead lock (the Monitor expired)" "$T/g1.jsonl" block "$SW"
+{ user "weiter"; tool Monitor "bash core/scripts/collab-watch.sh"; asst "Waechter laeuft."; } > "$T/g2.jsonl"
+check "(g) collab-watch armed in this turn" "$T/g2.jsonl" allow "$SW"
+printf '{"standing_watch": "off: Werkbank ohne Kollegen", "repo_watches": []}\n' > "$SW/.claude/rules/collab-watch.json"
+check "(g) declared off with a reason" "$T/g1.jsonl" allow "$SW"
+printf '{"standing_watch": "off", "repo_watches": []}\n' > "$SW/.claude/rules/collab-watch.json"
+check "(g) off without a reason" "$T/g1.jsonl" block "$SW"
+printf '{"_comment": ["replace <placeholder>"], "repo_watches": [{"tag": "core", "repos": ["<owner>/<core-repo>"]}]}\n' > "$SW/.claude/rules/collab-watch.json"
+check "(g) template placeholders left: not judged here" "$T/g1.jsonl" allow "$SW"
+check "(g) no collab-watch.json: not judged here" "$T/g1.jsonl" allow "$R"
+printf '{"_comment": ["a <placeholder> only in the comment"], "repo_watches": []}\n' > "$SW/.claude/rules/collab-watch.json"
+check "(g) a placeholder only in _comment still judges" "$T/g1.jsonl" block "$SW"
+
 G0="$G"; G="$T/stub.cjs"; before=$fail; fail=0
 for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2 cs2 cs5; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+check "stub on g1" "$T/g1.jsonl" block "$SW" >/dev/null
 caught=$fail; G="$G0"; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed every must-block case"
 

@@ -120,6 +120,9 @@ cp "$CORE_SRC/templates/rules-instance/absence-sources.json" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/condition-patterns.json" .claude/rules/
 # Language data of decision-review.py (built-ins English; the operator's words go here).
 cp "$CORE_SRC/templates/rules-instance/decision-review.json" .claude/rules/
+# The standing watch's data (skill collab-watch). Copied with its placeholders: watch-readiness.py
+# names them at every start until filled; from then on watch-gate case (g) keeps the watch alive.
+cp "$CORE_SRC/templates/rules-instance/collab-watch.json" .claude/rules/
 cp "$CORE_SRC/templates/leak-names.json" .claude/rules/leak-names.json
 # MEMORY.md seed: Claude Code creates Auto-Memory itself — the seed documents the format.
 mkdir -p docs/maintenance
