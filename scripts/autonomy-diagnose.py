@@ -532,6 +532,12 @@ def recall(repo, home, cfg, layers, topic):
                                + (f", {len(hit)} of them mention the topic" if hit else "") + f" ({label})")
     out.append("- hooks that hand memory to the AI before it acts: "
                + ("; ".join(rec) if rec else "none — memory reaches the AI only through the index loaded at start"))
+    # The list without its enforcer (Windows review of #380): mandatory reading that nothing makes mandatory.
+    lr = load(str(Path(repo, ".claude", "rules", "live-read.json")), {}) or {}
+    doms = [d for d in lr.get("domains", []) if isinstance(d, dict)]
+    if doms and not any("live-read-gate" in r for r in rec):
+        out.append(f"- `.claude/rules/live-read.json` lists {len(doms)} live domain(s), but no `live-read-gate` hook is "
+                   "wired — nothing makes that reading mandatory")
     out.append("")
     return out
 

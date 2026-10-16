@@ -73,6 +73,10 @@ printf '{"hooks": {"PreToolUse": [{"matcher": "Bash|mcp__.*", "hooks": [{"type":
 printf '{"domains": [{"name": "desk", "tools": ["^mcp__desk__"], "required": [{"path": "%s", "label": "desk lessons"}, {"path": "docs/desk.md", "label": "ledger"}]}]}\n' "$(native "$LM/desk.md")" > "$LB/.claude/rules/live-read.json"
 LR="$T/lr.md"; env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$LB" --home "$H" > "$LR"
 expect "recall: live-read gate hands memory" "$LR" must 'live-read-gate: 1 live domain(s), 2 mandatory reading(s) before the first live call, 1 of them mention the topic'
+printf '{"hooks": {}}\n' > "$LB/.claude/settings.json"
+env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$LB" --home "$H" > "$LR"
+expect "recall: list without a wired gate is named" "$LR" must 'lists 1 live domain(s), but no `live-read-gate` hook is wired'
+printf '{"hooks": {"PreToolUse": [{"matcher": "Bash|mcp__.*", "hooks": [{"type": "command", "command": "node \\"$CLAUDE_PROJECT_DIR/core/helpers/live-read-gate.cjs\\""}]}]}}\n' > "$LB/.claude/settings.json"
 printf '{"domains": []}\n' > "$LB/.claude/rules/live-read.json"
 env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$LB" --home "$H" > "$LR"
 expect "recall: inert live-read gate is none" "$LR" must 'none — memory reaches the AI only through the index'
