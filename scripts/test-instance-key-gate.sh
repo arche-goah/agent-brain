@@ -53,5 +53,9 @@ out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 5 
       | CLAUDE_PROJECT_DIR="$(native "$T/brain")" env -u SHARED_MEMORY_SELF node "$(native "$GATE")" 2>&1); rc=$?
 [ "$rc" -eq 2 ] && case "$out" in *"$KEY"*) true ;; *) false ;; esac && ok "id read from settings env (first token)" || bad "settings env: rc=$rc $out"
 
+# The PowerShell tool is the same channel on Windows (2026-10-16): same command, same verdict.
+out=$(printf '%s' '{"tool_name":"PowerShell","tool_input":{"command":"gh pr comment 5 --body hi"}}'       | CLAUDE_PROJECT_DIR="$(native "$T/brain")" SHARED_MEMORY_SELF=mac node "$(native "$GATE")" 2>&1); rc=$?
+[ "$rc" -eq 2 ] && case "$out" in *"instance-key"*) true ;; *) false ;; esac && ok "PowerShell write without the key blocks" || bad "PowerShell: rc=$rc $out"
+
 [ "$fail" -eq 0 ] && echo "test-instance-key-gate: all checks passed"
 exit "$fail"

@@ -14,7 +14,7 @@
         ]
       },
       {
-        "matcher": "Bash|Monitor|Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": "Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -31,7 +31,7 @@
         ]
       },
       {
-        "matcher": "Read|Edit|Write|Bash",
+        "matcher": "Read|Edit|Write|Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
@@ -53,7 +53,7 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
@@ -70,7 +70,7 @@
         ]
       },
       {
-        "matcher": "Bash|mcp__.*",
+        "matcher": "Bash|PowerShell|mcp__.*",
         "hooks": [
           {
             "type": "command",
