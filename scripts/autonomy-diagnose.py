@@ -32,7 +32,8 @@ Sections:
                     stop-checks list
   6 recall          where a topic the AI should already know lives (memory, rules), and whether
                     any hook hands memory to the AI before it acts
-  7 lessons         memory files that hold a lesson (feedback/project) and whether each names a
+  7 lessons         memory files that hold a lesson (feedback, or a project note that states a
+                    rule) and whether each names a
                     carrier — a skill, script, hook, gate, rule file, suite reference or PR. A lesson
                     that names none lives only as prose: it is recalled as text and fails on the detail
                     (rules/intelligence.md, Knowledge Carriers). Listed oldest first, so the ones that
@@ -558,7 +559,11 @@ CARRIER = re.compile(
     r"|\brules/[\w.-]+\.(?:md|json)\b|\breferences/[\w.-]+|\bmechanism-rules\b"
     r"|\b(?:PR|pull|issue|Issue)\s*#\d+|[\w-]+/[\w-]+#\d+|\(#\d+\)|\bfixture\b",
     re.I)
-LESSON_TYPES = ("feedback", "project")
+# A feedback note is a lesson. A project note usually records state (a plan, a stand) and needs no
+# carrier — it counts only when its text states a rule: the memory format's Why/How-to-apply pair, or a
+# rule word (macOS review of #384: 82 of 194 files were project notes, and state headed the work list).
+RULE_TEXT = re.compile(r"\*\*Why:\*\*[\s\S]*\*\*How to apply:\*\*|\bHARD\b|\b(?:never|always|must)\b"
+                       r"|\b(?:nie|niemals|immer|muss)\b", re.I)
 
 
 def memory_type(path, lines):
@@ -572,13 +577,16 @@ def memory_type(path, lines):
 
 def lessons(repo, home, cfg):
     out = ["## 7 Lessons — which memory lessons name a carrier, and which live only as prose", ""]
-    files = [f for f in sorted(glob.glob(os.path.join(memory_dir(repo, cfg), "*.md")))
-             if os.path.basename(f) != "MEMORY.md"]
+    files = [str(p) for p in sorted(Path(memory_dir(repo, cfg)).glob("*.md")) if p.name != "MEMORY.md"]
     rows, bare = [], []
     for f in files:
         lines = read_lines(f)
         kind = memory_type(f, lines)
-        if kind not in LESSON_TYPES:
+        if kind == "project":
+            body = "\n".join(lines)
+            if not RULE_TEXT.search(body):
+                continue
+        elif kind != "feedback":
             continue
         hit = any(CARRIER.search(line) for line in lines)
         rows.append(f)
@@ -587,7 +595,7 @@ def lessons(repo, home, cfg):
     if not files:
         out += ["- no memory files — nothing to count", ""]
         return out
-    out.append(f"- {len(files)} memory file(s), {len(rows)} hold a lesson (type feedback/project), "
+    out.append(f"- {len(files)} memory file(s), {len(rows)} hold a lesson (feedback, or a project note that states a rule), "
                f"{len(rows) - len(bare)} name a carrier, **{len(bare)} live only as prose**")
     if bare:
         bare.sort(key=lambda f: os.path.getmtime(f))

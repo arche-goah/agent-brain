@@ -90,8 +90,12 @@ printf -- '---\nname: a\ndescription: carried lesson\nmetadata:\n  type: feedbac
 printf -- '---\nname: b\ndescription: desk lesson only told\nmetadata:\n  type: feedback\n---\nAlways reopen the window first.\n' > "$M/prose.md"
 printf 'The operator said: never patch while a show runs.\n' > "$M/feedback_patch-rule.md"
 printf -- '---\nname: c\ndescription: a link list\nmetadata:\n  type: reference\n---\nhttps://example.org\n' > "$M/links.md"
+printf -- '---\nname: d\ndescription: website plan\nmetadata:\n  type: project\n---\nPhase two starts in spring.\n' > "$M/state.md"
+printf -- '---\nname: e\ndescription: show rule\nmetadata:\n  type: project\n---\nNever store a cue while the show runs.\n' > "$M/showrule.md"
 env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$B" --home "$H" > "$R"
-expect "lessons: counted"               "$R" must '3 hold a lesson (type feedback/project), 1 name a carrier, **2 live only as prose**'
+expect "lessons: counted"               "$R" must '4 hold a lesson (feedback, or a project note that states a rule), 1 name a carrier, **3 live only as prose**'
+expect "lessons: project rule listed"   "$R" must 'showrule.md` — show rule'
+expect "lessons: project state not"     "$R" mustnot 'state.md`'
 expect "lessons: prose one listed"      "$R" must 'prose.md` — desk lesson only told'
 expect "lessons: prefix-typed listed"   "$R" must 'feedback_patch-rule.md`'
 expect "lessons: carried not listed"    "$R" mustnot 'carried.md`'
