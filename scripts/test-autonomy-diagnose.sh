@@ -84,6 +84,19 @@ expect "secret line still found"        "$R" must '`.claude/rules/secret.md:3` [
 expect "secret redacted"                "$R" must '[REDACTED]'
 expect "secret not in the report"       "$R" mustnot 'ghp_abcdefghij'
 
+# lessons (section 7): a lesson naming a carrier, one that is prose only (frontmatter type), one typed by
+# its file-name prefix, and a reference note without a carrier that is not a lesson (negative control)
+printf -- '---\nname: a\ndescription: carried lesson\nmetadata:\n  type: feedback\n---\nEnforced by scripts/hooks/desk-gate.cjs.\n' > "$M/carried.md"
+printf -- '---\nname: b\ndescription: desk lesson only told\nmetadata:\n  type: feedback\n---\nAlways reopen the window first.\n' > "$M/prose.md"
+printf 'The operator said: never patch while a show runs.\n' > "$M/feedback_patch-rule.md"
+printf -- '---\nname: c\ndescription: a link list\nmetadata:\n  type: reference\n---\nhttps://example.org\n' > "$M/links.md"
+env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$B" --home "$H" > "$R"
+expect "lessons: counted"               "$R" must '3 hold a lesson (type feedback/project), 1 name a carrier, **2 live only as prose**'
+expect "lessons: prose one listed"      "$R" must 'prose.md` — desk lesson only told'
+expect "lessons: prefix-typed listed"   "$R" must 'feedback_patch-rule.md`'
+expect "lessons: carried not listed"    "$R" mustnot 'carried.md`'
+expect "lessons: reference not counted" "$R" mustnot 'links.md`'
+
 # --- clean brain: negative control
 C="$T/clean"; mkdir -p "$C/.claude/rules"; HC="$T/home2"; mkdir -p "$HC/.claude"
 printf '# Brain\n\nAct within the order; report afterwards.\n' > "$C/CLAUDE.md"
@@ -95,6 +108,7 @@ expect "clean: no core dir"             "$R2" must 'no `core/` directory in the 
 expect "clean: topic nowhere"           "$R2" must 'nowhere local'
 expect "clean: no memory index"         "$R2" must '- memory index: none at'
 expect "clean: no OVER line"            "$R2" mustnot 'OVER'
+expect "clean: no memory, no lessons"   "$R2" must '- no memory files — nothing to count'
 
 # --- messy brain: the report still runs through, and every mess is named in section 0
 X="$T/messy"; HX="$T/home3"; mkdir -p "$X/.claude/rules" "$X/core" "$HX/.claude"
@@ -106,7 +120,7 @@ printf 'Immer den Nutzer fragen, gr\xfc\xdf.\n' > "$X/.claude/rules/latin1.md"
 R3="$T/messy.md"
 env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$X" --home "$HX" > "$R3"; rc=$?
 [ $rc -eq 0 ] && echo "  OK   messy: exit 0" || { echo "  FAIL messy: exit $rc"; fail=1; }
-for s in "## 0 Problems" "## 1 Core state" "## 2 Context" "## 3 Brake" "## 4 Permissions" "## 5 Hooks" "## 6 Recall"; do
+for s in "## 0 Problems" "## 1 Core state" "## 2 Context" "## 3 Brake" "## 4 Permissions" "## 5 Hooks" "## 6 Recall" "## 7 Lessons"; do
   expect "messy: section '$s' present" "$R3" must "$s"
 done
 expect "messy: invalid JSON named"      "$R3" must 'settings.json` is not valid JSON'
