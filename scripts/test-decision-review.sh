@@ -85,6 +85,15 @@ U="$("$PY" "$S" --root "$NR" --dir "$NTX" --numbers | "$PY" -c "import json,sys;
 [ "$U" = "4" ] && echo "  OK   a pattern change reaches cached transcripts" || { echo "  FAIL cached verdict survived a pattern change (unneeded=$U)"; fail=1; }
 printf '{"unneeded": ["mach (es |das )?einfach"]}\n' > "$ROOT/.claude/rules/decision-review.json"
 
+# corrections: the share of prompts that correct the AI (built-in English + instance words), in its own window
+TC="$T/txc"; mkdir -p "$TC"
+gen "$TC/s-corr.jsonl" "p:build the window" "r:Built." "p:that's not what I asked" "r:Rebuilt." "p:schon wieder falsch" "r:Fixed." "p:fine, thanks" \
+    "p:<cross-session-message from=\"x\">why did you push again?</cross-session-message>" "p:<bash-stdout>that's wrong</bash-stdout>"
+printf '{"unneeded": ["mach (es |das )?einfach"], "correction": ["schon wieder"]}\n' > "$ROOT/.claude/rules/decision-review.json"
+CR="$("$PY" "$S" --root "$NR" --dir "$(native "$TC")" --numbers | "$PY" -c "import json,sys; n=json.load(sys.stdin); print(n['corrections'], n['prompts'], n['correction_rate'])")"
+[ "$CR" = "2 4 0.5" ] && echo "  OK   corrections counted per prompt (built-in + instance word)" || { echo "  FAIL corrections: '$CR'"; fail=1; }
+printf '{"unneeded": ["mach (es |das )?einfach"]}\n' > "$ROOT/.claude/rules/decision-review.json"
+
 # --numbers carries counts only, never a sentence
 NUM="$("$PY" "$S" --root "$NR" --dir "$NTX" --numbers)"
 if printf '%s' "$NUM" | grep -q "push\|Shall"; then echo "  FAIL --numbers leaks text"; fail=1; else echo "  OK   --numbers carries counts only"; fi

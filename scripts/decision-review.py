@@ -37,7 +37,8 @@ operator-only list; two or more confirmed unneeded/referral of the same group = 
 only — nothing is changed.
 
 Language: built-in patterns are English; further languages are instance data in `.claude/rules/decision-review.json`
-{"unneeded": [...], "overreach": [...], "referral": [...], "referral_correction": [...], "action_words": [...]}
+{"unneeded": [...], "overreach": [...], "referral": [...], "referral_correction": [...], "correction": [...],
+"action_words": [...]}
 (regexes, case-insensitive),
 added to the built-ins. Template: core/templates/rules-instance/decision-review.json.
 
@@ -59,7 +60,7 @@ try:
 except (AttributeError, ValueError):
     pass
 
-CACHE_VERSION = 3
+CACHE_VERSION = 5
 REFERRAL_LOOKBACK = 8   # replies searched backwards from a prompt that names a referral
 FRAMES = re.compile(r"<system-reminder>.*?</system-reminder>|<task-notification>.*?</task-notification>", re.S)
 LOCAL = re.compile(r"<local-command-caveat>.*?</local-command-caveat>|<local-command-std(?:out|err)>.*?"
@@ -67,6 +68,9 @@ LOCAL = re.compile(r"<local-command-caveat>.*?</local-command-caveat>|<local-com
 HOOK_ECHO = re.compile(r"^(Stop hook feedback:|\[SYSTEM NOTIFICATION)")
 # The summary a compaction writes is a user record but no prompt; it quotes the operator and would match everything.
 COMPACT = re.compile(r"^This session is being continued from a previous conversation")
+# Not the operator's words to the AI: messages of other sessions and agents, and the echo of a shell command the
+# operator ran with `!` (measured 2026-10-16 on the macOS brain: 86 cross-session messages among 1040 "prompts").
+NOT_PROMPT = re.compile(r"^<(cross-session-message|agent-message|bash-input|bash-stdout|bash-stderr)\b")
 
 BUILTIN = {
     "unneeded": [r"\bjust do it\b", r"\bwhy (do|did|would) you ask", r"\byou (can|could) (decide|do) (that|this|it) yourself",
@@ -79,6 +83,10 @@ BUILTIN = {
     "referral_correction": [r"\b(recommended|suggested) (asking|to ask) (the|a) (human|person|operator)\b",
                             r"\bcould have (settled|talked|sorted) (it|this|that)? ?(out )?(between|among) (you|yourselves)",
                             r"\bcommunication (was|would have been) possible\b"],
+    # Any prompt that corrects the AI — a trend, not a verdict (a collaborator's brain measured 16 % over eight
+    # sessions with a word list of its own, 2026-10-16; this keeps that number comparable across brains).
+    "correction": [r"\bthat'?s (not|wrong)\b", r"\bnot what I (asked|meant|said)\b", r"\bI (already )?(said|told you)\b",
+                   r"\bagain\?", r"\bwhy did you\b", r"\bstop\b.{0,20}\b(doing|that)\b"],
     "action_words": [r"\bpush(ed)?\b", r"\bmerg(e|ed)\b", r"\bdelet(e|ed)\b", r"\bpost(ed)?\b", r"\bpublish(ed)?\b",
                      r"\bcomment(ed)?\b", r"\bsav(e|ed)\b", r"\breboot(ed)?\b", r"\bPR\b", r"\brelease\b"],
 }
@@ -145,7 +153,7 @@ def prompt_text(rec):
     else:
         return None
     rest = LOCAL.sub("", FRAMES.sub("", text)).strip()
-    if not rest or HOOK_ECHO.search(rest) or COMPACT.search(rest):
+    if not rest or HOOK_ECHO.search(rest) or COMPACT.search(rest) or NOT_PROMPT.search(rest):
         return None
     return rest
 
@@ -209,7 +217,8 @@ def cid(path, line, case):
 
 def classify(path, evs, register, rx):
     """Candidates and counts for one transcript."""
-    cands, counts = [], {"needed": 0, "unneeded": 0, "referral": 0, "overreach": 0, "unclear": 0, "self": 0}
+    cands, counts = [], {"needed": 0, "unneeded": 0, "referral": 0, "overreach": 0, "unclear": 0, "self": 0,
+                         "prompts": 0, "corrections": 0}
     prompts = [i for i, e in enumerate(evs) if e[0] == "prompt"]
 
     def next_prompts(i, k):
@@ -228,6 +237,10 @@ def classify(path, evs, register, rx):
                       "reply": prompt[2][:160] + ("" if not distance else " [%d prompt(s) later]" % distance)})
 
     for i, (kind, line, text, extra) in enumerate(evs):
+        if kind == "prompt":
+            counts["prompts"] += 1
+            if rx["correction"].search(text):
+                counts["corrections"] += 1
         if kind == "reply":
             nxt = next_prompts(i, 1)
             if not nxt:
@@ -326,7 +339,8 @@ def main(argv):
     reg = register_for(a.root)
     cutoff = time.time() - a.days * 86400
     t0 = time.time()
-    total = {"needed": 0, "unneeded": 0, "referral": 0, "overreach": 0, "unclear": 0, "self": 0}
+    total = {"needed": 0, "unneeded": 0, "referral": 0, "overreach": 0, "unclear": 0, "self": 0,
+             "prompts": 0, "corrections": 0}
     cands, sessions, nbytes = [], 0, 0
     files = sorted(d.glob("*.jsonl")) if d.is_dir() else []
     for f in files:
@@ -362,7 +376,9 @@ def main(argv):
     numbers = {"days": a.days, "sessions": sessions, "questions": asked,
                "per_session": round(asked / sessions, 2) if sessions else 0,
                "unneeded": total["unneeded"], "referral": total["referral"], "overreach": total["overreach"],
-               "unclear": total["unclear"], "self": total["self"]}
+               "unclear": total["unclear"], "self": total["self"],
+               "prompts": total["prompts"], "corrections": total["corrections"],
+               "correction_rate": round(total["corrections"] / total["prompts"], 3) if total["prompts"] else 0}
     groups = {}
     for c in cands:
         if c["verdict"] == "confirmed":
@@ -389,6 +405,8 @@ def main(argv):
         asked, numbers["per_session"], total["needed"], total["unneeded"], total["referral"]))
     print("  acted with external effect %d time(s): corrected for not asking %d, unclear %d" % (
         total["self"] + total["overreach"] + total["unclear"], total["overreach"], total["unclear"]))
+    print("  the human corrected the AI in %d of %d prompt(s) (%.0f %%; word list, a trend, not a verdict)" % (
+        total["corrections"], total["prompts"], 100 * numbers["correction_rate"]))
     if cands:
         print("candidates (a hint, not a verdict; confirm or reject in the brain-scan):")
         for c in cands:
