@@ -84,6 +84,14 @@ if [[ "${1:-}" == "--logins-for" ]]; then logins_for_tag "${2:-}"; exit 0; fi
 exec > >(sm_scope_filter)
 
 mkdir -p "$STATE"
+# A non-default state dir is invisible to helpers/watch-gate.cjs (the variable lives on the
+# Monitor command, not in the hook's environment), so name it where the gate looks. Node
+# reads it, so on Git Bash the path goes in Windows form (`/c/...` is no path to Node).
+REGISTRY="$INSTANCE/.claude-state/collab-watch-states"
+REG_PATH=$(cygpath -m "$STATE" 2>/dev/null || echo "$STATE")
+if [[ "$STATE" != "$INSTANCE/.claude-state/collab-watch" ]] && ! grep -qxF "$REG_PATH" "$REGISTRY" 2>/dev/null; then
+  mkdir -p "$INSTANCE/.claude-state" && echo "$REG_PATH" >> "$REGISTRY"
+fi
 pids=()
 # Supervisors kill their own child on TERM (see watch-supervisor.sh), so killing them is
 # enough — portable, no pkill.
