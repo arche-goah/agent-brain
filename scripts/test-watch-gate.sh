@@ -104,6 +104,16 @@ check "PR created, watch-pr armed in the turn" "$T/p2.jsonl" allow "$R"
 live_lock "$R/.claude-state/collab-watch/repo-activity-o.pid"
 check "PR created, collab-watch repo watch lives" "$T/p1.jsonl" allow "$R"
 rm -rf "$R/.claude-state"
+# a collab-watch with its own COLLAB_WATCH_STATE (measured 2026-10-15, Windows instance): the
+# variable lives on the Monitor command, so the gate finds the dir only through the registry
+OWN="$T/own-state"
+live_lock "$OWN/repo-activity-o.pid"
+check "PR created, own-state collab-watch not registered" "$T/p1.jsonl" block "$R"
+mkdir -p "$R/.claude-state"; (cygpath -m "$OWN" 2>/dev/null || echo "$OWN") > "$R/.claude-state/collab-watch-states"  # Windows form, as collab-watch.sh writes it
+check "PR created, own-state collab-watch registered" "$T/p1.jsonl" allow "$R"
+live_lock "$OWN/shared-memory-watch.pid"
+check "pushed answer, own-state collab-watch registered" "$T/t1.jsonl" allow "$R"
+rm -rf "$R/.claude-state" "$OWN"
 
 # --- CI side (measured 2026-10-13): a push into a checkout with Actions workflows starts a run.
 # Four of five such pushes that session had a ci-watch; the fifth went red and nobody saw it.
