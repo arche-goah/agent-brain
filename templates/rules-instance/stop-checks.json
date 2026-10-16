@@ -45,8 +45,8 @@
       "marker": "WATCH-GATE",
       "cmd": "core/helpers/watch-gate.cjs",
       "mode": "block",
-      "extract": "no watcher lives\\. ([^—]+)",
-      "template": "No watcher for an expected reaction: {1}",
+      "extract": "WATCH-GATE: [^.]+\\. ([^—]+?) —",
+      "template": "Watcher missing: {1}",
       "maxLength": 200
     },
     {
