@@ -176,6 +176,12 @@ with tempfile.TemporaryDirectory() as d:
     write(stub / "scripts/fork-drift.py",
           "print('!! fork pal/core branch fix/lost (no PR, last commit 2026-09-01): 1 commit(s) not in the core')\n"
           "print('fork drift summary: 1 fork(s) of org/core, 1 finding(s)')\n")
+    write(stub / "scripts/decision-review.py",
+          "print('decision-review: 3 session(s) in 7 day(s), 1.0 MB read in 0.1 s')\n"
+          "print('  asked the human 4 time(s) (1.33 per session): needed 3, needless 1; needless referral 0')\n"
+          "print('candidates (a hint, not a verdict; confirm or reject in the brain-scan):')\n"
+          "print('  ab12cd34 unneeded  s1:5  Shall I commit?')\n"
+          "print(\"PROPOSAL: add a line for 'git push' to the operator-only list (confirmed: a, b)\")\n")
     write(stub / "scripts/brain-selftest.sh", "echo '  !!  fixture x failed'\necho 'SELF-TEST: FAILURE'\nexit 1\n")
     write(stub / "scripts/effect-check.sh", "echo 'ROT  E3  Hook Targets — 1 missing'\necho 'OK   E1  Style — ok'\n"
                                             "echo 'WARN E6  Loose Commitments — 1'\nexit 1\n")
@@ -192,6 +198,8 @@ with tempfile.TemporaryDirectory() as d:
     check(not any("E6" in t for t in T), "effect-check E6 is not doubled when commitments ran directly")
     check(has("P1", "invariant register drift") and has("P2", "MECHANISM due"), "register drift P1, mechanism due P2")
     check(has("P2", "fork-drift: !! fork pal/core branch fix/lost"), "unlanded fork work is a P2 finding")
+    check(has("INFO", "needless 1") and has("INFO", "1 candidate(s)"), "decision-review: numbers and candidates are INFO")
+    check(has("P2", "decision-review: add a line for 'git push'"), "decision-review: a proposal is a P2 finding")
     check(not any(t.startswith("not available") for t in T), "a complete core reports nothing as unavailable")
     check(summ.get("machine_p1") == sum(1 for s in T.values() if s == "P1"), "summary P1 count = file P1 count")
 
