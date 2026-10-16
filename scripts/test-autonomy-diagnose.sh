@@ -37,6 +37,8 @@ cat > "$B/.claude/settings.json" <<'JSON'
  "hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/stop-dispatcher.cjs\""}]}],
            "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "node scripts/my-guard.cjs"}]}]}}
 JSON
+mkdir -p "$B/core/templates"
+printf '{"permissions": {"ask": ["Bash(git push*)"], "allow": ["Bash(node core/helpers/*)"]}}\n' > "$B/core/templates/settings.json"
 R="$T/planted.md"
 env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$B" --home "$H" > "$R"
 expect "core marker present"            "$R" must '- present: "ASK OR ACT"'
@@ -52,6 +54,10 @@ expect "permission: merge asks"         "$R" must '→ ASK by `Bash(gh pr merge:
 expect "permission: review denied"      "$R" must '→ DENY by `Bash(gh pr review *)` (project)'
 expect "permission: comment no rule"    "$R" must 'PR comment: `gh pr comment 1 -R owner/repo --body-file note.md` → no rule'
 expect "permission: helper allowed"     "$R" must '→ ALLOW by `Bash(node core/helpers/*)` (project)'
+expect "template: push asks there"      "$R" must '(project) [template: ASK `Bash(git push*)`]'
+expect "template: comment no rule"      "$R" must 'note.md` → no rule'
+expect "template: no rule shown"        "$R" must '[template: no rule]'
+expect "clean has no template column"   "$R" must 'core template `core/templates/settings.json`: 1 allow, 1 ask, 0 deny'
 expect "hook: core stop dispatcher"     "$R" must 'Stop [*] (project, core)'
 expect "hook: instance guard"           "$R" must 'PreToolUse [Bash] (project, instance)'
 expect "recall: topic found in memory"  "$R" must 'desk.md (1)'
@@ -71,6 +77,10 @@ expect "clean: no core dir"             "$R2" must 'no `core/` directory in the 
 expect "clean: topic nowhere"           "$R2" must 'nowhere local'
 expect "clean: no memory index"         "$R2" must '- memory index: none at'
 expect "clean: no OVER line"            "$R2" mustnot 'OVER'
+
+# --- --memory-dir prints the folder the memory index was read from, and nothing else
+md="$(env -u CLAUDE_CONFIG_DIR "$PY" "$D" --repo "$B" --home "$H" --memory-dir)"
+case "$md" in *"/projects/$(slug "$B")/memory") echo "  OK   --memory-dir names the memory folder";; *) echo "  FAIL --memory-dir: '$md'"; fail=1;; esac
 
 # --- --out writes the same report and says so on stdout
 O="$T/out.md"

@@ -33,7 +33,7 @@ Sections:
   6 recall          where a topic the AI should already know lives (memory, rules), and whether
                     any hook hands memory to the AI before it acts
 
-Usage: autonomy-diagnose.py [--repo DIR] [--home DIR] [--topic REGEX] [--out FILE]
+Usage: autonomy-diagnose.py [--repo DIR] [--home DIR] [--topic REGEX] [--out FILE] [--memory-dir]
   --repo   the brain (default: current directory)
   --home   the user's home (default: ~); the Claude config is <home>/.claude unless
            CLAUDE_CONFIG_DIR is set
@@ -325,16 +325,32 @@ def permissions(repo, cfg, layers):
             mode.append(f"{perms['defaultMode']} ({label})")
     out.append(f"- defaultMode: {', '.join(mode) if mode else 'not set (default: ask for anything not allowed)'}")
     out.append(f"- rules: {len(rules['allow'])} allow, {len(rules['ask'])} ask, {len(rules['deny'])} deny")
+    # The brain was bootstrapped from the core's settings template: the same probes against the
+    # template tell "the template asks" apart from "this brain added the brake" (2026-10-16, macOS:
+    # v1.3.41's template put `git push*` under ask and had no rule for `gh pr *`).
+    tpl = (load(os.path.join(repo, "core", "templates", "settings.json"), {}) or {}).get("permissions") or {}
+    trules = {k: [(r, "core template") for r in tpl.get(k) or [] if isinstance(r, str)] for k in ("allow", "ask", "deny")}
+    if tpl:
+        out.append(f"- core template `core/templates/settings.json`: {len(trules['allow'])} allow, "
+                   f"{len(trules['ask'])} ask, {len(trules['deny'])} deny — shown after each verdict as [template: …]")
     out.append("")
+
+    def verdict_of(rs, cmd):
+        for kind in ("deny", "ask", "allow"):
+            hit = next(((r, lab) for r, lab in rs[kind] if rule_matches(r, cmd)), None)
+            if hit:
+                return kind, hit
+        return None, None
+
     for label, cmd in PROBES:
         cmd = cmd.replace("<brain>", os.path.abspath(repo).replace(os.sep, "/"))
-        verdict = ("no rule — the harness asks the human (in auto mode its classifier decides); "
+        kind, hit = verdict_of(rules, cmd)
+        verdict = (f"{kind.upper()} by `{hit[0]}` ({hit[1]})" if kind else
+                   "no rule — the harness asks the human (in auto mode its classifier decides); "
                    "the AI may report that prompt as 'not allowed'")
-        for kind in ("deny", "ask", "allow"):
-            hit = next(((r, lab) for r, lab in rules[kind] if rule_matches(r, cmd)), None)
-            if hit:
-                verdict = f"{kind.upper()} by `{hit[0]}` ({hit[1]})"
-                break
+        if tpl:
+            tk, th = verdict_of(trules, cmd)
+            verdict += f" [template: {tk.upper() + ' `' + th[0] + '`' if tk else 'no rule'}]"
         out.append(f"- {label}: `{cmd}` → {verdict}")
     out.append("")
     return out
@@ -404,9 +420,15 @@ def main(argv):
     ap.add_argument("--home", default=os.path.expanduser("~"))
     ap.add_argument("--topic", default=r"message.?center")
     ap.add_argument("--out", default="")
+    ap.add_argument("--memory-dir", action="store_true",
+                    help="print the brain's auto-memory folder and exit (for a follow-up agent's --add-dir, "
+                         "so it reads memory without reaching the session transcripts beside it)")
     a = ap.parse_args(argv)
     repo = os.path.abspath(a.repo)
     cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(a.home, ".claude")
+    if a.memory_dir:
+        print(memory_dir(repo, cfg).replace(os.sep, "/"))
+        return 0
     layers = settings_layers(repo, cfg)
     report = ["# Autonomy diagnose", "",
               f"Brain `{os.path.basename(repo)}`, read-only, no model. Sections: core state, loaded context, "
