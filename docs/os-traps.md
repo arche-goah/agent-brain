@@ -373,6 +373,15 @@ into node as data — the repo in the JSON command (`git -C …`), the cwd, and 
 (the guard's log dir) — all through `native()`. It matters in the blocking direction: an
 unresolvable repo makes the guard skip the call (fail-open), so every must-block case would
 pass silently. Windows run owed at baseline time (request in the shared memory).
+2026-10-16, a second spelling of the same class, outside this repo (an instance hook's fixture,
+`test-network-drive-gate.sh`): no temp dir at all, but a LITERAL POSIX path in an env var
+(`export NDG_EXTRA_MOUNTS="/Volumes/Projekte|…"`) read by node. Here the path is not left
+unresolved — Git Bash REWRITES an env value that starts with `/` before the native process sees
+it (`C:/Program Files/Git/Volumes/Projekte|…`; a leading `|` was rewritten too, a leading `x|`
+was not). Four must-block cases passed silently on Windows. `native()`/`cygpath -m` do not fit
+a fake path that must stay POSIX; `export MSYS2_ENV_CONV_EXCL=<VAR>` exempts that one variable
+and is inert on macOS/Linux. The `mktemp -d` pattern cannot see this spelling; a search for
+`[A-Z_]="/` assignments over core scripts, helpers and one instance brain found no other site.
 
 ## OS-4 — a fixture suite exists but no OS gate runs it
 
