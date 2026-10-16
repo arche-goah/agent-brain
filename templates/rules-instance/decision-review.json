@@ -1,0 +1,15 @@
+{
+  "_comment": [
+    "Instance data for core/scripts/decision-review.py: regex strings (case-insensitive) ADDED to the English",
+    "built-ins. unneeded = the human's reply to a question says it was needless ('just do it'); overreach = the",
+    "human corrects an action for not asking first; referral = the AI's reply sends a matter to a human;",
+    "referral_correction = a later prompt that names such a referral ('you recommended asking the human');",
+    "action_words = words that tie a correction to the action. Put the operator's own language here, one",
+    "regex per phrase the operator really uses; the built-ins in the script show the shape."
+  ],
+  "unneeded": [],
+  "overreach": [],
+  "referral": [],
+  "referral_correction": [],
+  "action_words": []
+}
