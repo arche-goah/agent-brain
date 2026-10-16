@@ -555,7 +555,8 @@ if [[ -n "${latest:-}" ]]; then
     # glob stays literal and carries no date, so it compares as "no artifact".
     case "$chk" in
       coherence-scan) arts=("$R"/docs/research/coherence-scan/register-*.md "$R"/docs/research/kohaerenz-scan/register-*.md);;
-      memory-dream)   arts=("$R"/docs/research/memory-dream/report-*.md);;
+      # report-*.md = the name before 2026-10-15 (a subagent cannot write a "report" file); still counts.
+      memory-dream)   arts=("$R"/docs/research/memory-dream/dream-*.md "$R"/docs/research/memory-dream/report-*.md);;
       full-audit)     arts=("$R"/docs/research/full-audit/gesamt-*.md);;
       *)              arts=();;
     esac
@@ -605,10 +606,12 @@ fi
 
 # Shared memory: what other instances/collaborators pushed since this instance last
 # looked. Level 1 of the pair; level 2 (scripts/shared-memory-watch.sh) watches while
-# the session runs. Silent when the repo is not cloned or nothing is new — an instance
-# that does not take part must not be nagged, and a clean check is not a line.
+# the session runs. Silent when nothing is new, and when the repo is not cloned by an
+# instance that does not take part; loud when an instance that takes part has no clone
+# (shared-memory-check.sh says how it tells the two apart).
 boot_mark sessions+scan+orders
-[[ -f "$HERE/shared-memory-check.sh" ]] && OPEN_ITEMS_IN_BOOTUP=1 bash "$HERE/shared-memory-check.sh" 2>/dev/null
+[[ -f "$HERE/shared-memory-check.sh" ]] && OPEN_ITEMS_IN_BOOTUP=1 SHARED_MEMORY_OWNER="$eco_owner" \
+  bash "$HERE/shared-memory-check.sh" 2>/dev/null
 # OPEN FOR US (operator correction 2026-10-07): every open request to this instance and
 # every open PR, one list, with how many sessions already reported each item — louder on
 # every repeat. helpers/open-items-gate.cjs (Stop) blocks a first reply that leaves an item
@@ -620,6 +623,14 @@ if [[ -f "$HERE/../scripts/open-items.py" ]]; then
       --hook-input "$HOOK_INPUT" 2>/dev/null \
     || echo "!! open for us: NOT checked — open-items.py failed; run: $PY core/scripts/open-items.py --owner $eco_owner"
 fi
+# Watch readiness (operator order 2026-10-16: core functions must run by default on every
+# instance): can a standing watch run here, and does it poll where PRs for us arrive? Reads the
+# PR items open-items.py just stored; silent when ready or outside shared memory.
+[[ -f "$HERE/../scripts/watch-readiness.py" ]] && CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/watch-readiness.py" 2>/dev/null
+# Decision readiness (operator decision 2026-10-16): only what needs the operator goes to the
+# operator — is the rule loaded, is the operator-only list there, and does an everyday commit or
+# push raise a permission dialog (or is every check switched off by Bash(*))? Silent when fine.
+[[ -f "$HERE/../scripts/decision-readiness.py" ]] && CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/decision-readiness.py" 2>/dev/null
 # LOG rotation and entry length (operator decision 2026-09-25): the lint named an
 # oversized LOG with a fix text nobody ran, because nothing ran the lint. This is the
 # trigger — read-only, silent unless a month is due or an own entry is over the cap.
@@ -701,7 +712,9 @@ fi
 # keeps the message.
 boot_mark log-lint+deadlines
 if [[ -f "$HERE/../scripts/brain-check.sh" ]]; then
-  CLAUDE_PROJECT_DIR="$R" BRAIN_SELFTEST_BG=1 bash "$HERE/../scripts/brain-check.sh" --brief 2>/dev/null || true
+  # --cached (2026-10-16): the previous run's result now, the next run in the background —
+  # 15 s of a 42 s Windows start were this line even with the self-test verdict reused.
+  CLAUDE_PROJECT_DIR="$R" bash "$HERE/../scripts/brain-check.sh" --cached 2>/dev/null || true
 fi
 
 boot_mark brain-check
@@ -768,5 +781,5 @@ if [[ "$HOOK_INPUT" =~ \"source\"[[:space:]]*:[[:space:]]*\"compact\" ]]; then
   printf '%s\n' '-> Claude: this is a compaction of the SAME session — no opening report, no "shall I?" for own items: the operator was asked at the start. Handle own open items and report what was done; only items that need the operator are named. Operator rule 2026-10-10.'
 else
   printf '%s\n' '-> Claude: start the first reply WITH a 1-sentence mini-summary (state of things + what is pending; sources: the bootup block above, open tasks, memory). Operator rule 2026-07-29.'
-  printf '%s\n' '-> Claude: then the "open for us" items, split by who acts: "n I can answer/handle myself — shall I?" (ONE OK; start none of them without it) + "n need you directly" (up to 3: one short bullet each — what, who needs what; more: offer to list them). Counts as digits. Items reported before and still open: say so, louder. None: "nothing open". A NOT-checked source: say so. Classify every "?" item first: core/scripts/open-items.py --classify. Say each item in plain words (what it is, what it is about) — no circle, priority or ledger codes. Items marked wait need no relay. Carrier: core/helpers/open-items-gate.cjs. Operator rule 2026-10-07.'
+  printf '%s\n' '-> Claude: then the "open for us" items, split by who acts: "n I can answer/handle myself — shall I?" (ONE OK; start none of them without it) + "n need you directly" (up to 3: one short bullet each — what, who needs what; more: offer to list them) + items under a standing approval (the operator approved their class once, .claude/rules/open-items-standing.json): handle them and report what was done, no question. Counts as digits. Items reported before and still open: say so, louder. None: "nothing open". A NOT-checked source: say so. Classify every "?" item first: core/scripts/open-items.py --classify. Say each item in plain words (what it is, what it is about) — no circle, priority or ledger codes. Items marked wait need no relay. Carrier: core/helpers/open-items-gate.cjs. Operator rule 2026-10-07.'
 fi

@@ -27,6 +27,13 @@ const CORPUS = `${A.scratch}/corpus`
 // Every stage's bulk output lives here; the next stage reads it from disk.
 const FINDINGS_DIR = `${A.scratch}/findings`
 const REGISTER = `${REPORT_DIR}/register-${DATE}.md`
+// Model routing per stage (rules/intelligence.md, "Model Routing"): a stage without an
+// entry inherits the session model — that inheritance counts as chosen, not as a default
+// without a look. args.models = { <stage>: 'haiku'|'sonnet'|'opus'|… } sets one stage at a
+// time, so the launching session picks the tier per stage instead of editing the script.
+// Stages: inventory (default 'haiku'), analysis, merge, verify, register.
+const MODELS = (A.models && typeof A.models === 'object') ? A.models : {}
+const modelFor = (stage, fallback) => { const m = MODELS[stage] || fallback; return m ? { model: m } : {} }
 
 // De-bias framing: placed BEFORE every analysis/verify prompt.
 const FRAMING = `IMPORTANT — ROLE FRAMING: You are auditing the operating rules of a FOREIGN
@@ -135,7 +142,7 @@ const inv = await agent(
 13. CARRIER CHECK, after copying: grep ${REPO}/CLAUDE.md, ${REPO}/.claude/rules/*.md and ${REPO}/core/rules/*.md for repo-relative carrier paths (.claude/rules/<name>.json, .claude/rules/<name>.md, core/rules/<name>.md, scripts/<name>, references/<name>.md) and test each with ls (a references/ path counts as present when it exists under any ${REPO}/.claude/skills/*/ or ${REPO}/core/skills/*/, OR under the root of a suite a skill is symlinked from — realpath of the skill directory, two levels up — because suites keep references/ at their root; measured on the proving brain: without that, a suite's gate file read as dead). Every named path that does not exist is an anomaly: file + line that names it, in MANIFEST.md and in the returned missing list. A pointer to a deleted carrier is exactly the drift this audit exists to find.
 THEN write ${CORPUS}/MANIFEST.md: every file with source path + line count — MEASURE the numbers (wc -l/grep -c), never estimate; "empty"/"missing" only with ls evidence (incident 2026-08-10: a registry was recorded as empty, actually 100 lines). Its "Anomalies" section lists EVERY missing source and every dead carrier from (13); "None" only when both are empty (measured 2026-09-18: the manifest said "Anomalies: None" while three named carriers were outside the corpus). Memory sources are a live knowledge base and a full audit object; the append-only PROTOCOL label applies EXCLUSIVELY to session-log/decision-log — mark those as DELIBERATELY EXCLUDED, nothing else.
 Return via StructuredOutput: file_count, total_lines, corpus_path, anomalies during copying (missing files!).`,
-  { label: 'inventory', phase: 'Inventory', model: 'haiku', schema: {
+  { label: 'inventory', phase: 'Inventory', ...modelFor('inventory', 'haiku'), schema: {
     type: 'object', required: ['file_count', 'corpus_path'],
     properties: {
       file_count: { type: 'number' }, total_lines: { type: 'number' },
@@ -149,7 +156,7 @@ log(`Corpus: ${inv.file_count} files${inv.missing && inv.missing.length ? ` — 
 
 // ── Phase 2: Analysis (lenses + scenarios in parallel) ────────────────────
 const LENSES = [
-  { slug: 'contradiction', prompt: `CONTRADICTION LENS: Find rule pairs that demand opposing actions in at least one constructible situation (A forbids what B demands; A gates what B declares autonomous; priority/scope collisions). Check especially: autonomy rules ("act proactively", "don't ask") vs. gate rules (order fidelity "propose, don't build", mechanism discipline, commit/push gates); tool-first vs. "the operator executes"; caveman brevity vs. reporting/evidence duties. Every finding MUST deliver the colliding pair with both quotes + scenario.` },
+  { slug: 'contradiction', prompt: `CONTRADICTION LENS: Find rule pairs that demand opposing actions in at least one constructible situation (A forbids what B demands; A gates what B declares autonomous; priority/scope collisions). Check especially: autonomy rules ("act proactively", "don't ask") vs. gate rules (order fidelity "propose, don't build", mechanism discipline, commit/push gates); tool-first vs. "the operator executes"; caveman brevity vs. reporting/evidence duties. Every finding MUST deliver the colliding pair with both quotes + scenario. FIRST PASS, before anything else: list every rule the corpus marks HARD (core and instance) and check them pairwise for one realistic situation in which both together forbid every option or demand incompatible actions — a HARD-vs-HARD collision cannot be ranked by the priority hierarchy (same level), so each surviving pair is P0 and names whether a third rule already resolves it (operator decision 2026-10-15).` },
   { slug: 'redundancy-drift', prompt: `REDUNDANCY/DRIFT LENS: Find rules anchored in >1 place (CLAUDE.md / rules / feedback event rules / memory / skill) — list ALL occurrences and check for wording drift (diverging scope, diverging exceptions, outdated state in one place). Assess: which place should be canonical, which ones would become pointers. Known example pattern: commit/push policy, mechanism discipline, ultracode rule.` },
   { slug: 'dead-rules', prompt: `DEAD RULES LENS: Find rules pointing at things that do not exist (files, skills, tools, hooks, paths — check via Bash/ls against ${REPO} and ${MEMDIR}), rules whose trigger can no longer occur, outdated as-of claims ("Stand ..." blocks, version claims), and rules factually superseded by later rules but never withdrawn.` },
   { slug: 'layering', prompt: `LAYERING LENS: Check whether every rule lives at the right level. Levels: CLAUDE.md (every session, most expensive spot) → rules/*.md (every session) → skill (only on trigger) → memory (index every session, file on demand) → domain doc (only during domain work). Findings: detail rules that eat session context although they fire in only 1 domain; behavior rules hidden in a skill that should ALWAYS apply; rules in memory that actually belong in rules (or vice versa).` },
@@ -170,7 +177,7 @@ const lensFiles = ALL_LENSES.map(a => lensFile(a.slug))
 phase('Analysis')
 const analysisResults = await parallel(ALL_LENSES.map(a => () =>
   agent(`${FRAMING}\n\nFirst read ${CORPUS}/MANIFEST.md, then read the corpus files relevant to your task COMPLETELY.\n\n${a.prompt}\n\nSeverity: P0 = produces genuinely wrong action, P1 = produces friction/drift risk, P2 = cosmetic, INFO = observation. At most 12 findings, strongest first.\n\nOUTPUT — you are the producer, you write exactly ONE file, the path named here, and no other; any path you report back is exactly this one: save your findings as JSON to ${lensFile(a.slug)} (mkdir -p ${FINDINGS_DIR}) with exactly this shape: {"lens": "${a.slug}", "summary": "<3 sentences>", "findings": [<objects>]} where every object satisfies this JSON schema: ${JSON.stringify(FINDING_ITEM)}. The findings array is the audit's data and travels ONLY through that file — nothing of it comes back through your return value. After writing, MEASURE the file: count the findings array in the file (node -e or jq, not from memory). Return via StructuredOutput: file (the path you wrote), finding_count (the measured number), summary.`,
-    { label: `analysis:${a.slug}`, phase: 'Analysis', schema: {
+    { label: `analysis:${a.slug}`, phase: 'Analysis', ...modelFor('analysis'), schema: {
       type: 'object', required: ['file', 'finding_count', 'summary'],
       properties: {
         file: { type: 'string', description: 'path of the JSON file you wrote' },
@@ -190,7 +197,7 @@ phase('Merge')
 const MERGED = `${FINDINGS_DIR}/merged.json`
 const merged = await agent(
   `${FRAMING}\n\nThe raw findings of ${ALL_LENSES.length} lenses lie as JSON files in ${FINDINGS_DIR}/: ${lensFiles.map(fileName).join(', ')}.\nSTEP 1: ls ${FINDINGS_DIR} — if any of these files is missing, STOP: return files_read = what exists, findings_in = 0, findings = [], file = "" (the script aborts on that; never consolidate a partial set).\nSTEP 2: read ALL of them completely. findings_in = the summed length of their findings arrays, MEASURED (node -e or jq), never estimated.\nSTEP 3: merge duplicates (same rule pair/same drift family from different lenses → ONE finding, sources united, keep the strongest scenario, record the contributing lens slugs). Prioritize by severity and real damage probability. At most 24 consolidated findings; if you have to cut, list the titles of the omitted ones in summary (no silent capping).\nSTEP 4: write the result to ${MERGED} as {"summary": "<string>", "findings": [<objects>]} — every object satisfies ${JSON.stringify(FINDING_ITEM)} plus "lenses": [<slugs>]. Every title in the file must be unique.\nReturn via StructuredOutput: files_read (every lens file you actually read, from your ls), findings_in, file (the merged file you wrote), findings = the INDEX only — title verbatim as written in the file + severity — and summary. The full findings travel ONLY through the file.`,
-  { label: 'merge', phase: 'Merge', schema: {
+  { label: 'merge', phase: 'Merge', ...modelFor('merge'), schema: {
     type: 'object', required: ['files_read', 'findings_in', 'file', 'findings', 'summary'],
     properties: {
       files_read: { type: 'array', items: { type: 'string' }, maxItems: 20 },
@@ -228,10 +235,10 @@ const VERDICT_SCHEMA = {
     } },
   },
 }
-// Model routing (rules/intelligence.md): hard verify stage — session model with higher effort.
+// Model routing (rules/intelligence.md): hard verify stage — session model (or args.models.verify) with higher effort.
 const verifyResults = await parallel(batches.map((b, i) => () =>
   agent(`${FRAMING}\n\nYou are the SKEPTIC. The consolidated findings lie in ${MERGED} — read it completely. Your batch is this index (title + severity): ${relay(b, 8000, `verify index batch ${i + 1}`)}\n\nLook each title up in the file by its verbatim "title" field. Per finding: look up the quotes in the corpus (are they verbatim and in context?), test the scenario for constructibility (does a third rule already resolve the apparent conflict? Respect the priority hierarchy in the corpus — as a DATA POINT of the system, not as your rule). REFUTED if a quote is wrong/out of context or an explicit resolution rule exists; CONFIRMED only if the conflict/drift stands after cross-checking; PLAUSIBLE if undecidable; NOT_IN_FILE if the title does not occur in ${MERGED} (never verify a near match instead).\n\nOUTPUT — you are the producer, you write exactly ONE file, the path named here, and no other; any path you report back is exactly this one: save your full verdicts to ${verifyFile(i)} as {"verdicts": [{"title", "verdict", "reasoning": "<the quotes you checked and why>"}]}. Return via StructuredOutput: file, verdicts = title + verdict ONLY — the reasoning travels through the file.`,
-    { label: `verify:batch${i + 1}`, phase: 'Verify', effort: 'high', schema: VERDICT_SCHEMA })
+    { label: `verify:batch${i + 1}`, phase: 'Verify', ...modelFor('verify'), effort: 'high', schema: VERDICT_SCHEMA })
 ))
 assertFiles(verifyFiles, verifyResults.map(r => r && r.file), 'verify: batch files reported')
 const verdicts = verifyResults.flatMap(r => r.verdicts)
@@ -256,7 +263,7 @@ const p0Machine = surviving.filter(f => f.severity === 'P0').length
 const p1Machine = surviving.filter(f => f.severity === 'P1').length
 const report = await agent(
   `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.\nDATA BASIS ON DISK — read ALL of these completely before writing, never from memory of earlier stages: ${MERGED} (the consolidated findings, full text) and ${verifyFiles.join(', ')} (verdicts with reasoning). The findings that survived verification (index; REFUTED ones are already removed by the script — write exactly these, nothing more, nothing less): ${relay(surviving, 8000, 'surviving index')}\n\nAUTHORITATIVE numbers (machine-derived from the verified index): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if a summary in the files deviates from them, the index wins. Return them unchanged — a deviation in your returned counts aborts the run.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — explicitly: EVERY fix needs the operator's decision.\nTHEN append the P0/P1 findings to ${AUFTRAEGE} under the existing structure as proposal items, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), 1 line each with a pointer to the register — implement NONE of it.\nAfter writing, MEASURE the register: run \`wc -c < ${REGISTER}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.\nReturn via StructuredOutput: files_read (every data file you read, from your ls), report_path, report_bytes, findings_written (count the finding entries in the register you wrote — measure, e.g. grep -c on the finding headings), p0_count, p1_count, appended_orders.`,
-  { label: 'register', phase: 'Register', schema: {
+  { label: 'register', phase: 'Register', ...modelFor('register'), schema: {
     type: 'object', required: ['files_read', 'report_path', 'report_bytes', 'findings_written', 'p0_count', 'p1_count'],
     properties: {
       files_read: { type: 'array', items: { type: 'string' }, maxItems: 20 },

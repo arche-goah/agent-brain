@@ -129,6 +129,15 @@ check "LOG entry classified under its full id" "$f" allow "$CLL"
 CLX="$T/cwd-cls-log-other"; mkdir -p "$CLX/.claude-state"
 printf '%s\n' '{"core/LOG 2026-10-07 peer-b: AN inst-a: another note":{"class":"human","why":"asks the operator"}}' > "$CLX/.claude-state/open-items-class.json"
 check "LOG entry with a class for another text stays unclassified" "$f" block "$CLX"
+# 8d — a cut that ends on a blank: --classify strips its key, so the gate must strip the id
+# too. Measured 2026-10-16 (macOS instance): "…re HARD " stayed `?` after classifying, every
+# turn end blocked. The 40th character of this text is a blank.
+X28="$(printf 'x%.0s' $(seq 28))"
+QT="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-10-07 core/LOG 2026-10-07 peer-b — peer-b: AN inst-a: ${X28} tail — first report"
+f="$T/8d.jsonl"; { boot_ok startup "$QT"; user "stand?"; asst "1 needs you: the 2026-10-07 note from peer-b."; } > "$f"
+CLT="$T/cwd-cls-log-blank"; mkdir -p "$CLT/.claude-state"
+printf '{"core/LOG 2026-10-07 peer-b: AN inst-a: %s":{"class":"human","why":"asks the operator"}}\n' "$X28" > "$CLT/.claude-state/open-items-class.json"
+check "LOG entry whose 40-char cut ends on a blank is classified" "$f" allow "$CLT"
 
 # 9 — the bootup did not arrive.
 f="$T/9a.jsonl"; { boot_cancel; user "stand?"; asst "All good."; } > "$f"
@@ -225,5 +234,31 @@ f="$T/19a.jsonl"; { boot_ok startup "$WB"; user "stand?"; asst "1 point needs yo
 check "wake-up item named" "$f" allow "$EN"
 f="$T/19b.jsonl"; { boot_ok startup "$WB"; user "stand?"; asst "1 point needs you. Everything else stays parked."; } > "$f"
 check "wake-up item left out" "$f" block "$EN"
+
+# 20 — a standing approval (full-audit 2026-10-15, Windows instance): the operator approved the
+# item's class once for good, so the reply reports it handled instead of asking. Asking anyway
+# is not wrong here; leaving it out is. An ai item WITHOUT such a class still needs the question.
+S1="- [request|standing] 2026-10-14 core/request-mine-2026-10-14.md — peer-b: check the fixture run — first report (standing approval 'requests to this machine', granted 2026-10-11)"
+SG1="- standing approval — handle these, then report what was done (no question needed):"
+SB="open for us: 1 — ai 0 · human 0 · unclassified 0 · standing 1${NL}${SG1}${NL}${S1}"
+f="$T/20a.jsonl"; { boot_ok startup "$SB"; user "stand?"; asst "1 request handled under the standing approval: the fixture run is checked and answered."; } > "$f"
+check "standing item reported as handled" "$f" allow "$EN"
+f="$T/20b.jsonl"; { boot_ok startup "$SB"; user "stand?"; asst "1 request I can handle myself — shall I go ahead?"; } > "$f"
+check "standing item asked about anyway" "$f" allow "$EN"
+f="$T/20c.jsonl"; { boot_ok startup "$SB"; user "stand?"; asst "Brain clean."; } > "$f"
+check "standing item left out" "$f" block "$EN"
+f="$T/20d.jsonl"; { boot_ok startup "$SB"; user "stand?"; asst "1 Anfrage unter der stehenden Freigabe erledigt."; } > "$f"
+check "standing item handled, German word only via instance data" "$f" block "$EN"
+DS="$T/cwd-de-st"; mkdir -p "$DS/.claude/rules"
+printf '%s\n' '{"handled_patterns":["\\berledigt\\b"]}' > "$DS/.claude/rules/open-items.json"
+check "standing item handled, German word with instance data" "$f" allow "$DS"
+SM="open for us: 2 — ai 1 · human 0 · unclassified 0 · standing 1${NL}${A2}${NL}${SG1}${NL}${S1}"
+f="$T/20e.jsonl"; { boot_ok startup "$SM"; user "stand?"; asst "1 request handled under the standing approval (the fixture run). 1 more I could answer."; } > "$f"
+check "ai item without a standing class, no question" "$f" block "$EN"
+f="$T/20f.jsonl"; { boot_ok startup "$SM"; user "stand?"; asst "1 request handled under the standing approval (the fixture run). 1 more I can answer myself — shall I?"; } > "$f"
+check "ai item asked, standing item reported" "$f" allow "$EN"
+# Only ai and unclassified items own the opening question; a standing item does not, so
+# stoppen-gate judges a closing question after it as anywhere else.
+check "stoppen-gate: a standing item does not own the opening question" "$T/20b.jsonl" block "$EN" false "$SG"
 
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

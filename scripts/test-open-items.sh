@@ -21,8 +21,10 @@ cp "$SRC" "$T/core/scripts/open-items.py"
 cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
 cp "$(dirname "$SRC")/project_dir.py" "$T/core/scripts/project_dir.py"
 cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
-# The fake inbox prints whatever $T/inbox.txt holds.
-printf '%s\n' 'import os, sys' \
+# The fake inbox prints whatever $T/inbox.txt holds — in UTF-8, like the real one (OS-9): unpinned,
+# Windows wrote the em dash of an "optional: … —" line in cp1252 and the item read differently than
+# on Linux (measured on PR #355: Windows '?', CI 'wait').
+printf '%s\n' 'import os, sys' 'sys.stdout.reconfigure(encoding="utf-8")' \
   'sys.stdout.write(open(os.path.join(os.path.dirname(__file__), "..", "..", "inbox.txt"), encoding="utf-8").read())' \
   > "$T/core/scripts/shared-memory-inbox.py"
 
@@ -180,6 +182,15 @@ printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}
 OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-mv.json")" OWNER=me run v1 >/dev/null; tx v1
 mv=$(line 'core#13 ' "$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-mv.json")" OWNER=me run v2)")
 has "last own move $NOW — still ours" "$mv" && ! has "nothing done yet" "$mv" && ok "own move since the first report is named, not 'nothing done'" || bad "own move: $mv"
+# A wait dated TODAY is due today, not quiet (measured 2026-10-15: quiet through its own date, a
+# measurement done that day read as missing the next morning — the marker was never moved).
+TODAY=$(date +%Y-%m-%d)
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 14 me 2026-10-03 "waiting-until: $TODAY: third measurement" 2026-10-03T11:00:00Z '[]' '[]')" > "$T/prs-due.json"
+due=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-due.json")" OWNER=me run d1)
+has "!! due today (third measurement) — do it, then move or drop the waiting-until line" "$(line 'core#14 ' "$due")" && ok "wait on its own date is due" || bad "due today: $due"
+has "open for us: 1 — ai 1" "$due" && ok "a due wait counts as ours" || bad "due count: $(head -1 <<<"$due")"
+has "read the work's own record before calling it undone" "$(line 'core#6 ' "$out")" && ok "past wait names the stale-marker reading" || bad "past wording: $(line 'core#6 ' "$out")"
 OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")"
 
 # WHO acts: circle field in the request file (read at origin/main), a request addressed to
@@ -290,6 +301,50 @@ out=$(run twin4); tx twin4
 l=$(line 'addendum' "$out")
 has "reported in" "$l" && bad "second entry inherited the first one's counter after it closed: $l" \
   || ok "after the first closes, the second starts counting at one"
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
+  '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (LOG)' > "$T/inbox.txt"
+
+# Standing approval (full-audit 2026-10-15, Windows instance): a class the operator approved once
+# for good prints as `standing` in its own group. The same topic to another machine, an excluded
+# text and an item the data gives to a person are not standing; an entry without the operator's
+# quoted words and date is refused with a line, and its items are asked as before.
+rm -rf "$T/repo" && mkdir -p "$T/repo/core" && GIT init -q
+printf '%s\n' '---' 'name: s1' 'metadata:' '  von: peer-b' '  audience: inst-a' '---' 'body' > "$T/repo/core/request-mine-2026-10-14.md"
+printf '%s\n' '---' 'name: s2' 'metadata:' '  von: peer-b' '  audience: inst-b, os:shared' '---' 'body' > "$T/repo/core/request-other-2026-10-14.md"
+printf '%s\n' '---' 'name: s3' 'metadata:' '  von: peer-b' '  audience: inst-a' '  circle: E' '---' 'body' > "$T/repo/core/request-person-2026-10-14.md"
+printf '%s\n' '---' 'name: s4' 'metadata:' '  von: peer-b' '  audience: inst-a' '---' 'body' > "$T/repo/core/request-pin-2026-10-14.md"
+GIT add -A && GIT commit -q -m standing && GIT update-ref refs/remotes/origin/main HEAD
+printf '%s\n' 'shared-memory open requests to this instance: 5' \
+  '  - 2026-10-14 [core] peer-b: check the fixture run (core/request-mine-2026-10-14.md)' \
+  '  - 2026-10-14 [core] peer-b: check the other run (core/request-other-2026-10-14.md)' \
+  '  - 2026-10-14 [core] peer-b: decide the budget (core/request-person-2026-10-14.md)' \
+  '  - 2026-10-14 [core] peer-b: move the stable pin (core/request-pin-2026-10-14.md)' \
+  '  - 2026-10-14 [core] peer-b: AN inst-a: answer the log question (LOG)' > "$T/inbox.txt"
+SR="$T/root-st"; mkdir -p "$SR/.claude/rules"
+printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","audience":["inst-a"],"excludes":["\\bpin\\b"],"granted":"\"handle them without asking\" 2026-10-11"}]}' \
+  > "$SR/.claude/rules/open-items-standing.json"
+st=$(run st1 "$SR")
+has "[request|standing] 2026-10-14 core/request-mine-2026-10-14.md" "$st" && ok "item of a standing class = standing" || bad "standing class missed: $st"
+has "standing approval 'requests to this machine', granted 2026-10-11" "$(line 'request-mine' "$st")" && ok "standing item names its class and date" || bad "standing why: $(line 'request-mine' "$st")"
+has "[request|standing]" "$(line 'answer the log question' "$st")" && ok "LOG request addressed to this instance = standing" || bad "LOG standing: $(line 'answer the log question' "$st")"
+has "[request|?]" "$(line 'request-other' "$st")" && ok "negative control: same topic to another machine is not standing" || bad "other machine: $(line 'request-other' "$st")"
+has "[request|?]" "$(line 'request-pin' "$st")" && ok "negative control: an excluded text is not standing" || bad "excluded: $(line 'request-pin' "$st")"
+has "[request|human]" "$(line 'request-person' "$st")" && ok "negative control: an item the data gives to a person stays human" || bad "person: $(line 'request-person' "$st")"
+has "open for us: 5 — ai 0 · human 1 · unclassified 2 · standing 2" "$st" && ok "header counts the standing items" || bad "standing header: $(head -1 <<<"$st")"
+gl=$(grep -n -F -- '- standing approval — handle these, then report what was done' <<<"$st" | cut -d: -f1)
+pl=$(grep -n -F -- 'request-person' <<<"$st" | cut -d: -f1)
+ml=$(grep -n -F -- 'request-mine' <<<"$st" | cut -d: -f1)
+[ -n "$gl" ] && [ "$gl" -gt "$pl" ] && [ "$ml" -gt "$gl" ] && ok "standing items form their own group after the others" || bad "standing group order: $st"
+printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","audience":["inst-a"],"granted":"the operator said so 2026-10-11"}]}' \
+  > "$SR/.claude/rules/open-items-standing.json"
+st=$(run st2 "$SR")
+has "!! open for us: standing approval 'requests to this machine' refused — \"granted\" must quote the operator's words" "$st" && ok "entry without the quoted words is refused with a line" || bad "unquoted grant accepted: $st"
+has "[request|standing]" "$st" && bad "refused entry still applied: $st" || ok "refused entry applies to nothing"
+printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","audience":["inst-a"],"granted":"\"handle them without asking\""}]}' \
+  > "$SR/.claude/rules/open-items-standing.json"
+st=$(run st3 "$SR")
+has "standing approval 'requests to this machine' refused" "$st" && ! has "[request|standing]" "$st" && ok "entry without a date is refused" || bad "undated grant accepted: $st"
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
   '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
   '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (LOG)' > "$T/inbox.txt"

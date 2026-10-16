@@ -27,7 +27,9 @@
  *       turn began is from this instance (`von` = SHARED_MEMORY_SELF, if set), names an
  *       `audience` other than this instance, and is not closed (`status:` answered|done|
  *       decided|info|closed — the inbox reader's closed set, so `status: info` is the
- *       declared "no answer expected"), and no shared-memory watcher lives
+ *       declared "no answer expected") — or a `LOG.md` heading added since the turn began
+ *       is such a message (`## <date> · <von> — AN <who> (status: …): …`, awaitingLog) —
+ *       and no shared-memory watcher lives
  *       (plain `shared-memory-watch.sh` or the one inside `collab-watch.sh`);
  *   (b) `gh pr create` ran AND no PR-side watcher lives (a `repo-activity-watch` lock of
  *       collab-watch, or a Monitor/background call in this turn on watch-pr.sh,
@@ -61,8 +63,17 @@
  *       a ticket or a question in a thread expects an answer in that thread, and only the
  *       standing repo watch reads comments. Measured 2026-10-11: a ticket was opened and was
  *       covered only by chance, by a collab-watch that happened to be running.
+ *   (g) the brain's `.claude/rules/collab-watch.json` is filled in AND no standing watch lives
+ *       (no live collab-watch lock, no collab-watch armed in this turn) — independent of any
+ *       own act; see standingConfig() below. A close stamp passes it (the session ends).
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
+ *
+ * The close turn (coherence scan 2026-10-15, P1-2): skill `session-close` arms no watcher it
+ * will not be alive to read — it lists each such item as an open end in the session-log entry.
+ * A close stamp of this session and turn (close-stamp.cjs) passes (a), (b), (d) and (f) for
+ * exactly the items that entry lists (`open end: <repo> #<n> …`, the fact file's name for (a));
+ * an unlisted item still blocks. (c) and (e) are requests to the human and are never covered.
  *
  * Fails open (no transcript, no bash, no repo): a gate that cannot measure must not
  * block — its fixture (`scripts/test-watch-gate.sh`) is the proof it still fires.
@@ -71,6 +82,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { isNotification } = require('./turn-kind.cjs');
+const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
 const OWN_ECHO = /WATCH-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -82,7 +94,10 @@ const PR_WATCH = /\b(watch-pr|ci-watch|collab-watch)\.sh\b/;
 const RELOAD_ASK = /(?:^|[\s`'"(])\/(?:mcp|reload-plugins)\b|\breconnect\b|\bre-?connecten\b|\bwieder verbinden\b/i;
 const RELOAD_WATCH = /\bwait-mcp-reconnect\.sh\b/;
 // (d) the CI watch of a push: `ci-watch.sh pr|ref <owner/repo> …`, and the repo a gh call names.
-const CI_WATCH = /\bci-watch\.sh\s+(?:pr|ref)\s+["']?([\w.-]+\/[\w.-]+)/i;
+// The script path may be quoted (`bash "C:/…/ci-watch.sh" pr …`): the closing quote sits between `.sh`
+// and the blank. Without `["']?` there, a live watch read as none — measured 2026-10-16 on the Windows
+// instance, four WATCH-GATE blocks in one day with every watcher alive.
+const CI_WATCH = /\bci-watch\.sh["']?\s+(?:pr|ref)\s+["']?([\w.-]+\/[\w.-]+)/i;
 const REPO_FLAG = /(?:--repo|-R)[=\s]+["']?([\w.-]+\/[\w.-]+)/;
 // (e) a hand step asked of the human. The FORM: an imperative or a necessity aimed at a person
 // or a device the AI cannot operate. English built-ins; other languages are instance data.
@@ -160,6 +175,15 @@ function turn(tp) {
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message; if (!msg) continue;
     if (msg.role === 'user') {
+      // A tool's output: keep it on its call (the PR / issue URL a gh call printed).
+      if (Array.isArray(msg.content)) {
+        for (const b of msg.content) {
+          if (b.type !== 'tool_result') continue;
+          const c = calls.find((x) => x.id && x.id === b.tool_use_id);
+          if (c) c.out = typeof b.content === 'string' ? b.content
+            : (Array.isArray(b.content) ? b.content.map((x) => x.text || '').join('\n') : '');
+        }
+      }
       const t = promptText(msg);
       if (t === null) continue;
       if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t)) fired = true; continue; }
@@ -173,7 +197,7 @@ function turn(tp) {
       for (const b of msg.content) {
         if (b.type !== 'tool_use') continue;
         const inp = b.input || {};
-        calls.push({ name: b.name, cmd: String(inp.command || ''), bg: !!inp.run_in_background });
+        calls.push({ id: b.id, name: b.name, cmd: String(inp.command || ''), bg: !!inp.run_in_background, out: '' });
       }
     }
   }
@@ -227,10 +251,20 @@ function anyAlive(locks) {
   return r.includes(true) ? true : (r.includes(null) ? null : false);
 }
 
+// A collab-watch armed with its own COLLAB_WATCH_STATE sets that variable on the Monitor
+// command, never in this hook's environment — so the gate looked only at the default
+// directory and blocked with the watch alive (measured 2026-10-15 on the Windows instance).
+// collab-watch.sh registers every non-default state dir in `collab-watch-states` (one path
+// per line); a stale line costs nothing, its locks read as dead.
 function stateDirs(root) {
   const base = path.join(root, '.claude-state');
-  const collab = process.env.COLLAB_WATCH_STATE || path.join(base, 'collab-watch');
-  return { sm: [process.env.SHARED_MEMORY_LOCK_DIR || base, collab], collab };
+  const collab = [process.env.COLLAB_WATCH_STATE || path.join(base, 'collab-watch')];
+  try {
+    for (const l of fs.readFileSync(path.join(base, 'collab-watch-states'), 'utf8').split(/\r?\n/)) {
+      if (l.trim() && !collab.includes(l.trim())) collab.push(l.trim());
+    }
+  } catch (e) { /* no registry: only the default dir */ }
+  return { sm: [process.env.SHARED_MEMORY_LOCK_DIR || base, ...collab], collab };
 }
 
 // A liveness that cannot be measured counts as watched: the gate fails open (header).
@@ -238,12 +272,42 @@ function smWatched(root) {
   return anyAlive(stateDirs(root).sm.map((d) => path.join(d, 'shared-memory-watch.pid'))) !== false;
 }
 
+/**
+ * (g) The standing watch. A brain whose `.claude/rules/collab-watch.json` is filled in CAN watch; this
+ * asks whether it DOES. Cases (a)-(f) demand a watcher only after an own act that expects a reaction,
+ * so a session that never pushes never watched — measured 2026-10-16 on the second macOS machine:
+ * incoming PRs and requests were seen only at the next session start, and nothing answered them.
+ * A Monitor expires after 30 minutes; its locks then read as dead and the next turn end blocks again,
+ * so re-arming is mechanical, not memory. A brain without the file, or with template placeholders
+ * left in it, is not judged here — `core/scripts/watch-readiness.py` names that state at session start.
+ * Declared off: `"standing_watch": "off: <why>"` (an off without a reason blocks).
+ */
+function standingConfig(root) {
+  let raw;
+  try { raw = fs.readFileSync(path.join(root, '.claude', 'rules', 'collab-watch.json'), 'utf8'); } catch (e) { return null; }
+  if (/<[a-z][\w-]*>/i.test(raw.replace(/"_comment"\s*:\s*\[[\s\S]*?\]\s*,?/, ''))) return null;
+  try { const v = JSON.parse(raw).standing_watch; return { setting: typeof v === 'string' ? v.trim() : '' }; } catch (e) { return null; }
+}
+
+function standingWatched(root, calls) {
+  if (calls.some((c) => (c.name === 'Monitor' || c.bg) && /\bcollab-watch\.sh\b/.test(c.cmd))) return true;
+  const locks = [];
+  for (const dir of stateDirs(root).collab) {
+    try {
+      fs.readdirSync(dir).filter((f) => /^(?:repo-activity.*|shared-memory-watch)\.pid$/.test(f))
+        .forEach((f) => locks.push(path.join(dir, f)));
+    } catch (e) { /* dir absent */ }
+  }
+  return locks.length > 0 && anyAlive(locks) !== false;
+}
+
 function prWatched(root, calls) {
   if (calls.some((c) => (c.name === 'Monitor' || c.bg) && PR_WATCH.test(c.cmd))) return true;
-  const dir = stateDirs(root).collab;
-  let locks;
-  try { locks = fs.readdirSync(dir).filter((f) => /^repo-activity.*\.pid$/.test(f)).map((f) => path.join(dir, f)); } catch (e) { return false; }
-  return anyAlive(locks) !== false;
+  const locks = [];
+  for (const dir of stateDirs(root).collab) {
+    try { fs.readdirSync(dir).filter((f) => /^repo-activity.*\.pid$/.test(f)).forEach((f) => locks.push(path.join(dir, f))); } catch (e) { /* dir absent */ }
+  }
+  return locks.length > 0 && anyAlive(locks) !== false;
 }
 
 function expandHome(p) { return p.replace(/^~(?=$|[\\/])/, require('os').homedir()); }
@@ -259,19 +323,44 @@ function hasWorkflows(dir) {
 /** owner/repo of `origin` when it is a GitHub remote, '' otherwise (then nothing is required). */
 function originSlug(dir) {
   let url;
-  try { url = execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000 }).trim(); } catch (e) { return ''; }
+  try { url = execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (e) { return ''; }
   const m = /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/i.exec(url);
   return m ? m[1].toLowerCase() : '';
 }
+/** Does the NAMED repo run Actions? A repo without workflows starts no run, so there is nothing
+ *  to watch (measured 2026-10-16 on both the macOS and the Windows instance: `gh pr create` /
+ *  `gh pr merge -R <private repo without CI>` blocked the turn end, with every watcher alive).
+ *  A local checkout of that repo answers first; else one `gh api` call (a 404 = no workflows
+ *  folder). Anything unmeasurable counts as "has CI" — the gate errs toward the watch.
+ *  WATCH_GATE_GH is only a fixture seam (a fake gh as a node script, run through node: Windows
+ *  node cannot exec a shebang file — measured on the Windows instance, ENOENT with empty stderr);
+ *  nothing in production sets it. */
+function namedRepoHasWorkflows(slug, dirs) {
+  for (const d of dirs) if (originSlug(d) === slug) return hasWorkflows(d);
+  const fake = process.env.WATCH_GATE_GH;
+  const args = ['api', `repos/${slug}/contents/.github/workflows`, '--jq', 'length'];
+  try {
+    const n = execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
+      { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    return n !== '0';
+  } catch (e) {
+    return !/\b404\b|Not Found/i.test(String((e.stderr || '') + (e.stdout || '')));
+  }
+}
 /** Repos whose CI this turn's shell calls set running: a push into a checkout with workflows,
- *  a PR opened or merged with the repo named (a merge is a push to the base branch). */
+ *  a PR opened or merged with the repo named (a merge is a push to the base branch) when that
+ *  repo has workflows. */
 function ciStarted(shell, root) {
   const out = new Set();
   for (const c of shell) {
     const named = /\bgh\s+pr\s+(?:create|merge)\b/.test(c.cmd);
     if (!named && !/\bgit\b[\s\S]*\bpush\b/.test(c.cmd)) continue;
     const flag = named && REPO_FLAG.exec(c.cmd);
-    if (flag) { out.add(flag[1].toLowerCase()); continue; }
+    if (flag) {
+      const slug = flag[1].toLowerCase();
+      if (namedRepoHasWorkflows(slug, [callDir(c.cmd, root), root])) out.add(slug);
+      continue;
+    }
     const dir = callDir(c.cmd, root);
     if (!hasWorkflows(dir)) continue;
     const slug = originSlug(dir);
@@ -316,7 +405,70 @@ function awaiting(repo, since) {
     }
     out.push(rel);
   }
+  return out.concat(awaitingLog(repo, since, me));
+}
+
+// A LOG heading, the shapes of shared-memory-parties.py HEADING: `## <date> · <von> — <title>`,
+// with an optional `(<session>)` after date or sender. The title of a message starts `AN <who>`;
+// its status, when the writer gives one, stands in parentheses before the colon.
+const LOG_HEADING = /^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[·—-]\s*)?([\w-]+)(?:\s*\([^)]*\))?(?:\s+[—-]\s+(.*?))?\s*$/;
+const LOG_TO = /^(?:AN|An|an|TO|To)\s+([^:(]+)/;
+const LOG_STATUS = /\(\s*status:\s*([\w-]+)/i;
+
+/**
+ * Messages this instance ADDED to a `LOG.md` since the turn began that wait on someone else.
+ * Measured 2026-10-16 on a macOS brain: the cross-instance exchange of a whole topic folder
+ * (`ops/`, 96 entries) runs as LOG headings `AN <who> (status: …): …`, while this gate read
+ * only fact files and skipped every LOG.md — a request and its answer, both LOG entries, were
+ * invisible to it. The inbox reader (shared-memory-inbox.py) already reads these headings;
+ * the gate now reads the same shape. Closed = the same set as for fact files; no `AN` = a
+ * note, not a message.
+ */
+function awaitingLog(repo, since, me) {
+  const args = ['-C', repo, 'log', '-p', '-U0', '--format=', '--no-renames'];
+  if (since) args.push(`--since=${since}`); else args.push('-1');
+  args.push('--', 'LOG.md', '*/LOG.md');
+  let diff;
+  try { diff = execFileSync('git', args, { encoding: 'utf8', timeout: 10000 }); } catch (e) { return []; }
+  const out = [];
+  let file = '';
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+++ b/')) { file = line.slice(6); continue; }
+    if (!line.startsWith('+') || line.startsWith('+++')) continue;
+    const m = LOG_HEADING.exec(line.slice(1));
+    if (!m) continue;
+    const [, , von, title = ''] = m;
+    const to = LOG_TO.exec(title);
+    if (!to) continue;
+    const st = LOG_STATUS.exec(title);
+    if (st && CLOSED.has(st[1].toLowerCase())) continue;
+    const aud = tokens(to[1].replace(/\s\+\s/g, ' '));
+    if (me.size) {
+      if (!me.has(von.toLowerCase())) continue;
+      if ([...aud].every((t) => me.has(t))) continue;
+    }
+    out.push(`${file} (${title.slice(0, 60)})`);
+  }
   return out;
+}
+
+/** The repo NAME part of owner/repo — what an open-end line has to name. */
+function nameOf(slug) { return String(slug || '').split('/').pop(); }
+/** The number a gh call acted on: from the URL it printed, else from its arguments. */
+function ghNumber(c) {
+  const m = /\/(?:pull|issues)\/(\d+)/.exec(c.out || '') || /\bgh\s+(?:issue|pr)\s+(?:comment|merge)\s+(\d+)/.exec(c.cmd);
+  return m ? Number(m[1]) : null;
+}
+/** The repo a gh call acted on: the --repo flag, the URL it printed, else the checkout it ran in. */
+function ghRepo(c, root) {
+  const f = REPO_FLAG.exec(c.cmd);
+  if (f) return f[1].toLowerCase();
+  const u = /github\.com\/([\w.-]+\/[\w.-]+)\/(?:pull|issues)\//.exec(c.out || '');
+  return u ? u[1].toLowerCase() : originSlug(callDir(c.cmd, root));
+}
+/** Every one of these gh calls named as an open end: its repo and, when known, its number. */
+function ghListed(ghCalls, root) {
+  return (ends) => ghCalls.every((c) => listed(ends, [nameOf(ghRepo(c, root)), ghNumber(c)]));
 }
 
 function main(input) {
@@ -325,6 +477,7 @@ function main(input) {
   const { calls, since, fired, lastText } = turn(input.transcript_path);
   if (fired) process.exit(0);
   const shell = calls.filter((c) => c.name === 'Bash' || c.name === 'PowerShell');
+  // Each finding: its text, and whether a close entry's open-end lines cover it (null = never).
   const missing = [];
 
   const repo = process.env.SHARED_MEMORY_REPO || path.join(require('os').homedir(), 'Projects', 'brain-shared-memory');
@@ -333,24 +486,28 @@ function main(input) {
   if (smPush && fs.existsSync(repo)) {
     const files = awaiting(repo, since);
     if (files.length && !smWatched(root)) {
-      missing.push(`shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
+      missing.push({ text: `shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
         + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 60", persistent: true}) '
-        + '(or collab-watch); mark a pure report `status: info`');
+        + '(or collab-watch); mark a pure report `status: info`',
+      covered: (ends) => files.every((f) => listed(ends, [path.basename(f).replace(/\.md$/, '')])) });
     }
   }
-  if (shell.some((c) => /\bgh\s+pr\s+create\b/.test(c.cmd)) && !prWatched(root, calls)) {
-    missing.push('PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)');
+  const prCreates = shell.filter((c) => /\bgh\s+pr\s+create\b/.test(c.cmd));
+  if (prCreates.length && !prWatched(root, calls)) {
+    missing.push({ text: 'PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)',
+      covered: ghListed(prCreates, root) });
   }
   // (c) the reply ends by asking the human for a reload, and nothing waits for it to arrive
   if (RELOAD_ASK.test(lastText) && !calls.some((c) => RELOAD_WATCH.test(c.cmd))) {
-    missing.push('reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
-      + '(Monitor or run_in_background) BEFORE asking, then say which reload you need');
+    missing.push({ text: 'reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
+      + '(Monitor or run_in_background) BEFORE asking, then say which reload you need', covered: null });
   }
   // (d) a push started a CI run and nothing in this turn watches it
   for (const slug of ciStarted(shell, root)) {
     if (ciWatched(calls, slug)) continue;
-    missing.push(`CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
-      + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`);
+    missing.push({ text: `CI started on ${slug} (push, PR or merge) and nothing watches the run — arm `
+      + `bash core/scripts/ci-watch.sh pr ${slug} <nr> (or ref ${slug} <branch>) via Monitor or run_in_background, in this turn`,
+    covered: (ends) => listed(ends, [nameOf(slug)]) });
   }
   // (e) the reply asks the human for a hand step, and nothing in this turn waits for its effect
   const pats = loadPatterns(root);
@@ -358,21 +515,42 @@ function main(input) {
   if (!waiter && !pats.noWatcher.test(lastText)) {
     const m = pats.handStep.exec(stripQuoted(lastText));
     if (m) {
-      missing.push(`a hand step is asked of the human ("${m[0].trim()}") and no waiter runs — build the measurement `
+      missing.push({ text: `a hand step is asked of the human ("${m[0].trim()}") and no waiter runs — build the measurement `
         + 'and arm it (Monitor / run_in_background) BEFORE the request, say what will not move; '
-        + 'where no probe is possible, write "⚙ no watcher: <why>"');
+        + 'where no probe is possible, write "⚙ no watcher: <why>"', covered: null });
     }
   }
   // (f) a ticket or a question posted in a thread, and no standing repo watch reads the answer
-  const asked = shell.some((c) => ISSUE_CREATE.test(c.cmd) || (COMMENT.test(c.cmd) && /[?]|\bplease\b/i.test(ghBody(c.cmd))));
-  if (asked && !prWatched(root, calls)) {
-    missing.push('an issue or a question was posted on GitHub and no repo watch lives — arm collab-watch '
-      + '(or Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr>)');
+  const asks = shell.filter((c) => ISSUE_CREATE.test(c.cmd) || (COMMENT.test(c.cmd) && /[?]|\bplease\b/i.test(ghBody(c.cmd))));
+  if (asks.length && !prWatched(root, calls)) {
+    missing.push({ text: 'an issue or a question was posted on GitHub and no repo watch lives — arm collab-watch '
+      + '(or Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr>)', covered: ghListed(asks, root) });
+  }
+  // (g) the brain can watch, and no standing watch lives (never armed, or the Monitor expired)
+  const standing = standingConfig(root);
+  if (standing) {
+    const off = /^off\b/i.test(standing.setting);
+    if (off && !standing.setting.replace(/^off\s*:?\s*/i, '')) {
+      missing.push({ text: '.claude/rules/collab-watch.json says "standing_watch": "off" without a reason — write '
+        + '"off: <why>" (a machine without collaborators, for example), or remove the key', covered: null });
+    } else if (!off && !standingWatched(root, calls)) {
+      missing.push({ text: 'no standing watch lives (never armed, or its Monitor expired) — arm '
+        + 'Monitor({command: "bash core/scripts/collab-watch.sh", timeout_ms: 1800000}) and re-arm at every expiry '
+        + 'notice; a brain that must not watch declares "standing_watch": "off: <why>" in .claude/rules/collab-watch.json',
+      covered: () => true });
+    }
   }
   if (!missing.length) process.exit(0);
+  // The close turn: a close stamp of this session and turn passes what its entry lists (header).
+  let left = missing;
+  const ends = missing.some((m) => m.covered) ? closeOpenEnds(root, { sessionId: input.session_id, since, calls }) : null;
+  if (ends) left = missing.filter((m) => !(m.covered && m.covered(ends)));
+  if (!left.length) process.exit(0);
   process.stdout.write(JSON.stringify({
     decision: 'block',
-    reason: `WATCH-GATE: a reaction is expected and no watcher lives. ${missing.join(' · ')}. `
+    reason: `WATCH-GATE: a watcher is missing. ${left.map((m) => m.text).join(' · ')}. `
+      + (ends ? 'The close stamp passes only what its session-log entry lists as "open end: <repo> #<n> - what is awaited" '
+        + '(a shared-memory request by its file name). ' : '')
       + 'If nothing is awaited, say why in one line and stop again.',
   }));
   process.exit(0);

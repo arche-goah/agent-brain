@@ -137,6 +137,10 @@ script missing from an older core is reported once as "not available". → `veri
 - [ ] Every hook, script or rule that runs outside the core is declared as instance machinery
   or as an alpha with an expiry.
 - [ ] No loose commitment since the last scan.
+- [ ] Decisions (`core/scripts/decision-review.py`, run by the machine step): the trend of questions per
+  session, needless questions and referrals, and actions corrected for not asking; every candidate is
+  confirmed or rejected (`--confirm/--reject <id>`) — two confirmed of one group become a proposal for the
+  instance's operator-only list (or for loosening a rule), never a silent change.
 
 ## Deep check (recommendation, never started by the scan)
 

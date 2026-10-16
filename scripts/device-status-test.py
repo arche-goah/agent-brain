@@ -70,6 +70,7 @@ try:
         "a-suite": {"kind": "suite", "version": "v0.2.0", "commit": "abcdef1234567890", "path": "/secret/place"},
         "b-suite": {"kind": "suite", "version": "v0.9.0", "commit": "fedcba0987654321"},
         "own-project": {"kind": "project", "commit": "1234567"}}})
+    write(brain / ".claude" / "rules" / "collab-watch.json", {"repo_watches": []})  # a filled-in standing watch
     cfg = tmp / "cfg"
 
     def channel(installed: str, pin: str) -> None:
@@ -105,6 +106,7 @@ try:
     check(doc["suites"]["b-suite"]["version"] == "v0.9.0" and doc["suites"]["b-suite"]["source"] == "record",
           "NEGATIVE: a suite without a plugin keeps the record's version, marked as record")
     check("r" not in doc["suites"], "NEGATIVE: the core's own plugin is not listed as a suite")
+    check(doc.get("watch", {}).get("standing") == "on", "a filled-in collab-watch.json reports the standing watch as on")
     check(str(tmp) not in devfile.read_text(encoding="utf-8") and "/secret" not in devfile.read_text(encoding="utf-8"),
           "no path in the device file")
     check(git("rev-list", "--count", "HEAD", cwd=bare) == str(commits()), "report pushed")
@@ -138,6 +140,29 @@ try:
     (shared / "devices" / "beta-win.json").unlink()
     rc, out = ds("--brief")
     check("never reported: beta-win" in out, "a device in parties.json without a report is named")
+    # the standing watch of the OTHER devices: not set up / off without a reason are named, off with one is not
+    write(shared / "devices" / "beta-win.json", {**doc, "device": "beta-win", "watch": {"standing": "not set up"}})
+    write(shared / "devices" / "alpha-box.json", {**doc, "device": "alpha-box", "watch": {"standing": "off: bench only"}})
+    rc, out = ds("--brief")
+    check("standing watch not set up" in out and "beta-win" in out, "a device without a standing watch is named")
+    check("alpha-box" not in out, "NEGATIVE: a watch declared off with a reason is not a problem")
+    write(shared / "devices" / "alpha-box.json", {**doc, "device": "alpha-box"})
+    write(shared / "devices" / "beta-win.json", {**doc, "device": "beta-win"})
+    # this device's own states, read from its collab-watch.json
+    rules = brain / ".claude" / "rules" / "collab-watch.json"
+    for content, want in (({"_comment": ["<placeholder>"], "repo_watches": []}, "on"),
+                          ({"repo_watches": [{"repos": ["<owner>/<repo>"]}]}, "template"),
+                          ({"standing_watch": "off: no collaborators"}, "off: no collaborators"),
+                          ({"standing_watch": "off"}, "off (no reason)")):
+        write(rules, content)
+        rc, out = ds("report", "--dry-run")
+        # "on" equals the state already reported, so the report says "unchanged" instead of printing it
+        check(f'"standing": "{want}"' in out or (want == "on" and "unchanged" in out),
+              f"collab-watch.json {json.dumps(content)[:50]} -> standing {want}")
+    rules.unlink()
+    rc, out = ds("report", "--dry-run")
+    check('"standing": "not set up"' in out, "no collab-watch.json -> standing not set up")
+    write(rules, {"repo_watches": []})
     channel("1.1.0", "v1.1.0")
     ds("report")
     rc, out = ds("--brief")

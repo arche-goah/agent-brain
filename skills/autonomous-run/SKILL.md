@@ -1,6 +1,6 @@
 ---
 name: autonomous-run
-description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstaendig durch" / "work through the next 2 h on your own") — fix the reserve pool up front, arm the watchdog WITH a deadline, set ScheduleWakeup after every step, finish at REMAINING 0 (or earlier only via the explicit "pool empty" or "BLOCKED" report) and report the measured time evidence. Use when the operator orders a run over a DURATION ("zieh das 2h durch" / "push it through for 2h", "arbeite n minuten/stunden autonom" / "work n minutes/hours autonomously", "/loop <auftrag>"). NOT for normal orders — there the rule is order done, then check-in.
+description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstaendig durch" / "work through the next 2 h on your own") — fix the reserve pool up front, arm the watchdog WITH a deadline, set ScheduleWakeup after every step, finish at REMAINING 0 (or earlier only via the explicit "pool empty" or "BLOCKED" report) and report the measured time evidence. Use when the operator orders a run over a DURATION ("zieh das 2h durch" / "push it through for 2h", "arbeite n minuten/stunden autonom" / "work n minutes/hours autonomously", "/loop <auftrag>" WITH a stated duration — a bare "/loop <auftrag>" is asked for its duration first and starts no run). NOT for normal orders — there the rule is order done, then check-in.
 ---
 
 # Autonomous Run (time-boxed)
@@ -20,7 +20,7 @@ description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstae
 
 | | **Normal operation (default)** | **Autonomous run** |
 |---|---|---|
-| Trigger | any normal request | the operator names a **DURATION** ("2h autonom" / "2h autonomously", "arbeite n min durch" / "work through n min") or calls `/loop <auftrag>` |
+| Trigger | any normal request | the operator names a **DURATION** ("2h autonom" / "2h autonomously", "arbeite n min durch" / "work through n min"), also as `/loop <auftrag>` with that duration — a bare `/loop <auftrag>` is asked for its duration first (hard gate 1) and starts no run |
 | End | **order done → check-in with the operator** | **when the time is up** (`remaining` = 0) — or earlier ONLY through the explicit "pool empty, time was still left" report (step 4) or the BLOCKED end (hard gate 6) |
 | Tasks | exactly the order | the order **+ the reserve pool agreed up front** |
 | Deriving own follow-up tasks | **no** | yes, but ONLY from the pool |
@@ -51,6 +51,7 @@ do, and the deadline lives in the watchdog state. None of them replaces the othe
 | Core done **exactly** at expiry | end |
 | **No reserve pool agreed**, core done early | report and stop — invent nothing (order fidelity #3, `core/rules/working-rules.md`) |
 | **No duration named**, only tasks ("push R3-R6 through") | **not an autonomous run** — normal mode: do the order, then check in (hard gate 1). No pool, no wakeup loop |
+| **List run** — a task LIST plus the operator's explicit word that the agent continues without them ("I'm away", "work the list alone"); without that word the row above applies and hard gate 1 stands. A skill with its own list loop needs the same word | wakeup yes (a forced turn end arms `ScheduleWakeup`), pool **no**, end = list empty (report and stop) or BLOCKED (hard gate 6, with its reconnect watcher); watchdog armed with a silence limit, no deadline; a skill with its own list loop points here instead of defining its own continuation |
 
 ⚠ **Never stop just because the minimum time is reached.** The number says "autonomous
 for at least this long", not "stop then".

@@ -12,6 +12,16 @@
 #   3. (2026-10-12) GitHub can leave a check-run at status=in_progress with a conclusion
 #      already set; `gh pr checks` buckets it as pending forever. pr mode therefore
 #      reads the head commit's check-runs and counts a check-run by its conclusion.
+#   4. (2026-10-14) A branch ref MOVES while it is watched: eight merges to main in 35
+#      minutes, one watch per merge; every CI run but the last was cancelled by its
+#      successor, the watches followed the tip and ran out their 1800 s while the newest
+#      run was still going — two ended UNKNOWN after 30 min, none said why. ref mode now
+#      names a move, restarts its clock for the new commit (at most CI_WATCH_MOVES_MAX
+#      moves, default 5, then UNKNOWN names the churn), reads a `cancelled` conclusion as
+#      RED only while the ref still points at that commit (a cancelled run of a commit the
+#      ref has left is superseded, not a verdict), and lists the runs of the commit itself
+#      (`actions/runs?head_sha=`) instead of the newest 50 runs of the repo, which a busy
+#      day pushed the watched commit out of.
 # This script matches refs via the run's headBranch FIELD from JSON (works for tags
 # and branches alike), enumerates every terminal state, and cannot end silently:
 # exit 0 = all green · 1 = something failed/cancelled/timed out in CI · 2 = could
@@ -22,6 +32,7 @@
 # Usage:
 #   scripts/ci-watch.sh pr  <owner/repo> <pr-number> [timeout_s]
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
+#   CI_WATCH_SHA=<pushed sha> scripts/ci-watch.sh pr …   # after a push: wait for THAT head
 # Defaults: timeout 1800 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
 # The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
 # `portability (windows-latest)` ran 13m41s and 14m26s, plus queue time — the old 900 s
@@ -52,6 +63,10 @@ warned_no_run=0
 unparsed=0
 UNPARSED_MAX=${CI_WATCH_UNPARSED_MAX:-3}
 gh_fail=0
+# ref mode: the commit the ref pointed at on the previous poll, and how often it moved.
+last_sha=""
+moves=0
+MOVES_MAX=${CI_WATCH_MOVES_MAX:-5}
 
 fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
 
@@ -123,6 +138,50 @@ no_ci_check() {
 # conclusion; a pending entry without a check-run (a commit status) or whose check-run
 # has no conclusion yet keeps its bucket. Any unreadable answer on the way leaves the
 # counts as they were — the fallback is to keep waiting, never to turn green.
+# Green checks are only the jobs GitHub has LISTED so far. A workflow run that has started
+# but not yet created its jobs contributes no check at all — measured 2026-10-16 on a core
+# PR: the fast CodeQL run finished with 4 green checks while the main workflow run (created
+# 52 s before the verdict, status in_progress, ten jobs queued) had no check listed yet;
+# the watch said GREEN. So before GREEN, the head commit's workflow RUNS are read: any run
+# that is not completed means no verdict yet. An unreadable answer keeps the old behaviour
+# (the listed checks decide) — the deadline still bounds every wait.
+# A watch armed right after a push reads the PREVIOUS head: for some seconds GitHub still
+# reports the old headRefOid and the old commit's checks. Measured 2026-10-16 on a core PR:
+# a merge of main into the branch was pushed, the watch was armed in the same turn and said
+# `GREEN — 14 checks` within a minute, all 14 of them the old head's; the new head's runs
+# were all pending. CI_WATCH_SHA=<the pushed commit> (full or short) closes it: until the
+# PR's head is that commit, nothing counts. Without it the behaviour is unchanged.
+EXPECTED_SHA="${CI_WATCH_SHA:-}"
+warned_expected=0
+pr_head_not_yet_expected() {   # exit 0 = the PR does not show the expected head yet
+  [[ -n "$EXPECTED_SHA" ]] || return 1
+  local head
+  head=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null) || return 0
+  [[ "$head" == "$EXPECTED_SHA"* ]] && return 1
+  if (( warned_expected == 0 )); then
+    echo "ci-watch: PR #$TARGET still shows head ${head:0:7}, waiting for ${EXPECTED_SHA:0:7}" >&2
+    warned_expected=1
+  fi
+  return 0
+}
+
+warned_open_run=0
+pr_run_still_open() {   # exit 0 = a run of the head commit is still open
+  local sha open
+  sha=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null) || return 1
+  [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 1
+  open=$(gh api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
+           --jq '[.workflow_runs[] | select(.status != "completed")] | length' 2>/dev/null) || return 1
+  [[ "$open" =~ ^[0-9]+$ ]] || return 1
+  (( open > 0 )) || return 1
+  if (( warned_open_run == 0 )); then
+    echo "ci-watch: listed checks on PR #$TARGET are green, but $open workflow run(s) of the" \
+         "head commit are still open (jobs not listed yet) — waiting" >&2
+    warned_open_run=1
+  fi
+  return 0
+}
+
 warned_stale=0
 stale_checkrun_recount() {   # reads $json, may lower $pending and raise $bad
   local sha cr recount stale
@@ -167,6 +226,7 @@ while :; do
   fi
 
   if [[ "$MODE" == "pr" ]]; then
+    if pr_head_not_yet_expected; then sleep "$POLL"; continue; fi
     # Buckets are machine-readable: pass|fail|pending|skipping|cancel. The name is
     # carried along so a pending entry can be matched to its check-run (below).
     json=$(gh pr checks "$TARGET" -R "$REPO" --json bucket,name 2>&1)
@@ -228,6 +288,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # two-consecutive confirmation instead of exiting success.
     pr_conflicting_check
     if (( conflict_seen )); then sleep "$POLL"; continue; fi
+    if pr_run_still_open; then sleep "$POLL"; continue; fi
     echo "CI-WATCH GREEN: $REPO PR #$TARGET — $total checks, none failing"
     exit 0
   fi
@@ -246,14 +307,32 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     fi
     sleep "$POLL"; continue
   fi
-  if ! json=$(gh run list -R "$REPO" --limit 50 --json headBranch,headSha,status,conclusion,name 2>&1); then
+  # The ref moved: the run of the old commit is superseded (GitHub cancels it when the
+  # workflow uses a concurrency group, or it finishes for a commit nobody asked about).
+  # The watch is for "the CI of what the ref points at", so it follows the new commit and
+  # restarts its clock — a new commit is a new run. Measured 2026-10-14 (header, point 4).
+  if [[ -n "$last_sha" && "$sha" != "$last_sha" ]]; then
+    moves=$(( moves + 1 ))
+    if (( moves > MOVES_MAX )); then
+      fail_unknown "ref '$TARGET' on $REPO moved $moves times during the watch (last ${sha:0:7}) — arm one watch per push, not one watch for a day of merges"
+    fi
+    echo "ci-watch: ref '$TARGET' moved ${last_sha:0:7} -> ${sha:0:7} — the run of ${last_sha:0:7} is superseded, not a verdict; watching ${sha:0:7}, clock restarted (move $moves of $MOVES_MAX)" >&2
+    deadline=$(( $(date +%s) + TIMEOUT ))
+    warned_no_run=0
+  fi
+  last_sha="$sha"
+  # The runs of THIS commit, whatever their age. `gh run list --limit 50` read the newest
+  # 50 runs of the whole repo: on a day with many PR runs the watched commit's runs fell
+  # out of that window, the watch saw "none" and waited out its timeout (measured 2026-10-14).
+  if ! json=$(gh api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
+        --jq '[.workflow_runs[] | {headBranch: .head_branch, headSha: .head_sha, status: .status, conclusion: .conclusion, name: .name}]' 2>&1); then
     # One failed call is weather, not a verdict (measured 2026-10-13: an HTTP 504 on the
     # first poll ended a watch on main as UNKNOWN while the run was green; pr mode already
     # tolerated the same error and this mode gave up at once). Keep polling; only a run of
     # failures is a measurement.
     gh_fail=$(( gh_fail + 1 ))
-    if (( gh_fail >= 5 )); then fail_unknown "gh run list failed $gh_fail times in a row: $(head -c 200 <<<"$json")"; fi
-    echo "ci-watch: gh run list failed ($gh_fail/5) — retrying in ${POLL}s: $(head -c 120 <<<"$json")" >&2
+    if (( gh_fail >= 5 )); then fail_unknown "gh api actions/runs failed $gh_fail times in a row: $(head -c 200 <<<"$json")"; fi
+    echo "ci-watch: gh api actions/runs failed ($gh_fail/5) — retrying in ${POLL}s: $(head -c 120 <<<"$json")" >&2
     sleep "$POLL"; continue
   fi
   gh_fail=0
@@ -276,9 +355,9 @@ else:
 ' "$TARGET" "$sha" <<<"$json" 2>/dev/null); then
     unparsed=$((unparsed + 1))
     if (( unparsed >= UNPARSED_MAX )); then
-      fail_unknown "unparseable gh run list output on $unparsed polls in a row: $(head -c 200 <<<"$json")"
+      fail_unknown "unparseable gh api actions/runs output on $unparsed polls in a row: $(head -c 200 <<<"$json")"
     fi
-    echo "ci-watch: gh run list output not parseable yet (poll $unparsed of $UNPARSED_MAX) — waiting" >&2
+    echo "ci-watch: gh api actions/runs output not parseable yet (poll $unparsed of $UNPARSED_MAX) — waiting" >&2
     sleep "$POLL"; continue
   fi
   unparsed=0
@@ -293,6 +372,16 @@ else:
     sleep "$POLL"; continue
   fi
   if [[ "$status" != "completed" ]]; then sleep "$POLL"; continue; fi
+  if [[ "$conclusion" == "cancelled" ]]; then
+    # Cancelled is a verdict only while the ref still points at this commit. A run that
+    # GitHub cancelled because a newer push superseded it says nothing about the newer
+    # commit; the next poll follows the move (above) and judges that one.
+    sha_now=$(gh api "repos/$REPO/commits/$TARGET" --jq .sha 2>/dev/null)
+    if [[ -n "$sha_now" && "$sha_now" != "$sha" ]]; then
+      echo "ci-watch: run of ${sha:0:7} cancelled and ref '$TARGET' has moved on to ${sha_now:0:7} — superseded, not red" >&2
+      continue
+    fi
+  fi
   case "$conclusion" in
     success)                    echo "CI-WATCH GREEN: $REPO $TARGET — success"; exit 0 ;;
     failure|cancelled|timed_out|startup_failure|action_required)

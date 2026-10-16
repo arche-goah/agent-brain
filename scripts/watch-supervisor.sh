@@ -38,6 +38,15 @@ while true; do
   child=""
   ran=$(( $(date +%s) - start ))
   restarts=$((restarts + 1))
+  # A child that leaves CLEANLY right after its start did not die — it declined the channel:
+  # the watcher scripts exit 0 with "already armed" when another session's lock is live.
+  # Restarting it made the loop measured 2026-10-15 (Windows) and 2026-10-16 (macOS): a
+  # second arm while the first still ran, every child skipped, every supervisor restarted it
+  # every 15 s. One line, no restart; the channel IS watched, by the lock holder.
+  if [[ "$rc" -eq 0 && "$ran" -lt "${WATCH_SUPERVISOR_SKIP_WINDOW:-60}" ]]; then
+    echo "WATCHER-SKIPPED: $LABEL left rc=0 after ${ran}s — another watcher holds this channel; not restarting"
+    exit 0
+  fi
   # A child that survived a while was healthy: its death is a one-off, the backoff restarts.
   if [[ "$ran" -ge 300 ]]; then delay="$BACKOFF_START"; fi
   # No parent, no restart: an orphaned supervisor would revive its payload forever for a

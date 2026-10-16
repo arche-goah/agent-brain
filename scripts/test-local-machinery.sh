@@ -329,5 +329,30 @@ grep -q 'synced/b/bare' <<< "$listing" && ok "synced-entry-without-field-reporte
 grep -q 'synced/c/x' <<< "$listing" && ok "synced-unreadable-manifest-reported" || bad "synced-unreadable-manifest-reported: $listing"
 rm -rf "$S"
 
+# --- rule sections still identical to the core template ---------------------------------------
+# Measured 2026-10-16 (macOS instance): a freshly bootstrapped brain reported 18 template
+# sections as "presumably general", and the template's commented example entry as a section.
+rm -rf "$T/b"; mkdir -p "$T/b/.claude/rules"
+cp "$HERE/../templates/rules-instance/working-rules-instance.md" "$T/b/.claude/rules/working-rules-instance.md"
+printf '## Mine\nalways do y\n<!--\n### Example — <title>\n- ...\n-->\n' > "$T/b/.claude/rules/r.md"
+listing=$(run --list)
+grep -qE '^core +rule +\.claude/rules/working-rules-instance\.md#Language \(template\)' <<< "$listing" \
+  && ok "template-section-is-core" || bad "template-section-is-core: $listing"
+grep -qE '^[a-z]+ +rule +\.claude/rules/working-rules-instance\.md#Language$' <<< "$listing" \
+  && bad "template-section-not-an-item: $listing" || ok "template-section-not-an-item"
+grep -q 'r.md#Example' <<< "$listing" && bad "commented-heading-no-section: $listing" || ok "commented-heading-no-section"
+grep -qE ' rule +\.claude/rules/r\.md#Mine$' <<< "$listing" && ok "own-section-still-reported" || bad "own-section-still-reported: $listing"
+# NEGATIVE: the same template section with one line of the instance's own is reported again.
+printf 'answer in German\n' >> "$T/b/.claude/rules/working-rules-instance.md"
+listing=$(run --list)
+grep -qE ' rule +\.claude/rules/working-rules-instance\.md#Tool Paths$' <<< "$listing" \
+  && ok "changed-template-section-reported" || bad "changed-template-section-reported: $listing"
+# NEGATIVE: the same text in a file that is no template copy stays an item.
+cp "$HERE/../templates/rules-instance/working-rules-instance.md" "$T/b/.claude/rules/other.md"
+listing=$(run --list)
+grep -qE ' rule +\.claude/rules/other\.md#Language$' <<< "$listing" \
+  && ok "template-text-elsewhere-reported" || bad "template-text-elsewhere-reported: $listing"
+rm -rf "$T/b"
+
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"

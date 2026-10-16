@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# covers: watch-gate close-stamp
 # Fixture test for helpers/watch-gate.cjs — both directions.
 # The must-block case is the incident itself (2026-10-09): an answer pushed into the
 # shared-memory repo, addressed to another instance, turn ended, no watcher — the
@@ -17,6 +18,14 @@ T="$(mktemp -d)"
 SLEEPERS=()
 trap 'for p in "${SLEEPERS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$T"' EXIT
 G="$(cd "$(dirname "$0")" && pwd)/../helpers/watch-gate.cjs"
+# Offline: a fake gh answers "does the named repo have workflows?" — o/plain has none (404),
+# o/down cannot be measured (network error), every other repo has one.
+# A node script, not a shell script: the gate runs it through node, which works on every OS
+# (Windows node cannot exec a shebang file — OS-3, "a fixture hands a shell script to a native process").
+printf '%s\n' 'const a = process.argv.slice(2).join(" ");' \
+  'if (a.includes("repos/o/plain/")) { process.stderr.write("gh: Not Found (HTTP 404)\n"); process.exit(1); }' \
+  'if (a.includes("repos/o/down/")) { process.stderr.write("error connecting to api.github.com\n"); process.exit(1); }' \
+  'process.stdout.write("1\n");' > "$T/fake-gh.cjs"
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
@@ -24,6 +33,7 @@ bad() { echo "  FAIL $1"; fail=1; }
 
 # OS-3: node opens these paths; a Git-Bash /tmp path would not resolve on Windows.
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
+export WATCH_GATE_GH="$(native "$T/fake-gh.cjs")"
 js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 
 SM="$T/brain-shared-memory"
@@ -44,9 +54,9 @@ tool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","n
 asst() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
 PUSH="cd ~/Projects/brain-shared-memory && git commit -q -m x && git push -q"
 
-check() { # $1 name, $2 transcript, $3 block|allow, $4 project root, [$5 stop_hook_active]
+check() { # $1 name, $2 transcript, $3 block|allow, $4 project root, [$5 stop_hook_active]; $SID = session id
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s}' "$(native "$2")" "${5:-false}" \
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"}' "$(native "$2")" "${5:-false}" "${SID:-}" \
     | CLAUDE_PROJECT_DIR="$(native "$4")" SHARED_MEMORY_REPO="$(native "$SM")" SHARED_MEMORY_SELF="ws" \
       node "$G" 2>&1)"
   if [ "$3" = block ]; then
@@ -95,6 +105,30 @@ check "note addressed to this instance only" "$T/t1.jsonl" allow "$R"
 fresh; entry foreign.md mac ws
 check "entry pulled in from another instance" "$T/t1.jsonl" allow "$R"
 
+# --- LOG.md messages (2026-10-16: a request and its answer, both LOG headings, were invisible)
+logentry() { # $1 heading after the date, e.g. "ws — AN mac: please check"
+  mkdir -p "$SM/ops"; printf '## 2026-10-16 · %s\nbody\n\n' "$1" >> "$SM/ops/LOG.md"
+  git -C "$SM" add -A; git -C "$SM" commit -q -m log
+}
+fresh; logentry "ws — AN mac: please run the fixture"
+check "LOG request to another party, no watcher" "$T/t1.jsonl" block "$R"
+fresh; logentry "ws (second session) — AN mac + win: please check"
+check "LOG request, session-tagged sender, two addressees" "$T/t1.jsonl" block "$R"
+fresh; logentry "ws — AN mac (status: open): fix needed"
+check "LOG request with an open status" "$T/t1.jsonl" block "$R"
+fresh; logentry "ws — AN mac (status: done): re fixture — 27/27"
+check "LOG answer closed with status: done" "$T/t1.jsonl" allow "$R"
+fresh; logentry "ws — AN ws: note to self"
+check "LOG note addressed to this instance only" "$T/t1.jsonl" allow "$R"
+fresh; logentry "mac — AN ws: please take over"
+check "LOG entry from another instance" "$T/t1.jsonl" allow "$R"
+fresh; logentry "ws — status line without an addressee"
+check "LOG heading without AN is no message" "$T/t1.jsonl" allow "$R"
+fresh; logentry "ws — AN mac: please run the fixture"
+live_lock "$R/.claude-state/shared-memory-watch.pid"
+check "LOG request with a live watcher" "$T/t1.jsonl" allow "$R"
+rm -rf "$R/.claude-state"
+
 # --- PR side
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "PR #1"; } > "$T/p1.jsonl"
 check "PR created, no watch" "$T/p1.jsonl" block "$R"
@@ -103,6 +137,16 @@ check "PR created, watch-pr armed in the turn" "$T/p2.jsonl" allow "$R"
 live_lock "$R/.claude-state/collab-watch/repo-activity-o.pid"
 check "PR created, collab-watch repo watch lives" "$T/p1.jsonl" allow "$R"
 rm -rf "$R/.claude-state"
+# a collab-watch with its own COLLAB_WATCH_STATE (measured 2026-10-15, Windows instance): the
+# variable lives on the Monitor command, so the gate finds the dir only through the registry
+OWN="$T/own-state"
+live_lock "$OWN/repo-activity-o.pid"
+check "PR created, own-state collab-watch not registered" "$T/p1.jsonl" block "$R"
+mkdir -p "$R/.claude-state"; (cygpath -m "$OWN" 2>/dev/null || echo "$OWN") > "$R/.claude-state/collab-watch-states"  # Windows form, as collab-watch.sh writes it
+check "PR created, own-state collab-watch registered" "$T/p1.jsonl" allow "$R"
+live_lock "$OWN/shared-memory-watch.pid"
+check "pushed answer, own-state collab-watch registered" "$T/t1.jsonl" allow "$R"
+rm -rf "$R/.claude-state" "$OWN"
 
 # --- CI side (measured 2026-10-13): a push into a checkout with Actions workflows starts a run.
 # Four of five such pushes that session had a ci-watch; the fifth went red and nobody saw it.
@@ -120,6 +164,11 @@ check "push, ci-watch ref armed via Monitor" "$T/c3.jsonl" allow "$R"
 check "negative control: ci-watch on another repo" "$T/c4.jsonl" block "$R"
 { user "fix"; tool Bash "git -C $CIN push -q origin x"; tool Bash "bash core/scripts/ci-watch.sh pr o/r 7"; } > "$T/c5.jsonl"
 check "negative control: a foreground ci-watch call is not a watch" "$T/c5.jsonl" block "$R"
+# a quoted script path (Windows paths with spaces): the closing quote sits between `.sh` and the blank
+{ user "fix"; tool Bash "git -C $CIN push -q origin x"; tool Bash "bash \"C:/tools/x y/ci-watch.sh\" pr o/r 7" bg; } > "$T/c6.jsonl"
+check "push, ci-watch armed with a quoted script path" "$T/c6.jsonl" allow "$R"
+{ user "fix"; tool Bash "git -C $CIN push -q origin x"; tool Bash "bash 'C:/x/ci-watch.sh' pr o/other 7" bg; } > "$T/c7.jsonl"
+check "negative control: quoted path, another repo" "$T/c7.jsonl" block "$R"
 { user "fix"; tool Bash "git -C $PLAINN push -q origin x"; } > "$T/c6.jsonl"
 check "push into a repo without workflows" "$T/c6.jsonl" allow "$R"
 { user "fix"; tool Bash "cd $CIN && git push -q"; } > "$T/c7.jsonl"
@@ -135,6 +184,16 @@ check "merge, ci-watch ref armed" "$T/m2.jsonl" allow "$R"
 check "PR created with the repo named, reaction watch but no CI watch" "$T/p3.jsonl" block "$R"
 { user "pr"; tool Bash "gh pr create --repo o/r --title x"; tool Bash "bash core/scripts/ci-watch.sh pr o/r 1" bg; } > "$T/p4.jsonl"
 check "PR created, ci-watch armed (also a PR-side watch)" "$T/p4.jsonl" allow "$R"
+# A named repo without workflows starts no run (measured 2026-10-16 on macOS and Windows: a
+# merge into a private repo without CI blocked the turn end with every watcher alive).
+{ user "merge"; tool Bash "gh pr merge 2 -R o/plain --merge"; } > "$T/m3.jsonl"
+check "merge names a repo without workflows (API 404)" "$T/m3.jsonl" allow "$R"
+{ user "merge"; tool Bash "gh pr merge 2 -R o/plain --merge"; } > "$T/m4.jsonl"
+check "merge names a repo whose local checkout has no workflows" "$T/m4.jsonl" allow "$PLAIN"
+{ user "merge"; tool Bash "gh pr merge 2 -R o/r --merge"; } > "$T/m5.jsonl"
+check "negative control: local checkout of the named repo has workflows" "$T/m5.jsonl" block "$CI"
+{ user "merge"; tool Bash "gh pr merge 2 -R o/down --merge"; } > "$T/m6.jsonl"
+check "negative control: workflows not measurable counts as CI" "$T/m6.jsonl" block "$R"
 
 # --- a reload asked of the human (class measured 2026-10-11: "/mcp reconnect" asked, no waiter armed, noticed only when the operator said so)
 { user "update the plugin"; tool Bash "claude plugin install x"; asst "Installed. Please run /mcp to reconnect."; } > "$T/r1.jsonl"
@@ -191,6 +250,57 @@ live_lock "$R/.claude-state/collab-watch/repo-activity-o.pid"
 check "issue created, collab-watch repo watch lives" "$T/i1.jsonl" allow "$R"
 rm -rf "$R/.claude-state"
 
+# --- the close turn (coherence scan 2026-10-15, P1-2): skill session-close arms no watcher it
+# will not be alive to read and lists each item as an open end instead. A close stamp of this
+# session and turn passes exactly the listed items; a stamp without the listing, another
+# session's stamp, a stamp older than the turn, or no stamp at all still block.
+toolid() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+result() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":%s}]}}\n' "$1" "$(js "$2")"; }
+CLOSE_LINE="- 2026-10-15 10:00:00 | main | close"
+stamp() { # $1 stamp session id, $2 open-end lines of this close's entry (may be empty)
+  mkdir -p "$R/.claude-state" "$R/docs/maintenance"
+  printf '%s\n%s\n' "$1" "$CLOSE_LINE" > "$R/.claude-state/session-close.stamp"
+  { echo "- 2026-10-14 09:00:00 | main | close"; echo "  open end: o/tool-suite #9 listed by an OLDER entry"
+    echo "$CLOSE_LINE"; echo "  topic: fixture close"; [ -n "$2" ] && printf '%s\n' "$2"
+    echo "- 2026-10-16 08:00:00 | main | close"; echo "  open end: o/tool-suite #9 listed by a LATER entry"; } > "$R/docs/maintenance/session-log.md"
+}
+PRE="bash core/helpers/session-closing.sh --pre-commit --session S1"
+{ user "close the session"; tool Bash "$PRE"; toolid tu1 "gh pr create --repo o/tool-suite --title x --body-file b.md"
+  result tu1 "https://github.com/o/tool-suite/pull/9"; asst "Persisted - you can shut down."; } > "$T/cs1.jsonl"
+SID=S1
+stamp S1 "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp + PR and CI listed as open ends" "$T/cs1.jsonl" allow "$R"
+stamp S1 ""
+check "close stamp without the listing (older/later entries do not count)" "$T/cs1.jsonl" block "$R"
+stamp S1 "  open end: o/tool-suite #90 awaits CI"
+check "close stamp listing another PR number (#90 is not #9)" "$T/cs1.jsonl" block "$R"
+stamp S1 "  open end: o/other-suite #9 awaits CI"
+check "close stamp listing the number in another repo" "$T/cs1.jsonl" block "$R"
+stamp OTHER "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp of another session" "$T/cs1.jsonl" block "$R"
+stamp "" "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp without a session id (older harness), close ran in this turn" "$T/cs1.jsonl" allow "$R"
+rm -rf "$R/.claude-state"
+check "no close stamp, entry listed anyway" "$T/cs1.jsonl" block "$R"
+stamp S1 "  open end: o/tool-suite #9 awaits CI and review"
+{ user "close the session"; toolid tu1 "gh pr create --repo o/tool-suite --title x"; result tu1 "https://github.com/o/tool-suite/pull/9"; asst "done"; } > "$T/cs2.jsonl"
+check "close stamp, but this turn never ran the close" "$T/cs2.jsonl" block "$R"
+{ user "close the session" "2099-01-01T00:00:00Z"; tool Bash "$PRE"; toolid tu1 "gh pr create --repo o/tool-suite --title x"
+  result tu1 "https://github.com/o/tool-suite/pull/9"; asst "done"; } > "$T/cs3.jsonl"
+check "close stamp written before the turn began" "$T/cs3.jsonl" block "$R"
+{ user "close the session"; tool Bash "$PRE"; tool Bash "$PUSH"; asst "Persisted - you can shut down."; } > "$T/cs4.jsonl"
+fresh; entry close-request.md ws mac
+stamp S1 "  open end: close-request (shared memory) awaits the answer from mac"
+check "close stamp + shared-memory request listed by its file name" "$T/cs4.jsonl" allow "$R"
+stamp S1 "  open end: some other request"
+check "close stamp, shared-memory request not listed" "$T/cs4.jsonl" block "$R"
+{ user "close the session"; tool Bash "$PRE"; toolid tu1 "gh pr create --repo o/tool-suite --title x"; result tu1 "https://github.com/o/tool-suite/pull/9"
+  asst "Persisted. Please start onPC tomorrow."; } > "$T/cs5.jsonl"
+stamp S1 "  open end: o/tool-suite #9 awaits CI and review"
+check "close stamp never covers a hand step asked of the human" "$T/cs5.jsonl" block "$R"
+SID=""
+rm -rf "$R/.claude-state" "$R/docs"
+
 # Windows: the hook does not run in Git Bash (measured 2026-10-11) — its PATH holds Git\cmd,
 # not Git\usr\bin, so a bare `ps` is ENOENT and every live watcher read as dead. The gate must
 # find Git's ps.exe itself. Run it with exactly that PATH: node's dir + Git\cmd.
@@ -209,8 +319,31 @@ fi
 # block assertions above prove nothing
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));
 ' > "$T/stub.cjs"
+
+# --- (g) the standing watch: a filled-in collab-watch.json, a turn with no own act at all
+SW="$T/standing"; mkdir -p "$SW/.claude/rules"
+printf '{"shared_memory": {"repo": "~/x", "interval": 120}, "repo_watches": []}\n' > "$SW/.claude/rules/collab-watch.json"
+{ user "wie ist der stand"; asst "Alles gruen."; } > "$T/g1.jsonl"
+check "(g) brain can watch, no standing watch lives" "$T/g1.jsonl" block "$SW"
+live_lock "$SW/.claude-state/collab-watch/repo-activity-core.pid"
+check "(g) a live collab-watch lock" "$T/g1.jsonl" allow "$SW"
+rm -f "$SW/.claude-state/collab-watch/repo-activity-core.pid"; echo 999999 > "$SW/.claude-state/collab-watch/shared-memory-watch.pid"
+check "(g) only a dead lock (the Monitor expired)" "$T/g1.jsonl" block "$SW"
+{ user "weiter"; tool Monitor "bash core/scripts/collab-watch.sh"; asst "Waechter laeuft."; } > "$T/g2.jsonl"
+check "(g) collab-watch armed in this turn" "$T/g2.jsonl" allow "$SW"
+printf '{"standing_watch": "off: Werkbank ohne Kollegen", "repo_watches": []}\n' > "$SW/.claude/rules/collab-watch.json"
+check "(g) declared off with a reason" "$T/g1.jsonl" allow "$SW"
+printf '{"standing_watch": "off", "repo_watches": []}\n' > "$SW/.claude/rules/collab-watch.json"
+check "(g) off without a reason" "$T/g1.jsonl" block "$SW"
+printf '{"_comment": ["replace <placeholder>"], "repo_watches": [{"tag": "core", "repos": ["<owner>/<core-repo>"]}]}\n' > "$SW/.claude/rules/collab-watch.json"
+check "(g) template placeholders left: not judged here" "$T/g1.jsonl" allow "$SW"
+check "(g) no collab-watch.json: not judged here" "$T/g1.jsonl" allow "$R"
+printf '{"_comment": ["a <placeholder> only in the comment"], "repo_watches": []}\n' > "$SW/.claude/rules/collab-watch.json"
+check "(g) a placeholder only in _comment still judges" "$T/g1.jsonl" block "$SW"
+
 G0="$G"; G="$T/stub.cjs"; before=$fail; fail=0
-for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2 cs2 cs5; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+check "stub on g1" "$T/g1.jsonl" block "$SW" >/dev/null
 caught=$fail; G="$G0"; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed every must-block case"
 

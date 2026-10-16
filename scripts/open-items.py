@@ -18,6 +18,13 @@ usually starts for another reason. So the first reply SPLITS them by who has to 
               go ahead — without that OK the agent starts none of it.
   * `human` — it needs the operator directly. Up to three: one short bullet each (what it
               is about, who needs what). More than three: the count, and an offer to list.
+  * `standing` — an `ai` (or unclassified) item of a CLASS the operator approved once for
+              good (full-audit 2026-10-15 on the Windows instance: an instance carried "requests
+              addressed to this machine are handled without asking", and the first reply asked
+              anyway, because the core knew no such class). The class and the operator's words
+              live in instance data `.claude/rules/open-items-standing.json`; the reply handles
+              these and reports what was done, no question. An entry without the operator's
+              quoted words and a date is refused with a line — the agent cannot grant itself one.
 
 This script is the ONE list of open points at session start:
   * open shared-memory requests addressed to this instance (shared-memory-inbox --open,
@@ -38,7 +45,7 @@ This script is the ONE list of open points at session start:
     (`owners`: repo -> login) gives to someone else when no review was asked of us, our own
     PR in such a repo unless someone else spoke after its last commit, and any
     item with a dated wait (`waiting`: id -> {until, why} in instance data, or a line
-    `waiting-until: YYYY-MM-DD: <why>` in a PR body). After the date it is louder again;
+    `waiting-until: YYYY-MM-DD: <why>` in a PR body). On its date it is due, after it louder;
   * a REQUEST from another side in a parked domain is not parked away — parked means not
     worked on, never unanswered; it is listed with how to answer (receipt, state, when);
   * a source that could not be read says so — it never reads as "nothing open";
@@ -373,6 +380,14 @@ CIRCLE_WORDS = {"A": "the AI handles it alone", "B": "needs the operator's own d
                 "E": "needs several people", "F": "a matter between people"}
 
 
+def front(it, repo):
+    """The frontmatter of a request's file at origin/main ('' without a file), read once."""
+    if "front" not in it:
+        rc, blob = run(["git", "-C", repo, "show", f"origin/main:{it['file']}"]) if it.get("file") else (1, "")
+        it["front"] = blob.split("\n---", 1)[0] if rc == 0 else ""
+    return it["front"]
+
+
 def auto_class(it, repo, human_rx):
     """(class, why) from the data alone, or (None, '') when the data does not say."""
     if it["kind"] == "PR":
@@ -380,14 +395,79 @@ def auto_class(it, repo, human_rx):
     if it["kind"] == "session":
         return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it.get("file"):
-        rc, blob = run(["git", "-C", repo, "show", f"origin/main:{it['file']}"])
-        m = CIRCLE.search(blob.split("\n---", 1)[0]) if rc == 0 else None
+        m = CIRCLE.search(front(it, repo))
         if m:
             c = m.group(1).upper()
             return ("ai" if c in AI_CIRCLES else "human"), CIRCLE_WORDS[c]
     if human_rx and human_rx.search(it["text"]):
         return "human", "addressed to a person"
     return None, ""
+
+
+# Standing approvals (full-audit 2026-10-15, Windows instance): a class of items the operator
+# approved once for good. Instance data `.claude/rules/open-items-standing.json`, "classes":
+#   {"name", "kind": "request"|"PR", "scope": regex on topic folder / repo, "audience": [tokens,
+#    one of which the request's audience must name], "title": regex on the item text,
+#    "excludes": [regexes on the item text that keep an item out], "granted": "\"<words>\" <date>"}
+# `granted` must quote the operator and carry the date — the shapes mechanism-guard.cjs accepts
+# for needs_operator_word. Without them the entry is refused, never silently applied.
+QUOTE = re.compile(r'"[^"\n]{3,}"|„[^“”"\n]{3,}[“”"]|“[^”\n]{3,}”')
+DAY = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
+AUDIENCE = re.compile(r"^\s+audience:\s*(.+?)\s*$", re.M)
+TOKEN = re.compile(r"(?:(?:os|person):)?[\w-]+")  # shared-memory-parties.py's audience tokens
+ADDRESSEES = re.compile(r"^(?:AN|An|an|TO|To)\s+([^:]+):")
+
+
+def standing_classes(root):
+    """(classes, refusal lines) from the instance file; no file = no standing classes."""
+    data = load_json(root / ".claude" / "rules" / "open-items-standing.json", {})
+    classes, refused = [], []
+    for e in (data.get("classes") or []) if isinstance(data, dict) else []:
+        if not isinstance(e, dict):
+            continue
+        name, granted = str(e.get("name") or "unnamed"), str(e.get("granted") or "")
+        if not (QUOTE.search(granted) and DAY.search(granted)):
+            refused.append(f"standing approval '{name}' refused — \"granted\" must quote the operator's "
+                           "words and the date they were said (\"...\" YYYY-MM-DD); its items are asked as before")
+            continue
+        if e.get("kind") not in ("request", "PR"):
+            refused.append(f"standing approval '{name}' refused — \"kind\" must be request or PR")
+            continue
+        try:
+            scope, title = (re.compile(e[k], re.I) if e.get(k) else None for k in ("scope", "title"))
+            excludes = [re.compile(x, re.I) for x in e.get("excludes") or []]
+        except re.error as err:
+            refused.append(f"standing approval '{name}' refused — broken regex ({err})")
+            continue
+        classes.append({"name": name, "kind": e["kind"], "scope": scope, "title": title, "excludes": excludes,
+                        "audience": {str(t).lower() for t in e.get("audience") or []},
+                        "granted": DAY.search(granted).group(0)})
+    return classes, refused
+
+
+def audience(it, repo):
+    """Audience tokens of a request: its file's `audience:` field, or the `AN <who>:` of a LOG
+    heading. A PR has none."""
+    if it["kind"] != "request":
+        return set()
+    if it.get("file"):
+        m = AUDIENCE.search(front(it, repo))
+        return set(TOKEN.findall(m.group(1).lower())) if m else set()
+    text = re.sub(r"^optional: .*?—\s*", "", it["text"])
+    m = ADDRESSEES.match(re.sub(r"\b(os|person):(?=[\w-])", "\\1\x00", text))
+    return set(TOKEN.findall(m.group(1).replace("\x00", ":").lower())) if m else set()
+
+
+def standing_match(it, classes, repo):
+    for c in classes:
+        if c["kind"] != it["kind"] or (c["scope"] and not c["scope"].search(it["scope"])):
+            continue
+        if (c["title"] and not c["title"].search(it["text"])) or any(x.search(it["text"]) for x in c["excludes"]):
+            continue
+        if c["audience"] and not (audience(it, repo) & c["audience"]):
+            continue
+        return c
+    return None
 
 
 NOT_A_PROMPT = re.compile(r"^\s*(Stop hook feedback|<task-notification|<system-reminder|<local-command|<command-)")
@@ -553,6 +633,7 @@ def main():
     confirmed = set(seen.get("confirmed", []))
     store = load_json(cls_file, {})
     waits = cfg.get("waiting") or {}  # instance data: {"<id>": {"until": "YYYY-MM-DD", "why": "..."}}
+    standing, refused = standing_classes(root)
 
     def counts(s):
         """A session counts as a report only once its transcript shows the list reached a human.
@@ -587,9 +668,15 @@ def main():
         it["wait"] = None
         if it.get("waiting_on"):
             it["wait"] = "waiting on {}: {}".format(*it["waiting_on"])
-        elif until and until[0] >= today:
+        # The marker's date is the day the work is DUE, so on that day the item is ours again.
+        # Quiet through its own date, it surfaced only the morning after, when the sessions of
+        # the due day had already done the work and closed without moving the marker (measured
+        # 2026-10-15: a measurement done on its date read as missing the next morning).
+        elif until and until[0] > today:
             it["wait"] = f"waiting until {until[0]}" + (f": {until[1]}" if until[1] else "")
-        it["overdue"] = f"waited until {until[0]}" + (f" ({until[1]})" if until[1] else "") if until and until[0] < today else ""
+        why_w = f" ({until[1]})" if until and until[1] else ""
+        it["overdue"] = ("" if not until or until[0] > today else
+                         f"due today{why_w}" if until[0] == today else f"waited until {until[0]}{why_w}")
         # A wait is not a report: the counter only runs while the move is ours.
         if not it["wait"] and sid and sid not in rec["sessions"]:
             rec["sessions"] = (rec["sessions"] + [sid])[-50:]
@@ -608,6 +695,11 @@ def main():
             it["why"] = "parked domain — answer anyway: receipt, state, when it resumes"
         if it["kind"] == "wake":   # unparking is the operator's call, never the agent's
             it["parked"], it["cls"], it["why"] = False, "human", "the party that paused it moved again"
+        # A standing approval covers what the agent may do anyway (ai) or what nobody classified
+        # yet — never an item the data gives to a person (circle, addressee, the agent's own class).
+        c = standing_match(it, standing, a.repo) if it["cls"] in ("ai", "?") and not it["parked"] else None
+        if c:
+            it["cls"], it["why"] = "standing", f"standing approval '{c['name']}', granted {c['granted']}"
         if it["wait"]:
             it["cls"] = "wait"
     # A source that failed keeps its old counters — a failed read is not "handled".
@@ -621,16 +713,22 @@ def main():
     saved = save_json(seen_file, {"items": keep, "confirmed": sorted(confirmed)[-300:],
                                   "last_run": now.isoformat(timespec="seconds")}) if sid else True
 
-    active = sorted((i for i in items if not i["parked"] and i["cls"] != "wait"), key=lambda i: (-i["n"], i["date"]))
+    # Standing items form their own group at the end of the active list.
+    active = sorted((i for i in items if not i["parked"] and i["cls"] != "wait"),
+                    key=lambda i: (i["cls"] == "standing", -i["n"], i["date"]))
     waiting = [i for i in items if not i["parked"] and i["cls"] == "wait"]
     parked = [i for i in items if i["parked"]]
-    count = {c: sum(1 for i in active if i["cls"] == c) for c in ("ai", "human", "?")}
-    rep = {c: sum(1 for i in active if i["cls"] == c and i["n"] > 1) for c in ("ai", "human")}
+    count = {c: sum(1 for i in active if i["cls"] == c) for c in ("ai", "human", "?", "standing")}
+    rep = {c: sum(1 for i in active if i["cls"] == c and i["n"] > 1) for c in ("ai", "human", "standing")}
     print(f"open for us: {len(active)} — ai {count['ai']} · human {count['human']} · unclassified {count['?']}"
+          + (f" · standing {count['standing']}" if count["standing"] else "")
           + (f" (+{len(waiting)} waiting on others or a date)" if waiting else "")
           + (f" (+{len(parked)} parked)" if parked else "")
           + (f" — already reported before and still open: ai {rep['ai']} · human {rep['human']}"
-             if rep["ai"] or rep["human"] else ""))
+             + (f" · standing {rep['standing']}" if rep["standing"] else "")
+             if rep["ai"] or rep["human"] or rep["standing"] else ""))
+    for line in refused:
+        print(f"!! open for us: {line}")
     if not saved:
         print(f"!! open for us: repeat counter NOT saved ({seen_file}) — repeats will not get louder")
     for name in failed:
@@ -646,15 +744,24 @@ def main():
               + " then core/scripts/session-audit.py --ack <id>")
     if not items and not failed:
         print("- nothing open (requests and PRs both read)")
+    group = False
     for i in active:
+        if i["cls"] == "standing" and not group:
+            group = True
+            print("- standing approval — handle these, then report what was done (no question needed):")
         if i["n"] > 1 and i.get("ours", "")[:10] >= i["first"]:
             age = f"!! reported in {i['n']} sessions since {i['first']}, last own move {i['ours'][:10]} — still ours"
         elif i["n"] > 1:
             age = f"!! reported in {i['n']} sessions since {i['first']}, nothing done yet"
         else:
             age = "first report"
-        if i["overdue"]:
-            age = f"!! {i['overdue']} — that date has passed; " + age
+        # A date marker is a claim about the work, the work's record is the measurement: a
+        # passed date says the marker went stale OR the work is missing, never which one.
+        if i["overdue"].startswith("due today"):
+            age = f"!! {i['overdue']} — do it, then move or drop the waiting-until line; " + age
+        elif i["overdue"]:
+            age = (f"!! {i['overdue']} — that date has passed: read the work's own record before calling it "
+                   "undone, then move or drop the waiting-until line; " + age)
         why = f" ({i['why']})" if i["why"] else ""
         print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{why}")
     # Waiting items need no relay; above a handful, one line keeps the start readable

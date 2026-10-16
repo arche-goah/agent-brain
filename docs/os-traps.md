@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=11 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=15 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7
+known:     helpers/session-bootup.sh=4 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=3 scripts/hook-coverage.py=11 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=15 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26
 instances: 5
 repeat:    yes
 status:    closed
@@ -129,6 +129,10 @@ dir, a session file and the instance data path it opens; it reports session ids,
 2026-10-11, hook-coverage.py 6 -> 9 after that review: the three new joins only feed
 `os.path.isfile` (is the wired helper / the registered stop check in the consumed core?); the
 lines it prints name the helper's FILE NAME, never a joined path.
+2026-10-16, scripts/autonomy-diagnose.py baselined after review: its `os.path.join` results are
+compared only with each other after `normcase(normpath())` on both sides, and every path that
+leaves the program as text goes through `rel()` / `--memory-dir`, which turn `os.sep` into `/`.
+Green on Windows (Git Bash) the same day, report paths forward-slashed.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -140,7 +144,7 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/changelog-assemble.py=1 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=1 scripts/shared-memory-index.py=3 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1
+known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/changelog-assemble.py=1 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=1 scripts/shared-memory-index.py=3 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1 scripts/autonomy-diagnose.py=1 scripts/decision-review.py=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -166,6 +170,8 @@ form so the same writes stay visible; the two `open` sites that already pinned
 (always-loaded.py, open-items.py) joined the baseline after the same read. Bytes unchanged:
 `open(newline="\n")` and `write_text(newline="\n")` hand the same argument to the same
 TextIOWrapper.
+2026-10-16, scripts/autonomy-diagnose.py baselined: its one write (`--out`) opens with
+`newline="\n"`; the report is not git-tracked anyway (it goes to the person who asked).
 
 ## OS-3 — a fixture hands a shell path to a native process
 
@@ -177,7 +183,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=4 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-git-sandbox.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=5 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-git-sandbox.sh=1 scripts/test-autonomy-diagnose.sh=1 scripts/test-autonomy-diagnose-run.sh=1 scripts/test-watch-readiness.sh=1 scripts/test-conditional-order-gate.sh=1 scripts/test-decision-readiness.sh=1 scripts/test-decision-review.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -239,6 +245,10 @@ baseline time (the process cases are designed to SKIP there and to check the ref
 cases add one config dir; it reaches node as the cwd field, as CLAUDE_PROJECT_DIR and (the
 probe's path) inside the config, all three through `native()`. The log files are read back
 by bash `grep` only. Windows run still owed at baseline time.
+2026-10-15, test-stop-dispatcher.sh 4 -> 5 after the same review: the re-issue cases add one
+config dir; it reaches node as the cwd field and as CLAUDE_PROJECT_DIR, and the check paths
+inside its config (two probes, the real stoppen-gate) and the transcripts — all through
+`native()`. Green on Windows (Git Bash) the same day.
 2026-10-10, test-session-pull.sh baselined after the same review: the temp paths reach node
 only as ARGUMENTS (the two config files, which Git Bash converts); the paths INSIDE those JSON
 files are printed back by node unchanged and used by bash and as `git` argv, never opened by a
@@ -303,6 +313,17 @@ by git) — and both go through `nat()`. The repo dirs reach python and git as A
 direction: the negative control asserts that the host hook BLOCKS a plain commit, and an
 unresolvable hooksPath runs no hook, so the control would fail loudly, not pass for the
 wrong reason. Windows run owed at baseline time.
+2026-10-16, test-autonomy-diagnose.sh and test-autonomy-diagnose-run.sh baselined after the same
+review: every temp path reaches python as an ARGUMENT (`--repo`, `--home`, `--out`), which Git Bash
+converts; the one place python derives a path itself (the memory folder slug) is matched in the
+fixture against `cygpath -m` of the same dir (`native()`). The runner fixture's env seams
+(`DIAG_OUT_ROOT`, `DIAG_CLAUDE`) are read by bash only. Both green on Windows (Git Bash).
+2026-10-16, test-conditional-order-gate.sh baselined after the same review: two paths cross into
+node as data — the transcript and the cwd that holds the instance pattern file — both through
+`native()`. Both directions matter: an unresolvable transcript makes the gate fail OPEN (every
+must-block case would pass silently), and an unresolvable cwd drops the German data file, so the
+incident case would pass for the wrong reason while the discriminator would still look right.
+Green on Windows (Git Bash) the same day.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
@@ -315,7 +336,7 @@ the diagnostic replaces exactly the output it was asked to produce, and only in 
 failure path, where nobody has a second copy.
 pattern:   \| *grep -[b-zA-Z]
 paths:     --include=*.sh scripts helpers
-known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-live-read-gate.sh=2 scripts/test-shared-working-copy-guard.sh=1
+known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-live-read-gate.sh=2 scripts/test-shared-working-copy-guard.sh=1 scripts/test-decision-review.sh=2
 instances: 3
 repeat:    yes
 status:    closed
@@ -369,6 +390,15 @@ into node as data — the repo in the JSON command (`git -C …`), the cwd, and 
 (the guard's log dir) — all through `native()`. It matters in the blocking direction: an
 unresolvable repo makes the guard skip the call (fail-open), so every must-block case would
 pass silently. Windows run owed at baseline time (request in the shared memory).
+2026-10-16, a second spelling of the same class, outside this repo (an instance hook's fixture,
+`test-network-drive-gate.sh`): no temp dir at all, but a LITERAL POSIX path in an env var
+(`export NDG_EXTRA_MOUNTS="/Volumes/<share>|…"`) read by node. Here the path is not left
+unresolved — Git Bash REWRITES an env value that starts with `/` before the native process sees
+it (`C:/Program Files/Git/Volumes/<share>|…`; a leading `|` was rewritten too, a leading `x|`
+was not). Four must-block cases passed silently on Windows. `native()`/`cygpath -m` do not fit
+a fake path that must stay POSIX; `export MSYS2_ENV_CONV_EXCL=<VAR>` exempts that one variable
+and is inert on macOS/Linux. The `mktemp -d` pattern cannot see this spelling; a search for
+`[A-Z_]="/` assignments over core scripts, helpers and one instance brain found no other site.
 
 ## OS-4 — a fixture suite exists but no OS gate runs it
 
@@ -459,7 +489,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=7 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=3 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
+known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=8 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=3 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
 status:    open
@@ -485,7 +515,10 @@ anything PARSE this output? 2026-10-09 commitments.py: yes — effect-check E6 r
 it — so it pins stdout like brain-friction.py (the pin stays). Its sites left the baseline in
 the carrier rework of the same day: the em-dash lines now live in a MESSAGES table and reach
 `print()` through `format()`, which this pattern cannot see — the pin, not the count, is what
-carries this file. Left `open` deliberately — the 12 unpinned sites are fine only
+carries this file. 2026-10-15, open-items.py 7 -> 8 after the same question: the new site is
+the heading of the standing-approval group (`- standing approval — handle these …`); the
+bootup and open-items-gate.cjs parse this output, and the script pins stdout (`OS-9` comment in
+`main()`), so the em dash leaves as UTF-8 on every platform. Left `open` deliberately — the 12 unpinned sites are fine only
 as long as that answer stays no.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name

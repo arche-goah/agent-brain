@@ -1,5 +1,5 @@
 {
-  "_comment": "Read by core helpers/stop-dispatcher.cjs: which Stop checks run, and how each finding reads in ONE line. Each template is a plain sentence for the human who reads the feedback too — no ids, commands or arrows; the agent finds details in the hook's own header. An extract that does not match passes the full text through (nothing is swallowed). Labels and templates are instance language: translate them, keep marker and cmd. mode record = never blocks, writes .claude-state/<marker>.jsonl.",
+  "_comment": "Read by core helpers/stop-dispatcher.cjs: which Stop checks run, and how each finding reads in ONE line. Each template is a plain sentence for the human who reads the feedback too — no ids, commands or arrows; the agent finds details in the hook's own header. An extract that does not match passes the full text through (nothing is swallowed). Labels and templates are instance language: translate them, keep marker and cmd. mode record = never blocks, writes .claude-state/<marker>.jsonl. onReissue run = the check also judges the re-issue pass (stoppen-gate: a decision re-issued as prose instead of through the question tool).",
   "header": "STOP CHECKS ({n})",
   "checks": [
     {
@@ -27,8 +27,9 @@
       "cmd": "core/helpers/stoppen-gate.cjs",
       "mode": "block",
       "extract": "Closing question in this reply:\\s*([^\\n]+)",
-      "template": "Closing question \"{1}\" - keep it only if the operator alone can decide it",
-      "maxLength": 120
+      "template": "Closing question \"{1}\" - if only the operator can decide it, ask it through the question tool",
+      "maxLength": 120,
+      "onReissue": "run"
     },
     {
       "label": "OPEN ITEMS",
@@ -44,8 +45,8 @@
       "marker": "WATCH-GATE",
       "cmd": "core/helpers/watch-gate.cjs",
       "mode": "block",
-      "extract": "WATCH-GATE",
-      "template": "A reaction is expected, but no watcher is running",
+      "extract": "WATCH-GATE: [^.]+\\. ([^—]+?) —",
+      "template": "Watcher missing: {1}",
       "maxLength": 200
     },
     {

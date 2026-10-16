@@ -14,7 +14,7 @@
         ]
       },
       {
-        "matcher": "Bash|Monitor|Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": "Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -31,7 +31,7 @@
         ]
       },
       {
-        "matcher": "Read|Edit|Write|Bash",
+        "matcher": "Read|Edit|Write|Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
@@ -53,7 +53,7 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
@@ -70,7 +70,7 @@
         ]
       },
       {
-        "matcher": "Bash|mcp__.*",
+        "matcher": "Bash|PowerShell|mcp__.*",
         "hooks": [
           {
             "type": "command",
@@ -87,6 +87,17 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/skill-gate.cjs\"",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Workflow|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/conditional-order-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       }
@@ -198,7 +209,7 @@
     "brain-core@your-org": true
   },
   "permissions": {
-    "_comment": "A new brain's default scope is the core ONLY — additional suites are enabled/installed exclusively on explicit operator request. The allowlist covers self-setup and self-analysis (core scripts/helpers, git reads, committing, plugin checks); push and settings edits stay ask.",
+    "_comment": "A new brain's default scope is the core ONLY — additional suites are enabled/installed exclusively on explicit operator request. The allowlist covers self-setup and self-analysis (core scripts/helpers, git reads, committing, plugin checks) and the everyday collaboration path: push (also `git -C <repo>`, the form working rule #8 prescribes for a neighbour repo), pull requests and issues. A push used to stay ask: measured 2026-10-16 on a collaborator's brain, every commit and push raised a dialog the human did not understand, and the AI read push as 'needs the operator' — the merge and publish gates (mechanism-guard, operator-only list) carry the real limits, not a permission dialog. Kept asking: settings edits, and a push that names `main` (a bare `git push` matches nothing here and is allowed — an instance whose ordered main push is a named form puts that form under its own allow). `gh pr merge` has no rule on purpose: the classifier and mechanism-guard decide merges. Denied: force pushes (`--force`, `-f`, `+ref`) and branch deletes with `--delete`. A delete spelled `:ref` has NO rule here: a pattern ending in `:*` is read as the legacy prefix form (`Bash(git push * :*)` would be a prefix match, not a glob), so it cannot be written safely; that spelling stays a known gap. `gh issue *` includes `gh issue delete` — a decision, not an oversight. The git/gh rules exist twice, as `Bash(...)` and as `PowerShell(...)`: on Windows Claude Code offers both tools, a Bash rule does not reach the PowerShell tool, and a Bash DENY rule switches the PowerShell tool off for the whole session unless a scoped PowerShell rule exists (docs: tools-reference, 'PowerShell tool'; permissions, 'PowerShell' — read 2026-10-16). PowerShell rules have the same shape as Bash rules (`*` anywhere, `:*` as trailing ` *`), so the strings are identical. The core-script rules stay Bash-only: the core's scripts are run from Git Bash (working rule #8, OS-trap register).",
     "allow": [
       "Bash(python3 core/scripts/*)",
       "Bash(core/scripts/handover-gate.sh)",
@@ -210,6 +221,29 @@
       "Bash(git diff*)",
       "Bash(git add*)",
       "Bash(git commit*)",
+      "Bash(git -C * add*)",
+      "Bash(git -C * commit*)",
+      "Bash(git -C * status*)",
+      "Bash(git -C * log*)",
+      "Bash(git -C * diff*)",
+      "Bash(git -C * pull --ff-only*)",
+      "Bash(git pull --ff-only*)",
+      "Bash(git push*)",
+      "Bash(git -C * push*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh pr checks*)",
+      "Bash(gh pr comment*)",
+      "Bash(gh pr review*)",
+      "Bash(gh pr create*)",
+      "Bash(gh pr edit*)",
+      "Bash(gh pr ready*)",
+      "Bash(gh pr checkout*)",
+      "Bash(gh pr close*)",
+      "Bash(gh issue *)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)",
       "Bash(git submodule status*)",
       "Bash(git submodule update*)",
       "Bash(git --version)",
@@ -219,6 +253,37 @@
       "Bash(claude doctor)",
       "Bash(claude plugin list*)",
       "Bash(claude plugin validate*)",
+      "PowerShell(git status*)",
+      "PowerShell(git log*)",
+      "PowerShell(git diff*)",
+      "PowerShell(git add*)",
+      "PowerShell(git commit*)",
+      "PowerShell(git -C * add*)",
+      "PowerShell(git -C * commit*)",
+      "PowerShell(git -C * status*)",
+      "PowerShell(git -C * log*)",
+      "PowerShell(git -C * diff*)",
+      "PowerShell(git -C * pull --ff-only*)",
+      "PowerShell(git pull --ff-only*)",
+      "PowerShell(git push*)",
+      "PowerShell(git -C * push*)",
+      "PowerShell(gh pr view*)",
+      "PowerShell(gh pr list*)",
+      "PowerShell(gh pr diff*)",
+      "PowerShell(gh pr checks*)",
+      "PowerShell(gh pr comment*)",
+      "PowerShell(gh pr review*)",
+      "PowerShell(gh pr create*)",
+      "PowerShell(gh pr edit*)",
+      "PowerShell(gh pr ready*)",
+      "PowerShell(gh pr checkout*)",
+      "PowerShell(gh pr close*)",
+      "PowerShell(gh issue *)",
+      "PowerShell(gh run list*)",
+      "PowerShell(gh run view*)",
+      "PowerShell(git submodule status*)",
+      "PowerShell(git submodule update*)",
+      "PowerShell(git --version)",
       "Edit(docs/**)",
       "Edit(src/**)",
       "Edit(scripts/**)",
@@ -230,11 +295,34 @@
       "Edit(.claude/settings.json)",
       "Edit(.claude/settings.local.json)",
       "Edit(.mcp.json)",
-      "Bash(git push*)",
-      "Bash(git -C * push*)",
-      "Bash(git * push*)"
+      "Bash(git push * main*)",
+      "Bash(git push * HEAD:main*)",
+      "Bash(git -C * push * main*)",
+      "Bash(git -C * push * HEAD:main*)",
+      "PowerShell(git push * main*)",
+      "PowerShell(git push * HEAD:main*)",
+      "PowerShell(git -C * push * main*)",
+      "PowerShell(git -C * push * HEAD:main*)"
     ],
     "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git -C * push --force*)",
+      "Bash(git -C * push -f*)",
+      "Bash(git push * +*)",
+      "Bash(git -C * push * +*)",
+      "Bash(git push --delete*)",
+      "Bash(git push * --delete*)",
+      "Bash(git -C * push * --delete*)",
+      "PowerShell(git push --force*)",
+      "PowerShell(git push -f*)",
+      "PowerShell(git -C * push --force*)",
+      "PowerShell(git -C * push -f*)",
+      "PowerShell(git push * +*)",
+      "PowerShell(git -C * push * +*)",
+      "PowerShell(git push --delete*)",
+      "PowerShell(git push * --delete*)",
+      "PowerShell(git -C * push * --delete*)",
       "Read(./.env)",
       "Read(./.env.*)",
       "Edit(./.env)",

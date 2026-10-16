@@ -75,10 +75,19 @@ TEXT_SUFFIX = {".md", ".py", ".sh", ".cjs", ".js", ".json", ".yml", ".yaml",
 # test-open-items-gate.sh enters on the same terms (2026-10-07): its German is the
 # instance pattern file it writes ("nichts offen", "geparkt") and the reply that file must
 # accept, and one case runs that German reply WITHOUT the file and requires a block.
+# autonomy-diagnose.py (2026-10-16) carries German brake phrases as DETECTION data, like this
+# script's own word list: it reads another brain's rule texts, written in that operator's
+# language, and must run as one downloaded file without any instance data. Its fixture joins
+# on the same terms: the German rule lines it plants are what the detector must find.
 SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py",
               "skill-lint.py", "test-premise-gate.sh", "test-promise-gate.sh",
               "test-open-items-gate.sh", "test-stop-checks.sh",
-              "test-stoppen-gate.sh"}
+              "test-stoppen-gate.sh", "autonomy-diagnose.py", "test-autonomy-diagnose.sh",
+              "test-conditional-order-gate.sh"}
+# test-conditional-order-gate.sh (2026-10-16) enters on the promise-gate terms: its German is
+# the instance pattern file it writes ("dann", "danach") and the operator sentence that file
+# must match, and its discriminator runs the same German sentence without the file and
+# requires silence.
 
 UMLAUT = re.compile(r"[äöüßÄÖÜ]")
 # Transliterated / bare German that does not occur in technical English. Extend only

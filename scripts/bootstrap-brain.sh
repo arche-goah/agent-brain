@@ -105,6 +105,9 @@ cp "$CORE_SRC/templates/feedback.md" .claude/rules/feedback.md
 cp "$CORE_SRC/templates/rules-instance/working-rules-instance.md" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/intelligence-instance.md" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/mechanism-rules.json" .claude/rules/
+# ASK OR ACT names "the instance's operator-only list" as the one set of matters that need the
+# operator; without the file every rule pointing at it points at nothing (operator 2026-10-16).
+cp "$CORE_SRC/templates/rules-instance/operator-only.json" .claude/rules/
 # The settings template wires ONE Stop hook, the dispatcher; without this file it runs nothing.
 cp "$CORE_SRC/templates/rules-instance/stop-checks.json" .claude/rules/
 # Data of two gates the templates wire (live-read-gate, absence-gate). Copied empty: the
@@ -113,6 +116,13 @@ cp "$CORE_SRC/templates/rules-instance/stop-checks.json" .claude/rules/
 # live-read-gate for weeks without its file, a silent no-op.
 cp "$CORE_SRC/templates/rules-instance/live-read.json" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/absence-sources.json" .claude/rules/
+# Language data of conditional-order-gate (built-ins English; the operator's words go here).
+cp "$CORE_SRC/templates/rules-instance/condition-patterns.json" .claude/rules/
+# Language data of decision-review.py (built-ins English; the operator's words go here).
+cp "$CORE_SRC/templates/rules-instance/decision-review.json" .claude/rules/
+# The standing watch's data (skill collab-watch). Copied with its placeholders: watch-readiness.py
+# names them at every start until filled; from then on watch-gate case (g) keeps the watch alive.
+cp "$CORE_SRC/templates/rules-instance/collab-watch.json" .claude/rules/
 cp "$CORE_SRC/templates/leak-names.json" .claude/rules/leak-names.json
 # MEMORY.md seed: Claude Code creates Auto-Memory itself — the seed documents the format.
 mkdir -p docs/maintenance

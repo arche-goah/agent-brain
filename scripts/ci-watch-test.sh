@@ -33,35 +33,53 @@ case "${CI_WATCH_STUB:?}" in
               if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
               else touch "$f"; echo 'Checks are being registered'; fi ;;
   pr_garbage) echo 'Checks are being registered' ;;
-  ref_garbage_flip) [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+  ref_garbage_flip) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
               f="${CI_WATCH_STATE:?}"
               if [[ -f "$f" ]]; then echo '[{"headBranch":"v9.9.9","headSha":"abc123","status":"completed","conclusion":"success"}]'
               else touch "$f"; echo 'not json'; fi ;;
-  # Ref mode resolves the ref's commit via `gh api repos/<r>/commits/<ref>` first.
-  ref_green)  [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+  # Ref mode resolves the ref's commit via `gh api repos/<r>/commits/<ref>` first, then
+  # reads that commit's runs via `gh api repos/<r>/actions/runs?head_sha=<sha>` (2026-10-14;
+  # before: the newest 50 runs of the repo, which a busy day pushed the commit out of).
+  ref_green)  [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"v9.9.9","headSha":"abc123","status":"completed","conclusion":"success"}]' ;;
-  ref_red)    [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+  ref_red)    [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"v9.9.9","headSha":"abc123","status":"completed","conclusion":"failure"}]' ;;
-  ref_absent) [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+  ref_absent) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success"}]' ;;
   # 2026-10-05: a fast second workflow finished green on the same push while CI went red.
   # The old code took runs[0] (newest of ANY workflow) and said green.
-  ref_mixed)  [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+  ref_mixed)  [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"dynamic"},
                      {"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"failure","name":"CI"}]' ;;
   # ...and a green run of an OLDER commit must not count for the current tip.
-  ref_oldsha) [[ "${1:-}" == api ]] && { echo new999; exit 0; }
+  ref_oldsha) [[ "$*" == */commits/* ]] && { echo new999; exit 0; }
               echo '[{"headBranch":"main","headSha":"old111","status":"completed","conclusion":"success"}]' ;;
   # 2026-10-09: a bare commit sha as ref — runs carry a branch name, never the sha, so
   # matching on headBranch alone waited out every timeout.
-  ref_sha)    [[ "${1:-}" == api ]] && { echo abc1234def0; exit 0; }
+  ref_sha)    [[ "$*" == */commits/* ]] && { echo abc1234def0; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc1234def0","status":"completed","conclusion":"success"}]' ;;
-  ref_sha_red) [[ "${1:-}" == api ]] && { echo abc1234def0; exit 0; }
+  ref_sha_red) [[ "$*" == */commits/* ]] && { echo abc1234def0; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc1234def0","status":"completed","conclusion":"failure"}]' ;;
   # one workflow of the tip still running: not a verdict yet.
-  ref_partial) [[ "${1:-}" == api ]] && { echo abc123; exit 0; }
+  ref_partial) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"dynamic"},
                      {"headBranch":"main","headSha":"abc123","status":"in_progress","conclusion":"","name":"CI"}]' ;;
+  # 2026-10-14: the ref moves while watched. First poll resolves old111, whose run GitHub
+  # cancelled for the newer push; from then on the ref is new222 and its run is green.
+  # A cancelled run of a commit the ref has left is superseded, not red; the watch follows.
+  ref_superseded) f="${CI_WATCH_STATE:?}"
+              if [[ "$*" == */commits/* ]]; then
+                if [[ -f "$f" ]]; then echo new222; else touch "$f"; echo old111; fi; exit 0; fi
+              if [[ "$*" == *head_sha=old111* ]]; then echo '[{"headBranch":"main","headSha":"old111","status":"completed","conclusion":"cancelled","name":"CI"}]'
+              else echo '[{"headBranch":"main","headSha":"new222","status":"completed","conclusion":"success","name":"CI"}]'; fi ;;
+  # ...control: cancelled while the ref STILL points at the commit is a real red.
+  ref_cancelled_stays) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"cancelled","name":"CI"}]' ;;
+  # ...and a ref that never stops moving must not restart its clock forever.
+  ref_moves_forever) f="${CI_WATCH_STATE:?}"
+              if [[ "$*" == */commits/* ]]; then
+                n=$(cat "$f" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" >"$f"; echo "sha00$n"; exit 0; fi
+              echo '[{"headBranch":"main","headSha":"x","status":"in_progress","conclusion":"","name":"CI"}]' ;;
   # A conflicted PR: `pr checks` sees nothing (GitHub never creates the run),
   # `pr view --json mergeable` names the reason. Two flavors: gh error wording / empty list.
   pr_conflict)      if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then echo "CONFLICTING"
@@ -99,7 +117,7 @@ case "${CI_WATCH_STUB:?}" in
   pr_zero_hasci)    if [[ "${1:-}" == api ]]; then echo 2; else echo '[]'; fi ;;
   pr_zero_apierr)   if [[ "${1:-}" == api ]]; then echo "HTTP 403" >&2; exit 1; else echo '[]'; fi ;;
   ref_noci)         if [[ "${1:-}" == api && "${2:-}" == */actions/workflows ]]; then echo 0
-                    elif [[ "${1:-}" == api ]]; then echo abc123
+                    elif [[ "$*" == */commits/* ]]; then echo abc123
                     else echo '[]'; fi ;;
   # 2026-10-12: GitHub left a check-run at status=in_progress WITH conclusion=success
   # (measured on a suite PR; its workflow run was completed). `pr checks` buckets it as
@@ -113,6 +131,26 @@ case "${CI_WATCH_STUB:?}" in
                     elif [[ "${1:-}" == api ]]; then echo '[{"name":"test","conclusion":"success"},{"name":"release-preflight","conclusion":'"$c"'}]'
                     elif [[ "$CI_WATCH_STUB" != pr_stale_running && -f "$f" ]]; then echo "second poll reached" >&2; exit 1
                     else touch "$f"; echo '[{"bucket":"pass","name":"test"},{"bucket":"pending","name":"release-preflight"}]'; fi ;;
+  # 2026-10-16: the listed checks are all green, but a second workflow run of the head commit
+  # is in_progress and has not listed its jobs yet. pr_run_open: it stays open (no verdict);
+  # pr_run_flip: it completes on the second read (then green).
+  pr_run_open|pr_run_flip)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api && "$*" == *actions/runs* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_run_flip && -f "$f" ]]; then echo 0; else touch "$f"; echo 1; fi
+                    else echo '[{"bucket":"pass","name":"CodeQL"},{"bucket":"pass","name":"Analyze"}]'; fi ;;
+  # 2026-10-16: right after a push the PR still shows the OLD head and its green checks.
+  # pr_head_lag: the head flips to the pushed commit on the second read; pr_head_stuck: never.
+  pr_head_lag|pr_head_stuck)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *headRefOid* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_head_lag && -f "$f" ]]; then echo bbbb222200000000000000000000000000000000
+                      else touch "$f"; echo aaaa111100000000000000000000000000000000; fi
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
   # ...and a pending entry that is a commit STATUS (no check-run of that name) keeps waiting.
   pr_stale_status)  if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
@@ -168,6 +206,15 @@ check "ref: green run of an OLDER commit does not count = timeout(2)" ref_oldsha
 check "ref: one workflow of the tip still running = no verdict, timeout(2)" ref_partial 2 ref main 2
 check "ref: bare commit sha, run green = GREEN"  ref_sha     0 ref abc1234
 check "ref: bare commit sha, run red = RED"      ref_sha_red 1 ref abc1234
+check "ref: cancelled run of a superseded commit, green tip = GREEN" ref_superseded 0 ref main
+grep -q "superseded, not red" "$TMP/out" && echo "  OK   superseded run is named, not judged" \
+  || { echo "  FAIL superseded run not named"; fails=$((fails+1)); }
+grep -q "clock restarted (move 1 of" "$TMP/out" && echo "  OK   the move restarts the clock and is counted" \
+  || { echo "  FAIL move not logged with a restarted clock"; fails=$((fails+1)); }
+check "ref: cancelled while the ref still points at it = RED (control)" ref_cancelled_stays 1 ref main
+check "ref: ref keeps moving = unknown(2) naming the moves" ref_moves_forever 2 ref main 30
+grep -q "moved 6 times" "$TMP/out" && echo "  OK   endless moves end as UNKNOWN naming the count" \
+  || { echo "  FAIL endless moves not named"; fails=$((fails+1)); }
 check "gh hard error in ref mode"       gh_broken  2 ref v9.9.9
 check "pr: repo without workflows = NO-CI(3) at once" pr_noci          3 pr 12 30
 grep -q "not green" "$TMP/out" && echo "  OK   no-CI verdict says not green" \
@@ -184,7 +231,12 @@ check "pr: check-run genuinely running (conclusion null) = wait, timeout(2)" pr_
 grep -q "left the status stale" "$TMP/out" && { echo "  FAIL running check-run was called stale"; fails=$((fails+1)); } \
   || echo "  OK   running check-run was not called stale"
 check "pr: pending commit status without a check-run = wait, timeout(2)" pr_stale_status 2 pr 12 2
+check "pr: listed checks green, a workflow run still open = wait, timeout(2)" pr_run_open 2 pr 12 2
+check "pr: listed checks green, the open run completes = GREEN"          pr_run_flip 0 pr 12 30
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head still old, then flips = GREEN on the new head" pr_head_lag 0 pr 12 30
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head never reaches it = wait, timeout(2)"   pr_head_stuck 2 pr 12 2
+check "pr: without CI_WATCH_SHA the old head's green counts (unchanged behaviour)"        pr_head_stuck 0 pr 12 30
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
-echo "ci-watch-test: all 30 checks passed"
+echo "ci-watch-test: all checks passed"

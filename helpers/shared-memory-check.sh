@@ -35,9 +35,27 @@ if [[ -z "$STATE_FILE" ]]; then
   fi
 fi
 
-# Not cloned (fresh machine, onboarding not done) — silent. An instance that does not
-# take part in shared memory must not be nagged about it every single start.
-[[ -d "$REPO/.git" ]] || exit 0
+# Not cloned. An instance that does not take part in shared memory must not be nagged about
+# it every single start — but one that DOES take part must not read the missing clone as
+# "nothing new" (measured 2026-10-16 on a freshly bootstrapped macOS brain: a request in
+# ops/LOG.md addressed to that very machine by name sat unseen; the bootup said nothing,
+# because the clone was missing and this check was silent). Taking part is read from what
+# the instance already declares: SHARED_MEMORY_SELF, a collab-watch with a shared_memory
+# block, or — the fresh-brain case, which declares nothing yet — the org's shared-memory
+# repo existing on GitHub (SHARED_MEMORY_OWNER, passed by session-bootup.sh from the
+# ecosystem owner; one `gh repo view`, only on this path).
+if [[ ! -d "$REPO/.git" ]]; then
+  _cw="${_proj:-}/.claude/rules/collab-watch.json"
+  _why=""
+  if [[ -n "${SHARED_MEMORY_SELF:-}" ]]; then _why="SHARED_MEMORY_SELF is set"
+  elif [[ -f "$_cw" ]] && grep -q '"shared_memory"' "$_cw" 2>/dev/null; then _why="collab-watch.json watches it"
+  elif [[ -n "${SHARED_MEMORY_OWNER:-}" ]] && command -v gh >/dev/null 2>&1 \
+       && gh repo view "$SHARED_MEMORY_OWNER/$(basename "$REPO")" --json name >/dev/null 2>&1; then
+    _why="$SHARED_MEMORY_OWNER/$(basename "$REPO") exists"
+  fi
+  [[ -n "$_why" ]] && echo "!! shared-memory: NOT checked — no clone at $REPO although this instance takes part ($_why); requests addressed to it are invisible. Clone: gh repo clone ${SHARED_MEMORY_OWNER:-<owner>}/$(basename "$REPO") $REPO"
+  exit 0
+fi
 
 # Offline or fetch failure — ONE line saying the check did not run. The marker only
 # advances on success, so nothing is lost for the next start; but silence here read as
