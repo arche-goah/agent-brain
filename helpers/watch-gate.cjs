@@ -27,7 +27,9 @@
  *       turn began is from this instance (`von` = SHARED_MEMORY_SELF, if set), names an
  *       `audience` other than this instance, and is not closed (`status:` answered|done|
  *       decided|info|closed — the inbox reader's closed set, so `status: info` is the
- *       declared "no answer expected"), and no shared-memory watcher lives
+ *       declared "no answer expected") — or a `LOG.md` heading added since the turn began
+ *       is such a message (`## <date> · <von> — AN <who> (status: …): …`, awaitingLog) —
+ *       and no shared-memory watcher lives
  *       (plain `shared-memory-watch.sh` or the one inside `collab-watch.sh`);
  *   (b) `gh pr create` ran AND no PR-side watcher lives (a `repo-activity-watch` lock of
  *       collab-watch, or a Monitor/background call in this turn on watch-pr.sh,
@@ -367,6 +369,50 @@ function awaiting(repo, since) {
       if ([...aud].every((t) => me.has(t))) continue;
     }
     out.push(rel);
+  }
+  return out.concat(awaitingLog(repo, since, me));
+}
+
+// A LOG heading, the shapes of shared-memory-parties.py HEADING: `## <date> · <von> — <title>`,
+// with an optional `(<session>)` after date or sender. The title of a message starts `AN <who>`;
+// its status, when the writer gives one, stands in parentheses before the colon.
+const LOG_HEADING = /^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[·—-]\s*)?([\w-]+)(?:\s*\([^)]*\))?(?:\s+[—-]\s+(.*?))?\s*$/;
+const LOG_TO = /^(?:AN|An|an|TO|To)\s+([^:(]+)/;
+const LOG_STATUS = /\(\s*status:\s*([\w-]+)/i;
+
+/**
+ * Messages this instance ADDED to a `LOG.md` since the turn began that wait on someone else.
+ * Measured 2026-10-16 on a macOS brain: the cross-instance exchange of a whole topic folder
+ * (`ops/`, 96 entries) runs as LOG headings `AN <who> (status: …): …`, while this gate read
+ * only fact files and skipped every LOG.md — a request and its answer, both LOG entries, were
+ * invisible to it. The inbox reader (shared-memory-inbox.py) already reads these headings;
+ * the gate now reads the same shape. Closed = the same set as for fact files; no `AN` = a
+ * note, not a message.
+ */
+function awaitingLog(repo, since, me) {
+  const args = ['-C', repo, 'log', '-p', '-U0', '--format=', '--no-renames'];
+  if (since) args.push(`--since=${since}`); else args.push('-1');
+  args.push('--', 'LOG.md', '*/LOG.md');
+  let diff;
+  try { diff = execFileSync('git', args, { encoding: 'utf8', timeout: 10000 }); } catch (e) { return []; }
+  const out = [];
+  let file = '';
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+++ b/')) { file = line.slice(6); continue; }
+    if (!line.startsWith('+') || line.startsWith('+++')) continue;
+    const m = LOG_HEADING.exec(line.slice(1));
+    if (!m) continue;
+    const [, , von, title = ''] = m;
+    const to = LOG_TO.exec(title);
+    if (!to) continue;
+    const st = LOG_STATUS.exec(title);
+    if (st && CLOSED.has(st[1].toLowerCase())) continue;
+    const aud = tokens(to[1].replace(/\s\+\s/g, ' '));
+    if (me.size) {
+      if (!me.has(von.toLowerCase())) continue;
+      if ([...aud].every((t) => me.has(t))) continue;
+    }
+    out.push(`${file} (${title.slice(0, 60)})`);
   }
   return out;
 }

@@ -152,6 +152,20 @@ grep -q '"legacy"' "$P/config/shared-memory-state.json" && ok "the old file is l
 # (a fresh baseline at HEAD would swallow it — the loss this migration prevents).
 has   "the taken-over cursor is the one in use" "Pushed elsewhere, for me." "$out"
 
+echo "no clone: silent for an instance outside shared memory, loud for one that takes part"
+# 2026-10-16: a request in ops/LOG.md addressed to a fresh macOS brain by name sat unseen,
+# because the clone was missing and this check said nothing. A fake gh keeps it offline.
+NOPE="$TMP/none/brain-shared-memory"; FB="$TMP/fakebin"; mkdir -p "$FB"
+printf '#!/usr/bin/env bash\ncase "$*" in *"repo view known-org/"*) exit 0;; *) exit 1;; esac\n' > "$FB/gh"; chmod +x "$FB/gh"
+P2="$TMP/proj2"; mkdir -p "$P2/.claude/rules"
+nc() { env -u SHARED_MEMORY_SELF PATH="$FB:$PATH" CLAUDE_PROJECT_DIR="$P2" SHARED_MEMORY_REPO="$NOPE" "$@" bash "$CHECK" 2>&1; }
+out="$(nc)";                                   [ -z "$out" ] && ok "no clone, nothing declared: silent" || bad "no clone, nothing declared: silent" "$out"
+out="$(nc SHARED_MEMORY_OWNER=other-org)";     [ -z "$out" ] && ok "no clone, org without the repo: silent" || bad "no clone, org without the repo: silent" "$out"
+out="$(nc SHARED_MEMORY_SELF=me-mac)";         has "no clone, SHARED_MEMORY_SELF set: loud" "NOT checked — no clone" "$out"
+out="$(nc SHARED_MEMORY_OWNER=known-org)";     has "no clone, the org's repo exists: loud" "known-org/brain-shared-memory exists" "$out"
+printf '{"shared_memory": {"repo": "x"}}\n' > "$P2/.claude/rules/collab-watch.json"
+out="$(nc)";                                   has "no clone, collab-watch watches it: loud" "collab-watch.json watches it" "$out"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "test-shared-memory-check: all checks passed"; exit 0; fi
 echo "test-shared-memory-check: $fails check(s) FAILED"; exit 1
