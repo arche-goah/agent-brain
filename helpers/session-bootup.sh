@@ -606,10 +606,12 @@ fi
 
 # Shared memory: what other instances/collaborators pushed since this instance last
 # looked. Level 1 of the pair; level 2 (scripts/shared-memory-watch.sh) watches while
-# the session runs. Silent when the repo is not cloned or nothing is new — an instance
-# that does not take part must not be nagged, and a clean check is not a line.
+# the session runs. Silent when nothing is new, and when the repo is not cloned by an
+# instance that does not take part; loud when an instance that takes part has no clone
+# (shared-memory-check.sh says how it tells the two apart).
 boot_mark sessions+scan+orders
-[[ -f "$HERE/shared-memory-check.sh" ]] && OPEN_ITEMS_IN_BOOTUP=1 bash "$HERE/shared-memory-check.sh" 2>/dev/null
+[[ -f "$HERE/shared-memory-check.sh" ]] && OPEN_ITEMS_IN_BOOTUP=1 SHARED_MEMORY_OWNER="$eco_owner" \
+  bash "$HERE/shared-memory-check.sh" 2>/dev/null
 # OPEN FOR US (operator correction 2026-10-07): every open request to this instance and
 # every open PR, one list, with how many sessions already reported each item — louder on
 # every repeat. helpers/open-items-gate.cjs (Stop) blocks a first reply that leaves an item

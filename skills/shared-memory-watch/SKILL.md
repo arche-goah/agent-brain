@@ -128,12 +128,22 @@ answer?), then act normally. Reading and checking inside your own system is free
 writing back into the shared repo is visible to every collaborator and follows the
 same care as any other entry there — leak discipline, format, push when done.
 
+**A request to this instance under a standing approval is handled, not asked.** The class
+list lives in `.claude/rules/open-items-standing.json` (the same file the session-start list
+reads, `rules/intelligence.md`). A find that is a request addressed to this instance and
+matches a class there is worked and answered in the same session, then reported — the
+mid-session twin of the session-start rule. Measured 2026-10-16: the standing class only
+fired at the next session start, so a request that arrived while the session ran waited
+for the operator's go although he had given it for good. Check the match with
+`python3 core/scripts/open-items.py --owner <owner>` (the item prints as `standing`).
+
 ## Limits, deliberately
 
 - **No headless/scheduler path.** When the session ends, the poll ends. A 24/7 daemon
   would be a separate decision with its own cost.
 - **No auto-answering on suspicion.** The skill detects and reports; what gets answered
-  is decided by the session that receives the notification.
+  is decided by the session that receives the notification — by the standing classes
+  above where the operator declared them, otherwise case by case.
 
 ## Housekeeping
 
