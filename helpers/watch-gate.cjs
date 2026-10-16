@@ -545,7 +545,7 @@ function main(input) {
   if (!left.length) process.exit(0);
   process.stdout.write(JSON.stringify({
     decision: 'block',
-    reason: `WATCH-GATE: a reaction is expected and no watcher lives. ${left.map((m) => m.text).join(' · ')}. `
+    reason: `WATCH-GATE: a watcher is missing. ${left.map((m) => m.text).join(' · ')}. `
       + (ends ? 'The close stamp passes only what its session-log entry lists as "open end: <repo> #<n> - what is awaited" '
         + '(a shared-memory request by its file name). ' : '')
       + 'If nothing is awaited, say why in one line and stop again.',
