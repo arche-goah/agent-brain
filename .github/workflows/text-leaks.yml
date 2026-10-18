@@ -1,0 +1,37 @@
+# Free text that never enters the tree: a pull request's title and body, comments and
+# reviews. A red run here does not block a merge (text can be changed after the fact), but
+# it is a red check the standing watch reports, so a name or address in a post is seen the
+# same day. Fix: delete and re-post (an edit keeps the old text in the edit history).
+name: text leaks
+
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  text:
+    runs-on: ubuntu-latest
+    env:
+      LEAK_NAMES_JSON: ${{ secrets.LEAK_NAMES_JSON }}
+      LEAK_NAMES_REQUIRED: "1"
+      # Through env, never interpolated into the script: event text is attacker-controlled.
+      TITLE: ${{ github.event.pull_request.title }}
+      BODY: ${{ github.event.pull_request.body || github.event.comment.body || github.event.review.body }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: leak scan (event text)
+        run: |
+          printf '%s\n\n%s\n' "$TITLE" "$BODY" > "$RUNNER_TEMP/event-text.txt"
+          python3 scripts/leak-scan.py --no-tree --text "$RUNNER_TEMP/event-text.txt"
