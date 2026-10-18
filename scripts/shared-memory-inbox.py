@@ -138,15 +138,32 @@ def for_us(sender: str, to: str | None, me: set[str]) -> bool:
     return bool(words & (me | EVERYONE))
 
 
+def whole(text: str) -> str:
+    """The text as written, whitespace normalised — NEVER cut.
+
+    WHY (operator decision 2026-10-18, "sowas darf nicht als gelesen zählen"): this reader used
+    to cut every heading at a sentence boundary under 200 characters. A heading "… lock not set
+    here — old branches deleted (operator's word), the lock would block the PR path" arrived as
+    "… lock not set here"; the reading AI took the stump for the message and handed the operator
+    a needless command. What a reader shows of another party's message is what the receiver
+    acts on, so it shows all of it: the whole heading and the whole LOG entry below it, and for a
+    fact file the whole description plus the path to read before acting."""
+    return " ".join(text.split())
+
+
 def log_items(repo: Path, a: str, b: str, me: set[str]) -> tuple[list[tuple], str]:
     diff = git(repo, "diff", "-U0", a, b, "--", "LOG.md", "*/LOG.md")
     items, added, topic = [], [], ""
+    cur = None  # index of the item whose LOG body the following added lines belong to
     for line in diff.splitlines():
         if line.startswith("+++ b/"):
             path = line[6:]
             topic = path.split("/")[0] if "/" in path else "root"
+            cur = None
             continue
         if not line.startswith("+") or line.startswith("+++"):
+            if line.startswith("@@"):
+                cur = None
             continue
         text = line[1:]
         added.append(text)
@@ -158,12 +175,21 @@ def log_items(repo: Path, a: str, b: str, me: set[str]) -> tuple[list[tuple], st
             # watcher said "nothing arrived" while the answer sat in the log.
             um = re.match(r"^##\s+(\d{4}-\d{2}-\d{2})\b", text)
             if um:
-                items.append((um.group(1), topic, "?", "UNPARSED LOG HEADING — " + first_sentence(text, TEXT_CAP)))
+                items.append((um.group(1), topic, "?", "UNPARSED LOG HEADING — " + whole(text)))
+                cur = len(items) - 1
+            elif re.match(r"^#{1,2}\s", text):
+                cur = None
+            elif cur is not None and text.strip():
+                d, t, s, msg = items[cur]
+                items[cur] = (d, t, s, msg + " ¶ " + whole(text))
             continue
         date, sender, title = m.groups()
         title = title or ""
         if for_us(sender, addressees(title), me):
-            items.append((date, topic, sender, first_sentence(title or "(no title)", TEXT_CAP)))
+            items.append((date, topic, sender, whole(title or "(no title)")))
+            cur = len(items) - 1
+        else:
+            cur = None
     return items, "\n".join(added)
 
 
@@ -242,7 +268,7 @@ def file_items(repo: Path, a: str, b: str, me: set[str], log_text: str) -> list[
         e = read_entry(p, repo, text=blob)
         if not for_us(e["von"], e["audience"] or None, me):
             continue
-        text = first_sentence(e["desc"] or e["name"], TEXT_CAP)
+        text = whole(e["desc"] or e["name"])
         # Older files carry no frontmatter date; the commit that brought them is the date.
         date = e["date"] or git(repo, "log", "-1", "--format=%as", b, "--", rel).strip() or "?"
         items.append((date, e["topic"], e["von"] or "?", f"{text} ({rel})"))
@@ -368,7 +394,7 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             if answered:
                 break
         if not answered:
-            text = first_sentence(e["desc"] or e["name"], TEXT_CAP)
+            text = whole(e["desc"] or e["name"])
             # Priority is information, never a sequence (operator 2026-10-13): whoever is not
             # asked first sees the task as optional — anyone may claim it at any time.
             prio = _parties.priority(head, e["audience"], parties or {})
@@ -469,7 +495,7 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
                       and (names_request(core_title, ti, b) or names_request(core_full, ti, b))
                       for d, tp, j, s, t, ti, b in heads)
         if not replied:
-            items.append((date, topic, sender, first_sentence(title, TEXT_CAP) + " (LOG)"))
+            items.append((date, topic, sender, whole(title) + " (LOG)"))
     return items
 
 
@@ -527,6 +553,10 @@ def main() -> int:
     items.sort(key=lambda i: i[0], reverse=True)
     scope = "for this instance" if me else "unfiltered - set SHARED_MEMORY_SELF to filter"
     print(f"shared-memory inbox ({scope}), {len(items)} since last start:")
+    # Said once, in the output itself: a LOG line here is the whole entry (heading ¶ body); a
+    # fact file shows its description, and the file is what the sender wrote — read it first.
+    if any(t.endswith(".md)") for _, _, _, t in items[:args.max]):
+        print("  (a path in parentheses is a fact file: the line is its description, read the file before acting on it)")
     for date, topic, sender, text in items[:args.max]:
         print(f"  - {date} [{topic}] {sender}: {text}")
     rest = len(items) - args.max
