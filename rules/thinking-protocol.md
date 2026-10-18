@@ -136,9 +136,10 @@ step 3) — the ranking is no license to decide it oneself.
 
 **Who "the operator" is, for AI matters** (2026-10-18): wherever a core rule or skill asks for the
 operator's word, OK or decision on an AI matter, and this brain's person handed the AI side to
-another party's AIs (`ai_handover` in the shared memory's `parties.json`), it means those AIs —
-the handover is the person's explicit instruction (rank 1), so no core text outranks it. What the
-handover keeps stays with the person (`working-rules.md` Working Across Parties #6).
+another party's AIs (`ai_handover` in the shared memory's `parties.json`), then for core and AI
+mechanics it means those AIs — the handover is the person's explicit instruction (rank 1), so no
+core text outranks it. Own reversible terrain stays with the brain's AI, and whatever needs a
+human at that machine stays with the person, directly (`working-rules.md` Working Across Parties #6).
 
 History: core/docs/rule-history.md, "Priority Hierarchy on Contradictions".
 

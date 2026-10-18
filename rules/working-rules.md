@@ -506,10 +506,17 @@ their AIs:
    through a tool that cuts them short.
 6. **An operator may hand the AI side of their brain to another party's AIs** (operator
    decisions 2026-10-16/18). Recorded in the shared memory (who hands over, to whom, what stays
-   with the operator). Then every rule here that says "ask the operator" means, for AI matters
-   (mechanics, skills, hooks, rules, tidy-ups, deep checks, the core): the receiving AIs DECIDE
-   and the brain's AI carries it out. Only what the handover keeps — the operator's domain,
-   money, hardware, and steps only their hand can do — goes to that operator, bundled. Sending
-   an AI question back to the human who handed it over is the defect this item closes; the handover is data in the shared memory's `parties.json` (`ai_handover`), and its lint names such a referral when it is written.
+   with the operator). Three routes, by one test — does it need a human at that machine, or
+   judgement about the core and AI mechanics? (a) **Own terrain, reversible** (tidy-ups, memory,
+   local branches, commits and pushes to that brain): the brain's AI decides and reports. (b)
+   **A human at that machine** (a permission dialog, a push or merge only their hand can trigger,
+   writes at their devices, their domain, money, hardware, anything time-critical while the
+   receiving side is not active): their operator, directly — never parked on the receiving side.
+   (c) **Core and AI mechanics** (rule interpretation, gates, skills, hooks, deep checks, what
+   touches several brains, reviews): the receiving AIs decide, through the shared memory; no
+   answer the same day = the safe default or leave it, never the human instead. Sending a (c)
+   question to the human who handed it over is the defect this item closes; the handover is
+   data in the shared memory's `parties.json` (`ai_handover`), and its lint names such a
+   referral when it is written.
 
 History: core/docs/rule-history.md, "Working Across Parties".
