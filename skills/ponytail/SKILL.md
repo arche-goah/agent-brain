@@ -13,6 +13,9 @@ description: >
   that has no artefact to over-build.
 argument-hint: "[lite|full|ultra]"
 license: MIT
+metadata:
+  load-before-tools: '^(Edit|Write|MultiEdit|NotebookEdit)$'
+  load-before-paths: '\.(py|cjs|mjs|js|ts|sh|ps1|lua|ipynb)$'
 ---
 
 # Ponytail

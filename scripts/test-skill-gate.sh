@@ -54,12 +54,20 @@ metadata:
   load-before-paths: '\.py$'
 ---
 EOF
+# The core's REAL ponytail skill, as a plugin: its own frontmatter must gate code edits in
+# every brain (2026-10-18: the gate shipped with no core skill declaring anything, so it was
+# inert for core skills in every instance whose skill-gate.json stayed empty).
+PONY=$(resolve skills/ponytail/SKILL.md) && {
+  mkdir -p "$H/.claude/plugins/cache/mk/corep/1.0/skills/ponytail"
+  cp "$PONY" "$H/.claude/plugins/cache/mk/corep/1.0/skills/ponytail/SKILL.md"
+}
 cat > "$H/.claude/plugins/installed_plugins.json" <<EOF
 {"version":2,"plugins":{
  "tdp@mk":[{"scope":"project","projectPath":"$NT/proj","installPath":"$NT/fakehome/.claude/plugins/cache/mk/tdp/1.0"}],
- "offp@mk":[{"scope":"user","installPath":"$NT/fakehome/.claude/plugins/cache/mk/offp/1.0"}]}}
+ "offp@mk":[{"scope":"user","installPath":"$NT/fakehome/.claude/plugins/cache/mk/offp/1.0"}],
+ "corep@mk":[{"scope":"user","installPath":"$NT/fakehome/.claude/plugins/cache/mk/corep/1.0"}]}}
 EOF
-printf '{"enabledPlugins":{"tdp@mk":true,"offp@mk":true}}\n' > "$P/.claude/settings.json"
+printf '{"enabledPlugins":{"tdp@mk":true,"offp@mk":true,"corep@mk":true}}\n' > "$P/.claude/settings.json"
 printf '{"enabledPlugins":{"offp@mk":false}}\n' > "$P/.claude/settings.local.json"
 printf '{"rules":[{"skills":["core:lazy"],"tools":"^NotebookEdit$"}]}\n' > "$P/.claude/rules/skill-gate.json"
 
@@ -72,7 +80,7 @@ skillcall "td-core" > "$T/loaded-bare.jsonl"
 printf '{"type":"user","message":{"role":"user","content":"<command-name>/tdp:td-core</command-name>"}}\n' > "$T/loaded-slash.jsonl"
 readcall "$NT/fakehome/.claude/plugins/cache/mk/tdp/1.0/skills/td-core/SKILL.md" > "$T/loaded-read.jsonl"
 skillcall "tdp:td-plain" > "$T/loaded-other.jsonl"
-skillcall "local-skill" > "$T/loaded-local.jsonl"
+{ skillcall "local-skill"; skillcall "corep:ponytail"; } > "$T/loaded-local.jsonl"   # a .py edit now needs ponytail too
 # skill-gate.json rules name no SKILL.md path: a Read of <any>/skills/<bare name>/SKILL.md counts.
 readcall "$NT/fakehome/.claude/plugins/cache/mk/core/1.0/skills/lazy/SKILL.md" > "$T/read-lazy.jsonl"
 readcall "$NT/fakehome/.claude/plugins/cache/mk/core/1.0/skills/eager/SKILL.md" > "$T/read-eager.jsonl"
@@ -116,6 +124,12 @@ expect allow Bash                   empty.jsonl            "" "plugin disabled i
 expect block Edit                   empty.jsonl "$NT/proj/a.py" "project skill with a path filter: .py edit blocks"
 expect allow Edit                   empty.jsonl "$NT/proj/a.md" "path filter: .md edit stays silent"
 expect allow Edit                   loaded-local.jsonl "$NT/proj/a.py" "project skill loaded"
+if [ -n "${PONY:-}" ]; then
+  skillcall "corep:ponytail" > "$T/loaded-pony.jsonl"
+  expect block Write empty.jsonl      "$NT/proj/w.sh" "core ponytail frontmatter: a script edit before ponytail is loaded"
+  expect allow Write empty.jsonl      "$NT/proj/w.md" "core ponytail frontmatter: prose stays silent"
+  expect allow Write loaded-pony.jsonl "$NT/proj/w.sh" "core ponytail loaded"
+fi
 expect block NotebookEdit           empty.jsonl            "" "instance rule from skill-gate.json"
 expect allow Skill                  empty.jsonl            "" "the Skill tool itself is never gated"
 expect allow NotebookEdit           read-lazy.jsonl        "" "skill-gate.json rule: Read of the skill's SKILL.md counts (as the block message offers)"
