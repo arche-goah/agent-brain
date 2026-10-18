@@ -81,6 +81,26 @@ got=$(read_version)
 if [ -z "$got" ]; then ok "a missing cache yields an empty answer, never a match"
 else bad "missing cache produced '$got' — absence must look absent"; fi
 
+# --- a project record of ANOTHER project is not this brain's install ---------------
+# Measured 2026-10-18: a stale project-scope record of a second project turned this
+# brain's run red. Planted: one record for this brain, one for another project.
+sed -n '/^recorded_sha() {/,/^}/p' "$HERE/brain-update.sh" > "$TMP/rec.sh"
+mkdir -p "$TMP/this" "$TMP/other"
+REC="$CFG/plugins/installed_plugins.json" THIS="$TMP/this" OTHER="$TMP/other" "$PY" - <<'PY'
+import json, os
+json.dump({"version": 2, "plugins": {"demo@mk": [
+    {"scope": "project", "projectPath": os.environ["OTHER"], "gitCommitSha": "aaaa"},
+    {"scope": "project", "projectPath": os.environ["THIS"], "gitCommitSha": "bbbb"},
+    {"scope": "user", "gitCommitSha": "cccc"}]}},
+    open(os.environ["REC"], "w", encoding="utf-8"))
+PY
+got=$( ( . "$TMP/rec.sh"; BRAIN="$TMP/this"; recorded_sha demo@mk ) | tr '\n' ' ')
+if [ "$got" = "project bbbb user cccc " ]; then ok "another project's record is left out, this brain's and user's stay"
+else bad "expected 'project bbbb user cccc', got '$got'"; fi
+got=$( ( . "$TMP/rec.sh"; BRAIN=""; recorded_sha demo@mk ) | wc -l | tr -d ' ')
+if [ "$got" = "3" ]; then ok "without a brain root every record is checked (control)"
+else bad "control: expected 3 records without a root, got $got"; fi
+
 # --- the three ways a path is NOT a brain must not share one outcome --------------
 # Measured 2026-09-02: started from the plugin cache without BRAIN_UPDATE_ROOT, the root
 # resolved beside the cache. Everything downstream silently did nothing, git emitted one
@@ -117,4 +137,4 @@ rm -rf "$NB" "$NC" "$NU"
 
 echo
 if (( fails )); then echo "brain-update-test: $fails FAILURE(S)"; exit 1; fi
-echo "brain-update-test: all 6 checks passed"
+echo "brain-update-test: all 8 checks passed"
