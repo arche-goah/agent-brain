@@ -71,6 +71,8 @@ printf '%s\n' '{"patterns": [
   "\\b(arbeite|mache) (ich )?weiter\\b",
   "\\bweiter (laut|mit|am|an der)\\b",
   "\\bals n(ä|ae)chstes (kommt|mache|baue|pruefe|prüfe|gehe)\\b"
+], "announce_condition_patterns": [
+  "\\b(sobald|wenn|nachdem|bis|falls)\\b"
 ]}' > "$DE/.claude/rules/stop-patterns.json"
 
 # Like run_case, with JSONL records of the running turn BEFORE the final text ($5).
@@ -148,27 +150,32 @@ run_case de-announce-no-pack '"Beide Hinweise geklaert. Arbeite weiter am Handof
 run_case_turn de-announce-after-fg '"Gemessen. Als Naechstes kommt die Memory-Sicherung."' block "$DE" "$FG"
 # NEGATIVE: a running waiter is what the announcement waits for.
 run_case_turn waiter-bash-live '"CI laeuft. Mache das jetzt, sobald sie gruen ist."' allow "$DE" "$BG"
-run_case_turn waiter-monitor-live '"Watcher scharf. Next, I will read the answer."' allow "$CWD" "$MON"
-run_case_turn waiter-wakeup '"Wakeup gesetzt. Arbeite weiter in zehn Minuten."' allow "$DE" "$WAKE"
+run_case_turn waiter-monitor-live '"Watcher scharf. Once it reports, I will read the answer."' allow "$CWD" "$MON"
+run_case_turn waiter-wakeup '"Wakeup gesetzt. Arbeite weiter, sobald er feuert."' allow "$DE" "$WAKE"
 # A Workflow always runs in the background; an Agent counts only when started in the
 # background (review finding from the Windows instance).
 WF='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_wf1","name":"Workflow","input":{"name":"x"}}]}}'
 AGBG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_a1","name":"Agent","input":{"prompt":"x","run_in_background":true}}]}}'
 AGFG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_a2","name":"Agent","input":{"prompt":"x"}}]}}'
-run_case_turn waiter-workflow-live '"Scan laeuft. Next, I will read its report."' allow "$CWD" "$WF"
-run_case_turn waiter-agent-bg-live '"Agent laeuft. Next, I will read its report."' allow "$CWD" "$AGBG"
+run_case_turn waiter-workflow-live '"Scan laeuft. Once it is done, I will read its report."' allow "$CWD" "$WF"
+run_case_turn waiter-agent-bg-live '"Agent laeuft. Once it is done, I will read its report."' allow "$CWD" "$AGBG"
 run_case_turn agent-fg-no-waiter '"Agent fertig. Next, I will read its report."' block "$CWD" "$AGFG"
 # The real flag arrives as the STRING "true" on 2.1.295 (measured, 5 of 6 Agent calls) ...
 AGSTR='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_a3","name":"Agent","input":{"prompt":"x","run_in_background":"true"}}]}}'
-run_case_turn waiter-agent-bg-string-live '"Agent laeuft. Next, I will read its report."' allow "$CWD" "$AGSTR"
+run_case_turn waiter-agent-bg-string-live '"Agent laeuft. Once it is done, I will read its report."' allow "$CWD" "$AGSTR"
 # ... and since 2.1.296 there is no flag at all: the launch RESULT says the agent runs async.
 AGASYNC="$AGFG
 "'{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_a2","content":[{"type":"text","text":"Async agent launched successfully. The agent is working in the background."}]}]}}'
-run_case_turn waiter-agent-async-result-live '"Agent laeuft. Next, I will read its report."' allow "$CWD" "$AGASYNC"
+run_case_turn waiter-agent-async-result-live '"Agent laeuft. Once it is done, I will read its report."' allow "$CWD" "$AGASYNC"
 # NEGATIVE: a sync Agent returns its report as the tool result — foreground, no waiter.
 AGSYNC="$AGFG
 "'{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_a2","content":[{"type":"text","text":"Report: three files checked, all clean."}]}]}}'
 run_case_turn agent-sync-result-no-waiter '"Agent fertig. Next, I will read its report."' block "$CWD" "$AGSYNC"
+# A running waiter excuses only an announcement that says it waits for it (measured
+# 2026-10-18: "the review — I do that next" passed because unrelated watchers were running).
+run_case_turn waiter-unrelated-de '"Fuer #6 bittet er um ein Review, das mache ich als Naechstes."' block "$DE" "$MON"
+run_case_turn waiter-unrelated-en '"Watcher armed. Next, I will review PR 6."' block "$CWD" "$MON"
+run_case_turn waiter-unrelated-wakeup '"Wakeup gesetzt. Arbeite weiter in zehn Minuten."' block "$DE" "$WAKE"
 # ...but a waiter that already reported its end waits for nothing.
 run_case_turn waiter-ended '"CI gruen. Arbeite weiter am Handoff."' block "$DE" "$BG
 $END"
