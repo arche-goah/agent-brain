@@ -119,16 +119,23 @@ recorded_sha() { # $1 = plugin id -> one "scope sha" line PER install record.
   # healed one and vice versa (measured 2026-08-13: a fresh user-scope reinstall
   # recorded the correct sha, but a stale project-scope duplicate sat at index 0
   # and kept the check red; the reverse masking is just as possible).
+  # A project-scope record of ANOTHER project is not this brain's install: it neither
+  # loads here nor can this run fix it (measured 2026-10-18: a 1.3.41 record of a second
+  # project on the same machine turned this brain's run into "NOT fully on the released
+  # state" while its own records matched the pin).
   "$PY" -c '
 import json, os, sys
 try:
     with open(os.path.join(sys.argv[1], "plugins", "installed_plugins.json"), encoding="utf-8") as f:
         d = json.load(f)
     for x in (d.get("plugins") or {}).get(sys.argv[2]) or []:
+        pp = x.get("projectPath")
+        if pp and sys.argv[3] and os.path.realpath(pp) != os.path.realpath(sys.argv[3]):
+            continue
         print((x.get("scope") or "?") + " " + x.get("gitCommitSha", ""))
 except Exception:
     pass
-' "$CFG" "$1" | tr -d '\r'
+' "$CFG" "$1" "${BRAIN:-}" | tr -d '\r'
 }
 
 # The version string INSIDE the cached plugin, read from the cache directory the record
@@ -143,6 +150,9 @@ try:
     with open(os.path.join(sys.argv[1], "plugins", "installed_plugins.json"), encoding="utf-8") as f:
         d = json.load(f)
     for x in (d.get("plugins") or {}).get(sys.argv[2]) or []:
+        pp = x.get("projectPath")
+        if pp and sys.argv[3] and os.path.realpath(pp) != os.path.realpath(sys.argv[3]):
+            continue                                  # another project: see recorded_sha
         p = os.path.join(x.get("installPath", ""), ".claude-plugin", "plugin.json")
         try:
             with open(p, encoding="utf-8") as g:
@@ -151,7 +161,7 @@ try:
             print((x.get("scope") or "?") + " ")
 except Exception:
     pass
-' "$CFG" "$1" | tr -d '\r'
+' "$CFG" "$1" "${BRAIN:-}" | tr -d '\r'
 }
 
 echo "=== brain-update: $BRAIN ==="
@@ -254,8 +264,20 @@ for p in $(enabled_plugins); do
   fi
   # Annotated tags peel to the commit on the ^{} line; lightweight tags only have
   # the plain line. installed_plugins.json records the COMMIT sha, so prefer peeled.
-  want_sha=$(git ls-remote "https://github.com/$pin_repo.git" "refs/tags/$pin_ref" "refs/tags/$pin_ref^{}" 2>/dev/null \
+  # A read never asks for credentials: a PRIVATE suite repo over anonymous HTTPS made the
+  # credential helper open a login window on the operator's screen (measured 2026-10-18,
+  # macOS, osxkeychain without a github.com entry). Anonymous first (public repos),
+  # then the authenticated gh CLI (private repos), never an interactive prompt.
+  want_sha=$(GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true SSH_ASKPASS=true git -c credential.helper= \
+      ls-remote "https://github.com/$pin_repo.git" "refs/tags/$pin_ref" "refs/tags/$pin_ref^{}" 2>/dev/null \
     | awk '{ if ($2 ~ /\^\{\}$/) p=$1; else t=$1 } END { if (p) print p; else if (t) print t }')
+  if [ -z "$want_sha" ] && command -v gh >/dev/null 2>&1; then
+    obj=$(gh api "repos/$pin_repo/git/ref/tags/$pin_ref" --jq '.object.type + " " + .object.sha' 2>/dev/null)
+    case "$obj" in
+      "tag "*)    want_sha=$(gh api "repos/$pin_repo/git/tags/${obj#tag }" --jq '.object.sha' 2>/dev/null) ;;
+      "commit "*) want_sha="${obj#commit }" ;;
+    esac
+  fi
   if [ -z "$want_sha" ]; then
     echo "WARN plugin $p provenance unverified (cannot resolve $pin_repo@$pin_ref — offline?)"
     continue
