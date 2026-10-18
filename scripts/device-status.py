@@ -26,6 +26,9 @@ leaves the commit local and says so.
 import argparse, datetime, json, os, re, subprocess, sys
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from plugin_records import own_record  # noqa: E402
+
 # The session start parses this output; left to the platform, Windows' console code page
 # mangles the dashes in these lines (os-traps OS-9).
 try:
@@ -105,7 +108,8 @@ def gather(brain, cfg):
             if e.get("name") == name:
                 pin = (e.get("source") or {}).get("ref", "") if isinstance(e.get("source"), dict) else ""
                 break
-        installed_v = rec[0].get("version", "") if rec else ""
+        own = own_record(rec, brain)
+        installed_v = own.get("version", "") if own else ""
         plugins.append({"plugin": pid, "installed": installed_v, "pin": pin})
         # The suite this plugin ships: the marketplace names its repo. Its installed version is the
         # suite's LIVE version on this device (measured 2026-10-11 on a Windows brain: the record said
