@@ -127,7 +127,14 @@ function readTurn(tp) {
       continue;
     }
     if (msg.role === 'assistant' && prompts === 1 && Array.isArray(msg.content)) {
-      for (const b of msg.content) if (b.type === 'text' && b.text) reply.push(b.text);
+      for (const b of msg.content) {
+        if (b.type === 'text' && b.text) reply.push(b.text);
+        // A question through the question tool reaches the operator just like text, and the
+        // operator rule of 2026-10-15 asks for exactly that tool — its questions count.
+        else if (b.type === 'tool_use' && b.name === 'AskUserQuestion' && b.input && Array.isArray(b.input.questions)) {
+          for (const q of b.input.questions) if (q && typeof q.question === 'string') reply.push(q.question);
+        }
+      }
     }
   }
   return { boot, prompts, total, first, reply: reply.join('\n') };
