@@ -82,7 +82,7 @@ try:
                            {"name": "a-plugin", "source": {"source": "github", "repo": "o/a-suite", "ref": "v0.3.0"}}]})
 
     env = {**os.environ, **GIT_ENV, "SHARED_MEMORY_REPO": str(shared), "SHARED_MEMORY_SELF": "alpha-mac,alpha",
-           "CLAUDE_PROJECT_DIR": str(brain), "CLAUDE_CONFIG_DIR": str(cfg)}
+           "CLAUDE_PROJECT_DIR": str(brain), "CLAUDE_CONFIG_DIR": str(cfg), "DEVICE_STATUS_CORE": str(core)}
 
     def ds(*a: str):
         p = subprocess.run([sys.executable, str(SCRIPT), *a], capture_output=True, text=True, env=env)
@@ -172,6 +172,19 @@ try:
     ds("report")
     rc, out = ds("--brief")
     check("local edits" in out, "local edits in core/ are flagged")
+
+    print("same tag, other commit")
+    # Measured 2026-10-18 after the history cut: "v1.0.0" from the old history and from the new one
+    # read the same in the table. A device whose tag names a different commit than this core's tag
+    # is named; one whose commit matches is not (NEGATIVE CONTROL: alpha-mac, reported above).
+    write(shared / "devices" / "gamma-win.json",
+          {"device": "gamma-win", "core": {"tag": "v1.0.0", "commit": "deadbeef0000", "local_edits": False},
+           "plugins": [], "suites": {}, "reported": "2026-10-18"})
+    rc, out = ds("--brief")
+    check("gamma-win: core v1.0.0 is commit deadbee" in out and "old history" in out,
+          "a tag that names another commit is named as old history or a local build")
+    check("alpha-mac: core v1.0.0 is commit" not in out, "NEGATIVE: a device on this core's commit is not named")
+    (shared / "devices" / "gamma-win.json").unlink()
 
     print("filters")
     rc, out = ds("--person", "alpha")
