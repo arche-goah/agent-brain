@@ -484,6 +484,11 @@ if command -v gh >/dev/null 2>&1; then
   esac
 fi
 
+# The core's git hooks (pre-commit checks, shared-memory state trailer): local config read only.
+if [ -f core/scripts/install-git-hooks.sh ]; then
+  _gh=$(bash core/scripts/install-git-hooks.sh --check 2>/dev/null) || echo "!! ${_gh} (agent work, user-level git config)"
+fi
+
 # Legacy names from the LA1 rename (2026-08-14)? German core file/skill names left
 # the public repo; deprecation stubs keep old references working for ONE major
 # release only — warn until the instance has migrated its side.

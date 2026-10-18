@@ -11,6 +11,8 @@ in the shared-memory repo.
         --person <p> --device <id> --os <macos|windows|linux>   same categories as the audience syntax; combinable
         --suites                            add the suite and plugin versions each device recorded
         --brief                             one line with only what is off; nothing when all is fine
+  device-status.py trailer [--topic <t>]    git trailer lines (Device-State, Suite-State) for a shared-memory
+                                            commit — written by helpers/git-hooks/prepare-commit-msg
 
 THIS device = first token of SHARED_MEMORY_SELF (the instance's settings `env`). Shared-memory repo =
 SHARED_MEMORY_REPO, default ~/Projects/brain-shared-memory. People and devices come from `parties.json` at the
@@ -346,14 +348,50 @@ def table(args):
     return 0
 
 
+def trailer(args):
+    """Git trailer lines that stamp a shared-memory commit with the sender's state.
+
+    WHY (operator decision 2026-10-18): which core, channel and tool version a message was
+    written on is what troubleshooting needs later — and after the history cut a tag name alone
+    no longer tells two states apart. In the commit, not in the text: every AI would phrase a
+    hand-written line differently, and the LOG lines are meant to stay short. Ids, versions and
+    commits only — never a path, host name or address (the repo is shared)."""
+    brain = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    dev = self_device(brain) or "?"
+    try:
+        st = gather(brain, cfg)
+    except Exception:
+        return 0
+    repo = os.environ.get("SHARED_MEMORY_REPO") or shared_repo()
+    osname = (parties(repo).get(dev) or (None, None))[1] or {"darwin": "macos", "win32": "windows"}.get(
+        sys.platform, "linux")
+    core = st["core"]
+    chan = next((p["plugin"].split("@")[0] for p in st["plugins"] if p["plugin"].startswith("brain-core")), "-")
+    _, ccv = run(["claude", "--version"])
+    ccv = (ccv.split() or ["?"])[0]
+    print(f"Device-State: device={dev} os={osname} core={core['tag']}@{core['commit'][:7]} channel={chan} cc={ccv}"
+          + (" core-edits=yes" if core.get("local_edits") else ""))
+    topic = (args.topic or "").strip().lower()
+    if topic and topic != "core":
+        hits = [f"{n}={s.get('version') or '?'}" + (f"@{s['commit'][:7]}" if s.get("commit") else "")
+                for n, s in sorted(st["suites"].items()) if n == topic or n.startswith(topic + "-")]
+        if hits:
+            print("Suite-State: " + " ".join(hits))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("cmd", nargs="?", default="table", choices=("table", "report"))
+    ap.add_argument("cmd", nargs="?", default="table", choices=("table", "report", "trailer"))
+    ap.add_argument("--topic", help="trailer: the shared-memory topic (folder) of the commit; adds that suite's state")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--brief", action="store_true")
     ap.add_argument("--suites", action="store_true")
     ap.add_argument("--person"); ap.add_argument("--device"); ap.add_argument("--os")
     args = ap.parse_args()
+    if args.cmd == "trailer":
+        return trailer(args)
     return report(args) if args.cmd == "report" else table(args)
 
 

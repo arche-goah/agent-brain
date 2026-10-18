@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# prepare-commit-msg — stamps a shared-memory commit with the sender's state (git trailers).
+#
+# WHY (operator decision 2026-10-18): which core, channel and tool version a message was written
+# on is what troubleshooting needs later, and after the history cut a tag name alone no longer told
+# two states apart. Mechanical, so every brain writes the same lines; in the commit, so the LOG
+# lines stay short. Lines come from `scripts/device-status.py trailer` (ids and versions only).
+#
+# ONLY in a shared-memory repo (it carries parties.json at its root) — every other repo is left
+# alone. Never blocks: a failing stamp is a missing line, not a refused commit.
+# Installed as part of core.hooksPath (scripts/install-git-hooks.sh).
+msg_file=$1
+source=${2:-}
+case "$source" in merge|squash) exit 0 ;; esac
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[ -f "$root/parties.json" ] || exit 0
+grep -q '^Device-State:' "$msg_file" 2>/dev/null && exit 0
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ds="$here/../../scripts/device-status.py"
+[ -f "$ds" ] || exit 0
+py=python3; command -v "$py" >/dev/null 2>&1 || py=python
+# The topic is the first folder of the staged files (core/, grandma3/, …).
+topic=$(git diff --cached --name-only 2>/dev/null | awk -F/ 'NF>1{print $1; exit}')
+lines=$(SHARED_MEMORY_REPO="$root" "$py" "$ds" trailer --topic "$topic" 2>/dev/null) || exit 0
+[ -n "$lines" ] || exit 0
+printf '\n%s\n' "$lines" >> "$msg_file"
+exit 0

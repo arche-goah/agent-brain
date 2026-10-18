@@ -212,6 +212,9 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   esac
 fi
 
+# The core's git hooks (pre-commit checks, shared-memory state trailer) — one path for every brain.
+# Installed once the submodule exists (below); see the call after `git submodule add`.
+
 _sub_err="$(git submodule add "$CORE_URL" core 2>&1 >/dev/null)" || {
   case "$_sub_err" in
     *"too long"*|*"too big"*|*"Filename too long"*)
@@ -226,6 +229,10 @@ _sub_err="$(git submodule add "$CORE_URL" core 2>&1 >/dev/null)" || {
   esac
   exit 1
 }
+
+if [ -f core/scripts/install-git-hooks.sh ]; then
+  bash core/scripts/install-git-hooks.sh || echo "bootstrap-brain: git hooks not installed — run 'bash core/scripts/install-git-hooks.sh'."
+fi
 
 # 5. Usage statusline (user scope, idempotent, can be disabled)
 if [ "${BOOTSTRAP_STATUSLINE:-1}" = "1" ] && [ -f core/scripts/install-statusline.sh ]; then
