@@ -16,11 +16,16 @@
     "                Two own machines share one account — that is why scopes select by",
     "                party and a login filter is never the default.",
     "",
-    "Intervals in seconds, minimum 30. Change cadence HERE, not in a script or a rule."
+    "Intervals in seconds, minimum 30. Change cadence HERE, not in a script or a rule.",
+    "The AIs talk through PR comments and shared memory: a reply waits up to one interval on",
+    "each side, so 300 s meant up to ten minutes per question and answer. Shared memory is a",
+    "git fetch (no API budget): 30 s. The repos where the AIs talk (core) poll every 60 s; the",
+    "rest stays at 300 s, because every own machine polls under ONE account (5000 API calls an",
+    "hour). The repo watch slows itself when that budget runs low (WATCH_RATE_FLOOR_PCT)."
   ],
-  "shared_memory": { "repo": "~/Projects/<shared-memory-repo>", "interval": 120 },
+  "shared_memory": { "repo": "~/Projects/<shared-memory-repo>", "interval": 30 },
   "repo_watches": [
-    { "tag": "core", "repos": ["<owner>/<core-repo>"], "interval": 300 },
+    { "tag": "core", "repos": ["<owner>/<core-repo>"], "interval": 60 },
     { "tag": "suites", "repos": ["<owner>/<suite-a>", "<owner>/<suite-b>"], "interval": 300 }
   ],
   "parallel_sessions": { "interval": 60 },

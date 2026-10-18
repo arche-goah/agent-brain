@@ -129,6 +129,25 @@ emit() {
   done
 }
 
+# Budget guard. Every machine of the operator polls under ONE account, and the API allows
+# 5000 calls an hour per account (REST and GraphQL each). One round costs about three REST
+# calls and two GraphQL calls per repo; 3 instances x 14 repos x 60 s would be ~7800 an hour.
+# So a short interval is safe only with a guard: below WATCH_RATE_FLOOR_PCT of either budget
+# this watch sleeps WATCH_RATE_STRETCH times its interval until the budget recovers — said
+# once when it slows, once when it is back. An unreadable answer stretches nothing.
+FLOOR="${WATCH_RATE_FLOOR_PCT:-25}"
+STRETCH="${WATCH_RATE_STRETCH:-5}"
+slow=0
+budget_pct() {  # lowest remaining share of the REST and GraphQL budgets, or "" if unreadable
+  printf '%s' "$1" | "$PY" -c '
+import json, sys
+try:
+    r = json.load(sys.stdin)["resources"]
+    print(min(r[k]["remaining"] * 100 // max(r[k]["limit"], 1) for k in ("core", "graphql")))
+except Exception:
+    pass'
+}
+
 PARENT=$PPID
 gh_down=0
 while true; do
@@ -136,7 +155,7 @@ while true; do
   NEWEST="$SINCE"
   # Reachability first: a watcher whose every call fails (auth expired, network gone) prints
   # nothing and looks exactly like a quiet one. Said once per outage, not every round.
-  if ! gh api rate_limit >/dev/null 2>&1; then
+  if ! RL=$(gh api rate_limit 2>/dev/null); then
     [[ $gh_down -eq 0 ]] && echo "WATCH-ERROR: gh cannot reach GitHub — this watch is BLIND until it can (repos: ${REPOS[*]})"
     gh_down=1
   else
@@ -163,11 +182,21 @@ while true; do
         | "$PY" "$HERE/repo-activity-filter.py" runs "$full" "$SINCE" "$SELF" "$ONLY")
     done
     [[ "$NEWEST" != "$SINCE" ]] && echo "$NEWEST" > "$CURSOR"
+    pct=$(budget_pct "$RL")
+    if [[ -n "$pct" && "$pct" -lt "$FLOOR" ]]; then
+      [[ $slow -eq 0 ]] && echo "NOTE: GitHub budget of this account at ${pct}% (floor ${FLOOR}%) — polling every $((INTERVAL * STRETCH)) s instead of ${INTERVAL} s until it recovers (repos: ${REPOS[*]})"
+      slow=1
+    elif [[ -n "$pct" && $slow -eq 1 ]]; then
+      echo "NOTE: GitHub budget back at ${pct}% — polling every ${INTERVAL} s again"
+      slow=0
+    fi
   fi
   [[ "$INTERVAL" -eq 0 ]] && exit 0
+  wait_s=$INTERVAL
+  [[ $slow -eq 1 ]] && wait_s=$((INTERVAL * STRETCH))
   # A watcher outlives its session unless it checks: when the process that started it is
   # gone, exit (the EXIT trap frees the lock for the next arm).
-  for (( slept = 0; slept < INTERVAL; slept += 5 )); do
+  for (( slept = 0; slept < wait_s; slept += 5 )); do
     sleep 5 & wait $!   # backgrounded: a TERM is handled at once, not after the sleep
     kill -0 "$PARENT" 2>/dev/null || exit 0
   done

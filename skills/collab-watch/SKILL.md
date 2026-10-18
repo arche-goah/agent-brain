@@ -51,6 +51,12 @@ Monitor({ command: "bash core/scripts/collab-watch.sh",
 ```
 
 - `bash core/scripts/collab-watch.sh --dry-run` prints the plan without arming.
+- **Cadence is conversation speed.** A reply waits up to one interval on each side; the
+  template polls shared memory every 30 s and the core repos every 60 s (300 s meant up to
+  ten minutes per question and answer between two AIs). An existing instance file keeps its
+  old numbers — lower them there. Every own machine polls under one account; the repo watch
+  prints `NOTE: GitHub budget …` and slows itself below `WATCH_RATE_FLOOR_PCT` (default 25)
+  of the API budget, and says so again when it is back.
 - **Scope** `COLLAB_WATCH_SCOPE=all` (default) · `peers` · `<party>`. Anything but `all`
   drops events for good (cursors advance before the filter). **Before arming a filtered
   scope, count the same window unfiltered once** — unfiltered n>0 and filtered 0 means
