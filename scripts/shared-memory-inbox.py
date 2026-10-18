@@ -141,7 +141,7 @@ def for_us(sender: str, to: str | None, me: set[str]) -> bool:
 def whole(text: str) -> str:
     """The text as written, whitespace normalised — NEVER cut.
 
-    WHY (operator decision 2026-10-18, "sowas darf nicht als gelesen zählen"): this reader used
+    WHY (operator decision 2026-10-18, translated: "that must not count as read"): this reader used
     to cut every heading at a sentence boundary under 200 characters. A heading "… lock not set
     here — old branches deleted (operator's word), the lock would block the PR path" arrived as
     "… lock not set here"; the reading AI took the stump for the message and handed the operator

@@ -3,8 +3,8 @@
  * Stop hook: a shared-memory fact file that the inbox or a watcher DELIVERED in this turn was
  * read in this turn — shown is not read.
  *
- * WHY (operator decision 2026-10-18, "sowas darf nicht als gelesen zählen! das ist kern
- * thema"): the inbox line of a fact file is its description, written by the sender as a
+ * WHY (operator decision 2026-10-18, translated: "that must not count as read! it is a core
+ * matter"): the inbox line of a fact file is its description, written by the sender as a
  * pointer; the content is the file. Measured that day: a session acted on an inbox line —
  * worse, on a line cut in the middle — and handed the operator a needless command; the file
  * said the opposite. `shared-memory-inbox.py` now prints LOG entries whole, so a LOG line IS the
