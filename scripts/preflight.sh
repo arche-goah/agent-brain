@@ -66,6 +66,12 @@ esac
 
 if command -v gh >/dev/null 2>&1; then
   if gh auth status >/dev/null 2>&1; then ok "gh CLI logged in"; else bad "gh CLI not logged in" "gh auth login (browser login)"; fi
+  # One git login path for every brain: HTTPS to github.com authenticates through gh,
+  # so no credential helper opens a login window (agreed 2026-10-18, see session-bootup.sh).
+  case "$(git config --get-urlmatch credential.helper https://github.com 2>/dev/null)" in
+    *"auth git-credential"*) ok "git login for github.com goes through gh" ;;
+    *) bad "git login for github.com does not go through gh" "gh auth setup-git" ;;
+  esac
 else
   bad "gh CLI missing" "install it: brew install gh / winget install GitHub.cli — then open a NEW terminal (PATH), then gh auth login"
 fi

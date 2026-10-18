@@ -202,6 +202,16 @@ touch docs/maintenance/session-log.md docs/maintenance/decision-log.md
 # inside this repo. On macOS/Linux the option is a no-op, but harmless.
 git config core.longpaths true
 
+# One git login path for every brain (agreed 2026-10-18): HTTPS to github.com authenticates
+# through gh, so neither a private repo nor a push opens a login window. Only when gh is
+# logged in — otherwise preflight names the missing login first.
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  case "$(git config --get-urlmatch credential.helper https://github.com 2>/dev/null)" in
+    *"auth git-credential"*) ;;
+    *) gh auth setup-git && echo "bootstrap-brain: git login for github.com now goes through gh (gh auth setup-git)" ;;
+  esac
+fi
+
 _sub_err="$(git submodule add "$CORE_URL" core 2>&1 >/dev/null)" || {
   case "$_sub_err" in
     *"too long"*|*"too big"*|*"Filename too long"*)

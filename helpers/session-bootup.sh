@@ -473,6 +473,17 @@ fi
 bl=$(find .claude/skills -type l ! -exec test -e {} \; -print 2>/dev/null)
 [[ -n "$bl" ]] && echo "!! broken skill symlinks: ${bl//$'\n'/, }"
 
+# Git over HTTPS to github.com authenticates through gh — the one push/fetch path for every
+# brain (agreed between two instances 2026-10-18). Without it a private repo or a push makes
+# the credential helper open a login window the AI never sees (measured on macOS: osxkeychain
+# without a github.com entry). Local config read only, no network.
+if command -v gh >/dev/null 2>&1; then
+  case "$(git config --get-urlmatch credential.helper https://github.com 2>/dev/null)" in
+    *"auth git-credential"*) ;;
+    *) echo "!! git login for github.com does not go through gh — HTTPS fetch/push can open a login window; fix (agent work, user-level git config): gh auth setup-git" ;;
+  esac
+fi
+
 # Legacy names from the LA1 rename (2026-08-14)? German core file/skill names left
 # the public repo; deprecation stubs keep old references working for ONE major
 # release only — warn until the instance has migrated its side.
