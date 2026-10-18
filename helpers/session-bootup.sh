@@ -254,8 +254,12 @@ def check(item):
     try:
         loc = subprocess.run(["git", "-C", path, "describe", "--tags", "--abbrev=0"],
                              capture_output=True, text=True, timeout=6).stdout.strip()
-        raw = subprocess.run(["git", "ls-remote", "--tags", e.get("remote") or "origin"],
-                             capture_output=True, text=True, timeout=8)
+        # -C path: without it "origin" resolved in the BRAIN's checkout, so every suite was
+        # compared against the brain's own tags. No credential prompt: a private suite
+        # over HTTPS opened a login window at session start (measured 2026-10-18, macOS).
+        raw = subprocess.run(["git", "-C", path, "-c", "credential.helper=", "ls-remote", "--tags",
+                              e.get("remote") or "origin"], capture_output=True, text=True, timeout=8,
+                             env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "true", "SSH_ASKPASS": "true"})
         if raw.returncode != 0: return None
     except Exception:
         return None
