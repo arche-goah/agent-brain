@@ -261,4 +261,19 @@ check "ai item asked, standing item reported" "$f" allow "$EN"
 # stoppen-gate judges a closing question after it as anywhere else.
 check "stoppen-gate: a standing item does not own the opening question" "$T/20b.jsonl" block "$EN" false "$SG"
 
+# 21 — the opening question asked through the question tool (operator rule 2026-10-15:
+# decisions go through AskUserQuestion). Measured 2026-10-18 on the Windows instance: the
+# first reply asked "shall I?" only inside the tool call, the operator answered, and the gate
+# blocked twice because it read text blocks only. The tool's answer arrives as a tool_result
+# and is no new prompt. Negative control: the same words inside another tool do not count.
+ask() { # $1 tool name, $2 question
+  printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"%s","input":{"questions":[{"question":%s}]}}]}}\n' "$1" "$(js "$2")"
+}
+answered() { printf '{"message":{"role":"user","content":[{"type":"tool_result","content":"Yes"}]}}\n'; }
+NOQ="${GOOD_EN/ — shall I go ahead?/.}"
+f="$T/21a.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$NOQ"; ask AskUserQuestion "2 items I can handle myself — shall I go ahead?"; answered; } > "$f"
+check "opening question through the question tool" "$f" allow "$EN"
+f="$T/21b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$NOQ"; ask SomeOtherTool "2 items I can handle myself — shall I go ahead?"; answered; } > "$f"
+check "same words inside another tool (control)" "$f" block "$EN"
+
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }
