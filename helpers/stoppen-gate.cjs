@@ -115,8 +115,8 @@ const BUILTIN_ANNOUNCE = [
 // The waiter exemption holds only for an announcement that SAYS it waits ("once CI is green,
 // I merge"). Measured 2026-10-18 on the macOS instance: "the review of #6 — I do that next"
 // ended a turn; a CI watch and a shared-memory watch were running, so the gate let it pass —
-// but the review depended on neither. Operator: "nicht sagen 'das mache ich' und dann stoppen,
-// sondern einfach machen. fehlerklasse!!" Any running waiter excused any announcement. Now the
+// but the review depended on neither. Operator, translated: "do not say 'I'll do it' and then
+// stop — just do it. failure class!!" Any running waiter excused any announcement. Now the
 // sentence that carries the announcement must name its condition. Data key:
 // `announce_condition_patterns` (an instance adds its language).
 const BUILTIN_CONDITION = [
