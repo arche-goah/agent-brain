@@ -207,7 +207,7 @@ git config core.longpaths true
 # logged in — otherwise preflight names the missing login first.
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   case "$(git config --get-urlmatch credential.helper https://github.com 2>/dev/null)" in
-    *"gh auth git-credential"*) ;;
+    *"auth git-credential"*) ;;
     *) gh auth setup-git && echo "bootstrap-brain: git login for github.com now goes through gh (gh auth setup-git)" ;;
   esac
 fi

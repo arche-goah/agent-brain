@@ -69,7 +69,7 @@ if command -v gh >/dev/null 2>&1; then
   # One git login path for every brain: HTTPS to github.com authenticates through gh,
   # so no credential helper opens a login window (agreed 2026-10-18, see session-bootup.sh).
   case "$(git config --get-urlmatch credential.helper https://github.com 2>/dev/null)" in
-    *"gh auth git-credential"*) ok "git login for github.com goes through gh" ;;
+    *"auth git-credential"*) ok "git login for github.com goes through gh" ;;
     *) bad "git login for github.com does not go through gh" "gh auth setup-git" ;;
   esac
 else

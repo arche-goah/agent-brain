@@ -475,7 +475,7 @@ bl=$(find .claude/skills -type l ! -exec test -e {} \; -print 2>/dev/null)
 # without a github.com entry). Local config read only, no network.
 if command -v gh >/dev/null 2>&1; then
   case "$(git config --get-urlmatch credential.helper https://github.com 2>/dev/null)" in
-    *"gh auth git-credential"*) ;;
+    *"auth git-credential"*) ;;
     *) echo "!! git login for github.com does not go through gh — HTTPS fetch/push can open a login window; fix (agent work, user-level git config): gh auth setup-git" ;;
   esac
 fi

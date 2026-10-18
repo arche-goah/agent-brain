@@ -38,6 +38,12 @@ printf '[credential "https://github.com"]\n\thelper =\n\thelper = !/usr/bin/gh a
 out=$(run "$TMP/gh")
 [ -z "$out" ] && ok "gh helper: silent" || bad "gh helper: printed '$out'"
 
+# The line `gh auth setup-git` writes on Windows (measured 2026-10-18 on the Windows
+# instance): the full quoted program path, so "gh auth git-credential" never occurs in it.
+printf '[credential "https://github.com"]\n\thelper =\n\thelper = !'"'"'C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe'"'"' auth git-credential\n' > "$TMP/ghwin"
+out=$(run "$TMP/ghwin")
+[ -z "$out" ] && ok "gh helper, Windows form: silent" || bad "gh helper, Windows form: printed '$out'"
+
 echo
 if (( fails )); then echo "bootup-git-login: $fails FAILURE(S)"; exit 1; fi
-echo "bootup-git-login: all 3 cases pass"
+echo "bootup-git-login: all 4 cases pass"
