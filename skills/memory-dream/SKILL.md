@@ -106,7 +106,9 @@ Check CLAUDE.md:
 
 ## Trigger (clarified 2026-08-01, aligned 2026-10-12)
 - **Starts only on the operator's word:** "aufraeumen" (clean up), "dream", "memory cleanup",
-  or a yes to a recommendation.
+  or a yes to a recommendation. Under an AI handover (`ai_handover` in `parties.json`) that word
+  comes from the receiving AIs, not from the person who handed it over (core thinking-protocol,
+  "Who the operator is").
 - **A state is a reason to RECOMMEND, never to start:** after sessions with 3+ new memories,
   MEMORY.md > 150 lines, contradictions found in passing. memory-dream is a deep check
   (`rules/intelligence.md`, "Three levels of self-check"): the AI names what, why now and the

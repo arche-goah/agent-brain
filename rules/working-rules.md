@@ -504,5 +504,21 @@ their AIs:
    not build; nothing there means one line in the thread ("building it"), then build. And
    nothing is merged over an open finding in its thread — read the comments in full, never
    through a tool that cuts them short.
+6. **An operator may hand the AI side of their brain to another party's AIs** (operator
+   decisions 2026-10-16/18). Recorded in the shared memory (who hands over, to whom, what stays
+   with the operator). In this order: first the brain's AI decides whatever it can and may
+   itself (ASK OR ACT, as always); only what it cannot goes on, by one test — does it need a
+   human at that machine, or judgement about the core and AI mechanics? (a) **Own terrain,
+   reversible** (tidy-ups, memory, local branches, commits and pushes to that brain): the
+   brain's AI decides and reports. (b)
+   **A human at that machine** (a permission dialog, a push or merge only their hand can trigger,
+   writes at their devices, their domain, money, hardware, anything time-critical while the
+   receiving side is not active): their operator, directly — never parked on the receiving side.
+   (c) **Core and AI mechanics** (rule interpretation, gates, skills, hooks, deep checks, what
+   touches several brains, reviews): the receiving AIs decide, through the shared memory; no
+   answer the same day = the safe default or leave it, never the human instead. Sending a (c)
+   question to the human who handed it over is the defect this item closes; the handover is
+   data in the shared memory's `parties.json` (`ai_handover`), and its lint names such a
+   referral when it is written.
 
 History: core/docs/rule-history.md, "Working Across Parties".
