@@ -193,7 +193,14 @@ plugs = load(os.path.join(cfg, "plugins", "installed_plugins.json")).get("plugin
 for pid, entries in plugs.items():
     name = pid.split("@", 1)[0]
     if pid not in enabled or not pins.get(name): continue
-    v = (entries or [{}])[0].get("version", "")
+    # This brain's record, never another project's (plugin_records.py; rec[0] picked a stranger's).
+    try:
+        sys.path.insert(0, os.path.join("core", "scripts"))
+        from plugin_records import own_record
+        own = own_record(entries, os.getcwd()) or {}
+    except Exception:
+        own = (entries or [{}])[0]
+    v = own.get("version", "")
     if v and f"v{v}" != pins[name]: stale.append(f"{name} {v} -> {pins[name]}")
 if stale: print(", ".join(stale))
 PY

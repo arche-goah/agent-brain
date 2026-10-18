@@ -64,6 +64,9 @@ import sys
 import traceback
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from plugin_records import own_record  # noqa: E402
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 except (AttributeError, ValueError):
@@ -302,8 +305,8 @@ def core_state(repo, cfg, layers):
         if "core" not in name:
             continue
         found = True
-        rec = installed.get(pid) or []
-        ver = rec[0].get("version", "?") if rec else "not installed"
+        own = own_record(installed.get(pid) or [], repo)
+        ver = own.get("version", "?") if own else "not installed"
         pin = "?"
         mp = load(os.path.join(cfg, "plugins", "marketplaces", mkt, ".claude-plugin", "marketplace.json"), {}) or {}
         for e in mp.get("plugins") or []:
