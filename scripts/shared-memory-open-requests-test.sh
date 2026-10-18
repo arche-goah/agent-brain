@@ -34,9 +34,11 @@ git -C "$WORK" config user.name Me
 git -C "$WORK" remote add origin "$BARE"
 mkdir -p "$WORK/core"
 
-entry() { # file von audience description [status]
+entry() { # file von audience description [status] [next]
   local st=""
   [[ -n "${5:-}" ]] && st="  status: $5
+"
+  [[ -n "${6:-}" ]] && st="$st  next: $6
 "
   printf -- '---\nname: %s\ndescription: "%s"\nmetadata:\n  type: project\n  von: %s\n  audience: %s\n  topic: core\n  date: %s\n%s---\n\nbody\n' \
     "$(basename "$1" .md)" "$4" "$2" "$3" "$(date +%Y-%m-%d)" "$st" > "$WORK/$1"
@@ -51,6 +53,10 @@ entry core/status-open-broadcast.md sam-laptop "me-mac, kim-win, sam-desk" "STAT
 entry core/request-closed.md sam-laptop me-mac "CLOSED-ONE was answered in place" answered
 entry core/ask-local.md sam-laptop me-mac "LOCAL-ONE uses an instance prefix"
 entry core/request-either.md sam-laptop "me-mac, kim-win" "EITHER-ONE asks either of two machines"
+# Measured 2026-10-18: a German-named question to two devices, and an open note to several
+# parties whose `next:` names us, reached no inbox. Both are requests now.
+entry core/frage-to-two.md sam-laptop "me-mac, kim-win" "GERMAN-ONE German file name, two addressees"
+entry core/fork-before-cut.md sam-laptop "me-mac, kim-win, person:sam" "NEXT-ONE status open, next names me" open "me-mac, kim-win"
 # A THIRD party answers request-either and says so in its own frontmatter.
 printf -- '---\nname: x\ndescription: "answer"\nmetadata:\n  type: project\n  von: kim-win\n  audience: sam-laptop\n  topic: core\n  answers: request-either\n---\n\nbody\n' > "$WORK/core/kim-answer.md"
 # Dates are TODAY: a fixed date falls out of the 30-day window and the test would tip silently.
@@ -92,9 +98,12 @@ grep -a 'BROADCAST-ONE' <<<"$OUT" | grep -aq 'optional: to everyone' \
 grep -q 'LOGONLY-OPEN' <<<"$OUT" && pass "a request that lives only as a LOG heading is listed" || fail "LOG-only request missing"
 grep -q 'LOGONLY-NUMPAIR' <<<"$OUT" && pass "an answer naming one of two numbers leaves the request open" \
   || fail "LOGONLY-NUMPAIR closed by an answer that named only #902"
+grep -q 'GERMAN-ONE' <<<"$OUT" && pass "a German request word is a default prefix" || fail "German-named request missing"
+grep -q 'NEXT-ONE' <<<"$OUT" && pass "status open with next naming us counts, whatever the audience size" \
+  || fail "status open + next: us missing"
 # OPEN-ONE, STATUS-ONE, LOGONLY-OPEN, BROADCAST-ONE (optional), LOGONLY-TWIN-B, LOGONLY-UNNAMED,
-# LOGONLY-NUMPAIR. sam-laptop's "ping" is closed by our later reply that says "re ping".
-grep -q 'open requests to this instance: 7$' <<<"$OUT" && pass "count line says 7" || fail "count line wrong: $(head -1 <<<"$OUT")"
+# LOGONLY-NUMPAIR, GERMAN-ONE, NEXT-ONE. sam-laptop's "ping" is closed by our later reply that says "re ping".
+grep -q 'open requests to this instance: 9$' <<<"$OUT" && pass "count line says 9" || fail "count line wrong: $(head -1 <<<"$OUT")"
 # NEGATIVE CONTROL: the unpatched reader (origin/main before this fix, passed as $1) closed every
 # request of a sender with any later reply to that sender — it must FAIL the two checks above.
 if [[ -n "${1:-}" ]]; then
@@ -109,6 +118,12 @@ if [[ -n "${2:-}" ]]; then
   OLD2="$(SHARED_MEMORY_SELF=me-mac "$PY" "$2" --open --repo "$WORK" --to HEAD 2>&1)"
   grep -q 'LOGONLY-NUM\b' <<<"$OLD2" && pass "control: the reader without the number rule keeps NUM open (planted case is real)" \
     || fail "control: the reader without the number rule also closes NUM — the planted case proves nothing"
+fi
+# NEGATIVE CONTROL 3: the reader before the request-by-frontmatter fix (passed as $3) shows neither.
+if [[ -n "${3:-}" ]]; then
+  OLD3="$(SHARED_MEMORY_SELF=me-mac "$PY" "$3" --open --repo "$WORK" --to HEAD 2>&1)"
+  grep -qE 'GERMAN-ONE|NEXT-ONE' <<<"$OLD3" && fail "control: the old reader already lists GERMAN-ONE/NEXT-ONE — the planted cases prove nothing" \
+    || pass "control: the old reader missed GERMAN-ONE and NEXT-ONE (planted cases are real)"
 fi
 
 OUT2="$(SHARED_MEMORY_SELF=me-mac SHARED_MEMORY_REQUEST_PREFIXES=ask "$PY" "$INBOX" --open --repo "$WORK" --to HEAD 2>&1)"
