@@ -392,6 +392,8 @@ def auto_class(it, repo, human_rx):
     """(class, why) from the data alone, or (None, '') when the data does not say."""
     if it["kind"] == "PR":
         return "ai", "pull request: review or merge is agent work"
+    if it["kind"] == "session":
+        return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it.get("file"):
         m = CIRCLE.search(front(it, repo))
         if m:
@@ -502,6 +504,24 @@ def reached_a_human(transcript):
     except OSError:
         return False
     return False
+
+
+def sessions(root, hook_input):
+    """Past sessions that ended without session-close, and failed session starts
+    (scripts/session-audit.py — operator order 2026-10-11: loud, for everyone). Always class
+    `human`; they leave the list only by `session-audit.py --ack`. None = could not read."""
+    script = HERE / "session-audit.py"
+    if not script.is_file():
+        return []
+    rc, out = run([sys.executable, str(script), "--json", "--root", str(root), "--hook-input", hook_input])
+    if rc != 0:
+        return None
+    try:
+        found = json.loads(out.strip().splitlines()[-1] if out.strip() else "[]")
+    except (ValueError, IndexError):
+        return None
+    return [{"id": f["id"], "kind": "session", "date": f["when"][:10], "who": "this machine",
+             "text": f["text"][:100], "scope": "session", "ref": f"session/{f['sid'][:8]}"} for f in found]
 
 
 def lookup(store, it):
@@ -626,9 +646,11 @@ def main():
         return False
 
     req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {}, a.repo, cfg.get("pr_owners") or [])
+    ses = sessions(root, a.hook_input)
     failed = [name for name, v in (("shared-memory requests", req),
-                                   ("PR search" if a.owner else "PRs (no owner given)", pr)) if v is None]
-    items = (req or []) + (pr or []) + wake_items(rules, pr, a.repo)
+                                   ("PR search" if a.owner else "PRs (no owner given)", pr),
+                                   ("session audit", ses)) if v is None]
+    items = (req or []) + (pr or []) + (ses or []) + wake_items(rules, pr, a.repo)
 
     today = now.date().isoformat()
     keep = {}
@@ -682,7 +704,9 @@ def main():
             it["cls"] = "wait"
     # A source that failed keeps its old counters — a failed read is not "handled".
     for k, v in old.items():
-        if k not in keep and ((req is None and "#" not in k) or (pr is None and "#" in k)):
+        is_ses = k.startswith(("start:", "end:"))
+        if k not in keep and ((req is None and "#" not in k and not is_ses) or (pr is None and "#" in k)
+                              or (ses is None and is_ses)):
             keep[k] = v
     # Only the bootup (a real session id) writes the counter. Measured 2026-10-09: a hand run
     # with a skipped PR source rewrote the file and dropped every item's history.
@@ -709,6 +733,15 @@ def main():
         print(f"!! open for us: repeat counter NOT saved ({seen_file}) — repeats will not get louder")
     for name in failed:
         print(f"!! open for us: {name} NOT checked — this is not 'nothing open'; re-run core/scripts/open-items.py")
+    if ses:
+        n_end = sum(1 for i in ses if i["id"].startswith("end:"))
+        n_start = len(ses) - n_end
+        print("!! open for us: "
+              + " · ".join(([f"{n_end} past session(s) ended without session-close"] if n_end else [])
+                           + ([f"{n_start} session start(s) failed"] if n_start else []))
+              + " — clear each before the first reply: read its transcript (session-audit.py --details),"
+              + " say the cause and whether work was lost as measured, never ask the operator;"
+              + " then core/scripts/session-audit.py --ack <id>")
     if not items and not failed:
         print("- nothing open (requests and PRs both read)")
     group = False

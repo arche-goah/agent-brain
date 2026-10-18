@@ -206,6 +206,12 @@ function parseBlock(text) {
       // `?` for the gate (measured 2026-10-12, Windows instance: classified, still blocked).
       items.push({ cls: m[1], ref: shown, key: ref, id: shown,
         base, date: [m[2], m[3], m[4]], words: topicWords(/\.md$/.test(base) ? base : (m[6] || '')), repeat });
+    } else if ((m = /^- \[session\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (session\/\S+) — (?:[^:]+: (.+?) — )?/.exec(l))) {
+      // A past session that ended without session-close, or a failed session start
+      // (scripts/session-audit.py). Named by its DATE (or age): every such line shares the
+      // same words ("session", "close"), so words would let one sentence pass for all.
+      items.push({ cls: m[1], ref: `${m[2]}-${m[3]}-${m[4]} ${m[5]}`, key: m[5], base: m[5],
+        date: [m[2], m[3], m[4]], words: [], repeat });
     } else if ((m = /^- \[wake\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — /.exec(l))) {
       // A parked domain whose pausing party moved again: an operator item, named by the
       // domain or the date like a request.
@@ -269,7 +275,7 @@ function judge(input) {
   }
   if (t.boot.source === 'compact' || t.prompts !== 1) return null;
   if (t.boot.kind === 'cancelled') {
-    return `The session-start hook was cancelled after ${Math.round((t.boot.ms || 0) / 1000)} s — the open points never arrived. Run \`python3 core/scripts/open-items.py --owner <org>\` (or \`python\`) and report them. Missing: bootup (cancelled)`;
+    return `The session-start hook was cancelled after ${Math.round((t.boot.ms || 0) / 1000)} s — the open points never arrived. Run \`python3 core/scripts/open-items.py --owner <org>\` (or \`python\`) and report them. Clear why in THIS session too: time \`bash core/helpers/session-bootup.sh\`, name the slow part, fix or report it, then \`session-audit.py --ack start:<this session id>\`. Missing: bootup (cancelled)`;
   }
   const blk = parseBlock(t.boot.text);
   if (!blk) {
@@ -290,9 +296,17 @@ function judge(input) {
   }
 
   const text = t.reply;
-  const ai = blk.items.filter((it) => it.cls === 'ai');
+  // A failed start or an unclosed session is cleared by reading its transcript — no OK asked,
+  // no question to the operator (operator 2026-10-15); the reply names each with its cause.
+  const cleared = blk.items.filter((it) => it.cls === 'ai' && /^session\//.test(it.key));
+  const ai = blk.items.filter((it) => it.cls === 'ai' && !cleared.includes(it));
   const human = blk.items.filter((it) => it.cls === 'human');
   const missing = [];
+  if (cleared.length) {
+    const ageRx = ageMatcher(cwd);
+    const generic = genericWords(cwd);
+    for (const it of cleared) if (!named(it, text, ageRx, generic)) missing.push(it.ref);
+  }
   if (ai.length) {
     if (!hasNumber(ai.length, text)) missing.push(`count of items you can handle (${ai.length})`);
     // The operator's prompt may already be the go-ahead ("work through everything") — then
