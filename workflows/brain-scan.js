@@ -1,7 +1,7 @@
 export const meta = {
   name: 'brain-scan',
   description: 'Brain scan: return channel of the last run + machine checks + checklist audit + SOTA delta; every finding leaves with one exit — reports and sorts, fixes nothing',
-  whenToUse: 'Weekly self-audit of the brain setup, on the operator\'s OK. Call with args {date:"YYYY-MM-DD", scratch:"<abs. scratch dir>"}.',
+  whenToUse: 'Self-audit of the brain setup every two weeks (at least 7 days apart), on the operator\'s OK. Call with args {date:"YYYY-MM-DD", scratch:"<abs. scratch dir>"}.',
   phases: [
     { title: 'Machine', detail: 'ONE script: what became of the last run\'s findings, machine checks (effect, invariant register, self-test, local machinery, commitments), deep-check line', model: 'haiku' },
     { title: 'Scan', detail: 'Checklist sections + 2 SOTA delta checks in parallel; each writes its findings to a file', model: 'haiku' },

@@ -42,7 +42,7 @@ Language: built-in patterns are English; further languages are instance data in 
 (regexes, case-insensitive),
 added to the built-ins. Template: core/templates/rules-instance/decision-review.json.
 
-WHERE IT RUNS: the weekly brain-scan, never the session start (a start that reads a 80 MB transcript misses the
+WHERE IT RUNS: the brain-scan, never the session start (a start that reads a 80 MB transcript misses the
 harness's 30 s budget). A per-file cache in `.claude-state/decision-review.json` keeps reruns cheap; its key is
 the file (size + mtime) AND the patterns AND the session's registered questions, because it stores verdicts.
 
