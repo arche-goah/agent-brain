@@ -139,6 +139,23 @@ for who in '' kim-win; do
     || fail "unknown heading shape dropped (--self '$who'): $Q"
 done
 
+# A message is shown WHOLE: the full heading and the entry line below it, never cut (operator
+# decision 2026-10-18). Measured that day: a 230-character heading arrived cut at its dash —
+# "... lock not set here" — and the reason behind the dash ("old branches deleted, the lock would
+# block the PR path") was gone; the receiver acted on the stump. NEGATIVE CONTROL: the reader
+# before this fix, passed as $1, must FAIL both checks.
+LONG_HEAD='WHOLE-ONE building the gate fix for the question tool and the stop check that reads it; the push lock in core is not set here on purpose'
+printf '\n## 2026-10-18 · sam-laptop — AN kim-win (status: info): %s — TAILCLAUSE old branches deleted on the owner'"'"'s word, a lock would block the worktree path for core PRs\nBODYLINE measured: 59 old branches and 20 worktrees removed, only HEAD left.\n' "$LONG_HEAD" >> "$W/ops/LOG.md"
+git -C "$W" add -A
+git -C "$W" commit -qm long-heading
+E2=$(git -C "$W" rev-parse HEAD)
+Q=$("$PY" "$INBOX" --repo "$W" --from "$E" --to "$E2" --self kim-win 2>&1)
+grep -q 'TAILCLAUSE' <<<"$Q" && pass "a long heading arrives whole, the clause after the dash included" \
+  || fail "long heading cut before its reason: $Q"
+grep -q 'BODYLINE' <<<"$Q" && pass "the entry line below the heading is shown with it" \
+  || fail "entry body missing: $Q"
+E=$E2
+
 # The section splitter must not absorb it either: an unknown dated heading ENDS the section above
 # it. Absorbed, its text read as a second message of the sender of the entry before it.
 # The reader path goes in the ENVIRONMENT, never as argv of `python -` (OS-6: a file argument with a

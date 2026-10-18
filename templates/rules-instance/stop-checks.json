@@ -84,6 +84,12 @@
       "cmd": "core/helpers/absence-gate.cjs",
       "mode": "record",
       "args": ["--record"]
+    },
+    {
+      "label": "UNREAD",
+      "marker": "DELIVERED-READ",
+      "cmd": "core/helpers/delivered-read-gate.cjs",
+      "mode": "block"
     }
   ]
 }
