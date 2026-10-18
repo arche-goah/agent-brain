@@ -274,10 +274,16 @@ def log_section_senders(text: str) -> list[tuple[str, str]]:
 
 
 # Which files are REQUESTS (as opposed to reports addressed to us): a file name that starts
-# with one of these words, or frontmatter `status: open`. Words are data — the instance adds
-# its own languages via SHARED_MEMORY_REQUEST_PREFIXES (comma-separated), same convention
-# as SHARED_MEMORY_SELF. `status:` answered/done/decided/info always wins over the name.
-REQUEST_PREFIXES = ("request", "question")
+# with one of these words, or frontmatter `status: open` that puts us on the move. Words are
+# data — the instance adds its own languages via SHARED_MEMORY_REQUEST_PREFIXES
+# (comma-separated), same convention as SHARED_MEMORY_SELF. `status:` answered/done/decided/
+# info always wins over the name.
+# The German words are defaults because the shared repo is written in German by every party
+# (measured 2026-10-18 on a shared-memory repo: anfrage- 26, pruefbitte- 20, frage- 7,
+# abstimmung- 7 files against request- 8). Before, only an instance that had set the variable
+# saw them — two questions to another party's AI were never shown there.
+REQUEST_PREFIXES = ("request", "question", "anfrage", "rueckfrage", "frage", "pruefbitte",
+                    "bitte", "abstimmung")
 CLOSED_STATUS = {"answered", "done", "decided", "info", "closed"}
 FM_STATUS = re.compile(r"^\s+status:\s*([\w-]+)", re.M)
 
@@ -331,7 +337,12 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
         # A category (`os:…`, `person:…`) reaches several devices, so it is never "us alone".
         aud = tokens(e["audience"])
         only_us = not (aud - me) and not any(_parties.is_category(t) for t in aud)
-        if not p.stem.lower().startswith(prefixes) and not (status == "open" and only_us):
+        # `next:` (lint-required next to `status: open`) says who is on the move. Naming us there
+        # makes it our request however many parties read along — the field, not the file name's
+        # language, decides (measured 2026-10-18: `next: <two devices>` on a question that no
+        # inbox showed, because it went to more than one party).
+        next_us = any(tokens(n) & me for n in e["next"])
+        if not p.stem.lower().startswith(prefixes) and not (status == "open" and (only_us or next_us)):
             continue
         when = e["date"] or git(repo, "log", "-1", "--format=%as", ref, "--", rel).strip()
         if floor and when and when < floor:
