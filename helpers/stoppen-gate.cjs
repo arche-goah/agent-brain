@@ -112,6 +112,23 @@ const BUILTIN_ANNOUNCE = [
   '\\b(continuing|moving on) (with|to)\\b',
   '\\b(doing|on) (it|that|this) now\\b',
 ];
+// The waiter exemption holds only for an announcement that SAYS it waits ("once CI is green,
+// I merge"). Measured 2026-10-18 on the macOS instance: "the review of #6 — I do that next"
+// ended a turn; a CI watch and a shared-memory watch were running, so the gate let it pass —
+// but the review depended on neither. Operator, translated: "do not say 'I'll do it' and then
+// stop — just do it. failure class!!" Any running waiter excused any announcement. Now the
+// sentence that carries the announcement must name its condition. Data key:
+// `announce_condition_patterns` (an instance adds its language).
+const BUILTIN_CONDITION = [
+  '\\b(once|when|after|as soon as|until|if)\\b',
+];
+
+/** The sentence of `text` around the match at `index`. */
+function sentenceAt(text, index) {
+  const start = Math.max(text.lastIndexOf('. ', index), text.lastIndexOf('\n', index), -1) + 1;
+  const ends = ['. ', '\n', '? ', '! '].map((s) => text.indexOf(s, index)).filter((i) => i >= 0);
+  return text.slice(start, ends.length ? Math.min(...ends) : text.length);
+}
 
 function loadPatterns(cwd, key = 'patterns', builtins = BUILTIN_PATTERNS) {
   const patterns = [...builtins];
@@ -275,8 +292,15 @@ process.stdin.on('end', () => {
     // Asked through the tool, or the tool is missing here and the reply says so: the closing
     // question is not judged. (An announcement still is — asking is not doing the work.)
     if (!seen.asked && !NO_TOOL_LINE.test(seen.finalText)) uniq(tail.match(loadPatterns(cwd)), hits);
-    if (!hits.length && !seen.waiting && !reissue) {
-      uniq(tail.match(loadPatterns(cwd, 'announce_patterns', BUILTIN_ANNOUNCE)), announced);
+    if (!hits.length && !reissue) {
+      const rx = loadPatterns(cwd, 'announce_patterns', BUILTIN_ANNOUNCE);
+      const cond = loadPatterns(cwd, 'announce_condition_patterns', BUILTIN_CONDITION);
+      for (const m of tail.matchAll(rx)) {
+        // A running waiter excuses only the announcement whose sentence names what it waits for.
+        cond.lastIndex = 0;
+        if (seen.waiting && cond.test(sentenceAt(tail, m.index))) continue;
+        uniq([m[0]], announced);
+      }
     }
   } catch (e) {
     return allow(); // transcript unreadable — never block because of that
@@ -287,7 +311,9 @@ process.stdin.on('end', () => {
       reason:
         'STOPPEN-GATE (an announcement is not an action — the turn ends and nothing runs).\n' +
         `Announced in this reply: ${announced.slice(0, 3).join(' · ')}\n` +
-        'No background waiter is running. Either DO the announced step now (tool call in this ' +
+        (seen.waiting
+          ? 'A waiter is running, but this announcement does not say it waits for it. Either DO the announced step now (tool call in this '
+          : 'No background waiter is running. Either DO the announced step now (tool call in this ') +
         'turn), or arm the waiter it depends on, or state plainly who or what you wait for. ' +
         'If that is already true, re-issue the reply unchanged — it will pass.',
     }));
