@@ -244,6 +244,23 @@ def rows(repo):
     return out
 
 
+CORE_ROOT = os.environ.get("DEVICE_STATUS_CORE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_TAG_COMMITS = {}
+
+
+def tag_commit(tag):
+    """The commit a tag names in THIS core checkout (short), or "" when unknown.
+
+    WHY (measured 2026-10-18, after the history cut): two devices reported "v1.4.4" — one from the
+    old history (7a801ae), one from the new (f713888). The table compared tag names only, so a brain
+    still on the archived history looked current. A tag name is not an identity; its commit is."""
+    if tag not in _TAG_COMMITS:
+        ok = re.fullmatch(r"v\d+\.\d+\.\d+", tag or "")
+        rc, sha = run(["git", "-C", CORE_ROOT, "rev-parse", "--short=12", f"refs/tags/{tag}^{{commit}}"]) if ok else (1, "")
+        _TAG_COMMITS[tag] = sha if rc == 0 else ""
+    return _TAG_COMMITS[tag]
+
+
 def problems(row):
     r = row["report"]
     if not r:
@@ -251,6 +268,9 @@ def problems(row):
     out = []
     core = r.get("core") or {}
     tag = core.get("tag", "")
+    have, want = (core.get("commit") or "")[:12], tag_commit(tag)
+    if have and want and not (have.startswith(want) or want.startswith(have)):
+        out.append(f"core {tag} is commit {have[:7]}, not this core's {tag} ({want[:7]}) - old history or a local build")
     for p in r.get("plugins") or []:
         if not p["plugin"].startswith("brain-core"):
             continue
