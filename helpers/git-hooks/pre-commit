@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# pre-commit — checks where a defect is born instead of at the end of the chain.
+#
+# WHY (measured 2026-08-08 on the proving brain): leak-scan and suite-check ran only in CI, i.e.
+# on push. A push of 16 collected commits found two hits that had sat in the tree for several
+# commits — without the chance push they would have stayed. A checker at the end of the chain says
+# nothing about the state in between. Ported from that brain's instance hook into the core so every
+# brain runs the same checks (2026-10-18).
+#
+# GLOBAL (core.hooksPath), so it behaves in EVERY repo: what a repo does not ship is not checked —
+# no failure, no noise. Emergency bypass: git commit --no-verify (deliberately possible; a hook that
+# cannot be bypassed gets switched off globally at the first conflict and then protects nothing).
+set -u
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+core=$(cd "$here/../.." && pwd)
+brain=$(cd "$core/.." && pwd)
+py=python3; command -v "$py" >/dev/null 2>&1 || py=python
+fail=0
+
+run_check() {   # run_check <label> <command...>
+  local label=$1; shift
+  local out
+  if ! out=$("$@" 2>&1); then
+    echo ""
+    echo "pre-commit: $label BLOCKS the commit"
+    echo "$out" | tail -25
+    fail=1
+  fi
+}
+
+# 1. Instance data in a tool repo: only where the repo ships its own scanner (core, suites). The
+#    brain's watch list goes along for the names; without one the generic classes still apply.
+if [ -f "$root/scripts/leak-scan.py" ]; then
+  if [ -f "$brain/.claude/rules/leak-names.json" ] && [ "$root" != "$brain" ]; then
+    LEAK_NAMES_JSON="$(cat "$brain/.claude/rules/leak-names.json")" run_check "leak-scan" "$py" "$root/scripts/leak-scan.py"
+  else
+    run_check "leak-scan" "$py" "$root/scripts/leak-scan.py"
+  fi
+fi
+
+# 2. Suite contract against the core: only where a dependency manifest lies.
+if [ -f "$root/dependencies.json" ] && [ -f "$core/scripts/suite-check.py" ]; then
+  run_check "suite-check" "$py" "$core/scripts/suite-check.py" "$root"
+fi
+
+# 3. A repo's own hardcode lint (show network parameters never hardcoded) — where it ships one.
+if [ -f "$root/scripts/hardcode-lint.py" ]; then
+  run_check "hardcode-lint" "$py" "$root/scripts/hardcode-lint.py"
+fi
+
+# 4. shared-memory: entry rules bite when writing, not at the weekly scan (`--staged` judges only
+#    what the commit adds). A shared-memory repo carries parties.json at its root.
+if [ -f "$root/parties.json" ] && [ -f "$core/scripts/shared-memory-lint.py" ]; then
+  run_check "shared-memory-lint" "$py" "$core/scripts/shared-memory-lint.py" --repo "$root" --staged
+fi
+
+# No invariant-check here: it exits 1 whenever a register carries OPEN invariants, which is its
+# normal state — a report, not a gate. Only real pass/fail checks belong in a blocking hook.
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "Nothing was committed. Fix it — or, with a reason: git commit --no-verify"
+  exit 1
+fi
+exit 0
