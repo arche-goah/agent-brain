@@ -150,7 +150,7 @@ await page.getByText(/welcome back/i).click();
 
 // OK: Semantic HTML
 await page.locator('button[type="submit"]').click();
-await page.locator('input[name="email"]').fill('test@test.com');
+await page.locator('input[name="email"]').fill('test@example.com');
 
 // AVOID: Classes and IDs (can change frequently)
 await page.locator('.btn-primary').click();  // Avoid

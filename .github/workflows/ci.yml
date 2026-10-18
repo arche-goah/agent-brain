@@ -30,13 +30,32 @@ concurrency:
 jobs:
   leaks:
     runs-on: ubuntu-latest
+    # The watch list arrives as a secret (never in the repo); LEAK_NAMES_REQUIRED makes a
+    # missing secret red instead of a silent pass. Findings are printed redacted.
+    env:
+      LEAK_NAMES_JSON: ${{ secrets.LEAK_NAMES_JSON }}
+      LEAK_NAMES_REQUIRED: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: instance-data leak scan
+      - name: instance-data leak scan (tree)
         run: python3 scripts/leak-scan.py
+      # Every commit the event brings in: author/committer address and message. A PR scans
+      # base..head; a push scans before..after, or the whole history when the ref is new.
+      - name: leak scan (commits)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            python3 scripts/leak-scan.py --no-tree --commits "$HEAD"
+          else
+            python3 scripts/leak-scan.py --no-tree --commits "$BASE..$HEAD"
+          fi
 
   lint:
     runs-on: ubuntu-latest
