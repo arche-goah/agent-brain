@@ -66,6 +66,11 @@
  *   (g) the brain's `.claude/rules/collab-watch.json` is filled in AND no standing watch lives
  *       (no live collab-watch lock, no collab-watch armed in this turn) — independent of any
  *       own act; see standingConfig() below. A close stamp passes it (the session ends).
+ *   (h) the reply declares the work finished ("nothing open", "all done", "the session can be
+ *       closed"; other languages via `done_claim_patterns` in `.claude/rules/watch-gate.json`)
+ *       while a CI watch started anywhere in this SESSION has no GREEN/RED verdict read yet —
+ *       see pendingCi() below. Not covered by a close stamp: the close names its open ends
+ *       instead of declaring nothing open.
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
  *
@@ -112,6 +117,20 @@ const NO_WATCHER_BUILTIN = ['⚙\\s*no\\s+watcher\\s*:'];
 // (f) a ticket, or a comment that asks something.
 const ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
 const COMMENT = /\bgh\s+(?:issue|pr)\s+comment\b/;
+// (h) a reply that declares the work finished. English built-ins; other languages are instance
+// data (`done_claim_patterns`). Quoted text is stripped first, as for (e).
+const DONE_CLAIM_BUILTIN = [
+  '\\bnothing\\s+(?:is\\s+)?(?:left\\s+|still\\s+)?open\\b',
+  '\\b(?:all|everything)\\s+(?:is\\s+)?(?:done|finished|through)\\b',
+  '\\b(?:the\\s+)?session\\s+can\\s+(?:be\\s+)?(?:closed|ended)\\b',
+  '\\bwe\\s+are\\s+done\\b',
+];
+// A CI watch as started, with its target: `ci-watch.sh pr <owner/repo> <nr>` or `ref <owner/repo> <ref>`.
+const CI_WATCH_TARGET = /\bci-watch\.sh["']?\s+(pr|ref)\s+["']?([\w.-]+\/[\w.-]+)["']?\s+["']?([\w./#-]+)/i;
+// Its verdict lines (scripts/ci-watch.sh): GREEN and RED are verdicts; UNKNOWN is not. NO-CI (the
+// repo has no Actions workflow, exit 3) is a terminal answer for every target in that repo.
+const CI_VERDICT = /CI-WATCH (?:GREEN|RED): ([\w.-]+\/[\w.-]+) (PR #\d+|[\w./-]+)/g;
+const CI_NO_CI = /CI-WATCH NO-CI: ([\w.-]+\/[\w.-]+)/g;
 
 function loadPatterns(root) {
   let cfg = {};
@@ -121,7 +140,55 @@ function loadPatterns(root) {
     if (Array.isArray(extra)) for (const p of extra) { try { new RegExp(p); out.push(p); } catch (e) { /* skip */ } }
     return new RegExp(out.join('|'), 'iu');
   };
-  return { handStep: merge(HAND_STEP_BUILTIN, cfg.hand_step_patterns), noWatcher: merge(NO_WATCHER_BUILTIN, cfg.no_watcher_markers) };
+  return { handStep: merge(HAND_STEP_BUILTIN, cfg.hand_step_patterns), noWatcher: merge(NO_WATCHER_BUILTIN, cfg.no_watcher_markers),
+    doneClaim: merge(DONE_CLAIM_BUILTIN, cfg.done_claim_patterns) };
+}
+
+/**
+ * (h) CI watches started in this SESSION whose verdict was never read. A watch counts as started
+ * when a Monitor or background call runs `ci-watch.sh pr|ref <owner/repo> <target>`; it counts as
+ * read when a later message the agent received (a tool result, a harness notification) carries
+ * its `CI-WATCH GREEN|RED` line. `UNKNOWN` (timeout, conflict) is no verdict. A newer watch on the
+ * same target replaces the older one. Session-wide on purpose: the claim "nothing open" is made
+ * turns after the merge whose CI it forgets (measured 2026-10-18 on the macOS mini instance — a
+ * watch on main armed after a merge, then "nothing open, our work is through" twice while that
+ * run was still in progress; the operator asked back before closing the session).
+ */
+function pendingCi(tp) {
+  const started = new Map(); // key -> index of the latest start
+  const read = new Map();    // key -> index of the latest verdict
+  const noCi = new Map();    // repo -> index of the latest NO-CI answer
+  let i = 0;
+  const seen = (text) => {
+    for (const m of String(text || '').matchAll(CI_VERDICT)) read.set(`${m[1].toLowerCase()} ${m[2]}`, i);
+    for (const m of String(text || '').matchAll(CI_NO_CI)) noCi.set(m[1].toLowerCase(), i);
+  };
+  for (const line of readTail(tp)) {
+    if (!line.trim()) continue;
+    let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    const msg = d.message; if (!msg) continue;
+    i += 1;
+    if (msg.role === 'user') {
+      if (typeof msg.content === 'string') { seen(msg.content); continue; }
+      for (const b of Array.isArray(msg.content) ? msg.content : []) {
+        if (b.type === 'text') seen(b.text);
+        if (b.type === 'tool_result') seen(typeof b.content === 'string' ? b.content
+          : (Array.isArray(b.content) ? b.content.map((x) => x.text || '').join('\n') : ''));
+      }
+      continue;
+    }
+    if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
+    for (const b of msg.content) {
+      if (b.type !== 'tool_use') continue;
+      const inp = b.input || {};
+      if (!(b.name === 'Monitor' || inp.run_in_background)) continue;
+      const m = CI_WATCH_TARGET.exec(String(inp.command || ''));
+      if (!m) continue;
+      const target = m[1].toLowerCase() === 'pr' ? `PR #${m[3].replace(/^#/, '')}` : m[3];
+      started.set(`${m[2].toLowerCase()} ${target}`, i);
+    }
+  }
+  return [...started].filter(([k, at]) => !(read.get(k) > at) && !(noCi.get(k.split(' ')[0]) > at)).map(([k]) => k);
 }
 
 /** Quoted text and code are talk ABOUT a request, not a request. */
@@ -538,6 +605,15 @@ function main(input) {
         + 'Monitor({command: "bash core/scripts/collab-watch.sh", timeout_ms: 1800000}) and re-arm at every expiry '
         + 'notice; a brain that must not watch declares "standing_watch": "off: <why>" in .claude/rules/collab-watch.json',
       covered: () => true });
+    }
+  }
+  // (h) the reply declares the work finished while a CI verdict of this session is still unread
+  if (pats.doneClaim.test(stripQuoted(lastText))) {
+    const pending = pendingCi(input.transcript_path);
+    if (pending.length) {
+      missing.push({ text: `the reply says the work is finished, but ${pending.length} CI watch(es) of this session have `
+        + `no verdict read yet (${pending.slice(0, 4).join(', ')}) — a merge or push is done only with its CI verdict: `
+        + 'say it is open and what is awaited, or read the verdict first', covered: null });
     }
   }
   if (!missing.length) process.exit(0);
