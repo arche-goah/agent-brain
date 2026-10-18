@@ -160,7 +160,8 @@ refused before in this session (a merge, deleting a branch, a settings change) â
 issued: it goes, with every question for the operator, into the instance's ledger, and the
 operator gets them bundled in the next report. The rest of the work continues. Allowed
 actions must go through; a prompt on one is a finding about the allow list, not a reason to
-stop the watch.
+stop the watch. This holds ONLY while the watch is armed (and in `autonomous-run`); outside
+these modes the operator gets the interactive question with clear options as always.
 
 ## Local cross-session hand-off
 

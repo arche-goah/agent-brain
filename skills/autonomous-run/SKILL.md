@@ -132,7 +132,8 @@ The `disarm` output is the evidence that belongs in the report:
    raise one (not surely in the allow list, or prompted or refused before) and every
    question for the operator go into the instance's ledger and reach the operator bundled
    in the report — no interactive question mid-run. The rest continues. Same rule for an
-   armed collaboration watch: skill `collab-watch`, "Never wait on a prompt".
+   armed collaboration watch: skill `collab-watch`, "Never wait on a prompt". Outside these
+   modes, questions stay interactive with clear options, as always.
 
 ## Read time, do not compute it
 
