@@ -341,8 +341,36 @@ check "(g) no collab-watch.json: not judged here" "$T/g1.jsonl" allow "$R"
 printf '{"_comment": ["a <placeholder> only in the comment"], "repo_watches": []}\n' > "$SW/.claude/rules/collab-watch.json"
 check "(g) a placeholder only in _comment still judges" "$T/g1.jsonl" block "$SW"
 
+# --- (h) "nothing open" while a CI verdict of this session is unread (measured 2026-10-18: a
+# watch on main armed after a merge, then "nothing open, our work is through" twice while that
+# run was still in progress). The watch was armed TURNS earlier — the gate reads the session.
+WATCH_MAIN="bash core/scripts/ci-watch.sh ref o/r main 1800"
+{ user "merge it"; tool Bash "$WATCH_MAIN" bg; asst "merged, CI is watched"; user "anything open?"; asst "Nothing open, all done."; } > "$T/dc1.jsonl"
+check "(h) done claim, CI watch of an earlier turn without a verdict" "$T/dc1.jsonl" block "$R"
+{ user "merge it"; tool Bash "$WATCH_MAIN" bg; user "<task-notification>CI-WATCH GREEN: o/r main — success</task-notification>"; user "anything open?"; asst "Nothing open, all done."; } > "$T/dc2.jsonl"
+check "(h) done claim after the verdict was read" "$T/dc2.jsonl" allow "$R"
+{ user "merge it"; tool Bash "$WATCH_MAIN" bg; user "<task-notification>CI-WATCH UNKNOWN: timeout after 1800s — ref o/r main never reached a terminal verdict</task-notification>"; user "anything open?"; asst "Nothing open, all done."; } > "$T/dc3.jsonl"
+check "(h) UNKNOWN is no verdict" "$T/dc3.jsonl" block "$R"
+{ user "merge it"; tool Bash "$WATCH_MAIN" bg; user "anything open?"; asst "One thing is open: the CI run on main, awaited."; } > "$T/dc4.jsonl"
+check "(h) pending CI said as open" "$T/dc4.jsonl" allow "$R"
+{ user "anything open?"; asst "Nothing open, all done."; } > "$T/dc5.jsonl"
+check "(h) done claim without any CI watch" "$T/dc5.jsonl" allow "$R"
+{ user "merge it"; tool Bash "$WATCH_MAIN" bg; user "<task-notification>CI-WATCH GREEN: o/r main — success</task-notification>"; user "merge the next"; tool Bash "$WATCH_MAIN" bg; user "anything open?"; asst "Nothing open, all done."; } > "$T/dc6.jsonl"
+check "(h) a newer watch on the same target after the old verdict" "$T/dc6.jsonl" block "$R"
+{ user "merge it"; tool Bash "$WATCH_MAIN" bg; user "<task-notification>CI-WATCH GREEN: o/r PR #8 — 11 checks, none failing</task-notification>"; user "anything open?"; asst "Nothing open, all done."; } > "$T/dc7.jsonl"
+check "(h) a verdict of another target does not count" "$T/dc7.jsonl" block "$R"
+{ user "build"; tool Monitor "bash core/scripts/ci-watch.sh pr o/r 8 1800"; user "<task-notification>CI-WATCH GREEN: o/r PR #8 — 11 checks, none failing</task-notification>"; user "anything open?"; asst "Nothing open, all done."; } > "$T/dc8.jsonl"
+check "(h) PR watch with its verdict read" "$T/dc8.jsonl" allow "$R"
+{ user "merge it"; tool Bash "$WATCH_MAIN" bg; user "anything open?"; asst 'You asked whether "nothing open" holds — the CI run on main is still awaited.'; } > "$T/dc9.jsonl"
+check "(h) a quoted claim is talk about it" "$T/dc9.jsonl" allow "$R"
+DC="$T/dc-brain"; mkdir -p "$DC/.claude/rules"
+{ user "merge it"; tool Bash "$WATCH_MAIN" bg; user "noch was offen?"; asst "Nichts offen, unsere Arbeit ist durch."; } > "$T/dc10.jsonl"
+check "(h) other language without instance patterns: built-ins only" "$T/dc10.jsonl" allow "$DC"
+printf '{"done_claim_patterns": ["\\\\bnichts\\\\s+(?:mehr\\\\s+)?offen\\\\b", "\\\\barbeit\\\\s+ist\\\\s+durch\\\\b"]}\n' > "$DC/.claude/rules/watch-gate.json"
+check "(h) instance done-claim patterns" "$T/dc10.jsonl" block "$DC"
+
 G0="$G"; G="$T/stub.cjs"; before=$fail; fail=0
-for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2 cs2 cs5; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2 cs2 cs5 dc1 dc3 dc6 dc7; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
 check "stub on g1" "$T/g1.jsonl" block "$SW" >/dev/null
 caught=$fail; G="$G0"; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed every must-block case"
