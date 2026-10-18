@@ -506,9 +506,11 @@ their AIs:
    through a tool that cuts them short.
 6. **An operator may hand the AI side of their brain to another party's AIs** (operator
    decisions 2026-10-16/18). Recorded in the shared memory (who hands over, to whom, what stays
-   with the operator). Three routes, by one test — does it need a human at that machine, or
-   judgement about the core and AI mechanics? (a) **Own terrain, reversible** (tidy-ups, memory,
-   local branches, commits and pushes to that brain): the brain's AI decides and reports. (b)
+   with the operator). In this order: first the brain's AI decides whatever it can and may
+   itself (ASK OR ACT, as always); only what it cannot goes on, by one test — does it need a
+   human at that machine, or judgement about the core and AI mechanics? (a) **Own terrain,
+   reversible** (tidy-ups, memory, local branches, commits and pushes to that brain): the
+   brain's AI decides and reports. (b)
    **A human at that machine** (a permission dialog, a push or merge only their hand can trigger,
    writes at their devices, their domain, money, hardware, anything time-critical while the
    receiving side is not active): their operator, directly — never parked on the receiving side.
