@@ -27,6 +27,10 @@ template reaches a brain once, so a core tool the harness must let the agent run
 mode, in the classifier refusing it as a workaround. Measured 2026-10-11 on a Windows brain:
 the agent could not close its own answered question, the operator had to run the command by
 hand; the macOS brain, which carries the entry, ran the same command three times that day.
+The same holds for the template's core UPDATE path (`claude plugin update|enable|...`, the
+push block on `core/`): those entries name no core path, but without them the AI cannot
+update its own core. Measured 2026-10-18 on a macOS brain: the move to 2.0.0 stopped at the
+channel switch and the push block, both refused by the classifier.
 
 ALSO REPORTED: a wired gate whose instance data is missing or empty, so it checks nothing
 (`INERT-WITHOUT:` line in the helper's header names the file and keys; `"inert_ok": "<reason>"`
@@ -137,6 +141,11 @@ def wired_helpers(root, wired):
     return out
 
 
+# Template permissions a brain must carry: entries into the core, and the core update path.
+CORE_PERMISSION = re.compile(r"core/(helpers|scripts)|^Bash\(claude plugin (update|marketplace update|enable|disable|install)\b"
+                             r"|remote set-url --push origin DISABLED")
+
+
 def allow_entries(settings):
     return [e for e in ((settings.get("permissions") or {}).get("allow") or []) if isinstance(e, str)]
 
@@ -173,7 +182,7 @@ def main():
 
     not_granted = []
     for entry in allow_entries(template):
-        if re.search(r"core/(helpers|scripts)", entry) and not granted(entry, have_allow):
+        if CORE_PERMISSION.search(entry) and not granted(entry, have_allow):
             not_granted.append('permissions: "%s" from the core template is not granted here - every run of a core '
                                'tool it covers ends in a prompt, or in auto mode in the classifier refusing it; add it '
                                'to .claude/settings.json permissions.allow' % entry)

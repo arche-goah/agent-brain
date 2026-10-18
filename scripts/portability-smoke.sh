@@ -441,9 +441,16 @@ case "$_rc:$_hc" in
   1:*'permissions: "Bash(node core/helpers/*)" from the core template is not granted'*) ok "hook-coverage names a core permission the brain does not grant";;
   *) bad "hook-coverage permission case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
+#     The core update path names no core file but is reported the same way (measured
+#     2026-10-18: a macOS brain without it could not switch its core channel by itself).
+case "$_hc" in
+  *'permissions: "Bash(claude plugin enable brain-core*)" from the core template is not granted'*) ok "hook-coverage names a missing core update permission";;
+  *) bad "hook-coverage update-path case: out='$(printf '%s' "$_hc" | grep -a permissions: | head -1)'";;
+esac
 "$PY" -c 'import json,sys
 p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
-d["permissions"]["allow"]=["Bash(node core/*)","Bash(python3 core/*)","Bash(bash core/*)","Bash(core/scripts/*)"]
+d["permissions"]["allow"]=["Bash(node core/*)","Bash(python3 core/*)","Bash(bash core/*)","Bash(core/scripts/*)",
+  "Bash(claude plugin *)","Bash(git -C core remote set-url --push origin DISABLED)"]
 json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$T/hookbrain/.claude/settings.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
 case "$_hc" in
