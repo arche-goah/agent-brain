@@ -75,7 +75,9 @@ function gate(input) {
   const cwd = input.cwd || process.cwd();
   let text = cmd;
   for (const f of handedFiles(cmd)) {
-    try { text += '\n' + fs.readFileSync(path.resolve(cwd, f), 'utf8'); } catch (e) { /* the write fails on it too */ }
+    // `~` expands as the shell does it: a `--body-file ~/<file>` that stays unread hides its key (2026-10-18).
+    const p = f.replace(/^~(?=$|[\\/])/, require('os').homedir());
+    try { text += '\n' + fs.readFileSync(path.resolve(cwd, p), 'utf8'); } catch (e) { /* the write fails on it too */ }
   }
   if (new RegExp(`<!--\\s*instance-key:\\s*${key}\\s*-->`, 'i').test(text)) return 0;
   const noBody = /\bgh\s+pr\s+review\b/.test(cmd) && !/--body(-file)?\b|\s-b\s|\s-F\s/.test(cmd);

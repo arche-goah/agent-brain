@@ -93,6 +93,13 @@ expect "a name in the text next to a home path still blocks" block "$T" "gh pr c
 mkdir -p "$T/scratch-Users-zorbalina-proj" && printf 'clean\n' > "$T/scratch-Users-zorbalina-proj/b.md"
 expect "a name inside an existing path passes"              allow "$T" "gh pr create -R o/pub --title fix --body-file $NT/scratch-Users-zorbalina-proj/b.md"
 expect "a slash word in the text is no path, still blocks"  block "$T" 'gh pr comment 1 -R o/pub --body "see zorbalina/notes"'
+# `~` in the command: the shell expands it, so the guard must too (2026-10-18, Windows instance).
+# Before: `git -C ~/<private clone>` found no remote and blocked as "unknown"; a `--body-file
+# ~/<file>` stayed unread — and unscanned, so a name in it passed. HOME points at the fixture.
+HOME="$NT" USERPROFILE="$NT" expect "git -C ~/<private clone> passes"  allow "$T" 'git -C ~/privclone commit -m "fix for zorbalina"'
+HOME="$NT" USERPROFILE="$NT" expect "git -C ~/<public clone> blocks"   block "$T" 'git -C ~/pubclone commit -m "fix for zorbalina"'
+HOME="$NT" USERPROFILE="$NT" expect "name inside --body-file ~/<file> blocks" block "$T" 'gh pr comment 1 -R o/pub --body-file ~/named.md'
+HOME="$NT" USERPROFILE="$NT" expect "clean --body-file ~/<file> passes"       allow "$T" 'gh pr comment 1 -R o/pub --body-file ~/clean.md'
 
 # no watch list: nothing to check against
 rc=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 1 -R o/pub --body zorbalina"}}' \

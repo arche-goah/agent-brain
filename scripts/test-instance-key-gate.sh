@@ -36,6 +36,9 @@ printf 'body\n<!-- instance-key: %s -->\n' "$KEY" > "$T/body.md"
 probe "create with key in --body-file" "gh pr create --head x --title t --body-file $(native "$T/body.md")" allow
 printf 'body without key\n' > "$T/nokey.md"
 probe "create, --body-file without key" "gh pr create --head x --title t --body-file $(native "$T/nokey.md")" block
+# `~` in --body-file: the shell expands it, so the gate must too — else the file stays unread and
+# the key in it is never seen (2026-10-18, Windows instance). HOME points at the fixture.
+HOME="$T" USERPROFILE="$T" probe "create, key in --body-file ~/<file>" "gh pr create --head x --title t --body-file ~/body.md" allow
 probe "issue comment without key" "gh issue comment 9 -R o/r --body hi" block
 probe "review --approve without a body" "gh pr review 5 -R o/r --approve" block
 probe "merge with a marker comment is not a post" "gh pr merge 5 -R o/r --squash # MECHANISM-OK: x" allow

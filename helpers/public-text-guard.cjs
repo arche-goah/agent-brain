@@ -74,6 +74,16 @@ function unquote(s) {
   return s.replace(/^(['"])(.*)\1$/, '$2');
 }
 
+// A path as the shell sees it: `~` and `$HOME` expand, then it resolves against the cwd.
+// Measured 2026-10-18 (Windows instance): `git -C ~/Projects/<private clone> commit …` — the
+// guard resolved the literal `~`, found no remote, called the repo "unknown" and blocked a
+// private commit; the same gap let a `--body-file ~/<file>` go unread, i.e. unscanned.
+function resolveFrom(cwd, p) {
+  const home = require('os').homedir();
+  const s = String(p).replace(/^~(?=$|[\\/])/, home).replace(/^\$HOME(?=$|[\\/])/, home);
+  return path.resolve(cwd || '.', s);
+}
+
 // Files the command hands over as text. A path that cannot be read is skipped: the write
 // itself would fail on it too.
 function referencedFiles(cmd) {
@@ -106,7 +116,7 @@ function targetRepos(cmd, cwd) {
   if (!slugs.size) {
     const c = /git\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd);
     const dir = c ? unquote(c[1]) : cwd;
-    const s = dir && slugFromRemote(path.resolve(cwd || '.', dir));
+    const s = dir && slugFromRemote(resolveFrom(cwd, dir));
     if (s) slugs.add(s);
     else if (/(^|\s)gh\s/.test(cmd)) slugs.add('?'); // gh without a resolvable repo: unknown
   }
@@ -164,15 +174,15 @@ function gate(input) {
   const located = cmd.split(/\s+/).map((w) => {
     const p = unquote(w).replace(/^--?[\w-]+=/, '').replace(/^@/, '');
     if (!/[\\/]/.test(p)) return w;
-    try { return fs.existsSync(path.dirname(path.resolve(cwd, p))) ? '<path>' : w; } catch (e) { return w; }
+    try { return fs.existsSync(path.dirname(resolveFrom(cwd, p))) ? '<path>' : w; } catch (e) { return w; }
   }).join(' ');
   scan(located.replace(/(\/Users\/|\/home\/|[A-Za-z]:[\\/]+Users[\\/]+)[^\/\\\s"']+/g, '$1<home>'), 'the command');
   for (const f of referencedFiles(cmd)) {
-    try { scan(fs.readFileSync(path.resolve(cwd, f), 'utf8'), f); } catch (e) { /* unreadable: the write fails too */ }
+    try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { /* unreadable: the write fails too */ }
   }
   const a = AUTHOR_RX.exec(cmd);
   if (a) {
-    const dir = path.resolve(cwd, a[3] ? unquote(a[3]) : '.');
+    const dir = resolveFrom(cwd, a[3] ? unquote(a[3]) : '.');
     try {
       const ident = execFileSync('git', ['-C', dir, 'var', 'GIT_AUTHOR_IDENT'],
         { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().replace(/\s+\d+\s+[+-]\d{4}\s*$/, '');
