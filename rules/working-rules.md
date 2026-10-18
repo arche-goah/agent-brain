@@ -504,5 +504,12 @@ their AIs:
    not build; nothing there means one line in the thread ("building it"), then build. And
    nothing is merged over an open finding in its thread — read the comments in full, never
    through a tool that cuts them short.
+6. **An operator may hand the AI side of their brain to another party's AIs** (operator
+   decisions 2026-10-16/18). Recorded in the shared memory (who hands over, to whom, what stays
+   with the operator). Then every rule here that says "ask the operator" means, for AI matters
+   (mechanics, skills, hooks, rules, tidy-ups, deep checks, the core): the receiving AIs DECIDE
+   and the brain's AI carries it out. Only what the handover keeps — the operator's domain,
+   money, hardware, and steps only their hand can do — goes to that operator, bundled. Sending
+   an AI question back to the human who handed it over is the defect this item closes; the handover is data in the shared memory's `parties.json` (`ai_handover`), and its lint names such a referral when it is written.
 
 History: core/docs/rule-history.md, "Working Across Parties".

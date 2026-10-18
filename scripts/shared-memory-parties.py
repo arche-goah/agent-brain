@@ -107,6 +107,49 @@ def known(parties: dict) -> set[str]:
             | {f"os:{o}" for o in OS_VALUES} | EVERYONE)
 
 
+HANDOVER_KEEPS = re.compile(r"\bhandover-keeps:\s*\S", re.I)
+REFERRAL_BUILTIN = [r"\b(?:on|with) your (?:human|operator)'?s? (?:word|ok|yes)\b",
+                    r"\bask your (?:human|operator)\b", r"\byour (?:human|operator) (?:decides|has to decide)\b"]
+
+
+def handed_over_to(person: str, parties: dict) -> str:
+    """The person whose AIs decide `person`'s AI questions (`people.<p>.ai_handover.to`), or ""."""
+    p = (parties.get("people") or {}).get(person) or {}
+    h = p.get("ai_handover") if isinstance(p, dict) else None
+    return str((h or {}).get("to") or "").lower() if isinstance(h, dict) else ""
+
+
+def handover_referral(sender: str, audience: str, text: str, parties: dict) -> str | None:
+    """The person a message sends an AI question BACK to although they handed it over, or None.
+
+    WHY (operator decision 2026-10-18): a collaborator's operator handed every AI question of
+    their brain to another party's AIs (recorded as `ai_handover` in parties.json). Measured
+    that day: two receiving AIs still answered two such questions with "on your human's word" —
+    the question went back to exactly the person who had handed it over. A message from a
+    receiving AI to a device of the handing-over person that refers the decision to that person
+    is named; `handover-keeps: <why>` marks the cases the handover keeps (their domain, money,
+    hardware, hand-only steps). Referral wording beyond the English built-ins is data:
+    `handover_referral_patterns` at the root of parties.json."""
+    devs = devices(parties)
+    me = devs.get((sender or "").strip().lower())
+    if not me or HANDOVER_KEEPS.search(text or ""):
+        return None
+    pats = REFERRAL_BUILTIN + [str(x) for x in parties.get("handover_referral_patterns") or []]
+    try:
+        rx = re.compile("|".join(pats), re.I)
+    except re.error:
+        rx = re.compile("|".join(REFERRAL_BUILTIN), re.I)
+    # Quoted wording is talk ABOUT a referral (a correction that cites the old answer), not one.
+    plain = re.sub(r"„[^“”\"\n]*[“”\"]|\"[^\"\n]*\"|`[^`\n]*`|«[^»\n]*»", " ", text or "")
+    if not rx.search(plain):
+        return None
+    for t in tokens(audience):
+        person = t.split(":", 1)[1] if t.startswith("person:") else (devs.get(t) or (None,))[0]
+        if person and handed_over_to(person, parties) == me[0]:
+            return person
+    return None
+
+
 def is_category(token: str) -> bool:
     return token.startswith(("os:", "person:")) or token in EVERYONE
 

@@ -18,6 +18,7 @@ Run: scripts/shared-memory-lint-test.py    Exit 0 = all green.
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import subprocess
 import sys
@@ -528,6 +529,35 @@ def main() -> int:
             ok("49b OPEN.md is an index, not an entry")
         else:
             bad(f"49b OPEN.md linted as an entry: {c}")
+
+        # 50-54. AI HANDOVER (check 9b, 2026-10-18). lee handed the AI side of lee's brain to
+        #     sam's AIs; a message from sam's AI that sends an AI question back to lee is named.
+        repo = build(tmp / "handover")
+        (repo / "parties.json").write_text(json.dumps({
+            "people": {"sam": {"github": "s", "devices": {"sam-mac": {"os": "macos"}}},
+                       "lee": {"github": "l", "devices": {"lee-win": {"os": "windows"}},
+                               "ai_handover": {"to": "sam"}}},
+            "handover_referral_patterns": ["\\bauf das wort deines menschen\\b"]}), encoding="utf-8")
+        bl = tmp / "handover-baseline.txt"
+        bl.write_text("# empty\n", encoding="utf-8")
+
+        def handover(log: str) -> list:
+            (repo / "ops" / "LOG.md").write_text("# Log\n\n" + log, encoding="utf-8")
+            return [i for i in sml.lint(repo, bl)["findings"]["audience"]
+                    if i["issue"].startswith("an AI question sent back")]
+
+        res = handover("## 2026-10-18 · sam-mac — AN lee-win: old branches\nDelete them on your human's word.\n")
+        ok("50 an AI question sent back to the human who handed it over is named") if len(res) == 1 \
+            else bad(f"50 referral missed: {res}")
+        res = handover("## 2026-10-18 · sam-mac — AN lee-win: Branches\nLoeschen auf das Wort deines Menschen.\n")
+        ok("51 referral wording from parties.json is matched") if len(res) == 1 else bad(f"51 data pattern: {res}")
+        res = handover("## 2026-10-18 · sam-mac — AN lee-win: desk\nhandover-keeps: a desk write. "
+                       "Only on your human's word.\n")
+        ok("52 handover-keeps marks what the handover keeps") if not res else bad(f"52 escape ignored: {res}")
+        res = handover("## 2026-10-18 · sam-mac — AN lee-win: old branches\nDecided: delete them.\n")
+        ok("53 NEGATIVE: a decision without referral is silent") if not res else bad(f"53 false positive: {res}")
+        res = handover("## 2026-10-18 · lee-win — AN sam-mac: question\nShould I wait on your human's word?\n")
+        ok("54 NEGATIVE: the other direction is not judged") if not res else bad(f"54 wrong direction: {res}")
 
     return 1 if fails else 0
 

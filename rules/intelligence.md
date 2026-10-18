@@ -61,7 +61,8 @@ decisions 2026-10-09):
 3. **Deep check** — only on a reason: `coherence-scan` (contradictions between rules),
    `memory-dream` (memory hygiene), `full-audit` (all of them plus synthesis, before a big
    restructuring). The AI RECOGNISES the reason and TELLS the operator — what, why now, and
-   the measured price — and never starts it on its own. Reasons: five or more new dated
+   the measured price — and never starts it on its own (an operator who handed the AI side to
+   another party's AIs: those AIs decide, `working-rules.md` Working Across Parties #6). Reasons: five or more new dated
    rules since the last coherence register; the memory index near its limit or
    contradictions found in passing; a restructuring of the core or the instance ahead;
    a brain-scan finding that comes back for the third time. The price is not the same on

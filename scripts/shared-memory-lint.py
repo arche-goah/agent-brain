@@ -478,6 +478,17 @@ def field_findings(f: dict, rel: str, meta: dict, repo: Path, areas: set[str],
                 fix="an area is a folder with a LOG.md; create it or fix the name")
 
 
+def handover_findings(f: dict, where: str, sender: str, audience: str, text: str,
+                      parties: dict) -> None:
+    """9b. An AI question is not sent back to the human who handed the AI side over."""
+    who = _parties.handover_referral(sender, audience, text, parties)
+    if who:
+        f["audience"].append({"where": where, "issue": "an AI question sent back to the human who handed it over",
+                              "person": who,
+                              "fix": "decide it here (parties.json ai_handover) and tell their AI what to do; "
+                                     "only what the handover keeps goes to them — say so: `handover-keeps: <why>`"})
+
+
 def audience_findings(f: dict, where: str, audience: str, what: str, parties: dict,
                       known: set[str], escape: str = "", unknown: bool = True) -> None:
     """9. Every audience token resolves; a Windows check is not sent to one Windows device.
@@ -528,6 +539,8 @@ def log_audience(f: dict, rel: str, text: str, parties: dict, known: set[str]) -
             section.append(nxt)
         audience_findings(f, f"{rel}: {line[:80]}", to, m.group(3) or "", parties, known,
                           escape="\n".join([line] + section), unknown=False)
+        handover_findings(f, f"{rel}: {line[:80]}", m.group(2) or "", to,
+                          "\n".join([line] + section), parties)
 
 
 def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN) -> dict:
@@ -682,6 +695,8 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
                 audience_findings(f, rel, str(meta.get("audience") or ""),
                                   f"{p.stem}\n{fm.get('description') or ''}", parties, known,
                                   escape=text)
+                handover_findings(f, rel, str(meta.get("von") or ""), str(meta.get("audience") or ""),
+                                  text, parties)
             # 10. routing fields — no ratchet: they are optional, judged only where used
             field_findings(f, rel, meta, repo, areas, devices)
 
