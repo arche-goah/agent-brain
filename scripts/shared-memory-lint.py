@@ -896,10 +896,20 @@ def main() -> int:
         if not items:
             continue
         print(f"  {cat}{' [advisory]' if cat in ADVISORY else ''} ({len(items)}):")
-        for it in items[:20]:
-            print("    - " + ", ".join(f"{k}={v}" for k, v in it.items()))
-        if len(items) > 20:
-            print(f"    … {len(items) - 20} more")
+        # Grouped by issue: a flat cut after 20 items hid every rarer issue behind a common
+        # one (measured: 100 audience findings, the AI-handover referrals never shown).
+        by_issue: dict = {}
+        for it in items:
+            by_issue.setdefault(it.get("issue", ""), []).append(it)
+        per = 20 if len(by_issue) == 1 else 5
+        for issue, group in by_issue.items():
+            if len(by_issue) > 1:
+                print(f"    {issue or '(no issue text)'} ({len(group)}):")
+            for it in group[:per]:
+                print("    - " + ", ".join(f"{k}={v}" for k, v in it.items() if k != "issue"
+                                         or len(by_issue) == 1))
+            if len(group) > per:
+                print(f"    … {len(group) - per} more")
         print()
     return 1 if total else 0
 
