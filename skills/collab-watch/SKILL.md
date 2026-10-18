@@ -152,6 +152,21 @@ marks as a direction decision goes to the operator (the rest continues); tags, r
 and pins follow the instance's release rules; making repos public and deployments are
 always gated.
 
+**Never wait on a prompt.** A permission prompt halts the whole session until the operator
+clicks — every channel goes blind behind it (measured 2026-10-18: one merge prompt stopped
+an armed watch until the operator came back). While armed, issue only what passes without a
+prompt. An action that may raise one — not surely covered by the allow list, or prompted or
+refused before in this session (a merge, deleting a branch, a settings change) — is not
+issued: it goes, with every question for the operator, into the instance's ledger, and the
+operator gets them bundled in the next report. The rest of the work continues: whatever is
+safely doable gets done, whatever the agent can decide as well as the operator (comparative
+test, `rules/intelligence.md`) gets decided, and only what MUST be the operator's decision
+is parked and listed later. No duration is needed — the watch runs until the operator
+stops it. Allowed
+actions must go through; a prompt on one is a finding about the allow list, not a reason to
+stop the watch. This holds ONLY while the watch is armed (and in `autonomous-run`); outside
+these modes the operator gets the interactive question with clear options as always.
+
 ## Local cross-session hand-off
 
 Several sessions can share one machine and one checkout. What exists today:
