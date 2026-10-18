@@ -26,7 +26,7 @@ cat > "$T/bin/gh" <<'EOF'
 #!/usr/bin/env bash
 [ "${FAKE_DOWN:-0}" = 1 ] && exit 1
 if [ "$1" = api ]; then
-  [ "$2" = rate_limit ] && { echo '{}'; exit 0; }
+  [ "$2" = rate_limit ] && { echo "${FAKE_RATE:-{\}}"; exit 0; }
   path="${2%%\?*}"; repo=$(printf '%s' "$path" | cut -d/ -f3)
   chan=$(printf '%s' "$path" | cut -d/ -f4-5 | tr '/' '-')
   f="$FAKE_DIR/$repo.$chan.json"
@@ -135,6 +135,19 @@ seed f; out=$(run f "acme/one" FAKE_DOWN=1)
 has "blind watch announces itself" "WATCH-ERROR: gh cannot reach GitHub" "$out"
 cur=$(tr -d '\r\n' < "$T/state/repo-activity-f-cursor.txt")
 [[ "$cur" == "2026-01-01T00:00:00Z" ]] && ok || bad "cursor unchanged while blind" "got $cur"
+
+echo "budget guard: a short interval slows itself when the shared account runs low"
+low='{"resources":{"core":{"remaining":4000,"limit":5000},"graphql":{"remaining":600,"limit":5000}}}'
+full='{"resources":{"core":{"remaining":4900,"limit":5000},"graphql":{"remaining":4800,"limit":5000}}}'
+seed h; out=$(run h "acme/one" FAKE_RATE="$low")
+has   "low GraphQL budget slows the watch" "GitHub budget of this account at 12% (floor 25%)" "$out"
+has   "events still reported in the slow round" "COMMENT acme/one u1" "$out"
+seed i; out=$(run i "acme/one" FAKE_RATE="$full")
+hasnt "NEGATIVE: a full budget does not slow" "GitHub budget" "$out"
+seed j; out=$(run j "acme/one" FAKE_RATE="$low" WATCH_RATE_FLOOR_PCT=10)
+hasnt "NEGATIVE: the floor is configurable" "GitHub budget" "$out"
+seed k; out=$(run k "acme/one")
+hasnt "NEGATIVE: an unreadable answer stretches nothing" "GitHub budget" "$out"
 
 echo "lock: a live holder is respected"
 seed g; echo $$ > "$T/state/repo-activity-g.pid"
