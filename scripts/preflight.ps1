@@ -54,6 +54,10 @@ else {
 if (Get-Command gh -ErrorAction SilentlyContinue) {
   gh auth status *> $null
   if ($LASTEXITCODE -eq 0) { OK "gh CLI logged in" } else { BAD "gh not logged in" "gh auth login" }
+  # One git login path for every brain: HTTPS to github.com authenticates through gh (see preflight.sh).
+  $helper = git config --get-urlmatch credential.helper https://github.com 2>$null
+  if ("$helper" -match "gh auth git-credential") { OK "git login for github.com goes through gh" }
+  else { BAD "git login for github.com does not go through gh" "gh auth setup-git" }
 } else { BAD "gh CLI missing" "winget install GitHub.cli — then open a NEW terminal, otherwise gh stays missing from PATH" }
 
 # The question is "can I reach GitHub over SSH", not "is an agent running" — same
