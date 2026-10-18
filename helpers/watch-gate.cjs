@@ -127,8 +127,10 @@ const DONE_CLAIM_BUILTIN = [
 ];
 // A CI watch as started, with its target: `ci-watch.sh pr <owner/repo> <nr>` or `ref <owner/repo> <ref>`.
 const CI_WATCH_TARGET = /\bci-watch\.sh["']?\s+(pr|ref)\s+["']?([\w.-]+\/[\w.-]+)["']?\s+["']?([\w./#-]+)/i;
-// Its verdict lines (scripts/ci-watch.sh): GREEN and RED are verdicts; UNKNOWN is not.
+// Its verdict lines (scripts/ci-watch.sh): GREEN and RED are verdicts; UNKNOWN is not. NO-CI (the
+// repo has no Actions workflow, exit 3) is a terminal answer for every target in that repo.
 const CI_VERDICT = /CI-WATCH (?:GREEN|RED): ([\w.-]+\/[\w.-]+) (PR #\d+|[\w./-]+)/g;
+const CI_NO_CI = /CI-WATCH NO-CI: ([\w.-]+\/[\w.-]+)/g;
 
 function loadPatterns(root) {
   let cfg = {};
@@ -155,9 +157,11 @@ function loadPatterns(root) {
 function pendingCi(tp) {
   const started = new Map(); // key -> index of the latest start
   const read = new Map();    // key -> index of the latest verdict
+  const noCi = new Map();    // repo -> index of the latest NO-CI answer
   let i = 0;
   const seen = (text) => {
     for (const m of String(text || '').matchAll(CI_VERDICT)) read.set(`${m[1].toLowerCase()} ${m[2]}`, i);
+    for (const m of String(text || '').matchAll(CI_NO_CI)) noCi.set(m[1].toLowerCase(), i);
   };
   for (const line of readTail(tp)) {
     if (!line.trim()) continue;
@@ -184,7 +188,7 @@ function pendingCi(tp) {
       started.set(`${m[2].toLowerCase()} ${target}`, i);
     }
   }
-  return [...started].filter(([k, at]) => !(read.get(k) > at)).map(([k]) => k);
+  return [...started].filter(([k, at]) => !(read.get(k) > at) && !(noCi.get(k.split(' ')[0]) > at)).map(([k]) => k);
 }
 
 /** Quoted text and code are talk ABOUT a request, not a request. */
