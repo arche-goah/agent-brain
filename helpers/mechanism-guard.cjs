@@ -35,6 +35,7 @@
  * without the flag keep the old behaviour; a brain that never sets it changes nothing.
  */
 const fs = require('fs');
+const { withoutPublished } = require('./published-text.cjs');
 
 // A heredoc body is literal text ONLY when its consumer cannot execute it. Scanning the
 // raw command without stripping produces a false positive on any heredoc that merely
@@ -235,7 +236,10 @@ process.stdin.on('end', () => {
   const rules = loadRules();
   if (marker && !rules.some((r) => r.needsOperatorWord)) process.exit(0);
 
-  const stripped = stripMessages(stripHeredocs(cmd));
+  // The published text of gh/git (messages, titles, bodies, fields) is data, not a command: the
+  // shared extraction blanks exactly those values and leaves every other byte for the rules
+  // (published-text.cjs). A line it cannot read to the end keeps the two older cuts.
+  const stripped = (cmd && withoutPublished(cmd, false)) || stripMessages(stripHeredocs(cmd));
   for (const r of rules) {
     const hit = r.target === 'path' ? (filePath && r.re.test(filePath)) : (cmd && r.re.test(stripped));
     if (!hit || (r.foregroundOnly && background)) continue;
