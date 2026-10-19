@@ -91,5 +91,17 @@
       "cmd": "core/helpers/delivered-read-gate.cjs",
       "mode": "block"
     }
+  ],
+  "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",
+  "_optional_checks": [
+    {
+      "label": "NOT VERIFIED",
+      "marker": "VERIFICATION-GATE",
+      "cmd": "core/helpers/verification-gate.cjs",
+      "mode": "block",
+      "extract": "finished \\(\"([^\"]+)\"\\) after code changed this turn \\(([^)]+)\\)",
+      "template": "\"{1}\" after changes to {2} - load verification-before-completion and check first",
+      "maxLength": 160
+    }
   ]
 }
