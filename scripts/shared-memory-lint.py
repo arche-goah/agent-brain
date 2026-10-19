@@ -863,6 +863,9 @@ def main() -> int:
     ap.add_argument("--baseline", type=Path, default=None,
                     help=f"ratchet baseline (default: <repo>/{BASELINE_NAME})")
     a = ap.parse_args()
+    # OS-9: --inventory and --json are redirected into files that a workflow and its agents
+    # parse as JSON; the entries carry umlauts. Unpinned, Windows writes the ANSI codepage.
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 
     if not a.repo.is_dir():
         print(f"ERROR: shared-memory repo not found: {a.repo}", file=sys.stderr)

@@ -197,8 +197,8 @@ run_gate() { # $1 name, $2 final text (JSON), $3 block|allow|loud, $4 cwd, $5 re
   [ -n "$5" ] && printf '%s\n' "$5" >> "$tr"
   printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$2" >> "$tr"
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"cwd":"%s"}' \
-          "$(native "$tr")" "$6" "$(native "$4")" | node "$G" 2>&1)"
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"cwd":"%s"%s}' \
+          "$(native "$tr")" "$6" "$(native "$4")" "${XP:-}" | node "$G" 2>&1)"
   case "$3" in
     block) case "$out" in *'"decision":"block"'*STOPPEN-GATE*) ;; *) bad "$1 did not block: '$out'"; return;; esac ;;
     loud)  case "$out" in *'"decision"'*|'') bad "$1 not a loud let-through: '$out'"; return;; *systemMessage*) ;; *) bad "$1 no systemMessage: '$out'"; return;; esac ;;
@@ -247,6 +247,21 @@ run_gate de-ask-reissue-blocks '"Bericht fertig. Soll ich das jetzt umsetzen?"' 
 run_gate tool-plus-unrelated-question '"Merged as chosen. Do you want me to tidy the old branch as well?"' allow "$CWD" "$ASKQ" false
 # ... but asking is not doing: an announcement after the tool call is still judged
 run_gate tool-then-announcement '"Merge chosen. Doing that now."' block "$CWD" "$ASKQ" false
+
+# --- own echo by LABEL (operator 2026-10-10: no codes in the stop lines). Behind the
+# dispatcher the gate gets stop_check.label and its line carries no token: the re-issue is
+# still judged as its own, the cooldown still holds, another check's line still is not its own.
+ECHO_LABEL='{"message":{"role":"user","content":"Stop hook feedback:\nCLOSING QUESTION — Closing question \"Should I proceed with the merge?\" - ask it through the question tool"}}'
+ECHO_FOREIGN='{"message":{"role":"user","content":"Stop hook feedback:\nCLASS — gate.cjs changed - does the same defect exist anywhere else?"}}'
+XP=',"stop_check":{"label":"CLOSING QUESTION","marker":"STOPPEN-GATE"}'
+run_gate label-echo-reissue-judged "$DQ" block "$CWD" "$PRIOR
+$ECHO_LABEL" true '"echo":"label"'
+run_gate label-echo-cooldown "$DQ" allow "$CWD" "$PRIOR
+$ECHO_LABEL
+{\"message\":{\"role\":\"user\",\"content\":\"next\"}}" false
+run_gate foreign-label-reissue-passes "$DQ" allow "$CWD" "$PRIOR
+$ECHO_FOREIGN" true
+XP=''
 
 echo
 [ "$fail" -eq 0 ] && echo "stoppen-gate fixtures (incl. language-as-data): ALL passed" || echo "FAILURE"

@@ -79,7 +79,9 @@ function allow() { process.exit(0); }
 
 const RECORD_ONLY = process.argv.includes('--record');
 const HOOK_ECHO = /^Stop hook feedback:/;
-const OWN_ECHO = /PROMISE-GATE/;
+// Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
+const { ownEcho, declare } = require('./stop-echo.cjs');
+let OWN_ECHO = /PROMISE-GATE/;
 const COOLDOWN_TURNS = 2;
 const TAIL_BYTES = 4 * 1024 * 1024;
 
@@ -217,6 +219,7 @@ function record(cwd, hits) {
 process.stdin.on('end', () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { return allow(); }
+  OWN_ECHO = ownEcho(input, OWN_ECHO);
 
   if (input.stop_hook_active) return allow();
   if (!input.transcript_path) return allow();
@@ -256,6 +259,6 @@ process.stdin.on('end', () => {
     + 'whose reason had already lapsed).\n'
     + 'Bounded already, or the condition still holds? Re-issue unchanged.';
 
-  console.log(JSON.stringify({ decision: 'block', reason }));
+  console.log(JSON.stringify(declare({ decision: 'block', reason }, input)));
   process.exit(0);
 });

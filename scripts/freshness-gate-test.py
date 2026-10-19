@@ -114,6 +114,28 @@ with tempfile.TemporaryDirectory() as tmp:
     res = run({"script": "phase('a')"}, st, root)
     cases.append(("nameless script allows", res is None))
 
+    # 13 brain-scan: the core floor is 7 days, not the 14-day default -> day 8 ALLOWS
+    scan = "export const meta = { name: 'brain-scan', description: 'x' }\nphase('a')"
+    st = make_state(tmp, "brain-scan", age_days=8)
+    res = run({"script": scan}, st, root)
+    cases.append(("brain-scan at day 8 allows (7-day core floor)", res is None))
+
+    # 14 control: brain-scan at day 5 is under the floor -> DENY
+    st = make_state(tmp, "brain-scan", age_days=5)
+    res = run({"script": scan}, st, root)
+    cases.append(("brain-scan at day 5 denies (control)", res is not None))
+
+    # 14b the operator's clear word (marker) passes under the floor
+    res = run({"script": scan + "\n// FRESHNESS-OK: operator asked for a scan now"}, st, root)
+    cases.append(("brain-scan under the floor passes with the marker", res is None))
+
+    # 15 an instance entry replaces the core cadence
+    json.dump({"workflows": {"brain-scan": {"thresholdDays": 10}}}, open(cfgp, "w"))
+    st = make_state(tmp, "brain-scan", age_days=8)
+    res = run({"script": scan}, st, root)
+    cases.append(("instance entry replaces the brain-scan default", res is not None))
+    os.unlink(cfgp)
+
 fails = [n for n, ok in cases if not ok]
 for n, ok in cases:
     print(("PASS" if ok else "FAIL"), n)

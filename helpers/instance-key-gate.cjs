@@ -61,10 +61,36 @@ function handedFiles(cmd) {
   return out.filter((f) => f !== '-');
 }
 
+// The checkout a `gh pr create` opens its PR from: the nearest folder upward with a `.git`.
+function checkoutOf(dir) {
+  for (let d = path.resolve(dir); ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, '.git'))) return d;
+    if (path.dirname(d) === d) return null;
+  }
+}
+
+// Every change declares its level (helpers/change-level.cjs): checked here BEFORE the PR exists,
+// not first in CI - a red check found after the post is a PR that already asked for review.
+function levelFindings(cmd, cwd) {
+  if (!/(^|[;&|(]\s*|\s)gh\s+pr\s+create\b/.test(cmd)) return [];
+  const repo = checkoutOf(cwd);
+  if (!repo) return [];
+  return require('./change-level.cjs').check(repo).findings;
+}
+
 function gate(input) {
   if (!input || !['Bash', 'PowerShell'].includes(input.tool_name)) return 0;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
   if (!WRITE_RX.test(cmd)) return 0;
+  const lv = levelFindings(cmd, input.cwd || process.cwd());
+  if (lv.length) {
+    console.error('BLOCKED (instance-key-gate, change level): a changelog fragment of this PR does not declare its level.\n' +
+      lv.map((f) => '  ' + f).join('\n') + '\n' +
+      'Write in the fragment, next to (test: …): (level: <symptom|reader|writer|design>; higher: <level> — <why not> | none;\n' +
+      'debt: <what stays open> | none). Four questions: which levels did you see, which did you build, why not the\n' +
+      'higher one, what stays open? Check: node helpers/change-level.cjs check');
+    return 2;
+  }
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const key = keyFor(selfId(root));
   if (!key) {

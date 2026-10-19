@@ -376,6 +376,13 @@ if command -v node >/dev/null 2>&1 && [[ -f "$HERE/question-gate.cjs" ]]; then
   CLAUDE_PROJECT_DIR="$R" node "$HERE/question-gate.cjs" list 2>/dev/null
 fi
 
+# Level debts of the core (change-level.cjs): silent unless a change named a debt more than
+# 14 days ago and no later change settled it — what "you only notice it some time later"
+# looks like before it happens (operator decision 2026-10-19).
+if command -v node >/dev/null 2>&1 && [[ -f "$HERE/change-level.cjs" ]]; then
+  node "$HERE/change-level.cjs" debts --root "$HERE/.." --brief 2>/dev/null
+fi
+
 # Clock: silent unless the system time is off against the outside (one HEAD, 3 s cap,
 # silent offline). A wrong clock corrupts commit timestamps and every since= cursor.
 if [[ -f "$HERE/../scripts/clock-skew.py" ]]; then
@@ -550,12 +557,12 @@ if [[ -n "${latest:-}" ]]; then
     # Due / overdue as its own line (operator 2026-09-23): the scan is confirmed and
     # started inside an active session, so session start is where due-ness has to be
     # SAID — a bare age is a number the reader has to compare against a threshold they
-    # may not know. Due at 7 d (the weekly cadence, rules/intelligence.md), overdue at
-    # 14 d (the repeat-run freshness window, same file).
-    if (( age >= 14 )); then
-      echo "!! brain-scan OVERDUE: latest report ${age}d ago (due after 7d) — ask the operator, then run it in this session"
-    elif (( age >= 7 )); then
-      echo "!! brain-scan DUE: latest report ${age}d ago (due after 7d) — ask the operator, then run it in this session"
+    # may not know. Due at 14 d, overdue at 28 d (rules/intelligence.md, operator decision
+    # 2026-10-18); the 7-day floor before a new scan lives in freshness-gate.cjs.
+    if (( age >= 28 )); then
+      echo "!! brain-scan OVERDUE: latest report ${age}d ago (due after 14d) — ask the operator, then run it in this session"
+    elif (( age >= 14 )); then
+      echo "!! brain-scan DUE: latest report ${age}d ago (due after 14d) — ask the operator, then run it in this session"
     fi
   else
     echo "brain-scan: latest report $(basename "$latest") — age unknown (stat produced no mtime): P0=$p0 P1=$p1"

@@ -43,8 +43,12 @@ same session repeats none of slots 3-5 unless the state changed or an unanswered
 becomes the next step's blocker (then asked again, verbatim — "Presenting to the Operator").
 
 **The brain-scan runs only in an active session, on the operator's OK** (operator
-decision 2026-09-23): the bootup reports it due after 7 days and overdue after 14; the
-first answer asks, and the scan starts in this session once the operator says yes. No
+decision 2026-09-23): the bootup reports it due after 14 days and overdue after 28; the
+first answer asks, and the scan starts in this session once the operator says yes. A new
+scan needs at least 7 days since the last completed one — `freshness-gate.cjs` carries that
+floor as the core default for `brain-scan`; earlier only on the operator's clear word, given
+as the `FRESHNESS-OK` marker (operator decision 2026-10-18: every two weeks is the report
+cadence, one week the floor). No
 scheduler starts it unattended — an unattended run has no one to read its findings,
 stalls when the machine sleeps, and costs tokens nobody ordered. `core/scripts/brain-scan.sh`
 stays only for an instance that explicitly opts into a scheduler and says so in its own
@@ -54,7 +58,7 @@ rules.
 decisions 2026-10-09):
 1. **Session start** — every session, mechanical, near-free: open items, deviations from
    the core, register drift, growth of the always-loaded context. Reports only what is off.
-2. **Brain-scan** — weekly, on the operator's OK (above). It first checks what became of
+2. **Brain-scan** — every two weeks, on the operator's OK (above). It first checks what became of
    the last run's findings, then the boundary between instance and core, then the
    checklist; every finding leaves with an exit (skill `backlog-catch-up`). It does not
    fix inside the run — fixing happens in the session with the operator.

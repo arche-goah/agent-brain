@@ -24,6 +24,7 @@ Register format (Markdown, blocks starting at '## '):
     check:     <external, e.g. a tool>     | when no grep covers the space
     paths:     grep arguments after the pattern (--include=/--exclude= plus paths)
     mechanizable: no|tool — <reason>       # DELIBERATELY not a grep, see below
+                  [· carrier since <date>: <hand check>]   # names what enumerates it
     known:     path=N path=N               # baseline: hits per file
     instances: 3                           # REAL sites of the class (human count)
     repeat:    yes|no                      # did it come back after a fix?
@@ -188,6 +189,22 @@ def baseline(spec):
     return out
 
 
+# A class that no grep can span is still carried when a NAMED hand check enumerates it on
+# every pass — typically a checklist point of the periodic scan. `mechanizable: no — <why>
+# · carrier since <date>: <point>` says so; the register's own language counts too (the
+# status field already accepts it). Without this the build threshold kept printing
+# "MECHANISM due" for such classes (measured on a real register: 17 of them, reported as
+# missing mechanisms run after run, although their carrier had been written in).
+# (the umlaut spelled by code point: this repo's English-only ratchet reads raw umlauts)
+_CARRIER_RE = re.compile(r"\b(?:carrier|tr(?:ae|" + chr(0xE4) + r")ger)\s+(?:since|seit)\b[^:]*:\s*(\S.*)$",
+                         re.I)
+
+
+def hand_carrier(b):
+    m = _CARRIER_RE.search(b.get("mechanizable", "") or "")
+    return m.group(1).strip() if m else ""
+
+
 def verdict(b):
     """Build threshold — the search is mandatory, the build is not.
 
@@ -199,6 +216,9 @@ def verdict(b):
     """
     m = re.search(r"\d+", b.get("instances", "") or "")
     n = int(m.group()) if m else 1
+    carrier = hand_carrier(b)
+    if carrier and not b.get("pattern"):
+        return f"carried by a hand check: {carrier} — no build due"
     if b.get("repeat", "no") == "yes" or n >= 3:
         return "MECHANISM due (>=3 sites or repeat after a fix)"
     if n == 2:

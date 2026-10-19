@@ -30,7 +30,7 @@ LOGONLY='<task-notification>
 
 run() { # name expect(block|allow) file
   local out
-  out=$(printf '{"transcript_path":"%s"}' "$(native "$3")" | node "$GATE")
+  out=$(printf '{"transcript_path":"%s"%s}' "$(native "$3")" "${XP:-}" | node "$GATE")
   if [[ "$2" == block ]]; then
     grep -q 'DELIVERED-READ' <<<"$out" && grep -q 'finding-updater' <<<"$out" && pass "$1" || fail "$1 (expected block): $out"
   else
@@ -59,5 +59,19 @@ run "unread-ok with a reason passes" allow "$T"
 # NEGATIVE CONTROL for the read check: a Read of a DIFFERENT file does not count.
 T="$TMP/other.jsonl"; { user "please go on"; user "$EVENT"; tool Read '{"file_path":"/x/shared/core/LOG.md"}'; } > "$T"
 run "control: reading another file does not count as reading this one" block "$T"
+
+# Own echo by LABEL (operator 2026-10-10: no codes in the stop lines): behind the dispatcher
+# the gate gets stop_check.label and its line carries no token — one block per turn still holds,
+# and another check's line is not its own.
+XP=',"stop_check":{"label":"UNREAD","marker":"DELIVERED-READ"}'
+T="$TMP/echo-label.jsonl"; { user "please go on"; user "$EVENT"; say "Noted."; user "Stop hook feedback:
+UNREAD — shown, not read: core/finding-updater-2026-10-18.md"; say "Not acting on it."; } > "$T"
+run "own echo by label: second stop in the turn passes" allow "$T"
+T="$TMP/echo-foreign.jsonl"; { user "please go on"; user "$EVENT"; say "Noted."; user "Stop hook feedback:
+CLASS — gate.cjs changed"; say "ok"; } > "$T"
+run "another check's line is not its own echo" block "$T"
+out=$(printf '{"transcript_path":"%s"%s}' "$(native "$T")" "$XP" | node "$GATE")
+grep -q '"echo":"label"' <<<"$out" && pass "the block declares the label echo" || fail "no label declaration: $out"
+XP=''
 
 exit $FAIL
