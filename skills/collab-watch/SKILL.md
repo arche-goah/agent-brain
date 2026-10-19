@@ -166,6 +166,11 @@ stops it. Allowed
 actions must go through; a prompt on one is a finding about the allow list, not a reason to
 stop the watch. This holds ONLY while the watch is armed (and in `autonomous-run`); outside
 these modes the operator gets the interactive question with clear options as always.
+**Two halves, two triggers** (operator decision 2026-10-19): parking ACTIONS that may raise a
+permission prompt holds whenever the watch is armed — a prompt blinds every channel. Parking
+the operator's DECISIONS holds only in autonomous mode, which the operator orders in words
+(`autonomous-run`, hard gate 7); a standing watch alone is not that mode, so with the
+operator at hand a real decision is asked through the question tool.
 
 ## Local cross-session hand-off
 
