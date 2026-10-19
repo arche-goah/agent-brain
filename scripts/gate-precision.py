@@ -49,6 +49,19 @@ def _answer_markers(root):
     return re.compile(r'^\s*(' + '|'.join(patterns) + ')', re.M)
 
 
+def _labels(root):
+    """Behind the stop dispatcher a check's line starts with its LABEL and may carry no
+    token any more (operator 2026-10-10: no codes in the lines) — map label to marker."""
+    try:
+        with open(os.path.join(root, ".claude", "rules", "stop-checks.json"), encoding="utf-8") as fh:
+            checks = json.load(fh).get("checks", [])
+    except Exception:
+        return []
+    return [(re.compile(r'^(?:· )?' + re.escape(c["label"].strip()) + r'(?: —|\s)', re.M), c["marker"])
+            for c in checks
+            if isinstance(c, dict) and isinstance(c.get("label"), str) and c["label"].strip() and c.get("marker")]
+
+
 def norm(text, markers):
     """Compare the substance: drop the lines a gate answer adds."""
     return ' '.join(markers.sub('', text).split())
@@ -57,8 +70,9 @@ def norm(text, markers):
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 8
     root = sys.argv[2] if len(sys.argv) > 2 else None
-    markers = _answer_markers(os.path.abspath(
-        root or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()))
+    here = os.path.abspath(root or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
+    markers = _answer_markers(here)
+    labels = _labels(here)
     project = project_dir(root)
     if not os.path.isdir(project):
         print(f"no transcripts found for this project: {project}")
@@ -76,7 +90,9 @@ def main():
             m = d.get("message") or {}
             if m.get("role") == "user" and isinstance(m.get("content"), str):
                 if m["content"].startswith("Stop hook feedback:"):
-                    names = sorted(set(GATE.findall(m["content"])))
+                    names = set(GATE.findall(m["content"]))
+                    names.update(mk for rx, mk in labels if rx.search(m["content"]))
+                    names = sorted(names)
                     events.append(("block", names))
                 else:
                     events.append(("operator", None))

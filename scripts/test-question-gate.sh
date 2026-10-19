@@ -29,7 +29,7 @@ tres() { printf '{"message":{"role":"user","content":[{"type":"tool_result","con
 
 check() { # $1 name, $2 transcript, $3 block|allow, $4 root, [$5 stop_hook_active]; $SID = session id
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"}' "$(native "$2")" "${5:-false}" "${SID:-}" \
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"%s}' "$(native "$2")" "${5:-false}" "${SID:-}" "${XP:-}" \
     | CLAUDE_PROJECT_DIR="$(native "$4")" node "${GATE:-$G}" 2>&1)"
   if [ "$3" = block ]; then
     case "$out" in *'"decision":"block"'*) ok "$1 blocks";; *) bad "$1 did not block: '$out'";; esac
@@ -135,6 +135,18 @@ R="$T/r6"; fresh "$R"
 check "re-issue (stop_hook_active)" "$T/t1.jsonl" allow "$R" true
 { cat "$T/t1.jsonl"; user "Stop hook feedback: QUESTION-GATE: ..."; asst "settling it"; } > "$T/t6.jsonl"
 check "second stop in the same turn" "$T/t6.jsonl" allow "$R"
+# Own echo by LABEL (operator 2026-10-10: no codes in the stop lines): behind the dispatcher the
+# gate gets stop_check.label and its line carries no token; another check's line is not its own.
+XP=',"stop_check":{"label":"QUESTION","marker":"QUESTION-GATE"}'
+R="$T/r6l"; fresh "$R"
+{ cat "$T/t1.jsonl"; user "Stop hook feedback:
+QUESTION — 1 question(s) still open"; asst "settling it"; } > "$T/t6l.jsonl"
+check "second stop in the same turn, echo by label" "$T/t6l.jsonl" allow "$R"
+R="$T/r6f"; fresh "$R"
+{ cat "$T/t1.jsonl"; user "Stop hook feedback:
+CLASS — gate.cjs changed"; asst "ok"; } > "$T/t6f.jsonl"
+check "another check's line is not its own echo" "$T/t6f.jsonl" block "$R"
+XP=''
 
 # --- German only as instance data
 R="$T/r7"; fresh "$R"
