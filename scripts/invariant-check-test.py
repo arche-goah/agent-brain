@@ -234,6 +234,45 @@ status: open
         else:
             bad(f"11 prose instances mishandled: {out.strip()[:200]}")
 
+        # 12. a class that cannot be grepped, whose `mechanizable` names the hand check that
+        #     carries it ("carrier since <date>: <checklist point>"), HAS its mechanism: the
+        #     checklist enumerates it on every scan. Measured on a real register: 17 such
+        #     classes still printed "MECHANISM due" and the scan reported them as missing
+        #     mechanisms run after run. The register's own language counts too (the status
+        #     field already accepts it).
+        for n, clause in ((12, "carrier since 2026-10-15: scan checklist §7b"),
+                          (13, "Tr" + chr(0xE4) + "ger seit 2026-10-15: Scan-Checkliste §7b"),
+                          (14, "Traeger seit 2026-10-15: Scan-Checkliste §7b")):
+            reg = write(tmp, f"""## Y-{n} — carried by a checklist point
+invariant: enumerated by hand, carried by the checklist
+check: manual enumeration
+mechanizable: no — not greppable · {clause}
+instances: 5
+repeat: yes
+status: open
+""")
+            out, rc = run(reg)
+            if "MECHANISM due" not in out and "carried by" in out and "§7b" in out:
+                ok(f"{n} a named hand-check carrier is no mechanism due ({clause.split()[0]})")
+            else:
+                bad(f"{n} carrier clause ignored: {out.strip()[:200]}")
+
+        # 15. NEGATIVE: the word "carrier" alone in the reason names no carrier — the class
+        #     stays due, or the clause becomes a way to talk a backlog item away.
+        reg = write(tmp, """## Y-15 — reason mentions a carrier, names none
+invariant: still without a carrier
+check: manual
+mechanizable: no — a carrier would be nice
+instances: 5
+repeat: no
+status: open
+""")
+        out, rc = run(reg)
+        if "MECHANISM due" in out:
+            ok("15 a reason without a named carrier stays due")
+        else:
+            bad(f"15 carrier talked away without a name: {out.strip()[:200]}")
+
     return 1 if fails else 0
 
 
