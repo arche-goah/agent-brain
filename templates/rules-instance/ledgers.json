@@ -1,0 +1,7 @@
+{
+  "_comment": "Instance data for core/scripts/ledger-reconcile.py (session start, --brief). The ledgers listed here are the hand-kept detail lists whose `- [ ]` / `- [x]` entries may carry `check: <read-only shell command>` (exit 0 = done) or `check: none — <why not machine-checkable>`. At every start the script runs each check and names entries whose checkbox disagrees with it, plus open entries dated on/after ratchet_since that name no check. No file = nothing registered, nothing checked.",
+  "_fields": "ledgers: paths relative to the brain root · ratchet_since: YYYY-MM-DD — older entries without a check are left alone, newer ones are named until they carry one · timeout_s: per check (default 20); a check that runs out is reported as unanswered, never as done",
+  "ledgers": [],
+  "ratchet_since": "YYYY-MM-DD",
+  "timeout_s": 20
+}
