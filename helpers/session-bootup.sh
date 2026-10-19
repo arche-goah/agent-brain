@@ -376,6 +376,13 @@ if command -v node >/dev/null 2>&1 && [[ -f "$HERE/question-gate.cjs" ]]; then
   CLAUDE_PROJECT_DIR="$R" node "$HERE/question-gate.cjs" list 2>/dev/null
 fi
 
+# Level debts of the core (change-level.cjs): silent unless a change named a debt more than
+# 14 days ago and no later change settled it — what "you only notice it some time later"
+# looks like before it happens (operator decision 2026-10-19).
+if command -v node >/dev/null 2>&1 && [[ -f "$HERE/change-level.cjs" ]]; then
+  node "$HERE/change-level.cjs" debts --root "$HERE/.." --brief 2>/dev/null
+fi
+
 # Clock: silent unless the system time is off against the outside (one HEAD, 3 s cap,
 # silent offline). A wrong clock corrupts commit timestamps and every since= cursor.
 if [[ -f "$HERE/../scripts/clock-skew.py" ]]; then

@@ -64,11 +64,39 @@ mk "$T/doc.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","tex
 run_hook "class-gate/doc turn" core/helpers/class-gate.cjs "$T/doc.jsonl" allow
 # answered in advance: a ⚙ line after the last edit passes - before, every code turn showed the
 # operator a "Stop hook error" even when the answer was already there (2026-10-12)
-mk "$T/answered.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"scripts/hooks/probe.cjs","new_string":"x"}}]}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"fertig.\n\n⚙ no class"}]}}'
+mk "$T/answered.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"scripts/hooks/probe.cjs","new_string":"x"}}]}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"fertig.\n\n⚙ built on the writer level, no class elsewhere"}]}}'
 run_hook "class-gate/answered in advance" core/helpers/class-gate.cjs "$T/answered.jsonl" allow
 # ... but an edit AFTER the ⚙ line reopens it
-mk "$T/reopened.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"⚙ no class"},{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"scripts/hooks/probe.cjs","new_string":"x"}}]}}'
+mk "$T/reopened.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"⚙ writer level, no class"},{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"scripts/hooks/probe.cjs","new_string":"x"}}]}}'
 run_hook "class-gate/edit after the answer" core/helpers/class-gate.cjs "$T/reopened.jsonl" block "CLASS-GATE"
+# Every change names its level (2026-10-19): a ⚙ line without it is no answer
+mk "$T/nolevel.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"scripts/hooks/probe.cjs","new_string":"x"}}]}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"⚙ no class"}]}}'
+run_hook "class-gate/⚙ line without a level" core/helpers/class-gate.cjs "$T/nolevel.jsonl" block "on which level"
+# A git checkout under a temp folder is WORK (a core PR worktree), a loose temp file is not.
+# Native paths: on Windows the temp folder is ...\Temp\..., which the gate knows as temp too.
+NT=$(cygpath -m "$T" 2>/dev/null || printf '%s' "$T")
+mkdir -p "$T/wt/scripts" "$T/loose"; printf 'gitdir: /elsewhere\n' > "$T/wt/.git"
+mk "$T/worktree.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"'"$NT"'/wt/scripts/x.py","new_string":"x"}}]}}'
+run_hook "class-gate/code in a temp worktree" core/helpers/class-gate.cjs "$T/worktree.jsonl" block "CLASS-GATE"
+mk "$T/loose.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"'"$NT"'/loose/x.py","new_string":"x"}}]}}'
+run_hook "class-gate/loose temp file" core/helpers/class-gate.cjs "$T/loose.jsonl" allow
+mk "$T/wtdoc.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"'"$NT"'/wt/README.md","new_string":"x"}}]}}'
+run_hook "class-gate/doc in a temp worktree" core/helpers/class-gate.cjs "$T/wtdoc.jsonl" allow
+# rule and gate data is behaviour, other JSON stays docs
+mk "$T/ruledata.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":".claude/rules/stop-checks.json","new_string":"x"}}]}}'
+run_hook "class-gate/rule data json" core/helpers/class-gate.cjs "$T/ruledata.jsonl" block "CLASS-GATE"
+mk "$T/plainjson.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"docs/data/table.json","new_string":"x"}}]}}'
+run_hook "class-gate/plain json" core/helpers/class-gate.cjs "$T/plainjson.jsonl" allow
+# the level in the operator's language comes from instance data, never from the core
+if CG=$(resolve core/helpers/class-gate.cjs); then
+  mkdir -p "$T/brain/.claude/rules"; printf '{"level_patterns": ["\\\\bzorbalevel\\\\b"]}\n' > "$T/brain/.claude/rules/class-gate.json"
+  mk "$T/de.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"scripts/hooks/probe.cjs","new_string":"x"}}]}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"⚙ zorbalevel holds now"}]}}'
+  tp=$(cygpath -m "$T/de.jsonl" 2>/dev/null || printf '%s' "$T/de.jsonl")
+  out=$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$tp" | CLAUDE_PROJECT_DIR="$NT/brain" node "$CG" 2>&1)
+  [ -z "$out" ] && ok "class-gate/level word from instance data allows" || bad "class-gate/instance level word: ${out:0:120}"
+  out=$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$tp" | CLAUDE_PROJECT_DIR="$NT/nobrain" node "$CG" 2>&1)
+  case "$out" in *CLASS-GATE*) ok "class-gate/same line without the data blocks (discriminator)";; *) bad "class-gate/discriminator allowed";; esac
+fi
 
 # --- stop-verifier: only markers THIS turn wrote count -----------------------
 # The marker word is assembled so this fixture file does not contain it literally —
