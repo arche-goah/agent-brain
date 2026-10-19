@@ -63,6 +63,19 @@ function stripHeredocs(cmd) {
   );
 }
 
+// A MESSAGE argument (git commit -m "…", gh … --body/--title "…") MENTIONS a command, it does not
+// run it. Measured 2026-10-16: an instance rule refused a commit whose message had a line starting
+// with a guarded command; most instance rules anchor at line starts, so every multi-line message
+// that names one of them tripped. Only the quoted message text is cut out, and only when it cannot
+// execute: a double-quoted message holding $( … ) or backticks runs that code and stays scanned
+// (its heredoc prose is already handled by stripHeredocs above). Same cut as the network-drive gate.
+const MESSAGE_ARG = /(^|\s)(?:-m|--message|--body|--title|--subject)(?:\s+|=)("(?:[^"\\]|\\.)*"|'[^']*')/g;
+
+function stripMessages(cmd) {
+  return cmd.replace(MESSAGE_ARG, (match, lead, text) =>
+    text[0] === '"' && /\$\(|`/.test(text) ? match : `${lead}<MESSAGE-STRIPPED>`);
+}
+
 // TOOL RULES (added 2026-10-11): a tool environment that is meant to be driven through its MCP
 // server — not through its internals (IPC files, the server's source run by hand, GUI drivers) —
 // declares those internals ITSELF, in a `mechanism-rules.json` at the tool's root. Incident: a
@@ -222,7 +235,7 @@ process.stdin.on('end', () => {
   const rules = loadRules();
   if (marker && !rules.some((r) => r.needsOperatorWord)) process.exit(0);
 
-  const stripped = stripHeredocs(cmd);
+  const stripped = stripMessages(stripHeredocs(cmd));
   for (const r of rules) {
     const hit = r.target === 'path' ? (filePath && r.re.test(filePath)) : (cmd && r.re.test(stripped));
     if (!hit || (r.foregroundOnly && background)) continue;
