@@ -128,6 +128,14 @@ mg_probe "mechanism-guard/message substitutes the command" \
   'git commit -m \"$(fixture-shortcut --now)\"' block
 mg_probe "mechanism-guard/message flag on the shortcut itself" \
   'fixture-shortcut -m \"x\"' block
+# The shared extraction (published-text.cjs, 2026-10-19) blanks every published value, not only
+# the -m/--body forms: a gh api field and an attached -m<text> mention it, they do not run it.
+mg_probe "mechanism-guard/gh api field mentions it" \
+  'gh api repos/o/r/issues/1/comments -f body=\"fixture-shortcut is banned\"' allow
+mg_probe "mechanism-guard/attached -m<text> mentions it" \
+  "git commit '-mfixture-shortcut is documented'" allow
+mg_probe "mechanism-guard/the shortcut in a later command still blocks" \
+  'gh pr comment 1 --body \"ok\"; fixture-shortcut --now' block
 rm -rf "$MG"
 
 # --- mechanism-guard: a rule may demand the OPERATOR'S WORD behind the marker ----------

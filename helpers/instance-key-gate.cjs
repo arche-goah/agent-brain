@@ -30,7 +30,21 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+const { invocations } = require('./published-text.cjs');
+
+// Which posts the line RUNS — found among its commands, never in its message text: a commit
+// message that quotes the PR command is no post (measured 2026-10-19: such a `git commit` was
+// held for a missing key). The regexes stay only for a line the shell parser cannot read to
+// the end (heredoc, unbalanced quote): unsure means stricter.
 const WRITE_RX = /(^|[;&|(]\s*|\s)gh\s+(pr\s+(create|comment|review)|issue\s+(create|comment))\b/;
+const CREATE_RX = /(^|[;&|(]\s*|\s)gh\s+pr\s+create\b/;
+function runs(cmd, ps, subs, verbs, rx) {
+  const hit = invocations(cmd, ps, 'gh', subs, verbs);
+  return hit === null ? rx.test(cmd) : hit.length > 0;
+}
+const posts = (cmd, ps) => runs(cmd, ps, ['pr'], ['create', 'comment', 'review'], WRITE_RX)
+  || runs(cmd, ps, ['issue'], ['create', 'comment'], WRITE_RX);
+const creates = (cmd, ps) => runs(cmd, ps, ['pr'], ['create'], CREATE_RX);
 
 function unquote(s) {
   return s.replace(/^(['"])(.*)\1$/, '$2');
@@ -71,8 +85,8 @@ function checkoutOf(dir) {
 
 // Every change declares its level (helpers/change-level.cjs): checked here BEFORE the PR exists,
 // not first in CI - a red check found after the post is a PR that already asked for review.
-function levelFindings(cmd, cwd) {
-  if (!/(^|[;&|(]\s*|\s)gh\s+pr\s+create\b/.test(cmd)) return [];
+function levelFindings(cmd, cwd, ps) {
+  if (!creates(cmd, ps)) return [];
   const repo = checkoutOf(cwd);
   if (!repo) return [];
   return require('./change-level.cjs').check(repo).findings;
@@ -81,8 +95,9 @@ function levelFindings(cmd, cwd) {
 function gate(input) {
   if (!input || !['Bash', 'PowerShell'].includes(input.tool_name)) return 0;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
-  if (!WRITE_RX.test(cmd)) return 0;
-  const lv = levelFindings(cmd, input.cwd || process.cwd());
+  const ps = input.tool_name === 'PowerShell';
+  if (!posts(cmd, ps)) return 0;
+  const lv = levelFindings(cmd, input.cwd || process.cwd(), ps);
   if (lv.length) {
     console.error('BLOCKED (instance-key-gate, change level): a changelog fragment of this PR does not declare its level.\n' +
       lv.map((f) => '  ' + f).join('\n') + '\n' +
@@ -100,7 +115,8 @@ function gate(input) {
   const mark = `<!-- instance-key: ${key} -->`;
   const cwd = input.cwd || process.cwd();
   let text = cmd;
-  for (const f of handedFiles(cmd)) {
+  const pub = require('./published-text.cjs').publishedText(cmd, ps);
+  for (const f of pub ? pub.files : handedFiles(cmd)) {
     // `~` expands as the shell does it: a `--body-file ~/<file>` that stays unread hides its key (2026-10-18).
     const p = f.replace(/^~(?=$|[\\/])/, require('os').homedir());
     try { text += '\n' + fs.readFileSync(path.resolve(cwd, p), 'utf8'); } catch (e) { /* the write fails on it too */ }

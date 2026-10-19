@@ -43,6 +43,15 @@ probe "issue comment without key" "gh issue comment 9 -R o/r --body hi" block
 probe "review --approve without a body" "gh pr review 5 -R o/r --approve" block
 probe "merge with a marker comment is not a post" "gh pr merge 5 -R o/r --squash # MECHANISM-OK: x" allow
 probe "read-only gh is not a post" "gh pr view 5 -R o/r --json body" allow
+# A message that QUOTES the post command is no post (2026-10-19: a plain commit was held).
+G="g""h"
+probe "commit message quoting the PR command is no post" "git commit -m \"check before $G pr create\"" allow
+probe "the post after a ; is still found" "echo ok; $G pr comment 5 -R o/r --body hi" block
+probe "key inside \$(cat <file>) is found" "$G pr comment 5 -R o/r --body \"\$(cat $(native "$T/body.md"))\"" allow
+probe "a heredoc falls back to the whole line" "$G pr comment 5 -R o/r --body \"\$(cat <<'X'
+hi
+X
+)\"" block
 probe "no instance id: nothing to check" "gh pr comment 5 -R o/r --body hi" allow ""
 
 # The block message names the exact line to add (an agent must not have to guess the key).
