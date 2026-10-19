@@ -314,8 +314,11 @@ _tr="$T/transcript.jsonl"
 # node is a Windows binary under Git Bash and cannot open MSYS /tmp paths — hand it
 # the mixed form (C:/...); everywhere else cygpath does not exist and the path stays.
 _trn="$(cygpath -m "$_tr" 2>/dev/null || printf '%s' "$_tr")"
+# The gate also reads the file (a marker counts only while it is still there): a real file.
+mkdir -p "$T/sv"; printf '# %s later\n' "$_mk" > "$T/sv/a.py"
+_svf="$(cygpath -m "$T/sv/a.py" 2>/dev/null || printf '%s' "$T/sv/a.py")"
 printf '%s\n' '{"message":{"role":"user","content":"do the thing"}}' > "$_tr"
-printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"/x/a.py","content":"# %s later\\n"}}]}}\n' "$_mk" >> "$_tr"
+printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"%s","content":"# %s later\\n"}}]}}\n' "$_svf" "$_mk" >> "$_tr"
 _sv="$(printf '{"transcript_path":"%s","stop_hook_active":false}' "$_trn" | node "$CORE/helpers/stop-verifier.cjs" 2>&1)"
 case "$_sv" in
   *'"decision":"block"'*) ok "stop-verifier v2 blocks on a marker written this turn";;

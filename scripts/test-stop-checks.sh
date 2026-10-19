@@ -102,10 +102,20 @@ fi
 # The marker word is assembled so this fixture file does not contain it literally —
 # same reason the hook itself does it: a test that trips its own subject is useless.
 M="TO""DO"
-mk "$T/marker.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"gebaut"},{"type":"tool_use","name":"Write","id":"w1","input":{"file_path":"scripts/x.py","content":"# '"$M"': spaeter"}}]}}'
+# The gate reads the file too (a marker counts only while it is still there): real files.
+NT=$(cygpath -m "$T" 2>/dev/null || printf '%s' "$T")
+mkdir -p "$T/sv"; printf '# %s: spaeter\n' "$M" > "$T/sv/x.py"
+mk "$T/marker.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"gebaut"},{"type":"tool_use","name":"Write","id":"w1","input":{"file_path":"'"$NT"'/sv/x.py","content":"# '"$M"': spaeter"}}]}}'
 run_hook "stop-verifier/unfinished marker" core/helpers/stop-verifier.cjs "$T/marker.jsonl" block "INCOMPLETE"
-mk "$T/clean.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"gebaut"},{"type":"tool_use","name":"Write","id":"w1","input":{"file_path":"scripts/x.py","content":"print(1)"}}]}}'
+mk "$T/clean.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"gebaut"},{"type":"tool_use","name":"Write","id":"w1","input":{"file_path":"'"$NT"'/sv/x.py","content":"print(1)"}}]}}'
 run_hook "stop-verifier/clean code" core/helpers/stop-verifier.cjs "$T/clean.jsonl" allow
+# Written this turn, then removed again in the same turn (2026-10-19: it kept blocking every
+# turn end of a long autonomous stretch): the file no longer has it -> allow.
+printf 'print(1)\n' > "$T/sv/y.py"
+mk "$T/removed.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","id":"w1","input":{"file_path":"'"$NT"'/sv/y.py","content":"# '"$M"': spaeter"}},{"type":"tool_use","name":"Edit","id":"e2","input":{"file_path":"'"$NT"'/sv/y.py","new_string":"print(1)"}}]}}'
+run_hook "stop-verifier/marker written then removed" core/helpers/stop-verifier.cjs "$T/removed.jsonl" allow
+mk "$T/gone.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","id":"w1","input":{"file_path":"'"$NT"'/sv/deleted.py","content":"# '"$M"': spaeter"}}]}}'
+run_hook "stop-verifier/marker in a file that no longer exists" core/helpers/stop-verifier.cjs "$T/gone.jsonl" allow
 
 # --- diagnose-gate: a tool reported a failure and no log was read ------------
 mk "$T/fail.jsonl" \
