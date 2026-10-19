@@ -223,6 +223,9 @@ def main():
     ap.add_argument("--cached", action="store_true")
     ap.add_argument("--out", help=argparse.SUPPRESS)   # the background run's result file
     a = ap.parse_args()
+    # Absolute once, here: the --cached child runs with cwd=<root> AND gets --root, so a relative
+    # root was resolved twice and the background run wrote nothing (Windows review, 2026-10-19).
+    a.root = str(pathlib.Path(a.root).resolve())
 
     if a.cached:
         return cached(a)
