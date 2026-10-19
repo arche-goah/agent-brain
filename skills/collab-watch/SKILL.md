@@ -47,7 +47,7 @@ intervals and parties are THERE, never in a rule or a prompt.
 ```
 Monitor({ command: "bash core/scripts/collab-watch.sh",
           description: "collaboration watch: PRs, merges, comments, shared memory, sessions",
-          persistent: true })
+          timeout_ms: 1800000 })
 ```
 
 - `bash core/scripts/collab-watch.sh --dry-run` prints the plan without arming.
@@ -192,8 +192,9 @@ Run them after touching any watcher and when installing on a new machine.
 bash core/scripts/repo-activity-watch.sh status|disarm      # with REPO_ACTIVITY_TAG/STATE_DIR set
 bash core/scripts/shared-memory-watch.sh status|disarm      # with SHARED_MEMORY_LOCK_DIR set
 ```
-The Monitor expires after 30 minutes even with `persistent: true` (measured 2026-10-09, Claude Code 2.1.295,
-Windows instance: expiry notice, then the watcher process was gone) — re-arm on the expiry
+Every Monitor expires: its `timeout_ms` (read the live tool schema — on Claude Code 2.1.303,
+measured 2026-10-19, it is a required field, default 5 minutes, capped at 30 minutes, and the
+older `persistent` flag no longer exists) — set it to the cap and re-arm on the expiry
 notice; `helpers/watch-gate.cjs` catches a turn that awaits a reaction with no live watcher.
 
 After a `TaskStop` a lock can survive (the trap does not always run); a lock whose PID is

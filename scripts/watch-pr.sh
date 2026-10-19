@@ -2,7 +2,7 @@
 # watch-pr.sh — follow ONE pull request: one stdout line per new comment, inline review
 # comment and review verdict; exits when the PR is merged or closed. For Monitor:
 #
-#   Monitor({ command: "bash core/scripts/watch-pr.sh <owner>/<repo> <nr> 60", persistent: true })
+#   Monitor({ command: "bash core/scripts/watch-pr.sh <owner>/<repo> <nr> 60", timeout_ms: 1800000 })
 #
 # The repo-wide watch (scripts/collab-watch.sh) finds new PRs, merges and comments; it does
 # NOT see a review verdict that carries no inline comment (GitHub has no repo-wide reviews

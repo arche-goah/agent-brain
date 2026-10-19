@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Level 2 of the shared-memory awareness pair: poll for new commits WHILE a session is
 # open and print ONE LINE PER FIND, then keep watching. Meant to be driven by the
-# Monitor tool with persistent: true — the same shape as the PR org-watch, on purpose.
+# Monitor tool (timeout_ms, re-armed on expiry) — the same shape as the PR org-watch, on purpose.
 # Level 1 (helpers/shared-memory-check.sh, called from session-bootup) covers session
 # boundaries; this one covers everything in between.
 #

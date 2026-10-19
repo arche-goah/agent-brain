@@ -17,8 +17,8 @@
  * This class has no phrase — it is an action (a push, a PR) plus a process that is NOT
  * running. So the gate reads the turn's tool calls and asks the watcher scripts' own
  * lock files whether something lives. A watcher that ended (killed, crashed, or a Monitor
- * that expired — the harness announced "expires in 30m" on 2026-10-09 even with
- * `persistent: true` set) leaves a dead pid and counts as not armed — the same definition
+ * that expired — every Monitor ends at its timeout_ms, the old
+ * persistent flag never kept one alive) leaves a dead pid and counts as not armed — the same definition
  * the scripts' own `status` uses.
  *
  * Fires when, in the running turn (since the operator's last prompt; harness
@@ -557,7 +557,7 @@ function main(input) {
     const files = awaiting(repo, since);
     if (files.length && !smWatched(root)) {
       missing.push({ text: `shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
-        + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 60", persistent: true}) '
+        + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 60", timeout_ms: 1800000}) '
         + '(or collab-watch); mark a pure report `status: info`',
       covered: (ends) => files.every((f) => listed(ends, [path.basename(f).replace(/\.md$/, '')])) });
     }

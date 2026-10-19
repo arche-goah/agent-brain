@@ -81,13 +81,20 @@ on disk aborts the run loudly; fix the cause, then resume with `resumeFromRunId`
   contradiction register; per finding: both source locations (file + quote), a
   concrete failure scenario, resolution OPTIONS with a recommendation.
 - Derived measures are appended as `abgeleitet` ("derived") proposals to
-  `docs/maintenance/brain-scan-auftraege.md` — **NEVER executed**
-  (order-fidelity HARD). The file is an **instance artifact and may be missing**: in
+  `docs/maintenance/brain-scan-auftraege.md` — **NEVER executed by the run** (the
+  workflow reports and fixes nothing). The file is an **instance artifact and may be missing**: in
   that case the proposals go into the run's report (section "Next steps"), and the
   absence is reported. Do **not** improvise creating it — what structure the order
   list has is the operator's decision (mechanism discipline: a missing path is a
-  report-event). Rule contradictions are resolved only by the operator: which rule
-  wins is a decision, not maintenance.
+  report-event).
+- **After the run, in the session** (order fidelity #9 in `rules/working-rules.md`, the
+  rule-conflict boundary of 2026-09-30 in `rules/thinking-protocol.md`): when the scan was
+  ORDERED, its clear and safe fixes (one correct version, reversible, no live system, no
+  shared carrier) are done and reported, not presented — that includes a contradiction
+  inside the instance's OWN rules for which the agent has a clear recommendation (apply,
+  mark the old spot superseded, report). What goes to the operator: an uncertain
+  recommendation, a structural change against a documented operator decision, a rule of
+  another party, and every non-harmonizable contradiction (protocol step 3).
 - Consolidation after operator OK: one canonical place per rule, all other locations
   become pointers (structure hygiene).
 
