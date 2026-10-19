@@ -213,7 +213,7 @@ def main():
                 "git -c core.pager=rm log", "git push", "touch x"]:
         ok(not lr.permitted(cmd, lr.ALLOWED), f"refused: {cmd!r}")
     for cmd in ["grep -q x file", "test -f a && git log -1 --format=%H", "git log --oneline | grep -q fix",
-                "! grep -q TODO notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md"]:
+                "! grep -q draft notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md"]:
         ok(lr.permitted(cmd, lr.ALLOWED), f"allowed: {cmd!r}")
 
     print()
