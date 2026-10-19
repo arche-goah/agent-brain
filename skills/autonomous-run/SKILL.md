@@ -25,7 +25,9 @@ description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstae
 | Tasks | exactly the order | the order **+ the reserve pool agreed up front** |
 | Deriving own follow-up tasks | **no** | yes, but ONLY from the pool |
 
-⚠ **Without a stated duration it is NOT an autonomous run.** When in doubt, ask — do not assume.
+⚠ **Without a stated duration it is NOT a time-boxed run** — unless the operator's explicit
+word makes it a List run (table below; "autonomous" is such a word, so no duration is asked
+then). When neither holds and in doubt, ask — do not assume.
 
 ## The mechanisms (and what each one CANNOT do)
 
@@ -51,7 +53,7 @@ do, and the deadline lives in the watchdog state. None of them replaces the othe
 | Core done **exactly** at expiry | end |
 | **No reserve pool agreed**, core done early | report and stop — invent nothing (order fidelity #3, `core/rules/working-rules.md`) |
 | **No duration named**, only tasks ("push R3-R6 through") | **not an autonomous run** — normal mode: do the order, then check in (hard gate 1). No pool, no wakeup loop |
-| **List run** — a task LIST plus the operator's explicit word that the agent continues without them ("I'm away", "work the list alone"); without that word the row above applies and hard gate 1 stands. A skill with its own list loop needs the same word | wakeup yes (a forced turn end arms `ScheduleWakeup`), pool **no**, end = list empty (report and stop) or BLOCKED (hard gate 6, with its reconnect watcher); watchdog armed with a silence limit, no deadline; a skill with its own list loop points here instead of defining its own continuation |
+| **List run** — a task LIST plus the operator's explicit word that the agent continues without them ("I'm away", "work the list alone", "autonomous" / the instance language's word for it — that word IS the explicit word, ask no duration); without that word the row above applies and hard gate 1 stands. A skill with its own list loop needs the same word | wakeup yes (a forced turn end arms `ScheduleWakeup`), pool **no**, end of the WORK = list empty or BLOCKED (hard gate 6, with its reconnect watcher): a prose report, the wakeup loop stops, armed watches stay armed — the MODE ends only when the operator ends it, asks interactively himself, or closes the session (hard gate 7); watchdog armed with a silence limit, no deadline; a skill with its own list loop points here instead of defining its own continuation |
 
 ⚠ **Never stop just because the minimum time is reached.** The number says "autonomous
 for at least this long", not "stop then".
@@ -103,7 +105,8 @@ The `disarm` output is the evidence that belongs in the report:
 
 ## Hard gates
 
-1. **No duration named → no autonomous run** (normal mode, check-in at the end).
+1. **No duration named → no time-boxed run** (normal mode, check-in at the end) — except the
+   List run, which needs the operator's explicit word instead of a duration.
 2. **No reserve pool discussed → do not start** (otherwise the run drifts).
 3. **Turn ends without `ScheduleWakeup` → the run is dead.** Set it before every turn end.
 4. **Times in the report ALWAYS from `disarm`/`remaining`**, never estimated.
@@ -131,9 +134,15 @@ The `disarm` output is the evidence that belongs in the report:
    the run until someone clicks. Issue only what passes without one; an action that may
    raise one (not surely in the allow list, or prompted or refused before) and every
    question for the operator go into the instance's ledger and reach the operator bundled
-   in the report — no interactive question mid-run. The rest continues. Same rule for an
-   armed collaboration watch: skill `collab-watch`, "Never wait on a prompt". Outside these
-   modes, questions stay interactive with clear options, as always.
+   in the report — no interactive question mid-run, and none at the seeming end either:
+   the report is prose (what is done, the collected questions with a recommendation, where
+   they are filed). **What counts as autonomous** (operator decision 2026-10-19): the
+   operator ordered it in WORDS — a duration, or the explicit word of the List-run row —
+   and it lasts until they end it, ask interactively themselves, or close the session
+   (`session-close` ends it). An armed watch ALONE (a standing `collab-watch`, a ci-watch
+   after a push) is not autonomous mode: permission-prompt actions still wait for the
+   report there (`collab-watch`, "Never wait on a prompt"), but a decision for the operator
+   is asked interactively with clear options, as always.
 
 ## Read time, do not compute it
 
