@@ -1,1 +1,0 @@
-- **`scripts/test-conditional-order-gate.sh`: two fixture phrases named a real operator; they now use the generic placeholder `Alex`.** (test: T0) The core is public and carries no person's name; the fixture only needs a name-shaped token after "clear it with" and before "decides". Same assertions, all cases pass.
