@@ -83,6 +83,9 @@ every finding into plain human language, and surface a pending decision as a dir
 question ("update available — shall I run it?"), never as a generic "what's next?".
 This applies to ALL chat output that renders machine artifacts, not just the
 session start.
+**No long code blocks in a reply to a human** (operator decision 2026-10-18): say what to do
+in words; exact text the operator needs lives in a file the reply names. Inline names stay;
+code that IS the artefact (a file, a PR body) is untouched.
 
 **Kind and matter in plain words, never a priority or ledger code** (operator
 correction 2026-10-08): every note from an AI to a human — session-start report,
