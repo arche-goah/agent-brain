@@ -32,6 +32,7 @@
  * indistinguishable from one that agrees.
  */
 const fs = require('fs');
+const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
 const { isNotification } = require('./turn-kind.cjs');
@@ -128,11 +129,29 @@ process.stdin.on('end', () => {
   const markerRe = new RegExp('\\b(' + markers.join('|') + ')\\b');
   const docExt = /\.(md|markdown|mdx|txt|rst)$/i;
 
+  // A marker line counts only while it is still IN the file. The turn window runs from the
+  // last operator message, so in a long autonomous stretch a marker the turn wrote and then
+  // removed again kept blocking every turn end — measured 2026-10-19: a fixture word was
+  // replaced, `grep` on the file found nothing, the gate fired five more times. Written this
+  // turn AND present now is the object; a file that no longer exists carries no marker, and a
+  // file that cannot be read keeps the hit (an unreadable file is not proof of removal).
+  const contents = new Map();
+  const present = (file, line) => {
+    if (!contents.has(file)) {
+      const p = path.isAbsolute(file) ? file : path.join(input.cwd || process.cwd(), file);
+      let text = null;
+      try { text = fs.readFileSync(p, 'utf8'); } catch (e) { text = e.code === 'ENOENT' ? '' : null; }
+      contents.set(file, text);
+    }
+    const text = contents.get(file);
+    return text === null || text.includes(line.trim());
+  };
+
   const hits = [];
   for (const w of written) {
     if (docExt.test(w.file)) continue;
     for (const l of w.text.split('\n')) {
-      if (markerRe.test(l)) hits.push(`${w.file}: ${l.trim().slice(0, 80)}`);
+      if (markerRe.test(l) && present(w.file, l)) hits.push(`${w.file}: ${l.trim().slice(0, 80)}`);
     }
   }
 
