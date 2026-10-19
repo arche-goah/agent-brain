@@ -607,6 +607,40 @@ def main() -> int:
         res = heads("## 2026-10-15 · kim-pc — AN alex-macos: please check X\nno file\n")
         ok("62 control: a heading before STATE_SINCE is not re-judged") if not res else bad(f"62 ratchet: {res}")
 
+        # 63-67. A LOG id is the heading's place that day: at commit (--staged) the committed
+        #     headings of a day must stay that day's start. Insert/edit = shifted ids; append,
+        #     a whole day rotated out, or a new heading for a day that had none shift nothing.
+        repo = build(tmp / "inserts")
+        log = repo / "ops" / "LOG.md"
+        base_log = ("# Log\n\n## 2026-09-03 · kim-pc — AN alex-macos (status: info): sept\nx\n\n"
+                    "## 2026-10-20 · kim-pc — AN alex-macos (status: info): first\nx\n\n"
+                    "## 2026-10-20 · alex-macos — AN kim-pc (status: info): second\nx\n")
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=False)
+
+        def staged(text: str) -> list:
+            log.write_text(base_log, encoding="utf-8")
+            git("add", "-A")
+            git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
+            log.write_text(text, encoding="utf-8")
+            git("add", "-A")
+            return [i for i in sml.staged_log_inserts(repo) if "inserted, edited or removed" in i["issue"]]
+
+        res = staged(base_log + "\n## 2026-10-20 · kim-pc — AN alex-macos (status: info): third\nx\n")
+        ok("63 control: an appended heading shifts nothing") if not res else bad(f"63 append flagged: {res}")
+        res = staged(base_log.replace("## 2026-10-20 · kim-pc", "## 2026-10-20 · kim-pc — AN alex-macos "
+                                      "(status: info): inserted\nx\n\n## 2026-10-20 · kim-pc", 1))
+        ok("64 a heading inserted above the day's first entry is named") if len(res) == 1 else bad(f"64 insert: {res}")
+        res = staged(base_log.replace(": second", ": second, reworded"))
+        ok("65 an edited old heading is named") if len(res) == 1 else bad(f"65 edit: {res}")
+        res = staged(base_log.replace("## 2026-09-03 · kim-pc — AN alex-macos (status: info): sept\nx\n\n", ""))
+        ok("66 control: a whole day rotated out shifts nothing") if not res else bad(f"66 rotation flagged: {res}")
+        res = staged(base_log.replace("## 2026-10-20 · kim-pc", "## 2026-09-05 · kim-pc — AN alex-macos "
+                                      "(status: info): late\nx\n\n## 2026-10-20 · kim-pc", 1))
+        ok("67 control: a new heading for a day that had none shifts nothing") if not res \
+            else bad(f"67 new day flagged: {res}")
+
     return 1 if fails else 0
 
 

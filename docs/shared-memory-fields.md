@@ -54,7 +54,9 @@ They name what an entry settles: a request's file stem, or a LOG request's id
 writing it down is cheaper than every reader guessing it from words. `scripts/shared-memory-post.py
 reply --answers <id>` writes it; lint check 11 names a value that resolves to nothing (entries
 dated `STATE_SINCE` = 2026-10-20 or later; before, 9 entries named a LOG request in prose,
-which no tool can follow). `open-items.py` keys a LOG request by the same id, so its class and
+which no tool can follow). Because the id is a heading's place that day, a LOG is append-only
+for its headings: at commit (`--staged`) the lint names a heading inserted, edited or removed
+within a day that stays. `open-items.py` keys a LOG request by the same id, so its class and
 repeat counter stay with it when its wording changes.
 
 ## Not in this cut (deliberately)

@@ -923,6 +923,48 @@ def only_staged(repo: Path, r: dict) -> dict:
     return {**r, "findings": found, "counts": {k: len(v) for k, v in found.items()}}
 
 
+def staged_log_inserts(repo: Path) -> list[dict]:
+    """11. A LOG id is the heading's place that day (`<area>/LOG@<date>#<n>`), so a LOG is
+    append-only for its headings: the committed headings must stay the start of the staged
+    ones. A heading inserted above, or an old one edited or removed, shifts the ids after it —
+    and an `answers:` that named one of them now names another entry."""
+    import subprocess
+
+    def show(spec: str) -> str | None:
+        p = subprocess.run(["git", "-C", str(repo), "show", spec], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        return p.stdout if p.returncode == 0 else None
+
+    names = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--name-only", "--diff-filter=M"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+    out = []
+    for rel in names.splitlines():
+        if rel.rsplit("/", 1)[-1] != LOG_NAME:
+            continue
+        old, new = show(f"HEAD:{rel}"), show(f":{rel}")
+        if old is None or new is None:
+            continue
+        # Per day, the way the id counts: a day the rotation moved out whole, or a day that is
+        # new, shifts nothing; within a day that stays, the old headings must stay its start.
+        def by_day(t: str) -> dict[str, list[str]]:
+            days: dict[str, list[str]] = {}
+            for ln in t.splitlines():
+                m = _parties.HEADING.match(ln)
+                if m:
+                    days.setdefault(m.group(1), []).append(ln)
+            return days
+        was, now = by_day(old), by_day(new)
+        for day in sorted(set(was) & set(now)):
+            a, b = was[day], now[day]
+            if b[:len(a)] != a:
+                first = next(i for i in range(len(a)) if i >= len(b) or a[i] != b[i])
+                out.append({"where": f"{rel}: {a[first][:80]}",
+                            "issue": "a LOG heading was inserted, edited or removed above the end of its day",
+                            "fix": "append new entries at the end; the ids of this day's later entries "
+                                   "shift and an `answers:` naming them would name another entry"})
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--staged", action="store_true",
@@ -948,6 +990,9 @@ def main() -> int:
     r = lint(a.repo, a.baseline)
     if a.staged:
         r = only_staged(a.repo, r)
+        moved = staged_log_inserts(a.repo)
+        r["findings"]["relations"] += moved
+        r["counts"]["relations"] += len(moved)
     total = sum(n for k, n in r["counts"].items() if k not in ADVISORY)
     advisory = sum(n for k, n in r["counts"].items() if k in ADVISORY)
     if a.json:
