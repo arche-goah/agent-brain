@@ -72,6 +72,13 @@ printf '# Log\n\n## %s · me-mac — AN sam-laptop: answer\n\nSee request-answer
 # repeating the title (measured 2026-10-15: answered requests of this shape came back open after the
 # naming rule). LOGONLY-NUM closes that way; LOGONLY-NUMPAIR asks for two and the answer names one.
 printf '\n## %s · lee-win — AN me-mac: LOGONLY-NUM Windows check core #901 please\n\nno file\n\n## %s · lee-win — AN me-mac: LOGONLY-NUMPAIR check #902 and #903\n\nno file\n\n## %s · me-mac — AN lee-win: Windows #901 OK, #902 OK\n\nmeasured at the head\n' "$D" "$D" "$D" >> "$WORK/core/LOG.md"
+# The reply-matching CLASS (measured 2026-10-19: 9 of 23 listed requests were answered, still open;
+# 3 addressed to us were hidden). LOGONLY-PAREN: a colon inside "(status: open)" cut the title, so
+# no reply could name it. LOGONLY-WORDS: the answer says it in its own words. ANNOUNCED-ONE: a file
+# request answered by naming the heading that announced it, not the file stem. LOGONLY-WORDNUM:
+# same words, other number - stays open. LOGONLY-CC: "(one-machine: …), me-mac" hid us as addressee.
+entry core/request-announced.md sam-laptop me-mac "ANNOUNCED-ONE file request"
+printf '\n## %s · lee-win — AN me-mac (status: open): LOGONLY-PAREN release only after that build\n\nno file\n\n## %s · me-mac — AN lee-win (status: info): re LOGONLY-PAREN release only after that build — read\n\nseen\n\n## %s · ana-win — AN me-mac: LOGONLY-WORDS new repo has the dependency graph off\n\nno file\n\n## %s · me-mac — AN ana-win: re dependency graph off LOGONLY-WORDS — was on already\n\nseen\n\n## %s · ana-win — AN me-mac: LOGONLY-WORDNUM Windows check core #904\n\nno file\n\n## %s · me-mac — AN ana-win: re LOGONLY-WORDNUM Windows check core #905\n\nanother number\n\n## %s · kim-win — AN sam-laptop (one-machine: only his AI), me-mac: LOGONLY-CC visible to me too\n\nno file\n\n## %s · sam-laptop — AN me-mac: ANNOUNCED heading core check please\n\ncore/request-announced.md\n\n## %s · me-mac — AN sam-laptop: re ANNOUNCED heading core check — done\n\nmeasured\n' "$D" "$D" "$D" "$D" "$D" "$D" "$D" "$D" "$D" >> "$WORK/core/LOG.md"
 git -C "$WORK" add -A
 git -C "$WORK" commit -qm seed
 git -C "$WORK" push -q origin HEAD:main
@@ -83,7 +90,7 @@ grep -q 'ANSWERED-ONE' <<<"$OUT" && fail "request named in OUR log section still
 # The foreign LOG section names request-open-one too — that must NOT count as our answer.
 # LOGONLY-REREF: a request that is itself a reply ("re <earlier> — <what>") is answered by
 # "re <what>" — measured 2026-10-15: such an answer of 2026-10-14 sat open into the next start.
-for x in REPORT-ONE MINE-ONE CLOSED-ONE LOCAL-ONE STATUSCAST-ONE EITHER-ONE LOGONLY-REPLIED LOGONLY-BYNAME LOGONLY-TWIN-A LOGONLY-REREF LOGONLY-NUM\\b; do
+for x in REPORT-ONE MINE-ONE CLOSED-ONE LOCAL-ONE STATUSCAST-ONE EITHER-ONE LOGONLY-REPLIED LOGONLY-BYNAME LOGONLY-TWIN-A LOGONLY-REREF LOGONLY-NUM\\b LOGONLY-PAREN LOGONLY-WORDS\\b ANNOUNCED; do
   grep -q "$x" <<<"$OUT" && fail "$x must not be listed" || pass "$x not listed"
 done
 # One reply, one request: the sender's OTHER open request stays listed, and a reply to a sender
@@ -101,9 +108,14 @@ grep -q 'LOGONLY-NUMPAIR' <<<"$OUT" && pass "an answer naming one of two numbers
 grep -q 'GERMAN-ONE' <<<"$OUT" && pass "a German request word is a default prefix" || fail "German-named request missing"
 grep -q 'NEXT-ONE' <<<"$OUT" && pass "status open with next naming us counts, whatever the audience size" \
   || fail "status open + next: us missing"
+grep -q 'LOGONLY-WORDNUM' <<<"$OUT" && pass "same words with another number leave the request open" \
+  || fail "LOGONLY-WORDNUM closed by an answer about #905"
+grep -q 'LOGONLY-CC' <<<"$OUT" && pass "a parenthesis with a colon does not hide a later addressee" \
+  || fail "LOGONLY-CC hidden: (one-machine: …) cut the addressee list"
 # OPEN-ONE, STATUS-ONE, LOGONLY-OPEN, BROADCAST-ONE (optional), LOGONLY-TWIN-B, LOGONLY-UNNAMED,
-# LOGONLY-NUMPAIR, GERMAN-ONE, NEXT-ONE. sam-laptop's "ping" is closed by our later reply that says "re ping".
-grep -q 'open requests to this instance: 9$' <<<"$OUT" && pass "count line says 9" || fail "count line wrong: $(head -1 <<<"$OUT")"
+# LOGONLY-NUMPAIR, GERMAN-ONE, NEXT-ONE, LOGONLY-WORDNUM, LOGONLY-CC. sam-laptop's "ping" is closed
+# by our later reply that says "re ping".
+grep -q 'open requests to this instance: 11$' <<<"$OUT" && pass "count line says 11" || fail "count line wrong: $(head -1 <<<"$OUT")"
 # NEGATIVE CONTROL: the unpatched reader (origin/main before this fix, passed as $1) closed every
 # request of a sender with any later reply to that sender — it must FAIL the two checks above.
 if [[ -n "${1:-}" ]]; then
@@ -124,6 +136,17 @@ if [[ -n "${3:-}" ]]; then
   OLD3="$(SHARED_MEMORY_SELF=me-mac "$PY" "$3" --open --repo "$WORK" --to HEAD 2>&1)"
   grep -qE 'GERMAN-ONE|NEXT-ONE' <<<"$OLD3" && fail "control: the old reader already lists GERMAN-ONE/NEXT-ONE — the planted cases prove nothing" \
     || pass "control: the old reader missed GERMAN-ONE and NEXT-ONE (planted cases are real)"
+fi
+# NEGATIVE CONTROL 4: the reader before the reply-by-words fix (passed as $4) keeps PAREN, WORDS and
+# ANNOUNCED open and does not see CC.
+if [[ -n "${4:-}" ]]; then
+  OLD4="$(SHARED_MEMORY_SELF=me-mac "$PY" "$4" --open --repo "$WORK" --to HEAD 2>&1)"
+  for x in LOGONLY-PAREN 'LOGONLY-WORDS\b' ANNOUNCED; do
+    grep -q "$x" <<<"$OLD4" && pass "control: the old reader keeps $x open (planted case is real)" \
+      || fail "control: the old reader also closes $x — the planted case proves nothing"
+  done
+  grep -q 'LOGONLY-CC' <<<"$OLD4" && fail "control: the old reader already sees LOGONLY-CC — the planted case proves nothing" \
+    || pass "control: the old reader hid LOGONLY-CC (planted case is real)"
 fi
 
 OUT2="$(SHARED_MEMORY_SELF=me-mac SHARED_MEMORY_REQUEST_PREFIXES=ask "$PY" "$INBOX" --open --repo "$WORK" --to HEAD 2>&1)"

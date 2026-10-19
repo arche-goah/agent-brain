@@ -195,9 +195,11 @@ HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[·—-]\
 
 def addressees(title: str) -> str | None:
     """`AN x + y: title` -> `x + y`; None when the heading names nobody. The colon of an
-    audience category (`AN os:windows: title`) is not the end of the addressees."""
+    audience category (`AN os:windows: title`) is not the end of the addressees, and neither is
+    a colon inside parentheses (`AN x (status: open): title` — measured 2026-10-19: the title then
+    began with "open): …", so no reply could ever name it and the request sat open for days)."""
     safe = re.sub(r"\b(os|person):(?=[\w-])", "\\1\x00", title or "")
-    m = re.match(r"^(?:AN|An|an|TO|To)\s+([^:]+):", safe)
+    m = re.match(r"^(?:AN|An|an|TO|To)\s+((?:[^:(]|\([^)]*\))+):", safe)
     return m.group(1).replace("\x00", ":") if m else None
 
 

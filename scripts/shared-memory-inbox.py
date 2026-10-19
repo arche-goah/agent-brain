@@ -344,6 +344,7 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
     rx = re.compile(r"^[^\S\n]+audience:.*(" + "|".join(re.escape(t) for t in sorted(reach)) + r")",
                     re.I | re.M)
     cand = {rel for rel, t in texts.items() if rx.search(t)}
+    heads = log_heads(texts)
     items = []
     for rel in sorted(cand):
         p = repo / rel
@@ -394,6 +395,13 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             if answered:
                 break
         if not answered:
+            # The sender's own LOG heading that announces this file (its text carries the path,
+            # the LOG convention) is the request's title in the conversation stream; an answer
+            # naming THAT heading answers the file too. A heading that only mentions the stem
+            # ("ping — about request-x again") is a nudge, not the title: "re ping" closes nothing.
+            answered = any(rel in b and replied(heads, me, d, tp, j, s, ti)
+                           for d, tp, j, s, _t, ti, b in heads if tokens(s) & tokens(e["von"]))
+        if not answered:
             text = whole(e["desc"] or e["name"])
             # Priority is information, never a sequence (operator 2026-10-13): whoever is not
             # asked first sees the task as optional — anyone may claim it at any time.
@@ -440,8 +448,33 @@ def names_request(core_title: str, title: str, body: str) -> bool:
     nums = set(PR_NUM.findall(core_title))
     if nums and nums <= set(PR_NUM.findall(text)):
         return True
-    return any(len(x) >= 4 and w.startswith(x)
-               for m in LOG_RE_REF.finditer(text) for x in [m.group(1).strip()] for w in wants)
+    if any(len(x) >= 4 and w.startswith(x)
+           for m in LOG_RE_REF.finditer(text) for x in [m.group(1).strip()] for w in wants):
+        return True
+    # The CLASS behind the three rules above: an answer names the request in its own words, not
+    # as a verbatim copy ("re Push-Weg einverstanden" for "re Push-Weg — einverstanden", "re
+    # Dependency Graph aus" for "neues agent-brain hat den Dependency Graph aus"). Measured
+    # 2026-10-19: 9 of 23 listed requests were answered this way and still counted open. So a
+    # `re <x>` names the request when every word of x stands in the request's title (at least two
+    # words, so one shared word cannot close it) and x names no number the request does not carry
+    # (`re Kern #17` never closes a request about #19).
+    have = words(core_title)
+    for m in LOG_RE_REF.finditer(text):
+        x = m.group(1)
+        xs = words(x)
+        if len(xs) >= 2 and xs <= have and set(PR_NUM.findall(x)) <= set(PR_NUM.findall(core_title)):
+            return True
+    return False
+
+
+# Words that carry no matter of their own; a `re` built from them names nothing.
+FILLER = {"re", "and", "the", "for", "und", "der", "die", "das", "den", "fuer", "für", "von",
+          "mit", "auf", "ist", "ein", "eine", "bitte", "zu", "zum", "zur", "an", "to"}
+
+
+def words(s: str) -> set[str]:
+    """The matter words of a title: letters/digits runs of three or more, minus filler."""
+    return {w for w in re.findall(r"[^\W_]{3,}", s.lower()) if w not in FILLER}
 
 
 def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tuple]:
@@ -455,18 +488,7 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
     unanswered Y). Wrong only in the safe direction: an answer given elsewhere, or one that
     does not name what it answers, keeps the request listed.
     """
-    heads: list[tuple] = []  # (date, topic, sender, to_tokens, title, body)
-    for rel, text in texts.items():
-        if not (rel.endswith("/LOG.md") or rel == "LOG.md"):
-            continue
-        topic = rel.split("/")[0] if "/" in rel else "root"
-        for i, (sender, body) in enumerate(log_section_senders(text)):
-            m = HEADING.match(body.splitlines()[0]) if body else None
-            if not m:
-                continue
-            date, _, title = m.groups()
-            to = addressees(title or "")
-            heads.append((date, topic, i, sender, tokens(to) if to else set(), title or "", body))
+    heads = log_heads(texts)
     items = []
     for date, topic, idx, sender, to, title, body in heads:
         if not (to & me) or tokens(sender) & me or (floor and date < floor):
@@ -486,17 +508,45 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
                               and core_title in b and (d > date or (tp == topic and j > idx))
                               for d, tp, j, s, t, ti, b in heads):
             continue
-        # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
-        # another LOG cannot be ordered, so it does not count (safe direction). And it NAMES
-        # the request, the same way the asker's close above has to — one reply closes one
-        # request, not every open one of that sender.
-        replied = any(tokens(s) & me and party(sender) & t
-                      and (d > date or (tp == topic and j > idx))
-                      and (names_request(core_title, ti, b) or names_request(core_full, ti, b))
-                      for d, tp, j, s, t, ti, b in heads)
-        if not replied:
+        if not replied(heads, me, date, topic, idx, sender, title):
             items.append((date, topic, sender, whole(title) + " (LOG)"))
     return items
+
+
+def log_heads(texts: dict[str, str]) -> list[tuple]:
+    """Every LOG heading: (date, topic, index, sender, to_tokens, title, body)."""
+    heads: list[tuple] = []
+    for rel, text in texts.items():
+        if not (rel.endswith("/LOG.md") or rel == "LOG.md"):
+            continue
+        topic = rel.split("/")[0] if "/" in rel else "root"
+        for i, (sender, body) in enumerate(log_section_senders(text)):
+            m = HEADING.match(body.splitlines()[0]) if body else None
+            if not m:
+                continue
+            date, _, title = m.groups()
+            to = addressees(title or "")
+            heads.append((date, topic, i, sender, tokens(to) if to else set(), title or "", body))
+    return heads
+
+
+def replied(heads: list[tuple], me: set[str], date: str, topic: str, idx: int, sender: str,
+            title: str) -> bool:
+    """Did one of OUR later headings to the sender name the request headed `title`?
+
+    A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
+    another LOG cannot be ordered, so it does not count (safe direction). And it NAMES
+    the request — one reply closes one request, not every open one of that sender. ONE rule
+    for both forms of request: a LOG-only heading, and the heading that announces a fact file
+    (measured 2026-10-19: answers to announced files named the heading, never the file stem,
+    and the request stayed open)."""
+    to_str = addressees(title or "")
+    core_full = (title.split(to_str, 1)[1].lstrip(": ") if to_str else title or "").strip()
+    cands = (core_full[:60], core_full, title)
+    return any(tokens(s) & me and party(sender) & t
+               and (d > date or (tp == topic and j > idx))
+               and any(names_request(c, ti, b) for c in cands)
+               for d, tp, j, s, t, ti, b in heads)
 
 
 def main() -> int:
