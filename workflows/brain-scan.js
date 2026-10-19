@@ -1,7 +1,7 @@
 export const meta = {
   name: 'brain-scan',
   description: 'Brain scan: return channel of the last run + machine checks + checklist audit + SOTA delta; every finding leaves with one exit — reports and sorts, fixes nothing',
-  whenToUse: 'Weekly self-audit of the brain setup, on the operator\'s OK. Call with args {date:"YYYY-MM-DD", scratch:"<abs. scratch dir>"}.',
+  whenToUse: 'Self-audit of the brain setup every two weeks (at least 7 days apart), on the operator\'s OK. Call with args {date:"YYYY-MM-DD", scratch:"<abs. scratch dir>"}.',
   phases: [
     { title: 'Machine', detail: 'ONE script: what became of the last run\'s findings, machine checks (effect, invariant register, self-test, local machinery, commitments), deep-check line', model: 'haiku' },
     { title: 'Scan', detail: 'Checklist sections + 2 SOTA delta checks in parallel; each writes its findings to a file', model: 'haiku' },
@@ -159,8 +159,12 @@ const assertReport = (expected, claimedPath, bytes, what) => {
 // must be accounted for. A key the return channel marked decision-due (seen twice before,
 // unfixed) that comes back is an operator decision — not a fourth identical line. At most
 // three decisions are presented; more means the cut is wrong (the rest is offered as a list).
+// A deep check the script head suggested may be presented as its own due decision, keyed
+// `deep-check-<name>`: no finding, so no index entry, and not one of the three (measured: a
+// run threw "0 operator decision(s) in the index, 1 presented" after report and ledger were
+// written, because the report asked the deep-check question the head had raised).
 const EXITS = ['done-already', 'ai-does-it', 'other-side', 'parked', 'later-at-system', 'drop', 'operator-decision']
-const assertExits = (index, nonOk, decisionDue, decisions, what) => {
+const assertExits = (index, nonOk, decisionDue, decisions, what, deepChecks) => {
   const items = index || []
   const bad = items.filter(i => !EXITS.includes(i.exit))
   if (bad.length) throw new Error(`${what}: ${bad.length} finding(s) without a valid exit (${bad.map(i => `${i.key}=${i.exit}`).join(', ')}) — every finding leaves with exactly one of: ${EXITS.join(', ')}.`)
@@ -172,7 +176,11 @@ const assertExits = (index, nonOk, decisionDue, decisions, what) => {
   const recur = items.filter(i => (decisionDue || []).includes(i.key) && i.exit !== 'operator-decision')
   if (recur.length) throw new Error(`${what}: ${recur.map(i => i.key).join(', ')} came back a third time without a fix but left as "${recur[0].exit}" — a third recurrence is an operator decision (close the source or accept it), never another line.`)
   const opdec = items.filter(i => i.exit === 'operator-decision').map(i => i.key)
-  const ds = decisions || []
+  const deepKeys = (deepChecks || []).map(n => `deep-check-${n}`)
+  const deep = (decisions || []).filter(d => deepKeys.includes(d.key))
+  const noRec = deep.filter(d => !d.recommendation)
+  if (noRec.length) throw new Error(`${what}: presented decision(s) ${noRec.map(d => d.key).join(', ')} carry no recommendation.`)
+  const ds = (decisions || []).filter(d => !deepKeys.includes(d.key))
   if (ds.length !== Math.min(3, opdec.length)) throw new Error(`${what}: ${opdec.length} operator decision(s) in the index, ${ds.length} presented — present min(3, n), each with a recommendation.`)
   const stray = ds.filter(d => !opdec.includes(d.key) || !d.recommendation)
   if (stray.length) throw new Error(`${what}: presented decision(s) ${stray.map(d => d.key).join(', ')} are not operator-decision items of the index or carry no recommendation.`)
@@ -213,7 +221,8 @@ const MACHINE_FILE = `${FINDINGS_DIR}/scan-machine.json`
 const RETURN_FILE = `${FINDINGS_DIR}/return-channel.json`
 const REPORT_HEAD = `${FINDINGS_DIR}/report-machine.md`
 const LAST_SCAN = prep.last_scan_date || null
-log(`return channel: ${prep.earlier || 0} earlier finding(s) (${Object.entries(prep.states || {}).map(([k, v]) => `${k} ${v}`).join(', ')}), decision-due ${prep.decision_due.length}; machine checks ${prep.machine_findings} finding(s); deep check: ${prep.deep_check.length ? prep.deep_check.map(l => l.split(' — ')[0].replace('deep check suggested: ', '')).join(', ') : 'none'}`)
+const DEEP_NAMES = prep.deep_check.map(l => l.split(' — ')[0].replace('deep check suggested: ', ''))
+log(`return channel: ${prep.earlier || 0} earlier finding(s) (${Object.entries(prep.states || {}).map(([k, v]) => `${k} ${v}`).join(', ')}), decision-due ${prep.decision_due.length}; machine checks ${prep.machine_findings} finding(s); deep check: ${DEEP_NAMES.length ? DEEP_NAMES.join(', ') : 'none'}`)
 
 // ── Phase 2: Scan (repo + SOTA in parallel) ───────────────────────────────
 const SCAN_COMMON = `You are a brain-scan agent for ${REPO}. STRICTLY READ-ONLY. Check EVERY check of your checklist section from ${CHECKLIST} individually and concretely (measure/read/test, do not guess). Do NOT run effect-check, invariant-check, brain-selftest, local-machinery or commitments — they already ran in the machine step and their findings are in ${MACHINE_FILE}; a second run costs tokens and doubles findings. Recurrence is traced by the report stage, not by you. Severity OK = check passed (report only in summarized form) — then "state" is REQUIRED: "verified" ONLY if you yourself executed the behavior check declared in section 0/your section and can name the result; reading/parsing/schema-checking is "configured". When in doubt: "configured".
@@ -271,6 +280,7 @@ TASK 1 — give every non-OK finding EXACTLY ONE exit (skill backlog-catch-up; o
   done-already (a later session already built it — say with which evidence) · ai-does-it (clear, reversible, own brain / own suite / a core PR — the session does it after the scan) · other-side (a collaborator's domain or decision — a shared-memory note) · parked (the operator parked the domain or named a later date; a request from another side still gets a receipt) · later-at-system (a hand-step at a device, raised when work on that system starts) · drop (superseded, without subject, or a false alarm — with the reason) · operator-decision (goal, money, hardware, risk, external effect, release — and NOT answerable by measurement; the operator decides it better than the AI).
   KEYS: ${fileName(RETURN_FILE)} lists the earlier findings with their key and state. When a finding is the same matter as an earlier one, REUSE its key — that is how the next run traces it. A new matter gets a new kebab-case key (stable, about the matter, not the momentary number). These keys are decision-due — seen twice before without a fix; if one comes back now it MUST leave as operator-decision ("close the source mechanically, or accept it consciously" — with a recommendation), never as another line: ${relay(prep.decision_due, 3000, 'decision_due')}.
   At most THREE operator decisions are presented, each with a recommendation, answerable by number. More than three means the cut is wrong: re-check each (is it a decision, does it block now, can only the operator make it?); what fails goes to another exit; if more remain, present three and offer the rest as a list.
+  DEEP CHECK: a deep check the head suggests is no finding and gets NO index entry. If you present it as a decision, its key is exactly \`deep-check-<name>\` (suggested now: ${DEEP_NAMES.length ? DEEP_NAMES.map(n => `deep-check-${n}`).join(', ') : 'none'}), with a recommendation; it does not count against the three. Any other presented decision MUST be an index entry with exit operator-decision.
 
 TASK 2 — write the report BODY directly to ${REPORT} with the Write tool (mkdir -p ${REPORT_DIR} first; the deliverable itself, never an intermediate file — the harness refuses a subagent's intermediate report file), then put the head in front with ONE shell command, never by retyping: \`cat ${REPORT_HEAD} ${REPORT} > ${REPORT}.tmp && mv ${REPORT}.tmp ${REPORT}\`. ${fileName(REPORT_HEAD)} is the script-written head (return channel, ordered items, deep check) and must reach the report byte-identical. The body: a title line "# Brain-Scan Report — ${DATE}"; overall state in 3-5 plain sentences; one line "n I handle myself · m really need you"; "## Decisions for the operator" (the presented ones, each with its recommendation); "## Findings" sorted P0>P1>P2>INFO, each line starting with its severity marker in brackets (\`[P1]\`) and ending with "— exit: <exit>"; "## OK checks" as a short list **with state \`configured\`/\`verified\`** (an OK without a state is itself a P1 finding against the scan); and LAST, exactly this section, one line per index entry, nothing else in it:
 ## Finding index
@@ -312,7 +322,7 @@ if (!summary) throw new Error('Report agent failed')
 // Second gate, measured: what the consumer found on disk, against what was started.
 assertFiles(dataFiles, summary.files_read, 'report: data files read from disk')
 assertCount(rawCount, summary.finding_count, 'brain-scan findings read by the report')
-assertExits(summary.index, nonOk, prep.decision_due, summary.decisions, 'brain-scan exits')
+assertExits(summary.index, nonOk, prep.decision_due, summary.decisions, 'brain-scan exits', DEEP_NAMES)
 // The deep-check lines come from the script head; a report without them dropped the head.
 assertCount(prep.deep_check.length, summary.deep_check_lines, 'deep-check lines in the report')
 assertReport(REPORT, summary.report_path, summary.report_bytes, 'brain-scan report')

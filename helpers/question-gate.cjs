@@ -64,7 +64,9 @@ const crypto = require('crypto');
 const { isNotification } = require('./turn-kind.cjs');
 const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
-const OWN_ECHO = /QUESTION-GATE/;
+// Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
+const { ownEcho, declare } = require('./stop-echo.cjs');
+let OWN_ECHO = /QUESTION-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const STATUSES = new Set(['open', 'answered', 'dropped', 'deferred', 'unanswered']);
@@ -163,6 +165,7 @@ function scan(tp) {
 }
 
 function gate(input) {
+  OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active || !input.transcript_path) return;
   const r = root(input.cwd);
   const rx = questionRegex(r);
@@ -189,7 +192,7 @@ function gate(input) {
   if (ends) pending = pending.filter((id) => !(listed(ends, [id]) || listed(ends, [squash(state[id].q)])));
   if (!pending.length) return;
   const list = pending.slice(0, 5).map((id) => `${id} "${state[id].q}"`).join(' · ');
-  process.stdout.write(JSON.stringify({
+  process.stdout.write(JSON.stringify(declare({
     decision: 'block',
     reason: `QUESTION-GATE: ${pending.length} question(s) to the operator are still open after their reply: ${list}`
       + (pending.length > 5 ? ` (+${pending.length - 5})` : '')
@@ -197,7 +200,7 @@ function gate(input) {
       + ' - answered = the operator decided it (also EARLIER: an order already in the ledger or a prior prompt); unanswered = they replied without addressing it (ask again where it'
       + ' matters); deferred = THEY postponed it, quote their words in the note (an overlooked question is not deferred).'
       + (ends ? ' Closing: the close stamp passes a question its session-log entry lists as "open end: question <id> …".' : ''),
-  }));
+  }, input)));
 }
 
 /**

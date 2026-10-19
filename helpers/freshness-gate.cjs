@@ -26,7 +26,7 @@
  *   <project>/.claude/rules/freshness-gate.json
  *   { "thresholdDays": 14, "minTokens": 50000,
  *     "workflows": { "<name>": { "thresholdDays": 6, "minTokens": 0 } } }
- * A scheduled cadence (e.g. a weekly scan) sets its per-workflow threshold below
+ * A scheduled cadence (e.g. a scan every n days) sets its per-workflow threshold below
  * the cadence instead of carrying a permanent marker. Missing/broken file =
  * defaults. Fail-open throughout: a gate that errors must never block work.
  */
@@ -36,17 +36,23 @@ const os = require('os');
 
 const DEFAULT_THRESHOLD_DAYS = 14;
 const DEFAULT_MIN_TOKENS = 50000;
+// Floors the core itself sets (operator decision 2026-10-18): a brain-scan needs at least 7
+// days since the last completed one; the bootup reports it due only after 14. Earlier only
+// on the operator's clear word, given as the FRESHNESS-OK marker. An instance entry of the
+// same name replaces the default.
+const DEFAULT_WORKFLOWS = { 'brain-scan': { thresholdDays: 7 } };
 
 function allow() { process.exit(0); }
 
 function loadConfig(projectRoot) {
-  const cfg = { thresholdDays: DEFAULT_THRESHOLD_DAYS, minTokens: DEFAULT_MIN_TOKENS, workflows: {} };
+  const cfg = { thresholdDays: DEFAULT_THRESHOLD_DAYS, minTokens: DEFAULT_MIN_TOKENS,
+                workflows: { ...DEFAULT_WORKFLOWS } };
   try {
     const raw = JSON.parse(fs.readFileSync(
       path.join(projectRoot, '.claude', 'rules', 'freshness-gate.json'), 'utf8'));
     if (typeof raw.thresholdDays === 'number') cfg.thresholdDays = raw.thresholdDays;
     if (typeof raw.minTokens === 'number') cfg.minTokens = raw.minTokens;
-    if (raw.workflows && typeof raw.workflows === 'object') cfg.workflows = raw.workflows;
+    if (raw.workflows && typeof raw.workflows === 'object') Object.assign(cfg.workflows, raw.workflows);
   } catch (_) { /* defaults */ }
   return cfg;
 }

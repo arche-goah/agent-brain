@@ -112,6 +112,22 @@ mg_probe "mechanism-guard/heredoc fed to ssh" \
   'ssh host <<EOF\nfixture-shortcut --now\nEOF' block
 mg_probe "mechanism-guard/heredoc through eval" \
   'eval \"$(cat <<EOF\nfixture-shortcut --now\nEOF\n)\"' block
+# MESSAGE TEXT: a commit message or PR body that NAMES a guarded command does not run it —
+# measured 2026-10-16, a multi-line commit message with a line starting with a guarded command
+# was refused. Both directions again: the message is cut, the command around it is not, and a
+# double-quoted message that substitutes a command still runs that command.
+mg_probe "mechanism-guard/commit message mentions it (multi-line)" \
+  'git commit -m \"fix: guard\nfixture-shortcut is documented\"' allow
+mg_probe "mechanism-guard/commit message mentions it (single quotes)" \
+  "git commit -m 'fixture-shortcut is documented'" allow
+mg_probe "mechanism-guard/PR body mentions it" \
+  'gh pr create --title \"x\" --body=\"fixture-shortcut is banned\"' allow
+mg_probe "mechanism-guard/command after a message" \
+  'git commit -m \"ok\" && fixture-shortcut --now' block
+mg_probe "mechanism-guard/message substitutes the command" \
+  'git commit -m \"$(fixture-shortcut --now)\"' block
+mg_probe "mechanism-guard/message flag on the shortcut itself" \
+  'fixture-shortcut -m \"x\"' block
 rm -rf "$MG"
 
 # --- mechanism-guard: a rule may demand the OPERATOR'S WORD behind the marker ----------

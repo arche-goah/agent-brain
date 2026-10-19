@@ -61,7 +61,9 @@ process.stdin.on('data', (c) => { data += c; });
 function allow() { process.exit(0); }
 
 const HOOK_ECHO = /^Stop hook feedback:/;
-const OWN_ECHO = /STOPPEN-GATE/;
+// Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
+const { ownEcho, declare } = require('./stop-echo.cjs');
+let OWN_ECHO = /STOPPEN-GATE/;
 const COOLDOWN_TURNS = 3;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const TAIL_CHARS = 400; // only the closing stretch of the final text counts
@@ -268,6 +270,7 @@ function analyze(transcriptPath) {
 process.stdin.on('end', () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { return allow(); }
+  OWN_ECHO = ownEcho(input, OWN_ECHO);
 
   if (!input.transcript_path) return allow();
   const reissue = !!input.stop_hook_active;
@@ -306,7 +309,7 @@ process.stdin.on('end', () => {
     return allow(); // transcript unreadable — never block because of that
   }
   if (announced.length) {
-    console.log(JSON.stringify({
+    console.log(JSON.stringify(declare({
       decision: 'block',
       reason:
         'STOPPEN-GATE (an announcement is not an action — the turn ends and nothing runs).\n' +
@@ -316,7 +319,7 @@ process.stdin.on('end', () => {
           : 'No background waiter is running. Either DO the announced step now (tool call in this ') +
         'turn), or arm the waiter it depends on, or state plainly who or what you wait for. ' +
         'If that is already true, re-issue the reply unchanged — it will pass.',
-    }));
+    }, input)));
     process.exit(0);
   }
   if (hits.length === 0) return allow();
@@ -350,18 +353,18 @@ process.stdin.on('end', () => {
     }
     // Deliberately WITHOUT the "Closing question in this reply:" line: the stop dispatcher
     // compresses on it, and this instruction has to reach the agent in full.
-    console.log(JSON.stringify({
+    console.log(JSON.stringify(declare({
       decision: 'block',
       reason:
         'STOPPEN-GATE (a decision for the operator is asked through the question tool, not ' +
         'as a closing prose question — re-issuing it unchanged does not pass).\n' +
         `Still closing on: ${hits.slice(0, 3).join(' · ')}\n` +
         `If only the operator can decide it, ${how} Otherwise do the work now and report.`,
-    }));
+    }, input)));
     process.exit(0);
   }
 
-  console.log(JSON.stringify({
+  console.log(JSON.stringify(declare({
     decision: 'block',
     reason:
       'STOPPEN-GATE (stopping is the exception — a closing permission question is a disguised stop).\n' +
@@ -371,7 +374,7 @@ process.stdin.on('end', () => {
       `hardware, risk). All three hold => ${how} ` +
       'Otherwise: the question is answerable by measurement, docs or rules — do the ' +
       'work now and report the result instead of asking.',
-  }));
+  }, input)));
   process.exit(0);
 });
 

@@ -23,7 +23,7 @@
  *     "header": "STOP-CHECKS ({n})",        // optional, only used for 2+ findings
  *     "checks": [{
  *       "label":   "CLASS",                 // what the operator reads
- *       "marker":  "CLASS-GATE",            // the check's own OWN_ECHO token
+ *       "marker":  "CLASS-GATE",            // the check's id: log name, legacy echo token
  *       "cmd":     "core/helpers/class-gate.cjs",   // relative to the project root
  *       "mode":    "block" | "record",      // record = never blocks, writes a log
  *       "args":    ["--record"],            // optional argv for the child
@@ -44,10 +44,13 @@
  *
  * Three properties that are easy to lose and were built in deliberately:
  *
- *  - COOLDOWNS KEEP WORKING. Every gate reads its own marker back out of the replayed
- *    feedback to know it just fired, so each compressed line carries that marker in
- *    brackets. Drop it and every cooldown dies at once — the exact class of defect
- *    these gates exist to catch.
+ *  - COOLDOWNS KEEP WORKING. Every gate reads its own echo back out of the replayed
+ *    feedback to know it just fired. Each check gets `stop_check: {label, marker}` in its
+ *    payload; a gate that finds its echo by the label at the start of its line says so
+ *    with `echo: "label"` in its block, and its line goes out without a token. Every
+ *    other line keeps the marker in brackets — dropping it for a gate that still reads
+ *    the token kills that gate's cooldown, the exact class of defect these gates exist
+ *    to catch (helpers/stop-echo.cjs; operator 2026-10-10: no codes in the lines).
  *  - NOTHING IS SWALLOWED. A block whose `extract` does not match is passed through in
  *    full. A compressor that silently drops a finding is worse than the noise it saves.
  *  - NO FRAME AROUND A SINGLE FINDING. The harness already prints "Ran 1 stop hook"
@@ -194,7 +197,10 @@ function record(check, items, payload) {
   } catch (e) { /* recording must never break a turn */ }
 }
 
-function run(check, payload) {
+function run(check, base) {
+  // Each check learns its own label and marker, so it can find its echo without a token
+  // in the operator's line (helpers/stop-echo.cjs).
+  const payload = JSON.stringify({ ...base, stop_check: { label: check.label, marker: check.marker } });
   return new Promise((resolve) => {
     const cmd = path.isAbsolute(check.cmd) ? check.cmd : path.join(ROOT, check.cmd);
     if (!fs.existsSync(cmd)) return resolve(null);
@@ -211,7 +217,9 @@ function run(check, payload) {
         }
         const message = typeof parsed.systemMessage === 'string' && parsed.systemMessage.trim()
           ? parsed.systemMessage.trim() : null;
-        if (parsed.decision === 'block' && parsed.reason) return resolve({ check, reason: parsed.reason, message });
+        if (parsed.decision === 'block' && parsed.reason) {
+          return resolve({ check, reason: parsed.reason, message, byLabel: parsed.echo === 'label' });
+        }
         resolve(message ? { check, message } : null);
       });
     child.stdin.end(payload);
@@ -228,11 +236,13 @@ process.stdin.on('end', async () => {
   if (eligible.length === 0) process.exit(0);
 
   const kind = input.transcript_path ? turnKind(input.transcript_path) : 'unknown';
-  const payload = JSON.stringify({ ...input, turn_kind: kind });
+  const payload = { ...input, turn_kind: kind };
   const due = eligible.filter((c) => !(kind === 'notification' && c.onNotification === 'skip'));
   const answered = (await Promise.all(due.map((c) => run(c, payload))))
     .filter(Boolean);
-  const notes = answered.filter((r) => r.message).map((r) => `${r.message}   [${r.check.marker}]`);
+  // A let-through never comes back as hook feedback, so no cooldown reads it: the label
+  // names the check, no token needed.
+  const notes = answered.filter((r) => r.message).map((r) => `${r.check.label} — ${r.message}`);
   const results = answered.filter((r) => r.reason);
   if (results.length === 0) {
     if (notes.length) console.log(JSON.stringify({ systemMessage: notes.join('\n') }));
@@ -243,14 +253,15 @@ process.stdin.on('end', async () => {
     // No match => the full original text, never a swallowed finding.
     || reason.split('\n').filter((l) => l.trim()).join(' ').trim();
 
-  const label = (r) => `${r.check.label} — ${body(r)}   [${r.check.marker}]`;
+  // The bracket stays only for a check that still finds its echo by the token.
+  const tag = (r) => (r.byLabel ? '' : `   [${r.check.marker}]`);
+  const label = (r) => `${r.check.label} — ${body(r)}${tag(r)}`;
   const width = Math.max(...results.map((r) => r.check.label.length));
 
   const reason = results.length === 1
     ? label(results[0])
     : `${cfg.header.replace('{n}', String(results.length))}\n`
-      + results.map((r) => `· ${r.check.label.padEnd(width)} ${body(r)}`
-        + `   [${r.check.marker}]`).join('\n');
+      + results.map((r) => `· ${r.check.label.padEnd(width)} ${body(r)}${tag(r)}`).join('\n');
 
   console.log(JSON.stringify(notes.length
     ? { decision: 'block', reason, systemMessage: notes.join('\n') }

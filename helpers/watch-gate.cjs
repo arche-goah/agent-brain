@@ -89,7 +89,9 @@ const { execFileSync } = require('child_process');
 const { isNotification } = require('./turn-kind.cjs');
 const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
-const OWN_ECHO = /WATCH-GATE/;
+// Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
+const { ownEcho, declare } = require('./stop-echo.cjs');
+let OWN_ECHO = /WATCH-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const CLOSED = new Set(['answered', 'done', 'decided', 'info', 'closed']);
@@ -539,6 +541,7 @@ function ghListed(ghCalls, root) {
 }
 
 function main(input) {
+  OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active || !input.transcript_path) process.exit(0);
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const { calls, since, fired, lastText } = turn(input.transcript_path);
@@ -622,12 +625,12 @@ function main(input) {
   const ends = missing.some((m) => m.covered) ? closeOpenEnds(root, { sessionId: input.session_id, since, calls }) : null;
   if (ends) left = missing.filter((m) => !(m.covered && m.covered(ends)));
   if (!left.length) process.exit(0);
-  process.stdout.write(JSON.stringify({
+  process.stdout.write(JSON.stringify(declare({
     decision: 'block',
     reason: `WATCH-GATE: a watcher is missing. ${left.map((m) => m.text).join(' · ')}. `
       + (ends ? 'The close stamp passes only what its session-log entry lists as "open end: <repo> #<n> - what is awaited" '
         + '(a shared-memory request by its file name). ' : '')
       + 'If nothing is awaited, say why in one line and stop again.',
-  }));
+  }, input)));
   process.exit(0);
 }

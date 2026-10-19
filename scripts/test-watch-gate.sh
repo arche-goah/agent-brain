@@ -56,7 +56,7 @@ PUSH="cd ~/Projects/brain-shared-memory && git commit -q -m x && git push -q"
 
 check() { # $1 name, $2 transcript, $3 block|allow, $4 project root, [$5 stop_hook_active]; $SID = session id
   local out
-  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"}' "$(native "$2")" "${5:-false}" "${SID:-}" \
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":%s,"session_id":"%s"%s}' "$(native "$2")" "${5:-false}" "${SID:-}" "${XP:-}" \
     | CLAUDE_PROJECT_DIR="$(native "$4")" SHARED_MEMORY_REPO="$(native "$SM")" SHARED_MEMORY_SELF="ws" \
       node "$G" 2>&1)"
   if [ "$3" = block ]; then
@@ -93,6 +93,16 @@ rm -rf "$R/.claude-state"
 check "re-issue (stop_hook_active)" "$T/t1.jsonl" allow "$R" true
 { cat "$T/t1.jsonl"; user "Stop hook feedback: WATCH-GATE: ..."; asst "nothing awaited: pure log line"; } > "$T/t3.jsonl"
 check "second stop in the same turn" "$T/t3.jsonl" allow "$R"
+# Own echo by LABEL (operator 2026-10-10: no codes in the stop lines): behind the dispatcher the
+# gate gets stop_check.label and its line carries no token; another check's line is not its own.
+XP=',"stop_check":{"label":"WATCHER","marker":"WATCH-GATE"}'
+{ cat "$T/t1.jsonl"; user "Stop hook feedback:
+WATCHER — a watcher is missing"; asst "nothing awaited: pure log line"; } > "$T/t3l.jsonl"
+check "second stop in the same turn, echo by label" "$T/t3l.jsonl" allow "$R"
+{ cat "$T/t1.jsonl"; user "Stop hook feedback:
+CLASS — gate.cjs changed"; asst "ok"; } > "$T/t3f.jsonl"
+check "another check's line is not its own echo" "$T/t3f.jsonl" block "$R"
+XP=''
 { cat "$T/t1.jsonl"; user "next question" "2099-01-01T00:00:00Z"; asst "answer"; } > "$T/t4.jsonl"
 check "push was in an earlier turn" "$T/t4.jsonl" allow "$R"
 { user "go"; tool Bash "cd ~/Projects/other && git push -q"; } > "$T/t5.jsonl"

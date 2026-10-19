@@ -13,9 +13,17 @@
  * of the write, not a scan after it.
  *
  * WHAT COUNTS: a write subcommand of `gh pr|issue|release`, `gh api` with a field, input
- * file or a writing method, and `git commit`/`git tag` with a message. Scanned: the whole
- * command text plus every file it hands over (`--body-file`, `--notes-file`, `-F <file>`,
- * `--file`, `--input`, `key=@file`, `$(cat <file>)`). Watch list: `<brain>/.claude/rules/
+ * file or a writing method, and `git commit`/`git tag` with a message. Scanned: exactly the
+ * text that reaches GitHub (publishedText below) — the values of `--title/-t`, `--body/-b`,
+ * `--notes/-n`, `--subject`, `-f/-F/--field/--raw-field key=value`, the `gh api` endpoint,
+ * `git commit|tag -m/--message`, plus every file handed over (`--body-file`, `--notes-file`,
+ * `-F <file>`, `--file`, `--input`, `key=@file`, `$(cat <file>)`). Paths, flags, the working
+ * directory, shell comments and the environment are never published and never scanned.
+ * Until 2026-10-19 the guard scanned the WHOLE command and masked known path forms: every new
+ * form was a new false alarm, and a path-shaped word inside a body was masked, i.e. not
+ * checked. A command the parser cannot read to the end (a heredoc, an unbalanced quote) is
+ * scanned whole, as before: unsure means stricter. Named limit: text that arrives through a
+ * shell variable (`--body "$BODY"`) is invisible here. Watch list: `<brain>/.claude/rules/
  * leak-names.json` (`names` + `instances`, whole words, case-insensitive) — the same list
  * staged-names.py reads; the core ships no names.
  *
@@ -98,6 +106,107 @@ function referencedFiles(cmd) {
   return out.filter((f) => f !== '-');
 }
 
+// The shell's view of a command: words with quotes removed, `;` `&` `|` `(` `)` and newlines
+// end a segment, a `#` that opens a word outside quotes is a comment to the end of the line.
+// `$(...)` stays one raw piece of its word. Returns null when it cannot be read to the end (a
+// heredoc, an unbalanced quote or parenthesis): the caller then scans the whole command.
+// PowerShell (`ps`) has no backslash escape: there a `\` is a path separator, as it is inside
+// bash double quotes unless it precedes `$`, a backquote, `"`, `\` or a newline.
+function shellSegments(cmd, ps) {
+  const segs = [[]];
+  let word = null; // null = between words
+  let q = '';
+  const push = () => { if (word !== null) segs[segs.length - 1].push(word); word = null; };
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q === "'") { if (c === "'") q = ''; else word += c; continue; }
+    if (c === '\\' && !ps && (!q || /[$`"\\\n]/.test(cmd[i + 1] || ''))) {
+      word = (word || '') + (cmd[i + 1] || '');
+      i++;
+      continue;
+    }
+    if (c === '$' && cmd[i + 1] === '(') {
+      let depth = 0;
+      let j = i;
+      for (; j < cmd.length; j++) {
+        if (cmd[j] === '(') depth++;
+        else if (cmd[j] === ')' && --depth === 0) break;
+      }
+      if (j >= cmd.length || /<</.test(cmd.slice(i, j))) return null;
+      word = (word || '') + cmd.slice(i, j + 1);
+      i = j;
+      continue;
+    }
+    if (q === '"') { if (c === '"') q = ''; else word += c; continue; }
+    if (c === "'" || c === '"') { q = c; word = word || ''; continue; }
+    if (c === '<' && cmd[i + 1] === '<') return null; // heredoc / here-string
+    if (c === '#' && word === null) {
+      while (i < cmd.length && cmd[i] !== '\n') i++;
+      segs.push([]);
+      continue;
+    }
+    if (c === '\n' || /[;&|()]/.test(c)) { push(); segs.push([]); continue; }
+    if (/\s/.test(c)) { push(); continue; }
+    word = (word || '') + c;
+  }
+  if (q) return null;
+  push();
+  return segs.filter((s) => s.length);
+}
+
+// What a write command publishes: { texts, files }, or null = read the command whole.
+const GH_TEXT = new Set(['--title', '-t', '--body', '-b', '--notes', '-n', '--subject', '--message', '-m']);
+const GH_FIELD = new Set(['-f', '--raw-field', '--field']);
+const GH_FILE = new Set(['--body-file', '--notes-file', '--input', '--file']);
+function publishedText(cmd, ps) {
+  const segs = shellSegments(cmd, ps);
+  if (!segs) return null;
+  const texts = [];
+  const files = [];
+  // `$(cat <file>)` hands a file over; any other `$(...)` is unknown and stays text to check
+  const value = (v) => texts.push(v.replace(/\$\(\s*cat\s+("[^"]+"|'[^']+'|[^)\s]+)\s*\)/g,
+    (m, f) => { files.push(unquote(f)); return ' '; }));
+  const field = (kv) => {
+    const at = kv.indexOf('=');
+    const v = at < 0 ? kv : kv.slice(at + 1);
+    if (v.startsWith('@')) { if (v !== '@-') files.push(v.slice(1)); } else value(v);
+  };
+  for (const w of segs) {
+    const gh = w.indexOf('gh');
+    const git = w.indexOf('git');
+    if (gh >= 0 && (git < 0 || gh < git)) {
+      const api = w[gh + 1] === 'api';
+      for (let i = gh + 1; i < w.length; i++) {
+        const a = w[i];
+        const eq = a.startsWith('--') ? a.indexOf('=') : -1;
+        const flag = eq > 0 ? a.slice(0, eq) : a;
+        const inline = eq > 0 ? a.slice(eq + 1) : null;
+        const next = () => (inline !== null ? inline : w[++i]);
+        let v;
+        if (api && i === gh + 2 && !a.startsWith('-')) texts.push(a); // the endpoint names public paths
+        else if (GH_TEXT.has(flag)) { if ((v = next()) !== undefined) value(v); }
+        else if (GH_FIELD.has(flag)) { if ((v = next()) !== undefined) field(v); }
+        else if (flag === '-F') {
+          if ((v = next()) === undefined) continue;
+          if (api || v.includes('=')) field(v); else if (v !== '-') files.push(v); // gh pr -F = --body-file
+        } else if (GH_FILE.has(flag)) { if ((v = next()) !== undefined && v !== '-') files.push(v); }
+      }
+    } else if (git >= 0) {
+      for (let i = git + 1; i < w.length; i++) {
+        const a = w[i];
+        let v;
+        if (a === '-C' || a === '-c') { i++; continue; }
+        if (a === '--message' || /^-[a-zA-Z]*m$/.test(a)) { if ((v = w[++i]) !== undefined) value(v); }
+        else if (a.startsWith('--message=')) value(a.slice(10));
+        else if (/^-m./.test(a)) value(a.slice(2));
+        else if (a === '-F' || a === '--file') { if ((v = w[++i]) !== undefined && v !== '-') files.push(v); }
+        else if (a.startsWith('--file=')) files.push(a.slice(7));
+      }
+    }
+  }
+  return { texts, files };
+}
+
 function slugFromRemote(dir) {
   try {
     const url = execFileSync('git', ['-C', dir, 'remote', 'get-url', 'origin'],
@@ -165,20 +274,20 @@ function gate(input) {
   const scan = (text, where) => {
     for (const m of String(text).matchAll(rx)) if (!found.has(m[1].toLowerCase())) found.set(m[1].toLowerCase(), where);
   };
-  // A home path in the command (`git -C /Users/<name>/…`, a --body-file path) is where the
-  // command runs, not text that gets published. Measured 2026-10-10: the guard blocked its own
-  // follow-up commit because the worktree path carried the operator's login name.
-  // Second form, measured the same day: a scratch path that ENCODES the home dir
-  // (`/private/tmp/…/-Users-<login>-Projects-…`). So every word whose directory exists on
-  // disk counts as a location; the content of handed-over files is still scanned below.
-  const located = cmd.split(/\s+/).map((w) => {
-    const p = unquote(w).replace(/^--?[\w-]+=/, '').replace(/^@/, '');
-    if (!/[\\/]/.test(p)) return w;
-    try { return fs.existsSync(path.dirname(resolveFrom(cwd, p))) ? '<path>' : w; } catch (e) { return w; }
-  }).join(' ');
-  scan(located.replace(/(\/Users\/|\/home\/|[A-Za-z]:[\\/]+Users[\\/]+)[^\/\\\s"']+/g, '$1<home>'), 'the command');
-  for (const f of referencedFiles(cmd)) {
-    try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { /* unreadable: the write fails too */ }
+  const pub = publishedText(cmd, input.tool_name === 'PowerShell');
+  const readFiles = (list) => {
+    for (const f of list) {
+      try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { /* unreadable: the write fails too */ }
+    }
+  };
+  if (pub) {
+    pub.texts.forEach((t) => scan(t, 'the published text'));
+    readFiles(pub.files);
+  } else {
+    // Not readable to the end (heredoc, unbalanced quote): scan it whole. Only the home part of
+    // a path is masked - where the command runs is not what it publishes.
+    scan(cmd.replace(/(\/Users\/|\/home\/|[A-Za-z]:[\\/]+Users[\\/]+)[^\/\\\s"']+/g, '$1<home>'), 'the command, read whole');
+    readFiles(referencedFiles(cmd));
   }
   const a = AUTHOR_RX.exec(cmd);
   if (a) {
@@ -214,4 +323,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { gate, isWrite, referencedFiles, targetRepos };
+module.exports = { gate, isWrite, referencedFiles, targetRepos, publishedText, shellSegments };

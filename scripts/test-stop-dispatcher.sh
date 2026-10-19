@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# covers: stop-dispatcher stop-echo
 # Fixture test for the stop dispatcher: does it collect several gates into ONE block,
 # keep every gate's cooldown marker, and stay silent when nothing fires?
 # Usage: bash scripts/test-stop-dispatcher.sh   (exit 0 = all fixtures pass)
@@ -85,8 +86,12 @@ if [ -n "$TG" ]; then
 else
   skip "recording check (no recorder in this layout)"
 fi
-case "$OUT" in *'[PREMISE-GATE]'*) ok "keeps PREMISE-GATE cooldown marker";; *) bad "PREMISE-GATE marker lost";; esac
-case "$OUT" in *'[CLASS-GATE]'*) ok "keeps CLASS-GATE cooldown marker";; *) bad "CLASS-GATE marker lost";; esac
+# Operator 2026-10-10: no codes in the lines. A gate that finds its echo by its label
+# (premise-gate) declares it and its line goes out without a token; a gate that does not
+# declare it (class-gate, not converted yet) keeps its token, or its cooldown would die.
+case "$OUT" in *'[PREMISE-GATE]'*) bad "PREMISE line still carries its token: $OUT";;
+  *'PREMISE '*) ok "PREMISE line without a token (gate reads its echo by label)";; *) bad "PREMISE finding lost: $OUT";; esac
+case "$OUT" in *'[CLASS-GATE]'*) ok "keeps the CLASS-GATE token for a gate that still reads it";; *) bad "CLASS-GATE marker lost";; esac
 lines=$(printf '%s' "$OUT" | "$PY" -c "import json,sys; print(len(json.load(sys.stdin)['reason'].splitlines()))")
 [ "$lines" -le 6 ] && ok "compact ($lines lines)" || bad "not compact ($lines lines)"
 
@@ -198,7 +203,8 @@ printf '{"checks":[{"label":"LOUD","marker":"LOUD-PROBE","cmd":"%s","mode":"bloc
   "$(native "$LOUD")" > "$CFG4/.claude/rules/stop-checks.json"
 OUT7="$(feed4 "$TR2" false)"
 case "$OUT7" in *'"decision"'*) bad "a let-through turned into a block: $OUT7";;
-  *'let through loudly'*'[LOUD-PROBE]'*) ok "a check's systemMessage reaches the operator without a block";;
+  *'[LOUD-PROBE]'*) bad "a let-through carries a token: $OUT7";;
+  *'LOUD — let through loudly'*) ok "a check's systemMessage reaches the operator without a block, named by its label";;
   *) bad "systemMessage swallowed: $OUT7";; esac
 # End to end with the real stoppen-gate and the template's entry: the prose decision question
 # re-issued after the gate's own block blocks again, in full; without onReissue it passes.
@@ -215,8 +221,19 @@ if [ -n "$SG" ]; then
   }
   sgcfg ',"onReissue":"run"'
   OUT8="$(feed4 "$TQ" true)"
-  case "$OUT8" in *'"decision":"block"'*'question tool'*'[STOPPEN-GATE]'*) ok "stoppen-gate judges its own re-issue behind the dispatcher, reason in full";;
+  case "$OUT8" in *'[STOPPEN-GATE]'*) bad "stoppen line still carries its token: $OUT8";;
+    *'"decision":"block"'*'question tool'*) ok "stoppen-gate judges its own re-issue behind the dispatcher, reason in full";;
     *) bad "stoppen-gate re-issue not judged: $OUT8";; esac
+  # The same re-issue after an echo WITHOUT the token (the form the dispatcher writes now):
+  # the gate has to recognise its own line by the label the dispatcher handed it.
+  TQL="$T/reissue-label.jsonl"
+  { printf '%s\n' '{"message":{"role":"user","content":"frage"}}'
+    printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"The fix is ready. Should I proceed with the merge?"}]}}'
+    printf '%s\n' '{"message":{"role":"user","content":"Stop hook feedback:\nCLOSING QUESTION — Closing question - ask it through the question tool"}}'
+    printf '%s\n' '{"message":{"role":"assistant","content":[{"type":"text","text":"The fix is ready. Should I proceed with the merge?"}]}}'; } > "$TQL"
+  sgcfg ',"onReissue":"run"'
+  case "$(feed4 "$TQL" true)" in *'"decision":"block"'*'question tool'*) ok "stoppen-gate finds its token-free echo by the label it was handed";;
+    *) bad "token-free echo not recognised: $(feed4 "$TQL" true)";; esac
   sgcfg ''
   OUT9="$(feed4 "$TQ" true)"
   [ -z "$OUT9" ] && ok "without onReissue the re-issue passes as before" || bad "re-issue judged without opt-in: $OUT9"
