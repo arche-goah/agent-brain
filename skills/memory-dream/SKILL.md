@@ -69,8 +69,10 @@ If files contradict each other:
 3. Keep accurate version, update or remove the other
 ⚠ **Limit (coherence-scan principle, 2026-08-01):** Applies only to FACT
 contradictions (IPs, paths, statuses). If RULES contradict each other (type:feedback,
-HARD rules): ONLY report — which rule wins is decided by the operator, never by
-maintenance.
+HARD rules): the memory pass does not pick a winner — it reports the pair. Which rule
+wins follows the rule-conflict protocol (`rules/thinking-protocol.md`): a clear
+recommendation inside the instance's own rules is applied in the session afterwards,
+everything else goes to the operator.
 
 ### Step 5: Update Stale Info
 - Convert relative dates to absolute dates

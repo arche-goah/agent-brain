@@ -2,7 +2,7 @@
 # collab-watch.sh — THE collaboration watch: arms every configured channel at once and
 # merges their events onto this script's stdout, so ONE Monitor call covers the lot:
 #
-#   Monitor({ command: "bash core/scripts/collab-watch.sh", persistent: true })
+#   Monitor({ command: "bash core/scripts/collab-watch.sh", timeout_ms: 1800000 })
 #   bash core/scripts/collab-watch.sh --dry-run      # print the plan, arm nothing
 #
 # Channels (which ones, which repos, which intervals = INSTANCE data, never in this file):

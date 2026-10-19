@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # repo-activity-watch.sh — one stdout line per collaboration EVENT in a set of GitHub repos:
 # new pull requests, merges, comments (conversation AND inline review comments, also on
-# pull requests that are already merged) and RED CI runs. Built for the Monitor tool (`persistent: true`);
+# pull requests that are already merged) and RED CI runs. Built for the Monitor tool (`timeout_ms`, re-armed on expiry);
 # normally started by scripts/collab-watch.sh under scripts/watch-supervisor.sh.
 #
 #   GH_WATCH_REPOS="<owner>/<a> <owner>/<b>" repo-activity-watch.sh [interval_s|once|status|disarm]

@@ -40,16 +40,16 @@ never double-report, and nothing falls between them.
 ```
 Monitor({ command: "bash core/scripts/shared-memory-watch.sh watch 60",
           description: "new commits in the shared-memory repo from other instances",
-          persistent: true })
+          timeout_ms: 1800000 })
 ```
 
-`persistent: true` on purpose — the same shape as a PR org-watch. The first version of
+A long-running watch on purpose — the same shape as a PR org-watch. The first version of
 this script exited on the first find, which made every find a re-arm ritual and left
 the window between exit and next arm unwatched while looking armed. It now reports one
 line per find and keeps running; it ends with `TaskStop`, with the session — **or when the
-Monitor expires**: measured 2026-10-09 on the Windows instance (Claude Code 2.1.295), the Monitor tool announced
-"expires in 30m" despite `persistent: true`, delivered the expiry notice after 30 minutes and
-the watcher process was gone at the next look (`status`: "not armed"). Re-arm on the expiry
+Monitor expires**: every Monitor ends at its `timeout_ms` (read the live tool schema; on
+Claude Code 2.1.303, measured 2026-10-19, default 5 minutes, cap 30 minutes, no `persistent`
+flag any more), and the watcher process is gone afterwards (`status`: "not armed"). Re-arm on the expiry
 notice while the session still waits on someone; `helpers/watch-gate.cjs` blocks a turn that
 expects a reaction with no live watcher, so a missed re-arm surfaces at the next stop.
 
