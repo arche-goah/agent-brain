@@ -739,6 +739,21 @@ else
   fi
 fi
 
+# Same interface rule for shared-memory-lint.py: shared-memory-dream redirects `--inventory`
+# into a JSON file its agents read. Measured 2026-10-19 on a Windows brain: unpinned, a
+# description's middle dot left as the cp1252 byte 0xb7 and the file was no valid UTF-8.
+_sm="$T/sm-os9"; mkdir -p "$_sm/core"
+printf -- '---\nname: x\ndescription: "café · résumé"\nmetadata:\n  type: project\n---\nx\n' > "$_sm/core/x.md"
+_inv="$T/sm-inventory.out"
+"$PY" "$CORE/scripts/shared-memory-lint.py" --repo "$_sm" --inventory 2>/dev/null | cat > "$_inv" || true
+if ! grep -q 'core/x.md' "$_inv" 2>/dev/null; then
+  bad "shared-memory-lint --inventory did not list the planted entry — the byte assertion would be vacuous"
+elif "$PY" -c "import sys,json; json.loads(open(sys.argv[1],encoding='utf-8').read())" "$_inv" 2>/dev/null; then
+  ok "shared-memory-lint --inventory is UTF-8 JSON through a pipe"
+else
+  bad "shared-memory-lint --inventory is not UTF-8 JSON — the platform codepage leaked"
+fi
+
 # ... and when it says so, it must say WHAT. The brief branch extracts the candidate block
 # with a `sed` range; its opening pattern had no room for the space brain-friction.py
 # prints before the count, so the range never opened and the hook announced "needs a look"

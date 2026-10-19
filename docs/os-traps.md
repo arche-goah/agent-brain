@@ -528,7 +528,11 @@ the carrier rework of the same day: the em-dash lines now live in a MESSAGES tab
 carries this file. 2026-10-15, open-items.py 7 -> 8 after the same question: the new site is
 the heading of the standing-approval group (`- standing approval — handle these …`); the
 bootup and open-items-gate.cjs parse this output, and the script pins stdout (`OS-9` comment in
-`main()`), so the em dash leaves as UTF-8 on every platform. Left `open` deliberately — the 12 unpinned sites are fine only
+`main()`), so the em dash leaves as UTF-8 on every platform. 2026-10-19, shared-memory-lint.py
+(count unchanged, 1): the same question answered yes — `shared-memory-dream` redirects `--inventory`
+into a JSON file its agents read, and on a Windows brain that file held a description's `·` as the
+cp1252 byte 0xb7 (measured at core #24 on 2026-10-18; a planted accented letter reproduced it). Pinned in
+`main()`; `portability-smoke.sh` asserts the piped `--inventory` parses as UTF-8 JSON. Left `open` deliberately — the 12 unpinned sites are fine only
 as long as that answer stays no.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
