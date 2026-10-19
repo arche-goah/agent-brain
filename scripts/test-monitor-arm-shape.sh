@@ -11,7 +11,7 @@ fail=0
 ok()  { echo "  OK   $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
 
-scan() { grep -rnE 'persistent: *true' "$@" 2>/dev/null; }
+scan() { grep -arnE 'persistent: *true' "$@" 2>/dev/null; }
 
 # negative control: a planted arm example must be found
 printf 'Monitor({ command: "x", persistent: true })\n' > "$T/planted.md"
@@ -19,7 +19,7 @@ if scan "$T" >/dev/null; then ok "planted persistent:true is found"; else bad "p
 printf 'Monitor({ command: "x", timeout_ms: 1800000 })\n' > "$T/planted.md"
 if scan "$T" >/dev/null; then bad "timeout_ms example flagged"; else ok "timeout_ms example passes"; fi
 
-hits="$(scan "$ROOT/skills" "$ROOT/scripts" "$ROOT/helpers" "$ROOT/rules" "$ROOT/templates" | grep -v 'test-monitor-arm-shape.sh')"
+hits="$(scan "$ROOT/skills" "$ROOT/scripts" "$ROOT/helpers" "$ROOT/rules" "$ROOT/templates" | grep -av 'test-monitor-arm-shape.sh')"
 if [ -z "$hits" ]; then ok "no persistent:true in skills/scripts/helpers/rules/templates"
 else bad "persistent:true still present:"; printf '%s\n' "$hits"; fi
 
