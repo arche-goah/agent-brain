@@ -97,7 +97,11 @@ copying it.
 
 **Identity is written, state is read** (operator decision 2026-08-05): what a tool can
 read live (link, lease, address in use, version, counters) is never frozen into labels,
-configs or docs. A snapshot that must be written carries its date and source.
+configs or docs. A snapshot that must be written carries its date and source. The other
+half (operator decision 2026-10-19): what only its producer knows, the producer writes as a
+field; a reader never rebuilds it from prose. **Every change declares its level**, fix or
+feature — symptom · reader · writer · design, why not the next higher one, the debt left —
+in its changelog fragment (`core/helpers/change-level.cjs`; open debts return at session start).
 
 **Files the operator opens are versioned, never overwritten under the same name**
 (operator decision 2026-10-04): every output the operator opens, loads or prints carries

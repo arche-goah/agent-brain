@@ -56,7 +56,10 @@ def main():
         return 1
 
     frags = fragments(root)
-    parts = [p.read_text(encoding="utf-8").strip() for p in frags]
+    # The slug stays as an invisible marker: a debt named in a fragment and the later change that
+    # settles it (`settles-debt: <slug>`, helpers/change-level.cjs) must survive the cut.
+    parts = [(p.read_text(encoding="utf-8").strip() + f" <!-- fragment: {p.stem} -->")
+             if p.read_text(encoding="utf-8").strip() else "" for p in frags]
     m = UNRELEASED.search(text)
     legacy = m.group(1).strip() if m else ""
     if legacy:

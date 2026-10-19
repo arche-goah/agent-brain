@@ -73,6 +73,11 @@ jobs:
       # else, and on a translated file that forgot to leave the list.
       - name: english-only ratchet
         run: python3 scripts/english-only.py
+      # Every change declares its level (rules/working-rules.md, "Identity is written, state is
+      # read"): each changelog fragment carries (level: …; higher: …; debt: …). The same check runs
+      # before `gh pr create` (instance-key-gate.cjs); here it catches a fragment edited later.
+      - name: change level declared
+        run: node helpers/change-level.cjs check
       # This repo ships hooks that run silently in every consuming brain and text that
       # becomes model instruction. A virus scanner sees none of that; this scans for
       # what a review can miss in text: invisible/bidi characters, homoglyphs, opaque
