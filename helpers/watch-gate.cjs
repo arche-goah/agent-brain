@@ -119,14 +119,9 @@ const NO_WATCHER_BUILTIN = ['⚙\\s*no\\s+watcher\\s*:'];
 // (f) a ticket, or a comment that asks something.
 const ISSUE_CREATE = /\bgh\s+issue\s+create\b/;
 const COMMENT = /\bgh\s+(?:issue|pr)\s+comment\b/;
-// (h) a reply that declares the work finished. English built-ins; other languages are instance
-// data (`done_claim_patterns`). Quoted text is stripped first, as for (e).
-const DONE_CLAIM_BUILTIN = [
-  '\\bnothing\\s+(?:is\\s+)?(?:left\\s+|still\\s+)?open\\b',
-  '\\b(?:all|everything)\\s+(?:is\\s+)?(?:done|finished|through)\\b',
-  '\\b(?:the\\s+)?session\\s+can\\s+(?:be\\s+)?(?:closed|ended)\\b',
-  '\\bwe\\s+are\\s+done\\b',
-];
+// (h) a reply that declares the work finished: one definition in done-claim.cjs (shared with
+// verification-gate). Quoted text is stripped first, as for (e).
+const { doneClaimRegex } = require('./done-claim.cjs');
 // A CI watch as started, with its target: `ci-watch.sh pr <owner/repo> <nr>` or `ref <owner/repo> <ref>`.
 const CI_WATCH_TARGET = /\bci-watch\.sh["']?\s+(pr|ref)\s+["']?([\w.-]+\/[\w.-]+)["']?\s+["']?([\w./#-]+)/i;
 // Its verdict lines (scripts/ci-watch.sh): GREEN and RED are verdicts; UNKNOWN is not. NO-CI (the
@@ -143,7 +138,7 @@ function loadPatterns(root) {
     return new RegExp(out.join('|'), 'iu');
   };
   return { handStep: merge(HAND_STEP_BUILTIN, cfg.hand_step_patterns), noWatcher: merge(NO_WATCHER_BUILTIN, cfg.no_watcher_markers),
-    doneClaim: merge(DONE_CLAIM_BUILTIN, cfg.done_claim_patterns) };
+    doneClaim: doneClaimRegex(root) };
 }
 
 /**
