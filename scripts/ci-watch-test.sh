@@ -195,6 +195,24 @@ case "${CI_WATCH_STUB:?}" in
 esac
 STUB
 chmod +x "$TMP/gh"
+# Fake clock for cases that must not depend on real runtime: with CI_WATCH_FAKE_CLOCK set,
+# `sleep N` returns at once and advances an offset that `date +%s` adds to the real time.
+# Unset, both pass straight through to the real commands.
+REAL_DATE=$(command -v date); REAL_SLEEP=$(command -v sleep)
+export REAL_DATE REAL_SLEEP
+cat > "$TMP/date" <<'STUB'
+#!/usr/bin/env bash
+if [[ -n "${CI_WATCH_FAKE_CLOCK:-}" && "$*" == "+%s" ]]; then
+  echo $(( $("$REAL_DATE" +%s) + $(cat "$CI_WATCH_FAKE_CLOCK" 2>/dev/null || echo 0) ))
+else exec "$REAL_DATE" "$@"; fi
+STUB
+cat > "$TMP/sleep" <<'STUB'
+#!/usr/bin/env bash
+if [[ -n "${CI_WATCH_FAKE_CLOCK:-}" ]]; then
+  o=$(cat "$CI_WATCH_FAKE_CLOCK" 2>/dev/null || echo 0); echo $(( o + ${1%%.*} )) >"$CI_WATCH_FAKE_CLOCK"
+else exec "$REAL_SLEEP" "$@"; fi
+STUB
+chmod +x "$TMP/date" "$TMP/sleep"
 export PATH="$TMP:$PATH"
 export CI_WATCH_POLL=0
 # Rate-limit waits in the fixtures: no backoff, no reset slack (a case that needs real time sets its own).
@@ -293,9 +311,15 @@ grep -q "primary limit exhausted, reset" "$TMP/out" && echo "  OK   the primary 
   || { echo "  FAIL primary reset not used"; fails=$((fails+1)); }
 CI_WATCH_RL_SEQ=rl2,pending,rl2,rl2,green check "pr: two separate blocks (secondary wording, HTTP 403) = GREEN" pr_rl 0 pr 12 30
 blocked_is "two blocks, two BLOCKED lines" 2
-# The blocked time must not eat the verdict timeout: a 3 s block against a 1 s timeout, then
-# one more poll after it. Counted against the timeout, this ends UNKNOWN.
-CI_WATCH_RL_BACKOFF=3 CI_WATCH_RL_SEQ=rl,pending,green check "pr: a block longer than the timeout extends the deadline = GREEN" pr_rl 0 pr 12 1
+# The blocked time must not eat the verdict timeout: a block of 600-750 s (fake clock — no real
+# waiting, so a slow runner cannot flip it) against a 60 s timeout, then one more poll after it.
+# Counted against the timeout, this ends UNKNOWN; the real runtime only has to stay under 60 s.
+rm -f "$TMP/fakeclock"
+CI_WATCH_FAKE_CLOCK="$TMP/fakeclock" CI_WATCH_RL_BACKOFF=600 CI_WATCH_RL_SEQ=rl,pending,green \
+  check "pr: a block longer than the timeout extends the deadline = GREEN" pr_rl 0 pr 12 60
+grep -q "next try\|waiting until" "$TMP/out" && [[ $(cat "$TMP/fakeclock") -ge 600 ]] \
+  && echo "  OK   the fake clock advanced past the timeout ($(cat "$TMP/fakeclock")s blocked)" \
+  || { echo "  FAIL fake clock did not advance past the timeout"; fails=$((fails+1)); }
 CI_WATCH_RL_CEILING=0 CI_WATCH_RL_SEQ=rl check "pr: rate-limited past the ceiling = UNKNOWN(2)" pr_rl 2 pr 12 30
 grep -q "rate-limited for .*do NOT read as green" "$TMP/out" && echo "  OK   ceiling verdict names the block and says not green" \
   || { echo "  FAIL ceiling verdict not named"; fails=$((fails+1)); }
