@@ -52,9 +52,10 @@ done' and he adds at most 'received and enough'"):
 - **The asker:** an entry with `closes: <request-stem>` ("answer received, enough").
 - **A LOG-only request** has an id the inbox prints with it: `<area>/LOG@<date>#<n>` (n = the
   n-th heading that day in that LOG, whoever wrote it). Either side settles it by naming that id — in
-  `answers:` / `closes:` / `claims:` of a file, or in a later LOG entry (the asker's own entry
-  settles it only when its heading says so, `(status: done)` or `ERLEDIGT`; a reminder that
-  repeats the id settles nothing). A heading marked `(status: info|done|answered|…)` is a
+  `answers:` / `closes:` / `claims:` of a file, or in a later LOG entry from an addressee (any
+  device of an addressed person or category) — the asker's own entry settles it only when its
+  heading says so, `(status: done)` or `ERLEDIGT`; a reminder that repeats the id, and a party
+  that was not asked and only mentions the id, settle nothing. A heading marked `(status: info|done|answered|…)` is a
   report, never a request.
 - **Entries dated before `STATE_SINCE` (2026-10-20)** are also settled the old way, by words:
   an answer that repeats the title, `re <start of it>`, the request's numbers, or the asker's

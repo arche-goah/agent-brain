@@ -405,7 +405,7 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             elif not prio and not (aud & me):
                 text = f"optional: to everyone; unclaimed - take it if you can and want — {text}"
             items.append((when or "?", e["topic"], e["von"] or "?", f"{text} ({rel})"))
-    return items + log_only_items(texts, me, floor)
+    return items + log_only_items(texts, me, floor, parties)
 
 
 # A heading that declares a closed state (`(status: done)`, `answered`, …) is a report or a
@@ -456,7 +456,20 @@ def names_request(core_title: str, title: str, body: str) -> bool:
                for m in LOG_RE_REF.finditer(text) for x in [m.group(1).strip()] for w in wants)
 
 
-def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tuple]:
+def asked(sender: str, to: set[str], parties: dict) -> bool:
+    """Was `sender` among a request's addressees `to` — itself, another device of the same
+    person, or a category (`os:…`, `person:…`, everyone) that reaches it?"""
+    if to & EVERYONE:
+        return True
+    reach = _parties.expand_self(tokens(sender), parties)
+    devs = _parties.devices(parties)
+    person = {devs[t][0] for t in tokens(sender) if t in devs}
+    reach |= {d for d, (p, _) in devs.items() if p in person}
+    return bool(reach & to)
+
+
+def log_only_items(texts: dict[str, str], me: set[str], floor: str,
+                   parties: dict | None = None) -> list[tuple]:
     """Messages to us BY NAME that live only as a LOG heading (no fact file named in the body).
 
     The shape of the 2026-10-04 incident and of finding 3 of the Windows check on #193: once
@@ -485,21 +498,30 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
             mine.append((date, topic, i, sender, tokens(to) if to else set(), title or "", body))
         ids = _parties.log_ids(topic, [(h[0], h[3]) for h in mine])
         heads += [h + (rid,) for h, rid in zip(mine, ids)]
-    # Written state: every id a file's relation fields name (anyone's file, as for file
-    # requests), and every id a later LOG entry carries — from another party, or from the
-    # asker in a heading that says it is settled. The asker repeating its own id ("still open:
-    # core/LOG@…#2") settles nothing.
+    # Written state: every id a file's relation fields name (anyone's file — a file declares
+    # itself the answer, the rule for file requests), and every id a later LOG entry carries
+    # from someone the request was ADDRESSED to (any device of an addressed person, or of an
+    # addressed category), or from the asker in a heading that says it is settled. A party that
+    # was not asked and only mentions the id ("waits on core/LOG@…#1") settles nothing, and
+    # neither does the asker repeating its own id (counter-check on #33, 2026-10-19).
     settled = set()
     for rel, text in texts.items():
         if rel.endswith("LOG.md") or not text.startswith("---"):
             continue
         for line in REL_FIELDS.findall(text.split("\n---", 1)[0]):
             settled |= set(_parties.LOG_ID.findall(line))
-    asked_by = {h[7]: h[3] for h in heads}
+    by_id = {h[7]: h for h in heads}
     for h in heads:
         closing = LOG_SETTLED.search(h[5]) or LOG_CLOSE.search(h[5])
-        settled |= {r for r in _parties.LOG_ID.findall(h[6])
-                    if r != h[7] and (closing or not tokens(asked_by.get(r, "")) & tokens(h[3]))}
+        for r in _parties.LOG_ID.findall(h[6]):
+            req = by_id.get(r)
+            if r == h[7] or req is None:
+                continue
+            if tokens(req[3]) & tokens(h[3]):
+                if closing:
+                    settled.add(r)
+            elif asked(h[3], req[4], parties or {}):
+                settled.add(r)
     items = []
     for date, topic, idx, sender, to, title, body, rid in heads:
         if not (to & me) or tokens(sender) & me or (floor and date < floor):

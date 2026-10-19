@@ -184,6 +184,13 @@ S=2026-10-21
 # #8 reminder about #5 (info) · #9 its own close of #7. me-mac: #1 a reply in words only · #2 a reply by id.
 printf '# Log\n\n## %s · kim-win — AN me-mac: S-OPEN nobody answers\n\nx\n\n## %s · kim-win — AN me-mac: S-WORDS answered in words\n\nx\n\n## %s · kim-win — AN me-mac: S-FILE answered by a file\n\nx\n\n## %s · kim-win — AN me-mac: S-LOGREF answered in the stream by id\n\nx\n\n## %s · kim-win — AN me-mac: S-SELFREF the asker repeats it\n\nx\n\n## %s · kim-win — AN me-mac (status: done): S-DONEHEAD a report\n\nx\n\n## %s · kim-win — AN me-mac: S-CLOSE the asker settles it\n\nx\n\n## %s · kim-win — AN me-mac (status: info): reminder\n\nstill open: ops/LOG@%s#5\n\n## %s · kim-win — AN me-mac (status: done): settled\n\nops/LOG@%s#7 is no longer needed\n\n## %s · me-mac — AN kim-win: re S-WORDS answered in words\n\nhere is the answer, in words only\n\n## %s · me-mac — AN kim-win (status: answered): reply\n\nanswers ops/LOG@%s#4\n' \
   "$S" "$S" "$S" "$S" "$S" "$S" "$S" "$S" "$S" "$S" "$S" "$S" "$S" "$S" > "$W2/ops/LOG.md"
+# Who may settle by naming the id in the stream (counter-check on #33): an addressee — also another
+# device of the addressed person — or the asker with a settled heading; a party that was not asked
+# and only mentions the id settles nothing. #12 S-THIRD, #13 lee-win mentions it; #14 S-OTHER,
+# #15 me-pc (me-mac's person) answers it.
+printf '\n## %s · kim-win — AN me-mac: S-THIRD a party not asked mentions it\n\nx\n\n## %s · lee-win — AN kim-win (status: info): side note\n\nmy work waits on ops/LOG@%s#12\n\n## %s · kim-win — AN me-mac: S-OTHER the addressee answers from another machine\n\nx\n\n## %s · me-pc — AN kim-win (status: answered): reply\n\nanswers ops/LOG@%s#14\n' \
+  "$S" "$S" "$S" "$S" "$S" "$S" >> "$W2/ops/LOG.md"
+printf '{"people": {"kim": {"devices": {"kim-win": {"os": "windows"}}}, "lee": {"devices": {"lee-win": {"os": "windows"}}}, "me": {"devices": {"me-mac": {"os": "macos"}, "me-pc": {"os": "windows"}}}}}\n' > "$W2/parties.json"
 printf -- '---\nname: reply-s-file\ndescription: "reply"\nmetadata:\n  type: project\n  von: me-mac\n  audience: kim-win\n  topic: ops\n  date: %s\n  status: answered\n  answers: ops/LOG@%s#3\n---\n\nbody\n' "$S" "$S" > "$W2/ops/reply-s-file.md"
 git -C "$W2" add -A
 git -C "$W2" commit -qm seed
@@ -191,10 +198,11 @@ ST="$(SHARED_MEMORY_SELF=me-mac "$PY" "$INBOX" --open --repo "$W2" --to HEAD --d
 grep -q "S-OPEN nobody answers (ops/LOG@$S#1)" <<<"$ST" && pass "a LOG request is printed with its id" || fail "id missing: $ST"
 grep -q 'S-WORDS' <<<"$ST" && pass "words no longer settle a request from STATE_SINCE on" || fail "S-WORDS closed by words: $ST"
 grep -q 'S-SELFREF' <<<"$ST" && pass "the asker repeating its own id settles nothing" || fail "S-SELFREF closed by a reminder: $ST"
-for x in S-FILE S-LOGREF S-DONEHEAD S-CLOSE reminder; do
+grep -q 'S-THIRD' <<<"$ST" && pass "a party that was not asked and only mentions the id settles nothing" || fail "S-THIRD closed by a bystander: $ST"
+for x in S-FILE S-LOGREF S-DONEHEAD S-CLOSE S-OTHER reminder; do
   grep -q "$x" <<<"$ST" && fail "$x must not be listed: $ST" || pass "$x not listed"
 done
-grep -q 'open requests to this instance: 3$' <<<"$ST" && pass "written state: count line says 3" || fail "written state count: $ST"
+grep -q 'open requests to this instance: 4$' <<<"$ST" && pass "written state: count line says 4" || fail "written state count: $ST"
 # NEGATIVE CONTROL 4: the reader before the written state (passed as $4) prints no id and
 # settles S-WORDS by its words — the planted cases are real.
 if [[ -n "${4:-}" ]]; then
