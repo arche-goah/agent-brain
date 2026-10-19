@@ -780,7 +780,7 @@ body=$(bootup_body 2>&1 | tr -d '\000-\010\013\014\016-\037\177' | sed 's/</\&lt
   body+=$'\n!! session-bootup aborted early — output INCOMPLETE, checks from here on did NOT run. Clear the cause in THIS session, before the first reply: rerun core/helpers/session-bootup.sh, find where it stops and why, fix or report it — a later session can only guess (operator 2026-10-15)'
 
 # Time budget report — the limit is this hook's own `timeout` in the brain's settings (project,
-# then local); BOOTUP_TIMEOUT_S overrides it (fixtures). Not found: 30 s, the value the core's
+# then local); BOOTUP_TIMEOUT_S overrides it (fixtures). Not found: 30 s, below the 60 s the core's
 # template ships — the conservative side, it warns early rather than late. Two thirds of the limit
 # is the line: below it nothing is said (a clean check is not a line).
 boot_limit="${BOOTUP_TIMEOUT_S:-}"

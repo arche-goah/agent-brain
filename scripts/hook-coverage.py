@@ -19,6 +19,8 @@ ALSO REPORTED: a gate the template sets to `"onFailure": "block"` (fail closed w
 hook cannot start, crashes or times out; Claude Code >= 2.1.295) that this brain wires
 without it - "fails open".
 
+ALSO REPORTED: a core hook wired with a shorter `timeout` than the template gives it.
+
 ALSO REPORTED: a `permissions.allow` entry of the template that points into the core
 (`Bash(node core/helpers/*)`, `Bash(python3 core/scripts/*)`, ...) which no settings scope
 of this brain grants, verbatim or by a broader glob. Same class as an unwired hook: the
@@ -81,6 +83,21 @@ def commands_by_event(settings):
                 cmd = h.get("command") if isinstance(h, dict) else None
                 if cmd:
                     out.setdefault(event, []).append((matcher, cmd, h.get("onFailure") or "continue"))
+    return out
+
+
+def timeouts(settings):
+    """(event, core file) -> the largest `timeout` any wiring of it carries. Hooks without the
+    field are left out: the harness default applies there, and this check does not guess it."""
+    out = {}
+    for event, groups in (settings.get("hooks") or {}).items():
+        for group in groups or []:
+            for h in (group.get("hooks") or []) if isinstance(group, dict) else []:
+                m = re.search(r"core/(?:helpers|scripts)/([\w.-]+)", h.get("command") or "") if isinstance(h, dict) else None
+                t = h.get("timeout") if m else None
+                if isinstance(t, (int, float)):
+                    key = (event, m.group(1))
+                    out[key] = max(out.get(key, 0), t)
     return out
 
 
@@ -170,6 +187,7 @@ def main():
     cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
     wired = {}
     have_allow = []
+    have_timeout = {}
     for p in (
         os.path.join(root, ".claude", "settings.json"),
         os.path.join(root, ".claude", "settings.local.json"),
@@ -179,6 +197,20 @@ def main():
         for event, pairs in commands_by_event(s).items():
             wired.setdefault(event, []).extend(pairs)
         have_allow.extend(allow_entries(s))
+        for key, t in timeouts(s).items():
+            have_timeout[key] = max(have_timeout.get(key, 0), t)
+
+    # A hook wired with a SHORTER timeout than the template is killed before the core expects
+    # it to be done, and a killed SessionStart hook reports nothing. The field reaches a brain
+    # only at bootstrap, like the hooks themselves. Measured 2026-10-19 on a Windows brain: the
+    # start report took 18-28 s against 30 s, one start was killed after 31 s and its report
+    # never arrived; the template went to 60 s, and without this line no existing brain hears it.
+    shorter = []
+    for (event, helper), want in sorted(timeouts(template).items()):
+        have = have_timeout.get((event, helper))
+        if have is not None and have < want:
+            shorter.append("%s: %s has timeout %s s - the template gives it %s s; raise it in .claude/settings.json"
+                           % (event, helper, have, want))
 
     not_granted = []
     for entry in allow_entries(template):
@@ -292,9 +324,9 @@ def main():
                               "ship it - the dispatcher skips it without a word, so that check never runs"
                               % os.path.basename(cmd))
 
-    for line in broken + missing + narrower + fail_open + inert + not_granted:
+    for line in broken + missing + narrower + fail_open + shorter + inert + not_granted:
         print(line)
-    return 1 if (broken or missing or narrower or fail_open or inert or not_granted) else 0
+    return 1 if (broken or missing or narrower or fail_open or shorter or inert or not_granted) else 0
 
 
 if __name__ == "__main__":
