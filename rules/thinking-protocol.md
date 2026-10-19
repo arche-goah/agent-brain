@@ -101,6 +101,13 @@ fix = build a mechanism (the check must catch the CLASS, not the known case).
 Sites outside the order: list, don't fix — but what is in reach and belongs to
 the same matter gets DONE, not tabled.
 
+**A wrongly kept state is a defect of its own** (operator decision 2026-10-19): an entry
+listed open while the work is done — or ticked while it is not — is a finding with a cause
+(copied from a report, fixed in passing, nobody re-measured), and the cause is fixed, not
+only the checkbox. A ledger entry therefore names how "done" is measured (`check:` — a
+read-only command, or `check: none — <why not>`); `core/scripts/ledger-reconcile.py` runs
+those checks at every session start against the ledgers in `.claude/rules/ledgers.json`.
+
 History: core/docs/rule-history.md, "Class Discipline (pointer — the mechanism lives elsewhere)".
 
 ## Confidence Assessment

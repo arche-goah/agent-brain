@@ -383,6 +383,16 @@ if command -v node >/dev/null 2>&1 && [[ -f "$HERE/change-level.cjs" ]]; then
   node "$HERE/change-level.cjs" debts --root "$HERE/.." --brief 2>/dev/null
 fi
 
+# Ledger state against the system (ledger-reconcile.py): silent unless an entry's `check:`
+# disagrees with its checkbox — done but listed open, ticked but failing — or a new open entry
+# names no check. The checkbox was copied from a report and trusted; measured 2026-10-19:
+# 11 of 12 scan orders done and still open (operator decision 2026-10-19).
+if [[ -f "$HERE/../scripts/ledger-reconcile.py" ]]; then
+  # --cached: the previous run's answer now, the next run in the background — the start pays a
+  # file read, not the checks (Windows starts already used 18-28 s of the 30 s hook, 2026-10-19).
+  CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/ledger-reconcile.py" --root "$R" --cached 2>/dev/null
+fi
+
 # Clock: silent unless the system time is off against the outside (one HEAD, 3 s cap,
 # silent offline). A wrong clock corrupts commit timestamps and every since= cursor.
 if [[ -f "$HERE/../scripts/clock-skew.py" ]]; then
