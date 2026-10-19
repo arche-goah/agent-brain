@@ -208,7 +208,12 @@ then an explicit release follows.
      `node core/helpers/question-gate.cjs list`). With the step-2 stamp of this turn, the gates
      pass exactly what is listed; the questions stay open and come back at the next start.
    - Then a quick check: `.claude/HANDOFF.md` fresh (timestamp — written by
-     `session-closing.sh` in step 2), `docs/memory-snapshot/` export ran and a second
+     `session-closing.sh` in step 2) AND ignored by git — measure it with
+     `git check-ignore -q .claude/HANDOFF.md`, do not assume it: `bootstrap-brain.sh` writes the
+     ignore line, but an older brain can still track the file, and then every SessionEnd leaves a
+     tracked change behind the close commit (measured 2026-10-19 on the Windows instance). Not
+     ignored = `git rm --cached .claude/HANDOFF.md`, add the line to `.gitignore`, commit with the
+     close. `docs/memory-snapshot/` export ran and a second
      `memory-sync.cjs export` leaves it without a diff (anything else means a memory
      changed after step 2 — export and commit it with the close), working tree clean or
      the remainder justified.
@@ -232,7 +237,7 @@ then an explicit release follows.
   in `.claude/rules/feedback.md` (always loaded); this step 4 is the **verification
   point**, not the source.
 - The SessionEnd hook still runs on the real exit anyway (HANDOFF is overwritten — it is
-  gitignored; the session log is left alone when step 2's stamp says this session already
+  gitignored, which step 4 measures; the session log is left alone when step 2's stamp says this session already
   wrote its line). An instance may also run `memory-sync.cjs export` at SessionEnd; it
   touches `docs/memory-snapshot/` only when a memory changed after step 2 (an unchanged
   export writes nothing, manifest included) — which is why step 4 re-runs the export and
