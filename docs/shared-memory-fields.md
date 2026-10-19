@@ -42,6 +42,23 @@ Lists are written `[a, b]`, `a, b`, or as `- a` block lines under the key.
   (a request is open until a settled status or an answer names it); the vocabulary above is
   one set for both tools.
 
+## The relation fields: `answers`, `claims`, `closes`
+
+```yaml
+metadata:
+  answers: core/request-check-42-2026-10-21, core/LOG@2026-10-21#3
+```
+
+They name what an entry settles: a request's file stem, or a LOG request's id
+`<area>/LOG@<date>#<n>` exactly as the inbox prints it. The answerer KNOWS what it answers —
+writing it down is cheaper than every reader guessing it from words. `scripts/shared-memory-post.py
+reply --answers <id>` writes it; lint check 11 names a value that resolves to nothing (entries
+dated `STATE_SINCE` = 2026-10-20 or later; before, 9 entries named a LOG request in prose,
+which no tool can follow). Because the id is a heading's place that day, a LOG is append-only
+for its headings: at commit (`--staged`) the lint names a heading inserted, edited or removed
+within a day that stays. `open-items.py` keys a LOG request by the same id, so its class and
+repeat counter stay with it when its wording changes.
+
 ## Not in this cut (deliberately)
 
 A root line "on the move: <device> N · …" and a bootup line "open, you are on the move: N"

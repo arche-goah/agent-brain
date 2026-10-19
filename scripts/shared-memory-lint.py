@@ -42,6 +42,10 @@ CHECKS (all read-only, no writes, stdlib only):
                      `next`; `next` naming no device of parties.json (when it exists);
                      `related` / `supersedes` pointing at no file; `topics` naming a
                      folder that is not an area (a folder with a LOG.md).
+  11. relations      `answers` / `claims` / `closes` name a file stem or a LOG id
+                     (`<area>/LOG@<date>#<n>`) that exists; from STATE_SINCE on, a LOG
+                     heading to a party that is no report and points at no file is a
+                     request that should be a file (shared-memory-post.py request).
 
 RATCHET (same shape as english-only.py, and for the same reason): the audience/topic
 convention was decided on 2026-08-21 with the explicit note that older files are
@@ -478,6 +482,67 @@ def field_findings(f: dict, rel: str, meta: dict, repo: Path, areas: set[str],
                 fix="an area is a folder with a LOG.md; create it or fix the name")
 
 
+REL_FIELDS = ("answers", "claims", "closes")
+LOG_ARCHIVE = re.compile(r"^LOG-\d{4}-\d{2}\.md$")
+
+
+def known_targets(repo: Path) -> set[str]:
+    """What a relation field may name: every entry's file stem (archive included — a reply to a
+    moved request still names it) and every LOG id (`<area>/LOG@<date>#<n>`, LOG and archive)."""
+    out = set()
+    for p in repo.rglob("*.md"):
+        rel = p.relative_to(repo)
+        if ".git" in rel.parts:
+            continue
+        if p.name == LOG_NAME or (rel.parent.name == "archive" and LOG_ARCHIVE.match(p.name)):
+            area = rel.parts[0] if len(rel.parts) > 1 else "root"
+            out |= set(_parties.log_ids_in(p.read_text(encoding="utf-8", errors="replace"), area))
+        else:
+            out.add(p.stem)
+    return out
+
+
+def relation_findings(f: dict, rel: str, meta: dict, targets: set[str]) -> None:
+    """11. `answers` / `claims` / `closes` settle a request only if they name one: a file stem
+    or a LOG id. A value that names nothing settles nothing, and the request stays open
+    without anyone seeing why."""
+    for field in REL_FIELDS:
+        for raw in listify(meta.get(field)):
+            raw = raw.strip()
+            v = raw if _parties.LOG_ID.fullmatch(raw) else raw.removesuffix(".md").rsplit("/", 1)[-1]
+            if v and v not in targets:
+                f["relations"].append({"file": rel, "issue": f"{field} names nothing in this repo",
+                                       "target": v,
+                                       "fix": "the request's file stem, or its LOG id `<area>/LOG@<date>#<n>` "
+                                              "as the inbox prints it"})
+
+
+def log_requests_without_file(f: dict, rel: str, text: str) -> None:
+    """11. From STATE_SINCE on a request to a party is a FILE (`shared-memory-post.py request`):
+    a file has a name the answer can carry and fields the reader trusts. A LOG heading to a
+    party that is no report (`(status: info|done|answered|…)`) and points at no file is one."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = _parties.HEADING.match(line)
+        if not m or m.group(1) < _parties.STATE_SINCE:
+            continue
+        title = m.group(3) or ""
+        if _parties.addressees(title) is None or re.search(
+                r"\bstatus:\s*(?:" + "|".join(sorted(VALID_STATUS - {"open", "draft"})) + r")\b", title, re.I):
+            continue
+        section = []
+        for nxt in lines[i + 1:]:
+            if _parties.HEADING.match(nxt) or re.match(r"^##\s+\d{4}-\d{2}-\d{2}\b", nxt):
+                break
+            section.append(nxt)
+        if re.search(r"[\w./-]+\.md\b", "\n".join(section)):
+            continue
+        f["relations"].append({"where": f"{rel}: {line[:80]}",
+                               "issue": "a request to a party lives only as a LOG heading",
+                               "fix": "write it as a file: scripts/shared-memory-post.py request — "
+                                      "or, if it asks nothing, say so in the heading `(status: info)`"})
+
+
 def handover_findings(f: dict, where: str, sender: str, audience: str, text: str,
                       parties: dict) -> None:
     """9b. An AI question is not sent back to the human who handed the AI side over."""
@@ -547,7 +612,7 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
     f: dict[str, list] = {k: [] for k in (
         "index_drift", "frontmatter", "name_mismatch", "topic_mismatch",
         "unresolved_links", "limits", "archive", "baseline", "project_without_area",
-        "audience", "fields")}
+        "audience", "fields", "relations")}
 
     index_path = repo / INDEX
     if not index_path.is_file():
@@ -569,6 +634,7 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
     known = _parties.known(parties)
     devices = {d.lower() for d in _parties.devices(parties)} if parties else None
     areas = areas_of(repo)
+    targets = known_targets(repo)
     supersedes = supersession_re(repo)
     superseded: dict[str, list] = {}
 
@@ -631,6 +697,7 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
             continue
         log_text = log.read_text(encoding="utf-8", errors="replace")
         log_unknown_headings(f, log.relative_to(repo).as_posix(), log_text)
+        log_requests_without_file(f, log.relative_to(repo).as_posix(), log_text)
         if parties:
             log_audience(f, log.relative_to(repo).as_posix(), log_text, parties, known)
         size = log.stat().st_size
@@ -699,6 +766,11 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
                                   text, parties)
             # 10. routing fields — no ratchet: they are optional, judged only where used
             field_findings(f, rel, meta, repo, areas, devices)
+            # 11. relations — entries dated STATE_SINCE or later. Measured the day it was written:
+            # 9 older values named a LOG request in prose ("LOG 2026-10-15 <sender> — <title>",
+            # commit SHAs) — the gap this check closes, not debts to turn the lint red for.
+            if str(meta.get("date", "") or "") >= _parties.STATE_SINCE:
+                relation_findings(f, rel, meta, targets)
 
         # 5. dead wikilinks — targets are name slugs, resolved across the whole repo.
         # Code is stripped first (a bash `[[ … ]]` is not a link), and a target may
@@ -819,7 +891,7 @@ def write_baseline(repo: Path, baseline_path: Path | None = None) -> int:
 # drift, LOG size, baseline, areas) stay with the full run — a gate on them would block every
 # commit for debts the writer did not make.
 STAGED_CATS = ("audience", "frontmatter", "name_mismatch", "topic_mismatch", "unresolved_links",
-               "fields")
+               "fields", "relations")
 
 
 def only_staged(repo: Path, r: dict) -> dict:
@@ -851,6 +923,48 @@ def only_staged(repo: Path, r: dict) -> dict:
     return {**r, "findings": found, "counts": {k: len(v) for k, v in found.items()}}
 
 
+def staged_log_inserts(repo: Path) -> list[dict]:
+    """11. A LOG id is the heading's place that day (`<area>/LOG@<date>#<n>`), so a LOG is
+    append-only for its headings: the committed headings must stay the start of the staged
+    ones. A heading inserted above, or an old one edited or removed, shifts the ids after it —
+    and an `answers:` that named one of them now names another entry."""
+    import subprocess
+
+    def show(spec: str) -> str | None:
+        p = subprocess.run(["git", "-C", str(repo), "show", spec], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+        return p.stdout if p.returncode == 0 else None
+
+    names = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--name-only", "--diff-filter=M"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+    out = []
+    for rel in names.splitlines():
+        if rel.rsplit("/", 1)[-1] != LOG_NAME:
+            continue
+        old, new = show(f"HEAD:{rel}"), show(f":{rel}")
+        if old is None or new is None:
+            continue
+        # Per day, the way the id counts: a day the rotation moved out whole, or a day that is
+        # new, shifts nothing; within a day that stays, the old headings must stay its start.
+        def by_day(t: str) -> dict[str, list[str]]:
+            days: dict[str, list[str]] = {}
+            for ln in t.splitlines():
+                m = _parties.HEADING.match(ln)
+                if m:
+                    days.setdefault(m.group(1), []).append(ln)
+            return days
+        was, now = by_day(old), by_day(new)
+        for day in sorted(set(was) & set(now)):
+            a, b = was[day], now[day]
+            if b[:len(a)] != a:
+                first = next(i for i in range(len(a)) if i >= len(b) or a[i] != b[i])
+                out.append({"where": f"{rel}: {a[first][:80]}",
+                            "issue": "a LOG heading was inserted, edited or removed above the end of its day",
+                            "fix": "append new entries at the end; the ids of this day's later entries "
+                                   "shift and an `answers:` naming them would name another entry"})
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--staged", action="store_true",
@@ -879,6 +993,9 @@ def main() -> int:
     r = lint(a.repo, a.baseline)
     if a.staged:
         r = only_staged(a.repo, r)
+        moved = staged_log_inserts(a.repo)
+        r["findings"]["relations"] += moved
+        r["counts"]["relations"] += len(moved)
     total = sum(n for k, n in r["counts"].items() if k not in ADVISORY)
     advisory = sum(n for k, n in r["counts"].items() if k in ADVISORY)
     if a.json:

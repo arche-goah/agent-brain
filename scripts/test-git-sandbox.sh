@@ -66,7 +66,7 @@ fi
 
 # --- the planted case: every committing python fixture passes under the hostile host -------
 for t in shared-memory-audience-test shared-memory-index-test shared-memory-lint-test \
-         staged-names-test device-status-test; do
+         shared-memory-post-test staged-names-test device-status-test; do
   if "$PY" "$HERE/$t.py" >/dev/null 2>&1; then
     ok "planted: $t passes under a global hooksPath that refuses every commit"
   else

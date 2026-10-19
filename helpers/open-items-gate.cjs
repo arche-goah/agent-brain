@@ -201,16 +201,11 @@ function parseBlock(text) {
     } else if ((m = /^- \[request\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — (?:[^:]+: (.+?) — )?/.exec(l))) {
       const ref = m[5];
       const base = ref.split('/').pop();
-      // A LOG entry has no file name to classify by: the gate must name the id that
-      // open-items.py --classify accepts (ref + ": " + first 40 chars of the text), or the
-      // agent falls back to "LOG <date> <sender>", which covered every entry of that sender
-      // that day (measured 2026-10-09, Windows instance). trimEnd: open-items.py rstrips the
-      // cut and --classify strips its key, so a cut ending on a blank could never match
-      // (measured 2026-10-16, macOS instance).
-      const shown = /^LOG /.test(base) && m[6] ? `${ref}: ${m[6].slice(0, 40).trimEnd()}` : `${m[2]}-${m[3]}-${m[4]} ${base}`;
-      // `id` is the key --classify stores under for a LOG entry (that same ref + text id);
-      // the class file is read by it too, or a LOG entry classified mid-session stayed
-      // `?` for the gate (measured 2026-10-12, Windows instance: classified, still blocked).
+      // A LOG entry has no file name to classify by: its ref IS the id --classify takes
+      // (`<area>/LOG@<date>#<n>`), so the gate names it whole.
+      const shown = /^LOG@/.test(base) ? ref : `${m[2]}-${m[3]}-${m[4]} ${base}`;
+      // `id` is the key --classify stores under; the class file is read by it too, or a LOG
+      // entry classified mid-session stayed `?` for the gate (measured 2026-10-12).
       items.push({ cls: m[1], ref: shown, key: ref, id: shown,
         base, date: [m[2], m[3], m[4]], words: topicWords(/\.md$/.test(base) ? base : (m[6] || '')), repeat });
     } else if ((m = /^- \[session\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (session\/\S+) — (?:[^:]+: (.+?) — )?/.exec(l))) {
