@@ -187,8 +187,10 @@ def main() -> int:
               all("optional: to everyone" in line(o, "REVIEWALL") for o in (pc, laptop, mac)))
         check("a ranked request to everyone: first named is asked, the rest optional",
               "optional" not in line(mac, "RANKEDALL") and "asked first kim-mac" in line(laptop, "RANKEDALL"))
-        check("a claim by anyone closes it for everyone",
-              not any("CLAIMED" in o for o in (pc, laptop, mac)))
+        check("a claim closes it for everyone but the claimer",
+              not any("CLAIMED" in o for o in (pc, mac)))
+        check("the claimer keeps it, marked, until it is answered (a claim used to vanish for the claimer too)",
+              "claimed by you" in line(laptop, "CLAIMED"))
         check("negative control: without priority a category request stays a plain request",
               "optional" not in line(inbox(repo, "sam-laptop,sam"), "OSWIN"))
         print("closing (either side may settle a request)")

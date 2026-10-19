@@ -14,6 +14,10 @@ words. The answerer KNOWS what it answers; this tool makes it write that down.
             LOG id `<area>/LOG@<date>#<n>` as the inbox prints it. `status: answered`, or
             `--status open` for a counter-question (then `next:` goes back to the asker).
   note      a file `<area>/note-<slug>-<date>.md`, `status: info` — nothing is asked.
+  claim     a file `<area>/claim-<slug>-<date>.md` with `claims: <id>` (passed as --answers),
+            written BEFORE the work and after a pull: the request leaves everyone else's list
+            and stays on yours until you answer or close it. Refused when someone else
+            already claimed it.
 
 Every message also gets one LOG line in the area (`## <date> · <von> — AN <to> (status: s):
 <title>` plus the file path), so the conversation stream stays readable; the file carries the
@@ -21,7 +25,7 @@ state. Addressees are checked against parties.json, an `answers:` target against
 a refusal writes nothing. It writes files and regenerates the index — committing and pushing
 stay the caller's step.
 
-Usage: shared-memory-post.py request|reply|note --area AREA --to A[,B] --title TEXT
+Usage: shared-memory-post.py request|reply|note|claim --area AREA --to A[,B] --title TEXT
          [--body TEXT | --body-file PATH] [--answers ID[,ID]] [--status S] [--repo DIR]
          [--date YYYY-MM-DD]
 Exit 0 = written, 2 = refused (nothing written).
@@ -44,7 +48,24 @@ from importlib import import_module  # noqa: E402
 _parties = import_module("shared-memory-parties")
 _lint = import_module("shared-memory-lint")
 
-STATUS = {"request": "open", "reply": "answered", "note": "info"}
+STATUS = {"request": "open", "reply": "answered", "note": "info", "claim": "info"}
+
+
+def foreign_claims(repo: Path, target: str, me: set[str]) -> list[str]:
+    """Who else already claimed `target` (a file stem or a LOG id) in the working tree."""
+    out = []
+    for p in repo.rglob("*.md"):
+        if ".git" in p.parts:
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        if not text.startswith("---") or target not in text:
+            continue
+        head = text.split("\n---", 1)[0]
+        von = (re.search(r"^\s+von:\s*(\S+)", head, re.M) or [None, "?"])[1]
+        row = re.search(r"^\s+claims:(.*)$", head, re.M)
+        if row and target in row.group(1) and von.lower() not in me:
+            out.append(f"{von} ({p.relative_to(repo).as_posix()})")
+    return out
 
 
 def refuse(msg: str) -> int:
@@ -96,13 +117,19 @@ def main() -> int:
         if unknown:
             return refuse(f"addressee(s) not in parties.json: {', '.join(unknown)}")
     answers = [x.strip() for x in a.answers.split(",") if x.strip()]
-    if a.kind == "reply" and not answers:
-        return refuse("a reply names what it answers: --answers <file stem or LOG id>")
+    if a.kind in ("reply", "claim") and not answers:
+        return refuse(f"a {a.kind} names what it {'answers' if a.kind == 'reply' else 'takes'}: "
+                      "--answers <file stem or LOG id>")
     targets = _lint.known_targets(a.repo) if answers else set()
     for x in answers:
         key = x if _parties.LOG_ID.fullmatch(x) else x.removesuffix(".md").rsplit("/", 1)[-1]
         if key not in targets:
             return refuse(f"--answers '{x}' names nothing in the repo")
+        # A claim is taken BEFORE the work and after a pull: someone else's claim means the work
+        # is theirs (docs/shared-memory-audience.md, Taking it).
+        taken = foreign_claims(a.repo, key, {t.lower() for t in me}) if a.kind == "claim" else []
+        if taken:
+            return refuse(f"'{x}' is already claimed by {'; '.join(taken)} - the work is theirs")
     status = (a.status or STATUS[a.kind]).lower()
     if status not in _lint.VALID_STATUS:
         return refuse(f"status '{status}' is not in {sorted(_lint.VALID_STATUS)}")
@@ -119,7 +146,7 @@ def main() -> int:
         nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower()]
         meta.append(f"  next: {', '.join(nxt)}")
     if answers:
-        meta.append(f"  answers: {', '.join(answers)}")
+        meta.append(f"  {'claims' if a.kind == 'claim' else 'answers'}: {', '.join(answers)}")
     text = "---\n" + f"name: {stem}\ndescription: {q}\nmetadata:\n" + "\n".join(meta) + "\n---\n\n" + body.strip() + "\n"
     rel = path.relative_to(a.repo).as_posix()
     log = area_dir / "LOG.md"

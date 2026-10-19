@@ -36,8 +36,14 @@ priority: kim-pc, person:sam, os:linux # ordered, any tokens (optional)
   "optional: priority n, asked first <who>; unclaimed - take it if you can and want".
 - **A request to everyone without `priority:`:** a hint for everyone (before 2026-10-13 such a
   broadcast request reached nobody's list).
-- **Taking it:** write a short entry with `claims: <request-stem>` (or answer with
-  `answers: <request-stem>`). That is the record; it closes the request for everyone else.
+- **Taking it:** BEFORE starting the work, and right after a pull, write a short entry with
+  `claims: <request-stem or LOG id>` (`scripts/shared-memory-post.py claim --answers <id>`,
+  which refuses when someone else already claimed it) — or answer at once with `answers:`.
+  A claim written after the work started lets two instances build the same thing. A claim
+  closes the request for everyone else and keeps it on the claimer's list ("claimed by you —
+  answer or close it") until an `answers:` or `closes:` settles it. Two claims that crossed
+  (both pushed before either pulled) show on both claimers' lists ("ALSO claimed by …"): the
+  earlier claim keeps the work, the later one withdraws with a `closes:` of its own claim.
 - **Default per category:** `parties.json` `"priority": {"os:windows": [...]}` applies to an
   entry addressed to exactly that one category and carrying no `priority:` of its own.
 

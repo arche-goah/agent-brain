@@ -95,9 +95,31 @@ def main() -> int:
                  "--answers", lid, me="alex-mac")
         check("a reply may name a LOG id", r.returncode == 0, r.stdout + r.stderr)
         check("the reply settles the LOG request", lid not in inbox(repo, "alex-mac"))
+        # Claims: taken before the work; settled for the others, open for the claimer until answered.
+        r = post(repo, "request", "--area", "core", "--to", "alex-mac,alex-win", "--title", "Measure the pin list")
+        req2 = f"request-measure-the-pin-list-{STATE}"
+        r = post(repo, "claim", "--area", "core", "--to", "kim-pc", "--title", "taking the pin list",
+                 "--answers", req2, me="alex-win")
+        check("a claim is written", r.returncode == 0, r.stdout + r.stderr)
+        mine = inbox(repo, "alex-win")
+        check("the claimer keeps it: 'claimed by you'", req2 in mine and "claimed by you" in mine, mine)
+        check("the other addressee no longer sees it", req2 not in inbox(repo, "alex-mac"))
+        r = post(repo, "claim", "--area", "core", "--to", "kim-pc", "--title", "me too",
+                 "--answers", req2, me="alex-mac")
+        check("refused: a second claim on a claimed request", r.returncode == 2 and "already claimed" in r.stdout,
+              r.stdout + r.stderr)
+        (repo / "core" / "claim-crossed.md").write_text(
+            f"---\nname: claim-crossed\ndescription: \"crossed\"\nmetadata:\n  type: project\n  von: alex-mac\n"
+            f"  audience: kim-pc\n  topic: core\n  date: {STATE}\n  claims: {req2}\n---\n\nx\n", encoding="utf-8")
+        check("two crossed claims show on the claimer's list", "ALSO claimed by alex-mac" in inbox(repo, "alex-win"))
+        (repo / "core" / "claim-crossed.md").unlink()
+        r = post(repo, "reply", "--area", "core", "--to", "kim-pc", "--title", "pin list measured",
+                 "--answers", req2, me="alex-win")
+        check("the claimer's answer settles it for the claimer too", req2 not in inbox(repo, "alex-win"))
+
         ids = import_module("shared-memory-parties").log_ids_in(
             (repo / "core" / "LOG.md").read_text(encoding="utf-8"), "core")
-        check("three senders on one day: every LOG id is unique", len(ids) == len(set(ids)) == 4, str(ids))
+        check("several senders on one day: every LOG id is unique", len(ids) == len(set(ids)) > 3, str(ids))
 
         before = files(repo)
         log_before = (repo / "core" / "LOG.md").read_text(encoding="utf-8")

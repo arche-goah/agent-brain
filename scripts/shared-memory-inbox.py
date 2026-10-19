@@ -310,6 +310,17 @@ def log_section_senders(text: str) -> list[tuple[str, str]]:
 # saw them — two questions to another party's AI were never shown there.
 REQUEST_PREFIXES = ("request", "question", "anfrage", "rueckfrage", "frage", "pruefbitte",
                     "bitte", "abstimmung")
+REL_ROW = re.compile(r"^\s+(answers|claims|closes):(.*)$", re.M)
+
+
+def claimed_note(claimers: list[str], me: set[str]) -> str:
+    """The prefix of a request THIS instance took. Two parties that both took it (a race the
+    pull before the claim did not catch) both see it — the earlier claim keeps it, the later one
+    withdraws (docs/shared-memory-audience.md, Taking it)."""
+    others = sorted({c for c in claimers if not tokens(c) & me})
+    return ("claimed by you — answer or close it"
+            + (f"; ALSO claimed by {', '.join(others)}: the earlier claim keeps it" if others else "")
+            + " — ")
 CLOSED_STATUS = {"answered", "done", "decided", "info", "closed"}
 FM_STATUS = re.compile(r"^\s+status:\s*([\w-]+)", re.M)
 
@@ -375,6 +386,7 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
             continue
         stem = p.stem
         answered = False
+        claimers: list[str] = []
         for hrel, htext in texts.items():
             if stem not in htext or hrel == rel or hrel.endswith("INDEX.md"):
                 continue
@@ -386,15 +398,26 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
                 # a request to "either of two machines" is closed by the one that answered
                 # (Windows check on #193, finding 1).
                 hhead = htext.split("\n---", 1)[0] if htext.startswith("---") else ""
-                # `claims:` = someone took it; `closes:` = either side says it is settled — the
-                # asker ("answer received, enough") or the answerer ("answered, done"). 2026-10-13.
-                answered = (bool(tokens(read_entry(repo / hrel, repo, text=htext)["von"]) & me)
-                            or bool(re.search(r"^\s+(?:answers|claims|closes):.*" + re.escape(stem),
-                                              hhead, re.M)))
+                von = read_entry(repo / hrel, repo, text=htext)["von"]
+                # `closes:` = either side says it is settled — the asker ("answer received,
+                # enough") or the answerer ("answered, done"), 2026-10-13. `claims:` = someone
+                # TOOK it: settled for everyone else, still open for the one who took it until
+                # an answer or a close (counter-check on #33 — a claim never followed by an answer
+                # used to vanish from every list, the claimer's included).
+                fields = {f for f, v in REL_ROW.findall(hhead) if stem in v}
+                if fields == {"claims"}:
+                    claimers.append(von or "?")
+                    continue
+                answered = bool(tokens(von) & me) or bool(fields)
             if answered:
                 break
+        mine = [c for c in claimers if tokens(c) & me]
+        if not answered and claimers and not mine:
+            continue
         if not answered:
             text = whole(e["desc"] or e["name"])
+            if mine:
+                text = claimed_note(claimers, me) + text
             # Priority is information, never a sequence (operator 2026-10-13): whoever is not
             # asked first sees the task as optional — anyone may claim it at any time.
             prio = _parties.priority(head, e["audience"], parties or {})
@@ -420,7 +443,6 @@ STATE_SINCE = _parties.STATE_SINCE
 # The asker settles its own request only in a heading that says so — not with `info`, which a
 # reminder carries too.
 LOG_SETTLED = re.compile(r"\bstatus:\s*(?:" + "|".join(sorted(CLOSED_STATUS - {"info"})) + r")\b", re.I)
-REL_FIELDS = re.compile(r"^\s+(?:answers|claims|closes):(.*)$", re.M)
 # The close word opens the title proper: "AN <who>: ERLEDIGT — …" (or a title without AN).
 LOG_CLOSE = re.compile(r"(?:^|:)\s*(?:ERLEDIGT|GESCHLOSSEN|DONE|CLOSED)\b", re.I)
 # "re <what>" — a reply that opens with the request's title, or the start of it.
@@ -505,11 +527,18 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str,
     # was not asked and only mentions the id ("waits on core/LOG@…#1") settles nothing, and
     # neither does the asker repeating its own id (counter-check on #33, 2026-10-19).
     settled = set()
+    claims: dict[str, list[str]] = {}  # a claim settles for everyone but the claimer (see open_items)
     for rel, text in texts.items():
         if rel.endswith("LOG.md") or not text.startswith("---"):
             continue
-        for line in REL_FIELDS.findall(text.split("\n---", 1)[0]):
-            settled |= set(_parties.LOG_ID.findall(line))
+        head = text.split("\n---", 1)[0]
+        von = (re.search(r"^\s+von:\s*(\S+)", head, re.M) or [None, "?"])[1]
+        for field, line in REL_ROW.findall(head):
+            for r in _parties.LOG_ID.findall(line):
+                if field == "claims":
+                    claims.setdefault(r, []).append(von)
+                else:
+                    settled.add(r)
     by_id = {h[7]: h for h in heads}
     for h in heads:
         closing = LOG_SETTLED.search(h[5]) or LOG_CLOSE.search(h[5])
@@ -527,6 +556,13 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str,
         if not (to & me) or tokens(sender) & me or (floor and date < floor):
             continue
         if rid in settled:
+            continue
+        cl = claims.get(rid, [])
+        mine = [c for c in cl if tokens(c) & me]
+        if cl and not mine:
+            continue
+        if mine:
+            items.append((date, topic, sender, claimed_note(cl, me) + whole(title) + f" ({rid})"))
             continue
         if re.search(r"[\w./-]+\.md\b", "\n".join(body.splitlines()[1:])):
             continue  # points at a fact file — the file path above judges it

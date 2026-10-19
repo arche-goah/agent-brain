@@ -190,6 +190,11 @@ printf '# Log\n\n## %s · kim-win — AN me-mac: S-OPEN nobody answers\n\nx\n\n#
 # #15 me-pc (me-mac's person) answers it.
 printf '\n## %s · kim-win — AN me-mac: S-THIRD a party not asked mentions it\n\nx\n\n## %s · lee-win — AN kim-win (status: info): side note\n\nmy work waits on ops/LOG@%s#12\n\n## %s · kim-win — AN me-mac: S-OTHER the addressee answers from another machine\n\nx\n\n## %s · me-pc — AN kim-win (status: answered): reply\n\nanswers ops/LOG@%s#14\n' \
   "$S" "$S" "$S" "$S" "$S" "$S" >> "$W2/ops/LOG.md"
+# Claims on a LOG id: #16 S-CLAIMED is claimed by me-mac (stays on my list, marked), #17
+# S-CLAIMOTHER by lee-win (leaves my list).
+printf '\n## %s · kim-win — AN me-mac, lee-win: S-CLAIMED I took it, not answered yet\n\nx\n\n## %s · kim-win — AN me-mac, lee-win: S-CLAIMOTHER lee took it\n\nx\n' "$S" "$S" >> "$W2/ops/LOG.md"
+printf -- '---\nname: claim-mine\ndescription: "claim"\nmetadata:\n  type: project\n  von: me-mac\n  audience: kim-win\n  topic: ops\n  date: %s\n  claims: ops/LOG@%s#16\n---\n\nx\n' "$S" "$S" > "$W2/ops/claim-mine.md"
+printf -- '---\nname: claim-lee\ndescription: "claim"\nmetadata:\n  type: project\n  von: lee-win\n  audience: kim-win\n  topic: ops\n  date: %s\n  claims: ops/LOG@%s#17\n---\n\nx\n' "$S" "$S" > "$W2/ops/claim-lee.md"
 printf '{"people": {"kim": {"devices": {"kim-win": {"os": "windows"}}}, "lee": {"devices": {"lee-win": {"os": "windows"}}}, "me": {"devices": {"me-mac": {"os": "macos"}, "me-pc": {"os": "windows"}}}}}\n' > "$W2/parties.json"
 printf -- '---\nname: reply-s-file\ndescription: "reply"\nmetadata:\n  type: project\n  von: me-mac\n  audience: kim-win\n  topic: ops\n  date: %s\n  status: answered\n  answers: ops/LOG@%s#3\n---\n\nbody\n' "$S" "$S" > "$W2/ops/reply-s-file.md"
 git -C "$W2" add -A
@@ -199,10 +204,11 @@ grep -q "S-OPEN nobody answers (ops/LOG@$S#1)" <<<"$ST" && pass "a LOG request i
 grep -q 'S-WORDS' <<<"$ST" && pass "words no longer settle a request from STATE_SINCE on" || fail "S-WORDS closed by words: $ST"
 grep -q 'S-SELFREF' <<<"$ST" && pass "the asker repeating its own id settles nothing" || fail "S-SELFREF closed by a reminder: $ST"
 grep -q 'S-THIRD' <<<"$ST" && pass "a party that was not asked and only mentions the id settles nothing" || fail "S-THIRD closed by a bystander: $ST"
-for x in S-FILE S-LOGREF S-DONEHEAD S-CLOSE S-OTHER reminder; do
+grep -q 'claimed by you.*S-CLAIMED' <<<"$ST" && pass "a claim keeps the request on the claimer's list, marked" || fail "own claim lost or unmarked: $ST"
+for x in S-FILE S-LOGREF S-DONEHEAD S-CLOSE S-OTHER S-CLAIMOTHER reminder; do
   grep -q "$x" <<<"$ST" && fail "$x must not be listed: $ST" || pass "$x not listed"
 done
-grep -q 'open requests to this instance: 4$' <<<"$ST" && pass "written state: count line says 4" || fail "written state count: $ST"
+grep -q 'open requests to this instance: 5$' <<<"$ST" && pass "written state: count line says 5" || fail "written state count: $ST"
 # NEGATIVE CONTROL 4: the reader before the written state (passed as $4) prints no id and
 # settles S-WORDS by its words — the planted cases are real.
 if [[ -n "${4:-}" ]]; then
