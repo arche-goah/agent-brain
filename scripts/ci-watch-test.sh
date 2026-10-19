@@ -192,6 +192,22 @@ case "${CI_WATCH_STUB:?}" in
                     n=$(cat "$f" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" >"$f"
                     if (( n <= 6 )); then echo "gh: API rate limit exceeded for user ID 1234. (HTTP 403)" >&2; exit 1; fi
                     echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"CI"}]' ;;
+  # 2026-10-19: right after a push the PR still lists the OLD head (aaaa…) and its RED checks,
+  # while the branch ref is already at the pushed commit (bbbb…). pr_tip_lag: the PR catches up
+  # on the second read and its checks are green; pr_tip_stuck: it never catches up;
+  # pr_tip_synced_red: control — PR head == branch tip, the red is real.
+  pr_tip_lag|pr_tip_stuck|pr_tip_synced_red)
+                    f="${CI_WATCH_STATE:?}"
+                    old=aaaa111100000000000000000000000000000000; new=bbbb222200000000000000000000000000000000
+                    if [[ "$CI_WATCH_STUB" == pr_tip_synced_red ]]; then old=$new; fi
+                    if [[ "$*" == *headRefName* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_tip_lag && -f "$f" ]]; then printf '%s\tfeature\towner/repo\n' "$new"
+                      else touch "$f"; printf '%s\tfeature\towner/repo\n' "$old"; fi
+                    elif [[ "$*" == *git/ref/heads/feature* ]]; then echo "$new"
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    elif [[ "$CI_WATCH_STUB" == pr_tip_lag && -f "$f" ]]; then echo '[{"bucket":"pass","name":"lint"}]'
+                    else echo '[{"bucket":"pass","name":"lint"},{"bucket":"fail","name":"test"}]'; fi ;;
 esac
 STUB
 chmod +x "$TMP/gh"
@@ -295,6 +311,13 @@ check "pr: listed checks green, the open run completes = GREEN"          pr_run_
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head still old, then flips = GREEN on the new head" pr_head_lag 0 pr 12 30
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head never reaches it = wait, timeout(2)"   pr_head_stuck 2 pr 12 2
 check "pr: without CI_WATCH_SHA the old head's green counts (unchanged behaviour)"        pr_head_stuck 0 pr 12 30
+check "pr: PR head behind its branch tip, old head red, then catches up green = GREEN"  pr_tip_lag 0 pr 12 30
+grep -q "has not caught up with" "$TMP/out" && echo "  OK   the lagging head is named" \
+  || { echo "  FAIL lagging head not named"; fails=$((fails+1)); }
+check "pr: PR head never reaches its branch tip, old head red = no verdict, timeout(2)" pr_tip_stuck 2 pr 12 2
+grep -q "CI-WATCH RED" "$TMP/out" && { echo "  FAIL the old head's red was reported"; fails=$((fails+1)); } \
+  || echo "  OK   the old head's red was not reported"
+check "pr: PR head == branch tip, red = RED (control)"                                    pr_tip_synced_red 1 pr 12 30
 
 # Rate limit (2026-10-19): a blocked answer is a wait, never a verdict and never an early exit.
 blocked_is() { # label n — the last run printed exactly n BLOCKED lines

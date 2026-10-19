@@ -240,6 +240,33 @@ pr_head_not_yet_expected() {   # exit 0 = the PR does not show the expected head
   return 0
 }
 
+# The same race without CI_WATCH_SHA, second incident (2026-10-19, a core PR): armed right after
+# a push, the watch said `RED — 4 failing/cancelled` — the PREVIOUS run's checks; a minute later
+# the new head stood on pending. The pushed commit is visible at once on the branch ref (a push
+# writes it), while the PR's headRefOid follows asynchronously — so before ANY verdict, green or
+# red, the PR head is compared with its branch tip: different = the PR has not caught up, the
+# checks it lists belong to an older commit, wait. One extra read per verdict, none per poll.
+# An unreadable answer (gh error, a deleted head branch after a merge, an old stub) does not
+# block: the behaviour is then the one before this check, and the deadline still bounds it.
+warned_behind=0
+pr_head_behind_branch() {   # exit 0 = the PR's head is not yet its branch tip
+  local head branch repo tip
+  ghq pr view "$TARGET" -R "$REPO" --json headRefOid,headRefName,headRepository,headRepositoryOwner \
+      --jq '[.headRefOid, .headRefName, .headRepositoryOwner.login + "/" + .headRepository.name] | @tsv' || return 1
+  IFS=$'\t' read -r head branch repo <<<"$gh_out"
+  [[ "$head" =~ ^[0-9a-f]{40}$ && -n "$branch" && "$repo" == */?* ]] || return 1
+  ghq api "repos/$repo/git/ref/heads/$branch" --jq .object.sha || return 1
+  tip=$gh_out
+  [[ "$tip" =~ ^[0-9a-f]{40}$ ]] || return 1
+  [[ "$tip" == "$head" ]] && return 1
+  if (( warned_behind == 0 )); then
+    echo "ci-watch: PR #$TARGET still shows head ${head:0:7}, its branch is already at ${tip:0:7}" \
+         "(a push the PR has not caught up with) — its listed checks are the old head's; waiting" >&2
+    warned_behind=1
+  fi
+  return 0
+}
+
 warned_open_run=0
 pr_run_still_open() {   # exit 0 = a run of the head commit is still open
   local sha open
@@ -360,6 +387,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     fi
     if (( pending > 0 )); then stale_checkrun_recount; fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
+    if pr_head_behind_branch; then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
     # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
     # the checks then predate the base change and are never recomputed (measured
