@@ -119,8 +119,14 @@ print("brain-friction: blind-to-indirection")
 STOP_CHECKS = {"checks": [{"label": "C", "marker": "CLASS-GATE",
                            "cmd": "core/helpers/class-gate.cjs", "mode": "block"}]}
 BLIND = ("import json\n# reads settings.json hooks and matches class-gate.cjs by name\n"
-         "s = json.load(open('.claude/settings.json'))\n")
+         "s = json.load(open('.claude/settings.json'))\n"
+         "wired = 'class-gate.cjs' in json.dumps(s.get('hooks', {}))\n")
 AWARE = BLIND + "cfg = open('.claude/rules/stop-checks.json').read()\n"
+# names the helper only in comments (line and block) — the shape mechanism-guard.cjs had
+COMMENT_ONLY = ("const fs = require('fs');\n"
+                "const s = JSON.parse(fs.readFileSync('.claude/settings.json')); // hooks\n"
+                "// quote shapes are the ones class-gate.cjs accepts\n"
+                "/* class-gate.cjs is not read here */\n")
 
 
 def build_dispatcher_brain(root, scripts):
@@ -150,7 +156,16 @@ with tempfile.TemporaryDirectory() as td:
        "aware-check.py" not in out,
        "a file that already knows the config was reported blind")
 
+# 7. a helper named only in comments is no match (the false hit of 2026-10-19)
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    build_dispatcher_brain(root, {"comment-only.cjs": COMMENT_ONLY})
+    out = scan(root)
+    ok("a helper named only in a comment is not a match",
+       "comment-only.cjs" not in out,
+       "a comment mention was reported as a blind check")
+
 if fails:
     print(f"brain-friction-test: {len(fails)} FAILURE(S)")
     sys.exit(1)
-print("brain-friction-test: all 6 fixtures passed")
+print("brain-friction-test: all 7 fixtures passed")

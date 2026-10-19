@@ -105,7 +105,14 @@ if checks:
         if "stop-checks" in text:
             continue
         if "settings.json" in text and re.search(r'hooks?\b', text):
-            hits = [n for n in registered if n and n in text]
+            # The helper name must appear in CODE: a file that only mentions a helper in a
+            # comment does not match on it. Measured 2026-10-19 on a macOS instance:
+            # mechanism-guard.cjs names question-gate.cjs in one comment line and was
+            # reported blind every session start.
+            code = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+            code = "\n".join(l for l in code.splitlines()
+                             if not l.lstrip().startswith(("#", "//")))
+            hits = [n for n in registered if n and n in code]
             if hits:
                 note("blind-to-indirection",
                      f"{path} matches on {', '.join(sorted(hits)[:3])}",
