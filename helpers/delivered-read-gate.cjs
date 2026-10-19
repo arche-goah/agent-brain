@@ -22,7 +22,9 @@
 const fs = require('fs');
 const { isNotification } = require('./turn-kind.cjs');
 
-const OWN_ECHO = /DELIVERED-READ/;
+// Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
+const { ownEcho, declare } = require('./stop-echo.cjs');
+let OWN_ECHO = /DELIVERED-READ/;
 const HOOK_ECHO = /^Stop hook feedback:|Stop hook blocking error/;
 const LINE = /^\s*-\s+\d{4}-\d{2}-\d{2}\s+\[[^\]]+\]\s+[^:\n]+:.*\(([\w./-]+\.md)\)\s*(?:<\/[\w-]+>\s*)*$/gm;
 const ESCAPE = /\bunread-ok:\s*\S/i;
@@ -97,16 +99,17 @@ process.stdin.on('data', (c) => { data += c; });
 process.stdin.on('end', () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { return allow(); }
+  OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active || !input.transcript_path) return allow();
   let seen;
   try { seen = analyze(readTail(input.transcript_path)); } catch (e) { return allow(); }
   if (!seen.unread.length || seen.escaped || seen.echoed) return allow();
-  console.log(JSON.stringify({
+  console.log(JSON.stringify(declare({
     decision: 'block',
     reason: `DELIVERED-READ — shown, not read: ${seen.unread.join(', ')}. An inbox line of a fact file ` +
       'is its description, not the message. Read the file before acting on it, or say ' +
       '`unread-ok: <why>` if you are deliberately not acting on it.',
-  }));
+  }, input)));
   process.exit(0);
 });
 process.stdin.resume();
