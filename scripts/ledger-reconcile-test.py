@@ -181,6 +181,17 @@ def main():
                 break
             time.sleep(0.1)
 
+        # a RELATIVE --root under --cached (Windows review 2026-10-19: the child got cwd=root AND
+        # the relative root, resolved it twice and wrote nothing)
+        brief.unlink()
+        subprocess.run([sys.executable, SCRIPT, "--root", R.name, "--cached"], cwd=str(R.parent),
+                       capture_output=True, text=True, encoding="utf-8")
+        for _ in range(200):
+            if brief.exists():
+                break
+            time.sleep(0.1)
+        ok(brief.exists(), "--cached with a relative --root: the background run writes its result")
+
         # the default allow list (no "allowed" in the config)
         (R / "docs" / "orders.md").write_text(
             "- [ ] **reads** — derived (2026-10-15)\n  check: grep -q . marker-present || test -f marker-present\n  id: default-read\n\n"
