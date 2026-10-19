@@ -154,9 +154,13 @@ def run_check(cmd, root, timeout, shell):
     """'pass' | 'fail' | 'timeout' | 'error'."""
     if not shell:
         return "error"
+    # Windows: the --cached run is detached and has no console, so every check it starts would
+    # get a NEW console — measured 2026-10-19 on a Windows brain: 4 checks 12.3 s with default
+    # flags, 0.11 s with CREATE_NO_WINDOW (and presumably no window flashing per check).
+    kw = {"creationflags": 0x08000000} if os.name == "nt" else {}
     try:
         r = subprocess.run([shell, "-c", cmd], cwd=root, timeout=timeout,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
     except subprocess.TimeoutExpired:
         return "timeout"
     except OSError:

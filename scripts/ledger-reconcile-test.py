@@ -161,12 +161,16 @@ def main():
         ok(out.strip() == "" and rc == 0, "--cached, first start: silent (no earlier result)", out)
         ok(time.monotonic() - t0 < 5, "--cached returns without waiting for the checks")
         brief = R / ".claude-state" / "ledger-reconcile.brief"
-        for _ in range(100):
+        for _ in range(200):
             if brief.exists():
                 break
             time.sleep(0.1)
+        waited = time.monotonic() - t0
         ok(brief.exists() and "done-but-open" in brief.read_text(encoding="utf-8"),
            "--cached: the background run writes its brief result")
+        # A few fast checks must not take seconds in the background — on Windows each check of a
+        # console-less parent used to open a new console (~3 s per check, measured 2026-10-19).
+        ok(waited < 5, f"--cached: the background result is there within 5 s ({waited:.1f} s)")
         rc, out = run(root, "--cached")
         ok("done-but-open" in out and "result of" in out, "--cached, next start: shows that result with its time", out)
         brief.write_text("", encoding="utf-8")
