@@ -180,17 +180,41 @@ def main():
         # the default allow list (no "allowed" in the config)
         (R / "docs" / "orders.md").write_text(
             "- [ ] **reads** — derived (2026-10-15)\n  check: grep -q . marker-present || test -f marker-present\n  id: default-read\n\n"
-            "- [ ] **writes** — derived (2026-10-15)\n  check: touch written-by-default\n  id: default-write\n",
+            "- [ ] **writes** — derived (2026-10-15)\n  check: touch written-by-default\n  id: default-write\n\n"
+            "- [ ] **find deletes** — derived (2026-10-15)\n  check: find . -name victim -delete\n  id: bypass-find\n\n"
+            "- [ ] **single amp** — derived (2026-10-15)\n  check: test -f victim & rm -f victim\n  id: bypass-amp\n\n"
+            "- [ ] **process substitution** — derived (2026-10-15)\n  check: diff <(rm -f victim) marker-present\n  id: bypass-procsub\n",
             encoding="utf-8")
+        (R / "victim").write_text("keep me")
         json.dump({"ledgers": ["docs/orders.md"]}, open(cfg, "w", encoding="utf-8"))
         rc, out = run(root, "--brief")
         ok("default-read" in out and "done but still open" in out, "default list: grep/test run", out)
         ok("default-write" in next((l for l in out.splitlines() if "refused" in l), "")
            and not (R / "written-by-default").exists(), "default list: touch is refused", out)
+        refl = next((l for l in out.splitlines() if "refused" in l), "")
+        ok(all(i in refl for i in ("bypass-find", "bypass-amp", "bypass-procsub")) and (R / "victim").exists(),
+           "default list: find -delete, a single & and <(...) are refused, the file they target still exists", out)
 
         json.dump({"ledgers": ["docs/gone.md"]}, open(cfg, "w", encoding="utf-8"))
         rc, out = run(root, "--brief")
         ok("not found" in out and "docs/gone.md" in out, "a registered ledger that is missing is named", out)
+
+    # The allow list against known bypasses (review of this PR, 2026-10-19: the first list let
+    # the four writers below through). The shell grammar is closed, so these are refused by
+    # shape, not by name; the reading forms stay allowed.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("lr", SCRIPT)
+    lr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lr)
+    for cmd in ["find . -name x -delete", "find . -name x -exec rm {} ;", "find . -exec rm {} +",
+                "test -f a & rm -f b", "diff <(rm -f b) a", "git diff --output=out.txt",
+                "git log --output out.txt", "git grep -Ovi x", "test -f a; rm -f b",
+                "grep x a > b", "cat $(rm -f b)", "cat `rm -f b`", "test -f a\nrm -f b",
+                "git -c core.pager=rm log", "git push", "touch x"]:
+        ok(not lr.permitted(cmd, lr.ALLOWED), f"refused: {cmd!r}")
+    for cmd in ["grep -q x file", "test -f a && git log -1 --format=%H", "git log --oneline | grep -q fix",
+                "! grep -q TODO notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md"]:
+        ok(lr.permitted(cmd, lr.ALLOWED), f"allowed: {cmd!r}")
 
     print()
     if fails:

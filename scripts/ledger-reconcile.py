@@ -19,10 +19,11 @@ The script runs every `check:` of the registered ledgers and reports:
 A check that times out or cannot start is reported as such, never as done.
 
 Two bounds, because the checks run on their own at every session start:
-- Only READ commands run. Every part of a check (split at `;`, `&&`, `||`, `|`) must start
-  with an allowed prefix (`allowed`, default ALLOWED below), and a check with a redirection
-  (`>`), a command substitution or a backtick is refused. A refused check is named, never run.
-  "read-only" is then a property the script enforces, not only an agreement.
+- Only READ commands run. A check is parts joined by `&&`, `||` or `|`; every part must start
+  with an allowed prefix (`allowed`, default ALLOWED below), any other shell control character
+  (`;`, a single `&`, `<`, `>`, `(`, `)`, `$`, backtick, braces, newline) refuses the check, and
+  so do options that write or start a program (`--output`, `--ext-diff`, `-O`, ...). A refused
+  check is named, never run. "read-only" is then a property the script enforces.
 - The session start never waits for the checks: it runs `--cached`, which prints the brief
   result of the PREVIOUS run (silent when that was clean) and starts the next run in the
   background — the brain-check pattern. Measured 2026-10-19 on a Windows brain: the start
@@ -118,22 +119,33 @@ def find_shell(explicit=None):
 # Prefixes a part of a check may start with — commands that read. A git subcommand is named in
 # full, so `git push` or `git commit` never matches. An instance widens or narrows it with
 # "allowed" in its ledgers.json; the list replaces this one, it does not add to it.
-ALLOWED = ["test", "[", "grep", "ls", "find", "wc", "head", "tail", "cat", "diff",
+# `find` is NOT here: -delete/-exec make it a writer, and a check rarely needs it (`ls`, `test`).
+ALLOWED = ["test", "[", "grep", "ls", "wc", "head", "tail", "cat", "diff",
            "git log", "git show", "git grep", "git rev-parse", "git ls-files", "git cat-file",
            "git merge-base", "git diff", "git status"]
-SPLIT = re.compile(r"\s*(?:&&|\|\||;|\|)\s*")
-WRITE = re.compile(r">|\$\(|`")
+# The shell grammar a check may use is closed, not filtered: parts joined by `&&`, `||` or `|`
+# (a pipe), each part a plain command with words. After those separators are taken out, ANY
+# other shell control character refuses the check — `;`, a single `&`, `<`, `>`, `(`, `)`,
+# `$`, a backtick, a newline. A blocklist of known tricks loses to the next trick (review of
+# this PR, 2026-10-19: `&`, `<(…)` and a `;` inside find's -exec passed the first list).
+SPLIT = re.compile(r"\s*(?:&&|\|\||\|)\s*")
+CONTROL = re.compile(r"[;&<>()$`\n\r{}]")
+# Options of allowed commands that write a file or start another program.
+WRITING_OPTION = re.compile(r"^(--output|--ext-diff|--textconv|-O|--open-files-in-pager|--exec)")
 
 
 def permitted(cmd, allowed):
-    """True when every part of the check starts with an allowed prefix and nothing writes."""
-    if WRITE.search(cmd):
+    """True when every part of the check is an allowed reading command and nothing can write."""
+    parts = SPLIT.split(cmd.strip())
+    if any(CONTROL.search(p) for p in parts):
         return False
-    for part in SPLIT.split(cmd.strip()):
+    for part in parts:
         words = part.strip().lstrip("!").split()
         if not words:
             return False
         if not any(words[:len(p.split())] == p.split() for p in allowed):
+            return False
+        if any(WRITING_OPTION.match(w) for w in words[1:]):
             return False
     return True
 
