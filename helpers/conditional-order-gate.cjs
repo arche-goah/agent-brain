@@ -137,6 +137,12 @@ function analyze(transcriptPath) {
     const msg = d.message;
     if (!msg) continue;
     if (msg.role === 'user') {
+      // A skill loaded through the Skill tool arrives as a user record with isMeta AND
+      // sourceToolUseID (measured, Claude Code 2.1.303, 61 of 61 such records in 40
+      // transcripts): the skill author's words — no condition, no new turn (2026-10-19,
+      // "then" in session-close). isMeta alone is NOT enough: a message the operator sends
+      // mid-turn carries it too, without sourceToolUseID.
+      if (d.isMeta === true && d.sourceToolUseID) continue;
       const t = promptText(msg);
       if (t === null || HOOK_ECHO.test(t) || isNotification(t)) continue;
       operator = t; texts = []; agents = 0;   // a new turn starts here

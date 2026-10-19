@@ -115,6 +115,21 @@ run_case notification allow Workflow '{"scriptPath":"x.js"}'
 mk "$T/cond-then-notif.jsonl" '"dann coherence scan"' 0 '' '"<task-notification>agent 1 done</task-notification>"'
 run_case cond-then-notif block Workflow '{"scriptPath":"x.js"}'
 
+# --- a skill loaded through the Skill tool arrives as a user record with "isMeta" AND
+# --- "sourceToolUseID" (measured on Claude Code 2.1.303); its "then" is the skill author's,
+# --- not the operator's (2026-10-19, session-close)
+mk "$T/skill-text.jsonl" '"close the session"' 0 ''
+printf '{"isMeta":true,"sourceToolUseID":"toolu_x","message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: x\\n\\nCommit, then push."}]}}\n' >> "$T/skill-text.jsonl"
+run_case skill-text allow Bash '{"command":"git push origin feat/x"}'
+# ... the operator's own condition survives a skill expansion in between
+mk "$T/cond-then-skill.jsonl" '"after the mac answers, push it"' 0 ''
+printf '{"isMeta":true,"sourceToolUseID":"toolu_x","message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: x"}]}}\n' >> "$T/cond-then-skill.jsonl"
+run_case cond-then-skill block Bash '{"command":"git push origin feat/x"}'
+# ... and a message the operator sends mid-turn (isMeta, no sourceToolUseID) still counts
+mk "$T/midturn-operator.jsonl" '"run the scan"' 0 ''
+printf '{"isMeta":true,"message":{"role":"user","content":"after the mac answers, push it"}}\n' >> "$T/midturn-operator.jsonl"
+run_case midturn-operator block Bash '{"command":"git push origin feat/x"}'
+
 # --- discriminator: the German hit must come from the DATA — same transcript, cwd without
 # --- the pattern file, the gate has to fall silent
 mk "$T/disc.jsonl" '"dann coherence scan"' 0 ''
