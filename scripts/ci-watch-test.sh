@@ -156,17 +156,58 @@ case "${CI_WATCH_STUB:?}" in
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
                     elif [[ "${1:-}" == api ]]; then echo '[{"name":"test","conclusion":"success"}]'
                     else echo '[{"bucket":"pass","name":"test"},{"bucket":"pending","name":"ci/external"}]'; fi ;;
+  # 2026-10-19: GitHub's rate limit (three sessions, one account). `pr checks` answers by the
+  # comma list CI_WATCH_RL_SEQ, one element per call, the last one repeating:
+  # rl = primary wording, rl2 = secondary wording (HTTP 403), pending, green.
+  # `gh api rate_limit` names an exhausted resource's reset only when CI_WATCH_RL_PRIMARY is set.
+  pr_rl)            f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *rate_limit* ]]; then [[ -n "${CI_WATCH_RL_PRIMARY:-}" ]] && date +%s; exit 0; fi
+                    if [[ "${1:-}" == pr && "${2:-}" == checks ]]; then
+                      n=$(cat "$f" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" >"$f"
+                      IFS=, read -r -a seq <<<"${CI_WATCH_RL_SEQ:?}"
+                      s=${seq[n-1]:-${seq[${#seq[@]}-1]}}
+                      case "$s" in
+                        rl)      echo "GraphQL: API rate limit already exceeded for user ID 1234." >&2; exit 1 ;;
+                        rl2)     echo "HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes before you try again." >&2; exit 1 ;;
+                        pending) echo '[{"bucket":"pending","name":"lint"}]' ;;
+                        green)   echo '[{"bucket":"pass","name":"lint"}]' ;;
+                      esac
+                    elif [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    else echo 0; fi ;;
+  # ...the same on a call whose errors the watch swallows (mergeable): two blocked reads, then fine.
+  pr_rl_view)       f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *rate_limit* ]]; then exit 0; fi
+                    if [[ "$*" == *mergeable* ]]; then
+                      n=$(cat "$f" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" >"$f"
+                      if (( n <= 2 )); then echo "HTTP 429: Too Many Requests" >&2; exit 1; fi
+                      echo MERGEABLE
+                    elif [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
+  # ...and in ref mode: six rate-limited reads of the runs (the old code gave up after five).
+  ref_rl)           f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *rate_limit* ]]; then exit 0; fi
+                    [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+                    n=$(cat "$f" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" >"$f"
+                    if (( n <= 6 )); then echo "gh: API rate limit exceeded for user ID 1234. (HTTP 403)" >&2; exit 1; fi
+                    echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"CI"}]' ;;
 esac
 STUB
 chmod +x "$TMP/gh"
 export PATH="$TMP:$PATH"
 export CI_WATCH_POLL=0
+# Rate-limit waits in the fixtures: no backoff, no reset slack (a case that needs real time sets its own).
+export CI_WATCH_RL_BACKOFF=0 CI_WATCH_RL_MARGIN=0
+# The script under test; point it at an older copy to run the fixtures as a negative control.
+WATCH="${CI_WATCH_SCRIPT:-$HERE/ci-watch.sh}"
 
 fails=0
 check() { # label scenario expected_rc mode target timeout
   local label="$1" scen="$2" want="$3" mode="$4" target="$5" to="${6:-5}"
+  rm -f "$TMP/state-$scen" "$TMP/state-$scen".*   # each case starts from a fresh stub state
   CI_WATCH_STUB="$scen" CI_WATCH_STATE="$TMP/state-$scen" \
-    bash "$HERE/ci-watch.sh" "$mode" owner/repo "$target" "$to" >"$TMP/out" 2>&1
+    bash "$WATCH" "$mode" owner/repo "$target" "$to" >"$TMP/out" 2>&1
   local got=$?
   if [[ "$got" == "$want" ]]; then echo "  OK   $label (rc=$got)"
   else echo "  FAIL $label: rc=$got wanted $want"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); fi
@@ -236,6 +277,33 @@ check "pr: listed checks green, the open run completes = GREEN"          pr_run_
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head still old, then flips = GREEN on the new head" pr_head_lag 0 pr 12 30
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head never reaches it = wait, timeout(2)"   pr_head_stuck 2 pr 12 2
 check "pr: without CI_WATCH_SHA the old head's green counts (unchanged behaviour)"        pr_head_stuck 0 pr 12 30
+
+# Rate limit (2026-10-19): a blocked answer is a wait, never a verdict and never an early exit.
+blocked_is() { # label n — the last run printed exactly n BLOCKED lines
+  local got; got=$(grep -c '^CI-WATCH BLOCKED: GitHub API rate limit — waiting until' "$TMP/out")
+  if [[ "$got" == "$2" ]]; then echo "  OK   $1 ($got BLOCKED line(s))"
+  else echo "  FAIL $1: $got BLOCKED line(s), wanted $2"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); fi
+}
+CI_WATCH_RL_SEQ=rl,rl,rl,green check "pr: three rate-limited answers (secondary), then green = GREEN" pr_rl 0 pr 12 30
+blocked_is "one block, one BLOCKED line" 1
+grep -q "polling resumed" "$TMP/out" && echo "  OK   the end of the block is named" \
+  || { echo "  FAIL end of block not named"; fails=$((fails+1)); }
+CI_WATCH_RL_PRIMARY=1 CI_WATCH_RL_SEQ=rl,green check "pr: primary limit exhausted, wait for its reset, then green = GREEN" pr_rl 0 pr 12 30
+grep -q "primary limit exhausted, reset" "$TMP/out" && echo "  OK   the primary reset is what the wait follows" \
+  || { echo "  FAIL primary reset not used"; fails=$((fails+1)); }
+CI_WATCH_RL_SEQ=rl2,pending,rl2,rl2,green check "pr: two separate blocks (secondary wording, HTTP 403) = GREEN" pr_rl 0 pr 12 30
+blocked_is "two blocks, two BLOCKED lines" 2
+# The blocked time must not eat the verdict timeout: a 3 s block against a 1 s timeout, then
+# one more poll after it. Counted against the timeout, this ends UNKNOWN.
+CI_WATCH_RL_BACKOFF=3 CI_WATCH_RL_SEQ=rl,pending,green check "pr: a block longer than the timeout extends the deadline = GREEN" pr_rl 0 pr 12 1
+CI_WATCH_RL_CEILING=0 CI_WATCH_RL_SEQ=rl check "pr: rate-limited past the ceiling = UNKNOWN(2)" pr_rl 2 pr 12 30
+grep -q "rate-limited for .*do NOT read as green" "$TMP/out" && echo "  OK   ceiling verdict names the block and says not green" \
+  || { echo "  FAIL ceiling verdict not named"; fails=$((fails+1)); }
+blocked_is "ceiling: BLOCKED announced before giving up" 1
+check "pr: rate-limited mergeable read (errors swallowed there) = waits, GREEN" pr_rl_view 0 pr 12 30
+blocked_is "a swallowed call's block is announced too" 1
+check "ref: six rate-limited runs reads, then green = GREEN" ref_rl 0 ref main 30
+blocked_is "ref: one block, one BLOCKED line" 1
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi

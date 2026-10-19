@@ -22,6 +22,17 @@
 #      ref has left is superseded, not a verdict), and lists the runs of the commit itself
 #      (`actions/runs?head_sha=`) instead of the newest 50 runs of the repo, which a busy
 #      day pushed the watched commit out of.
+#   5. (2026-10-19) Three sessions on one machine, one GitHub account: `gh pr checks`
+#      answered "API rate limit already exceeded for user ID …" while `gh api rate_limit`
+#      still showed thousands of requests free (GitHub's secondary limit). The watch
+#      printed UNKNOWN and exited at once — blind from then on, with CI still running.
+#      Every gh call now goes through `ghq`: a rate-limit answer (primary or secondary,
+#      HTTP 403/429 with rate-limit wording) prints ONE `CI-WATCH BLOCKED` line per block,
+#      waits (until the reset `gh api rate_limit` names for an exhausted resource, else
+#      exponential backoff 60 s → 15 min with jitter) and resumes polling. The blocked
+#      time EXTENDS the verdict deadline. A block longer than CI_WATCH_RL_CEILING
+#      (default 7200 s: a primary window resets hourly, so two hours of block is not
+#      weather) ends as UNKNOWN naming the duration.
 # This script matches refs via the run's headBranch FIELD from JSON (works for tags
 # and branches alike), enumerates every terminal state, and cannot end silently:
 # exit 0 = all green · 1 = something failed/cancelled/timed out in CI · 2 = could
@@ -70,6 +81,67 @@ MOVES_MAX=${CI_WATCH_MOVES_MAX:-5}
 
 fail_unknown() { echo "CI-WATCH UNKNOWN: $*" >&2; exit 2; }
 
+# --- rate limit (header, point 5) ----------------------------------------------------
+# ghq <gh args…> runs gh in THIS shell (never inside $(…), so the deadline extension
+# survives) and sets gh_out (stdout), gh_err (stderr), gh_rc. A rate-limit answer is
+# never returned to the caller: ghq waits it out and asks again.
+RL_BASE=${CI_WATCH_RL_BACKOFF:-60}       # first secondary backoff, seconds
+RL_MAX=${CI_WATCH_RL_BACKOFF_MAX:-900}   # backoff cap
+RL_CEILING=${CI_WATCH_RL_CEILING:-7200}  # a block longer than this is a verdict (UNKNOWN)
+RL_MARGIN=${CI_WATCH_RL_MARGIN:-5}       # slack after a primary reset
+RL_RE='rate limit|abuse detection|HTTP 429|too many requests'
+rl_since=0; rl_step=0
+GH_ERR=$(mktemp "${TMPDIR:-/tmp}/ci-watch-err.XXXXXX") || fail_unknown "mktemp failed"
+trap 'rm -f "$GH_ERR"' EXIT
+gh_out=""; gh_err=""; gh_rc=0
+
+fmt_time() { date -d "@$1" '+%H:%M:%S %Z' 2>/dev/null || date -r "$1" '+%H:%M:%S %Z' 2>/dev/null || echo "epoch $1"; }
+
+rl_wait() {
+  local now wait reset how
+  now=$(date +%s)
+  if (( rl_since > 0 && now - rl_since >= RL_CEILING )); then
+    fail_unknown "rate-limited for $(( now - rl_since ))s on $REPO $TARGET (ceiling ${RL_CEILING}s) — no CI verdict was read (do NOT read as green)"
+  fi
+  # An exhausted primary resource names its own reset; anything else is the secondary limit.
+  reset=$(gh api rate_limit --jq '[.resources.core, .resources.graphql] | map(select(.remaining == 0) | .reset) | max // empty' 2>/dev/null)
+  if [[ "$reset" =~ ^[0-9]+$ ]]; then
+    wait=$(( reset > now ? reset - now : 0 )); wait=$(( wait + RL_MARGIN )); how="primary limit exhausted, reset"
+  else
+    wait=$(( RL_BASE << rl_step ))
+    (( wait < RL_MAX )) && rl_step=$(( rl_step + 1 ))
+    (( wait > 0 )) && wait=$(( wait + RANDOM % (wait / 4 + 1) ))
+    (( wait > RL_MAX )) && wait=$RL_MAX
+    how="secondary limit, backoff"
+  fi
+  local start_b=$rl_since left
+  (( start_b == 0 )) && start_b=$now
+  left=$(( start_b + RL_CEILING - now ))   # never sleep past the ceiling
+  (( left < 0 )) && left=0
+  (( wait > left )) && wait=$left
+  if (( rl_since == 0 )); then
+    rl_since=$now
+    echo "CI-WATCH BLOCKED: GitHub API rate limit — waiting until $(fmt_time $(( now + wait ))) (${wait}s, $how; blocked time extends the deadline)"
+  else
+    echo "ci-watch: still rate-limited after $(( now - rl_since ))s — next try in ${wait}s ($how)" >&2
+  fi
+  sleep "$wait"
+  deadline=$(( deadline + wait ))
+}
+
+ghq() {
+  while :; do
+    gh_out=$(gh "$@" 2>"$GH_ERR"); gh_rc=$?
+    gh_err=$(cat "$GH_ERR" 2>/dev/null)
+    if (( gh_rc != 0 )) && grep -qiE "$RL_RE" <<<"$gh_out$gh_err"; then rl_wait; continue; fi
+    if (( rl_since > 0 )); then
+      echo "ci-watch: rate-limit block over after $(( $(date +%s) - rl_since ))s — polling resumed" >&2
+      rl_since=0; rl_step=0
+    fi
+    return "$gh_rc"
+  done
+}
+
 # A PR with a merge conflict gets NO pull_request run at all: GitHub cannot build the
 # merge ref, so it creates nothing — no error, no message. "Zero checks" is therefore
 # the same visible state as a dead CI, an exhausted quota or a workflow filter; one
@@ -87,7 +159,8 @@ conflict_seen=0
 warned_view_fail=0
 pr_conflicting_check() {
   local m
-  if ! m=$(gh pr view "$TARGET" -R "$REPO" --json mergeable --jq .mergeable 2>/dev/null); then
+  ghq pr view "$TARGET" -R "$REPO" --json mergeable --jq .mergeable; m=$gh_out
+  if (( gh_rc != 0 )); then
     # Fail-open by design (the deadline still ends the watch honestly), but not
     # silently — otherwise "gh broke" reads exactly like "no conflict".
     if (( warned_view_fail == 0 )); then
@@ -119,7 +192,8 @@ no_ci_check() {
   (( conflict_seen )) && return 0       # a pending conflict verdict goes first
   noci_probed=1
   local n
-  n=$(gh api "repos/$REPO/actions/workflows" --jq .total_count 2>/dev/null) || return 0
+  ghq api "repos/$REPO/actions/workflows" --jq .total_count || return 0
+  n=$gh_out
   if [[ "$n" == "0" ]]; then
     echo "CI-WATCH NO-CI: $REPO has no Actions workflow — nothing to wait for (not green)"
     exit 3
@@ -156,7 +230,8 @@ warned_expected=0
 pr_head_not_yet_expected() {   # exit 0 = the PR does not show the expected head yet
   [[ -n "$EXPECTED_SHA" ]] || return 1
   local head
-  head=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null) || return 0
+  ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 0
+  head=$gh_out
   [[ "$head" == "$EXPECTED_SHA"* ]] && return 1
   if (( warned_expected == 0 )); then
     echo "ci-watch: PR #$TARGET still shows head ${head:0:7}, waiting for ${EXPECTED_SHA:0:7}" >&2
@@ -168,10 +243,12 @@ pr_head_not_yet_expected() {   # exit 0 = the PR does not show the expected head
 warned_open_run=0
 pr_run_still_open() {   # exit 0 = a run of the head commit is still open
   local sha open
-  sha=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null) || return 1
+  ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 1
+  sha=$gh_out
   [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 1
-  open=$(gh api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
-           --jq '[.workflow_runs[] | select(.status != "completed")] | length' 2>/dev/null) || return 1
+  ghq api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
+      --jq '[.workflow_runs[] | select(.status != "completed")] | length' || return 1
+  open=$gh_out
   [[ "$open" =~ ^[0-9]+$ ]] || return 1
   (( open > 0 )) || return 1
   if (( warned_open_run == 0 )); then
@@ -185,10 +262,12 @@ pr_run_still_open() {   # exit 0 = a run of the head commit is still open
 warned_stale=0
 stale_checkrun_recount() {   # reads $json, may lower $pending and raise $bad
   local sha cr recount stale
-  sha=$(gh pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null) || return 0
+  ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 0
+  sha=$gh_out
   [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 0
-  cr=$(gh api "repos/$REPO/commits/$sha/check-runs?per_page=100" \
-         --jq '[.check_runs[] | {name: .name, conclusion: .conclusion}]' 2>/dev/null) || return 0
+  ghq api "repos/$REPO/commits/$sha/check-runs?per_page=100" \
+      --jq '[.check_runs[] | {name: .name, conclusion: .conclusion}]' || return 0
+  cr=$gh_out
   recount=$("$PY" -c '
 import json, sys
 checks = json.load(sys.stdin)
@@ -229,9 +308,10 @@ while :; do
     if pr_head_not_yet_expected; then sleep "$POLL"; continue; fi
     # Buckets are machine-readable: pass|fail|pending|skipping|cancel. The name is
     # carried along so a pending entry can be matched to its check-run (below).
-    json=$(gh pr checks "$TARGET" -R "$REPO" --json bucket,name 2>&1)
-    rc=$?
+    ghq pr checks "$TARGET" -R "$REPO" --json bucket,name
+    rc=$gh_rc; json=$gh_out
     if (( rc != 0 )); then
+      json="$gh_out$gh_err"
       # gh exits 8 while checks are pending — that is a wait, not an error.
       if (( rc == 8 )) || grep -qi "pending" <<<"$json"; then sleep "$POLL"; continue; fi
       # "no checks reported" right after a push is the SAME wait: the workflow run has
@@ -299,7 +379,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
   # while the five-minute CI run of the same push was still going and then went red, and
   # a run of an OLDER commit counted for a newer tip. Both read as "main is green".
   # The commits endpoint resolves a branch AND a tag (peeled) to its commit.
-  sha=$(gh api "repos/$REPO/commits/$TARGET" --jq .sha 2>/dev/null)
+  ghq api "repos/$REPO/commits/$TARGET" --jq .sha; sha=$gh_out
   if [[ -z "$sha" ]]; then
     if (( warned_no_run == 0 )); then
       echo "ci-watch: ref '$TARGET' not resolvable on $REPO yet — waiting" >&2
@@ -324,8 +404,9 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
   # The runs of THIS commit, whatever their age. `gh run list --limit 50` read the newest
   # 50 runs of the whole repo: on a day with many PR runs the watched commit's runs fell
   # out of that window, the watch saw "none" and waited out its timeout (measured 2026-10-14).
-  if ! json=$(gh api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
-        --jq '[.workflow_runs[] | {headBranch: .head_branch, headSha: .head_sha, status: .status, conclusion: .conclusion, name: .name}]' 2>&1); then
+  if ! ghq api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
+        --jq '[.workflow_runs[] | {headBranch: .head_branch, headSha: .head_sha, status: .status, conclusion: .conclusion, name: .name}]'; then
+    json="$gh_out$gh_err"
     # One failed call is weather, not a verdict (measured 2026-10-13: an HTTP 504 on the
     # first poll ended a watch on main as UNKNOWN while the run was green; pr mode already
     # tolerated the same error and this mode gave up at once). Keep polling; only a run of
@@ -336,6 +417,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     sleep "$POLL"; continue
   fi
   gh_fail=0
+  json=$gh_out
   if ! verdict=$("$PY" -c '
 import json, sys
 ref, sha = sys.argv[1], sys.argv[2]
@@ -376,7 +458,7 @@ else:
     # Cancelled is a verdict only while the ref still points at this commit. A run that
     # GitHub cancelled because a newer push superseded it says nothing about the newer
     # commit; the next poll follows the move (above) and judges that one.
-    sha_now=$(gh api "repos/$REPO/commits/$TARGET" --jq .sha 2>/dev/null)
+    ghq api "repos/$REPO/commits/$TARGET" --jq .sha; sha_now=$gh_out
     if [[ -n "$sha_now" && "$sha_now" != "$sha" ]]; then
       echo "ci-watch: run of ${sha:0:7} cancelled and ref '$TARGET' has moved on to ${sha_now:0:7} — superseded, not red" >&2
       continue
