@@ -35,6 +35,7 @@ const fs = require('fs');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
 const { isNotification } = require('./turn-kind.cjs');
+const { declare } = require('./stop-echo.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -136,12 +137,13 @@ process.stdin.on('end', () => {
   }
 
   if (hits.length > 0) {
-    console.log(JSON.stringify({
+    // No cooldown reads an echo here, so the dispatcher may show the line without a token.
+    console.log(JSON.stringify(declare({
       decision: 'block',
       reason: 'INCOMPLETE: Unfinished markers in code written this turn:\n' +
               hits.slice(0, 10).join('\n') +
               '\nResolve or remove them before stopping.',
-    }));
+    }, input)));
   } else {
     allow();
   }

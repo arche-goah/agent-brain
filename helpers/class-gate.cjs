@@ -46,6 +46,7 @@
  * indistinguishable from one that agrees.
  */
 const fs = require('fs');
+const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
 const { isNotification } = require('./turn-kind.cjs');
@@ -65,8 +66,26 @@ const OWN_ECHO = /CLASS-GATE|KLASSEN-GATE/; // legacy marker kept: old echoes st
 // "every time": often enough that a fix chain cannot slip through, rare enough that
 // it never becomes wallpaper.
 const COOLDOWN_TURNS = 3;
-// The answer this gate asks for: a line that starts with the gear (optionally after spaces / a list dash).
-const ANSWER = /^[ \t>*-]*⚙/m;
+// The answer this gate asks for: a line that starts with the gear (optionally after spaces / a
+// list dash) and NAMES THE LEVEL of the change (operator decision 2026-10-19: every change, fix
+// or feature, says which level of the base model it was built on — symptom, reader, writer,
+// design — in words the operator reads, not as a code). Built-in words are English; the
+// operator's language is instance data `.claude/rules/class-gate.json` {"level_patterns": [...]}.
+const GEAR = /^[ \t>*-]*⚙(.*)$/gm;
+const LEVEL_WORDS = ['symptom', 'reader', 'writer', 'producer', 'design', 'base model'];
+function levelRx(root) {
+  let extra = [];
+  try {
+    extra = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'class-gate.json'), 'utf8')).level_patterns || [];
+  } catch (e) { /* no instance data: built-ins only */ }
+  const src = LEVEL_WORDS.map((w) => `\\b${w}\\b`).concat(extra.map(String)).join('|');
+  return new RegExp(src, 'i');
+}
+let LEVEL = levelRx(process.env.CLAUDE_PROJECT_DIR || process.cwd());
+function answers(text) {
+  for (const m of String(text || '').matchAll(GEAR)) if (LEVEL.test(m[1])) return true;
+  return false;
+}
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const TAIL_BYTES = 4 * 1024 * 1024; // a turn fits in this by orders of magnitude
@@ -112,7 +131,7 @@ function analyze(transcriptPath) {
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
-        if (b.type === 'text' && ANSWER.test(b.text || '')) events.push({ answer: true });
+        if (b.type === 'text' && answers(b.text)) events.push({ answer: true });
         if (b.type === 'tool_use' && EDIT_TOOLS.has(b.name)) {
           const p = b.input && b.input.file_path;
           if (p) events.push({ file: p });
@@ -152,22 +171,39 @@ process.stdin.on('end', () => {
   if (input.stop_hook_active) return allow();
   if (!input.transcript_path) return allow();
 
+  if (input.cwd) LEVEL = levelRx(process.env.CLAUDE_PROJECT_DIR || input.cwd);
   let touched = [];
   try {
     const seen = analyze(input.transcript_path);
     if (seen.quiet) return allow(); // cooldown
     // answered in advance: in the transcript, or in the final message the harness hands over
-    if (seen.answered || ANSWER.test(String(input.last_assistant_message || ''))) return allow();
+    if (seen.answered || answers(input.last_assistant_message)) return allow();
     touched = seen.files;
   } catch (e) {
     return allow(); // transcript unreadable — never block for that
   }
 
+  // Docs pass. JSON is docs too — except rule and gate data, which is behaviour
+  // (`.claude/rules/*.json`, a tool's `mechanism-rules.json`).
   const docExt = /\.(md|markdown|mdx|txt|rst|json)$/i;
+  const ruleData = /(^|[\\/])\.claude[\\/]rules[\\/][^\\/]+\.json$|(^|[\\/])mechanism-rules\.json$/i;
   // Throwaway places: scratchpad and system temp. An analysis aid that does not
   // survive the turn is not work on the system — otherwise the gate fires on its
-  // own tooling.
-  const scratch = /^(\/private)?\/(tmp|var\/folders)\/|[\\/]Temp[\\/]/;
+  // own tooling. BUT a file inside a git checkout there (a worktree carries a `.git`
+  // FILE, a clone a `.git` folder) is work: since 2026-10-13 every core PR is built
+  // in a worktree under the scratchpad, and the gate was blind to all of it
+  // (measured 2026-10-19 on the macOS instance).
+  const tmp = /^(\/private)?\/(tmp|var\/folders)\/|[\\/]Temp[\\/]/;
+  const inCheckout = (f) => {
+    try {
+      for (let d = path.dirname(path.resolve(f)); ; d = path.dirname(d)) {
+        if (fs.existsSync(path.join(d, '.git'))) return true;
+        if (path.dirname(d) === d) return false;
+      }
+    } catch (e) { return false; }
+  };
+  const scratch = { test: (f) => tmp.test(f) && !inCheckout(f) };
+  const isDoc = (f) => docExt.test(f) && !ruleData.test(f);
   // Separators are normalized before the prefix strip: on Windows the transcript
   // carries backslash paths, so `cwd + '/'` never matched and the gate showed
   // absolute paths (cosmetic — measured 2026-08-19 on the Windows instance).
@@ -175,7 +211,7 @@ process.stdin.on('end', () => {
   const cwd = norm(input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd())
     .replace(/\/+$/, '');
   const substantive = touched
-    .filter((f) => !docExt.test(f) && !scratch.test(f))
+    .filter((f) => !isDoc(f) && !scratch.test(f))
     .map((f) => (norm(f).startsWith(cwd + '/') ? norm(f).slice(cwd.length + 1) : f));
   if (substantive.length === 0) return allow();
 
@@ -192,9 +228,10 @@ process.stdin.on('end', () => {
     decision: 'block',
     reason:
       `CLASS-GATE — routine success check, not an error. Touched this turn: ${shown}\n` +
-      'Answer with ONE ⚙ line in plain operator language: is the bigger goal ' +
-      'still served, does the same defect exist elsewhere (searched), anything ' +
-      'for the register? Nothing transferable: "⚙ no class".',
+      'Answer with ONE ⚙ line in plain operator language: on which level did you build it ' +
+      '(symptom, reader, writer or design) and why not the next higher one, is the bigger goal ' +
+      'still served, does the same defect exist elsewhere (searched)? Nothing transferable: ' +
+      '"⚙ writer level, no class elsewhere" — the level is always named.',
   }));
   process.exit(0);
 });

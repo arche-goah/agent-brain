@@ -57,7 +57,9 @@ process.stdin.on('data', (c) => { data += c; });
 function allow() { process.exit(0); }
 
 const HOOK_ECHO = /^Stop hook feedback:/;
-const OWN_ECHO = /PREMISE-GATE/;
+// Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
+const { ownEcho, declare } = require('./stop-echo.cjs');
+let OWN_ECHO = /PREMISE-GATE/;
 const COOLDOWN_TURNS = 2;
 const TAIL_BYTES = 4 * 1024 * 1024;
 
@@ -185,6 +187,7 @@ function analyze(transcriptPath) {
 process.stdin.on('end', () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { return allow(); }
+  OWN_ECHO = ownEcho(input, OWN_ECHO);
 
   if (input.stop_hook_active) return allow();
   if (!input.transcript_path) return allow();
@@ -229,6 +232,6 @@ process.stdin.on('end', () => {
     'carry actions.\n' +
     'Holds up? Re-issue unchanged.';
 
-  console.log(JSON.stringify({ decision: 'block', reason }));
+  console.log(JSON.stringify(declare({ decision: 'block', reason }, input)));
   process.exit(0);
 });

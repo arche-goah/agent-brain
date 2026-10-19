@@ -87,6 +87,28 @@ run_case narration-de-measured '"Die Systemleiste habe ich nie gemessen, das ble
 run_case narration-en-never '"The CI never ran on that branch, the only run is queued."' Write allow
 run_case narration-de-immer '"Bisher wurde immer der Einzelfall gefixt, nicht die Klasse."' Write allow
 
+# --- cooldown from the own echo by LABEL (operator 2026-10-10: no codes in the stop lines).
+# Behind the dispatcher the gate gets stop_check.label and its line carries no token; the
+# cooldown must still hold, and a line of ANOTHER check must not count as its own.
+TRIG='{"message":{"role":"assistant","content":[{"type":"text","text":"In a conflict the one who lets go last always wins."},{"type":"tool_use","name":"AskUserQuestion","input":{}}]}}'
+echo_case() { # $1 name, $2 echo text (json string), $3 block|allow
+  local tr="$T/echo-$1.jsonl" out
+  { printf '%s\n' '{"message":{"role":"user","content":"frage"}}' "$TRIG"
+    printf '{"message":{"role":"user","content":%s}}\n' "$2"
+    printf '%s\n' '{"message":{"role":"user","content":"next"}}' "$TRIG"; } > "$tr"
+  out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s","stop_check":{"label":"PREMISE","marker":"PREMISE-GATE"}}' \
+    "$(native "$tr")" "$(native "$T")" | node "$G" 2>&1)"
+  if [ "$3" = block ]; then
+    case "$out" in *'"echo":"label"'*) ok "$1 blocks and declares the label echo";; *) bad "$1: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 allows (cooldown)" || bad "$1 blocked inside its cooldown: '$out'"
+  fi
+}
+echo_case label-echo '"Stop hook feedback:\nPREMISE — always wins carries an action"' allow
+echo_case label-echo-in-a-list '"Stop hook feedback:\nSTOP-CHECKS (2)\n· CLASS   x\n· PREMISE always wins carries an action"' allow
+echo_case legacy-token-echo '"Stop hook feedback:\nPREMISE — x   [PREMISE-GATE]"' allow
+echo_case foreign-label-echo '"Stop hook feedback:\nCLASS — premise.cjs changed"' block
+
 echo
 [ "$fail" -eq 0 ] && echo "premise-gate fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

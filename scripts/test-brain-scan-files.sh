@@ -189,6 +189,18 @@ const three = many.slice(0, 3).map(i => ({ key: i.key, question: 'q', recommenda
 quiet('exits: four decisions, three presented, passes (the rest offered as a list)', ex(many, 4, [], three))
 loud('exits: four decisions all presented is caught', ex(many, 4, [], [...three, { key: 'z', question: 'q', recommendation: 'r' }]), 'present min(3, n)')
 loud('exits: a decision without a recommendation is caught', ex(idx, 4, [], [{ key: 'c', question: 'q', recommendation: '' }]), 'no recommendation')
+// A deep check the script head suggested is a due decision of its own (no index entry, not
+// one of the three): measured, a run died here AFTER report and ledger were written.
+const exd = (index, nonOk, decisions, deep) => {
+  try { assertExits(index, nonOk, [], decisions, 'fixture', deep); return null }
+  catch (e) { return e instanceof ReferenceError || e instanceof TypeError ? 'CRASH ' + e.message : e.message }
+}
+const deepDec = { key: 'deep-check-coherence-scan', question: 'run it?', recommendation: 'yes' }
+const noDec = idx.filter(i => i.key !== 'c').concat({ key: 'c', severity: 'P1', exit: 'ai-does-it' })
+quiet('exits: a suggested deep check presented without an index entry passes', exd(noDec, 4, [deepDec], ['coherence-scan']))
+quiet('exits: a deep-check decision does not count against the three', exd(many, 4, [...three, deepDec], ['coherence-scan']))
+loud('exits: a deep-check decision the head did not suggest is caught', exd(noDec, 4, [deepDec], ['memory-dream']), 'present min(3, n)')
+loud('exits: a deep-check decision without a recommendation is caught', exd(noDec, 4, [{ ...deepDec, recommendation: '' }], ['coherence-scan']), 'no recommendation')
 JS
 
 out="$(FOUND_ALL="$FOUND_ALL" FOUND_NO_RC="$FOUND_NO_RC" node "$TMP/harness.js" 2>&1)" \

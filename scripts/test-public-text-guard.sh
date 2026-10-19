@@ -101,6 +101,42 @@ HOME="$NT" USERPROFILE="$NT" expect "git -C ~/<public clone> blocks"   block "$T
 HOME="$NT" USERPROFILE="$NT" expect "name inside --body-file ~/<file> blocks" block "$T" 'gh pr comment 1 -R o/pub --body-file ~/named.md'
 HOME="$NT" USERPROFILE="$NT" expect "clean --body-file ~/<file> passes"       allow "$T" 'gh pr comment 1 -R o/pub --body-file ~/clean.md'
 
+# Only the PUBLISHED text is scanned (2026-10-19): the values of the text flags and fields, the
+# gh api endpoint, the commit message, the handed-over files. Paths, comments, the working
+# directory are never published. Before, the guard scanned the whole command and masked path
+# forms: a comment or a path with a missing parent blocked, and a path-shaped word INSIDE a body
+# was masked and passed unchecked.
+expect "a name only in a shell comment passes"              allow "$T" 'gh pr comment 1 -R o/pub --body "thanks" # zorbalina asked'
+expect "a name in a path whose folder is missing passes"    allow "$T" "gh pr create -R o/pub --title fix --body-file $NT/no-such-zorbalina/x.md"
+expect "a name in the git -C path, clean message, passes"   allow "$T" "git -C $NT/pubclone/../zorbalina-gone/../pubclone commit -m \"clean message\""
+expect "a path-shaped word inside the body blocks"          block "$T" "gh pr comment 1 -R o/pub --body \"see $NT/scratch-Users-zorbalina-proj/b.md\""
+expect "short title flag -t blocks"                         block "$T" 'gh issue create -R o/pub -t "for zorbalina" -b "x"'
+expect "--title=<text> blocks"                              block "$T" 'gh pr create -R o/pub --title=zorbalina --body x'
+expect "release notes -n block"                             block "$T" 'gh release create v1 -R o/pub -n "thanks zorbalina"'
+expect "gh pr create -F <file> reads the file"              block "$T" "gh pr create -R o/pub --title fix -F $NT/named.md"
+expect "gh api -F body=@<file> reads the file"              block "$T" "gh api repos/o/pub/issues/1/comments -F body=@$NT/named.md"
+expect "gh api clean field passes"                          allow "$T" 'gh api repos/o/pub/issues/1/comments -f body="thanks"'
+expect "gh api endpoint naming someone blocks"              block "$T" 'gh api repos/o/pub/contents/notes-zorbalina.md -X PUT -f message=x'
+expect "git -am <text> blocks"                              block "$T/pubclone" 'git commit -am "zorbalina asked"'
+expect "git -m<text> attached blocks"                       block "$T/pubclone" 'git commit -mzorbalina'
+expect "git --message=<text> blocks"                        block "$T/pubclone" 'git commit --message="for zorbalina"'
+expect "a second command after ; is read too"               block "$T" 'echo ok; gh pr comment 1 -R o/pub --body "zorbalina"'
+expect "an unknown \$(...) in the body is checked"          block "$T" 'gh pr comment 1 -R o/pub --body "$(echo zorbalina)"'
+expect "a heredoc is read whole and blocks"                 block "$T" "gh pr comment 1 -R o/pub --body \"\$(cat <<'X'
+zorbalina
+X
+)\""
+expect "an unbalanced quote is read whole and blocks"       block "$T" 'gh pr comment 1 -R o/pub --body "zorbalina'
+# PowerShell: a backslash is a path separator, not an escape - the handed-over file keeps its
+# path (checked on the parser, so it runs on every OS; the file read itself is the same code)
+got=$(GATE_JS="$(native "$GATE")" node -e '
+  const { publishedText } = require(process.env.GATE_JS);
+  const ps = publishedText("gh pr comment 1 -R o/pub --body-file C:\\U\\x\\b.md", true).files[0];
+  const sh = publishedText("gh pr comment 1 -R o/pub --body-file \"C:\\U\\x\\b.md\"", false).files[0];
+  process.stdout.write(ps + "|" + sh);' 2>&1)
+[ "$got" = 'C:\U\x\b.md|C:\U\x\b.md' ] && ok "backslash paths survive (PowerShell, bash double quotes)" \
+  || bad "backslash paths survive (got: $got)"
+
 # no watch list: nothing to check against
 rc=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 1 -R o/pub --body zorbalina"}}' \
      | CLAUDE_PROJECT_DIR="$NT/nobrain" node "$GATE" >/dev/null 2>&1; echo $?)

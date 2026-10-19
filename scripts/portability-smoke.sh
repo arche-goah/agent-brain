@@ -59,15 +59,15 @@ out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" ||
 case "$out" in *"!! brain-scan OVERDUE"*) ok "old report: overdue line";; *) bad "old report: no overdue line";; esac
 case "$out" in *"FAILED: brain-scan"*) ok "brain-scan fail newer than the report stays voiced";; *) bad "newer brain-scan fail swallowed";; esac
 case "$out" in *"!! deep check suggested: coherence-scan"*) ok "the report's deep-check line reaches the session start";; *) bad "deep-check line in the report not relayed at session start";; esac
-# The DUE band (7-13 d) and the edge below it — pins the DUE/OVERDUE boundary (review of
+# The DUE band (14-27 d) and the edge below it — pins the DUE/OVERDUE boundary (review of
 # #153 on Windows). mtime via Python: `touch -d` parses differently on GNU and BSD.
 _age() { "$PY" -c "import os,sys,time; t=time.time()-int(sys.argv[2])*86400; os.utime(sys.argv[1],(t,t))" "$TD/docs/research/brain-scan/scan-old.md" "$1"; }
-_age 8
+_age 15
 out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
-case "$out" in *"!! brain-scan OVERDUE"*) bad "8 d report read as overdue";; *"!! brain-scan DUE: latest report 8d ago"*) ok "8 d report: due, not overdue";; *) bad "8 d report: no due line";; esac
-_age 6
+case "$out" in *"!! brain-scan OVERDUE"*) bad "15 d report read as overdue";; *"!! brain-scan DUE: latest report 15d ago"*) ok "15 d report: due, not overdue";; *) bad "15 d report: no due line";; esac
+_age 13
 out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
-case "$out" in *"brain-scan DUE"*|*"brain-scan OVERDUE"*) bad "6 d report announced as due";; *) ok "6 d report: no due line";; esac
+case "$out" in *"brain-scan DUE"*|*"brain-scan OVERDUE"*) bad "13 d report announced as due";; *) ok "13 d report: no due line";; esac
 rm -f "$TD/docs/research/brain-scan/scan-old.md" "$TD/docs/maintenance/scheduled-runs.tsv"
 out="$(CLAUDE_PROJECT_DIR="$TD" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
 case "$out" in *"!! brain-scan DUE: no report yet"*) ok "no report: due line";; *) bad "no report: no due line";; esac
@@ -737,6 +737,21 @@ else
   else
     bad "brain-friction stdout is not UTF-8 — a regex .* stops at the invalid byte"
   fi
+fi
+
+# Same interface rule for shared-memory-lint.py: shared-memory-dream redirects `--inventory`
+# into a JSON file its agents read. Measured 2026-10-19 on a Windows brain: unpinned, a
+# description's middle dot left as the cp1252 byte 0xb7 and the file was no valid UTF-8.
+_sm="$T/sm-os9"; mkdir -p "$_sm/core"
+printf -- '---\nname: x\ndescription: "café · résumé"\nmetadata:\n  type: project\n---\nx\n' > "$_sm/core/x.md"
+_inv="$T/sm-inventory.out"
+"$PY" "$CORE/scripts/shared-memory-lint.py" --repo "$_sm" --inventory 2>/dev/null | cat > "$_inv" || true
+if ! grep -q 'core/x.md' "$_inv" 2>/dev/null; then
+  bad "shared-memory-lint --inventory did not list the planted entry — the byte assertion would be vacuous"
+elif "$PY" -c "import sys,json; json.loads(open(sys.argv[1],encoding='utf-8').read())" "$_inv" 2>/dev/null; then
+  ok "shared-memory-lint --inventory is UTF-8 JSON through a pipe"
+else
+  bad "shared-memory-lint --inventory is not UTF-8 JSON — the platform codepage leaked"
 fi
 
 # ... and when it says so, it must say WHAT. The brief branch extracts the candidate block

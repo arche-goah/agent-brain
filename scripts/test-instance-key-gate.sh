@@ -60,5 +60,25 @@ out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 5 
 out=$(printf '%s' '{"tool_name":"PowerShell","tool_input":{"command":"gh pr comment 5 --body hi"}}'       | CLAUDE_PROJECT_DIR="$(native "$T/brain")" SHARED_MEMORY_SELF=mac node "$(native "$GATE")" 2>&1); rc=$?
 [ "$rc" -eq 2 ] && case "$out" in *"instance-key"*) true ;; *) false ;; esac && ok "PowerShell write without the key blocks" || bad "PowerShell: rc=$rc $out"
 
+# Every change declares its level (2026-10-19): `gh pr create` from a checkout whose changelog
+# fragment lacks the field is held BEFORE the PR exists; other posts and repos without
+# changelog.d/ are untouched.
+lvprobe() { # $1 label, $2 checkout dir, $3 command, $4 block|allow
+  local out rc
+  out=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$2")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$3")}}" \
+        | CLAUDE_PROJECT_DIR="$(native "$T/brain")" SHARED_MEMORY_SELF=mac node "$(native "$GATE")" 2>&1); rc=$?
+  if [ "$rc" -eq 2 ]; then [ "$4" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:160}"
+  else [ "$4" = allow ] && ok "$1 allows" || bad "$1 did NOT block (rc=$rc)"; fi
+}
+CO="$T/checkout"; mkdir -p "$CO/changelog.d" "$CO/scripts"; git init -q "$CO"
+printf '%s\n' '- **x.** (test: T0)' > "$CO/changelog.d/x.md"
+lvprobe "pr create, fragment without level" "$CO/scripts" "gh pr create --title t --body \"b <!-- instance-key: $KEY -->\"" block
+lvprobe "pr comment from the same checkout is no PR creation" "$CO" "gh pr comment 5 --body \"b <!-- instance-key: $KEY -->\"" allow
+printf '%s\n' '- **x.** (test: T0) (level: writer; higher: design — not needed yet; debt: none)' > "$CO/changelog.d/x.md"
+lvprobe "pr create, fragment with level" "$CO" "gh pr create --title t --body \"b <!-- instance-key: $KEY -->\"" allow
+lvprobe "pr create, level fine but no key" "$CO" "gh pr create --title t --body b" block
+NOCL="$T/nocl"; mkdir -p "$NOCL"; git init -q "$NOCL"
+lvprobe "pr create in a repo without changelog.d" "$NOCL" "gh pr create --title t --body \"b <!-- instance-key: $KEY -->\"" allow
+
 [ "$fail" -eq 0 ] && echo "test-instance-key-gate: all checks passed"
 exit "$fail"

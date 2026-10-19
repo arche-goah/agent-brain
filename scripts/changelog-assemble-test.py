@@ -53,6 +53,9 @@ check("## Unreleased is gone", "## Unreleased" not in text, text)
 check("the released sections stay below", text.find("## 1.1.0") < text.find("## 1.0.0"), text)
 left = sorted(p.name for p in (d / "changelog.d").iterdir())
 check("fragments deleted, README kept", left == ["README.md"], left)
+check("each fragment keeps its slug as a marker (settles-debt survives the cut)",
+      "**first.** (test: T0) <!-- fragment: a-first -->" in text
+      and "<!-- fragment: b-second -->" in text and text.count("<!-- fragment:") == 2, text)
 
 # "release-preflight is green after the cut" lives in release-preflight-test.sh: a Python
 # child calling `bash` on a Windows runner gets WSL's bash.exe, not Git Bash (measured in CI).

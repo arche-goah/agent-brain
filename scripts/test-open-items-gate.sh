@@ -200,7 +200,7 @@ check "a waiting item does not own the closing question" "$f" block "$EN" false 
 
 # 17 — stoppen-gate leaves a question alone that a bootup rule ORDERS ("ask the operator"),
 # on any turn; any other closing question is still judged.
-BS="${P}${NL}!! brain-scan DUE: latest report 9d ago (due after 7d) — ask the operator, then run it in this session"
+BS="${P}${NL}!! brain-scan DUE: latest report 15d ago (due after 14d) — ask the operator, then run it in this session"
 f="$T/17a.jsonl"; { boot_ok startup "$BS"; user "stand?"; asst "1 needs you: PR #61."; user "ok"; asst "Done. Shall I start the brain scan now?"; } > "$f"
 check "stoppen-gate leaves the ordered brain-scan question alone" "$f" allow "$EN" false "$SG"
 f="$T/17b.jsonl"; { boot_ok startup "$BS"; user "stand?"; asst "1 needs you: PR #61."; user "ok"; asst "Done. Shall I start the refactor now?"; } > "$f"
