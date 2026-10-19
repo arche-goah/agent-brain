@@ -64,7 +64,8 @@ BOOTUP = re.compile(r"session-bootup\.sh")
 CLOSE_SKILL = re.compile(r'"name"\s*:\s*"Skill"\s*,\s*"input"\s*:\s*\{\s*"skill"\s*:\s*"(?:[\w.-]+:)?session-close"')
 CLOSE_STEP = re.compile(r"session-closing\.sh[^\"\n]{0,80}--pre-commit")
 # A large hook output is stored as a preview plus a file; the end marker lives in the file.
-PERSISTED = re.compile(r"<persisted-output>\s*Output too large[^\n]*?Full output saved to:\s*(\S+)")
+# The path runs to the end of its line: a Windows home like "C:\Users\First Last" has a space.
+PERSISTED = re.compile(r"<persisted-output>\s*Output too large[^\n]*?Full output saved to:\s*([^\n]+?)\s*(?:\n|$)")
 NOT_A_PROMPT = re.compile(r"^\s*(<task-notification|<system-reminder|<local-command|<command-name>/(clear|exit|resume)|Stop hook feedback|\[Request interrupted)")
 
 

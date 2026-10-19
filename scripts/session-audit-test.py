@@ -91,7 +91,9 @@ def main():
         write(tdir, "aaaa0009-old", [boot("cancelled"), user("w")], age_h=24 * 30)
         write(tdir, "aaaa0010-compact", [boot(), user("w"), boot("cancelled", source="compact"), user("more"),
                                          close_skill()])
-        full, cut = tmp / "boot-full.txt", tmp / "boot-cut.txt"
+        # a space in the saved path (Windows home "C:\Users\First Last") must not cut it (2026-10-19)
+        full, cut = tmp / "home with space" / "boot-full.txt", tmp / "boot-cut.txt"
+        full.parent.mkdir()
         full.write_text("x\n=== END BOOTUP ===\n", encoding="utf-8")
         cut.write_text("x\n!! session-bootup aborted early", encoding="utf-8")
         preview = "<persisted-output>\nOutput too large (10.1KB). Full output saved to: {}\n\nPreview (first 2KB):\nx\n...\n</persisted-output>"
