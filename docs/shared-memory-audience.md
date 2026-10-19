@@ -50,14 +50,22 @@ done' and he adds at most 'received and enough'"):
 - **The answerer:** an entry with `answers: <request-stem>` (or any entry of the addressee
   naming it).
 - **The asker:** an entry with `closes: <request-stem>` ("answer received, enough").
-- **A LOG-only request:** the asker writes a later heading to the same addressee whose title
-  starts with `ERLEDIGT` / `DONE` (e.g. `AN <who>: ERLEDIGT — <what>`) and lists, in its
-  text, the title of each request it settles. It settles exactly those: a close never sweeps
-  away the ones that are still open. A heading marked `(status: info)` is a report, never a
-  request.
+- **A LOG-only request** has an id the inbox prints with it: `<area>/LOG@<date>#<n>` (n = the
+  n-th heading that day in that LOG, whoever wrote it). Either side settles it by naming that id — in
+  `answers:` / `closes:` / `claims:` of a file, or in a later LOG entry (the asker's own entry
+  settles it only when its heading says so, `(status: done)` or `ERLEDIGT`; a reminder that
+  repeats the id settles nothing). A heading marked `(status: info|done|answered|…)` is a
+  report, never a request.
+- **Entries dated before `STATE_SINCE` (2026-10-20)** are also settled the old way, by words:
+  an answer that repeats the title, `re <start of it>`, the request's numbers, or the asker's
+  `ERLEDIGT` heading listing the title. From that date on only the id settles — words were
+  rebuilt into state five times in nine days and still left answered requests open.
 
-Only fact files carry a priority — a LOG-only heading has no frontmatter. Name request files
-`request-…` or `question-…`: those prefixes are what every reader recognises.
+**Write a request as a file**, not as a bare LOG heading: `scripts/shared-memory-post.py
+request|reply|note` writes the file with its fields, the LOG line that points at it, and the
+index. From `STATE_SINCE` on the lint names a LOG heading to a party that asks something and
+points at no file. Only fact files carry a priority — a LOG-only heading has no frontmatter.
+Name request files `request-…` or `question-…`: those prefixes are what every reader recognises.
 
 ## Data: `parties.json` at the shared-memory repo's root
 
@@ -76,7 +84,9 @@ and its person, never by an `os:` token). A new machine is one line in its perso
 ## Who reads it
 
 - `scripts/shared-memory-parties.py` — the resolver (stdlib): a device's categories, the
-  known tokens, the shared LOG-heading parser.
+  known tokens, the shared LOG-heading parser, the LOG ids and `STATE_SINCE`.
+- `scripts/shared-memory-post.py` — the writer: refuses an addressee `parties.json` does not
+  know, and resolves `next:` of a request to the devices its addressees reach.
 - `scripts/shared-memory-inbox.py` — a device in `SHARED_MEMORY_SELF` also answers to its
   `person:` and `os:` tokens. Without `parties.json`: SELF as given, as before.
 - `scripts/shared-memory-lint.py`, check 9, for entries dated 2026-10-11 or later: every

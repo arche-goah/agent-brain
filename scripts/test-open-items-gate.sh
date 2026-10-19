@@ -110,34 +110,26 @@ CL="$T/cwd-cls"; mkdir -p "$CL/.claude-state"
 printf '%s\n' '{"anfrage-net-2026-09-06.md":{"class":"human","why":"needs the operator net definition"}}' > "$CL/.claude-state/open-items-class.json"
 check "classified via the class file" "$f" allow "$CL"
 
-# 8b — an unclassified LOG entry: the block names the id --classify needs (ref + first 40
-# chars), not "LOG <date> <sender>", which covered every entry of that sender that day.
-QL="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-10-07 core/LOG 2026-10-07 peer-b — peer-b: AN inst-a: first note — first report"
+# 8b — an unclassified LOG entry: the block names its id (`<area>/LOG@<date>#<n>`), the key
+# --classify takes, not "LOG <date> <sender>", which covered every entry of that sender that day.
+QL="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-10-07 core/LOG@2026-10-07#1 — peer-b: AN inst-a: first note — first report"
 f="$T/8b.jsonl"; { boot_ok startup "$QL"; user "stand?"; asst "1 item."; } > "$f"
 out8b="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$f")" "$(native "$EN")" | node "$G" 2>&1)"
 case "$out8b" in
-  *'core/LOG 2026-10-07 peer-b: AN inst-a: first note'*) ok "unclassified LOG entry is named by its full id" ;;
-  *) bad "unclassified LOG entry not named by its full id: '$out8b'" ;;
+  *'core/LOG@2026-10-07#1'*) ok "unclassified LOG entry is named by its id" ;;
+  *) bad "unclassified LOG entry not named by its id: '$out8b'" ;;
 esac
-# 8c — ...and a class stored under that full id (what --classify writes) satisfies the gate.
+# 8c — ...and a class stored under that id (what --classify writes) satisfies the gate.
 # Measured 2026-10-12 (Windows instance): classified via the script, the gate still read the
-# bare ref and blocked the first reply. NEGATIVE: the same ref with another text stays `?`.
+# bare ref and blocked the first reply. NEGATIVE: a class for the same sender's other entry
+# that day leaves this one `?`.
 f="$T/8c.jsonl"; { boot_ok startup "$QL"; user "stand?"; asst "1 needs you: the 2026-10-07 note from peer-b."; } > "$f"
 CLL="$T/cwd-cls-log"; mkdir -p "$CLL/.claude-state"
-printf '%s\n' '{"core/LOG 2026-10-07 peer-b: AN inst-a: first note":{"class":"human","why":"asks the operator"}}' > "$CLL/.claude-state/open-items-class.json"
-check "LOG entry classified under its full id" "$f" allow "$CLL"
+printf '%s\n' '{"core/LOG@2026-10-07#1":{"class":"human","why":"asks the operator"}}' > "$CLL/.claude-state/open-items-class.json"
+check "LOG entry classified under its id" "$f" allow "$CLL"
 CLX="$T/cwd-cls-log-other"; mkdir -p "$CLX/.claude-state"
-printf '%s\n' '{"core/LOG 2026-10-07 peer-b: AN inst-a: another note":{"class":"human","why":"asks the operator"}}' > "$CLX/.claude-state/open-items-class.json"
-check "LOG entry with a class for another text stays unclassified" "$f" block "$CLX"
-# 8d — a cut that ends on a blank: --classify strips its key, so the gate must strip the id
-# too. Measured 2026-10-16 (macOS instance): "…re HARD " stayed `?` after classifying, every
-# turn end blocked. The 40th character of this text is a blank.
-X28="$(printf 'x%.0s' $(seq 28))"
-QT="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-10-07 core/LOG 2026-10-07 peer-b — peer-b: AN inst-a: ${X28} tail — first report"
-f="$T/8d.jsonl"; { boot_ok startup "$QT"; user "stand?"; asst "1 needs you: the 2026-10-07 note from peer-b."; } > "$f"
-CLT="$T/cwd-cls-log-blank"; mkdir -p "$CLT/.claude-state"
-printf '{"core/LOG 2026-10-07 peer-b: AN inst-a: %s":{"class":"human","why":"asks the operator"}}\n' "$X28" > "$CLT/.claude-state/open-items-class.json"
-check "LOG entry whose 40-char cut ends on a blank is classified" "$f" allow "$CLT"
+printf '%s\n' '{"core/LOG@2026-10-07#2":{"class":"human","why":"asks the operator"}}' > "$CLX/.claude-state/open-items-class.json"
+check "a class for the other entry of that day leaves this one unclassified" "$f" block "$CLX"
 
 # 9 — the bootup did not arrive.
 f="$T/9a.jsonl"; { boot_cancel; user "stand?"; asst "All good."; } > "$f"

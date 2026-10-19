@@ -52,7 +52,7 @@ has() { case "$2" in *"$1"*) return 0;; esac; return 1; }
 
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
   '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
-  '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (LOG)' > "$T/inbox.txt"
+  '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
 
 out=$(run a); tx a
 has "open for us: 2" "$out" && ok "count line" || bad "count line: $out"
@@ -207,7 +207,7 @@ printf '%s\n' 'shared-memory open requests to this instance: 5' \
   '  - 2026-09-26 [ops] peer-b: ANFRAGE an inst-a (ops/anfrage-e-2026-09-26.md)' \
   '  - 2026-09-06 [ops] peer-c: ANFRAGE an Opname-mac, braucht Netz (ops/anfrage-x-2026-09-06.md)' \
   '  - 2026-09-08 [ops] peer-c: Rueckfrage an Opname (ops/rueckfrage-y-2026-09-08.md)' \
-  '  - 2026-10-05 [core] peer-b: AN inst-a: Check OK (LOG)' > "$T/inbox.txt"
+  '  - 2026-10-05 [core] peer-b: AN inst-a: Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
 out=$(run h)
 has "[request|ai] 2026-09-13" "$out" && ok "circle C = ai" || bad "circle C: $out"
 has "[request|human] 2026-09-26" "$out" && ok "circle E = human" || bad "circle E: $out"
@@ -224,87 +224,60 @@ has "needs the operator net definition" "$out" && ok "the reason is printed" || 
 out=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" --classify 'x=maybe' 2>&1)
 has "bad --classify" "$out" && ok "bad class refused" || bad "bad class accepted: $out"
 
-# Two LOG entries of one sender on one day (measured 2026-10-09, Windows instance): a class
-# given by the short form "LOG <date> <sender>" covered BOTH, so a later real request was
-# filed as acknowledged. LOG entries match by their full id only.
+# Two LOG entries of one sender on one day: the inbox prints each with its own id
+# (`<area>/LOG@<date>#<n>`), and a class or a counter belongs to that id alone. The old key
+# (date + sender + first 40 chars) collided, cut at blanks and passed classes on (15 fixes).
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-10-07 [core] peer-b: AN inst-a: first note (LOG)' \
-  '  - 2026-10-07 [core] peer-b: AN inst-a: second, a real request (LOG)' > "$T/inbox.txt"
+  '  - 2026-10-07 [core] peer-b: AN inst-a: first note (core/LOG@2026-10-07#1)' \
+  '  - 2026-10-07 [core] peer-b: AN inst-a: second, a real request (core/LOG@2026-10-07#2)' > "$T/inbox.txt"
 out=$(run j0)
-has "--classify 'core/LOG 2026-10-07 peer-b: AN inst-a: first note=" "$out" \
+has "--classify 'core/LOG@2026-10-07#1=" "$out" \
   && ok "hint prints the exact LOG id" || bad "hint lacks the exact id: $out"
-# Measured 2026-10-10: the printed short ref said "classified" and the item stayed '?'.
+# The old short form is no id: refused, nothing saved, the exact ids offered.
 cout=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
   --classify 'LOG 2026-10-07 peer-b=ai:short form' 2>&1); rc=$?
 [ "$rc" = 2 ] && has "matches no open request" "$cout" && ! has "classified:" "$cout" \
   && ok "unknown id refused, nothing saved" || bad "unknown id accepted (rc=$rc): $cout"
-has "   core/LOG 2026-10-07 peer-b: AN inst-a: second, a real" "$cout" \
-  && ok "refusal lists the exact ids" || bad "no exact ids offered: $cout"
+has "   core/LOG@2026-10-07#2" "$cout" && ok "refusal lists the exact ids" || bad "no exact ids offered: $cout"
 out=$(run j)
 [ "$(grep -c '\[request|?\] 2026-10-07' <<<"$out")" = 2 ] && ok "short LOG form classifies nothing" \
   || bad "short LOG form leaked a class: $out"
 "$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
-  --classify 'core/LOG 2026-10-07 peer-b: AN inst-a: first note=ai:ack only' >/dev/null 2>&1
+  --classify 'core/LOG@2026-10-07#1=ai:ack only' >/dev/null 2>&1
 out=$(run k)
 [ "$(grep -c '\[request|ai\] 2026-10-07' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-07' <<<"$out")" = 1 ] \
-  && ok "full LOG id classifies exactly its own entry" || bad "LOG id class spread or missed: $out"
-
-# Measured 2026-10-11, Windows instance: an id cut after 40 chars right behind a blank could not be
-# classified (the key is stripped, the id was not), and of several --classify flags only the last counted.
-printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-10-08 [core] peer-b: AN inst-a: xxxxxxxxxxxxxxxxxxxxxxxxxxxx tail words (LOG)' \
-  '  - 2026-10-08 [core] peer-b: AN inst-a: another one (LOG)' > "$T/inbox.txt"
-out=$(run l0)
+  && ok "a LOG id classifies exactly its own entry" || bad "LOG id class spread or missed: $out"
+# Several --classify flags all count (measured 2026-10-11: only the last one did).
 "$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
-  --classify 'core/LOG 2026-10-08 peer-b: AN inst-a: xxxxxxxxxxxxxxxxxxxxxxxxxxxx =ai:cut at a blank' \
-  --classify 'core/LOG 2026-10-08 peer-b: AN inst-a: another one=ai:second flag' >/dev/null 2>&1
+  --classify 'core/LOG@2026-10-07#1=ai:first' --classify 'core/LOG@2026-10-07#2=ai:second' >/dev/null 2>&1
 out=$(run l)
-[ "$(grep -c '\[request|ai\] 2026-10-08' <<<"$out")" = 2 ] \
-  && ok "id cut at a blank and a second --classify flag both stick" || bad "classify lost: $out"
+[ "$(grep -c '\[request|ai\] 2026-10-07' <<<"$out")" = 2 ] && ok "two --classify flags both stick" || bad "classify lost: $out"
 
-# Measured 2026-10-11, Windows instance: two LOG entries of one sender on one day with the same first
-# 40 chars got ONE id — one class covered both. The second gets " (2)", each classifies alone.
+# The first entry is answered and leaves the inbox: the second keeps its own id, class and
+# counter — nothing is taken over (the old key passed the first one's class to the second).
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (LOG)' \
-  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
-out=$(run m0)
-has "--classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst- (2)=" "$out" \
-  && ok "colliding LOG ids are told apart" || bad "colliding ids: $out"
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (core/LOG@2026-10-09#1)' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (core/LOG@2026-10-09#2)' > "$T/inbox.txt"
 "$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
-  --classify 'core/LOG 2026-10-09 peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-=ai:first only' >/dev/null 2>&1
-out=$(run m)
-[ "$(grep -c '\[request|ai\] 2026-10-09' <<<"$out")" = 1 ] && [ "$(grep -c '\[request|?\] 2026-10-09' <<<"$out")" = 1 ] \
-  && ok "a class on the first colliding id leaves the second open" || bad "collision class spread: $out"
-# The first one is answered and leaves the inbox: the second takes over the bare id. It must not
-# inherit the first one's class (measured 2026-10-11 on the merged suffix: it did, "first only").
-printf '%s\n' 'shared-memory open requests to this instance: 1' \
-  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (LOG)' > "$T/inbox.txt"
-out=$(run m2)
-has "[request|?] 2026-10-09" "$out" && ! has "first only" "$out" \
-  && ok "the second request, alone under the bare id, does not inherit the first one's class" || bad "class inherited: $out"
-# Negative control: the SAME text keeps its class (a class is not lost by a re-run).
-printf '%s\n' 'shared-memory open requests to this instance: 1' \
-  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (LOG)' > "$T/inbox.txt"
-out=$(run m3)
-has "[request|ai] 2026-10-09" "$out" && ok "the classified text keeps its class" || bad "own class lost: $out"
-
-# Two alike LOG entries of one sender and day: the second gets " (2)". When the first closes, the
-# second takes the bare id — its counter must start at one, not inherit the first one's (2026-10-11).
-printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-10-05 [core] peer-b: AN inst-a: Windows check for core #196 and #197 OK (LOG)' \
-  '  - 2026-10-05 [core] peer-b: AN inst-a: Windows check for core #196 and #197 OK, addendum (LOG)' > "$T/inbox.txt"
+  --classify 'core/LOG@2026-10-09#1=ai:first only' >/dev/null 2>&1
 run twin1 >/dev/null; tx twin1; run twin2 >/dev/null; tx twin2; out=$(run twin3); tx twin3
-has "!! reported in 3 sessions" "$(line 'addendum' "$out")" && ok "second alike entry counts while both are open" || bad "twin count: $(line 'addendum' "$out")"
+has "!! reported in 3 sessions" "$(line 'run two' "$out")" && ok "second entry counts while both are open" || bad "twin count: $(line 'run two' "$out")"
 printf '%s\n' 'shared-memory open requests to this instance: 1' \
-  '  - 2026-10-05 [core] peer-b: AN inst-a: Windows check for core #196 and #197 OK, addendum (LOG)' > "$T/inbox.txt"
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run two (core/LOG@2026-10-09#2)' > "$T/inbox.txt"
 out=$(run twin4); tx twin4
-l=$(line 'addendum' "$out")
-has "reported in" "$l" && bad "second entry inherited the first one's counter after it closed: $l" \
-  || ok "after the first closes, the second starts counting at one"
-printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
-  '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (LOG)' > "$T/inbox.txt"
-
+l=$(line 'run two' "$out")
+has "[request|?] 2026-10-09" "$l" && ! has "first only" "$l" \
+  && ok "the second entry does not take over the first one's class" || bad "class taken over: $l"
+has "!! reported in 4 sessions" "$l" && ok "the second entry keeps its own counter" || bad "counter lost: $l"
+# Same id, edited wording: class and counter stay (they belong to the id, not to the words).
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one (core/LOG@2026-10-09#1)' > "$T/inbox.txt"
+run twin5 >/dev/null; tx twin5
+printf '%s\n' 'shared-memory open requests to this instance: 1' \
+  '  - 2026-10-09 [core] peer-b: AN inst-a, inst-b, inst-c, inst-d, inst-e: run one, reworded (core/LOG@2026-10-09#1)' > "$T/inbox.txt"
+out=$(run twin6)
+l=$(line 'reworded' "$out")
+has "[request|ai] 2026-10-09" "$l" && has "!! reported in" "$l" && ok "edited text keeps class and counter" || bad "edit reset the entry: $l"
 # Standing approval (full-audit 2026-10-15, Windows instance): a class the operator approved once
 # for good prints as `standing` in its own group. The same topic to another machine, an excluded
 # text and an item the data gives to a person are not standing; an entry without the operator's
@@ -320,7 +293,7 @@ printf '%s\n' 'shared-memory open requests to this instance: 5' \
   '  - 2026-10-14 [core] peer-b: check the other run (core/request-other-2026-10-14.md)' \
   '  - 2026-10-14 [core] peer-b: decide the budget (core/request-person-2026-10-14.md)' \
   '  - 2026-10-14 [core] peer-b: move the stable pin (core/request-pin-2026-10-14.md)' \
-  '  - 2026-10-14 [core] peer-b: AN inst-a: answer the log question (LOG)' > "$T/inbox.txt"
+  '  - 2026-10-14 [core] peer-b: AN inst-a: answer the log question (core/LOG@2026-10-14#1)' > "$T/inbox.txt"
 SR="$T/root-st"; mkdir -p "$SR/.claude/rules"
 printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","audience":["inst-a"],"excludes":["\\bpin\\b"],"granted":"\"handle them without asking\" 2026-10-11"}]}' \
   > "$SR/.claude/rules/open-items-standing.json"
@@ -347,7 +320,7 @@ st=$(run st3 "$SR")
 has "standing approval 'requests to this machine' refused" "$st" && ! has "[request|standing]" "$st" && ok "entry without a date is refused" || bad "undated grant accepted: $st"
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
   '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
-  '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (LOG)' > "$T/inbox.txt"
+  '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
 
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"

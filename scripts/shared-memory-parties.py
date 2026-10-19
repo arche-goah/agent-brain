@@ -193,6 +193,39 @@ HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]*\))?\s*(?:[·—-]\
                      r"([\w-]+)(?:\s*\([^)]*\))?(?:\s+[—-]\s+(.*?))?\s*$")
 
 
+# A LOG entry has no file name, so it gets a derived identity: `<area>/LOG@<date>#<n>`, n = the
+# position of its heading among that day's headings (HEADING matches) in that LOG, from 1. Not
+# per sender: the id names no sender, and counting per sender gave two parties' entries one id
+# (measured on the shared-memory repo: `core/LOG@2026-10-16#13` twice).
+# Before it, the readers keyed a LOG request by its first 40 characters and closed it when a
+# reply repeated its words — 15 fixes in 7 days to open-items, 5 to the reply match in 9.
+# Appending keeps every id; the monthly rotation moves whole months in order to
+# `<area>/archive/LOG-<YYYY-MM>.md`, so an id stays the same there. Inserting a heading above
+# an older one of the same sender and day shifts it — append, never insert.
+LOG_ID = re.compile(r"(?<![\w./-])(?:[\w.-]+/)?LOG@\d{4}-\d{2}-\d{2}#\d+\b")
+
+
+# From this date on a request's state is WRITTEN (the inbox settles a LOG request only by its
+# id; the lint asks a request to a party to be a file). One date for both tools.
+STATE_SINCE = "2026-10-20"
+
+
+def log_ids(area: str, heads: list[tuple[str, str]]) -> list[str]:
+    """The id of every heading, given (date, sender) per HEADING match in file order."""
+    seen: dict[str, int] = {}
+    out = []
+    for date, _sender in heads:
+        n = seen[date] = seen.get(date, 0) + 1
+        out.append(f"{area}/LOG@{date}#{n}" if area and area != "root" else f"LOG@{date}#{n}")
+    return out
+
+
+def log_ids_in(text: str, area: str) -> list[str]:
+    """Every id a LOG text carries (a LOG.md or its monthly archive file)."""
+    heads = [(m.group(1), m.group(2)) for m in map(HEADING.match, text.splitlines()) if m]
+    return log_ids(area, heads)
+
+
 def addressees(title: str) -> str | None:
     """`AN x + y: title` -> `x + y`; None when the heading names nobody. The colon of an
     audience category (`AN os:windows: title`) is not the end of the addressees."""

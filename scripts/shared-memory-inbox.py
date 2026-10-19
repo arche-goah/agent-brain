@@ -408,7 +408,19 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
     return items + log_only_items(texts, me, floor)
 
 
-LOG_INFO = re.compile(r"\bstatus:\s*info\b", re.I)
+# A heading that declares a closed state (`(status: done)`, `answered`, …) is a report or a
+# reply, not a request. Only `info` was read before; the 173 status headings carried the rest
+# and were thrown away.
+LOG_INFO = re.compile(r"\bstatus:\s*(?:" + "|".join(sorted(CLOSED_STATUS)) + r")\b", re.I)
+# From this date on a LOG request is settled ONLY by its written state: a file whose
+# `answers:`/`claims:`/`closes:` names its id, or a later LOG entry that names the id. The word
+# heuristics below stay for older entries alone — without them the requests other parties
+# closed by title would open again. Ratchet like the lint's AUDIENCE_SINCE / FIELDS_SINCE.
+STATE_SINCE = _parties.STATE_SINCE
+# The asker settles its own request only in a heading that says so — not with `info`, which a
+# reminder carries too.
+LOG_SETTLED = re.compile(r"\bstatus:\s*(?:" + "|".join(sorted(CLOSED_STATUS - {"info"})) + r")\b", re.I)
+REL_FIELDS = re.compile(r"^\s+(?:answers|claims|closes):(.*)$", re.M)
 # The close word opens the title proper: "AN <who>: ERLEDIGT — …" (or a title without AN).
 LOG_CLOSE = re.compile(r"(?:^|:)\s*(?:ERLEDIGT|GESCHLOSSEN|DONE|CLOSED)\b", re.I)
 # "re <what>" — a reply that opens with the request's title, or the start of it.
@@ -454,27 +466,53 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
     by a collaborator's instance: our one answer about X silently closed the same sender's
     unanswered Y). Wrong only in the safe direction: an answer given elsewhere, or one that
     does not name what it answers, keeps the request listed.
+
+    Each entry is printed with its id (`<area>/LOG@<date>#<n>`, shared-memory-parties.LOG_ID).
+    From STATE_SINCE on only that id settles it; the word matching is the older entries' path.
     """
-    heads: list[tuple] = []  # (date, topic, sender, to_tokens, title, body)
+    heads: list[tuple] = []  # (date, topic, idx, sender, to_tokens, title, body, id)
     for rel, text in texts.items():
         if not (rel.endswith("/LOG.md") or rel == "LOG.md"):
             continue
         topic = rel.split("/")[0] if "/" in rel else "root"
+        mine = []
         for i, (sender, body) in enumerate(log_section_senders(text)):
             m = HEADING.match(body.splitlines()[0]) if body else None
             if not m:
                 continue
             date, _, title = m.groups()
             to = addressees(title or "")
-            heads.append((date, topic, i, sender, tokens(to) if to else set(), title or "", body))
+            mine.append((date, topic, i, sender, tokens(to) if to else set(), title or "", body))
+        ids = _parties.log_ids(topic, [(h[0], h[3]) for h in mine])
+        heads += [h + (rid,) for h, rid in zip(mine, ids)]
+    # Written state: every id a file's relation fields name (anyone's file, as for file
+    # requests), and every id a later LOG entry carries — from another party, or from the
+    # asker in a heading that says it is settled. The asker repeating its own id ("still open:
+    # core/LOG@…#2") settles nothing.
+    settled = set()
+    for rel, text in texts.items():
+        if rel.endswith("LOG.md") or not text.startswith("---"):
+            continue
+        for line in REL_FIELDS.findall(text.split("\n---", 1)[0]):
+            settled |= set(_parties.LOG_ID.findall(line))
+    asked_by = {h[7]: h[3] for h in heads}
+    for h in heads:
+        closing = LOG_SETTLED.search(h[5]) or LOG_CLOSE.search(h[5])
+        settled |= {r for r in _parties.LOG_ID.findall(h[6])
+                    if r != h[7] and (closing or not tokens(asked_by.get(r, "")) & tokens(h[3]))}
     items = []
-    for date, topic, idx, sender, to, title, body in heads:
+    for date, topic, idx, sender, to, title, body, rid in heads:
         if not (to & me) or tokens(sender) & me or (floor and date < floor):
+            continue
+        if rid in settled:
             continue
         if re.search(r"[\w./-]+\.md\b", "\n".join(body.splitlines()[1:])):
             continue  # points at a fact file — the file path above judges it
         if LOG_INFO.search(title) or LOG_CLOSE.search(title):
             continue  # a report or a close, not a request (measured 2026-10-13: info headings sat open)
+        if date >= STATE_SINCE:
+            items.append((date, topic, sender, whole(title) + f" ({rid})"))
+            continue
         # The asker may settle it: a later heading of the same party to the same addressee whose
         # title starts with a close word ("AN x: ERLEDIGT — …") and whose text NAMES this
         # request's title. Naming, not "everything before": one close must not sweep away the
@@ -484,7 +522,7 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
         core_title = core_full[:60]
         if core_title and any(party(sender) & tokens(s) and t & to and LOG_CLOSE.search(ti or "")
                               and core_title in b and (d > date or (tp == topic and j > idx))
-                              for d, tp, j, s, t, ti, b in heads):
+                              for d, tp, j, s, t, ti, b, _ in heads):
             continue
         # A reply comes AFTER the request: a later day, or later in the same LOG. Same day in
         # another LOG cannot be ordered, so it does not count (safe direction). And it NAMES
@@ -493,9 +531,9 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str) -> list[tupl
         replied = any(tokens(s) & me and party(sender) & t
                       and (d > date or (tp == topic and j > idx))
                       and (names_request(core_title, ti, b) or names_request(core_full, ti, b))
-                      for d, tp, j, s, t, ti, b in heads)
+                      for d, tp, j, s, t, ti, b, _ in heads)
         if not replied:
-            items.append((date, topic, sender, whole(title) + " (LOG)"))
+            items.append((date, topic, sender, whole(title) + f" ({rid})"))
     return items
 
 

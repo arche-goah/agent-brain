@@ -559,6 +559,54 @@ def main() -> int:
         res = handover("## 2026-10-18 · lee-win — AN sam-mac: question\nShould I wait on your human's word?\n")
         ok("54 NEGATIVE: the other direction is not judged") if not res else bad(f"54 wrong direction: {res}")
 
+        # 55-62. RELATIONS (check 11, written request state). A relation value names a file stem
+        #     or a LOG id; from STATE_SINCE on a request to a party is a file, not a bare heading.
+        repo = build(tmp / "relations")
+        idx = repo / "INDEX.md"
+        base = idx.read_text(encoding="utf-8")
+        bl = tmp / "relations-baseline.txt"
+        bl.write_text("# empty\n", encoding="utf-8")
+        new = sml._parties.STATE_SINCE
+        (repo / "ops" / "LOG.md").write_text(
+            f"# Log\n\n## {new} · kim-pc — AN alex-macos (status: info): ping\nx\n\n"
+            f"## {new} · kim-pc — AN alex-macos: see the file\nops/alpha.md\n", encoding="utf-8")
+        (repo / "ops" / "archive").mkdir()
+        (repo / "ops" / "archive" / "LOG-2026-09.md").write_text(
+            "# Log archive\n\n## 2026-09-03 · kim-pc — AN alex-macos: old question\nx\n", encoding="utf-8")
+
+        def put_rel(extra: str, date: str = new) -> list:
+            text = fm("r1", date=date).replace(f"  date: {date}\n", f"  date: {date}\n{extra}")
+            (repo / "ops" / "r1.md").write_text(text, encoding="utf-8")
+            idx.write_text(base + "- [r1](ops/r1.md) — x\n", encoding="utf-8")
+            return sml.lint(repo, bl)["findings"]["relations"]
+
+        res = put_rel(f"  answers: ops/LOG@{new}#2\n  closes: alpha\n  claims: ops/LOG@2026-09-03#1\n")
+        ok("55 control: a LOG id, a file stem and an archived LOG id resolve") if not res \
+            else bad(f"55 valid relations flagged: {res}")
+        res = put_rel(f"  answers: ops/LOG@{new}#9\n")
+        ok("56 a LOG id that names no heading is named") if len(res) == 1 and res[0]["target"] == f"ops/LOG@{new}#9" \
+            else bad(f"56 dead LOG id: {res}")
+        res = put_rel("  answers: LOG 2026-10-15 kim-pc — a question in prose\n")
+        ok("57 a request named in prose is named") if len(res) == 1 else bad(f"57 prose answer: {res}")
+        res = put_rel("  answers: LOG 2026-10-15 kim-pc — a question in prose\n", date="2026-10-15")
+        ok("58 control: an entry dated before STATE_SINCE is not re-judged") if not res else bad(f"58 ratchet: {res}")
+        (repo / "ops" / "r1.md").unlink()
+        idx.write_text(base, encoding="utf-8")
+
+        def heads(log: str) -> list:
+            (repo / "ops" / "LOG.md").write_text("# Log\n\n" + log, encoding="utf-8")
+            return [i for i in sml.lint(repo, bl)["findings"]["relations"]
+                    if i["issue"].startswith("a request to a party")]
+
+        res = heads(f"## {new} · kim-pc — AN alex-macos: please check X\nno file\n")
+        ok("59 a request that lives only as a LOG heading is named") if len(res) == 1 else bad(f"59 LOG request: {res}")
+        res = heads(f"## {new} · kim-pc — AN alex-macos (status: done): X checked\nok\n")
+        ok("60 control: a report heading is silent") if not res else bad(f"60 report flagged: {res}")
+        res = heads(f"## {new} · kim-pc — AN alex-macos: please check X\nops/alpha.md\n")
+        ok("61 control: a heading that points at its file is silent") if not res else bad(f"61 pointer flagged: {res}")
+        res = heads("## 2026-10-15 · kim-pc — AN alex-macos: please check X\nno file\n")
+        ok("62 control: a heading before STATE_SINCE is not re-judged") if not res else bad(f"62 ratchet: {res}")
+
     return 1 if fails else 0
 
 

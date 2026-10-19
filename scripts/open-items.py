@@ -69,7 +69,6 @@ Stdlib only; runs under `python3` or `python` (Windows python.org installer).
 """
 import argparse
 import datetime
-import hashlib
 import json
 import os
 import re
@@ -83,7 +82,8 @@ from instance_key import is_self, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
 from shared_answers import checked_head, default_repo, own_shared_shas  # noqa: E402
 OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
-LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*\(([^()]+\.md|LOG)\)\s*$")
+LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*"
+                  r"\(([^()]+\.md|(?:[\w.-]+/)?LOG@\d{4}-\d{2}-\d{2}#\d+)\)\s*$")
 # The inbox defaults to a 30-day window. An open request does not stop being open because
 # it is old — measured 2026-10-07: a 32-day-old request to this instance fell out of the
 # start list silently. Age is what the counter shows, not a reason to drop the item.
@@ -143,25 +143,19 @@ def requests(repo):
             unparsed += 1
             continue
         date, topic, von, text, rel = m.groups()
-        # A LOG-only request has no file; its identity is date + sender + its own words.
-        ref = rel if rel != "LOG" else f"{topic}/LOG {date} {von.strip()}"
-        # rstrip: --classify strips its key, so an id cut right after a blank could never be matched.
-        items.append({"id": ref if rel != "LOG" else f"{ref}: {text[:40].rstrip()}", "kind": "request",
+        # A LOG-only request has no file; the inbox prints its derived id (`<area>/LOG@<date>#<n>`),
+        # which is its key for the class and the counter. It used to be date + sender + the first
+        # 40 characters of its words — the root of 15 fixes in 7 days (collisions, cuts at a
+        # blank, a second entry inheriting the first one's class).
+        is_log = "LOG@" in rel
+        items.append({"id": rel, "kind": "request",
                       "date": date, "who": von.strip(), "text": text[:100], "scope": topic,
-                      "ref": ref, "file": rel if rel != "LOG" else ""})
+                      "ref": rel, "file": "" if is_log else rel})
         # A request we are not asked first for, or one to everyone (shared-memory-parties.py
         # priority): listed, but as a hint — information, not a duty (operator 2026-10-13).
         q = OPTIONAL.match(text)
         if q:
             items[-1]["waiting_on"] = (q.group(1), q.group(2))
-    # Two LOG entries of one sender on one day can share their first 40 chars (measured
-    # 2026-10-11: "AN a, b, c-" twice) — one id would carry one class and one counter for both.
-    # The later one in inbox order gets " (n)"; the first keeps its old id, so stored classes hold.
-    seen = {}
-    for it in items:
-        n = seen[it["id"]] = seen.get(it["id"], 0) + 1
-        if n > 1:
-            it["id"] = f"{it['id']} ({n})"
     # An inbox line this parser cannot read must not vanish — the exact defect this list
     # exists to stop. It reports itself as a failed read instead.
     return None if unparsed or len(items) != expected else items
@@ -526,25 +520,11 @@ def sessions(root, hook_input):
 
 def lookup(store, it):
     """The agent's own class wins; it is keyed by the printed id, or — for an entry with its
-    own FILE — by the file name. A LOG entry has no file: its short form "LOG <date> <sender>"
-    names every entry of that sender that day, so a class given to one silently covered the
-    next (measured 2026-10-09, Windows instance: an unread request would have been filed as
-    acknowledged). LOG entries match by their full id only."""
+    own FILE — by the file name. A LOG entry matches by its full id (`<area>/LOG@<date>#<n>`):
+    one id names one entry for good, so a class never passes to another entry."""
     if it.get("file"):
         return store.get(it["id"]) or store.get(it["ref"].rsplit("/", 1)[-1])
-    entry = store.get(it["id"])
-    # The id of a LOG entry is not unique for good: two entries of one sender and day that start
-    # alike get " (n)" by inbox order, and when the first one closes the second takes over the
-    # bare id — and with it the first one's class (measured 2026-10-11, Windows instance, on the
-    # merged #287). A class therefore remembers the text it was given for; another text under the
-    # same id is unclassified. Classes stored before this carry no text and keep working.
-    if entry and entry.get("text") and entry["text"] != fingerprint(it.get("text", "")):
-        return None
-    return entry
-
-
-def fingerprint(text):
-    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+    return store.get(it["id"])
 
 
 PR_ID = re.compile(r"^[\w.-]+#\d+$")
@@ -577,11 +557,8 @@ def classify(args, cls_file, repo):
                     print(f"   {n}")
                 return 2
         specs.append((key, cls, why))
-    texts = {i["id"]: i.get("text", "") for i in (req or []) if not i.get("file")}
     for key, cls, why in specs:
         store[key] = {"class": cls, "why": why.strip() or "agent's judgement", "at": today}
-        if key in texts:
-            store[key]["text"] = fingerprint(texts[key])
         print(f"classified: {key} = {cls}")
     if not save_json(cls_file, store):
         print(f"!! class NOT saved ({cls_file})")
@@ -656,13 +633,7 @@ def main():
     keep = {}
     for it in items:
         rec = old.get(it["id"]) or {"first": today, "sessions": []}
-        # The counter remembers the TEXT it counted for (same rule as the class, #294): when the
-        # first of two alike LOG entries closes, the second takes over the bare id — and used to
-        # inherit "reported in N sessions" that nobody had said about it (measured 2026-10-11).
-        fp = fingerprint(it.get("text", ""))
-        if rec.get("text") not in (None, fp):
-            rec = {"first": today, "sessions": []}
-        rec["text"] = fp
+        rec.pop("text", None)  # a text fingerprint guarded reused LOG ids; the ids are stable now
         w = lookup(waits, it)  # same rule as the class: a LOG entry matches by its full id only
         until = (str(w.get("until", "")), str(w.get("why", ""))) if isinstance(w, dict) else it.get("until")
         it["wait"] = None
@@ -780,7 +751,7 @@ def main():
         # No angle brackets in these hints: the session start escapes < and > to protect its
         # own wrapper, so '<id>' reached the operator as '&lt;id&gt;' (measured 2026-10-11).
         print("!! open for us: classify every '?' item once — core/scripts/open-items.py --classify 'ID=ai|human:WHY'")
-        # The id is not always the printed ref (a LOG entry adds its first 40 characters).
+        # The exact id --classify takes (a file request also answers to its file name).
         for i in active:
             if i["cls"] == "?":
                 print(f"   --classify '{i['id']}=ai|human:WHY'")
