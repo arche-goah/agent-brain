@@ -86,7 +86,7 @@ stage.
 ## Scope boundaries
 
 - Single questions ("are my rules consistent?") → only `coherence-scan`.
-  Memory cleanup → `memory-dream`. Weekly routine → `brain-scan` (runs anyway).
+  Memory cleanup → `memory-dream`. Routine every two weeks → `brain-scan` (runs anyway).
 - The full audit does NOT check live systems (rig, desk, show machines). WHICH verify
   path covers them is instance knowledge and lives in the instance rule file
   (same move as the session-close live gate — CONVENTIONS §1: "No behaviour that

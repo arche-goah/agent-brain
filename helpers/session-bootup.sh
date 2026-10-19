@@ -550,12 +550,12 @@ if [[ -n "${latest:-}" ]]; then
     # Due / overdue as its own line (operator 2026-09-23): the scan is confirmed and
     # started inside an active session, so session start is where due-ness has to be
     # SAID — a bare age is a number the reader has to compare against a threshold they
-    # may not know. Due at 7 d (the weekly cadence, rules/intelligence.md), overdue at
-    # 14 d (the repeat-run freshness window, same file).
-    if (( age >= 14 )); then
-      echo "!! brain-scan OVERDUE: latest report ${age}d ago (due after 7d) — ask the operator, then run it in this session"
-    elif (( age >= 7 )); then
-      echo "!! brain-scan DUE: latest report ${age}d ago (due after 7d) — ask the operator, then run it in this session"
+    # may not know. Due at 14 d, overdue at 28 d (rules/intelligence.md, operator decision
+    # 2026-10-18); the 7-day floor before a new scan lives in freshness-gate.cjs.
+    if (( age >= 28 )); then
+      echo "!! brain-scan OVERDUE: latest report ${age}d ago (due after 14d) — ask the operator, then run it in this session"
+    elif (( age >= 14 )); then
+      echo "!! brain-scan DUE: latest report ${age}d ago (due after 14d) — ask the operator, then run it in this session"
     fi
   else
     echo "brain-scan: latest report $(basename "$latest") — age unknown (stat produced no mtime): P0=$p0 P1=$p1"
