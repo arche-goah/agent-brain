@@ -8,7 +8,11 @@
 # an instance may carry its own hooks dir on purpose.
 set -u
 hooks=$(cd "$(dirname "${BASH_SOURCE[0]}")/../helpers/git-hooks" && pwd)
+# Git Bash: pwd gives /c/..., git config may hold C:/... for the same folder — compare (and
+# write) the mixed long form (8.3 names expanded); everywhere else cygpath does not exist and the path stays.
+hooks=$(cygpath -ml "$hooks" 2>/dev/null || printf '%s' "$hooks")
 cur=$(git config --global --get core.hooksPath 2>/dev/null || true)
+[ -n "$cur" ] && cur=$(cygpath -ml "$cur" 2>/dev/null || printf '%s' "$cur")
 if [ "${1:-}" = "--check" ]; then
   if [ "$cur" = "$hooks" ]; then echo "git hooks: core hooks installed"; exit 0; fi
   echo "git hooks: global core.hooksPath is '${cur:-unset}', not the core's hooks — run: bash core/scripts/install-git-hooks.sh"
