@@ -479,6 +479,24 @@ case "$_rc:$_hc" in
   *) bad "hook-coverage fail-open case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
 cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+#     A hook wired with a SHORTER timeout than the template is killed earlier than the core
+#     plans for (the session start: 30 s kept, the template raised to 60). Named; the hooks
+#     that keep the template's value stay silent.
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+for gs in d["hooks"].values():
+    for g in gs:
+        for h in g["hooks"]:
+            if "session-bootup" in h.get("command",""): h["timeout"]=1
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$T/hookbrain/.claude/settings.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*"SessionStart: session-bootup.sh has timeout"*" s - the template gives it 60 s"*)
+    case "$_hc" in *memory-sync*) bad "hook-coverage timeout names a hook that keeps the template value";;
+      *) ok "hook-coverage flags a hook timeout shorter than the template's";; esac;;
+  *) bad "hook-coverage timeout case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
 #     The name guard wired with an EMPTY watch list checks nothing - named, not silent.
 printf '{"names": [], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?

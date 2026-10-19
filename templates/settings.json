@@ -136,7 +136,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/core/helpers/session-bootup.sh\"",
-            "timeout": 30
+            "timeout": 60
           },
           {
             "type": "command",
