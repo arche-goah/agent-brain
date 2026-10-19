@@ -1,7 +1,8 @@
 {
-  "_comment": "Instance data for core/scripts/ledger-reconcile.py (session start, --brief). The ledgers listed here are the hand-kept detail lists whose `- [ ]` / `- [x]` entries may carry `check: <read-only shell command>` (exit 0 = done) or `check: none — <why not machine-checkable>`. At every start the script runs each check and names entries whose checkbox disagrees with it, plus open entries dated on/after ratchet_since that name no check. No file = nothing registered, nothing checked.",
-  "_fields": "ledgers: paths relative to the brain root · ratchet_since: YYYY-MM-DD — older entries without a check are left alone, newer ones are named until they carry one · timeout_s: per check (default 20); a check that runs out is reported as unanswered, never as done",
+  "_comment": "Instance data for core/scripts/ledger-reconcile.py. The session start runs it --cached: the previous run's brief result is printed (silent when clean) and the next run starts in the background. The ledgers listed here are the hand-kept detail lists whose `- [ ]` / `- [x]` entries may carry `check: <read-only command>` (exit 0 = done) or `check: none — <why not machine-checkable>`. Each run names entries whose checkbox disagrees with their check, checks refused or unanswered, and open entries dated on/after ratchet_since that name no check. No file = nothing registered, nothing checked.",
+  "_fields": "ledgers: paths relative to the brain root · ratchet_since: YYYY-MM-DD — older entries without a check are left alone, newer ones are named until they carry one · timeout_s: per check (default 5) · budget_s: the whole run (default 30); a check starts only while its full timeout still fits, the rest is 'not run this time', never done · allowed: optional list of command prefixes a check part may start with — REPLACES the script's read-only default list (test, grep, ls, find, wc, head, tail, cat, diff, git log/show/grep/rev-parse/ls-files/cat-file/merge-base/diff/status); a redirection, $( ) or backtick is always refused",
   "ledgers": [],
   "ratchet_since": "YYYY-MM-DD",
-  "timeout_s": 20
+  "timeout_s": 5,
+  "budget_s": 30
 }

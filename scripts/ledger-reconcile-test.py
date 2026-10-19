@@ -6,6 +6,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 SCRIPT = os.environ.get("LEDGER_RECONCILE_SCRIPT") or str(HERE / "ledger-reconcile.py")
@@ -41,6 +42,18 @@ LEDGER = """# Orders
 - [ ] **check that hangs** — derived (2026-10-15)
   check: sleep 5
   id: hangs
+
+- [ ] **check that would write** — derived (2026-10-15)
+  check: touch written-by-check
+  id: writes
+
+- [ ] **check with a redirection** — derived (2026-10-15)
+  check: grep -q x marker-present > written-by-redirect
+  id: redirects
+
+- [ ] **git that is not a read** — derived (2026-10-15)
+  check: test -f marker-present && git push
+  id: git-push
 
 Prose after the list.
 - [ ] **entry without an id field** — derived (2026-10-21)
@@ -80,7 +93,9 @@ def main():
         rc, out = run(root, "--brief")
         ok(out.strip() == "" and rc == 0, "no config, --brief: silent", out)
 
-        json.dump({"ledgers": ["docs/orders.md"], "ratchet_since": "2026-10-19", "timeout_s": 1},
+        allowed = ["test", "sleep"]   # sleep only so the fixture can provoke a timeout
+        json.dump({"ledgers": ["docs/orders.md"], "ratchet_since": "2026-10-19", "timeout_s": 1,
+                   "budget_s": 30, "allowed": allowed},
                   open(cfg, "w", encoding="utf-8"))
         rc, out = run(root, "--brief")
         done_line = next((l for l in out.splitlines() if "done but still open" in l), "")
@@ -96,6 +111,28 @@ def main():
         br = next((l for l in out.splitlines() if "could not give an answer" in l), "")
         ok("hangs (timeout)" in br, "a check that times out is reported as such", out)
         ok("hangs" not in done_line, "a timed-out check is never counted as done", out)
+        rf = next((l for l in out.splitlines() if "refused, not run" in l), "")
+        ok("writes" in rf and not (R / "written-by-check").exists(),
+           "`touch x` is refused and never runs (the file does not appear)", out)
+        ok("redirects" in rf and not (R / "written-by-redirect").exists(),
+           "a redirection is refused and never runs", out)
+        ok("git-push" in rf, "a part after && that is not on the list (git push) refuses the whole check", out)
+
+        # budget: two hanging checks against a 1.5 s budget -> the second is not reached
+        two = LEDGER.split("Prose after the list.")[0] + (
+            "\n- [ ] **second hang** — derived (2026-10-15)\n  check: sleep 5\n  id: hangs-too\n")
+        (R / "docs" / "orders.md").write_text(two, encoding="utf-8")
+        json.dump({"ledgers": ["docs/orders.md"], "timeout_s": 1, "budget_s": 1.5, "allowed": allowed},
+                  open(cfg, "w", encoding="utf-8"))
+        rc, out = run(root, "--brief")
+        nr = next((l for l in out.splitlines() if "not reached within" in l), "")
+        ok("hangs-too" in nr, "budget: a check the budget does not reach is named as not run", out)
+        ok("hangs-too" not in next((l for l in out.splitlines() if "done but still open" in l), ""),
+           "budget: a check not run is never counted as done", out)
+        (R / "docs" / "orders.md").write_text(LEDGER, encoding="utf-8")
+        json.dump({"ledgers": ["docs/orders.md"], "ratchet_since": "2026-10-19", "timeout_s": 1,
+                   "budget_s": 30, "allowed": allowed}, open(cfg, "w", encoding="utf-8"))
+        rc, out = run(root, "--brief")
         ok(rc == 0, "--brief without --strict exits 0", out)
         rc, _ = run(root, "--strict")
         ok(rc == 1, "--strict exits 1 while DONE-OPEN or REGRESSED exist")
@@ -106,7 +143,8 @@ def main():
         clean = LEDGER.split("Prose after the list.")[0]
         clean = "\n\n".join(b for b in clean.split("\n\n")
                             if "done-but-open" not in b and "ticked-regressed" not in b
-                            and "new-no-check" not in b and "hangs" not in b)
+                            and "new-no-check" not in b and "hangs" not in b
+                            and "writes" not in b and "redirects" not in b and "git-push" not in b)
         (R / "docs" / "orders.md").write_text(clean, encoding="utf-8")
         rc, out = run(root, "--brief")
         ok(out.strip() == "", "clean ledger, --brief: silent", out)
@@ -114,6 +152,41 @@ def main():
         ok("every check agrees" in out, "clean ledger, full form: says so", out)
         rc, _ = run(root, "--strict")
         ok(rc == 0, "--strict exits 0 when clean")
+
+        # --cached: the session start's mode — previous result now, next run in the background
+        (R / "docs" / "orders.md").write_text(LEDGER.split("- [ ] **check that hangs**")[0], encoding="utf-8")
+        json.dump({"ledgers": ["docs/orders.md"]}, open(cfg, "w", encoding="utf-8"))
+        t0 = time.monotonic()
+        rc, out = run(root, "--cached")
+        ok(out.strip() == "" and rc == 0, "--cached, first start: silent (no earlier result)", out)
+        ok(time.monotonic() - t0 < 5, "--cached returns without waiting for the checks")
+        brief = R / ".claude-state" / "ledger-reconcile.brief"
+        for _ in range(100):
+            if brief.exists():
+                break
+            time.sleep(0.1)
+        ok(brief.exists() and "done-but-open" in brief.read_text(encoding="utf-8"),
+           "--cached: the background run writes its brief result")
+        rc, out = run(root, "--cached")
+        ok("done-but-open" in out and "result of" in out, "--cached, next start: shows that result with its time", out)
+        brief.write_text("", encoding="utf-8")
+        rc, out = run(root, "--cached")
+        ok(out.strip() == "", "--cached after a clean run: silent", out)
+        for _ in range(100):
+            if brief.read_text(encoding="utf-8").strip():
+                break
+            time.sleep(0.1)
+
+        # the default allow list (no "allowed" in the config)
+        (R / "docs" / "orders.md").write_text(
+            "- [ ] **reads** — derived (2026-10-15)\n  check: grep -q . marker-present || test -f marker-present\n  id: default-read\n\n"
+            "- [ ] **writes** — derived (2026-10-15)\n  check: touch written-by-default\n  id: default-write\n",
+            encoding="utf-8")
+        json.dump({"ledgers": ["docs/orders.md"]}, open(cfg, "w", encoding="utf-8"))
+        rc, out = run(root, "--brief")
+        ok("default-read" in out and "done but still open" in out, "default list: grep/test run", out)
+        ok("default-write" in next((l for l in out.splitlines() if "refused" in l), "")
+           and not (R / "written-by-default").exists(), "default list: touch is refused", out)
 
         json.dump({"ledgers": ["docs/gone.md"]}, open(cfg, "w", encoding="utf-8"))
         rc, out = run(root, "--brief")

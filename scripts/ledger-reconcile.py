@@ -18,15 +18,31 @@ The script runs every `check:` of the registered ledgers and reports:
   NO-CHECK    an open entry dated on/after `ratchet_since` names no check at all
 A check that times out or cannot start is reported as such, never as done.
 
+Two bounds, because the checks run on their own at every session start:
+- Only READ commands run. Every part of a check (split at `;`, `&&`, `||`, `|`) must start
+  with an allowed prefix (`allowed`, default ALLOWED below), and a check with a redirection
+  (`>`), a command substitution or a backtick is refused. A refused check is named, never run.
+  "read-only" is then a property the script enforces, not only an agreement.
+- The session start never waits for the checks: it runs `--cached`, which prints the brief
+  result of the PREVIOUS run (silent when that was clean) and starts the next run in the
+  background — the brain-check pattern. Measured 2026-10-19 on a Windows brain: the start
+  already took 18-28 s of its 30 s hook limit without this script, one start was cut at 31 s.
+  The answer arrives one start later, said with its time.
+- One time budget for the whole run (`budget_s`, default 30 s; each check also has
+  `timeout_s`, default 5 s; a check starts only while its full timeout still fits). Checks the
+  budget does not reach are counted as not run this time, never as done.
+
 Ledgers are instance data: `.claude/rules/ledgers.json`
     {"ledgers": ["docs/maintenance/orders.md", ...], "ratchet_since": "YYYY-MM-DD",
-     "timeout_s": 20}
+     "timeout_s": 5, "budget_s": 10, "allowed": ["test", "grep", "git log", ...]}
 Paths are relative to the brain root. No file = nothing registered (said once, not a gate).
 
-Usage: ledger-reconcile.py [--root DIR] [--brief] [--ledger PATH ...] [--since DATE]
-  --brief   session-start form: silent when clean, one `!!` line per class otherwise
+Usage: ledger-reconcile.py [--root DIR] [--brief|--cached] [--ledger PATH ...] [--since DATE]
+  --brief   silent when clean, one `!!` line per class otherwise
+  --cached  what the session start runs: last run's --brief result now, next run in the background
+            (result file .claude-state/ledger-reconcile.brief, its time in ...stamp)
 Exit: 0 always without --strict; with --strict 1 when DONE-OPEN or REGRESSED exist.
-Checks run with the brain root as working directory; they must only read.
+Checks run with the brain root as working directory.
 """
 import argparse
 import json
@@ -36,6 +52,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
@@ -98,6 +115,29 @@ def find_shell(explicit=None):
     return shutil.which("bash")
 
 
+# Prefixes a part of a check may start with — commands that read. A git subcommand is named in
+# full, so `git push` or `git commit` never matches. An instance widens or narrows it with
+# "allowed" in its ledgers.json; the list replaces this one, it does not add to it.
+ALLOWED = ["test", "[", "grep", "ls", "find", "wc", "head", "tail", "cat", "diff",
+           "git log", "git show", "git grep", "git rev-parse", "git ls-files", "git cat-file",
+           "git merge-base", "git diff", "git status"]
+SPLIT = re.compile(r"\s*(?:&&|\|\||;|\|)\s*")
+WRITE = re.compile(r">|\$\(|`")
+
+
+def permitted(cmd, allowed):
+    """True when every part of the check starts with an allowed prefix and nothing writes."""
+    if WRITE.search(cmd):
+        return False
+    for part in SPLIT.split(cmd.strip()):
+        words = part.strip().lstrip("!").split()
+        if not words:
+            return False
+        if not any(words[:len(p.split())] == p.split() for p in allowed):
+            return False
+    return True
+
+
 def run_check(cmd, root, timeout, shell):
     """'pass' | 'fail' | 'timeout' | 'error'."""
     if not shell:
@@ -118,8 +158,10 @@ def label(e, path):
     return ident[0] if ident else f"{path}:{e['line']}"
 
 
-def reconcile(root, ledgers, since, timeout, shell):
-    out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": []}
+def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0):
+    out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": [],
+           "refused": [], "not_run": []}
+    deadline = time.monotonic() + budget
     for rel in ledgers:
         path = pathlib.Path(root) / rel
         try:
@@ -135,6 +177,14 @@ def reconcile(root, ledgers, since, timeout, shell):
                     out["no_check"].append(label(e, rel))
                 continue
             if NONE.match(chk):
+                continue
+            if not permitted(chk, allowed):
+                out["refused"].append(label(e, rel))
+                continue
+            # A check starts only while its full timeout still fits the budget, so a check that
+            # runs always gets its whole timeout — a slow one is "timeout", never cut short.
+            if deadline - time.monotonic() < timeout:
+                out["not_run"].append(label(e, rel))
                 continue
             res = run_check(chk, root, timeout, shell)
             if res in ("timeout", "error"):
@@ -154,7 +204,12 @@ def main():
     ap.add_argument("--brief", action="store_true")
     ap.add_argument("--strict", action="store_true")
     ap.add_argument("--shell", help="POSIX shell that runs the checks (native path)")
+    ap.add_argument("--cached", action="store_true")
+    ap.add_argument("--out", help=argparse.SUPPRESS)   # the background run's result file
     a = ap.parse_args()
+
+    if a.cached:
+        return cached(a)
 
     cfg = {}
     cfg_path = pathlib.Path(a.root) / ".claude" / "rules" / "ledgers.json"
@@ -167,15 +222,18 @@ def main():
             return 0
     ledgers = a.ledger or cfg.get("ledgers") or []
     since = a.since or cfg.get("ratchet_since")
-    timeout = int(cfg.get("timeout_s") or 20)
+    timeout = float(cfg.get("timeout_s") or 5)
+    budget = float(cfg.get("budget_s") or 30)
+    allowed = cfg.get("allowed") or ALLOWED
     shell = find_shell(a.shell)
-    r = reconcile(a.root, ledgers, since, timeout, shell)
+    r = reconcile(a.root, ledgers, since, timeout, shell, allowed, budget)
+    lines = []
 
     def say(key, head, tail):
         items = r[key]
         if items:
             shown = ", ".join(items[:8]) + (f" (+{len(items) - 8} more)" if len(items) > 8 else "")
-            print(f"!! ledger: {len(items)} {head}: {shown} - {tail}")
+            lines.append(f"!! ledger: {len(items)} {head}: {shown} - {tail}")
 
     say("done_open", "entr(y/ies) done but still open (its check passes)",
         "tick it with the evidence, and name why the ledger missed it (copied from a report? fixed in passing?)")
@@ -184,13 +242,69 @@ def main():
     say("broken", "check(s) that could not give an answer",
         "a check must be a fast, read-only command - fix it or write `check: none - <why>`"
         + ("" if shell else " (no POSIX shell found to run checks with)"))
+    say("refused", "check(s) refused, not run (not on the read-only allow list, or writing)",
+        "rewrite it with a reading command, or widen `allowed` in .claude/rules/ledgers.json on purpose")
+    say("not_run", f"check(s) not reached within the {budget:g} s budget",
+        "not run this time (never counted as done) - make the checks faster, or raise `budget_s`")
     say("missing", "registered ledger file(s) not found", "fix .claude/rules/ledgers.json")
     say("no_check", f"open entr(y/ies) since {since} without a `check:` line",
         "name the command that measures done, or `check: none — <why not machine-checkable>`")
     if not a.brief and not any(r.values()):
-        print(f"ledger-reconcile: {len(ledgers)} ledger(s) - every check agrees with its checkbox")
+        lines.append(f"ledger-reconcile: {len(ledgers)} ledger(s) - every check agrees with its checkbox")
+    text = "".join(l + "\n" for l in lines)
+    if a.out:
+        out = pathlib.Path(a.out)
+        tmp = out.with_name(f"{out.name}.{os.getpid()}")   # two starts at once never share a file
+        # open(newline=) and not Path.write_text(newline=): the latter is 3.10+ (os-traps OS-13)
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        os.replace(tmp, out)
+        with open(out.with_name(out.stem + ".stamp"), "w", encoding="utf-8", newline="\n") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M") + "\n")
+    else:
+        sys.stdout.write(text)
     if a.strict and (r["done_open"] or r["regressed"]):
         return 1
+    return 0
+
+
+def cached(a):
+    """Session start: the previous run's brief result, the next run started in the background."""
+    state = pathlib.Path(a.root) / ".claude-state"
+    out = state / "ledger-reconcile.brief"
+    try:
+        prev = out.read_text(encoding="utf-8")
+    except OSError:
+        prev = ""
+    if prev.strip():
+        try:
+            when = (state / "ledger-reconcile.stamp").read_text(encoding="utf-8").strip()
+        except OSError:
+            when = "an earlier start"
+        sys.stdout.write(prev)
+        print(f"   (ledger reconcile: result of {when}; the next run is measuring in the background)")
+    try:
+        state.mkdir(exist_ok=True)
+    except OSError:
+        return 0
+    cmd = [sys.executable, str(pathlib.Path(__file__).resolve()), "--root", a.root,
+           "--brief", "--out", str(out)]
+    if a.shell:
+        cmd += ["--shell", a.shell]
+    for led in a.ledger:
+        cmd += ["--ledger", led]
+    if a.since:
+        cmd += ["--since", a.since]
+    kw = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+          "cwd": a.root}
+    if os.name == "nt":
+        kw["creationflags"] = 0x00000008 | 0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+    else:
+        kw["start_new_session"] = True
+    try:
+        subprocess.Popen(cmd, **kw)
+    except OSError:
+        pass
     return 0
 
 
