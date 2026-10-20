@@ -48,8 +48,8 @@ into a report a fixture greps. The test is never "does it look right in the term
 itself behaves differently, and usually only in one branch. Members: OS-5 (`grep` decides
 per stream whether it is text), OS-6 (`python3` is an install manager that honours a
 shebang in an argument, while `python` on the same machine does not), OS-13 (`python3` is
-3.9 on stock macOS and 3.12+ elsewhere). Older, same shape:
-`stat -c` vs `-f`, `lsof` absent, the Microsoft Store python3 stub.
+3.9 on stock macOS and 3.12+ elsewhere), OS-17 (the Microsoft Store `python3` stub exists but
+runs nothing). Older, same shape: `stat -c` vs `-f`, `lsof` absent.
 *Where to look first:* every tool invoked by bare name in a REPORTING or GUARDING path.
 An interpreter probe that runs `-c 'import sys'` proves the binary starts, never that it
 behaves — and a guard that fails open looks exactly like a guard with nothing to say.
@@ -186,7 +186,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=5 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-git-sandbox.sh=1 scripts/test-autonomy-diagnose.sh=1 scripts/test-autonomy-diagnose-run.sh=1 scripts/test-watch-readiness.sh=1 scripts/test-conditional-order-gate.sh=1 scripts/test-decision-readiness.sh=1 scripts/test-decision-review.sh=1 scripts/test-leak-scan.sh=1 scripts/test-delivered-read-gate.sh=1 scripts/test-bootup-git-login.sh=1 scripts/test-git-hooks.sh=1 scripts/test-change-level.sh=1 scripts/test-monitor-arm-shape.sh=1 scripts/test-verification-gate.sh=1 scripts/test-live-watchdog.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=5 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-git-sandbox.sh=1 scripts/test-autonomy-diagnose.sh=1 scripts/test-autonomy-diagnose-run.sh=1 scripts/test-watch-readiness.sh=1 scripts/test-conditional-order-gate.sh=1 scripts/test-decision-readiness.sh=1 scripts/test-decision-review.sh=1 scripts/test-leak-scan.sh=1 scripts/test-delivered-read-gate.sh=1 scripts/test-bootup-git-login.sh=1 scripts/test-git-hooks.sh=1 scripts/test-change-level.sh=1 scripts/test-monitor-arm-shape.sh=1 scripts/test-verification-gate.sh=1 scripts/test-live-watchdog.sh=1 scripts/test-python-probe.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -733,3 +733,29 @@ note:      Measured 2026-10-14 on the macOS instance (bash 3.2): `shared-memory-
 trivially because the watcher never ran. The search found a second site, `project-dir-test.sh`,
 where the same 127 made "watcher keeps the brain's cursor" pass without a watcher — it now also
 fails when the command did not run. Both fixed in #342; zero hits after the fix.
+
+## OS-17 — `python3` exists on Windows but is the Store stub, and a script that only checks existence runs nothing
+
+shape: B
+
+invariant: A shell file that picks `python3` as its interpreter also probes that it RUNS:
+`"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python`. On a Windows machine `python3` can be the
+Microsoft Store alias: `command -v python3` succeeds, the call prints "Python was not found" and exits
+non-zero. A choice that only checks existence (`command -v "$py" || py=python`,
+`$(command -v python3 || command -v python)`) then runs every Python step against the stub - in a
+fixture every case fails for the wrong reason, in a git hook the step is skipped without a word.
+check:     scripts/test-python-probe.sh — per shell file under scripts/ helpers/ templates/ skills/
+(`.sh` or a sh/bash shebang): probe lines >= python3 choices; with a negative control on fixtures.
+Discovered by portability-smoke and the CI fixture step like every `scripts/test-*.sh`.
+mechanizable: tool — "a probe follows the choice" spans two lines and a count per file; a grep count
+over the tree cannot state it.
+instances: 4
+repeat:    yes
+status:    closed
+note:      Measured 2026-10-20 on a Windows instance during the full run at the 2.0.2 candidate
+(f973145): `test-autonomy-diagnose.sh` (65 FAIL) and `test-decision-review.sh` failed on every tree -
+fixed in #57, whose search covered only `PY=` lines in `scripts/*.sh`. The repeat came the same day:
+`test-git-hooks.sh` failed in the smoke because `helpers/git-hooks/pre-commit` and
+`prepare-commit-msg` (no extension, lower-case `py=`) checked existence only - so on such a machine
+the shared-memory commit trailer was silently left out. Both hooks fixed; the tree check now finds no
+site, and with the two old hooks put back it names exactly those two.
