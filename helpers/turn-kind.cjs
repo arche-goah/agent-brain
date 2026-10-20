@@ -30,4 +30,15 @@ function isNotification(text) {
   return LOCAL_MARK.test(text) && !text.replace(FRAMES, '').replace(LOCAL, '').trim();
 }
 
-module.exports = { isNotification, FRAMES, LOCAL };
+/**
+ * A skill loaded through the Skill tool arrives as a user record with isMeta AND
+ * sourceToolUseID (measured, Claude Code 2.1.303, 61 of 61 such records in 40 transcripts):
+ * the skill author's words, not the operator's - no prompt, no new turn. isMeta alone is NOT
+ * enough: a message the operator sends mid-turn carries it too, without sourceToolUseID.
+ * Takes the whole transcript record (the flags sit beside `message`, not in it).
+ */
+function isSkillExpansion(d) {
+  return Boolean(d && d.isMeta === true && d.sourceToolUseID);
+}
+
+module.exports = { isNotification, isSkillExpansion, FRAMES, LOCAL };
