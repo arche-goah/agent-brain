@@ -76,6 +76,13 @@ check "incident reply" "$f" block "$EN"
 # 2 — the required form, English built-ins.
 f="$T/2.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; } > "$f"
 check "required form (EN)" "$f" allow "$EN"
+# a skill loaded through the Skill tool before the reply is no second prompt (2026-10-20): it
+# counted as one, the turn read as "not the first" and the check fell silent
+SKILL_REC='{"isMeta":true,"sourceToolUseID":"toolu_x","message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: x"}]}}'
+f="$T/2s.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; echo "$SKILL_REC"; asst "Brain clean. 9 older requests, nothing new."; } > "$f"
+check "incident reply after a loaded skill" "$f" block "$EN"
+f="$T/2t.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; echo "$SKILL_REC"; asst "$GOOD_EN"; } > "$f"
+check "required form after a loaded skill" "$f" allow "$EN"
 
 # 3 — the same form in German: only through instance data.
 f="$T/3.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_DE"; } > "$f"

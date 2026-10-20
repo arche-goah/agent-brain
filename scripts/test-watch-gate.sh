@@ -78,6 +78,12 @@ check "pushed answer to another party, no watcher" "$T/t1.jsonl" block "$R"
 { user "go"; tool Bash "$PUSH"; user "<task-notification>agent done</task-notification>"; asst "ok"; } > "$T/t2.jsonl"
 check "push, then a task notification" "$T/t2.jsonl" block "$R"
 
+# a skill loaded through the Skill tool (isMeta + sourceToolUseID) is no boundary either: the
+# push before it stays in the turn (measured 2026-10-20 on the Windows instance)
+SKILL_REC='{"isMeta":true,"sourceToolUseID":"toolu_x","message":{"role":"user","content":[{"type":"text","text":"Base directory for this skill: x"}]}}'
+{ user "go"; tool Bash "$PUSH"; echo "$SKILL_REC"; asst "ok"; } > "$T/t2s.jsonl"
+check "push, then a loaded skill's text" "$T/t2s.jsonl" block "$R"
+
 # an expired Monitor leaves a dead pid
 mkdir -p "$R/.claude-state"; echo 999999 > "$R/.claude-state/shared-memory-watch.pid"
 check "lock with a dead pid (expired watch)" "$T/t1.jsonl" block "$R"

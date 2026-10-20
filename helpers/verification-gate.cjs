@@ -25,7 +25,7 @@
  */
 'use strict';
 const fs = require('fs');
-const { isNotification } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion } = require('./turn-kind.cjs');
 const { doneClaimRegex } = require('./done-claim.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 
@@ -72,7 +72,7 @@ function scan(tp, echo) {
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message; if (!msg) continue;
     if (msg.role === 'user') {
-      if (d.isMeta === true && d.sourceToolUseID) continue; // a loaded skill's text
+      if (isSkillExpansion(d)) continue; // a loaded skill's text
       const t = promptText(msg);
       if (t === null) continue;
       if (HOOK_ECHO.test(t)) { if (echo.test(t)) fired = true; continue; }
