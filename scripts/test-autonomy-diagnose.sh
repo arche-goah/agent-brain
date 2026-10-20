@@ -8,6 +8,7 @@ set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 D="$here/autonomy-diagnose.py"
 PY="$(command -v python3 || command -v python)"
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python   # Windows: python3 can be the Store stub
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 fail=0

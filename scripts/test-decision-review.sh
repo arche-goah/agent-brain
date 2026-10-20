@@ -6,6 +6,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 S="$HERE/decision-review.py"
 PY="$(command -v python3 || command -v python)"
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python   # Windows: python3 can be the Store stub
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 # Paths that reach python as DATA are stated natively (Git Bash rewrites env/args, not file contents; OS-3).
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
