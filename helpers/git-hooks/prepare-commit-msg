@@ -18,7 +18,7 @@ grep -q '^Device-State:' "$msg_file" 2>/dev/null && exit 0
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ds="$here/../../scripts/device-status.py"
 [ -f "$ds" ] || exit 0
-py=python3; command -v "$py" >/dev/null 2>&1 || py=python
+py=python3; "$py" -c 'import sys' >/dev/null 2>&1 || py=python   # Windows: python3 can be the Store stub (OS-17)
 # The topic is the first folder of the staged files (core/, grandma3/, …).
 topic=$(git diff --cached --name-only 2>/dev/null | awk -F/ 'NF>1{print $1; exit}')
 lines=$(SHARED_MEMORY_REPO="$root" "$py" "$ds" trailer --topic "$topic" 2>/dev/null) || exit 0
