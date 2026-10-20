@@ -81,6 +81,17 @@
         ]
       },
       {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-watchdog.cjs\"",
+            "timeout": 120,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
         "matcher": ".*",
         "hooks": [
           {
@@ -110,6 +121,16 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/junk-cleaner.cjs\"",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-watchdog.cjs\"",
+            "timeout": 120
           }
         ]
       },

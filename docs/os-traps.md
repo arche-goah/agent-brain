@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=5 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=4 scripts/hook-coverage.py=11 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=16 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26 scripts/plugin-records-test.py=1
+known:     helpers/session-bootup.sh=5 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=4 scripts/hook-coverage.py=14 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=16 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26 scripts/plugin-records-test.py=1
 instances: 5
 repeat:    yes
 status:    closed
@@ -133,6 +133,9 @@ lines it prints name the helper's FILE NAME, never a joined path.
 compared only with each other after `normcase(normpath())` on both sides, and every path that
 leaves the program as text goes through `rel()` / `--memory-dir`, which turn `os.sep` into `/`.
 Green on Windows (Git Bash) the same day, report paths forward-slashed.
+2026-10-20, hook-coverage.py 11 -> 14 after that review: the three new joins build the paths of
+live-watchdog.cjs, live-read.json and live-watchdog.json, which are only tested or opened; the line
+it prints names the live-read domain and the fixed text `.claude/rules/live-watchdog.json`.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -183,7 +186,7 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=5 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-git-sandbox.sh=1 scripts/test-autonomy-diagnose.sh=1 scripts/test-autonomy-diagnose-run.sh=1 scripts/test-watch-readiness.sh=1 scripts/test-conditional-order-gate.sh=1 scripts/test-decision-readiness.sh=1 scripts/test-decision-review.sh=1 scripts/test-leak-scan.sh=1 scripts/test-delivered-read-gate.sh=1 scripts/test-bootup-git-login.sh=1 scripts/test-git-hooks.sh=1 scripts/test-change-level.sh=1 scripts/test-monitor-arm-shape.sh=1 scripts/test-verification-gate.sh=1
+known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-guards.sh=4 scripts/test-instance-key-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=5 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-git-sandbox.sh=1 scripts/test-autonomy-diagnose.sh=1 scripts/test-autonomy-diagnose-run.sh=1 scripts/test-watch-readiness.sh=1 scripts/test-conditional-order-gate.sh=1 scripts/test-decision-readiness.sh=1 scripts/test-decision-review.sh=1 scripts/test-leak-scan.sh=1 scripts/test-delivered-read-gate.sh=1 scripts/test-bootup-git-login.sh=1 scripts/test-git-hooks.sh=1 scripts/test-change-level.sh=1 scripts/test-monitor-arm-shape.sh=1 scripts/test-verification-gate.sh=1 scripts/test-live-watchdog.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -213,6 +216,9 @@ path reaches native git as DATA (`GIT_CONFIG_GLOBAL`) and goes through `native()
 gh-helper case asserts SILENCE, so without it an unread config would pass for the wrong reason.
 2026-10-18, test-git-hooks.sh baselined after the same review: `GIT_CONFIG_GLOBAL` (a path as env
 DATA for the native git) goes through `native()`; every other temp path is an argument or the cwd.
+2026-10-20, test-live-watchdog.sh baselined after the same review: the project dir crosses into
+node as DATA (`CLAUDE_PROJECT_DIR`, the cwd field) and the check path as DATA inside the instance
+file; both go through `native()`.
 2026-09-30, test-setup-shell-start.sh baselined after the same review: the temp dir only
 reaches bash — the fake `powershell.exe`/`pwsh` are bash scripts, the profile path they
 return goes back through `cygpath -u` in the script under test. No native process opens it.
@@ -346,7 +352,7 @@ the diagnostic replaces exactly the output it was asked to produce, and only in 
 failure path, where nobody has a second copy.
 pattern:   \| *grep -[b-zA-Z]
 paths:     --include=*.sh scripts helpers
-known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-live-read-gate.sh=2 scripts/test-shared-working-copy-guard.sh=1 scripts/test-decision-review.sh=2
+known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-live-read-gate.sh=2 scripts/test-shared-working-copy-guard.sh=1 scripts/test-decision-review.sh=2 scripts/test-live-watchdog.sh=3
 instances: 3
 repeat:    yes
 status:    closed
@@ -367,6 +373,9 @@ output is never printed, only the exit status decides the case.
 2026-10-13, test-shared-working-copy-guard.sh baselined after that question: one pipe-grep, a
 `grep -q` predicate on the hook's JSON deny decision; nothing of it is printed, the exit status
 decides the case.
+2026-10-20, test-live-watchdog.sh baselined after that question: three pipe-greps, all `grep -q`
+predicates on the hook's JSON (the deny/block decision, the check output in the refusal, the
+could-not-measure note); nothing of them is printed, the exit status decides the case.
 
 ## OS-6 — `python -` runs the file you passed as an argument
 

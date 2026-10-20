@@ -115,6 +115,7 @@ cp "$CORE_SRC/templates/rules-instance/stop-checks.json" .claude/rules/
 # (scripts/hook-coverage.py) — measured 2026-10-12, a brain with three live systems ran
 # live-read-gate for weeks without its file, a silent no-op.
 cp "$CORE_SRC/templates/rules-instance/live-read.json" .claude/rules/
+cp "$CORE_SRC/templates/rules-instance/live-watchdog.json" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/absence-sources.json" .claude/rules/
 # Language data of conditional-order-gate (built-ins English; the operator's words go here).
 cp "$CORE_SRC/templates/rules-instance/condition-patterns.json" .claude/rules/
