@@ -39,6 +39,10 @@ ALSO REPORTED: a wired gate whose instance data is missing or empty, so it check
 in the file declares the empty state deliberate). Matchers narrower than the template's are
 reported per hook above.
 
+ALSO REPORTED: a live system in `.claude/rules/live-read.json` with no check registered in
+`.claude/rules/live-watchdog.json` (no suite of the same name, no `no_check` reason) - its
+writes run with nothing measuring the system in between.
+
 Usage: hook-coverage.py [brain-root]           (default: cwd)
 Output: one line per missing hook — "<event>: <template command>".
 Exit 0 and silent when covered; exit 1 when something is missing.
@@ -296,6 +300,23 @@ def main():
         if keys and not any(data.get(k) for k in keys) and not (isinstance(ok, str) and ok.strip()):
             inert.append("%s: %s is wired but %s has no %s - it checks nothing; fill it or say why in \"inert_ok\""
                          % (event, helper, rel, " or ".join(keys)))
+
+    # A live system nobody checks. live-watchdog.cjs runs a SUITE's check after N writes, but
+    # only for the live systems the instance maps to a check; a live-read.json domain with no
+    # suite of the same name in live-watchdog.json is written to without anything measuring it
+    # between the writes. The core cannot write that check (it lives in the suite), so it makes
+    # the gap visible instead - same declared-with-a-reason exit as inert_ok: `no_check`.
+    if os.path.isfile(os.path.join(root, "core", "helpers", "live-watchdog.cjs")):
+        domains = load(os.path.join(root, ".claude", "rules", "live-read.json")).get("domains") or []
+        lw = load(os.path.join(root, ".claude", "rules", "live-watchdog.json"))
+        checked = {s.get("name") for s in lw.get("suites") or [] if isinstance(s, dict) and s.get("check")}
+        reasons = lw.get("no_check") if isinstance(lw.get("no_check"), dict) else {}
+        for d in domains:
+            name = d.get("name") if isinstance(d, dict) else None
+            if name and name not in checked and not str(reasons.get(name) or "").strip():
+                inert.append("live system \"%s\" (live-read.json) has no check in .claude/rules/live-watchdog.json - "
+                             "writes to it run unmeasured; register its suite's check script, or say why in "
+                             "\"no_check\"" % name)
 
     # The reverse gap: a hook wired HERE whose helper the consumed core does not ship. With
     # "onFailure": "block" it refuses every call it matches — measured 2026-10-11 on a Windows

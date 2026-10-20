@@ -1,0 +1,15 @@
+{
+  "_comment": "Instance data for core/helpers/live-watchdog.cjs (PostToolUse + PreToolUse). After every `every` successful write calls to a live system's tools, the suite's own check runs; exit 0 = green, exit 1 = red (further writes to that system are refused until a check passes), any other exit or a timeout = could not measure (not red, retried after the next write). writes/repair = regex on the tool name; repair tools pass while red (an undo, a restore). check = argv, no shell, run in the project dir, ~/ expanded — the script and the target state it checks belong to the SUITE, this file only points at them. Keep timeout_s below the hook's timeout in settings (template: 120 s). name = the domain's name in live-read.json: a live-read domain with no suite here is named at every session start (scripts/hook-coverage.py) unless no_check gives the reason. An empty suites list keeps the gate inert; it is named too until \"inert_ok\": \"<reason>\" says it is deliberate.",
+  "suites": [],
+  "no_check": {},
+  "_example_suites": [
+    {
+      "name": "<live-domain>",
+      "writes": ["^mcp__<live-server>__(create|update|delete|set|write)"],
+      "every": 5,
+      "check": ["node", "~/<path-to-the-suite>/checks/<live-check>.cjs"],
+      "timeout_s": 60,
+      "repair": ["^mcp__<live-server>__undo$"]
+    }
+  ]
+}

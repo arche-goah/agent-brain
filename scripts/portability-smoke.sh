@@ -418,6 +418,7 @@ esac
 mkdir -p "$T/hookbrain/core/templates" "$T/hookbrain/core/helpers" "$T/hookbrain/.claude/rules" "$T/nocfg"
 printf '{"names": ["placeholder"], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
 printf '{"domains": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-read.json"
+printf '{"suites": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-watchdog.json"
 cp "$CORE/templates/settings.json" "$T/hookbrain/core/templates/"
 cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$T/hookbrain/core/helpers/" 2>/dev/null
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
@@ -521,13 +522,27 @@ case "$_rc:$_hc" in
   *) bad "hook-coverage empty-data case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
 printf '{"domains": [{"name": "x", "tools": ["^mcp__x__"], "required": [{"path": "docs/x.md"}]}]}\n' > "$T/hookbrain/.claude/rules/live-read.json"
+#     A live system with no check registered for live-watchdog is named (writes run unmeasured).
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_rc:$_hc" in
+  1:*'live system "x" (live-read.json) has no check in .claude/rules/live-watchdog.json'*) ok "hook-coverage names a live system without a registered check";;
+  *) bad "hook-coverage unchecked-live-system case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
+esac
+printf '{"suites": [{"name": "x", "writes": ["^mcp__x__set"], "check": ["node", "check.cjs"]}]}\n' > "$T/hookbrain/.claude/rules/live-watchdog.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
 if [ "$_rc" -eq 0 ] && [ -z "$_hc" ]; then
   ok "hook-coverage stays silent once the gate has data (negative control)"
 else
   bad "hook-coverage data-present false alarm: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'"
 fi
+printf '{"suites": [], "no_check": {"x": "fixture: the suite ships no check yet"}, "inert_ok": "fixture"}\n' > "$T/hookbrain/.claude/rules/live-watchdog.json"
+_hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
+case "$_hc" in
+  *'live system "x"'*) bad "hook-coverage ignores a no_check reason: '$(printf '%s' "$_hc" | head -1)'";;
+  *) ok "hook-coverage accepts a declared no_check reason";;
+esac
 printf '{"domains": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-read.json"
+printf '{"suites": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-watchdog.json"
 #     Behind the dispatcher too: the template registers absence-gate; without its data it is named.
 if [ -f "$CORE/templates/rules-instance/stop-checks.json" ] && grep -q "absence-gate" "$CORE/templates/rules-instance/stop-checks.json"; then
   cp "$CORE/templates/rules-instance/stop-checks.json" "$T/hookbrain/.claude/rules/stop-checks.json"
