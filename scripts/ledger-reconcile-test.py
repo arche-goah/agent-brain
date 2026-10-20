@@ -171,8 +171,15 @@ def main():
         # A few fast checks must not take seconds in the background — on Windows each check of a
         # console-less parent used to open a new console (~3 s per check, measured 2026-10-19).
         ok(waited < 5, f"--cached: the background result is there within 5 s ({waited:.1f} s)")
+        before = brief.stat().st_ino
         rc, out = run(root, "--cached")
         ok("done-but-open" in out and "result of" in out, "--cached, next start: shows that result with its time", out)
+        # That call started another background run; it replaces the brief (os.replace = new inode).
+        # Empty the brief only after it landed, else it lands after us and the next check reads it.
+        for _ in range(200):
+            if brief.exists() and brief.stat().st_ino != before:
+                break
+            time.sleep(0.05)
         brief.write_text("", encoding="utf-8")
         rc, out = run(root, "--cached")
         ok(out.strip() == "", "--cached after a clean run: silent", out)
