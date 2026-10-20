@@ -165,7 +165,8 @@ class in a single day, each "fixed" individually):
    instance, add the class line there.
 
 The gate function above verifies the fix; this gate verifies the class. Both run before
-any completion claim.
+any completion claim. The rule this gate carries (`rules/thinking-protocol.md` Class
+Discipline) in its long form: `references/class-gate.md`.
 
 ## The Spec Gate (since 2026-08-14 — a workaround is a DEBT, not a checkmark)
 
