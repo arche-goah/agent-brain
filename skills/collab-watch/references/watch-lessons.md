@@ -82,3 +82,17 @@ any of these does not crash — it goes quiet, and quiet looks like a good day.
     author session (otherwise two sessions race on one merge).
 20. **A poll with several commits names more than one sender.** Read the range's log for
     the parties before writing a name.
+
+## Findings on a PR
+
+21. **One finding, one builder** (rule: `rules/working-rules.md` § Working Across Parties
+    #5, operator correction 2026-10-11; moved here in the context diet of 2026-10-20).
+    Whoever reports a finding on a PR says in the same comment whether they build the fix
+    ("PR follows" / "the author's" / "open for anyone"). Whoever wants to build a fix for
+    SOMEONE ELSE's finding first reads the repo's open PRs (`gh pr list --state open`) and
+    the thread: an existing PR or a claim means counter-check, not build; nothing there
+    means one line in the thread ("building it"), then build. And nothing is merged over an
+    open finding in its thread — read the comments in full, never through a tool that cuts
+    them short. Measured the day the rule was written: one finding, two fixes from two
+    machines three minutes apart, and a merge over the finding because a reader showed 200
+    characters of the comment.
