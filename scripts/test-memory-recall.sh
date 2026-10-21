@@ -116,7 +116,7 @@ run_hook c9 "sACN unicast Resolume show network" s9
 case "$OUT" in *crlf-note.md*) ok "9 CRLF frontmatter parsed";; *) bad "9 CRLF file not found: ${OUT:0:120}";; esac
 
 # 10-13. --tool mode (PreToolUse): a mapped MCP tool or skill injects the topic index once
-printf '{"topics":{"index-rig.md":{"tools":["^mcp__mikrotik__"],"skills":["^rig-health-check$"]}}}\n' > "$BRAIN/.claude/rules/memory-recall.json"
+printf '{"topics":{"index-rig.md":{"tools":["^mcp__mikrotik__"],"skills":["^rig-health-check$"],"bash":["(^|[;&|(]\\\\s*)(bash\\\\s+)?(\\\\S*/)?rig-ssh(\\\\.sh)?(\\\\s|$)","docs/event-network/"]}}}\n' > "$BRAIN/.claude/rules/memory-recall.json"
 run_tool() { # $1 session, $2 tool_name, $3 tool_input json, $4.. extra args
   local session="$1" tool="$2" ti="$3"; shift 3
   OUT=$(printf '{"session_id":"%s","tool_name":"%s","tool_input":%s,"cwd":"%s","hook_event_name":"PreToolUse"}' \
@@ -131,6 +131,14 @@ run_tool t1 mcp__mikrotik__mikrotik_health '{"device":"router"}'
 [ -z "$OUT" ] && ok "11 topic once per session via tool" || bad "11 injected twice: ${OUT:0:120}"
 run_tool t2 Bash '{"command":"ls"}'
 [ -z "$OUT" ] && ok "12 unmapped tool silent" || bad "12 unmapped tool produced: ${OUT:0:120}"
+# 12b. a Bash command that matches a topic's `bash` pattern is a trigger too (operator decision
+# 2026-10-21: the rig sessions the MCP trigger missed ran over rig-ssh and the event-network docs)
+run_tool t2b Bash '{"command":"bash scripts/rig-ssh.sh sw-core /system/resource/print"}'
+case "$OUT" in *'"additionalContext"'*'index-rig.md'*) ok "12b mapped Bash command injects the topic index";; *) bad "12b bash trigger: ${OUT:0:160}";; esac
+run_tool t2c Bash '{"command":"grep -n rig-ssh docs/maintenance/session-log.md"}'
+[ -z "$OUT" ] && ok "12c a command that only mentions rig-ssh in an argument stays silent" || bad "12c argument mention fired: ${OUT:0:120}"
+run_tool t2d Bash '{"command":"cat docs/event-network/offene-punkte.md"}'
+case "$OUT" in *'index-rig.md'*) ok "12d event-network docs path triggers";; *) bad "12d docs path: ${OUT:0:160}";; esac
 run_tool t3 Skill '{"skill":"rig-health-check"}'
 case "$OUT" in *index-rig.md*) ok "13 mapped skill injects";; *) bad "13 skill not matched: ${OUT:0:120}";; esac
 run_tool t4 Skill '{"skill":"rig-health-check"}' --record

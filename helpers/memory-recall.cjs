@@ -172,8 +172,10 @@ function pick(docs, state, cfg) {
 function toolMode(input, root, cfg, memDir) {
   const tool = String(input.tool_name || '');
   const ti = input.tool_input || {};
-  const subject = tool === 'Skill' ? String(ti.skill || '') : tool;
-  const key = tool === 'Skill' ? 'skills' : 'tools';
+  // Bash joins the triggers (operator decision 2026-10-21, third measurement): the rig sessions
+  // the tool trigger missed ran over rig-ssh and the event-network docs, never an MCP call.
+  const subject = tool === 'Skill' ? String(ti.skill || '') : tool === 'Bash' ? String(ti.command || '') : tool;
+  const key = tool === 'Skill' ? 'skills' : tool === 'Bash' ? 'bash' : 'tools';
   const wanted = Object.keys(cfg.topics).filter((file) => (cfg.topics[file][key] || []).some((rx) => rx.test(subject)));
   const sharedWanted = Object.keys(cfg.sharedTopics).filter((t) => (cfg.sharedTopics[t][key] || []).some((rx) => rx.test(subject)));
   if (!wanted.length && !sharedWanted.length) return;
@@ -204,7 +206,8 @@ function toolMode(input, root, cfg, memDir) {
     const why = dated ? `${lines.length} of ${total} entries dated since ${cutoff}` : `${total} entries, none dated — shown whole`;
     blocks.push(`shared-memory ${topic} — ${why} (${topic}/INDEX.md in the shared repo)\n${cap(lines.join('\n'), cfg.sharedMaxBytes)}`);
   }
-  record(root, { session: sid, n: state.n, trigger: tool === 'Skill' ? `skill:${subject}` : `tool:${subject}`,
+  const trigger = tool === 'Skill' ? `skill:${subject}` : tool === 'Bash' ? `bash:${subject.slice(0, 80)}` : `tool:${subject}`;
+  record(root, { session: sid, n: state.n, trigger,
     record_only: RECORD_ONLY, topics: fresh.map((file) => ({ file, hits: 0, score: 0 })), files: [], shared: sharedRec });
   if (!blocks.length) return;
   try { fs.writeFileSync(stateFile, JSON.stringify(state)); } catch (e) { /* once-per-session degrades */ }
@@ -292,7 +295,7 @@ function parseSharedTopics(t) {
     if (!/^[a-z0-9-]+$/.test(topic)) continue;
     const rx = (arr) => (Array.isArray(arr) ? arr : [])
       .map((s) => { try { return new RegExp(s, 'i'); } catch (e) { return null; } }).filter(Boolean);
-    out[topic] = { tools: rx(t[topic].tools), skills: rx(t[topic].skills) };
+    out[topic] = { tools: rx(t[topic].tools), skills: rx(t[topic].skills), bash: rx(t[topic].bash) };
   }
   return out;
 }
@@ -305,7 +308,7 @@ function parseTopics(t) {
     if (!/^index-.+\.md$/.test(file)) continue;
     const rx = (arr) => (Array.isArray(arr) ? arr : [])
       .map((s) => { try { return new RegExp(s, 'i'); } catch (e) { return null; } }).filter(Boolean);
-    out[file] = { tools: rx(t[file].tools), skills: rx(t[file].skills) };
+    out[file] = { tools: rx(t[file].tools), skills: rx(t[file].skills), bash: rx(t[file].bash) };
   }
   return out;
 }
