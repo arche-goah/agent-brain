@@ -91,7 +91,10 @@ run_hook "class-gate/plain json" core/helpers/class-gate.cjs "$T/plainjson.jsonl
 # whether the core template had the same hole (2026-10-21)
 mk "$T/settings.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":".claude/settings.json","new_string":"x"}}]}}'
 run_hook "class-gate/settings.json" core/helpers/class-gate.cjs "$T/settings.jsonl" block "core PR"
-mk "$T/mcp.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"'"$ROOT"'/.mcp.json","new_string":"x"}}]}}'
+# native path form, as the harness writes it: Git Bash's /tmp/... form of a checkout under the
+# Windows temp dir resolves to nothing in node, the gate read a loose temp file (2026-10-21, Windows)
+ROOT_NATIVE=$(cygpath -m "$ROOT" 2>/dev/null || printf '%s' "$ROOT")
+mk "$T/mcp.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"'"$ROOT_NATIVE"'/.mcp.json","new_string":"x"}}]}}'
 run_hook "class-gate/.mcp.json (absolute)" core/helpers/class-gate.cjs "$T/mcp.jsonl" block "CLASS-GATE"
 mk "$T/settingsdoc.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"docs/settings.json","new_string":"x"}}]}}'
 run_hook "class-gate/a settings.json outside .claude is data" core/helpers/class-gate.cjs "$T/settingsdoc.jsonl" allow
