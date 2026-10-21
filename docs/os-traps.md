@@ -759,3 +759,24 @@ fixed in #57, whose search covered only `PY=` lines in `scripts/*.sh`. The repea
 `prepare-commit-msg` (no extension, lower-case `py=`) checked existence only - so on such a machine
 the shared-memory commit trailer was silently left out. Both hooks fixed; the tree check now finds no
 site, and with the two old hooks put back it names exactly those two.
+
+## OS-18 — a detached Python process starts console children, and Windows gives each one a new console
+
+shape: B
+
+invariant: A Python program that runs DETACHED on Windows (`DETACHED_PROCESS`, no console of its
+own) passes `creationflags=CREATE_NO_WINDOW` (0x08000000) to every console child it starts (`bash`,
+`git`, `python`). Without it each child gets a NEW console; with Windows Terminal as the default
+terminal every console becomes a tab, and the run is slow on top. On macOS and Linux a detached
+process has no such step, so the same code is quiet there.
+pattern:   DETACHED_PROCESS|0x0+8\b
+paths:     --include=*.py scripts helpers skills
+known:     scripts/ledger-reconcile.py=1
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-10-19 on the Windows instance: the `--cached` run of `ledger-reconcile.py`
+(PR #41, heads before 9831ce0) started one `bash` per check without the flag; 136 tabs opened in one
+Windows Terminal window (21:12:58-21:18:36 local time, pairs about every 3 s). 4 checks took 12.3 s
+with default flags, 0.11 s with CREATE_NO_WINDOW. Fixed in #41 (`run_check`). The search lists the
+detached launch, not the children: a new detached site is read for the children it starts.
