@@ -40,7 +40,24 @@ jobs:
         run: cat > stdin-seen
       - name: other passes
         run: echo other > marker-other
+  py:
+    runs-on: ubuntu-latest
+    steps:
+      - name: calls python3
+        run: python3 -c "open('marker-py', 'w').write('ok')"
+      - name: nested bash calls python3
+        run: bash -c "python3 -c \"open('marker-py-nested', 'w').write('ok')\""
+      - name: needs a missing tool
+        run: no-such-tool-xyz --severity=error
 YML
+
+# A Windows-shaped PATH for the py job: `python3` is a stub that only prints the Store message
+# and exits 9009 (OS-17), `python` is the real interpreter.
+REALPY="$(command -v python3 || command -v python)"
+mkdir -p "$T/winbin"
+printf '#!/usr/bin/env bash\necho "Python was not found; run without arguments to install from the Microsoft Store" >&2\nexit 9009\n' >"$T/winbin/python3"
+printf '#!/usr/bin/env bash\nexec "%s" "$@"\n' "$REALPY" >"$T/winbin/python"
+chmod +x "$T/winbin/python3" "$T/winbin/python"
 
 run() { CI_LINT_ROOT="$T/repo" bash "$HERE/ci-lint-local.sh" "$@" >"$T/out" 2>&1; }
 
@@ -63,6 +80,18 @@ run other; rc=$?
 [ -f "$T/repo/stdin-seen" ] && [ ! -s "$T/repo/stdin-seen" ] && grep -q "OK   other / other passes" "$T/out" \
   && ok "a step that reads stdin gets nothing and the next step still runs" || bad "a step that reads stdin gets nothing and the next step still runs"
 grep -q "lint /" "$T/out" && bad "job filter leaked lint steps" || ok "job filter leaks nothing"
+
+PATH="$T/winbin:$PATH" run py; rc=$?
+[ -f "$T/repo/marker-py" ] && ok "python3 = Store stub: the step's python3 reaches the working interpreter" \
+  || bad "python3 = Store stub: the step's python3 reaches the working interpreter"
+[ -f "$T/repo/marker-py-nested" ] && ok "python3 = Store stub: a nested bash in the step gets it too" \
+  || bad "python3 = Store stub: a nested bash in the step gets it too"
+grep -q "SKIP py / needs a missing tool (not installed here: no-such-tool-xyz" "$T/out" \
+  && ok "a missing tool is SKIP with its name, not FAIL" || bad "a missing tool is SKIP with its name, not FAIL"
+[ "$rc" = 0 ] && ok "missing tool alone does not make the run red (rc 0)" || bad "missing tool alone does not make the run red (rc $rc)"
+rm -f "$T/repo/marker-py"
+PATH="$T/winbin:$PATH" run --skip nested --skip missing py >/dev/null; CI_LINT_ROOT="$T/repo" PATH="$T/winbin:$PATH" bash -c 'python3 -c 1' >/dev/null 2>&1 \
+  && bad "control: the planted stub is not a stub" || ok "control: the planted python3 really is a stub outside the tool"
 
 run nosuchjob; rc=$?
 [ "$rc" = 2 ] && grep -q "unknown job" "$T/out" && ok "an unknown job is rc 2 and named" || bad "an unknown job is rc 2 and named (rc $rc)"

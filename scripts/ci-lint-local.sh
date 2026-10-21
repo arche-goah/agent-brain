@@ -40,6 +40,15 @@ if ! index="$("$PY" "$PARSER" "$WFN" "$TN" "${jobs[@]}")"; then
   echo "ci-lint-local: could not read the steps of $WF"; exit 2
 fi
 
+# The CI steps say `python3` (right on the Ubuntu runner). Where `python3` is not the working
+# interpreter — the Windows Store stub (OS-17) — every step body gets `python3` as a function onto
+# the probed one, through BASH_ENV so nested bash calls (the fixture suites) see it too. Measured
+# 2026-10-21 on the Windows instance: five lint steps red that CI runs green.
+PRE="$T/prelude.sh"; : >"$PRE"
+if [[ "$PY" != python3 ]]; then
+  printf 'python3() { %q "$@"; }\nexport -f python3\n' "$(command -v "$PY")" >"$PRE"
+fi
+
 fail=0; ran=0; skipped=0
 while IFS=$'\t' read -r n job name why; do
   for s in "${skips[@]+"${skips[@]}"}"; do
@@ -51,8 +60,13 @@ while IFS=$'\t' read -r n job name why; do
   ran=$((ran+1))
   # </dev/null: a step that reads stdin (a fixture suite did) would eat the rest of the step list
   # this loop reads — measured 2026-10-21, four steps vanished and the run still said "all passed".
-  if (cd "$ROOT" && bash -e "$T/$n.sh") </dev/null >"$T/$n.log" 2>&1; then
+  if (cd "$ROOT" && BASH_ENV="$PRE" bash -e "$T/$n.sh") </dev/null >"$T/$n.log" 2>&1; then
     echo "  OK   $job / $name"
+  elif [[ $? -eq 127 ]] && miss=$(sed -n 's/.*: \([^:]*\): command not found.*/\1/p' "$T/$n.log" | head -1) && [[ -n "$miss" ]]; then
+    # A tool the step needs is not installed here (the runner installs it): not checked, said so —
+    # never a finding, never a silent pass.
+    echo "  SKIP $job / $name (not installed here: $miss — this step was NOT checked)"
+    ran=$((ran-1)); skipped=$((skipped+1))
   else
     echo "  FAIL $job / $name"
     sed 's/^/       /' "$T/$n.log"
