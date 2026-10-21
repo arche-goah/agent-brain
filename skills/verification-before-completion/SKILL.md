@@ -163,6 +163,10 @@ class in a single day, each "fixed" individually):
 4. At >=3 instances or recurrence after a fix: build a MECHANISM (a check that trips on
    the class), don't stack single fixes. Where an invariants register exists in the
    instance, add the class line there.
+5. **Reach** (operator correction 2026-10-21) — does the core (its settings template, a
+   rule, a helper) or the owning suite carry the same thing? Core PR (or name the open
+   one), instance-only with the reason, or already there. A permission rule, a config
+   value and a rule line are changes too; a local fix nobody else gets is the failure.
 
 The gate function above verifies the fix; this gate verifies the class. Both run before
 any completion claim. The rule this gate carries (`rules/thinking-protocol.md` Class

@@ -184,9 +184,12 @@ process.stdin.on('end', () => {
   }
 
   // Docs pass. JSON is docs too — except rule and gate data, which is behaviour
-  // (`.claude/rules/*.json`, a tool's `mechanism-rules.json`).
+  // (`.claude/rules/*.json`, a tool's `mechanism-rules.json`) and the harness wiring
+  // (`.claude/settings.json`, `settings.local.json`, `.mcp.json`): a permission rule
+  // dropped there changed what the brain asks before — and the gate stayed silent, so
+  // nobody asked whether the core template had the same hole (measured 2026-10-21).
   const docExt = /\.(md|markdown|mdx|txt|rst|json)$/i;
-  const ruleData = /(^|[\\/])\.claude[\\/]rules[\\/][^\\/]+\.json$|(^|[\\/])mechanism-rules\.json$/i;
+  const ruleData = /(^|[\\/])\.claude[\\/]rules[\\/][^\\/]+\.json$|(^|[\\/])mechanism-rules\.json$|(^|[\\/])\.claude[\\/]settings(\.local)?\.json$|(^|[\\/])\.mcp\.json$/i;
   // Throwaway places: scratchpad and system temp. An analysis aid that does not
   // survive the turn is not work on the system — otherwise the gate fires on its
   // own tooling. BUT a file inside a git checkout there (a worktree carries a `.git`
@@ -230,8 +233,10 @@ process.stdin.on('end', () => {
       `CLASS-GATE — routine success check, not an error. Touched this turn: ${shown}\n` +
       'Answer with ONE ⚙ line in plain operator language: on which level did you build it ' +
       '(symptom, reader, writer or design) and why not the next higher one, is the bigger goal ' +
-      'still served, does the same defect exist elsewhere (searched)? Nothing transferable: ' +
-      '"⚙ writer level, no class elsewhere" — the level is always named.',
+      'still served, does the same defect exist elsewhere (searched), and does the core (its ' +
+      'template, a rule, a helper) or the owning suite carry the same thing — core PR, instance-only ' +
+      'with the reason, or already there? Nothing transferable: ' +
+      '"⚙ writer level, no class elsewhere, core has it" — the level is always named.',
   }));
   process.exit(0);
 });
