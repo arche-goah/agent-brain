@@ -53,7 +53,11 @@ YML
 
 # A Windows-shaped PATH for the py job: `python3` is a stub that only prints the Store message
 # and exits 9009 (OS-17), `python` is the real interpreter.
-REALPY="$(command -v python3 || command -v python)"
+# Probe by RUNNING, not by `command -v`: on Windows `python3` exists and is the stub (OS-17), and a
+# wrapper onto it would leave the tool with no working Python (measured 2026-10-21, Windows instance).
+REALPY=""
+for c in python3 python; do "$c" -c 'import sys' >/dev/null 2>&1 && REALPY="$(command -v "$c")" && break; done
+[ -n "$REALPY" ] || { echo "test-ci-lint-local: no working python3 or python on PATH"; exit 1; }
 mkdir -p "$T/winbin"
 printf '#!/usr/bin/env bash\necho "Python was not found; run without arguments to install from the Microsoft Store" >&2\nexit 9009\n' >"$T/winbin/python3"
 printf '#!/usr/bin/env bash\nexec "%s" "$@"\n' "$REALPY" >"$T/winbin/python"
