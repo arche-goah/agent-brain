@@ -34,10 +34,12 @@ same topic lands in the same layout:
    the same pass** (operator order 2026-10-10): folder + `LOG.md` + a line in
    the README's area list — never filed into the catch-all folder "for now". Carrier: `core/scripts/shared-memory-lint.py`,
    check "project without an area".
-5. **Register the ledger with the instance's aggregator.** The generated
-   overview sees only registered detail lists — an unregistered domain is
-   invisible by construction (deliberate: no silent glob fallback). Adding the
-   source line is part of creating the ledger, not a later cleanup.
+5. **Register the ledger with the instance's aggregator, where the instance has
+   one.** The generated overview sees only registered detail lists — an
+   unregistered domain is invisible by construction (deliberate: no silent glob
+   fallback). Adding the source line is part of creating the ledger, not a later
+   cleanup. The core ships no aggregator (coherence finding 2026-10-19); an instance without one
+   says so in the ledger instead of calling the step impossible.
 6. **When the project ships tools:** ecosystem record entry (which state runs
    here), marketplace pin once it becomes a plugin, release discipline
    (preflight, tags, English-only).

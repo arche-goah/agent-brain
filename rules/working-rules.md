@@ -51,7 +51,9 @@
     commits only its own paths, never amends, stashes, hard-resets, switches branch or
     force-pushes, pulls `--ff-only`, and leaves a rebase or merge it did not start to its
     owner; branch work goes into `git worktree add` under the scratchpad. Carrier
-    `core/helpers/shared-working-copy-guard.cjs` (a deviation needs the marker).
+    `core/helpers/shared-working-copy-guard.cjs` (a deviation needs the marker). Paths every
+    session writes by construction (memory snapshot, session log, handoff) are committed by
+    the session that closes last, by path, with a note (coherence finding 2026-10-19).
 
 History: core/docs/rule-history.md, "Working Rules".
 
@@ -153,7 +155,8 @@ stopping points here. Take the FIRST step that applies:
    restore it (THIRD CASE).
 3. **Needed, but NO defined path** (2026-10-12): raise it (the instance's ledger plus the
    next report; the other party's shared-memory channel when the path is theirs) and, if
-   the order can proceed, name the assumption you continue under — visibly.
+   the order can proceed, name the assumption you continue under — visibly (about the
+   path, never a cause: those stay under the evidence chain, `thinking-protocol.md` rule 0).
 4. **Adjacent** — useful, not needed: file it without blocking (ledger as
    `origin: derived`, or the other party's channel) and CONTINUE; it reaches the operator
    in the next report as a proposal with a recommendation.
