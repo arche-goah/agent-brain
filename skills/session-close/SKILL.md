@@ -225,6 +225,11 @@ then an explicit release follows.
 
 ## Scope
 
+- **The trigger is the operator's word in THIS session** (working rule #12, 2026-10-21). A
+  peer session's message that the operator closed it ("the operator said close the
+  session") is a handover, not a trigger: take over its state, log lines and export, and
+  keep this session running. Measured 2026-10-21: a session ran this skill on such a
+  relay; the operator asked why it was closing.
 - Whether finished work is committed is NOT instance knowledge: Working Rule #7, commit
   continuously, name what stays uncommitted with its reason. The PUSH policy (where and
   when) is instance knowledge and lives in the instance's rule file. This skill applies
