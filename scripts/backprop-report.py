@@ -129,7 +129,21 @@ def main():
         for t in terms:
             hits = search(a.root, paths, t, skip, a.max)
             total += len(hits)
-            print(f"  {t!r}: " + (", ".join(hits) + (" …" if len(hits) >= a.max else "") if hits else "no other place"))
+            if hits:
+                print(f"  {t!r}: " + ", ".join(hits) + (" …" if len(hits) >= a.max else ""))
+                continue
+            # A phrase (a bold rule title) is almost never written elsewhere word for word, so "no other
+            # place" would read as "nothing to supersede" (macOS counter-check on #71): its long words
+            # are searched one by one, and the line says that only the words matched.
+            words = re.findall(r"[^\W\d_][\w-]{4,}", t)  # ponytail: length is the stopword filter
+            if len(t.split()) < 3 or not words:
+                print(f"  {t!r}: no other place")
+                continue
+            print(f"  {t!r}: not written elsewhere as a phrase; its words:")
+            for w in dict.fromkeys(words):
+                wh = search(a.root, paths, w, skip, a.max)
+                total += len(wh)
+                print(f"    {w!r}: " + (", ".join(wh) + (" …" if len(wh) >= a.max else "") if wh else "no other place"))
     print(f"backprop summary: new={len(lines)} places={total} — read each, mark what the new rule supersedes "
           "(rule-conflict protocol step 2)")
     return 0

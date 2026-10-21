@@ -72,6 +72,17 @@ with tempfile.TemporaryDirectory() as td:
     rc, out = run(root, "--search", "rules", "rules/fresh.md")
     ok("6 an untracked rule file counts as all-new", "NEW rules/fresh.md" in out and "rules/other.md:2" in out, out)
 
+    # 7. a bold phrase written nowhere else word for word: its long words are searched and the line
+    #    says so (macOS counter-check on #71) — a bare "no other place" read as "nothing to supersede"
+    write(root / "rules" / "neighbour.md", "The waiting list lives in open-items data.\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "more")
+    with open(root / "rules" / "feedback.md", "a", encoding="utf-8", newline="\n") as fh:
+        fh.write("- 2026-10-22: **Every waiting entry names its date** now.\n")
+    rc, out = run(root, *args)
+    ok("7 a phrase without a twin falls back to its words", "not written elsewhere as a phrase" in out
+       and "'waiting': rules/neighbour.md:1" in out, out)
+
 print()
 if fails:
     print(f"backprop-report: {len(fails)} fixture(s) FAILED")
