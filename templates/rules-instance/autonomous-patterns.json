@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "Instance data for core/helpers/autonomous-mode.cjs: regex strings in the operator's own language that",
+    "ORDER an autonomous run (on_patterns) or end it (off_patterns). The built-ins are English ('autonomous',",
+    "'work the list alone', 'I'm away' / 'normal mode', 'stop autonomous'). Only the operator's NEWEST prompt",
+    "decides, so a later prompt without the word ends the mode anyway. Example for a German operator:",
+    "on \"\\\\bautonom\", \"\\\\ballein abarbeiten\\\\b\", \"\\\\bich bin weg\\\\b\"; off \"\\\\bnormalmodus\\\\b\",",
+    "\"\\\\bnicht mehr autonom\\\\b\". Read by stoppen-gate (a closing decision is filed, not asked through the",
+    "question tool) and open-items-gate (the order is the go-ahead)."
+  ],
+  "on_patterns": [],
+  "off_patterns": []
+}

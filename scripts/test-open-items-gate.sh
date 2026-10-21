@@ -224,6 +224,12 @@ f="$T/18b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "${GO/8 Punkte
 check "no go-ahead, no question" "$f" block "$DE"
 f="$T/18c.jsonl"; { boot_ok startup "$BLOCK"; user "go ahead and handle everything"; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
 check "English go-ahead built in" "$f" allow "$EN"
+# An autonomous order is a go-ahead (autonomous-mode.cjs): the offer question would be the stop
+# the rule forbids. Same reply under "stand?" blocks (18b-shape discriminator in English).
+f="$T/18d.jsonl"; { boot_ok startup "$BLOCK"; user "work through the list autonomously"; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
+check "an autonomous order needs no offer question" "$f" allow "$EN"
+f="$T/18e.jsonl"; { boot_ok startup "$BLOCK"; user "status?"; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
+check "the same reply without the order still needs the question" "$f" block "$EN"
 
 # Wake-up of a parked domain (operator order 2026-10-11): an operator item like any other —
 # the first reply must name it; leaving it out blocks.

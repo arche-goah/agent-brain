@@ -70,6 +70,11 @@ const TAIL_CHARS = 400; // only the closing stretch of the final text counts
 // The interactive question tool, and the one line that says it is missing here.
 const QUESTION_TOOL = 'AskUserQuestion';
 const NO_TOOL_LINE = /^[ \t>*_-]*⚙️?\s*no question tool:/imu;
+// In the operator's autonomous run the question tool is the wrong way (skill autonomous-run,
+// hard gate 7): the question goes into the instance's ledger and the prose report says where.
+// The reply says so in one line; autonomous-mode.cjs tells the gate which way to demand.
+const AUTONOMOUS_LINE = /^[ \t>*_-]*⚙️?\s*autonomous:/imu;
+const { autonomousMode } = require('./autonomous-mode.cjs');
 const MAX_TOOL_BLOCKS = 2; // blocks per turn before a prose decision question is let through
 
 // Permission-handback questions. Deliberately NOT matched: bare "GO?" (release
@@ -294,7 +299,11 @@ process.stdin.on('end', () => {
     const tail = stripQuoted(seen.finalText).slice(-TAIL_CHARS);
     // Asked through the tool, or the tool is missing here and the reply says so: the closing
     // question is not judged. (An announcement still is — asking is not doing the work.)
-    if (!seen.asked && !NO_TOOL_LINE.test(seen.finalText)) uniq(tail.match(loadPatterns(cwd)), hits);
+    // The autonomous line counts only while the mode really holds — outside it, it is no way out.
+    const filed = AUTONOMOUS_LINE.test(seen.finalText) && autonomousMode(input.transcript_path, cwd);
+    if (!seen.asked && !NO_TOOL_LINE.test(seen.finalText) && !filed) {
+      uniq(tail.match(loadPatterns(cwd)), hits);
+    }
     if (!hits.length && !reissue) {
       const rx = loadPatterns(cwd, 'announce_patterns', BUILTIN_ANNOUNCE);
       const cond = loadPatterns(cwd, 'announce_condition_patterns', BUILTIN_CONDITION);
@@ -336,10 +345,15 @@ process.stdin.on('end', () => {
     if (oi.mandatedTopics(input.transcript_path).some((t) => tailText.includes(norm(t)))) return allow();
   } catch (e) { /* no sibling gate — judge as before */ }
 
-  const how = `put it to the operator through the question tool (${QUESTION_TOOL}): one question ` +
-    'per decision, the recommended option first and marked "(Recommended)", options in plain ' +
-    'words; several decisions in one call. If this harness has no such tool, say so in one ' +
-    'visible line starting "⚙ no question tool:" and keep the prose question.';
+  const how = autonomousMode(input.transcript_path, input.cwd || process.env.CLAUDE_PROJECT_DIR)
+    ? `file it in the instance's question ledger — the operator ordered this run autonomous, so ` +
+      `NOT through ${QUESTION_TOOL} — keep working on what is safely doable, and say it in the ` +
+      'prose report with one visible line starting "⚙ autonomous:" that names where the questions ' +
+      'are filed.'
+    : `put it to the operator through the question tool (${QUESTION_TOOL}): one question ` +
+      'per decision, the recommended option first and marked "(Recommended)", options in plain ' +
+      'words; several decisions in one call. If this harness has no such tool, say so in one ' +
+      'visible line starting "⚙ no question tool:" and keep the prose question.';
   if (reissue) {
     if (seen.gatesThisTurn >= MAX_TOOL_BLOCKS) {
       // Never lock a stuck session: let it through, but loudly — the omission stays visible.
