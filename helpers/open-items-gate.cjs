@@ -52,7 +52,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isSkillExpansion } = require('./turn-kind.cjs');
+const { isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
 
 const MAX_BYTES = 16 * 1024 * 1024; // the first turn sits at the top; a huge file is past it
 const BOOTUP = /session-bootup\.sh/;
@@ -121,7 +121,7 @@ function readTurn(tp) {
       continue;
     }
     const msg = d.message;
-    if (!msg) continue;
+    if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
       if (isSkillExpansion(d)) continue;   // a loaded skill's text is no second prompt
       const t = promptText(msg);

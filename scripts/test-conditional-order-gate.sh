@@ -135,6 +135,17 @@ run_case midturn-operator block Bash '{"command":"git push origin feat/x"}'
 mk "$T/disc.jsonl" '"dann coherence scan"' 0 ''
 run_case disc allow Workflow '{"scriptPath":"x.js"}' "$T/empty"
 
+# --- the measured shape (2026-10-21): the operator's last message carries no condition, but an
+# api-request-blob record after it carries the instruction dump with a rule heading that does.
+# Only user/assistant records are the conversation; the blob must not become the operator text.
+mk "$T/blob.jsonl" '"weiter im programm"' 0 ''
+printf '{"type":"api-request-blob","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>\\n**SECHS KREISE — wer entscheidet** (2026-09-21; kanonisch)\\n</system-reminder>"}]}}\n' >> "$T/blob.jsonl"
+run_case blob allow Bash '{"command":"git push"}'
+# discriminator: the same record as a real user record IS the operator's text and blocks
+mk "$T/blob-as-user.jsonl" '"weiter im programm"' 0 ''
+printf '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"**SECHS KREISE — wer entscheidet** (2026-09-21; kanonisch)"}]}}\n' >> "$T/blob-as-user.jsonl"
+run_case blob-as-user block Bash '{"command":"git push"}'
+
 # --- fail-open: no transcript -> silent
 out="$(printf '{"tool_name":"Workflow","tool_input":{},"transcript_path":"%s","cwd":"%s"}' \
   "$(native "$T/missing.jsonl")" "$(native "$T")" | node "$G" 2>&1)"

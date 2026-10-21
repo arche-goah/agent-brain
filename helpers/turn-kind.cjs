@@ -41,4 +41,14 @@ function isSkillExpansion(d) {
   return Boolean(d && d.isMeta === true && d.sourceToolUseID);
 }
 
-module.exports = { isNotification, isSkillExpansion, FRAMES, LOCAL };
+/** A conversation record: Claude Code also writes `api-request-blob` lines (a snapshot of the request,
+ * carrying the instruction dump as a user message and thinking as assistant text). Measured 2026-10-21
+ * on a macOS instance: the conditional-order gate took a CLAUDE.md heading inside such a blob for the
+ * operator's last message and refused every externally effective call of the turn. Only `user` and
+ * `assistant` records are the conversation; a record without a type (older transcripts) counts too. */
+function isTranscriptRecord(d) {
+  const t = d && d.type;
+  return t === undefined || t === null || t === 'user' || t === 'assistant';
+}
+
+module.exports = { isNotification, isSkillExpansion, isTranscriptRecord, FRAMES, LOCAL };

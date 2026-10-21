@@ -86,7 +86,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { isNotification, isSkillExpansion } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
 const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
 // Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
@@ -163,7 +163,7 @@ function pendingCi(tp) {
   for (const line of readTail(tp)) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
-    const msg = d.message; if (!msg) continue;
+    const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     i += 1;
     if (msg.role === 'user') {
       if (typeof msg.content === 'string') { seen(msg.content); continue; }
@@ -237,7 +237,7 @@ function turn(tp) {
   for (const line of readTail(tp)) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
-    const msg = d.message; if (!msg) continue;
+    const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
       // A tool's output: keep it on its call (the PR / issue URL a gh call printed).
       if (Array.isArray(msg.content)) {

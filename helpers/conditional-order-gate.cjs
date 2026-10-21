@@ -41,7 +41,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -135,7 +135,7 @@ function analyze(transcriptPath) {
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message;
-    if (!msg) continue;
+    if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
       // A loaded skill's text: no condition, no new turn (2026-10-19, "then" in session-close).
       if (isSkillExpansion(d)) continue;
@@ -164,7 +164,7 @@ function deny(hit, why) {
         'CONDITIONAL-ORDER-GATE: the operator\'s last message binds the order to a condition, '
         + `and this call is ${why}.\n`
         + `Sentence: "${hit.sentence.slice(0, 160)}" (condition word: ${hit.word})\n`
-        + 'Before this call, write ONE line in the answer and then call again:\n'
+        + 'Before this call, write ONE line in the answer, let that message end (its record lands only after it), and call again from the next message:\n'
         + '  CONDITION-MET: <the condition in the operator\'s words> — <evidence: where and when it was met>\n'
         + '  CONDITION-NONE: <why this word is no condition here>\n'
         + 'Reads, edits, commits and a single agent stay free — they are how the condition gets checked. '
