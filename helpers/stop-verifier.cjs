@@ -35,7 +35,7 @@ const fs = require('fs');
 const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
-const { isNotification } = require('./turn-kind.cjs');
+const { isNotification, isTranscriptRecord } = require('./turn-kind.cjs');
 const { declare } = require('./stop-echo.cjs');
 
 let data = '';
@@ -75,7 +75,7 @@ function writtenThisTurn(transcriptPath) {
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message;
-    if (!msg) continue;
+    if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user' && typeof msg.content === 'string') {
       if (HOOK_ECHO.test(msg.content)) continue;
       if (!isNotification(msg.content)) events.push({ boundary: true });
