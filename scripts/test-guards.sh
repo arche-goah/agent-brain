@@ -254,6 +254,12 @@ if CR=$(resolve mechanism-rules.json); then
   else
     ok "mechanism-guard/core rule: ci-watch with run_in_background allows"
   fi
+  # 2026-10-21: a brain WITHOUT the plugin had the core's own rules inert — the submodule's
+  # file is the fallback. Control: same project without core/ stays allowed.
+  printf '{"version":2,"plugins":{}}' > "$TR/fakeuser/.claude/plugins/installed_plugins.json"
+  tr_probe "mechanism-guard/core rule without plugin, no submodule (control)" Bash command "gh api -X PUT repos/o/r/pulls/5/merge" allow
+  mkdir -p "$TR/proj/core" && cp "$CR" "$TR/proj/core/mechanism-rules.json"
+  tr_probe "mechanism-guard/core rule without plugin, from the submodule" Bash command "gh api -X PUT repos/o/r/pulls/5/merge" block
 else
   skip "mechanism-guard/core rules (mechanism-rules.json)"
 fi

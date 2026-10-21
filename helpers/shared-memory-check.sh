@@ -48,7 +48,10 @@ if [[ ! -d "$REPO/.git" ]]; then
   _cw="${_proj:-}/.claude/rules/collab-watch.json"
   _why=""
   if [[ -n "${SHARED_MEMORY_SELF:-}" ]]; then _why="SHARED_MEMORY_SELF is set"
-  elif [[ -f "$_cw" ]] && grep -q '"shared_memory"' "$_cw" 2>/dev/null; then _why="collab-watch.json watches it"
+  # A block still carrying the template's <placeholder> is no declaration: bootstrap copies
+  # the template into every brain, so it made every fresh brain a participant (2026-10-21).
+  elif [[ -f "$_cw" ]] && grep -q '"shared_memory"' "$_cw" 2>/dev/null \
+       && ! grep -Eq '"shared_memory"[^}]*<' "$_cw" 2>/dev/null; then _why="collab-watch.json watches it"
   elif [[ -n "${SHARED_MEMORY_OWNER:-}" ]] && command -v gh >/dev/null 2>&1 \
        && gh repo view "$SHARED_MEMORY_OWNER/$(basename "$REPO")" --json name >/dev/null 2>&1; then
     _why="$SHARED_MEMORY_OWNER/$(basename "$REPO") exists"

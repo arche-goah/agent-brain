@@ -307,7 +307,10 @@ cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
 for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json"))):
     for m in (s.get("extraKnownMarketplaces") or {}).values():
         r = (m.get("source") or {}).get("repo", "")
-        if "/" in r: print(r.split("/")[0]); raise SystemExit
+        # A template placeholder is no owner: "your-org" is a real GitHub organisation
+        # (measured 2026-10-21), so a fresh brain listed 41 PRs of strangers as its own.
+        o = r.split("/")[0] if "/" in r else ""
+        if o and not any(c in o for c in "<>") and o.lower() != "your-org": print(o); raise SystemExit
 ' 2>/dev/null)
 # The open PRs themselves are listed by scripts/open-items.py further down (2026-10-07),
 # every one of them, with a repeat counter — the "open PRs (6 shown)" line that stood here

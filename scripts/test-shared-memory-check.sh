@@ -165,6 +165,10 @@ out="$(nc SHARED_MEMORY_SELF=me-mac)";         has "no clone, SHARED_MEMORY_SELF
 out="$(nc SHARED_MEMORY_OWNER=known-org)";     has "no clone, the org's repo exists: loud" "known-org/brain-shared-memory exists" "$out"
 printf '{"shared_memory": {"repo": "x"}}\n' > "$P2/.claude/rules/collab-watch.json"
 out="$(nc)";                                   has "no clone, collab-watch watches it: loud" "collab-watch.json watches it" "$out"
+# 2026-10-21: bootstrap copies the template, whose block still says <shared-memory-repo> —
+# that made every fresh brain, a stranger's too, a participant with a nag every start.
+printf '{"shared_memory": {"repo": "~/Projects/<shared-memory-repo>", "interval": 30}}\n' > "$P2/.claude/rules/collab-watch.json"
+out="$(nc)";                                   [ -z "$out" ] && ok "no clone, collab-watch only the template placeholder: silent" || bad "no clone, collab-watch only the template placeholder: silent" "$out"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "test-shared-memory-check: all checks passed"; exit 0; fi
