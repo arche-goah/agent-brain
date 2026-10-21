@@ -93,6 +93,14 @@ mk "$T/none.jsonl" '"ok then, carry on with the scan"' 0 '"CONDITION-NONE: then 
 run_case none allow Workflow '{"scriptPath":"x.js"}'
 mk "$T/met-short.jsonl" '"after the mac answers, push it"' 0 '"CONDITION-MET: yes"'
 run_case met-short block Bash '{"command":"git push origin feat/x"}'
+# the line in the call itself: the hook sees its own input even when the same-response text
+# never reached the transcript (2026-10-21, Windows)
+mk "$T/in-call.jsonl" '"after the mac answers, push it"' 0 ''
+run_case in-call allow Bash '{"command":"git push origin feat/x  # CONDITION-NONE: the sentence is quoted rule text, not this order"}'
+mk "$T/in-call-short.jsonl" '"after the mac answers, push it"' 0 ''
+run_case in-call-short block Bash '{"command":"git push origin feat/x  # CONDITION-NONE: no"}'
+mk "$T/in-prompt.jsonl" '"dann coherence scan"' 2 ''
+run_case in-prompt allow Agent '{"prompt":"lens 3\nCONDITION-MET: dann coherence scan — the answer came 12:40 in core/LOG.md"}'
 
 # --- negative controls: each leg alone stays silent
 mk "$T/no-condition.jsonl" '"run the coherence scan now"' 5 ''
