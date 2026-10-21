@@ -322,6 +322,7 @@
       "Edit(.claude/settings.json)",
       "Edit(.claude/settings.local.json)",
       "Edit(.mcp.json)",
+      "Edit(.claude/rules/stop-checks.json)",
       "Bash(git push * main*)",
       "Bash(git push * HEAD:main*)",
       "Bash(git -C * push * main*)",
