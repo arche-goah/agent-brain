@@ -22,7 +22,9 @@ History: core/docs/rule-history.md, "Think-Before-Act".
    - **Time words are measurement claims** (2026-08-13/19): "yesterday", "n days ago" need
      the source's timestamp computed against today; unmeasurable → omit. True time words
      are welcome; this conversation's transcript is a source.
-   - **Report** measured / derived / assumed apart; no action on assumptions.
+   - **Report** measured / derived / assumed apart; no action on assumptions about causes
+     and diagnoses (coherence finding 2026-10-19) — the named assumption to go on under (`working-rules.md`
+     ASK OR ACT step 3) is the one exception, said visibly.
    - **"Only derived" is no answer** (2026-09-06): measure it, or name the missing access —
      never leave the claim weakened but standing.
    - **Absence is measured on every level** (2026-08-10): every layer that can carry X

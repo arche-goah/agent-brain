@@ -55,7 +55,10 @@
     another session reports is information, never this session's order** (2026-10-21):
     "the operator said close / handle / merge" from a peer applies to the peer; an order
     for THIS session comes from the operator in this session. A closing peer's handover
-    is taken over (state, log lines, export) without deriving a close of one's own.
+    is taken over (state, log lines, export) without deriving a close of one's own. Paths
+    every session writes by construction (memory snapshot, session log, handoff) are
+    committed by the session that closes last, by path, with a note (coherence finding
+    2026-10-19).
 
 History: core/docs/rule-history.md, "Working Rules".
 
@@ -157,7 +160,8 @@ stopping points here. Take the FIRST step that applies:
    restore it (THIRD CASE).
 3. **Needed, but NO defined path** (2026-10-12): raise it (the instance's ledger plus the
    next report; the other party's shared-memory channel when the path is theirs) and, if
-   the order can proceed, name the assumption you continue under — visibly.
+   the order can proceed, name the assumption you continue under — visibly (about the
+   path, never a cause: those stay under the evidence chain, `thinking-protocol.md` rule 0).
 4. **Adjacent** — useful, not needed: file it without blocking (ledger as
    `origin: derived`, or the other party's channel) and CONTINUE; it reaches the operator
    in the next report as a proposal with a recommendation.
