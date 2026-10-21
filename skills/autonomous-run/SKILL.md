@@ -143,6 +143,11 @@ The `disarm` output is the evidence that belongs in the report:
    after a push) is not autonomous mode: permission-prompt actions still wait for the
    report there (`collab-watch`, "Never wait on a prompt"), but a decision for the operator
    is asked interactively with clear options, as always.
+   **Carrier:** `helpers/autonomous-mode.cjs` reads the mode from the operator's newest prompt
+   (their words: `.claude/rules/autonomous-patterns.json`). While it holds, `stoppen-gate`
+   asks for the ledger instead of the question tool — the report carries one line
+   `⚙ autonomous: <where the questions are filed>` — and `open-items-gate` takes the order as
+   the go-ahead.
 
 ## Read time, do not compute it
 

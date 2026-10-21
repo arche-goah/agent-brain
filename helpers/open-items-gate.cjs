@@ -53,6 +53,7 @@
 const fs = require('fs');
 const path = require('path');
 const { isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
+const { autonomousMode } = require('./autonomous-mode.cjs');
 
 const MAX_BYTES = 16 * 1024 * 1024; // the first turn sits at the top; a huge file is past it
 const BOOTUP = /session-bootup\.sh/;
@@ -315,7 +316,11 @@ function judge(input) {
     if (!hasNumber(ai.length, text)) missing.push(`count of items you can handle (${ai.length})`);
     // The operator's prompt may already be the go-ahead ("work through everything") — then
     // asking again is a disguised stop; the count still has to be said.
-    if (!patterns(cwd, 'offer').test(text) && !patterns(cwd, 'goahead').test(t.first)) missing.push('one question whether to handle them');
+    // An autonomous order is a go-ahead too, and there the question would be the very stop the
+    // rule forbids (autonomous-mode.cjs; this gate judges the first turn only, so the newest
+    // prompt is the first one).
+    if (!patterns(cwd, 'offer').test(text) && !patterns(cwd, 'goahead').test(t.first)
+      && !autonomousMode(input.transcript_path, cwd)) missing.push('one question whether to handle them');
   }
   // A standing approval replaces the question with a report; asking anyway is not wrong.
   const standing = blk.items.filter((it) => it.cls === 'standing');
