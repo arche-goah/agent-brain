@@ -86,7 +86,7 @@ History: core/docs/rule-history.md, "Priority Hierarchy on Contradictions".
 1. **Harmonize first** — most conflicts are surface cuts; phrase both compatibly.
 2. **Writing a new instruction:** if it truly contradicts an old one, the new one wins —
    grep the old spots (CLAUDE.md, rules/, memory, skills) and mark them superseded in the
-   same pass; decide its reach (2026-10-08: core PR / suite PR / instance only — one line
+   same pass (report of candidates: `core/scripts/backprop-report.py`); decide its reach (2026-10-08: core PR / suite PR / instance only — one line
    in the instance's record); check a
    HARD rule against every other HARD rule (2026-10-15) — two that leave no option in one
    real situation are resolved now (one gets the case) or go to step 3.
