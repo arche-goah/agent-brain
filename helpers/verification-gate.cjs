@@ -25,7 +25,7 @@
  */
 'use strict';
 const fs = require('fs');
-const { isNotification, isSkillExpansion } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
 const { doneClaimRegex } = require('./done-claim.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 
@@ -70,7 +70,7 @@ function scan(tp, echo) {
   for (const line of readTail(tp)) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
-    const msg = d.message; if (!msg) continue;
+    const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
       if (isSkillExpansion(d)) continue; // a loaded skill's text
       const t = promptText(msg);

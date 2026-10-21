@@ -61,7 +61,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { isNotification } = require('./turn-kind.cjs');
+const { isNotification, isTranscriptRecord } = require('./turn-kind.cjs');
 const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
 // Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
@@ -144,7 +144,7 @@ function scan(tp) {
   for (const line of lines) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
-    const msg = d.message; if (!msg) continue;
+    const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
         if (b.type === 'text' && b.text) last = b.text;
@@ -215,7 +215,7 @@ function operatorAfter(tp, q, rx) {
   for (const line of lines) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
-    const msg = d.message; if (!msg) continue;
+    const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       if (!seen) {
         for (const b of msg.content) {
