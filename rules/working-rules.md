@@ -272,7 +272,9 @@ History: core/docs/rule-history.md, "Order Fidelity (Auftragstreue) (HARD)".
 4. **Judge the sum, not the single change** (2026-08-31).
 5. **One finding, one builder** (2026-10-11): the reporter says who builds the fix; read
    the open PRs and the thread before fixing someone else's finding; never merge over an
-   open finding (`core/skills/collab-watch/references/watch-lessons.md` #21).
+   open finding (`core/skills/collab-watch/references/watch-lessons.md` #21). A finding
+   posted on a MERGED or closed PR also gets an entry naming its builder — the instance's
+   ledger or a shared-memory request (2026-10-21): nobody reads a closed thread again.
 6. **An operator may hand the AI side of their brain to another party's AIs**
    (2026-10-16/18; shared memory `parties.json`, `ai_handover`). What the brain's AI cannot
    decide itself (ASK OR ACT) goes by one test: (a) **own terrain, reversible** — the
