@@ -214,7 +214,25 @@ def read_entry(p: Path, repo: Path, gitdates: dict[str, str] | None = None,
         "related": _lint.listify(fields.get("related")),
         "topics": _lint.listify(fields.get("topics")),
         "supersedes": (_lint.listify(fields.get("supersedes")) or [""])[0],
+        # what this entry settles (docs/shared-memory-audience.md, "Settling a request")
+        "settles": _lint.listify(fields.get("answers")) + _lint.listify(fields.get("closes")),
     }
+
+
+# `answers: <id>` / `closes: <id>` in a LOG entry settles a request like the field in a file.
+LOG_SETTLES = re.compile(r"\b(?:answers|closes):\s*([^\s,;)]+(?:\s*,\s*[^\s,;)]+)*)")
+
+
+def settled_stems(entries: list[dict], log_texts: list[str]) -> set[str]:
+    """Stems of requests something settled. Without it OPEN.md listed every answered request as
+    open - measured 2026-10-21: 25 lines naming the Windows machine in core/OPEN.md, most of them
+    answered days before, while the inbox (which follows `answers:`) showed 3."""
+    out = set()
+    for t in [x for e in entries for x in e["settles"]] + [
+            x.strip() for text in log_texts for m in LOG_SETTLES.findall(text) for x in m.split(",")]:
+        if "@" not in t:  # a LOG id settles a LOG-only request, never a file
+            out.add(t.rsplit("/", 1)[-1].removesuffix(".md"))
+    return out
 
 
 def age_days(e: dict, today: str | None = None) -> str:
@@ -265,6 +283,9 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
                    for p in fact_files(repo, list(blobs))]
     else:
         entries = [read_entry(p, repo, gitdates) for p in fact_files(repo)]
+    logs = ([t for n, t in blobs.items() if n.endswith("/" + LOG_NAME)] if ref else
+            [p.read_text(encoding="utf-8", errors="replace") for p in repo.glob(f"*/{LOG_NAME}")])
+    settled = settled_stems(entries, logs)
     by_path = {e["path"]: e for e in entries}
     by_topic: dict[str, list[dict]] = {}
     for e in entries:
@@ -344,13 +365,15 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
                 lines.append(f"- {link(e)} — {disc}{when}{tail_of(e)} · filed from {e['topic']}")
         topic_files[topic] = "\n".join(lines) + "\n"
         # ── OPEN.md: the area's open entries, generated, so the list cannot drift ──
-        opens = sorted((x for x in es + more if x["status"] == OPEN_STATUS),
+        opens = sorted((x for x in es + more if x["status"] == OPEN_STATUS
+                        and Path(x["path"]).stem not in settled),
                        key=lambda x: (x["date"] or "9999", x["name"]))
         open_count[topic] = len(opens)
         if opens or (repo / topic / OPEN_NAME).is_file():
             page = [f"# {topic} — open", "",
                     f"{len(opens)} open entr{'y' if len(opens) == 1 else 'ies'}: every file "
-                    f"with `status: open` that lives here or is filed here via `topics`. "
+                    f"with `status: open` that lives here or is filed here via `topics`, and that "
+                    f"no `answers:`/`closes:` (file or LOG) has settled. "
                     f"GENERATED (scripts/shared-memory-index.py), do not hand-edit — change "
                     f"the entry's `status`/`next` instead.", ""]
             for e in opens:
