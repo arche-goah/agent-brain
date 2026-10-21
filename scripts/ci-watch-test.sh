@@ -14,6 +14,10 @@ cat > "$TMP/gh" <<'STUB'
 case "${CI_WATCH_STUB:?}" in
   pr_green)   echo '[{"bucket":"pass"},{"bucket":"skipping"}]' ;;
   pr_red)     echo '[{"bucket":"pass"},{"bucket":"fail"}]' ;;
+  # 2026-10-21: lint failed while one job kept running for 18 more minutes — the red must not wait.
+  pr_fail_pending)   echo '[{"bucket":"fail","name":"lint"},{"bucket":"pending","name":"portability"}]' ;;
+  # ...but a cancel can be a superseded run: it still waits for the running job.
+  pr_cancel_pending) echo '[{"bucket":"cancel","name":"lint"},{"bucket":"pending","name":"portability"}]' ;;
   pr_zero)    echo '[]' ;;
   # gh's wording when the run has not been created yet. rc=1, not rc=8.
   pr_nochecks) echo "no checks reported on the 'feature' branch" >&2; exit 1 ;;
@@ -250,6 +254,10 @@ check() { # label scenario expected_rc mode target timeout
 echo "=== ci-watch fixtures ==="
 check "pr all green"                    pr_green   0 pr 12
 check "pr one failing check"            pr_red     1 pr 12
+check "pr failed check while another runs = RED at once" pr_fail_pending 1 pr 12 30
+grep -q "still running" "$TMP/out" && echo "  OK   early red names the running checks" \
+  || { echo "  FAIL early red does not name the running checks"; fails=$((fails+1)); }
+check "pr cancelled check while another runs = wait, timeout(2)" pr_cancel_pending 2 pr 12 2
 check "pr zero checks = wait, then timeout(2)"  pr_zero          2 pr 12 2
 check "pr 'no checks reported' waits, then timeout(2)" pr_nochecks 2 pr 12 2
 check "pr 'no checks' then green"       pr_nochecks_flip 0 pr 12
