@@ -198,7 +198,15 @@ check a PR head, as a dated alpha. **A fork is not a place for work** (2026-10-1
 work on a branch IN the core repo; the core consumed only from the org repo's pin.
 **The finding addresses the AI, not the operator** (2026-10-11): the agent reads, judges
 and decides each deviation — core PR, declaration, or unwire.
-Carriers: `core/scripts/local-machinery.py` (session start), `core/scripts/fork-drift.py`.
+**Every local change asks, unprompted, whether the core carries the same** (operator
+correction 2026-10-21, "we have had this very often"): not only machinery — a permission
+rule, a config value, a rule line, a script. Before the commit: does the core (its settings
+template, a rule, a helper) or the owning suite carry the same thing? Three answers: core PR
+(or name the open one) · instance-only, with the reason · the core has it. The answer
+stands in the ⚙ line of the class gate, which counts `.claude/settings.json`,
+`settings.local.json` and `.mcp.json` as behaviour like rule data.
+Carriers: `core/scripts/local-machinery.py` (session start), `core/scripts/fork-drift.py`,
+`core/helpers/class-gate.cjs` (the reach question at every edit of behaviour).
 
 History: core/docs/rule-history.md, "One System, Not Local Workarounds (HARD, operator order 2026-10-08)".
 

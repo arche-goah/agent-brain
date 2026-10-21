@@ -87,6 +87,14 @@ mk "$T/ruledata.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_
 run_hook "class-gate/rule data json" core/helpers/class-gate.cjs "$T/ruledata.jsonl" block "CLASS-GATE"
 mk "$T/plainjson.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"docs/data/table.json","new_string":"x"}}]}}'
 run_hook "class-gate/plain json" core/helpers/class-gate.cjs "$T/plainjson.jsonl" allow
+# the harness wiring is behaviour too: a permission rule dropped from settings.json never asked
+# whether the core template had the same hole (2026-10-21)
+mk "$T/settings.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":".claude/settings.json","new_string":"x"}}]}}'
+run_hook "class-gate/settings.json" core/helpers/class-gate.cjs "$T/settings.jsonl" block "core PR"
+mk "$T/mcp.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"'"$ROOT"'/.mcp.json","new_string":"x"}}]}}'
+run_hook "class-gate/.mcp.json (absolute)" core/helpers/class-gate.cjs "$T/mcp.jsonl" block "CLASS-GATE"
+mk "$T/settingsdoc.jsonl" '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","id":"e1","input":{"file_path":"docs/settings.json","new_string":"x"}}]}}'
+run_hook "class-gate/a settings.json outside .claude is data" core/helpers/class-gate.cjs "$T/settingsdoc.jsonl" allow
 # the level in the operator's language comes from instance data, never from the core
 if CG=$(resolve core/helpers/class-gate.cjs); then
   mkdir -p "$T/brain/.claude/rules"; printf '{"level_patterns": ["\\\\bzorbalevel\\\\b"]}\n' > "$T/brain/.claude/rules/class-gate.json"
