@@ -152,7 +152,8 @@ function toolRuleFiles(project) {
     }
   }
   // 3. the core submodule itself, when no enabled plugin ships the same tool's rules — a brain
-  // without the plugin had the core's own rules inert (measured 2026-10-21, raw-API merge passed)
+  // without the plugin had the core's own rules inert (measured 2026-10-21, raw-API merge passed).
+  // With both present the PLUGIN wins on purpose, even if older: it is the released state the brain consumes.
   const sub = path.join(project, 'core', 'mechanism-rules.json');
   const subTool = fs.existsSync(sub) && (readJson(sub) || {}).tool;
   if (subTool && ![...found].some((f) => (readJson(f) || {}).tool === subTool)) found.add(sub);

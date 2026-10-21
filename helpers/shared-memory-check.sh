@@ -47,11 +47,26 @@ fi
 if [[ ! -d "$REPO/.git" ]]; then
   _cw="${_proj:-}/.claude/rules/collab-watch.json"
   _why=""
+  # A block whose repo is still the template's <placeholder> (or empty/null) is no declaration:
+  # bootstrap copies the template into every brain, so it made every fresh brain a participant
+  # (2026-10-21). Same placeholder test as collab-watch-plan.py. Parsed, not grepped: a
+  # reformatted block spans lines. Unreadable JSON or no Python counts as declared (loud side).
+  _cw_watches() {
+    local py=python3; "$py" -c 'import sys' >/dev/null 2>&1 || py=python
+    "$py" -c 'import sys' >/dev/null 2>&1 || return 0
+    "$py" -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+sm = d.get("shared_memory") if isinstance(d, dict) else None
+r = sm.get("repo") if isinstance(sm, dict) else None
+sys.exit(0 if isinstance(r, str) and r.strip() and not ("<" in r and ">" in r) else 1)
+' "$_cw"
+  }
   if [[ -n "${SHARED_MEMORY_SELF:-}" ]]; then _why="SHARED_MEMORY_SELF is set"
-  # A block still carrying the template's <placeholder> is no declaration: bootstrap copies
-  # the template into every brain, so it made every fresh brain a participant (2026-10-21).
-  elif [[ -f "$_cw" ]] && grep -q '"shared_memory"' "$_cw" 2>/dev/null \
-       && ! grep -Eq '"shared_memory"[^}]*<' "$_cw" 2>/dev/null; then _why="collab-watch.json watches it"
+  elif [[ -f "$_cw" ]] && _cw_watches; then _why="collab-watch.json watches it"
   elif [[ -n "${SHARED_MEMORY_OWNER:-}" ]] && command -v gh >/dev/null 2>&1 \
        && gh repo view "$SHARED_MEMORY_OWNER/$(basename "$REPO")" --json name >/dev/null 2>&1; then
     _why="$SHARED_MEMORY_OWNER/$(basename "$REPO") exists"

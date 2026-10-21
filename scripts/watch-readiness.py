@@ -5,7 +5,7 @@ Operator order 2026-10-16 (translated): some core functions do not run cleanly b
 machine had no automatic PR and shared-memory watch and would not have answered on its own; core checks are needed
 that verify this on every collaborator's instance. Measured the same day on three instances (survey
 in the shared-memory `core/` folder): nothing in the core checked whether a watch COULD run. A freshly bootstrapped
-brain had no `.claude/rules/collab-watch.json` (the template is not copied at bootstrap), no `SHARED_MEMORY_SELF`
+brain had no `.claude/rules/collab-watch.json` (then not copied at bootstrap; bootstrap copies the template now), no `SHARED_MEMORY_SELF`
 (open-items then cannot tell requests to this instance apart), and the repos where PRs to the instance arrived
 were missing from the watch list on all three machines — a PR of one own machine was seen only at the next session
 start.

@@ -135,7 +135,9 @@ repo = None
 for s in (proj, user):
     for m in (s.get("extraKnownMarketplaces") or {}).values():
         repo = repo or (m.get("source") or {}).get("repo")
-if not repo: sys.exit()
+# a template placeholder is no marketplace to ask (same test as the ecosystem owner below)
+o = (repo or "").split("/")[0]
+if not repo or any(c in o for c in "<>") or o.lower() == "your-org": sys.exit()
 try:
     raw = subprocess.run(
         ["gh", "api", f"repos/{repo}/contents/.claude-plugin/marketplace.json",
@@ -307,10 +309,13 @@ cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
 for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json"))):
     for m in (s.get("extraKnownMarketplaces") or {}).values():
         r = (m.get("source") or {}).get("repo", "")
-        # A template placeholder is no owner: "your-org" is a real GitHub organisation
-        # (measured 2026-10-21), so a fresh brain listed 41 PRs of strangers as its own.
-        o = r.split("/")[0] if "/" in r else ""
-        if o and not any(c in o for c in "<>") and o.lower() != "your-org": print(o); raise SystemExit
+        if "/" not in r: continue
+        # The FIRST marketplace decides, as before. A template placeholder there means no
+        # owner, never a fall-through to the next (a vendor marketplace is no owner either):
+        # "your-org" is a real GitHub organisation (2026-10-21, 41 PRs of strangers listed).
+        o = r.split("/")[0]
+        if not any(c in o for c in "<>") and o.lower() != "your-org": print(o)
+        raise SystemExit
 ' 2>/dev/null)
 # The open PRs themselves are listed by scripts/open-items.py further down (2026-10-07),
 # every one of them, with a repeat counter — the "open PRs (6 shown)" line that stood here

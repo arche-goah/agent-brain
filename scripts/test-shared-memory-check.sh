@@ -167,8 +167,15 @@ printf '{"shared_memory": {"repo": "x"}}\n' > "$P2/.claude/rules/collab-watch.js
 out="$(nc)";                                   has "no clone, collab-watch watches it: loud" "collab-watch.json watches it" "$out"
 # 2026-10-21: bootstrap copies the template, whose block still says <shared-memory-repo> —
 # that made every fresh brain, a stranger's too, a participant with a nag every start.
-printf '{"shared_memory": {"repo": "~/Projects/<shared-memory-repo>", "interval": 30}}\n' > "$P2/.claude/rules/collab-watch.json"
-out="$(nc)";                                   [ -z "$out" ] && ok "no clone, collab-watch only the template placeholder: silent" || bad "no clone, collab-watch only the template placeholder: silent" "$out"
+silent() { out="$(nc)"; [ -z "$out" ] && ok "$1" || bad "$1" "$out"; }
+cp "$HERE/../templates/rules-instance/collab-watch.json" "$P2/.claude/rules/collab-watch.json"
+silent "no clone, collab-watch is the shipped template: silent"
+printf '{\n  "shared_memory": {\n    "repo": "~/Projects/<shared-memory-repo>",\n    "interval": 30\n  }\n}\n' > "$P2/.claude/rules/collab-watch.json"
+silent "no clone, template placeholder reformatted over lines: silent"
+printf '{"shared_memory": null}\n' > "$P2/.claude/rules/collab-watch.json"
+silent "no clone, shared_memory null: silent"
+printf '{\n  "shared_memory": {\n    "repo": "~/Projects/team-memory"\n  },\n  "repo_watches": [{"repos": ["<o>/<r>"]}]\n}\n' > "$P2/.claude/rules/collab-watch.json"
+out="$(nc)";                                   has "no clone, real repo over lines + placeholders elsewhere: loud" "collab-watch.json watches it" "$out"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "test-shared-memory-check: all checks passed"; exit 0; fi
