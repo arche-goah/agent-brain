@@ -236,6 +236,22 @@ with tempfile.TemporaryDirectory() as td:
        "nothing open." in ops_open and "OPEN" not in {e["name"] for e in entries2}
        and "show" in opens2 and "ops" in opens2, ops_open)
 
+    # 24. a request someone settled leaves OPEN.md: by a file's `answers:`, by a LOG line's
+    #     `answers:`, by the asker's `closes:` — a claim alone and a LOG id settle no file
+    #     (measured 2026-10-21: core/OPEN.md listed answered requests for days)
+    for n in ("req-a", "req-b", "req-c", "req-d", "req-e"):
+        put("ops", n, "  status: open\n  next: kim-pc\n")
+    put("ops", "reply-a", "  answers: ops/req-a\n")
+    put("ops", "close-c", "  closes: req-c.md\n")
+    put("ops", "claim-d", "  claims: ops/req-d\n")
+    with open(repo / "ops" / "LOG.md", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# LOG\n\n## 2026-10-21 · kim-pc — done\nchecked. answers: ops/req-b\n\n"
+                 "## 2026-10-21 · kim-pc — x\nanswers: ops/LOG@2026-10-20#1, ops/req-e@x\n")
+    _, _, _, opens3 = smi.build(repo)
+    listed = {n for n in ("req-a", "req-b", "req-c", "req-d", "req-e") if f"(../ops/{n}.md)" in opens3["ops"]}
+    ok("24 answers/closes in a file or a LOG line settle a request; a claim and a LOG id do not",
+       listed == {"req-d", "req-e"}, f"listed {sorted(listed)}")
+
 print()
 if fails:
     print(f"shared-memory-index: {len(fails)} fixture(s) FAILED")
