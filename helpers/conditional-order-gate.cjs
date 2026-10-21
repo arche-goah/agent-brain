@@ -164,7 +164,7 @@ function deny(hit, why) {
         'CONDITIONAL-ORDER-GATE: the operator\'s last message binds the order to a condition, '
         + `and this call is ${why}.\n`
         + `Sentence: "${hit.sentence.slice(0, 160)}" (condition word: ${hit.word})\n`
-        + 'Before this call, write ONE line in the answer, let that message end (its record lands only after it), and call again from the next message:\n'
+        + 'Write ONE line, then call again — either as a comment IN the call (`# CONDITION-NONE: …` in the command, a line in the prompt), or in the answer, letting that message end before the next call (its record lands only after it):\n'
         + '  CONDITION-MET: <the condition in the operator\'s words> — <evidence: where and when it was met>\n'
         + '  CONDITION-NONE: <why this word is no condition here>\n'
         + 'Reads, edits, commits and a single agent stay free — they are how the condition gets checked. '
@@ -201,7 +201,12 @@ process.stdin.on('end', () => {
     if (m) { hit = { sentence: s, word: m[0] }; break; }
   }
   if (!hit) return allow();
-  const turn = seen.texts.join('\n');
+  // The line may also stand in the call itself (a `# CONDITION-NONE: …` comment in the command,
+  // a line in an agent's prompt): the hook always sees its own input, while a text written in
+  // the same response as the call reached the transcript as `thinking` (2.1.303, 2026-10-19) or
+  // not at all (2026-10-21, both Windows) — the way out could not be taken.
+  const call = Object.values(ti).filter((v) => typeof v === 'string').join('\n');
+  const turn = seen.texts.join('\n') + '\n' + call;
   if (MET.test(turn) || NONE.test(turn)) return allow();
   deny(hit, why);
 });
