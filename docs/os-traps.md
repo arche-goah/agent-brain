@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=5 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=4 scripts/hook-coverage.py=14 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=16 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26 scripts/plugin-records-test.py=1
+known:     helpers/session-bootup.sh=5 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=4 scripts/hook-coverage.py=14 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=16 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26 scripts/plugin-records-test.py=1 scripts/backprop-report.py=5
 instances: 5
 repeat:    yes
 status:    closed
@@ -508,7 +508,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=8 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=3 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1
+known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=8 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=3 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1 scripts/backprop-report.py=4
 instances: 1
 repeat:    no
 status:    open
