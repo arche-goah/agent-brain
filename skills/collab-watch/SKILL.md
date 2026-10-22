@@ -99,7 +99,10 @@ opt-out and holds for that session only.
    the history, not only `reviews`). Split every claim: measured / derived / assumed. Take
    open measurements yourself when this machine can. A PR that claims live behaviour of
    hardware or tools you also own: re-measure on your own (an instance skill for this, if
-   it has one, takes over this step).
+   it has one, takes over this step). A counter-check "OK on this OS" of a core PR runs
+   `bash scripts/ci-lint-local.sh` at the PR head (the CI's own steps, read from the
+   workflow) and names its result line — the fixtures of the touched parts alone missed a
+   CI lint step twice on 2026-10-21.
 2. **Findings go on the PR** (`gh pr comment`): values with date, sources with URL. The
    thread is the shared memory of the collaborating brains.
 3. **Measure CI, do not read it off:** `Monitor` on
