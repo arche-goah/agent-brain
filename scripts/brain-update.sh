@@ -59,7 +59,7 @@ if [ ! -e core/.git ]; then
   exit 1
 fi
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-changed=0; plugin_moved=0; failed=0
+changed=0; plugin_moved=0; failed=0; mkt_stale=0
 
 # -- settings readers (project + user merged) ---------------------------------
 # Every reader ends in `tr -d '\r'`: Windows Python writes CRLF to pipes, and MSYS
@@ -185,7 +185,8 @@ for m in $mkts; do
   if claude plugin marketplace update "$m" >/dev/null 2>&1; then
     echo "OK   marketplace $m refreshed"
   else
-    echo "WARN marketplace $m not refreshed (offline? CLI missing?) — continuing with cached state"
+    echo "WARN marketplace $m not refreshed (offline? CLI missing?) — continuing with cached state; core/ will not move"
+    mkt_stale=1
   fi
 done
 
@@ -380,6 +381,14 @@ if [ -n "$core_plugin" ] && [ -d core ] && [ -e core/.git ]; then
     at=$(git -C core rev-parse HEAD 2>/dev/null || echo none)
     if [ "$at" = "$have" ] && [ "$cur" = "$tag" ] && { [ -z "$want" ] || [ "$have" = "$want" ]; }; then
       echo "OK   core already on $tag"
+    elif [ "$mkt_stale" -eq 1 ]; then
+      # A pin read from a marketplace this run could not refresh is the cache's memory, not
+      # the released state. Measured 2026-10-22 on a Windows brain: the refresh failed, the
+      # cached plugin still said 1.4.1, the brain sat on v2.0.3 — the run checked out v1.4.1,
+      # committed and pushed it, and every other machine of that brain pulled the downgrade.
+      # Moving core/ is only safe on a fresh pin; without one it stays where it is.
+      echo "FAIL core NOT moved $cur -> $tag: the marketplace was not refreshed, so $tag may be a stale cached pin — fix the refresh, then re-run"
+      failed=1
     elif git -C core checkout -q "tags/$tag" 2>/dev/null; then
       echo "OK   core $cur -> $tag"
       changed=1

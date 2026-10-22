@@ -135,6 +135,34 @@ probe_root "an uninitialised core/ names itself" "$NU" "not a git repository —
 
 rm -rf "$NB" "$NC" "$NU"
 
+# --- a stale marketplace must not move core/ -----------------------------------
+# Measured 2026-10-22: the marketplace refresh failed, the cached plugin still said 1.0.0
+# (here) while the brain sat on v2.0.0 — the run checked out the OLD tag and pushed it.
+# The real script runs against a fake brain; `claude` is a stub that fails every call.
+SB=$(mktemp -d); ORIG="$SB/origin.git"; STUB="$SB/bin"; SCFG="$SB/cfg"
+git -c init.defaultBranch=main init -q "$SB/src"
+for v in 1.0.0 2.0.0; do
+  git -C "$SB/src" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$v"
+  git -C "$SB/src" tag "v$v"
+done
+git clone -q --bare "$SB/src" "$ORIG"
+git -c init.defaultBranch=main init -q "$SB/brain"
+git clone -q "$ORIG" "$SB/brain/core"; git -C "$SB/brain/core" checkout -q tags/v2.0.0
+mkdir -p "$SB/brain/.claude" "$STUB" "$SCFG/plugins"
+printf '{"extraKnownMarketplaces":{"mk":{}},"enabledPlugins":{"brain-core@mk":true}}\n' > "$SB/brain/.claude/settings.json"
+printf '{"version":2,"plugins":{"brain-core@mk":[{"scope":"project","version":"1.0.0"}]}}\n' > "$SCFG/plugins/installed_plugins.json"
+printf '#!/bin/sh\nexit 1\n' > "$STUB/claude"; chmod +x "$STUB/claude"
+want=$(git -C "$SB/brain/core" rev-parse HEAD)
+d="$SB/brain"; command -v cygpath >/dev/null 2>&1 && d="$(cygpath -w "$d")"
+out=$(PATH="$STUB:$PATH" CLAUDE_CONFIG_DIR="$SCFG" BRAIN_UPDATE_ROOT="$d" bash "$UPD" 2>&1)
+if [ "$(git -C "$SB/brain/core" rev-parse HEAD)" != "$want" ]; then
+  bad "stale marketplace: core/ moved off v2.0.0 to the cached pin"
+else case "$out" in
+  *"core NOT moved"*) ok "stale marketplace: core/ stays, the run names it" ;;
+  *) bad "stale marketplace: core/ stayed, but no FAIL line: $(printf %s "$out" | grep -a -m1 core)" ;;
+esac; fi
+rm -rf "$SB"
+
 echo
 if (( fails )); then echo "brain-update-test: $fails FAILURE(S)"; exit 1; fi
-echo "brain-update-test: all 8 checks passed"
+echo "brain-update-test: all 9 checks passed"
