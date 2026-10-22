@@ -148,6 +148,29 @@ run_pull >/dev/null
 hasnt "second run: nothing left to update" "): updated" "$(cat "$T/err")"
 has   "second run: the summary counts none" "0 updated" "$(cat "$T/err")"
 
+# the brain pull brings a new core pin (another machine ran brain-update.sh): core/ follows it.
+# Measured 2026-10-22: new hooks next to the old core refused every tool call afterwards.
+# <scratch> : clone the brain, move its core pointer to core's main, push
+bump_pin() {
+  n=$((n + 1)); git_q clone -q "$T/r/brain.git" "$T/up$n"
+  git_q -C "$T/up$n" submodule update -q --init core
+  git_q -C "$T/up$n/core" fetch -q origin; git_q -C "$T/up$n/core" checkout -q --detach origin/main
+  git_q -C "$T/up$n" add core; git_q -C "$T/up$n" commit -qm "pin $n"; git_q -C "$T/up$n" push -q origin HEAD:main
+}
+git_q -C "$BRAIN/core" checkout -q --detach "$h_core"   # the submodule as a brain has it: detached on the pin
+bump_pin; want=$(git -C "$T/r/core.git" rev-parse main)
+run_pull >/dev/null
+same "pin moved by the pull: core/ follows it" "$(head_of "$BRAIN/core")" "$want"
+has  "pin moved by the pull: one line names the move" "core: ${h_core:0:7} -> ${want:0:7}" "$(cat "$T/err")"
+same "pin moved by the pull: the brain stays clean" "$(git -C "$BRAIN" status --porcelain --untracked-files=no)" ""
+# negative control: core/ on a branch (someone works there) is never moved, only named
+advance core; git_q -C "$BRAIN/core" checkout -q -b work-in-core; h_work=$(head_of "$BRAIN/core")
+bump_pin
+run_pull >/dev/null
+same "core/ on a branch: not moved" "$(head_of "$BRAIN/core")" "$h_work"
+has  "core/ on a branch: named" "core: not on the old pin as a clean detached checkout" "$(cat "$T/out")"
+git_q -C "$BRAIN/core" checkout -q --detach "$(git -C "$BRAIN" rev-parse HEAD:core)"; git_q -C "$BRAIN/core" branch -D work-in-core
+
 # a dirty brain is not pulled
 advance brain; h_brain=$(head_of "$BRAIN")
 echo x >> "$BRAIN/seed.txt"

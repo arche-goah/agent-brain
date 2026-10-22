@@ -18,7 +18,9 @@
 #      brain, so ecosystem-sync.py never records it).
 # What it NEVER pulls: anything inside the brain (the core submodule follows the
 # marketplace pin through scripts/brain-update.sh, never a plain pull) and any other
-# submodule checkout.
+# submodule checkout. One move it does make: when the brain pull itself brings a new core
+# pin, core/ is checked out on that pin (step 1b) — the pin is what brain-update.sh already
+# committed on another machine, and new hooks next to an old core lock the session out.
 #
 # Per repo: uncommitted changes = reported, nothing touched (untracked files do not count —
 # git itself refuses a fast-forward that would overwrite one) · detached HEAD or no upstream
@@ -173,6 +175,32 @@ if [ -e "$R/.git" ]; then
   pull_one brain "$R"
   if [ -n "$AFTER" ] && [ -n "$(git -C "$R" diff --name-only "$BEFORE" "$AFTER" -- docs/memory-snapshot 2>/dev/null)" ]; then
     log "brain: the pull changed docs/memory-snapshot — the memory import of this start may have read the old one; re-run: node core/helpers/memory-sync.cjs import"
+  fi
+  # 1b. core/ follows the pin the pull brought. Measured 2026-10-22 on a machine a week
+  # behind: the pull brought hooks that call core files the old checkout did not have, every
+  # tool call was refused from then on, and the session could not repair itself. The pin
+  # another machine committed (via brain-update.sh) is the released state, so this is no
+  # plain pull. Moved only when core/ sat exactly on the old pin, detached and clean —
+  # a feature branch, a test checkout or local edits in core/ stay untouched and are named.
+  if [ -n "$AFTER" ] && [ -e "$R/core/.git" ]; then
+    old_pin=$(git -C "$R" rev-parse -q --verify "$BEFORE:core" 2>/dev/null)
+    new_pin=$(git -C "$R" rev-parse -q --verify "$AFTER:core" 2>/dev/null)
+    if [ -n "$old_pin" ] && [ -n "$new_pin" ] && [ "$old_pin" != "$new_pin" ]; then
+      at=$(git -C "$R/core" rev-parse HEAD 2>/dev/null)
+      if [ "$at" != "$old_pin" ] || git -C "$R/core" symbolic-ref -q HEAD >/dev/null 2>&1 \
+         || ! git -C "$R/core" diff --quiet HEAD -- 2>/dev/null; then
+        look "core: not on the old pin as a clean detached checkout — left on ${at:0:7}, the brain now pins ${new_pin:0:7}; run: bash core/scripts/brain-update.sh"
+      else
+        rc=0
+        git -C "$R/core" cat-file -e "$new_pin^{commit}" 2>/dev/null \
+          || { net $((STALL * 2)) "$R/core" -C "$R/core" fetch -q --tags origin; rc=$?; }
+        if [ "$rc" -eq 0 ] && git -C "$R/core" checkout -q --detach "$new_pin" >"$TMPF" 2>&1; then
+          log "core: ${old_pin:0:7} -> ${new_pin:0:7} (the pin the pull brought)"
+        else
+          look "core: could not move to the pin ${new_pin:0:7} — $(why "$rc" $((STALL * 2))); run: bash core/scripts/brain-update.sh"
+        fi
+      fi
+    fi
   fi
 fi
 
