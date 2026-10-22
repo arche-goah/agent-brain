@@ -157,7 +157,7 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/core/helpers/session-bootup.sh\"",
-            "timeout": 60
+            "timeout": 120
           },
           {
             "type": "command",
@@ -247,7 +247,6 @@
       "Bash(git -C * status*)",
       "Bash(git -C * log*)",
       "Bash(git -C * diff*)",
-      "Bash(git -C * pull --ff-only*)",
       "Bash(git pull --ff-only*)",
       "Bash(git push*)",
       "Bash(git -C * push*)",
@@ -290,7 +289,6 @@
       "PowerShell(git -C * status*)",
       "PowerShell(git -C * log*)",
       "PowerShell(git -C * diff*)",
-      "PowerShell(git -C * pull --ff-only*)",
       "PowerShell(git pull --ff-only*)",
       "PowerShell(git push*)",
       "PowerShell(git -C * push*)",
