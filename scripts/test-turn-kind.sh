@@ -39,6 +39,12 @@ probe() { node -e 'const {isNotification}=require(process.argv[1]);process.stdou
 [ "$(probe '<command-name>/mcp</command-name> and please also check the PR')" = false ] && ok "command frames + operator words = operator" || bad "operator words after a command ignored"
 [ "$(probe 'Base directory for this skill: x. Do the review.')" = false ] && ok "a skill text record stays a prompt" || bad "skill text read as notification"
 
+# Another agent's message (subagent hand-back, peer session): origin.kind "peer"; the operator's words: "human".
+peer() { node -e 'const {isPeerMessage}=require(process.argv[1]);process.stdout.write(String(isPeerMessage(JSON.parse(process.argv[2]))))' "$(native "$D/turn-kind.cjs")" "$1"; }
+[ "$(peer '{"type":"user","isMeta":true,"origin":{"kind":"peer","from":"a1"}}')" = true ] && ok "a peer record is another agent's message" || bad "peer record not recognised"
+[ "$(peer '{"type":"user","origin":{"kind":"human"}}')" = false ] && ok "an operator record is no peer message" || bad "operator record read as peer"
+[ "$(peer '{"type":"user","isMeta":true}')" = false ] && ok "isMeta alone is no peer message (mid-turn operator text)" || bad "isMeta alone read as peer"
+
 # --- the effect on a cooldown ----------------------------------------------------------
 user() { printf '{"message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
 asst() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
