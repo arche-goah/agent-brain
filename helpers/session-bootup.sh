@@ -422,14 +422,15 @@ for f in .claude/settings.json .claude/settings.local.json; do
   "$PY" -m json.tool "$f" >/dev/null 2>&1 || echo "!! $f: INVALID JSON"
 done
 
-# Hooks the core template wires but this brain does not (incident 2026-08-19,
-# Windows instance: class-gate.cjs consumed with v1.3.12 yet wired nowhere — a
-# template hook reaches existing brains only as a CHANGELOG sentence, so a missed
-# sentence leaves the helper silently half-functional forever). This line repeats
-# every session until the operator adds the wiring; the check never edits settings.
+# Hook coverage: a core hook copied into settings.json next to the plugin's copy (fires
+# twice), a brain without the plugin that wires nothing, a narrower matcher, a missing
+# permission, inert gate data. Before 2.0.4 the template carried the wiring and reached an
+# existing brain only as a CHANGELOG sentence (incident 2026-08-19, Windows instance:
+# class-gate.cjs consumed with v1.3.12 yet wired nowhere); since then the plugin ships the
+# hooks. This line repeats every session until it is fixed; the check never edits settings.
 if [[ -f "$HERE/../scripts/hook-coverage.py" ]]; then
   hc=$("$PY" "$HERE/../scripts/hook-coverage.py" "$R" 2>/dev/null)
-  [[ -n "$hc" ]] && echo "!! hooks in the core template but not wired here: ${hc//$'\n'/ · } — ask the operator to add the line(s) to .claude/settings.json (source: core/templates/settings.json), then restart Claude Code; a line about a gate's data file under .claude/rules/ is agent work: fill it, or write \"inert_ok\": \"<reason>\" into it"
+  [[ -n "$hc" ]] && echo "!! hook coverage: ${hc//$'\n'/ · } — a settings.json line is the operator's edit (source of the core hooks: core/hooks/hooks.json), effective on the next start of Claude Code; a line about a gate's data file under .claude/rules/ is agent work: fill it, or write \"inert_ok\": \"<reason>\" into it"
 fi
 
 # Enabled plugin skills the auto-fire table omits (measured on the Windows instance:

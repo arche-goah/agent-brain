@@ -411,23 +411,37 @@ case "$out" in
   *) bad "deadline 10 d out: $(printf '%s' "$out" | grep -ai deadline | tail -1)";;
 esac
 
-# 13) hook coverage: a template hook that no settings scope wires must be reported
-#     (the v1.3.12 class-gate shipped consumed-but-wired-nowhere on a live brain);
-#     a fully wired brain must stay silent. CLAUDE_CONFIG_DIR points into the
-#     fixture so the runner's real user settings can never leak into the check.
-mkdir -p "$T/hookbrain/core/templates" "$T/hookbrain/core/helpers" "$T/hookbrain/.claude/rules" "$T/nocfg"
+# 13) hook coverage: a core hook that no settings scope wires must be reported in a brain
+#     WITHOUT the plugin (the v1.3.12 class-gate shipped consumed-but-wired-nowhere on a
+#     live brain); a fully wired brain must stay silent. CLAUDE_CONFIG_DIR points into the
+#     fixture so the runner's real user settings and plugins can never leak into the check.
+#     Since 2.0.4 the demanded hooks come from core/hooks/hooks.json (the plugin ships it),
+#     so "fully wired" here means: the template plus that file's hooks block in settings.json
+#     — the state of a brain that wires the core hooks itself. The plugin cases (shipped hooks
+#     count as wired, a copy is a duplicate) are scripts/test-hook-coverage.sh.
+mkdir -p "$T/hookbrain/core/templates" "$T/hookbrain/core/helpers" "$T/hookbrain/core/hooks" "$T/hookbrain/.claude/rules" "$T/nocfg"
 printf '{"names": ["placeholder"], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
 printf '{"domains": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-read.json"
 printf '{"suites": [], "inert_ok": "fixture brain, no live systems"}\n' > "$T/hookbrain/.claude/rules/live-watchdog.json"
 cp "$CORE/templates/settings.json" "$T/hookbrain/core/templates/"
+[ -f "$CORE/hooks/hooks.json" ] && cp "$CORE/hooks/hooks.json" "$T/hookbrain/core/hooks/"
 cp "$CORE"/helpers/*.cjs "$CORE"/helpers/*.sh "$T/hookbrain/core/helpers/" 2>/dev/null
+# the brain's settings as a brain without the plugin wires them: template + core hooks
+wire_hookbrain() {
+  "$PY" -c 'import json,os,sys
+t=json.load(open(sys.argv[1],encoding="utf-8")); h=sys.argv[2]
+if os.path.isfile(h):
+    hooks=json.load(open(h,encoding="utf-8")).get("hooks") or {}
+    for ev,gs in hooks.items(): t.setdefault("hooks",{}).setdefault(ev,[]).extend(gs)
+json.dump(t,open(sys.argv[3],"w",encoding="utf-8"),indent=2)' "$CORE/templates/settings.json" "$CORE/hooks/hooks.json" "$T/hookbrain/.claude/settings.json"
+}
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
 case "$_rc:$_hc" in
   1:*"Stop: "*) ok "hook-coverage flags an unwired template hook (exit 1)";;
   *) bad "hook-coverage missing-hook case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
-cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+wire_hookbrain
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
 if [ "$_rc" -eq 0 ] && [ -z "$_hc" ]; then
   ok "hook-coverage stays silent on a fully wired brain"
@@ -461,7 +475,7 @@ case "$_hc" in
   *permissions:*) bad "hook-coverage permission false alarm with broader globs: '$(printf '%s' "$_hc" | grep -a permissions: | head -1)'";;
   *) ok "hook-coverage accepts a broader glob as granted";;
 esac
-cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+wire_hookbrain
 #     A gate wired WITHOUT the template's "onFailure": "block" fails open on a crash or a
 #     timeout (Claude Code >= 2.1.295); hook-coverage names it. Strip the field from the
 #     wired copy of mechanism-guard only - the other gates stay silent.
@@ -479,7 +493,7 @@ case "$_rc:$_hc" in
       *) ok "hook-coverage flags a gate wired without onFailure: block";; esac;;
   *) bad "hook-coverage fail-open case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
-cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+wire_hookbrain
 #     A hook wired with a SHORTER timeout than the template is killed earlier than the core
 #     plans for (the session start: 30 s kept, the template raised to 60). Named; the hooks
 #     that keep the template's value stay silent.
@@ -497,7 +511,7 @@ case "$_rc:$_hc" in
       *) ok "hook-coverage flags a hook timeout shorter than the template's";; esac;;
   *) bad "hook-coverage timeout case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
-cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+wire_hookbrain
 #     The name guard wired with an EMPTY watch list checks nothing - named, not silent.
 printf '{"names": [], "instances": []}\n' > "$T/hookbrain/.claude/rules/leak-names.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
@@ -571,7 +585,7 @@ case "$_rc:$_hc" in
   1:*"PreToolUse: not-shipped-gate.cjs is wired but the consumed core does not ship it"*) ok "hook-coverage flags a wired hook whose helper the core does not ship";;
   *) bad "hook-coverage wired-but-missing case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
 esac
-cp "$CORE/templates/settings.json" "$T/hookbrain/.claude/settings.json"
+wire_hookbrain
 #     Behind the dispatcher the same gap is silent: a registered stop check whose file is missing
 #     is skipped. Register one that the core does not ship next to the template's checks.
 if [ -f "$CORE/templates/rules-instance/stop-checks.json" ] && grep -q "stop-dispatcher" "$T/hookbrain/.claude/settings.json"; then
@@ -591,7 +605,7 @@ fi
 printf '{}\n' > "$T/hookbrain/.claude/settings.json"
 out="$(CLAUDE_PROJECT_DIR="$T/hookbrain" CLAUDE_CONFIG_DIR="$T/nocfg" bash "$CORE/helpers/session-bootup.sh" 2>&1)" || true
 case "$out" in
-  *"!! hooks in the core template but not wired here:"*) ok "bootup voices unwired template hooks";;
+  *"!! hook coverage: "*"Stop: "*) ok "bootup voices unwired core hooks";;
   *) bad "bootup hook-coverage line missing";;
 esac
 

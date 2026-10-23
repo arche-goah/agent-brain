@@ -88,15 +88,18 @@ session start.
    silently assumed other instances look like his own.
    **Three things are needed, and shipping the file is only the first:**
    - the capability itself in `helpers/` or `scripts/`,
-   - the wiring in `templates/settings.json` — that file IS the documented default
-     proposal for what a brain should have, the only shared surface that exists,
-   - and the DEMAND: `scripts/hook-coverage.py` diffs the template against the brain,
-     the bootup voices it every session, and `brain-update.sh` warns after an update.
-     Without the third step the second reaches new brains only, because the template
-     is copied once at bootstrap and never again.
-   Consequence for a reader as much as for a writer: `templates/settings.json` plus the
+   - the wiring in `hooks/hooks.json` — the plugin ships it, so every brain that runs
+     the plugin runs the hook on its next start (operator order 2026-10-23; until 2.0.3
+     the wiring stood in `templates/settings.json`, which a brain copies ONCE at
+     bootstrap, and a new hook reached existing brains only as a CHANGELOG sentence),
+   - and the DEMAND: `scripts/hook-coverage.py` diffs `hooks/hooks.json` against the
+     brain — a core hook still copied into a brain's `settings.json` fires twice and is
+     named as a duplicate; a brain without the plugin is told what to wire — the bootup
+     voices it every session, and `brain-update.sh` warns after an update.
+   Consequence for a reader as much as for a writer: `hooks/hooks.json` plus the
    `hook-coverage` output is the answer to "what should be wired here" — never another
-   instance's file, and never memory of one.
+   instance's file, and never memory of one. `templates/settings.json` keeps the
+   permissions and the plugin entry; a brain's own hooks go into its `settings.json`.
 
 10. **A platform divergence is registered before it is fixed** (operator order
    2026-08-31: "keep all mac/win issues in the register and derive error classes, so we

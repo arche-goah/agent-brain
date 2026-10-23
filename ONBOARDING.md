@@ -162,8 +162,8 @@ Two opt-in pieces, both off until the brain has their file:
   one `machine:` line; once `config/machines/` exists, a machine without a profile is
   named there with the command to create it.
 - **Session pull.** `cp core/templates/session-pull.json config/session-pull.json` (edit
-  `extra`), and wire `core/helpers/session-pull.sh` as a SessionStart hook (the entry is
-  in `core/templates/settings.json`). Every start then fast-forwards the brain and the
+  `extra`); the SessionStart hook `core/helpers/session-pull.sh` comes with the plugin
+  (`hooks/hooks.json`). Every start then fast-forwards the brain and the
   repos `config/ecosystem.json` records; dirty or diverged checkouts are only reported,
   and the core submodule is never pulled — it follows the pin via `brain-update.sh`.
   `- Session pull: off` in a machine's profile keeps that machine still (a show machine).
