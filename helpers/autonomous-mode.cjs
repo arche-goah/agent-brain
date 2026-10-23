@@ -25,7 +25,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isTranscriptRecord, FRAMES, LOCAL } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, FRAMES, LOCAL } = require('./turn-kind.cjs');
 
 const BUILTIN_ON = [
   '\\bautonomous(ly)?\\b',
@@ -69,7 +69,7 @@ function autonomousMode(transcriptPath, cwd) {
     if (!line.includes('"user"')) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
-    if (!isTranscriptRecord(d) || isSkillExpansion(d) || !d.message || d.message.role !== 'user') continue;
+    if (!isTranscriptRecord(d) || isSkillExpansion(d) || isPeerMessage(d) || !d.message || d.message.role !== 'user') continue;
     const t = promptText(d.message);
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const words = t.replace(FRAMES, ' ').replace(LOCAL, ' ');

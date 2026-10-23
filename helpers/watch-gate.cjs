@@ -86,7 +86,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { isNotification, isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
 const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
 // Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
@@ -249,7 +249,7 @@ function turn(tp) {
         }
       }
       // A loaded skill's text is no new turn: the watcher armed before it stays in the turn.
-      if (isSkillExpansion(d)) continue;
+      if (isSkillExpansion(d) || isPeerMessage(d)) continue;
       const t = promptText(msg);
       if (t === null) continue;
       if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t)) fired = true; continue; }

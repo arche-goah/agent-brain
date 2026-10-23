@@ -52,7 +52,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isSkillExpansion, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
 const { autonomousMode } = require('./autonomous-mode.cjs');
 
 const MAX_BYTES = 16 * 1024 * 1024; // the first turn sits at the top; a huge file is past it
@@ -124,7 +124,7 @@ function readTurn(tp) {
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
-      if (isSkillExpansion(d)) continue;   // a loaded skill's text is no second prompt
+      if (isSkillExpansion(d) || isPeerMessage(d)) continue;   // a loaded skill's text or another agent's report is no second prompt
       const t = promptText(msg);
       if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; if (prompts === 1) first = t; }
       continue;

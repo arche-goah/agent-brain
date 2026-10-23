@@ -41,6 +41,17 @@ function isSkillExpansion(d) {
   return Boolean(d && d.isMeta === true && d.sourceToolUseID);
 }
 
+/**
+ * A message from another agent: a subagent's hand-back or a peer session's message arrives as a
+ * user record with `origin.kind === "peer"` (measured 2026-10-22, macOS instance: a subagent report
+ * containing "once 1 and 2 are in" became the operator's last message for the conditional-order
+ * gate, and every push of the turn was refused; the operator's own words carry `origin.kind
+ * "human"`). Model output, not the operator - no prompt, no new turn.
+ */
+function isPeerMessage(d) {
+  return Boolean(d && d.origin && d.origin.kind === 'peer');
+}
+
 /** A conversation record: Claude Code also writes `api-request-blob` lines (a snapshot of the request,
  * carrying the instruction dump as a user message and thinking as assistant text). Measured 2026-10-21
  * on a macOS instance: the conditional-order gate took a CLAUDE.md heading inside such a blob for the
@@ -51,4 +62,4 @@ function isTranscriptRecord(d) {
   return t === undefined || t === null || t === 'user' || t === 'assistant';
 }
 
-module.exports = { isNotification, isSkillExpansion, isTranscriptRecord, FRAMES, LOCAL };
+module.exports = { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, FRAMES, LOCAL };
