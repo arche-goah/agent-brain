@@ -411,17 +411,20 @@ if [ ! -f docs/maintenance/invariants.md ] && [ -f core/templates/invariants.md 
     || echo "WARN could not create the invariant register"
 fi
 
-# 4c) hook coverage — a template hook reaches existing brains only as a CHANGELOG
-# sentence, so a release can leave a helper consumed but wired nowhere (measured
-# 2026-08-19, Windows instance: class-gate.cjs shipped in v1.3.12, ran never).
-# Reported, never edited: settings.json is operator territory. The bootup repeats
-# this as a !! line every session until it is fixed.
+# 4c) hook coverage — since 2.0.4 the plugin ships the core hooks (hooks/hooks.json), so a
+# release reaches every brain on its next start; what is left to report: a core hook still
+# copied into this brain's settings.json (fires twice), a brain without the plugin that
+# wires nothing (before 2.0.4 that was the whole story: a template hook reached existing
+# brains only as a CHANGELOG sentence — measured 2026-08-19, Windows instance: class-gate.cjs
+# shipped in v1.3.12, ran never), a narrower matcher, a missing permission, inert gate data.
+# Reported, never edited: settings.json is operator territory. The bootup repeats this as a
+# !! line every session until it is fixed; each line carries its own instruction.
 if [ -f core/scripts/hook-coverage.py ]; then
   hc=$("$PY" core/scripts/hook-coverage.py . 2>/dev/null)
   if [ -n "$hc" ]; then
-    echo "WARN hooks from the core template are not wired in this brain:"
+    echo "WARN hook coverage (core/scripts/hook-coverage.py) reports:"
     printf '%s\n' "$hc" | sed 's/^/     /'
-    echo "     add the line(s) to .claude/settings.json by hand (operator edit; template: core/templates/settings.json), then restart Claude Code"
+    echo "     settings.json is edited by hand (operator edit); a hook change takes effect on the next start of Claude Code"
   fi
 fi
 

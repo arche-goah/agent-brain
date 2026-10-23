@@ -1,6 +1,7 @@
 # core/helpers — hook scripts (state of F2 cleanup 2026-07-29, path after core split 2026-08-04)
 
-Everything here is wired up as a hook (`.claude/settings.json` hooks) — don't put
+Everything here is wired up as a hook (`hooks/hooks.json`, shipped by the plugin since
+2.0.4; before that the wiring stood in `templates/settings.json`) — don't put
 anything else here; ghost hooks were an audit finding (claude-flow import, 19 files
 deleted, git history has them). Two exceptions: `statusline.cjs` (not a hook, table
 below, installed at USER level via `scripts/install-statusline.sh`) and
