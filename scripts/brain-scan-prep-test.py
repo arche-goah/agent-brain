@@ -183,7 +183,7 @@ with tempfile.TemporaryDirectory() as d:
           "print('  ab12cd34 unneeded  s1:5  Shall I commit?')\n"
           "print(\"PROPOSAL: add a line for 'git push' to the operator-only list (confirmed: a, b)\")\n")
     write(stub / "scripts/recorder-report.py",
-          "print('!! PREMISE: 3 entries in 14 days, 2 session(s), 3 would have blocked — decide: block, keep recording, or unwire')\n"
+          "print('!! PREMISE: 3 entries in 14 days, 2 session(s), 3 would have blocked - decide: block, keep recording, or unwire')\n"
           "print('recorder report summary: 1 recorder(s), 1 with a decision due')\n")
     write(stub / "scripts/brain-selftest.sh", "echo '  !!  fixture x failed'\necho 'SELF-TEST: FAILURE'\nexit 1\n")
     write(stub / "scripts/effect-check.sh", "echo 'ROT  E3  Hook Targets — 1 missing'\necho 'OK   E1  Style — ok'\n"

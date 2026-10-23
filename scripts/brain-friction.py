@@ -73,7 +73,10 @@ settings = read_json(".claude/settings.json")
 hooks = settings.get("hooks", {})
 stop_cfg = read_json(".claude/rules/stop-checks.json")
 checks = stop_cfg.get("checks", [])
-sources = {p: open(p, encoding="utf-8", errors="ignore").read()
+# Keyed with "/" on every platform: checks 3 and 4 look up a stop check's `cmd`
+# ("core/helpers/x.cjs") here, and os.walk yields "core\\helpers\\x.cjs" on Windows —
+# the lookup then missed and both checks went silent there (measured 2026-10-23 in CI).
+sources = {p.replace(os.sep, "/"): open(p, encoding="utf-8", errors="ignore").read()
            for p in walk_files(".claude", "core", "scripts", "docs", "config")
            if os.path.isfile(p)}
 

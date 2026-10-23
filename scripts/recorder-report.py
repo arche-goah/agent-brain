@@ -17,7 +17,7 @@ the recorder writes that field). It judges nothing; the brain-scan
 (`scripts/brain-scan-prep.py`) runs it and turns each line into a finding.
 
 Output, one line per recorder, then one summary line:
-  `!! <LABEL>: <n> entr(y|ies) in <d> days, <s> session(s), <b> would have blocked — decide: block, keep recording, or unwire`
+  `!! <LABEL>: <n> entr(y|ies) in <d> days, <s> session(s), <b> would have blocked - decide: block, keep recording, or unwire`
       when at least one entry in the window would have blocked (the measurement exists);
   `   <LABEL>: ...` otherwise (recording, nothing that would have blocked, or no log yet);
   `recorder report summary: <k> recorder(s), <m> with a decision due`.
@@ -83,7 +83,7 @@ def main(argv=None):
         if len(names) == 1 and names[0] != c["marker"].lower() + ".jsonl":
             label += f" (own log {names[0]})"
         if not any(os.path.exists(p) for p in paths):
-            print(f"   {label}: no log yet — the recorder has never fired")
+            print(f"   {label}: no log yet - the recorder has never fired")
             continue
         blocked = sum(1 for e in rows if e.get("would_block") is True)
         sessions = len({e.get("session") for e in rows})
@@ -91,7 +91,7 @@ def main(argv=None):
                 f"{sessions} session(s), {blocked} would have blocked")
         if blocked:
             due += 1
-            print(f"!! {line} — decide: block, keep recording, or unwire")
+            print(f"!! {line} - decide: block, keep recording, or unwire")
         else:
             print(f"   {line}")
     print(f"recorder report summary: {len(recorders)} recorder(s), {due} with a decision due")
