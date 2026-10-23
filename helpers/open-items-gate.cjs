@@ -37,6 +37,8 @@
  *   - compaction (SessionStart:compact): never fires — that is the same session.
  * Only the FIRST turn after the bootup is checked: one real operator prompt since then.
  * Re-issued answers (stop_hook_active) pass, as with every gate.
+ * Frequency design: at most once per session start or resume, no turn cooldown — the
+ * whole gate is one turn wide, a cooldown would only switch it off.
  *
  * The opening question is WANTED here, so `firstTurnOwnsQuestion()` is exported for
  * stoppen-gate: on exactly this turn the closing question belongs to this gate.

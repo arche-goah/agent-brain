@@ -212,6 +212,11 @@ function run(check, base) {
         if (check.mode === 'record') {
           if (Array.isArray(parsed.record) && parsed.record.length) {
             record(check, parsed.record, payload);
+          } else if (parsed.decision === 'block' && parsed.reason) {
+            // A gate without a --record mode answers a recorder slot with a block. Dropping
+            // it recorded nothing, ever: measured 2026-10-23, premise-gate ran as a recorder
+            // in the template and no premise-gate.jsonl existed on any brain checked.
+            record(check, [{ would_block: true, reason: short(parsed.reason, 300) }], payload);
           }
           return resolve(null); // a recorder never blocks, by construction
         }

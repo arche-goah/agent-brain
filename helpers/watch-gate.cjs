@@ -73,6 +73,8 @@
  *       instead of declaring nothing open.
  * Blocks once per turn; a re-issue (stop_hook_active) or a second stop in the same turn
  * passes — the agent may have a reason not to watch, and says it.
+ * Frequency design: fires only on a hit, once per turn, no turn cooldown — the hit is an
+ * expected reaction with no watcher, and it ends the moment one is armed.
  *
  * The close turn (coherence scan 2026-10-15, P1-2): skill `session-close` arms no watcher it
  * will not be alive to read — it lists each such item as an open end in the session-log entry.

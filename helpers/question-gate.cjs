@@ -39,6 +39,8 @@
  * lacks it.
  * Questions of the reply being ended are recorded, never blocked — the operator has not
  * seen them yet. Once per turn; a re-issue passes. Fails open without a transcript.
+ * Frequency design: fires only on a hit, once per turn, no turn cooldown — the hit is a
+ * question still unsettled, and settling it (answered/deferred) ends it.
  *
  * Orphans and evidence (issue #269, operator 2026-10-11: "there is no active session any more
  * for 'which way do you want' — nobody feels responsible, that is a core bug"): a record keeps
