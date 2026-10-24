@@ -172,8 +172,17 @@ if [ "$pre_commit" -eq 1 ]; then
   close_line="- $TS | $branch | close${sm_line:+ | $sm_line}"
   printf '%s\n%s\n' "$sid" "$close_line" > "$stamp"
   # Lines of sessions that ended without a close wait untracked (header); this commit takes them.
-  [ -s "$pending" ] && cat "$pending" >> "$log"
-  rm -f "$pending"
+  # They are the only copy: deleted only once they are in the log (a missing folder or a full
+  # disk keeps them, with a WARN - review of #77).
+  if [ -s "$pending" ]; then
+    if cat "$pending" >> "$log" 2>/dev/null; then
+      rm -f "$pending"
+    else
+      echo "WARN session log: the waiting lines of earlier sessions could not be added to $log - kept in $pending"
+    fi
+  else
+    rm -f "$pending"
+  fi
   echo "$close_line" >> "$log"
   # Session audit (operator order 2026-10-11): what this session's start listed as ended
   # without a close or as a failed start was put in front of the operator (the open-items

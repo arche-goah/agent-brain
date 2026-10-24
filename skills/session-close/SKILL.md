@@ -128,6 +128,9 @@ then an explicit release follows.
    ```
    `--pre-commit` writes the session-log line without post-commit state (the close commit
    carries it) and leaves an untracked stamp, so the SessionEnd hook does not write it again.
+   It also moves the `hook-end` lines that earlier sessions without a close left waiting in
+   `.claude-state/session-log-pending.md` into the log, in front of this close's line - extra
+   log lines in the close diff are those, and they belong to this commit.
    The same stamp lets this turn end past `watch-gate` and `question-gate` — but only for the
    items step 3's entry lists as `open end:` lines (step 4); an unlisted item still blocks.
    Unset `SESSION_LOG_FOLD_MAX_BYTES` with a log above 100 000 bytes prints a `WARN

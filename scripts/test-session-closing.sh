@@ -120,6 +120,17 @@ has "the moved line is the hook-end trace" "hook-end" "$(tail -2 "$LOG2" | head 
 [ -f "$PEND2" ] && bad "pending file consumed" "still there" || ok "pending file consumed"
 git_q -C "$B2" add -A; git_q -C "$B2" commit -qm "close S3"
 
+# Review of #77: the waiting lines are the only copy - an append that fails must not delete them.
+echo "the log cannot be written (a folder in its place): the waiting line stays, with a WARN"
+B5="$TMP/brain5"; mkdir -p "$B5/.claude" "$B5/.claude-state" "$B5/docs/maintenance/session-log.md"
+printf '.claude-state/\n.claude/HANDOFF.md\n' > "$B5/.gitignore"
+: > "$B5/docs/maintenance/session-log.md/keep"
+git_q -C "$B5" init -q; git_q -C "$B5" add -A; git_q -C "$B5" commit -qm brain
+printf -- '- 2026-10-24 | main | hook-end | waiting\n' > "$B5/.claude-state/session-log-pending.md"
+out5=$( (cd "$B5" && CLAUDE_PROJECT_DIR="$B5" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" --pre-commit --session P1 2>&1 </dev/null) )
+[ -s "$B5/.claude-state/session-log-pending.md" ] && ok "the waiting line is kept when the append fails" || bad "the waiting line is kept when the append fails" "deleted"
+has "and the run says so" "could not be added" "$out5"
+
 echo "two sessions in one repo: another session's stamp does not silence the hook"
 n=$(plines); hook S4 >/dev/null
 [ "$(plines)" -eq $((n + 1)) ] && ok "hook of S4 still writes its line" || bad "hook of S4 still writes its line" "$n -> $(plines)"
