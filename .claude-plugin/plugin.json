@@ -1,7 +1,7 @@
 {
   "name": "brain-core",
   "version": "2.0.3",
-  "description": "Shared brain core: the general-purpose skills listed in skills/REGISTRY.md, the caveman output style, and audit workflows. Rules, hooks and contract scripts travel via the core/ submodule, not this plugin.",
+  "description": "Shared brain core: the general-purpose skills listed in skills/REGISTRY.md, the caveman output style, audit workflows, and the core's hook wiring (hooks/hooks.json, running the helpers of the brain's core/ submodule). Rules, helpers and contract scripts travel via the core/ submodule.",
   "author": {
     "name": "ArcheGoah"
   }

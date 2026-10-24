@@ -87,6 +87,10 @@ def main():
                 d = json.loads(line)
             except Exception:
                 continue
+            # Only the conversation counts, and another agent's report is no operator turn
+            # (same records turn-kind.cjs skips: api-request-blob, origin.kind "peer").
+            if d.get("type") not in (None, "user", "assistant") or (d.get("origin") or {}).get("kind") == "peer":
+                continue
             m = d.get("message") or {}
             if m.get("role") == "user" and isinstance(m.get("content"), str):
                 if m["content"].startswith("Stop hook feedback:"):

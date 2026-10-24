@@ -9,10 +9,18 @@ never runs. Measured 2026-08-19 on the Windows instance: class-gate.cjs consumed
 with v1.3.12, wired nowhere. This script makes the gap loud; it NEVER edits —
 settings.json is operator territory (an agent cannot extend its own wiring).
 
-WHAT COUNTS AS MISSING: a template hook command that points at core/helpers/<file>,
+SINCE 2.0.4 THE PLUGIN SHIPS THE CORE HOOKS (hooks/hooks.json; operator order 2026-10-23,
+after a beta update left ten gaps on a brain and this script could only warn). The demand
+is read from core/hooks/hooks.json (plus a `hooks` block the template may still carry);
+with an enabled brain-core plugin whose install ships that file, those hooks count as
+WIRED, and a copy of one in a settings scope is reported as a DUPLICATE — it fires twice,
+because Claude Code dedupes only across settings files. A brain without the plugin, or
+with a plugin cache from before 2.0.4, is told what to wire exactly as before.
+
+WHAT COUNTS AS MISSING: a demanded hook command that points at core/helpers/<file>,
 where <file> exists in the consumed core state, and no hook command under the SAME
-event in the brain's settings (project, project-local or user scope) references
-that helper file. Matching is by helper filename, so path notation (slashes,
+event runs in this brain (plugin-shipped, or in the project, project-local or user
+settings). Matching is by helper filename, so path notation (slashes,
 $CLAUDE_PROJECT_DIR vs absolute) never causes a false alarm.
 
 ALSO REPORTED: a gate the template sets to `"onFailure": "block"` (fail closed when the
@@ -182,27 +190,93 @@ def granted(entry, have):
     return False
 
 
+def demanded_hooks(root, template):
+    """The hooks every brain must run: `core/hooks/hooks.json` (the plugin ships it since
+    2.0.4) merged with a `hooks` block the settings template may still carry (cores before
+    2.0.4, and fixtures that build their own template). Same shape as a settings file, so the
+    readers above apply."""
+    merged = {}
+    for src in (load(os.path.join(root, "core", "hooks", "hooks.json")), template):
+        for event, groups in (src.get("hooks") or {}).items():
+            merged.setdefault(event, []).extend(g for g in (groups or []) if isinstance(g, dict))
+    return {"hooks": merged}
+
+
+def plugin_shipped_hooks(root, cfg):
+    """(plugin id, hooks settings) of the enabled brain-core plugin whose install ships
+    hooks/hooks.json — Claude Code registers those when the plugin loads, so they RUN in this
+    brain without a settings line. Both halves are required: enabled in a settings scope
+    (project or user), AND an install record with the file; a cache from before 2.0.4 has no
+    hooks/ and ships nothing. Nothing enabled or nothing shipped -> (None, {})."""
+    enabled = set()
+    for p in (os.path.join(root, ".claude", "settings.json"),
+              os.path.join(root, ".claude", "settings.local.json"),
+              os.path.join(cfg, "settings.json")):
+        for k, v in ((load(p).get("enabledPlugins") or {}).items()):
+            if v and re.match(r"brain-core(-\w+)?@", k):
+                enabled.add(k)
+    if not enabled:
+        return None, {}
+    records = (load(os.path.join(cfg, "plugins", "installed_plugins.json")).get("plugins") or {})
+    for pid in sorted(enabled):
+        for rec in records.get(pid) or []:
+            if not isinstance(rec, dict):
+                continue
+            pp = rec.get("projectPath")
+            if pp and os.path.realpath(pp) != os.path.realpath(root):
+                continue  # a project-scope record of another project does not load here
+            shipped = load(os.path.join(rec.get("installPath") or "", "hooks", "hooks.json"))
+            if shipped.get("hooks"):
+                return pid, shipped
+    return None, {}
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else "."
     template = load(os.path.join(root, "core", "templates", "settings.json"))
     if not template:
         return 0  # no consumed template (not a brain, or pre-template core): nothing to demand
+    demand = demanded_hooks(root, template)
 
     cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
     wired = {}
     have_allow = []
     have_timeout = {}
-    for p in (
-        os.path.join(root, ".claude", "settings.json"),
-        os.path.join(root, ".claude", "settings.local.json"),
-        os.path.join(cfg, "settings.json"),
+    scopes = {}  # (event, command) -> the settings scope that wires it, as a fixed forward-slashed label
+    for p, label in (
+        (os.path.join(root, ".claude", "settings.json"), ".claude/settings.json"),
+        (os.path.join(root, ".claude", "settings.local.json"), ".claude/settings.local.json"),
+        (os.path.join(cfg, "settings.json"), "the user settings.json"),
     ):
         s = load(p)
         for event, pairs in commands_by_event(s).items():
             wired.setdefault(event, []).extend(pairs)
+            for _m, c, _f in pairs:
+                scopes[(event, c)] = label
         have_allow.extend(allow_entries(s))
         for key, t in timeouts(s).items():
             have_timeout[key] = max(have_timeout.get(key, 0), t)
+
+    # The plugin's hooks run here too. A copy of one of them in a settings scope makes the
+    # gate fire TWICE per call (Claude Code dedupes only across settings files, never a
+    # plugin's copy against a settings copy) — named before the shipped hooks join `wired`,
+    # so every later check sees the brain as it runs: plugin hooks plus its own.
+    duplicate = []
+    plugin_id, shipped = plugin_shipped_hooks(root, cfg)
+    for event, pairs in commands_by_event(shipped).items():
+        for _m, cmd, _f in pairs:
+            m = re.search(r"core/(helpers|scripts)/([\w.-]+)", cmd)
+            if not m:
+                continue
+            for _wm, wc, _wf in wired.get(event, []):
+                if m.group(2) in wc:
+                    duplicate.append("%s: %s runs twice - the plugin %s ships it (hooks/hooks.json) and %s wires a "
+                                     "copy; drop the copy from %s" % (event, m.group(2), plugin_id,
+                                                                      scopes.get((event, wc), "a settings scope"),
+                                                                      scopes.get((event, wc), "that settings file")))
+        wired.setdefault(event, []).extend(pairs)
+    for key, t in timeouts(shipped).items():
+        have_timeout[key] = max(have_timeout.get(key, 0), t)
 
     # A hook wired with a SHORTER timeout than the template is killed before the core expects
     # it to be done, and a killed SessionStart hook reports nothing. The field reaches a brain
@@ -210,7 +284,7 @@ def main():
     # start report took 18-28 s against 30 s, one start was killed after 31 s and its report
     # never arrived; the template went to 60 s, and without this line no existing brain hears it.
     shorter = []
-    for (event, helper), want in sorted(timeouts(template).items()):
+    for (event, helper), want in sorted(timeouts(demand).items()):
         have = have_timeout.get((event, helper))
         if have is not None and have < want:
             shorter.append("%s: %s has timeout %s s - the template gives it %s s; raise it in .claude/settings.json"
@@ -233,7 +307,7 @@ def main():
     missing = []
     narrower = []
     fail_open = []
-    for event, pairs in commands_by_event(template).items():
+    for event, pairs in commands_by_event(demand).items():
         for matcher, cmd, on_failure in pairs:
             # Any template hook pointing INTO the consumed core counts, not just
             # helpers/. Measured 2026-08-20: brain-check.sh lives in core/scripts, so a
@@ -345,9 +419,10 @@ def main():
                               "ship it - the dispatcher skips it without a word, so that check never runs"
                               % os.path.basename(cmd))
 
-    for line in broken + missing + narrower + fail_open + shorter + inert + not_granted:
+    findings = duplicate + broken + missing + narrower + fail_open + shorter + inert + not_granted
+    for line in findings:
         print(line)
-    return 1 if (broken or missing or narrower or fail_open or shorter or inert or not_granted) else 0
+    return 1 if findings else 0
 
 
 if __name__ == "__main__":

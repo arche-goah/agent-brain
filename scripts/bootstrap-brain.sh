@@ -108,7 +108,7 @@ cp "$CORE_SRC/templates/rules-instance/mechanism-rules.json" .claude/rules/
 # ASK OR ACT names "the instance's operator-only list" as the one set of matters that need the
 # operator; without the file every rule pointing at it points at nothing (operator 2026-10-16).
 cp "$CORE_SRC/templates/rules-instance/operator-only.json" .claude/rules/
-# The settings template wires ONE Stop hook, the dispatcher; without this file it runs nothing.
+# The plugin's hooks/hooks.json wires ONE Stop hook, the dispatcher; without this file it runs nothing.
 cp "$CORE_SRC/templates/rules-instance/stop-checks.json" .claude/rules/
 # Data of two gates the templates wire (live-read-gate, absence-gate). Copied empty: the
 # session start names them until they are filled or carry "inert_ok": "<reason>"

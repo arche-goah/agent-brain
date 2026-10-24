@@ -41,7 +41,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -138,7 +138,7 @@ function analyze(transcriptPath) {
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
       // A loaded skill's text: no condition, no new turn (2026-10-19, "then" in session-close).
-      if (isSkillExpansion(d)) continue;
+      if (isSkillExpansion(d) || isPeerMessage(d)) continue;
       const t = promptText(msg);
       if (t === null || HOOK_ECHO.test(t) || isNotification(t)) continue;
       operator = t; texts = []; agents = 0;   // a new turn starts here

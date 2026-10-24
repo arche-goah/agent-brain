@@ -362,7 +362,7 @@ while :; do
     if ! counts=$("$PY" -c '
 import json, sys
 b = [c.get("bucket") for c in json.load(sys.stdin)]
-print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x in b))
+print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x in b), sum(x == "fail" for x in b))
 ' <<<"$json" 2>/dev/null); then
       unparsed=$((unparsed + 1))
       if (( unparsed >= UNPARSED_MAX )); then
@@ -372,7 +372,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
       sleep "$POLL"; continue
     fi
     unparsed=0
-    read -r total pending bad <<<"$counts"
+    read -r total pending bad failed <<<"$counts"
     # Zero checks is the same ambiguity one level on: "this repo has no CI" and "the run
     # is not registered yet" arrive as the same empty list. Wait it out — if it is still
     # empty at the deadline, the timeout says so, and that IS the honest verdict.
@@ -386,6 +386,15 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
       sleep "$POLL"; continue
     fi
     if (( pending > 0 )); then stale_checkrun_recount; fi
+    # A FAILED check does not turn green while the others finish: report it at once. Measured
+    # 2026-10-21 on a core PR: lint red after 6 min, one Windows job still running 18 min later,
+    # the watch silent the whole time and the red unseen. Only `fail` counts here — a `cancel`
+    # can be a superseded run and still waits for the full picture; the head check guards the
+    # old-run race as for every verdict.
+    if (( pending > 0 && ${failed:-0} > 0 )) && ! pr_head_behind_branch; then
+      echo "CI-WATCH RED: $REPO PR #$TARGET — $failed failing check(s), $pending still running (a failed check does not turn green)"
+      exit 1
+    fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if pr_head_behind_branch; then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
