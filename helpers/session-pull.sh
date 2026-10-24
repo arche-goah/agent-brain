@@ -18,9 +18,10 @@
 #      brain, so ecosystem-sync.py never records it).
 # What it NEVER pulls: anything inside the brain (the core submodule follows the
 # marketplace pin through scripts/brain-update.sh, never a plain pull) and any other
-# submodule checkout. One move it does make: when the brain pull itself brings a new core
-# pin, core/ is checked out on that pin (step 1b) — the pin is what brain-update.sh already
-# committed on another machine, and new hooks next to an old core lock the session out.
+# submodule checkout. One move it does make: a clean detached core/ that lags the brain's own
+# pin is checked out on it, forward only (step 1b, before and after the brain pull) — the pin is
+# what brain-update.sh already committed on another machine, and new hooks next to an old core
+# lock the session out.
 #
 # Per repo: uncommitted changes = reported, nothing touched (untracked files do not count —
 # git itself refuses a fast-forward that would overwrite one) · detached HEAD or no upstream
@@ -139,10 +140,15 @@ look() { log "$*"; LOOKS="$LOOKS  - $*"$'\n'; n_look=$((n_look + 1)); }
 
 # <label> <dir> — the per-repo rules from the header.
 pull_one() {
-  local name=$1 p=$2 br rem ahead behind rc
+  local name=$1 p=$2 br rem ahead behind rc dirty
   BEFORE=""; AFTER=""
   n_checked=$((n_checked + 1))
-  if [ -n "$(git -C "$p" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+  dirty=$(git -C "$p" status --porcelain --untracked-files=no 2>/dev/null)
+  if [ -n "$dirty" ]; then
+    # the brain whose only change is core/ off its pin: that is the cause, not local edits
+    if [ "$name" = brain ] && [ "$(printf '%s\n' "$dirty" | awk '{print $NF}')" = core ]; then
+      look "$name: only core/ is off the brain's pin (see the core line) — not pulled, nothing touched"; return
+    fi
     look "$name: uncommitted changes — not pulled, nothing touched"; return
   fi
   br=$(git -C "$p" symbolic-ref -q --short HEAD 2>/dev/null) || { log "$name: detached HEAD — skipped"; return; }
@@ -169,39 +175,77 @@ pull_one() {
   fi
 }
 
+# 1b. core/ follows the brain's pin. Measured 2026-10-22 on a machine a week behind: the pull
+# brought hooks that call core files the old checkout did not have, every tool call was refused
+# from then on, and the session could not repair itself. The pin another machine committed (via
+# brain-update.sh) is the released state, so this is no plain pull. It goes by STATE, at every
+# start, before and after the brain pull (review of #78): a move that failed once, or a machine
+# stuck before this existed, heals at the next start instead of blocking the brain pull for good.
+# Moved only FORWARD, only a clean detached core/ that sits on a commit an earlier brain commit
+# pinned, never a declared alpha; everything else stays and is named. A backwards pin is never
+# checked out: that is the downgrade brain-update.sh refuses as well.
+core_alpha() {   # the alpha the brain declares for core/ (.claude/rules/local-machinery.json, until today or later)
+  node -e '
+let a = {};
+try { a = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).alpha || {}; } catch (_) {}
+const today = new Date().toISOString().slice(0, 10);
+for (const [k, v] of Object.entries(a))
+  if ((k === "core" || k.startsWith("core/")) && v && typeof v === "object" && String(v.until || "") >= today) { console.log(k); break; }
+' "$R/.claude/rules/local-machinery.json" 2>/dev/null
+}
+align_core() {
+  local pin at c was="" left i
+  [ -e "$R/core/.git" ] || return 0
+  pin=$(git -C "$R" rev-parse -q --verify "HEAD:core" 2>/dev/null) || return 0
+  at=$(git -C "$R/core" rev-parse -q --verify HEAD 2>/dev/null) || return 0
+  [ "$at" = "$pin" ] && return 0
+  if [ -n "$(core_alpha)" ]; then log "core: a declared alpha on ${at:0:7} (the brain pins ${pin:0:7}) — left"; return 0; fi
+  if git -C "$R/core" symbolic-ref -q HEAD >/dev/null 2>&1 || ! git -C "$R/core" diff --quiet HEAD -- 2>/dev/null; then
+    look "core: on a branch or with local edits (${at:0:7}), the brain pins ${pin:0:7} — left; run: bash core/scripts/brain-update.sh"; return 0
+  fi
+  if ! git -C "$R/core" cat-file -e "$pin^{commit}" 2>/dev/null; then
+    net $((STALL * 2)) "$R/core" -C "$R/core" fetch -q --tags origin; rc=$?
+    [ "$rc" -eq 0 ] || { look "core: the brain's pin ${pin:0:7} is not here and the fetch failed — $(why "$rc" $((STALL * 2)))"; return 0; }
+  fi
+  if git -C "$R/core" merge-base --is-ancestor "$pin" "$at" 2>/dev/null; then
+    look "core: the brain pins an OLDER core (${at:0:7} -> ${pin:0:7}) — not checked out; an intended rollback: git -C core checkout --detach $pin"
+    return 0
+  fi
+  if ! git -C "$R/core" merge-base --is-ancestor "$at" "$pin" 2>/dev/null; then
+    look "core: ${at:0:7} is not behind the brain's pin ${pin:0:7} — left; run: bash core/scripts/brain-update.sh"; return 0
+  fi
+  for c in $(git -C "$R" log --format=%H -n 500 -- core 2>/dev/null); do
+    [ "$(git -C "$R" rev-parse -q --verify "$c:core" 2>/dev/null)" = "$at" ] && { was=$c; break; }
+  done
+  [ -n "$was" ] || { look "core: ${at:0:7} is no pin this brain ever committed — left; run: bash core/scripts/brain-update.sh"; return 0; }
+  if ! git -C "$R/core" checkout -q --detach "$pin" >"$TMPF" 2>&1; then
+    look "core: could not move to the pin ${pin:0:7} — $(tail -1 "$TMPF"); run: bash core/scripts/brain-update.sh"; return 0
+  fi
+  # Windows: a file another process holds open is not replaced and git still exits 0 (measured 2026-10-24, Git for
+  # Windows: a Python or Node handle on a core file - "unable to unlink", rc 0, the old content left; a running bash
+  # script is replaced fine). core/ was clean before the move, so what differs now is that: tried again a few times.
+  left=$(git -C "$R/core" status --porcelain --untracked-files=no 2>/dev/null); i=0
+  while [ -n "$left" ] && [ "$i" -lt 5 ]; do
+    sleep 1; i=$((i + 1))
+    git -C "$R/core" checkout -q -- . >/dev/null 2>&1
+    left=$(git -C "$R/core" status --porcelain --untracked-files=no 2>/dev/null)
+  done
+  if [ -n "$left" ]; then
+    look "core: on the pin ${pin:0:7}, but $(printf '%s\n' "$left" | wc -l | tr -d ' ') file(s) kept their old content (held open by another process) — after this start: git -C core checkout -- ."
+  else
+    log "core: ${at:0:7} -> ${pin:0:7} (the brain's pin)"
+  fi
+}
+
 # 1. the brain
 self=$(cd "$R" 2>/dev/null && pwd -P)
 if [ -e "$R/.git" ]; then
+  align_core      # a core/ that lags the pin heals first - else the brain shows ' M core' and is never pulled
   pull_one brain "$R"
   if [ -n "$AFTER" ] && [ -n "$(git -C "$R" diff --name-only "$BEFORE" "$AFTER" -- docs/memory-snapshot 2>/dev/null)" ]; then
     log "brain: the pull changed docs/memory-snapshot — the memory import of this start may have read the old one; re-run: node core/helpers/memory-sync.cjs import"
   fi
-  # 1b. core/ follows the pin the pull brought. Measured 2026-10-22 on a machine a week
-  # behind: the pull brought hooks that call core files the old checkout did not have, every
-  # tool call was refused from then on, and the session could not repair itself. The pin
-  # another machine committed (via brain-update.sh) is the released state, so this is no
-  # plain pull. Moved only when core/ sat exactly on the old pin, detached and clean —
-  # a feature branch, a test checkout or local edits in core/ stay untouched and are named.
-  if [ -n "$AFTER" ] && [ -e "$R/core/.git" ]; then
-    old_pin=$(git -C "$R" rev-parse -q --verify "$BEFORE:core" 2>/dev/null)
-    new_pin=$(git -C "$R" rev-parse -q --verify "$AFTER:core" 2>/dev/null)
-    if [ -n "$old_pin" ] && [ -n "$new_pin" ] && [ "$old_pin" != "$new_pin" ]; then
-      at=$(git -C "$R/core" rev-parse HEAD 2>/dev/null)
-      if [ "$at" != "$old_pin" ] || git -C "$R/core" symbolic-ref -q HEAD >/dev/null 2>&1 \
-         || ! git -C "$R/core" diff --quiet HEAD -- 2>/dev/null; then
-        look "core: not on the old pin as a clean detached checkout — left on ${at:0:7}, the brain now pins ${new_pin:0:7}; run: bash core/scripts/brain-update.sh"
-      else
-        rc=0
-        git -C "$R/core" cat-file -e "$new_pin^{commit}" 2>/dev/null \
-          || { net $((STALL * 2)) "$R/core" -C "$R/core" fetch -q --tags origin; rc=$?; }
-        if [ "$rc" -eq 0 ] && git -C "$R/core" checkout -q --detach "$new_pin" >"$TMPF" 2>&1; then
-          log "core: ${old_pin:0:7} -> ${new_pin:0:7} (the pin the pull brought)"
-        else
-          look "core: could not move to the pin ${new_pin:0:7} — $(why "$rc" $((STALL * 2))); run: bash core/scripts/brain-update.sh"
-        fi
-      fi
-    fi
-  fi
+  [ -n "$AFTER" ] && align_core   # the pin the pull brought
 fi
 
 # 2 + 3. neighbour repos
