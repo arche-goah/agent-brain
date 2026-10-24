@@ -1,0 +1,221 @@
+{
+  "description": "The core's hooks, shipped by the brain-core plugin (operator order 2026-10-23: the core brings what it needs; before this file a hook added to the settings template reached an existing brain only as a CHANGELOG sentence). Commands point at the brain's core/ submodule, not at ${CLAUDE_PLUGIN_ROOT}: the submodule is the pin every other core script runs from and the instance data lives next to it, so one brain runs ONE version of every helper. A copy of a hook below in a brain's settings.json fires twice - scripts/hook-coverage.py names it as a duplicate.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/file-guard.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/mechanism-guard.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/shared-working-copy-guard.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Edit|Write|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/secret-guard.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/freshness-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/public-text-guard.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/instance-key-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-read-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-watchdog.cjs\"",
+            "timeout": 120,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/skill-gate.cjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Workflow|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/conditional-order-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/junk-cleaner.cjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-watchdog.cjs\"",
+            "timeout": 120
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/notify.cjs\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/core/helpers/session-pull.sh\"",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/core/helpers/session-bootup.sh\"",
+            "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" import",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/core/helpers/session-closing.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" export",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/stop-dispatcher.cjs\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" export",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/notify.cjs\"",
+            "timeout": 3,
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

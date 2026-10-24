@@ -29,9 +29,11 @@ optional suites, and the final acceptance via `scripts/onboarding-verify.sh` aga
 New brain: `scripts/bootstrap-brain.sh <target>` (creates a private brain from
 `templates/`, wires the submodule and the marketplace).
 
-Existing brain: add the submodule, wire `.claude/settings.json` from
-`templates/settings.json` (replace the example marketplace with your own), enable the
-plugin, delete your local copies of what the core now delivers.
+Existing brain: add the submodule, take permissions and plugin entry for
+`.claude/settings.json` from `templates/settings.json` (replace the example marketplace
+with your own), enable the plugin — it ships the core's hooks (`hooks/hooks.json`) —,
+delete your local copies of what the core now delivers (a copied core hook fires twice;
+`scripts/hook-coverage.py` names it).
 
 Weekly sync (never on a show day):
 

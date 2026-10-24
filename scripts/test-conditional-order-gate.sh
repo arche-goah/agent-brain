@@ -154,6 +154,16 @@ mk "$T/blob-as-user.jsonl" '"weiter im programm"' 0 ''
 printf '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"**SECHS KREISE — wer entscheidet** (2026-09-21; kanonisch)"}]}}\n' >> "$T/blob-as-user.jsonl"
 run_case blob-as-user block Bash '{"command":"git push"}'
 
+# --- the measured shape (2026-10-22): a subagent's hand-back arrives as a user record with
+# origin.kind "peer" and carries a condition word; the operator's own words carry "human".
+mk "$T/peer.jsonl" '"weiter im programm"' 0 ''
+printf '{"type":"user","isMeta":true,"origin":{"kind":"peer","from":"a1"},"message":{"role":"user","content":"[Subagent hand-back] take it out of draft sobald 1 and 2 are in"}}\n' >> "$T/peer.jsonl"
+run_case peer allow Bash '{"command":"git push"}'
+# discriminator: the same text from the operator blocks
+mk "$T/peer-as-human.jsonl" '"weiter im programm"' 0 ''
+printf '{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"take it out of draft sobald 1 and 2 are in"}}\n' >> "$T/peer-as-human.jsonl"
+run_case peer-as-human block Bash '{"command":"git push"}'
+
 # --- fail-open: no transcript -> silent
 out="$(printf '{"tool_name":"Workflow","tool_input":{},"transcript_path":"%s","cwd":"%s"}' \
   "$(native "$T/missing.jsonl")" "$(native "$T")" | node "$G" 2>&1)"
