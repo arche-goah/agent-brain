@@ -506,7 +506,7 @@ for gs in d["hooks"].values():
 json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$T/hookbrain/.claude/settings.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
 case "$_rc:$_hc" in
-  1:*"SessionStart: session-bootup.sh has timeout"*" s - the template gives it 60 s"*)
+  1:*"SessionStart: session-bootup.sh has timeout"*" s - the template gives it 120 s"*)
     case "$_hc" in *memory-sync*) bad "hook-coverage timeout names a hook that keeps the template value";;
       *) ok "hook-coverage flags a hook timeout shorter than the template's";; esac;;
   *) bad "hook-coverage timeout case: rc=$_rc out='$(printf '%s' "$_hc" | head -1)'";;
