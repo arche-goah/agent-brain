@@ -168,7 +168,7 @@ function deny(hit, why) {
         + '  CONDITION-MET: <the condition in the operator\'s words> — <evidence: where and when it was met>\n'
         + '  CONDITION-NONE: <why this word is no condition here>\n'
         + 'Reads, edits, commits and a single agent stay free — they are how the condition gets checked. '
-        + '(Measured 2026-10-16: "dann coherence scan" meant "after the answer"; nine agents started before it came.)',
+        + '(Measured 2026-10-16: "then the coherence scan" meant "after the answer"; nine agents started before it came.)',
     },
   }));
   process.exit(0);
