@@ -56,20 +56,20 @@ UPDS="$(sed -n "/^upd=\$(BOOT_CORE_ALPHA=/,/^PY\$/p" "$BOOT" | sed '1d;$d')"
 if [ -z "$UPDS" ] || ! printf '%s' "$UPDS" | "$PY" -c 'import sys; compile(sys.stdin.read(), "upd", "exec")' 2>/dev/null; then
   echo "test-eco-owner: update-check heredoc not found or broken in session-bootup.sh"; exit 1
 fi
+# The recorder goes in front of the snippet, both run as one program (the snippet's own `import subprocess` finds the
+# module already patched); its sys.exit() ends the run as at a session start.
+REC='import subprocess
+class R: returncode, stdout = 1, ""
+def run(a, **k):
+    print("ask " + a[2].split("/contents/")[0][len("repos/"):]); return R()
+subprocess.run = run
+'
 asks() { # $1 = project repos -> "ask <repo>" when the update check would call GitHub, else nothing
   local pr
   read -ra pr <<< "$1"
   rm -rf "$T/p" "$T/cfg"; mkdir -p "$T/p/.claude" "$T/cfg"
   mk "$T/p/.claude/settings.json" "${pr[@]}"
-  (cd "$T/p" && CLAUDE_CONFIG_DIR="$T/cfg" UPD_SNIP="$UPDS" "$PY" -c '
-import os, subprocess
-class R: returncode, stdout = 1, ""
-def run(a, **k):
-    print("ask " + a[2].split("/contents/")[0][len("repos/"):]); return R()
-subprocess.run = run
-try: exec(os.environ["UPD_SNIP"], {"__name__": "__main__"})
-except SystemExit: pass
-')
+  (cd "$T/p" && CLAUDE_CONFIG_DIR="$T/cfg" "$PY" -c "$REC$UPDS")
 }
 echo "update check: asks GitHub only about a real marketplace"
 is "real owner: one call (control)"                  "$(asks some-team/claude-marketplace)" "ask some-team/claude-marketplace"
