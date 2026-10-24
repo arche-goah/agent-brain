@@ -1104,6 +1104,12 @@ Before each of these actions, internal thinking is REQUIRED:
 
 ### Anti-Hallucination Rules
 
+(Operator 2026-10-18, translated: "always question critically, never take over what other instances deliver blindly;
+the critical behaviour belongs in the core". Incident the same day: another instance reported "operator-only list
+created"; only reading the file showed `release` struck — on a request of the reporting side itself — while the core
+check only asked whether the list existed. Built 2026-10-24 as a beta candidate (operator: "a no-brainer"): rule line "another instance's report
+is a claim" plus the content check against the template in `decision-readiness.py`.)
+
 — two incidents in one day
 
 (Incident: a fact from the visuals box transferred to the MacBook —

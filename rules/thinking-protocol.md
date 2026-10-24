@@ -31,6 +31,9 @@ History: core/docs/rule-history.md, "Think-Before-Act".
      (user, project, local settings, plugins) is read before "X is missing".
    - **Self-tally is not a measurement:** prose counts are checked against the machine
      record (workflows: run record `result`/`logs`, `journal.jsonl`); the record counts.
+   - **Another instance's report is a claim, not a measurement** (2026-10-18): "created",
+     "fixed", "green" from another AI counts once the artifact itself is read; a check
+     that a file exists is no check of what it says (carrier `decision-readiness.py`).
    - **Checkable form** (2026-08-02): load-bearing claims as a `claim` block — `assessment`
      × `risk` × `evidence[]` × freshness (`retrieved_at` <= `reviewed_at`) × independence.
 
