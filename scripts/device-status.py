@@ -38,6 +38,7 @@ except (AttributeError, ValueError):  # a stream that cannot be reconfigured
 
 REFRESH_DAYS = 7          # rewrite an unchanged report after this long, so "age" stays meaningful
 STALE_DAYS = 14           # --brief names a device whose last report is older
+SILENT_DAYS = 7           # --brief names a device that works but posted nothing to shared memory for this long
 OS_VALUES = ("macos", "windows", "linux")
 
 
@@ -143,6 +144,26 @@ def gather(brain, cfg):
     }
 
 
+def last_post(repo, dev):
+    """Date of the newest shared-memory entry this device wrote (`von: <dev>` in its frontmatter), or "".
+    Operator order 2026-10-16: every AI reports findings on every level. Measured 2026-10-23: a device had posted
+    nothing for a week, and from outside "no sessions ran" and "findings stayed unreported" looked the same —
+    the report's own date says a session ran, this date says whether anything was reported."""
+    best = ""
+    for p in Path(repo).glob("*/*.md"):
+        if p.name in ("INDEX.md", "OPEN.md", "LOG.md"):
+            continue
+        try:
+            head = p.read_text(encoding="utf-8", errors="replace")[:1500]
+        except OSError:
+            continue
+        von = re.search(r"^\s*von:\s*(\S+)", head, re.M)
+        date = re.search(r"^\s*date:\s*(\d{4}-\d\d-\d\d)", head, re.M)
+        if von and date and von.group(1) == dev and date.group(1) > best:
+            best = date.group(1)
+    return best
+
+
 def standing_watch(brain):
     """Can this device keep the standing watch (watch-gate case (g))? Read from its collab-watch.json only — the
     report runs at session start, before any watch is armed, so "is one alive" is not measurable here.
@@ -185,6 +206,7 @@ def report(args):
         return 0
     cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
     state = gather(brain, cfg)
+    state["activity"] = {"last_post": last_post(repo, dev)}
     today = datetime.date.today().isoformat()
     path = os.path.join(repo, "devices", dev + ".json")
     old = load(path, {}) or {}
@@ -292,6 +314,15 @@ def problems(row):
     age = days_since(r.get("reported"))
     if age is not None and age > STALE_DAYS:
         out.append(f"last report {age} d ago")
+    act = r.get("activity")
+    if isinstance(act, dict):  # older reports carry no activity block: nothing to judge
+        lp, quiet = act.get("last_post") or "", None
+        try:
+            quiet = (datetime.date.fromisoformat(r["reported"]) - datetime.date.fromisoformat(lp)).days if lp else None
+        except (KeyError, TypeError, ValueError):
+            pass
+        if not lp or (quiet is not None and quiet >= SILENT_DAYS):
+            out.append(f"session on {r.get('reported')}, but no shared-memory entry " + (f"since {lp}" if lp else "ever"))
     return out
 
 

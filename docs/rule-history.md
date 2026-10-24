@@ -537,6 +537,15 @@ Measured the day the rule was written: one finding,
    two fixes from two machines three minutes apart (one closed), and a merge over the finding
    because a reader showed 200 characters of the comment.
 
+#7 (operator order 2026-10-16): "the AI must capture, document and communicate problems on
+   every level, otherwise we cannot help from a distance" — said about a collaborator's
+   machine whose human works on the desk, not in the core, so its AI is the only one that
+   sees the defects underneath. First carried as an instance rule on that machine. Measured
+   2026-10-23: that machine had posted nothing to shared memory for a week, and from outside
+   "no session ran" and "findings stayed unreported" looked the same. The device report
+   already proves a session ran (it is written at session start); it now also carries the
+   date of the device's last shared-memory entry, so the gap between the two is read, not guessed.
+
 Wording before the context diet of 2026-10-20, verbatim. The rule file now carries the condensed rule; this is the past state it was condensed from.
 
 ```text
