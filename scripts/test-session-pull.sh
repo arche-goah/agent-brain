@@ -148,6 +148,77 @@ run_pull >/dev/null
 hasnt "second run: nothing left to update" "): updated" "$(cat "$T/err")"
 has   "second run: the summary counts none" "0 updated" "$(cat "$T/err")"
 
+# the brain pull brings a new core pin (another machine ran brain-update.sh): core/ follows it.
+# Measured 2026-10-22: new hooks next to the old core refused every tool call afterwards.
+# <scratch> : clone the brain, move its core pointer to core's main, push
+bump_pin() {
+  n=$((n + 1)); git_q clone -q "$T/r/brain.git" "$T/up$n"
+  git_q -C "$T/up$n" submodule update -q --init core
+  git_q -C "$T/up$n/core" fetch -q origin; git_q -C "$T/up$n/core" checkout -q --detach origin/main
+  git_q -C "$T/up$n" add core; git_q -C "$T/up$n" commit -qm "pin $n"; git_q -C "$T/up$n" push -q origin HEAD:main
+}
+git_q -C "$BRAIN/core" checkout -q --detach "$h_core"   # the submodule as a brain has it: detached on the pin
+bump_pin; want=$(git -C "$T/r/core.git" rev-parse main)
+run_pull >/dev/null
+same "pin moved by the pull: core/ follows it" "$(head_of "$BRAIN/core")" "$want"
+has  "pin moved by the pull: one line names the move" "core: ${h_core:0:7} -> ${want:0:7}" "$(cat "$T/err")"
+same "pin moved by the pull: the brain stays clean" "$(git -C "$BRAIN" status --porcelain --untracked-files=no)" ""
+# negative control: core/ on a branch (someone works there) is never moved, only named
+advance core; git_q -C "$BRAIN/core" checkout -q -b work-in-core; h_work=$(head_of "$BRAIN/core")
+bump_pin
+run_pull >/dev/null
+same "core/ on a branch: not moved" "$(head_of "$BRAIN/core")" "$h_work"
+has  "core/ on a branch: named" "core: on a branch or with local edits" "$(cat "$T/out")"
+git_q -C "$BRAIN/core" checkout -q --detach "$(git -C "$BRAIN" rev-parse HEAD:core)"; git_q -C "$BRAIN/core" branch -D work-in-core
+run_pull >/dev/null   # the brain catches up with the pin it could not pull above
+same "after the branch case: core/ on the brain's pin again" "$(head_of "$BRAIN/core")" "$(git -C "$BRAIN" rev-parse HEAD:core)"
+
+# review of #78, 1: a pin moved BACKWARDS is named, never checked out (the downgrade brain-update.sh refuses too)
+# <commit> : clone the brain, set its core pointer to that commit, push
+pin_to() {
+  n=$((n + 1)); git_q clone -q "$T/r/brain.git" "$T/up$n"
+  git_q -C "$T/up$n" submodule update -q --init core
+  git_q -C "$T/up$n/core" checkout -q --detach "$1"
+  git_q -C "$T/up$n" add core; git_q -C "$T/up$n" commit -qm "pin $n"; git_q -C "$T/up$n" push -q origin HEAD:main
+}
+h_now=$(head_of "$BRAIN/core")
+pin_to "$h_core"
+run_pull >/dev/null
+same "pin moved backwards: core/ not checked out" "$(head_of "$BRAIN/core")" "$h_now"
+has  "pin moved backwards: named, with the rollback command" "the brain pins an OLDER core (${h_now:0:7} -> ${h_core:0:7})" "$(cat "$T/out")"
+pin_to "$h_now"; git_q -C "$BRAIN/core" checkout -q --detach "$h_core"   # the brain's pin forward again: the next case starts clean
+git_q -C "$BRAIN" -c submodule.recurse=false merge -q --ff-only origin/main 2>/dev/null; git_q -C "$BRAIN" fetch -q origin
+git_q -C "$BRAIN" -c submodule.recurse=false merge -q --ff-only origin/main
+git_q -C "$BRAIN/core" checkout -q --detach "$(git -C "$BRAIN" rev-parse HEAD:core)"
+
+# review of #78, 2: a move that fails heals at a later start (by state, not by the pull event): the new pin adds a
+# file core/ holds untracked - the checkout refuses; while it stays, the brain is refused with the real cause; once it
+# is gone, the next start moves core/ and pulls the brain
+advance core obstacle.txt; bump_pin; want=$(git -C "$T/r/core.git" rev-parse main); h_from=$(head_of "$BRAIN/core")
+echo mine > "$BRAIN/core/obstacle.txt"
+run_pull >/dev/null
+same "failed move: core/ stays" "$(head_of "$BRAIN/core")" "$h_from"
+has  "failed move: named" "core: could not move to the pin ${want:0:7}" "$(cat "$T/out")"
+advance brain; h_b=$(head_of "$BRAIN")
+run_pull >/dev/null
+same "failed move, next start: the brain is not pulled" "$(head_of "$BRAIN")" "$h_b"
+has  "failed move, next start: the refusal names core/, not local edits" "brain: only core/ is off the brain's pin" "$(cat "$T/out")"
+rm -f "$BRAIN/core/obstacle.txt"
+run_pull >/dev/null
+same "obstacle gone, next start: core/ on the pin" "$(head_of "$BRAIN/core")" "$want"
+differ "obstacle gone, next start: the brain is pulled again" "$(head_of "$BRAIN")" "$h_b"
+
+# a declared alpha in core/ (local-machinery.json, until today or later) is left alone, and only logged
+advance core; git_q -C "$BRAIN/core" fetch -q origin; git_q -C "$BRAIN/core" checkout -q --detach origin/main; h_alpha=$(head_of "$BRAIN/core")
+mkdir -p "$BRAIN/.claude/rules"
+printf '{"alpha": {"core": {"until": "2999-12-31", "measures": "test"}}}\n' > "$BRAIN/.claude/rules/local-machinery.json"
+run_pull >/dev/null
+same "declared alpha: core/ stays on its checkout" "$(head_of "$BRAIN/core")" "$h_alpha"
+has  "declared alpha: logged" "core: a declared alpha on ${h_alpha:0:7}" "$(cat "$T/err")"
+hasnt "declared alpha: no core line that needs a look" "core: on a branch" "$(cat "$T/out")"
+rm -f "$BRAIN/.claude/rules/local-machinery.json"
+git_q -C "$BRAIN/core" checkout -q --detach "$(git -C "$BRAIN" rev-parse HEAD:core)"
+
 # a dirty brain is not pulled
 advance brain; h_brain=$(head_of "$BRAIN")
 echo x >> "$BRAIN/seed.txt"
