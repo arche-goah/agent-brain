@@ -22,7 +22,13 @@
 #     line is already written, the log is not touched; the stamp is removed either way, so
 #     a stamp from a session that died after its skill step cannot silence a later one.
 #   - no stamp = the session ended without the skill (hard kill, topic change): the line is
-#     written here WITH `uncommitted=`/`last:`, and a dirty tree is the honest state.
+#     written WITH `uncommitted=`/`last:` — into the UNTRACKED `.claude-state/session-log-
+#     pending.md`, and the next `--pre-commit` moves it into the log, so a later close commit
+#     carries it. Until 2026-10-22 it went straight into the tracked log ("a dirty tree is the
+#     honest state"): measured on a Windows brain, two such lines blocked the next start's
+#     `git pull --ff-only` (upstream had changed the same file) and the machine fell 398
+#     commits behind. The trace is not lost — it waits in the pending file, and the session
+#     audit names every session that ended without a close.
 # Why a stamp and not only a marker in the line: the skill side has no guaranteed session
 # id (`${CLAUDE_SESSION_ID}` is substituted into skill text by newer harnesses, older ones
 # leave it empty), the hook side always has one on stdin. The stamp works without an id;
@@ -45,6 +51,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 stamp=.claude-state/session-close.stamp
+pending=.claude-state/session-log-pending.md
 if [ "$pre_commit" -eq 0 ] && [ ! -t 0 ]; then
   # SessionEnd hook input: {"session_id": "...", ...}. Bounded read — a caller that keeps
   # stdin open must not hang a 10 s hook.
@@ -164,6 +171,18 @@ if [ "$pre_commit" -eq 1 ]; then
   # `open end:` lines (helpers/close-stamp.cjs). The hook below reads line 1 only.
   close_line="- $TS | $branch | close${sm_line:+ | $sm_line}"
   printf '%s\n%s\n' "$sid" "$close_line" > "$stamp"
+  # Lines of sessions that ended without a close wait untracked (header); this commit takes them.
+  # They are the only copy: deleted only once they are in the log (a missing folder or a full
+  # disk keeps them, with a WARN - review of #77).
+  if [ -s "$pending" ]; then
+    if cat "$pending" >> "$log" 2>/dev/null; then
+      rm -f "$pending"
+    else
+      echo "WARN session log: the waiting lines of earlier sessions could not be added to $log - kept in $pending"
+    fi
+  else
+    rm -f "$pending"
+  fi
   echo "$close_line" >> "$log"
   # Session audit (operator order 2026-10-11): what this session's start listed as ended
   # without a close or as a failed start was put in front of the operator (the open-items
@@ -187,4 +206,5 @@ fi
 dirty=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
 last=$(git log --oneline -1 2>/dev/null)
 entry="$branch | hook-end | uncommitted=$dirty${sm_line:+ | $sm_line} | last: $last"
-tail -5 "$log" 2>/dev/null | grep -qF "$entry" || echo "- $TS | $entry" >> "$log"
+mkdir -p .claude-state
+tail -5 "$pending" 2>/dev/null | grep -qF "$entry" || echo "- $TS | $entry" >> "$pending"

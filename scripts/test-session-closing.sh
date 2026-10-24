@@ -37,7 +37,7 @@ run_close() { (cd "$BRAIN" && CLAUDE_PROJECT_DIR="$BRAIN" SHARED_MEMORY_REPO="$S
 echo "negative control: shared repo clean and pushed"
 out="$(run_close)"
 hasnt "no FAIL line on a clean shared repo" "FAIL shared-memory" "$out"
-has   "the session-log line still records the shared state" "shared=dirty:0,unpushed:0" "$(tail -1 "$BRAIN/docs/maintenance/session-log.md")"
+has   "the session-log line still records the shared state" "shared=dirty:0,unpushed:0" "$(tail -1 "$BRAIN/.claude-state/session-log-pending.md")"
 hasnt "HANDOFF carries no delivery warning" "NOT delivered" "$(cat "$BRAIN/.claude/HANDOFF.md")"
 
 echo "positive control 1: an entry edited but not committed"
@@ -50,7 +50,7 @@ echo "positive control 2: an entry committed but not pushed"
 git_q -C "$SHARED" add -A; git_q -C "$SHARED" commit -qm "local only"
 out="$(run_close)"
 has "FAIL line names the unpushed commit count" "1 unpushed commit(s)" "$out"
-has "and the session-log line carries it" "unpushed:1" "$(tail -1 "$BRAIN/docs/maintenance/session-log.md")"
+has "and the session-log line carries it" "unpushed:1" "$(tail -1 "$BRAIN/.claude-state/session-log-pending.md")"
 
 echo "negative control 2: after the push, silence again"
 git_q -C "$SHARED" push -q origin HEAD:main
@@ -60,7 +60,7 @@ hasnt "no FAIL line once pushed" "FAIL shared-memory" "$out"
 echo "no shared repo at all: the hook must not invent one"
 out="$(cd "$BRAIN" && CLAUDE_PROJECT_DIR="$BRAIN" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" 2>&1)"
 hasnt "no FAIL line without a shared repo" "FAIL shared-memory" "$out"
-hasnt "and no shared field in the log line" "shared=" "$(tail -1 "$BRAIN/docs/maintenance/session-log.md")"
+hasnt "and no shared field in the log line" "shared=" "$(tail -1 "$BRAIN/.claude-state/session-log-pending.md")"
 
 # --- invariant (2026-09-13): after the close commit no hook touches a tracked file -------
 # Measured on two machines: the hook's line after the commit carried `last:`/`uncommitted=`
@@ -79,6 +79,8 @@ LOG2="$B2/docs/maintenance/session-log.md"
 pre()  { (cd "$B2" && CLAUDE_PROJECT_DIR="$B2" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" --pre-commit "$@" 2>&1 </dev/null); }
 hook() { (cd "$B2" && printf '{"session_id":"%s","hook_event_name":"SessionEnd"}' "$1" | CLAUDE_PROJECT_DIR="$B2" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" 2>&1); }
 lines() { wc -l < "$LOG2" | tr -d ' '; }
+PEND2="$B2/.claude-state/session-log-pending.md"
+plines() { cat "$PEND2" 2>/dev/null | wc -l | tr -d ' '; }
 
 echo "skill step: the line has no post-commit state, then the close commit carries it"
 pre --session S1
@@ -99,18 +101,39 @@ n=$(lines); hook S1 >/dev/null
 [ -f "$B2/.claude-state/session-close.stamp" ] && bad "stamp consumed" "still there" || ok "stamp consumed"
 [ -f "$B2/.claude/HANDOFF.md" ] && ok "HANDOFF still written (ignored, not tracked)" || bad "HANDOFF still written" "missing"
 
-echo "hard-kill fallback: no skill step, the hook writes the trace and the tree is dirty"
+# Measured 2026-10-22: lines written straight into the tracked log blocked the next start's
+# `git pull --ff-only` and a machine fell 398 commits behind. The trace now waits untracked.
+echo "hard-kill fallback: no skill step, the hook writes the trace untracked, the tree stays clean"
 n=$(lines); hook S2 >/dev/null
-[ "$(lines)" -eq $((n + 1)) ] && ok "hook appended one line" || bad "hook appended one line" "$n -> $(lines)"
-has "fallback line is marked hook-end" "hook-end" "$(tail -1 "$LOG2")"
-has "fallback line carries uncommitted=" "uncommitted=" "$(tail -1 "$LOG2")"
-[ -n "$(git -C "$B2" status --porcelain)" ] && ok "tree is dirty — the honest state" || bad "tree is dirty" "clean"
-git_q -C "$B2" add -A; git_q -C "$B2" commit -qm "hook line"
+[ "$(lines)" -eq "$n" ] && ok "tracked log untouched by the hook" || bad "tracked log untouched by the hook" "$n -> $(lines)"
+[ "$(plines)" -eq 1 ] && ok "hook appended one pending line" || bad "hook appended one pending line" "$(plines)"
+has "fallback line is marked hook-end" "hook-end" "$(tail -1 "$PEND2")"
+has "fallback line carries uncommitted=" "uncommitted=" "$(tail -1 "$PEND2")"
+[ -z "$(git -C "$B2" status --porcelain)" ] && ok "tree stays clean — a pull can run" || bad "tree stays clean" "$(git -C "$B2" status --porcelain)"
+hook S2 >/dev/null
+[ "$(plines)" -eq 1 ] && ok "a repeated identical hook run adds no second pending line" || bad "no second pending line" "$(plines)"
+
+echo "the next close takes the pending line into the log and its commit"
+n=$(lines); pre --session S3
+[ "$(lines)" -eq $((n + 2)) ] && ok "pending line + close line in the log" || bad "pending line + close line in the log" "$n -> $(lines)"
+has "the moved line is the hook-end trace" "hook-end" "$(tail -2 "$LOG2" | head -1)"
+[ -f "$PEND2" ] && bad "pending file consumed" "still there" || ok "pending file consumed"
+git_q -C "$B2" add -A; git_q -C "$B2" commit -qm "close S3"
+
+# Review of #77: the waiting lines are the only copy - an append that fails must not delete them.
+echo "the log cannot be written (a folder in its place): the waiting line stays, with a WARN"
+B5="$TMP/brain5"; mkdir -p "$B5/.claude" "$B5/.claude-state" "$B5/docs/maintenance/session-log.md"
+printf '.claude-state/\n.claude/HANDOFF.md\n' > "$B5/.gitignore"
+: > "$B5/docs/maintenance/session-log.md/keep"
+git_q -C "$B5" init -q; git_q -C "$B5" add -A; git_q -C "$B5" commit -qm brain
+printf -- '- 2026-10-24 | main | hook-end | waiting\n' > "$B5/.claude-state/session-log-pending.md"
+out5=$( (cd "$B5" && CLAUDE_PROJECT_DIR="$B5" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" --pre-commit --session P1 2>&1 </dev/null) )
+[ -s "$B5/.claude-state/session-log-pending.md" ] && ok "the waiting line is kept when the append fails" || bad "the waiting line is kept when the append fails" "deleted"
+has "and the run says so" "could not be added" "$out5"
 
 echo "two sessions in one repo: another session's stamp does not silence the hook"
-pre --session S3; git_q -C "$B2" add -A; git_q -C "$B2" commit -qm "close S3"
-n=$(lines); hook S4 >/dev/null
-[ "$(lines)" -eq $((n + 1)) ] && ok "hook of S4 still writes its line" || bad "hook of S4 still writes its line" "$n -> $(lines)"
+n=$(plines); hook S4 >/dev/null
+[ "$(plines)" -eq $((n + 1)) ] && ok "hook of S4 still writes its line" || bad "hook of S4 still writes its line" "$n -> $(plines)"
 [ -f "$B2/.claude-state/session-close.stamp" ] && bad "stale stamp removed" "still there" || ok "stale stamp removed"
 git_q -C "$B2" add -A; git_q -C "$B2" commit -qm "S4"
 
@@ -126,19 +149,19 @@ n=$(lines); hook S5 >/dev/null
 echo "CLI subcommand: transcript_path given, file missing -> nothing written"
 tr_hook() { (cd "$B2" && printf '{"session_id":"%s","transcript_path":"%s","hook_event_name":"SessionEnd","reason":"other"}' "$1" "$2" | CLAUDE_PROJECT_DIR="$B2" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" 2>&1); }
 rm -f "$B2/.claude/HANDOFF.md"
-n=$(lines); tr_hook S6 "$TMP/never-written.jsonl" >/dev/null
-[ "$(lines)" -eq "$n" ] && ok "no session-log line for a CLI subcommand" || bad "no session-log line for a CLI subcommand" "$n -> $(lines)"
+n=$(plines); tr_hook S6 "$TMP/never-written.jsonl" >/dev/null
+[ "$(plines)" -eq "$n" ] && ok "no session-log line for a CLI subcommand" || bad "no session-log line for a CLI subcommand" "$n -> $(plines)"
 [ -f "$B2/.claude/HANDOFF.md" ] && bad "no HANDOFF for a CLI subcommand" "written" || ok "no HANDOFF for a CLI subcommand"
 [ -z "$(git -C "$B2" status --porcelain)" ] && ok "tree stays clean" || bad "tree stays clean" "$(git -C "$B2" status --porcelain)"
 echo "negative control: the transcript exists -> a real session, the line is written"
 : > "$TMP/real.jsonl"
-n=$(lines); tr_hook S7 "$TMP/real.jsonl" >/dev/null
-[ "$(lines)" -eq $((n + 1)) ] && ok "real session still logged" || bad "real session still logged" "$n -> $(lines)"
+n=$(plines); tr_hook S7 "$TMP/real.jsonl" >/dev/null
+[ "$(plines)" -eq $((n + 1)) ] && ok "real session still logged" || bad "real session still logged" "$n -> $(plines)"
 echo "Windows shape: an escaped backslash path resolves too"
 winpath=$(printf '%s' "$TMP/real.jsonl" | sed 's#/#\\\\#g')   # JSON text: each separator as an escaped backslash
-git_q -C "$B2" add -A; git_q -C "$B2" commit -qm "S7"
-n=$(lines); tr_hook S8 "$winpath" >/dev/null
-[ "$(lines)" -eq $((n + 1)) ] && ok "backslash-escaped existing transcript counts as a session" || bad "backslash-escaped existing transcript counts as a session" "$n -> $(lines)"
+git_q -C "$B2" commit -q --allow-empty -m "S7"   # a new HEAD: an identical hook-end entry is deduped
+n=$(plines); tr_hook S8 "$winpath" >/dev/null
+[ "$(plines)" -eq $((n + 1)) ] && ok "backslash-escaped existing transcript counts as a session" || bad "backslash-escaped existing transcript counts as a session" "$n -> $(plines)"
 
 # --- neighbour repos (coherence-scan 2026-09-18 §P1-12) --------------------------------
 # The rules send tool changes to suite repos next to the brain; the close checked only the
