@@ -49,6 +49,34 @@ is "placeholder first: no fall-through to the next" "$(owner 'your-org/a some-ve
 is "placeholder in project: no fall-through to user" "$(owner your-org/a some-vendor/b)" ""
 is "project before user (control)"                  "$(owner proj-org/a user-org/b)" proj-org
 
+# The update check (the `upd=` heredoc) tests the same placeholder on its own (review of #73, round 3): an old-template
+# brain must not ask GitHub about the placeholder marketplace at every start. Cut out AS SHIPPED; subprocess.run is
+# replaced by a recorder (no gh, no network - a stub binary would not even be found by Windows' CreateProcess).
+UPDS="$(sed -n "/^upd=\$(BOOT_CORE_ALPHA=/,/^PY\$/p" "$BOOT" | sed '1d;$d')"
+if [ -z "$UPDS" ] || ! printf '%s' "$UPDS" | "$PY" -c 'import sys; compile(sys.stdin.read(), "upd", "exec")' 2>/dev/null; then
+  echo "test-eco-owner: update-check heredoc not found or broken in session-bootup.sh"; exit 1
+fi
+asks() { # $1 = project repos -> "ask <repo>" when the update check would call GitHub, else nothing
+  local pr
+  read -ra pr <<< "$1"
+  rm -rf "$T/p" "$T/cfg"; mkdir -p "$T/p/.claude" "$T/cfg"
+  mk "$T/p/.claude/settings.json" "${pr[@]}"
+  (cd "$T/p" && CLAUDE_CONFIG_DIR="$T/cfg" UPD_SNIP="$UPDS" "$PY" -c '
+import os, subprocess
+class R: returncode, stdout = 1, ""
+def run(a, **k):
+    print("ask " + a[2].split("/contents/")[0][len("repos/"):]); return R()
+subprocess.run = run
+try: exec(os.environ["UPD_SNIP"], {"__name__": "__main__"})
+except SystemExit: pass
+')
+}
+echo "update check: asks GitHub only about a real marketplace"
+is "real owner: one call (control)"                  "$(asks some-team/claude-marketplace)" "ask some-team/claude-marketplace"
+is "template placeholder your-org: no call"          "$(asks your-org/claude-marketplace)" ""
+is "case does not matter (Your-Org): no call"        "$(asks Your-Org/claude-marketplace)" ""
+is "<placeholder>: no call"                          "$(asks '<your-org>/claude-marketplace')" ""
+
 echo
 if [ "$fails" -eq 0 ]; then echo "test-eco-owner: all checks passed"; exit 0; fi
 echo "test-eco-owner: $fails check(s) FAILED"; exit 1

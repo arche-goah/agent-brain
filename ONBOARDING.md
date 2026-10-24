@@ -100,8 +100,8 @@ bash scripts/bootstrap-brain.sh ~/Projects/<your-name>-brain
 This creates your brain from `templates/` (CLAUDE.md skeleton, instance rules, empty
 feedback file, settings with hooks) and mounts this repo as the `core/` submodule.
 One hand step afterwards (the template is deliberately generic): in your new brain's
-`.claude/settings.json`, replace the example marketplace `your-org` with your real
-org — a Claude session in the brain does that for you if you ask.
+`.claude/settings.json`, replace the placeholder `<your-org>` (angle brackets included)
+with your real org — a Claude session in the brain does that for you if you ask.
 
 **Your brain is yours:** a private repo under YOUR account, never shared. Creating
 the remote and pushing stays with you.
