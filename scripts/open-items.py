@@ -236,9 +236,11 @@ def pr_search(owner, extra=()):
     """One search over every owner: GitHub ORs repeated `user:` qualifiers (measured
     2026-10-14: `user:a` 10 + `user:b` 2 = `user:a user:b` 12). `extra` is instance data
     (`pr_owners`): an operator whose repos sit under a second account (a personal one next
-    to the org) never saw a PR there at session start (measured the same day)."""
+    to the org) never saw a PR there at session start (measured the same day). `archived:false`: a PR in an
+    archived repo is read-only - nobody can comment, move or close it, so it stood in every start report for good
+    (measured 2026-10-24: 10 open PRs, one in an archive; with the qualifier 9)."""
     names = [owner] + [o for o in extra if o and o.lower() != owner.lower()]
-    return " ".join(f"user:{o}" for o in names) + " is:pr is:open"
+    return " ".join(f"user:{o}" for o in names) + " is:pr is:open archived:false"
 
 
 def prs(owner, owners, repo=None, extra=()):

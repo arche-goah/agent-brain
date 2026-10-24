@@ -316,10 +316,10 @@ for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json")
 # names new commits — neither says "the next move is yours". A changes-requested review sat
 # two days unanswered while both sides saw those lines. scripts/pr-ball.py reads GitHub's
 # own review/commit timestamps and prints one line only when a move has been open for 24 h.
-# One GraphQL call, offline-silent like the search above.
+# One GraphQL call, offline-silent like the search above; never an archived repo (read-only: no move possible).
 boot_mark pr-search
 if [[ -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
-  gh api graphql -f q="user:$eco_owner is:pr is:open" -f query='query($q: String!) { viewer { login }
+  gh api graphql -f q="user:$eco_owner is:pr is:open archived:false" -f query='query($q: String!) { viewer { login }
     search(query: $q, type: ISSUE, first: 40) { nodes { ... on PullRequest {
       number isDraft body repository { name } author { login }
       commits(last: 1) { nodes { commit { oid committedDate } } }
