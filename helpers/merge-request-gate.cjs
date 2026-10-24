@@ -9,7 +9,7 @@
  * AI read it. Operator decision the same day: read the request before the merge.
  *
  * A REQUEST: one line of the body that names this machine's OS (macOS / Windows / Linux) and
- * asks (counter-check, please, run, check, test, verify, "bitte", "pruef"). Not a request when
+ * asks (counter-check, please, run, check, test, verify). Not a request when
  * the body carries this instance's key — the PR is our own and the request goes to the others.
  * ANSWERED: a comment that carries this instance's key and names the same OS.
  * Override, said in the call: `# REQUEST-ANSWERED: <where it was answered>`.
@@ -24,7 +24,7 @@ const { invocations } = require('./published-text.cjs');
 const { keyFor, selfId } = require('./instance-key-gate.cjs');
 
 const OS_RX = { darwin: /\bmac\s?os\b|\bmac\b/i, win32: /\bwindows\b|\bwin\b/i, linux: /\blinux\b/i };
-const ASK_RX = /counter-?check|\bplease\b|\bbitte\b|pr(?:ue|ü)f|\b(run|check|test|verify)\b/i;
+const ASK_RX = /counter-?check|\bplease\b|\b(run|check|test|verify)\b/i;
 const MERGE_RX = /(^|[;&|(]\s*|\s)gh\s+pr\s+merge\b/;
 
 function merges(cmd, ps) {
