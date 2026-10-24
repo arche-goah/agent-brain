@@ -135,6 +135,116 @@ probe_root "an uninitialised core/ names itself" "$NU" "not a git repository —
 
 rm -rf "$NB" "$NC" "$NU"
 
+# --- core/ moves only on a fresh pin, and never backwards --------------------------
+# The real script runs against a fake brain: core/ committed as a submodule with a
+# .gitmodules entry, a `claude` stub (STUB_MKT_FAIL names the marketplaces whose refresh
+# fails, STUB_PLUG_FAIL=1 fails `claude plugin update`), `gh` stubbed out (nothing is
+# pushed). A GitHub URL a case names is redirected to the local origin through git's own
+# environment config, so no case touches the network.
+SB=$(mktemp -d); ORIG="$SB/origin.git"; STUB="$SB/bin"
+git -c init.defaultBranch=main init -q "$SB/src"
+for v in 1.0.0 2.0.0; do
+  git -C "$SB/src" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$v"
+  git -C "$SB/src" tag "v$v"
+done
+git clone -q --bare "$SB/src" "$ORIG"
+mkdir -p "$STUB"
+cat > "$STUB/claude" <<'SH'
+#!/bin/sh
+if [ "$1 $2 $3" = "plugin marketplace update" ]; then
+  case " ${STUB_MKT_FAIL:-} " in *" $4 "*) exit 1 ;; esac
+  exit 0
+fi
+if [ "$1 $2" = "plugin update" ] && [ -n "${STUB_PLUG_FAIL:-}" ]; then exit 1; fi
+exit 0
+SH
+printf '#!/bin/sh\nexit 1\n' > "$STUB/gh"; chmod +x "$STUB/claude" "$STUB/gh"
+V1=$(git -C "$SB/src" rev-parse v1.0.0); V2=$(git -C "$SB/src" rev-parse v2.0.0)
+
+mk_brain() { # $1 name, $2 committed core tag, $3 installed plugin version, $4 marketplaces,
+             # $5 repo the cached marketplace entry names ("" = no marketplace.json)
+  local B="$SB/$1" C="$SB/$1.cfg" mk="" sep="" m
+  git -c init.defaultBranch=main init -q "$B"
+  git clone -q "$ORIG" "$B/core"; git -C "$B/core" checkout -q "tags/$2"
+  printf '[submodule "core"]\n\tpath = core\n\turl = https://github.com/arche-goah/agent-brain.git\n' > "$B/.gitmodules"
+  git -C "$B" add .gitmodules core 2>/dev/null
+  git -C "$B" -c user.name=t -c user.email=t@t commit -q -m base
+  mkdir -p "$B/.claude" "$C/plugins"
+  for m in $4; do mk="$mk$sep\"$m\":{}"; sep=","; done
+  printf '{"extraKnownMarketplaces":{%s},"enabledPlugins":{"brain-core@mk":true}}\n' "$mk" > "$B/.claude/settings.json"
+  printf '{"version":2,"plugins":{"brain-core@mk":[{"scope":"project","version":"%s"}]}}\n' "$3" > "$C/plugins/installed_plugins.json"
+  if [ -n "$5" ]; then
+    mkdir -p "$C/plugins/marketplaces/mk/.claude-plugin"
+    printf '{"plugins":[{"name":"brain-core","source":{"source":"github","repo":"%s","ref":"v1.0.0"}}]}\n' "$5" \
+      > "$C/plugins/marketplaces/mk/.claude-plugin/marketplace.json"
+  fi
+}
+run_brain() { # $1 name, $2 the GitHub repo redirected to the local origin -> the run's output
+  local d="$SB/$1"; command -v cygpath >/dev/null 2>&1 && d="$(cygpath -w "$d")"
+  PATH="$STUB:$PATH" CLAUDE_CONFIG_DIR="$SB/$1.cfg" BRAIN_UPDATE_ROOT="$d" GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0="url.$ORIG.insteadOf" GIT_CONFIG_VALUE_0="https://github.com/${2:-none/none}.git" bash "$UPD" 2>&1
+}
+commits() { git -C "$SB/$1" rev-list --count HEAD; }
+
+# 1. every refresh fails (measured 2026-10-22: the cached plugin said 1.0.0 while the brain
+#    sat on v2.0.0 - the run checked out the OLD tag and pushed it).
+mk_brain stale v2.0.0 1.0.0 "mk" ""
+out=$(STUB_MKT_FAIL="mk" STUB_PLUG_FAIL=1 run_brain stale)
+if [ "$(git -C "$SB/stale/core" rev-parse HEAD)" != "$V2" ]; then
+  bad "stale marketplace: core/ moved off v2.0.0 to the cached pin"
+else case "$out" in
+  *"core NOT moved"*"marketplace mk was not refreshed"*) ok "stale marketplace: core/ stays, the FAIL line names the marketplace" ;;
+  *) bad "stale marketplace: core/ stayed, but no FAIL naming it: $(printf %s "$out" | grep -a -m1 'core NOT')" ;;
+esac; fi
+
+# 2. the cached entry names ANOTHER repo (review of #76, gap 1): nothing re-pointed, nothing committed.
+mk_brain repoint v2.0.0 1.0.0 "mk" "old-owner/old-repo"
+n0=$(commits repoint); o0=$(git -C "$SB/repoint/core" remote get-url origin)   # (git keeps a local path in its own form)
+out=$(STUB_MKT_FAIL="mk" run_brain repoint old-owner/old-repo)
+decl=$(git -C "$SB/repoint" config -f .gitmodules submodule.core.url)
+if [ "$decl" != "https://github.com/arche-goah/agent-brain.git" ] || [ "$(git -C "$SB/repoint/core" remote get-url origin)" != "$o0" ]; then
+  bad "stale pin re-pointed the core repo: .gitmodules '$decl'"
+elif [ "$(commits repoint)" != "$n0" ]; then
+  bad "stale pin: the run committed something ($(git -C "$SB/repoint" log -1 --format=%s))"
+else case "$out" in
+  *"NOT re-pointed to old-owner/old-repo"*) ok "stale pin naming another repo: origin and .gitmodules untouched, nothing committed" ;;
+  *) bad "stale pin: untouched, but the run does not say so" ;;
+esac; fi
+
+# 3. refreshed marketplace, failed plugin update, entry without a ref (gap 2a): the installed
+#    version is stale as well - no move.
+mk_brain plugfail v2.0.0 1.0.0 "mk" ""
+out=$(STUB_PLUG_FAIL=1 run_brain plugfail)
+if [ "$(git -C "$SB/plugfail/core" rev-parse HEAD)" != "$V2" ]; then
+  bad "failed plugin update: core/ moved v2.0.0 -> v1.0.0"
+else case "$out" in
+  *"plugin brain-core@mk was not updated"*) ok "failed plugin update: core/ stays, the FAIL line names the plugin" ;;
+  *) bad "failed plugin update: core/ stayed, but no FAIL naming it" ;;
+esac; fi
+
+# 4. every refresh fine, but the target is OLDER than the committed core (gap 2b, the direction
+#    check): whatever named the old tag, no automatic downgrade.
+mk_brain older v2.0.0 1.0.0 "mk" ""
+out=$(run_brain older)
+if [ "$(git -C "$SB/older/core" rev-parse HEAD)" != "$V2" ]; then
+  bad "downgrade: core/ moved v2.0.0 -> v1.0.0 on a fresh run"
+else case "$out" in
+  *"older than the core this brain committed"*"roll back"*) ok "downgrade refused with the rollback command" ;;
+  *) bad "downgrade: core/ stayed, but no FAIL line with the rollback" ;;
+esac; fi
+
+# 5. an UNRELATED marketplace fails, the core's own refreshed (gap 3): the core still moves forward.
+mk_brain other v1.0.0 2.0.0 "mk other" ""
+out=$(STUB_MKT_FAIL="other" run_brain other)
+if [ "$(git -C "$SB/other/core" rev-parse HEAD)" != "$V2" ]; then
+  bad "an unrelated failed marketplace blocked the core move: $(printf %s "$out" | grep -a -m1 'core')"
+else case "$out" in
+  *"core NOT moved"*) bad "core moved, but a FAIL line still blamed a marketplace" ;;
+  *"WARN marketplace other not refreshed"*) ok "an unrelated failed marketplace does not block core/ (v1.0.0 -> v2.0.0)" ;;
+  *) bad "core moved, but the failed marketplace was not reported" ;;
+esac; fi
+rm -rf "$SB"
+
 echo
 if (( fails )); then echo "brain-update-test: $fails FAILURE(S)"; exit 1; fi
-echo "brain-update-test: all 8 checks passed"
+echo "brain-update-test: all 13 checks passed"

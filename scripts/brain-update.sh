@@ -60,6 +60,7 @@ if [ ! -e core/.git ]; then
 fi
 CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 changed=0; plugin_moved=0; failed=0
+mkt_failed=""; plug_failed=""   # marketplaces / plugins this run could not refresh (their cached state is not a pin)
 
 # -- settings readers (project + user merged) ---------------------------------
 # Every reader ends in `tr -d '\r'`: Windows Python writes CRLF to pipes, and MSYS
@@ -185,16 +186,23 @@ for m in $mkts; do
   if claude plugin marketplace update "$m" >/dev/null 2>&1; then
     echo "OK   marketplace $m refreshed"
   else
-    echo "WARN marketplace $m not refreshed (offline? CLI missing?) — continuing with cached state"
+    echo "WARN marketplace $m not refreshed (offline? CLI missing?) — continuing with its cached state; no core/ pin is taken from it"
+    mkt_failed="$mkt_failed $m"
   fi
 done
 
 # 2) plugins
 for p in $plugs; do
   before=$(installed_version "$p")
-  out=$(claude plugin update "$p" 2>&1)
+  out=$(claude plugin update "$p" 2>&1); rc=$?
   after=$(installed_version "$p")
-  if [ -n "$after" ] && [ "$after" != "$before" ]; then
+  if [ "$rc" -ne 0 ]; then
+    # Its installed version is then the cache's memory too: for a marketplace entry without a
+    # ref that version IS the core tag (reproduced on the PR review, 2026-10-22: a refreshed
+    # marketplace, a failed plugin update, core v2.0.0 -> v1.0.0 with rc 0).
+    echo "WARN plugin $p not updated (claude plugin update rc $rc) — its installed version ${after:-?} may be stale"
+    plug_failed="$plug_failed $p"
+  elif [ -n "$after" ] && [ "$after" != "$before" ]; then
     echo "OK   plugin $p ${before:-?} -> $after"
     plugin_moved=1; changed=1
   elif printf '%s' "$out" | grep -qi "updated"; then
@@ -335,14 +343,25 @@ if [ -z "$core_plugin" ] && [ -d core ]; then
   echo "WARN no core channel plugin enabled (brain-core / brain-core-next) — core/ submodule NOT aligned this run"
 fi
 if [ -n "$core_plugin" ] && [ -d core ] && [ -e core/.git ]; then
+  # Stale = the core's OWN channel could not be refreshed this run: its marketplace (a failed
+  # unrelated marketplace says nothing about the core's pin) or the core plugin's update.
+  stale_why=""
+  case " $mkt_failed " in *" ${core_plugin#*@} "*) stale_why="marketplace ${core_plugin#*@} was not refreshed" ;; esac
+  case " $plug_failed " in *" $core_plugin "*) stale_why="${stale_why:+$stale_why and }plugin $core_plugin was not updated" ;; esac
   ver=$(installed_version "$core_plugin")
   if [ -n "$ver" ]; then
     tag="v$ver"
     pin=$(marketplace_pin "${core_plugin#*@}" "${core_plugin%@*}")
     pin_repo="${pin%% *}"
     pin_ref="${pin#* }"
-    if [ -n "$pin_repo" ]; then
-      [ -n "$pin_ref" ] && [ "$pin_ref" != "$pin" ] && tag="$pin_ref"
+    [ -n "$pin_repo" ] && [ -n "$pin_ref" ] && [ "$pin_ref" != "$pin" ] && tag="$pin_ref"
+    if [ -n "$pin_repo" ] && [ -n "$stale_why" ]; then
+      # A stale pin re-points nothing either: the origin URL and .gitmodules are committed and
+      # pushed below, so a cached entry naming an old repo would send every clone there.
+      if [ "$(norm_url "$(git config -f .gitmodules submodule.core.url 2>/dev/null)")" != "$(norm_url "https://github.com/$pin_repo.git")" ]; then
+        echo "WARN core origin / .gitmodules NOT re-pointed to $pin_repo: $stale_why"
+      fi
+    elif [ -n "$pin_repo" ]; then
       want_url="https://github.com/$pin_repo.git"
       cur_url=$(git -C core remote get-url origin 2>/dev/null || echo "")
       if [ -n "$cur_url" ] && [ "$(norm_url "$cur_url")" != "$(norm_url "$want_url")" ]; then
@@ -378,8 +397,25 @@ if [ -n "$core_plugin" ] && [ -d core ] && [ -e core/.git ]; then
       have=$(git -C core rev-parse "tags/$tag^{commit}" 2>/dev/null || echo none)
     fi
     at=$(git -C core rev-parse HEAD 2>/dev/null || echo none)
+    pinned=$(git rev-parse -q --verify "HEAD:core" 2>/dev/null || echo "")   # the core this brain committed
     if [ "$at" = "$have" ] && [ "$cur" = "$tag" ] && { [ -z "$want" ] || [ "$have" = "$want" ]; }; then
       echo "OK   core already on $tag"
+    elif [ -n "$stale_why" ]; then
+      # A pin read from a channel this run could not refresh is the cache's memory, not the
+      # released state. Measured 2026-10-22 on a Windows brain: the refresh failed, the
+      # cached plugin still said 1.4.1, the brain sat on v2.0.3 — the run checked out v1.4.1,
+      # committed and pushed it, and every other machine of that brain pulled the downgrade.
+      # Moving core/ is only safe on a fresh pin; without one it stays where it is.
+      echo "FAIL core NOT moved $cur -> $tag: $stale_why, so $tag may be a stale cached pin — fix that, then re-run"
+      failed=1
+    elif [ -n "$pinned" ] && [ "$have" != none ] && [ "$have" != "$pinned" ] \
+         && git -C core merge-base --is-ancestor "$have" "$pinned" 2>/dev/null; then
+      # The direction check: whatever named the old tag (a cache, an entry without a ref, a
+      # mistyped pin), a target that is an ANCESTOR of the committed core is a downgrade, and a
+      # downgrade is never automatic - it would be committed, pushed and pulled everywhere.
+      echo "FAIL core NOT moved $cur -> $tag: $tag is older than the core this brain committed (${pinned:0:12})"
+      echo "     an intended rollback, by hand: git -C core checkout -q tags/$tag && git add core && git commit -m \"chore(core): roll back to $tag\""
+      failed=1
     elif git -C core checkout -q "tags/$tag" 2>/dev/null; then
       echo "OK   core $cur -> $tag"
       changed=1
