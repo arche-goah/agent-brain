@@ -73,7 +73,10 @@ settings = read_json(".claude/settings.json")
 hooks = settings.get("hooks", {})
 stop_cfg = read_json(".claude/rules/stop-checks.json")
 checks = stop_cfg.get("checks", [])
-sources = {p: open(p, encoding="utf-8", errors="ignore").read()
+# Keyed with "/" on every platform: checks 3 and 4 look up a stop check's `cmd`
+# ("core/helpers/x.cjs") here, and os.walk yields "core\\helpers\\x.cjs" on Windows —
+# the lookup then missed and both checks went silent there (measured 2026-10-23 in CI).
+sources = {p.replace(os.sep, "/"): open(p, encoding="utf-8", errors="ignore").read()
            for p in walk_files(".claude", "core", "scripts", "docs", "config")
            if os.path.isfile(p)}
 
@@ -120,12 +123,37 @@ if checks:
                      "it will report them as missing unless it knows stop-checks.json")
 
 # --- 3. a recorder nobody reads ----------------------------------------------
+def is_fixture(basename):
+    return (basename.startswith("test-")
+            or basename.endswith(("-test.sh", "-test.py")))
+
+
+# The dispatcher's logs (<marker>.jsonl) have ONE reader by construction:
+# recorder-report.py, which the brain-scan runs. It counts only while a real script
+# starts it. Before it existed, a log counted as read when any file named it — a
+# changelog line, a comment, a fixture — so recall and absence looked read and were not
+# (measured 2026-10-23, core v2.0.3).
+report = next((p for p in sources if os.path.basename(p) == "recorder-report.py"), None)
+report_run = report is not None and any(
+    re.search(r"recorder-report\.py", t) for p, t in sources.items()
+    if p.endswith((".sh", ".py", ".js", ".cjs")) and p != report
+    and not is_fixture(os.path.basename(p)) and "brain-friction" not in p)
 for c in checks:
     if c.get("mode") != "record":
         continue
     log = f"{c.get('marker', '').lower()}.jsonl"
-    readers = [p for p, t in sources.items()
-               if log in t and "stop-dispatcher" not in p and "stop-checks" not in p]
+    # A gate may keep a log of its own instead (promise-gate: promises.jsonl, read by
+    # skill session-close) — then the dispatcher's log never exists, and the own log is
+    # the one that needs a reader.
+    gate = c.get("cmd", "")
+    own = set(re.findall(r"['\"]([\w.-]+\.jsonl)['\"]", sources.get(gate, ""))) - {log}
+    if own:
+        readers = [p for p, t in sources.items()
+                   if any(o in t for o in own) and p != gate and p != "CHANGELOG.md"
+                   and not is_fixture(os.path.basename(p))]
+        log = ", ".join(sorted(own))
+    else:
+        readers = [report] if report_run else []
     if not readers:
         note("write-only", f"{c.get('label')} records to .claude-state/{log}",
              "nothing reads that log — a recording check without a report is a "
@@ -137,7 +165,9 @@ for c in checks:
         continue
     path = c.get("cmd", "")
     text = sources.get(path, "")
-    if text and "COOLDOWN" not in text and "cooldown" not in text:
+    # A gate that fires once per turn or only on the first reply has a quiet period of
+    # another shape; it says so under "Frequency design:" (stoppen-gate, premise-gate).
+    if text and not re.search(r"cooldown|Frequency design:", text, re.I):
         note("no-cooldown", f"{c.get('label')} ({os.path.basename(path)})",
              "it blocks on every hit with no quiet period — an unconditional trigger "
              "becomes ritual and takes the working checks down with it")
@@ -170,10 +200,7 @@ for name in manual:
         # spot — three naming shapes, all of them the fixture layer, not a mechanism.
         # Kept as a literal copy rather than a shared import: the two runners have no
         # common module today, and inventing one for four lines is the bigger change.
-        def is_fixture(basename):
-            return (basename.startswith("test-")
-                    or basename.endswith(("-test.sh", "-test.py")))
-
+        # (`is_fixture` is defined above check 3, which needs the same predicate.)
         callers = [p for p, t in sources.items()
                    if p.endswith((".sh", ".py", ".cjs")) and invoke.search(t)
                    and os.path.basename(p) != name

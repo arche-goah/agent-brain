@@ -24,7 +24,7 @@ What it does (read-only on the brain; writes only into --out):
      finds it again, that is the third time).
   2. MACHINE CHECKS — effect-check, invariant-check (instance register), brain-selftest,
      local-machinery, commitments, fork-drift (network), decision-review (how the brain asked and acted
-     alone, from the transcripts); each turned into findings of the scan's finding shape.
+     alone, from the transcripts), recorder-report (would a recording gate have blocked); each turned into findings of the scan's finding shape.
      A script absent from this core checkout is reported ONCE as "not available".
   3. DEEP CHECK — one deterministic line per triggered deep check, with why and the price
      measured on the proving brain. It never starts anything.
@@ -331,6 +331,10 @@ def machine(repo, core, last_date, today):
         "commitments.py": ([py, str(S / "commitments.py"), "--repo", str(repo), "--days", str(days)], 120),
         # Reads every transcript of the window: here and not at the session start.
         "decision-review.py": ([py, str(S / "decision-review.py"), "--root", str(repo), "--days", str(days)], 300),
+        # The only reader of the stop dispatcher's recorder logs: would a recording gate
+        # have blocked, how often? A due one is a decision: block, keep recording, unwire.
+        "recorder-report.py": ([py, str(S / "recorder-report.py"), "--root", str(repo), "--days", str(days),
+                                "--today", today], 60),
         # Network (GitHub): here and not at the session start, whose budget is seconds.
         "fork-drift.py": ([py, str(S / "fork-drift.py"), "--brain", str(repo)], 300),
     }
@@ -353,6 +357,8 @@ def machine(repo, core, last_date, today):
         findings += map_lines("local-machinery", *out["local-machinery.py"], "!!", "local machinery summary:", "P1")
     if "commitments.py" in out:
         findings += map_lines("commitments", *out["commitments.py"], "loose commitment", "commitments summary:", "P2")
+    if "recorder-report.py" in out:
+        findings += map_lines("recorder-report", *out["recorder-report.py"], "!!", "recorder report summary:", "P2")
     if "fork-drift.py" in out:
         findings += map_fork_drift(*out["fork-drift.py"])
     if "decision-review.py" in out:

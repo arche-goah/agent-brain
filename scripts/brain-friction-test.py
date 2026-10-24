@@ -165,7 +165,73 @@ with tempfile.TemporaryDirectory() as td:
        "comment-only.cjs" not in out,
        "a comment mention was reported as a blind check")
 
+print("brain-friction: write-only recorders and frequency design")
+
+REC_CHECKS = {"checks": [
+    {"label": "R", "marker": "R-GATE", "cmd": "core/helpers/r-gate.cjs", "mode": "record"},
+    {"label": "P", "marker": "P-GATE", "cmd": "core/helpers/p-gate.cjs", "mode": "record"},
+    {"label": "F", "marker": "F-GATE", "cmd": "core/helpers/f-gate.cjs", "mode": "block"},
+]}
+
+
+def build_recorder_brain(root, files):
+    (root / ".claude" / "rules").mkdir(parents=True)
+    (root / ".claude" / "rules" / "stop-checks.json").write_text(
+        json.dumps(REC_CHECKS), encoding="utf-8")
+    for rel, body in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(body, encoding="utf-8")
+
+
+GATES = {"core/helpers/r-gate.cjs": "// writes nothing itself\n",
+         "core/helpers/p-gate.cjs": "fs.appendFileSync(path.join(d, 'p-own.jsonl'), row)\n",
+         "core/helpers/f-gate.cjs": " * Frequency design: once per turn\n"}
+
+# 8. a log named only by a fixture and a changelog is not read (the recall/absence shape)
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    build_recorder_brain(root, {**GATES,
+                                "scripts/test-r-gate.sh": "cat .claude-state/r-gate.jsonl\n",
+                                "CHANGELOG.md": "r-gate.jsonl and p-own.jsonl\n"})
+    out = scan(root)
+    ok("a log mentioned only by a fixture or changelog is write-only",
+       "R records" in out and "p-own.jsonl" in out,
+       f"output was: {out.strip()[:300]}")
+
+# 9. recorder-report started by a real script reads the dispatcher logs; a skill reads the own log
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    build_recorder_brain(root, {**GATES,
+                                "core/scripts/recorder-report.py": "# reader\n",
+                                "core/scripts/brain-scan-prep.py": "run('recorder-report.py')\n",
+                                "core/skills/close/SKILL.md": "read .claude-state/p-own.jsonl\n"})
+    out = scan(root)
+    ok("a run reader and a skill reading the own log silence write-only",
+       "write-only (" not in out, f"output was: {out.strip()[:300]}")
+
+# 10. recorder-report present but started by nothing counts as no reader
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    build_recorder_brain(root, {**GATES, "core/scripts/recorder-report.py": "# reader\n"})
+    out = scan(root)
+    ok("a reader nobody starts is no reader",
+       "R records" in out, f"output was: {out.strip()[:300]}")
+
+# 11. a declared frequency design is no missing cooldown; an undeclared one still is
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    build_recorder_brain(root, GATES)
+    out = scan(root)
+    ok("a gate with 'Frequency design:' is not reported without cooldown",
+       "f-gate.cjs" not in out, f"output was: {out.strip()[:300]}")
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    build_recorder_brain(root, {**GATES, "core/helpers/f-gate.cjs": "// blocks always\n"})
+    out = scan(root)
+    ok("a gate with neither cooldown nor frequency design is still reported",
+       "no-cooldown" in out and "f-gate.cjs" in out, f"output was: {out.strip()[:300]}")
+
 if fails:
     print(f"brain-friction-test: {len(fails)} FAILURE(S)")
     sys.exit(1)
-print("brain-friction-test: all 7 fixtures passed")
+print("brain-friction-test: all 12 fixtures passed")

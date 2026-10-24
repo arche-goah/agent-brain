@@ -182,6 +182,20 @@ else
   bad "a log above the limit was not rotated"
 fi
 
+# --- a gate without --record in a recorder slot: its block is recorded, never shown ---
+# premise-gate has no record mode; until 2026-10-23 its block was dropped in a record slot
+# and the log never came into being. Both halves: it lands in the log, and it does not block.
+BLK="$T/blk.cjs"
+printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'probe premise'}))" > "$BLK"
+printf '{"checks":[{"label":"BLK","marker":"BLK-PROBE","cmd":"%s","mode":"record"}]}' \
+  "$(native "$BLK")" > "$CFG3/.claude/rules/stop-checks.json"
+BOUT="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TR2")" "$(native "$CFG3")" \
+  | CLAUDE_PROJECT_DIR="$(native "$CFG3")" node "$D" 2>/dev/null)"
+case "$BOUT" in *'probe premise'*) bad "a block in a record slot reached the turn";; *) ok "a block in a record slot does not block";; esac
+grep -q '"would_block":true' "$CFG3/.claude-state/blk-probe.jsonl" 2>/dev/null \
+  && ok "a block in a record slot lands in the log as would_block" \
+  || bad "a block in a record slot was dropped — the recorder records nothing"
+
 # --- re-issue pass: only a check that opts in runs (onReissue), a loud let-through is forwarded ---
 # stoppen-gate since 2026-10-15: an operator decision re-issued as closing prose instead of
 # through the question tool must not pass by repetition — so the re-issue has to reach it.

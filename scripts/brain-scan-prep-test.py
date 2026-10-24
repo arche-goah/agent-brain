@@ -182,6 +182,9 @@ with tempfile.TemporaryDirectory() as d:
           "print('candidates (a hint, not a verdict; confirm or reject in the brain-scan):')\n"
           "print('  ab12cd34 unneeded  s1:5  Shall I commit?')\n"
           "print(\"PROPOSAL: add a line for 'git push' to the operator-only list (confirmed: a, b)\")\n")
+    write(stub / "scripts/recorder-report.py",
+          "print('!! PREMISE: 3 entries in 14 days, 2 session(s), 3 would have blocked - decide: block, keep recording, or unwire')\n"
+          "print('recorder report summary: 1 recorder(s), 1 with a decision due')\n")
     write(stub / "scripts/brain-selftest.sh", "echo '  !!  fixture x failed'\necho 'SELF-TEST: FAILURE'\nexit 1\n")
     write(stub / "scripts/effect-check.sh", "echo 'ROT  E3  Hook Targets — 1 missing'\necho 'OK   E1  Style — ok'\n"
                                             "echo 'WARN E6  Loose Commitments — 1'\nexit 1\n")
@@ -200,6 +203,7 @@ with tempfile.TemporaryDirectory() as d:
     check(has("P2", "fork-drift: !! fork pal/core branch fix/lost"), "unlanded fork work is a P2 finding")
     check(has("INFO", "needless 1") and has("INFO", "1 candidate(s)"), "decision-review: numbers and candidates are INFO")
     check(has("P2", "decision-review: add a line for 'git push'"), "decision-review: a proposal is a P2 finding")
+    check(has("P2", "recorder-report: !! PREMISE"), "a recorder with would-block entries is a P2 decision")
     check(not any(t.startswith("not available") for t in T), "a complete core reports nothing as unavailable")
     check(summ.get("machine_p1") == sum(1 for s in T.values() if s == "P1"), "summary P1 count = file P1 count")
 
