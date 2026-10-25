@@ -30,13 +30,37 @@ nodes). Output: nothing, or ONE line. Exit 0 always — a bootup line never bloc
 """
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from instance_key import is_self, self_key  # noqa: E402
-from shared_answers import checked_head, own_shared_shas  # noqa: E402
+from instance_key import is_self, key_for, key_in, self_key  # noqa: E402
+from shared_answers import checked_head, default_repo, own_shared_shas  # noqa: E402
+
+
+def sibling_keys_same_os(me_id="", repo=None):
+    """Instance keys of the OTHER devices of our person that run our OS (parties.json in the
+    shared memory). A look by one of them at a PR's head is a look for all of that OS: the
+    check a PR asks for is per OS, not per machine — measured 2026-10-22 on the operator's
+    second macOS instance, which listed every PR of the first one as "asked, not looked at
+    yet" (13 at once) although that machine had reviewed them at the head. Empty set without
+    SHARED_MEMORY_SELF, without parties.json, or when our device is not listed."""
+    me_id = (me_id or os.environ.get("SHARED_MEMORY_SELF", "")).split(",")[0].strip()
+    if not me_id:
+        return set()
+    try:
+        parties = json.loads((Path(repo or default_repo()) / "parties.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    for person in (parties.get("people") or {}).values():
+        devices = (person or {}).get("devices") or {}
+        if me_id in devices:
+            my_os = (devices.get(me_id) or {}).get("os")
+            return {key_for(d) for d, v in devices.items()
+                    if d != me_id and my_os and (v or {}).get("os") == my_os}
+    return set()
 
 
 def ts(s):
@@ -59,6 +83,7 @@ def moves(data, now, my_key="", shared_shas=frozenset()):
     me = login((data.get("data") or {}).get("viewer"))
     if not me:
         return []
+    same_os = sibling_keys_same_os() if my_key else set()
 
     # "Mine" is login AND instance key: one login can carry several instances (the operator's
     # other machine), and a node with another instance's key is THEIR move, not ours.
@@ -98,6 +123,12 @@ def moves(data, now, my_key="", shared_shas=frozenset()):
             my_reviews = [ts(r["submittedAt"]) for r in reviews if mine(r)]
             touched = my_reviews + [ts(c.get("createdAt")) for c in nodes(pr, "comments")
                                     if c and mine(c) and c.get("createdAt")]
+            # A sibling of our OS looked at it (its key in the text): that look stands for ours.
+            def same_os_look(node):
+                return login(node.get("author")) == me and key_in(node.get("body") or "") in same_os
+            touched += [ts(r["submittedAt"]) for r in reviews if same_os_look(r)]
+            touched += [ts(c.get("createdAt")) for c in nodes(pr, "comments")
+                        if c and c.get("createdAt") and same_os_look(c)]
             requested = any(login(n.get("requestedReviewer")) == me for n in nodes(pr, "reviewRequests") if n)
             mentioned = f"@{me}" in (pr.get("body") or "").lower()
             # Another instance under OUR login opened it: that is a hand-over between the
