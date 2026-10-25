@@ -68,6 +68,19 @@ case "${CI_WATCH_STUB:?}" in
   ref_partial) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"dynamic"},
                      {"headBranch":"main","headSha":"abc123","status":"in_progress","conclusion":"","name":"CI"}]' ;;
+  # 2026-10-22: a comment on ANY PR starts a run whose head_sha is main's tip. Watched after a
+  # merge, the tip never came to rest while people commented: in_progress on every poll, UNKNOWN
+  # at 1800 s, the push run green since minute one. Comment-triggered runs are not the verdict.
+  ref_comment_noise) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"CI","event":"push"},
+                     {"headBranch":"main","headSha":"abc123","status":"in_progress","conclusion":"","name":"text leaks","event":"issue_comment"}]' ;;
+  # ...control: a RED comment-triggered run does not turn the tip red either (same noise).
+  ref_comment_noise_red) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"CI","event":"push"},
+                     {"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"failure","name":"text leaks","event":"issue_comment"}]' ;;
+  # ...and only comment-triggered runs on the tip = no run of its own yet, keep waiting.
+  ref_comment_only) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"text leaks","event":"issue_comment"}]' ;;
   # 2026-10-14: the ref moves while watched. First poll resolves old111, whose run GitHub
   # cancelled for the newer push; from then on the ref is new222 and its run is green.
   # A cancelled run of a commit the ref has left is superseded, not red; the watch follows.
@@ -287,6 +300,9 @@ check "ref never appears = timeout(2)"  ref_absent 2 ref v9.9.9 2
 check "ref: green side-workflow + red CI on the same commit = RED"  ref_mixed   1 ref main
 check "ref: green run of an OLDER commit does not count = timeout(2)" ref_oldsha 2 ref main 2
 check "ref: one workflow of the tip still running = no verdict, timeout(2)" ref_partial 2 ref main 2
+check "ref: comment-triggered run in progress on the tip does not hold the verdict = GREEN" ref_comment_noise 0 ref main
+check "ref: red comment-triggered run on the tip does not turn it red (control) = GREEN" ref_comment_noise_red 0 ref main
+check "ref: only comment-triggered runs on the tip = no run of its own, timeout(2)" ref_comment_only 2 ref main 2
 check "ref: bare commit sha, run green = GREEN"  ref_sha     0 ref abc1234
 check "ref: bare commit sha, run red = RED"      ref_sha_red 1 ref abc1234
 check "ref: cancelled run of a superseded commit, green tip = GREEN" ref_superseded 0 ref main
