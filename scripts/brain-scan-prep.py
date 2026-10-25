@@ -212,10 +212,11 @@ def deep_checks(repo, rc, orders, mem_dir):
 
 
 # ── machine checks ─────────────────────────────────────────────────────────
-def run(cmd, cwd, timeout):
+def run(cmd, cwd, timeout, env=None):
     try:
         p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=timeout)
+                           errors="replace", timeout=timeout,
+                           env={**os.environ, **env} if env else None)
         return p.returncode, p.stdout + p.stderr
     except subprocess.TimeoutExpired:
         return None, f"timeout after {timeout}s"
@@ -326,7 +327,12 @@ def machine(repo, core, last_date, today):
     jobs = {
         "effect-check.sh": ([bash, str(S / "effect-check.sh"), str(repo)], 120),
         "invariant-check.py": ([py, str(S / "invariant-check.py"), str(register)], 180),
-        "brain-selftest.sh": ([bash, str(S / "brain-selftest.sh"), str(repo)], 420),
+        # BRAIN_SELFTEST_BG=1: on a fixture-cache miss the self-test reports the previous verdict
+        # (with its age) and re-measures in the background, as at session start. A cold run took
+        # 776 s on a Windows brain (2026-10-25, ~110 fixtures, the slowest 30-60 s each), and the
+        # whole prep step runs inside ONE tool call capped at 600 s (workflows/brain-scan.js) —
+        # the old 420 s limit cut it, and no limit under that cap can hold a cold run.
+        "brain-selftest.sh": ([bash, str(S / "brain-selftest.sh"), str(repo)], 420, {"BRAIN_SELFTEST_BG": "1"}),
         "local-machinery.py": ([py, str(S / "local-machinery.py"), "--repo", str(repo)], 120),
         "commitments.py": ([py, str(S / "commitments.py"), "--repo", str(repo), "--days", str(days)], 120),
         # Operator corrections without a carrier line (2026-10-25): every entry of the feedback
@@ -348,7 +354,7 @@ def machine(repo, core, last_date, today):
         jobs.pop("invariant-check.py")
     run_jobs = {n: j for n, j in jobs.items() if n not in missing}
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-        futs = {n: ex.submit(run, cmd, repo, t) for n, (cmd, t) in run_jobs.items()}
+        futs = {n: ex.submit(run, j[0], repo, j[1], j[2] if len(j) > 2 else None) for n, j in run_jobs.items()}
         out = {n: f.result() for n, f in futs.items()}
     if "effect-check.sh" in out:
         findings += map_effect(*out["effect-check.sh"], skip_e6="commitments.py" in out)
