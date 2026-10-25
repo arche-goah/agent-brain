@@ -10,9 +10,9 @@ documented mechanism. A prose lesson is recalled as stimulus→response and lose
 moment (core rule, Knowledge Carriers: lesson → invariant → carrier).
 
 THE INVARIANT: every entry of the feedback protocol names its carrier on a line of its own:
-    Traeger: <check/gate/script/skill/doc> — or —  Traeger: Prosa, weil <why no mechanism fits>
-(key words per instance: `carrier_keys`). "Prose, because …" is a decision, not a gap; a
-missing line is the gap.
+    Carrier: <check/gate/script/skill/doc> — or —  Carrier: prose, because <why no mechanism fits>
+(key words per instance: `carrier_keys`; a brain that writes its protocol in another language
+adds that language's word). "Prose, because …" is a decision, not a gap; a missing line is the gap.
 
 WHERE IT RUNS: at session close (skill session-close, next to commitments.py) over the entries
 dated in this session, and in the brain-scan over everything since the last scan. A REPORT,
@@ -21,8 +21,8 @@ stop checks against a check at session close, like the empty-promises check" —
 written one to three times a session and the carrier question needs thought, not a block).
 
 Instance data: `.claude/rules/lesson-carriers.json`
-    {"protocol": "docs/maintenance/feedback-protokoll.md",
-     "carrier_keys": ["Traeger", "Träger", "Carrier"],
+    {"protocol": "docs/maintenance/feedback-protocol.md",
+     "carrier_keys": ["Carrier"],
      "entry_heading": "^## (\\d{4}-\\d{2}-\\d{2})"}
 Usage: lesson-carriers.py [--repo DIR] [--protocol FILE] [--since YYYY-MM-DD] [--json]
 Output: one line per entry without a carrier, then
@@ -36,8 +36,8 @@ import re
 import sys
 
 DEFAULTS = {
-    "protocol": "docs/maintenance/feedback-protokoll.md",
-    "carrier_keys": ["Traeger", "Träger", "Carrier"],
+    "protocol": "docs/maintenance/feedback-protocol.md",
+    "carrier_keys": ["Carrier"],
     "entry_heading": r"^## (\d{4}-\d{2}-\d{2})",
 }
 
