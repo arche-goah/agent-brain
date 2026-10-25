@@ -529,7 +529,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=8 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=3 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1 scripts/backprop-report.py=4 scripts/live-doc-lint.py=2
+known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=8 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=3 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1 scripts/backprop-report.py=4 scripts/live-doc-lint.py=2 scripts/lesson-carriers.py=2
 instances: 1
 repeat:    no
 status:    open
@@ -567,6 +567,8 @@ as long as that answer stays no. 2026-10-25, scripts/live-doc-lint.py (2): the q
 yes — its `--json` is parsed by the fixture and the text report is read by a CI log and a reviewer —
 so stdout is pinned at import, like the others.
 
+2026-10-25, lesson-carriers.py baselined after the review: its two report lines carry an em dash and are
+parsed by brain-scan-prep.py and the session-close step; stdout is pinned at the top of the script.
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
 
 shape: A

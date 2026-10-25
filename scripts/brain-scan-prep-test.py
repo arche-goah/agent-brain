@@ -174,7 +174,7 @@ with tempfile.TemporaryDirectory() as d:
     write(stub / "scripts/commitments.py",
           "print('loose commitment: from now on I do X')\nprint('commitments summary: found=1 carried=0 loose=1')\n")
     write(stub / "scripts/lesson-carriers.py",
-          "print('lesson without carrier: 2026-10-25 — a correction without a mechanism')\n"
+          "print('lesson without carrier: 2026-10-25 - a correction without a mechanism')\n"
           "print('lesson-carriers summary: entries=1 carried=0 loose=1')\n")
     write(stub / "scripts/fork-drift.py",
           "print('!! fork pal/core branch fix/lost (no PR, last commit 2026-09-01): 1 commit(s) not in the core')\n"

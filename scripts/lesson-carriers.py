@@ -35,6 +35,12 @@ import os
 import re
 import sys
 
+# OS-9: the session-close step and brain-scan-prep.py parse this output — pin the bytes
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):
+    pass
+
 DEFAULTS = {
     "protocol": "docs/maintenance/feedback-protocol.md",
     "carrier_keys": ["Carrier"],
