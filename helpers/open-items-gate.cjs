@@ -101,6 +101,19 @@ function promptText(msg) {
   return t || null;
 }
 
+// The harness stores a hook output over its limit (about 10 KB) in a file and keeps only a
+// preview in the transcript: "<persisted-output> Output too large (10.3KB). Full output saved
+// to: <path> Preview (first 2KB): …". The "open for us:" block lies past that cut, so the gate
+// read "no open-items block" at EVERY turn end of such a session, with no reply that could
+// satisfy it (measured 2026-10-22 on the second macOS instance, bootup 10.3 KB). The file the
+// preview names is the whole output — read it; an unreadable file leaves the preview as is.
+const PERSISTED = /Full output saved to:\s*(\S+)/;
+function persistedText(text) {
+  const m = PERSISTED.exec(text);
+  if (!m) return text;
+  try { return fs.readFileSync(m[1], 'utf8'); } catch (e) { return text; }
+}
+
 /** One pass over the transcript: the last bootup record, prompts and reply after it. */
 function readTurn(tp) {
   if (!tp || fs.statSync(tp).size > MAX_BYTES) return null;
@@ -118,7 +131,7 @@ function readTurn(tp) {
     if (att && att.hookEvent === 'SessionStart' && BOOTUP.test(att.command || '')) {
       const source = String(att.hookName || '').split(':')[1] || '';
       if (att.type === 'hook_cancelled') boot = { kind: 'cancelled', source, ms: att.durationMs };
-      else if (att.type === 'hook_success') boot = { kind: 'ok', source, text: String(att.content || att.stdout || '') };
+      else if (att.type === 'hook_success') boot = { kind: 'ok', source, text: persistedText(String(att.content || att.stdout || '')) };
       else continue;
       prompts = 0; reply = []; first = '';
       continue;
