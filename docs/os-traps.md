@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=5 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=4 scripts/hook-coverage.py=20 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=16 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26 scripts/plugin-records-test.py=1 scripts/backprop-report.py=5 scripts/recorder-report.py=3 scripts/live-doc-lint.py=3 scripts/live-doc-lint-test.py=2
+known:     helpers/session-bootup.sh=5 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=4 scripts/hook-coverage.py=20 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=16 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26 scripts/plugin-records-test.py=1 scripts/backprop-report.py=5 scripts/recorder-report.py=3 scripts/live-doc-lint.py=3 scripts/live-doc-lint-test.py=2 scripts/lesson-carriers.py=2
 instances: 5
 repeat:    yes
 status:    closed
@@ -144,6 +144,9 @@ joins build the paths of dependencies.json, the glob root and the file it opens;
 REPORTS or hands to `git diff` is `relpath(...).replace(os.sep, "/")`. The fixture's joins build
 files it writes into its throwaway repo and never prints.
 
+2026-10-25, lesson-carriers.py baselined after the review: both joins only OPEN a file (the instance
+data file, the protocol); neither path is compared against text or written into a link, the one that
+reaches stdout is the unreadable-protocol notice for a human.
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
 shape: A
