@@ -1,17 +1,16 @@
 # Skill Registry
 
-**Total skills:** 28
+**Total skills:** 26
 **Generated:** 2026-10-25
 
 > Auto-generated from the `.claude/skills/*/SKILL.md` files via `core/scripts/regen-skill-registry.py` — **do not maintain by hand**. Re-run the script after changing a skill.
 
 Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (each with YAML frontmatter `name` + `description`). This registry is the human-readable overview.
 
-## Other (28)
+## Other (26)
 
 | Skill | Short description |
 |-------|--------------------|
-| autonomer-lauf | DEPRECATED pointer (LA1 rename 2026-08-14) — the time-boxed autonomous work run now lives in the … |
 | autonomous-run | Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstaendig durch" / "work through the … |
 | backlog-catch-up | Sort a large backlog of old open points (derived proposals, open requests, local deviations from … |
 | caveman | Level switching for caveman mode (lite \| full \| ultra \| wenyan-*) |
@@ -24,7 +23,6 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 | firecrawl-web | Fetch web content, take screenshots, extract structured data, search the web, and crawl documentation sites |
 | full-audit | Overall audit conductor — orchestrates brain-scan (conformance), memory-dream (memory hygiene) and coherence-scan (norm contradictions) as … |
 | json-canvas | Create and edit JSON Canvas files (.canvas) with nodes, edges, groups, and connections |
-| kohaerenz-scan | DEPRECATED pointer (LA1 rename 2026-08-14) — the norm-stack coherence audit now lives in the skill … |
 | memory-dream | Memory hygiene and maintenance - merge duplicates, resolve contradictions, update stale info, compress index, optimize … |
 | ollama-fallback | Local Claude Code setup with Ollama + Qwen3 Coder as a backup on rate limits, … |
 | parallel-research-agent | Spawns 3-5 sub-agents for parallel research tasks |
@@ -42,4 +40,4 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 
 ---
 
-**28 skills** across 1 groups.
+**26 skills** across 1 groups.
