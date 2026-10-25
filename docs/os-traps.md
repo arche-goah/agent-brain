@@ -814,3 +814,24 @@ note:      Measured 2026-10-19 on the Windows instance: the `--cached` run of `l
 Windows Terminal window (21:12:58-21:18:36 local time, pairs about every 3 s). 4 checks took 12.3 s
 with default flags, 0.11 s with CREATE_NO_WINDOW. Fixed in #41 (`run_check`). The search lists the
 detached launch, not the children: a new detached site is read for the children it starts.
+
+## OS-19 — a hook reads a file the command hands over by its Git Bash path, which node on Windows cannot open
+
+shape: A
+
+invariant: A hook that reads a file named in the command text (`--body-file`, `-F`, `--input`)
+translates the path as the shell sees it before opening it: `/c/...` to `C:/...`, other `/...` through
+`cygpath -m` (`nativePath` in `helpers/public-text-guard.cjs`). Node on Windows reads `/c/...` as a
+path on the current drive's root and fails; the hook swallows the read error and judges the command
+without the file — on macOS and Linux the same path is the native one, so the defect is invisible there.
+pattern:   publishedText\(
+paths:     --include=*.cjs helpers
+known:     helpers/instance-key-gate.cjs=1 helpers/public-text-guard.cjs=1 helpers/published-text.cjs=3
+instances: 2
+repeat:    yes
+status:    closed
+note:      Measured twice on Windows: 2026-10-14 `instance-key-gate.cjs` blocked `gh pr create --body-file
+"/c/..."` as "carries no instance key" while the key stood in the file (the same file as `C:/...` passed);
+2026-10-25 `public-text-guard.cjs` let a `--body-file /c/...` holding a person's name through (unreadable =
+skipped). Both now translate with `nativePath`. The search lists the consumers of the handed-file list: a
+new consumer appears as a new site and is read for the translation.

@@ -118,7 +118,10 @@ function gate(input) {
   const pub = require('./published-text.cjs').publishedText(cmd, ps);
   for (const f of pub ? pub.files : handedFiles(cmd)) {
     // `~` expands as the shell does it: a `--body-file ~/<file>` that stays unread hides its key (2026-10-18).
-    const p = f.replace(/^~(?=$|[\\/])/, require('os').homedir());
+    // A Git Bash path (`/c/...`, `/tmp/...`) is what the shell sees; node on Windows cannot open it, so
+    // the key in it went unseen and the post was blocked (measured 2026-10-14, Windows instance) - the
+    // same translation public-text-guard.cjs uses.
+    const p = require('./public-text-guard.cjs').nativePath(f.replace(/^~(?=$|[\\/])/, require('os').homedir()));
     try { text += '\n' + fs.readFileSync(path.resolve(cwd, p), 'utf8'); } catch (e) { /* the write fails on it too */ }
   }
   if (new RegExp(`<!--\\s*instance-key:\\s*${key}\\s*-->`, 'i').test(text)) return 0;
