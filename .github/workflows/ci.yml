@@ -34,7 +34,9 @@ jobs:
     # missing secret red instead of a silent pass. Findings are printed redacted.
     env:
       LEAK_NAMES_JSON: ${{ secrets.LEAK_NAMES_JSON }}
-      LEAK_NAMES_REQUIRED: "1"
+      # dependabot runs get no repository secrets: no list arrives, so the requirement is off for
+      # that actor (measured 2026-10-25, PR #109); the generic checks still run.
+      LEAK_NAMES_REQUIRED: ${{ github.actor == 'dependabot[bot]' && '0' || '1' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
