@@ -122,7 +122,9 @@ opt-out and holds for that session only.
    conventions are met, and the reviewed commit IS the head. Leave a one-line comment in
    the PR saying who merged and on which two OKs. Exceptions are the instance's merge rules
    (a jointly owned core: its maintainers merge after the counter-check); releases (tag,
-   pin) stay with the repo's owner. Never with own open findings. Merge
+   pin) stay with the repo's owner. Never with own open findings, never over a request in
+   the PR body addressed to this machine ("please counter-check on macOS") that no comment
+   of this instance answered — `helpers/merge-request-gate.cjs` holds the merge. Merge
    with `--match-head-commit <reviewed sha>` in the repo's style (merge vs. squash).
    "CI green" speaks about code, never about whether the author is done.
    **A refused merge is a decision, not an obstacle:** when the permission layer refuses
