@@ -329,6 +329,9 @@ def machine(repo, core, last_date, today):
         "brain-selftest.sh": ([bash, str(S / "brain-selftest.sh"), str(repo)], 420),
         "local-machinery.py": ([py, str(S / "local-machinery.py"), "--repo", str(repo)], 120),
         "commitments.py": ([py, str(S / "commitments.py"), "--repo", str(repo), "--days", str(days)], 120),
+        # Operator corrections without a carrier line (2026-10-25): every entry of the feedback
+        # protocol since the last scan names its Traeger/Carrier, or it is a finding.
+        "lesson-carriers.py": ([py, str(S / "lesson-carriers.py"), "--repo", str(repo), "--since", str(last_date or "0000-00-00")], 60),
         # Reads every transcript of the window: here and not at the session start.
         "decision-review.py": ([py, str(S / "decision-review.py"), "--root", str(repo), "--days", str(days)], 300),
         # The only reader of the stop dispatcher's recorder logs: would a recording gate
@@ -357,6 +360,8 @@ def machine(repo, core, last_date, today):
         findings += map_lines("local-machinery", *out["local-machinery.py"], "!!", "local machinery summary:", "P1")
     if "commitments.py" in out:
         findings += map_lines("commitments", *out["commitments.py"], "loose commitment", "commitments summary:", "P2")
+    if "lesson-carriers.py" in out:
+        findings += map_lines("lesson-carriers", *out["lesson-carriers.py"], "lesson without carrier", "lesson-carriers summary:", "P2")
     if "recorder-report.py" in out:
         findings += map_lines("recorder-report", *out["recorder-report.py"], "!!", "recorder report summary:", "P2")
     if "fork-drift.py" in out:

@@ -1,0 +1,6 @@
+{
+  "_comment": "Instance data for core scripts/lesson-carriers.py: where this brain keeps its feedback protocol (the append-only record of operator corrections), which key words open the carrier line of an entry (a line of its own, e.g. `Carrier: <check, gate, script, skill or doc>` or `Carrier: prose, because <why no mechanism fits>` — the latter is a decision, a missing line is the gap), and how an entry heading looks (a regex whose first group is the date). The session-close step and the brain-scan read it. A brain that writes its protocol in another language lists that language's key word here as well.",
+  "protocol": "docs/maintenance/feedback-protocol.md",
+  "carrier_keys": ["Carrier"],
+  "entry_heading": "^## (\\d{4}-\\d{2}-\\d{2})"
+}

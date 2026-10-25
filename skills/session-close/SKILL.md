@@ -41,6 +41,17 @@ then an explicit release follows.
      it is dropped and why. The close is complete when the summary says `loose=0` or every
      remaining line is named as dropped. The brain-scan (effect-check E6) catches what a
      session without a clean close left behind.
+   - **LESSONS WITHOUT A CARRIER — none leaves the session (2026-10-25):** run
+     `python3 core/scripts/lesson-carriers.py --since <today>` (interpreter per instance rule;
+     protocol path and key words from `.claude/rules/lesson-carriers.json`, defaults built in).
+     Every line `lesson without carrier: …` is an operator correction written into the feedback
+     protocol today without saying what carries it. Per line: add the line `Traeger: <check,
+     gate, script, skill or doc>` to the entry — or `Traeger: Prosa, weil <why no mechanism
+     fits>`, which is a decision, not a gap. The close is complete when the summary says
+     `loose=0` or every remaining line is named as dropped in the close report. Why at the
+     close and not as a stop check (operator 2026-10-25): the entries are written one to three
+     times a session and the carrier question needs thought, not a block; the brain-scan
+     machine step reads every entry since the last scan.
    - **STANDING PROMISES — say per line whether the condition still holds (2026-09-12):**
      If `.claude-state/promises.jsonl` exists, read it and go through the promises made
      in this session. Each row carries the promise and what bound it. For every one:
