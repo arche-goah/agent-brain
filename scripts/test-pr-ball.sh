@@ -132,6 +132,26 @@ kexpect_line "sibling review: our comment on the other instance's PR is a look, 
 out="$(printf '%s' "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" | env -u SHARED_MEMORY_SELF "$PY" "$BALL" --now "$NOW")"
 [ -z "$out" ] && ok "no own key: login-only rule unchanged (sibling PR silent)" || bad "no own key: expected the old silence, got: $out"
 
+# 23-25. A sibling of OUR OS looked at the head: that look is ours (measured 2026-10-22 on the
+#     operator's second macOS instance, which listed all 13 PRs of the first one as "asked, not
+#     looked at yet" though that machine had reviewed them). parties.json names the OS per device;
+#     a sibling of ANOTHER OS does not settle it — the check a PR asks for is per OS.
+KMINI="$(PYTHONPATH="$ROOT/scripts" "$PY" -c 'import instance_key as k; print(k.key_for("mini"))')"
+printf '%s\n' '{"people":{"op":{"github":"acct","devices":{"mac":{"os":"macos"},"mini":{"os":"macos"},"ws":{"os":"windows"}}}}}' > "$SM/parties.json"
+kexpect_silent "sibling of our OS commented at the head: looked at for us" \
+  "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"acct"},"createdAt":"2026-09-14T10:00:00Z","body":"macOS: OK at head <!-- instance-key: '"$KMINI"' -->"}]},"reviewRequests":{"nodes":[]}}')"
+kexpect_line "sibling of ANOTHER OS commented: still our look to take" \
+  "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"acct"},"createdAt":"2026-09-14T10:00:00Z","body":"Windows: OK <!-- instance-key: '"$KWS"' -->"}]},"reviewRequests":{"nodes":[]}}')" \
+  "suite#117 review - asked, not looked at yet"
+kexpect_line "sibling of our OS looked, then a newer commit: asked again" \
+  "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T12:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"acct"},"createdAt":"2026-09-14T10:00:00Z","body":"macOS: OK <!-- instance-key: '"$KMINI"' -->"}]},"reviewRequests":{"nodes":[]}}')" \
+  "suite#117 review - new commits since your last look"
+rm -f "$SM/parties.json"
+# Negative control: no parties.json — the same sibling comment settles nothing (old reading).
+kexpect_line "no parties.json: a sibling comment is no look of ours" \
+  "$(pr acct '{"number":117,"isDraft":false,"body":"fix <!-- instance-key: '"$KWS"' -->","repository":{"name":"suite"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"acct"},"createdAt":"2026-09-14T10:00:00Z","body":"macOS: OK <!-- instance-key: '"$KMINI"' -->"}]},"reviewRequests":{"nodes":[]}}')" \
+  "suite#117 review - asked, not looked at yet"
+
 # The check was answered in the shared memory, not on the PR (measured 2026-10-11: the
 # bootup said "agent-brain#279 review - asked, not looked at yet" after the Windows check of
 # that head had been answered there). Our text naming THIS head is the look; an older head
