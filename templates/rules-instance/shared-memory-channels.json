@@ -1,0 +1,9 @@
+{
+  "_comment": "Instance data for core/scripts/shared_channels.py: further shared-memory repos ('channels') next to the default shared memory. Each is read like the default one at session start (core/helpers/shared-memory-check.sh, core/scripts/open-items.py), watched by core/scripts/collab-watch.sh with its own cursor and lock, and checked for unpushed work at close (core/helpers/session-closing.sh). Every line from a further channel carries `[<label>]`, every open-items id `<label>:`. The default shared memory (SHARED_MEMORY_REPO, default ~/Projects/brain-shared-memory) is always the first channel and is NOT listed here — its cursor, lock and ids stay as they were. A channel repo has the shared-memory format (area folders with LOG.md, parties.json at the root); write to it with core/scripts/shared-memory-post.py --repo <path>. No file, or an empty list, keeps the behaviour of a brain with one shared memory.",
+  "_fields": "label: kebab-case, unique; names the channel in the start report, its cursor and its lock (not shared-memory, start, end, wake) · repo: the local clone, may start with ~ · members (optional): who belongs, as audience tokens (device id, person:<p>, os:<o>, everyone) resolved through THAT repo's parties.json; a device that is no member neither reads nor watches the channel, so one brain repo can serve several devices in different channels. Absent = everyone who has the clone (the repo's own access is the scope) · interval (optional): seconds between polls of collab-watch, default the shared_memory interval of collab-watch.json.",
+  "channels": [],
+  "_example_channels": [
+    { "label": "devices", "repo": "~/Projects/<private-device-repo>", "members": ["person:<operator>"] },
+    { "label": "<group>", "repo": "~/Projects/<group-repo>", "members": ["<device-a>", "person:<peer>"], "interval": 60 }
+  ]
+}

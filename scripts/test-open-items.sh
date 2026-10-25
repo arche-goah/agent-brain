@@ -21,6 +21,7 @@ cp "$SRC" "$T/core/scripts/open-items.py"
 cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
 cp "$(dirname "$SRC")/project_dir.py" "$T/core/scripts/project_dir.py"
 cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
+cp "$(dirname "$SRC")/shared_channels.py" "$T/core/scripts/shared_channels.py"
 # The fake inbox prints whatever $T/inbox.txt holds — in UTF-8, like the real one (OS-9): unpinned,
 # Windows wrote the em dash of an "optional: … —" line in cp1252 and the item read differently than
 # on Linux (measured on PR #355: Windows '?', CI 'wait').

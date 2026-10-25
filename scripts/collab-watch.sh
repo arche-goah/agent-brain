@@ -6,7 +6,10 @@
 #   bash core/scripts/collab-watch.sh --dry-run      # print the plan, arm nothing
 #
 # Channels (which ones, which repos, which intervals = INSTANCE data, never in this file):
-#   shared memory      scripts/shared-memory-watch.sh  — commits from other instances/parties
+#   shared memory      scripts/shared-memory-watch.sh  — commits from other instances/parties,
+#                      once for the default shared memory and once per further channel this
+#                      instance is a member of ($SHARED_MEMORY_CHANNELS_CONFIG, default
+#                      <instance>/.claude/rules/shared-memory-channels.json; finds carry `[<label>]`)
 #   repo watches       scripts/repo-activity-watch.sh  — PRs, merges, comments, review comments
 #   parallel sessions  scripts/parallel-sessions-watch.sh — sessions joining/leaving this repo
 # Each runs under scripts/watch-supervisor.sh, so a child that dies says so.
@@ -39,7 +42,11 @@ STATE="${COLLAB_WATCH_STATE:-$INSTANCE/.claude-state/collab-watch}"
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 
-PLAN=$("$PY" "$HERE/collab-watch-plan.py" "$CONFIG" "$SCOPE") || exit $?
+# Further shared-memory channels (scripts/shared_channels.py): each gets its own cursor
+# `shared-memory-cursor-<label>.json` and its own lock dir `shared-memory-<label>/` in $STATE.
+CHANNELS="${SHARED_MEMORY_CHANNELS_CONFIG:-$INSTANCE/.claude/rules/shared-memory-channels.json}"
+
+PLAN=$("$PY" "$HERE/collab-watch-plan.py" "$CONFIG" "$SCOPE" "$CHANNELS") || exit $?
 PLAN="${PLAN//$'\r'/}"
 field() { awk -v k="$1" '$1 == k { $1 = ""; sub(/^ /, ""); print }' <<<"$PLAN"; }
 ONLY_LOGINS=$(field SCOPE_LOGINS)
@@ -103,26 +110,35 @@ trap cleanup EXIT
 trap 'exit 0' INT TERM
 
 armed=()
+# One shared-memory channel: $1 interval, $2 repo, $3 label ("" = the default shared memory,
+# whose cursor and lock keep their old names). A cursor or lock shared by two channels breaks
+# both: shared-memory-watch.sh refuses a cursor of another repo, and the second lock holder skips.
+arm_sm() {
+  local repo="${2/#\~/$HOME}" cursor="$STATE/shared-memory-cursor${3:+-$3}.json"
+  local lock="$STATE${3:+/shared-memory-$3}" name="shared-memory${3:+ [$3]}" sha
+  if [[ ! -s "$cursor" ]]; then
+    git -C "$repo" fetch -q origin main 2>/dev/null
+    sha=$(git -C "$repo" rev-parse origin/main 2>/dev/null)
+    if [[ -z "$sha" ]]; then
+      echo "ERROR: cannot read origin/main in $repo — ${name/shared-memory/shared-memory channel} NOT armed"
+      return 1
+    fi
+    printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "seeded"\n}\n' "$sha" > "$cursor"
+    echo "NOTE: $name cursor seeded at ${sha:0:8} — older commits are NOT reported"
+  fi
+  mkdir -p "$lock"
+  SHARED_MEMORY_REPO="$repo" SHARED_MEMORY_STATE="$cursor" SHARED_MEMORY_LOCK_DIR="$lock" SHARED_MEMORY_LABEL="$3" \
+    bash "$HERE/watch-supervisor.sh" "shared-memory${3:+-$3}" \
+    bash "$HERE/shared-memory-watch.sh" watch "$1" &
+  pids+=($!); armed+=("$name ${1}s")
+}
 while read -r kind a b rest; do
   case "$kind" in
-    SM)
-      repo="$b${rest:+ $rest}"
-      repo="${repo/#\~/$HOME}"
-      sm_cursor="$STATE/shared-memory-cursor.json"
-      if [[ ! -s "$sm_cursor" ]]; then
-        git -C "$repo" fetch -q origin main 2>/dev/null
-        sha=$(git -C "$repo" rev-parse origin/main 2>/dev/null)
-        if [[ -z "$sha" ]]; then
-          echo "ERROR: cannot read origin/main in $repo — shared-memory channel NOT armed"
-          continue
-        fi
-        printf '{\n  "lastSeenSha": "%s",\n  "lastCheckedAt": "seeded"\n}\n' "$sha" > "$sm_cursor"
-        echo "NOTE: shared-memory cursor seeded at ${sha:0:8} — older commits are NOT reported"
-      fi
-      SHARED_MEMORY_REPO="$repo" SHARED_MEMORY_STATE="$sm_cursor" SHARED_MEMORY_LOCK_DIR="$STATE" \
-        bash "$HERE/watch-supervisor.sh" shared-memory \
-        bash "$HERE/shared-memory-watch.sh" watch "$a" &
-      pids+=($!); armed+=("shared-memory ${a}s") ;;
+    SM) arm_sm "$a" "$b${rest:+ $rest}" "" ;;
+    CHANNEL) arm_sm "$b" "$rest" "$a" ;;
+    # A listed channel that is not armed stays visible in the watch itself, not only in --dry-run.
+    SKIP) echo "NOTE: shared-memory [$a] not watched — $b${rest:+ $rest}" ;;
+    CHANNEL_ERROR) echo "ERROR: shared-memory channels NOT watched — $a${b:+ $b}${rest:+ $rest} (fix $CHANNELS)" ;;
     REPO)
       REPO_ACTIVITY_STATE_DIR="$STATE" REPO_ACTIVITY_TAG="$a" GH_WATCH_REPOS="$rest" \
         GH_SELF_LOGIN="-" GH_ONLY_LOGINS="$(logins_for_tag "$a")" \

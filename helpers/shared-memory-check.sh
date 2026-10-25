@@ -20,6 +20,35 @@
 # which is the moment a mechanism stops being instance knowledge.
 set -uo pipefail
 
+# N CHANNELS (operator decision 2026-10-24): the default shared memory runs below exactly as
+# before; then every further channel this instance is a member of (instance file
+# .claude/rules/shared-memory-channels.json, read by scripts/shared_channels.py) runs this same
+# check once more — its own repo, its own cursor, its label on every line. No file = one run,
+# the output unchanged. A broken file is one NOT-checked line, never a silent skip.
+if [[ -z "${SHARED_MEMORY_LABEL+set}" ]]; then
+  _here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  . "$_here/../scripts/project-dir.sh"
+  _cproj="$(resolve_project_dir "$_here")"
+  _chf="${SHARED_MEMORY_CHANNELS_CONFIG:-$_cproj/.claude/rules/shared-memory-channels.json}"
+  if [[ -f "$_chf" ]]; then
+    SHARED_MEMORY_LABEL= bash "$_here/shared-memory-check.sh"
+    _py=python3; "$_py" -c 'import sys' >/dev/null 2>&1 || _py=python
+    if ! _list=$(SHARED_MEMORY_CHANNELS_CONFIG="$_chf" "$_py" "$_here/../scripts/shared_channels.py" further 2>&1); then
+      echo "shared-memory channels: NOT checked - ${_list#ERROR: } (fix $_chf)"
+      exit 0
+    fi
+    while IFS=$'\t' read -r _label _repo; do
+      [[ -n "$_label" ]] || continue
+      SHARED_MEMORY_LABEL="$_label" SHARED_MEMORY_REPO="$_repo" \
+        SHARED_MEMORY_STATE="$_cproj/.claude-state/shared-memory-state-$_label.json" bash "$_here/shared-memory-check.sh"
+    done <<<"${_list//$'\r'/}"
+    exit 0
+  fi
+fi
+# Every line names its channel; the default shared memory keeps its plain prefix.
+P="shared-memory${SHARED_MEMORY_LABEL:+ [$SHARED_MEMORY_LABEL]}"
+label_out() { if [[ -n "${SHARED_MEMORY_LABEL:-}" ]]; then sed "s/^shared-memory /$P /"; else cat; fi; }
+
 REPO="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
 # The cursor is runtime state: it lives in .claude-state/, not in config/ (a tracked
 # config/ cursor dirtied the working tree on every start — measured 2026-10-09). A brain
@@ -45,6 +74,11 @@ fi
 # repo existing on GitHub (SHARED_MEMORY_OWNER, passed by session-bootup.sh from the
 # ecosystem owner; one `gh repo view`, only on this path).
 if [[ ! -d "$REPO/.git" ]]; then
+  # A further channel was declared for this instance by name: its missing clone is never quiet.
+  if [[ -n "${SHARED_MEMORY_LABEL:-}" ]]; then
+    echo "!! $P: NOT checked — no clone at $REPO although .claude/rules/shared-memory-channels.json lists this channel for this instance; requests addressed to it are invisible. Clone the channel's repo there."
+    exit 0
+  fi
   _cw="${_proj:-}/.claude/rules/collab-watch.json"
   _why=""
   # A block whose repo is still the template's <placeholder> (or empty/null) is no declaration:
@@ -81,7 +115,7 @@ fi
 # bootup missing, three foreign commits incl. a merge OK unseen until the operator asked).
 # A check that could not look must never look like a check that found nothing.
 if ! git -C "$REPO" fetch -q origin main 2>/dev/null; then
-  echo "shared-memory: NOT checked - fetch failed (offline?). Retry: bash core/helpers/shared-memory-check.sh"
+  echo "$P: NOT checked - fetch failed (offline?). Retry: bash core/helpers/shared-memory-check.sh"
   exit 0
 fi
 
@@ -120,7 +154,7 @@ open_requests() {
   py=python3
   "$py" -c 'import sys' >/dev/null 2>&1 || py=python
   [[ -f "$inbox" ]] && "$py" -c 'import sys' >/dev/null 2>&1 || return 0
-  "$py" "$inbox" --open --repo "$REPO" --to "$REMOTE_HEAD" 2>/dev/null
+  "$py" "$inbox" --open --repo "$REPO" --to "$REMOTE_HEAD" 2>/dev/null | label_out
 }
 
 # Already current. Clean is ONE line, not silence (operator order 2026-10-05: "at least
@@ -130,7 +164,7 @@ open_requests() {
 if [[ "$LAST_SEEN" == "$REMOTE_HEAD" ]]; then
   # "nothing new" is about COMMITS only — it never means "nothing open" (2026-10-07: a first
   # reply read it that way and dropped nine open requests). The open list follows separately.
-  echo "shared-memory: nothing new since last start (about commits only — open points are listed separately, new or not)"
+  echo "$P: nothing new since last start (about commits only — open points are listed separately, new or not)"
   open_requests
   exit 0
 fi
@@ -145,9 +179,9 @@ FILES=$(git -C "$REPO" diff --name-only "$LAST_SEEN" "$REMOTE_HEAD" -- . 2>/dev/
 # names accounts, not parties — the watcher learned that on 2026-08-22. Who sent what is
 # the inbox's job below, from the `von:` fields and LOG headings.
 if [[ "$COUNT" == "1" ]]; then
-  echo "shared-memory: 1 new commit since last start — ${FILES:-see git log}"
+  echo "$P: 1 new commit since last start — ${FILES:-see git log}"
 else
-  echo "shared-memory: ${COUNT:-?} new commits since last start — ${FILES:-see git log}"
+  echo "$P: ${COUNT:-?} new commits since last start — ${FILES:-see git log}"
 fi
 
 # FRESHNESS BY TOPIC (operator order 2026-09-13). The commit count above says that
@@ -173,7 +207,7 @@ if [[ -n "$SINCE_DAY" && -f "$GEN" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; 
     END { for (k in t) printf "%s %d, ", k, t[k] }' | sed 's/, $//')
   TOTAL=$(printf '%s\n' "$FRESH" | sed -n 's/^since [0-9-]*: \([0-9]*\) entr.*/\1/p')
   if [[ -n "$TOTAL" && "$TOTAL" != "0" ]]; then
-    echo "shared-memory: $TOTAL entr$([[ "$TOTAL" == 1 ]] && echo y || echo ies) dated since $SINCE_DAY — ${BY_TOPIC:-see --since} (list: core/scripts/shared-memory-index.py --since $SINCE_DAY [--topic TOPIC])"
+    echo "$P: $TOTAL entr$([[ "$TOTAL" == 1 ]] && echo y || echo ies) dated since $SINCE_DAY — ${BY_TOPIC:-see --since} (list: core/scripts/shared-memory-index.py --since $SINCE_DAY${SHARED_MEMORY_LABEL:+ --repo $REPO} [--topic TOPIC])"
   fi
 fi
 
@@ -183,7 +217,7 @@ fi
 # SHARED_MEMORY_SELF — the main information lands in the startup message itself.
 INBOX="$(dirname "${BASH_SOURCE[0]:-$0}")/../scripts/shared-memory-inbox.py"
 if [[ -f "$INBOX" ]] && "$PY" -c 'import sys' >/dev/null 2>&1; then
-  "$PY" "$INBOX" --repo "$REPO" --from "$LAST_SEEN" --to "$REMOTE_HEAD" 2>/dev/null
+  "$PY" "$INBOX" --repo "$REPO" --from "$LAST_SEEN" --to "$REMOTE_HEAD" 2>/dev/null | label_out
 fi
 open_requests
 

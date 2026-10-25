@@ -52,6 +52,9 @@ if [[ -z "$STATE_FILE" ]]; then
 fi
 LOCK_DIR="${SHARED_MEMORY_LOCK_DIR:-$PROJECT_DIR/.claude-state}"
 LOCK="$LOCK_DIR/shared-memory-watch.pid"
+# A further shared-memory channel (scripts/shared_channels.py) names itself in every find; the
+# default shared memory prints as before. Set by collab-watch.sh next to its own cursor and lock.
+TAG="${SHARED_MEMORY_LABEL:+[$SHARED_MEMORY_LABEL] }"
 mkdir -p "$LOCK_DIR"
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
@@ -156,7 +159,7 @@ case "${1:-status}" in
         exit 1
       fi
       write_sha "$INIT"
-      echo "NOTE: no cursor found — baseline set to ${INIT:0:8}; older commits are NOT reported"
+      echo "NOTE: ${TAG}no cursor found — baseline set to ${INIT:0:8}; older commits are NOT reported"
     fi
 
     # A cursor belongs to ONE repo. Measured 2026-10-14 (Windows instance): the watcher
@@ -196,7 +199,7 @@ case "${1:-status}" in
           PULLED=$("$PY" "$HERE/shared-memory-inbox.py" --repo "$REPO" --from "$LAST_SEEN" \
                      --to "$REMOTE_HEAD" 2>/dev/null)
           if [[ -n "$PULLED" ]]; then
-            echo "FOUND: entries from others arrived with an own pull — see below"
+            echo "FOUND: ${TAG}entries from others arrived with an own pull — see below"
             printf '%s\n' "$PULLED"
           fi
           write_sha "$REMOTE_HEAD"     # cursor advances, keep watching
@@ -226,7 +229,7 @@ case "${1:-status}" in
           PARTIES=$("$PY" "$HERE/shared-memory-inbox.py" --repo "$REPO" --from "$LAST_SEEN" \
                 --to "$REMOTE_HEAD" --senders 2>/dev/null | tr -d '\r' \
             | sort -u | tr '\n' '|' | sed 's/|/, /g; s/, $//')
-          echo "FOUND: ${COUNT:-?} new commit(s) from ${PARTIES:-unknown party (no von: field)} — ${FILES:-see git log}"
+          echo "FOUND: ${TAG}${COUNT:-?} new commit(s) from ${PARTIES:-unknown party (no von: field)} — ${FILES:-see git log}"
           # What the commits SAY, not only that they exist (2026-09-25): a LOG-only
           # commit has no `von:` field, so the line above read "unknown party" for a
           # message whose heading names sender and title. Same reader as the session start.

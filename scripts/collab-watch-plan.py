@@ -12,14 +12,20 @@ never comes back, because the watchers advance their cursors before any filter s
 line). Here the data lives in ONE instance file and every rule about it is checked by
 scripts/test-collab-watch-plan.sh.
 
-Usage:  collab-watch-plan.py <config.json> <scope>
+Usage:  collab-watch-plan.py <config.json> <scope> [<shared-memory-channels.json>]
   scope = all | peers | <party label> | <party id> | <github login>   (case-insensitive)
+  The third argument is the instance's channel list (scripts/shared_channels.py): every further
+  shared-memory channel this instance is a member of is watched too, each with its own cursor
+  and lock (operator decision 2026-10-24). Absent or no such file = the default shared memory only.
 
 Output, one directive per line (parsed by collab-watch.sh):
   SCOPE_LOGINS <logins to report, space-separated, or "-" = no filter>
   SCOPE_PARTIES <shared-memory party ids to report, or "-">
   SCOPE_LABEL <human text>
   SM <interval> <repo path, verbatim, may start with ~ and contain spaces>
+  CHANNEL <label> <interval> <repo path, verbatim>   a further shared-memory channel
+  SKIP <label> <why>                                 a listed channel this instance does not watch
+  CHANNEL_ERROR <why>                                the channel file is unusable: no further channel
   REPO <tag> <interval> <owner/name> [<owner/name> ...]
   SESSIONS <interval>
 
@@ -30,8 +36,11 @@ from __future__ import annotations
 import json
 import re
 import sys
+from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # parsed by bash (OS-9)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import shared_channels  # noqa: E402
 
 TEMPLATE = "core/templates/rules-instance/collab-watch.json"
 TAG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -83,9 +92,10 @@ def resolve_scope(parties: list, scope: str):
 
 
 def main(argv: list) -> int:
-    if len(argv) != 3 or not argv[2]:
-        return die("usage: collab-watch-plan.py <config.json> <all|peers|party>", 64)
+    if len(argv) not in (3, 4) or not argv[2]:
+        return die("usage: collab-watch-plan.py <config.json> <all|peers|party> [<channels.json>]", 64)
     path, scope = argv[1], argv[2]
+    channels_file = argv[3] if len(argv) == 4 else ""
     try:
         with open(path, encoding="utf-8") as fh:
             cfg = json.load(fh)
@@ -110,6 +120,30 @@ def main(argv: list) -> int:
             if not repo or placeholder(repo):
                 raise ValueError("shared_memory.repo is empty or still a template placeholder")
             lines.append(f"SM {interval(sm, 'shared_memory')} {repo}")
+
+        # Further shared-memory channels: one line each, the cadence of the shared_memory block
+        # unless the channel names its own. A channel that lists members without this instance
+        # is not watched here, and the plan says so (a dropped channel must stay visible).
+        # A broken channel file or entry stops that channel, never the whole watch: the PR and
+        # default shared-memory lines still arm, and collab-watch.sh prints why a channel is not.
+        if channels_file:
+            dflt = sm.get("repo") if sm else None
+            try:
+                further = shared_channels.load(default=dflt, path=channels_file)[1:]
+            except ValueError as exc:
+                further = []
+                lines.append(f"CHANNEL_ERROR {exc}")
+            for c in further:
+                if not shared_channels.is_member(c):
+                    lines.append(f"SKIP {c['label']} this instance is not among its members")
+                    continue
+                try:
+                    every = interval(c, f"channel {c['label']}") if c.get("interval") is not None \
+                        else (interval(sm, "shared_memory") if sm else 30)
+                except ValueError as exc:
+                    lines.append(f"SKIP {c['label']} {exc}")
+                    continue
+                lines.append(f"CHANNEL {c['label']} {every} {c['path']}")
 
         seen_tags, seen_repos = set(), {}
         for i, w in enumerate(cfg.get("repo_watches", [])):
@@ -137,7 +171,7 @@ def main(argv: list) -> int:
         ps = cfg.get("parallel_sessions")
         if ps:
             lines.append(f"SESSIONS {interval(ps, 'parallel_sessions')}")
-        if not lines:
+        if all(line.startswith(("SKIP ", "CHANNEL_ERROR ")) for line in lines):
             raise ValueError("nothing to watch -- no shared_memory, repo_watches or parallel_sessions")
     except (ValueError, AttributeError, TypeError) as exc:
         return die(f"{path}: {exc}")

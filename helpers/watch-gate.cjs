@@ -23,7 +23,8 @@
  *
  * Fires when, in the running turn (since the operator's last prompt; harness
  * notifications are not a boundary, turn-kind.cjs):
- *   (a) a `git push` touched the shared-memory repo AND a fact file committed since the
+ *   (a) a `git push` touched the shared-memory repo (or a further shared-memory channel the
+ *       instance lists, smChannels below, then judged by that channel's own watcher) AND a fact file committed since the
  *       turn began is from this instance (`von` = SHARED_MEMORY_SELF, if set), names an
  *       `audience` other than this instance, and is not closed (`status:` answered|done|
  *       decided|info|closed — the inbox reader's closed set, so `status: info` is the
@@ -336,8 +337,31 @@ function stateDirs(root) {
 }
 
 // A liveness that cannot be measured counts as watched: the gate fails open (header).
-function smWatched(root) {
-  return anyAlive(stateDirs(root).sm.map((d) => path.join(d, 'shared-memory-watch.pid'))) !== false;
+// A further shared-memory channel is watched by collab-watch under <state>/shared-memory-<label>/.
+function smWatched(root, label) {
+  const dirs = label ? stateDirs(root).collab.map((d) => path.join(d, `shared-memory-${label}`)) : stateDirs(root).sm;
+  return anyAlive(dirs.map((d) => path.join(d, 'shared-memory-watch.pid'))) !== false;
+}
+
+/**
+ * The shared-memory channels (scripts/shared_channels.py reads the same file): the default shared
+ * memory first, then every further channel the instance lists. Case (a) holds for each — an answer
+ * pushed into a device channel waits on another device just as one in the default shared memory
+ * does. Membership is not asked: a push into a channel is this instance's own act.
+ */
+function smChannels(root) {
+  const out = [{ label: '', repo: process.env.SHARED_MEMORY_REPO || path.join(require('os').homedir(), 'Projects', 'brain-shared-memory') }];
+  let cfg;
+  try {
+    cfg = JSON.parse(fs.readFileSync(process.env.SHARED_MEMORY_CHANNELS_CONFIG
+      || path.join(root, '.claude', 'rules', 'shared-memory-channels.json'), 'utf8'));
+  } catch (e) { return out; }
+  for (const c of Array.isArray(cfg && cfg.channels) ? cfg.channels : []) {
+    if (c && typeof c.label === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(c.label) && typeof c.repo === 'string' && !/<[^>]*>/.test(c.repo)) {
+      out.push({ label: c.label, repo: expandHome(c.repo) });
+    }
+  }
+  return out;
 }
 
 /**
@@ -362,8 +386,11 @@ function standingWatched(root, calls) {
   const locks = [];
   for (const dir of stateDirs(root).collab) {
     try {
-      fs.readdirSync(dir).filter((f) => /^(?:repo-activity.*|shared-memory-watch)\.pid$/.test(f))
-        .forEach((f) => locks.push(path.join(dir, f)));
+      for (const f of fs.readdirSync(dir)) {
+        if (/^(?:repo-activity.*|shared-memory-watch)\.pid$/.test(f)) locks.push(path.join(dir, f));
+        // a further shared-memory channel keeps its lock in a dir of its own
+        else if (/^shared-memory-[a-z0-9][a-z0-9-]*$/.test(f)) locks.push(path.join(dir, f, 'shared-memory-watch.pid'));
+      }
     } catch (e) { /* dir absent */ }
   }
   return locks.length > 0 && anyAlive(locks) !== false;
@@ -549,15 +576,19 @@ function main(input) {
   // Each finding: its text, and whether a close entry's open-end lines cover it (null = never).
   const missing = [];
 
-  const repo = process.env.SHARED_MEMORY_REPO || path.join(require('os').homedir(), 'Projects', 'brain-shared-memory');
-  const repoName = path.basename(repo);
-  const smPush = shell.some((c) => /\bgit\b[\s\S]*\bpush\b/.test(c.cmd) && c.cmd.includes(repoName));
-  if (smPush && fs.existsSync(repo)) {
+  for (const { label, repo } of smChannels(root)) {
+    const repoName = path.basename(repo);
+    const smPush = shell.some((c) => /\bgit\b[\s\S]*\bpush\b/.test(c.cmd) && c.cmd.includes(repoName));
+    if (!smPush || !fs.existsSync(repo)) continue;
     const files = awaiting(repo, since);
-    if (files.length && !smWatched(root)) {
-      missing.push({ text: `shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
-        + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 60", timeout_ms: 1800000}) '
-        + '(or collab-watch); mark a pure report `status: info`',
+    if (files.length && !smWatched(root, label)) {
+      missing.push({ text: label
+        ? `shared-memory [${label}]: ${files.slice(0, 3).join(', ')} waits on another party — arm `
+          + 'Monitor({command: "bash core/scripts/collab-watch.sh", timeout_ms: 1800000}) (it watches every channel); '
+          + 'mark a pure report `status: info`'
+        : `shared-memory: ${files.slice(0, 3).join(', ')} waits on another party — arm `
+          + 'Monitor({command: "bash core/scripts/shared-memory-watch.sh watch 60", timeout_ms: 1800000}) '
+          + '(or collab-watch); mark a pure report `status: info`',
       covered: (ends) => files.every((f) => listed(ends, [path.basename(f).replace(/\.md$/, '')])) });
     }
   }

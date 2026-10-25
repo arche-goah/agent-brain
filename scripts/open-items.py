@@ -28,7 +28,9 @@ usually starts for another reason. So the first reply SPLITS them by who has to 
 
 This script is the ONE list of open points at session start:
   * open shared-memory requests addressed to this instance (shared-memory-inbox --open,
-    no cursor, no age window), and every open PR under the ecosystem owner;
+    no cursor, no age window) — in the default shared memory and in every further channel the
+    instance is a member of (scripts/shared_channels.py; such an item's id and ref start with
+    `<label>:`) — and every open PR under the ecosystem owner;
   * per item a class — automatic where the data says it (`circle:` A/C = ai, B/D/E/F =
     human; a request addressed to a human by name = human; a PR = ai), otherwise the
     agent classifies it ONCE (`--classify`), kept per machine in
@@ -81,6 +83,7 @@ sys.path.insert(0, str(HERE))
 from instance_key import is_self, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
 from shared_answers import checked_head, default_repo, own_shared_shas  # noqa: E402
+import shared_channels  # noqa: E402
 OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*"
                   r"\(([^()]+\.md|(?:[\w.-]+/)?LOG@\d{4}-\d{2}-\d{2}#\d+)\)\s*$")
@@ -119,10 +122,13 @@ def save_json(path, data):
         return False
 
 
-def requests(repo):
-    """[] = read and empty, None = could not read. Not cloned = not taking part = []."""
+def requests(repo, label=""):
+    """[] = read and empty, None = could not read. Not cloned = not taking part = [] — for the
+    default shared memory. A further channel (`label`, scripts/shared_channels.py) was declared
+    by the instance, so its missing clone is a failed read; its ids carry `<label>:` so the
+    same area and LOG position in two repos never share a class or a counter."""
     if not (Path(repo) / ".git").is_dir():
-        return []
+        return None if label else []
     rc, out = run([sys.executable, str(HERE / "shared-memory-inbox.py"), "--open", "--repo", repo,
                    "--days", NO_WINDOW, "--max", "100000"])
     if rc != 0:
@@ -148,9 +154,10 @@ def requests(repo):
         # 40 characters of its words — the root of 15 fixes in 7 days (collisions, cuts at a
         # blank, a second entry inheriting the first one's class).
         is_log = "LOG@" in rel
-        items.append({"id": rel, "kind": "request",
+        key = f"{label}:{rel}" if label else rel
+        items.append({"id": key, "kind": "request",
                       "date": date, "who": von.strip(), "text": text[:100], "scope": topic,
-                      "ref": rel, "file": "" if is_log else rel})
+                      "ref": key, "file": "" if is_log else rel, "repo": repo})
         # A request we are not asked first for, or one to everyone (shared-memory-parties.py
         # priority): listed, but as a hint — information, not a duty (operator 2026-10-13).
         q = OPTIONAL.match(text)
@@ -243,7 +250,7 @@ def pr_search(owner, extra=()):
     return " ".join(f"user:{o}" for o in names) + " is:pr is:open archived:false"
 
 
-def prs(owner, owners, repo=None, extra=()):
+def prs(owner, owners, repos=(None,), extra=()):
     # No owner = the source was never asked. Measured 2026-10-09: a run without --owner said
     # "nothing open (requests and PRs both read)" while twelve PRs were open.
     if not owner:
@@ -264,7 +271,8 @@ def prs(owner, owners, repo=None, extra=()):
     except (ValueError, KeyError, TypeError):
         return None
     items = []
-    shas = own_shared_shas(repo)
+    # A check answered in any channel we read counts (a device channel carries such answers too).
+    shas = set().union(*(own_shared_shas(r) for r in repos))
     for p in rows:
         if not p.get("number"):
             continue
@@ -377,8 +385,10 @@ CIRCLE_WORDS = {"A": "the AI handles it alone", "B": "needs the operator's own d
 
 
 def front(it, repo):
-    """The frontmatter of a request's file at origin/main ('' without a file), read once."""
+    """The frontmatter of a request's file at origin/main ('' without a file), read once — in the
+    repo of the channel the item came from."""
     if "front" not in it:
+        repo = it.get("repo") or repo
         rc, blob = run(["git", "-C", repo, "show", f"origin/main:{it['file']}"]) if it.get("file") else (1, "")
         it["front"] = blob.split("\n---", 1)[0] if rc == 0 else ""
     return it["front"]
@@ -532,13 +542,19 @@ def lookup(store, it):
 PR_ID = re.compile(r"^[\w.-]+#\d+$")
 
 
-def classify(args, cls_file, repo):
+def channel_requests(chans):
+    """(channel, requests) per channel; the default shared memory carries no label."""
+    return [(c, requests(c["repo"], "" if c["default"] else c["label"])) for c in chans]
+
+
+def classify(args, cls_file, chans):
     """Store the agent's class per id. A request id that matches no open request is refused:
     measured 2026-10-10, two calls with the printed short ref of a LOG entry said
     "classified" and the item stayed '?'. PR ids are not checked (that needs the PR search)."""
     store = load_json(cls_file, {})
     today = datetime.date.today().isoformat()
-    req = requests(repo)
+    reads = [r for _, r in channel_requests(chans)]
+    req = None if any(r is None for r in reads) else [i for r in reads for i in r]
     known = None if req is None else ({i["id"] for i in req}
                                       | {i["ref"].rsplit("/", 1)[-1] for i in req if i.get("file")})
     specs = []
@@ -584,8 +600,14 @@ def main():
     root = Path(a.root)
     state_dir = root / ".claude-state"
     seen_file, cls_file = state_dir / "open-items-seen.json", state_dir / "open-items-class.json"
+    # The default shared memory, then every further channel this instance is a member of
+    # (scripts/shared_channels.py). A broken channel file reads the default alone and says so.
+    try:
+        chans, chan_error = shared_channels.member_channels(root, a.repo), ""
+    except ValueError as e:
+        chans, chan_error = [shared_channels.default_channel(a.repo)], str(e)
     if a.classify:
-        return classify(a.classify, cls_file, a.repo)
+        return classify(a.classify, cls_file, chans)
 
     hook = {}
     if a.hook_input.strip():
@@ -624,12 +646,17 @@ def main():
             return True
         return False
 
-    req, pr = requests(a.repo), prs(a.owner, cfg.get("owners") or {}, a.repo, cfg.get("pr_owners") or [])
+    reads = channel_requests(chans)
+    req = reads[0][1]
+    pr = prs(a.owner, cfg.get("owners") or {}, [c["repo"] for c in chans], cfg.get("pr_owners") or [])
     ses = sessions(root, a.hook_input)
-    failed = [name for name, v in (("shared-memory requests", req),
-                                   ("PR search" if a.owner else "PRs (no owner given)", pr),
-                                   ("session audit", ses)) if v is None]
-    items = (req or []) + (pr or []) + (ses or []) + wake_items(rules, pr, a.repo)
+    failed = [name for name, v in ([("shared-memory requests" + ("" if c["default"] else f" [{c['label']}]"), r)
+                                    for c, r in reads]
+                                   + [("PR search" if a.owner else "PRs (no owner given)", pr),
+                                      ("session audit", ses)]) if v is None]
+    if chan_error:
+        failed.append(f"shared-memory channels ({chan_error})")
+    items = [i for _, r in reads for i in r or []] + (pr or []) + (ses or []) + wake_items(rules, pr, a.repo)
 
     today = now.date().isoformat()
     keep = {}
@@ -675,11 +702,16 @@ def main():
             it["cls"], it["why"] = "standing", f"standing approval '{c['name']}', granted {c['granted']}"
         if it["wait"]:
             it["cls"] = "wait"
-    # A source that failed keeps its old counters — a failed read is not "handled".
+    # A source that failed keeps its old counters — a failed read is not "handled". A further
+    # channel's ids carry `<label>:`; with the channel file unreadable, every such id is kept.
+    labels = tuple(f"{c['label']}:" for c in chans[1:])
+    lost = tuple(f"{c['label']}:" for c, r in reads[1:] if r is None)
     for k, v in old.items():
         is_ses = k.startswith(("start:", "end:"))
-        if k not in keep and ((req is None and "#" not in k and not is_ses) or (pr is None and "#" in k)
-                              or (ses is None and is_ses)):
+        chan = ":" in k and not k.startswith(("start:", "end:", "wake:"))
+        if k not in keep and ((req is None and "#" not in k and not is_ses and not k.startswith(labels))
+                              or k.startswith(lost) or (chan_error and chan)
+                              or (pr is None and "#" in k) or (ses is None and is_ses)):
             keep[k] = v
     # Only the bootup (a real session id) writes the counter. Measured 2026-10-09: a hand run
     # with a skipped PR source rewrote the file and dropped every item's history.
