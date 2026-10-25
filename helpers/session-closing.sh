@@ -102,6 +102,25 @@ if [ -d "$SM_REPO/.git" ]; then
       "$sm_dirty" "$sm_unpushed" >> .claude/HANDOFF.md
   fi
 fi
+# 2a) every further shared-memory channel this instance is a member of (operator decision
+# 2026-10-24, scripts/shared_channels.py): a message to another device that never left this
+# machine is the same failure. One FAIL line per channel; no channel file = nothing here.
+ch_cfg="${SHARED_MEMORY_CHANNELS_CONFIG:-$R/.claude/rules/shared-memory-channels.json}"
+if [ -f "$ch_cfg" ]; then
+  PY=python3
+  "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+  SHARED_MEMORY_CHANNELS_CONFIG="$ch_cfg" "$PY" "$HERE/../scripts/shared_channels.py" further 2>/dev/null | tr -d '\r' \
+    | while IFS="$(printf '\t')" read -r ch_label ch_repo; do
+    [ -d "$ch_repo/.git" ] || continue
+    ch_d=$(git -C "$ch_repo" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    ch_u=$(git -C "$ch_repo" log --branches --not --remotes --oneline 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${ch_d:-0}" -gt 0 ] || [ "${ch_u:-0}" -gt 0 ]; then
+      echo "FAIL shared-memory [$ch_label]: ${ch_d} uncommitted file(s), ${ch_u} unpushed commit(s) in $ch_repo — nothing in there has reached the other members; commit and push before the session ends, or say why not"
+      printf '\n## Shared memory [%s]: NOT delivered\n%s uncommitted, %s unpushed — the other members read none of it.\n' \
+        "$ch_label" "$ch_d" "$ch_u" >> .claude/HANDOFF.md
+    fi
+  done
+fi
 
 # 2b) neighbour repos — the brain's commit gate saw ONE working tree, while the rules send
 # every tool change to a suite repo next to it ("commits go THERE"). Coherence-scan

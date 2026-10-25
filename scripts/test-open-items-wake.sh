@@ -22,6 +22,7 @@ cp "$SRC" "$T/core/scripts/open-items.py"
 cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
 cp "$(dirname "$SRC")/project_dir.py" "$T/core/scripts/project_dir.py"
 cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
+cp "$(dirname "$SRC")/shared_channels.py" "$T/core/scripts/shared_channels.py"
 printf '%s\n' 'print("shared-memory open requests to this instance: 0")' > "$T/core/scripts/shared-memory-inbox.py"
 
 # A real git repo standing in for the shared memory, read at origin/main like the real one.

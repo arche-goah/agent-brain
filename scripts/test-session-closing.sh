@@ -62,6 +62,24 @@ out="$(cd "$BRAIN" && CLAUDE_PROJECT_DIR="$BRAIN" SHARED_MEMORY_REPO="$TMP/nowhe
 hasnt "no FAIL line without a shared repo" "FAIL shared-memory" "$out"
 hasnt "and no shared field in the log line" "shared=" "$(tail -1 "$BRAIN/.claude-state/session-log-pending.md")"
 
+echo "a further shared-memory channel (shared_channels.py): its undelivered work is named with its label"
+# OS-3: the channel file and the repo inside it are read by python, a native process.
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
+CHAN="$TMP/chan"
+git_q init -q --bare "$TMP/chan.git"
+git_q -C "$TMP" clone -q "$TMP/chan.git" chan
+: > "$CHAN/seed.md"; git_q -C "$CHAN" add -A; git_q -C "$CHAN" commit -qm seed; git_q -C "$CHAN" push -q -u origin HEAD:main
+printf '{"channels": [{"label": "devices", "repo": "%s"}]}\n' "$(native "$CHAN")" > "$TMP/channels.json"
+run_chan() { (cd "$BRAIN" && CLAUDE_PROJECT_DIR="$BRAIN" SHARED_MEMORY_REPO="$SHARED" \
+  SHARED_MEMORY_CHANNELS_CONFIG="$(native "$TMP/channels.json")" bash "$CLOSING" 2>&1 </dev/null); }
+out="$(run_chan)"
+hasnt "a clean channel is silent" "FAIL shared-memory [devices]" "$out"
+echo "draft" > "$CHAN/draft.md"
+out="$(run_chan)"
+has   "an uncommitted entry in the channel is named with its label" "FAIL shared-memory [devices]: 1 uncommitted file(s)" "$out"
+has   "  ... and HANDOFF says it was not delivered" "Shared memory [devices]: NOT delivered" "$(cat "$BRAIN/.claude/HANDOFF.md")"
+hasnt "  ... while the clean default shared memory stays silent" "FAIL shared-memory:" "$out"
+
 # --- invariant (2026-09-13): after the close commit no hook touches a tracked file -------
 # Measured on two machines: the hook's line after the commit carried `last:`/`uncommitted=`
 # and so never matched the skill's line, and the tree was dirty at every session start.

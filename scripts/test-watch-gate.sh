@@ -145,6 +145,24 @@ live_lock "$R/.claude-state/shared-memory-watch.pid"
 check "LOG request with a live watcher" "$T/t1.jsonl" allow "$R"
 rm -rf "$R/.claude-state"
 
+# --- a further shared-memory channel (shared_channels.py, 2026-10-24): case (a) holds for a push
+# into it, and only that channel's own watcher (collab-watch: <state>/shared-memory-<label>/) counts
+DEV="$T/devices-repo"; git init -q "$DEV"; mkdir -p "$DEV/core"
+git -C "$DEV" config user.email t@t; git -C "$DEV" config user.name t; git -C "$DEV" config core.autocrlf false
+{ echo '---'; echo 'name: x'; echo 'metadata:'; echo '  von: ws'; echo '  audience: mac'; echo '---'; echo body; } > "$DEV/core/ask.md"
+git -C "$DEV" add -A; git -C "$DEV" commit -q -m ask
+mkdir -p "$R/.claude/rules"
+printf '{"channels": [{"label": "devices", "repo": "%s"}]}\n' "$(native "$DEV")" > "$R/.claude/rules/shared-memory-channels.json"
+fresh   # the default shared memory has nothing new in this turn
+{ user "go"; tool Bash "git -C $(native "$DEV") push -q"; asst "posted"; } > "$T/d1.jsonl"
+check "request pushed into a further channel, no watcher" "$T/d1.jsonl" block "$R"
+live_lock "$R/.claude-state/shared-memory-watch.pid"
+check "  ... the default channel's watcher does not cover it" "$T/d1.jsonl" block "$R"
+live_lock "$R/.claude-state/collab-watch/shared-memory-devices/shared-memory-watch.pid"
+check "  ... its own watcher inside collab-watch does" "$T/d1.jsonl" allow "$R"
+rm -rf "$R/.claude-state" "$R/.claude"
+fresh; logentry "ws — AN mac: please run the fixture"   # the state the cases below expect
+
 # --- PR side
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "PR #1"; } > "$T/p1.jsonl"
 check "PR created, no watch" "$T/p1.jsonl" block "$R"
