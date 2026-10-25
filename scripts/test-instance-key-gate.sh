@@ -39,6 +39,9 @@ probe "create, --body-file without key" "gh pr create --head x --title t --body-
 # `~` in --body-file: the shell expands it, so the gate must too — else the file stays unread and
 # the key in it is never seen (2026-10-18, Windows instance). HOME points at the fixture.
 HOME="$T" USERPROFILE="$T" probe "create, key in --body-file ~/<file>" "gh pr create --head x --title t --body-file ~/body.md" allow
+# A Git Bash path (`/c/...`, `/tmp/...`): the shell reads it, node on Windows did not (2026-10-14).
+# Elsewhere the POSIX path is the native one, so the case runs on every OS.
+probe "create, key in --body-file as a POSIX path" "gh pr create --head x --title t --body-file $T/body.md" allow
 probe "issue comment without key" "gh issue comment 9 -R o/r --body hi" block
 probe "review --approve without a body" "gh pr review 5 -R o/r --approve" block
 probe "merge with a marker comment is not a post" "gh pr merge 5 -R o/r --squash # MECHANISM-OK: x" allow
