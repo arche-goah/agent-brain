@@ -21,10 +21,30 @@
 #   4. HEAD is the pushed origin/main state (a release tags shared history,
 #      never a local variant)
 #   5. no competing open release PR (needs gh; skipped LOUDLY when unavailable)
+# Readiness of the STRAND (operator order 2026-10-25, after eight core tags in fifteen days
+# and a second beta on one day: "collect cleanly until a pin-worthy state has gathered";
+# the carrier "must test more than twice a day — pin maturity of the PRs, expected incoming
+# contributions"). A tag is a delivery, never the close of a merge; "the strand is closed"
+# was true every evening, so these checks measure it instead of asking:
+#   6. main is QUIET: the newest commit on origin/main is older than RELEASE_QUIET_HOURS
+#      (default 24) — a strand that still moves is not collected
+#   7. no open pull request (drafts excluded) — an open PR is an expected contribution
+#   8. nothing announced in the shared memory for this repo's topic: no entry with
+#      `status: open` under <shared repo>/<topic>/ (RELEASE_TOPIC, default from the repo
+#      name: agent-brain -> core, <x>-suite -> <x>; SHARED_MEMORY_REPO, default
+#      ~/Projects/brain-shared-memory; no clone = said, not green)
+#   9. every PR merged since the previous tag carries BOTH OS proofs in its thread: a body
+#      or comment with an instance key that says macOS, and one that says Windows
+#  10. the consumer is named: RELEASE_CONSUMER="<who gets this tag and why now>"
+# Earlier than the strand allows ONLY on the operator's word: RELEASE_EARLY_OK="<quote> <YYYY-MM-DD>"
+# (a quotation in quote marks plus the date it was said) lets 6, 7 and 8 pass and prints the
+# quote; 9 and 10 are never waived. Measured on the real case: v2.0.4 was cut 29 minutes
+# after the last merge with eight PRs opened half an hour later — 6 and 7 would have refused it.
 # CI mode runs 1, 2 and 2b against the checked-out tag — a broken tag turns red on the
 # repo page instead of failing silently on the next consumer update.
 #
-# Env: RELEASE_PREFLIGHT_ROOT overrides the repo root (tests).
+# Env: RELEASE_PREFLIGHT_ROOT overrides the repo root (tests); RELEASE_QUIET_HOURS,
+# RELEASE_TOPIC, SHARED_MEMORY_REPO, RELEASE_CONSUMER, RELEASE_EARLY_OK as above.
 set -uo pipefail
 
 # Resolve the Python interpreter: the python.org installer on Windows ships ONLY
@@ -112,6 +132,113 @@ if [ "$MODE" = "local" ]; then
     fi
   else
     note "gh not available — competing-release-PR check NOT run (counts as unchecked, not as green)"
+  fi
+
+  # --- readiness of the strand (6-10) ---------------------------------------------------
+  EARLY="${RELEASE_EARLY_OK:-}"
+  early_ok=0
+  if [ -n "$EARLY" ]; then
+    # the operator's word in checkable form: quote marks around words, plus the date it was said
+    if printf '%s' "$EARLY" | grep -qE '["“„].+["”“]' && printf '%s' "$EARLY" | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}'; then
+      early_ok=1; note "RELEASE_EARLY_OK carries the operator's word: $EARLY — checks 6-8 pass on it, 9 and 10 still run"
+    else
+      note "RELEASE_EARLY_OK set but it is no quotation with a date (\"…\" YYYY-MM-DD) — ignored, a paraphrase is not the operator's word"
+    fi
+  fi
+
+  # 6. quiet main
+  QH="${RELEASE_QUIET_HOURS:-24}"
+  LAST_TS="$(git -C "$ROOT" log -1 --format=%ct origin/main 2>/dev/null || echo 0)"
+  NOW_TS="$(date +%s)"
+  AGE_H=$(( (NOW_TS - LAST_TS) / 3600 ))
+  if [ "$early_ok" = 1 ]; then
+    ok "main quiet for ${AGE_H} h — waived by the operator's word"
+  elif [ "$LAST_TS" != 0 ] && [ "$AGE_H" -ge "$QH" ]; then
+    ok "main quiet for ${AGE_H} h (floor ${QH} h) — the strand has settled"
+  else
+    bad "main moved ${AGE_H} h ago (floor ${QH} h) — the strand is still collecting; a tag is a delivery, not the close of a merge"
+  fi
+
+  # 7. open pull requests = expected contributions
+  if command -v gh >/dev/null 2>&1; then
+    OPEN_PRS="$(cd "$ROOT" && gh pr list --state open --json number,isDraft --jq '[.[] | select(.isDraft | not) | .number] | join(" ")' 2>/dev/null || echo "?")"
+    if [ "$OPEN_PRS" = "?" ]; then
+      note "gh query failed — open-PR check NOT run (counts as unchecked, not as green)"
+    elif [ -z "$OPEN_PRS" ]; then
+      ok "no open pull request"
+    elif [ "$early_ok" = 1 ]; then
+      ok "open PR(s) #${OPEN_PRS// / #} — waived by the operator's word"
+    else
+      bad "open PR(s) #${OPEN_PRS// / #} — expected contributions; merge or close them, then collect"
+    fi
+  else
+    note "gh not available — open-PR check NOT run (counts as unchecked, not as green)"
+  fi
+
+  # 8. nothing announced in the shared memory for this repo's topic
+  SHARED="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
+  base="$(basename "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$ROOT")")"
+  case "$base" in agent-brain) dtopic=core ;; *-suite) dtopic="${base%-suite}" ;; *) dtopic="$base" ;; esac
+  TOPIC="${RELEASE_TOPIC:-$dtopic}"
+  if [ -d "$SHARED/$TOPIC" ]; then
+    # the generated OPEN.md already settles entries answered elsewhere (answers:/closes:); without
+    # it, the raw status fields of the files decide
+    if [ -f "$SHARED/$TOPIC/OPEN.md" ]; then
+      ANN_N="$(grep -aoE '^[0-9]+ open entr' "$SHARED/$TOPIC/OPEN.md" | grep -aoE '^[0-9]+' | head -1)"
+      ANN="$(grep -aoE '\[[^]]+\]' "$SHARED/$TOPIC/OPEN.md" | head -5 | tr '\n' ' ')"
+    else
+      ANN="$(grep -alE '^  status: open$' "$SHARED/$TOPIC"/*.md 2>/dev/null | sed 's|.*/||' | head -5 | tr '\n' ' ')"
+      ANN_N="$(grep -lE '^  status: open$' "$SHARED/$TOPIC"/*.md 2>/dev/null | wc -l | tr -d ' ')"
+    fi
+    ANN_N="${ANN_N:-0}"
+    if [ "$ANN_N" = 0 ]; then
+      ok "nothing open in the shared memory under $TOPIC/"
+    elif [ "$early_ok" = 1 ]; then
+      ok "$ANN_N open entr(y|ies) under $TOPIC/ — waived by the operator's word"
+    else
+      bad "$ANN_N open entr(y|ies) in the shared memory under $TOPIC/ (announced or awaited contributions): ${ANN}— answer or close them, then collect"
+    fi
+  else
+    note "no shared-memory clone at $SHARED/$TOPIC — announced-contributions check NOT run (counts as unchecked, not as green)"
+  fi
+
+  # 9. both OS proofs on every PR merged since the previous tag — pin maturity
+  PREV="$(git -C "$ROOT" describe --tags --abbrev=0 origin/main 2>/dev/null || true)"
+  if [ -n "$PREV" ]; then RANGE="$PREV..origin/main"; else RANGE="origin/main"; fi
+  PRS="$(git -C "$ROOT" log --format=%s "$RANGE" 2>/dev/null | grep -oE 'Merge pull request #[0-9]+|\(#[0-9]+\)$' | grep -oE '[0-9]+' | sort -un | tr '\n' ' ')"
+  if [ -z "$PRS" ]; then
+    ok "no PR merged since ${PREV:-the first commit} — nothing to prove"
+  elif command -v gh >/dev/null 2>&1; then
+    missing=""
+    for n in $PRS; do
+      # one base64 line per text (body, each comment): the key test and the OS words are read
+      # HERE, per text, so a comment that says "Windows" without a key never counts
+      B64="$(cd "$ROOT" && gh pr view "$n" --json body,comments --jq '([.body] + [.comments[].body]) | .[] | @base64' 2>/dev/null || echo "?")"
+      if [ "$B64" = "?" ]; then missing="$missing #$n(unreadable)"; continue; fi
+      has_mac=0; has_win=0
+      while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        txt="$(printf '%s' "$line" | base64 -d 2>/dev/null || true)"
+        printf '%s' "$txt" | grep -q 'instance-key:' || continue
+        printf '%s' "$txt" | grep -qi 'macos' && has_mac=1
+        printf '%s' "$txt" | grep -qi 'windows' && has_win=1
+      done <<< "$B64"
+      [ "$has_mac" = 1 ] && [ "$has_win" = 1 ] || missing="$missing #$n($( [ "$has_mac" = 1 ] && echo "no Windows" || { [ "$has_win" = 1 ] && echo "no macOS" || echo "neither"; } ))"
+    done
+    if [ -z "$missing" ]; then
+      ok "every PR since ${PREV:-the start} carries a macOS and a Windows proof (${PRS% })"
+    else
+      bad "PR(s) without both OS proofs in the thread:$missing — a tag ships only what was checked on both"
+    fi
+  else
+    note "gh not available — OS-proof check NOT run (counts as unchecked, not as green)"
+  fi
+
+  # 10. the consumer is named
+  if [ -n "${RELEASE_CONSUMER:-}" ]; then
+    ok "consumer named: ${RELEASE_CONSUMER}"
+  else
+    bad "no consumer named — set RELEASE_CONSUMER=\"<who gets this tag and why now>\"; a tag nobody pulls is noise"
   fi
 fi
 
