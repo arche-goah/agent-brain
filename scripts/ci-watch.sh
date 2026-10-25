@@ -442,7 +442,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
   # 50 runs of the whole repo: on a day with many PR runs the watched commit's runs fell
   # out of that window, the watch saw "none" and waited out its timeout (measured 2026-10-14).
   if ! ghq api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
-        --jq '[.workflow_runs[] | {headBranch: .head_branch, headSha: .head_sha, status: .status, conclusion: .conclusion, name: .name}]'; then
+        --jq '[.workflow_runs[] | {headBranch: .head_branch, headSha: .head_sha, status: .status, conclusion: .conclusion, name: .name, event: .event}]'; then
     json="$gh_out$gh_err"
     # One failed call is weather, not a verdict (measured 2026-10-13: an HTTP 504 on the
     # first poll ended a watch on main as UNKNOWN while the run was green; pr mode already
@@ -461,8 +461,17 @@ ref, sha = sys.argv[1], sys.argv[2]
 # A bare commit sha is no branch name: matching headBranch == ref never hit, and the watch
 # waited out its timeout (measured 2026-10-09). A ref that IS the resolved commit matches by sha.
 bare = len(ref) >= 7 and all(c in "0123456789abcdef" for c in ref.lower()) and sha.startswith(ref.lower())
+# A run triggered by a COMMENT (issue_comment, review events, discussions) carries the head sha
+# of the default branch, not of what it reacts to: measured 2026-10-22/23 on the core, 15 such
+# runs attached to one main commit over four hours, and the watch armed after that merge saw a
+# fresh in_progress run of the tip whenever someone commented on any PR — no verdict in 1800 s
+# while the push run had been green since minute one. The verdict belongs to the runs the
+# commit itself started; comment-triggered runs are noise on it.
+NOISE = {"issue_comment", "pull_request_review", "pull_request_review_comment",
+         "discussion", "discussion_comment"}
 runs = [r for r in json.load(sys.stdin)
-        if r.get("headSha") == sha and (bare or r.get("headBranch") == ref)]
+        if r.get("headSha") == sha and (bare or r.get("headBranch") == ref)
+        and r.get("event") not in NOISE]
 if not runs:
     print("none - -")
 elif any(r.get("status") != "completed" for r in runs):
