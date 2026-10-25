@@ -165,7 +165,7 @@ with tempfile.TemporaryDirectory() as d:
     (old / "scripts").mkdir(parents=True)
     _, summ, _, mach, _ = run(b, core=old)
     na = [f for f in mach["findings"] if f["title"].startswith("not available in this core checkout")]
-    check(len(na) == 1 and all(n in na[0]["title"] for n in ("local-machinery.py", "commitments.py", "brain-selftest.sh")),
+    check(len(na) == 1 and all(n in na[0]["title"] for n in ("local-machinery.py", "commitments.py", "lesson-carriers.py", "brain-selftest.sh")),
           "an old core: ONE 'not available' line naming the missing scripts")
 
     stub = Path(d) / "stubcore"
@@ -173,6 +173,9 @@ with tempfile.TemporaryDirectory() as d:
           "print('!! shadow: scripts/x.py has the name of a core script')\nprint('local machinery summary: shadow=1')\n")
     write(stub / "scripts/commitments.py",
           "print('loose commitment: from now on I do X')\nprint('commitments summary: found=1 carried=0 loose=1')\n")
+    write(stub / "scripts/lesson-carriers.py",
+          "print('lesson without carrier: 2026-10-25 — a correction without a mechanism')\n"
+          "print('lesson-carriers summary: entries=1 carried=0 loose=1')\n")
     write(stub / "scripts/fork-drift.py",
           "print('!! fork pal/core branch fix/lost (no PR, last commit 2026-09-01): 1 commit(s) not in the core')\n"
           "print('fork drift summary: 1 fork(s) of org/core, 1 finding(s)')\n")
@@ -196,6 +199,7 @@ with tempfile.TemporaryDirectory() as d:
     has = lambda sev, part: any(s == sev and part in t for t, s in T.items())
     check(has("P1", "local-machinery: !! shadow"), "a loud local-machinery line is a P1 finding")
     check(has("P2", "commitments: loose commitment"), "a loose commitment is a P2 finding")
+    check(has("P2", "lesson-carriers: lesson without carrier"), "a lesson without a carrier is a P2 finding")
     check(has("P1", "brain-selftest failed: !!  fixture x failed"), "a failing self-test is P1 with its line")
     check(has("P1", "effect-check E3") and has("OK", "effect-check E1"), "effect-check ROT -> P1, OK lines summarised")
     check(not any("E6" in t for t in T), "effect-check E6 is not doubled when commitments ran directly")
