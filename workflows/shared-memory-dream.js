@@ -15,11 +15,22 @@ export const meta = {
 // instance, never into the shared repo: it names who wrote what and what looks
 // contradictory, which is exactly the kind of judgment that should not land in a
 // repo the other party reads before they have seen it.
+// Path args the way the agents' shell keeps them: a Windows path with backslashes reached Git Bash
+// unquoted and lost every separator (measured 2026-10-09: a brain-scan wrote into a junk folder in the
+// brain root; os-traps shape A). Every string arg, nested ones included, turns to forward slashes here.
+const slashPaths = (o) => {
+  if (o && typeof o === 'object') for (const k of Object.keys(o)) {
+    if (typeof o[k] === 'string') o[k] = o[k].replace(/\\/g, '/')
+    else slashPaths(o[k])
+  }
+  return o
+}
+slashPaths(args)
 const INSTANCE = (typeof args === 'object' && args && args.repo) || '.'
 const REPORT_DIR = `${INSTANCE}/docs/research/shared-memory-tidy`
 
 let A = args
-if (typeof A === 'string') { try { A = JSON.parse(A) } catch (e) { A = null } }
+if (typeof A === 'string') { try { A = slashPaths(JSON.parse(A)) } catch (e) { A = null } }
 if (!A || !A.date || !A.shared) {
   throw new Error('shared-memory-dream requires args {date:"YYYY-MM-DD", shared:"<abs. path>"} — date via `date +%F`, shared = the cloned shared-memory repo')
 }

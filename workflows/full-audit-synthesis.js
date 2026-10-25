@@ -10,12 +10,23 @@ export const meta = {
 
 // ── Configuration ──────────────────────────────────────────────────────────
 // Core rule: never hardcode instance paths — repo via args, default = cwd of the agents.
+// Path args the way the agents' shell keeps them: a Windows path with backslashes reached Git Bash
+// unquoted and lost every separator (measured 2026-10-09: a brain-scan wrote into a junk folder in the
+// brain root; os-traps shape A). Every string arg, nested ones included, turns to forward slashes here.
+const slashPaths = (o) => {
+  if (o && typeof o === 'object') for (const k of Object.keys(o)) {
+    if (typeof o[k] === 'string') o[k] = o[k].replace(/\\/g, '/')
+    else slashPaths(o[k])
+  }
+  return o
+}
+slashPaths(args)
 const REPO = (typeof args === 'object' && args && args.repo) || '.'
 const REPORT_DIR = `${REPO}/docs/research/full-audit`
 const AUFTRAEGE = `${REPO}/docs/maintenance/brain-scan-auftraege.md`
 
 let A = args
-if (typeof A === 'string') { try { A = JSON.parse(A) } catch (e) { A = null } }
+if (typeof A === 'string') { try { A = slashPaths(JSON.parse(A)) } catch (e) { A = null } }
 if (!A || !A.date || !A.scratch || !A.reports || !A.reports.brain || !A.reports.memory || !A.reports.coherence) {
   throw new Error('full-audit-synthesis requires args {date, scratch:"<abs. path>", reports:{brain,memory,coherence}} — scratch = session scratchpad subfolder, reports = paths of the three individual reports')
 }
