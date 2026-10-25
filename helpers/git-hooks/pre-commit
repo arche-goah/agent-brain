@@ -55,6 +55,49 @@ if [ -f "$root/parties.json" ] && [ -f "$core/scripts/shared-memory-lint.py" ]; 
   run_check "shared-memory-lint" "$py" "$core/scripts/shared-memory-lint.py" --repo "$root" --staged
 fi
 
+# 5. Behind the upstream (operator order 2026-10-22, agreed by both core parties): a commit on a
+#    checkout that another machine pushed past lands on an old state, and its push is refused
+#    afterwards (measured 2026-10-22, and twice on 2026-10-25, on Windows brains). The start pull
+#    (helpers/session-pull.sh) cannot see a push that arrives after it. So: fetch, COUNT what the
+#    upstream has and HEAD lacks, refuse while that is > 0 — never pull here. Fail-open: switched
+#    off, no upstream, detached HEAD, a merge being concluded (it brings the upstream in), no
+#    network, fetch slower than PRE_COMMIT_FETCH_TIMEOUT (default 8 s). Off for one repo:
+#    git config brain.preCommitFetch false
+behind_check() {
+  [ "$(git config --bool brain.preCommitFetch 2>/dev/null)" = "false" ] && return 0
+  git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 && return 0
+  local up br remote fpid ticks=0 n limit=$(( ${PRE_COMMIT_FETCH_TIMEOUT:-8} * 5 ))
+  up=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null) || return 0
+  br=$(git symbolic-ref --short HEAD 2>/dev/null) || return 0
+  remote=$(git config "branch.$br.remote" 2>/dev/null)
+  [ -n "$remote" ] && [ "$remote" != "." ] || return 0
+  # A watched background fetch, not `timeout` (stock macOS has none, os-traps OS-16).
+  GIT_TERMINAL_PROMPT=0 git fetch -q "$remote" >/dev/null 2>&1 &
+  fpid=$!
+  while kill -0 "$fpid" 2>/dev/null; do
+    if [ "$ticks" -ge "$limit" ]; then
+      kill "$fpid" 2>/dev/null
+      echo "pre-commit: upstream check skipped — fetch of '$remote' took over ${PRE_COMMIT_FETCH_TIMEOUT:-8} s" >&2
+      return 0
+    fi
+    sleep 0.2; ticks=$((ticks + 1))
+  done
+  if ! wait "$fpid"; then
+    echo "pre-commit: upstream check skipped — fetch of '$remote' failed (offline?)" >&2
+    return 0
+  fi
+  n=$(git rev-list --count 'HEAD..@{u}' 2>/dev/null) || return 0
+  [ "${n:-0}" -gt 0 ] 2>/dev/null || return 0
+  echo ""
+  echo "pre-commit: $(basename "$root") ($br) is behind $up by $n commit(s) — pushed elsewhere since this checkout was pulled:"
+  git log --oneline -n 10 'HEAD..@{u}' | sed 's/^/  /'
+  [ "$n" -gt 10 ] && echo "  ... and $((n - 10)) more"
+  echo "Read them, then: git pull --ff-only (or merge, with local commits of your own), then commit."
+  echo "Off for this repo: git config brain.preCommitFetch false"
+  fail=1
+}
+behind_check
+
 # No invariant-check here: it exits 1 whenever a register carries OPEN invariants, which is its
 # normal state — a report, not a gate. Only real pass/fail checks belong in a blocking hook.
 if [ "$fail" -ne 0 ]; then
