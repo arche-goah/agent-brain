@@ -11,7 +11,9 @@
 # Usage: bash scripts/ci-lint-local.sh [--skip <text>]... [job ...]
 #   job       CI job names to run (default: leaks lint shellcheck)
 #   --skip    leave out every step whose name contains <text> (repeatable), e.g. --skip fixture
-# Steps that read GitHub context (`${{ … }}`) cannot run locally and are listed as SKIP;
+# Steps that read GitHub context (`${{ … }}`) are listed as SKIP — unless the context sits only in
+# `env:` and every such variable has a local stand-in (see local_context: the PR view against
+# origin/main), then they run and say so;
 # lines starting with `sudo ` (runner package setup) are dropped, the rest of the step runs.
 # exit 0 = every runnable step passed · 1 = a step failed (its full output is printed) ·
 # 2 = the workflow or a job could not be read.
@@ -54,19 +56,42 @@ if [[ "$PY" != python3 ]]; then
   printf 'export PATH=%q:"$PATH"\n' "$T/py3" >"$PRE"
 fi
 
+# LOCAL CONTEXT: a step whose only GitHub context sits in `env:` runs when every such variable
+# has a local stand-in, the PR view of this checkout against origin/main. Measured 2026-10-25 on
+# the Windows instance: the english-only ratchet was listed as SKIP, the PR went red in CI on a
+# stale legacy-names entry the same command finds locally in a second. A variable without a
+# stand-in keeps the step a SKIP.
+local_context() { # $1 = variable name -> prints its local value, rc 1 when there is none
+  local main; main=$(git -C "$ROOT" rev-parse --verify -q origin/main 2>/dev/null) || main=""
+  case "$1" in
+    ENGLISH_ONLY_BASE) [[ -n "$main" ]] && echo origin/main ;;
+    BASE) [[ -n "$main" ]] && git -C "$ROOT" merge-base origin/main HEAD 2>/dev/null ;;
+    HEAD) git -C "$ROOT" rev-parse -q --verify HEAD 2>/dev/null ;;
+    *) return 1 ;;
+  esac
+}
+
 fail=0; ran=0; skipped=0
 while IFS=$'\t' read -r n job name why; do
   for s in "${skips[@]+"${skips[@]}"}"; do
     [[ -n "$s" && "$name" == *"$s"* ]] && why="skip:--skip $s"
   done
+  set_env=""
+  if [[ "$why" == env:* ]]; then
+    vars="${why#env:}"
+    for v in ${vars//,/ }; do
+      val=$(local_context "$v") && [[ -n "$val" ]] || { why="skip:reads GitHub context ($v has no local value)"; break; }
+      set_env+="export $v=$(printf %q "$val"); "
+    done
+  fi
   if [[ "$why" == skip:* ]]; then
     echo "  SKIP $job / $name (${why#skip:})"; skipped=$((skipped+1)); continue
   fi
   ran=$((ran+1))
   # </dev/null: a step that reads stdin (a fixture suite did) would eat the rest of the step list
   # this loop reads — measured 2026-10-21, four steps vanished and the run still said "all passed".
-  if (cd "$ROOT" && BASH_ENV="$PRE" bash -e "$T/$n.sh") </dev/null >"$T/$n.log" 2>&1; then
-    echo "  OK   $job / $name"
+  if (cd "$ROOT" && eval "$set_env" && BASH_ENV="$PRE" bash -e "$T/$n.sh") </dev/null >"$T/$n.log" 2>&1; then
+    echo "  OK   $job / $name${set_env:+ (GitHub context set locally: ${why#env:})}"
   elif [[ $? -eq 127 ]] && miss=$(sed -n 's/.*: \([^:]*\): command not found.*/\1/p' "$T/$n.log" | head -1) && [[ -n "$miss" ]]; then
     # A tool the step needs is not installed here (the runner installs it): not checked, said so —
     # never a finding, never a silent pass.

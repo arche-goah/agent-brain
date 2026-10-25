@@ -3,7 +3,7 @@ scripts/ci-lint-local.sh (the shell half runs them; Python never starts bash, OS
 
 usage: ci-lint-local-parse.py <workflow.yml> <out-dir> <job> [<job> ...]
 Writes each step that has a `run:` to <out-dir>/<n>.sh and prints one line per step:
-<n> TAB <job> TAB <step name> TAB run | skip:<why>
+<n> TAB <job> TAB <step name> TAB run | env:<VAR,...> (GitHub context only in env) | skip:<why>
 Indentation-based, enough for the workflow's shape (jobs: -> <job>: -> steps: -> "- name:" /
 "run:" or a "run: |" block). Lines starting with `sudo ` (runner package setup) are dropped.
 exit 2 = an unknown job, or no runnable step (the parser no longer matches the file).
@@ -44,7 +44,7 @@ def parse(lines):
         m = re.match(r"^\s*- (\w[\w-]*):\s*(.*)$", ln)
         if m:
             close()
-            step = {"name": "", "run": None, "ctx": False}
+            step = {"name": "", "run": None, "ctx": False, "envctx": []}
             k, v = m.group(1), m.group(2)
             if k == "name":
                 step["name"] = v.strip().strip('"')
@@ -67,7 +67,12 @@ def parse(lines):
             if "${{" in v:
                 step["ctx"] = True
             continue
-        if "${{" in ln:
+        # An `env:` entry that reads GitHub context names its variable: the shell half sets a local
+        # stand-in where it has one (ci-lint-local.sh, local_context). Any other `${{ }}` keeps the skip.
+        m = re.match(r"^\s+([A-Z_][A-Z0-9_]*):\s*.*\$\{\{", ln)
+        if m:
+            step["envctx"].append(m.group(1))
+        elif "${{" in ln:
             step["ctx"] = True
     if block is not None:
         step["run"] = "\n".join(block).rstrip() + "\n"
@@ -94,7 +99,12 @@ def main(argv):
             if s["run"] is None:
                 continue  # uses: steps (checkout, setup-*) have no local meaning
             n += 1
-            why = "skip:reads GitHub context" if s["ctx"] or "${{" in s["run"] else "run"
+            if s["ctx"] or "${{" in s["run"]:
+                why = "skip:reads GitHub context"
+            elif s["envctx"]:
+                why = "env:" + ",".join(s["envctx"])
+            else:
+                why = "run"
             body = "\n".join(l for l in s["run"].splitlines() if not l.lstrip().startswith("sudo "))
             with open("%s/%d.sh" % (out, n), "w", encoding="utf-8", newline="\n") as f:
                 f.write(body + "\n")
