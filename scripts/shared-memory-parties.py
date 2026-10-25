@@ -245,12 +245,18 @@ ONE_MACHINE = re.compile(r"\bone[- ]machine:|\bnur diese maschine\b", re.I)
 
 def windows_check_to_one_device(text: str, audience: str, parties: dict) -> str | None:
     """The single Windows device a Windows check is sent to, when it should go to
-    `os:windows` instead; None when the message is fine (or is no Windows check)."""
-    if not parties or not WINDOWS_CHECK.search(text or "") or ONE_MACHINE.search(text or ""):
+    `os:windows` instead; None when the message is fine (or is no Windows check).
+    Device ids are taken out of the text first: a LOG heading carries its addressees, and an id
+    like `<name>-win` read as the word "Windows" — measured 2026-10-25, a note that only read
+    PR rows through ("Review-Lauf …, AN …, <name>-win") was blocked as a Windows check."""
+    devs = devices(parties) if parties else {}
+    plain = text or ""
+    for dev in sorted(devs, key=len, reverse=True):
+        plain = re.sub(r"(?<![\w-])" + re.escape(dev) + r"(?![\w-])", " ", plain, flags=re.I)
+    if not parties or not WINDOWS_CHECK.search(plain) or ONE_MACHINE.search(plain):
         return None
     aud = tokens(audience)
     if any(is_category(t) for t in aud):
         return None
-    devs = devices(parties)
     win = sorted(t for t in aud if devs.get(t, ("", None))[1] == "windows")
     return win[0] if len(win) == 1 else None
