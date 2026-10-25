@@ -41,12 +41,17 @@ if ! index="$("$PY" "$PARSER" "$WFN" "$TN" "${jobs[@]}")"; then
 fi
 
 # The CI steps say `python3` (right on the Ubuntu runner). Where `python3` is not the working
-# interpreter — the Windows Store stub (OS-17) — every step body gets `python3` as a function onto
-# the probed one, through BASH_ENV so nested bash calls (the fixture suites) see it too. Measured
-# 2026-10-21 on the Windows instance: five lint steps red that CI runs green.
+# interpreter — the Windows Store stub (OS-17) — a `python3` file onto the probed one goes first on
+# PATH, through BASH_ENV so nested bash calls (the fixture suites) see it too. Measured 2026-10-21
+# on the Windows instance: five lint steps red that CI runs green. A FILE, not a bash function
+# (measured 2026-10-25, Windows instance with the stub): a fixture that probed `command -v python3`
+# got the function's name, kept `PY=python3`, and ran `env … "$PY"` — `env` is no bash, it found
+# the stub on PATH and the fixture read red ("Python was not found") where CI is green.
 PRE="$T/prelude.sh"; : >"$PRE"
 if [[ "$PY" != python3 ]]; then
-  printf 'python3() { %q "$@"; }\nexport -f python3\n' "$(command -v "$PY")" >"$PRE"
+  mkdir -p "$T/py3"
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v "$PY")" >"$T/py3/python3"; chmod +x "$T/py3/python3"
+  printf 'export PATH=%q:"$PATH"\n' "$T/py3" >"$PRE"
 fi
 
 fail=0; ran=0; skipped=0

@@ -47,6 +47,8 @@ jobs:
         run: python3 -c "open('marker-py', 'w').write('ok')"
       - name: nested bash calls python3
         run: bash -c "python3 -c \"open('marker-py-nested', 'w').write('ok')\""
+      - name: a non-bash program calls python3
+        run: env python3 -c "open('marker-py-env', 'w').write('ok')"
       - name: needs a missing tool
         run: no-such-tool-xyz --severity=error
 YML
@@ -90,11 +92,15 @@ PATH="$T/winbin:$PATH" run py; rc=$?
   || bad "python3 = Store stub: the step's python3 reaches the working interpreter"
 [ -f "$T/repo/marker-py-nested" ] && ok "python3 = Store stub: a nested bash in the step gets it too" \
   || bad "python3 = Store stub: a nested bash in the step gets it too"
+[ -f "$T/repo/marker-py-env" ] && ok "python3 = Store stub: a non-bash program (env) that starts python3 gets it too" \
+  || bad "python3 = Store stub: a non-bash program (env) that starts python3 gets it too"
 grep -q "SKIP py / needs a missing tool (not installed here: no-such-tool-xyz" "$T/out" \
   && ok "a missing tool is SKIP with its name, not FAIL" || bad "a missing tool is SKIP with its name, not FAIL"
 [ "$rc" = 0 ] && ok "missing tool alone does not make the run red (rc 0)" || bad "missing tool alone does not make the run red (rc $rc)"
 rm -f "$T/repo/marker-py"
-PATH="$T/winbin:$PATH" run --skip nested --skip missing py >/dev/null; CI_LINT_ROOT="$T/repo" PATH="$T/winbin:$PATH" bash -c 'python3 -c 1' >/dev/null 2>&1 \
+# BASH_ENV cleared: when this fixture itself runs under ci-lint-local (its fixture-suite step), the
+# outer run's prelude would put its own python3 first and the control would not see the stub.
+PATH="$T/winbin:$PATH" run --skip nested --skip missing py >/dev/null; CI_LINT_ROOT="$T/repo" BASH_ENV= PATH="$T/winbin:$PATH" bash -c 'python3 -c 1' >/dev/null 2>&1 \
   && bad "control: the planted stub is not a stub" || ok "control: the planted python3 really is a stub outside the tool"
 
 run nosuchjob; rc=$?
