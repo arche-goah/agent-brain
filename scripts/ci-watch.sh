@@ -325,6 +325,41 @@ print(pending, bad, stale)
   fi
 }
 
+# The head check above compares the PR's head with its branch tip. Both can already name the
+# pushed commit while `pr checks` still lists the PREVIOUS commit's checks: measured 2026-10-25
+# on a suite PR — a watch armed right after a fix push said `RED — 2 failing/cancelled`, the
+# old head's two red jobs; the pushed head never had any run but one green one. So before a
+# red verdict the head commit's own check-runs are read: the red stands when one of them
+# failed, or when a listed failing check has no check-run there at all (a commit status).
+# None yet, or the listed failing ones still running/green on the head = the old run's red,
+# wait. Unreadable = the behaviour before this check; the deadline still bounds the wait.
+warned_oldred=0
+pr_red_not_of_head() {   # exit 0 = the listed red belongs to an older commit than the head
+  local sha cr verdict
+  ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 1
+  sha=$gh_out
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+  ghq api "repos/$REPO/commits/$sha/check-runs?per_page=100" \
+      --jq '[.check_runs[] | {name: .name, conclusion: .conclusion}]' || return 1
+  cr=$gh_out
+  verdict=$("$PY" -c '
+import json, sys
+listed = json.load(sys.stdin)
+runs = {r.get("name"): r.get("conclusion") for r in json.loads(sys.argv[1])}
+BAD = {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
+failing = [c.get("name") for c in listed if c.get("bucket") in ("fail", "cancel")]
+real = any(v in BAD for v in runs.values()) or (runs and any(n not in runs for n in failing))
+print("real" if real else "old")
+' "$cr" <<<"$json" 2>/dev/null) || return 1
+  [[ "$verdict" == old ]] || return 1
+  if (( warned_oldred == 0 )); then
+    echo "ci-watch: PR #$TARGET lists failing checks, but none of them failed on the head" \
+         "commit ${sha:0:7} (its runs are new or still going) — the old run's red; waiting" >&2
+    warned_oldred=1
+  fi
+  return 0
+}
+
 while :; do
   now=$(date +%s)
   if (( now >= deadline )); then
@@ -391,12 +426,13 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # the watch silent the whole time and the red unseen. Only `fail` counts here — a `cancel`
     # can be a superseded run and still waits for the full picture; the head check guards the
     # old-run race as for every verdict.
-    if (( pending > 0 && ${failed:-0} > 0 )) && ! pr_head_behind_branch; then
+    if (( pending > 0 && ${failed:-0} > 0 )) && ! pr_head_behind_branch && ! pr_red_not_of_head; then
       echo "CI-WATCH RED: $REPO PR #$TARGET — $failed failing check(s), $pending still running (a failed check does not turn green)"
       exit 1
     fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if pr_head_behind_branch; then sleep "$POLL"; continue; fi
+    if (( bad > 0 )) && pr_red_not_of_head; then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
     # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
     # the checks then predate the base change and are never recomputed (measured
