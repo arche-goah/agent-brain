@@ -31,12 +31,21 @@ tracked file's PATH fails, regardless of content — the audit's trigger was tha
 (the LA1 deprecation stubs) live in scripts/english-legacy-names.txt and may only
 ever disappear from it, same one-way semantics as the content baseline.
 
-Usage: scripts/english-only.py [--write-baseline] [--root DIR]
+LINE RATCHET on the legacy files (2026-10-25): the file baseline said nothing about a
+legacy file that GAINS German — measured on a suite PR (2026-08-16) that added a new
+German line to a baseline file and stayed green, so the baseline shrank by file count
+while it grew in depth. With `--base REF` (or env ENGLISH_ONLY_BASE, which CI sets to the
+PR's base branch) every baseline file is compared line-wise against REF: a German line
+that is not in the base version is a finding; the existing German is tolerated as before.
+Without a base the file-level rules hold unchanged — a local run needs no history.
+
+Usage: scripts/english-only.py [--write-baseline] [--root DIR] [--base REF]
   (run from anywhere; repo = script's repo, or DIR)
 Exit 0 = clean, 1 = findings, 2 = bad --root.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -79,7 +88,10 @@ TEXT_SUFFIX = {".md", ".py", ".sh", ".cjs", ".js", ".json", ".yml", ".yaml",
 # script's own word list: it reads another brain's rule texts, written in that operator's
 # language, and must run as one downloaded file without any instance data. Its fixture joins
 # on the same terms: the German rule lines it plants are what the detector must find.
+# english-only-test.py (2026-10-25) enters on the same terms: its German is the legacy file it
+# plants and the new German line the line ratchet must catch — the subject under test.
 SKIP_NAMES = {"english-legacy.txt", "english-legacy-names.txt", "english-only.py",
+              "english-only-test.py",
               "skill-lint.py", "test-premise-gate.sh", "test-promise-gate.sh",
               "test-open-items-gate.sh", "test-stop-checks.sh",
               "test-stoppen-gate.sh", "autonomy-diagnose.py", "test-autonomy-diagnose.sh",
@@ -154,6 +166,35 @@ def german_named(rel_posix: str) -> bool:
     return any(t in GERMAN_NAME_TOKENS for t in tokens)
 
 
+def base_ref() -> str:
+    """The ref the legacy files are compared against line-wise: --base REF, else
+    ENGLISH_ONLY_BASE, else nothing (file-level rules only)."""
+    if "--base" in sys.argv:
+        i = sys.argv.index("--base")
+        return sys.argv[i + 1].strip() if i + 1 < len(sys.argv) else ""
+    return os.environ.get("ENGLISH_ONLY_BASE", "").strip()
+
+
+def german_lines(text: str) -> list[str]:
+    return [l.strip() for l in text.splitlines() if UMLAUT.search(l) or GERMAN_WORDS.search(l)]
+
+
+def new_german_lines(rel_posix: str, base: str) -> list[str]:
+    """German lines of the working-tree file that the base version does not have. Compared as
+    stripped line text, not by position: a moved German line is not new German. Empty when
+    the file does not exist at the base (then the file-level rule judges it) or git fails."""
+    try:
+        head = (ROOT / rel_posix).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+    r = subprocess.run(["git", "-C", str(ROOT), "show", f"{base}:{rel_posix}"],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        return []
+    old = set(german_lines(r.stdout))
+    return [l for l in german_lines(head) if l not in old]
+
+
 def main() -> int:
     # as_posix: git ls-files and the baseline speak forward slashes; bare
     # relative_to() yields backslashes on Windows and every comparison misses
@@ -174,6 +215,7 @@ def main() -> int:
     if BASELINE.exists():
         baseline = {l.strip() for l in BASELINE.read_text(encoding="utf-8").splitlines()
                     if l.strip() and not l.startswith("#")}
+    base = base_ref()
 
     findings = []
     for f in german:
@@ -187,6 +229,11 @@ def main() -> int:
         elif entry not in german:
             findings.append(f"TRANSLATED: {entry} — remove from english-legacy.txt "
                             "(the ratchet only turns one way)")
+        elif base:
+            grew = new_german_lines(entry, base)
+            if grew:
+                findings.append(f"NEW GERMAN LINES: {entry} (+{len(grew)} against {base}) — a legacy "
+                                f"file may not grow German; translate the new lines, first: {grew[0][:70]!r}")
 
     # NAME ratchet: German tokens in tracked paths, every suffix — a rename is a
     # rename regardless of file type. Legacy = the LA1 deprecation stubs only.
