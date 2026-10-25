@@ -78,6 +78,16 @@ def main() -> int:
         log = (repo / "core" / "LOG.md").read_text(encoding="utf-8")
         check("one LOG line points at the file",
               f"## {STATE} · kim-pc — AN os:windows (status: open): Check core #42 on Windows\ncore/{req.name}" in log, log)
+        # The commit list names every path this run changed — entry, LOG and the generated index
+        # pages — so a by-path commit cannot leave INDEX.md/OPEN.md behind (measured 2026-10-22:
+        # three blocked `pull --ff-only` on one day from exactly that).
+        listed = [l.strip() for l in r.stdout.splitlines() if l.startswith("  ")]
+        check("the output lists the paths to commit: entry, LOG and the regenerated index pages",
+              f"core/{req.name}" in listed and "core/LOG.md" in listed and "INDEX.md" in listed
+              and "core/OPEN.md" in listed, r.stdout)
+        check("the next line is one git add over exactly those paths",
+              any(l.startswith("next: git -C ") and "core/OPEN.md" in l and "core/LOG.md" in l for l in r.stdout.splitlines()),
+              r.stdout)
         found = sml.lint(repo)["findings"]
         bad = [i for k in ("frontmatter", "fields", "relations", "audience", "name_mismatch", "topic_mismatch")
                for i in found[k] if req.name in json.dumps(i) or "Check core #42" in json.dumps(i)]
