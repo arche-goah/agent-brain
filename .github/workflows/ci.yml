@@ -61,6 +61,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The English-only line ratchet reads the PR's base version of every legacy file.
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -71,7 +74,11 @@ jobs:
       # English-only is a ratchet, not a grep: scripts/english-legacy.txt freezes the
       # German legacy awaiting translation sweeps; this fails on NEW German anywhere
       # else, and on a translated file that forgot to leave the list.
+      # On a PR the legacy files are also compared line-wise against the base branch: a
+      # baseline file may not GAIN German (a push on main has no base; the file rules hold).
       - name: english-only ratchet
+        env:
+          ENGLISH_ONLY_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || '' }}
         run: python3 scripts/english-only.py
       # Every change declares its level (rules/working-rules.md, "Identity is written, state is
       # read"): each changelog fragment carries (level: …; higher: …; debt: …). The same check runs

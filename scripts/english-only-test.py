@@ -25,11 +25,12 @@ def check(name, cond, detail=""):
         fails += 1
 
 
-def run(repo):
+def run(repo, *args):
     # The script prints an em dash; on Windows a redirected stdout uses the ANSI codepage
     # unless pinned (docs/os-traps.md OS-9), so the child is pinned to UTF-8 here.
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
-    p = subprocess.run([sys.executable, str(repo / "scripts" / "english-only.py")],
+    env.pop("ENGLISH_ONLY_BASE", None)   # the host's CI setting must not reach the fixture
+    p = subprocess.run([sys.executable, str(repo / "scripts" / "english-only.py"), *args],
                        capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
     return p.returncode, p.stdout
 
@@ -63,6 +64,28 @@ try:
     git(repo, "add", "-A")
     rc, out = run(repo)
     check("staged: the note is gone", "NOT checked" not in out, out)
+
+    # Line ratchet (2026-10-25): a legacy file may not GAIN German. Measured on a suite PR that
+    # added a German line to a baseline file and stayed green under the file-level rule.
+    legacy = repo / "docs" / "legacy.md"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text("# Legacy\n\nDas ist fuer uns noch nicht uebersetzt.\n", encoding="utf-8")
+    (repo / "scripts" / "english-legacy.txt").write_text("docs/legacy.md\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
+    rc, out = run(repo, "--base", "HEAD")
+    check("line ratchet: an unchanged legacy file is clean against its base", rc == 0, out)
+    legacy.write_text(legacy.read_text(encoding="utf-8") + "Eine neue Zeile ueber das Geraet.\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    rc, out = run(repo, "--base", "HEAD")
+    check("line ratchet: a new German line in a legacy file fails against the base",
+          rc == 1 and "NEW GERMAN LINES: docs/legacy.md (+1" in out, out)
+    rc, out = run(repo)
+    check("control: without a base the file-level rule alone holds (legacy file passes)", rc == 0, out)
+    legacy.write_text("# Legacy\n\nAn English line first.\nDas ist fuer uns noch nicht uebersetzt.\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    rc, out = run(repo, "--base", "HEAD")
+    check("control: an English line added and a German line moved is not new German", rc == 0, out)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
