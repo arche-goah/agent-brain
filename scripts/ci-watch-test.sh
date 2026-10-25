@@ -212,6 +212,27 @@ case "${CI_WATCH_STUB:?}" in
                     elif [[ "${1:-}" == api ]]; then echo 0
                     elif [[ "$CI_WATCH_STUB" == pr_tip_lag && -f "$f" ]]; then echo '[{"bucket":"pass","name":"lint"}]'
                     else echo '[{"bucket":"pass","name":"lint"},{"bucket":"fail","name":"test"}]'; fi ;;
+  # 2026-10-25: PR head AND branch tip already name the pushed commit, but `pr checks` still
+  # lists the OLD commit's red job. The head commit's check-runs tell: pr_oldred_flip has none
+  # yet, then the list turns green; pr_oldred_stuck: the job is still running on the head and
+  # the list never updates; pr_oldred_real: control — the job failed on the head, red stands;
+  # pr_oldred_status: control — the failing entry is a commit status (no check-run of that name).
+  pr_oldred_flip|pr_oldred_stuck|pr_oldred_real|pr_oldred_status)
+                    f="${CI_WATCH_STATE:?}"; sha=bbbb222200000000000000000000000000000000
+                    if [[ "$*" == *headRefName* ]]; then printf '%s\tfeature\towner/repo\n' "$sha"
+                    elif [[ "$*" == *headRefOid* ]]; then echo "$sha"
+                    elif [[ "$*" == *git/ref/heads/feature* ]]; then echo "$sha"
+                    elif [[ "$*" == *check-runs* ]]; then
+                      case "$CI_WATCH_STUB" in
+                        pr_oldred_flip)   echo '[]' ;;
+                        pr_oldred_stuck)  echo '[{"name":"lint","conclusion":null}]' ;;
+                        pr_oldred_real)   echo '[{"name":"lint","conclusion":"failure"}]' ;;
+                        pr_oldred_status) echo '[{"name":"build","conclusion":"success"}]' ;;
+                      esac
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    elif [[ "$CI_WATCH_STUB" == pr_oldred_flip && -f "$f" ]]; then echo '[{"bucket":"pass","name":"lint"}]'
+                    else touch "$f"; echo '[{"bucket":"fail","name":"lint"}]'; fi ;;
 esac
 STUB
 chmod +x "$TMP/gh"
@@ -326,6 +347,14 @@ check "pr: PR head never reaches its branch tip, old head red = no verdict, time
 grep -q "CI-WATCH RED" "$TMP/out" && { echo "  FAIL the old head's red was reported"; fails=$((fails+1)); } \
   || echo "  OK   the old head's red was not reported"
 check "pr: PR head == branch tip, red = RED (control)"                                    pr_tip_synced_red 1 pr 12 30
+check "pr: head synced, listed red is the old run's, head has no runs yet, then green = GREEN" pr_oldred_flip 0 pr 12 30
+grep -q "the old run's red" "$TMP/out" && echo "  OK   the old run's red is named" \
+  || { echo "  FAIL old run's red not named"; fails=$((fails+1)); }
+check "pr: head synced, old red listed, head job still running = no verdict, timeout(2)" pr_oldred_stuck 2 pr 12 2
+grep -q "CI-WATCH RED" "$TMP/out" && { echo "  FAIL the old run's red was reported"; fails=$((fails+1)); } \
+  || echo "  OK   the old run's red was not reported"
+check "pr: head synced, the job failed on the head = RED (control)"                       pr_oldred_real 1 pr 12 30
+check "pr: failing entry is a commit status, no check-run of that name = RED (control)"    pr_oldred_status 1 pr 12 30
 
 # Rate limit (2026-10-19): a blocked answer is a wait, never a verdict and never an early exit.
 blocked_is() { # label n — the last run printed exactly n BLOCKED lines
