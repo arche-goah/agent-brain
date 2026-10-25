@@ -111,14 +111,30 @@ function unquote(s) {
 // Measured 2026-10-18 (Windows instance): `git -C ~/Projects/<private clone> commit …` — the
 // guard resolved the literal `~`, found no remote, called the repo "unknown" and blocked a
 // private commit; the same gap let a `--body-file ~/<file>` go unread, i.e. unscanned.
+// A Git Bash path (`/c/dir/x/f.md`, `/tmp/f.md`) is what the shell sees; node on Windows cannot
+// open it. Measured 2026-10-25 on a collaborator's Windows brain: `--body-file /c/<home>/.../x.md`
+// holding a person's name passed this guard (unreadable = skipped) and reached the public core;
+// the same file as `C:/<home>/.../x.md` was blocked. Drive form is rewritten here; everything
+// else that starts with `/` goes through `cygpath -m` when it exists (Git Bash ships it).
+function nativePath(p) {
+  const s = String(p);
+  if (process.platform !== 'win32' || !s.startsWith('/')) return s;
+  const m = /^\/([a-zA-Z])(\/|$)(.*)$/.exec(s);
+  if (m) return m[1].toUpperCase() + ':/' + m[3];
+  try {
+    return execFileSync('cygpath', ['-m', s], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }).toString().trim() || s;
+  } catch (e) { return s; }
+}
+
 function resolveFrom(cwd, p) {
   const home = require('os').homedir();
-  const s = String(p).replace(/^~(?=$|[\\/])/, home).replace(/^\$HOME(?=$|[\\/])/, home);
+  const s = nativePath(String(p).replace(/^~(?=$|[\\/])/, home).replace(/^\$HOME(?=$|[\\/])/, home));
   return path.resolve(cwd || '.', s);
 }
 
-// Files the command hands over as text. A path that cannot be read is skipped: the write
-// itself would fail on it too.
+// Files the command hands over as text. A path the guard cannot read is NOT skipped any more
+// (2026-10-25): the shell may well read it (a Git Bash path, a permission the hook lacks), so
+// for a public repo an unreadable file is refused — unsure means stricter.
 function referencedFiles(cmd) {
   const out = [];
   const rxs = [
@@ -202,12 +218,12 @@ function gate(input) {
     for (const m of String(text).matchAll(rx)) if (!found.has(m[1].toLowerCase())) found.set(m[1].toLowerCase(), where);
   };
   const pub = publishedText(cmd, input.tool_name === 'PowerShell');
+  const unreadable = []; // what the guard could not read: a shell variable, a file node cannot open
   const readFiles = (list) => {
     for (const f of list) {
-      try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { /* unreadable: the write fails too */ }
+      try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { unreadable.push(`file ${f} (cannot be read by the guard)`); }
     }
   };
-  const unreadable = []; // published values that hold a shell variable: expanded only at run time
   if (pub) {
     pub.texts.forEach((t) => scan(t, 'the published text'));
     readFiles(pub.files);
@@ -238,9 +254,11 @@ function gate(input) {
   const target = open.join(', ') || 'a repo whose visibility is unknown';
   if (unreadable.length) {
     console.error(
-      `BLOCKED (public-text-guard): text for ${target} comes through a shell variable the guard cannot read: ${unreadable.join(', ')}.\n` +
-      'Unsure means stricter in public. Write the text to a file and pass it (--body-file <file>, -F body=@<file>),\n' +
-      'or put it literally into the command. Watch list: .claude/rules/leak-names.json + parties.json of the shared memory');
+      `BLOCKED (public-text-guard): text for ${target} that the guard cannot read: ${unreadable.join(', ')}.\n` +
+      'Unsure means stricter in public. A shell variable: write the text to a file and pass it (--body-file <file>,\n' +
+      '-F body=@<file>) or put it literally into the command. A file: give its native absolute path (on Windows\n' +
+      'C:/... not /c/...; cygpath -m <file>) and make sure it exists. Watch list: .claude/rules/leak-names.json +\n' +
+      'parties.json of the shared memory');
     return 2;
   }
   const words = [...found].map(([w, where]) => `"${w}" (${where})`).join(', ');
@@ -264,4 +282,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { gate, isWrite, referencedFiles, targetRepos, publishedText, shellSegments };
+module.exports = { gate, isWrite, referencedFiles, targetRepos, publishedText, shellSegments, nativePath };
