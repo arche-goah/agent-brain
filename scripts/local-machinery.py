@@ -800,9 +800,17 @@ def main(argv):
     found["missing"] = C.missing
     alpha = decl.get("alpha") or {}
     tops = tool_source_tops(C)
+    # Every declared source checkout has its date read, on main or off it. Before, a clone ON main
+    # only asked "declared?" — measured 2026-10-25 on a Windows brain: a clone alpha four days
+    # past its date still fed the MCP server and no session start said so.
     for top, plugins in clones_with_plugin(C, tops):
-        if not any(same_tree(k, top) for k in alpha):
+        ka = next((k for k in alpha if same_tree(k, top)), None)
+        if not ka:
             found["clone"].append(f"{os.path.basename(top)} (plugin {'/'.join(plugins)})")
+            continue
+        until = str((alpha[ka] or {}).get("until", "")) if isinstance(alpha[ka], dict) else ""
+        if not until or until < a.today:
+            found["expired"].append(f"{ka} (until {until or '?'})")
     for top, br in tool_sources_off_main(C, tops):
         ka = next((k for k in alpha if same_tree(k, top)), None)
         if not ka:

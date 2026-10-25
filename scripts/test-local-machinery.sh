@@ -246,6 +246,8 @@ out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" && grep -q 'clone=1
   && ok "clone-of-published-suite-loud-even-on-main" || bad "clone-of-published-suite-loud-even-on-main: $out"
 decl "$(printf '{"alpha":{"%s":{"until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
 out=$(run); [[ -z "$out" ]] && ok "clone-declared-alpha-silent" || bad "clone-declared-alpha-silent: $out"
+out=$(TODAY=2026-10-21 run); grep -q 'past their date' <<< "$out" \
+  && ok "clone-on-main-alpha-expired-loud" || bad "clone-on-main-alpha-expired-loud: $out"
 # The same clone wired outside .mcp.json: `claude mcp add -s local` writes ~/.claude.json
 # projects[<brain>].mcpServers, `-s user` its top-level mcpServers. Both feed this brain.
 rm -f "$T/b/.mcp.json" "$T/b/.claude/rules/local-machinery.json"

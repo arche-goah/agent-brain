@@ -400,6 +400,10 @@ def auto_class(it, repo, human_rx):
         return "ai", "pull request: review or merge is agent work"
     if it["kind"] == "session":
         return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
+    if it["kind"] == "ledger":
+        if it.get("lclass") == "decision":
+            return "human", "a decision in the ledger"
+        return "ai", "ledger work item"
     if it.get("file"):
         m = CIRCLE.search(front(it, repo))
         if m:
@@ -530,6 +534,53 @@ def sessions(root, hook_input):
              "text": f["text"][:100], "scope": "session", "ref": f"session/{f['sid'][:8]}"} for f in found]
 
 
+# Work ledgers (rules/working-rules.md "Project Work Ledgers"): the open entries of the files the
+# instance registered in .claude/rules/ledgers.json — the registry ledger-reconcile.py reads, with
+# its entry parser. Measured 2026-10-25 on a Windows brain: the list said "open for us: 3" (PRs and
+# requests), the first reply said nothing else was open, and ordered points sat in the brain's own
+# ledgers — a list that calls itself THE list had read two of its three sources.
+LEDGER_FIELD = re.compile(r"\b(id|class|origin):\s*`?([\w.:/-]+)")
+
+
+def ledgers(root):
+    """(items, unread lines); items None when the registry is missing or unreadable."""
+    cfg = load_json(root / ".claude" / "rules" / "ledgers.json", None)
+    if not isinstance(cfg, dict):
+        return None, []
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("ledger_reconcile", HERE / "ledger-reconcile.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    except (OSError, ImportError, AttributeError):
+        return None, []
+    items, unread = [], []
+    for rel in cfg.get("ledgers") or []:
+        try:
+            text = (root / rel).read_text(encoding="utf-8")
+        except OSError:
+            unread.append(f"{rel} (file not found)")
+            continue
+        found = list(mod.entries(text))
+        # Entries that are not `- [ ]` / `- [x]` lines read as an empty ledger — the same silence.
+        if not found and re.search(r"^[\s>*-]*`?id:", text, re.M):
+            unread.append(f"{rel} (id: fields but no '- [ ]' entries, so the reader sees none)")
+            continue
+        for e in found:
+            f = {}
+            for k, v in LEDGER_FIELD.findall(e["text"]):
+                f.setdefault(k, v.rstrip(".:"))
+            if e["done"] or f.get("class") == "lesson":
+                continue
+            ident = f.get("id") or f"{rel}:{e['line']}"
+            d, m = mod.DATE.search(e["text"]), WAIT_MARK.search(e["text"])
+            items.append({"id": f"ledger:{ident}", "kind": "ledger", "date": d.group(1) if d else "",
+                          "who": f.get("origin", "ledger"), "text": re.sub(r"[*`]", "", e["title"])[:100],
+                          "scope": rel, "ref": ident, "lclass": f.get("class", ""),
+                          "until": (m.group(1), m.group(2).strip()) if m else None})
+    return items, unread
+
+
 def lookup(store, it):
     """The agent's own class wins; it is keyed by the printed id, or — for an entry with its
     own FILE — by the file name. A LOG entry matches by its full id (`<area>/LOG@<date>#<n>`):
@@ -565,7 +616,7 @@ def classify(args, cls_file, chans):
         if not key or cls not in ("ai", "human"):
             print(f"!! bad --classify '{spec}' — expected '<id>=ai|human[:why]'")
             return 2
-        if not PR_ID.match(key):
+        if not PR_ID.match(key) and not key.startswith("ledger:"):
             if known is None:
                 print(f"!! requests NOT readable - '{key}' saved unchecked")
             elif key not in known:
@@ -650,13 +701,17 @@ def main():
     req = reads[0][1]
     pr = prs(a.owner, cfg.get("owners") or {}, [c["repo"] for c in chans], cfg.get("pr_owners") or [])
     ses = sessions(root, a.hook_input)
+    led, led_unread = ledgers(root)
     failed = [name for name, v in ([("shared-memory requests" + ("" if c["default"] else f" [{c['label']}]"), r)
                                     for c, r in reads]
                                    + [("PR search" if a.owner else "PRs (no owner given)", pr),
-                                      ("session audit", ses)]) if v is None]
+                                      ("session audit", ses),
+                                      ("work ledgers (no readable .claude/rules/ledgers.json)", led)]) if v is None]
     if chan_error:
         failed.append(f"shared-memory channels ({chan_error})")
-    items = [i for _, r in reads for i in r or []] + (pr or []) + (ses or []) + wake_items(rules, pr, a.repo)
+    failed += [f"ledger {u}" for u in led_unread]
+    items = ([i for _, r in reads for i in r or []] + (pr or []) + (ses or []) + (led or [])
+             + wake_items(rules, pr, a.repo))
 
     today = now.date().isoformat()
     keep = {}
@@ -711,7 +766,8 @@ def main():
         chan = ":" in k and not k.startswith(("start:", "end:", "wake:"))
         if k not in keep and ((req is None and "#" not in k and not is_ses and not k.startswith(labels))
                               or k.startswith(lost) or (chan_error and chan)
-                              or (pr is None and "#" in k) or (ses is None and is_ses)):
+                              or (pr is None and "#" in k) or (ses is None and is_ses)
+                              or ((led is None or led_unread) and k.startswith("ledger:"))):
             keep[k] = v
     # Only the bootup (a real session id) writes the counter. Measured 2026-10-09: a hand run
     # with a skipped PR source rewrote the file and dropped every item's history.
@@ -748,7 +804,7 @@ def main():
               + " say the cause and whether work was lost as measured, never ask the operator;"
               + " then core/scripts/session-audit.py --ack <id>")
     if not items and not failed:
-        print("- nothing open (requests and PRs both read)")
+        print("- nothing open (requests, PRs and work ledgers read)")
     group = False
     for i in active:
         if i["cls"] == "standing" and not group:
