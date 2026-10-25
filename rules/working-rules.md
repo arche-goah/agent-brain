@@ -61,6 +61,17 @@
     committed by the session that closes last, by path, with a note (coherence finding
     2026-10-19).
 
+13. **Whatever holds the session longer than about half a minute runs detached**
+    (operator order 2026-10-25, "whenever cleanly possible, actions and tasks run in the
+    background"): a CI watch (#9), a whole-repo lint or test run (`ci-lint-local.sh`, a
+    fixture suite over a repo), a workflow, a clone, an update — started with the tool's
+    own background flag or a Monitor, the result read before anything is claimed, the
+    foreground work going on meanwhile. A run the operator has to push to the background
+    by hand is a finding against this rule: the command joins the `foreground_only` rules
+    of `mechanism-rules.json` (core or suite) with its measured duration. Not detached: a
+    command whose result the very next step needs and that ends within seconds, and the
+    operator's own hand steps (a dialog, an interactive login).
+
 History: core/docs/rule-history.md, "Working Rules".
 
 ## File Rules

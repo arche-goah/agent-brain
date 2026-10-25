@@ -247,6 +247,10 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: gh pr checks --watch" Bash command "gh pr checks 5 -R o/r --watch" block
   tr_probe "mechanism-guard/core rule: gh pr checks once" Bash command "gh pr checks 5 -R o/r" allow
   tr_probe "mechanism-guard/core rule: ci-watch via Monitor" Monitor command "bash core/scripts/ci-watch.sh pr o/r 5" allow
+  # 2026-10-25: the local CI mirror holds the session for minutes - detached only (Working Rule #13)
+  tr_probe "mechanism-guard/core rule: ci-lint-local in the foreground" Bash command "bash scripts/ci-lint-local.sh lint" block
+  tr_probe "mechanism-guard/core rule: ci-lint-local via Monitor" Monitor command "bash scripts/ci-lint-local.sh lint" allow
+  tr_probe "mechanism-guard/core rule: the ci-lint-local fixture itself" Bash command "bash scripts/test-ci-lint-local.sh" allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then

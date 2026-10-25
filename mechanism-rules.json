@@ -13,6 +13,12 @@
       "foreground_only": true,
       "was": "waiting for CI in the foreground - a core CI run takes about 15 minutes and holds the whole session; several PRs in a row cost hours",
       "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; the verdict arrives as a notification (Working Rule #9). Several PRs: one detached watch each, in parallel."
+    },
+    {
+      "pattern": "(?:^|[^\\w-])ci-lint-local\\.sh\\b",
+      "foreground_only": true,
+      "was": "running the local CI mirror in the foreground - measured 2026-10-25 on the macOS instance: the lint job runs the fixture suites and holds the session for minutes, the operator had to background it by hand",
+      "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; read its summary line before claiming green (Working Rule #13)."
     }
   ]
 }
