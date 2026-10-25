@@ -45,7 +45,14 @@
     operator correction) may be pushed and opened without a new word: the agreed channel
     ASK OR ACT step 1 names. Making a repo public, a first publication, a push outside the
     organisation's repos and a deployment stay gated. Carriers on every push: leak-scan,
-    the English-only ratchet, the instance's name guard.
+    the English-only ratchet, the instance's name guard. **The barriers against a name in
+    public stand in this order** (operator order 2026-10-25): the brain's own
+    `public-text-guard` refuses the text before it is posted — the first barrier; the
+    repo's text-leaks workflow is the LAST one, and a hit there is a finding against the
+    brain that posted: it reaches that brain's AI at once, in the thread (the comment
+    hidden, the author mentioned, class and line named), never first through another
+    brain's session. The poster deletes and re-posts, and says how the local gate was
+    missed.
 12. **Two sessions, one working copy: commit by path, never rewrite, never touch the other's
     operation** (2026-10-13). Outside its own scratchpad worktree a session stages and
     commits only its own paths, never amends, stashes, hard-resets, switches branch or
