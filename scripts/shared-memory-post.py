@@ -162,8 +162,43 @@ def main() -> int:
     print(f"LOG line: {log.relative_to(a.repo).as_posix()}")
     if r.returncode != 0:
         print(f"!! index NOT regenerated (rc={r.returncode}) - run scripts/shared-memory-index.py --write")
-    print("next: commit and push the shared-memory repo")
+    # The exact paths the commit must carry. The index run rewrites `INDEX.md`, `<area>/INDEX.md`
+    # and `<area>/OPEN.md` (and other areas' OPEN.md when an answer settles their request); a
+    # caller committing by path (working rule #12) took only entry + LOG and left the generated
+    # pages behind — three `pull --ff-only` blocked on one day (measured 2026-10-22). The list
+    # comes from git, not from a guess about what the index writer touched.
+    changed = changed_paths(a.repo)
+    if changed:
+        print("commit these paths (everything this run changed, index pages included):")
+        for p in changed:
+            print(f"  {p}")
+        print(f"next: git -C {a.repo} add -- {' '.join(changed)} && commit && push")
+    else:
+        print("next: commit and push the shared-memory repo")
     return 0
+
+
+def changed_paths(repo: Path) -> list[str]:
+    """Paths `git status` reports as modified or untracked under the repo, sorted. Empty when
+    the repo is no git checkout or git is missing — then the caller falls back to the old line."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=all"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if r.returncode != 0:
+        return []
+    out = []
+    for line in r.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        p = line[3:].strip()
+        if " -> " in p:
+            p = p.split(" -> ", 1)[1]
+        if p.startswith('"') and p.endswith('"'):
+            p = p[1:-1]
+        out.append(p)
+    return sorted(set(out))
 
 
 if __name__ == "__main__":
