@@ -97,6 +97,15 @@ def main():
                      "need the operator; copy core/templates/rules-instance/operator-only.json and adjust the labels")
     elif not isinstance(data, dict) or not data.get("matters"):
         lines.append(".claude/rules/operator-only.json is broken or empty — the AI cannot tell what needs the operator")
+    else:
+        # Existence is not content (operator 2026-10-18): a list that drops a core matter passes the check above.
+        tpl = load(Path(__file__).resolve().parent.parent / "templates/rules-instance/operator-only.json") or {}
+        have = {m.get("id") for m in data["matters"] if isinstance(m, dict)}
+        gone = [m["id"] for m in tpl.get("matters") or [] if m.get("id") not in have]
+        if gone:
+            lines.append(f".claude/rules/operator-only.json does not name {', '.join(gone)} from the core template — "
+                         "a matter missing there never reaches the operator; add it, or keep its id with the "
+                         "operator's own label")
 
     asked, star = [], False
     for name in ("settings.json", "settings.local.json"):

@@ -49,7 +49,13 @@ out="$(run)"
 [ -z "$out" ] && ok "ready brain (targeted allow, main push and settings edits ask, list filled): silent" \
   || bad "ready brain: silent" "'$out'"
 
-# 5 — an empty list is a finding
+# 5 — a list that exists but dropped a core matter (measured 2026-10-18: `release` struck on request) is a finding
+"$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); d["matters"]=[m for m in d["matters"] if m["id"]!="release"]; json.dump(d,open(sys.argv[1],"w"))' "$(native "$B/.claude/rules/operator-only.json")"
+out="$(run)"
+has "dropped core matter named" "does not name release" "$out"
+hasnt "the other matters are not named" "goal" "$out"
+
+# 6 — an empty list is a finding
 printf '{"matters":[]}\n' > "$B/.claude/rules/operator-only.json"
 out="$(run)"
 has "empty list named" "broken or empty" "$out"
