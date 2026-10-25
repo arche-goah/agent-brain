@@ -194,6 +194,22 @@ def _main() -> int:
             check("regen-skill-registry leaves drafts out, keeps the rest",
                   [p.returncode, "_draft-" in reg or "good-draft" in reg,
                    "new-plain-skill" in reg], [0, False, True])
+            # A sub-skill read by path (`disable-model-invocation: true`) is marked as such in
+            # its row; a plain skill is not (coherence register 2026-10-15, P1-9).
+            sub = root / ".claude" / "skills" / "sub-by-path"
+            sub.mkdir(parents=True, exist_ok=True)
+            (sub / "SKILL.md").write_text(
+                "---\nname: sub-by-path\ndescription: Read by another skill. Never fires alone.\n"
+                "disable-model-invocation: true\n---\n\n# Sub\n", encoding="utf-8")
+            p = subprocess.run([sys.executable, str(regen), "--skills",
+                                str(root / ".claude" / "skills")],
+                               capture_output=True, text=True, encoding="utf-8",
+                               env=CHILD_ENV)
+            reg = (root / ".claude" / "skills" / "REGISTRY.md").read_text(encoding="utf-8")
+            rows = {l.split("|")[1].strip(): l for l in reg.splitlines() if l.startswith("| ")}
+            check("regen marks a disable-model-invocation skill as read by path, a plain one not",
+                  [p.returncode, "read by path" in rows.get("sub-by-path", ""),
+                   "read by path" in rows.get("new-plain-skill", "")], [0, True, False])
 
         root2 = Path(tmp) / "brain2"
         build(root2, with_drafts=False)

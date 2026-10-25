@@ -107,14 +107,21 @@ def fallback_description(text: str) -> str:
     return ""
 
 
+READ_BY_PATH = " · read by path (`disable-model-invocation`: the model never loads it on its own)"
+
+
 def load_skill(skill_md: Path) -> tuple[str, str, bool]:
     text = skill_md.read_text(encoding="utf-8")
     fm = parse_frontmatter(text)
     name = clean(fm.get("name", "")) or skill_md.parent.name
     desc_raw = fm.get("description", "").strip()
+    # A skill with `disable-model-invocation: true` is a sub-skill another skill reads by path;
+    # the registry row says so, or a reader takes it for one that fires on its own (coherence
+    # register 2026-10-15, P1-9: five such skills stood in the registry like any other).
+    mark = READ_BY_PATH if str(fm.get("disable-model-invocation", "")).strip().lower() == "true" else ""
     if desc_raw:
-        return name, first_sentence(desc_raw), True
-    return name, fallback_description(text), False
+        return name, first_sentence(desc_raw) + mark, True
+    return name, (fallback_description(text) + mark) if fallback_description(text) else mark.lstrip(" ·"), False
 
 
 def main() -> None:
