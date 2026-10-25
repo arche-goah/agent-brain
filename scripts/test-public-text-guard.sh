@@ -141,6 +141,39 @@ got=$(GATE_JS="$(native "$GATE")" node -e '
 rc=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 1 -R o/pub --body zorbalina"}}' \
      | CLAUDE_PROJECT_DIR="$NT/nobrain" node "$GATE" >/dev/null 2>&1; echo $?)
 [ "$rc" = 0 ] && ok "no watch list allows" || bad "no watch list allows (rc=$rc)"
+# 2026-10-25: text through a shell variable is invisible to the guard - refused in public, free in
+# private; a literal '$5' is no variable. Measured the same day: a collaborator's brain posted a
+# name into the public core through --body-file and nothing refused it (its own watch list).
+expect "a shell variable in --body to a public repo blocks"  block "$T" 'gh pr comment 1 -R o/pub --body "see $BODY"'
+expect "a \${VAR} form in --body to a public repo blocks"    block "$T" 'gh pr comment 1 -R o/pub --body "see ${BODY}"'
+expect "the same variable to a private repo passes"         allow "$T" 'gh pr comment 1 -R o/priv --body "see $BODY"'
+expect "a literal single-quoted \$VAR passes"               allow "$T" "gh pr comment 1 -R o/pub --body 'see \$BODY'"
+expect "a dollar amount is no variable"                     allow "$T" 'gh pr comment 1 -R o/pub --body "costs $5"'
+# parties.json of the shared memory is a second source of names: a brain whose own watch list
+# is EMPTY still refuses the names of every party (the measured gap of 2026-10-25).
+P="$T/shared"; mkdir -p "$P" "$T/brain-empty/.claude/rules"
+printf '{"people": {"quxperson": {"github": "qux-gh", "devices": {"qux-win": {"os": "windows"}}, "legacy_ids": ["workstation"]}}}\n' > "$P/parties.json"
+printf '{"names": [], "instances": []}\n' > "$T/brain-empty/.claude/rules/leak-names.json"
+run_brain() { # <brain dir> <cwd> <command> -> exit code, with the shared-memory fixture
+  local json
+  json=$(CMD="$3" CWD="$(native "$2")" node -e \
+    'process.stdout.write(JSON.stringify({tool_name: "Bash", cwd: process.env.CWD, tool_input: {command: process.env.CMD}}))')
+  printf '%s' "$json" | SHARED_MEMORY_REPO="$(native "$P")" CLAUDE_PROJECT_DIR="$(native "$1")" node "$GATE" >/dev/null 2>&1
+  echo $?
+}
+rc=$(run_brain "$T/brain-empty" "$T" 'gh pr comment 1 -R o/pub --body "thanks quxperson"')
+[ "$rc" = 2 ] && ok "empty own list: a parties.json person still blocks" || bad "empty own list: a parties.json person still blocks (rc=$rc)"
+rc=$(run_brain "$T/brain-empty" "$T" 'gh pr comment 1 -R o/pub --body "measured on qux-win"')
+[ "$rc" = 2 ] && ok "empty own list: a parties.json device id blocks" || bad "empty own list: a parties.json device id blocks (rc=$rc)"
+rc=$(run_brain "$T/brain-empty" "$T" 'gh pr comment 1 -R o/priv --body "thanks quxperson"')
+[ "$rc" = 0 ] && ok "parties.json name to a private repo passes" || bad "parties.json name to a private repo passes (rc=$rc)"
+rc=$(run_brain "$T/brain-empty" "$T" 'gh pr comment 1 -R o/pub --body "the workstation is on"')
+[ "$rc" = 0 ] && ok "a legacy id (plain word) is not on the list" || bad "a legacy id (plain word) is not on the list (rc=$rc)"
+rc=$(run_brain "$T/brain" "$T" 'gh pr comment 1 -R o/pub --body "thanks quxperson"')
+[ "$rc" = 2 ] && ok "own list plus parties.json: both sources count" || bad "own list plus parties.json: both sources count (rc=$rc)"
+rc=$(SHARED_MEMORY_REPO="$(native "$T/no-shared")" run "$GATE" "$T" 'gh pr comment 1 -R o/pub --body "thanks quxperson"')
+[ "$rc" = 0 ] && ok "no parties.json: only the own list (control)" || bad "no parties.json: only the own list (control, rc=$rc)"
+
 # another tool: not this gate's business
 rc=$(printf '%s' '{"tool_name":"Edit","tool_input":{"file_path":"x","new_string":"zorbalina"}}' \
      | CLAUDE_PROJECT_DIR="$NT/brain" node "$GATE" >/dev/null 2>&1; echo $?)
