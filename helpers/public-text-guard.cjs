@@ -22,10 +22,17 @@
  * Until 2026-10-19 the guard scanned the WHOLE command and masked known path forms: every new
  * form was a new false alarm, and a path-shaped word inside a body was masked, i.e. not
  * checked. A command the parser cannot read to the end (a heredoc, an unbalanced quote) is
- * scanned whole, as before: unsure means stricter. Named limit: text that arrives through a
- * shell variable (`--body "$BODY"`) is invisible here. Watch list: `<brain>/.claude/rules/
- * leak-names.json` (`names` + `instances`, whole words, case-insensitive) — the same list
- * staged-names.py reads; the core ships no names.
+ * scanned whole, as before: unsure means stricter. Text that arrives through a
+ * shell variable (`--body "$BODY"`) is invisible here — so for a public repo it is REFUSED
+ * (write it to a file, pass --body-file): unsure means stricter (2026-10-25). Watch list:
+ * `<brain>/.claude/rules/leak-names.json` (`names` + `instances`, whole words,
+ * case-insensitive) — the same list staged-names.py reads; the core ships no names — PLUS
+ * the people and device ids of the organisation's `parties.json` in the shared-memory repo
+ * (`$SHARED_MEMORY_REPO`, default `~/Projects/brain-shared-memory`), since 2026-10-25: a
+ * collaborator's brain posted a person's name into the public core through exactly this
+ * guard's path (`gh pr comment --body-file`) and nothing refused it; a watch list every
+ * brain fills by hand misses the names it never wrote down, parties.json already names
+ * every party. legacy_ids stay out (plain words such as a machine class would hit prose).
  *
  * PUBLIC ONLY: names are legitimate in private repos shared by the people they name. The
  * target repo comes from `-R/--repo`, the `repos/<owner>/<repo>` path of `gh api`, or the
@@ -41,6 +48,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { execFileSync } = require('child_process');
 
 const WRITE_RX = [
@@ -57,6 +65,23 @@ const TTL_MS = 24 * 3600 * 1000;
 
 function brainRoot(input) {
   return process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+}
+
+// The organisation's own list of parties (shared memory, private): person keys and device ids.
+// Missing or unreadable = nothing added; the file is the org's, the core ships no names.
+function partiesList() {
+  const repo = process.env.SHARED_MEMORY_REPO || path.join(os.homedir(), 'Projects', 'brain-shared-memory');
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(repo, 'parties.json'), 'utf8'));
+    const out = [];
+    for (const [person, p] of Object.entries(d.people || {})) {
+      out.push(person);
+      for (const dev of Object.keys((p && p.devices) || {})) out.push(dev);
+    }
+    return out.map((n) => String(n).trim().toLowerCase()).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
 }
 
 function watchList(root) {
@@ -86,14 +111,30 @@ function unquote(s) {
 // Measured 2026-10-18 (Windows instance): `git -C ~/Projects/<private clone> commit …` — the
 // guard resolved the literal `~`, found no remote, called the repo "unknown" and blocked a
 // private commit; the same gap let a `--body-file ~/<file>` go unread, i.e. unscanned.
+// A Git Bash path (`/c/dir/x/f.md`, `/tmp/f.md`) is what the shell sees; node on Windows cannot
+// open it. Measured 2026-10-25 on a collaborator's Windows brain: `--body-file /c/<home>/.../x.md`
+// holding a person's name passed this guard (unreadable = skipped) and reached the public core;
+// the same file as `C:/<home>/.../x.md` was blocked. Drive form is rewritten here; everything
+// else that starts with `/` goes through `cygpath -m` when it exists (Git Bash ships it).
+function nativePath(p) {
+  const s = String(p);
+  if (process.platform !== 'win32' || !s.startsWith('/')) return s;
+  const m = /^\/([a-zA-Z])(\/|$)(.*)$/.exec(s);
+  if (m) return m[1].toUpperCase() + ':/' + m[3];
+  try {
+    return execFileSync('cygpath', ['-m', s], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }).toString().trim() || s;
+  } catch (e) { return s; }
+}
+
 function resolveFrom(cwd, p) {
   const home = require('os').homedir();
-  const s = String(p).replace(/^~(?=$|[\\/])/, home).replace(/^\$HOME(?=$|[\\/])/, home);
+  const s = nativePath(String(p).replace(/^~(?=$|[\\/])/, home).replace(/^\$HOME(?=$|[\\/])/, home));
   return path.resolve(cwd || '.', s);
 }
 
-// Files the command hands over as text. A path that cannot be read is skipped: the write
-// itself would fail on it too.
+// Files the command hands over as text. A path the guard cannot read is NOT skipped any more
+// (2026-10-25): the shell may well read it (a Git Bash path, a permission the hook lacks), so
+// for a public repo an unreadable file is refused — unsure means stricter.
 function referencedFiles(cmd) {
   const out = [];
   const rxs = [
@@ -164,9 +205,10 @@ function gate(input) {
   const cmd = String((input.tool_input && input.tool_input.command) || '');
   if (!isWrite(cmd)) return 0;
   const root = brainRoot(input);
-  const names = watchList(root);
-  if (!names || !names.length) {
-    console.error('public-text-guard: no watch list in .claude/rules/leak-names.json - nothing checked');
+  const own = watchList(root);
+  const names = [...new Set([...(own || []), ...partiesList()])];
+  if (!names.length) {
+    console.error('public-text-guard: no watch list (.claude/rules/leak-names.json, parties.json of the shared memory) - nothing checked');
     return 0;
   }
   const rx = new RegExp('\\b(' + names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'gi');
@@ -176,14 +218,20 @@ function gate(input) {
     for (const m of String(text).matchAll(rx)) if (!found.has(m[1].toLowerCase())) found.set(m[1].toLowerCase(), where);
   };
   const pub = publishedText(cmd, input.tool_name === 'PowerShell');
+  const unreadable = []; // what the guard could not read: a shell variable, a file node cannot open
   const readFiles = (list) => {
     for (const f of list) {
-      try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { /* unreadable: the write fails too */ }
+      try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { unreadable.push(`file ${f} (cannot be read by the guard)`); }
     }
   };
   if (pub) {
     pub.texts.forEach((t) => scan(t, 'the published text'));
     readFiles(pub.files);
+    for (const [s, e] of pub.spans) {
+      const raw = cmd.slice(s, e);
+      const literal = /^'[\s\S]*'$/.test(raw.replace(/^--?[\w-]+=/, ''));
+      if (!literal && /\$\{?[A-Za-z_]/.test(raw)) unreadable.push(raw.length > 40 ? raw.slice(0, 40) + '…' : raw);
+    }
   } else {
     // Not readable to the end (heredoc, unbalanced quote): scan it whole. Only the home part of
     // a path is masked - where the command runs is not what it publishes.
@@ -199,16 +247,26 @@ function gate(input) {
       scan(ident, 'the commit author - set git config --local user.name/user.email to the account and its noreply address');
     } catch (e) { /* no identity: git refuses the commit itself */ }
   }
-  if (!found.size) return 0;
+  if (!found.size && !unreadable.length) return 0;
   const repos = targetRepos(cmd, cwd);
   const open = repos.filter((s) => visibility(s, root) !== 'private' && visibility(s, root) !== 'internal');
   if (repos.length && !open.length) return 0;
+  const target = open.join(', ') || 'a repo whose visibility is unknown';
+  if (unreadable.length) {
+    console.error(
+      `BLOCKED (public-text-guard): text for ${target} that the guard cannot read: ${unreadable.join(', ')}.\n` +
+      'Unsure means stricter in public. A shell variable: write the text to a file and pass it (--body-file <file>,\n' +
+      '-F body=@<file>) or put it literally into the command. A file: give its native absolute path (on Windows\n' +
+      'C:/... not /c/...; cygpath -m <file>) and make sure it exists. Watch list: .claude/rules/leak-names.json +\n' +
+      'parties.json of the shared memory');
+    return 2;
+  }
   const words = [...found].map(([w, where]) => `"${w}" (${where})`).join(', ');
   console.error(
-    `BLOCKED (public-text-guard): text for ${open.join(', ') || 'a repo whose visibility is unknown'} names someone from the watch list: ${words}.\n` +
+    `BLOCKED (public-text-guard): text for ${target} names someone from the watch list: ${words}.\n` +
     'Public text names no person and no machine id. Say what the party IS: "the operator", "a collaborator",\n' +
     '"the macOS instance", "the Windows instance". Already posted? Delete and re-post - an EDIT keeps the old\n' +
-    'text in the edit history. Watch list: .claude/rules/leak-names.json');
+    'text in the edit history. Watch list: .claude/rules/leak-names.json + parties.json of the shared memory');
   return 2;
 }
 
@@ -224,4 +282,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { gate, isWrite, referencedFiles, targetRepos, publishedText, shellSegments };
+module.exports = { gate, isWrite, referencedFiles, targetRepos, publishedText, shellSegments, nativePath };

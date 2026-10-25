@@ -85,10 +85,25 @@ expect "named commit AUTHOR in a public clone blocks"       block "$T/namedclone
 expect "named author via git -C, no message flag, blocks"   block "$T" "git -C $NT/namedclone commit --amend --no-edit"
 expect "named author in a private clone passes"             allow "$T/namedpriv" 'git commit -m "clean message"'
 expect "neutral author in a public clone passes"            allow "$T/pubclone" 'git commit -m "clean message"'
-# home paths built at run time: a literal one would trip the core's own leak-scan
-U="Users"; HOME_MAC="/$U/zorbalina"; HOME_WIN="C:\\$U\\zorbalina"
-expect "a name only in a home path passes"                  allow "$T" "gh pr create -R o/pub --title fix --body-file $HOME_MAC/clean.md"
-expect "a name only in a Windows home path passes"          allow "$T" "gh pr comment 1 -R o/pub --body-file $HOME_WIN\\clean.md"
+# home paths built at run time: a literal one would trip the core's own leak-scan. The file under
+# the named home EXISTS here (2026-10-25: an unreadable file blocks on its own, see below), so
+# what this case proves is that the name in the PATH is not scanned.
+U="Users"; HOME_MAC="$T/$U/zorbalina"; HOME_WIN="C:\\$U\\zorbalina"
+mkdir -p "$HOME_MAC" && printf 'clean\n' > "$HOME_MAC/clean.md"
+expect "a name only in a home path passes"                  allow "$T" "gh pr create -R o/pub --title fix --body-file $(native "$HOME_MAC")/clean.md"
+# the Windows home form cannot exist on every runner: it blocks as UNREADABLE, never as a name
+reason() { # <cwd> <command> -> the gate's stderr
+  local json
+  json=$(CMD="$2" CWD="$(native "$1")" node -e \
+    'process.stdout.write(JSON.stringify({tool_name: "Bash", cwd: process.env.CWD, tool_input: {command: process.env.CMD}}))')
+  printf '%s' "$json" | CLAUDE_PROJECT_DIR="$NT/brain" node "$GATE" 2>&1 >/dev/null
+}
+why=$(reason "$T" "gh pr comment 1 -R o/pub --body-file $HOME_WIN\\clean.md")
+case "$why" in
+  *"names someone"*) bad "a name only in a Windows home path: blocked as a NAME (the path was scanned)" ;;
+  *"cannot be read"*) ok "a name only in a Windows home path: blocked only as unreadable, the path is not scanned" ;;
+  *) bad "a name only in a Windows home path: unexpected verdict ($why)" ;;
+esac
 expect "a name in the text next to a home path still blocks" block "$T" "gh pr comment 1 -R o/pub --body \"hi zorbalina\" --repo o/pub"
 mkdir -p "$T/scratch-Users-zorbalina-proj" && printf 'clean\n' > "$T/scratch-Users-zorbalina-proj/b.md"
 expect "a name inside an existing path passes"              allow "$T" "gh pr create -R o/pub --title fix --body-file $NT/scratch-Users-zorbalina-proj/b.md"
@@ -107,7 +122,12 @@ HOME="$NT" USERPROFILE="$NT" expect "clean --body-file ~/<file> passes"       al
 # forms: a comment or a path with a missing parent blocked, and a path-shaped word INSIDE a body
 # was masked and passed unchecked.
 expect "a name only in a shell comment passes"              allow "$T" 'gh pr comment 1 -R o/pub --body "thanks" # zorbalina asked'
-expect "a name in a path whose folder is missing passes"    allow "$T" "gh pr create -R o/pub --title fix --body-file $NT/no-such-zorbalina/x.md"
+# 2026-10-25: a --body-file the guard cannot read is refused in public (the shell may read what node
+# cannot - measured on a Windows brain with a Git Bash path), free in private; the name in the PATH
+# is still not what blocks (the message names the unreadable file, not a watch-list word).
+expect "an unreadable --body-file blocks in public (unsure)"   block "$T" "gh pr create -R o/pub --title fix --body-file $NT/no-such-zorbalina/x.md"
+expect "an unreadable --body-file passes in private"           allow "$T" "gh pr create -R o/priv --title fix --body-file $NT/no-such-folder/x.md"
+expect "an unreadable -F body=@file blocks in public"          block "$T" "gh api repos/o/pub/issues/1/comments -F body=@$NT/no-such-folder/x.md"
 expect "a name in the git -C path, clean message, passes"   allow "$T" "git -C $NT/pubclone/../zorbalina-gone/../pubclone commit -m \"clean message\""
 expect "a path-shaped word inside the body blocks"          block "$T" "gh pr comment 1 -R o/pub --body \"see $NT/scratch-Users-zorbalina-proj/b.md\""
 expect "short title flag -t blocks"                         block "$T" 'gh issue create -R o/pub -t "for zorbalina" -b "x"'
@@ -141,6 +161,53 @@ got=$(GATE_JS="$(native "$GATE")" node -e '
 rc=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 1 -R o/pub --body zorbalina"}}' \
      | CLAUDE_PROJECT_DIR="$NT/nobrain" node "$GATE" >/dev/null 2>&1; echo $?)
 [ "$rc" = 0 ] && ok "no watch list allows" || bad "no watch list allows (rc=$rc)"
+# 2026-10-25: text through a shell variable is invisible to the guard - refused in public, free in
+# private; a literal '$5' is no variable. Measured the same day: a collaborator's brain posted a
+# name into the public core through --body-file and nothing refused it (its own watch list).
+expect "a shell variable in --body to a public repo blocks"  block "$T" 'gh pr comment 1 -R o/pub --body "see $BODY"'
+expect "a \${VAR} form in --body to a public repo blocks"    block "$T" 'gh pr comment 1 -R o/pub --body "see ${BODY}"'
+expect "the same variable to a private repo passes"         allow "$T" 'gh pr comment 1 -R o/priv --body "see $BODY"'
+expect "a literal single-quoted \$VAR passes"               allow "$T" "gh pr comment 1 -R o/pub --body 'see \$BODY'"
+expect "a dollar amount is no variable"                     allow "$T" 'gh pr comment 1 -R o/pub --body "costs $5"'
+# parties.json of the shared memory is a second source of names: a brain whose own watch list
+# is EMPTY still refuses the names of every party (the measured gap of 2026-10-25).
+P="$T/shared"; mkdir -p "$P" "$T/brain-empty/.claude/rules"
+printf '{"people": {"quxperson": {"github": "qux-gh", "devices": {"qux-win": {"os": "windows"}}, "legacy_ids": ["workstation"]}}}\n' > "$P/parties.json"
+printf '{"names": [], "instances": []}\n' > "$T/brain-empty/.claude/rules/leak-names.json"
+run_brain() { # <brain dir> <cwd> <command> -> exit code, with the shared-memory fixture
+  local json
+  json=$(CMD="$3" CWD="$(native "$2")" node -e \
+    'process.stdout.write(JSON.stringify({tool_name: "Bash", cwd: process.env.CWD, tool_input: {command: process.env.CMD}}))')
+  printf '%s' "$json" | SHARED_MEMORY_REPO="$(native "$P")" CLAUDE_PROJECT_DIR="$(native "$1")" node "$GATE" >/dev/null 2>&1
+  echo $?
+}
+rc=$(run_brain "$T/brain-empty" "$T" 'gh pr comment 1 -R o/pub --body "thanks quxperson"')
+[ "$rc" = 2 ] && ok "empty own list: a parties.json person still blocks" || bad "empty own list: a parties.json person still blocks (rc=$rc)"
+rc=$(run_brain "$T/brain-empty" "$T" 'gh pr comment 1 -R o/pub --body "measured on qux-win"')
+[ "$rc" = 2 ] && ok "empty own list: a parties.json device id blocks" || bad "empty own list: a parties.json device id blocks (rc=$rc)"
+rc=$(run_brain "$T/brain-empty" "$T" 'gh pr comment 1 -R o/priv --body "thanks quxperson"')
+[ "$rc" = 0 ] && ok "parties.json name to a private repo passes" || bad "parties.json name to a private repo passes (rc=$rc)"
+rc=$(run_brain "$T/brain-empty" "$T" 'gh pr comment 1 -R o/pub --body "the workstation is on"')
+[ "$rc" = 0 ] && ok "a legacy id (plain word) is not on the list" || bad "a legacy id (plain word) is not on the list (rc=$rc)"
+rc=$(run_brain "$T/brain" "$T" 'gh pr comment 1 -R o/pub --body "thanks quxperson"')
+[ "$rc" = 2 ] && ok "own list plus parties.json: both sources count" || bad "own list plus parties.json: both sources count (rc=$rc)"
+rc=$(SHARED_MEMORY_REPO="$(native "$T/no-shared")" run "$GATE" "$T" 'gh pr comment 1 -R o/pub --body "thanks quxperson"')
+[ "$rc" = 0 ] && ok "no parties.json: only the own list (control)" || bad "no parties.json: only the own list (control, rc=$rc)"
+
+# Git Bash drive paths become native before node reads them (unit cases on the exported helper;
+# the rewrite applies on win32 only, so the platform is forced through the test)
+got=$(GATE_JS="$(native "$GATE")" node -e '
+  const { nativePath } = require(process.env.GATE_JS);
+  Object.defineProperty(process, "platform", { value: "win32" });
+  console.log([nativePath("/c/dir/x/f.md"), nativePath("/d"), nativePath("C:/dir/x/f.md"), nativePath("rel/f.md")].join("|"));')
+[ "$got" = "C:/dir/x/f.md|D:/|C:/dir/x/f.md|rel/f.md" ] && ok "nativePath: /c/... -> C:/..., drive root, native and relative untouched" \
+  || bad "nativePath rewrite (got: $got)"
+got=$(GATE_JS="$(native "$GATE")" node -e '
+  const { nativePath } = require(process.env.GATE_JS);
+  Object.defineProperty(process, "platform", { value: "darwin" });
+  console.log(nativePath("/c/dir/x/f.md"));')
+[ "$got" = "/c/dir/x/f.md" ] && ok "nativePath: no rewrite outside Windows" || bad "nativePath outside Windows (got: $got)"
+
 # another tool: not this gate's business
 rc=$(printf '%s' '{"tool_name":"Edit","tool_input":{"file_path":"x","new_string":"zorbalina"}}' \
      | CLAUDE_PROJECT_DIR="$NT/brain" node "$GATE" >/dev/null 2>&1; echo $?)
