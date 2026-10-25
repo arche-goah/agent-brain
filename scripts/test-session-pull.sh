@@ -91,7 +91,10 @@ advance clean; advance dirty; advance diverged; advance extra; advance core
 advance brain docs/memory-snapshot/note.md
 echo "local edit" > "$T/w/dirty/seed.txt"                     # tracked file, upstream does not touch it
 git_q -C "$T/w/nobranch" checkout -q -b local-only
-echo own > "$T/w/diverged/own.txt"; git_q -C "$T/w/diverged" add -A; git_q -C "$T/w/diverged" commit -qm own
+# A commit on a clone behind its upstream is the point here; on a machine whose global hooks carry
+# the core's pre-commit, its behind check would refuse it — the switch says "on purpose".
+echo own > "$T/w/diverged/own.txt"; git_q -C "$T/w/diverged" add -A
+git_q -C "$T/w/diverged" -c brain.preCommitFetch=false commit -qm own
 mkdir -p "$BRAIN/config/machines"
 printf '{"repos":{"brain":{"path":"%s","kind":"instance"},"core":{"path":"%s/core","kind":"core","remote":"%s"},"clean":{"path":"%s"},"dirty":{"path":"%s"},"nobranch":{"path":"%s"},"diverged":{"path":"%s"},"missing":{"path":"%s","remote":"%s"},"orphan":{"path":"%s"}}}\n' \
   "$BRAIN" "$BRAIN" "$T/r/core.git" "$T/w/clean" "$T/w/dirty" "$T/w/nobranch" "$T/w/diverged" \
