@@ -118,6 +118,19 @@ with tempfile.TemporaryDirectory() as td:
        "MORE EXPENSIVE" in out and "x CHEAPER" not in out, out.strip()[-160:])
 
 with tempfile.TemporaryDirectory() as td:
+    # 6b. a repo without INDEX.md (a new channel's first run): no ratio, and --write writes.
+    repo = Path(td) / "repo"
+    build_repo(repo, 2, "")
+    (repo / "INDEX.md").unlink()
+    try:
+        out, err = run_main(repo, write=True), ""
+    except ZeroDivisionError as e:
+        out, err = "", repr(e)
+    ok("6b no INDEX.md yet: says so instead of dividing by zero",
+       "nothing to compare (first run)" in out, err or out.strip()[-160:])
+    ok("6c  ... and --write writes the first index", (repo / "INDEX.md").is_file(), err)
+
+with tempfile.TemporaryDirectory() as td:
     # 7-11. FRESHNESS (2026-09-13). The operator's order: the register must be filterable
     # by date. Two sources, told apart in the index; the git date is pinned in the fixture
     # so the assertions do not drift with the calendar.

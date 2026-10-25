@@ -492,7 +492,12 @@ def main() -> int:
     print(f"one lookup TODAY:  {old_size:>7} chars  (~{old_size//4} tokens) — the whole index")
     print(f"one lookup AFTER:  {lookup_new:>7} chars  (~{lookup_new//4} tokens) — root + the "
           f"largest topic")
-    if lookup_new:
+    # A repo without INDEX.md (a new channel's first run) has nothing to compare: old_size 0
+    # made the ratio 0 and `1 / ratio` raised before --write, so the first index was never
+    # written (measured on the Windows instance 2026-10-24, a new private shared-memory repo).
+    if not old_size:
+        print("factor:            no INDEX.md yet, nothing to compare (first run)")
+    elif lookup_new:
         # The direction is COMPUTED, never assumed. "cheaper" was a fixed word next to a
         # ratio that can fall below 1 — and it now does routinely: once the split this
         # figure argued for has happened, the comparison is "already split against split",
