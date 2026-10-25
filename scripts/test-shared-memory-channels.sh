@@ -90,9 +90,12 @@ refuse "broken JSON" '{"channels": [' "not valid JSON"
 echo "open-items: every member channel read, ids labelled"
 mkdir -p "$T/core/scripts"
 for f in open-items.py instance_key.py project_dir.py shared_answers.py shared_channels.py \
-         shared-memory-inbox.py shared-memory-index.py shared-memory-lint.py shared-memory-parties.py; do
+         shared-memory-inbox.py shared-memory-index.py shared-memory-lint.py shared-memory-parties.py \
+         ledger-reconcile.py; do
   cp "$HERE/$f" "$T/core/scripts/"
 done
+# No work ledgers registered on purpose — without the file open-items says "work ledgers NOT checked".
+printf '%s\n' '{"ledgers": []}' > "$INST/.claude/rules/ledgers.json"
 printf '%s\n' '{"data":{"viewer":{"login":"me"},"search":{"issueCount":0,"nodes":[]}}}' > "$T/noprs.json"
 oi() { SHARED_MEMORY_CHANNELS_CONFIG="$(native "$1")" OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")" \
          "$PY" "$(native "$T/core/scripts/open-items.py")" --owner me --repo "$(native "$T/shared")" \

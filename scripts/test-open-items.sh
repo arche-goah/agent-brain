@@ -22,6 +22,10 @@ cp "$(dirname "$SRC")/instance_key.py" "$T/core/scripts/instance_key.py"
 cp "$(dirname "$SRC")/project_dir.py" "$T/core/scripts/project_dir.py"
 cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
 cp "$(dirname "$SRC")/shared_channels.py" "$T/core/scripts/shared_channels.py"
+cp "$(dirname "$SRC")/ledger-reconcile.py" "$T/core/scripts/ledger-reconcile.py"
+# The work-ledger registry: empty here (registered nothing on purpose); the ledger cases below
+# use their own root.
+mkdir -p "$T/root/.claude/rules"; printf '%s\n' '{"ledgers": []}' > "$T/root/.claude/rules/ledgers.json"
 # The fake inbox prints whatever $T/inbox.txt holds — in UTF-8, like the real one (OS-9): unpinned,
 # Windows wrote the em dash of an "optional: … —" line in cp1252 and the item read differently than
 # on Linux (measured on PR #355: Windows '?', CI 'wait').
@@ -322,6 +326,40 @@ has "standing approval 'requests to this machine' refused" "$st" && ! has "[requ
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
   '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
   '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
+
+# Work ledgers (measured 2026-10-25: "open for us: 3" while ordered points sat in the brain's
+# own ledgers). Open entries are listed (todo = ai, decision = human), done ones and lessons not;
+# no registry and an unreadable format each say NOT checked, never "nothing open".
+L="$T/root-led"; mkdir -p "$L/.claude/rules" "$L/docs/x"
+printf '%s\n' 'shared-memory open requests to this instance: 0 (last 36500 days)' > "$T/inbox.txt"
+out=$(run "" "$L")
+has "work ledgers (no readable .claude/rules/ledgers.json) NOT checked" "$out" && ok "no ledger registry = NOT checked" || bad "no registry silent: $out"
+has "- nothing open" "$out" && bad "no registry read as nothing open: $out" || ok "no registry is not 'nothing open'"
+printf '%s\n' '{"ledgers": ["docs/x/open.md", "docs/x/heads.md"]}' > "$L/.claude/rules/ledgers.json"
+printf '%s\n' '# x' '' '- [ ] Remeasure the ipc folders 2026-10-11' '  - `id: ipc-remeasure`  `class: todo`  `origin: derived`' '' \
+  '- [ ] Pick a name' '  id: pick-name' '  class: decision' '' \
+  '- [x] Done thing' '  id: done-thing' '' \
+  '- [ ] Never minimise the window' '  id: minimise-lesson' '  class: lesson' > "$L/docs/x/open.md"
+printf '%s\n' '# y' '' '## Heading entry' '' '- id: `heading-entry`' '- class: todo' > "$L/docs/x/heads.md"
+out=$(run "" "$L")
+has "[ledger|ai] 2026-10-11 ipc-remeasure — derived: Remeasure the ipc folders" "$out" && ok "open ledger todo listed as ai" || bad "ledger todo missing: $out"
+has "[ledger|human]  pick-name" "$out" && ok "ledger decision listed as human" || bad "ledger decision: $out"
+has "done-thing" "$out" && bad "done entry listed: $out" || ok "done entry not listed"
+has "minimise-lesson" "$out" && bad "lesson listed: $out" || ok "lesson not listed"
+has "ledger docs/x/heads.md (id: fields but no '- [ ]' entries" "$out" && ok "unreadable ledger format = NOT checked" || bad "heading-format ledger silent: $out"
+printf '%s\n' '{"ledgers": ["docs/x/open.md"]}' > "$L/.claude/rules/ledgers.json"
+out=$(run "" "$L")
+has "open for us: 2 — ai 1 · human 1" "$out" && ok "ledger items counted" || bad "ledger count: $out"
+# A backlog-catch-up exit that puts the move elsewhere waits quietly; ai-does-it stays the agent's.
+printf '%s\n' '' '- [ ] Ask the other side' '  id: other-thing' '  exit: other-side 2026-10-25 — peer is on it' '' \
+  '- [ ] Mine to build' '  id: mine-thing' '  exit: ai-does-it 2026-10-25 — clear' >> "$L/docs/x/open.md"
+out=$(run "" "$L")
+has "[ledger|wait] 2026-10-25 other-thing" "$out" && has "waiting on the ledger exit other-side: since 2026-10-25" "$out" \
+  && ok "exit other-side waits quietly" || bad "exit other-side: $out"
+has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ok "exit ai-does-it stays open work" || bad "exit ai-does-it: $out"
+cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" --repo "$(native "$T/repo")" --classify 'ledger:pick-name=ai:mine' 2>&1)
+out=$(run "" "$L")
+has "[ledger|ai]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"
 
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"

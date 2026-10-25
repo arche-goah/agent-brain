@@ -240,6 +240,16 @@ check "wake-up item named" "$f" allow "$EN"
 f="$T/19b.jsonl"; { boot_ok startup "$WB"; user "stand?"; asst "1 point needs you. Everything else stays parked."; } > "$f"
 check "wake-up item left out" "$f" block "$EN"
 
+# 19c — an open work-ledger entry (open-items.py ledgers(), 2026-10-25): an operator item must be
+# named like any other; before, the gate skipped the line and a reply leaving it out passed.
+L1="- [ledger|human] 2026-10-11 ipc-remeasure — derived: Remeasure the ipc folders with a deviating desk variable — first report (a decision in the ledger)"
+L2="- [ledger|human]  pick-name — operator: Pick a name for the wizard — first report (a decision in the ledger)"
+LB="=== BRAIN BOOTUP CHECK ===${NL}open for us: 2 — ai 0 · human 2 · unclassified 0${NL}${L1}${NL}${L2}${NL}=== END BOOTUP ==="
+f="$T/19c.jsonl"; { boot_ok startup "$LB"; user "stand?"; asst "2 points need you: the ipc remeasure from 2026-10-11, and a name for the wizard."; } > "$f"
+check "ledger items named (dated and undated)" "$f" allow "$EN"
+f="$T/19d.jsonl"; { boot_ok startup "$LB"; user "stand?"; asst "2 points need you: the ipc remeasure from 2026-10-11."; } > "$f"
+check "undated ledger item left out" "$f" block "$EN"
+
 # 20 — a standing approval (full-audit 2026-10-15, Windows instance): the operator approved the
 # item's class once for good, so the reply reports it handled instead of asking. Asking anyway
 # is not wrong here; leaving it out is. An ai item WITHOUT such a class still needs the question.

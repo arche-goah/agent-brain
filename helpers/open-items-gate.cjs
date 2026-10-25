@@ -241,6 +241,11 @@ function parseBlock(text) {
       // domain or the date like a request.
       items.push({ cls: m[1], ref: `parked domain ${m[5]}`, key: `wake:${m[5]}`, base: `wake:${m[5]}`,
         date: [m[2], m[3], m[4]], words: topicWords(m[5]), repeat });
+    } else if ((m = /^- \[ledger\|(\w+|\?)\] (?:(\d{4})-(\d{2})-(\d{2}))? ?(\S+) — (?:[^:]+: (.+?) — )?/.exec(l))) {
+      // An open entry of a registered work ledger (open-items.py ledgers()): named by its date,
+      // its id or its title words. Undated entries are named by words alone.
+      items.push({ cls: m[1], ref: m[5], key: `ledger:${m[5]}`, id: `ledger:${m[5]}`, base: m[5],
+        date: m[2] ? [m[2], m[3], m[4]] : null, words: topicWords(`${m[5]} ${m[6] || ''}`), repeat });
     } else if (/^- \[parked\]/.test(l)) parked = true;
     else if (/^- nothing open/.test(l)) nothing = true;
   }
@@ -274,6 +279,11 @@ function genericWords(cwd) {
  */
 function named(item, reply, ageRx, generic) {
   if (item.num) return new RegExp(`#${item.num}(?!\\d)`).test(reply);
+  if (!item.date) {
+    const low = reply.toLowerCase();
+    const words = (item.words || []).filter((w) => !generic.has(w));
+    return reply.includes(item.base) || (words.length > 0 && words.filter((w) => low.includes(w)).length >= Math.min(2, words.length));
+  }
   const [y, mo, d] = item.date;
   if (reply.includes(`${y}-${mo}-${d}`) || new RegExp(`(?<!\\d)${mo}-${d}(?!\\d)`).test(reply)
     || new RegExp(`(?<!\\d)${Number(d)}\\.\\s?${Number(mo)}\\.|(?<!\\d)${d}\\.${mo}\\.`).test(reply)) return true;
