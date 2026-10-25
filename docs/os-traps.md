@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=5 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=4 scripts/hook-coverage.py=20 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=16 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26 scripts/plugin-records-test.py=1 scripts/backprop-report.py=5 scripts/recorder-report.py=3
+known:     helpers/session-bootup.sh=5 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=4 scripts/hook-coverage.py=20 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=16 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26 scripts/plugin-records-test.py=1 scripts/backprop-report.py=5 scripts/recorder-report.py=3 scripts/live-doc-lint.py=3 scripts/live-doc-lint-test.py=2
 instances: 5
 repeat:    yes
 status:    closed
@@ -139,6 +139,10 @@ it prints names the live-read domain and the fixed text `.claude/rules/live-watc
 2026-10-23, scripts/recorder-report.py baselined after review: its three joins build the paths of
 stop-checks.json, the gate's source and the recorder logs, which are only opened or tested for
 existence; what it prints is the check's label and the log's bare file name, never a joined path.
+2026-10-25, scripts/live-doc-lint.py (3) and its fixture (2) baselined after review: the lint's
+joins build the paths of dependencies.json, the glob root and the file it opens; every path it
+REPORTS or hands to `git diff` is `relpath(...).replace(os.sep, "/")`. The fixture's joins build
+files it writes into its throwaway repo and never prints.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -515,7 +519,7 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=8 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=3 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1 scripts/backprop-report.py=4
+known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=8 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=3 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1 scripts/backprop-report.py=4 scripts/live-doc-lint.py=2
 instances: 1
 repeat:    no
 status:    open
@@ -549,7 +553,9 @@ bootup and open-items-gate.cjs parse this output, and the script pins stdout (`O
 into a JSON file its agents read, and on a Windows brain that file held a description's `·` as the
 cp1252 byte 0xb7 (measured at core #24 on 2026-10-18; a planted accented letter reproduced it). Pinned in
 `main()`; `portability-smoke.sh` asserts the piped `--inventory` parses as UTF-8 JSON. Left `open` deliberately — the 12 unpinned sites are fine only
-as long as that answer stays no.
+as long as that answer stays no. 2026-10-25, scripts/live-doc-lint.py (2): the question answered
+yes — its `--json` is parsed by the fixture and the text report is read by a CI log and a reviewer —
+so stdout is pinned at import, like the others.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
 

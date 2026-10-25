@@ -11,8 +11,13 @@
     "Every bump gets a line in the history below with WHY. A bump without a reason cannot",
     "be judged by the other person."
   ],
-  "contract_version": "1.1.0",
+  "contract_version": "1.2.0",
   "history": [
+    {
+      "version": "1.2.0",
+      "date": "2026-10-25",
+      "why": "New optional capability: a suite may list its live-behaviour documentation under `live_docs` in dependencies.json; the core's live-doc-lint then gates the measurement state of added or changed rows in the suite's CI (operator decision 2026-10-24 after the retroactive review run: 21 of 35 desk rows merged unmeasured, three refuted later). Nothing becomes mandatory: a suite without the key is unchanged, suite-check only WARNs when the key is declared and no CI step runs the lint. Minor by the rule above (optional capability, warning check)."
+    },
     {
       "version": "1.1.0",
       "date": "2026-08-13",
@@ -40,6 +45,9 @@
   ],
   "plugin_required_fields": ["name", "description", "author"],
   "dependencies_required_fields": ["manifest_version", "requires_core", "dependencies"],
+  "dependencies_optional_fields": {
+    "live_docs": "list of repo-relative paths or globs whose table rows document observed live-tool behaviour; added or changed rows there carry a measurement state in the evidence column (scripts/live-doc-lint.py --changed <base-ref>, CONVENTIONS section 9); declaring it without a CI step that runs the lint is a WARN"
+  },
   "forbidden_in_tracked_files": {
     "absolute_home_path": "/(Users|home)/<name> — a path from one machine never works on another"
   }

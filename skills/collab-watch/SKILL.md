@@ -98,8 +98,11 @@ opt-out and holds for that session only.
 1. **Review with evidence chain.** Read diff, PR text and the WHOLE thread (comments carry
    the history, not only `reviews`). Split every claim: measured / derived / assumed. Take
    open measurements yourself when this machine can. A PR that claims live behaviour of
-   hardware or tools you also own: re-measure on your own (an instance skill for this, if
-   it has one, takes over this step). A counter-check "OK on this OS" of a core PR runs
+   hardware or tools you also own: re-measure on your own (skill `pr-live-verify` takes
+   over this step). A live-behaviour row without its measurement state (date · machine ·
+   method, `rules/thinking-protocol.md` evidence chain) gets the question for that state
+   as the FIRST review comment — no merge on plausibility; where the suite opted in,
+   `scripts/live-doc-lint.py --changed <base>` names such rows. A counter-check "OK on this OS" of a core PR runs
    `bash scripts/ci-lint-local.sh` at the PR head (the CI's own steps, read from the
    workflow) and names its result line — the fixtures of the touched parts alone missed a
    CI lint step twice on 2026-10-21.

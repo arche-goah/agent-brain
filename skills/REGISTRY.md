@@ -1,13 +1,13 @@
 # Skill Registry
 
-**Total skills:** 26
-**Generated:** 2026-10-09
+**Total skills:** 28
+**Generated:** 2026-10-25
 
 > Auto-generated from the `.claude/skills/*/SKILL.md` files via `core/scripts/regen-skill-registry.py` — **do not maintain by hand**. Re-run the script after changing a skill.
 
 Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (each with YAML frontmatter `name` + `description`). This registry is the human-readable overview.
 
-## Other (26)
+## Other (28)
 
 | Skill | Short description |
 |-------|--------------------|
@@ -30,8 +30,9 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 | parallel-research-agent | Spawns 3-5 sub-agents for parallel research tasks |
 | playwright-skill | Complete browser automation with Playwright |
 | ponytail | Forces the laziest solution that actually works: YAGNI, stdlib before custom code, native before dependencies, … |
+| pr-live-verify | Re-measure a collaborator's PR claims on OUR OWN hardware before merging, then split the result … |
 | repo-recon | Rapidly orient in a large, unfamiliar codebase — map structure, languages, entry points, build/test/run commands, … |
-| session-close | Close a session cleanly — persist open work (states to their ledger, lessons to memory), … |
+| session-close | Close a session cleanly — persist open work (states to their ledger, lessons to their … |
 | session-insights | Self-analysis of Claude Code sessions |
 | shared-memory-tidy | Tidy-up pass over the shared-memory repo — run the deterministic lint, then the judging workflow, … |
 | shared-memory-watch | Live watch on the shared-memory repo while a session runs — arms the persistent watcher … |
@@ -41,4 +42,4 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 
 ---
 
-**26 skills** across 1 groups.
+**28 skills** across 1 groups.

@@ -144,6 +144,7 @@ def check(repo: Path, contract: dict):
 
     # dependency manifest + the core declaration
     dj = repo / "dependencies.json"
+    live_docs_declared = False
     if dj.exists():
         try:
             data = json.loads(dj.read_text(encoding="utf-8"))
@@ -151,6 +152,14 @@ def check(repo: Path, contract: dict):
                 if field not in data:
                     lvl = "ERROR" if field == "requires_core" else "WARN"
                     add(lvl, f"dependencies.json: missing {field!r}")
+            # optional capability (contract 1.2.0): live documentation opts into the
+            # measurement-state lint; the opt-in without the CI step is a declaration
+            # nobody checks (section 9)
+            if "live_docs" in data:
+                if isinstance(data["live_docs"], list):
+                    live_docs_declared = True
+                else:
+                    add("WARN", "dependencies.json: live_docs must be a list of paths or globs")
             if "requires_core" in data:
                 ok, why = satisfies(core, data["requires_core"])
                 if not ok:
@@ -165,6 +174,9 @@ def check(repo: Path, contract: dict):
         for step in contract["required_ci_steps"]:
             if step not in text:
                 add("ERROR", f"no CI step runs {step}")
+        if live_docs_declared and "live-doc-lint.py" not in text:
+            add("WARN", "dependencies.json declares live_docs but no CI step runs live-doc-lint.py "
+                        "(core scripts/live-doc-lint.py --changed <base-ref>)")
         # Actions minutes are a shared account budget: an unfiltered `push` trigger runs
         # every PR branch twice (push event + pull_request event). That pattern exhausted
         # the account's 2000-min free quota mid-month on 2026-08-13 and killed CI
