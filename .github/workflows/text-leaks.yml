@@ -2,6 +2,14 @@
 # reviews. A red run here does not block a merge (text can be changed after the fact), but
 # it is a red check the standing watch reports, so a name or address in a post is seen the
 # same day. Fix: delete and re-post (an edit keeps the old text in the edit history).
+#
+# This scan is the LAST barrier, never the first (operator order 2026-10-25): every brain's
+# public-text-guard refuses such text before it is posted. A hit here therefore means a
+# local gate was missed, and the one who must act is the poster — so a hit reaches them at
+# once, in the thread: the offending comment is hidden (reversible, the text stays in the
+# edit history until its author deletes it) and a notice naming the finding's class and
+# line, never the matched text, is posted with an @-mention of the author. Review bodies and
+# pull-request bodies cannot be hidden by the API; they get the notice only.
 name: text leaks
 
 on:
@@ -16,6 +24,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   text:
@@ -32,6 +42,33 @@ jobs:
         with:
           python-version: "3.12"
       - name: leak scan (event text)
+        id: scan
         run: |
           printf '%s\n\n%s\n' "$TITLE" "$BODY" > "$RUNNER_TEMP/event-text.txt"
-          python3 scripts/leak-scan.py --no-tree --text "$RUNNER_TEMP/event-text.txt"
+          set +e
+          python3 scripts/leak-scan.py --no-tree --text "$RUNNER_TEMP/event-text.txt" | tee "$RUNNER_TEMP/scan.out"
+          rc=${PIPESTATUS[0]}
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+      # Exit 1 = findings (exit 2 = no watch list: a repo-secret problem, not the poster's).
+      - name: tell the poster and hide the comment
+        if: steps.scan.outputs.rc == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ github.event.comment.user.login || github.event.review.user.login || github.event.pull_request.user.login }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          COMMENT_NODE: ${{ github.event.comment.node_id }}
+          WHAT: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          bash scripts/text-leaks-notice.sh "$RUNNER_TEMP/scan.out" > "$RUNNER_TEMP/notice.md"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -F body=@"$RUNNER_TEMP/notice.md" --silent
+          if [ -n "$COMMENT_NODE" ]; then
+            gh api graphql \
+              -f query='mutation($id: ID!) { minimizeComment(input: {subjectId: $id, classifier: OFF_TOPIC}) { minimizedComment { isMinimized } } }' \
+              -F id="$COMMENT_NODE"
+          fi
+      - name: verdict
+        if: steps.scan.outputs.rc != '0'
+        run: |
+          echo "leak scan exit ${{ steps.scan.outputs.rc }} — see the scan step"
+          exit 1
