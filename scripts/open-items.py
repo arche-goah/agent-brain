@@ -540,6 +540,7 @@ def sessions(root, hook_input):
 # requests), the first reply said nothing else was open, and ordered points sat in the brain's own
 # ledgers — a list that calls itself THE list had read two of its three sources.
 LEDGER_FIELD = re.compile(r"\b(id|class|origin):\s*`?([\w.:/-]+)")
+LEDGER_EXIT = re.compile(r"\bexit:\s*(other-side|parked|later-at-system)\s+(\d{4}-\d{2}-\d{2})")
 
 
 def ledgers(root):
@@ -574,10 +575,14 @@ def ledgers(root):
                 continue
             ident = f.get("id") or f"{rel}:{e['line']}"
             d, m = mod.DATE.search(e["text"]), WAIT_MARK.search(e["text"])
+            # The backlog-catch-up exits that put the move elsewhere (skill backlog-catch-up, step 4):
+            # listed quietly as waiting, never as the agent's open work.
+            x = LEDGER_EXIT.search(e["text"])
             items.append({"id": f"ledger:{ident}", "kind": "ledger", "date": d.group(1) if d else "",
                           "who": f.get("origin", "ledger"), "text": re.sub(r"[*`]", "", e["title"])[:100],
                           "scope": rel, "ref": ident, "lclass": f.get("class", ""),
-                          "until": (m.group(1), m.group(2).strip()) if m else None})
+                          "until": (m.group(1), m.group(2).strip()) if m else None,
+                          "waiting_on": (f"the ledger exit {x.group(1)}", f"since {x.group(2)}") if x else None})
     return items, unread
 
 

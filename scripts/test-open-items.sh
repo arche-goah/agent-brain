@@ -350,6 +350,13 @@ has "ledger docs/x/heads.md (id: fields but no '- [ ]' entries" "$out" && ok "un
 printf '%s\n' '{"ledgers": ["docs/x/open.md"]}' > "$L/.claude/rules/ledgers.json"
 out=$(run "" "$L")
 has "open for us: 2 — ai 1 · human 1" "$out" && ok "ledger items counted" || bad "ledger count: $out"
+# A backlog-catch-up exit that puts the move elsewhere waits quietly; ai-does-it stays the agent's.
+printf '%s\n' '' '- [ ] Ask the other side' '  id: other-thing' '  exit: other-side 2026-10-25 — peer is on it' '' \
+  '- [ ] Mine to build' '  id: mine-thing' '  exit: ai-does-it 2026-10-25 — clear' >> "$L/docs/x/open.md"
+out=$(run "" "$L")
+has "[ledger|wait] 2026-10-25 other-thing" "$out" && has "waiting on the ledger exit other-side: since 2026-10-25" "$out" \
+  && ok "exit other-side waits quietly" || bad "exit other-side: $out"
+has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ok "exit ai-does-it stays open work" || bad "exit ai-does-it: $out"
 cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" --repo "$(native "$T/repo")" --classify 'ledger:pick-name=ai:mine' 2>&1)
 out=$(run "" "$L")
 has "[ledger|ai]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"
