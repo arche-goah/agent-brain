@@ -107,7 +107,11 @@ function promptText(msg) {
 // read "no open-items block" at EVERY turn end of such a session, with no reply that could
 // satisfy it (measured 2026-10-22 on the second macOS instance, bootup 10.3 KB). The file the
 // preview names is the whole output — read it; an unreadable file leaves the preview as is.
-const PERSISTED = /Full output saved to:\s*(\S+)/;
+// The path runs to the end of its line or to the " Preview (first" that may follow on the same
+// line — NOT to the next space: a Windows profile name carries one (`C:\Users\First Last\…`),
+// and `\S+` cut it there (measured 2026-10-25 by the Windows instance on its real transcript;
+// trap class OS-10).
+const PERSISTED = /Full output saved to:\s*([^\r\n]+?)\s*(?:$|\sPreview \(first)/m;
 function persistedText(text) {
   const m = PERSISTED.exec(text);
   if (!m) return text;
