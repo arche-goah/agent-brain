@@ -127,7 +127,7 @@ History: core/docs/rule-history.md, "Session Traceability (3 layers)".
    OK) — English keys and values; aggregators also match legacy forms (`von: <name>`).
    Entries are `- [ ]` / `- [x]` lines, the file is registered in
    `.claude/rules/ledgers.json` (2026-10-25): the session start lists every open entry with
-   the PRs and requests — an unregistered ledger is invisible there (`scripts/open-items.py`).
+   the PRs and requests — an unregistered ledger is invisible there (`core/scripts/open-items.py`).
 2. **Every overview above the detail lists is GENERATED, never hand-maintained.**
 3. **`reach: shared`** = exported to the org's shared-memory repo once a second brain
    works the project, one-file-one-fact with the source `id`, deliberately at session
