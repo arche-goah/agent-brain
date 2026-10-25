@@ -239,6 +239,16 @@ Reference implementation in the brain: `config/dependencies.json`,
 A skill whose external tool is missing must fail with a message naming the manifest
 entry — not with a shell error deep inside a workflow.
 
+- **Live documentation opts in through the same file** (2026-10-24): a suite whose
+  references document observed behaviour of a live tool (a desk, TouchDesigner, a network
+  device) lists those files under the optional key `live_docs` (paths or globs). From then
+  on every table row those files ADD or CHANGE carries its measurement state in the
+  evidence column — `<YYYY-MM-DD> · <machine or tool> · measured A/B/A | measured once |
+  derived | assumed` (`rules/thinking-protocol.md`, evidence chain) — checked by the core's
+  `scripts/live-doc-lint.py --changed <base-ref>` in the suite's CI. Old rows are counted,
+  never red; `suite-check` warns when the key is declared but no CI step runs the lint. The
+  key is listed in `core-contract.json` under `dependencies_optional_fields`.
+
 ## 10. The one rule an agent must follow without being told
 
 New tool domain (a new MCP server, a new device family, a new application):

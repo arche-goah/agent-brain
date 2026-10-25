@@ -1205,6 +1205,23 @@ Long form before the context diet of 2026-10-20 (verbatim; `rules/thinking-proto
    incident is about to be reapplied to a new one on pattern-similarity
    alone.
 
+**A documented live-behaviour row carries its measurement state (2026-10-24).** The incident:
+a retroactive review run over 188 merged collaborator PRs (macOS instance, 2026-10-24) found
+that 39 of 157 reviews had taken a measurable claim over unread; every re-runnable test still
+held (71 PRs, 0 failures), so the damage sat where no instrument exists — documentation of
+live device behaviour. In the desk suite's gotcha reference, 21 of 35 behaviour rows had been
+merged without a counter-measurement, and three of them were later refuted by their own author.
+A row carried no hint of HOW it came about (observed once, measured with a negative control,
+taken from a manual or a forum), so a reviewer could not see what to re-measure and merged on
+plausibility. The operator's decision (2026-10-24, reported by the proving brain): yes to the
+measurement field, yes to the check request before a merge (`merge-request-gate`), no to a
+forced test run at the PR head. The vocabulary is the claim block's (`retrieved_at`, `source`,
+`method`), not a new one; the opt-in lives in the suite's existing contract file, not in a
+third place (objections of the second session, taken in). The lint gates only the diff: the
+first consumer brings 157 old rows, and a check that turns a repo red for its history is
+disabled within the hour. A table without an evidence column cannot carry the field at all,
+so a changed row there is a finding as well.
+
 ### Class Discipline (pointer — the mechanism lives elsewhere)
 
 (measured on a proving instance: five classes, up to 15 single fixes of the same

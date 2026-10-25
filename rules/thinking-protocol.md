@@ -36,6 +36,12 @@ History: core/docs/rule-history.md, "Think-Before-Act".
      that a file exists is no check of what it says (carrier `decision-readiness.py`).
    - **Checkable form** (2026-08-02): load-bearing claims as a `claim` block — `assessment`
      × `risk` × `evidence[]` × freshness (`retrieved_at` <= `reviewed_at`) × independence.
+   - **A documented live-behaviour row carries its measurement state** (2026-10-24): a row
+     that says how a desk, a tool or a device behaves names date · machine or tool · method
+     (`measured A/B/A` · `measured once` · `derived` · `assumed`) in its evidence cell; a row
+     without it is read as `assumed`, never as a rule. The producer writes it, the reviewer
+     asks for it before anything else (carrier `core/scripts/live-doc-lint.py`, opt-in
+     `live_docs` in a suite's `dependencies.json`).
 
 1. No fake data · 2. no fake tests · 3. no "it works" without a test · 4. no assumed library
 (check the manifest) · 5. no guessed links · 6. no file claimed unread · 7. no assumed code
