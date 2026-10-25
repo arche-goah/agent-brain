@@ -529,7 +529,7 @@ if [[ -f CLAUDE.md ]] && grep -q '@core/rules/arbeitsregeln\.md' CLAUDE.md; then
   echo "!! legacy import: CLAUDE.md imports @core/rules/arbeitsregeln.md — renamed to working-rules.md (stub redirects until the next major); update the import line"
 fi
 lg=$(grep -lE 'autonomer-lauf|kohaerenz-scan' .claude/rules/*.md 2>/dev/null)
-[[ -n "$lg" ]] && echo "!! legacy skill names (autonomer-lauf -> autonomous-run, kohaerenz-scan -> coherence-scan) still referenced in: ${lg//$'\n'/, } (stubs redirect until the next major)"
+[[ -n "$lg" ]] && echo "!! legacy skill names (autonomer-lauf -> autonomous-run, kohaerenz-scan -> coherence-scan) still referenced in: ${lg//$'\n'/, } (the redirect stubs are removed — these names no longer load)"
 
 # Parallel sessions in the same repo? (Incident 2026-08-03: two sessions, one
 # brain-core checkout — foreign branches, force push, troubleshooting against the
