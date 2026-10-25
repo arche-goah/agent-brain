@@ -281,4 +281,24 @@ check "opening question through the question tool" "$f" allow "$EN"
 f="$T/21b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$NOQ"; ask SomeOtherTool "2 items I can handle myself — shall I go ahead?"; answered; } > "$f"
 check "same words inside another tool (control)" "$f" block "$EN"
 
+# 22 — a bootup over the harness limit: the transcript keeps a 2 KB preview and names the file
+# holding the whole output (measured 2026-10-22 on the second macOS instance, 10.3 KB bootup:
+# "Missing: open-items block" at every turn end, no reply could satisfy it). The gate reads the
+# named file. Negative control: a named file that is gone leaves the preview — and blocks.
+PF="$T/persisted-bootup.txt"; printf '%s\n' "$BLOCK" > "$PF"
+PREVIEW="<persisted-output> Output too large (10.3KB). Full output saved to: $(native "$PF") Preview (first 2KB): === BRAIN BOOTUP CHECK ===${NL}git: branch=main"
+f="$T/22a.jsonl"; { boot_ok startup "$PREVIEW"; user "stand?"; asst "$GOOD_EN"; } > "$f"
+check "persisted bootup: the named file is read, the required form passes" "$f" allow "$EN"
+f="$T/22b.jsonl"; { boot_ok startup "$PREVIEW"; user "stand?"; asst "Brain clean. 9 older requests, nothing new."; } > "$f"
+check "persisted bootup: the incident reply still blocks" "$f" block "$EN"
+# ...and a path with a space in it (a Windows profile name — measured 2026-10-25 on the Windows
+# instance: `\S+` cut the path at the space, the file was never read). Preview on the next line.
+PS="$T/profile name/persisted-bootup.txt"; mkdir -p "$T/profile name"; printf '%s\n' "$BLOCK" > "$PS"
+PREVIEW_SPACE="<persisted-output> Output too large (13.4KB). Full output saved to: $(native "$PS")${NL}Preview (first 2KB): === BRAIN BOOTUP CHECK ==="
+f="$T/22d.jsonl"; { boot_ok startup "$PREVIEW_SPACE"; user "stand?"; asst "$GOOD_EN"; } > "$f"
+check "persisted bootup under a path with a space: the file is read" "$f" allow "$EN"
+PREVIEW_GONE="<persisted-output> Output too large (10.3KB). Full output saved to: $(native "$T")/gone.txt Preview (first 2KB): === BRAIN BOOTUP CHECK ==="
+f="$T/22c.jsonl"; { boot_ok startup "$PREVIEW_GONE"; user "stand?"; asst "$GOOD_EN"; } > "$f"
+check "persisted bootup whose file is gone: preview only, no block found (control)" "$f" block "$EN"
+
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }
