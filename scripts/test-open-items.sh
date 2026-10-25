@@ -257,6 +257,25 @@ out=$(run k)
   --classify 'core/LOG@2026-10-07#1=ai:first' --classify 'core/LOG@2026-10-07#2=ai:second' >/dev/null 2>&1
 out=$(run l)
 [ "$(grep -c '\[request|ai\] 2026-10-07' <<<"$out")" = 2 ] && ok "two --classify flags both stick" || bad "classify lost: $out"
+# An item the session start listed closes mid-session (answered) before it was classified: the
+# Stop gate still judges the first reply against the start block, so --classify must take it
+# (measured twice 2026-10-12; the way out was a hand edit). An id never listed stays refused.
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-07 [core] peer-b: AN inst-a: first note (core/LOG@2026-10-07#1)' \
+  '  - 2026-10-07 [core] peer-b: AN inst-a: second, a real request (core/LOG@2026-10-07#2)' \
+  '  - 2026-10-07 [core] peer-b: AN inst-a: third, answered soon (core/LOG@2026-10-07#3)' \
+  | sed 's/instance: 2/instance: 3/' > "$T/inbox.txt"
+run m0 >/dev/null
+printf '%s\n' 'shared-memory open requests to this instance: 2' \
+  '  - 2026-10-07 [core] peer-b: AN inst-a: first note (core/LOG@2026-10-07#1)' \
+  '  - 2026-10-07 [core] peer-b: AN inst-a: second, a real request (core/LOG@2026-10-07#2)' > "$T/inbox.txt"
+cout=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
+  --classify 'core/LOG@2026-10-07#3=ai:answered already' 2>&1); rc=$?
+[ "$rc" = 0 ] && has "classified: core/LOG@2026-10-07#3 = ai" "$cout" \
+  && ok "an item the start listed is classifiable after it closed" || bad "closed listed item refused (rc=$rc): $cout"
+cout=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$T/root")" --repo "$(native "$T/repo")" \
+  --classify 'core/LOG@2026-10-07#9=ai:never listed' 2>&1); rc=$?
+[ "$rc" = 2 ] && ok "an id never listed is still refused" || bad "never-listed id accepted (rc=$rc): $cout"
 
 # The first entry is answered and leaves the inbox: the second keeps its own id, class and
 # counter — nothing is taken over (the old key passed the first one's class to the second).

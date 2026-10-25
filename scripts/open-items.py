@@ -603,15 +603,20 @@ def channel_requests(chans):
     return [(c, requests(c["repo"], "" if c["default"] else c["label"])) for c in chans]
 
 
-def classify(args, cls_file, chans):
+def classify(args, cls_file, chans, seen_file=None):
     """Store the agent's class per id. A request id that matches no open request is refused:
     measured 2026-10-10, two calls with the printed short ref of a LOG entry said
-    "classified" and the item stayed '?'. PR ids are not checked (that needs the PR search)."""
+    "classified" and the item stayed '?'. PR ids are not checked (that needs the PR search).
+    An id the session start LISTED is accepted although it closed since: the Stop gate judges the
+    first reply against that start block, so a `?` item answered mid-session could never be
+    classified and the first reply stayed blocked (measured twice 2026-10-12, Windows instance;
+    the only way out was a hand edit of the class file). The start's list is the counter file."""
     store = load_json(cls_file, {})
     today = datetime.date.today().isoformat()
     reads = [r for _, r in channel_requests(chans)]
     req = None if any(r is None for r in reads) else [i for r in reads for i in r]
-    known = None if req is None else ({i["id"] for i in req}
+    listed = set((load_json(seen_file, {}).get("items") or {}).keys()) if seen_file else set()
+    known = None if req is None else ({i["id"] for i in req} | listed
                                       | {i["ref"].rsplit("/", 1)[-1] for i in req if i.get("file")})
     specs = []
     for spec in args:
@@ -663,7 +668,7 @@ def main():
     except ValueError as e:
         chans, chan_error = [shared_channels.default_channel(a.repo)], str(e)
     if a.classify:
-        return classify(a.classify, cls_file, chans)
+        return classify(a.classify, cls_file, chans, seen_file)
 
     hook = {}
     if a.hook_input.strip():
