@@ -78,6 +78,10 @@ History: core/docs/rule-history.md, "Confidence Assessment".
 
 ## Priority Hierarchy on Contradictions
 
+A HARD marker in an instance file (feedback rules, memory) does not lift that rule above a core
+HARD rule: the rank is the operator's explicit word, then core HARD, then the instance's rule
+files, then the rest (operator decision 2026-10-15); HARD itself is reserved for a gate or
+safety rule WITH a mechanical check, never a weight word.
 1. Explicit user instructions · 2. **HARD core rules** (order fidelity, mechanism
 discipline, one system — `working-rules.md`; evidence chain — above) · 3.
 `.claude/rules/feedback.md` · 4. project conventions · 5. best practices · 6. the AI's own
