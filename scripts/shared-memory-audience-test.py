@@ -40,6 +40,7 @@ PARTIES = {"people": {
     "sam": {"github": "sam-gh", "devices": {"sam-laptop": {"os": "windows"}, "sam-box": {"os": None}},
             "legacy_ids": ["sam-old"]},
     "lee": {"github": "lee-gh", "devices": {"lee-tower": {"os": "linux"}}},
+    "ali": {"github": "ali-gh", "devices": {"ali-win": {"os": "windows"}}},
 }}
 NEW, OLD = "2026-10-12", "2026-10-01"
 
@@ -135,7 +136,10 @@ def main() -> int:
             fh.write(f"\n## {NEW} · kim-mac — AN sam-laptop: Windows-Lauf bitte, PR 9\n\nx\n"
                      f"\n## {NEW} · kim-mac — AN os:windows: Windows run please\n\nx\n"
                      f"\n## {NEW} · kim-mac — AN Sam plus Kims AI: hello there\n\nx\n"
-                     f"\n## {OLD} · kim-mac — AN kim-pc: Windows check old\n\nx\n")
+                     f"\n## {OLD} · kim-mac — AN kim-pc: Windows check old\n\nx\n"
+                     # 2026-10-25: a device id ending in -win is not the word "Windows"
+                     f"\n## {NEW} · kim-mac — AN kim-mac, ali-win: Review-Lauf read through, IDONLY\n\nx\n"
+                     f"\n## {NEW} · kim-mac — AN ali-win: Windows-Lauf bitte, WINWORD\n\nx\n")
         found = lint_mod.lint(repo)["findings"]["audience"]
         where = lambda s: [x for x in found if s in x["where"]]  # noqa: E731
         check("valid categories and devices: silent", not where("fine-categories"))
@@ -149,6 +153,10 @@ def main() -> int:
         check("LOG heading to os:windows: silent", not [x for x in found if "Windows run please" in x["where"]])
         check("LOG prose addressees: no token finding", not [x for x in found if "hello there" in x["where"]])
         check("LOG heading before the cut-off: silent", not [x for x in found if "check old" in x["where"]])
+        check("a device id ending in -win is not a Windows check: silent",
+              not [x for x in found if "IDONLY" in x["where"]])
+        check("the word Windows to that one device: finding (control)",
+              any("WINWORD" in x["where"] and "one machine" in x["issue"] for x in found))
         check("negative control: no parties.json, no audience findings",
               not lint_mod.lint(plain)["findings"]["audience"])
 
