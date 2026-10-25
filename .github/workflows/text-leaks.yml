@@ -32,7 +32,11 @@ jobs:
     runs-on: ubuntu-latest
     env:
       LEAK_NAMES_JSON: ${{ secrets.LEAK_NAMES_JSON }}
-      LEAK_NAMES_REQUIRED: "1"
+      # A bot PR (dependabot) runs WITHOUT repository secrets: no watch list arrives, and a required
+      # list turned every dependency bump red (measured 2026-10-25, PR #109, exit 2). A bot body
+      # names nobody from the list by construction; the generic checks (addresses, home paths,
+      # emails) still run on it.
+      LEAK_NAMES_REQUIRED: ${{ github.actor == 'dependabot[bot]' && '0' || '1' }}
       # Through env, never interpolated into the script: event text is attacker-controlled.
       TITLE: ${{ github.event.pull_request.title }}
       BODY: ${{ github.event.pull_request.body || github.event.comment.body || github.event.review.body }}
