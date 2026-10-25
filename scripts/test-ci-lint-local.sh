@@ -29,6 +29,12 @@ jobs:
         env:
           BASE: ${{ github.event.before }}
         run: echo "$BASE" > marker-ctx
+      - name: reads a secret
+        env:
+          TOKEN: ${{ secrets.SOMETHING }}
+        run: echo "$TOKEN" > marker-secret
+      - name: context in the command
+        run: echo "${{ github.sha }}" > marker-runctx
       - name: fails on purpose
         run: |
           echo the-failure-text
@@ -66,6 +72,14 @@ printf '#!/usr/bin/env bash\nexec "%s" "$@"\n' "$REALPY" >"$T/winbin/python"
 chmod +x "$T/winbin/python3" "$T/winbin/python"
 
 run() { CI_LINT_ROOT="$T/repo" bash "$HERE/ci-lint-local.sh" "$@" >"$T/out" 2>&1; }
+# A git checkout with an origin/main ref, so the local stand-ins for BASE/HEAD resolve.
+git -C "$T/repo" init -q && git -C "$T/repo" -c user.name=t -c user.email=t@t add -A \
+  && git -C "$T/repo" -c user.name=t -c user.email=t@t commit -qm init \
+  && git -C "$T/repo" update-ref refs/remotes/origin/main HEAD
+cat > "$T/repo/.gitignore" <<'IGN'
+marker-*
+stdin-seen
+IGN
 
 echo "ci-lint-local"
 run lint; rc=$?
@@ -73,8 +87,14 @@ run lint; rc=$?
 grep -q "the-failure-text" "$T/out" && ok "the failing step's output is printed" || bad "the failing step's output is printed"
 grep -q "OK   lint / passes" "$T/out" && ok "a passing step is OK" || bad "a passing step is OK"
 [ -f "$T/repo/marker-block" ] && ok "a run: | block runs, its sudo line dropped" || bad "a run: | block runs, its sudo line dropped"
-grep -q "SKIP lint / reads context (reads GitHub context)" "$T/out" && [ ! -f "$T/repo/marker-ctx" ] \
-  && ok "a step reading GitHub context is listed, not run" || bad "a step reading GitHub context is listed, not run"
+grep -q "OK   lint / reads context (GitHub context set locally: BASE)" "$T/out" \
+  && [ "$(cat "$T/repo/marker-ctx" 2>/dev/null)" = "$(git -C "$T/repo" rev-parse HEAD)" ] \
+  && ok "context only in env: runs with the local stand-in (BASE = merge-base with origin/main)" \
+  || bad "context only in env: runs with the local stand-in (BASE = merge-base with origin/main)"
+grep -q "SKIP lint / reads a secret (reads GitHub context (TOKEN has no local value))" "$T/out" && [ ! -f "$T/repo/marker-secret" ] \
+  && ok "an env variable without a stand-in keeps the step a SKIP" || bad "an env variable without a stand-in keeps the step a SKIP"
+grep -q "SKIP lint / context in the command (reads GitHub context)" "$T/out" && [ ! -f "$T/repo/marker-runctx" ] \
+  && ok "context in the command itself is listed, not run" || bad "context in the command itself is listed, not run"
 
 rm -f "$T/repo/marker-"*
 run --skip "on purpose" lint; rc=$?
