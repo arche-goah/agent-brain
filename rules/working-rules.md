@@ -283,5 +283,13 @@ History: core/docs/rule-history.md, "Order Fidelity (Auftragstreue) (HARD)".
    their operator, directly; (c) **core and AI mechanics** (rule interpretation, gates,
    skills, reviews, cross-brain matters) — the receiving AIs, same day, else the safe
    default, never the human who handed it over.
+7. **Every finding on every level is reported, in the same turn, never only on request**
+   (2026-10-16): device or app, suite tool, suite skill, core hook/gate/rule, the harness,
+   the AI's own behaviour (a skipped part, a wrong assumption, a needless question). One
+   shared-memory entry under the level's topic: what happened (verbatim, error text), what
+   is measured, which level, what it blocks, a proposal. Silence is measured, not trusted:
+   the device report carries the date of the device's last shared-memory entry, and
+   `core/scripts/device-status.py --brief` names a device that ran a session but posted
+   nothing for a week.
 
 History: core/docs/rule-history.md, "Working Across Parties".

@@ -91,6 +91,13 @@ try:
     def commits() -> int:
         return int(git("rev-list", "--count", "HEAD", cwd=shared) or 0)
 
+    # one shared-memory entry of this device today (its last post), one of another device later in the year
+    today = __import__("datetime").date.today().isoformat()
+    write(shared / "topic" / "note.md", f"---\nname: note\nmetadata:\n  von: alpha-mac\n  date: {today}\n---\nx\n")
+    write(shared / "topic" / "other.md", "---\nname: other\nmetadata:\n  von: beta-win\n  date: 2999-01-01\n---\nx\n")
+    write(shared / "topic" / "LOG.md", "---\nvon: alpha-mac\ndate: 2999-01-01\n---\n")  # generated file, never counted
+    git("add", "-A", cwd=shared); git("commit", "-q", "-m", "entries", cwd=shared); git("push", "-q", cwd=shared)
+
     print("report")
     channel("1.0.0", "v1.0.0")
     n0 = commits()
@@ -107,6 +114,8 @@ try:
           "NEGATIVE: a suite without a plugin keeps the record's version, marked as record")
     check("r" not in doc["suites"], "NEGATIVE: the core's own plugin is not listed as a suite")
     check(doc.get("watch", {}).get("standing") == "on", "a filled-in collab-watch.json reports the standing watch as on")
+    check(doc.get("activity", {}).get("last_post") == today,
+          "last_post = the newest entry with this device's von:, another device's and a LOG.md are not counted")
     check(str(tmp) not in devfile.read_text(encoding="utf-8") and "/secret" not in devfile.read_text(encoding="utf-8"),
           "no path in the device file")
     check(git("rev-list", "--count", "HEAD", cwd=bare) == str(commits()), "report pushed")
@@ -146,6 +155,19 @@ try:
     rc, out = ds("--brief")
     check("standing watch not set up" in out and "beta-win" in out, "a device without a standing watch is named")
     check("alpha-box" not in out, "NEGATIVE: a watch declared off with a reason is not a problem")
+    # a device that ran a session (its report) but posted nothing for a week, or never, is named
+    write(shared / "devices" / "beta-win.json", {**doc, "device": "beta-win", "reported": "2026-10-23",
+                                                 "activity": {"last_post": "2026-10-16"}})
+    write(shared / "devices" / "alpha-box.json", {**doc, "device": "alpha-box", "activity": {"last_post": ""}})
+    rc, out = ds("--brief")
+    check("beta-win" in out and "no shared-memory entry since 2026-10-16" in out, "seven silent days are named")
+    check("alpha-box" in out and "no shared-memory entry ever" in out, "a device that never posted is named")
+    write(shared / "devices" / "beta-win.json", {**doc, "device": "beta-win", "reported": "2026-10-23",
+                                                 "activity": {"last_post": "2026-10-20"}})
+    write(shared / "devices" / "alpha-box.json", {k: v for k, v in doc.items() if k != "activity"} | {"device": "alpha-box"})
+    rc, out = ds("--brief")
+    check("shared-memory entry" not in out,
+          "NEGATIVE: a post three days before the report, and an old report without the block, are not named")
     write(shared / "devices" / "alpha-box.json", {**doc, "device": "alpha-box"})
     write(shared / "devices" / "beta-win.json", {**doc, "device": "beta-win"})
     # this device's own states, read from its collab-watch.json
