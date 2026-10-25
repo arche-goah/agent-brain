@@ -370,7 +370,7 @@ the diagnostic replaces exactly the output it was asked to produce, and only in 
 failure path, where nobody has a second copy.
 pattern:   \| *grep -[b-zA-Z]
 paths:     --include=*.sh scripts helpers
-known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-live-read-gate.sh=2 scripts/test-shared-working-copy-guard.sh=1 scripts/test-decision-review.sh=2 scripts/test-live-watchdog.sh=3 scripts/test-text-leaks-notice.sh=12
+known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-live-read-gate.sh=2 scripts/test-shared-working-copy-guard.sh=1 scripts/test-decision-review.sh=2 scripts/test-live-watchdog.sh=3 scripts/test-text-leaks-notice.sh=12 scripts/release-preflight.sh=5
 instances: 3
 repeat:    yes
 status:    closed
@@ -398,6 +398,10 @@ could-not-measure note); nothing of them is printed, the exit status decides the
 predicates on the notice body the script under test printed (a mention, a class-and-line line, the
 absence of the matched text); nothing of them is printed, the exit status decides the case.
 
+2026-10-25, release-preflight.sh baselined after that question: five pipe-greps — the quotation test
+on RELEASE_EARLY_OK, the OS words per PR text and the PR-number extraction are `grep -q`/`grep -o`
+whose output is never printed; the three greps whose words DO reach a FAIL line (the open
+shared-memory entries) carry `-a`.
 ## OS-6 — `python -` runs the file you passed as an argument
 
 shape: B
@@ -581,7 +585,7 @@ variable that holds paths or path globs (`ls $globs`), not only the `for` form: 
 is kept as an array (`a=("$R"/x/*.md)`), never as a space-joined string.
 pattern:   for [A-Za-z_]+ in \$[A-Za-z_]+;|disable=SC2086
 paths:     --include=*.sh scripts helpers
-known:     scripts/brain-update.sh=2 scripts/handover-gate.sh=2 scripts/suite-install.sh=1
+known:     scripts/brain-update.sh=2 scripts/handover-gate.sh=2 scripts/suite-install.sh=1 scripts/release-preflight.sh=1
 instances: 2
 repeat:    yes
 status:    closed
@@ -609,6 +613,8 @@ expansion and a deliberate split must carry that marker; `handover-gate.sh`'s se
 is the disable in front of `suite-check.py $suites`, the same `~`-written path list as its
 loop. The fixture instance now carries a space.
 
+2026-10-25, release-preflight.sh baselined after the review: the one `for n in $PRS` loop iterates
+PR NUMBERS read from `git log`, never paths; no element can carry a space.
 ## OS-11 — a session count by process name counts every CLI call as a session
 
 shape: B
