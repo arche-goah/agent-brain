@@ -257,8 +257,12 @@ then an explicit release follows.
    down. If I don't read closely, I miss this nested info ... that is fatal"). The incident: the
    report opened with "Persisted — you can shut down" and carried, in the fourth bullet, a command
    only the operator could run, pointing into the session's scratchpad that vanishes with it. So:
-   - a step only the operator can take (a `!` command, a click, a device) is the FIRST line of
-     the report, alone, with what to do in one sentence — never a bullet below the release;
+   - a step that needs the operator's WORD (a command the agent may run once they agree) is put
+     through the question tool ("Shall I run X now?", recommended option first); on yes the agent
+     runs it and measures the effect (operator, same day: "I would rather have that interactively
+     than a nested instruction 'type ! and then something'");
+   - a step only the operator's HAND can take (a device, a click outside the session) is the FIRST
+     line of the report, alone, with what to do in one sentence — never a bullet below the release;
    - while it is open, the report gives NO release: it says what is awaited, arms a watcher on
      the step's measurable effect, and gives the release only after the measurement — or after
      the operator defers the step in their own words;
