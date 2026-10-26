@@ -52,6 +52,23 @@ then an explicit release follows.
      close and not as a stop check (operator 2026-10-25): the entries are written one to three
      times a session and the carrier question needs thought, not a block; the brain-scan
      machine step reads every entry since the last scan.
+   - **REACH — what this session changed with reach beyond this brain reached the shared
+     memory (2026-10-25):** run `python3 core/scripts/shared-reach-check.py --since <today>`
+     (interpreter per instance rule; shared repo, domain roots, exclude list and the pointer
+     marker words from `.claude/rules/shared-reach.json`, defaults built in). Three kinds of
+     line: `FAIL shared-reach: <private> points to <shared> — …` (the canonical file is missing
+     or older than the private change: update and push it, or say why the private change is
+     lab-only); `FAIL shared-reach: ledger … is reach: shared but no shared file names it`
+     (write the export now, by the instance's shared-memory path); and `<private> changed
+     privately, no shared counterpart — lab or essence?` (one line each in the close report:
+     "lab" / "stays private because …" / "moved to <shared file>"). The close is complete when
+     no FAIL line stands and every unpointed line has its answer. Why: domain knowledge with
+     reach (decisions, schemes, operating rules, state of the art) lives ONCE, canonically in
+     the shared memory, the private brain keeps lab state and pointers (operator order
+     2026-10-25 on the macOS instance: "the whole essence of the decisions and the state of the
+     art should be available to the colleagues … checked as part of the session close, all
+     domains"); the CROSS-INSTANCE GATE below asks the same question in prose and had no
+     carrier since 2026-08-17.
    - **STANDING PROMISES — say per line whether the condition still holds (2026-09-12):**
      If `.claude-state/promises.jsonl` exists, read it and go through the promises made
      in this session. Each row carries the promise and what bound it. For every one:

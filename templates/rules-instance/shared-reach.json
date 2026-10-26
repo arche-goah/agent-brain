@@ -1,0 +1,7 @@
+{
+  "_comment": "Instance data for core/scripts/shared-reach-check.py (session close): domain knowledge with reach beyond this brain lives canonically in the shared memory; a private document whose essence moved carries a pointer line starting with one of `markers` followed by the shared path (<topic>/<file>.md). `domain_roots` are the folders the check reads (git log of the session window), `exclude` keeps ledgers, change logs, runlogs, readouts, protocols and the memory snapshot out of the question. A brain that writes its pointers in another language adds that language's marker.",
+  "shared_repo": "~/Projects/brain-shared-memory",
+  "domain_roots": ["docs"],
+  "exclude": ["offene-punkte", "change-log", "session-log", "decision-log", "runlog", "readouts", "exports", "configs", "protokoll", "memory-snapshot", "maintenance/", "research/"],
+  "markers": ["CANONICAL in shared memory:"]
+}
