@@ -30,6 +30,8 @@ case "${CI_WATCH_STUB:?}" in
               if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
               else touch "$f"; echo '[{"bucket":"pending"},{"bucket":"pass"}]'; fi ;;
   gh_broken)  echo "HTTP 500 boom" >&2; exit 1 ;;
+  # point 6: every gh call is counted, each answer takes real time, so a second watch can attach.
+  pr_slow)    echo x >> "${CI_WATCH_STATE:?}.calls"; "$REAL_SLEEP" 1; echo '[{"bucket":"pass"}]' ;;
   # 2026-10-10: right after a merge, `pr checks` answered with exit 0 and a reply that was not
   # the JSON list (the run was being registered); the next poll had 11 green checks. One
   # unparseable poll is a wait; only a repeat is a verdict.
@@ -269,6 +271,8 @@ STUB
 chmod +x "$TMP/date" "$TMP/sleep"
 export PATH="$TMP:$PATH"
 export CI_WATCH_POLL=0
+# The one-watch-per-target lock (point 6) lives in the fixture's own folder, never in the real $HOME.
+export CI_WATCH_LOCK_DIR="$TMP/locks"
 # Rate-limit waits in the fixtures: no backoff, no reset slack (a case that needs real time sets its own).
 export CI_WATCH_RL_BACKOFF=0 CI_WATCH_RL_MARGIN=0
 # The script under test; point it at an older copy to run the fixtures as a negative control.
@@ -404,6 +408,42 @@ check "pr: rate-limited mergeable read (errors swallowed there) = waits, GREEN" 
 blocked_is "a swallowed call's block is announced too" 1
 check "ref: six rate-limited runs reads, then green = GREEN" ref_rl 0 ref main 30
 blocked_is "ref: one block, one BLOCKED line" 1
+
+# --- point 6: one watch per target on this machine ------------------------------------
+# A second watch on the same PR attaches to the first: same verdict and rc, no gh call of its own.
+rm -f "$TMP/state-pr_slow".*
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 77 30 >"$TMP/solo" 2>&1
+solo=$(wc -l < "$TMP/state-pr_slow.calls" | tr -d ' ')
+rm -f "$TMP/state-pr_slow".*
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 77 30 >"$TMP/first" 2>&1 &
+first=$!
+"$REAL_SLEEP" 0.3
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 77 30 >"$TMP/second" 2>&1
+rc2=$?; wait "$first"; rc1=$?
+both=$(wc -l < "$TMP/state-pr_slow.calls" | tr -d ' ')
+if [[ "$rc1" == 0 && "$rc2" == 0 && "$both" == "$solo" ]] && grep -q "CI-WATCH SHARED" "$TMP/second" \
+   && grep -q "CI-WATCH GREEN" "$TMP/second"; then
+  echo "  OK   second watch on the same PR attaches: rc $rc1/$rc2, gh calls $both = one watch alone ($solo)"
+else
+  echo "  FAIL second watch on the same PR: rc $rc1/$rc2, gh calls $both vs alone $solo"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
+fi
+# ...a watch on ANOTHER PR does not attach (control).
+rm -f "$TMP/state-pr_slow".*
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 77 30 >"$TMP/first" 2>&1 &
+first=$!
+"$REAL_SLEEP" 0.3
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 78 30 >"$TMP/second" 2>&1
+wait "$first"
+if ! grep -q "CI-WATCH SHARED" "$TMP/second" && grep -q "CI-WATCH GREEN" "$TMP/second"; then
+  echo "  OK   a watch on another PR polls on its own (control)"
+else
+  echo "  FAIL a watch on another PR attached or failed"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
+fi
+# ...and a dead owner's leftover directory is taken over, not waited on.
+mkdir -p "$TMP/locks/stale"; echo 999999 > "$TMP/locks/stale/pid"
+L_STALE=$(printf '%s|%s|%s|%s' pr owner/repo 79 "" | cksum | tr -c '0-9\n' '-')
+mv "$TMP/locks/stale" "$TMP/locks/$L_STALE"
+check "dead owner's leftover lock is taken over" pr_green 0 pr 79
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
