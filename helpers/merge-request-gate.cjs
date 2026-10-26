@@ -14,9 +14,20 @@
  * ANSWERED: a comment that carries this instance's key and names the same OS.
  * Override, said in the call: `# REQUEST-ANSWERED: <where it was answered>`.
  *
+ *
+ * SECOND CHECK — every required OS at the head (CONVENTIONS §11: "A merge checked on ONE system
+ * only is allowed solely as a beta, labelled with that system"). Measured 2026-10-26: two
+ * content-toolsuite PRs were merged with author and reviewer both on Windows; the rule stood in
+ * CONVENTIONS and in the instance's merge table, nothing read it at the merge. For a repo that
+ * carries `dependencies.json` (a suite, or the core), the thread needs, per required OS, a line
+ * that names the OS and says OK / pass / green / rc 0, in a text that names the head's short
+ * sha. Required OS: `required_os` in that file, default macOS + Windows. Otherwise the merge
+ * names itself a beta: `# BETA-MERGE: <system checked>, <other> open` in the call.
+ *
  * Unreadable PR (no repo or number in the command, gh fails) = allow, said on stderr — the
  * merge itself fails on the same cause. No instance key = allow, said on stderr.
- * MERGE_REQUEST_GATE_GH / MERGE_REQUEST_GATE_OS are fixture seams only. Exit 2 = block.
+ * MERGE_REQUEST_GATE_GH / MERGE_REQUEST_GATE_OS / MERGE_REQUEST_GATE_DEPS are fixture seams
+ * only. Exit 2 = block.
  * INPUT IS READ TO ITS END, never on a timer (see file-guard.cjs for the measured reason).
  */
 const { execFileSync } = require('child_process');
@@ -42,10 +53,40 @@ function target(cmd) {
 
 function readPr(t) {
   const fake = process.env.MERGE_REQUEST_GATE_GH;
-  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments'];
+  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid'];
   const out = execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
   return JSON.parse(out);
+}
+
+const NAME_RX = { macOS: /\bmac\s?os\b/i, Windows: /\bwindows\b/i, Linux: /\blinux\b/i };
+const OK_RX = /\b(ok|pass(?:es|ed)?|green|rc 0|all \d+ step\(s\) passed)\b/i;
+const NOT_RX = /\b(unchecked|not checked|NOT checked|wanted|open|fail(?:s|ed)?|red|missing|pending)\b/i;
+
+/** The repo's `dependencies.json` as an object, null when it has none (not a suite). */
+function readDeps(t) {
+  const seam = process.env.MERGE_REQUEST_GATE_DEPS;
+  if (seam !== undefined) return seam === 'none' ? null : JSON.parse(require('fs').readFileSync(seam, 'utf8'));
+  if (process.env.MERGE_REQUEST_GATE_GH) return null; // fixture without the seam: not a suite
+  try {
+    const b64 = execFileSync('gh', ['api', `repos/${t.repo}/contents/dependencies.json`, '--jq', '.content'],
+      { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
+    return JSON.parse(Buffer.from(b64.replace(/\s/g, ''), 'base64').toString('utf8'));
+  } catch (e) { return null; }
+}
+
+/** Required systems without an OK line at the head: [] when covered or not a suite. */
+function uncovered(pr, deps) {
+  if (!deps) return [];
+  const want = Array.isArray(deps.required_os) && deps.required_os.length ? deps.required_os : ['macOS', 'Windows'];
+  const short = String(pr.headRefOid || '').slice(0, 7);
+  if (!short) return [];
+  const texts = [String(pr.body || ''), ...(pr.comments || []).map((c) => String(c.body || ''))]
+    .filter((x) => x.includes(short));
+  return want.filter((os) => {
+    const rx = NAME_RX[os] || new RegExp(`\\b${os}\\b`, 'i');
+    return !texts.some((x) => x.split(/\r?\n/).some((l) => rx.test(l) && OK_RX.test(l) && !NOT_RX.test(l)));
+  });
 }
 
 function gate(input) {
@@ -59,6 +100,27 @@ function gate(input) {
   if (!t) { console.error('merge-request-gate: no repo and number in the command, nothing checked'); return 0; }
   let pr;
   try { pr = readPr(t); } catch (e) { console.error('merge-request-gate: PR unreadable, nothing checked'); return 0; }
+  const blocked = requestOpen(pr, key, t);
+  if (blocked) return blocked;
+  if (/#\s*BETA-MERGE:\s*\S/.test(cmd)) {
+    console.error('merge-request-gate: merged as a beta (BETA-MERGE) - say in the PR which system was checked and which is open');
+    return 0;
+  }
+  let gone;
+  try { gone = uncovered(pr, readDeps(t)); } catch (e) { console.error('merge-request-gate: dependencies.json unreadable, OS coverage not checked'); return 0; }
+  if (!gone.length) return 0;
+  console.error(
+    `BLOCKED (merge-request-gate): ${t.repo}#${t.nr} is a suite or core PR, and no comment says OK at the head ` +
+    `\`${String(pr.headRefOid).slice(0, 7)}\` on: ${gone.join(', ')}.\n` +
+    'CONVENTIONS §11: a merge checked on one system only is a beta, labelled with that system. Either get the check on ' +
+    'the missing system at this head (a comment naming the OS, "OK" and the short sha), or merge it as a beta: add ' +
+    '`# BETA-MERGE: <system checked>, <other> open` to the call and say the same in the PR.\n' +
+    'Why: 2026-10-26, two suite PRs were merged checked on Windows only; the rule stood in prose, nothing read it.');
+  return 2;
+}
+
+/** The first check: a request in the body to THIS machine that no comment of this instance answered. */
+function requestOpen(pr, key, t) {
   const mine = new RegExp(`<!--\\s*instance-key:\\s*${key}\\s*-->`, 'i');
   const body = String(pr.body || '');
   if (mine.test(body)) return 0;
