@@ -251,6 +251,13 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: ci-lint-local in the foreground" Bash command "bash scripts/ci-lint-local.sh lint" block
   tr_probe "mechanism-guard/core rule: ci-lint-local via Monitor" Monitor command "bash scripts/ci-lint-local.sh lint" allow
   tr_probe "mechanism-guard/core rule: the ci-lint-local fixture itself" Bash command "bash scripts/test-ci-lint-local.sh" allow
+  # 2026-10-26: multi-line text belongs in a file - a commit message tripped a push ask rule
+  tr_probe "mechanism-guard/core rule: multi-line commit -m" Bash command 'git -C /r commit -m \"fix: x\n\nbody names git -C <r> push to main\"' block
+  tr_probe "mechanism-guard/core rule: one-line commit -m" Bash command 'git -C /r commit -m \"fix: one line\"' allow
+  tr_probe "mechanism-guard/core rule: commit -F file" Bash command 'git -C /r commit -F /tmp/msg.txt' allow
+  tr_probe "mechanism-guard/core rule: multi-line gh pr comment --body" Bash command 'gh pr comment 5 -R o/r --body \"line one\nline two\"' block
+  tr_probe "mechanism-guard/core rule: gh pr comment --body-file" Bash command 'gh pr comment 5 -R o/r --body-file /tmp/b.md' allow
+  tr_probe "mechanism-guard/core rule: two commands on two lines (control)" Bash command 'git -C /r commit -m \"one line\"\ngit -C /r log -1' allow
   # 2026-10-26: a self-written wait loop is the generic foreground wait - the name lists above never see it
   tr_probe "mechanism-guard/core rule: until-sleep wait loop in the foreground" Bash command "until [ -s out.txt ]; do sleep 10; done; cat out.txt" block
   tr_probe "mechanism-guard/core rule: while-sleep wait loop in the foreground" Bash command "while ! grep -q done log; do sleep 5; done" block

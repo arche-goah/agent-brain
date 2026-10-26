@@ -21,6 +21,12 @@
       "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; read its summary line before claiming green (Working Rule #13)."
     },
     {
+      "target": "raw",
+      "pattern": "(?:\\bcommit\\b[^\\n]*?\\s(?:-m|--message)|\\bgh\\s+(?:pr|issue)\\s+\\w+\\b[^\\n]*?\\s(?:-b|--body|--title|-t))[=\\s]*([\"'])(?:(?!\\1)[\\s\\S])*\\n",
+      "was": "multi-line text written into the command itself (a `git commit -m` message, a `gh pr|issue` body or title spanning lines) - permission rules match the whole command text with wildcards, so a word in the text trips an ask rule: measured 2026-10-26 on the Windows instance, a commit message naming `git -C <brain> push` and `main-push` matched the template's `git -C * push * main*` ask and prompted the operator in the middle of an autonomous run",
+      "instead": "Write the text to a file in the scratchpad and pass the file: `git commit -F <file>`, `gh pr create|comment --body-file <file>` (Working Rule #8: multi-line content goes into a file). A one-line `-m` stays fine."
+    },
+    {
       "pattern": "(?:^|[;&|(\\s])(?:until|while)\\b[^\\n]*?;\\s*do\\b[\\s\\S]*?\\bsleep\\s+[1-9]",
       "foreground_only": true,
       "was": "a self-written wait loop (until/while ... sleep N) in the foreground - measured 2026-10-26 on the macOS instance: a loop waiting for two test runs held the session until the operator pressed ctrl+b; the two rules above list commands by NAME, the loop is the generic form of the same wait",
