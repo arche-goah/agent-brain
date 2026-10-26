@@ -190,10 +190,12 @@ git -C "$W" add -A
 git -C "$W" commit -qm answered-in-range
 F=$(git -C "$W" rev-parse HEAD)
 Q=$("$PY" "$INBOX" --repo "$W" --from "$E" --to "$F" --self kim-win 2>&1)
-grep 'SETTLED-ONE' <<<"$Q" | grep -q 'status: open' && fail "a request answered in the same range is shown open: $Q" \
-  || { grep -q 'SETTLED-ONE.*settled since\|settled since.*SETTLED-ONE' <<<"$Q" \
+SETTLED=$(grep -a 'SETTLED-ONE' <<<"$Q")
+STILL=$(grep -a 'STILLOPEN-ONE' <<<"$Q")
+[[ "$SETTLED" == *"status: open"* ]] && fail "a request answered in the same range is shown open: $Q" \
+  || { [[ "$SETTLED" == *"settled since"* ]] \
          && pass "a request answered in the same range reads settled" || fail "answered request missing: $Q"; }
-grep 'STILLOPEN-ONE' <<<"$Q" | grep -q 'status: open' && pass "an unanswered request stays open" \
+[[ "$STILL" == *"status: open"* ]] && pass "an unanswered request stays open" \
   || fail "unanswered request not shown open: $Q"
 
 exit $FAIL
