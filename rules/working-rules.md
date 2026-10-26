@@ -34,9 +34,14 @@
    calling it ready. Carriers: `mechanism-rules.json` (`foreground_only`),
    `core/helpers/watch-gate.cjs`, `repo-activity-watch.sh` (`CI-RED`). **One exception, the
    closing turn:** skill `session-close` lists what it leaves unwatched as `open end:` lines.
-10. **A commitment about future behaviour becomes rule text in the same turn**
-    (2026-10-09): "from now on I will…" in chat binds nothing — write it into the
-    instance's rules or a core PR (carrier `core/scripts/commitments.py`).
+10. **A commitment about future behaviour becomes a MECHANISM in the same turn**
+    (2026-10-09; sharpened 2026-10-26, the operator: "a rule entered in the feedback amounts
+    to an empty promise in the long run"): "from now on I will…" binds only when the same
+    turn builds what enforces it — a gate, a script a hook runs, gate data, a CI step. Rule
+    text, memory or a feedback entry is prose and does not carry it; prose only with the
+    operator's quoted ok. Carriers: `core/helpers/commitment-carrier-gate.cjs` (turn end),
+    `core/scripts/carrier-audit.py` (pre-commit on new lessons, report on old ones),
+    `core/scripts/commitments.py` (session report, prose counted as not carried).
 11. **Core PRs: new functionality is discussed first, follow-ups may be pushed**
     (2026-10-09). NEW functionality (a new gate, hook, script, skill or rule) is agreed
     with the operator before it is built — usually the order is that agreement. A

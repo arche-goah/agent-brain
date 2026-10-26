@@ -1059,6 +1059,15 @@ presentation (operator decision 2026-09-18).
   or reading instead of waiting, is resolved `answered` by the agent with the resolution in
   the note; only `deferred` needs the operator's words. The permission is part of the template; `hook-coverage.py` now reports a
   brain that does not grant it, like an unwired hook.
+  **A recorded question is measured before it is asked again** (2026-10-26, the macOS
+  instance): a question postponed ten days earlier was put to the operator again through the
+  question tool, built word for word from the register's record, while the ledger and the
+  device already carried the answer — the operator: "it is active already, something went
+  wrong". The record is a snapshot of the asking day; "it returns when a measurement changes
+  the situation" (above) had no carrier between listing and asking. Now `list` names the
+  measurement call under a deferred record, and a hook on the question tool refuses a
+  question that raises a deferred, unanswered or orphaned record until it carries a fresh
+  `recheck <id>=<measurement>` stamp or is settled (`question-gate.cjs`).
 - **Name the server, never "the MCP"** (operator decision 2026-08-20) — also in a
   reconnect request. Generally: before a proposal, check that its load-bearing word is
   unambiguous for the reader; an internal short word can mean something else to them

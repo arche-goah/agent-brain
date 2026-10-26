@@ -53,6 +53,17 @@
         ]
       },
       {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/question-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
         "matcher": "Bash|PowerShell",
         "hooks": [
           {
@@ -104,6 +115,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/skill-gate.cjs\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/autonomous-gate.cjs\"",
+            "timeout": 10
           }
         ]
       },
@@ -115,6 +131,16 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/conditional-order-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|Workflow|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/no-input-control.cjs\"",
+            "timeout": 5
           }
         ]
       }

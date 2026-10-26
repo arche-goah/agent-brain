@@ -55,6 +55,16 @@ if [ -f "$root/parties.json" ] && [ -f "$core/scripts/shared-memory-lint.py" ]; 
   run_check "shared-memory-lint" "$py" "$core/scripts/shared-memory-lint.py" --repo "$root" --staged
 fi
 
+# 4b. Lessons bind or they are not written (operator, 2026-10-26: "a rule entered in the feedback amounts
+#     to an empty promise in the long run"). A brain whose feedback protocol is configured
+#     (.claude/rules/lesson-carriers.json) cannot commit a NEW protocol entry whose carrier is prose, a
+#     report or nothing — only a wired gate, a data row such a gate reads, a mechanism-rules id, a CI step,
+#     a PR reference (pending), or the operator's quoted ok. Old entries never block here; the
+#     brain-scan reports them (scripts/carrier-audit.py, report mode).
+if [ -f "$root/.claude/rules/lesson-carriers.json" ] && [ -f "$core/scripts/carrier-audit.py" ]; then
+  run_check "carrier-audit" "$py" "$core/scripts/carrier-audit.py" --repo "$root" --core "$core" --staged
+fi
+
 # 5. Behind the upstream (operator order 2026-10-22, agreed by both core parties): a commit on a
 #    checkout that another machine pushed past lands on an old state, and its push is refused
 #    afterwards (measured 2026-10-22, and twice on 2026-10-25, on Windows brains). The start pull
