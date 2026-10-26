@@ -251,6 +251,12 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: ci-lint-local in the foreground" Bash command "bash scripts/ci-lint-local.sh lint" block
   tr_probe "mechanism-guard/core rule: ci-lint-local via Monitor" Monitor command "bash scripts/ci-lint-local.sh lint" allow
   tr_probe "mechanism-guard/core rule: the ci-lint-local fixture itself" Bash command "bash scripts/test-ci-lint-local.sh" allow
+  # 2026-10-26: a self-written wait loop is the generic foreground wait - the name lists above never see it
+  tr_probe "mechanism-guard/core rule: until-sleep wait loop in the foreground" Bash command "until [ -s out.txt ]; do sleep 10; done; cat out.txt" block
+  tr_probe "mechanism-guard/core rule: while-sleep wait loop in the foreground" Bash command "while ! grep -q done log; do sleep 5; done" block
+  tr_probe "mechanism-guard/core rule: wait loop via Monitor" Monitor command "until [ -s out.txt ]; do sleep 10; done; cat out.txt" allow
+  tr_probe "mechanism-guard/core rule: a loop without sleep" Bash command "for f in a b; do echo \$f; done" allow
+  tr_probe "mechanism-guard/core rule: a short retry with sub-second sleep" Bash command "until mkdir lock 2>/dev/null; do sleep 0.2; done" allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then

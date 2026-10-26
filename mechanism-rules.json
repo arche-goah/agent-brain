@@ -19,6 +19,12 @@
       "foreground_only": true,
       "was": "running the local CI mirror in the foreground - measured 2026-10-25 on the macOS instance: the lint job runs the fixture suites and holds the session for minutes, the operator had to background it by hand",
       "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; read its summary line before claiming green (Working Rule #13)."
+    },
+    {
+      "pattern": "(?:^|[;&|(\\s])(?:until|while)\\b[^\\n]*?;\\s*do\\b[\\s\\S]*?\\bsleep\\s+[1-9]",
+      "foreground_only": true,
+      "was": "a self-written wait loop (until/while ... sleep N) in the foreground - measured 2026-10-26 on the macOS instance: a loop waiting for two test runs held the session until the operator pressed ctrl+b; the two rules above list commands by NAME, the loop is the generic form of the same wait",
+      "instead": "Start the loop detached (Bash run_in_background, or Monitor) and keep working; its end arrives as a notification. A background job you already started notifies on its own - no loop needed (Working Rule #13)."
     }
   ]
 }
