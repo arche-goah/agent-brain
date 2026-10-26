@@ -1,0 +1,9 @@
+{
+  "_comment": [
+    "Instance data for core/helpers/close-loss-gate.cjs: regexes in the operator's own language.",
+    "release_patterns: a phrase that releases the operator ('you can shut down'); hand_patterns: a word that marks",
+    "a step only the operator's hand can take. English built-ins stay in force; these lists extend them."
+  ],
+  "release_patterns": [],
+  "hand_patterns": []
+}
