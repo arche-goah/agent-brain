@@ -7,46 +7,39 @@
  * mark, so stoppen-gate (which looks for a closing question) let it pass. The operator had to ask
  * again (translated): "then put the decisions to me clearly, interactively", and then ordered: the
  * core must make sure that real operator decisions are put as interactive questions, at the right
- * moment only, and never during an autonomous run.
+ * moment only, and never during an autonomous run. The same evening (translated): "as soon as I ask
+ * whether anything is open for me, I am obviously here ... that ends the autonomous mode. The last
+ * question is always: continue autonomously?"
  *
- * The right moment, in a turn that is NOT autonomous (autonomous-mode.cjs):
- *   - the operator's newest prompt asks what is open (built-in English words; the instance's own
- *     `ask_patterns` in .claude/rules/open-items.json, the same key open-items-gate reads), or
- *   - the newest prompt cleared the autonomous latch: the first turn after an autonomous run, when
- *     the questions the run collected are due. A status question or a remark mid-run does not
- *     clear it (autonomous-mode.cjs), so it is no such moment.
- * Open OPERATOR decisions: entries `- [ ]` with `class: decision` in the registered ledgers
- * (.claude/rules/ledgers.json) whose `circle:` is the operator's (B own decision, E several people,
- * F between people - the letters of open-items.py); A (the AI alone), C (the AIs among themselves)
- * and D (another person's word) never reach the operator's question tool (macOS finding on #143:
- * 27 "decisions" on one brain, a collaborator's among them). An entry without `circle:` counts,
- * named apart so it gets one. Plus questions in the question-gate register
- * (.claude-state/open-questions.json) with status deferred or unanswered.
- * Blocks when such decisions exist and the running turn called no AskUserQuestion. This hook
- * demands the tool, never the wording, and does NOT check that a question was re-measured before
- * it is put - that is not carried here.
- * Output: {"decision":"block","reason":"... Missing: <titles>"}. Fails open on unreadable input.
+ * The right moment (autonomous-mode.cjs, a latch):
+ *   - the operator's newest prompt asks what is open (built-ins plus the instance's `ask_patterns`
+ *     in .claude/rules/open-items.json) - that also ends a running autonomous mode, or
+ *   - the newest prompt ended the autonomous mode (an off-word). A status question or a remark
+ *     mid-run ends nothing, so it is no such moment; nor is a turn after "yes, continue".
+ * What is demanded, once the moment has come and the mode is not on again by the end of the turn:
+ *   - open OPERATOR decisions go through AskUserQuestion. Counted: entries `- [ ]` with
+ *     `class: decision` in the registered ledgers (.claude/rules/ledgers.json) whose `circle:` is
+ *     the operator's (B own decision, E several people, F between people - open-items.py); A (the AI
+ *     alone), C (the AIs among themselves) and D (another person's word) never reach the operator's
+ *     question tool (macOS finding on #143: 27 "decisions" on one brain, a collaborator's among
+ *     them). An entry without `circle:` counts, named apart so it gets one. Plus questions in the
+ *     question-gate register (.claude-state/open-questions.json), status deferred or unanswered.
+ *   - when the autonomous mode was on before this prompt, the LAST question of the turn's last
+ *     AskUserQuestion carries an on-word ("continue autonomously?") - with or without open decisions.
+ * This hook demands the tool and that last question, never the other wording, and does NOT check
+ * that a question was re-measured before it is put - that is not carried here.
+ * Output: {"decision":"block","reason":"..."}. Fails open on unreadable input.
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { promptModes } = require('./autonomous-mode.cjs');
+const { promptModes, words } = require('./autonomous-mode.cjs');
 const { queuedHumanPrompt } = require('./turn-kind.cjs');
-
-const ASK_BUILTIN = ['\\banything (still |else )?(open|left|pending)\\b', '\\bwhat is (still )?open\\b',
-  '\\bopen (for|to) me\\b', '\\bdo you need (anything|something)\\b'];
 
 // Decision circles that need the operator (open-items.py CIRCLE_WORDS: B, E, F = human).
 const OPERATOR_CIRCLES = new Set(['B', 'E', 'F']);
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
-
-function askRx(root) {
-  const list = [...ASK_BUILTIN];
-  const cfg = readJson(path.join(root, '.claude', 'rules', 'open-items.json')) || {};
-  for (const s of cfg.ask_patterns || []) { try { new RegExp(s); list.push(s); } catch (e) { /* skip */ } }
-  return new RegExp(list.join('|'), 'iu');
-}
 
 /** Open `class: decision` entries of the registered ledgers, as short titles. */
 function ledgerDecisions(root) {
@@ -78,47 +71,63 @@ function registerDecisions(root) {
     .map((q) => String(q.q || '').slice(0, 80));
 }
 
-/** Did the running turn (after the newest operator prompt) call the question tool? */
-function askedThisTurn(transcriptPath, lastPrompt) {
+/** The question lists of every AskUserQuestion the running turn (after the newest prompt) called, in order. */
+function questionsThisTurn(transcriptPath, lastPrompt) {
   let lines;
-  try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return false; }
-  let asked = false;
+  try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return []; }
+  const calls = [];
+  const key = (lastPrompt || '').trim().slice(0, 60);
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i];
     if (!l.trim()) continue;
     let d;
     try { d = JSON.parse(l); } catch (e) { continue; }
     const queued = queuedHumanPrompt(d); // the newest prompt may have been typed mid-turn
-    if (queued && lastPrompt && queued.includes(lastPrompt.trim().slice(0, 60))) break;
+    if (queued && key && queued.includes(key)) break;
     const msg = d.message;
     if (!msg) continue;
-    if (msg.role === 'user' && lastPrompt) {
+    if (msg.role === 'user' && key) {
       const c = msg.content;
       const t = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text).join('\n') : '';
-      if (t && t.includes(lastPrompt.trim().slice(0, 60))) break;
+      if (t && t.includes(key)) break;
     }
-    if (msg.role === 'assistant' && Array.isArray(msg.content)
-      && msg.content.some((b) => b && b.type === 'tool_use' && b.name === 'AskUserQuestion')) asked = true;
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const b of msg.content) {
+        if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
+        const qs = (b.input && Array.isArray(b.input.questions)) ? b.input.questions : [];
+        calls.unshift(qs.map((q) => String((q && q.question) || '')));
+      }
+    }
   }
-  return asked;
+  return calls;
 }
 
 function judge(input) {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const modes = promptModes(input.transcript_path || '', root);
-  if (!modes.length) return null;
-  const now = modes[modes.length - 1];
-  if (now.autonomous) return null;
-  const back = modes.length > 1 && modes[modes.length - 2].autonomous; // this prompt cleared the latch
-  const asks = askRx(root).test(now.text);
-  if (!back && !asks) return null;
+  if (!modes.length || modes[modes.length - 1].autonomous) return null; // in the run, or "yes, continue"
+  let n = modes.length - 1;
+  while (n >= 0 && modes[n].answer) n--; // the newest operator PROMPT, not an answer to a question
+  if (n < 0) return null;
+  const now = modes[n];
+  const wasOn = n > 0 && modes[n - 1].autonomous;
+  if (!now.asks && !wasOn) return null;
   const open = [...ledgerDecisions(root), ...registerDecisions(root)];
-  if (!open.length) return null;
-  if (askedThisTurn(input.transcript_path, now.text)) return null;
-  const why = back ? 'this is the first turn after the autonomous run' : 'the operator asked what is open';
-  return `DECISION-PRESENTATION: ${why}, and ${open.length} operator decision(s) are open - put them through the question ` +
-    'tool (AskUserQuestion: one question each, recommended option first); prose is not the way. ' +
-    `An entry marked (no circle) gets its circle: in the ledger if it is not the operator's. Missing: ${open.slice(0, 4).join(' | ')}${open.length > 4 ? ` (+${open.length - 4} more)` : ''}`;
+  const calls = questionsThisTurn(input.transcript_path, now.text);
+  const missing = [];
+  if (open.length && !calls.length) {
+    missing.push(`${open.length} operator decision(s) through the question tool (one question each, recommended option first; ` +
+      `an entry marked (no circle) gets its circle: in the ledger if it is not the operator's) - ` +
+      `${open.slice(0, 4).join(' | ')}${open.length > 4 ? ` (+${open.length - 4} more)` : ''}`);
+  }
+  if (wasOn) {
+    const on = words(root).on;
+    const last = calls.length ? calls[calls.length - 1] : [];
+    if (!last.length || !on.test(last[last.length - 1])) missing.push('the last question "continue autonomously?"');
+  }
+  if (!missing.length) return null;
+  const why = now.asks ? 'the operator asked what is open' : 'the autonomous run has ended';
+  return `DECISION-PRESENTATION: ${why}${wasOn ? ' (the autonomous mode was on)' : ''} - prose is not the way. Missing: ${missing.join('; ')}`;
 }
 
 if (require.main === module) {
