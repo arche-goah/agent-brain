@@ -40,7 +40,8 @@ const BUILTIN_OFF = [
   '\\bnormal mode\\b',
   '\\b(stop|end) (the )?autonomous\\b',
   '\\bno longer autonomous\\b',
-  '\\binteractive(ly)?\\b',
+  // asking FOR the interactive way; "do not stop interactively" is the opposite and keeps it
+  '\\b(ask|put|show)\\b[^.?!\\n]{0,40}\\binteractive(ly)?\\b',
   '\\bput (the |your )?(open )?(decisions|questions) to me\\b',
 ];
 const HOOK_ECHO = /^\s*Stop hook feedback:/;

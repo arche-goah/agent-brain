@@ -39,8 +39,11 @@ f="$T/2q.jsonl"; { user "work through the list autonomously"; asst "x"; qcmd "th
 mode "a remark typed mid-turn keeps it" "$f" "$EN" autonomous
 f="$T/3.jsonl"; { user "autonomous, please"; asst "x"; user "status?"; asst "y"; user "back to normal mode"; } > "$f"
 mode "an off word ends it" "$f" "$EN" interactive
-f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; qcmd "put the open decisions to me interactively"; } > "$f"
+f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; qcmd "ask me interactively now"; } > "$f"
 mode "asking for the interactive way ends it" "$f" "$EN" interactive
+# The operator's complaint of 2026-10-19 carries the word too, and means the opposite.
+f="$T/3d.jsonl"; { user "autonomous, please"; asst "x"; user "you stopped interactively again, that blocks everything"; } > "$f"
+mode "complaining about an interactive stop keeps it" "$f" "$EN" autonomous
 f="$T/3c.jsonl"; { user "autonomous, please"; asst "x"; user "normal mode"; asst "y"; user "status?"; } > "$f"
 mode "after the off word a plain prompt stays interactive" "$f" "$EN" interactive
 f="$T/4.jsonl"; { user "work through the list autonomously"; asst "x"; user "<task-notification>watcher fired</task-notification>"; user "Stop hook feedback: STOP-CHECKS"; } > "$f"
