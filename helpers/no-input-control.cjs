@@ -40,12 +40,17 @@ const DEFAULTS = [
     'AppleScript that types or clicks through System Events'],
   ['x11-wayland-tools', `\\b(?:${j('xdo', 'tool')}|${j('ydo', 'tool')}|${j('wty', 'pe')})\\b`,
     'a Linux tool that injects key or mouse events'],
-  ['windows-input', `\\b(?:${j('Send', 'Input')}|${j('keybd', '_event')}|${j('mouse', '_event')}|${j('SetCursor', 'Pos')}|${j('Send', 'Keys')}|${j('Auto', 'Hotkey')})\\b|\\b${j('WM', '_')}(?:KEY(?:DOWN|UP)|[LRM]BUTTON(?:DOWN|UP))\\b`,
-    'a Windows call or tool that injects key or mouse input'],
+  // The foreground-window switch is the operator's own rule word next to mouse and keys; the NirSoft
+  // command-line tool sends keys and moves the pointer (both carried by the Windows alpha, 2026-10-26).
+  ['windows-input', `\\b(?:${j('Send', 'Input')}|${j('keybd', '_event')}|${j('mouse', '_event')}|${j('SetCursor', 'Pos')}|${j('Send', 'Keys')}|${j('Auto', 'Hotkey')}|${j('SetForeground', 'Window')}|${j('App', 'Activate')}|${j('nir', 'cmd')})\\b|\\b${j('WM', '_')}(?:KEY(?:DOWN|UP)|[LRM]BUTTON(?:DOWN|UP))\\b`,
+    'a Windows call or tool that injects key or mouse input or switches the focused window'],
 ];
+// A hotkey-tool script run directly is input automation whatever its lines say: its own commands
+// (send, click, move) are too common as words to match on.
+const HOTKEY_SCRIPT = /(?:^|[\s;&|("'`])[^\s;&|()"'`]*\.ahk\b/i;
 const TOOL_NAME = /(?:^|__)computer[-_]?use(?:__|$)|(?:^|__)computer_(?:click|type|key|move|drag|scroll|mouse)|remote-devices__computer/i;
 const OWN_FILES = /(?:^|[\\/])(?:no-input-control\.cjs|test-no-input-control\.sh|no-input-control\.json)$/;
-const SCRIPT_EXT = /\.(?:py|js|cjs|mjs|sh|ps1|ahk|applescript|scpt)$/i;
+const SCRIPT_EXT = /\.(?:py|js|cjs|mjs|sh|ps1|ahk|applescript|scpt|vbs|bat|cmd)$/i;
 
 function loadInstance(projectDir) {
   const fp = projectDir && path.join(projectDir, '.claude', 'rules', 'no-input-control.json');
@@ -93,6 +98,9 @@ function check(toolName, toolInput, cwd, instance) {
   const inst = instance || { patterns: [], allow: {} };
   if (TOOL_NAME.test(toolName || '') && !inst.allow['computer-control-tool']) {
     return { id: 'computer-control-tool', reason: 'a tool that controls the computer the person is sitting at' };
+  }
+  if (typeof (toolInput || {}).command === 'string' && HOTKEY_SCRIPT.test(toolInput.command) && !inst.allow['windows-input']) {
+    return { id: 'windows-input', reason: 'a hotkey-tool script that sends keys or clicks' };
   }
   const pats = DEFAULTS.map(([id, src, reason]) => [id, new RegExp(src, 'i'), reason]).concat(inst.patterns);
   for (const text of texts(toolName, toolInput, cwd)) {

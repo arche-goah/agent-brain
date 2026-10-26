@@ -40,6 +40,17 @@ expect "a script the command runs imports an input library" deny "$(call Bash "{
 expect "harmless command" allow "$(call Bash '{"command":"git status"}')"
 expect "harmless edit about keyboard shortcuts" allow "$(call Edit '{"file_path":"/x/doc.md","old_string":"a","new_string":"keyboard shortcuts doc"}')"
 
+# --- the four gaps the Windows check found (2026-10-26): script hosts, focus switch, NirSoft tool, hotkey scripts
+printf 'Set s = CreateObject("WScript.Shell")\ns.%s "x"\n' "$(w Send Keys)" > "$T/drive.vbs"
+expect "a script-host file the command runs sends keys" deny "$(call Bash "{\"command\":$(js "cscript $(native "$T/drive.vbs")")}")"
+printf '@echo off\n%s sendkeypress enter\n' "$(w nir cmd)" > "$T/drive.bat"
+expect "a batch file the command runs uses the NirSoft tool" deny "$(call Bash "{\"command\":$(js "cmd /c $(native "$T/drive.bat")")}")"
+expect "a call that switches the focused window" deny "$(call PowerShell "{\"command\":$(js "[W]::$(w SetForeground Window)(\$h)")}")"
+expect "a NirSoft call in a command" deny "$(call Bash "{\"command\":$(js "$(w nir cmd) setcursor 10 10")}")"
+expect "a hotkey script run directly" deny "$(call Bash "{\"command\":$(js "start C:/x/clicker$(w .a hk)")}")"
+printf '@echo off\necho build done\n' > "$T/drive2.bat"
+expect "a batch file without input calls" allow "$(call Bash "{\"command\":$(js "cmd /c $(native "$T/drive2.bat")")}")"
+
 # --- instance data: a declared allow with a reason lifts one pattern; an empty reason does not
 mkdir -p "$T/brain/.claude/rules"
 printf '{"allow":{"py-gui-automation":"kiosk test rig, operator 2026-10-26"}}\n' > "$T/brain/.claude/rules/no-input-control.json"
