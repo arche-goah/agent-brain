@@ -198,9 +198,10 @@ function gate(input) {
   }, input)));
 }
 
-/** Where this project's transcripts live, derived as gate-precision.py derives it. */
+/** Where this project's transcripts live: the folder Claude Code mints from the project path. */
 function projectDir(root) {
-  const slug = path.resolve(root).replace(/[\\/]/g, '-').replace(/:/g, '');
+  // Claude Code mints the folder by replacing every non-alphanumeric character with '-' (memory-sync.cjs, measured on Windows 2026-08-03).
+  const slug = path.resolve(root).replace(/[^A-Za-z0-9]/g, '-');
   const home = process.env.HOME || process.env.USERPROFILE || '';
   return path.join(home, '.claude', 'projects', slug);
 }

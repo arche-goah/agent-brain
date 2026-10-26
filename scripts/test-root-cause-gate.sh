@@ -96,6 +96,13 @@ case "$out" in *'| 2026-09 | 1 | 0 | 0 |'*'| 2026-10 | 2 | 1 | 1 |'*) ok "review
 case "$out" in *'(no mechanism within 5 turns): "that is wrong"'*'(mechanism written later): "something went wrong"'*) ok "review lists the corrections without a cause, oldest first";; *) bad "review list: $out";; esac
 out="$(cd "$CWD" && node "$G" --review 10 --since 2026-10-02 --dir "$(native "$RD")" 2>&1)"
 case "$out" in *'corrections 1 ·'*) ok "review --since cuts older turns";; *) bad "review since: $out";; esac
+# without --dir the transcripts are found where Claude Code keeps them: every non-alphanumeric
+# character of the project path becomes '-' (a dot here; the drive colon on Windows)
+PROJ="$T/my.brain"; mkdir -p "$PROJ"
+SLUG="$(node -e 'process.stdout.write(require("path").resolve(process.argv[1]).replace(/[^A-Za-z0-9]/g,"-"))' "$(native "$PROJ")")"
+mkdir -p "$T/fakehome/.claude/projects/$SLUG"; cp "$RD/a.jsonl" "$T/fakehome/.claude/projects/$SLUG/"
+out="$(cd "$PROJ" && HOME="$(native "$T/fakehome")" USERPROFILE="$(native "$T/fakehome")" CLAUDE_PROJECT_DIR="$(native "$PROJ")" node "$G" --review 10 2>&1)"
+case "$out" in *'transcripts 1 ·'*) ok "review finds the project's transcripts by the minted folder name";; *) bad "review default dir: $out";; esac
 out="$(cd "$CWD" && node "$G" --review 10 --dir "$T/nowhere" 2>&1)"
 case "$out" in *'no transcripts under'*) ok "review without transcripts says so";; *) bad "review nowhere: $out";; esac
 
