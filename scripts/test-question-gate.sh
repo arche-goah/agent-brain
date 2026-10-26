@@ -201,14 +201,26 @@ ask() { # $1 name, $2 question text, $3 deny|allow, $4 root; $SID = session id
   fi
 }
 R="$T/r-reask"; fresh "$R"
-check "first run records the question (re-ask case)" "$T/t-defer.jsonl" block "$R" >/dev/null
+{ user "check the PRs"; asst "Checked the clock drift ledger entry and the launchd schedule. $Q"; user "later, not now please — first the show"; asst "Noted."; } > "$T/t-reask.jsonl"
+check "first run records the question (re-ask case)" "$T/t-reask.jsonl" block "$R" >/dev/null
 id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
 cli "$R" resolve "$id=deferred:later, not now" >/dev/null
 case "$(cli "$R" list)" in *"measure its topic: node core/helpers/question-gate.cjs recheck $id="*) ok "a deferred record is listed with its recheck call";;
   *) bad "no recheck call for the deferred record: $(cli "$R" list)";; esac
 ask "the deferred question, same sentence" "Clock check (deferred since Monday): $Q" deny "$R"
-ask "the deferred question, paraphrased from the record" "Shall we build the clock check now, as a PR or a script?" deny "$R"
+# the match thresholds come from a replay over the history (header of raisesAgain): most of the
+# record's content words, sentence and context together, and only when there are enough of them
+ask "the deferred question, paraphrased from the record and its context" "Shall we build the clock drift check now — the ledger entry and the launchd schedule say it is due?" deny "$R"
+ask "a question sharing only the recurring words" "Shall I build the PR list check first?" allow "$R"
 ask "an unrelated question" "Shall I order the spare cable for the stage switch?" allow "$R"
+R="$T/r-reask-bare"; fresh "$R"
+{ user "go"; asst "Shall I?"; user "something else"; asst "ok"; } > "$T/t-bare.jsonl"
+mkdir -p "$R/.claude/rules"; printf '{"question_patterns":["^shall i\\\\?$"]}\n' > "$R/.claude/rules/open-questions.json"
+check "first run records the bare question" "$T/t-bare.jsonl" block "$R" >/dev/null
+bid="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+[ -n "$bid" ] && cli "$R" resolve "$bid=unanswered:fixture" >/dev/null
+ask "a recorded bare 'shall I?' is inside every question and matches none" "Shall I order the spare cable for the stage switch?" allow "$R"
+R="$T/r-reask"
 out="$(cli "$R" recheck "$id=")"; rc=$?
 case "$rc:$out" in [1-9]*:*"needs the measurement in words"*) ok "a bare recheck stamp is refused";; *) bad "bare recheck accepted (rc=$rc): $out";; esac
 ask "still refused after the refused stamp" "Clock check: $Q" deny "$R"

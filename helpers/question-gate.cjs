@@ -73,8 +73,9 @@
  * orphaned record until the record carries a fresh `recheck` stamp —
  *   node core/helpers/question-gate.cjs recheck <id>=<what was measured, where, with what result>
  * — or is settled (`resolve <id>=answered|dropped:<evidence>`). Match = the record's sentence
- * inside the question, or most of its content words (sentence + context) present in it; the stamp
- * is fresh for a day. A record asked today by this session passes: the operator has not seen it yet.
+ * inside the question, or most of its content words (sentence + context) present in it
+ * (thresholds at `raisesAgain`, set by a replay over the history); the stamp is fresh for a day.
+ * A record asked today by this session passes: the operator has not seen it yet.
  *
  * Fixture: scripts/test-question-gate.sh.
  */
@@ -264,16 +265,25 @@ function contentWords(t) {
   return out;
 }
 
-/** Does the question tool's text raise the recorded question again? Sentence, or most of its words. */
+/**
+ * Does the question tool's text raise the recorded question again? The record's sentence inside
+ * the text (trailing punctuation aside, at least four content words — a recorded bare "shall I?"
+ * is inside every question), or at least 70 % of the content words of sentence + context, when
+ * those are eight or more. Thresholds replayed over this brain's history (2026-10-26, 384
+ * transcripts, 366 questions through the tool): at 60 % and three words 38 false hits, all of
+ * them the recurring session-start question ("n items I can handle — shall I?") against each
+ * other; the incident itself scored 0.77 over 13 words; 70 % and eight words hit it and nothing else.
+ */
 function raisesAgain(record, text) {
   const hay = squash(text);
-  if (record.q && hay.includes(squash(record.q))) return true;
+  const sentence = squash(record.q).replace(/[?.!\s]+$/u, '');
+  if (sentence && contentWords(sentence).size >= 4 && hay.includes(sentence)) return true;
   const words = contentWords(`${record.q || ''} ${record.about || ''}`);
-  if (words.size < 3) return false;
+  if (words.size < 8) return false;
   let hit = 0;
   const have = contentWords(hay);
   for (const w of words) if (have.has(w)) hit++;
-  return hit / words.size >= 0.6;
+  return hit / words.size >= 0.7;
 }
 
 function rechecked(v) {
