@@ -62,11 +62,25 @@ Carrier: core PR #121.
 
 ## 2026-10-23 — Shops for shopping lists
 
-Carrier: prose — operator-ok: "das reicht als Notiz, keine Sperre noetig" (2026-10-23).
+Carrier: prose — operator-ok: "a note is enough here, no lock needed" (2026-10-23).
 
 ## 2026-10-22 — Network drives: hard stop
 
 Carrier: `helpers/network-drive-gate.cjs`.
+
+## 2026-10-21 — No release without the operator's signature
+
+Carrier: the version in `plugin.json` stays until the operator signs.
+
+## 2026-10-20 — Merge only the reviewed head
+
+Carrier: permission rule `--match-head-commit` in the settings.
+
+## 2026-10-19 — Instance keys end a carrier block
+
+Carrier: prose, because it is clear.
+Grounds: the instance's own key, from the instance data.
+`.claude/rules/stop-checks.json` named only in the reason.
 """
 
 
@@ -77,26 +91,32 @@ def build_brain(root):
     os.makedirs(os.path.join(root, "core", "scripts"))
     os.makedirs(os.path.join(root, "scripts"))
     os.makedirs(os.path.join(root, "docs"))
-    with open(os.path.join(root, "docs", "protocol.md"), "w") as f:
+    with open(os.path.join(root, "docs", "protocol.md"), "w", encoding="utf-8") as f:
         f.write(PROTOCOL)
-    with open(os.path.join(root, ".claude", "rules", "lesson-carriers.json"), "w") as f:
-        json.dump({"protocol": "docs/protocol.md", "carrier_keys": ["Carrier"], "entry_heading": r"^## (\d{4}-\d{2}-\d{2})"}, f)
+    with open(os.path.join(root, ".claude", "rules", "lesson-carriers.json"), "w", encoding="utf-8") as f:
+        json.dump({"protocol": "docs/protocol.md", "carrier_keys": ["Carrier"], "entry_heading": r"^## (\d{4}-\d{2}-\d{2})",
+                   "other_keys": ["Reach", "Grounds"]}, f)
+    # a manifest a wired helper reads (the bootup reads plugin.json for the version) is no gate
+    with open(os.path.join(root, "core", "plugin.json"), "w", encoding="utf-8") as f:
+        f.write('{"version": "1.0.0"}')
+    with open(os.path.join(root, ".claude", "settings.json"), "w", encoding="utf-8") as f:
+        json.dump({"permissions": {"allow": ["Bash(gh pr merge * --match-head-commit *)"]}}, f)
     # wired: stop-dispatcher (reads stop-checks.json) and mechanism-guard (reads mechanism-rules.json)
-    with open(os.path.join(root, "core", "hooks", "hooks.json"), "w") as f:
+    with open(os.path.join(root, "core", "hooks", "hooks.json"), "w", encoding="utf-8") as f:
         json.dump({"hooks": {"Stop": [{"hooks": [{"command": "node \"${CLAUDE_PLUGIN_ROOT}/helpers/stop-dispatcher.cjs\""}]}],
                              "PreToolUse": [{"hooks": [{"command": "node \"${CLAUDE_PLUGIN_ROOT}/helpers/mechanism-guard.cjs\""}]}]}}, f)
-    with open(os.path.join(root, "core", "helpers", "stop-dispatcher.cjs"), "w") as f:
-        f.write("const p = '.claude/rules/stop-checks.json';\n")
-    with open(os.path.join(root, "core", "helpers", "mechanism-guard.cjs"), "w") as f:
+    with open(os.path.join(root, "core", "helpers", "stop-dispatcher.cjs"), "w", encoding="utf-8") as f:
+        f.write("const p = '.claude/rules/stop-checks.json'; const v = 'plugin.json';\n")
+    with open(os.path.join(root, "core", "helpers", "mechanism-guard.cjs"), "w", encoding="utf-8") as f:
         f.write("const p = 'mechanism-rules.json';\n")
-    with open(os.path.join(root, ".claude", "rules", "stop-checks.json"), "w") as f:
+    with open(os.path.join(root, ".claude", "rules", "stop-checks.json"), "w", encoding="utf-8") as f:
         f.write("{}")
-    with open(os.path.join(root, ".claude", "rules", "mechanism-rules.json"), "w") as f:
+    with open(os.path.join(root, ".claude", "rules", "mechanism-rules.json"), "w", encoding="utf-8") as f:
         json.dump({"rules": [{"id": "download", "pattern": "curl"}]}, f)
     # NOT wired: a report script, and a gate helper nobody hooked up
-    with open(os.path.join(root, "scripts", "release-preflight.sh"), "w") as f:
+    with open(os.path.join(root, "scripts", "release-preflight.sh"), "w", encoding="utf-8") as f:
         f.write("echo report\n")
-    with open(os.path.join(root, "core", "helpers", "network-drive-gate.cjs"), "w") as f:
+    with open(os.path.join(root, "core", "helpers", "network-drive-gate.cjs"), "w", encoding="utf-8") as f:
         f.write("// a gate that exists but is wired nowhere\n")
 
 
@@ -110,7 +130,7 @@ ENV["USERPROFILE"] = _home
 
 with tempfile.TemporaryDirectory() as d:
     build_brain(d)
-    out = subprocess.run([sys.executable, SCRIPT, "--repo", d, "--json"], capture_output=True, text=True, env=ENV)
+    out = subprocess.run([sys.executable, SCRIPT, "--repo", d, "--json"], capture_output=True, text=True, encoding="utf-8", env=ENV)
     rows = {r["title"][:30]: r for r in json.loads(out.stdout)["entries"]}
 
     def cls(prefix):
@@ -130,31 +150,34 @@ with tempfile.TemporaryDirectory() as d:
     check(cls("A second beta tag on the same ") == "REPORT", "a script that only reports is REPORT, not binding")
     check(cls("Tags only for a delivery") == "PENDING", "a PR number alone is PENDING")
     check(cls("Network drives: hard stop") == "REPORT", "a gate file wired NOWHERE does not bind (REPORT)")
+    check(cls("No release without the operato") != "GATE", "a manifest (plugin.json) a wired helper reads is no gate (Windows review)")
+    check(cls("Merge only the reviewed head") == "GATE", "a permission rule in the settings binds (Windows review)")
+    check(cls("Instance keys end a carrier b") == "PROSE", "an instance key from other_keys ends the carrier block")
     check(cls("Shops for shopping lists") == "OPERATOR-OK", "prose with the operator's quoted ok is an accepted decision")
 
-    g_bad = subprocess.run([sys.executable, SCRIPT, "--repo", d, "--gate", "--since", "2026-10-26"], capture_output=True, text=True, env=ENV)
+    g_bad = subprocess.run([sys.executable, SCRIPT, "--repo", d, "--gate", "--since", "2026-10-26"], capture_output=True, text=True, encoding="utf-8", env=ENV)
     check(g_bad.returncode == 1, "--gate exits 1 when a lesson since the date is prose")
-    with open(os.path.join(d, "docs", "protocol.md"), "w") as f:
+    with open(os.path.join(d, "docs", "protocol.md"), "w", encoding="utf-8") as f:
         f.write("# p\n\n## 2026-10-27 — Bound one\n\nCarrier: `.claude/rules/stop-checks.json` row X.\n")
-    g_ok = subprocess.run([sys.executable, SCRIPT, "--repo", d, "--gate", "--since", "2026-10-27"], capture_output=True, text=True, env=ENV)
+    g_ok = subprocess.run([sys.executable, SCRIPT, "--repo", d, "--gate", "--since", "2026-10-27"], capture_output=True, text=True, encoding="utf-8", env=ENV)
     check(g_ok.returncode == 0, "--gate exits 0 when every lesson since the date binds")
 
 # --staged (the pre-commit form): only entries the commit ADDS are judged.
 with tempfile.TemporaryDirectory() as d:
     build_brain(d)
     proto = os.path.join(d, "docs", "protocol.md")
-    git = lambda *a: subprocess.run(["git", "-C", d, *a], capture_output=True, text=True, env=ENV)
+    git = lambda *a: subprocess.run(["git", "-C", d, *a], capture_output=True, text=True, encoding="utf-8", env=ENV)
     git("init", "-q"); git("config", "user.email", "t@example.org"); git("config", "user.name", "t")
     git("add", "-A"); git("commit", "-q", "-m", "base with old prose entries")
-    staged = lambda: subprocess.run([sys.executable, SCRIPT, "--repo", d, "--staged"], capture_output=True, text=True, env=ENV).returncode
+    staged = lambda: subprocess.run([sys.executable, SCRIPT, "--repo", d, "--staged"], capture_output=True, text=True, encoding="utf-8", env=ENV).returncode
 
     check(staged() == 0, "--staged: old prose entries already in HEAD never block a commit")
-    with open(proto, "a") as f:
+    with open(proto, "a", encoding="utf-8") as f:
         f.write("\n## 2026-10-27 — A new lesson carried by the protocol itself\n\nCarrier: this protocol entry; prose, because it is clear.\n")
     git("add", proto)
     check(staged() == 1, "--staged: a NEW prose lesson blocks the commit")
     git("checkout", "--", "."); git("reset", "-q", "--hard")
-    with open(proto, "a") as f:
+    with open(proto, "a", encoding="utf-8") as f:
         f.write("\n## 2026-10-27 — A new lesson with a gate\n\nCarrier: `.claude/rules/mechanism-rules.json` rule `download`.\n")
     git("add", proto)
     check(staged() == 0, "--staged: a NEW lesson naming a wired gate passes")

@@ -7,7 +7,8 @@ gate="$here/../helpers/commitment-carrier-gate.cjs"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 fail=0
 mkdir -p "$tmp/.claude/rules"
-printf '{"patterns":["\\\\bab jetzt\\\\b","\\\\bkuenftig\\\\b|\\\\bkünftig\\\\b"],"first_person":["\\\\b(ich|wir)\\\\b"]}\n' > "$tmp/.claude/rules/commitments.json"
+# instance phrasing comes from data: a made-up instance word stands in for a second language
+printf '{"patterns":["\\\\bhenceforth\\\\b"],"first_person":["\\\\b(I|we)\\\\b"]}\n' > "$tmp/.claude/rules/commitments.json"
 
 turn() {   # turn <file> <user text> <assistant-json-content...>
   local f=$1; shift
@@ -23,8 +24,8 @@ expect() {   # expect <label> block|pass <output>
   else case "$3" in *'"decision":"block"'*) echo "FAIL $1 (expected pass)"; fail=1;; *) echo "ok   $1";; esac; fi
 }
 
-turn "$tmp/a.jsonl" "warum hast du nicht neu gestartet?" "$(txt 'Ab jetzt lasse ich den Waechter laufen, solange onPC laeuft.')" \
-  "$(wr "$tmp/docs/maintenance/feedback-protokoll.md" 'Waechter laeuft solange onPC laeuft')"
+turn "$tmp/a.jsonl" "why did you not restart?" "$(txt 'Henceforth I keep the watcher running while onPC runs.')" \
+  "$(wr "$tmp/docs/maintenance/feedback-protocol.md" 'watcher runs while onPC runs')"
 expect "real case: promise carried only by a feedback-protocol entry blocks" block "$(run "$tmp/a.jsonl")"
 
 turn "$tmp/b.jsonl" "x" "$(txt 'From now on I never open a window on the operator machine.')" \
@@ -35,14 +36,14 @@ turn "$tmp/c.jsonl" "x" "$(txt 'From now on I never open a window on the operato
   "$(wr "$tmp/core/helpers/no-window-gate.cjs" '// refuse any command that would open a window on the operator machine')"
 expect "promise carried by a gate written this turn passes" pass "$(run "$tmp/c.jsonl")"
 
-turn "$tmp/d.jsonl" "x" "$(txt 'Ab jetzt laeuft der Waechter mit.')" \
-  "$(wr "$tmp/.claude/rules/stop-checks.json" '{"checks":[{"label":"WAECHTER laeuft mit"}]}')"
-expect "German promise carried by gate data (.claude/rules/*.json) passes" pass "$(run "$tmp/d.jsonl")"
+turn "$tmp/d.jsonl" "x" "$(txt 'Henceforth we keep the watcher running.')" \
+  "$(wr "$tmp/.claude/rules/stop-checks.json" '{"checks":[{"label":"WATCHER keeps running"}]}')"
+expect "instance-phrased promise carried by gate data (.claude/rules/*.json) passes" pass "$(run "$tmp/d.jsonl")"
 
 turn "$tmp/e.jsonl" "x" "$(txt 'The detector will report it from now on.')"
 expect "negative control: a sentence about a tool is no promise" pass "$(run "$tmp/e.jsonl")"
 
-turn "$tmp/f.jsonl" "x" "$(txt 'The rule says "ab jetzt ich nie wieder", quoted.')"
+turn "$tmp/f.jsonl" "x" "$(txt 'The rule says "henceforth I never again", quoted.')"
 expect "negative control: a quoted mention is no promise" pass "$(run "$tmp/f.jsonl")"
 
 turn "$tmp/g.jsonl" "old turn" "$(wr "$tmp/core/helpers/no-window-gate.cjs" 'never open a window operator machine')"

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Stop check: a promise about future conduct ("from now on I …", "ab jetzt …") in this turn's reply
+ * Stop check: a promise about future conduct ("from now on I …", or the instance's own phrasing) in this turn's reply
  * needs a MECHANISM written in the same turn — or the turn does not end.
  *
  * Why (operator, 2026-10-26): "a rule in the protocol is no binding mechanic, we have known that for
@@ -50,7 +50,7 @@ function readTail(file) {
   } finally { fs.closeSync(fd); }
 }
 
-const fold = (s) => s.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+const fold = (s) => s.toLowerCase().replace(/\u00e4/g, 'ae').replace(/\u00f6/g, 'oe').replace(/\u00fc/g, 'ue').replace(/\u00df/g, 'ss');
 function words(text, stop) {
   return new Set((fold(text).match(/[a-z]{5,}/g) || []).filter((w) => !stop.has(w)));
 }
