@@ -59,12 +59,22 @@ function promptText(msg) {
 
 /** true when the operator's autonomous order is in force at the end of the transcript. */
 function autonomousMode(transcriptPath, cwd) {
+  const modes = promptModes(transcriptPath, cwd);
+  return modes.length ? modes[modes.length - 1].autonomous : false;
+}
+
+/**
+ * Every operator prompt of the transcript in order, each with the mode it sets:
+ * [{text, autonomous}]. The last one is the mode now; the one before tells whether this turn is
+ * the first after an autonomous run (decision-presentation-gate).
+ */
+function promptModes(transcriptPath, cwd) {
   const dir = cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const on = patterns(dir, 'on_patterns', BUILTIN_ON);
   const off = patterns(dir, 'off_patterns', BUILTIN_OFF);
   let lines;
-  try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return false; }
-  let state = false;
+  try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return []; }
+  const out = [];
   for (const line of lines) {
     if (!line.includes('"user"')) continue;
     let d;
@@ -74,12 +84,12 @@ function autonomousMode(transcriptPath, cwd) {
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const words = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!words.trim()) continue;
-    state = !off.test(words) && on.test(words);
+    out.push({ text: words, autonomous: !off.test(words) && on.test(words) });
   }
-  return state;
+  return out;
 }
 
-module.exports = { autonomousMode };
+module.exports = { autonomousMode, promptModes };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);

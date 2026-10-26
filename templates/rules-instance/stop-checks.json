@@ -107,6 +107,17 @@
       "maxLength": 240,
       "onReissue": "run",
       "required": true
+    },
+    {
+      "label": "DECISIONS",
+      "marker": "DECISION-PRESENTATION",
+      "cmd": "core/helpers/decision-presentation-gate.cjs",
+      "mode": "block",
+      "extract": "Missing:\\s*([^\\n]+)",
+      "template": "Open operator decisions are due now - put them through the question tool, re-measured first: {1}",
+      "maxLength": 240,
+      "onReissue": "run",
+      "required": true
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",
