@@ -9,7 +9,9 @@
  * core must make sure that real operator decisions are put as interactive questions, at the right
  * moment only, and never during an autonomous run. The same evening (translated): "as soon as I ask
  * whether anything is open for me, I am obviously here ... that ends the autonomous mode. The last
- * question is always: continue autonomously?"
+ * question is always: continue autonomously?" On the macOS instance the same day, clarified through the
+ * question tool (translated): collect during the run; at its end every HAND STEP and decision goes
+ * through the tool, never prose, and the last question is "continue autonomously?".
  *
  * The right moment (autonomous-mode.cjs, a latch):
  *   - the operator's newest prompt asks what is open (built-ins plus the instance's `ask_patterns`
@@ -18,7 +20,7 @@
  *     mid-run ends nothing, so it is no such moment; nor is a turn after "yes, continue".
  * What is demanded, once the moment has come and the mode is not on again by the end of the turn:
  *   - open OPERATOR decisions go through AskUserQuestion. Counted: entries `- [ ]` with
- *     `class: decision` in the registered ledgers (.claude/rules/ledgers.json) whose `circle:` is
+ *     `class: decision` or `class: hand-step` (a step only the operator's hand can take) in the registered ledgers (.claude/rules/ledgers.json) whose `circle:` is
  *     the operator's (B own decision, E several people, F between people - open-items.py); A (the AI
  *     alone), C (the AIs among themselves) and D (another person's word) never reach the operator's
  *     question tool (macOS finding on #143: 27 "decisions" on one brain, a collaborator's among
@@ -34,6 +36,7 @@
 const fs = require('fs');
 const path = require('path');
 const { promptModes, words } = require('./autonomous-mode.cjs');
+const ITEM_CLASS = /\bclass:\s*`?(decision|hand-step)\b/i;
 const { queuedHumanPrompt } = require('./turn-kind.cjs');
 
 // Decision circles that need the operator (open-items.py CIRCLE_WORDS: B, E, F = human).
@@ -41,7 +44,7 @@ const OPERATOR_CIRCLES = new Set(['B', 'E', 'F']);
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
 
-/** Open `class: decision` entries of the registered ledgers, as short titles. */
+/** Open `class: decision` and `class: hand-step` entries of the registered ledgers, as short titles. */
 function ledgerDecisions(root) {
   const cfg = readJson(path.join(root, '.claude', 'rules', 'ledgers.json')) || {};
   const out = [];
@@ -56,7 +59,7 @@ function ledgerDecisions(root) {
       const block = [lines[i]];
       while (j < lines.length && lines[j].startsWith(' ')) block.push(lines[j++]);
       const body = block.join('\n');
-      if (!/\bclass:\s*`?decision\b/i.test(body)) continue;
+      if (!ITEM_CLASS.test(body)) continue;
       const circle = /^\s+(?:-\s*)?circle:\s*`?([A-Fa-f])\b/m.exec(body);
       if (circle && !OPERATOR_CIRCLES.has(circle[1].toUpperCase())) continue;
       out.push((circle ? '' : '(no circle) ') + m[1].replace(/\*\*/g, '').slice(0, 80));
@@ -116,7 +119,7 @@ function judge(input) {
   const calls = questionsThisTurn(input.transcript_path, now.text);
   const missing = [];
   if (open.length && !calls.length) {
-    missing.push(`${open.length} operator decision(s) through the question tool (one question each, recommended option first; ` +
+    missing.push(`${open.length} operator hand step(s) and decision(s) through the question tool (one question each, recommended option first; ` +
       `an entry marked (no circle) gets its circle: in the ledger if it is not the operator's) - ` +
       `${open.slice(0, 4).join(' | ')}${open.length > 4 ? ` (+${open.length - 4} more)` : ''}`);
   }

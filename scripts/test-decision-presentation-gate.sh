@@ -91,4 +91,13 @@ check "an instance ask wording through instance data" "$f" "$B" block
 rm "$B/.claude/rules/open-items.json"
 check "the same wording without instance data (control)" "$f" "$B" allow
 
+# A hand step counts like a decision (operator 2026-10-26, macOS instance, clarified through the question
+# tool: at the end of a run every hand step and decision goes through the tool, never prose).
+H="$T/hand"; mkdir -p "$H/.claude/rules" "$H/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$H/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Update the office router tonight' '  - class: hand-step' '  - circle: B' > "$H/docs/questions.md"
+f="$T/h1.jsonl"; { user "anything open for me?"; asst "One thing: update the router tonight."; } > "$f"
+check "an open hand step answered in prose" "$f" "$H" block
+f="$T/h2.jsonl"; { user "anything open for me?"; asst "One hand step:"; ask; } > "$f"
+check "the same hand step through the question tool" "$f" "$H" allow
 [ "$fail" = 0 ] && echo "decision-presentation-gate: all cases pass" || { echo "decision-presentation-gate: FAILURES"; exit 1; }
