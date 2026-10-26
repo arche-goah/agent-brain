@@ -168,7 +168,10 @@ What reaches the operator is sorted first (operator decision 2026-09-18).
   report. A question replied past is unanswered, not deferred: asked again with an own prefix line
   ("open since N sessions:") before the byte-identical question. **The agent closes its own question
   once its work has answered it** (operator decision 2026-10-11) as `answered`; only `deferred` needs
-  the operator's words. Carried by `core/helpers/question-gate.cjs`.
+  the operator's words. **A recorded question is measured before it is asked again** (2026-10-26):
+  the record is a snapshot of the day it was asked — its topic (ledger, device, log) is read first,
+  and an answer found there closes it. Carried by `core/helpers/question-gate.cjs` (`recheck`, and a
+  hook on the question tool).
 - **Name the server, never "the MCP"** (operator decision 2026-08-20); generally, check that a
   proposal's load-bearing word is unambiguous for the reader (2026-09-18).
 

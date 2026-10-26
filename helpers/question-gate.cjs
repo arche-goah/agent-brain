@@ -58,6 +58,24 @@
  * session-log entry lists as an open end, by id or by sentence; an unlisted one still blocks.
  * The record stays `open`, so the next session start lists it.
  *
+ * A question is not asked again from the register's snapshot (measured 2026-10-26, macOS instance):
+ * a question postponed ten days earlier ("shall I start with step 1?" — an eSIM on an LTE uplink,
+ * firmware update) was put to the operator again through the question tool, built word for word
+ * from this file's record (`q` + `about`), while the ledger and the device already carried the
+ * answer (firmware done the day the question was asked, the SIM path changed and the tariff live
+ * two days before the re-ask). The operator: "it is active already — something went wrong". The
+ * record is a SNAPSHOT of the moment the question was asked; nothing re-measured its topic before
+ * it was raised again, and `list` presented a deferred record under "open questions" every start
+ * with no step between listing and asking. The rule has that step ("it returns when a measurement
+ * changes the situation" — `intelligence.md`, Presenting to the Operator), the carrier had not.
+ * Now: `list` names the measurement call for a deferred record, and a PreToolUse hook on the
+ * question tool (hooks/hooks.json) refuses a question that matches a deferred, unanswered or
+ * orphaned record until the record carries a fresh `recheck` stamp —
+ *   node core/helpers/question-gate.cjs recheck <id>=<what was measured, where, with what result>
+ * — or is settled (`resolve <id>=answered|dropped:<evidence>`). Match = the record's sentence
+ * inside the question, or most of its content words (sentence + context) present in it; the stamp
+ * is fresh for a day. A record asked today by this session passes: the operator has not seen it yet.
+ *
  * Fixture: scripts/test-question-gate.sh.
  */
 const fs = require('fs');
@@ -236,6 +254,73 @@ function operatorAfter(tp, q, rx) {
 
 const squash = (t) => String(t || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
+const RECHECK_FRESH_MS = 24 * 60 * 60 * 1000;
+const RECHECK_CALL = 'node core/helpers/question-gate.cjs recheck <id>=<what was measured, where, result>';
+
+/** Content words of a text: letters only, at least five of them, unique, lower-cased. */
+function contentWords(t) {
+  const out = new Set();
+  for (const w of squash(t).replace(/[^\p{L}\p{N}]+/gu, ' ').split(' ')) if (w.length >= 5) out.add(w);
+  return out;
+}
+
+/** Does the question tool's text raise the recorded question again? Sentence, or most of its words. */
+function raisesAgain(record, text) {
+  const hay = squash(text);
+  if (record.q && hay.includes(squash(record.q))) return true;
+  const words = contentWords(`${record.q || ''} ${record.about || ''}`);
+  if (words.size < 3) return false;
+  let hit = 0;
+  const have = contentWords(hay);
+  for (const w of words) if (have.has(w)) hit++;
+  return hit / words.size >= 0.6;
+}
+
+function rechecked(v) {
+  const t = Date.parse(v.rechecked || '');
+  return Number.isFinite(t) && Date.now() - t < RECHECK_FRESH_MS;
+}
+
+/** Records a question tool call may not raise again without a fresh measurement. */
+function staleRecords(state, sessionId) {
+  const today = new Date().toISOString().slice(0, 10);
+  return Object.entries(state).filter(([, v]) => {
+    if (v.status === 'deferred' || v.status === 'unanswered') return true;
+    // An open question of an earlier day or another session is an orphan (adopt it first).
+    return v.status === 'open' && ((v.asked || '').slice(0, 10) < today || (sessionId && v.session && v.session !== sessionId));
+  });
+}
+
+/** PreToolUse on the question tool: an aged question is measured before it is asked again. */
+function preTool(input) {
+  if (String(input.tool_name || '') !== 'AskUserQuestion') return;
+  const qs = ((input.tool_input || {}).questions || []);
+  if (!Array.isArray(qs) || !qs.length) return;
+  const state = load(root(input.cwd));
+  const hits = [];
+  for (const q of qs) {
+    const text = [q.question, q.header, ...((q.options || []).map((o) => `${o.label || ''} ${o.description || ''}`))].join(' ');
+    for (const [id, v] of staleRecords(state, input.session_id)) {
+      if (!rechecked(v) && raisesAgain(v, text) && !hits.some((h) => h.id === id)) hits.push({ id, v });
+    }
+  }
+  if (!hits.length) return;
+  const list = hits.slice(0, 3).map(({ id, v }) => `${id} [${v.status}, asked ${(v.asked || '').slice(0, 10)}] "${v.q}"`).join(' · ');
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason:
+        `QUESTION-GATE: this question was asked before and is still on record: ${list}. `
+        + 'The record is a snapshot of the day it was asked — measure its topic BEFORE asking again '
+        + '(the ledger, the device, the log: what a tool can read is not an open point), then ONE call and ask again: '
+        + `${RECHECK_CALL} — or, if the topic is settled meanwhile, node core/helpers/question-gate.cjs resolve <id>=answered|dropped:<evidence>; `
+        + 'an orphan (open, earlier session) is adopted first: adopt <id>. '
+        + '(Measured 2026-10-26: a question postponed ten days earlier was re-asked from its record while the device already carried the answer.)',
+    },
+  }));
+}
+
 function cli(args) {
   const r = root();
   const state = load(r);
@@ -266,6 +351,24 @@ function cli(args) {
       }
       Object.assign(state[m[1]], { status: m[2], note: m[3] || '', resolved: new Date().toISOString() });
       console.log(`${m[1]} -> ${m[2]}`);
+    }
+    save(r, state);
+    return bad;
+  }
+  if (args[0] === 'recheck') {
+    // The measurement that allows an aged question to be raised again: what was read, where,
+    // with what result. Words are required — a bare stamp would be the snapshot problem again.
+    let bad = 0;
+    for (const a of args.slice(1)) {
+      const m = /^([0-9a-f]{8})=(.*)$/s.exec(a);
+      if (!m || !state[m[1]]) { console.log(`unknown id: ${a}`); bad = 1; continue; }
+      const note = m[2].trim();
+      if (note.replace(/[^\p{L}\p{N}]+/gu, '').length < 12) {
+        console.log(`${m[1]}: recheck needs the measurement in words (what was read, where, result)`);
+        bad = 1; continue;
+      }
+      Object.assign(state[m[1]], { rechecked: new Date().toISOString(), recheck_note: note.slice(0, 300) });
+      console.log(`${m[1]} rechecked — ask it again now, or resolve it: answered|dropped:<evidence>`);
     }
     save(r, state);
     return bad;
@@ -308,10 +411,16 @@ function cli(args) {
       if ((v.asked || '').slice(0, 10) < today && v.status !== 'deferred') {
         console.log(`    orphan — settle from evidence: node core/helpers/question-gate.cjs adopt ${id}`);
       }
+      // A deferred record is said once, never asked again from this snapshot: the topic is
+      // measured first (its ledger, the device), and an answer found there closes it.
+      if (v.status === 'deferred') {
+        console.log(`    said once — before raising it again, measure its topic: ${RECHECK_CALL.replace('<id>', id)}; `
+          + `settled meanwhile: resolve ${id}=answered|dropped:<evidence>`);
+      }
     }
     return 0;
   }
-  console.log('usage: question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<operator words> ... | adopt <id> | list');
+  console.log('usage: question-gate.cjs resolve <id>=answered|dropped|unanswered|deferred:<operator words> ... | recheck <id>=<measurement> | adopt <id> | list');
   return 2;
 }
 
@@ -322,7 +431,10 @@ if (process.argv.length > 2) {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => { data += c; });
   process.stdin.on('end', () => {
-    try { gate(JSON.parse(data || '{}')); } catch (e) { /* fail open */ }
+    try {
+      const input = JSON.parse(data || '{}');
+      if (input.hook_event_name === 'PreToolUse' || input.tool_name) preTool(input); else gate(input);
+    } catch (e) { /* fail open */ }
     process.exit(0);
   });
 }
