@@ -307,10 +307,17 @@ process.stdin.on('end', () => {
     if (!hits.length && !reissue) {
       const rx = loadPatterns(cwd, 'announce_patterns', BUILTIN_ANNOUNCE);
       const cond = loadPatterns(cwd, 'announce_condition_patterns', BUILTIN_CONDITION);
-      for (const m of tail.matchAll(rx)) {
+      // The WHOLE final text, not its tail: an announcement in item 1 of a four-item status list
+      // ends the turn just the same (measured 2026-10-26, macOS: "… I build it next." stood ~1000
+      // characters before the end, the 400-character tail missed it, the session stood still for
+      // 90 minutes in an autonomous run — the operator: "a fatal failure class for autonomous work").
+      // The closing QUESTION stays a tail check: a question mid-reply that the reply then answers is
+      // no turn end.
+      const body = stripQuoted(seen.finalText);
+      for (const m of body.matchAll(rx)) {
         // A running waiter excuses only the announcement whose sentence names what it waits for.
         cond.lastIndex = 0;
-        if (seen.waiting && cond.test(sentenceAt(tail, m.index))) continue;
+        if (seen.waiting && cond.test(sentenceAt(body, m.index))) continue;
         uniq([m[0]], announced);
       }
     }

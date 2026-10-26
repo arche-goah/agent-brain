@@ -148,6 +148,10 @@ run_case de-announce-laut '"Bis dahin weiter laut Handoff: Gate-Test und Guard-C
 run_case de-announce-no-pack '"Beide Hinweise geklaert. Arbeite weiter am Handoff."' allow "$CWD"
 # A foreground tool call earlier in the turn does not make the closing announcement true.
 run_case_turn de-announce-after-fg '"Gemessen. Als Naechstes kommt die Memory-Sicherung."' block "$DE" "$FG"
+# An announcement EARLY in a long status reply ends the turn just the same (measured 2026-10-26: the
+# 400-character tail missed "I build it next" in item 1 of 4 and the autonomous run stood still).
+LONG_TAIL="$(printf 'Item two waits for the Windows check of the other machine, requested in the shared memory. %.0s' 1 2 3 4 5 6 7 8)"
+run_case en-announce-early "\"1. The lock for watch-pr is due now, I will build it next. 2. $LONG_TAIL\"" block "$CWD"
 # NEGATIVE: a running waiter is what the announcement waits for.
 run_case_turn waiter-bash-live '"CI laeuft. Mache das jetzt, sobald sie gruen ist."' allow "$DE" "$BG"
 run_case_turn waiter-monitor-live '"Watcher scharf. Once it reports, I will read the answer."' allow "$CWD" "$MON"
