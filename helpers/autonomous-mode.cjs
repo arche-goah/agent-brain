@@ -10,9 +10,13 @@
  * toward the interactive stop the rule forbids. One reader, used by every gate that asks for
  * a question.
  *
- * Autonomous = the operator's NEWEST prompt carries an ON word and no OFF word. The rule ends
- * the mode when the operator ends it, writes to the session interactively again, or closes it —
- * so any later prompt without the word ends it, and the reader fails toward interactive.
+ * Autonomous = a latch: an operator prompt with an ON word (and no OFF word) sets it, only a
+ * prompt with an OFF word clears it. The rule ends the mode when the operator ends it, asks for
+ * the interactive way again, or closes the session; a status question or a remark in between
+ * ("status?", "the desk is running, if you need it") ends nothing. Re-deciding the mode at every
+ * prompt made exactly those remarks stop the run (macOS finding on #143, 2026-10-26: the operator
+ * typed "status?" mid-run, got a question through the tool, and complained of the stop).
+ * No transcript or no ON prompt: interactive.
  * Operator prompts only: no notification, hook echo, loaded skill text, request blob, or the
  * harness's instruction frames (a CLAUDE.md that mentions "autonomous" must not switch anything).
  *
@@ -36,6 +40,8 @@ const BUILTIN_OFF = [
   '\\bnormal mode\\b',
   '\\b(stop|end) (the )?autonomous\\b',
   '\\bno longer autonomous\\b',
+  '\\binteractive(ly)?\\b',
+  '\\bput (the |your )?(open )?(decisions|questions) to me\\b',
 ];
 const HOOK_ECHO = /^\s*Stop hook feedback:/;
 
@@ -70,7 +76,7 @@ function autonomousMode(transcriptPath, cwd) {
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
     // A message the operator types mid-turn arrives as a queued_command attachment, not a user
-    // record (turn-kind.cjs, #139): it sets the mode like any prompt. Found 2026-10-26 by the macOS
+    // record (turn-kind.cjs, #139): it sets or clears the mode like any prompt. Found 2026-10-26 by the macOS
     // instance on #142: "carry on autonomously", then mid-turn "put the open questions to me" kept
     // the mode on, and the gate refused the very question the operator had asked for.
     const queued = queuedHumanPrompt(d);
@@ -79,7 +85,8 @@ function autonomousMode(transcriptPath, cwd) {
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const words = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!words.trim()) continue;
-    state = !off.test(words) && on.test(words);
+    if (off.test(words)) state = false;
+    else if (on.test(words)) state = true;
   }
   return state;
 }

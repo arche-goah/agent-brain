@@ -14,7 +14,7 @@
  * it holds". The question-tool half was an instance alpha (autonomous-question-gate, 2026-10-19) that
  * no other brain had.
  *
- * Mode: `autonomous-mode.cjs` (the operator's newest prompt carries an on-word and no off-word;
+ * Mode: `autonomous-mode.cjs` (a latch: an on-word prompt sets it, only an off-word prompt clears it;
  * instance words in `.claude/rules/autonomous-patterns.json`). Outside that mode this hook is silent.
  * Ask rules: `permissions.ask` of the project's `.claude/settings.json`, `.claude/settings.local.json`
  * and the user's settings, matched the way the harness reads them: `Tool` alone matches the tool;

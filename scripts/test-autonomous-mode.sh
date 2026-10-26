@@ -33,9 +33,16 @@ mode() { # $1 name, $2 transcript, $3 cwd, $4 expected autonomous|interactive
 f="$T/1.jsonl"; { user "work through the list autonomously"; asst "on it"; } > "$f"
 mode "an autonomous order" "$f" "$EN" autonomous
 f="$T/2.jsonl"; { user "work through the list autonomously"; asst "x"; user "how is it going?"; } > "$f"
-mode "a later prompt without the word ends it" "$f" "$EN" interactive
-f="$T/3.jsonl"; { user "autonomous, please"; asst "x"; user "back to normal mode"; } > "$f"
+mode "a status question keeps it (latch, macOS finding on #143)" "$f" "$EN" autonomous
+qcmd() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
+f="$T/2q.jsonl"; { user "work through the list autonomously"; asst "x"; qcmd "the desk is running, if you need it"; } > "$f"
+mode "a remark typed mid-turn keeps it" "$f" "$EN" autonomous
+f="$T/3.jsonl"; { user "autonomous, please"; asst "x"; user "status?"; asst "y"; user "back to normal mode"; } > "$f"
 mode "an off word ends it" "$f" "$EN" interactive
+f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; qcmd "put the open decisions to me interactively"; } > "$f"
+mode "asking for the interactive way ends it" "$f" "$EN" interactive
+f="$T/3c.jsonl"; { user "autonomous, please"; asst "x"; user "normal mode"; asst "y"; user "status?"; } > "$f"
+mode "after the off word a plain prompt stays interactive" "$f" "$EN" interactive
 f="$T/4.jsonl"; { user "work through the list autonomously"; asst "x"; user "<task-notification>watcher fired</task-notification>"; user "Stop hook feedback: STOP-CHECKS"; } > "$f"
 mode "notifications and hook echoes keep it" "$f" "$EN" autonomous
 f="$T/5.jsonl"; { user "<system-reminder>rules: an autonomous run never asks</system-reminder>fix the parser"; } > "$f"

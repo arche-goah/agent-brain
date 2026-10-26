@@ -20,7 +20,8 @@ B="$T/brain"; mkdir -p "$B/.claude" "$T/userdir"
 printf '%s\n' '{"permissions":{"ask":["Edit(.claude/settings.json)","Bash(git -C * push * main*)","Bash(gh pr close*)"]}}' > "$B/.claude/settings.json"
 printf '%s\n' '{"permissions":{"ask":["WebFetch"]}}' > "$T/userdir/settings.json"
 AUTO="$T/auto.jsonl"; user "work through the open points autonomously" > "$AUTO"
-INTER="$T/inter.jsonl"; { user "work through the open points autonomously"; user "anything open for me?"; } > "$INTER"
+INTER="$T/inter.jsonl"; { user "work through the open points autonomously"; user "back to normal mode"; } > "$INTER"
+STAT="$T/stat.jsonl"; { user "work through the open points autonomously"; user "status?"; } > "$STAT"
 # A message typed mid-turn is a queued_command attachment, not a user record (macOS finding on #142).
 queued() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"%s"}}}\n' "$(js "$1")" "${2-human}"; }
 MID="$T/mid.jsonl"; { user "work through the open points autonomously"; queued "put the open decisions to me now"; } > "$MID"
@@ -42,6 +43,7 @@ probe "same edit, relative path" Edit '{"file_path":".claude/settings.json"}' "$
 probe "same edit, not autonomous (the operator is there)" Edit "{\"file_path\":$SET}" "$INTER" allow
 probe "question tool in an autonomous run" AskUserQuestion '{"questions":[]}' "$AUTO" block
 probe "question tool, not autonomous" AskUserQuestion '{"questions":[]}' "$INTER" allow
+probe "a status question mid-run keeps the mode: no question tool" AskUserQuestion '{"questions":[]}' "$STAT" block
 probe "push naming main (ask glob)" Bash '{"command":"git -C /r push -q origin main"}' "$AUTO" block
 probe "branch-less push (no ask rule)" Bash '{"command":"git -C /r push"}' "$AUTO" allow
 probe "gh pr close (ask prefix)" Bash '{"command":"gh pr close 5 -R o/r"}' "$AUTO" block
