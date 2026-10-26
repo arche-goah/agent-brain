@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 LINT = os.path.join(os.path.dirname(__file__), "memory-lint.py")
 
@@ -159,14 +160,14 @@ def t_live_only_not_double_reported(d):
 def binding(d, name, home=None, description="HARD: a rule"):
     """A memory whose description binds, optionally with a rule home; a rule file under
     <d>/root/rules.md that holds the phrase 'only the producer writes'."""
-    os.makedirs(os.path.join(d, "root"), exist_ok=True)
-    with open(os.path.join(d, "root", "rules.md"), "w", encoding="utf-8") as fh:
-        fh.write("# Rules\n\nOnly the producer writes bulk data.\n")
+    root = Path(d) / "root"
+    root.mkdir(exist_ok=True)
+    (root / "rules.md").write_text("# Rules\n\nOnly the producer writes bulk data.\n", encoding="utf-8")
     meta = "  type: feedback\n" + (f"  home: {home}\n" if home else "")
-    with open(os.path.join(d, name + ".md"), "w", encoding="utf-8") as fh:
-        fh.write(f"---\nname: {name}\ndescription: \"{description}\"\nmetadata:\n{meta}---\nx\n")
+    (Path(d) / f"{name}.md").write_text(
+        f"---\nname: {name}\ndescription: \"{description}\"\nmetadata:\n{meta}---\nx\n", encoding="utf-8")
     idx(d, [f"- [{name}]({name}.md) — x"])
-    return run(d, root=os.path.join(d, "root"))["rule_home"]
+    return run(d, root=str(root))["rule_home"]
 
 
 def t_binding_without_home(d):
