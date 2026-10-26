@@ -172,4 +172,30 @@ PYEOF
 [[ "$SEC" == "sam-laptop,?" ]] && pass "an unknown heading ends the section above it (senders: $SEC)" \
   || fail "unknown heading absorbed into the previous section (senders: $SEC)"
 
+# A request the same range already answers is not shown open. Measured 2026-10-26: a start
+# listed four counter-check requests "(status: open)" that were answered the evening before —
+# the range line printed the state the sender WROTE, the open list (`--open`) said 1. Both
+# directions: the answered request reads settled, the unanswered one stays open. NEGATIVE
+# CONTROL: the reader before this fix, passed as $1, must FAIL the first check.
+req() { # file title
+  printf -- '---\nname: %s\ndescription: "%s"\nmetadata:\n  type: project\n  von: sam-laptop\n  audience: kim-win\n  topic: ops\n  date: 2026-10-26\n  status: open\n  next: kim-win\n---\n\nPlease check.\n' \
+    "$(basename "$1" .md)" "$2" > "$W/$1"
+  printf '\n## 2026-10-26 · sam-laptop — AN kim-win (status: open): %s\n%s\n' "$2" "$1" >> "$W/ops/LOG.md"
+}
+req ops/request-settled-one-2026-10-26.md "SETTLED-ONE please counter-check"
+req ops/request-still-open-2026-10-26.md "STILLOPEN-ONE please counter-check"
+printf -- '---\nname: reply-settled-one-2026-10-26\ndescription: "checked, merged"\nmetadata:\n  type: project\n  von: kim-win\n  audience: sam-laptop\n  topic: ops\n  date: 2026-10-26\n  status: answered\n  answers: ops/request-settled-one-2026-10-26.md\n---\n\nGreen.\n' \
+  > "$W/ops/reply-settled-one-2026-10-26.md"
+git -C "$W" add -A
+git -C "$W" commit -qm answered-in-range
+F=$(git -C "$W" rev-parse HEAD)
+Q=$("$PY" "$INBOX" --repo "$W" --from "$E" --to "$F" --self kim-win 2>&1)
+SETTLED=$(grep -a 'SETTLED-ONE' <<<"$Q")
+STILL=$(grep -a 'STILLOPEN-ONE' <<<"$Q")
+[[ "$SETTLED" == *"status: open"* ]] && fail "a request answered in the same range is shown open: $Q" \
+  || { [[ "$SETTLED" == *"settled since"* ]] \
+         && pass "a request answered in the same range reads settled" || fail "answered request missing: $Q"; }
+[[ "$STILL" == *"status: open"* ]] && pass "an unanswered request stays open" \
+  || fail "unanswered request not shown open: $Q"
+
 exit $FAIL
