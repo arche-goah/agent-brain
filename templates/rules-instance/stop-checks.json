@@ -107,6 +107,17 @@
       "maxLength": 240,
       "onReissue": "run",
       "required": true
+    },
+    {
+      "label": "CLOSE-LOSS",
+      "marker": "CLOSE-LOSS",
+      "cmd": "core/helpers/close-loss-gate.cjs",
+      "mode": "block",
+      "extract": "Open:\\s*([^\\n]+)",
+      "template": "The reply releases the operator while something can still be lost: {1} - finish it or withhold the release",
+      "maxLength": 240,
+      "onReissue": "run",
+      "required": true
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",
