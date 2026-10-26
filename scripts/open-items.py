@@ -80,9 +80,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from instance_key import is_self, self_key  # noqa: E402
+from instance_key import is_self, key_in, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
-from shared_answers import checked_head, default_repo, own_shared_shas  # noqa: E402
+from shared_answers import checked_head, default_repo, own_shared_shas, sibling_keys_same_os  # noqa: E402
 import shared_channels  # noqa: E402
 OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*"
@@ -179,7 +179,7 @@ PR_QUERY = """query($q: String!) { viewer { login }
     comments(last: 20) { nodes { author { login } createdAt body } } } } } }"""
 WAIT_MARK = re.compile(r"^\s*waiting-until:\s*(\d{4}-\d{2}-\d{2})\s*:?\s*(.*)$", re.M | re.I)
 
-def ball(p, me, owners, shared_shas=frozenset()):
+def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset()):
     """Whose move a PR is. None = ours. Otherwise (party, reason): for another's PR we wait on
     its author — we reviewed or commented after its last commit, or the repo belongs to
     someone else (instance data `owners`) and nobody asked us for a review; for our own PR in
@@ -206,6 +206,12 @@ def ball(p, me, owners, shared_shas=frozenset()):
     touched = [r.get("submittedAt") or "" for r in reviews if ours(r)]
     touched += [c.get("createdAt") or "" for c in comments if ours(c)]
     if author == me and not ours(p):
+        # A sibling of our OS looked at this head (its key in the text): that look stands for
+        # ours, as in pr-ball.py — measured 2026-10-22 on the operator's second macOS instance,
+        # which listed all 13 PRs of the first one as our move until it touched each itself.
+        touched += [n.get("submittedAt") or n.get("createdAt") or "" for n in reviews + comments
+                    if (n.get("author") or {}).get("login", "") == me
+                    and key_in(n.get("body") or "") in same_os]
         # A sibling instance's PR (same login, another key): ours to look at, whatever repo
         # it sits in — the sibling asked us, not the repo's owner. Our own look after its
         # last commit hands the move back to the sibling.
@@ -273,6 +279,7 @@ def prs(owner, owners, repos=(None,), extra=()):
     items = []
     # A check answered in any channel we read counts (a device channel carries such answers too).
     shas = set().union(*(own_shared_shas(r) for r in repos))
+    same_os = set().union(*(sibling_keys_same_os(repo=r) for r in repos))
     for p in rows:
         if not p.get("number"):
             continue
@@ -283,7 +290,7 @@ def prs(owner, owners, repos=(None,), extra=()):
         items.append({"id": ref, "kind": "PR", "date": p["createdAt"][:10], "who": author,
                       "text": p["title"][:100] + (" (draft)" if p.get("isDraft") else ""),
                       "scope": p["repository"]["name"], "ref": ref,
-                      "waiting_on": ball(p, me, owners, shas),
+                      "waiting_on": ball(p, me, owners, shas, same_os),
                       "until": (m.group(1), m.group(2).strip()) if m else None,
                       "events": pr_events(p),
                       # Our own last move (commit, comment, review) — "nothing done yet" is a claim
