@@ -45,6 +45,32 @@ probe "own PR (body carries own key)" "$M" allow
 pr $'Tested on macOS and Windows, all green.' '[]'
 probe "a statement, no request" "$M" allow
 
+# Second check (2026-10-26): in a suite or the core, every required OS says OK at the head, or the
+# merge names itself a beta. Incident: two suite PRs merged with author and reviewer both on Windows.
+spr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "abc1234def5678", body: process.argv[1], comments: JSON.parse(process.argv[2]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }
+printf '{}\n' > "$T/deps.json"
+printf '{"required_os": ["Windows"]}\n' > "$T/deps-win.json"
+sprobe() { # same as probe, with the suite seam: $4 deps file or none, $5 OS
+  local out rc
+  out=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$T")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$2")}}" \
+        | CLAUDE_PROJECT_DIR="$(native "$T/brain")" SHARED_MEMORY_SELF=mac PR_JSON="$(native "$T/pr.json")" \
+          MERGE_REQUEST_GATE_GH="$(native "$T/gh.js")" MERGE_REQUEST_GATE_OS="${5-win32}" MERGE_REQUEST_GATE_DEPS="$4" node "$(native "$GATE")" 2>&1); rc=$?
+  if [ "$rc" -eq 2 ]; then [ "$3" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:160}"
+  else [ "$3" = allow ] && ok "$1 allows" || bad "$1 did NOT block (rc=$rc)"; fi
+}
+D="$(native "$T/deps.json")"
+spr 'feat: x' '["**Review: OK at head `abc1234`** (the Windows instance) - Windows, CI green"]'
+sprobe "suite, the incident: Windows OK only" "$M" block "$D"
+sprobe "same PR merged as a declared beta" "$M # BETA-MERGE: Windows checked, macOS open" allow "$D"
+sprobe "same PR, repo is not a suite (control)" "$M" allow none
+sprobe "same PR, the suite requires Windows only" "$M" allow "$(native "$T/deps-win.json")"
+spr 'feat: x' '["Windows OK at head `abc1234`", "macOS: ci-lint-local rc 0 at head `abc1234`"]'
+sprobe "suite, both systems OK at the head" "$M" allow "$D"
+spr 'feat: x' '["Windows OK at head `abc1234`", "macOS: tests pass at head `9999999`"]'
+sprobe "suite, macOS OK only at an OLDER head" "$M" block "$D"
+spr 'feat: x' '["Windows OK at head `abc1234`; macOS check wanted, macOS unchecked"]'
+sprobe "suite, macOS named only as open" "$M" block "$D"
+
 echo
 [ "$fail" -eq 0 ] && echo "test-merge-request-gate: all checks passed" || echo "test-merge-request-gate: FAILURES"
 exit "$fail"
