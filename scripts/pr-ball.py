@@ -30,37 +30,13 @@ nodes). Output: nothing, or ONE line. Exit 0 always — a bootup line never bloc
 """
 import argparse
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from instance_key import is_self, key_for, key_in, self_key  # noqa: E402
-from shared_answers import checked_head, default_repo, own_shared_shas  # noqa: E402
-
-
-def sibling_keys_same_os(me_id="", repo=None):
-    """Instance keys of the OTHER devices of our person that run our OS (parties.json in the
-    shared memory). A look by one of them at a PR's head is a look for all of that OS: the
-    check a PR asks for is per OS, not per machine — measured 2026-10-22 on the operator's
-    second macOS instance, which listed every PR of the first one as "asked, not looked at
-    yet" (13 at once) although that machine had reviewed them at the head. Empty set without
-    SHARED_MEMORY_SELF, without parties.json, or when our device is not listed."""
-    me_id = (me_id or os.environ.get("SHARED_MEMORY_SELF", "")).split(",")[0].strip()
-    if not me_id:
-        return set()
-    try:
-        parties = json.loads((Path(repo or default_repo()) / "parties.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return set()
-    for person in (parties.get("people") or {}).values():
-        devices = (person or {}).get("devices") or {}
-        if me_id in devices:
-            my_os = (devices.get(me_id) or {}).get("os")
-            return {key_for(d) for d, v in devices.items()
-                    if d != me_id and my_os and (v or {}).get("os") == my_os}
-    return set()
+from instance_key import is_self, key_in, self_key  # noqa: E402
+from shared_answers import checked_head, own_shared_shas, sibling_keys_same_os  # noqa: E402
 
 
 def ts(s):

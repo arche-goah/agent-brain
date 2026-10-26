@@ -150,6 +150,20 @@ sib=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF=mac
 has "[PR|ai]" "$(line 'owned#11 ' "$sib")" && ok "sibling instance's PR = our move, not the owner's" || bad "sibling: $(line 'owned#11 ' "$sib")"
 sib0=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sib.json")" SHARED_MEMORY_SELF= OWNER=me run s0)
 has "waiting on peer" "$(line 'owned#11 ' "$sib0")" && ok "negative control: without an own key the old reading (waiting) holds" || bad "no key: $(line 'owned#11 ' "$sib0")"
+# A look by a sibling of OUR OS at the head stands for ours, as in pr-ball.py (measured
+# 2026-10-22: the second macOS instance listed all 13 PRs of the first one as its move).
+# Another OS's look does not: the check a PR asks for is per OS.
+printf '%s\n' '{"people":{"x":{"devices":{"mac":{"os":"macos"},"mac2":{"os":"macos"},"ws":{"os":"windows"}}}}}' > "$T/repo/parties.json"
+KMAC="$("$PY" -c 'import sys; sys.path.insert(0, sys.argv[1]); import instance_key as k; print(k.key_for("mac"))' "$(native "$T/core/scripts")")"
+osrun() { # $1 session, $2 key of the commenter
+  local c='[{"author":{"login":"me"},"createdAt":"2026-10-07T10:00:00Z","body":"checked <!-- instance-key: KEY -->"}]'
+  printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+    "$(pr owned 13 me 2026-10-06 "fix <!-- instance-key: $KMAC -->" 2026-10-06T11:00:00Z '[]' '[]' "${c/KEY/$2}")" > "$T/prs-os.json"
+  OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-os.json")" SHARED_MEMORY_SELF=mac2 OWNER=me run "$1"
+}
+has "after the sibling instance's last commit" "$(line 'owned#13 ' "$(osrun o1 "$KMAC")")" && ok "same-OS sibling looked at the head = waiting" || bad "same-OS look: $(line 'owned#13 ' "$(osrun o1 "$KMAC")")"
+has "[PR|ai]" "$(line 'owned#13 ' "$(osrun o2 "$KWS")")" && ok "negative control: another OS's look leaves the move with us" || bad "other-OS look: $(line 'owned#13 ' "$(osrun o2 "$KWS")")"
+rm -f "$T/repo/parties.json"
 # The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
 # sibling PRs checked at their heads stayed "our move"). Our text naming THIS head = waiting;
 # an older head, or someone else's text naming it, leaves the move with us.
