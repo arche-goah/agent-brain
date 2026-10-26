@@ -60,8 +60,8 @@ def load(path):
 
 
 def user_settings_path():
-    cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
-    return pathlib.Path(cfg) / "settings.json"
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (pathlib.Path(cfg) if cfg else pathlib.Path.home() / ".claude") / "settings.json"
 
 
 def org_of(*settings):
@@ -132,7 +132,7 @@ def apply_user(user_template, org_arg, repo):
     path = user_settings_path()
     user = load(path)
     if user is None and path.exists():
-        print(f"template-drift: {path} is not valid JSON - nothing written")
+        print(f"template-drift: {path.as_posix()} is not valid JSON - nothing written")
         return 1
     user = user or {}
     org = org_arg or org_of(load(pathlib.Path(repo) / ".claude" / "settings.json"), user)
@@ -141,7 +141,7 @@ def apply_user(user_template, org_arg, repo):
         return 1
     _, missing = user_drift(user, user_template, org)
     if not missing:
-        print(f"template-drift: {path} already carries every autoMode entry of the template - nothing written")
+        print(f"template-drift: {path.as_posix()} already carries every autoMode entry of the template - nothing written")
         return 0
     if path.exists():
         stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -154,9 +154,11 @@ def apply_user(user_template, org_arg, repo):
         lst.extend(e for e in entries if e != "$defaults")
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(user, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    # open(), not the pathlib writer with newline=: that keyword is Python 3.10+ (OS-13, stock macOS has 3.9)
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(user, indent=2, ensure_ascii=False) + "\n")
     os.replace(tmp, path)
-    print(f"template-drift: {sum(len(v) for v in missing.values())} autoMode entr(y/ies) written to {path} "
+    print(f"template-drift: {sum(len(v) for v in missing.values())} autoMode entr(y/ies) written to {path.as_posix()} "
           f"(org {org}); previous file kept as a dated copy. Check: claude auto-mode config")
     return 0
 

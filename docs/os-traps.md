@@ -162,7 +162,7 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ci-lint-local-parse.py=1 scripts/changelog-assemble.py=1 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=1 scripts/shared-memory-index.py=3 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1 scripts/autonomy-diagnose.py=1 scripts/decision-review.py=1 scripts/shared-memory-post.py=2 scripts/ledger-reconcile.py=3
+known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ci-lint-local-parse.py=1 scripts/changelog-assemble.py=1 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=1 scripts/shared-memory-index.py=3 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1 scripts/autonomy-diagnose.py=1 scripts/decision-review.py=1 scripts/shared-memory-post.py=2 scripts/ledger-reconcile.py=3 scripts/template-drift.py=1
 instances: 3
 repeat:    yes
 status:    closed
