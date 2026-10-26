@@ -25,7 +25,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, FRAMES, LOCAL } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL } = require('./turn-kind.cjs');
 
 const BUILTIN_ON = [
   '\\bautonomous(ly)?\\b',
@@ -66,11 +66,16 @@ function autonomousMode(transcriptPath, cwd) {
   try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return false; }
   let state = false;
   for (const line of lines) {
-    if (!line.includes('"user"')) continue;
+    if (!line.includes('"user"') && !line.includes('queued_command')) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
-    if (!isTranscriptRecord(d) || isSkillExpansion(d) || isPeerMessage(d) || !d.message || d.message.role !== 'user') continue;
-    const t = promptText(d.message);
+    // A message the operator types mid-turn arrives as a queued_command attachment, not a user
+    // record (turn-kind.cjs, #139): it sets the mode like any prompt. Found 2026-10-26 by the macOS
+    // instance on #142: "carry on autonomously", then mid-turn "put the open questions to me" kept
+    // the mode on, and the gate refused the very question the operator had asked for.
+    const queued = queuedHumanPrompt(d);
+    if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isPeerMessage(d) || !d.message || d.message.role !== 'user')) continue;
+    const t = queued || promptText(d.message);
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const words = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!words.trim()) continue;

@@ -21,6 +21,10 @@ printf '%s\n' '{"permissions":{"ask":["Edit(.claude/settings.json)","Bash(git -C
 printf '%s\n' '{"permissions":{"ask":["WebFetch"]}}' > "$T/userdir/settings.json"
 AUTO="$T/auto.jsonl"; user "work through the open points autonomously" > "$AUTO"
 INTER="$T/inter.jsonl"; { user "work through the open points autonomously"; user "anything open for me?"; } > "$INTER"
+# A message typed mid-turn is a queued_command attachment, not a user record (macOS finding on #142).
+queued() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"%s"}}}\n' "$(js "$1")" "${2-human}"; }
+MID="$T/mid.jsonl"; { user "work through the open points autonomously"; queued "put the open decisions to me now"; } > "$MID"
+PEER="$T/peer.jsonl"; { user "work through the open points autonomously"; queued "a note from another session" peer; } > "$PEER"
 
 probe() { # $1 label, $2 tool, $3 tool_input JSON, $4 transcript, $5 block|allow
   local out
@@ -44,5 +48,7 @@ probe "gh pr close (ask prefix)" Bash '{"command":"gh pr close 5 -R o/r"}' "$AUT
 probe "a plain edit outside every ask rule" Edit '{"file_path":"docs/notes.md"}' "$AUTO" allow
 probe "a bare tool rule from the user settings" WebFetch '{"url":"https://example.com"}' "$AUTO" block
 probe "a tool no rule names" Read '{"file_path":"README.md"}' "$AUTO" allow
+probe "a mid-turn operator message ends the mode: the asked-for question passes" AskUserQuestion '{"questions":[]}' "$MID" allow
+probe "a queued message from another origin keeps the mode (control)" AskUserQuestion '{"questions":[]}' "$PEER" block
 
 [ "$fail" = 0 ] && echo "autonomous-gate: all cases pass" || { echo "autonomous-gate: FAILURES"; exit 1; }
