@@ -117,6 +117,16 @@
             "onFailure": "block"
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|Workflow|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/no-input-control.cjs\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [
