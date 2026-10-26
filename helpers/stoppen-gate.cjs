@@ -115,6 +115,8 @@ const BUILTIN_PATTERNS = [
 const BUILTIN_ANNOUNCE = [
   "\\b(now|next),? i(?:'ll| will)\\b",
   "\\bi(?:'ll| will) (now|next)\\b",
+  // "I will build it next" — the verb before "next" (measured 2026-10-26, the class above missed it)
+  "\\bi(?:'ll| will) [a-z]+(?: (?:it|this|that|them|the [a-z-]+))? (?:next|right away)\\b",
   "\\bi(?:'ll| will) (continue|keep going|move on)\\b",
   '\\b(continuing|moving on) (with|to)\\b',
   '\\b(doing|on) (it|that|this) now\\b',
@@ -291,9 +293,14 @@ process.stdin.on('end', () => {
   };
   try {
     seen = analyze(input.transcriptPath || input.transcript_path);
-    // A re-issue after ANOTHER gate's block passes as it always did; only a re-issue after
-    // this gate's own block is judged again (and the cooldown it set itself does not count).
-    if (reissue ? seen.gatesThisTurn === 0 : seen.quiet) return allow();
+    // A re-issue after ANOTHER gate's block: its closing QUESTION passes as it always did (this gate
+    // saw that question at the first stop), but its ANNOUNCEMENTS are judged — the answer to another
+    // gate is new text (measured 2026-10-26: the answer to a verification/watcher block carried a new
+    // "… I build it next" and passed unseen; the autonomous run stood still for 90 minutes).
+    // A re-issue after this gate's OWN block keeps its re-issue rules below; its cooldown does not count.
+    const ownBlocked = reissue && seen.gatesThisTurn > 0;
+    const afterOther = reissue && !ownBlocked;
+    if (!ownBlocked && seen.quiet) return allow();
     if (!seen.finalText) return allow();
     const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     const tail = stripQuoted(seen.finalText).slice(-TAIL_CHARS);
@@ -301,10 +308,10 @@ process.stdin.on('end', () => {
     // question is not judged. (An announcement still is — asking is not doing the work.)
     // The autonomous line counts only while the mode really holds — outside it, it is no way out.
     const filed = AUTONOMOUS_LINE.test(seen.finalText) && autonomousMode(input.transcript_path, cwd);
-    if (!seen.asked && !NO_TOOL_LINE.test(seen.finalText) && !filed) {
+    if (!afterOther && !seen.asked && !NO_TOOL_LINE.test(seen.finalText) && !filed) {
       uniq(tail.match(loadPatterns(cwd)), hits);
     }
-    if (!hits.length && !reissue) {
+    if (!hits.length && !ownBlocked) {
       const rx = loadPatterns(cwd, 'announce_patterns', BUILTIN_ANNOUNCE);
       const cond = loadPatterns(cwd, 'announce_condition_patterns', BUILTIN_CONDITION);
       // The WHOLE final text, not its tail: an announcement in item 1 of a four-item status list
