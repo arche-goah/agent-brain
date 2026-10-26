@@ -60,9 +60,24 @@ def run(records, data=None, sid="s1"):
 r = run([say("From now on I start the CI watch in the same turn as every pull request.")])
 check(r["found"] == 1 and len(r["loose"]) == 1, "first-person commitment without carrier is loose")
 
+# Since 2026-10-26 a rule-text write is PROSE, not a carrier (the operator: "a rule entered in the
+# feedback amounts to an empty promise in the long run") — this was the passing case before.
 r = run([say("From now on I start the CI watch in the same turn as every pull request."),
          write("/b/rules/working-rules.md", "whoever opens a pull request arms the CI watch in the same turn")])
-check(r["found"] == 1 and r["carried"] == 1 and not r["loose"], "rule write sharing its words carries it")
+check(r["found"] == 1 and r["carried"] == 0 and r["prose"] == 1 and len(r["loose"]) == 1,
+      "a rule-TEXT write sharing its words is prose, not a carrier")
+
+r = run([say("From now on I start the CI watch in the same turn as every pull request."),
+         write("/b/core/helpers/watch-gate.cjs", "// refuse a turn end when a pull request has no CI watch armed in the same turn")])
+check(r["carried"] == 1 and not r["loose"], "a MECHANISM write (a helper) sharing its words carries it")
+
+r = run([say("From now on I never open a window on the operator's machine."),
+         write("/b/.claude/rules/mechanism-rules.json", '{"rules":[{"id":"no-window","why":"never open a window on the machine"}]}')])
+check(r["carried"] == 1, "a write to gate data (.claude/rules/*.json) carries it")
+
+r = run([say("From now on I never open a window on the operator's machine."),
+         write("/b/docs/maintenance/feedback-protokoll.md", "never open a window on the operator machine")])
+check(r["carried"] == 0 and r["prose"] == 1, "real case 2026-10-26: a feedback-protocol entry is prose, not a carrier")
 
 r = run([say("From now on I start the CI watch in the same turn as every pull request."),
          write("/b/notes/scratch.txt", "pull request CI watch same turn")])
@@ -98,7 +113,7 @@ def run_with_rule(records, rule_text):
 
 c = say("From now on I compare every rebuilt export against the accepted version before presenting it.")
 r = run_with_rule([c], "- A rebuilt export is compared against the accepted version before presenting it to the operator.\n")
-check(r["carried"] == 1, "a carrier written later (today's rule text) counts")
+check(r["carried"] == 0 and r["prose"] == 1, "rule text written later is prose, not a carrier (since 2026-10-26)")
 r = run_with_rule([c], "- Shell commands are atomic and must match a permission pattern; no heredocs anywhere.\n")
 check(len(r["loose"]) == 1, "an unrelated rule paragraph does not carry")
 

@@ -69,27 +69,44 @@
       "marker": "PROMISE-GATE",
       "cmd": "core/helpers/promise-gate.cjs",
       "mode": "record",
-      "args": ["--record"]
+      "args": [
+        "--record"
+      ]
     },
     {
       "label": "RECALL",
       "marker": "RECALL-GATE",
       "cmd": "core/helpers/recall-gate.cjs",
       "mode": "record",
-      "args": ["--record"]
+      "args": [
+        "--record"
+      ]
     },
     {
       "label": "ABSENCE",
       "marker": "ABSENCE-GATE",
       "cmd": "core/helpers/absence-gate.cjs",
       "mode": "record",
-      "args": ["--record"]
+      "args": [
+        "--record"
+      ]
     },
     {
       "label": "UNREAD",
       "marker": "DELIVERED-READ",
       "cmd": "core/helpers/delivered-read-gate.cjs",
       "mode": "block"
+    },
+    {
+      "label": "EMPTY PROMISE",
+      "marker": "COMMITMENT-CARRIER-GATE",
+      "cmd": "core/helpers/commitment-carrier-gate.cjs",
+      "mode": "block",
+      "extract": "without a mechanism written this turn:\\s*([\\s\\S]+?)\\nBuild",
+      "template": "A promise about future conduct without a mechanism built this turn: {1} - build the gate now or take the promise back",
+      "maxLength": 240,
+      "onReissue": "run",
+      "required": true
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",

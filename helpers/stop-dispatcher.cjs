@@ -124,16 +124,29 @@ function turnKind(transcriptPath) {
   }
 }
 
+// REQUIRED CHECKS REACH EVERY BRAIN (2026-10-26). The template reaches a brain once, at bootstrap — a
+// check added to it later shipped with the plugin and ran nowhere (same class as hook-coverage.py). A
+// template check marked `"required": true` therefore runs in every brain whose instance file lacks its
+// marker. A brain switches one off only by name with a reason: `"disabled": {"<MARKER>": "<why>"}`.
+const TEMPLATE = path.join(__dirname, '..', 'templates', 'rules-instance', 'stop-checks.json');
+
+function requiredFromTemplate(instanceChecks, disabled) {
+  let tpl;
+  try { tpl = JSON.parse(fs.readFileSync(TEMPLATE, 'utf8')); } catch (e) { return []; }
+  const have = new Set(instanceChecks.map((c) => c.marker));
+  return (Array.isArray(tpl.checks) ? tpl.checks : [])
+    .filter((c) => c.required === true && c.marker && !have.has(c.marker)
+      && !(disabled && typeof disabled[c.marker] === 'string' && disabled[c.marker].trim()));
+}
+
 function loadConfig() {
-  try {
-    const cfg = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
-    return {
-      header: typeof cfg.header === 'string' ? cfg.header : DEFAULT_HEADER,
-      checks: Array.isArray(cfg.checks) ? cfg.checks : [],
-    };
-  } catch (e) {
-    return { header: DEFAULT_HEADER, checks: [] };
-  }
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(CONFIG, 'utf8')); } catch (e) { cfg = {}; }
+  const checks = Array.isArray(cfg.checks) ? cfg.checks : [];
+  return {
+    header: typeof cfg.header === 'string' ? cfg.header : DEFAULT_HEADER,
+    checks: checks.concat(requiredFromTemplate(checks, cfg.disabled)),
+  };
 }
 
 function short(s, n) {
