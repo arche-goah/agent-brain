@@ -27,6 +27,18 @@
       "instead": "Write the text to a file in the scratchpad and pass the file: `git commit -F <file>`, `gh pr create|comment --body-file <file>` (Working Rule #8: multi-line content goes into a file). A one-line `-m` stays fine."
     },
     {
+      "pattern": "(?:^|[;&|(\\s])(?:until|while)\\b[^\\n]*?;\\s*do\\b[\\s\\S]*?\\bsleep\\s+[1-9]",
+      "foreground_only": true,
+      "was": "a self-written wait loop (until/while ... sleep N) in the foreground - measured 2026-10-26 on the macOS instance: a loop waiting for two test runs held the session until the operator pressed ctrl+b; the two rules above list commands by NAME, the loop is the generic form of the same wait",
+      "instead": "Start the loop detached (Bash run_in_background, or Monitor) and keep working; its end arrives as a notification. A background job you already started notifies on its own - no loop needed (Working Rule #13)."
+    },
+    {
+      "pattern": "(?:^|[^\\w-])(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
+      "foreground_only": true,
+      "was": "a waiting script (wait-*.sh, *-watch.sh: reconnect, link, collab, repo-activity, shared-memory watches) in the foreground - the class sweep of the wait-loop rule (2026-10-26): these scripts are the same wait under a name, and only ci-watch.sh was listed",
+      "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A help call passes, and so do the `status`/`disarm` subcommands of the two scripts that have them (repo-activity-watch.sh, shared-memory-watch.sh) - collab-watch.sh has none: `collab-watch.sh status` ARMS the watch (measured 2026-10-26)."
+    },
+    {
       "pattern": "(?:\\bgit\\b[^|;&\\n]*?\\spush\\b[^|;&\\n]*\\s:[^\\s:]|\\bgit\\s+(?:-c\\s+\\S+\\s+)+(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?push\\b[^|;&\\n]*\\s(?:--force|-f\\b|--mirror\\b|\\+))",
       "was": "a destructive push in a form no permission pattern can catch: a branch delete by colon refspec (`git push origin :feat`), or a force/mirror push behind `git -c k=v` - a deny pattern ending in `:*` is read as a trailing wildcard (docs permissions: `Bash(ls:*)` equals `Bash(ls *)`), so `git push * :*` would deny every push with two arguments, and `-c` moves `push` out of every prefix pattern (found 2026-10-26 by the macOS instance's review of the settings template)",
       "instead": "Deleting a remote branch or rewriting remote history is the operator's word (destructive). A merged PR's branch goes with `gh pr merge --delete-branch`; anything else: report it and wait for the word.",

@@ -258,6 +258,21 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: multi-line gh pr comment --body" Bash command 'gh pr comment 5 -R o/r --body \"line one\nline two\"' block
   tr_probe "mechanism-guard/core rule: gh pr comment --body-file" Bash command 'gh pr comment 5 -R o/r --body-file /tmp/b.md' allow
   tr_probe "mechanism-guard/core rule: two commands on two lines (control)" Bash command 'git -C /r commit -m \"one line\"\ngit -C /r log -1' allow
+  # 2026-10-26: a self-written wait loop is the generic foreground wait - the name lists above never see it
+  tr_probe "mechanism-guard/core rule: until-sleep wait loop in the foreground" Bash command "until [ -s out.txt ]; do sleep 10; done; cat out.txt" block
+  tr_probe "mechanism-guard/core rule: while-sleep wait loop in the foreground" Bash command "while ! grep -q done log; do sleep 5; done" block
+  tr_probe "mechanism-guard/core rule: wait loop via Monitor" Monitor command "until [ -s out.txt ]; do sleep 10; done; cat out.txt" allow
+  tr_probe "mechanism-guard/core rule: a loop without sleep" Bash command "for f in a b; do echo \$f; done" allow
+  tr_probe "mechanism-guard/core rule: a short retry with sub-second sleep" Bash command "until mkdir lock 2>/dev/null; do sleep 0.2; done" allow
+  # class sweep of the same day: waiting scripts by name
+  tr_probe "mechanism-guard/core rule: wait-mcp-reconnect in the foreground" Bash command "bash core/scripts/wait-mcp-reconnect.sh touchdesigner" block
+  tr_probe "mechanism-guard/core rule: shared-memory-watch in the foreground" Bash command "bash core/scripts/shared-memory-watch.sh watch 300" block
+  tr_probe "mechanism-guard/core rule: shared-memory-watch via Monitor" Monitor command "bash core/scripts/shared-memory-watch.sh watch 300" allow
+  tr_probe "mechanism-guard/core rule: shared-memory-watch status" Bash command "bash core/scripts/shared-memory-watch.sh status" allow
+  tr_probe "mechanism-guard/core rule: repo-activity-watch disarm" Bash command "bash core/scripts/repo-activity-watch.sh disarm" allow
+  # collab-watch.sh has no status subcommand - the call arms the watch (measured 2026-10-26)
+  tr_probe "mechanism-guard/core rule: collab-watch 'status' arms the watch" Bash command "bash core/scripts/collab-watch.sh status" block
+  tr_probe "mechanism-guard/core rule: a watch script's own fixture" Bash command "bash scripts/test-shared-memory-watch.sh" allow
   # 2026-10-26: destructive pushes no permission pattern can catch (colon refspec, git -c ... push -f)
   tr_probe "mechanism-guard/core rule: delete by colon refspec" Bash command "git push origin :feat" block
   tr_probe "mechanism-guard/core rule: delete by colon refspec with -C" Bash command 'git -C /r push -q origin :feat' block

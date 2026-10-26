@@ -59,6 +59,15 @@
       "maxLength": 200
     },
     {
+      "label": "CAUSE",
+      "marker": "ROOT-CAUSE-GATE",
+      "cmd": "core/helpers/root-cause-gate.cjs",
+      "mode": "block",
+      "extract": "reads as a correction or a mishap:\\s*\"([^\"]+)\"",
+      "template": "\"{1}\" reads as a correction or a mishap, and the reply names no cause - measure it and write the Cause line before the turn ends",
+      "maxLength": 120
+    },
+    {
       "label": "PREMISE",
       "marker": "PREMISE-GATE",
       "cmd": "core/helpers/premise-gate.cjs",
