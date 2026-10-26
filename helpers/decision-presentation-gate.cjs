@@ -26,6 +26,7 @@
 const fs = require('fs');
 const path = require('path');
 const { promptModes } = require('./autonomous-mode.cjs');
+const { queuedHumanPrompt } = require('./turn-kind.cjs');
 
 const ASK_BUILTIN = ['\\banything (still |else )?(open|left|pending)\\b', '\\bwhat is (still )?open\\b',
   '\\bopen (for|to) me\\b', '\\bdo you need (anything|something)\\b'];
@@ -75,6 +76,8 @@ function askedThisTurn(transcriptPath, lastPrompt) {
     if (!l.trim()) continue;
     let d;
     try { d = JSON.parse(l); } catch (e) { continue; }
+    const queued = queuedHumanPrompt(d); // the newest prompt may have been typed mid-turn
+    if (queued && lastPrompt && queued.includes(lastPrompt.trim().slice(0, 60))) break;
     const msg = d.message;
     if (!msg) continue;
     if (msg.role === 'user' && lastPrompt) {

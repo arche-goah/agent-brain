@@ -17,6 +17,7 @@ js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 user() { printf '{"type":"user","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
 asst() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
 ask()  { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"AskUserQuestion","input":{"questions":[]}}]}}\n'; }
+qcmd() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
 
 B="$T/brain"; mkdir -p "$B/.claude/rules" "$B/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$B/.claude/rules/ledgers.json"
@@ -38,6 +39,12 @@ f="$T/1.jsonl"; { user "fix the parser"; asst "done"; user "anything open for me
 check "the incident: asked what is open, decisions answered in prose" "$f" "$B" block
 f="$T/2.jsonl"; { user "anything open for me?"; asst "Two decisions:"; ask; } > "$f"
 check "same question, answered through the question tool" "$f" "$B" allow
+# Typed mid-turn (queued_command, turn-kind #139): the operator's word, and an AskUserQuestion of an
+# EARLIER turn does not count for it.
+f="$T/2q.jsonl"; { user "anything open for me?"; ask; user "now fix the parser"; asst "working"; qcmd "anything open for me?"; asst "Four points, recommendation yes each."; } > "$f"
+check "the question typed mid-turn, answered in prose (an earlier turn asked)" "$f" "$B" block
+f="$T/2r.jsonl"; { user "work through everything autonomously"; asst "on it"; qcmd "anything open for me?"; asst "Two decisions:"; ask; } > "$f"
+check "a mid-turn question ends the autonomous mode and is answered through the tool" "$f" "$B" allow
 f="$T/3.jsonl"; { user "work through everything autonomously"; asst "on it"; user "how did it go?"; asst "All done. Remove the worktrees? I recommend yes."; } > "$f"
 check "first turn after an autonomous run, prose" "$f" "$B" block
 f="$T/4.jsonl"; { user "work through everything autonomously"; asst "filed the question in the ledger"; } > "$f"
