@@ -163,6 +163,16 @@ osrun() { # $1 session, $2 key of the commenter
 }
 has "after the sibling instance's last commit" "$(line 'owned#13 ' "$(osrun o1 "$KMAC")")" && ok "same-OS sibling looked at the head = waiting" || bad "same-OS look: $(line 'owned#13 ' "$(osrun o1 "$KMAC")")"
 has "[PR|ai]" "$(line 'owned#13 ' "$(osrun o2 "$KWS")")" && ok "negative control: another OS's look leaves the move with us" || bad "other-OS look: $(line 'owned#13 ' "$(osrun o2 "$KWS")")"
+# The same for a PR of ANOTHER login that asked us for a review (Windows finding on #122:
+# pr-ball.py went quiet, open-items.py kept it as our move).
+peerrun() { # $1 session, $2 key of the commenter
+  local c='[{"author":{"login":"me"},"createdAt":"2026-10-07T10:00:00Z","body":"checked <!-- instance-key: KEY -->"}]'
+  printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+    "$(pr core 14 peer 2026-10-06 "fix" 2026-10-06T11:00:00Z '[]' '[{"requestedReviewer":{"login":"me"}}]' "${c/KEY/$2}")" > "$T/prs-peer.json"
+  OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-peer.json")" SHARED_MEMORY_SELF=mac2 OWNER=me run "$1"
+}
+has "we reviewed or commented after the last commit" "$(line 'core#14 ' "$(peerrun o3 "$KMAC")")" && ok "another login's PR: same-OS sibling looked at the head = waiting" || bad "peer same-OS look: $(line 'core#14 ' "$(peerrun o3 "$KMAC")")"
+has "[PR|ai]" "$(line 'core#14 ' "$(peerrun o4 "$KWS")")" && ok "negative control: another login's PR, another OS's look = our move" || bad "peer other-OS look: $(line 'core#14 ' "$(peerrun o4 "$KWS")")"
 rm -f "$T/repo/parties.json"
 # The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
 # sibling PRs checked at their heads stayed "our move"). Our text naming THIS head = waiting;
