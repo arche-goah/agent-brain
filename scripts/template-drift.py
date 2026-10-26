@@ -105,27 +105,32 @@ def project_drift(repo, template):
             f"(full list: python3 core/scripts/autonomy-diagnose.py, section 4)")
 
 
-def wanted_auto(user_template, org):
-    tpl = (load(user_template) or {}).get("autoMode") or {}
+def wanted_auto(user_template, org, key="autoMode"):
+    tpl = (load(user_template) or {}).get(key) or {}
     return {k: [e.replace("<org>", org) for e in tpl.get(k) or []] for k in AUTO_KINDS if tpl.get(k)}
 
 
 def user_drift(user, user_template, org):
+    """(line or None, missing entries, retired entries still present)."""
     want = wanted_auto(user_template, org)
     if not want:
-        return None, {}
+        return None, {}, {}
     have = (user or {}).get("autoMode") or {}
     missing = {k: [e for e in v if e not in (have.get(k) or [])] for k, v in want.items()}
     missing = {k: v for k, v in missing.items() if v}
-    if not missing:
-        return None, {}
-    total = sum(len(v) for v in missing.values())
-    names = "; ".join(f"{k} {len(v)}" for k, v in missing.items())
-    return (f"!! settings: {total} autoMode entr(y/ies) of the core template are not in "
-            f"~/.claude/settings.json ({names}) - the auto-mode classifier reads its trust only from "
-            f"there, so an autonomous run stops on steps it would clear (own PR ready, template "
-            f"rules, counter-checks of the org's PRs). The person at this machine runs: "
-            f"! python3 core/scripts/template-drift.py --apply-user"), missing
+    # A narrowed entry is only safe once its wider old form is gone (_retired in the template).
+    old = wanted_auto(user_template, org, "_retired")
+    stale = {k: [e for e in v if e in (have.get(k) or [])] for k, v in old.items()}
+    stale = {k: v for k, v in stale.items() if v}
+    if not missing and not stale:
+        return None, {}, {}
+    parts = [f"{sum(len(v) for v in missing.values())} missing"] if missing else []
+    if stale:
+        parts.append(f"{sum(len(v) for v in stale.values())} retired but still present (wider than the template now allows)")
+    return (f"!! settings: autoMode in ~/.claude/settings.json is behind the core template ({', '.join(parts)}) - "
+            f"the auto-mode classifier reads its trust only from there, so an autonomous run stops on steps it "
+            f"would clear, or keeps a trust the template withdrew. The person at this machine runs: "
+            f"! python3 core/scripts/template-drift.py --apply-user"), missing, stale
 
 
 def apply_user(user_template, org_arg, repo):
@@ -139,14 +144,16 @@ def apply_user(user_template, org_arg, repo):
     if not org:
         print("template-drift: no org found (no marketplace repo in the settings) - pass --org <org>")
         return 1
-    _, missing = user_drift(user, user_template, org)
-    if not missing:
+    _, missing, stale = user_drift(user, user_template, org)
+    if not missing and not stale:
         print(f"template-drift: {path.as_posix()} already carries every autoMode entry of the template - nothing written")
         return 0
     if path.exists():
         stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
         shutil.copy2(path, path.with_name(f"settings.{stamp}.json"))
     auto = user.setdefault("autoMode", {})
+    for kind, entries in stale.items():
+        auto[kind] = [e for e in auto.get(kind) or [] if e not in entries]
     for kind, entries in missing.items():
         lst = auto.setdefault(kind, [])
         if "$defaults" in entries and "$defaults" not in lst:
@@ -158,7 +165,8 @@ def apply_user(user_template, org_arg, repo):
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(user, indent=2, ensure_ascii=False) + "\n")
     os.replace(tmp, path)
-    print(f"template-drift: {sum(len(v) for v in missing.values())} autoMode entr(y/ies) written to {path.as_posix()} "
+    print(f"template-drift: {sum(len(v) for v in missing.values())} autoMode entr(y/ies) written, "
+          f"{sum(len(v) for v in stale.values())} retired removed, in {path.as_posix()} "
           f"(org {org}); previous file kept as a dated copy. Check: claude auto-mode config")
     return 0
 
@@ -179,7 +187,7 @@ def main():
     user = load(user_settings_path())
     org = args.org or org_of(load(pathlib.Path(args.repo) / ".claude" / "settings.json"), user)
     if org:
-        uline, _ = user_drift(user, args.user_template, org)
+        uline, _, _ = user_drift(user, args.user_template, org)
         if uline:
             print(uline)
     return 0

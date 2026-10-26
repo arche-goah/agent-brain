@@ -63,9 +63,9 @@ brain b7 '{"extraKnownMarketplaces":{"m":{"source":{"source":"github","repo":"ac
 U="$T/user7"; mkdir -p "$U"; printf '%s\n' '{"theme":"dark"}' > "$U/settings.json"
 urun() { CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b7")" --template "$(native "$TPL")" --user-template "$(native "$UT")" "$@" 2>&1; }
 out="$(urun)"
-case "$out" in *'4 autoMode entr(y/ies)'*'--apply-user'*) ok "missing autoMode entries are named, with the command";; *) bad "missing autoMode not named: '$out'";; esac
+case "$out" in *'(4 missing)'*'--apply-user'*) ok "missing autoMode entries are named, with the command";; *) bad "missing autoMode not named: '$out'";; esac
 out="$(urun --apply-user)"
-case "$out" in *'written to'*'(org acme)'*) ok "--apply-user writes, org from the marketplace repo";; *) bad "--apply-user did not write: '$out'";; esac
+case "$out" in *'4 autoMode entr(y/ies) written'*'(org acme)'*) ok "--apply-user writes, org from the marketplace repo";; *) bad "--apply-user did not write: '$out'";; esac
 grep -q 'github.com/acme' "$U/settings.json" && grep -q '"theme": "dark"' "$U/settings.json" \
   && ok "the org is filled in and the person's own keys stay" || bad "user settings wrong: $(cat "$U/settings.json")"
 ls "$U"/settings.2*.json >/dev/null 2>&1 && ok "a dated copy of the previous file is kept" || bad "no dated copy"
@@ -75,5 +75,19 @@ out="$(urun --apply-user)"
 case "$out" in *'nothing written'*) ok "a second --apply-user writes nothing";; *) bad "second apply: '$out'";; esac
 out="$(CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b2")" --template "$(native "$TPL")" --user-template "$(native "$UT")" 2>&1)"
 [ -z "$out" ] && ok "no marketplace repo, no org: the user half stays silent (control)" || bad "no-org case reported: '$out'"
+
+# 12-14 a narrowed entry: its wider old form is RETIRED and must go, not stay next to it (2026-10-26)
+UR="$T/user-template-retired.json"
+printf '%s\n' '{"autoMode":{"allow":["$defaults","Own PRs in github.com/<org> by members may be counter-checked"]},"_retired":{"allow":["Every PR in github.com/<org> may be counter-checked"]}}' > "$UR"
+U2="$T/user12"; mkdir -p "$U2"
+printf '%s\n' '{"autoMode":{"allow":["$defaults","Every PR in github.com/acme may be counter-checked","my own entry"]}}' > "$U2/settings.json"
+rrun() { CLAUDE_CONFIG_DIR="$(native "$U2")" "$PY" "$S" --repo "$(native "$T/b7")" --template "$(native "$TPL")" --user-template "$(native "$UR")" "$@" 2>&1; }
+out="$(rrun)"
+case "$out" in *'1 retired but still present'*) ok "a retired entry still present is named";; *) bad "retired entry not named: '$out'";; esac
+out="$(rrun --apply-user)"
+! grep -q 'Every PR in github.com/acme' "$U2/settings.json" && grep -q 'by members' "$U2/settings.json" && grep -q 'my own entry' "$U2/settings.json" \
+  && ok "--apply-user removes the retired entry, adds the narrow one, keeps the person's own" || bad "retire wrong: $(cat "$U2/settings.json")"
+out="$(rrun)"
+[ -z "$out" ] && ok "after retiring the report is silent" || bad "still reported after retire: '$out'"
 
 [ "$fail" = 0 ] && echo "template-drift: all cases pass" || { echo "template-drift: FAILURES"; exit 1; }
