@@ -252,6 +252,18 @@ then an explicit release follows.
    this report is the session closed. If the setup shares memory across instances, the
    report says which findings went there **or that none had that reach** — an unstated
    cross-instance step reads as done and is the one nobody can check afterwards.
+   **A hand step for the operator comes first and holds the release** (operator correction,
+   Windows instance, 2026-10-26, translated: "you say in the first sentence done and I can shut
+   down. If I don't read closely, I miss this nested info ... that is fatal"). The incident: the
+   report opened with "Persisted — you can shut down" and carried, in the fourth bullet, a command
+   only the operator could run, pointing into the session's scratchpad that vanishes with it. So:
+   - a step only the operator can take (a `!` command, a click, a device) is the FIRST line of
+     the report, alone, with what to do in one sentence — never a bullet below the release;
+   - while it is open, the report gives NO release: it says what is awaited, arms a watcher on
+     the step's measurable effect, and gives the release only after the measurement — or after
+     the operator defers the step in their own words;
+   - a step must not depend on a path that ends with the session (the scratchpad): copy what
+     it needs to a durable place first, or let it run before the release.
 
 ## Scope
 
