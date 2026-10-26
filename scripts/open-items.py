@@ -205,13 +205,14 @@ def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset()):
     comments = (p.get("comments") or {}).get("nodes", [])
     touched = [r.get("submittedAt") or "" for r in reviews if ours(r)]
     touched += [c.get("createdAt") or "" for c in comments if ours(c)]
+    # A sibling of our OS looked at this head (its key in the text): that look stands for
+    # ours, as in pr-ball.py — measured 2026-10-22 on the operator's second macOS instance,
+    # which listed all 13 PRs of the first one as our move until it touched each itself; and
+    # for a PR of ANOTHER login that asked us for a review alike (Windows finding on #122).
+    touched += [n.get("submittedAt") or n.get("createdAt") or "" for n in reviews + comments
+                if (n.get("author") or {}).get("login", "") == me
+                and key_in(n.get("body") or "") in same_os]
     if author == me and not ours(p):
-        # A sibling of our OS looked at this head (its key in the text): that look stands for
-        # ours, as in pr-ball.py — measured 2026-10-22 on the operator's second macOS instance,
-        # which listed all 13 PRs of the first one as our move until it touched each itself.
-        touched += [n.get("submittedAt") or n.get("createdAt") or "" for n in reviews + comments
-                    if (n.get("author") or {}).get("login", "") == me
-                    and key_in(n.get("body") or "") in same_os]
         # A sibling instance's PR (same login, another key): ours to look at, whatever repo
         # it sits in — the sibling asked us, not the repo's owner. Our own look after its
         # last commit hands the move back to the sibling.
