@@ -8,6 +8,13 @@ plan change (why did the approach fail?) · 3. before reporting done (ALL requir
 A remark the operator REPEATS about how an artifact looks or behaves is an unresolved
 misunderstanding (operator decision 2026-10-05): stop, mirror the current function and the
 presumed expectation in one sentence, get the yes, then continue.
+**A mishap, a surprise or an operator correction opens the root-cause inquiry by itself**
+(operator order 2026-10-26: "find the cause and fix it generically at the root … always, up to
+a core PR when needed — that is the standing order"): the cause is measured and named in the
+same turn — what was read, where, what produced what — even for a single instance with no
+class in sight; "cause unknown" names what is missing. Fixed on the spot without the cause is
+the failure class itself. Carriers: `core/helpers/root-cause-gate.cjs` (Stop check; the turn
+does not end without the Cause line) and, over the history, skill `root-cause-review`.
 
 History: core/docs/rule-history.md, "Think-Before-Act".
 
@@ -61,6 +68,11 @@ always · 1 site = done · 2 = fix both · >=3 or a repeat = a mechanism for the
 the order list, but do what is in reach. A wrongly kept ledger state is a defect of its own
 (2026-10-19) — fix its cause; entries name their `check:`, run by
 `core/scripts/ledger-reconcile.py`. Not the procedure-class question (`intelligence.md`).
+**Two ways to the class** (operator 2026-10-26): the direct one — the connection between
+instances is recognised — and the root test: the instance is fixed at its cause, and the fix
+replayed over the history (the transcripts, the ledgers, the logs) shows the further
+instances it would have caught; those ARE the class. A root-cause fix therefore ships with
+its replay and the count (skill `root-cause-review`, `root-cause-gate.cjs --review`).
 Mechanics: skill `verification-before-completion` (`references/class-gate.md`),
 `core/scripts/invariant-check.py`.
 
