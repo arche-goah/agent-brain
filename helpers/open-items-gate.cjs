@@ -54,7 +54,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isSkillExpansion, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { autonomousMode } = require('./autonomous-mode.cjs');
 const { PRE_COMMIT } = require('./close-stamp.cjs');
 
@@ -149,6 +149,10 @@ function readTurn(tp) {
       prompts = 0; reply = []; first = ''; last = []; lastCmds = [];
       continue;
     }
+    // A message typed mid-turn (queued_command, turn-kind #139) is the operator's WORD - it can be
+    // the "is anything open?" this gate answers - but no turn BOUNDARY: the reply buffer stays.
+    const queued = queuedHumanPrompt(d);
+    if (queued) { lastPrompt = queued; continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {

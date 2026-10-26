@@ -365,6 +365,13 @@ f="$T/23k.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; u
 check "'anything still open?' answered without the ours items" "$f" block "$EN"
 f="$T/23l.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "anything still open?"; asst "Still ours: #61 and the fixtures answer (09-13); for you: 09-05 TD split, 09-08 bridge question."; } > "$f"
 check "'anything still open?' answered with every ours item" "$f" allow "$EN"
+# The same question typed mid-turn is a queued_command attachment (turn-kind #139): it is the
+# operator's word, so it counts as the ask; it opens no new turn, so the reply buffer stays.
+qcmd() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
+f="$T/23q.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "fix the parser"; asst "working on it"; qcmd "anything still open?"; asst "Persisted - you can shut down."; } > "$f"
+check "'anything still open?' typed mid-turn, answered without the ours items" "$f" block "$EN"
+f="$T/23r.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "fix the parser"; asst "working on it"; asst "Persisted - you can shut down."; } > "$f"
+check "the same turn without the mid-turn question (control)" "$f" allow "$EN"
 f="$T/23m.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "sicher alles abgeschlossen final?"; asst "Persistiert, du kannst herunterfahren."; } > "$f"
 printf '%s\n' '{"ask_patterns":["\\balles\\b[^?\\n]{0,30}\\babgeschlossen\\b"]}' > "$WD/.claude/rules/open-items.json"
 check "German ask through instance data" "$f" block "$WD"
