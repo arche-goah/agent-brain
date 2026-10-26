@@ -251,6 +251,13 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: ci-lint-local in the foreground" Bash command "bash scripts/ci-lint-local.sh lint" block
   tr_probe "mechanism-guard/core rule: ci-lint-local via Monitor" Monitor command "bash scripts/ci-lint-local.sh lint" allow
   tr_probe "mechanism-guard/core rule: the ci-lint-local fixture itself" Bash command "bash scripts/test-ci-lint-local.sh" allow
+  # 2026-10-26: destructive pushes no permission pattern can catch (colon refspec, git -c ... push -f)
+  tr_probe "mechanism-guard/core rule: delete by colon refspec" Bash command "git push origin :feat" block
+  tr_probe "mechanism-guard/core rule: delete by colon refspec with -C" Bash command 'git -C /r push -q origin :feat' block
+  tr_probe "mechanism-guard/core rule: force behind git -c" Bash command "git -c core.x=1 push -f origin b" block
+  tr_probe "mechanism-guard/core rule: push HEAD:feat (control)" Bash command "git push origin HEAD:feat" allow
+  tr_probe "mechanism-guard/core rule: push to a URL (control)" Bash command "git push https://example.com/o/r.git feat" allow
+  tr_probe "mechanism-guard/core rule: plain feature push (control)" Bash command 'git -C /r push -u origin feat/x' allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
