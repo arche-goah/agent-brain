@@ -356,6 +356,12 @@ boot_mark code-scanning
 if [[ -f "$HERE/../scripts/local-machinery.py" ]]; then
   "$PY" "$HERE/../scripts/local-machinery.py" --repo "$R" 2>/dev/null || true
 fi
+# The other direction: what the core template carries and this brain does not. A template is
+# copied once at bootstrap, so its later permission rules never reach an existing brain (measured
+# 2026-10-26: 22 of 83 allow rules, an autonomous run stopped on a refused `gh pr ready`).
+if [[ -f "$HERE/../scripts/template-drift.py" ]]; then
+  "$PY" "$HERE/../scripts/template-drift.py" --repo "$R" 2>/dev/null || true
+fi
 
 # Memory limits (enforced since Claude Code v2.1.83: 200 lines / 25 KB — CHANGELOG entry
 # "MEMORY.md index now truncates at 25KB as well as 200 lines" is in the 2.1.83 block.
