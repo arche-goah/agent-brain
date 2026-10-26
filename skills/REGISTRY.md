@@ -1,13 +1,13 @@
 # Skill Registry
 
-**Total skills:** 26
-**Generated:** 2026-10-25
+**Total skills:** 27
+**Generated:** 2026-10-26
 
 > Auto-generated from the `.claude/skills/*/SKILL.md` files via `core/scripts/regen-skill-registry.py` — **do not maintain by hand**. Re-run the script after changing a skill.
 
 Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (each with YAML frontmatter `name` + `description`). This registry is the human-readable overview.
 
-## Other (26)
+## Other (27)
 
 | Skill | Short description |
 |-------|--------------------|
@@ -30,6 +30,7 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 | ponytail | Forces the laziest solution that actually works: YAGNI, stdlib before custom code, native before dependencies, … |
 | pr-live-verify | Re-measure a collaborator's PR claims on OUR OWN hardware before merging, then split the result … |
 | repo-recon | Rapidly orient in a large, unfamiliar codebase — map structure, languages, entry points, build/test/run commands, … |
+| root-cause-review | Review of the brain's root-cause discipline over its own history — every operator correction or … |
 | session-close | Close a session cleanly — persist open work (states to their ledger, lessons to their … |
 | session-insights | Self-analysis of Claude Code sessions |
 | shared-memory-tidy | Tidy-up pass over the shared-memory repo — run the deterministic lint, then the judging workflow, … |
@@ -40,4 +41,4 @@ Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (eac
 
 ---
 
-**26 skills** across 1 groups.
+**27 skills** across 1 groups.
