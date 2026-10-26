@@ -24,7 +24,12 @@ printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$B/.claude/rules/ledgers.js
 printf '%s\n' '# Questions' '' '- [ ] Remove 29 old worktrees' '  - class: decision' '' '- [ ] Write the docs' '  - class: todo' > "$B/docs/questions.md"
 N="$T/none"; mkdir -p "$N/.claude/rules" "$N/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$N/.claude/rules/ledgers.json"
-printf '%s\n' '- [ ] Write the docs' '  - class: todo' '- [x] Old decision' '  - class: decision' > "$N/docs/questions.md"
+# Decisions that are not the operator's (circle A, C, D) never count (macOS finding on #143).
+printf '%s\n' '- [ ] Write the docs' '  - class: todo' '- [x] Old decision' '  - class: decision' \
+  '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Their desk layout' '  - class: decision' '  - circle: D' > "$N/docs/questions.md"
+O="$T/circle"; mkdir -p "$O/.claude/rules" "$O/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$O/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Release now' '  - class: decision' '  - circle: B' > "$O/docs/questions.md"
 
 check() { # $1 label, $2 transcript, $3 brain dir, $4 block|allow
   local out
@@ -43,12 +48,21 @@ check "same question, answered through the question tool" "$f" "$B" allow
 # EARLIER turn does not count for it.
 f="$T/2q.jsonl"; { user "anything open for me?"; ask; user "now fix the parser"; asst "working"; qcmd "anything open for me?"; asst "Four points, recommendation yes each."; } > "$f"
 check "the question typed mid-turn, answered in prose (an earlier turn asked)" "$f" "$B" block
-f="$T/2r.jsonl"; { user "work through everything autonomously"; asst "on it"; qcmd "anything open for me?"; asst "Two decisions:"; ask; } > "$f"
+f="$T/2r.jsonl"; { user "work through everything autonomously"; asst "on it"; qcmd "put the open decisions to me interactively"; asst "Two decisions:"; ask; } > "$f"
 check "a mid-turn question ends the autonomous mode and is answered through the tool" "$f" "$B" allow
-f="$T/3.jsonl"; { user "work through everything autonomously"; asst "on it"; user "how did it go?"; asst "All done. Remove the worktrees? I recommend yes."; } > "$f"
-check "first turn after an autonomous run, prose" "$f" "$B" block
+f="$T/3.jsonl"; { user "work through everything autonomously"; asst "on it"; user "normal mode again - how did it go?"; asst "All done. Remove the worktrees? I recommend yes."; } > "$f"
+check "first turn after an autonomous run (the off word), prose" "$f" "$B" block
 f="$T/4.jsonl"; { user "work through everything autonomously"; asst "filed the question in the ledger"; } > "$f"
 check "inside the autonomous run (never ask there)" "$f" "$B" allow
+# The two macOS probes (#143 at 9c1515c): a status question or a mid-turn remark does not end the run.
+f="$T/4s.jsonl"; { user "work through everything autonomously"; asst "on it"; user "status?"; asst "PR merged, CI running."; } > "$f"
+check "a status question mid-run is not the end of the run" "$f" "$B" allow
+f="$T/4r.jsonl"; { user "work through everything autonomously"; asst "on it"; qcmd "the desk is running, if you need it"; asst "noted, continuing"; } > "$f"
+check "a remark typed mid-run is not the end of the run" "$f" "$B" allow
+f="$T/4o.jsonl"; { user "work through everything autonomously"; asst "on it"; user "status?"; asst "x"; user "back to normal mode"; asst "All done. Release now? I recommend yes."; } > "$f"
+check "the off word after a status question: first turn after the run, prose" "$f" "$B" block
+f="$T/4c.jsonl"; { user "anything open for me?"; asst "Two points, recommendation yes each."; } > "$f"
+check "an operator circle next to a circle C entry" "$f" "$O" block
 f="$T/5.jsonl"; { user "anything open for me?"; asst "Nothing open."; } > "$f"
 check "asked, but no open decision (control)" "$f" "$N" allow
 f="$T/6.jsonl"; { user "fix the parser"; asst "done"; user "now the tests"; asst "done"; } > "$f"

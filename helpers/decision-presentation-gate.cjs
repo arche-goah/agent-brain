@@ -12,14 +12,19 @@
  * The right moment, in a turn that is NOT autonomous (autonomous-mode.cjs):
  *   - the operator's newest prompt asks what is open (built-in English words; the instance's own
  *     `ask_patterns` in .claude/rules/open-items.json, the same key open-items-gate reads), or
- *   - the operator's prompt before it was autonomous: the first turn after an autonomous run, when
- *     the questions the run collected are due.
- * Open decisions: entries `- [ ]` with `class: decision` in the registered ledgers
- * (.claude/rules/ledgers.json), plus questions in the question-gate register
+ *   - the newest prompt cleared the autonomous latch: the first turn after an autonomous run, when
+ *     the questions the run collected are due. A status question or a remark mid-run does not
+ *     clear it (autonomous-mode.cjs), so it is no such moment.
+ * Open OPERATOR decisions: entries `- [ ]` with `class: decision` in the registered ledgers
+ * (.claude/rules/ledgers.json) whose `circle:` is the operator's (B own decision, E several people,
+ * F between people - the letters of open-items.py); A (the AI alone), C (the AIs among themselves)
+ * and D (another person's word) never reach the operator's question tool (macOS finding on #143:
+ * 27 "decisions" on one brain, a collaborator's among them). An entry without `circle:` counts,
+ * named apart so it gets one. Plus questions in the question-gate register
  * (.claude-state/open-questions.json) with status deferred or unanswered.
- * Blocks when such decisions exist and the running turn called no AskUserQuestion. Each question
- * is to be re-measured before it is put (the question-gate's RECHECKED rule on the macOS side);
- * this hook only demands the tool, never the wording.
+ * Blocks when such decisions exist and the running turn called no AskUserQuestion. This hook
+ * demands the tool, never the wording, and does NOT check that a question was re-measured before
+ * it is put - that is not carried here.
  * Output: {"decision":"block","reason":"... Missing: <titles>"}. Fails open on unreadable input.
  */
 'use strict';
@@ -30,6 +35,9 @@ const { queuedHumanPrompt } = require('./turn-kind.cjs');
 
 const ASK_BUILTIN = ['\\banything (still |else )?(open|left|pending)\\b', '\\bwhat is (still )?open\\b',
   '\\bopen (for|to) me\\b', '\\bdo you need (anything|something)\\b'];
+
+// Decision circles that need the operator (open-items.py CIRCLE_WORDS: B, E, F = human).
+const OPERATOR_CIRCLES = new Set(['B', 'E', 'F']);
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
 
@@ -54,7 +62,11 @@ function ledgerDecisions(root) {
       let j = i + 1;
       const block = [lines[i]];
       while (j < lines.length && lines[j].startsWith(' ')) block.push(lines[j++]);
-      if (/\bclass:\s*`?decision\b/i.test(block.join('\n'))) out.push(m[1].replace(/\*\*/g, '').slice(0, 80));
+      const body = block.join('\n');
+      if (!/\bclass:\s*`?decision\b/i.test(body)) continue;
+      const circle = /^\s+(?:-\s*)?circle:\s*`?([A-Fa-f])\b/m.exec(body);
+      if (circle && !OPERATOR_CIRCLES.has(circle[1].toUpperCase())) continue;
+      out.push((circle ? '' : '(no circle) ') + m[1].replace(/\*\*/g, '').slice(0, 80));
     }
   }
   return out;
@@ -97,7 +109,7 @@ function judge(input) {
   if (!modes.length) return null;
   const now = modes[modes.length - 1];
   if (now.autonomous) return null;
-  const back = modes.length > 1 && modes[modes.length - 2].autonomous;
+  const back = modes.length > 1 && modes[modes.length - 2].autonomous; // this prompt cleared the latch
   const asks = askRx(root).test(now.text);
   if (!back && !asks) return null;
   const open = [...ledgerDecisions(root), ...registerDecisions(root)];
@@ -105,8 +117,8 @@ function judge(input) {
   if (askedThisTurn(input.transcript_path, now.text)) return null;
   const why = back ? 'this is the first turn after the autonomous run' : 'the operator asked what is open';
   return `DECISION-PRESENTATION: ${why}, and ${open.length} operator decision(s) are open - put them through the question ` +
-    'tool (AskUserQuestion: one question each, recommended option first), each re-measured before it is asked; ' +
-    `prose is not the way. Missing: ${open.slice(0, 4).join(' | ')}${open.length > 4 ? ` (+${open.length - 4} more)` : ''}`;
+    'tool (AskUserQuestion: one question each, recommended option first); prose is not the way. ' +
+    `An entry marked (no circle) gets its circle: in the ledger if it is not the operator's. Missing: ${open.slice(0, 4).join(' | ')}${open.length > 4 ? ` (+${open.length - 4} more)` : ''}`;
 }
 
 if (require.main === module) {
