@@ -595,6 +595,39 @@ def log_only_items(texts: dict[str, str], me: set[str], floor: str,
     return items
 
 
+# A request's address in an inbox line: its fact file, or its LOG id when it has none.
+REQ_REF = re.compile(r"[\w./-]+\.md\b|\b[\w-]+/LOG@\d{4}-\d{2}-\d{2}#\d+")
+OPEN_HEAD = re.compile(r"\(status:\s*open\)", re.I)
+
+
+def mark_settled(items: list[tuple], still_open: list[tuple]) -> list[tuple]:
+    """A range line shows a request as its sender WROTE it; the same range may already carry
+    the answer. Measured 2026-10-26: a start listed four macOS counter-checks "(status: open)"
+    that were answered and merged the evening before — the open list (`--open`) said 1, the
+    inbox said 4. The inbox reads the request's state at the range's end from that open list,
+    so both lists say the same: a request it no longer carries is shown as settled.
+
+    Judged only where a line names its request (fact file or LOG id), or is a LOG request
+    heading whose title the open list carries; anything else stays as written."""
+    open_text = "\n".join(t for _, _, _, t in still_open)
+    out = []
+    for date, topic, sender, text in items:
+        refs = REQ_REF.findall(text)
+        is_request = OPEN_HEAD.search(text) or any(
+            Path(r).stem.lower().startswith(REQUEST_PREFIXES) for r in refs if r.endswith(".md"))
+        if is_request:
+            if refs:
+                settled = not any(r in open_text for r in refs)
+            else:  # LOG-only request: the open list prints its title
+                title = text.split(" ¶ ", 1)[0]
+                settled = title not in open_text
+            if settled:
+                text = (OPEN_HEAD.sub("(status: settled since)", text, count=1)
+                        if OPEN_HEAD.search(text) else "settled since — " + text)
+        out.append((date, topic, sender, text))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--repo", type=Path, default=REPO_DEFAULT)
@@ -646,6 +679,10 @@ def main() -> int:
     items = logs + file_items(args.repo, args.a, args.b, me, log_text)
     if not items:
         return 0
+    if me:
+        extra = os.environ.get("SHARED_MEMORY_REQUEST_PREFIXES", "")
+        prefixes = REQUEST_PREFIXES + tuple(w.strip().lower() for w in extra.split(",") if w.strip())
+        items = mark_settled(items, open_items(args.repo, args.b, me, 3650, prefixes, parties))
     items.sort(key=lambda i: i[0], reverse=True)
     scope = "for this instance" if me else "unfiltered - set SHARED_MEMORY_SELF to filter"
     print(f"shared-memory inbox ({scope}), {len(items)} since last start:")
