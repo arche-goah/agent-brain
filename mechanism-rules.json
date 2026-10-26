@@ -27,10 +27,10 @@
       "instead": "Start the loop detached (Bash run_in_background, or Monitor) and keep working; its end arrives as a notification. A background job you already started notifies on its own - no loop needed (Working Rule #13)."
     },
     {
-      "pattern": "(?:^|[^\\w-])(?!test-)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h|status|stop|disarm)\\b)",
+      "pattern": "(?:^|[^\\w-])(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
       "foreground_only": true,
       "was": "a waiting script (wait-*.sh, *-watch.sh: reconnect, link, collab, repo-activity, shared-memory watches) in the foreground - the class sweep of the wait-loop rule (2026-10-26): these scripts are the same wait under a name, and only ci-watch.sh was listed",
-      "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A status, stop or help call passes."
+      "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A help call passes, and so do the `status`/`disarm` subcommands of the two scripts that have them (repo-activity-watch.sh, shared-memory-watch.sh) - collab-watch.sh has none: `collab-watch.sh status` ARMS the watch (measured 2026-10-26)."
     },
     {
       "pattern": "(?:\\bgit\\b[^|;&\\n]*?\\spush\\b[^|;&\\n]*\\s:[^\\s:]|\\bgit\\s+(?:-c\\s+\\S+\\s+)+(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?push\\b[^|;&\\n]*\\s(?:--force|-f\\b|--mirror\\b|\\+))",
