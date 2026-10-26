@@ -48,6 +48,11 @@ probe "push naming main (ask glob)" Bash '{"command":"git -C /r push -q origin m
 probe "branch-less push (no ask rule)" Bash '{"command":"git -C /r push"}' "$AUTO" allow
 probe "gh pr close (ask prefix)" Bash '{"command":"gh pr close 5 -R o/r"}' "$AUTO" block
 probe "a plain edit outside every ask rule" Edit '{"file_path":"docs/notes.md"}' "$AUTO" allow
+# Hook data the classifier holds without an ask rule (macOS measurement 2026-10-26).
+probe "stop-checks.json, no ask rule, autonomous" Edit '{"file_path":".claude/rules/stop-checks.json"}' "$AUTO" block
+probe "plugin hooks.json, autonomous" Write '{"file_path":"hooks/hooks.json"}' "$AUTO" block
+probe "stop-checks.json outside the mode" Edit '{"file_path":".claude/rules/stop-checks.json"}' "$INTER" allow
+probe "local-machinery.json is not held (control)" Edit '{"file_path":".claude/rules/local-machinery.json"}' "$AUTO" allow
 probe "a bare tool rule from the user settings" WebFetch '{"url":"https://example.com"}' "$AUTO" block
 probe "a tool no rule names" Read '{"file_path":"README.md"}' "$AUTO" allow
 probe "a mid-turn operator message ends the mode: the asked-for question passes" AskUserQuestion '{"questions":[]}' "$MID" allow

@@ -31,6 +31,12 @@ const os = require('os');
 const { autonomousMode } = require('./autonomous-mode.cjs');
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+// Hook and permission data: the auto-mode classifier holds an edit of these for the operator even
+// where no ask rule names it (macOS instance, 2026-10-26: two edits of stop-checks.json waited 2728 s
+// and 4233 s on the operator under an `Edit(.claude/rules/**)` allow rule; local-machinery.json and a
+// new file under scripts/hooks/ in the same turn went through).
+const CLASSIFIER_HELD = ['Edit(.claude/settings.json)', 'Edit(.claude/settings.local.json)', 'Edit(.mcp.json)',
+  'Edit(.claude/rules/stop-checks.json)', 'Edit(.claude/rules/mechanism-rules.json)', 'Edit(**/hooks/hooks.json)'];
 
 function readJson(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; }
@@ -89,15 +95,16 @@ function judge(input) {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const isQuestion = tool === 'AskUserQuestion';
   const rule = isQuestion ? null : hitRule(askRules(root), tool, input.tool_input || {}, root);
-  if (!isQuestion && !rule) return null;
+  const held = isQuestion || rule ? null : hitRule(CLASSIFIER_HELD, tool, input.tool_input || {}, root);
+  if (!isQuestion && !rule && !held) return null;
   if (!autonomousMode(input.transcript_path || '', root)) return null;
-  const what = isQuestion
-    ? 'a question through the question tool'
-    : `a call that the permission rule \`${rule}\` (ask) turns into a dialog`;
+  const what = isQuestion ? 'a question through the question tool'
+    : rule ? `a call that the permission rule \`${rule}\` (ask) turns into a dialog`
+      : `an edit of hook or permission data (\`${held}\`) that the auto-mode classifier holds for the operator`;
   return `AUTONOMOUS-GATE: the operator ordered this run autonomous, and this is ${what} - it would stop the run on the operator. ` +
     'Not issued. File it with a recommendation in the instance\'s operator-question ledger (the open questions file the ' +
-    'session start lists), name it in the next prose report, and go on with everything safely doable. The operator ends ' +
-    'the mode by writing without the autonomous word.';
+    'session start lists; an edit as a patch file beside it), name it in the next prose report, and go on with everything ' +
+    'safely doable. The mode ends when the operator asks what is open or says an off-word.';
 }
 
 if (require.main === module) {
