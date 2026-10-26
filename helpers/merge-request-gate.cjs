@@ -113,7 +113,8 @@ function gate(input) {
     `BLOCKED (merge-request-gate): ${t.repo}#${t.nr} is a suite or core PR, and no comment says OK at the head ` +
     `\`${String(pr.headRefOid).slice(0, 7)}\` on: ${gone.join(', ')}.\n` +
     'CONVENTIONS §11: a merge checked on one system only is a beta, labelled with that system. Either get the check on ' +
-    'the missing system at this head (a comment naming the OS, "OK" and the short sha), or merge it as a beta: add ' +
+    'the missing system at this head (a PR comment naming the OS, "OK" and the short sha - an OK only in the shared ' +
+    'memory is not read here, so the checker posts it on the PR too), or merge it as a beta: add ' +
     '`# BETA-MERGE: <system checked>, <other> open` to the call and say the same in the PR.\n' +
     'Why: 2026-10-26, two suite PRs were merged checked on Windows only; the rule stood in prose, nothing read it.');
   return 2;
