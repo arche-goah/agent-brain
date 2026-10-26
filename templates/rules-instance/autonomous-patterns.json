@@ -1,13 +1,16 @@
 {
   "_comment": [
     "Instance data for core/helpers/autonomous-mode.cjs: regex strings in the operator's own language that",
-    "ORDER an autonomous run (on_patterns) or end it (off_patterns). The built-ins are English ('autonomous',",
-    "'work the list alone', 'I'm away' / 'normal mode', 'stop autonomous'). Only the operator's NEWEST prompt",
-    "decides, so a later prompt without the word ends the mode anyway. Example for a German operator:",
-    "on \"\\\\bautonom\", \"\\\\ballein abarbeiten\\\\b\", \"\\\\bich bin weg\\\\b\"; off \"\\\\bnormalmodus\\\\b\",",
-    "\"\\\\bnicht mehr autonom\\\\b\". Read by stoppen-gate (a closing decision is filed, not asked through the",
-    "question tool) and open-items-gate (the order is the go-ahead)."
+    "ORDER an autonomous run (on_patterns), end it (off_patterns), or answer yes to 'continue autonomously?'",
+    "(yes_patterns). The built-ins are English ('autonomous', 'work the list alone', 'I'm away' / 'normal mode',",
+    "'stop autonomous' / 'yes'). The mode is a latch: an on-word sets it, an off-word clears it, and so does a",
+    "prompt that asks what is open (the ask_patterns of open-items.json - the operator who asks is here); a yes",
+    "to a question-tool question carrying an on-word sets it again. Anything else ('status?', a remark) keeps it.",
+    "Example for a German operator: on \"\\\\bautonom\", \"\\\\ballein abarbeiten\\\\b\", \"\\\\bich bin weg\\\\b\";",
+    "off \"\\\\bnormalmodus\\\\b\", \"\\\\bnicht mehr autonom\\\\b\"; yes \"^\\\\s*ja\\\\b\". Read by autonomous-gate",
+    "(no question tool, no ask dialog in the mode), stoppen-gate and open-items-gate."
   ],
   "on_patterns": [],
-  "off_patterns": []
+  "off_patterns": [],
+  "yes_patterns": []
 }

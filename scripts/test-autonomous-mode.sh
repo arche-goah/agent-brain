@@ -39,11 +39,26 @@ f="$T/2q.jsonl"; { user "work through the list autonomously"; asst "x"; qcmd "th
 mode "a remark typed mid-turn keeps it" "$f" "$EN" autonomous
 f="$T/3.jsonl"; { user "autonomous, please"; asst "x"; user "status?"; asst "y"; user "back to normal mode"; } > "$f"
 mode "an off word ends it" "$f" "$EN" interactive
-f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; qcmd "ask me interactively now"; } > "$f"
-mode "asking for the interactive way ends it" "$f" "$EN" interactive
-# The operator's complaint of 2026-10-19 carries the word too, and means the opposite.
+# Asking what is open ends it: the operator is here (operator 2026-10-26, Windows instance).
+f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
+mode "asking what is open ends it" "$f" "$EN" interactive
+f="$T/3e.jsonl"; { user "autonomous, please"; asst "x"; qcmd "anything open for me?"; } > "$f"
+mode "asking mid-turn ends it" "$f" "$EN" interactive
+# The answer to "continue autonomously?" arrives as a tool result.
+answer() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t9","content":%s}]}}\n' "$(js "Your questions have been answered: $1. You can now continue")"; }
+f="$T/3f.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Continue autonomously?"="Yes, continue (Recommended)"'; } > "$f"
+mode "yes to continue autonomously sets it again" "$f" "$EN" autonomous
+f="$T/3g.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Continue autonomously?"="No, interactive"'; } > "$f"
+mode "no to continue autonomously keeps it off" "$f" "$EN" interactive
+f="$T/3h.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
+mode "yes to another question sets nothing" "$f" "$EN" interactive
+f="$T/3i.jsonl"; { user "fix the parser"; answer '"Continue autonomously?"="Yes"'; user "status?"; } > "$f"
+mode "after the yes a status question keeps it" "$f" "$EN" autonomous
+# The operator's complaints carry the word "interactive" and mean the opposite (macOS finding on #142).
 f="$T/3d.jsonl"; { user "autonomous, please"; asst "x"; user "you stopped interactively again, that blocks everything"; } > "$f"
 mode "complaining about an interactive stop keeps it" "$f" "$EN" autonomous
+f="$T/3j.jsonl"; { user "work through everything autonomously"; user "do not stop everything interactively, collect the questions"; } > "$f"
+mode "a negated interactive keeps it" "$f" "$EN" autonomous
 f="$T/3c.jsonl"; { user "autonomous, please"; asst "x"; user "normal mode"; asst "y"; user "status?"; } > "$f"
 mode "after the off word a plain prompt stays interactive" "$f" "$EN" interactive
 f="$T/4.jsonl"; { user "work through the list autonomously"; asst "x"; user "<task-notification>watcher fired</task-notification>"; user "Stop hook feedback: STOP-CHECKS"; } > "$f"
@@ -55,6 +70,12 @@ mode "skill text and request blobs are no prompt" "$f" "$EN" interactive
 f="$T/7.jsonl"; { user "alles offene autonom abarbeiten"; } > "$f"
 mode "the operator's language from instance data" "$f" "$DE" autonomous
 mode "the same German prompt without the data file (discriminator)" "$f" "$EN" interactive
+printf '%s\n' '{"on_patterns": ["\\bautonom"], "off_patterns": ["\\bnormalmodus\\b"], "yes_patterns": ["^\\s*ja\\b"]}' > "$DE/.claude/rules/autonomous-patterns.json"
+printf '%s\n' '{"ask_patterns": ["\\birgendwas\\b[^?\\n]{0,30}\\boffen\\b"]}' > "$DE/.claude/rules/open-items.json"
+f="$T/7b.jsonl"; { user "weiter autonom"; user "irgendwas offen?"; } > "$f"
+mode "the operator's ask wording from instance data ends it" "$f" "$DE" interactive
+f="$T/7c.jsonl"; { user "weiter autonom"; user "irgendwas offen?"; answer '"Weiter autonom?"="Ja, weiter autonom"'; } > "$f"
+mode "the operator's yes from instance data sets it again" "$f" "$DE" autonomous
 mode "missing transcript fails toward interactive" "$T/none.jsonl" "$EN" interactive
 
 # --- stoppen-gate: which way it demands, and the line that passes only in the mode
