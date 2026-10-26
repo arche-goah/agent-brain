@@ -12,17 +12,23 @@
  *
  * Fires only when the turn's reply contains a RELEASE phrase (English built-ins plus the instance's
  * `release_patterns`). Then it measures, and blocks on any of:
- *   - commits on the current branch that its upstream does not have (`git rev-list @{u}..HEAD`);
+ *   - commits on the current branch that its upstream does not have (`git rev-list @{u}..HEAD`) - in
+ *     the working repo, in the shared-memory repo (`$SHARED_MEMORY_REPO`, default
+ *     ~/Projects/brain-shared-memory - the path helpers/session-closing.sh reads) and in every repo the
+ *     instance lists under `repos` (class search after #149: the close skill only REPORTED the
+ *     shared-memory repo, a release outside the skill let its unpushed entries go);
  *   - a hand step left in the reply: a "! <command>" for the operator, or a hand-step word
  *     (built-in "hand step", instance `hand_patterns`);
  *   - a path inside a session scratchpad named in the reply (it ends with the session).
- * Instance data: .claude/rules/close-loss.json {"release_patterns", "hand_patterns"} - regexes.
+ * Instance data: .claude/rules/close-loss.json {"release_patterns", "hand_patterns"} - regexes;
+ * "repos" - more repo paths to measure (a leading ~ is the home directory).
  * Output: {"decision":"block","reason":"CLOSE-LOSS: ... Open: <items>"}. Fails open on unreadable input.
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const os = require('os');
 const { isNotification, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
 
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -86,8 +92,17 @@ function judge(input) {
   try { inst = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'rules', 'close-loss.json'), 'utf8')); } catch (e) { /* built-ins */ }
   if (!rx(BUILTIN_RELEASE, inst.release_patterns).test(text)) return null;
   const open = [];
-  const n = unpushed(cwd);
-  if (n) open.push(`${n} commit(s) not pushed`);
+  const home = os.homedir();
+  const repos = [cwd, process.env.SHARED_MEMORY_REPO || path.join(home, 'Projects', 'brain-shared-memory'),
+    ...(inst.repos || []).map((r) => String(r).replace(/^~(?=$|[\\/])/, home))];
+  const seen = new Set();
+  for (const r of repos) {
+    const key = path.resolve(r);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const n = unpushed(r);
+    if (n) open.push(`${n} commit(s) not pushed in ${path.basename(key)}`);
+  }
   if (rx(BUILTIN_HAND, inst.hand_patterns).test(text)) open.push('a hand step for the operator in the reply');
   const sp = SCRATCH.exec(text);
   if (sp) open.push(`a path inside the session scratchpad (${sp[0].slice(0, 80)})`);
