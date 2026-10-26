@@ -103,11 +103,10 @@ const PR_WATCH = /\b(watch-pr|ci-watch|collab-watch)\.sh\b/;
 // reconnect. The waiter is core/scripts/wait-mcp-reconnect.sh, armed in the same turn BEFORE the request.
 const RELOAD_ASK = /(?:^|[\s`'"(])\/(?:mcp|reload-plugins)\b|\breconnect\b|\bre-?connecten\b|\bwieder verbinden\b/i;
 const RELOAD_WATCH = /\bwait-mcp-reconnect\.sh\b/;
-// (a), (d) a push: `push` as git's SUBCOMMAND — `git [-C <dir>] [-c k=v] [--opt] push`, the dir
-// quoted or not. "git … push" anywhere in the line also read a `git commit -m "… push …"` as a
-// push and demanded a watcher for a run that did not exist (measured 2026-10-25, macOS: a local
-// commit in a worktree of a repo with workflows).
-const GIT_PUSH = /\bgit(?:\s+-[Cc]\s+(?:"[^"]*"|'[^']*'|\S+)|\s+--?[\w-]+(?:=\S+)?)*\s+push\b/;
+// (a), (d) a push: `push` as git's SUBCOMMAND (git-push.cjs) — "git … push" anywhere in the line
+// also read a `git commit -m "… push …"` as a push and demanded a watcher for a run that did not
+// exist (measured 2026-10-25, macOS: a local commit in a worktree of a repo with workflows).
+const { isGitPush } = require('./git-push.cjs');
 // (d) the CI watch of a push: `ci-watch.sh pr|ref <owner/repo> …`, and the repo a gh call names.
 // The script path may be quoted (`bash "C:/…/ci-watch.sh" pr …`): the closing quote sits between `.sh`
 // and the blank. Without `["']?` there, a live watch read as none — measured 2026-10-16 on the Windows
@@ -454,7 +453,7 @@ function ciStarted(shell, root) {
   const out = new Set();
   for (const c of shell) {
     const named = /\bgh\s+pr\s+(?:create|merge)\b/.test(c.cmd);
-    if (!named && !GIT_PUSH.test(c.cmd)) continue;
+    if (!named && !isGitPush(c.cmd)) continue;
     const flag = named && REPO_FLAG.exec(c.cmd);
     if (flag) {
       const slug = flag[1].toLowerCase();
@@ -601,7 +600,7 @@ function main(input) {
 
   for (const { label, repo } of smChannels(root)) {
     const repoName = path.basename(repo);
-    const smPush = shell.some((c) => GIT_PUSH.test(c.cmd) && c.cmd.includes(repoName));
+    const smPush = shell.some((c) => isGitPush(c.cmd) && c.cmd.includes(repoName));
     if (!smPush || !fs.existsSync(repo)) continue;
     const files = awaiting(repo, since);
     if (files.length && !smWatched(root, label)) {

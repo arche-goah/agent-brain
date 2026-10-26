@@ -79,6 +79,12 @@ run_case workflow-de block Workflow '{"scriptPath":"core/workflows/coherence-sca
 # --- English built-ins: external commands trip on the first call
 mk "$T/push-after.jsonl" '"after the mac answers, push it"' 0 ''
 run_case push-after block Bash '{"command":"git push origin feat/x"}'
+# push is git's SUBCOMMAND (class of watch-gate GIT_PUSH, 2026-10-26): a local commit whose message
+# says push is not external; a push through -C is
+mk "$T/commit-says-push.jsonl" '"after the mac answers, push it"' 0 ''
+run_case commit-says-push allow Bash '{"command":"git commit -q -m \"push after review\""}'
+mk "$T/push-via-C.jsonl" '"after the mac answers, push it"' 0 ''
+run_case push-via-C block Bash '{"command":"git -C /x/y push -q origin feat/x"}'
 mk "$T/merge-delegated.jsonl" '"clear it with Alex first, and merge once he answers"' 0 ''
 run_case merge-delegated block Bash '{"command":"gh pr merge 12 -R o/r --merge"}'
 mk "$T/decides-ps.jsonl" '"Alex decides this one; then publish the comment"' 0 ''
