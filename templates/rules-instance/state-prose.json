@@ -1,0 +1,5 @@
+{
+  "_comment": "Instance words for core scripts/state-prose-lint.py — copy to .claude/rules/state-prose.json and fill in the brain's own language. The script already knows the English defaults (alpha, parked, paused, on hold / until, till, expires); list only additions here.",
+  "state_words": [],
+  "until_words": []
+}

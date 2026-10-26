@@ -30,8 +30,16 @@ CHECKS (all read-only, no writes, stdlib only):
   6. snapshot-drift Auto-Memory <-> docs/memory-snapshot/ (our DOUBLE STRUCTURE),
                     plus manifest -> file: a `.sync-manifest.json` entry with no file
                     on either side (a ghost)
+  7. rule-home      a BINDING memory (its description says HARD) names the rule file
+                    that carries the rule: `metadata.home: <path> :: <anchor>`, the path
+                    relative to the instance root, the anchor a phrase that file holds.
+                    Memory is loaded on demand and has no rank among the rules; a binding
+                    rule that lives only there loses against the always-loaded text
+                    (coherence register 2026-09-18, finding "layering inverted"). The
+                    memory stays the lesson, the rule file is its home; the producer of
+                    the memory writes the field, the linter never guesses it.
 
-Usage: memory-lint.py [--memory DIR] [--snapshot DIR] [--json]
+Usage: memory-lint.py [--memory DIR] [--snapshot DIR] [--root DIR] [--json]
 Exit 0 = clean, 1 = findings, 2 = unreadable.
 """
 from __future__ import annotations
@@ -78,6 +86,7 @@ LOCK_STALE_S = 15   # memory-sync.cjs's own stale threshold — kept in sync by 
 MAX_INDEX_LINE = 400   # checklist §5; applies ONLY to entry lines ("- [Title](file.md) — …"),
                        # not to the explanatory header block (otherwise false alarm on prose)
 
+BINDING = re.compile(r"\bHARD\b")   # the word the memory itself uses to say it binds
 WIKILINK = re.compile(r"\[\[([^\]|#]+)")
 INDEX_LINK = re.compile(r"\[[^\]]*\]\(([^)]+\.md)\)")
 
@@ -112,10 +121,29 @@ def frontmatter(text: str) -> dict | None:
     return out
 
 
-def lint(mem: Path, snap: Path | None) -> dict:
+def rule_home(name: str, fm: dict, root: Path) -> dict | None:
+    """Finding for a binding memory whose rule has no home in a rule file, else None.
+    A topic index (`index-<topic>.md`) lists binding memories; it binds nothing itself."""
+    if name.startswith("index-") or not BINDING.search(fm.get("description") or ""):
+        return None
+    meta = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
+    home = meta.get("home") or ""
+    path, sep, anchor = (s.strip() for s in home.partition("::"))
+    if not (path and sep and anchor):
+        return {"file": name, "issue": "binding memory names no rule home",
+                "fix": "metadata.home: <rule file> :: <phrase that file holds> — or drop HARD"}
+    target = root / path
+    if not target.is_file():
+        return {"file": name, "issue": "rule home file missing", "home": path}
+    if anchor.lower() not in target.read_text(encoding="utf-8", errors="replace").lower():
+        return {"file": name, "issue": "rule home does not hold the anchor", "home": path, "anchor": anchor}
+    return None
+
+
+def lint(mem: Path, snap: Path | None, root: Path = _INSTANCE) -> dict:
     f: dict[str, list] = {k: [] for k in (
         "index_drift", "frontmatter", "name_mismatch",
-        "dead_links", "limits", "snapshot_drift")}
+        "dead_links", "limits", "snapshot_drift", "rule_home")}
 
     index_path = mem / INDEX
     if not index_path.is_file():
@@ -177,6 +205,10 @@ def lint(mem: Path, snap: Path | None) -> dict:
             # 3. name == filename
             if fm.get("name") and fm["name"] != p.stem:
                 f["name_mismatch"].append({"file": p.name, "frontmatter_name": fm["name"]})
+            # 7. a binding memory names its rule home
+            hit = rule_home(p.name, fm, root)
+            if hit:
+                f["rule_home"].append(hit)
         # 4. dead wikilinks
         body = text.split("\n---", 1)[-1] if fm is not None else text
         for target in WIKILINK.findall(body):
@@ -241,6 +273,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--memory", type=Path, default=MEM_DEFAULT)
     ap.add_argument("--snapshot", type=Path, default=SNAP_DEFAULT)
+    ap.add_argument("--root", type=Path, default=_INSTANCE,
+                    help="instance root the rule-home paths are relative to")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
@@ -248,7 +282,7 @@ def main() -> int:
         print(f"ERROR: memory directory not found: {a.memory}", file=sys.stderr)
         return 2
 
-    rep = lint(a.memory, a.snapshot)
+    rep = lint(a.memory, a.snapshot, a.root)
     if a.json:
         print(json.dumps(rep, indent=2, ensure_ascii=False))
     else:
@@ -265,8 +299,8 @@ def main() -> int:
         if rep.get("snapshot_skipped"):
             print("(snapshot check skipped: memory-sync.cjs lock is fresh — sync in progress)")
         if total == 0:
-            what = "index, frontmatter, links, limits" if rep.get("snapshot_skipped") \
-                else "index, frontmatter, links, limits, snapshot"
+            what = "index, frontmatter, links, limits, rule homes" if rep.get("snapshot_skipped") \
+                else "index, frontmatter, links, limits, rule homes, snapshot"
             print(f"all clean ({what}).")
     return 1 if sum(rep["counts"].values()) else 0
 

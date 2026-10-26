@@ -255,6 +255,26 @@ else
   skip "stoppen-gate end to end"
 fi
 
+# A template check marked required runs in a brain whose instance file lacks it (2026-10-26:
+# a check added to the template later otherwise ships and runs nowhere).
+if [ -f "$ROOT/helpers/commitment-carrier-gate.cjs" ] && [ -f "$ROOT/templates/rules-instance/stop-checks.json" ]; then
+  P="$T/req-brain"; mkdir -p "$P/.claude/rules"; ln -s "$ROOT" "$P/core"
+  printf '%s\n' '{"checks":[]}' > "$P/.claude/rules/stop-checks.json"
+  TR="$T/req.jsonl"
+  { printf '%s\n' '{"type":"user","message":{"role":"user","content":"why did you not restart it?"}}'
+    printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"From now on I keep the watcher running while the desk runs."}]}}'; } > "$TR"
+  feedreq() { printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$TR")" "$(native "$P")" | CLAUDE_PROJECT_DIR="$P" node "$D"; }
+  case "$(feedreq)" in *'"decision":"block"'*) ok "a required template check runs although the instance file does not list it";;
+    *) bad "required template check did not run: $(feedreq)";; esac
+  printf '%s\n' '{"checks":[],"disabled":{"COMMITMENT-CARRIER-GATE":"test brain, operator 2026-10-26"}}' > "$P/.claude/rules/stop-checks.json"
+  [ -z "$(feedreq)" ] && ok "disabled by name with a reason: the required check stays off" || bad "disabled check still ran: $(feedreq)"
+  printf '%s\n' '{"checks":[],"disabled":{"COMMITMENT-CARRIER-GATE":""}}' > "$P/.claude/rules/stop-checks.json"
+  case "$(feedreq)" in *'"decision":"block"'*) ok "disabled WITHOUT a reason does not switch it off";;
+    *) bad "an empty reason switched the required check off";; esac
+else
+  skip "required template checks"
+fi
+
 echo
 [ "$fail" -eq 0 ] && echo "stop-dispatcher fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

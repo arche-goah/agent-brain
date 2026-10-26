@@ -43,6 +43,13 @@ BUILTIN = [r"\bfrom now on\b", r"\bgoing forward\b", r"\bin future,? i(?:'ll| wi
            r"\bi(?:'ll| will) always\b", r"\bfrom here on\b", r"\bhenceforth\b"]
 FIRST_PERSON = [r"\b(i|we)\b", r"\bi'(ll|m)\b"]  # a commitment is made BY the speaker, not about a tool
 RULE_PATH = re.compile(r"(^|/)(CLAUDE\.md|AGENTS\.md|CONVENTIONS\.md)$|/rules/|/skills/|/memory/|feedback", re.I)
+# Since 2026-10-26 (operator: "a rule entered in the feedback amounts to an empty promise in the long run")
+# only a write to a MECHANISM carries a commitment: a helper or script, hook/settings data, a rules .json
+# a gate reads, mechanism rules, a CI workflow. A write to rule text, memory or feedback is PROSE — the
+# commitment is reported as not carried, with that reason.
+MECH_PATH = re.compile(r"/helpers/[^/]+\.(?:c?js|mjs|sh)$|/scripts/[^/]+\.(?:py|sh|c?js|mjs|ps1)$|/hooks/|"
+                       r"/\.claude/(?:settings(?:\.local)?\.json|rules/[^/]+\.json)$|mechanism-rules\.json$|"
+                       r"/\.github/workflows/", re.I)
 STOP = {"which", "every", "their", "there", "these", "those", "about", "after", "before", "where",
         "would", "should", "could", "other", "being", "doing", "start", "starts", "always", "future",
         "going", "forward"}
@@ -116,11 +123,13 @@ def scan_session(path, patterns, stop, first):
             elif block.get("type") == "tool_use" and block.get("name") in ("Edit", "Write", "MultiEdit"):
                 inp = block.get("input") or {}
                 fp = str(inp.get("file_path") or "").replace("\\", "/")
-                if RULE_PATH.search(fp):
+                if RULE_PATH.search(fp) or MECH_PATH.search(fp):
                     body = " ".join(str(inp.get(k) or "") for k in ("content", "new_string"))
                     for e in inp.get("edits") or []:
                         body += " " + str(e.get("new_string") or "")
-                    writes.append((ts, words(body, stop)))
+                    # the file name speaks too: a gate called no-window-from-bridge carries "window"
+                    body += " " + re.sub(r"[^A-Za-z]+", " ", os.path.basename(fp))
+                    writes.append((ts, words(body, stop), bool(MECH_PATH.search(fp))))
     return found, writes
 
 
@@ -142,37 +151,38 @@ def main(argv):
     else:
         cutoff = datetime.datetime.now().timestamp() - a.days * 86400
         files = [f for f in glob.glob(os.path.join(d, "*.jsonl")) if os.path.getmtime(f) >= cutoff]
-    loose, carried, total = [], 0, 0
+    loose, carried, total, prose = [], 0, 0, 0
     paras = None
     for f in sorted(files):
         found, writes = scan_session(f, patterns, stop, first)
         for ts, sent in found:
             total += 1
             need = words(sent, stop)
-            # carried (a): a rule write in the same session that shares at least two
-            # load-bearing words (or all of them, for a very short sentence)
-            same = any(len(need & w) >= min(2, len(need)) for _, w in writes) and need
-            # carried (b): today's rule text or docs hold it — one paragraph with at least 60 %
-            # of the words (minimum three), so a later session's carrier counts too
-            if not same and len(need) >= 3:
+            match = lambda w: need and len(need & w) >= min(2, len(need))
+            # carried: a MECHANISM write in the same session that shares at least two load-bearing words
+            if any(mech and match(w) for _, w, mech in writes):
+                carried += 1
+                continue
+            # prose: only rule text / memory / feedback holds it (same session, or today's rule text/docs)
+            in_text = any((not mech) and match(w) for _, w, mech in writes)
+            if not in_text and len(need) >= 3:
                 if paras is None:
                     paras = rule_paragraphs(a.repo, stop)
-                same = any(len(need & p) >= max(3, int(0.6 * len(need) + 0.999)) for p in paras)
-            if same:
-                carried += 1
-            else:
-                loose.append({"session": os.path.basename(f)[:8], "at": ts[:16], "sentence": sent[:200]})
+                in_text = any(len(need & p) >= max(3, int(0.6 * len(need) + 0.999)) for p in paras)
+            prose += 1 if in_text else 0
+            loose.append({"session": os.path.basename(f)[:8], "at": ts[:16], "sentence": sent[:200],
+                          "why": "prose only — rule text, memory or feedback, no mechanism" if in_text else "nothing written"})
     # Without instance phrasing only English is matched — in a brain that speaks another
     # language "found=0" is a coverage gap, not a result (Windows check 2026-10-09).
     scope = "all" if data.get("patterns") else "english-only"
     if a.json:
-        print(json.dumps({"found": total, "carried": carried, "loose": loose, "phrasing": scope}, ensure_ascii=False))
+        print(json.dumps({"found": total, "carried": carried, "prose": prose, "loose": loose, "phrasing": scope}, ensure_ascii=False))
         return 0
     for l in loose:
-        print(f"loose commitment: {l['at']} session {l['session']}: {l['sentence']}")
+        print(f"loose commitment ({l['why']}): {l['at']} session {l['session']}: {l['sentence']}")
     if scope == "english-only":
         print("commitments: only English phrasing checked — add this brain's language in .claude/rules/commitments.json (template in core templates/rules-instance/)")
-    print(f"commitments summary: found={total} carried={carried} loose={len(loose)} phrasing={scope}")
+    print(f"commitments summary: found={total} carried={carried} prose={prose} loose={len(loose)} phrasing={scope}")
     return 0
 
 
