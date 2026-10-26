@@ -20,10 +20,12 @@ def memfile(d, name, body="x"):
         fh.write(f"---\nname: {name}\ndescription: t\nmetadata:\n  type: project\n---\n{body}\n")
 
 
-def run(d, snap=None):
+def run(d, snap=None, root=None):
     cmd = [sys.executable, LINT, "--memory", d, "--json"]
     if snap:
         cmd += ["--snapshot", snap]
+    if root:
+        cmd += ["--root", root]
     p = subprocess.run(cmd, capture_output=True, text=True)
     return json.loads(p.stdout)["findings"]
 
@@ -154,6 +156,49 @@ def t_live_only_not_double_reported(d):
     return (len(hit) == 1 and len(f["snapshot_drift"]) == 1, f"snapshot_drift={f['snapshot_drift']}")
 
 
+def binding(d, name, home=None, description="HARD: a rule"):
+    """A memory whose description binds, optionally with a rule home; a rule file under
+    <d>/root/rules.md that holds the phrase 'only the producer writes'."""
+    os.makedirs(os.path.join(d, "root"), exist_ok=True)
+    with open(os.path.join(d, "root", "rules.md"), "w", encoding="utf-8") as fh:
+        fh.write("# Rules\n\nOnly the producer writes bulk data.\n")
+    meta = "  type: feedback\n" + (f"  home: {home}\n" if home else "")
+    with open(os.path.join(d, name + ".md"), "w", encoding="utf-8") as fh:
+        fh.write(f"---\nname: {name}\ndescription: \"{description}\"\nmetadata:\n{meta}---\nx\n")
+    idx(d, [f"- [{name}]({name}.md) — x"])
+    return run(d, root=os.path.join(d, "root"))["rule_home"]
+
+
+def t_binding_without_home(d):
+    f = binding(d, "rule-a")
+    return (len(f) == 1 and f[0]["issue"] == "binding memory names no rule home", f"rule_home={f}")
+
+
+def t_binding_with_home_is_clean(d):
+    f = binding(d, "rule-a", "rules.md :: only the producer writes")
+    return (not f, f"rule_home={f}")
+
+
+def t_home_without_anchor(d):
+    f = binding(d, "rule-a", "rules.md :: a phrase the file does not hold")
+    return (len(f) == 1 and f[0]["issue"] == "rule home does not hold the anchor", f"rule_home={f}")
+
+
+def t_home_file_missing(d):
+    f = binding(d, "rule-a", "nowhere.md :: only the producer writes")
+    return (len(f) == 1 and f[0]["issue"] == "rule home file missing", f"rule_home={f}")
+
+
+def t_lesson_needs_no_home(d):
+    f = binding(d, "lesson-a", description="a lesson, measured 2026-10-26")
+    return (not f, f"rule_home={f}")
+
+
+def t_topic_index_needs_no_home(d):
+    f = binding(d, "index-rig", description="topic index: three HARD rules of the rig")
+    return (not f, f"rule_home={f}")
+
+
 if __name__ == "__main__":
     results = [
         case("sub-index entries count as indexed", t_subindex_counts),
@@ -166,5 +211,11 @@ if __name__ == "__main__":
         case("manifest entry without any file reported", t_manifest_ghost_reported),
         case("manifest in sync stays clean", t_manifest_in_sync_is_clean),
         case("live-only manifest entry reported once, not as ghost", t_live_only_not_double_reported),
+        case("binding memory without a rule home reported", t_binding_without_home),
+        case("binding memory whose home holds the anchor is clean", t_binding_with_home_is_clean),
+        case("rule home that does not hold the anchor reported", t_home_without_anchor),
+        case("rule home file missing reported", t_home_file_missing),
+        case("a memory that does not bind needs no home", t_lesson_needs_no_home),
+        case("a topic index binds nothing itself", t_topic_index_needs_no_home),
     ]
     sys.exit(0 if all(results) else 1)
