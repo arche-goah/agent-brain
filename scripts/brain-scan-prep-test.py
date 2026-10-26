@@ -176,6 +176,9 @@ with tempfile.TemporaryDirectory() as d:
     write(stub / "scripts/lesson-carriers.py",
           "print('lesson without carrier: 2026-10-25 - a correction without a mechanism')\n"
           "print('lesson-carriers summary: entries=1 carried=0 loose=1')\n")
+    write(stub / "scripts/state-prose-lint.py",
+          "print('state in prose: .claude/rules/x.md:3 says until 2026-01-01, which has passed')\n"
+          "print('state-prose summary: lines=1 expired=1 drift=0')\n")
     write(stub / "scripts/fork-drift.py",
           "print('!! fork pal/core branch fix/lost (no PR, last commit 2026-09-01): 1 commit(s) not in the core')\n"
           "print('fork drift summary: 1 fork(s) of org/core, 1 finding(s)')\n")
@@ -200,6 +203,7 @@ with tempfile.TemporaryDirectory() as d:
     check(has("P1", "local-machinery: !! shadow"), "a loud local-machinery line is a P1 finding")
     check(has("P2", "commitments: loose commitment"), "a loose commitment is a P2 finding")
     check(has("P2", "lesson-carriers: lesson without carrier"), "a lesson without a carrier is a P2 finding")
+    check(has("P2", "state-prose: state in prose:"), "an expired state in rule prose is a P2 finding")
     check(has("P1", "brain-selftest failed: !!  fixture x failed"), "a failing self-test is P1 with its line")
     check(has("P1", "effect-check E3") and has("OK", "effect-check E1"), "effect-check ROT -> P1, OK lines summarised")
     check(not any("E6" in t for t in T), "effect-check E6 is not doubled when commitments ran directly")

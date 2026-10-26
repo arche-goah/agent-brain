@@ -338,6 +338,8 @@ def machine(repo, core, last_date, today):
         # Operator corrections without a carrier line (2026-10-25): every entry of the feedback
         # protocol since the last scan names its Traeger/Carrier, or it is a finding.
         "lesson-carriers.py": ([py, str(S / "lesson-carriers.py"), "--repo", str(repo), "--since", str(last_date or "0000-00-00")], 60),
+        # A dated state in rule prose ("alpha until <date>") that expired or disagrees with its record.
+        "state-prose-lint.py": ([py, str(S / "state-prose-lint.py"), "--repo", str(repo), "--today", today], 30),
         # Reads every transcript of the window: here and not at the session start.
         "decision-review.py": ([py, str(S / "decision-review.py"), "--root", str(repo), "--days", str(days)], 300),
         # The only reader of the stop dispatcher's recorder logs: would a recording gate
@@ -368,6 +370,8 @@ def machine(repo, core, last_date, today):
         findings += map_lines("commitments", *out["commitments.py"], "loose commitment", "commitments summary:", "P2")
     if "lesson-carriers.py" in out:
         findings += map_lines("lesson-carriers", *out["lesson-carriers.py"], "lesson without carrier", "lesson-carriers summary:", "P2")
+    if "state-prose-lint.py" in out:
+        findings += map_lines("state-prose", *out["state-prose-lint.py"], "state in prose:", "state-prose summary:", "P2")
     if "recorder-report.py" in out:
         findings += map_lines("recorder-report", *out["recorder-report.py"], "!!", "recorder report summary:", "P2")
     if "fork-drift.py" in out:
