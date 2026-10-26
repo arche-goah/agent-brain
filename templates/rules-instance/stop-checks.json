@@ -118,6 +118,17 @@
       "required": true
     },
     {
+      "label": "DECISIONS",
+      "marker": "DECISION-PRESENTATION",
+      "cmd": "core/helpers/decision-presentation-gate.cjs",
+      "mode": "block",
+      "extract": "Missing:\\s*([^\\n]+)",
+      "template": "Open operator decisions are due now - put them through the question tool, the last question 'continue autonomously?' when a run was on: {1}",
+      "maxLength": 240,
+      "onReissue": "run",
+      "required": true
+    },
+    {
       "label": "CLOSE-LOSS",
       "marker": "CLOSE-LOSS",
       "cmd": "core/helpers/close-loss-gate.cjs",
