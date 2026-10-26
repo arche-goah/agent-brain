@@ -58,8 +58,26 @@ function isPeerMessage(d) {
  * operator's last message and refused every externally effective call of the turn. Only `user` and
  * `assistant` records are the conversation; a record without a type (older transcripts) counts too. */
 function isTranscriptRecord(d) {
+  // The summary a compaction writes is a user record with isCompactSummary (measured 2026-10-26,
+  // macOS instance): the harness's retelling of the session, not the operator's words. The
+  // conditional-order gate took a sentence of it ("only allowed after the operator grants it") for
+  // the operator's last message and held every push of the turn.
+  if (d && d.isCompactSummary === true) return false;
   const t = d && d.type;
   return t === undefined || t === null || t === 'user' || t === 'assistant';
 }
 
-module.exports = { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, FRAMES, LOCAL };
+/**
+ * A message the operator types while the agent works never becomes a user record: it lands as
+ * `{"type":"attachment","attachment":{"type":"queued_command","prompt":…,"origin":{"kind":"human"}}}`
+ * (measured 2026-10-26, macOS instance, three such records in one turn). A gate that looks for the
+ * operator's LAST words misses all of them. Returns the operator's text, or null for every other
+ * record (peer messages and task notifications ride the same attachment type with another origin).
+ */
+function queuedHumanPrompt(d) {
+  const a = d && d.type === 'attachment' && d.attachment;
+  if (!a || a.type !== 'queued_command' || !a.origin || a.origin.kind !== 'human') return null;
+  return typeof a.prompt === 'string' && a.prompt.trim() ? a.prompt : null;
+}
+
+module.exports = { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL };
