@@ -126,10 +126,10 @@ with tempfile.TemporaryDirectory() as d:
     rc, out = run(repo, "--memory", str(mem))
     check(rc == 0 and "lesson-carriers memory: memories=7 carried=2 loose=5" in out,
           f"seven feedback memories, two carried (file+phrase, prose): {out.strip().splitlines()[-1]}")
-    check("memory without carrier: fb-none.md — no metadata.carrier" in out, "a missing field is named")
-    check("fb-file-gone.md — carrier file helpers/gone.cjs missing" in out, "a missing carrier file is named")
-    check("fb-phrase-gone.md — phrase not in helpers/bar-gate.cjs" in out, "a phrase the file does not hold is named")
-    check("fb-free-text.md — carrier 'the gate' is not" in out, "free text without '::' is named")
+    check("memory without carrier: fb-none.md - no metadata.carrier" in out, "a missing field is named")
+    check("fb-file-gone.md - carrier file helpers/gone.cjs missing" in out, "a missing carrier file is named")
+    check("fb-phrase-gone.md - phrase not in helpers/bar-gate.cjs" in out, "a phrase the file does not hold is named")
+    check("fb-free-text.md - carrier 'the gate' is not" in out, "free text without '::' is named")
     check("fb-carried.md" not in out and "fb-prose.md" not in out, "carried memories stay silent")
     check("project-fact.md" not in out and "index-feedback.md" not in out and "MEMORY.md" not in out,
           "other types, the index and topic indexes are not checked")

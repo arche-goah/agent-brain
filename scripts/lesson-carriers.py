@@ -46,6 +46,7 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 # OS-9: the session-close step and brain-scan-prep.py parse this output — pin the bytes
 try:
@@ -104,7 +105,7 @@ def _frontmatter():
     """memory-lint's parser, so both read a memory the same way (no second YAML subset)."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
-        "memory_lint", os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory-lint.py"))
+        "memory_lint", Path(__file__).resolve().parent / "memory-lint.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.frontmatter
@@ -115,17 +116,15 @@ def memory_carriers(repo: str, mem_dir: str, types: list[str], since: str | None
     import datetime
     fm_of = _frontmatter()
     checked, carried, loose = 0, 0, []
-    for name in sorted(os.listdir(mem_dir)):
-        if not name.endswith(".md") or name == "MEMORY.md" or name.startswith("index-"):
+    for path in sorted(Path(mem_dir).glob("*.md")):
+        if path.name == "MEMORY.md" or path.name.startswith("index-"):
             continue
-        path = os.path.join(mem_dir, name)
-        with open(path, encoding="utf-8", errors="replace") as f:
-            fm = fm_of(f.read()) or {}
+        fm = fm_of(path.read_text(encoding="utf-8", errors="replace")) or {}
         meta = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
         if meta.get("type") not in types:
             continue
         stamp = (meta.get("modified") or "")[:10] or datetime.date.fromtimestamp(
-            os.path.getmtime(path)).isoformat()
+            path.stat().st_mtime).isoformat()
         if since and stamp < since:
             continue
         checked += 1
@@ -135,27 +134,28 @@ def memory_carriers(repo: str, mem_dir: str, types: list[str], since: str | None
             continue
         target, sep, anchor = val.partition("::")
         target, anchor = target.strip(), anchor.strip()
+        dest = Path(repo) / target
         if not val:
             issue = "no metadata.carrier"
         elif not sep or not target or not anchor:
             issue = f"carrier '{val}' is not '<file> :: <phrase>' or 'prose, because ...'"
-        elif not os.path.isfile(os.path.join(repo, target)):
+        elif not dest.is_file():
             issue = f"carrier file {target} missing"
         else:
-            with open(os.path.join(repo, target), encoding="utf-8", errors="replace") as f:
-                issue = None if anchor in f.read() else f"phrase not in {target}: {anchor}"
+            issue = None if anchor in dest.read_text(encoding="utf-8", errors="replace") \
+                else f"phrase not in {target}: {anchor}"
         if issue:
-            loose.append({"file": name, "issue": issue})
+            loose.append({"file": path.name, "issue": issue})
         else:
             carried += 1
     return checked, carried, loose
 
 
-def default_memory_dir(repo: str) -> str:
+def default_memory_dir(repo: str) -> Path:
     # Claude Code mints the project path: every character except [A-Za-z0-9] becomes '-'
     # (same minting as memory-lint.py and helpers/session-bootup.sh).
-    minted = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(repo))
-    return os.path.join(os.path.expanduser("~"), ".claude", "projects", minted, "memory")
+    minted = re.sub(r"[^A-Za-z0-9]", "-", str(Path(repo).resolve()))
+    return Path.home() / ".claude" / "projects" / minted / "memory"
 
 
 def main() -> int:
@@ -167,9 +167,9 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     cfg = load_config(a.repo)
-    mem_dir = a.memory or cfg.get("memory_dir") or default_memory_dir(a.repo)
-    mem = memory_carriers(a.repo, mem_dir, list(cfg.get("memory_types") or []), a.since) \
-        if os.path.isdir(mem_dir) else None
+    mem_dir = Path(a.memory or cfg.get("memory_dir") or default_memory_dir(a.repo))
+    mem = memory_carriers(a.repo, str(mem_dir), list(cfg.get("memory_types") or []), a.since) \
+        if mem_dir.is_dir() else None
     proto = a.protocol or os.path.join(a.repo, cfg["protocol"])
     try:
         with open(proto, encoding="utf-8") as f:
@@ -205,7 +205,7 @@ def print_memory(mem, as_json: bool) -> None:
     if mem is None or as_json:
         return
     for l in mem[2]:
-        print(f"memory without carrier: {l['file']} — {l['issue']}")
+        print(f"memory without carrier: {l['file']} - {l['issue']}")
     print(f"lesson-carriers memory: memories={mem[0]} carried={mem[1]} loose={len(mem[2])}")
 
 
