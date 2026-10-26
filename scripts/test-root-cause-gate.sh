@@ -76,11 +76,11 @@ XP=''
 
 # --- other languages only as instance data (the German lines here are DATA an instance carries)
 DE="$T/cwd-de"; mkdir -p "$DE/.claude/rules"
-printf '%s\n' '{"correction_patterns": ["\\bschief ?gelaufen\\b", "\\bist doch (schon|längst)\\b"], "cause_patterns": ["^[ \\t>*_-]*ursache\\b[^\\n]{0,24}:"]}' > "$DE/.claude/rules/root-cause-patterns.json"
+printf '%s\n' '{"correction_patterns": ["\\bschief ?gelaufen\\b", "\\bist doch schon\\b"], "cause_patterns": ["^[ \\t>*_-]*ursache\\b[^\\n]{0,24}:"]}' > "$DE/.claude/rules/root-cause-patterns.json"
 { user "los"; asst "ok"; user "ist doch schon aktiv! da ist was schief gelaufen"; asst "Frage im Register geschlossen."; } > "$T/t14.jsonl"
 check "German correction without instance data" "$T/t14.jsonl" allow "$CWD"
 check "German correction with instance data, no cause" "$T/t14.jsonl" block "$DE"
-{ user "los"; asst "ok"; user "ist doch schon aktiv! da ist was schief gelaufen"; asst "Ursache: der Eintrag ist ein Schnappschuss vom 16.10., nichts hat das Thema neu gemessen."; } > "$T/t15.jsonl"
+{ user "los"; asst "ok"; user "ist doch schon aktiv! da ist was schief gelaufen"; asst "Ursache: der Eintrag ist ein Schnappschuss vom 16.10., das Thema war seitdem ungelesen."; } > "$T/t15.jsonl"
 check "German correction with a German cause line" "$T/t15.jsonl" allow "$DE"
 
 # --- the review: counts over a directory of transcripts, carrier = a mechanism file written
