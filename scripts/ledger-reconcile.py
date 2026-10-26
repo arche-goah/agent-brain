@@ -61,7 +61,10 @@ except Exception:
     pass
 
 ENTRY = re.compile(r"^- \[( |x|X)\] (.*)$")
-FIELD = re.compile(r"^\s{2,}([a-z_-]+):\s?(.*)$")
+# A field line is `  key: value`, and just as often a list item `  - key: value` or a code span
+# `  - `key: value``: measured 2026-10-26 on the Windows instance, 20 of 20 entries the ratchet
+# named as "without a check" were in list form, ids and checks unread.
+FIELD = re.compile(r"^\s{2,}(?:[-*]\s+)?`?([a-z_-]+):\s?(.*)$")
 DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 NONE = re.compile(r"^none\b", re.I)
 
@@ -86,7 +89,7 @@ def entries(text):
         cur["text"] += "\n" + line
         f = FIELD.match(line)
         if f and f.group(1) not in cur["fields"]:
-            cur["fields"][f.group(1)] = f.group(2).strip()
+            cur["fields"][f.group(1)] = f.group(2).strip().strip("`").strip()
     if cur:
         yield cur
 
@@ -170,7 +173,7 @@ def run_check(cmd, root, timeout, shell):
 
 def label(e, path):
     # Some ledgers keep several fields on one line ("id: x · class: todo"): the id is its first word.
-    ident = (e["fields"].get("id") or "").split()
+    ident = (e["fields"].get("id") or "").replace("`", " ").split()
     return ident[0] if ident else f"{path}:{e['line']}"
 
 

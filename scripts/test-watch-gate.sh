@@ -111,6 +111,13 @@ check "another check's line is not its own echo" "$T/t3f.jsonl" block "$R"
 XP=''
 { cat "$T/t1.jsonl"; user "next question" "2099-01-01T00:00:00Z"; asst "answer"; } > "$T/t4.jsonl"
 check "push was in an earlier turn" "$T/t4.jsonl" allow "$R"
+# The window is applied per commit (measured 2026-10-25 in shared-reach-check's fixture): a commit with
+# an OLDER date on top (a pull of another machine's work, a rebase) must not hide the answer below it.
+fresh; entry answer2.md ws mac
+GIT_COMMITTER_DATE="2019-01-01T00:00:00Z" GIT_AUTHOR_DATE="2019-01-01T00:00:00Z" entry older-on-top.md other other
+{ user "go" "2026-01-01T00:00:00Z"; tool Bash "$PUSH"; asst "done"; } > "$T/t4o.jsonl"
+check "answer below a commit with an older date" "$T/t4o.jsonl" block "$R"
+fresh; entry answer.md ws mac
 { user "go"; tool Bash "cd ~/Projects/other && git push -q"; } > "$T/t5.jsonl"
 check "push to another repo" "$T/t5.jsonl" allow "$R"
 
@@ -190,6 +197,14 @@ PLAIN="$T/plainrepo"; git init -q "$PLAIN"; git -C "$PLAIN" remote add origin ht
 CIN="$(native "$CI")"; PLAINN="$(native "$PLAIN")"
 { user "fix"; tool Bash "git -C $CIN push -q origin x"; asst "pushed"; } > "$T/c1.jsonl"
 check "push into a repo with CI, no ci-watch" "$T/c1.jsonl" block "$R"
+# push is git's SUBCOMMAND (measured 2026-10-25, macOS): a local commit whose message says "push"
+# started no run; a push through a quoted -C path with a blank did.
+{ user "fix"; tool Bash "git -C $CIN commit -q -m \"pin bump, push after review\""; asst "committed"; } > "$T/c1m.jsonl"
+check "local commit whose message says push" "$T/c1m.jsonl" allow "$R"
+CIQ="$T/ci repo"; git init -q "$CIQ"; mkdir -p "$CIQ/.github/workflows"; echo "name: ci" > "$CIQ/.github/workflows/ci.yml"
+git -C "$CIQ" remote add origin https://github.com/o/r.git
+{ user "fix"; tool Bash "git -C \"$(native "$CIQ")\" push -q origin x"; asst "pushed"; } > "$T/c1q.jsonl"
+check "push through a quoted -C path with a blank, no ci-watch" "$T/c1q.jsonl" block "$R"
 { user "fix"; tool Bash "git -C $CIN push -q origin x"; tool Bash "bash core/scripts/ci-watch.sh pr o/r 7" bg; } > "$T/c2.jsonl"
 check "push, ci-watch pr armed in the background" "$T/c2.jsonl" allow "$R"
 { user "fix"; tool Bash "git -C $CIN push -q origin x"; tool Monitor "bash core/scripts/ci-watch.sh ref o/r main"; } > "$T/c3.jsonl"

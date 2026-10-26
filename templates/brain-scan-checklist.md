@@ -85,7 +85,8 @@ the deny — not from the scan, the scan is read-only). → maximum `configured`
 
 **Behaviour check:** `python3 core/scripts/memory-lint.py` exits 0.
 
-- [ ] `memory-lint.py` runs with exit 0 (index, frontmatter, links, limits, snapshot).
+- [ ] `memory-lint.py` runs with exit 0 (index, frontmatter, links, limits, rule homes, snapshot).
+- [ ] Every memory whose description says HARD names its rule home (`metadata.home: <rule file> :: <phrase>`) — a binding rule that lives only in on-demand memory has no rank against the always-loaded rules.
 - [ ] `MEMORY.md` under 200 lines / 25 KB — the harness reads nothing past that.
 - [ ] No index entry line over 400 characters (`memory-lint.py` limits — measured to fire on a real brain; an index line that carries the lesson instead of pointing at the file is what pushes MEMORY.md to its cap).
 - [ ] Every memory file is linked from `MEMORY.md` or from a topic sub-index `index-<topic>.md` that `MEMORY.md` links.

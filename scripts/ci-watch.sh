@@ -44,6 +44,7 @@
 #   scripts/ci-watch.sh pr  <owner/repo> <pr-number> [timeout_s]
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
 #   CI_WATCH_SHA=<pushed sha> scripts/ci-watch.sh pr …   # after a push: wait for THAT head
+#   A second call for the same target on this machine attaches to the first (point 6).
 # Defaults: timeout 1800 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
 # The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
 # `portability (windows-latest)` ran 13m41s and 14m26s, plus queue time — the old 900 s
@@ -64,6 +65,37 @@ POLL="${CI_WATCH_POLL:-15}"
 usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_s]" >&2; exit 2; }
 [[ "$MODE" == "pr" || "$MODE" == "ref" ]] || usage
 [[ -n "$REPO" && -n "$TARGET" ]] || usage
+
+# --- one watch per target on this machine (point 6, 2026-10-26) ---------------------------
+# Several sessions and agents on one machine and one GitHub account each armed their own watch
+# on the same PR or ref (2026-10-19: three duplicate main watchers, up to ~15 ci-watch at once —
+# the account's secondary rate limit). Point 5 waits a block out; this keeps the block from
+# coming: a second call with the same mode, repo, target and CI_WATCH_SHA ATTACHES to the
+# running watch — it reads the owner's result file, never GitHub, and ends with the owner's
+# lines and exit code. A dead owner leaves its directory behind; the next call takes it over.
+# The lock lives under $HOME (a session's TMPDIR can be private to it). CI_WATCH_SHARE=0 = off.
+if [[ -z "${CI_WATCH_SHARED_CHILD:-}" && "${CI_WATCH_SHARE:-1}" != 0 ]]; then
+  LOCKROOT="${CI_WATCH_LOCK_DIR:-$HOME/.cache/ci-watch}"
+  L="$LOCKROOT/$(printf '%s|%s|%s|%s' "$MODE" "$REPO" "$TARGET" "${CI_WATCH_SHA:-}" | cksum | tr -c '0-9\n' '-')"
+  mkdir -p "$LOCKROOT" 2>/dev/null
+  alive() { [[ -n "$1" ]] && kill -0 "$1" 2>/dev/null; }
+  replay() { cat "$L/out" 2>/dev/null; cat "$L/err" >&2 2>/dev/null; exit "$(cat "$L/rc")"; }
+  if ! mkdir "$L" 2>/dev/null; then
+    owner=$(cat "$L/pid" 2>/dev/null)
+    if alive "$owner"; then
+      echo "CI-WATCH SHARED: a watch for $REPO $MODE $TARGET already runs on this machine (pid $owner) — waiting for its verdict instead of polling GitHub"
+      while alive "$owner" && [[ ! -f "$L/rc" ]]; do sleep "$POLL"; done
+      [[ -f "$L/rc" ]] && replay
+    fi
+    rm -rf "$L"
+    mkdir "$L" 2>/dev/null || exec bash "$0" "$@"   # another call took it over first: attach to that one
+  fi
+  echo $$ > "$L/pid"
+  { CI_WATCH_SHARED_CHILD=1 bash "$0" "$@" 2>"$L/err"; echo $? > "$L/rc.tmp"; } | tee "$L/out"
+  cat "$L/err" >&2
+  mv "$L/rc.tmp" "$L/rc"
+  exit "$(cat "$L/rc")"
+fi
 
 start=$(date +%s)
 deadline=$(( start + TIMEOUT ))

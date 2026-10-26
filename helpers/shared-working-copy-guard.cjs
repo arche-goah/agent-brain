@@ -273,6 +273,9 @@ process.stdin.on('end', () => {
     return count;
   };
 
+  // The hook runs before the command: an operation a call starts is not open yet for the calls after it in
+  // the same command, so a later read must not clear the owner the earlier call wrote (measured 2026-10-26).
+  const startedHere = new Set();
   for (const call of calls) {
     const top = topLevel(call.repo);
     if (!top) continue;
@@ -306,7 +309,8 @@ process.stdin.on('end', () => {
     if (verdict && verdict.starts && sid) {
       // An operation that is allowed to start (marker, or no second session) belongs to this session.
       try { fs.writeFileSync(ownerPath, sid + '\n'); } catch (_) {}
-    } else if (!op) {
+      startedHere.add(gd);
+    } else if (!op && !startedHere.has(gd)) {
       try { fs.unlinkSync(ownerPath); } catch (_) {}
     }
   }

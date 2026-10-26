@@ -15,6 +15,7 @@ Own = fact files whose front matter says `von: <self>`, and LOG sections headed
 `## <date> · <self>`; self = SHARED_MEMORY_SELF. Unset self or no clone = empty set (the old
 reading holds). Stdlib only.
 """
+import json
 import os
 import re
 from pathlib import Path
@@ -58,3 +59,28 @@ def checked_head(oid, shas):
     """True when one of our shas is a prefix of this head's full oid."""
     oid = (oid or "").lower()
     return bool(oid) and any(oid.startswith(s) for s in shas)
+
+
+def sibling_keys_same_os(me_id="", repo=None):
+    """Instance keys of the OTHER devices of our person that run our OS (parties.json in the
+    shared memory). A look by one of them at a PR's head is a look for all of that OS: the
+    check a PR asks for is per OS, not per machine — measured 2026-10-22 on the operator's
+    second macOS instance, which listed every PR of the first one as "asked, not looked at
+    yet" (13 at once) although that machine had reviewed them at the head. Empty set without
+    SHARED_MEMORY_SELF, without parties.json, or when our device is not listed. Shared by
+    pr-ball.py and open-items.py, which must agree on whose move a PR is."""
+    from instance_key import key_for
+    me_id = (me_id or os.environ.get("SHARED_MEMORY_SELF", "")).split(",")[0].strip()
+    if not me_id:
+        return set()
+    try:
+        parties = json.loads((Path(repo or default_repo()) / "parties.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    for person in (parties.get("people") or {}).values():
+        devices = (person or {}).get("devices") or {}
+        if me_id in devices:
+            my_os = (devices.get(me_id) or {}).get("os")
+            return {key_for(d) for d, v in devices.items()
+                    if d != me_id and my_os and (v or {}).get("os") == my_os}
+    return set()

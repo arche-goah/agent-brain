@@ -55,6 +55,17 @@ LEDGER = """# Orders
   check: test -f marker-present && git push
   id: git-push
 
+- [ ] **fields as list items** — derived (2026-10-20)
+  - id: list-form-done
+  - check: test -f marker-present
+
+- [ ] **fields as code spans in list items** — derived (2026-10-20)
+  - `id: span-form-open`  `class: todo`
+  - check: `test -f marker-absent`
+
+- [ ] **list form, no check** — derived (2026-10-20)
+  - id: list-form-no-check
+
 Prose after the list.
 - [ ] **entry without an id field** — derived (2026-10-21)
   check: test -f marker-present
@@ -108,6 +119,10 @@ def main():
         nc = next((l for l in out.splitlines() if "without a `check:`" in l), "")
         ok("new-no-check" in nc and "old-no-check" not in nc, "ratchet: only open entries dated on/after ratchet_since", out)
         ok("class: todo" not in nc, "fields kept on one line: the id is its first word", out)
+        # list-item fields (measured 2026-10-26: 20 of 20 "without a check" entries were in that form)
+        ok("list-form-done" in done_line, "`  - check:` in list form is read and run", out)
+        ok("span-form-open" not in out, "a code-span field and a code-span check are read (check fails, not reported)", out)
+        ok("list-form-no-check" in nc, "a list-form entry without a check is named by its id", out)
         br = next((l for l in out.splitlines() if "could not give an answer" in l), "")
         ok("hangs (timeout)" in br, "a check that times out is reported as such", out)
         ok("hangs" not in done_line, "a timed-out check is never counted as done", out)
@@ -144,7 +159,8 @@ def main():
         clean = "\n\n".join(b for b in clean.split("\n\n")
                             if "done-but-open" not in b and "ticked-regressed" not in b
                             and "new-no-check" not in b and "hangs" not in b
-                            and "writes" not in b and "redirects" not in b and "git-push" not in b)
+                            and "writes" not in b and "redirects" not in b and "git-push" not in b
+                            and "list-form-" not in b)
         (R / "docs" / "orders.md").write_text(clean, encoding="utf-8")
         rc, out = run(root, "--brief")
         ok(out.strip() == "", "clean ledger, --brief: silent", out)
