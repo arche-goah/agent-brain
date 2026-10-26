@@ -104,7 +104,9 @@ function compile(list, source) {
     .map((r) => {
       try {
         return { re: new RegExp(r.pattern), was: r.was, instead: r.stattdessen || r.instead,
-                 target: r.target === 'path' ? 'path' : 'command', source,
+                 // 'raw': the command with its message text left in — for a rule about the FORM of
+                 // that text (multi-line text belongs in a file), which the cut below would hide.
+                 target: r.target === 'path' ? 'path' : r.target === 'raw' ? 'raw' : 'command', source,
                  needsOperatorWord: r.needs_operator_word === true,
                  foregroundOnly: r.foreground_only === true };
       } catch (_) { return null; }
@@ -247,7 +249,8 @@ process.stdin.on('end', () => {
   // (published-text.cjs). A line it cannot read to the end keeps the two older cuts.
   const stripped = (cmd && withoutPublished(cmd, false)) || stripMessages(stripHeredocs(cmd));
   for (const r of rules) {
-    const hit = r.target === 'path' ? (filePath && r.re.test(filePath)) : (cmd && r.re.test(stripped));
+    const hit = r.target === 'path' ? (filePath && r.re.test(filePath))
+      : r.target === 'raw' ? (cmd && r.re.test(cmd)) : (cmd && r.re.test(stripped));
     if (!hit || (r.foregroundOnly && background)) continue;
     let missing = [];
     if (marker) {
