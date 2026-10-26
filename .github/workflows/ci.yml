@@ -138,19 +138,9 @@ jobs:
       # second time in portability-smoke.sh, where five suites had already fallen out.
       # Three naming shapes are in use, all three are globbed. Registered as OS-4 in
       # docs/os-traps.md.
-      - name: fixture suites (discovered — both directions each)
-        run: |
-          set -e
-          shopt -s nullglob
-          n=0
-          for s in scripts/test-*.sh scripts/*-test.sh; do
-            echo "::group::$s"; bash "$s"; echo "::endgroup::"; n=$((n+1))
-          done
-          for s in scripts/*-test.py; do
-            echo "::group::$s"; python3 "$s"; echo "::endgroup::"; n=$((n+1))
-          done
-          [ "$n" -gt 0 ] || { echo "no fixture suite discovered — the glob is broken"; exit 1; }
-          echo "$n fixture suite(s) run"
+      # The fixture suites moved to the portability matrix (operator decision 2026-10-26): here they
+      # ran on ubuntu only, so every counter-check re-ran all of them by hand on macOS and Windows
+      # (12-22 min per PR and machine, measured). See the portability job.
       # Known Mac/Windows divergences do not reproduce on this runner, which is exactly
       # why they slipped through. The register states each class as a search; running it
       # here catches a NEW SITE of a known trap even where the trap itself is invisible.
@@ -243,6 +233,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # some suites read the base version of a file, as the lint job does
+          fetch-depth: 0
       # The line-ending check calls regen-skill-registry.py — without a pinned
       # Python the check depends on the runner image instead of the repo.
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -251,6 +244,26 @@ jobs:
       - name: portability smoke (bootup, scan-gate, run-record, loop-watchdog, line endings)
         shell: bash
         run: bash scripts/portability-smoke.sh
+      # Every fixture suite on every OS (operator decision 2026-10-26, "all tests in CI on 3 OS").
+      # DISCOVERED, not listed: three naming shapes, all globbed (OS-4 in docs/os-traps.md).
+      # Before, the suites ran on ubuntu only and a counter-check on macOS or Windows re-ran all of
+      # them by hand, 12-22 min per PR and machine (measured 2026-10-26); the hand check is now the
+      # changed parts on the real machine. fail-fast is off, so one OS failing still shows the others.
+      - name: fixture suites (discovered — both directions each, every OS)
+        shell: bash
+        run: |
+          set -e
+          shopt -s nullglob
+          PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python   # Windows: python3 can be the Store stub
+          n=0
+          for s in scripts/test-*.sh scripts/*-test.sh; do
+            echo "::group::$s"; bash "$s"; echo "::endgroup::"; n=$((n+1))
+          done
+          for s in scripts/*-test.py; do
+            echo "::group::$s"; "$PY" "$s"; echo "::endgroup::"; n=$((n+1))
+          done
+          [ "$n" -gt 0 ] || { echo "no fixture suite discovered — the glob is broken"; exit 1; }
+          echo "$n fixture suite(s) run on ${{ matrix.os }}"
 
   contract:
     runs-on: ubuntu-latest
