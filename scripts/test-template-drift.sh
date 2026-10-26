@@ -21,7 +21,7 @@ brain() { mkdir -p "$T/$1/.claude"; printf '%s\n' "$2" > "$T/$1/.claude/settings
 # Every case reads a fake user config dir, never the real ~/.claude (its autoMode block would leak in).
 mkdir -p "$T/user-none"
 export CLAUDE_CONFIG_DIR="$(native "$T/user-none")"
-run() { "$PY" "$S" --repo "$(native "$T/$1")" --template "$(native "$TPL")" 2>&1; }
+run() { "$PY" "$S" --repo "$(native "$T/$1")" --template "$(native "$TPL")" --rules-template "$(native "$T/no-rules")" 2>&1; }
 
 # 1 the incident: allow rules missing
 brain b1 '{"permissions":{"allow":["Bash(git status*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"]}}'
@@ -61,7 +61,7 @@ UT="$T/user-template.json"
 printf '%s\n' '{"autoMode":{"environment":["$defaults","Source control: github.com/<org>"],"allow":["$defaults","Own PRs in github.com/<org> may be marked ready"]}}' > "$UT"
 brain b7 '{"extraKnownMarketplaces":{"m":{"source":{"source":"github","repo":"acme/claude-marketplace"}}},"permissions":{"allow":["Bash(gh pr ready*)","Bash(gh pr create*)","Bash(git status*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"]}}'
 U="$T/user7"; mkdir -p "$U"; printf '%s\n' '{"theme":"dark"}' > "$U/settings.json"
-urun() { CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b7")" --template "$(native "$TPL")" --user-template "$(native "$UT")" "$@" 2>&1; }
+urun() { CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b7")" --template "$(native "$TPL")" --rules-template "$(native "$T/no-rules")" --user-template "$(native "$UT")" "$@" 2>&1; }
 out="$(urun)"
 case "$out" in *'(4 missing)'*'--apply-user'*) ok "missing autoMode entries are named, with the command";; *) bad "missing autoMode not named: '$out'";; esac
 out="$(urun --apply-user)"
@@ -73,7 +73,7 @@ out="$(urun)"
 [ -z "$out" ] && ok "after --apply-user the report is silent" || bad "still reported: '$out'"
 out="$(urun --apply-user)"
 case "$out" in *'nothing written'*) ok "a second --apply-user writes nothing";; *) bad "second apply: '$out'";; esac
-out="$(CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b2")" --template "$(native "$TPL")" --user-template "$(native "$UT")" 2>&1)"
+out="$(CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b2")" --template "$(native "$TPL")" --rules-template "$(native "$T/no-rules")" --user-template "$(native "$UT")" 2>&1)"
 [ -z "$out" ] && ok "no marketplace repo, no org: the user half stays silent (control)" || bad "no-org case reported: '$out'"
 
 # 12-14 a narrowed entry: its wider old form is RETIRED and must go, not stay next to it (2026-10-26)
@@ -81,7 +81,7 @@ UR="$T/user-template-retired.json"
 printf '%s\n' '{"autoMode":{"allow":["$defaults","Own PRs in github.com/<org> by members may be counter-checked"]},"_retired":{"allow":["Every PR in github.com/<org> may be counter-checked"]}}' > "$UR"
 U2="$T/user12"; mkdir -p "$U2"
 printf '%s\n' '{"autoMode":{"allow":["$defaults","Every PR in github.com/acme may be counter-checked","my own entry"]}}' > "$U2/settings.json"
-rrun() { CLAUDE_CONFIG_DIR="$(native "$U2")" "$PY" "$S" --repo "$(native "$T/b7")" --template "$(native "$TPL")" --user-template "$(native "$UR")" "$@" 2>&1; }
+rrun() { CLAUDE_CONFIG_DIR="$(native "$U2")" "$PY" "$S" --repo "$(native "$T/b7")" --template "$(native "$TPL")" --rules-template "$(native "$T/no-rules")" --user-template "$(native "$UR")" "$@" 2>&1; }
 out="$(rrun)"
 case "$out" in *'1 retired but still present'*) ok "a retired entry still present is named";; *) bad "retired entry not named: '$out'";; esac
 out="$(rrun --apply-user)"
@@ -89,5 +89,18 @@ out="$(rrun --apply-user)"
   && ok "--apply-user removes the retired entry, adds the narrow one, keeps the person's own" || bad "retire wrong: $(cat "$U2/settings.json")"
 out="$(rrun)"
 [ -z "$out" ] && ok "after retiring the report is silent" || bad "still reported after retire: '$out'"
+
+# Template DATA files a core helper reads (macOS finding on #142: autonomous-patterns.json never reached an older brain).
+RT="$T/rules-tpl"; HL="$T/helpers"; mkdir -p "$RT" "$HL"
+printf '%s\n' '{"on_patterns":[]}' > "$RT/autonomous-patterns.json"
+printf '%s\n' '{}' > "$RT/nobody-reads.json"
+printf '%s\n' "const p = path.join(cwd, '.claude', 'rules', 'autonomous-patterns.json');" > "$HL/autonomous-mode.cjs"
+brain d1 '{"permissions":{"allow":["Bash(gh pr ready*)","Bash(gh pr create*)","Bash(git status*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"]}}'
+drun() { "$PY" "$S" --repo "$(native "$T/d1")" --template "$(native "$TPL")" --rules-template "$(native "$RT")" --helpers "$(native "$HL")" 2>&1; }
+out="$(drun)"
+case "$out" in *"autonomous-patterns.json"*) case "$out" in *nobody-reads*) bad "a file no helper reads is named";; *) ok "a helper-read data file the brain lacks is named";; esac;; *) bad "missing data file not named: '$out'";; esac
+mkdir -p "$T/d1/.claude/rules"; cp "$RT/autonomous-patterns.json" "$T/d1/.claude/rules/"
+out="$(drun)"
+[ -z "$out" ] && ok "with the data file in place the report is silent" || bad "still reported: '$out'"
 
 [ "$fail" = 0 ] && echo "template-drift: all cases pass" || { echo "template-drift: FAILURES"; exit 1; }

@@ -23,7 +23,10 @@ The invariants:
      settings, OR the brain declares why not in `permissions._template_deviations`
      ({"<rule>": "<why>"}, a blank reason does not count);
   2. every `autoMode` entry of `core/templates/user-settings.json` is in the user's
-     `~/.claude/settings.json`, with `<org>` filled from the marketplace repo the settings name.
+     `~/.claude/settings.json`, with `<org>` filled from the marketplace repo the settings name;
+  3. every data file of `core/templates/rules-instance/` whose name a core helper reads is in the
+     brain's `.claude/rules/` (macOS finding on #142, 2026-10-26: `autonomous-patterns.json` never
+     reached an older brain, so a German order never switched the autonomous mode on there).
 Anything else is named at every session start, loudly, as long as it stands.
 
 Usage:
@@ -171,19 +174,39 @@ def apply_user(user_template, org_arg, repo):
     return 0
 
 
+def data_drift(repo, rules_tpl, helpers):
+    """Template data files a core helper reads that this brain's .claude/rules/ lacks (invariant 3)."""
+    rules_tpl, helpers = pathlib.Path(rules_tpl), pathlib.Path(helpers)
+    if not rules_tpl.is_dir() or not helpers.is_dir():
+        return None
+    code = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(helpers.glob("*.cjs")))
+    here = pathlib.Path(repo) / ".claude" / "rules"
+    gone = [p.name for p in sorted(rules_tpl.glob("*.json")) if f"'{p.name}'" in code and not (here / p.name).exists()]
+    if not gone:
+        return None
+    return (f"!! settings: {len(gone)} data file(s) of core/templates/rules-instance/ that a core helper reads are "
+            f"not in this brain's .claude/rules/ - {', '.join(gone[:SHOWN])}{f' (+{len(gone) - SHOWN} more)' if len(gone) > SHOWN else ''}. "
+            f"Without one the helper runs on its built-ins alone (an autonomous order in the operator's language, "
+            f"for one, never switches the mode). Copy each from core/templates/rules-instance/ and fill in this "
+            f"brain's values (the template's own defaults are a valid start)")
+
+
 def main():
     a = argparse.ArgumentParser()
     a.add_argument("--repo", default=".")
     a.add_argument("--template", default=str(TEMPLATES / "settings.json"))
     a.add_argument("--user-template", default=str(TEMPLATES / "user-settings.json"))
+    a.add_argument("--rules-template", default=str(TEMPLATES / "rules-instance"))
+    a.add_argument("--helpers", default=str(TEMPLATES.parent / "helpers"))
     a.add_argument("--apply-user", action="store_true")
     a.add_argument("--org")
     args = a.parse_args()
     if args.apply_user:
         return apply_user(args.user_template, args.org, args.repo)
-    line = project_drift(args.repo, args.template)
-    if line:
-        print(line)
+    for line in (project_drift(args.repo, args.template),
+                 data_drift(args.repo, args.rules_template, args.helpers)):
+        if line:
+            print(line)
     user = load(user_settings_path())
     org = args.org or org_of(load(pathlib.Path(args.repo) / ".claude" / "settings.json"), user)
     if org:
