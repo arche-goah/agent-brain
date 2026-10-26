@@ -67,5 +67,11 @@ check("without the instance file the default place is read (loud)", rc == 1 and 
 rc, out = run(brain(["alpha", "beta", "delta"], ELSEWHERE, where="docs/maintenance/mcp-server.md", cfg=cfg))
 check("the moved table is compared too", rc == 1 and "no row: delta" in out and "docs/maintenance/mcp-server.md" in out, out)
 
+COMBINED = "## MCP Servers\n\n| MCP | Use |\n|---|---|\n| `arena` / `wire` | one row, two servers |\n| `gma` (beta) | a name plus a note |\n"
+rc, out = run(brain(["arena", "wire", "gma"], COMBINED))
+check("every backticked name in the first cell counts (combined row, name plus note)", rc == 0 and out == "", out)
+rc, out = run(brain(["arena", "gma"], COMBINED))
+check("a combined row still names its extra server when that server is gone", rc == 1 and "row without server: wire" in out, out)
+
 print("mcp-table-check-test: " + ("all checks passed" if not fails else f"{fails} FAILED"))
 sys.exit(1 if fails else 0)

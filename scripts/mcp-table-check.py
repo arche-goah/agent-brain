@@ -9,7 +9,7 @@ silent when both lists match, otherwise one line naming both directions, exit 1.
 Where the table lives is instance data, `.claude/rules/mcp-table.json` (template in
 templates/rules-instance/): {"table": "<repo-relative file>", "heading": "<heading text>"}.
 Default = the core template's place: `.claude/rules/intelligence-instance.md`, section
-"## MCP Servers". A row's server name is its first cell (backticks allowed); the header
+"## MCP Servers". A row names its servers in its first cell: every backticked name there (`a` / `b`), else one bare name; the header
 row "MCP" / "Server" and separator rows are skipped; the section ends at the next heading
 of the same or a higher level.
 
@@ -36,9 +36,13 @@ def table_rows(text, heading):
         m = re.match(r"^(#+)\s", line)
         if m and len(m.group(1)) <= level:
             break
-        cell = re.match(r"^\|\s*`?([A-Za-z0-9_][A-Za-z0-9_.-]*)`?\s*\|", line)
-        if cell and cell.group(1).lower() not in HEADER_CELLS:
-            rows.add(cell.group(1))
+        if not line.startswith("|"):
+            continue
+        first = line.split("|")[1] if line.count("|") >= 2 else ""
+        # every backticked name in the first cell (a row may serve `a` / `b`), else one bare name
+        names = re.findall(r"`([A-Za-z0-9_][A-Za-z0-9_.-]*)`", first) \
+            or re.findall(r"^\s*([A-Za-z0-9_][A-Za-z0-9_.-]*)\s*$", first)
+        rows.update(n for n in names if n.lower() not in HEADER_CELLS)
     return rows
 
 
