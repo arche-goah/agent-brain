@@ -263,6 +263,13 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: shared-memory-watch via Monitor" Monitor command "bash core/scripts/shared-memory-watch.sh watch 300" allow
   tr_probe "mechanism-guard/core rule: a watch script's status call" Bash command "bash core/scripts/collab-watch.sh status" allow
   tr_probe "mechanism-guard/core rule: a watch script's own fixture" Bash command "bash scripts/test-shared-memory-watch.sh" allow
+  # 2026-10-26: destructive pushes no permission pattern can catch (colon refspec, git -c ... push -f)
+  tr_probe "mechanism-guard/core rule: delete by colon refspec" Bash command "git push origin :feat" block
+  tr_probe "mechanism-guard/core rule: delete by colon refspec with -C" Bash command 'git -C /r push -q origin :feat' block
+  tr_probe "mechanism-guard/core rule: force behind git -c" Bash command "git -c core.x=1 push -f origin b" block
+  tr_probe "mechanism-guard/core rule: push HEAD:feat (control)" Bash command "git push origin HEAD:feat" allow
+  tr_probe "mechanism-guard/core rule: push to a URL (control)" Bash command "git push https://example.com/o/r.git feat" allow
+  tr_probe "mechanism-guard/core rule: plain feature push (control)" Bash command 'git -C /r push -u origin feat/x' allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then

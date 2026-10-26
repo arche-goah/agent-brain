@@ -31,6 +31,12 @@
       "foreground_only": true,
       "was": "a waiting script (wait-*.sh, *-watch.sh: reconnect, link, collab, repo-activity, shared-memory watches) in the foreground - the class sweep of the wait-loop rule (2026-10-26): these scripts are the same wait under a name, and only ci-watch.sh was listed",
       "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A status, stop or help call passes."
+    },
+    {
+      "pattern": "(?:\\bgit\\b[^|;&\\n]*?\\spush\\b[^|;&\\n]*\\s:[^\\s:]|\\bgit\\s+(?:-c\\s+\\S+\\s+)+(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?push\\b[^|;&\\n]*\\s(?:--force|-f\\b|--mirror\\b|\\+))",
+      "was": "a destructive push in a form no permission pattern can catch: a branch delete by colon refspec (`git push origin :feat`), or a force/mirror push behind `git -c k=v` - a deny pattern ending in `:*` is read as a trailing wildcard (docs permissions: `Bash(ls:*)` equals `Bash(ls *)`), so `git push * :*` would deny every push with two arguments, and `-c` moves `push` out of every prefix pattern (found 2026-10-26 by the macOS instance's review of the settings template)",
+      "instead": "Deleting a remote branch or rewriting remote history is the operator's word (destructive). A merged PR's branch goes with `gh pr merge --delete-branch`; anything else: report it and wait for the word.",
+      "needs_operator_word": true
     }
   ]
 }
