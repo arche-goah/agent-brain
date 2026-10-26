@@ -170,6 +170,25 @@ mk "$T/peer-as-human.jsonl" '"weiter im programm"' 0 ''
 printf '{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"take it out of draft sobald 1 and 2 are in"}}\n' >> "$T/peer-as-human.jsonl"
 run_case peer-as-human block Bash '{"command":"git push"}'
 
+# --- the measured shapes (2026-10-26): a compaction summary is a user record with isCompactSummary
+# --- and retells conditions the operator gave long ago; it is no operator message.
+mk "$T/compact.jsonl" '"run the scan"' 0 ''
+printf '{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"Summary: retrying is only allowed after the operator grants it."}}\n' >> "$T/compact.jsonl"
+run_case compact allow Bash '{"command":"git push origin feat/x"}'
+# ... a message typed mid-turn is an attachment record (queued_command, origin human) - it IS the
+# operator's last message, and a condition in it binds
+mk "$T/queued-human.jsonl" '"run the scan"' 0 ''
+printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":"after the mac answers, push it","origin":{"kind":"human"}}}\n' >> "$T/queued-human.jsonl"
+run_case queued-human block Bash '{"command":"git push origin feat/x"}'
+# ... and it replaces an older condition: a later plain message frees the call
+mk "$T/queued-replaces.jsonl" '"after the mac answers, push it"' 0 ''
+printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":"push it now","origin":{"kind":"human"}}}\n' >> "$T/queued-replaces.jsonl"
+run_case queued-replaces allow Bash '{"command":"git push origin feat/x"}'
+# discriminator: the same attachment from a peer session is not the operator
+mk "$T/queued-peer.jsonl" '"run the scan"' 0 ''
+printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":"after the mac answers, push it","origin":{"kind":"peer"}}}\n' >> "$T/queued-peer.jsonl"
+run_case queued-peer allow Bash '{"command":"git push origin feat/x"}'
+
 # --- fail-open: no transcript -> silent
 out="$(printf '{"tool_name":"Workflow","tool_input":{},"transcript_path":"%s","cwd":"%s"}' \
   "$(native "$T/missing.jsonl")" "$(native "$T")" | node "$G" 2>&1)"

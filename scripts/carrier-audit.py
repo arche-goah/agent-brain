@@ -26,8 +26,11 @@ Usage: carrier-audit.py [--repo DIR] [--protocol FILE] [--since YYYY-MM-DD] [--g
   report mode (default): every entry with its class, then a summary; exit 0.
   --gate: exit 1 when an entry dated on/after --since is not GATE/PENDING and has no operator-ok —
           the blocking form for a hook or CI.
-Instance data: .claude/rules/lesson-carriers.json (protocol, carrier_keys, entry_heading) — shared with
-lesson-carriers.py.
+Instance data: .claude/rules/lesson-carriers.json (protocol, carrier_keys, entry_heading, other_keys —
+the instance's names for the non-carrier keys that end a carrier block) — shared with lesson-carriers.py.
+Also GATE: a backticked text that is (part of) a permission rule in any settings scope — allow/ask/deny
+bind the harness too. A .json file counts as gate data only under .claude/rules/ or as a
+mechanism-rules.json that a wired helper reads; a plugin.json is a manifest, not a gate.
 """
 import argparse
 import glob
@@ -45,12 +48,12 @@ DEFAULTS = {
     "protocol": "docs/maintenance/feedback-protocol.md",
     "carrier_keys": ["Carrier"],
     "entry_heading": r"^## (\d{4}-\d{2}-\d{2})",
+    "other_keys": ["Reach", "Occasion", "Rule", "Correction", "Why", "Evidence"],
 }
 MECH_EXT = re.compile(r"[\w./-]+\.(?:cjs|mjs|js|py|sh|ps1|json|ya?ml)\b")
 PR_REF = re.compile(r"(?:#|PR\s*#?)(\d{1,5})\b")
 BACKTICK = re.compile(r"`([^`\s]{2,80})`")
 OPERATOR_OK = re.compile(r"operator-ok\s*:\s*[\"“„].{6,}[\"”“]", re.I)
-OTHER_KEY = re.compile(r"^\s*\**(Reach|Reichweite|Anlass|Occasion|Regel|Rule|Korrektur)\**\s*:", re.I)
 
 
 def load_config(repo):
@@ -84,15 +87,19 @@ def entries(text, heading_rx):
         yield cur
 
 
-def carrier_text(body, keys):
+def key_rx(keys):
+    return re.compile(r"^\s*\**(?:%s)\**\s*:" % "|".join(re.escape(k) for k in keys), re.I)
+
+
+def carrier_text(body, keys, other_keys=DEFAULTS["other_keys"]):
     """The text of every carrier line plus its continuation lines (until a blank or another key)."""
-    rx = re.compile(r"^\s*\**(?:%s)\**\s*:" % "|".join(re.escape(k) for k in keys), re.I)
+    rx, other = key_rx(keys), key_rx(other_keys)
     out, on = [], False
     for ln in body:
         if rx.match(ln):
             on = True
             out.append(ln)
-        elif on and ln.strip() and not OTHER_KEY.match(ln) and not ln.startswith("**"):
+        elif on and ln.strip() and not other.match(ln) and not ln.startswith("**"):
             out.append(ln)
         else:
             on = False
@@ -117,6 +124,21 @@ def hook_commands(repo, core):
                     if h.get("command"):
                         cmds.append(h["command"])
     return cmds
+
+
+def permission_rules(repo):
+    """Every permission rule string (allow/ask/deny) in the brain's and the user's settings."""
+    rules = []
+    for fp in ([os.path.join(repo, ".claude", n) for n in ("settings.json", "settings.local.json")]
+               + [os.path.join(os.path.expanduser("~"), ".claude", "settings.json")]):
+        try:
+            with open(fp, encoding="utf-8") as f:
+                perms = json.load(f).get("permissions") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        for k in ("allow", "ask", "deny"):
+            rules += [r for r in perms.get(k) or [] if isinstance(r, str)]
+    return rules
 
 
 def wired_basenames(cmds):
@@ -201,8 +223,8 @@ def classify(ctext, ctx):
             continue
         base = os.path.basename(fp)
         posix = fp.replace(os.sep, "/")   # OS-1: compare forward-slashed text, never the platform separator
-        is_gate = (base in ctx["wired"] or "/.github/workflows/" in posix
-                   or (fp.endswith(".json") and base in ctx["helper_src"]))
+        gate_data = ("/.claude/rules/" in posix or base == "mechanism-rules.json") and base in ctx["helper_src"]
+        is_gate = base in ctx["wired"] or "/.github/workflows/" in posix or (fp.endswith(".json") and gate_data)
         if is_gate:
             cls = "GATE"
             found.append(base + ("" if fp.endswith(".json") or has_test(fp, ctx["roots"]) else " (untested)"))
@@ -213,6 +235,9 @@ def classify(ctext, ctx):
         if tok in ctx["rule_ids"]:
             cls = "GATE"
             found.append(f"mechanism rule `{tok}`")
+        elif len(tok) >= 6 and any(tok in r for r in ctx["perm_rules"]):
+            cls = "GATE"
+            found.append(f"permission rule `{tok}`")
     if cls:
         return cls, found
     if PR_REF.search(ctext):
@@ -260,14 +285,14 @@ def main():
         return 1 if a.gate else 0
     wired = wired_basenames(hook_commands(repo, core))
     ctx = {"roots": [repo, core], "wired": wired, "helper_src": helper_sources(repo, core, wired),
-           "rule_ids": mechanism_rule_ids(repo, core)}
+           "rule_ids": mechanism_rule_ids(repo, core), "perm_rules": permission_rules(repo)}
     rows = []
     for date, title, body in entries(text, cfg["entry_heading"]):
         if a.since and date < a.since:
             continue
         if known is not None and (date, title) in known:
             continue                    # --staged: only what this commit adds
-        ctext = carrier_text(body, cfg["carrier_keys"])
+        ctext = carrier_text(body, cfg["carrier_keys"], cfg["other_keys"])
         if ctext is None:
             # Entries older than the carrier-line convention: judge the whole text, say so.
             cls, why = classify("\n".join(body), ctx)
