@@ -13,6 +13,17 @@ export const meta = {
 
 // ── Configuration ──────────────────────────────────────────────────────────
 // Core rule: never hardcode instance paths — repo/memdir via args, generic defaults.
+// Path args the way the agents' shell keeps them: a Windows path with backslashes reached Git Bash
+// unquoted and lost every separator (measured 2026-10-09: a brain-scan wrote into a junk folder in the
+// brain root; os-traps shape A). Every string arg, nested ones included, turns to forward slashes here.
+const slashPaths = (o) => {
+  if (o && typeof o === 'object') for (const k of Object.keys(o)) {
+    if (typeof o[k] === 'string') o[k] = o[k].replace(/\\/g, '/')
+    else slashPaths(o[k])
+  }
+  return o
+}
+slashPaths(args)
 const REPO = (typeof args === 'object' && args && args.repo) || '.'
 const MEMDIR = (typeof args === 'object' && args && args.memdir) ||
   '$HOME/.claude/projects/<absolute project path, every "/" replaced by "-">/memory (agent: resolve this yourself, use pwd)'
@@ -20,7 +31,7 @@ const REPORT_DIR = `${REPO}/docs/research/coherence-scan`
 const AUFTRAEGE = `${REPO}/docs/maintenance/brain-scan-auftraege.md`
 
 let A = args
-if (typeof A === 'string') { try { A = JSON.parse(A) } catch (e) { A = null } }
+if (typeof A === 'string') { try { A = slashPaths(JSON.parse(A)) } catch (e) { A = null } }
 if (!A || !A.date || !A.scratch) throw new Error('coherence-scan requires args {date:"YYYY-MM-DD", scratch:"<abs. path>"} — date via `date +%F`, scratch = session scratchpad subfolder')
 const DATE = A.date
 const CORPUS = `${A.scratch}/corpus`
