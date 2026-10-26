@@ -66,6 +66,20 @@ case "${CI_WATCH_STUB:?}" in
               echo '[{"headBranch":"main","headSha":"abc1234def0","status":"completed","conclusion":"success"}]' ;;
   ref_sha_red) [[ "$*" == */commits/* ]] && { echo abc1234def0; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc1234def0","status":"completed","conclusion":"failure"}]' ;;
+  # 2026-10-26: two runs of one workflow on one commit, the concurrency group cancelled the
+  # older; the newer is the verdict. pr mode read the cancel bucket as red, exit 1.
+  pr_cancel_superseded) echo '[{"bucket":"cancel","name":"lint"},{"bucket":"pass","name":"lint"},{"bucket":"pass","name":"portability"}]' ;;
+  ref_cancel_superseded) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              echo '[{"id":1,"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"cancelled","name":"CI","event":"push"},
+                     {"id":2,"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"CI","event":"push"}]' ;;
+  # 2026-10-26: a push run on main waited 25 min in the queue behind the previous run of the ref
+  # (concurrency), then ran 36 min; the watch ended UNKNOWN at its deadline. Queue time extends it.
+  ref_queued_flip) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              f="${CI_WATCH_STATE:?}"; n=$(cat "$f" 2>/dev/null || echo 0); echo $(( n + 1 )) > "$f"
+              if (( n < 3 )); then echo '[{"id":5,"headBranch":"main","headSha":"abc123","status":"queued","conclusion":null,"name":"CI","event":"push"}]'
+              else echo '[{"id":5,"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"CI","event":"push"}]'; fi ;;
+  ref_queued_forever) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              echo '[{"id":5,"headBranch":"main","headSha":"abc123","status":"queued","conclusion":null,"name":"CI","event":"push"}]' ;;
   # one workflow of the tip still running: not a verdict yet.
   ref_partial) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"dynamic"},
@@ -296,6 +310,14 @@ check "pr failed check while another runs = RED at once" pr_fail_pending 1 pr 12
 grep -q "still running" "$TMP/out" && echo "  OK   early red names the running checks" \
   || { echo "  FAIL early red does not name the running checks"; fails=$((fails+1)); }
 check "pr cancelled check while another runs = wait, timeout(2)" pr_cancel_pending 2 pr 12 2
+check "pr cancel superseded by a green run of the same check = GREEN" pr_cancel_superseded 0 pr 12
+check "ref cancelled run superseded by a newer run on the same commit = GREEN" ref_cancel_superseded 0 ref main
+echo 0 > "$TMP/fakeclock-q1"
+CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-q1" \
+  check "ref run queued 30 s past a 20 s deadline, then green = GREEN (queue extends)" ref_queued_flip 0 ref main 20
+echo 0 > "$TMP/fakeclock-q2"
+CI_WATCH_POLL=10 CI_WATCH_QUEUE_CEILING=40 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-q2" \
+  check "ref run queued past the queue ceiling = unknown(2)" ref_queued_forever 2 ref main 20
 check "pr zero checks = wait, then timeout(2)"  pr_zero          2 pr 12 2
 check "pr 'no checks reported' waits, then timeout(2)" pr_nochecks 2 pr 12 2
 check "pr 'no checks' then green"       pr_nochecks_flip 0 pr 12

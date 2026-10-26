@@ -45,10 +45,14 @@
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
 #   CI_WATCH_SHA=<pushed sha> scripts/ci-watch.sh pr …   # after a push: wait for THAT head
 #   A second call for the same target on this machine attaches to the first (point 6).
-# Defaults: timeout 1800 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
+# Defaults: timeout 3600 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
 # The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
 # `portability (windows-latest)` ran 13m41s and 14m26s, plus queue time — the old 900 s
 # ended a watch on a run that turned green minutes later (UNKNOWN, honest but useless).
+# Raised 1800 -> 3600 s on 2026-10-26: since the CI runs every fixture suite on three systems a
+# run takes about 36 min (Windows-bound); three watches after three merges that day all ended
+# UNKNOWN at 1800 s on runs that were green. Start it with Bash run_in_background, NOT Monitor:
+# the harness kills a Monitor after 30 min at most, so a Monitor watch cannot outlast such a run.
 set -u
 
 # Resolve the Python interpreter: the python.org installer on Windows ships ONLY
@@ -59,7 +63,7 @@ set -u
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 
-MODE="${1:-}"; REPO="${2:-}"; TARGET="${3:-}"; TIMEOUT="${4:-1800}"
+MODE="${1:-}"; REPO="${2:-}"; TARGET="${3:-}"; TIMEOUT="${4:-3600}"
 POLL="${CI_WATCH_POLL:-15}"
 
 usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_s]" >&2; exit 2; }
@@ -426,9 +430,15 @@ while :; do
       fi
       fail_unknown "gh pr checks failed (rc=$rc): $(head -c 200 <<<"$json")"
     fi
+    # A `cancel` entry whose check name ALSO appears with another bucket is a superseded run
+    # (two runs on one commit, the concurrency group cancelled the older): measured 2026-10-26
+    # on a core PR, the watch reported "4 failing/cancelled check(s)" with exit 1 while the
+    # surviving run was still going and turned green. Only a cancel without a sibling counts.
     if ! counts=$("$PY" -c '
 import json, sys
-b = [c.get("bucket") for c in json.load(sys.stdin)]
+cs = json.load(sys.stdin)
+live = {c.get("name") for c in cs if c.get("bucket") != "cancel"}
+b = [c.get("bucket") for c in cs if not (c.get("bucket") == "cancel" and c.get("name") in live)]
 print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x in b), sum(x == "fail" for x in b))
 ' <<<"$json" 2>/dev/null); then
       unparsed=$((unparsed + 1))
@@ -510,7 +520,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
   # 50 runs of the whole repo: on a day with many PR runs the watched commit's runs fell
   # out of that window, the watch saw "none" and waited out its timeout (measured 2026-10-14).
   if ! ghq api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
-        --jq '[.workflow_runs[] | {headBranch: .head_branch, headSha: .head_sha, status: .status, conclusion: .conclusion, name: .name, event: .event}]'; then
+        --jq '[.workflow_runs[] | {id: .id, headBranch: .head_branch, headSha: .head_sha, status: .status, conclusion: .conclusion, name: .name, event: .event}]'; then
     json="$gh_out$gh_err"
     # One failed call is weather, not a verdict (measured 2026-10-13: an HTTP 504 on the
     # first poll ended a watch on main as UNKNOWN while the run was green; pr mode already
@@ -540,8 +550,20 @@ NOISE = {"issue_comment", "pull_request_review", "pull_request_review_comment",
 runs = [r for r in json.load(sys.stdin)
         if r.get("headSha") == sha and (bare or r.get("headBranch") == ref)
         and r.get("event") not in NOISE]
+# Two runs of one workflow on one commit: the newer one is the verdict, the older one was
+# cancelled by the concurrency group (measured 2026-10-26, a core PR read red on such a pair).
+newest = {}
+for r in runs:
+    k = (r.get("name"), r.get("event"))
+    if k not in newest or (r.get("id") or 0) > (newest[k].get("id") or 0):
+        newest[k] = r
+runs = list(newest.values())
+WAITING = {"queued", "pending", "waiting", "requested"}
 if not runs:
     print("none - -")
+elif all(r.get("status") in WAITING for r in runs if r.get("status") != "completed") \
+        and any(r.get("status") != "completed" for r in runs):
+    print("found queued -")
 elif any(r.get("status") != "completed" for r in runs):
     print("found in_progress -")
 else:
@@ -564,6 +586,23 @@ else:
     if (( warned_no_run == 0 )); then
       echo "ci-watch: no run for ref '$TARGET' yet (a just-pushed tag can take a moment) — waiting" >&2
       warned_no_run=1
+    fi
+    sleep "$POLL"; continue
+  fi
+  # A run that waits in the queue has not started: the workflow's concurrency group holds it
+  # until the previous run of the ref ends. Measured 2026-10-26 on the core's main: a push run
+  # created 21:09, its jobs started 21:34 when the previous run (36 min) finished — the watch
+  # armed at 21:09 ended UNKNOWN at 1800 s. Waiting time extends the deadline, as a rate-limit
+  # block does; CI_WATCH_QUEUE_CEILING (default 7200 s) ends an endless queue honestly.
+  if [[ "$status" == "queued" ]]; then
+    queued_total=$(( ${queued_total:-0} + POLL ))
+    if (( queued_total > ${CI_WATCH_QUEUE_CEILING:-7200} )); then
+      fail_unknown "the run of ${sha:0:7} waited ${queued_total}s in the queue without starting"
+    fi
+    deadline=$(( deadline + POLL ))
+    if (( ${warned_queue:-0} == 0 )); then
+      echo "ci-watch: the run of ${sha:0:7} waits in the queue (concurrency) — queue time extends the deadline" >&2
+      warned_queue=1
     fi
     sleep "$POLL"; continue
   fi
