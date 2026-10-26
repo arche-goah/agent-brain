@@ -249,6 +249,26 @@ ask "an orphan (open, earlier day) asked again without adopting it" "$Q" deny "$
 out="$(printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"}}' | CLAUDE_PROJECT_DIR="$(native "$R")" node "$G" 2>&1)"
 [ -z "$out" ] && ok "a Bash call passes the question hook" || bad "Bash call judged: $out"
 
+# --- the mode question is asked alone (2026-10-26): bundled with decisions, the steps those
+# decisions need opened their dialogs in the run that was autonomous again
+ask2() { # $1 name, $2 first question, $3 second question, $4 deny|allow, $5 root
+  local out
+  out="$(printf '{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":%s,"header":"a","options":[{"label":"yes","description":"y"},{"label":"no","description":"n"}]},{"question":%s,"header":"b","options":[{"label":"yes","description":"y"},{"label":"no","description":"n"}]}]}}' "$(js "$2")" "$(js "$3")" \
+    | CLAUDE_PROJECT_DIR="$(native "$5")" node "${GATE:-$G}" 2>&1)"
+  if [ "$4" = deny ]; then
+    case "$out" in *'"permissionDecision":"deny"'*'mode question'*) ok "$1 is refused";; *) bad "$1 was not refused: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 passes" || bad "$1 refused wrongly: '$out'"
+  fi
+}
+R="$T/r-mode"; fresh "$R"
+ask2 "a decision bundled with 'continue autonomously?'" "Change the rule file now?" "Continue autonomously?" deny "$R"
+ask2 "two decisions without a mode question" "Change the rule file now?" "Merge PR 5 now?" allow "$R"
+ask2 "a question ABOUT autonomy that is not the last one" "How autonomous should the loop be at the desk?" "Merge PR 5 now?" allow "$R"
+ask "'continue autonomously?' asked alone" "Continue autonomously?" allow "$R"
+mkdir -p "$R/.claude/rules"; printf '{"on_patterns":["\\\\bweiter autonom\\\\b"]}\n' > "$R/.claude/rules/autonomous-patterns.json"
+ask2 "the instance's mode words count too" "Regel jetzt umstellen?" "Weiter autonom?" deny "$R"
+
 # --- negative control
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));\n' > "$T/stub.cjs"
 before=$fail; fail=0
