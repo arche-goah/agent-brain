@@ -127,7 +127,11 @@ function judge(input) {
   }
   if (!missing.length) return null;
   const why = now.asks ? 'the operator asked what is open' : 'the autonomous run has ended';
-  return `DECISION-PRESENTATION: ${why}${wasOn ? ' (the autonomous mode was on)' : ''} - prose is not the way. Missing: ${missing.join('; ')}`;
+  // The seam to question-gate (macOS instance, branch feat/question-recheck-before-reask): that hook
+  // checks freshness when a register question is put again; this one only says so.
+  return `DECISION-PRESENTATION: ${why}${wasOn ? ' (the autonomous mode was on)' : ''} - prose is not the way. ` +
+    'Before putting a register question again, re-measure it (question-gate recheck) or close it (resolve). ' +
+    `Missing: ${missing.join('; ')}`;
 }
 
 if (require.main === module) {
