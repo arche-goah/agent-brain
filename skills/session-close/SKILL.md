@@ -41,17 +41,16 @@ then an explicit release follows.
      it is dropped and why. The close is complete when the summary says `loose=0` or every
      remaining line is named as dropped. The brain-scan (effect-check E6) catches what a
      session without a clean close left behind.
-   - **LESSONS WITHOUT A CARRIER — none leaves the session (2026-10-25):** run
-     `python3 core/scripts/lesson-carriers.py --since <today>` (interpreter per instance rule;
-     protocol path and key words from `.claude/rules/lesson-carriers.json`, defaults built in).
-     Every line `lesson without carrier: …` is an operator correction written into the feedback
-     protocol today without saying what carries it. Per line: add the line `Traeger: <check,
-     gate, script, skill or doc>` to the entry — or `Traeger: Prosa, weil <why no mechanism
-     fits>`, which is a decision, not a gap. The close is complete when the summary says
-     `loose=0` or every remaining line is named as dropped in the close report. Why at the
-     close and not as a stop check (operator 2026-10-25): the entries are written one to three
-     times a session and the carrier question needs thought, not a block; the brain-scan
-     machine step reads every entry since the last scan.
+   - **LESSONS THAT DO NOT BIND — none leaves the session (2026-10-25, sharpened 2026-10-26):** run
+     `python3 core/scripts/carrier-audit.py --since <today>` (interpreter per instance rule; protocol
+     path and key words from `.claude/rules/lesson-carriers.json`). Every line that is not `GATE`
+     or `PENDING` is an operator correction written today that nothing enforces. Per line: build the
+     mechanism (a gate, gate data, a mechanism-rules row, a CI step) and name it on the entry's
+     carrier line — prose is accepted only with the operator's quoted word (`operator-ok: "<quote>"`).
+     The pre-commit hook already refuses a new entry that does not bind; this step catches what was
+     written but not yet committed. SUPERSEDED (operator 2026-10-26: "a rule entered in the feedback
+     amounts to an empty promise in the long run"): the 2026-10-25 wording "`Prose, because …` is a
+     decision, not a gap" and "the carrier question needs thought, not a block".
    - **REACH — what this session changed with reach beyond this brain reached the shared
      memory (2026-10-25):** run `python3 core/scripts/shared-reach-check.py --since <today>`
      (interpreter per instance rule; shared repo, domain roots, exclude list and the pointer
