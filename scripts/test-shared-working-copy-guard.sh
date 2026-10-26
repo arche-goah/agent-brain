@@ -129,6 +129,12 @@ probe "foreign rebase, one session"  "$ONE" "git -C $REPO_N rebase --continue"  
 rmdir "$GD/rebase-merge"
 probe "no operation: write passes"   "$TWO" "git -C $REPO_N add a.txt"                              allow sess-B
 [ -e "$GD/claude-op-owner" ] && bad "owner file not cleared after the operation ended" || ok "owner file cleared"
+# measured 2026-10-26 (Windows): the documented path "pull --rebase with the marker" followed by a status in the
+# same command — the status call saw no operation yet (the hook runs before the command) and deleted the owner
+# the pull had just recorded; the session's own `rebase --continue` was then refused as foreign
+probe "marker pull --rebase; status"  "$TWO" "git -C $REPO_N pull --rebase; git -C $REPO_N status --short  # MECHANISM-OK: fixture" allow sess-A
+[ "$(cat "$GD/claude-op-owner" 2>/dev/null)" = "sess-A" ] && ok "owner kept when a later call in the same command reads" || bad "owner dropped by a later call in the same command"
+rm -f "$GD/claude-op-owner"
 
 echo "fail-open:"
 probe "not a git repo"               "$TWO" "git -C $TMP_N/nowhere commit -m x"                     allow
