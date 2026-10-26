@@ -28,7 +28,14 @@ import re
 import sys
 from pathlib import Path
 
-STATE = ["alpha", "parked", "paused", "on hold"]
+# brain-scan-prep.py parses this output (OS-9): pinned to UTF-8, the platform's console code page
+# would write a non-ASCII rule line as bytes that are not UTF-8 on Windows.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+except (AttributeError, ValueError):
+    pass
+
+STATE =["alpha", "parked", "paused", "on hold"]
 UNTIL = ["until", "till", "expires"]
 
 
@@ -71,14 +78,14 @@ def main(argv=None):
             for d in dates:
                 if d < a.today:
                     expired += 1
-                    print(f"state in prose: {rel}:{n} says until {d}, which has passed — "
+                    print(f"state in prose: {rel}:{n} says until {d}, which has passed - "
                           "name the record (local-machinery.json id) instead of its date, or update it")
             for key, until in declared.items():
                 name = key.rsplit("/", 1)[-1]
                 if until and name and name in line and until not in dates:
                     drift += 1
                     print(f"state in prose: {rel}:{n} names {name} with until {', '.join(dates)}, "
-                          f"local-machinery.json says {until} — keep one copy (the record)")
+                          f"local-machinery.json says {until} - keep one copy (the record)")
     print(f"state-prose summary: lines={seen} expired={expired} drift={drift}")
     return 0
 
