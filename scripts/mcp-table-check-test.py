@@ -73,5 +73,21 @@ check("every backticked name in the first cell counts (combined row, name plus n
 rc, out = run(brain(["arena", "gma"], COMBINED))
 check("a combined row still names its extra server when that server is gone", rc == 1 and "row without server: wire" in out, out)
 
+# a note in parentheses names no server; a row may name a server of an ENABLED plugin (macOS finding 2026-10-26)
+PLUGIN_ROW = ("## MCP Servers\n\n| MCP | Use |\n|---|---|\n| alpha | a |\n"
+              "| `grandma3` (Plugin `grandma3-next`, Tools `mcp__plugin_x__*`) | a plugin server |\n")
+cache = pathlib.Path(tempfile.mkdtemp())
+(cache / "mkt" / "grandma3-next" / "1.0.0").mkdir(parents=True)
+(cache / "mkt" / "grandma3-next" / "1.0.0" / ".mcp.json").write_text(json.dumps({"mcpServers": {"grandma3": {}}}), encoding="utf-8")
+os.environ["MCP_TABLE_PLUGIN_CACHE"] = str(cache)
+root = brain(["alpha"], PLUGIN_ROW)
+(root / ".claude" / "settings.json").write_text(json.dumps({"enabledPlugins": {"grandma3-next@mkt": True}}), encoding="utf-8")
+rc, out = run(root)
+check("a plugin server named in a row is no finding; the note in parentheses names nothing", rc == 0 and out == "", out)
+(root / ".claude" / "settings.json").write_text(json.dumps({"enabledPlugins": {"grandma3-next@mkt": False}}), encoding="utf-8")
+rc, out = run(root)
+check("the same row with the plugin switched off is named", rc == 1 and "row without server: grandma3" in out
+      and "grandma3-next" not in out.split("row without server:")[1], out)
+
 print("mcp-table-check-test: " + ("all checks passed" if not fails else f"{fails} FAILED"))
 sys.exit(1 if fails else 0)
