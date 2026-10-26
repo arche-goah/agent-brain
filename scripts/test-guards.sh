@@ -257,6 +257,12 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: wait loop via Monitor" Monitor command "until [ -s out.txt ]; do sleep 10; done; cat out.txt" allow
   tr_probe "mechanism-guard/core rule: a loop without sleep" Bash command "for f in a b; do echo \$f; done" allow
   tr_probe "mechanism-guard/core rule: a short retry with sub-second sleep" Bash command "until mkdir lock 2>/dev/null; do sleep 0.2; done" allow
+  # class sweep of the same day: waiting scripts by name
+  tr_probe "mechanism-guard/core rule: wait-mcp-reconnect in the foreground" Bash command "bash core/scripts/wait-mcp-reconnect.sh touchdesigner" block
+  tr_probe "mechanism-guard/core rule: shared-memory-watch in the foreground" Bash command "bash core/scripts/shared-memory-watch.sh watch 300" block
+  tr_probe "mechanism-guard/core rule: shared-memory-watch via Monitor" Monitor command "bash core/scripts/shared-memory-watch.sh watch 300" allow
+  tr_probe "mechanism-guard/core rule: a watch script's status call" Bash command "bash core/scripts/collab-watch.sh status" allow
+  tr_probe "mechanism-guard/core rule: a watch script's own fixture" Bash command "bash scripts/test-shared-memory-watch.sh" allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then

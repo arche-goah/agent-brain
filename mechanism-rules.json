@@ -25,6 +25,12 @@
       "foreground_only": true,
       "was": "a self-written wait loop (until/while ... sleep N) in the foreground - measured 2026-10-26 on the macOS instance: a loop waiting for two test runs held the session until the operator pressed ctrl+b; the two rules above list commands by NAME, the loop is the generic form of the same wait",
       "instead": "Start the loop detached (Bash run_in_background, or Monitor) and keep working; its end arrives as a notification. A background job you already started notifies on its own - no loop needed (Working Rule #13)."
+    },
+    {
+      "pattern": "(?:^|[^\\w-])(?!test-)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h|status|stop|disarm)\\b)",
+      "foreground_only": true,
+      "was": "a waiting script (wait-*.sh, *-watch.sh: reconnect, link, collab, repo-activity, shared-memory watches) in the foreground - the class sweep of the wait-loop rule (2026-10-26): these scripts are the same wait under a name, and only ci-watch.sh was listed",
+      "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A status, stop or help call passes."
     }
   ]
 }
