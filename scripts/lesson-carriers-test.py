@@ -100,5 +100,53 @@ with tempfile.TemporaryDirectory() as d:
     rc, out = run(repo, "--protocol", str(repo / "nope.md"))
     check(rc == 0 and "NOT checked" in out, "an unreadable protocol is said, never read as clean")
 
+    # second source: feedback memories name their carrier in metadata.carrier
+    check("lesson-carriers memory:" not in out, "no memory folder -> no memory line (the temp repo has none)")
+    mem = repo / "mem"
+    mem.mkdir()
+    (repo / "helpers").mkdir()
+    (repo / "helpers" / "bar-gate.cjs").write_text("// refuses X before Y\n", encoding="utf-8")
+
+    def memory(name, mtype, carrier=None, modified="2026-10-20"):
+        extra = f"\n  carrier: {carrier}" if carrier is not None else ""
+        (mem / name).write_text(f"---\nname: {name[:-3]}\ndescription: d\nmetadata:\n  type: {mtype}{extra}\n"
+                                f"  modified: {modified}T10:00:00Z\n---\n\nbody\n", encoding="utf-8")
+
+    memory("fb-carried.md", "feedback", "helpers/bar-gate.cjs :: refuses X before Y")
+    memory("fb-prose.md", "feedback", "prose, because it is the operator's taste")
+    memory("fb-none.md", "feedback")
+    memory("fb-file-gone.md", "feedback", "helpers/gone.cjs :: refuses X")
+    memory("fb-phrase-gone.md", "feedback", "helpers/bar-gate.cjs :: allows everything")
+    memory("fb-free-text.md", "feedback", "the gate")
+    memory("fb-old.md", "feedback", modified="2026-09-01")
+    memory("project-fact.md", "project")
+    (mem / "MEMORY.md").write_text("- [x](fb-none.md)\n", encoding="utf-8")
+    (mem / "index-feedback.md").write_text("---\nname: index-feedback\nmetadata:\n  type: feedback\n---\n", encoding="utf-8")
+
+    rc, out = run(repo, "--memory", str(mem))
+    check(rc == 0 and "lesson-carriers memory: memories=7 carried=2 loose=5" in out,
+          f"seven feedback memories, two carried (file+phrase, prose): {out.strip().splitlines()[-1]}")
+    check("memory without carrier: fb-none.md — no metadata.carrier" in out, "a missing field is named")
+    check("fb-file-gone.md — carrier file helpers/gone.cjs missing" in out, "a missing carrier file is named")
+    check("fb-phrase-gone.md — phrase not in helpers/bar-gate.cjs" in out, "a phrase the file does not hold is named")
+    check("fb-free-text.md — carrier 'the gate' is not" in out, "free text without '::' is named")
+    check("fb-carried.md" not in out and "fb-prose.md" not in out, "carried memories stay silent")
+    check("project-fact.md" not in out and "index-feedback.md" not in out and "MEMORY.md" not in out,
+          "other types, the index and topic indexes are not checked")
+    check("lesson-carriers summary: entries=5" in out, "the protocol line is unchanged by the memory source")
+
+    rc, out = run(repo, "--memory", str(mem), "--since", "2026-10-15")
+    check("lesson-carriers memory: memories=6" in out, "--since drops a memory modified before it (fb-old)")
+
+    rc, out = run(repo, "--memory", str(mem), "--json")
+    data = json.loads(out)
+    check(data["memory"]["memories"] == 7 and len(data["memory"]["loose"]) == 5, "--json carries the memory block")
+
+    # negative control: instance data names another type -> nothing is checked, the line says 0
+    (rules / "lesson-carriers.json").write_text(json.dumps({"memory_types": ["user"]}), encoding="utf-8")
+    rc, out = run(repo, "--memory", str(mem))
+    check("lesson-carriers memory: memories=0 carried=0 loose=0" in out, "negative control: memory_types decides what is checked")
+    (rules / "lesson-carriers.json").unlink()
+
 print("lesson-carriers-test: " + ("all checks passed" if fails == 0 else f"{fails} check(s) FAILED"))
 sys.exit(1 if fails else 0)
