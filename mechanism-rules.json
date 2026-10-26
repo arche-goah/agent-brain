@@ -12,7 +12,7 @@
       "pattern": "(?:\\bci-watch\\.sh\\s+(?:pr|ref)\\b|\\bgh\\s+run\\s+watch\\b|\\bgh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
       "foreground_only": true,
       "was": "waiting for CI in the foreground - a core CI run takes about 15 minutes and holds the whole session; several PRs in a row cost hours",
-      "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; the verdict arrives as a notification (Working Rule #9). Several PRs: one detached watch each, in parallel."
+      "instead": "Start the same command with Bash run_in_background and keep working; the verdict arrives as a notification (Working Rule #9). Not through Monitor: the harness ends a Monitor after 30 min at most, and a core CI run takes about 36 min (2026-10-26). Several PRs: one detached watch each, in parallel."
     },
     {
       "pattern": "(?:^|[^\\w-])ci-lint-local\\.sh\\b",

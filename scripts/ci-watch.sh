@@ -45,10 +45,14 @@
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
 #   CI_WATCH_SHA=<pushed sha> scripts/ci-watch.sh pr …   # after a push: wait for THAT head
 #   A second call for the same target on this machine attaches to the first (point 6).
-# Defaults: timeout 1800 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
+# Defaults: timeout 3600 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
 # The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
 # `portability (windows-latest)` ran 13m41s and 14m26s, plus queue time — the old 900 s
 # ended a watch on a run that turned green minutes later (UNKNOWN, honest but useless).
+# Raised 1800 -> 3600 s on 2026-10-26: since the CI runs every fixture suite on three systems a
+# run takes about 36 min (Windows-bound); three watches after three merges that day all ended
+# UNKNOWN at 1800 s on runs that were green. Start it with Bash run_in_background, NOT Monitor:
+# the harness kills a Monitor after 30 min at most, so a Monitor watch cannot outlast such a run.
 set -u
 
 # Resolve the Python interpreter: the python.org installer on Windows ships ONLY
@@ -59,7 +63,7 @@ set -u
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 
-MODE="${1:-}"; REPO="${2:-}"; TARGET="${3:-}"; TIMEOUT="${4:-1800}"
+MODE="${1:-}"; REPO="${2:-}"; TARGET="${3:-}"; TIMEOUT="${4:-3600}"
 POLL="${CI_WATCH_POLL:-15}"
 
 usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_s]" >&2; exit 2; }
