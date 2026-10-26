@@ -311,4 +311,63 @@ PREVIEW_GONE="<persisted-output> Output too large (10.3KB). Full output saved to
 f="$T/22c.jsonl"; { boot_ok startup "$PREVIEW_GONE"; user "stand?"; asst "$GOOD_EN"; } > "$f"
 check "persisted bootup whose file is gone: preview only, no block found (control)" "$f" block "$EN"
 
+# 23 — any later turn: an item the list prints as ours is not moved to someone else in prose
+# (measured 2026-10-26 on the Windows instance: an own PR, "[PR|ai] … still ours" at three
+# starts, went under "open (with others)" at each close; the operator closed on that answer).
+# A wait passes only as data: the instance's `waiting` map or a fresh open-items.py record.
+CLOSE_BAD="Persisted.
+- **Open (with others):**
+  - claude-marketplace #61 waits for the reviewer's read.
+You can shut down."
+CLOSE_OURS="Persisted. Still ours: claude-marketplace #61 — I merge it next session. You can shut down."
+f="$T/23a.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_BAD"; } > "$f"
+check "later turn: an ours item put under a with-others heading" "$f" block "$EN"
+f="$T/23b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Only #61, it is waiting on the owner."; } > "$f"
+check "later turn: an ours item said to wait, same line" "$f" block "$EN"
+f="$T/23c.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_OURS"; } > "$f"
+check "later turn: the same item said as ours" "$f" allow "$EN"
+f="$T/23d.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "#112 is waiting on its owner."; } > "$f"
+check "later turn: a parked item said to wait (not ours, control)" "$f" allow "$EN"
+WS="$T/cwd-seen"; mkdir -p "$WS/.claude-state"
+printf '%s\n' '{"items":{"claude-marketplace#61":{"first":"2026-10-07","sessions":[],"wait":"waiting on someone: our review is in"}}}' > "$WS/.claude-state/open-items-seen.json"
+f="$T/23e.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_BAD"; } > "$f"
+check "later turn: the wait on record in a fresh open-items run" "$f" allow "$WS"
+WM="$T/cwd-wait"; mkdir -p "$WM/.claude/rules"
+printf '%s\n' '{"waiting":{"claude-marketplace#61":{"until":"2099-01-01","why":"reviewer"}}}' > "$WM/.claude/rules/open-items.json"
+check "later turn: the wait on record in the instance waiting map" "$f" allow "$WM"
+WD="$T/cwd-wait-de"; mkdir -p "$WD/.claude/rules"
+printf '%s\n' '{"wait_patterns":["\\bbei anderen\\b","\\bwartet auf\\b"]}' > "$WD/.claude/rules/open-items.json"
+f="$T/23f.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "noch was offen?"; asst "Gesichert.
+- **Offen (bei anderen):**
+  - claude-marketplace #61: es fehlt nur noch die Durchsicht."; } > "$f"
+check "later turn, German heading through instance data" "$f" block "$WD"
+check "later turn, German heading without instance data (built-ins are English)" "$f" allow "$EN"
+# The close turn (session-closing.sh --pre-commit ran) and every "nothing open" must name what
+# is still ours (measured 2026-10-25: a close said "all saved" and named none).
+CLOSE_CMD='{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"bash core/helpers/session-closing.sh --pre-commit --session x"}}]}}'
+GOOD_ALL="$GOOD_EN"
+f="$T/23g.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "close the session"; echo "$CLOSE_CMD"; asst "Persisted - you can shut down."; } > "$f"
+check "close report naming none of the ours items" "$f" block "$EN"
+f="$T/23h.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "close the session"; echo "$CLOSE_CMD"; asst "Still ours: #61, the fixtures answer (09-13); for you: 09-05 TD split, 09-08 bridge question. Persisted - you can shut down."; } > "$f"
+check "close report naming every ours item" "$f" allow "$EN"
+f="$T/23i.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "anything left?"; asst "No, nothing is open."; } > "$f"
+check "a later 'nothing open' while ours items stand" "$f" block "$EN"
+WG="$T/cwd-gone"; mkdir -p "$WG/.claude-state"
+printf '%s\n' '{"items":{"show-tools/anfrage-td-2026-09-05.md":{"first":"2026-10-01","sessions":[]},"event-network/anfrage-bridge-2026-09-08.md":{"first":"2026-10-01","sessions":[]},"core/anfrage-fixtures-2026-09-13.md":{"first":"2026-10-01","sessions":[]}}}' > "$WG/.claude-state/open-items-seen.json"
+f="$T/23j.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "and now?"; asst "Persisted.
+- **Open (with others):**
+  - #61 merged, waiting for a tag."; } > "$f"
+check "an item a later run no longer lists (merged) under a with-others heading" "$f" allow "$WG"
+check "the same reply while the item still stands (control)" "$f" block "$EN"
+# The operator asks whether anything is still open: the answer names what is ours (measured
+# 2026-10-25: "surely all closed, final?" — "persisted, you can shut down", nothing named).
+f="$T/23k.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "anything still open?"; asst "Persisted - you can shut down."; } > "$f"
+check "'anything still open?' answered without the ours items" "$f" block "$EN"
+f="$T/23l.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "anything still open?"; asst "Still ours: #61 and the fixtures answer (09-13); for you: 09-05 TD split, 09-08 bridge question."; } > "$f"
+check "'anything still open?' answered with every ours item" "$f" allow "$EN"
+f="$T/23m.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "sicher alles abgeschlossen final?"; asst "Persistiert, du kannst herunterfahren."; } > "$f"
+printf '%s\n' '{"ask_patterns":["\\balles\\b[^?\\n]{0,30}\\babgeschlossen\\b"]}' > "$WD/.claude/rules/open-items.json"
+check "German ask through instance data" "$f" block "$WD"
+check "German ask without instance data (control)" "$f" allow "$EN"
+
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

@@ -56,6 +56,7 @@ const fs = require('fs');
 const path = require('path');
 const { isSkillExpansion, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
 const { autonomousMode } = require('./autonomous-mode.cjs');
+const { PRE_COMMIT } = require('./close-stamp.cjs');
 
 const MAX_BYTES = 16 * 1024 * 1024; // the first turn sits at the top; a huge file is past it
 const BOOTUP = /session-bootup\.sh/;
@@ -74,6 +75,11 @@ const BUILTIN = {
   goahead: ['\\bgo ahead\\b', '\\b(handle|do|finish|work through) (it all|them all|all of (it|them)|everything)\\b'],
   // items under a standing approval: reported as done or under way
   handled: ['\\b(handled|handling|answered|answering|done|in progress|under ?way|working on|taken care of|taking care of)\\b'],
+  // an item said to be someone else's move (the relabel check below)
+  // an operator prompt that asks whether anything is still open — the answer names what is ours
+  ask: ['\\banything (still |else )?(open|left|pending)\\b', '\\b(are we|is everything|all) (done|finished|closed)\\b'],
+  // (not "the other side": that also describes a peer's own activity — fixture 19a)
+  wait: ['\\bwait(s|ing)? (on|for)\\b', '\\bwith (the )?others\\b', '\\btheir (move|turn)\\b'],
 };
 
 /** n -> RegExp matching "<n> <day unit>"; units are built-ins plus instance `age_unit_patterns`. */
@@ -127,6 +133,9 @@ function readTurn(tp) {
   let first = '';
   let total = 0;
   let reply = [];
+  let last = []; // the running turn: every reply since the newest operator prompt
+  let lastCmds = []; // ...and its shell commands (is it the session-close turn?)
+  let lastPrompt = '';
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     let d;
@@ -137,7 +146,7 @@ function readTurn(tp) {
       if (att.type === 'hook_cancelled') boot = { kind: 'cancelled', source, ms: att.durationMs };
       else if (att.type === 'hook_success') boot = { kind: 'ok', source, text: persistedText(String(att.content || att.stdout || '')) };
       else continue;
-      prompts = 0; reply = []; first = '';
+      prompts = 0; reply = []; first = ''; last = []; lastCmds = [];
       continue;
     }
     const msg = d.message;
@@ -145,8 +154,14 @@ function readTurn(tp) {
     if (msg.role === 'user') {
       if (isSkillExpansion(d) || isPeerMessage(d)) continue;   // a loaded skill's text or another agent's report is no second prompt
       const t = promptText(msg);
-      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; if (prompts === 1) first = t; }
+      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; last = []; lastCmds = []; lastPrompt = t; if (prompts === 1) first = t; }
       continue;
+    }
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const b of msg.content) {
+        if (b.type === 'text' && b.text) last.push(b.text);
+        else if (b.type === 'tool_use' && b.input && typeof b.input.command === 'string') lastCmds.push(b.input.command);
+      }
     }
     if (msg.role === 'assistant' && prompts === 1 && Array.isArray(msg.content)) {
       for (const b of msg.content) {
@@ -159,7 +174,7 @@ function readTurn(tp) {
       }
     }
   }
-  return { boot, prompts, total, first, reply: reply.join('\n') };
+  return { boot, prompts, total, first, reply: reply.join('\n'), last: last.join('\n'), lastCmds, lastPrompt };
 }
 
 /**
@@ -298,6 +313,59 @@ function named(item, reply, ageRx, generic) {
 
 const hasNumber = (n, text) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(text);
 
+/**
+ * Any turn, not only the first: a reply may not move an item the list prints as OURS onto
+ * someone else's plate in prose. Measured 2026-10-26 (Windows instance): one own PR stood as
+ * "[PR|ai] … still ours" at three session starts; at each close, and in answers to the
+ * operator's "is anything still open?", the reply put it under "open (with others) — waits on
+ * the collaborator's read", following a superseded line of that repo's own rules. The operator
+ * closed on that answer each time. The list was right; the prose overrode it with nothing on
+ * record. A wait counts only as data: the PR's `waiting-until:` line, the instance's `waiting`
+ * map in open-items.json, or a fresh open-items.py run that now prints the item as waiting
+ * (its record in .claude-state/open-items-seen.json). A bullet under a heading that says
+ * "with others" says it too.
+ */
+function relabelled(t, cwd) {
+  if (!t.boot || t.boot.kind !== 'ok' || !t.last) return null;
+  const blk = parseBlock(t.boot.text);
+  if (!blk) return null;
+  let waits = {};
+  let seen = {};
+  try { waits = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'rules', 'open-items.json'), 'utf8')).waiting || {}; } catch (e) { /* none */ }
+  try { seen = JSON.parse(fs.readFileSync(path.join(cwd, '.claude-state', 'open-items-seen.json'), 'utf8')).items || {}; } catch (e) { /* none */ }
+  const keys = (it) => [it.id, it.key, it.base].filter(Boolean);
+  const recorded = (it) => keys(it).some((k) => waits[k] || (seen[k] && seen[k].wait));
+  // A later open-items.py run that no longer lists the item: closed meanwhile (a merged PR).
+  const gone = (it) => Object.keys(seen).length > 0 && !keys(it).some((k) => seen[k]);
+  const ours = blk.items.filter((it) => ['ai', 'human', 'standing'].includes(it.cls) && !recorded(it) && !gone(it));
+  if (!ours.length) return null;
+  const waitRx = patterns(cwd, 'wait');
+  const ageRx = ageMatcher(cwd);
+  const generic = genericWords(cwd);
+  const bad = [];
+  let head = false;
+  for (const l of t.last.split('\n')) {
+    const under = /^\s+[-*\d]/.test(l);
+    if (!under) head = waitRx.test(l) && /:[*_]*\s*$/.test(l);
+    if (!waitRx.test(l) && !(under && head)) continue;
+    for (const it of ours) if (!bad.includes(it) && named(it, l, ageRx, generic)) bad.push(it);
+  }
+  if (bad.length) {
+    return `This reply puts ${bad.map((it) => it.ref).join(', ')} with someone else, but the session start lists it as ours and no wait is on record. Say it as ours (do it, or ask), or record the wait as data first: a \`waiting-until: <date>: <why>\` line in the PR body, the \`waiting\` map in .claude/rules/open-items.json, or a rerun of open-items.py when the other side's move is on record. Missing: wait record for ${bad.map((it) => it.ref).join(', ')}`;
+  }
+  // The close report, the answer to "is anything still open?", and every "nothing open" name
+  // what is still ours — the operator shuts down on that answer (measured 2026-10-25: asked
+  // "surely all closed, final?", the reply said "persisted, you can shut down" and named none).
+  // The first turn has its own check below.
+  if (t.prompts === 1) return null;
+  const closing = (t.lastCmds || []).some((c) => PRE_COMMIT.test(c));
+  const asked = patterns(cwd, 'ask').test(t.lastPrompt || '');
+  if (!closing && !asked && !patterns(cwd, 'nothing').test(t.last)) return null;
+  const left = ours.filter((it) => !named(it, t.last, ageRx, generic));
+  if (!left.length) return null;
+  return `${closing ? 'The close report' : asked ? 'The answer to "is anything open?"' : 'This reply says nothing is open, but it'} leaves out what the session start lists as ours and is still open — the operator shuts down on this answer. Name each as ours (with where it stands), or record its wait as data first. Missing: ${left.map((it) => it.ref).join(', ')}`;
+}
+
 function judge(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const t = readTurn(input.transcript_path);
@@ -307,6 +375,8 @@ function judge(input) {
     if (t.total !== 1) return null;
     return 'The session-start output never arrived in this session, so the open points were not shown. Run `python3 core/scripts/open-items.py --owner <org>` (or `python`) and report them. Missing: bootup';
   }
+  const moved = relabelled(t, cwd);
+  if (moved) return moved;
   if (t.boot.source === 'compact' || t.prompts !== 1) return null;
   if (t.boot.kind === 'cancelled') {
     return `The session-start hook was cancelled after ${Math.round((t.boot.ms || 0) / 1000)} s — the open points never arrived. Run \`python3 core/scripts/open-items.py --owner <org>\` (or \`python\`) and report them. Clear why in THIS session too: time \`bash core/helpers/session-bootup.sh\`, name the slow part, fix or report it, then \`session-audit.py --ack start:<this session id>\`. Missing: bootup (cancelled)`;
