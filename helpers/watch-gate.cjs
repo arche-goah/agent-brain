@@ -103,6 +103,11 @@ const PR_WATCH = /\b(watch-pr|ci-watch|collab-watch)\.sh\b/;
 // reconnect. The waiter is core/scripts/wait-mcp-reconnect.sh, armed in the same turn BEFORE the request.
 const RELOAD_ASK = /(?:^|[\s`'"(])\/(?:mcp|reload-plugins)\b|\breconnect\b|\bre-?connecten\b|\bwieder verbinden\b/i;
 const RELOAD_WATCH = /\bwait-mcp-reconnect\.sh\b/;
+// (a), (d) a push: `push` as git's SUBCOMMAND — `git [-C <dir>] [-c k=v] [--opt] push`, the dir
+// quoted or not. "git … push" anywhere in the line also read a `git commit -m "… push …"` as a
+// push and demanded a watcher for a run that did not exist (measured 2026-10-25, macOS: a local
+// commit in a worktree of a repo with workflows).
+const GIT_PUSH = /\bgit(?:\s+-[Cc]\s+(?:"[^"]*"|'[^']*'|\S+)|\s+--?[\w-]+(?:=\S+)?)*\s+push\b/;
 // (d) the CI watch of a push: `ci-watch.sh pr|ref <owner/repo> …`, and the repo a gh call names.
 // The script path may be quoted (`bash "C:/…/ci-watch.sh" pr …`): the closing quote sits between `.sh`
 // and the blank. Without `["']?` there, a live watch read as none — measured 2026-10-16 on the Windows
@@ -449,7 +454,7 @@ function ciStarted(shell, root) {
   const out = new Set();
   for (const c of shell) {
     const named = /\bgh\s+pr\s+(?:create|merge)\b/.test(c.cmd);
-    if (!named && !/\bgit\b[\s\S]*\bpush\b/.test(c.cmd)) continue;
+    if (!named && !GIT_PUSH.test(c.cmd)) continue;
     const flag = named && REPO_FLAG.exec(c.cmd);
     if (flag) {
       const slug = flag[1].toLowerCase();
@@ -478,13 +483,34 @@ function field(head, k) {
   return m ? m[1].replace(/^["']|["']$/g, '').trim() : '';
 }
 
+// The turn's window is applied PER COMMIT, not with `git log --since`: git stops walking at the
+// first commit older than the limit and never looks below it, so one commit with an older date (a
+// rebase, a clock skew, a pull of another machine's work) hid every younger one beneath it — the
+// class shared-reach-check.py measured in its fixture (2026-10-25). A control-character line with the
+// committer date heads each commit (not `@@`: that starts every hunk of a `-p` diff); lines until the
+// next head belong to it. The walk is capped: a turn adds few commits.
+const WINDOW_COMMITS = 200;
+const DATE_HEAD = '\x01';
+function logWindow(repo, since, extra) {
+  const args = ['-C', repo, 'log', '--format=%x01%cI', ...extra];
+  args.splice(3, 0, since ? `--max-count=${WINDOW_COMMITS}` : '-1');
+  let raw;
+  try { raw = execFileSync('git', args, { encoding: 'utf8', timeout: 10000 }); } catch (e) { return null; }
+  const start = since ? Date.parse(since) : NaN;
+  const keep = [];
+  let inside = true;
+  for (const line of raw.split('\n')) {
+    if (line.startsWith(DATE_HEAD)) { inside = Number.isNaN(start) || Date.parse(line.slice(1)) >= start; continue; }
+    if (inside) keep.push(line);
+  }
+  return keep.join('\n');
+}
+
 /** Fact files from this instance, committed since the turn began, that wait on someone else. */
 function awaiting(repo, since) {
   const me = tokens(process.env.SHARED_MEMORY_SELF);
-  const args = ['-C', repo, 'log', '--name-only', '--format='];
-  if (since) args.push(`--since=${since}`); else args.push('-1');
-  let names;
-  try { names = execFileSync('git', args, { encoding: 'utf8', timeout: 10000 }); } catch (e) { return []; }
+  const names = logWindow(repo, since, ['--name-only']);
+  if (names === null) return [];
   const out = [];
   for (const rel of new Set(names.split('\n').map((s) => s.trim()).filter(Boolean))) {
     if (!/\.md$/.test(rel) || /(^|\/)(INDEX|LOG|README)\.md$/.test(rel) || /(^|\/)archive\//.test(rel)) continue;
@@ -520,11 +546,8 @@ const LOG_STATUS = /\(\s*status:\s*([\w-]+)/i;
  * note, not a message.
  */
 function awaitingLog(repo, since, me) {
-  const args = ['-C', repo, 'log', '-p', '-U0', '--format=', '--no-renames'];
-  if (since) args.push(`--since=${since}`); else args.push('-1');
-  args.push('--', 'LOG.md', '*/LOG.md');
-  let diff;
-  try { diff = execFileSync('git', args, { encoding: 'utf8', timeout: 10000 }); } catch (e) { return []; }
+  const diff = logWindow(repo, since, ['-p', '-U0', '--no-renames', '--', 'LOG.md', '*/LOG.md']);
+  if (diff === null) return [];
   const out = [];
   let file = '';
   for (const line of diff.split('\n')) {
@@ -578,7 +601,7 @@ function main(input) {
 
   for (const { label, repo } of smChannels(root)) {
     const repoName = path.basename(repo);
-    const smPush = shell.some((c) => /\bgit\b[\s\S]*\bpush\b/.test(c.cmd) && c.cmd.includes(repoName));
+    const smPush = shell.some((c) => GIT_PUSH.test(c.cmd) && c.cmd.includes(repoName));
     if (!smPush || !fs.existsSync(repo)) continue;
     const files = awaiting(repo, since);
     if (files.length && !smWatched(root, label)) {
