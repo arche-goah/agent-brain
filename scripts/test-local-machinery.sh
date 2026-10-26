@@ -148,6 +148,14 @@ printf 'nothing here\n' > "$T/b/docs/reach.md"
 out=$(run); grep -q 'badevidence=1' <<< "$out" && ok "reach-not-naming-the-item-loud" || bad "reach-not-naming-the-item-loud: $out"
 rm -f "$T/b/docs/reach.md"
 out=$(run); grep -q 'badevidence=1' <<< "$out" && ok "reach-file-missing-loud" || bad "reach-file-missing-loud: $out"
+# a folder declared by prefix: naming the prefix in the reach analysis covers every file in it
+mkdir -p "$T/b/scripts/tool"; printf 'echo a\n' > "$T/b/scripts/tool/a.sh"; printf 'echo b\n' > "$T/b/scripts/tool/b.sh"
+printf '| scripts/rig-check.sh | instance |\n| scripts/tool/ | instance, one tool |\n' > "$T/b/docs/reach.md"
+decl "{$T_ID,\"instance\":{\"scripts/rig-check.sh\":{\"why\":\"judged\",\"reach\":\"docs/reach.md\"},\"scripts/tool/\":{\"why\":\"one tool\",\"reach\":\"docs/reach.md\"}}}"
+out=$(run); [[ -z "$out" ]] && ok "reach-naming-the-prefix-silent" || bad "reach-naming-the-prefix-silent: $out"
+printf '| scripts/rig-check.sh | instance |\n' > "$T/b/docs/reach.md"
+out=$(run); grep -q 'badevidence=2' <<< "$out" && ok "reach-naming-neither-prefix-nor-file-loud" || bad "reach-naming-neither-prefix-nor-file-loud: $out"
+rm -rf "$T/b/scripts/tool" "$T/b/docs/reach.md"
 
 # --- near-duplicates of core tools --------------------------------------------------------
 rm -f "$T/b/.claude/rules/local-machinery.json"
