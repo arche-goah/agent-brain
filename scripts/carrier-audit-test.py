@@ -72,6 +72,10 @@ Carrier: `helpers/network-drive-gate.cjs`.
 
 Carrier: the version in `plugin.json` stays until the operator signs.
 
+## 2026-10-20 — Merge with the rule quoted whole
+
+Carrier: `permissions.allow` carries `Bash(gh pr merge * --match-head-commit *)`.
+
 ## 2026-10-20 — Merge only the reviewed head
 
 Carrier: permission rule `--match-head-commit` in the settings.
@@ -151,6 +155,7 @@ with tempfile.TemporaryDirectory() as d:
     check(cls("Tags only for a delivery") == "PENDING", "a PR number alone is PENDING")
     check(cls("Network drives: hard stop") == "REPORT", "a gate file wired NOWHERE does not bind (REPORT)")
     check(cls("No release without the operato") != "GATE", "a manifest (plugin.json) a wired helper reads is no gate (Windows review)")
+    check(cls("Merge with the rule quoted who") == "GATE", "a permission rule quoted whole, spaces included, binds (Windows re-check)")
     check(cls("Merge only the reviewed head") == "GATE", "a permission rule in the settings binds (Windows review)")
     check(cls("Instance keys end a carrier b") == "PROSE", "an instance key from other_keys ends the carrier block")
     check(cls("Shops for shopping lists") == "OPERATOR-OK", "prose with the operator's quoted ok is an accepted decision")

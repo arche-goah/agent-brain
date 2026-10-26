@@ -53,6 +53,7 @@ DEFAULTS = {
 MECH_EXT = re.compile(r"[\w./-]+\.(?:cjs|mjs|js|py|sh|ps1|json|ya?ml)\b")
 PR_REF = re.compile(r"(?:#|PR\s*#?)(\d{1,5})\b")
 BACKTICK = re.compile(r"`([^`\s]{2,80})`")
+BACKTICK_SPACED = re.compile(r"`([^`\n]{6,200})`")   # a permission rule is quoted whole: `Bash(<cmd> <args>)`
 OPERATOR_OK = re.compile(r"operator-ok\s*:\s*[\"“„].{6,}[\"”“]", re.I)
 
 
@@ -235,7 +236,8 @@ def classify(ctext, ctx):
         if tok in ctx["rule_ids"]:
             cls = "GATE"
             found.append(f"mechanism rule `{tok}`")
-        elif len(tok) >= 6 and any(tok in r for r in ctx["perm_rules"]):
+    for tok in BACKTICK_SPACED.findall(ctext):
+        if any(tok in r for r in ctx["perm_rules"]):
             cls = "GATE"
             found.append(f"permission rule `{tok}`")
     if cls:
