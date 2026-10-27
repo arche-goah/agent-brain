@@ -12,13 +12,37 @@
       "pattern": "(?:\\bci-watch\\.sh\\s+(?:pr|ref)\\b|\\bgh\\s+run\\s+watch\\b|\\bgh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
       "foreground_only": true,
       "was": "waiting for CI in the foreground - a core CI run takes about 15 minutes and holds the whole session; several PRs in a row cost hours",
-      "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; the verdict arrives as a notification (Working Rule #9). Several PRs: one detached watch each, in parallel."
+      "instead": "Start the same command with Bash run_in_background and keep working; the verdict arrives as a notification (Working Rule #9). Not through Monitor: the harness ends a Monitor after 30 min at most, and a core CI run takes about 36 min (2026-10-26). Several PRs: one detached watch each, in parallel."
     },
     {
       "pattern": "(?:^|[^\\w-])ci-lint-local\\.sh\\b",
       "foreground_only": true,
       "was": "running the local CI mirror in the foreground - measured 2026-10-25 on the macOS instance: the lint job runs the fixture suites and holds the session for minutes, the operator had to background it by hand",
       "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; read its summary line before claiming green (Working Rule #13)."
+    },
+    {
+      "target": "raw",
+      "pattern": "(?:\\bcommit\\b[^\\n]*?\\s(?:-m|--message)|\\bgh\\s+(?:pr|issue)\\s+\\w+\\b[^\\n]*?\\s(?:-b|--body|--title|-t))[=\\s]*([\"'])(?:(?!\\1)[\\s\\S])*\\n",
+      "was": "multi-line text written into the command itself (a `git commit -m` message, a `gh pr|issue` body or title spanning lines) - permission rules match the whole command text with wildcards, so a word in the text trips an ask rule: measured 2026-10-26 on the Windows instance, a commit message naming `git -C <brain> push` and `main-push` matched the template's `git -C * push * main*` ask and prompted the operator in the middle of an autonomous run",
+      "instead": "Write the text to a file in the scratchpad and pass the file: `git commit -F <file>`, `gh pr create|comment --body-file <file>` (Working Rule #8: multi-line content goes into a file). A one-line `-m` stays fine."
+    },
+    {
+      "pattern": "(?:^|[;&|(\\s])(?:until|while)\\b[^\\n]*?;\\s*do\\b[\\s\\S]*?\\bsleep\\s+[1-9]",
+      "foreground_only": true,
+      "was": "a self-written wait loop (until/while ... sleep N) in the foreground - measured 2026-10-26 on the macOS instance: a loop waiting for two test runs held the session until the operator pressed ctrl+b; the two rules above list commands by NAME, the loop is the generic form of the same wait",
+      "instead": "Start the loop detached (Bash run_in_background, or Monitor) and keep working; its end arrives as a notification. A background job you already started notifies on its own - no loop needed (Working Rule #13)."
+    },
+    {
+      "pattern": "(?:^|[^\\w-])(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
+      "foreground_only": true,
+      "was": "a waiting script (wait-*.sh, *-watch.sh: reconnect, link, collab, repo-activity, shared-memory watches) in the foreground - the class sweep of the wait-loop rule (2026-10-26): these scripts are the same wait under a name, and only ci-watch.sh was listed",
+      "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A help call passes, and so do the `status`/`disarm` subcommands of the two scripts that have them (repo-activity-watch.sh, shared-memory-watch.sh) - collab-watch.sh has none: `collab-watch.sh status` ARMS the watch (measured 2026-10-26)."
+    },
+    {
+      "pattern": "(?:\\bgit\\b[^|;&\\n]*?\\spush\\b[^|;&\\n]*\\s:[^\\s:]|\\bgit\\s+(?:-c\\s+\\S+\\s+)+(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?push\\b[^|;&\\n]*\\s(?:--force|-f\\b|--mirror\\b|\\+))",
+      "was": "a destructive push in a form no permission pattern can catch: a branch delete by colon refspec (`git push origin :feat`), or a force/mirror push behind `git -c k=v` - a deny pattern ending in `:*` is read as a trailing wildcard (docs permissions: `Bash(ls:*)` equals `Bash(ls *)`), so `git push * :*` would deny every push with two arguments, and `-c` moves `push` out of every prefix pattern (found 2026-10-26 by the macOS instance's review of the settings template)",
+      "instead": "Deleting a remote branch or rewriting remote history is the operator's word (destructive). A merged PR's branch goes with `gh pr merge --delete-branch`; anything else: report it and wait for the word.",
+      "needs_operator_word": true
     }
   ]
 }

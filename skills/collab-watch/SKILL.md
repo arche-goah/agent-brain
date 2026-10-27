@@ -102,10 +102,15 @@ opt-out and holds for that session only.
    over this step). A live-behaviour row without its measurement state (date · machine ·
    method, `rules/thinking-protocol.md` evidence chain) gets the question for that state
    as the FIRST review comment — no merge on plausibility; where the suite opted in,
-   `scripts/live-doc-lint.py --changed <base>` names such rows. A counter-check "OK on this OS" of a core PR runs
-   `bash scripts/ci-lint-local.sh` at the PR head (the CI's own steps, read from the
-   workflow) and names its result line — the fixtures of the touched parts alone missed a
-   CI lint step twice on 2026-10-21.
+   `scripts/live-doc-lint.py --changed <base>` names such rows. A counter-check "OK on this OS" of a core PR has two
+   halves (operator decision 2026-10-26): CI runs every fixture suite on ubuntu, macOS and
+   Windows (job `portability`), and the check waits for it green (`ci-watch.sh`, exit 0) —
+   that half replaced the full local run, which took 12-22 min per PR and machine and repeated
+   what CI does; the other half runs on the real machine what CI cannot see: the suites of the
+   touched parts and, where the PR claims behaviour on a live system, that system. Name both
+   result lines. `bash scripts/ci-lint-local.sh` stays the tool for a push without a CI round
+   trip, not part of the check (it was, after the touched fixtures alone missed a CI lint step
+   twice on 2026-10-21 — the CI watch catches that now).
 2. **Findings go on the PR** (`gh pr comment`): values with date, sources with URL. The
    thread is the shared memory of the collaborating brains.
 3. **Measure CI, do not read it off:** `Monitor` on

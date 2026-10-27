@@ -362,11 +362,17 @@ fi
 if [[ -f "$HERE/../scripts/template-drift.py" ]]; then
   "$PY" "$HERE/../scripts/template-drift.py" --repo "$R" 2>/dev/null || true
 fi
+# Every server in .mcp.json has a row in the instance's MCP table and every row a server
+# (a recurring brain-scan finding); silent when both match, table place is instance data.
+boot_mark local-machinery
+if [[ -f "$HERE/../scripts/mcp-table-check.py" ]]; then
+  "$PY" "$HERE/../scripts/mcp-table-check.py" --repo "$R" 2>/dev/null || true
+fi
 
 # Memory limits (enforced since Claude Code v2.1.83: 200 lines / 25 KB — CHANGELOG entry
 # "MEMORY.md index now truncates at 25KB as well as 200 lines" is in the 2.1.83 block.
 # Until 2026-08-04 this said v2.1.210; the numbers were right, the attribution wasn't.)
-boot_mark local-machinery
+boot_mark mcp-table
 if [[ -f "$M" ]]; then
   ml=$(wc -l < "$M" | tr -d ' '); mb=$(wc -c < "$M" | tr -d ' ')
   mwarn=""; (( ml > 180 || mb > 23000 )) && mwarn=" !! near limit"

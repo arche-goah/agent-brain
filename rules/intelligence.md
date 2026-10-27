@@ -160,6 +160,11 @@ What reaches the operator is sorted first (operator decision 2026-09-18).
 - **Measurable is not an open point** (operator decision 2026-10-04): what a tool can read live is
   measured BEFORE the report.
 - **Hands-on items** surface only when work is on exactly that system (operator decision 2026-09-18).
+- **A step that needs only the operator's word is a question, never an instruction** (operator
+  correction 2026-10-26): "Shall I run X now?" through the question tool, and on yes the AI runs it
+  and measures the effect — no "type `!` and then …" in prose. Only a step their hand alone can take
+  is written out, as the first line, alone. The close report holds its release while one is open
+  (skill `session-close`, step 5).
 - **Parked domains** are neither presented nor worked (operator decision 2026-09-18); a security
   finding on a wired carrier is reported once, another party's request gets an answer (2026-10-08).
 - **A point the operator deferred is said once per session — and only the operator defers**
@@ -168,7 +173,10 @@ What reaches the operator is sorted first (operator decision 2026-09-18).
   report. A question replied past is unanswered, not deferred: asked again with an own prefix line
   ("open since N sessions:") before the byte-identical question. **The agent closes its own question
   once its work has answered it** (operator decision 2026-10-11) as `answered`; only `deferred` needs
-  the operator's words. Carried by `core/helpers/question-gate.cjs`.
+  the operator's words. **A recorded question is measured before it is asked again** (2026-10-26):
+  the record is a snapshot of the day it was asked — its topic (ledger, device, log) is read first,
+  and an answer found there closes it. Carried by `core/helpers/question-gate.cjs` (`recheck`, and a
+  hook on the question tool).
 - **Name the server, never "the MCP"** (operator decision 2026-08-20); generally, check that a
   proposal's load-bearing word is unambiguous for the reader (2026-09-18).
 

@@ -59,6 +59,15 @@
       "maxLength": 200
     },
     {
+      "label": "CAUSE",
+      "marker": "ROOT-CAUSE-GATE",
+      "cmd": "core/helpers/root-cause-gate.cjs",
+      "mode": "block",
+      "extract": "reads as a correction or a mishap:\\s*\"([^\"]+)\"",
+      "template": "\"{1}\" reads as a correction or a mishap, and the reply names no cause - measure it and write the Cause line before the turn ends",
+      "maxLength": 120
+    },
+    {
       "label": "PREMISE",
       "marker": "PREMISE-GATE",
       "cmd": "core/helpers/premise-gate.cjs",
@@ -104,6 +113,28 @@
       "mode": "block",
       "extract": "without a mechanism written this turn:\\s*([\\s\\S]+?)\\nBuild",
       "template": "A promise about future conduct without a mechanism built this turn: {1} - build the gate now or take the promise back",
+      "maxLength": 240,
+      "onReissue": "run",
+      "required": true
+    },
+    {
+      "label": "DECISIONS",
+      "marker": "DECISION-PRESENTATION",
+      "cmd": "core/helpers/decision-presentation-gate.cjs",
+      "mode": "block",
+      "extract": "Missing:\\s*([^\\n]+)",
+      "template": "Open operator decisions are due now - put them through the question tool, the last question 'continue autonomously?' when a run was on: {1}",
+      "maxLength": 240,
+      "onReissue": "run",
+      "required": true
+    },
+    {
+      "label": "CLOSE-LOSS",
+      "marker": "CLOSE-LOSS",
+      "cmd": "core/helpers/close-loss-gate.cjs",
+      "mode": "block",
+      "extract": "Open:\\s*([^\\n]+)",
+      "template": "The reply releases the operator while something can still be lost: {1} - finish it or withhold the release",
       "maxLength": 240,
       "onReissue": "run",
       "required": true

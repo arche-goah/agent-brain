@@ -1059,6 +1059,15 @@ presentation (operator decision 2026-09-18).
   or reading instead of waiting, is resolved `answered` by the agent with the resolution in
   the note; only `deferred` needs the operator's words. The permission is part of the template; `hook-coverage.py` now reports a
   brain that does not grant it, like an unwired hook.
+  **A recorded question is measured before it is asked again** (2026-10-26, the macOS
+  instance): a question postponed ten days earlier was put to the operator again through the
+  question tool, built word for word from the register's record, while the ledger and the
+  device already carried the answer — the operator: "it is active already, something went
+  wrong". The record is a snapshot of the asking day; "it returns when a measurement changes
+  the situation" (above) had no carrier between listing and asking. Now `list` names the
+  measurement call under a deferred record, and a hook on the question tool refuses a
+  question that raises a deferred, unanswered or orphaned record until it carries a fresh
+  `recheck <id>=<measurement>` stamp or is settled (`question-gate.cjs`).
 - **Name the server, never "the MCP"** (operator decision 2026-08-20) — also in a
   reconnect request. Generally: before a proposal, check that its load-bearing word is
   unambiguous for the reader; an internal short word can mean something else to them
@@ -1110,6 +1119,25 @@ Before each of these actions, internal thinking is REQUIRED:
    unresolved misunderstanding, not a nuance (operator decision 2026-10-05): stop,
    mirror the current function and the presumed expectation in one sentence, get the
    yes, then continue.
+
+**A mishap, a surprise or an operator correction opens the root-cause inquiry by itself**
+(operator order 2026-10-26, the macOS instance; translated): "find the cause and fix it
+generically at the root — I should not have to say it; I want you to do root-cause research
+on your own, always, and fix at the root, up to a core PR when needed, that is the standing
+order"; "I want measurable results for root-cause work based on historical data. It is a
+failure class that problems get fixed on the spot without going deep, and it keeps going on,
+although the instance-and-class question has been there for exactly that since forever";
+"even when it looks like 'only' an instance and no class can be seen, the question for the
+cause is essential". The case: a question postponed ten days earlier was put to the
+operator again from a stale record; the fix on the spot would have been to close it. Items
+4 and 5 above had said "cause before fix" since the first version — as prose; every carrier
+built so far fires one step later (class gate on a file written, lesson carriers on a
+protocol entry written, commitment gate on a promise written), none on the correction.
+Measured over the instance's history before arming (384 transcripts, 5245 operator turns):
+48 turns opened by a correction or mishap, 9 of them answered with a cause line.
+Carriers: `helpers/root-cause-gate.cjs` (Stop check, template entry CAUSE: the turn does not
+end without a Cause line; `--review` replays the detector over the history) and skill
+`root-cause-review` (the heavy tier, with the brain-scan or on a reason).
 
 ### Anti-Hallucination Rules
 
@@ -1228,6 +1256,17 @@ so a changed row there is a finding as well.
 root in 12 days)
 
 Long form before the context diet of 2026-10-20: moved verbatim to `skills/verification-before-completion/references/class-gate.md` (the skill owns the Class Gate).
+
+**Two ways to the class** (operator 2026-10-26, translated): "once a root-cause fix is built
+at the root, it can always be tested on the history, and so the class may be recognised only
+then"; "so there are two ways to the class: the one so far, directly from instance to class
+by recognising the connections, plus the root test — the instance is fixed at its cause, and
+deeper tests of the fix make further instances visible, and so the class is recognised".
+Measured the same day on the first fix of the kind (question-gate `recheck`): the replay
+over 384 transcripts set the match thresholds (38 false hits at the first guess, one true
+hit at the shipped one) — the count IS the class statement. Carrier: skill
+`root-cause-review` step 1 and `helpers/root-cause-gate.cjs --review`; a root-cause fix
+ships with its replay and the count.
 
 ### Confidence Assessment
 
