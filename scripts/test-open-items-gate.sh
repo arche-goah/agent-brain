@@ -342,6 +342,17 @@ f="$T/23f.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; us
   - claude-marketplace #61: es fehlt nur noch die Durchsicht."; } > "$f"
 check "later turn, German heading through instance data" "$f" block "$WD"
 check "later turn, German heading without instance data (built-ins are English)" "$f" allow "$EN"
+# 23w-z — the three false blocks measured on the Windows instance at 762da50 (agent-brain#120).
+f="$T/23w.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Open: the TD split from 2026-09-05 waits for your decision."; } > "$f"
+check "later turn: a human item relayed as waiting for the operator (not a relabel)" "$f" allow "$EN"
+f="$T/23x.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Still ours: #61 - waiting for CI to go green, then I merge it."; } > "$f"
+check "later turn: an ours item waiting for CI, said as ours" "$f" allow "$EN"
+f="$T/23y.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Waiting on others:
+  - a fixtures anfrage of their own, worlds 2D and 3D."; } > "$f"
+check "later turn: topic words under a wait heading do not name an item (strict naming; the old matcher took two slug words)" "$f" allow "$EN"
+f="$T/23z.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Waiting on others:
+  - core/anfrage-fixtures-2026-09-13.md, their review."; } > "$f"
+check "later turn: the exact file under a wait heading still names the item" "$f" block "$EN"
 # The close turn (session-closing.sh --pre-commit ran) and every "nothing open" must name what
 # is still ours (measured 2026-10-25: a close said "all saved" and named none).
 CLOSE_CMD='{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"bash core/helpers/session-closing.sh --pre-commit --session x"}}]}}'

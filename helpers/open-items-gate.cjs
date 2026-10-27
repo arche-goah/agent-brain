@@ -46,7 +46,8 @@
  * Language: a PR is named by `#<n>`, a count as digits; a request by its date, its topic
  * words (file slug), or its age in days. The phrase patterns are English built-ins; an
  * instance adds its own language as DATA in .claude/rules/open-items.json (`<key>_patterns`,
- * lists of regexes; keys: nothing, failed, parked, offer, repeat, age_unit, goahead, handled).
+ * lists of regexes; keys: nothing, failed, parked, offer, repeat, age_unit, goahead, handled,
+ * ask, wait, ours).
  * Items printed `[...|wait]` (the move is someone else's, or a dated wait) need no relay.
  *
  * Output: {"decision":"block","reason":"... Missing: <what>"} — the dispatcher compresses
@@ -80,6 +81,10 @@ const BUILTIN = {
   ask: ['\\banything (still |else )?(open|left|pending)\\b', '\\b(are we|is everything|all) (done|finished|closed)\\b'],
   // (not "the other side": that also describes a peer's own activity — fixture 19a)
   wait: ['\\bwait(s|ing)? (on|for)\\b', '\\bwith (the )?others\\b', '\\btheir (move|turn)\\b'],
+  // a wait line that keeps the item ours or hands it to the operator, not to someone else
+  // ("still ours - waiting for CI, then I merge it", "waits for your decision")
+  ours: ['\\bstill ours\\b', '\\bours\\b', "\\bI(?: will|'ll)? (merge|handle|do|finish|answer)\\b",
+    '\\bwait(s|ing)? (on|for) (you|your)\\b'],
 };
 
 /** n -> RegExp matching "<n> <day unit>"; units are built-ins plus instance `age_unit_patterns`. */
@@ -343,16 +348,25 @@ function relabelled(t, cwd) {
   const gone = (it) => Object.keys(seen).length > 0 && !keys(it).some((k) => seen[k]);
   const ours = blk.items.filter((it) => ['ai', 'human', 'standing'].includes(it.cls) && !recorded(it) && !gone(it));
   if (!ours.length) return null;
-  const waitRx = patterns(cwd, 'wait');
   const ageRx = ageMatcher(cwd);
   const generic = genericWords(cwd);
+  // `human` items are the operator's move already: "waits for your decision" is the truth, not a
+  // relabel (false block measured 2026-10-26 on the Windows instance, agent-brain#120). They stay
+  // in `ours` for the close check below — the operator must still hear them.
+  const movable = ours.filter((it) => it.cls !== 'human');
+  const waitRx = patterns(cwd, 'wait');
+  const oursRx = patterns(cwd, 'ours');
+  // Blocking direction: named only by `#n`, a date or the exact file — the lenient first-reply
+  // matcher read "2D" in "the worlds 2D, 3D" as a request two days old (same measurement).
+  const strict = (it, l) => (it.num ? new RegExp(`#${it.num}(?!\\d)`).test(l)
+    : (it.date && l.includes(it.date.join('-'))) || (it.base && l.includes(it.base)));
   const bad = [];
   let head = false;
   for (const l of t.last.split('\n')) {
     const under = /^\s+[-*\d]/.test(l);
-    if (!under) head = waitRx.test(l) && /:[*_]*\s*$/.test(l);
-    if (!waitRx.test(l) && !(under && head)) continue;
-    for (const it of ours) if (!bad.includes(it) && named(it, l, ageRx, generic)) bad.push(it);
+    if (!under) head = waitRx.test(l) && !oursRx.test(l) && /:[*_]*\s*$/.test(l);
+    if ((!waitRx.test(l) || oursRx.test(l)) && !(under && head)) continue;
+    for (const it of movable) if (!bad.includes(it) && strict(it, l)) bad.push(it);
   }
   if (bad.length) {
     return `This reply puts ${bad.map((it) => it.ref).join(', ')} with someone else, but the session start lists it as ours and no wait is on record. Say it as ours (do it, or ask), or record the wait as data first: a \`waiting-until: <date>: <why>\` line in the PR body, the \`waiting\` map in .claude/rules/open-items.json, or a rerun of open-items.py when the other side's move is on record. Missing: wait record for ${bad.map((it) => it.ref).join(', ')}`;
