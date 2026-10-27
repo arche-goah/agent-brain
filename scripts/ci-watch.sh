@@ -69,6 +69,11 @@ POLL="${CI_WATCH_POLL:-15}"
 usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_s]" >&2; exit 2; }
 [[ "$MODE" == "pr" || "$MODE" == "ref" ]] || usage
 [[ -n "$REPO" && -n "$TARGET" ]] || usage
+# The form is checked here, not by the first gh call (2026-10-27: `pr 33 --repo x` took 33 as the
+# repo and `--repo` as the PR and died later on an unbound variable instead of naming the usage).
+[[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "ci-watch: '$REPO' is not <owner/repo>" >&2; usage; }
+[[ "$MODE" != "pr" || "$TARGET" =~ ^[0-9]+$ ]] || { echo "ci-watch: '$TARGET' is not a PR number" >&2; usage; }
+[[ "$TIMEOUT" =~ ^[0-9]+$ ]] || { echo "ci-watch: timeout '$TIMEOUT' is not a number of seconds" >&2; usage; }
 
 # --- one watch per target on this machine (point 6, 2026-10-26) ---------------------------
 # Several sessions and agents on one machine and one GitHub account each armed their own watch

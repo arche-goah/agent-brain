@@ -467,6 +467,19 @@ L_STALE=$(printf '%s|%s|%s|%s' pr owner/repo 79 "" | cksum | tr -c '0-9\n' '-')
 mv "$TMP/locks/stale" "$TMP/locks/$L_STALE"
 check "dead owner's leftover lock is taken over" pr_green 0 pr 79
 
+# --- argument form (2026-10-27: `pr 33 --repo x` died on an unbound variable) ------------
+form() { # label expected_rc expected_text args...
+  local label="$1" want="$2" text="$3"; shift 3
+  CI_WATCH_STUB=pr_green CI_WATCH_STATE="$TMP/state-form" bash "$WATCH" "$@" >"$TMP/out" 2>&1
+  local got=$?
+  if [[ "$got" == "$want" ]] && grep -q -- "$text" "$TMP/out"; then echo "  OK   $label (rc=$got)"
+  else echo "  FAIL $label: rc=$got wanted $want with '$text'"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); fi
+}
+form "repo not owner/name names the form"  2 "is not <owner/repo>"   pr 33 --repo owner/repo
+form "pr target not a number names it"     2 "is not a PR number"     pr owner/repo --repo
+form "timeout not a number names it"       2 "is not a number of seconds" pr owner/repo 12 soon
+form "valid form still watches (control)"  0 "CI-WATCH GREEN"          pr owner/repo 12 5
+
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
 echo "ci-watch-test: all checks passed"
