@@ -306,6 +306,34 @@ function preTool(input) {
   if (String(input.tool_name || '') !== 'AskUserQuestion') return;
   const qs = ((input.tool_input || {}).questions || []);
   if (!Array.isArray(qs) || !qs.length) return;
+  // The mode question ("continue autonomously?") is asked ALONE, after every step that opens a
+  // dialog. Measured 2026-10-26 on the macOS instance: the operator answered "yes, change the rule
+  // file" and "continue autonomously" in ONE call; the edit ran afterwards, its permission dialog
+  // came up in the run that was already autonomous again (operator: "you gave me an interactive
+  // request in the autonomous part again"). The mode words are the run's on-words (autonomous-mode.cjs).
+  if (qs.length > 1) {
+    let on = null;
+    try { on = require('./autonomous-mode.cjs').words(root(input.cwd)).on; } catch (e) { on = null; }
+    // Only the LAST question counts: that is where the mode question stands by rule, and a question
+    // ABOUT autonomy earlier in the call ("how autonomous should the loop be?") is a decision, not the
+    // mode question (replayed over the history 2026-10-26: matching any question hit two such).
+    const lastQ = qs[qs.length - 1] || {};
+    const mode = on && on.test(`${lastQ.question || ''} ${lastQ.header || ''}`) ? lastQ : null;
+    if (mode) {
+      process.stdout.write(JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason:
+            `QUESTION-GATE: the mode question ("${String(mode.question || '').slice(0, 80)}") is asked together with ${qs.length - 1} other question(s). `
+            + 'Ask the decisions first, carry out every step their answers need (an edit behind an ask rule, a merge the classifier holds, a hand step), '
+            + 'and only then ask the mode question ALONE, as the last call - otherwise those steps open their dialogs in the run that is autonomous again. '
+            + '(Measured 2026-10-26.)',
+        },
+      }));
+      return;
+    }
+  }
   const state = load(root(input.cwd));
   const hits = [];
   for (const q of qs) {
