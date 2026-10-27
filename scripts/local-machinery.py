@@ -27,7 +27,8 @@ Declarations: `.claude/rules/local-machinery.json`
    "instance": {"<id or prefix>": {"why": "...", "evidence": "<token the item contains>",
                                    "distinct_from": "<core name it only resembles>"}},
                  (a rule section without a token may name instead "reach": "<repo file>" — the
-                  reach analysis that judged it; the file must exist and contain its heading)
+                  reach analysis that judged it; the file must exist and contain its heading,
+                  path or the declared prefix)
    "external": {"<id or prefix>": {"source": "<where it comes from>", "why": "..."}},
                  (third-party skills/plugins used as they are — not ours to port to the core)
    "alpha":   {"<id or prefix>": {"until": "YYYY-MM-DD", "why": "<what is being measured>"}}}
@@ -638,10 +639,11 @@ def judge(items, decl, C, today):
             evs = [e for e in evs if len(e.strip()) >= 3]
             reach = d.get("reach") if isinstance(d, dict) else None
             if not evs and reach:
-                # The reach analysis is the evidence: it must exist and name this item.
+                # The reach analysis is the evidence: it must exist and name this item - or the
+                # id/prefix the item is declared under (one line for a whole tool folder).
                 rf = C.root / str(reach)
                 txt = rf.read_text(encoding="utf-8", errors="replace") if rf.is_file() else ""
-                if it["id"].split("#", 1)[-1] not in txt:
+                if not any(n.split("#", 1)[-1] in txt for n in (it["id"], ki)):
                     it["class"] = "badevidence"
                     found["badevidence"].append(f"{it['id']} (reach {reach} does not name it)")
             elif not evs:
