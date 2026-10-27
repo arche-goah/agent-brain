@@ -77,6 +77,13 @@ mode "the operator's ask wording from instance data ends it" "$f" "$DE" interact
 f="$T/7c.jsonl"; { user "weiter autonom"; user "irgendwas offen?"; answer '"Weiter autonom?"="Ja, weiter autonom"'; } > "$f"
 mode "the operator's yes from instance data sets it again" "$f" "$DE" autonomous
 mode "missing transcript fails toward interactive" "$T/none.jsonl" "$EN" interactive
+# The word inside a question mentions the mode, it does not order it (macOS finding 2026-10-27).
+f="$T/8.jsonl"; { user "fix the parser"; user "did I not get the continue autonomously question? why?"; } > "$f"
+mode "the word in a question sets nothing" "$f" "$EN" interactive
+f="$T/8b.jsonl"; { user "keine weiter autonom frage erhalten oder? warum?"; } > "$f"
+mode "the word in a German question sets nothing" "$f" "$DE" interactive
+f="$T/8c.jsonl"; { user "why did it stop? carry on autonomously."; } > "$f"
+mode "an order after a question in the same message sets it" "$f" "$EN" autonomous
 
 # --- stoppen-gate: which way it demands, and the line that passes only in the mode
 gate() { # $1 name, $2 transcript, $3 block|allow, $4 expected text in the reason (block)
