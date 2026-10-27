@@ -170,11 +170,23 @@ rl_wait() {
   deadline=$(( deadline + wait ))
 }
 
+# A transport failure is weather, not a verdict (2026-10-27: `pr 157` ended UNKNOWN on one
+# "TLS handshake timeout" while its CI kept running). ghq retries it a poll later, up to
+# CI_WATCH_NET_MAX in a row (default 5); the waited time extends the deadline like a block.
+NET_RE='TLS handshake timeout|i/o timeout|connection reset|connection refused|unexpected EOF|no such host|context deadline exceeded|HTTP 50[234]'
+NET_MAX=${CI_WATCH_NET_MAX:-5}
+net_fails=0
 ghq() {
   while :; do
     gh_out=$(gh "$@" 2>"$GH_ERR"); gh_rc=$?
     gh_err=$(cat "$GH_ERR" 2>/dev/null)
     if (( gh_rc != 0 )) && grep -qiE "$RL_RE" <<<"$gh_out$gh_err"; then rl_wait; continue; fi
+    if (( gh_rc != 0 )) && grep -qiE "$NET_RE" <<<"$gh_err" && (( net_fails < NET_MAX )); then
+      net_fails=$(( net_fails + 1 ))
+      echo "ci-watch: network error ($(grep -oiE "$NET_RE" <<<"$gh_err" | head -1)), try $net_fails of $NET_MAX — again in ${POLL}s" >&2
+      sleep "$POLL"; deadline=$(( deadline + POLL )); continue
+    fi
+    (( gh_rc == 0 )) && net_fails=0
     if (( rl_since > 0 )); then
       echo "ci-watch: rate-limit block over after $(( $(date +%s) - rl_since ))s — polling resumed" >&2
       rl_since=0; rl_step=0

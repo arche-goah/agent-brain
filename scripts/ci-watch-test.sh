@@ -30,6 +30,11 @@ case "${CI_WATCH_STUB:?}" in
               if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
               else touch "$f"; echo '[{"bucket":"pending"},{"bucket":"pass"}]'; fi ;;
   gh_broken)  echo "HTTP 500 boom" >&2; exit 1 ;;
+  # 2026-10-27: one TLS timeout ended a watch on a running CI. Once = wait; always = unknown.
+  net_flip)   f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
+              else touch "$f"; echo 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout' >&2; exit 1; fi ;;
+  net_dead)   echo 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout' >&2; exit 1 ;;
   # point 6: every gh call is counted, each answer takes real time, so a second watch can attach.
   pr_slow)    echo x >> "${CI_WATCH_STATE:?}.calls"; "$REAL_SLEEP" 1; echo '[{"bucket":"pass"}]' ;;
   # 2026-10-10: right after a merge, `pr checks` answered with exit 0 and a reply that was not
@@ -323,6 +328,8 @@ check "pr 'no checks reported' waits, then timeout(2)" pr_nochecks 2 pr 12 2
 check "pr 'no checks' then green"       pr_nochecks_flip 0 pr 12
 check "pr pending then green"           pr_flip    0 pr 12
 check "gh hard error = unknown"         gh_broken  2 pr 12
+check "one network timeout, then green = GREEN" net_flip 0 pr 12 30
+check "network down on every poll = unknown(2)" net_dead 2 pr 12 30
 check "pr unparseable once, then green" pr_garbage_flip 0 pr 12
 check "pr unparseable three polls = unknown(2)" pr_garbage 2 pr 12 30
 grep -q "3 polls in a row" "$TMP/out" && echo "  OK   unknown names the repeated unparseable reply" \
