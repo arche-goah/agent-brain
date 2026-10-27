@@ -325,16 +325,30 @@ for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json")
 # two days unanswered while both sides saw those lines. scripts/pr-ball.py reads GitHub's
 # own review/commit timestamps and prints one line only when a move has been open for 24 h.
 # One GraphQL call, offline-silent like the search above; never an archived repo (read-only: no move possible).
+# Network waits run CONCURRENTLY with the local checks below (2026-10-27): a Windows start took
+# 27 s of the 30 s hook, the slowest parts being this GraphQL call (6 s) and the shared-memory
+# fetch (5 s) — both wait on the network, not the CPU, and nothing between here and their
+# print reads them. They start now and print later: the shared-memory check at its old place
+# (open-items reads the requests at the fetched origin/main), this line after the open items.
+# Fresh every start, not cached — a whose-move line a day old would name a settled move.
 boot_mark pr-search
-if [[ -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
+BOOT_BG=$(mktemp -d "${TMPDIR:-/tmp}/bootup-bg.XXXXXX" 2>/dev/null || true)
+smc_pid=""; prb_pid=""
+if [[ -n "$BOOT_BG" && -f "$HERE/shared-memory-check.sh" ]]; then
+  OPEN_ITEMS_IN_BOOTUP=1 SHARED_MEMORY_OWNER="$eco_owner" \
+    bash "$HERE/shared-memory-check.sh" < /dev/null > "$BOOT_BG/shared-memory" 2>/dev/null &
+  smc_pid=$!
+fi
+if [[ -n "$BOOT_BG" && -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
   gh api graphql -f q="user:$eco_owner is:pr is:open archived:false" -f query='query($q: String!) { viewer { login }
     search(query: $q, type: ISSUE, first: 40) { nodes { ... on PullRequest {
       number isDraft body repository { name } author { login }
       commits(last: 1) { nodes { commit { oid committedDate } } }
       reviews(last: 30) { nodes { author { login } state submittedAt body } }
       comments(last: 30) { nodes { author { login } createdAt body } }
-      reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } } } } } } } }' 2>/dev/null \
-    | "$PY" "$HERE/../scripts/pr-ball.py" 2>/dev/null
+      reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } } } } } } } }' < /dev/null 2>/dev/null \
+    | "$PY" "$HERE/../scripts/pr-ball.py" > "$BOOT_BG/pr-ball" 2>/dev/null &
+  prb_pid=$!
 fi
 # Open code-scanning alerts across the owner's repos (operator order 2026-09-30): eight
 # CodeQL alerts in the core stood open for seven weeks because nothing showed them. One
@@ -669,8 +683,12 @@ fi
 # instance that does not take part; loud when an instance that takes part has no clone
 # (shared-memory-check.sh says how it tells the two apart).
 boot_mark sessions+scan+orders
-[[ -f "$HERE/shared-memory-check.sh" ]] && OPEN_ITEMS_IN_BOOTUP=1 SHARED_MEMORY_OWNER="$eco_owner" \
-  bash "$HERE/shared-memory-check.sh" 2>/dev/null
+# Started in the background at pr-search; a failed mktemp falls back to the foreground run.
+if [[ -n "$smc_pid" ]]; then
+  wait "$smc_pid"; cat "$BOOT_BG/shared-memory" 2>/dev/null
+elif [[ -f "$HERE/shared-memory-check.sh" ]]; then
+  OPEN_ITEMS_IN_BOOTUP=1 SHARED_MEMORY_OWNER="$eco_owner" bash "$HERE/shared-memory-check.sh" 2>/dev/null
+fi
 # OPEN FOR US (operator correction 2026-10-07): every open request to this instance and
 # every open PR, one list, with how many sessions already reported each item — louder on
 # every repeat. helpers/open-items-gate.cjs (Stop) blocks a first reply that leaves an item
@@ -690,6 +708,9 @@ fi
 # operator — is the rule loaded, is the operator-only list there, and does an everyday commit or
 # push raise a permission dialog (or is every check switched off by Bash(*))? Silent when fine.
 [[ -f "$HERE/../scripts/decision-readiness.py" ]] && CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/decision-readiness.py" 2>/dev/null
+# Whose move (pr-ball, started at pr-search): next to the open items it qualifies.
+if [[ -n "$prb_pid" ]]; then wait "$prb_pid"; cat "$BOOT_BG/pr-ball" 2>/dev/null; fi
+[[ -n "$BOOT_BG" ]] && rm -rf "$BOOT_BG"
 # LOG rotation and entry length (operator decision 2026-09-25): the lint named an
 # oversized LOG with a fix text nobody ran, because nothing ran the lint. This is the
 # trigger — read-only, silent unless a month is due or an own entry is over the cap.
