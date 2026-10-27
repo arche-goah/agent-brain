@@ -753,6 +753,9 @@ def main():
         # A wait is not a report: the counter only runs while the move is ours.
         if not it["wait"] and sid and sid not in rec["sessions"]:
             rec["sessions"] = (rec["sessions"] + [sid])[-50:]
+        # The latest run's wait, for open-items-gate: a reply may call an item someone else's
+        # move only when a run on record says so.
+        rec["wait"] = it["wait"]
         keep[it["id"]] = rec
         it["first"], it["n"] = rec["first"], sum(1 for s in rec["sessions"] if counts(s))
         it["parked"] = any(r.search(it["scope"]) for r in parked_rx)

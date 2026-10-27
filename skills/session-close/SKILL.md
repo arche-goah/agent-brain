@@ -248,7 +248,10 @@ then an explicit release follows.
      changed after step 2 — export and commit it with the close), working tree clean or
      the remainder justified.
 5. **Close report to the operator:** 3-5 lines — what was persisted, what stays open
-   (with its location), then explicitly: "Persisted — you can shut down." Only after
+   (with its location), then explicitly: "Persisted — you can shut down." What stays open
+   names every item the session start listed as ours and still open, said as OURS; one is
+   someone else's move only once that is on record as data (`waiting` map, `waiting-until:`,
+   a fresh `open-items.py` run) — never in prose alone (`helpers/open-items-gate.cjs`). Only after
    this report is the session closed. If the setup shares memory across instances, the
    report says which findings went there **or that none had that reach** — an unstated
    cross-instance step reads as done and is the one nobody can check afterwards.
