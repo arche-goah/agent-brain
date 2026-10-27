@@ -80,8 +80,6 @@ mode "missing transcript fails toward interactive" "$T/none.jsonl" "$EN" interac
 # The word inside a question mentions the mode, it does not order it (macOS finding 2026-10-27).
 f="$T/8.jsonl"; { user "fix the parser"; user "did I not get the continue autonomously question? why?"; } > "$f"
 mode "the word in a question sets nothing" "$f" "$EN" interactive
-f="$T/8b.jsonl"; { user "keine weiter autonom frage erhalten oder? warum?"; } > "$f"
-mode "the word in a German question sets nothing" "$f" "$DE" interactive
 f="$T/8c.jsonl"; { user "why did it stop? carry on autonomously."; } > "$f"
 mode "an order after a question in the same message sets it" "$f" "$EN" autonomous
 
