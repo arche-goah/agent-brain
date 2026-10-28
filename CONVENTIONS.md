@@ -122,6 +122,15 @@ Rules:
   listing budget not exceeded.
 - A skill that requires hardware states its precondition in the first section.
 - A skill never writes outside the working directory it was invoked in.
+- **Steps instruct; stories go to `## Evidence`** (operator decision 2026-10-28). A dated
+  incident or measurement story ("Measured 2026-08-17: …", "The incident that forced this …",
+  "On 2026-08-01 the audit ran …") never stands inside an instruction step. It moves, word
+  for word, into ONE section at the end of the SKILL.md headed exactly `## Evidence`; the step
+  keeps the instruction and at most a pointer "(why: Evidence, <date>)". A short origin
+  stamp — "(operator order 2026-08-17)", "(since 2026-08-10)", "(measured 2026-10-11)" — is
+  no story and stays inline. Why the section and not a pointer elsewhere: the reason has to
+  ship with the skill, or the rule is rationalised away at the next rebuild. Carrier:
+  `skill-lint.py` check 8 (`evidence`), fixture `scripts/skill-lint-evidence-test.py`.
 
 ## 6. Versioning and compatibility
 
