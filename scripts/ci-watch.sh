@@ -33,6 +33,13 @@
 #      time EXTENDS the verdict deadline. A block longer than CI_WATCH_RL_CEILING
 #      (default 7200 s: a primary window resets hourly, so two hours of block is not
 #      weather) ends as UNKNOWN naming the duration.
+#   7. (2026-10-28) A bound sha can be left behind: right after `gh pr update-branch` the PR's
+#      headRefOid named the OLD head once; a watch bound to it with CI_WATCH_SHA would have
+#      waited its full 3600 s for a head the PR had already moved past (stopped by hand). With
+#      CI_WATCH_SHA set and the PR head elsewhere, the compare API (`compare/<bound>...<head>`)
+#      is asked: status `ahead` = the bound sha is an ancestor of the head, the PR moved past
+#      it — UNKNOWN at once, naming both shas and the head to re-arm with. Anything else (404:
+#      the pushed sha is not visible yet; `diverged`/`behind`; unreadable) keeps today's wait.
 # This script matches refs via the run's headBranch FIELD from JSON (works for tags
 # and branches alike), enumerates every terminal state, and cannot end silently:
 # exit 0 = all green · 1 = something failed/cancelled/timed out in CI · 2 = could
@@ -286,6 +293,12 @@ pr_head_not_yet_expected() {   # exit 0 = the PR does not show the expected head
   ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 0
   head=$gh_out
   [[ "$head" == "$EXPECTED_SHA"* ]] && return 1
+  # Header point 7: the PR moved PAST the bound sha (it is an ancestor of the head) = it will
+  # never come back to it; say so now instead of waiting out the deadline.
+  if [[ "$head" =~ ^[0-9a-f]{7,40}$ ]] \
+     && ghq api "repos/$REPO/compare/$EXPECTED_SHA...$head" --jq .status && [[ "$gh_out" == ahead ]]; then
+    fail_unknown "bound sha ${EXPECTED_SHA:0:7} is superseded — PR #$TARGET head is now ${head:0:7} (the bound sha is its ancestor); re-arm with that head: CI_WATCH_SHA=$head"
+  fi
   if (( warned_expected == 0 )); then
     echo "ci-watch: PR #$TARGET still shows head ${head:0:7}, waiting for ${EXPECTED_SHA:0:7}" >&2
     warned_expected=1
