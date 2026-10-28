@@ -25,7 +25,9 @@
  * stop the run (macOS findings on #143 and #142, 2026-10-26).
  * No transcript or no ON prompt: interactive.
  * Operator words only: no notification, hook echo, loaded skill text, request blob, peer message,
- * or the harness's instruction frames (a CLAUDE.md that mentions "autonomous" must not switch anything).
+ * or the harness's instruction frames (a CLAUDE.md that mentions "autonomous" must not switch anything),
+ * and no text the operator PASTED (turn-kind.cjs operatorWords, 2026-10-28): a pasted article that says
+ * "autonomously" or "anything open" switches nothing; the prompt still counts as a prompt.
  *
  * Words: English built-ins below; the operator's language is instance data —
  * `.claude/rules/autonomous-patterns.json` {"on_patterns", "off_patterns", "yes_patterns"} and the
@@ -37,7 +39,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, operatorWords, FRAMES, LOCAL } = require('./turn-kind.cjs');
 
 const BUILTIN_ON = [
   '\\bautonomous(ly)?\\b',
@@ -136,9 +138,12 @@ function promptModes(transcriptPath, cwd) {
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
-    const asks = w.ask.test(text);
-    if (w.off.test(text) || asks) state = false;
-    else if (w.on.test(text)) state = true;
+    // The words are matched without pasted blocks; `text` keeps them, so a reader that finds this
+    // prompt again in the transcript by its text (decision-presentation-gate) still finds it.
+    const own = operatorWords(text);
+    const asks = w.ask.test(own);
+    if (w.off.test(own) || asks) state = false;
+    else if (w.on.test(own)) state = true;
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false });
   }
   return out;

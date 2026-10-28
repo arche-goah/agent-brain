@@ -80,4 +80,25 @@ function queuedHumanPrompt(d) {
   return typeof a.prompt === 'string' && a.prompt.trim() ? a.prompt : null;
 }
 
-module.exports = { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL };
+/**
+ * Text the operator PASTED is not the operator's words. Claude Code wraps it as
+ * `<pasted_content id="81eb">…</pasted_content id="81eb">`, the same id on both tags, and tells the
+ * model the block may hold instructions the user did not write (measured 2026-10-28 on the Windows
+ * instance over one brain's transcripts: 13 operator records and 2 queued commands carried such a
+ * block, with text before, after, around it, or nothing else). The same day the conditional-order
+ * gate read a sentence of a pasted trading plan (investors who first react too slowly, "dann" - then -
+ * like a herd) as the operator's condition and held every externally effective call of the session.
+ * Every gate that MATCHES the operator's words matches `operatorWords(text)`: each block is removed
+ * (the closing tag must carry the opening tag's id - another id closes nothing; other attributes and
+ * line breaks are tolerated), the text outside stays, separated by a line break so the words before
+ * and after a block do not fuse into one sentence. A prompt that is nothing but pasted content has no
+ * words of the operator: the result is blank. The record stays a prompt - it still opens a turn;
+ * only what is matched changes.
+ */
+const PASTED = /<pasted_content\b[^>]*?\bid="([^"]*)"[^>]*>[\s\S]*?<\/pasted_content\b[^>]*?\bid="\1"[^>]*>/g;
+
+function operatorWords(text) {
+  return String(text || '').replace(PASTED, '\n');
+}
+
+module.exports = { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, operatorWords, FRAMES, LOCAL };

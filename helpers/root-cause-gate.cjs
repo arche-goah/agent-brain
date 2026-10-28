@@ -49,7 +49,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isPeerMessage, isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isPeerMessage, isSkillExpansion, isTranscriptRecord, operatorWords } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 
 let OWN_ECHO = /ROOT-CAUSE-GATE/;
@@ -166,8 +166,10 @@ function readTurns(tp, tail) {
   return turns;
 }
 
+// The gate and `--review` both judge here: a pasted e-mail or log is not the operator's correction
+// (turn-kind.cjs operatorWords, 2026-10-28).
 function correctionIn(prompt, rx) {
-  const clean = stripQuoted(prompt);
+  const clean = stripQuoted(operatorWords(prompt));
   const m = rx.exec(clean);
   return m ? sentenceAt(clean, m.index) : null;
 }

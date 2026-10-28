@@ -98,6 +98,26 @@ check "first run records the question (quoted deferred case)" "$T/t-defer.jsonl"
 id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
 cli "$R" resolve "$id=deferred:later, not now" >/dev/null && ok "deferred with the operator's words is accepted" \
   || bad "deferred with the operator's own words refused"
+# Words that only stand in PASTED text are not the operator's (turn-kind.cjs operatorWords, 2026-10-28):
+# a pasted mail that says "later, not now" defers nothing. defer_case <name> <prompt after the question> <ok|refused>
+defer_case() {
+  local R="$T/r-defer-$1"; fresh "$R"
+  { user "check the PRs"; asst "Done. $Q"; user "$2"; asst "Noted."; } > "$T/t-defer-$1.jsonl"
+  check "first run records the question ($1)" "$T/t-defer-$1.jsonl" block "$R" >/dev/null
+  local id; id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+  local out; out="$(cli "$R" resolve "$id=deferred:later, not now")"; local rc=$?
+  if [ "$3" = ok ]; then
+    [ "$rc" = 0 ] && ok "deferral $1: accepted" || bad "deferral $1 refused (rc=$rc): $out"
+  else
+    case "$rc:$out" in [1-9]*:*"not what the operator wrote"*) ok "deferral $1: refused";; *) bad "deferral $1 accepted (rc=$rc): $out";; esac
+  fi
+}
+MAILP=$'<pasted_content id="81eb">\nFrom the venue: later, not now - we are still waiting for the permit.\n</pasted_content id="81eb">'
+OTHERP=$'<pasted_content id="b2e1">\nsecond mail: thanks\n</pasted_content id="b2e1">'
+defer_case paste-inside "$MAILP"$'\nanswer the venue' refused
+defer_case paste-outside "$MAILP"$'\nlater, not now - first the venue' ok
+defer_case paste-two-between "$MAILP"$'\nlater, not now\n'"$OTHERP" ok
+defer_case paste-two-inside "$OTHERP"$'\nanswer both mails\n'"$MAILP" refused
 # a record whose transcript is gone cannot prove a deferral
 R="$T/r-defer-gone"; fresh "$R"; cp "$T/t-defer.jsonl" "$T/t-gone.jsonl"
 check "first run records the question (gone transcript case)" "$T/t-gone.jsonl" block "$R" >/dev/null

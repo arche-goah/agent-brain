@@ -14,8 +14,8 @@ would fall through. The transcript is the evidence, the human's reply is the ver
 WHAT IT READS: the harness transcripts of this brain (`<config>/projects/<cwd with every non-alphanumeric char as
 '->/*.jsonl`, the same derivation as autonomy-diagnose.py) inside a window (default 7 days by mtime), plus the
 question register of question-gate.cjs (`.claude-state/open-questions.json`). Per transcript it extracts operator
-prompts (typed prompts and prompts queued mid-turn; notifications, hook echoes and local commands are not prompts),
-the assistant's shown text, and actions with external effect (pushes, merges, PR/issue writes, deletes, raw API
+prompts (typed prompts and prompts queued mid-turn; notifications, hook echoes and local commands are not prompts,
+and text the operator pasted into a prompt is not the operator's words), the assistant's shown text, and actions with external effect (pushes, merges, PR/issue writes, deletes, raw API
 writes, MCP tools whose name writes). Five cases:
 
   needed      a question in the register, the next prompt decides/answers it                  right
@@ -60,11 +60,16 @@ try:
 except (AttributeError, ValueError):
     pass
 
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 REFERRAL_LOOKBACK = 8   # replies searched backwards from a prompt that names a referral
 FRAMES = re.compile(r"<system-reminder>.*?</system-reminder>|<task-notification>.*?</task-notification>", re.S)
 LOCAL = re.compile(r"<local-command-caveat>.*?</local-command-caveat>|<local-command-std(?:out|err)>.*?"
                    r"</local-command-std(?:out|err)>|<command-(?:name|message|args)>.*?</command-(?:name|message|args)>", re.S)
+# Text the operator PASTED is not the operator's words — the definition of helpers/turn-kind.cjs operatorWords
+# (measured 2026-10-28: `<pasted_content id="81eb">…</pasted_content id="81eb">`, the same id on both tags; a pasted
+# mail's "why did you" counted as a correction). The block goes before any pattern reads the prompt; a prompt that is
+# only a paste stays a prompt, with no words of the operator.
+PASTED = re.compile(r'<pasted_content\b[^>]*?\bid="([^"]*)"[^>]*>.*?</pasted_content\b[^>]*?\bid="\1"[^>]*>', re.S)
 HOOK_ECHO = re.compile(r"^(Stop hook feedback:|\[SYSTEM NOTIFICATION)")
 # The summary a compaction writes is a user record but no prompt; it quotes the operator and would match everything.
 COMPACT = re.compile(r"^This session is being continued from a previous conversation")
@@ -155,7 +160,7 @@ def prompt_text(rec):
     rest = LOCAL.sub("", FRAMES.sub("", text)).strip()
     if not rest or HOOK_ECHO.search(rest) or COMPACT.search(rest) or NOT_PROMPT.search(rest):
         return None
-    return rest
+    return PASTED.sub("\n", rest)
 
 
 def action_of(block):

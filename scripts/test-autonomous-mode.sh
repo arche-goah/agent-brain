@@ -77,6 +77,21 @@ mode "the operator's ask wording from instance data ends it" "$f" "$DE" interact
 f="$T/7c.jsonl"; { user "weiter autonom"; user "irgendwas offen?"; answer '"Weiter autonom?"="Ja, weiter autonom"'; } > "$f"
 mode "the operator's yes from instance data sets it again" "$f" "$DE" autonomous
 mode "missing transcript fails toward interactive" "$T/none.jsonl" "$EN" interactive
+# Pasted text is not the operator's word (turn-kind.cjs operatorWords, measured 2026-10-28): an ON, OFF or
+# ASK word inside <pasted_content id="…">…</pasted_content id="…"> switches nothing; outside it, it does.
+PA=$'<pasted_content id="81eb">\nThe agent then works autonomously through the backlog.\n</pasted_content id="81eb">'
+f="$T/8a.jsonl"; { user "$PA"$'\nsummarise this article'; } > "$f"
+mode "an on word only inside a pasted block (a)" "$f" "$EN" interactive
+f="$T/8b.jsonl"; { user "$PA"$'\nwork through the list autonomously'; } > "$f"
+mode "the on word outside the pasted block (b)" "$f" "$EN" autonomous
+PB1=$'<pasted_content id="a1f0">\nis anything still open for me?\n</pasted_content id="a1f0">\n'
+PB2=$'\n<pasted_content id="b2e1">\nback to normal mode\n</pasted_content id="b2e1">'
+f="$T/8c.jsonl"; { user "work through the list autonomously"; asst "x"; user "${PB1}look at these two tickets${PB2}"; } > "$f"
+mode "ask and off words only inside two pasted blocks keep the run (c)" "$f" "$EN" autonomous
+f="$T/8d.jsonl"; { user "fix the parser"; asst "x"; user "${PB1}autonomous, please${PB2}"; } > "$f"
+mode "the on word between two pasted blocks (c)" "$f" "$EN" autonomous
+f="$T/8e.jsonl"; { user "work through the list autonomously"; asst "x"; qcmd "${PB1}"; } > "$f"
+mode "a pasted ask typed mid-turn keeps the run" "$f" "$EN" autonomous
 
 # --- stoppen-gate: which way it demands, and the line that passes only in the mode
 gate() { # $1 name, $2 transcript, $3 block|allow, $4 expected text in the reason (block)

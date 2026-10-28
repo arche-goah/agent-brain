@@ -230,6 +230,12 @@ f="$T/18d.jsonl"; { boot_ok startup "$BLOCK"; user "work through the list autono
 check "an autonomous order needs no offer question" "$f" allow "$EN"
 f="$T/18e.jsonl"; { boot_ok startup "$BLOCK"; user "status?"; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
 check "the same reply without the order still needs the question" "$f" block "$EN"
+# A go-ahead that only stands in PASTED text is not the operator's (turn-kind.cjs operatorWords, 2026-10-28).
+GOP=$'<pasted_content id="81eb">\nManager: go ahead and handle everything on the list.\n</pasted_content id="81eb">'
+f="$T/18f.jsonl"; { boot_ok startup "$BLOCK"; user "$GOP"$'\nstatus?'; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
+check "a go-ahead only inside a pasted block still needs the question" "$f" block "$EN"
+f="$T/18g.jsonl"; { boot_ok startup "$BLOCK"; user "$GOP"$'\ngo ahead and handle everything'; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
+check "the go-ahead outside the pasted block makes the question moot" "$f" allow "$EN"
 
 # Wake-up of a parked domain (operator order 2026-10-11): an operator item like any other —
 # the first reply must name it; leaving it out blocks.
@@ -387,5 +393,16 @@ f="$T/23m.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; u
 printf '%s\n' '{"ask_patterns":["\\balles\\b[^?\\n]{0,30}\\babgeschlossen\\b"]}' > "$WD/.claude/rules/open-items.json"
 check "German ask through instance data" "$f" block "$WD"
 check "German ask without instance data (control)" "$f" allow "$EN"
+# An ask that only stands in PASTED text is not the operator asking (turn-kind.cjs operatorWords, 2026-10-28).
+ASKP=$'<pasted_content id="a1f0">\nTicket 812: is anything still open on your side?\n</pasted_content id="a1f0">'
+PLAINP=$'<pasted_content id="b2e1">\nTicket 813: printer offline.\n</pasted_content id="b2e1">'
+f="$T/23s.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "$ASKP"$'\nplease file this ticket'; asst "Persisted - you can shut down."; } > "$f"
+check "an ask only inside a pasted block (a)" "$f" allow "$EN"
+f="$T/23t.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "$ASKP"$'\nand anything still open?'; asst "Persisted - you can shut down."; } > "$f"
+check "the ask outside the pasted block (b)" "$f" block "$EN"
+f="$T/23u.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "$ASKP"$'\nanything still open?\n'"$PLAINP"; asst "Persisted - you can shut down."; } > "$f"
+check "two pasted blocks, the ask between them (c)" "$f" block "$EN"
+f="$T/23v.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "$PLAINP"$'\nfile both tickets\n'"$ASKP"; asst "Persisted - you can shut down."; } > "$f"
+check "two pasted blocks, the ask only inside one (c)" "$f" allow "$EN"
 
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }
