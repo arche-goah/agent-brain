@@ -18,7 +18,7 @@
   "cause_patterns": [],
   "_cases": [
     {"text": "why did you ask that again?", "expect": "block"},
-    {"text": "why did you ask that again?", "reply": "Cause: the record was a stale snapshot.", "expect": "allow"},
+    {"text": "why did you ask that again?", "reply": "Cause: the record was a stale snapshot.", "expect": "block"},
     {"text": "how is the show going?", "expect": "allow"}
   ]
 }
