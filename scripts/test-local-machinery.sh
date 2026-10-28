@@ -281,6 +281,7 @@ for f in .claude/hooks/h.cjs .claude/hooks/sc.cjs tools/srv.js tools/s.sh githoo
          .claude/skills/myskill/SKILL.md .claude/workflows/w.js .claude/output-styles/o.md \
          .claude/agents/a.md .claude/commands/c.md; do printf 'planted\n' > "$T/b/$f"; done
 printf '## Planted\nalways do x\n' > "$T/b/.claude/rules/r.md"
+printf '[{"id":"planted","pattern":"\\\\bplanted-shortcut\\\\b","was":"x"}]' > "$T/b/.claude/rules/mechanism-rules.json"
 printf '<plist><string>%s/tools/s.sh</string></plist>\n' "$(nat "$T/b")" > "$T/fakehome/Library/LaunchAgents/x.plist"
 mkdir -p "$T/fakehome/.claude/plugins"
 printf '{"plugins":{"extra@mkt":[{"installPath":"%s"}]}}' "$(nat "$T/plug")" > "$T/fakehome/.claude/plugins/installed_plugins.json"
@@ -296,6 +297,7 @@ output-style=.claude/output-styles/o.md
 agent=.claude/agents/a.md
 command=.claude/commands/c.md
 rule=.claude/rules/r.md#Planted
+guard-rule=.claude/rules/mechanism-rules.json#planted
 script=tools/s.sh"
 has() { awk -v c="$2" -v i="$3" '$2==c && $3==i {f=1} END {exit !f}' <<< "$1"; }
 listing=$(run --list)
@@ -362,6 +364,21 @@ cp "$HERE/../templates/rules-instance/working-rules-instance.md" "$T/b/.claude/r
 listing=$(run --list)
 grep -qE ' rule +\.claude/rules/other\.md#Language$' <<< "$listing" \
   && ok "template-text-elsewhere-reported" || bad "template-text-elsewhere-reported: $listing"
+rm -rf "$T/b"
+
+# --- guard rules: a rule the template (or the core) carries is core, an own rule is an item ----
+# Measured 2026-10-28: a general guard rule lived in one brain only; the inventory never read
+# guard data. The template's example rule stands in for "the core carries it".
+mkdir -p "$T/b/.claude/rules"
+"$PY" -c 'import json, sys
+t = json.load(open(sys.argv[1], encoding="utf-8"))
+json.dump([t[0], {"id": "mine", "pattern": "my-shortcut", "was": "x"}], open(sys.argv[2], "w", encoding="utf-8"))' \
+  "$HERE/../templates/rules-instance/mechanism-rules.json" "$T/b/.claude/rules/mechanism-rules.json"
+listing=$(run --list)
+grep -qE '^core +guard-rule +\.claude/rules/mechanism-rules\.json#0 \(core\)' <<< "$listing" \
+  && ok "template-guard-rule-is-core" || bad "template-guard-rule-is-core: $listing"
+grep -qE '^[a-z]+ +guard-rule +\.claude/rules/mechanism-rules\.json#mine$' <<< "$listing" \
+  && ok "own-guard-rule-reported" || bad "own-guard-rule-reported: $listing"
 rm -rf "$T/b"
 
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
