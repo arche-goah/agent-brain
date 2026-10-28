@@ -316,7 +316,7 @@ known:     scripts/test-skill-gate.sh=1
 known:     scripts/test-stop-checks.sh=1
 known:     scripts/test-stop-dispatcher.sh=5
 known:     scripts/test-stoppen-gate.sh=1
-known:     scripts/test-suite-plugin-linkage.sh=1
+known:     scripts/test-suite-plugin-linkage.sh=3
 known:     scripts/test-template-drift.sh=1
 known:     scripts/test-text-leaks-notice.sh=1
 known:     scripts/test-transcript-archive.sh=1
@@ -343,6 +343,10 @@ discriminator case — and all three go through `native()`. The discriminator is
 it matters here more than usual: it asserts SILENCE, and an unresolvable path produces
 silence too, so without `native()` that case would pass on Windows for the wrong reason
 and certify a fixture that sees only one world state.
+2026-10-28, test-suite-plugin-linkage.sh 1 -> 3 after the review: `mkremote`/`mkcheckout` named their repos
+`$T/…-$RANDOM` and now take them from `mktemp -d "$T/…-XXXXXX"` (two calls could draw the same
+number and share a repo). Same parent `$T`, and the paths still go only to git through `git_`, as
+before — no new crossing into node or python.
 2026-09-13, test-coherence-scan-files.sh baselined after the same review: the temp dir
 never crosses into node as data — node receives the harness file as an ARGUMENT (Git Bash
 converts argv) and the lens files by NAME through env, which is the comparison the helper
