@@ -71,7 +71,8 @@ rc "a malformed case fails" 1
 # --- every reader in the table runs (English built-ins, empty instance lists)
 brain all >/dev/null
 put all root-cause-patterns.json '{"_cases": [{"text": "why did you ask that again?", "expect": "block"},
- {"text": "why did you ask that again?", "reply": "Cause: the record was stale.", "expect": "allow"}]}'
+ {"text": "why did you ask that again?", "reply": "Cause: the record was stale.", "expect": "block"},
+ {"text": "how is the show going?", "expect": "allow"}]}'
 put all premise-patterns.json '{"_cases": [{"text": "The last one always wins.", "expect": "block"},
  {"text": "The last one always wins.", "writes": false, "expect": "allow"}]}'
 put all promise-patterns.json '{"_cases": [{"text": "I will not push until you are back.", "expect": "block"},
