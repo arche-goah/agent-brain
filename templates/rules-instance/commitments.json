@@ -1,6 +1,11 @@
 {
-  "_comment": "Instance data for core scripts/commitments.py: how a commitment about future behaviour is phrased in this brain's language (English is built in), the first-person words of that language, and extra stopwords. Regexes, case-insensitive. Empty lists = English only.",
+  "_comment": "Instance data for core scripts/commitments.py and helpers/commitment-carrier-gate.cjs: how a commitment about future behaviour is phrased in this brain's language (English is built in), the first-person words of that language, and extra stopwords. rule_words: words that make a line written into a prose file (memory, rule text, CLAUDE.md, AGENTS.md) a rule ('never', 'always', 'must' are built in); prose_paths / exempt_paths: further prose files of this brain (e.g. its feedback protocol) and files never to read as a rule (built in: MEMORY.md, the memory snapshot, SKILL.md); carrier_words: the label that names a written rule's carrier in this language ('Carrier' and 'carried by' are built in); retract_patterns: how a promise is taken back in this language ('I take that back', 'is not guaranteed' are built in) — a later text of the turn that matches clears the promises before it. Regexes, case-insensitive. Empty lists = English and the built-in paths only.",
   "patterns": [],
   "first_person": [],
-  "stopwords": []
+  "stopwords": [],
+  "rule_words": [],
+  "prose_paths": [],
+  "exempt_paths": [],
+  "carrier_words": [],
+  "retract_patterns": []
 }
