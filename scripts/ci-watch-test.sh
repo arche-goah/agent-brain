@@ -167,7 +167,8 @@ case "${CI_WATCH_STUB:?}" in
                     if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
                     elif [[ "${1:-}" == api ]]; then echo '[{"name":"test","conclusion":"success"},{"name":"release-preflight","conclusion":'"$c"'}]'
-                    elif [[ "$CI_WATCH_STUB" != pr_stale_running && -f "$f" ]]; then echo "second poll reached" >&2; exit 1
+                    # since 2026-10-28 GREEN needs the same head on two polls: green may read twice
+                    elif [[ "$CI_WATCH_STUB" == pr_stale_red && -f "$f" ]]; then echo "second poll reached" >&2; exit 1
                     else touch "$f"; echo '[{"bucket":"pass","name":"test"},{"bucket":"pending","name":"release-preflight"}]'; fi ;;
   # 2026-10-16: the listed checks are all green, but a second workflow run of the head commit
   # is in_progress and has not listed its jobs yet. pr_run_open: it stays open (no verdict);
@@ -188,6 +189,20 @@ case "${CI_WATCH_STUB:?}" in
                       else touch "$f"; echo aaaa111100000000000000000000000000000000; fi
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
                     elif [[ "${1:-}" == api ]]; then echo 0
+                    else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
+  # 2026-10-28: after `gh pr update-branch` the PR head AND its branch tip still named the old
+  # commit on the first poll (old checks green); the new head appears on the next read with its
+  # checks queued. GREEN must not come from the first poll — without CI_WATCH_SHA.
+  pr_head_flip_green)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ -f "$f" ]]; then H=bbbb333300000000000000000000000000000000; else H=aaaa333300000000000000000000000000000000; fi
+                    if [[ "$*" == *headRefName* ]]; then printf '%s\tfeat\to/r\n' "$H"
+                    elif [[ "$*" == *headRefOid* ]]; then echo "$H"; touch "$f"
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api && "$*" == *actions/runs* ]]; then echo 0
+                    elif [[ "${1:-}" == api && "$*" == *git/ref* ]]; then echo "$H"
+                    elif [[ "${1:-}" == api ]]; then echo '[]'
+                    elif [[ -f "$f" ]]; then echo '[{"bucket":"pending","name":"lint"}]'
                     else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
   # ...and a pending entry that is a commit STATUS (no check-run of that name) keeps waiting.
   pr_stale_status)  if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
@@ -376,7 +391,7 @@ check "pr: 'no checks' wording + no workflows = NO-CI(3)" pr_noci_nochecks 3 pr 
 check "pr: zero checks, workflows exist = wait, timeout(2)" pr_zero_hasci 2 pr 12 2
 check "pr: zero checks, count unreadable = wait, timeout(2)" pr_zero_apierr 2 pr 12 2
 check "ref: repo without workflows = NO-CI(3)"         ref_noci        3 ref main 30
-check "pr: stale check-run (in_progress + conclusion success) = GREEN on the first poll" pr_stale_green 0 pr 12 30
+check "pr: stale check-run (in_progress + conclusion success) = GREEN without waiting for the status" pr_stale_green 0 pr 12 30
 grep -q "left the status stale" "$TMP/out" && echo "  OK   stale check-run is named in the output" \
   || { echo "  FAIL stale check-run not named"; fails=$((fails+1)); }
 check "pr: stale check-run with conclusion failure = RED"           pr_stale_red     1 pr 12 30
@@ -386,6 +401,7 @@ grep -q "left the status stale" "$TMP/out" && { echo "  FAIL running check-run w
 check "pr: pending commit status without a check-run = wait, timeout(2)" pr_stale_status 2 pr 12 2
 check "pr: listed checks green, a workflow run still open = wait, timeout(2)" pr_run_open 2 pr 12 2
 check "pr: listed checks green, the open run completes = GREEN"          pr_run_flip 0 pr 12 30
+check "pr: head flips after the first green poll = no GREEN, waits, timeout(2)" pr_head_flip_green 2 pr 12 3
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head still old, then flips = GREEN on the new head" pr_head_lag 0 pr 12 30
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head never reaches it = wait, timeout(2)"   pr_head_stuck 2 pr 12 2
 check "pr: without CI_WATCH_SHA the old head's green counts (unchanged behaviour)"        pr_head_stuck 0 pr 12 30

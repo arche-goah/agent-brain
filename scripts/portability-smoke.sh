@@ -675,12 +675,19 @@ for _s in "${_suites[@]}"; do
 done
 # The python fixtures carry the path- and file-writing classes — precisely the ones that
 # behave differently here than on the OS they were written on.
+# They run with the Windows ANSI codepage as stdout encoding on EVERY platform: a fixture
+# that prints a character cp1252 cannot encode raised on windows-latest only (2026-10-28,
+# a warning sign in a label), and the macOS and Linux runs plus the local mirror stayed
+# green. Measured: all 42 suites pass under cp1252 once that fixture pins its stdout, and
+# the unpinned version reproduces the Windows crash here.
 for _s in "${_pysuites[@]}"; do
   suite="$(basename "$_s")"
-  if _out="$(cd "$CORE" && "$PY" "scripts/$suite" 2>&1)"; then
+  if _out="$(cd "$CORE" && PYTHONIOENCODING=cp1252 "$PY" "scripts/$suite" 2>&1)"; then
     ok "$suite"
   else
-    bad "$suite: $(printf '%s' "$_out" | grep -aE 'FAIL' | head -2 | tr '\n' ' ')"
+    # The exception line too: a traceback through a print() matched FAIL only on its source
+    # line, so the log named the code and hid the error (2026-10-28).
+    bad "$suite: $(printf '%s' "$_out" | grep -aE 'FAIL|Error:' | head -3 | tr '\n' ' ')"
   fi
 done
 

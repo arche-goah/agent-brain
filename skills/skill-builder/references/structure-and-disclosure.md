@@ -278,3 +278,5 @@ See `resources/examples/config.json`:
 ```
 
 **Best Practice**: Keep SKILL.md lean (~2-5KB). Move lengthy content to separate files and reference them. Claude will load only what's needed.
+
+**Evidence goes last**: a dated incident or measurement story never sits in a step — it goes word for word into one closing `## Evidence` section, the step keeps "(why: Evidence, <date>)" (CONVENTIONS §5; `skill-lint.py` check 8).
