@@ -7,7 +7,13 @@
     "\"\\\\berst\\\\s+(nach|wenn)\\\\b\", \"\\\\bnach\\\\s+(der|deiner)\\\\s+antwort\\\\b\", \"\\\\bwarte\\\\b\",",
     "\"\\\\bklaer\\\\w*\\\\s+das\\\\s+mit\\\\b\", \"\\\\b\\\\w+\\\\s+entscheidet\\\\b\".",
     "A hit costs one line (CONDITION-MET or CONDITION-NONE) before an expensive or external call; keep the",
-    "list to words that really bind an order to an event."
+    "list to words that really bind an order to an event.",
+    "_cases: the operator's real wording with the verdict the gate must reach on a Workflow call (block = a",
+    "condition is read); run by core/scripts/pattern-cases.py at every self-test. Replace the English examples."
   ],
-  "condition_patterns": []
+  "condition_patterns": [],
+  "_cases": [
+    {"text": "then run the coherence scan", "expect": "block"},
+    {"text": "run the coherence scan", "expect": "allow"}
+  ]
 }
