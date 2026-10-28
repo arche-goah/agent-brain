@@ -10,7 +10,7 @@
  * that vanishes with it (the operator: "that is fatal"). Skill session-close step 5 (#146) says it in
  * prose; this check makes it bind.
  *
- * Fires only when the turn's reply contains a RELEASE phrase (English built-ins plus the instance's
+ * Fires only when the turn's closing reply (its last text) contains a RELEASE phrase (English built-ins plus the instance's
  * `release_patterns`). Then it measures, and blocks on any of:
  *   - commits on the current branch that its upstream does not have (`git rev-list @{u}..HEAD`) - in
  *     the working repo, in the shared-memory repo (`$SHARED_MEMORY_REPO`, default
@@ -35,7 +35,8 @@ const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const BUILTIN_RELEASE = ['\\byou can (now )?(shut (it )?down|close (the session|everything)|end the session|turn (it|everything) off)\\b',
   '\\bsafe to (shut down|close the session|end the session)\\b'];
-const BUILTIN_HAND = ['\\bhand step\\b', '(^|\\n)\\s*[-*]?\\s*`?!\\s?[a-z]'];
+// "no hand step" names none (2026-10-28: a negated hand word blocked a clean close)
+const BUILTIN_HAND = ['(?<!\\bno )(?<!\\bwithout )\\bhand step\\b', '(^|\\n)\\s*[-*]?\\s*`?!\\s?[a-z]'];
 const SCRATCH = /\/(?:private\/)?tmp\/claude-[^\s`'")]*\/scratchpad\b[^\s`'")]*/;
 
 function rx(builtins, extra) {
@@ -57,9 +58,12 @@ function readTail(file) {
   } finally { fs.closeSync(fd); }
 }
 
-/** The reply text of the running turn (everything the agent wrote after the operator's last message). */
+/** The closing reply of the running turn: the text of the agent's LAST message that has text, after the operator's
+ * last message. Not every text of the turn: a corrected close report replaces the one before it, as the operator
+ * reads it — measured 2026-10-28 (macOS instance): the first report released and named a reload, the corrected
+ * report dropped it, and the check read the first one again on every stop until the operator wrote (a loop). */
 function replyText(transcriptPath) {
-  let parts = [];
+  let last = '';
   for (const line of readTail(transcriptPath)) {
     if (!line.trim()) continue;
     let d;
@@ -67,13 +71,14 @@ function replyText(transcriptPath) {
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user' && typeof msg.content === 'string') {
-      if (!HOOK_ECHO.test(msg.content) && !isNotification(msg.content) && !isPeerMessage(d)) parts = [];
+      if (!HOOK_ECHO.test(msg.content) && !isNotification(msg.content) && !isPeerMessage(d)) last = '';
       continue;
     }
     if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
-    for (const b of msg.content) if (b && b.type === 'text' && b.text) parts.push(b.text);
+    const text = msg.content.filter((b) => b && b.type === 'text' && b.text).map((b) => b.text).join('\n');
+    if (text) last = text;
   }
-  return parts.join('\n');
+  return last;
 }
 
 function unpushed(cwd) {
