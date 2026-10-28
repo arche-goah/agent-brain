@@ -53,7 +53,7 @@ function target(cmd) {
 
 function readPr(t) {
   const fake = process.env.MERGE_REQUEST_GATE_GH;
-  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid'];
+  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid,commits'];
   const out = execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
   return JSON.parse(out);
@@ -75,18 +75,49 @@ function readDeps(t) {
   } catch (e) { return null; }
 }
 
+const BASE_MERGE_RX = /^Merge branch '[^']+' into /;
+
+/**
+ * Short shas that count as "the head": the head itself, plus every earlier head that only a
+ * base-branch merge separates from it (GitHub's "update branch" writes `Merge branch 'main' into
+ * <branch>` and changes no line of the PR's own diff). Measured 2026-10-28, agent-brain #157: the
+ * ruleset "branches up to date" forces that update after every merge on main, which moved the
+ * head away from both OS checks and blocked a PR whose content had not changed.
+ */
+function headShas(pr) {
+  const out = [String(pr.headRefOid || '').slice(0, 7)];
+  const commits = Array.isArray(pr.commits) ? pr.commits : [];
+  for (let i = commits.length - 1; i > 0 && BASE_MERGE_RX.test(String(commits[i].messageHeadline || '')); i--) {
+    out.push(String(commits[i - 1].oid || '').slice(0, 7));
+  }
+  return out.filter(Boolean);
+}
+
+/**
+ * Does this line say OK for `os`? The OK may stand anywhere in the line; a negation counts only
+ * in the part that belongs to `os` — from its name up to the next OS name. Measured 2026-10-28:
+ * "macOS: OK at `edc95ba` ... Windows check still open." blocked the macOS OK on the Windows
+ * clause's "open" (agent-brain #156-#159).
+ */
+function saysOk(line, os) {
+  const rx = NAME_RX[os] || new RegExp(`\\b${os}\\b`, 'i');
+  const at = line.search(rx);
+  if (at < 0 || !OK_RX.test(line)) return false;
+  const others = Object.entries(NAME_RX).filter(([k]) => k !== os).map(([, r]) => r.source).join('|');
+  const rest = line.slice(at);
+  const end = others ? rest.slice(1).search(new RegExp(others, 'i')) : -1;
+  return !NOT_RX.test(end < 0 ? rest : rest.slice(0, end + 1));
+}
+
 /** Required systems without an OK line at the head: [] when covered or not a suite. */
 function uncovered(pr, deps) {
   if (!deps) return [];
   const want = Array.isArray(deps.required_os) && deps.required_os.length ? deps.required_os : ['macOS', 'Windows'];
-  const short = String(pr.headRefOid || '').slice(0, 7);
-  if (!short) return [];
+  const shas = headShas(pr);
+  if (!shas.length) return [];
   const texts = [String(pr.body || ''), ...(pr.comments || []).map((c) => String(c.body || ''))]
-    .filter((x) => x.includes(short));
-  return want.filter((os) => {
-    const rx = NAME_RX[os] || new RegExp(`\\b${os}\\b`, 'i');
-    return !texts.some((x) => x.split(/\r?\n/).some((l) => rx.test(l) && OK_RX.test(l) && !NOT_RX.test(l)));
-  });
+    .filter((x) => shas.some((s) => x.includes(s)));
+  return want.filter((os) => !texts.some((x) => x.split(/\r?\n/).some((l) => saysOk(l, os))));
 }
 
 function gate(input) {

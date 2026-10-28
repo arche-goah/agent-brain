@@ -71,6 +71,22 @@ sprobe "suite, macOS OK only at an OLDER head" "$M" block "$D"
 spr 'feat: x' '["Windows OK at head `abc1234`; macOS check wanted, macOS unchecked"]'
 sprobe "suite, macOS named only as open" "$M" block "$D"
 
+# 2026-10-28 (#156-#159): the negation of ANOTHER system's clause does not cancel this one's OK.
+spr 'feat: x' '["macOS: OK at `abc1234` - lint rc 0 (the macOS instance). Windows check still open.", "Windows OK at head `abc1234`"]'
+sprobe "macOS OK, Windows named open in the same line" "$M" allow "$D"
+spr 'feat: x' '["Windows OK at head `abc1234`, macOS open"]'
+sprobe "Windows OK, macOS open in the same line" "$M" block "$D"
+
+# 2026-10-28 (#157): an earlier head separated only by "update branch" merges still counts.
+cpr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "fff0000aaa", body: "feat: x", commits: JSON.parse(process.argv[2]), comments: JSON.parse(process.argv[1]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }
+OKS='["macOS OK at `abc1234`", "Windows OK at `abc1234`"]'
+cpr "$OKS" '[{"oid":"abc1234def","messageHeadline":"fix: x"},{"oid":"fff0000aaa","messageHeadline":"Merge branch '"'"'main'"'"' into fix/x"}]'
+sprobe "OKs at the head before an update-branch merge" "$M" allow "$D"
+cpr "$OKS" '[{"oid":"abc1234def","messageHeadline":"fix: x"},{"oid":"fff0000aaa","messageHeadline":"fix: second change"}]'
+sprobe "OKs at an older head before a real commit" "$M" block "$D"
+cpr "$OKS" '[{"oid":"abc1234def","messageHeadline":"fix: x"},{"oid":"eee1111bbb","messageHeadline":"fix: y"},{"oid":"fff0000aaa","messageHeadline":"Merge branch '"'"'main'"'"' into fix/x"}]'
+sprobe "update-branch merge after a real commit past the OK" "$M" block "$D"
+
 echo
 [ "$fail" -eq 0 ] && echo "test-merge-request-gate: all checks passed" || echo "test-merge-request-gate: FAILURES"
 exit "$fail"
