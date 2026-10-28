@@ -69,6 +69,10 @@ checks=0; failed=0
 ok()  { checks=$((checks+1)); echo "OK   $1"; }
 bad() { checks=$((checks+1)); failed=$((failed+1)); echo "FAIL $1"; }
 note(){ echo "     $1"; }
+# stdin text has a line saying OK for system $1 (the reader of helpers/merge-request-gate.cjs)
+GATE_JS="$(cd "$(dirname "$0")/.." && pwd)/helpers/merge-request-gate.cjs"
+command -v cygpath >/dev/null 2>&1 && GATE_JS="$(cygpath -m "$GATE_JS")"
+os_ok() { node -e 'const {saysOk}=require(process.argv[1]); const t=require("fs").readFileSync(0,"utf8"); process.exit(t.split(/\r?\n/).some((l)=>saysOk(l,process.argv[2]))?0:1)' "$GATE_JS" "$1"; }
 
 # 1. manifest version == tag — the v1.2.0 class: same version string, different content
 MANIFEST="$ROOT/.claude-plugin/plugin.json"
@@ -220,8 +224,10 @@ if [ "$MODE" = "local" ]; then
         [ -n "$line" ] || continue
         txt="$(printf '%s' "$line" | base64 -d 2>/dev/null || true)"
         printf '%s' "$txt" | grep -q 'instance-key:' || continue
-        printf '%s' "$txt" | grep -qi 'macos' && has_mac=1
-        printf '%s' "$txt" | grep -qi 'windows' && has_win=1
+        # a proof is a line that says OK for that system (merge-request-gate's reader): a line
+        # that names Windows only as still open counted as a Windows proof (measured 2026-10-28)
+        printf '%s' "$txt" | os_ok macOS && has_mac=1
+        printf '%s' "$txt" | os_ok Windows && has_win=1
       done <<< "$B64"
       [ "$has_mac" = 1 ] && [ "$has_win" = 1 ] || missing="$missing #$n($( [ "$has_mac" = 1 ] && echo "no Windows" || { [ "$has_win" = 1 ] && echo "no macOS" || echo "neither"; } ))"
     done

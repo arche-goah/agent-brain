@@ -38,6 +38,10 @@ if [ "${1:-}" = "--selftest" ]; then
   else
     echo "SKIP: no standalone jq — filter syntax unchecked here (runtime uses gh --jq)"
   fi
+  # argument form: a shifted list is refused by name, before any gh call
+  out=$(bash "$0" 33 --repo 2>&1); r=$?
+  { [ "$r" = 2 ] && case "$out" in *"got '33' '--repo'"*) true ;; *) false ;; esac; } \
+    || { echo "FAIL argument form: rc=$r out=$out"; rc=1; }
   [ "$rc" = 0 ] && echo "selftest OK"
   exit "$rc"
 fi
@@ -45,6 +49,12 @@ fi
 REPO="${1:-}"; PR="${2:-}"; INTERVAL="${3:-60}"
 if [ -z "$REPO" ] || [ -z "$PR" ]; then
   echo "usage: watch-pr.sh <owner/repo> <pr-number> [interval-seconds]   |   --selftest" >&2
+  exit 2
+fi
+# The form is checked before the first gh call (the class of ci-watch.sh, 2026-10-27: a shifted
+# argument list took a PR number as the repo and failed far from the cause).
+if ! [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$PR" =~ ^[0-9]+$ && "$INTERVAL" =~ ^[0-9]+$ ]]; then
+  echo "watch-pr: want <owner/repo> <pr-number> [interval-seconds], got '$REPO' '$PR' '$INTERVAL'" >&2
   exit 2
 fi
 

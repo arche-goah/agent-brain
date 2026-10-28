@@ -30,6 +30,11 @@ case "${CI_WATCH_STUB:?}" in
               if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
               else touch "$f"; echo '[{"bucket":"pending"},{"bucket":"pass"}]'; fi ;;
   gh_broken)  echo "HTTP 500 boom" >&2; exit 1 ;;
+  # 2026-10-27: one TLS timeout ended a watch on a running CI. Once = wait; always = unknown.
+  net_flip)   f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
+              else touch "$f"; echo 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout' >&2; exit 1; fi ;;
+  net_dead)   echo 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout' >&2; exit 1 ;;
   # point 6: every gh call is counted, each answer takes real time, so a second watch can attach.
   pr_slow)    echo x >> "${CI_WATCH_STATE:?}.calls"; "$REAL_SLEEP" 1; echo '[{"bucket":"pass"}]' ;;
   # 2026-10-10: right after a merge, `pr checks` answered with exit 0 and a reply that was not
@@ -323,6 +328,8 @@ check "pr 'no checks reported' waits, then timeout(2)" pr_nochecks 2 pr 12 2
 check "pr 'no checks' then green"       pr_nochecks_flip 0 pr 12
 check "pr pending then green"           pr_flip    0 pr 12
 check "gh hard error = unknown"         gh_broken  2 pr 12
+check "one network timeout, then green = GREEN" net_flip 0 pr 12 30
+check "network down on every poll = unknown(2)" net_dead 2 pr 12 30
 check "pr unparseable once, then green" pr_garbage_flip 0 pr 12
 check "pr unparseable three polls = unknown(2)" pr_garbage 2 pr 12 30
 grep -q "3 polls in a row" "$TMP/out" && echo "  OK   unknown names the repeated unparseable reply" \
@@ -466,6 +473,19 @@ mkdir -p "$TMP/locks/stale"; echo 999999 > "$TMP/locks/stale/pid"
 L_STALE=$(printf '%s|%s|%s|%s' pr owner/repo 79 "" | cksum | tr -c '0-9\n' '-')
 mv "$TMP/locks/stale" "$TMP/locks/$L_STALE"
 check "dead owner's leftover lock is taken over" pr_green 0 pr 79
+
+# --- argument form (2026-10-27: `pr 33 --repo x` died on an unbound variable) ------------
+form() { # label expected_rc expected_text args...
+  local label="$1" want="$2" text="$3"; shift 3
+  CI_WATCH_STUB=pr_green CI_WATCH_STATE="$TMP/state-form" bash "$WATCH" "$@" >"$TMP/out" 2>&1
+  local got=$?
+  if [[ "$got" == "$want" ]] && grep -q -- "$text" "$TMP/out"; then echo "  OK   $label (rc=$got)"
+  else echo "  FAIL $label: rc=$got wanted $want with '$text'"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); fi
+}
+form "repo not owner/name names the form"  2 "is not <owner/repo>"   pr 33 --repo owner/repo
+form "pr target not a number names it"     2 "is not a PR number"     pr owner/repo --repo
+form "timeout not a number names it"       2 "is not a number of seconds" pr owner/repo 12 soon
+form "valid form still watches (control)"  0 "CI-WATCH GREEN"          pr owner/repo 12 5
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
