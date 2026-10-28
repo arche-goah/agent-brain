@@ -37,6 +37,15 @@ mode "a status question keeps it (latch, macOS finding on #143)" "$f" "$EN" auto
 qcmd() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
 f="$T/2q.jsonl"; { user "work through the list autonomously"; asst "x"; qcmd "the desk is running, if you need it"; } > "$f"
 mode "a remark typed mid-turn keeps it" "$f" "$EN" autonomous
+# A timer-fired prompt (ScheduleWakeup, /loop) is not the operator's word (measured 2026-10-28, Claude
+# Code 2.1.312: isMeta, promptSource "system", queuePriority "later"). Control: the same text typed.
+tick() { printf '{"type":"user","isMeta":true,"promptSource":"system","queuePriority":"later","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
+f="$T/2w.jsonl"; { user "autonomous, please"; asst "x"; user "back to normal mode"; asst "y"; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$f"
+mode "a timer-fired prompt does not switch it on" "$f" "$EN" interactive
+f="$T/2x.jsonl"; { user "autonomous, please"; asst "x"; tick "back to normal mode"; } > "$f"
+mode "a timer-fired prompt does not switch it off" "$f" "$EN" autonomous
+f="$T/2y.jsonl"; { user "back to normal mode"; asst "y"; user "# Autonomous loop check"; } > "$f"
+mode "the same words typed by the operator switch it (control)" "$f" "$EN" autonomous
 f="$T/3.jsonl"; { user "autonomous, please"; asst "x"; user "status?"; asst "y"; user "back to normal mode"; } > "$f"
 mode "an off word ends it" "$f" "$EN" interactive
 # Asking what is open ends it: the operator is here (operator 2026-10-26, Windows instance).
