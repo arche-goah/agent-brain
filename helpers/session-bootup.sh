@@ -695,6 +695,14 @@ if [[ -n "$smc_pid" ]]; then
 elif [[ -f "$HERE/shared-memory-check.sh" ]]; then
   OPEN_ITEMS_IN_BOOTUP=1 SHARED_MEMORY_OWNER="$eco_owner" bash "$HERE/shared-memory-check.sh" 2>/dev/null
 fi
+# YOUR MOVE (the routing fields' third cut, docs/shared-memory-fields.md): how many open entries
+# name THIS device in `next`. Measured 2026-10-28 on the macOS instance: 2 such entries, the oldest
+# 14 days, that no other start line named. Silent when there are none or no SHARED_MEMORY_SELF.
+if [[ -n "${SHARED_MEMORY_SELF:-}" && -d "${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}/.git" \
+      && -f "$HERE/../scripts/shared-memory-index.py" ]]; then
+  "$PY" "$HERE/../scripts/shared-memory-index.py" --repo "${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}" \
+    --mine "$SHARED_MEMORY_SELF" 2>/dev/null || true
+fi
 # OPEN FOR US (operator correction 2026-10-07): every open request to this instance and
 # every open PR, one list, with how many sessions already reported each item — louder on
 # every repeat. helpers/open-items-gate.cjs (Stop) blocks a first reply that leaves an item
