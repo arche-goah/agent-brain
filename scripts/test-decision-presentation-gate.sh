@@ -29,7 +29,13 @@ N="$T/none"; mkdir -p "$N/.claude/rules" "$N/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$N/.claude/rules/ledgers.json"
 # Decisions that are not the operator's (circle A, C, D) never count (macOS finding on #143).
 printf '%s\n' '- [ ] Write the docs' '  - class: todo' '- [x] Old decision' '  - class: decision' \
-  '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Their desk layout' '  - class: decision' '  - circle: D' > "$N/docs/questions.md"
+  '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Their desk layout' '  - class: decision' '  - circle: D' \
+  '- [ ] Router hand step' '  - class: hand-step' '  exit: later-at-system 2026-10-28 — at the router' \
+  '- [ ] Stable pin' '  - class: decision' '  - circle: B' '  exit: operator-decision 2026-10-20' '  exit: other-side 2026-10-28 — field use first' > "$N/docs/questions.md"
+# The entry's last exit says who moves (2026-10-28: 22 counted, none an operator decision by its exit).
+X="$T/exit"; mkdir -p "$X/.claude/rules" "$X/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$X/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Parked choice' '  - class: decision' '  exit: parked 2026-10-20' '- [ ] Release now' '  - class: decision' '  exit: operator-decision 2026-10-28' > "$X/docs/questions.md"
 O="$T/circle"; mkdir -p "$O/.claude/rules" "$O/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$O/.claude/rules/ledgers.json"
 printf '%s\n' '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Release now' '  - class: decision' '  - circle: B' > "$O/docs/questions.md"
@@ -78,6 +84,10 @@ f="$T/4c.jsonl"; { user "anything open for me?"; asst "Two points, recommendatio
 check "an operator circle next to a circle C entry" "$f" "$O" block
 f="$T/5.jsonl"; { user "anything open for me?"; asst "Nothing open."; } > "$f"
 check "asked, but no open decision (control)" "$f" "$N" allow
+f="$T/5x.jsonl"; { user "anything open for me?"; asst "One point, recommendation yes."; } > "$f"
+check "an entry whose last exit is operator-decision still counts" "$f" "$X" block
+out=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$f")" "$(native "$X")" | CLAUDE_PROJECT_DIR="$(native "$X")" node "$(native "$G")" 2>&1)
+case "$out" in *"1 operator hand step"*) ok "a parked exit is not counted";; *) bad "parked exit counted: ${out:0:200}";; esac
 f="$T/6.jsonl"; { user "fix the parser"; asst "done"; user "now the tests"; asst "done"; } > "$f"
 check "an ordinary turn, not after autonomy, no ask (control)" "$f" "$B" allow
 mkdir -p "$N/.claude-state"

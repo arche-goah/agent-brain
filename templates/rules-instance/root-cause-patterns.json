@@ -10,8 +10,15 @@
     "or its result. Example for a German operator: correction \"\\\\bschief ?gelaufen\\\\b\", \"\\\\bwarum hast du\\\\b\",",
     "\"\\\\bist doch schon\\\\b\", \"\\\\bfehlerklasse\\\\b\"; cause \"^[ \\\\t>*_-]*ursache\\\\b[^\\\\n]{0,24}:\".",
     "Measure before relying on it: node core/helpers/root-cause-gate.cjs --review 40 counts corrections over",
-    "this project's transcripts — zero over a working month means the patterns miss the operator's wording."
+    "this project's transcripts — zero over a working month means the patterns miss the operator's wording.",
+    "_cases: the operator's real wording with the verdict the gate must reach (text = the message that opens the",
+    "turn, reply = the answer, default 'Done.'); run by core/scripts/pattern-cases.py at every self-test."
   ],
   "correction_patterns": [],
-  "cause_patterns": []
+  "cause_patterns": [],
+  "_cases": [
+    {"text": "why did you ask that again?", "expect": "block"},
+    {"text": "why did you ask that again?", "reply": "Cause: the record was a stale snapshot.", "expect": "block"},
+    {"text": "how is the show going?", "expect": "allow"}
+  ]
 }

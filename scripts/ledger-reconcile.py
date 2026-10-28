@@ -258,7 +258,8 @@ def main():
             lines.append(f"!! ledger: {len(items)} {head}: {shown} - {tail}")
 
     say("done_open", "entr(y/ies) done but still open (its check passes)",
-        "tick it with the evidence, and name why the ledger missed it (copied from a report? fixed in passing?)")
+        "tick it with the evidence, and name why the ledger missed it (copied from a report? fixed in passing?)"
+        " - or, with work left, the check measures only a part: make it measure the exit")
     say("regressed", "ticked entr(y/ies) whose check fails",
         "reopen it, or the check no longer measures the thing")
     say("broken", "check(s) that could not give an answer",
@@ -290,6 +291,18 @@ def main():
     return 0
 
 
+def commits_since(root, stamp):
+    """Commits made after the stamp file was written. Measured 2026-10-28 on the macOS instance:
+    three entries reported "done but still open" from a run at 22:23 had been ticked after it."""
+    try:
+        since = os.path.getmtime(stamp)
+        out = subprocess.run(["git", "-C", str(root), "log", "-n", "200", "--format=%ct"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    return sum(1 for t in out.split() if t.isdigit() and int(t) > since)
+
+
 def cached(a):
     """Session start: the previous run's brief result, the next run started in the background."""
     state = pathlib.Path(a.root) / ".claude-state"
@@ -305,6 +318,9 @@ def cached(a):
             when = "an earlier start"
         sys.stdout.write(prev)
         print(f"   (ledger reconcile: result of {when}; the next run is measuring in the background)")
+        newer = commits_since(a.root, state / "ledger-reconcile.stamp")
+        if newer:
+            print(f"   ({newer} commit(s) since that result - an entry above may be ticked already; the background run re-measures)")
     try:
         state.mkdir(exist_ok=True)
     except OSError:

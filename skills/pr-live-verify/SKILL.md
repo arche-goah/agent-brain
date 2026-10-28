@@ -7,14 +7,7 @@ description: Re-measure a collaborator's PR claims on OUR OWN hardware before me
 
 > **Why this exists.** A collaborator's PR that says "live-verified end-to-end" is a
 > measurement report from *their* rig. Merging it copies their environment's truth into
-> a document every instance then follows. Measured on 2026-08-17 against two such PRs:
-> most claims held, but six statements were wrong, incomplete or install-specific —
-> including one that would have sent an autonomous run into a silent hang, and one whose
-> stated mechanism was the opposite of what the desk actually does. None of that is
-> visible from reading the diff. Measured again 2026-10-24 over 188 merged collaborator
-> PRs: 39 of 157 reviews took a measurable claim over unread; the damage sat in
-> documentation of live device behaviour, where three rows were later refuted by their
-> own author — the rows carried no hint of how they had come about.
+> a document every instance then follows (why: Evidence, 2026-08-17 and 2026-10-24).
 
 ## When this fires
 
@@ -141,3 +134,17 @@ That belongs in our own docs, not in the PR thread — with the measurement, the
 recipe, and a note to restore whatever you changed. If you changed a config to make the
 test possible, restore it afterwards and document both states: the one that works on the
 network, and the one for a local test.
+
+## Evidence
+
+The measurements behind "Why this exists", by date. They stay with the skill so the rule keeps
+its measured reason; the text above carries only a pointer.
+
+- **2026-08-17 and 2026-10-24 — why this exists.** Measured on 2026-08-17 against two such PRs:
+  most claims held, but six statements were wrong, incomplete or install-specific —
+  including one that would have sent an autonomous run into a silent hang, and one whose
+  stated mechanism was the opposite of what the desk actually does. None of that is
+  visible from reading the diff. Measured again 2026-10-24 over 188 merged collaborator
+  PRs: 39 of 157 reviews took a measurable claim over unread; the damage sat in
+  documentation of live device behaviour, where three rows were later refuted by their
+  own author — the rows carried no hint of how they had come about.

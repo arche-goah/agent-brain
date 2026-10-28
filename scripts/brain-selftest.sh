@@ -332,6 +332,26 @@ for lint in "core/scripts/lint-placeholders.sh:placeholders in skills/rules" \
     fail=1
   fi
 done
+# The brain's OWN pattern data through the core reader that uses it (pattern-cases.py). The
+# fixtures above test every reader with their own sample data, so a brain's real regexes ran
+# through nothing — measured 2026-10-28 on the macOS instance: an on-pattern with a lookahead
+# made the operator's question-tool "yes" set nothing, and an autonomous run stopped on him.
+# Reads brain state, so it belongs here, never in the cached half. A failing case is red; a
+# known pattern file without `_cases` is reported, never failed.
+if [ -f "$SELFDIR/pattern-cases.py" ]; then
+  pc=$("$PY" "$SELFDIR/pattern-cases.py" "$ROOT" 2>&1); pc_rc=$?
+  pc_sum=$(printf '%s\n' "$pc" | tail -1)
+  if [ "$pc_rc" -eq 0 ]; then
+    echo "  ok  pattern-cases.py — ${pc_sum#pattern-cases: }"
+    printf '%s\n' "$pc" | grep -a '^  --  ' | head -12 | sed 's/^  --  /      -- /'
+  elif [ "$pc_rc" -eq 1 ]; then
+    echo "  !!  pattern-cases.py: the brain's pattern data fails its own cases (${pc_sum#pattern-cases: }):"
+    printf '%s\n' "$pc" | grep -a '^  !!  ' | head -6 | sed 's/^  !!  /        /'
+    fail=1
+  else
+    echo "  --  pattern-cases.py not checked: ${pc_sum#pattern-cases: }"
+  fi
+fi
 if [ -f core/scripts/invariant-check.py ] && [ -f docs/maintenance/invariants.md ]; then
   ic=$("$PY" core/scripts/invariant-check.py docs/maintenance/invariants.md 2>&1)
   drift=$(printf '%s' "$ic" | grep -ac 'NEW site' || true)

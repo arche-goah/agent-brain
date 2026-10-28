@@ -50,5 +50,37 @@ turn "$tmp/g.jsonl" "old turn" "$(wr "$tmp/core/helpers/no-window-gate.cjs" 'nev
 printf '{"type":"user","message":{"role":"user","content":"new turn"}}\n{"type":"assistant","message":{"role":"assistant","content":%s}}\n' "$(txt 'From now on I never open a window on the operator machine.')" >> "$tmp/g.jsonl"
 expect "a gate written in an EARLIER turn does not carry this turn's promise" block "$(run "$tmp/g.jsonl")"
 
+# 2026-10-28: the WRITE is the promise. A rule written straight into memory with a reply that has no future
+# word passed (operator: "a note … is not enough, we need mechanically binding ways of working").
+ed() { node -e 'console.log(JSON.stringify([{type:"tool_use",name:"Edit",input:{file_path:process.argv[1],old_string:process.argv[2],new_string:process.argv[3]}}]))' "$1" "$2" "$3"; }
+mem="$tmp/.claude/projects/p/memory"
+printf '{"patterns":["\\\\bhenceforth\\\\b"],"first_person":["\\\\b(I|we)\\\\b"],"rule_words":["\\\\bforbidden\\\\b"],"carrier_words":["Held by"]}\n' > "$tmp/.claude/rules/commitments.json"
+turn "$tmp/h.jsonl" "why must I flash?" "$(txt 'I add the rule there.')" \
+  "$(wr "$mem/bench-flash.md" 'Who flashes: the AI, never a command block for the operator.')"
+expect "real case: a rule written into memory, no mechanism this turn, blocks" block "$(run "$tmp/h.jsonl")"
+mkdir -p "$tmp/core/helpers"; printf '// gate\n' > "$tmp/core/helpers/flash-gate.cjs"
+turn "$tmp/i.jsonl" "x" "$(wr "$mem/bench-flash.md" 'Never hand over the flash command. Carrier: core/helpers/flash-gate.cjs')"
+expect "a written rule naming an EXISTING mechanism file as its carrier passes" pass "$(run "$tmp/i.jsonl")"
+turn "$tmp/j.jsonl" "x" "$(wr "$mem/bench-flash.md" 'Never hand over the flash command. Carrier: core/helpers/missing-gate.cjs')"
+expect "a carrier line naming a file that does not exist blocks" block "$(run "$tmp/j.jsonl")"
+turn "$tmp/k.jsonl" "x" "$(wr "$mem/bench-flash.md" 'Never hand over the flash command.')" \
+  "$(wr "$tmp/core/helpers/flash-gate.cjs" '// refuse the flash command block')"
+expect "a rule written together with a mechanism in the same turn passes" pass "$(run "$tmp/k.jsonl")"
+turn "$tmp/l.jsonl" "x" "$(wr "$mem/MEMORY.md" '- [Bench flash](bench-flash.md) - never by the operator')"
+expect "the memory index (one pointer line) is exempt" pass "$(run "$tmp/l.jsonl")"
+turn "$tmp/m.jsonl" "x" "$(ed "$mem/bench-flash.md" 'Never hand over the flash command.' $'Never hand over the flash command.\nMeasured on the bench, 2026-10-28.')"
+expect "an Edit that only repeats an old rule line as context passes" pass "$(run "$tmp/m.jsonl")"
+turn "$tmp/n.jsonl" "x" "$(wr "$tmp/AGENTS.md" 'Flashing by hand is forbidden for the operator.')"
+expect "instance rule word (data) in a prose file blocks" block "$(run "$tmp/n.jsonl")"
+turn "$tmp/o.jsonl" "x" "$(wr "$tmp/AGENTS.md" 'Flashing by hand is forbidden. Held by: core/helpers/flash-gate.cjs')"
+expect "instance carrier word (data) naming an existing mechanism passes" pass "$(run "$tmp/o.jsonl")"
+
+# 2026-10-28: a later text that takes the promise back clears it (the block message names that way out;
+# without this the earlier sentence blocked every stop again)
+turn "$tmp/p.jsonl" "x" "$(txt 'From now on I never open a window on the operator machine.')" "$(txt 'I take that back: it is not guaranteed until the gate is pinned.')"
+expect "a promise taken back in a later text of the same turn passes" pass "$(run "$tmp/p.jsonl")"
+turn "$tmp/q.jsonl" "x" "$(txt 'I take that back.')" "$(txt 'From now on I never open a window on the operator machine.')"
+expect "a promise made AFTER a retraction still blocks" block "$(run "$tmp/q.jsonl")"
+
 [ $fail -eq 0 ] && echo "test-commitment-carrier-gate: all passed" || echo "test-commitment-carrier-gate: FAILED"
 exit $fail
