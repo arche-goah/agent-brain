@@ -180,6 +180,11 @@ def main() -> int:
     plugin_sources = observe_marketplace_sources()
 
     for name, entry in lock["repos"].items():
+        # A suite consumed ONLY as a plugin has no clone (path null): its state is the
+        # plugin's, recorded in the plugins block below. Measured 2026-10-28: such an entry
+        # crashed the whole run with a TypeError.
+        if not entry.get("path"):
+            continue
         path = Path(entry["path"]).expanduser()
         if not path.is_dir():
             drift.append(f"{name}: path missing ({entry['path']})")
@@ -211,6 +216,14 @@ def main() -> int:
                       if plugin_sources.get(pid.split("@", 1)[0]) == slug), None) if slug else None
         if match:
             entry["consumer_plugin"] = match
+        elif entry.get("consumer_plugin") in now_plugins:
+            # The plugin is installed but the marketplace names another repo (a renamed repo
+            # keeps its old name there): keep the field and say so. Measured 2026-10-28:
+            # `--write` dropped content-toolsuite's consumer_plugin because the marketplace
+            # still lists arche-goah/touchdesigner-suite, and local-machinery then read the
+            # suite's plugin as undeclared.
+            drift.append(f"{name}: consumer_plugin {entry['consumer_plugin']} kept, but the marketplace "
+                         f"names {plugin_sources.get(entry['consumer_plugin'].split('@', 1)[0])} for it, not {slug}")
         else:
             entry.pop("consumer_plugin", None)
 
