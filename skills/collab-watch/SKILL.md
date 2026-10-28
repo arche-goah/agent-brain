@@ -121,8 +121,9 @@ opt-out and holds for that session only.
    off, workflow filter), or — most often — a merge CONFLICT, for which GitHub builds no
    merge ref and starts no run. Separate them with one look:
    `gh pr view <nr> --json mergeable` (`CONFLICTING` = rebase, not "CI broken"); an empty
-   `gh run list --branch <branch>` plus an empty check rollup = CI is not firing, a report
-   event for the operator. A second branch as a control comes BEFORE any outage diagnosis.
+   `gh run list --workflow <ci workflow> --branch <branch>` plus an empty check rollup = CI
+   is not firing, a report event for the operator (without `--workflow` a run of any other
+   workflow makes CI look alive — the guard refuses that form). A second branch as a control comes BEFORE any outage diagnosis.
 4. **Merge when both sides said yes — whoever comes first** (operator decision 2026-10-11:
    a ready PR that waits for one particular person "hangs for nothing"). Shared work is
    merged by whichever party gets to it first, once ALL of these hold: the author reported
