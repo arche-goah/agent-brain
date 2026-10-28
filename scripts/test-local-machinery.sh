@@ -370,7 +370,7 @@ rm -rf "$T/b"
 # Measured 2026-10-28: a general guard rule lived in one brain only; the inventory never read
 # guard data. The template's example rule stands in for "the core carries it".
 mkdir -p "$T/b/.claude/rules"
-python3 -c 'import json, sys
+"$PY" -c 'import json, sys
 t = json.load(open(sys.argv[1], encoding="utf-8"))
 json.dump([t[0], {"id": "mine", "pattern": "my-shortcut", "was": "x"}], open(sys.argv[2], "w", encoding="utf-8"))' \
   "$HERE/../templates/rules-instance/mechanism-rules.json" "$T/b/.claude/rules/mechanism-rules.json"
