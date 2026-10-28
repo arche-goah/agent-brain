@@ -43,6 +43,12 @@
       "was": "a destructive push in a form no permission pattern can catch: a branch delete by colon refspec (`git push origin :feat`), or a force/mirror push behind `git -c k=v` - a deny pattern ending in `:*` is read as a trailing wildcard (docs permissions: `Bash(ls:*)` equals `Bash(ls *)`), so `git push * :*` would deny every push with two arguments, and `-c` moves `push` out of every prefix pattern (found 2026-10-26 by the macOS instance's review of the settings template)",
       "instead": "Deleting a remote branch or rewriting remote history is the operator's word (destructive). A merged PR's branch goes with `gh pr merge --delete-branch`; anything else: report it and wait for the word.",
       "needs_operator_word": true
+    },
+    {
+      "pattern": "\\|\\s*grep\\b(?![^|\\n]*--line-buffered)",
+      "was": "a Monitor stream piped through `grep` without `--line-buffered` - the filter holds its matches in a buffer, the events arrive late or never, and the watch looks dead (measured 2026-10-11 on the macOS instance: a measurement watcher wrote only at its end, the operator saw 'nothing happens')",
+      "instead": "Give every grep in the stream `--line-buffered` (awk: `fflush()`); then the first match reaches the session as it happens. A one-shot `grep -q` after the stream ended is no stream and does not need it.",
+      "monitor_only": true
     }
   ]
 }
