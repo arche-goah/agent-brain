@@ -31,7 +31,7 @@ check "the incident: a notification turn ends on a status report, a watcher runn
 f="$T/2.jsonl"; { user "work through the open points autonomously"; asst "Done with A."; tool ScheduleWakeup; } > "$f"
 check "ScheduleWakeup in the turn continues the run" "$f" allow
 bash_cmd() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"b1","name":"Bash","input":{"command":%s}}]}}\n' "$(js "$1")"; }
-MEAS="python3 core/scripts/open-items.py --brief"
+MEAS="core/scripts/open-items.py --brief"   # the gate matches the script, not the interpreter (OS-17 reads a bare interpreter name as a choice)
 f="$T/3.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "BLOCKED: item C — needs the operator's word on the deploy"; } > "$f"
 check "a BLOCKED line after measuring the list ends the turn" "$f" allow
 f="$T/4.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "POOL EMPTY: open-items lists 0 agent items (run 18:20)"; } > "$f"
@@ -44,7 +44,7 @@ f="$T/4c.jsonl"; { user "work through the open points autonomously"; bash_cmd "$
 check "a measurement of an earlier turn does not count" "$f" block
 IN="$T/inst"; mkdir -p "$IN/.claude/rules"
 printf '%s\n' '{"own_items_commands": ["offene-punkte\\.py"]}' > "$IN/.claude/rules/autonomous-patterns.json"
-f="$T/4d.jsonl"; { user "work through the open points autonomously"; bash_cmd "python3 scripts/offene-punkte.py --liste"; asst "BLOCKED: item D — the peer's merge"; } > "$f"
+f="$T/4d.jsonl"; { user "work through the open points autonomously"; bash_cmd "scripts/offene-punkte.py --liste"; asst "BLOCKED: item D — the peer's merge"; } > "$f"
 check "the instance's own measuring command counts (data)" "$f" allow "$IN"
 check "the same command without the instance data does not count (control)" "$f" block
 f="$T/5.jsonl"; { user "fix the parser"; asst "Done, tests green."; } > "$f"
