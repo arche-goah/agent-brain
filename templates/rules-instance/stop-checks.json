@@ -119,6 +119,16 @@
       "required": true
     },
     {
+      "label": "IDLE",
+      "marker": "AUTONOMOUS-IDLE",
+      "cmd": "core/helpers/autonomous-idle-gate.cjs",
+      "mode": "block",
+      "extract": "Missing: continuation",
+      "template": "The run is autonomous and this turn ends idle - do the next item, or end with ScheduleWakeup, a BLOCKED: line or a POOL EMPTY: line",
+      "maxLength": 200,
+      "required": true
+    },
+    {
       "label": "DECISIONS",
       "marker": "DECISION-PRESENTATION",
       "cmd": "core/helpers/decision-presentation-gate.cjs",
