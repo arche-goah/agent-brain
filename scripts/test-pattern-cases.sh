@@ -82,8 +82,13 @@ put all stop-patterns.json '{"_cases": [{"text": "The fix is ready. Shall I merg
 put all secret-patterns.json '{"files": [{"id": "probe", "regex": "(?:^|/)probe\\.txt$"}],
  "_cases": [{"text": "cat .env", "expect": "block"}, {"text": "data/probe.txt", "tool": "Read", "expect": "block"},
             {"text": "ls data", "expect": "allow"}]}'
+# commitments.json has no -patterns.json name and was never run (measured 2026-10-28); English
+# built-ins here, an instance adds its words as data.
+put all commitments.json '{"_cases": [{"text": "From now on I will run the lint before every push.", "expect": "block"},
+ {"text": "From now on I will run the lint before every push. I take that back.", "expect": "allow"}]}'
 run all
 for f in root-cause premise promise stop secret; do has "$f reader runs" "ok  $f-patterns.json"; done
+has "commitments reader runs" "ok  commitments.json: 2 case(s) pass"
 rc "all readers" 0
 
 # --- the shipped templates: a new brain starts with cases that pass against the core's readers

@@ -37,6 +37,8 @@ reader must reach on it:
       a handoff or an announcement.
   secret-patterns.json (secret-guard.cjs): text = a shell command, or a path with "tool": "Read"
       (or "Edit"/"Write"). "block" = denied (or asked).
+  commitments.json (commitment-carrier-gate.cjs): text = the final reply. "block" = a promise about
+      future behaviour with no carrier built; "allow" = none, or one taken back (`retract_patterns`).
 
 Each case runs the REAL reader as its hook runs it (node, a JSON payload on stdin or the CLI
 form), against a throwaway copy of the brain's `.claude/rules/*.json` — the reader sees exactly the
@@ -78,6 +80,10 @@ READERS = {
     "promise-patterns.json": ("promise-gate.cjs", "reply"),
     "stop-patterns.json": ("stoppen-gate.cjs", "reply"),
     "secret-patterns.json": ("secret-guard.cjs", "tool"),
+    # Not a `*-patterns.json` name, but the same kind of data: the instance's commitment words and
+    # take-backs (measured 2026-10-28 on the macOS instance: this runner never saw the file, so a
+    # German take-back that did not release the gate went untested).
+    "commitments.json": ("commitment-carrier-gate.cjs", "reply"),
 }
 VERDICTS = {"mode": ("autonomous", "interactive")}
 GATE_VERDICTS = ("block", "allow")
