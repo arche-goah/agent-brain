@@ -159,7 +159,9 @@ What reaches the operator is sorted first (operator decision 2026-09-18).
   ASK OR ACT and the comparative test first.
 - **Measurable is not an open point** (operator decision 2026-10-04): what a tool can read live is
   measured BEFORE the report.
-- **Hands-on items** surface only when work is on exactly that system (operator decision 2026-09-18).
+- **Hands-on items** surface only when work is on exactly that system (operator decision 2026-09-18),
+  unless the hand step blocks an ordered or expected point — then it stands in the first report
+  next to the point it blocks (operator decision 2026-10-27).
 - **A step that needs only the operator's word is a question, never an instruction** (operator
   correction 2026-10-26): "Shall I run X now?" through the question tool, and on yes the AI runs it
   and measures the effect — no "type `!` and then …" in prose. Only a step their hand alone can take
