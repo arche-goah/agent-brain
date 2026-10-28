@@ -6,7 +6,7 @@ description: Overall audit conductor — orchestrates brain-scan (conformance), 
 # Full Audit (conductor)
 
 Meta-skill over the three audit building blocks. **No mega-workflow** — the Ultracode
-HARD lesson (incident 2026-07-10, ~8M tokens): every phase is its own workflow,
+HARD lesson (why: Evidence, 2026-07-10): every phase is its own workflow,
 persists its report as a file, the synthesis reads ONLY the reports. An abort never
 costs more than one phase; between phases I stay in the loop and check the result.
 
@@ -93,9 +93,17 @@ stage.
   only makes sense for one owner's rig"); separate processes, separate sessions.
   ⚠ **STATE THIS ACTIVELY, do not just omit it (operator directive 2026-08-02, after an
   incident):** If the closing report says "full audit ran", it reads like "everything
-  checked". On 2026-08-01 the full audit ran on the same day that `router ether6` was
-  repurposed live — the resulting naming/logic collision was found only a day later, by
-  the operator. Therefore: if the session touched live systems, note EXPLICITLY in the
+  checked" (why: Evidence, 2026-08-01). Therefore: if the session touched live systems, note EXPLICITLY in the
   report: "live systems NOT part of this audit → run the instance's live verify
   path separately".
   The measurement gate for this lives in the `session-close` skill (step 1).
+
+## Evidence
+
+The incidents behind the rules above, by date. They stay with the skill so a rule keeps its
+measured reason; the text above carries only pointers.
+
+- **2026-07-10 — no mega-workflow.** (incident 2026-07-10, ~8M tokens)
+- **2026-08-01 — live systems are not part of the audit.** On 2026-08-01 the full audit ran on the same day that `router ether6` was
+  repurposed live — the resulting naming/logic collision was found only a day later, by
+  the operator.
