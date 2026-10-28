@@ -164,6 +164,25 @@ def last_post(repo, dev):
     return best
 
 
+def decision_numbers(brain):
+    """This brain's last seven days from decision-review.py --numbers (questions to the human, needless ones,
+    corrections, ...), or None. Operator order 2026-10-16 (decision register): every brain can see how able to act
+    and how accurate it is, and the others see it too. Measured 2026-10-28: the numbers existed per brain, but no
+    device report carried them, so one brain could not read another's without a session there."""
+    script = Path(__file__).with_name("decision-review.py")
+    if not script.is_file():
+        return None
+    rc, out = run([sys.executable or "python3", str(script), "--root", brain, "--days", "7", "--numbers"])
+    if rc != 0:
+        return None
+    try:
+        d = json.loads(out)
+    except ValueError:
+        return None
+    keep = ("sessions", "questions", "per_session", "unneeded", "referral", "overreach", "corrections", "correction_rate")
+    return {k: d[k] for k in keep if k in d}
+
+
 def standing_watch(brain):
     """Can this device keep the standing watch (watch-gate case (g))? Read from its collab-watch.json only — the
     report runs at session start, before any watch is armed, so "is one alive" is not measurable here.
@@ -210,12 +229,17 @@ def report(args):
     today = datetime.date.today().isoformat()
     path = os.path.join(repo, "devices", dev + ".json")
     old = load(path, {}) or {}
-    old_state = {k: v for k, v in old.items() if k not in ("device", "reported")}
+    old_state = {k: v for k, v in old.items() if k not in ("device", "reported", "decisions")}
     age = days_since(old.get("reported"))
+    # The decision numbers change every session; compared, they would rewrite the file at every start.
+    # They ride along whenever the report is written anyway (a real change, or the refresh age).
     if old_state == state and age is not None and age < REFRESH_DAYS:
         print(f"device-status: {dev} unchanged (reported {age} d ago) - nothing written")
         return 0
     doc = {"device": dev, "reported": today, **state}
+    nums = decision_numbers(brain)
+    if nums is not None:
+        doc["decisions"] = nums
     text = json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
     if args.dry_run:
         print(f"device-status: DRY RUN - would write devices/{dev}.json:")
@@ -380,6 +404,11 @@ def table(args):
                 print(f"  suite  {name}: {s.get('version') or '-'} {s.get('commit') or ''}".rstrip() + tag)
             for prob in problems(r):
                 print(f"  off: {prob}")
+            d = rep.get("decisions")
+            if isinstance(d, dict):
+                print(f"  decisions (7 d): {d.get('questions', '?')} questions to the human in {d.get('sessions', '?')} sessions, "
+                      f"{d.get('unneeded', '?')} needless, {d.get('overreach', '?')} acted alone where a person was needed, "
+                      f"{d.get('corrections', '?')} corrections")
     return 0
 
 
