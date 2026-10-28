@@ -340,6 +340,8 @@ def machine(repo, core, last_date, today):
         "lesson-carriers.py": ([py, str(S / "lesson-carriers.py"), "--repo", str(repo), "--since", str(last_date or "0000-00-00")], 60),
         # A dated state in rule prose ("alpha until <date>") that expired or disagrees with its record.
         "state-prose-lint.py": ([py, str(S / "state-prose-lint.py"), "--repo", str(repo), "--today", today], 30),
+        # A carrier the rules name but that does not exist (operator order 2026-10-28, KS-82).
+        "dead-carriers.py": ([py, str(S / "dead-carriers.py"), "--repo", str(repo)], 30),
         # Reads every transcript of the window: here and not at the session start.
         "decision-review.py": ([py, str(S / "decision-review.py"), "--root", str(repo), "--days", str(days)], 300),
         # The only reader of the stop dispatcher's recorder logs: would a recording gate
@@ -372,6 +374,8 @@ def machine(repo, core, last_date, today):
         findings += map_lines("lesson-carriers", *out["lesson-carriers.py"], "lesson without carrier", "lesson-carriers summary:", "P2")
     if "state-prose-lint.py" in out:
         findings += map_lines("state-prose", *out["state-prose-lint.py"], "state in prose:", "state-prose summary:", "P2")
+    if "dead-carriers.py" in out:
+        findings += map_lines("dead-carriers", *out["dead-carriers.py"], "dead carrier:", "dead-carriers summary:", "P2")
     if "recorder-report.py" in out:
         findings += map_lines("recorder-report", *out["recorder-report.py"], "!!", "recorder report summary:", "P2")
     if "fork-drift.py" in out:

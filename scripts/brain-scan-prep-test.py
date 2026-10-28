@@ -179,6 +179,9 @@ with tempfile.TemporaryDirectory() as d:
     write(stub / "scripts/state-prose-lint.py",
           "print('state in prose: .claude/rules/x.md:3 says until 2026-01-01, which has passed')\n"
           "print('state-prose summary: lines=1 expired=1 drift=0')\n")
+    write(stub / "scripts/dead-carriers.py",
+          "print('dead carrier: CLAUDE.md:4 names scripts/gone.sh')\n"
+          "print('dead-carriers summary: 3 named, 1 missing')\n")
     write(stub / "scripts/fork-drift.py",
           "print('!! fork pal/core branch fix/lost (no PR, last commit 2026-09-01): 1 commit(s) not in the core')\n"
           "print('fork drift summary: 1 fork(s) of org/core, 1 finding(s)')\n")
@@ -212,6 +215,7 @@ with tempfile.TemporaryDirectory() as d:
     check(has("INFO", "needless 1") and has("INFO", "1 candidate(s)"), "decision-review: numbers and candidates are INFO")
     check(has("P2", "decision-review: add a line for 'git push'"), "decision-review: a proposal is a P2 finding")
     check(has("P2", "recorder-report: !! PREMISE"), "a recorder with would-block entries is a P2 decision")
+    check(has("P2", "dead-carriers: dead carrier: CLAUDE.md:4 names scripts/gone.sh"), "a dead carrier is a P2 finding")
     check(not any(t.startswith("not available") for t in T), "a complete core reports nothing as unavailable")
     check(summ.get("machine_p1") == sum(1 for s in T.values() if s == "P1"), "summary P1 count = file P1 count")
 
