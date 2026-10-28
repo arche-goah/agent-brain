@@ -280,6 +280,16 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: push HEAD:feat (control)" Bash command "git push origin HEAD:feat" allow
   tr_probe "mechanism-guard/core rule: push to a URL (control)" Bash command "git push https://example.com/o/r.git feat" allow
   tr_probe "mechanism-guard/core rule: plain feature push (control)" Bash command 'git -C /r push -u origin feat/x' allow
+  # marketplace pin (ported 2026-10-28): writes block, reads pass
+  tr_probe "mechanism-guard/core rule: pin edit by sed -i" Bash command "sed -i 's/v1/v2/' m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by redirect" Bash command "echo x > m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by script" Bash command "python3 bump.py m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by cp" Bash command "cp /tmp/x m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin read by cat (control)" Bash command "cat m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by sed -n (control)" Bash command "sed -n 1,40p m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by awk (control)" Bash command "awk '/name/' m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by diff (control)" Bash command "diff m/.claude-plugin/marketplace.json /tmp/x" allow
+  tr_probe "mechanism-guard/core rule: pin read by jq (control)" Bash command "jq .plugins m/.claude-plugin/marketplace.json" allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
