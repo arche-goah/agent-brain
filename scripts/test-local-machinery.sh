@@ -116,6 +116,15 @@ out=$(run); grep -q '^!! local machinery: 1 instance item(s) shadow a core item 
 printf 'import runpy\nrunpy.run_path("core/scripts/invariant-check.py")\n' > "$T/b/scripts/invariant-check.py"
 out=$(run); grep -q '^!! local machinery: 1 same-named instance wrapper(s) only call the core item: scripts/invariant-check.py' <<< "$out" \
   && ! grep -q 'shadow a core item' <<< "$out" && ok "thin-wrapper-named-as-wrapper-not-shadow" || bad "thin-wrapper-named-as-wrapper-not-shadow: $out"
+# 2026-10-27: a declared alpha copy of a merged core change the pin does not carry yet is told
+# "remove the copy" — wrong while it differs from the pinned file, right once the pin equals it.
+printf 'newer\n' > "$T/b/scripts/invariant-check.py"
+decl '{"alpha":{"scripts/invariant-check.py":{"until":"2099-01-01","why":"core main ahead of the pin"}}}'
+out=$(run); ! grep -q 'shadow a core item' <<< "$out" && ok "alpha-copy-ahead-of-pin-not-shadow" || bad "alpha-copy-ahead-of-pin-not-shadow: $out"
+printf 'x\n' > "$T/b/scripts/invariant-check.py"
+out=$(run); grep -q 'shadow a core item of the same name: scripts/invariant-check.py' <<< "$out" \
+  && ok "alpha-copy-equal-to-pin-is-shadow" || bad "alpha-copy-equal-to-pin-is-shadow: $out"
+decl '{}'
 rm -f "$T/b/scripts/invariant-check.py"
 printf 'ssh rig-switch-a\n' > "$T/b/scripts/rig-check.sh"; printf 'x\n' > "$T/b/scripts/test-rig-check.sh"
 out=$(run); grep -q 'without a declaration (script 1).*: scripts/rig-check.sh' <<< "$out" && ! grep -q 'test-rig-check' <<< "$out" \

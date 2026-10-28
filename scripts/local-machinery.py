@@ -634,14 +634,22 @@ def judge(items, decl, C, today):
     for it in items:
         it["class"] = "ok"
         name = it["name"]
-        if name and name in core and it["carrier"] in ("script", "skill", "workflow"):
-            # Same name: a thin wrapper that only calls the core one looks like a copy from
-            # outside (measured 2026-10-09) — say which, the fix differs.
-            cls = "wrapper" if ("core/" + core[name]) in it["content"].replace("\\", "/") else "shadow"
-            it["class"] = cls
-            found[cls].append(it["id"])
-            continue
         ka, ki = match(alpha, it), match(inst, it)
+        if name and name in core and it["carrier"] in ("script", "skill", "workflow"):
+            # A declared alpha copy of a core item the pin does not carry yet is the deviation
+            # itself, not a shadow: measured 2026-10-27, two copies of merged core changes ahead
+            # of the pin were told "remove the copy" — removing them would drop the behaviour.
+            # Once the pinned core file equals the copy, the pin carries it: then it IS a shadow.
+            pinned = C.root / "core" / core[name]
+            if ka and pinned.is_file() and it["content"] and read(pinned) != it["content"]:
+                pass
+            else:
+                # Same name: a thin wrapper that only calls the core one looks like a copy from
+                # outside (measured 2026-10-09) — say which, the fix differs.
+                cls = "wrapper" if ("core/" + core[name]) in it["content"].replace("\\", "/") else "shadow"
+                it["class"] = cls
+                found[cls].append(it["id"])
+                continue
         if name in manual and it["carrier"] in ("hook", "stop-check", "git-hook", "scheduled", "mcp"):
             found["contradiction"].append(f"{it['id']} (manual-tools.json, yet wired as {it['carrier']})")
         if ka and ki:
