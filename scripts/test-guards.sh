@@ -286,6 +286,12 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: ci-watch inside until still blocks" Bash command "until bash core/scripts/ci-watch.sh pr o/r 5; do :; done" block
   tr_probe "mechanism-guard/core rule: wait script by bare path still blocks" Bash command "core/scripts/wait-mcp-reconnect.sh td" block
   tr_probe "mechanism-guard/core rule: wait script with an env prefix still blocks" Bash command "X=1 bash core/scripts/wait-link.sh sw1" block
+  # The third foreground rule of the same shape (2026-10-28): a grep in the lint script and a test
+  # string naming it were refused as "running the local CI mirror".
+  tr_probe "mechanism-guard/core rule: grep in ci-lint-local.sh" Bash command "grep -n PY scripts/ci-lint-local.sh" allow
+  tr_probe "mechanism-guard/core rule: lint name inside a node test string" Bash command "node -e 'f(\`ci-lint-local.sh\` 11/11)'" allow
+  tr_probe "mechanism-guard/core rule: lint run by path still blocks" Bash command "bash /x/scripts/ci-lint-local.sh" block
+  tr_probe "mechanism-guard/core rule: lint run after ; still blocks" Bash command "cd /x; scripts/ci-lint-local.sh" block
   # 2026-10-26: destructive pushes no permission pattern can catch (colon refspec, git -c ... push -f)
   tr_probe "mechanism-guard/core rule: delete by colon refspec" Bash command "git push origin :feat" block
   tr_probe "mechanism-guard/core rule: delete by colon refspec with -C" Bash command 'git -C /r push -q origin :feat' block
