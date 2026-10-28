@@ -24,6 +24,11 @@ case "$out" in *"docs/*"*|*"old.sh"*) bad "a glob or an absence note was reporte
 case "$out" in *"names docs/x.md"*) ok "a file:line reference is checked as its file";; *) bad "file:line: $out";; esac
 case "$out" in *"dead-carriers summary: 5 named, 3 missing"*) ok "the summary counts named and missing";; *) bad "summary: $out";; esac
 [ "$rc" -eq 0 ] && ok "a report, exit 0" || bad "rc=$rc"
+# An instance's own absence words come as data (the core stays English).
+printf '%s\n' 'Folder `docs/private/` - sentinel-absent-word.' >> "$B/.claude/rules/a.md"
+case "$("$PY" "$(native "$S")" --repo "$(native "$B")" 2>&1)" in *"docs/private/"*) ok "without instance data the line is checked";; *) bad "line skipped without data";; esac
+printf '%s\n' '{"absence_patterns": ["sentinel-absent-word"]}' > "$B/.claude/rules/dead-carriers.json"
+case "$("$PY" "$(native "$S")" --repo "$(native "$B")" 2>&1)" in *"docs/private/"*) bad "instance absence word ignored";; *) ok "an instance absence word skips the line";; esac
 echo
 [ "$fail" -eq 0 ] && echo "dead-carriers: all cases pass" || echo "dead-carriers: FAILURES"
 exit "$fail"

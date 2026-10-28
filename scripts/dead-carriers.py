@@ -12,7 +12,8 @@ What it reads: the brain's CLAUDE.md and every `.claude/rules/*.md`. What it che
     .claude/, src/) or `~/` — the file or folder exists;
   * a core skill named as `brain-core:<name>` — `core/skills/<name>/` exists.
 Skipped on purpose: globs and placeholders (`*`, `<`, `{`, `$`), and paths inside a line that
-says the thing is gone (removed, deleted, entfernt, geloescht, archived) — those name an absence.
+says the thing is gone (removed, deleted, archived; other languages as instance data) — those name
+an absence.
 
 Output: one line per missing carrier, `dead carrier: <file>:<line> names <x>`, then
 `dead-carriers summary: <n> named, <m> missing`. Exit 0 (a report, not a gate).
@@ -26,15 +27,32 @@ import sys
 PATH_RX = re.compile(r"`((?:core|scripts|docs|config|src|\.claude)/[^`\s]+|~/[^`\s]+)`")
 SKILL_RX = re.compile(r"\bbrain-core:([a-z0-9][a-z0-9-]*)")
 SKIP = re.compile(r"[*<>{}$|]")
-GONE = re.compile(r"\b(removed|deleted|entfernt|geloescht|gelöscht|archived|archiviert|abgeklemmt|weg|"
-                  r"does not exist|existiert (derzeit |noch )?nicht)\b", re.I)
+# Absence words: English built-ins; an instance adds its language as data
+# (.claude/rules/dead-carriers.json {"absence_patterns": [...]}), the core stays English.
+GONE_BUILTIN = [r"\b(removed|deleted|archived|unwired|does not exist|not yet created)\b"]
+
+
+def gone_rx(repo):
+    pats = list(GONE_BUILTIN)
+    try:
+        import json
+        extra = json.loads((repo / ".claude" / "rules" / "dead-carriers.json").read_text(encoding="utf-8"))
+        for p in extra.get("absence_patterns") or []:
+            try:
+                re.compile(p)
+                pats.append(p)
+            except re.error:
+                pass
+    except (OSError, ValueError):
+        pass
+    return re.compile("|".join(pats), re.I)
 # A relative path in a line that names another repo (`~/Projects/<repo>`) may live in that repo.
 REPO_RX = re.compile(r"~/Projects/([\w.-]+)")
 
 
-def targets(path):
+def targets(path, gone):
     for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-        if GONE.search(line):
+        if gone.search(line):
             continue
         roots = [pathlib.Path(os.path.expanduser(f"~/Projects/{r}")) for r in REPO_RX.findall(line)]
         for m in PATH_RX.finditer(line):
@@ -63,10 +81,11 @@ def main(argv=None):
     files = [repo / "CLAUDE.md"] + sorted((repo / ".claude" / "rules").glob("*.md"))
     named = missing = 0
     seen = set()
+    gone = gone_rx(repo)
     for f in files:
         if not f.is_file():
             continue
-        for n, kind, x, roots in targets(f):
+        for n, kind, x, roots in targets(f, gone):
             if (kind, x) in seen:
                 continue
             seen.add((kind, x))
