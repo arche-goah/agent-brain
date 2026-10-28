@@ -183,12 +183,17 @@ b64() { printf '%s' "$1" | base64 | tr -d '\n'; echo; }
 { b64 'instance-key: abc — checked on macOS'; } > "$TMP/proof.txt"
 PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >/dev/null 2>&1
 check "a merged PR with only the macOS proof fails" 1 $?
-{ b64 'instance-key: abc — checked on macOS'; b64 'instance-key: def — Windows check OK'; } > "$TMP/proof.txt"
+{ b64 'instance-key: abc — macOS OK'; b64 'instance-key: def — Windows check OK'; } > "$TMP/proof.txt"
 PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >/dev/null 2>&1
 check "both OS proofs with instance keys pass" 0 $?
-{ b64 'instance-key: abc — checked on macOS'; b64 'checked on Windows too, no key'; } > "$TMP/proof.txt"
+{ b64 'instance-key: abc — macOS OK'; b64 'Windows OK too, no key'; } > "$TMP/proof.txt"
 PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >/dev/null 2>&1
 check "OS words without an instance key do not count" 1 $?
+# 2026-10-28: a line that names Windows only as still open is no Windows proof (#156-#159 carried
+# "macOS: OK at <sha> ... Windows check still open." — the old word test counted it for both).
+{ b64 'instance-key: abc — macOS: OK at abc1234. Windows check still open.'; } > "$TMP/proof.txt"
+PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >/dev/null 2>&1
+check "Windows named only as open is no Windows proof" 1 $?
 
 echo
 echo "$pass/$((pass+fail)) passed"
