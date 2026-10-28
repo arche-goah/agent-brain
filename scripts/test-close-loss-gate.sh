@@ -58,6 +58,20 @@ expect "instance release and hand-step words (operator's language as data)" bloc
 turn "$T/7.jsonl" "Gespeichert, du kannst runterfahren."
 expect "instance release, nothing open (control)" allow "$(run "$T/7.jsonl" "$C")"
 
+# A corrected close report replaces the one before it (2026-10-28, macOS instance: the first report released and named a
+# hand step, the corrected one did not, and the check read the first one on every stop - a loop until the operator wrote).
+js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
+{ printf '{"type":"user","message":{"role":"user","content":"close the session"}}\n'
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "Gespeichert, du kannst runterfahren. Offen: ein Handgriff am Router.")"
+  printf '{"type":"user","message":{"role":"user","content":"Stop hook feedback:\\nCLOSE-LOSS"}}\n'
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "Gespeichert, du kannst runterfahren.")"; } > "$T/9.jsonl"
+expect "corrected close report: only the last reply counts" allow "$(run "$T/9.jsonl" "$C")"
+{ printf '{"type":"user","message":{"role":"user","content":"close the session"}}\n'
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "Gespeichert, du kannst runterfahren.")"
+  printf '{"type":"user","message":{"role":"user","content":"Stop hook feedback:\\nX"}}\n'
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "Gespeichert, du kannst runterfahren. Offen: ein Handgriff am Router.")"; } > "$T/10.jsonl"
+expect "the hand step in the LAST reply still blocks (control)" block "$(run "$T/10.jsonl" "$C")"
+
 # Neighbor repos (class search after #149): the shared-memory repo and the instance's `repos` list.
 git init -q --bare "$T/sm-origin.git"
 git clone -q "$T/sm-origin.git" "$T/sm" 2>/dev/null
