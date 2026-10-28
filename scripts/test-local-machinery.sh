@@ -183,7 +183,7 @@ else
 fi
 
 # --- plugins: core and suites are not items ------------------------------------------------
-mk '{"enabledPlugins":{"brain-core@m":true,"brain-core-next@m":true,"td@m":true,"off@m":false}}' '' '' >/dev/null
+mk '{"enabledPlugins":{"brain-core@m":false,"brain-core-next@m":true,"td@m":true,"off@m":false}}' '' '' >/dev/null
 mkdir -p "$T/b/config"; printf '{"repos":{"td-suite":{"kind":"suite","consumer_plugin":"td@m"}}}' > "$T/b/config/ecosystem.json"
 out=$(run); [[ -z "$out" ]] && ok "core-suite-disabled-plugins-silent" || bad "core-suite-disabled-plugins-silent: $out"
 printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
@@ -199,6 +199,17 @@ out=$(run); ! grep -q 'plugin:td@m' <<< "$out" && ok "marketplace-plugin-of-list
 printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
 out=$(run); grep -q 'plugin:td@m' <<< "$out" && ok "marketplace-plugin-of-unlisted-repo-reported" || bad "marketplace-plugin-of-unlisted-repo-reported: $out"
 rm -rf "$T/fakehome/.claude/plugins/marketplaces"
+# 2026-10-28 (operator word): the stable AND the beta channel of one suite enabled at once is loud;
+# one channel, or the other plugin disabled, is silent.
+mk '{"enabledPlugins":{"brain-core-next@m":true,"td@m":true,"td-next@m":true}}' '' '' >/dev/null
+printf '{"repos":{"td-suite":{"kind":"suite","consumer_plugin":"td-next@m"}}}' > "$T/b/config/ecosystem.json"
+out=$(run); grep -q '^!! local machinery: 1 suite(s) with the stable AND the beta plugin enabled at once: td + td-next (m)' <<< "$out" \
+  && ok "both-channels-loud" || bad "both-channels-loud: $out"
+mk '{"enabledPlugins":{"brain-core-next@m":true,"td@m":false,"td-next@m":true}}' '' '' >/dev/null
+out=$(run); ! grep -q 'stable AND the beta' <<< "$out" && ok "one-channel-silent" || bad "one-channel-silent: $out"
+mk '{"enabledPlugins":{"brain-core@m":true,"brain-core-next@m":true}}' '' '' >/dev/null
+out=$(run); grep -q 'brain-core + brain-core-next (m)' <<< "$out" && ok "both-core-channels-loud" || bad "both-core-channels-loud: $out"
+printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
 
 # --- git hooks: global hooksPath outside the brain ----------------------------------------
 mk "$CORE_HOOK" '' '' >/dev/null; git -C "$T/b" init -q
