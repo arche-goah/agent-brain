@@ -62,8 +62,8 @@ Self-analysis for Claude Code sessions. Inspired by the `/insights` command from
 ```
 
 ### Step 4: Persist
-- Save: `memory/session_{YYYY-MM-DD}.md`
-- Update the `MEMORY.md` index
+- No `memory/session_*.md` file (`rules/intelligence.md`, Session End) — the report stays in the chat
+- Each finding goes to its strongest carrier (`rules/intelligence.md`, Knowledge Carriers); a new fact to auto-memory with its `MEMORY.md` index line
 
 ### Step 5: Auto-trigger
 In `.claude/rules/intelligence.md`: on session end → run automatically.
