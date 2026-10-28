@@ -19,11 +19,18 @@
  *   - with a line `POOL EMPTY: <how it was measured>` (nothing left to do).
  * The tokens are fixed and language-neutral; the text around them is the instance's language.
  * A running waiter does not count: it wakes the session for its own event only.
+ * A BLOCKED or POOL EMPTY line is a claim about the list, so the same turn must have MEASURED the list:
+ * a call of `core/scripts/open-items.py`, or of an instance command named as data
+ * (`own_items_commands`, regexes, in .claude/rules/autonomous-patterns.json). Measured 2026-10-28 on the
+ * macOS instance: a turn ended on "BLOCKED: waiting on the CI watchers, the peer, the operator" while the
+ * session start listed 16 own items; the line was the AI's recollection that "its strand was empty",
+ * never read against the list — the operator: "so everything is done on your side? or why did you stop?"
  * Outside the mode, and on a re-issue (stop_hook_active), it is silent. Fails open on unreadable input.
  * Fixture: scripts/test-autonomous-idle-gate.sh.
  */
 'use strict';
 const fs = require('fs');
+const path = require('path');
 const { autonomousMode } = require('./autonomous-mode.cjs');
 const { isTranscriptRecord } = require('./turn-kind.cjs');
 
@@ -34,7 +41,7 @@ const HOOK_ECHO = /^Stop hook feedback:/;
 function turnOf(tp) {
   let lines;
   try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return null; }
-  let text = ''; let wake = false;
+  let text = ''; let wake = false; let cmds = [];
   for (const line of lines) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
@@ -46,17 +53,28 @@ function turnOf(tp) {
         : Array.isArray(c) && !c.some((b) => b && b.type === 'tool_result') ? c.map((b) => (b && b.text) || '').join('\n') : null;
       // Every new user record that is no tool result starts a turn — an operator prompt, a
       // notification or a peer message alike: each of them is a turn that can end idle.
-      if (t !== null && !HOOK_ECHO.test(t)) { text = ''; wake = false; }
+      if (t !== null && !HOOK_ECHO.test(t)) { text = ''; wake = false; cmds = []; }
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
         if (b && b.type === 'text' && b.text) text = b.text;
         if (b && b.type === 'tool_use' && b.name === 'ScheduleWakeup') wake = true;
+        if (b && b.type === 'tool_use' && b.input && typeof b.input.command === 'string') cmds.push(b.input.command);
       }
     }
   }
-  return { text, wake };
+  return { text, wake, cmds };
+}
+
+/** The commands that measure the brain's own open items: the core's, plus the instance's (data). */
+function measurers(root) {
+  const out = [/open-items\.py\b/];
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'autonomous-patterns.json'), 'utf8'));
+    for (const s of (d && d.own_items_commands) || []) { try { out.push(new RegExp(s)); } catch (e) { /* skip */ } }
+  } catch (e) { /* no data: the core's command only */ }
+  return out;
 }
 
 function judge(input) {
@@ -65,7 +83,16 @@ function judge(input) {
   if (!autonomousMode(input.transcript_path, root)) return null;
   const t = turnOf(input.transcript_path);
   if (!t || !t.text) return null;
-  if (t.wake || END_LINE.test(t.text)) return null;
+  if (t.wake) return null;
+  if (END_LINE.test(t.text)) {
+    const m = measurers(root);
+    if (t.cmds.some((c) => m.some((r) => r.test(c)))) return null;
+    return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY line, but the list behind it was not measured ' +
+      'in this turn — the line is a recollection, not a reading. Run the brain\'s own-items measurement now ' +
+      '(core/scripts/open-items.py, or the instance command in .claude/rules/autonomous-patterns.json ' +
+      '`own_items_commands`), do what it lists as yours, and end only when every item left is named as blocked. ' +
+      'Missing: own-items measurement';
+  }
   return 'AUTONOMOUS-IDLE: the run is autonomous and this turn ends without its continuation. ' +
     'Do the next item now (tool calls in this turn), or end the turn in one of the run\'s end forms: ' +
     'ScheduleWakeup (the run continues itself), a line `BLOCKED: <item> — <what restores it, who>`, or a line ' +
