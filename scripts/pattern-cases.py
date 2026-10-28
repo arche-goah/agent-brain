@@ -37,6 +37,9 @@ reader must reach on it:
       a handoff or an announcement.
   secret-patterns.json (secret-guard.cjs): text = a shell command, or a path with "tool": "Read"
       (or "Edit"/"Write"). "block" = denied (or asked).
+  commitments.json (commitment-carrier-gate.cjs): text = a reply; "then" (optional) = a later
+      reply of the same turn, the place a take-back stands. "block" = a promise without a mechanism
+      is left standing; "allow" = none, or it was taken back.
 
 Each case runs the REAL reader as its hook runs it (node, a JSON payload on stdin or the CLI
 form), against a throwaway copy of the brain's `.claude/rules/*.json` — the reader sees exactly the
@@ -78,6 +81,7 @@ READERS = {
     "promise-patterns.json": ("promise-gate.cjs", "reply"),
     "stop-patterns.json": ("stoppen-gate.cjs", "reply"),
     "secret-patterns.json": ("secret-guard.cjs", "tool"),
+    "commitments.json": ("commitment-carrier-gate.cjs", "promise"),
 }
 VERDICTS = {"mode": ("autonomous", "interactive")}
 GATE_VERDICTS = ("block", "allow")
@@ -148,6 +152,11 @@ def scenario(kind, case):
         return recs, {"stop_hook_active": False}
     if kind == "reply":
         return [user(case.get("prompt", "go on")), asst(text)], {"stop_hook_active": False}
+    if kind == "promise":
+        recs = [user(case.get("prompt", "go on")), asst(text)]
+        if case.get("then"):
+            recs.append(asst(case["then"]))
+        return recs, {"stop_hook_active": False}
     if kind == "tool":
         tool = case.get("tool", "Bash")
         ti = {"command": text} if tool in ("Bash", "PowerShell") else {"file_path": text}
