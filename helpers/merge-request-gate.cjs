@@ -104,7 +104,9 @@ function saysOk(line, os) {
   const at = line.search(rx);
   if (at < 0 || !OK_RX.test(line)) return false;
   const others = Object.entries(NAME_RX).filter(([k]) => k !== os).map(([, r]) => r.source).join('|');
-  const rest = line.slice(at);
+  // A code span names a file, a command or a sha, never a verdict: `test-open-items.sh` in an OK
+  // line read as "open" and held a merge (2026-10-28, #164). The OK itself stays outside.
+  const rest = line.slice(at).replace(/`[^`]*`/g, '``');
   const end = others ? rest.slice(1).search(new RegExp(others, 'i')) : -1;
   return !NOT_RX.test(end < 0 ? rest : rest.slice(0, end + 1));
 }
