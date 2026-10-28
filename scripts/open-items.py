@@ -838,10 +838,13 @@ def main():
     lost = tuple(f"{c['label']}:" for c, r in reads[1:] if r is None)
     for k, v in old.items():
         is_ses = k.startswith(("start:", "end:"))
-        chan = ":" in k and not k.startswith(("start:", "end:", "wake:"))
-        if k not in keep and ((req is None and "#" not in k and not is_ses and not k.startswith(labels))
+        # A ledger key carries ':' and, without an id:, a '#' (`ledger:<file>#<slug>`): it is neither a
+        # channel id nor a PR (found 2026-10-28 by the parallel session reading #164).
+        is_led = k.startswith("ledger:")
+        chan = ":" in k and not is_led and not k.startswith(("start:", "end:", "wake:"))
+        if k not in keep and ((req is None and "#" not in k and not is_ses and not is_led and not k.startswith(labels))
                               or k.startswith(lost) or (chan_error and chan)
-                              or (pr is None and "#" in k) or (ses is None and is_ses)
+                              or (pr is None and "#" in k and not is_led) or (ses is None and is_ses)
                               or ((led is None or led_unread) and k.startswith("ledger:"))):
             keep[k] = v
     # Only the bootup (a real session id) writes the counter. Measured 2026-10-09: a hand run

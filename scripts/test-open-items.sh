@@ -425,6 +425,15 @@ git -C "$G" -c user.email=t@t -c user.name=t commit -qm late
 out=$(run "" "$G")
 has "[ledger|human]" "$out" && has " late " "$out" && ok "exit operator-decision lists for the operator" || bad "operator-decision: $out"
 has "docs/x/open.md#no-id-here" "$out" && ok "title key survives a line inserted elsewhere" || bad "title key moved: $out"
+# A ledger key with '#' is no PR key: when the PR source is unread, a done ledger entry's counter
+# is dropped, not kept as if it were a PR (found 2026-10-28 by the parallel session reading #164).
+mkdir -p "$T/tx"; : > "$T/tx/sk1.jsonl"; : > "$T/tx/sk2.jsonl"
+run sk1 "$G" >/dev/null
+grep -q 'no-id-here' "$G/.claude-state/open-items-seen.json" && ok "ledger key written to the counter store" || bad "ledger key not stored"
+sed -i.bak 's/^- \[ \] No id here/- [x] No id here/' "$G/docs/x/open.md"
+OWNER="" run sk2 "$G" >/dev/null
+grep -q 'no-id-here' "$G/.claude-state/open-items-seen.json" && bad "done ledger entry kept as if a PR (PR source unread)" \
+  || ok "done ledger entry with '#' dropped although the PR source is unread"
 
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
