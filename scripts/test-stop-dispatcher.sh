@@ -275,6 +275,22 @@ else
   skip "required template checks"
 fi
 
+# The template's open-items line names the branch that fired (2026-10-28: a fixed sentence read
+# "missing from the first reply" for the close-report branch). A stand-in gate prints that reason.
+if [ -f "$ROOT/templates/rules-instance/stop-checks.json" ]; then
+  P="$T/oi-brain"; mkdir -p "$P/.claude/rules"
+  printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'The close report leaves out what the session start lists as ours and is still open — the operator shuts down on this answer. Missing: core#7'}))" > "$T/oi-gate.cjs"
+  node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).checks.find(x=>x.marker==="OPEN-ITEMS-GATE");c.cmd=process.argv[2];fs.writeFileSync(process.argv[3],JSON.stringify({checks:[c]}))' \
+    "$(native "$ROOT/templates/rules-instance/stop-checks.json")" "$(native "$T/oi-gate.cjs")" "$(native "$P/.claude/rules/stop-checks.json")"
+  TR="$T/oi.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":"close"}}' > "$TR"
+  OI=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$TR")" "$(native "$P")" | CLAUDE_PROJECT_DIR="$P" node "$D")
+  case "$OI" in *"The close report leaves out"*"missing: core#7"*) ok "open-items line names the branch and what is missing";;
+    *) bad "open-items line: $OI";; esac
+  case "$OI" in *"first reply"*) bad "open-items line still says first reply: $OI";; *) ok "no first-reply wording on a close-report block";; esac
+else
+  skip "open-items template line"
+fi
+
 echo
 [ "$fail" -eq 0 ] && echo "stop-dispatcher fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
