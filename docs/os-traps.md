@@ -274,6 +274,7 @@ known:     scripts/test-decision-readiness.sh=1
 known:     scripts/test-decision-review.sh=1
 known:     scripts/test-delivered-read-gate.sh=1
 known:     scripts/test-eco-owner.sh=1
+known:     scripts/test-ecosystem-sync.sh=1
 known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
