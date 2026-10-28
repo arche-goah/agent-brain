@@ -105,5 +105,24 @@ gate "the same line outside the mode is no way out" "$f" block "AskUserQuestion"
 f="$T/g4.jsonl"; { user "status?"; asst "$Q"; } > "$f"
 gate "interactive closing question still asks for the tool" "$f" block "AskUserQuestion"
 
+# A prompt classifier's record (.claude-state/intent-classifier.jsonl) decides in the SAFE direction
+# (measured 2026-10-28, macOS instance: "you need something?" and "give me interactive questions", in
+# the operator's language, were asks
+# for what is open; the words missed both, the model read both right). Matched by session + time.
+IC="$T/int"; mkdir -p "$IC/.claude-state"
+tuser() { printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":%s}}\n' "$1" "$(js "$2")"; }
+irec() { printf '{"at":"%s","session":"%s","mode":"hook","model":{"asks_open":%s,"mode_on":%s,"mode_off":false,"correction":false}}\n' "$1" "$2" "$3" "$4"; }
+f="$T/sess-a.jsonl"; { tuser 2026-10-28T20:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-10-28T21:29:00Z "you need something?"; } > "$f"
+irec 2026-10-28T21:29:05Z sess-a true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the classifier reads an ask the words miss: the mode ends" "$f" "$IC" interactive
+mode "without the classifier record the words alone keep it (control)" "$f" "$EN" autonomous
+irec 2026-10-28T21:29:05Z other-session true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record of another session does not count" "$f" "$IC" autonomous
+irec 2026-10-28T21:35:00Z sess-a true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record far after the prompt does not count" "$f" "$IC" autonomous
+f="$T/sess-b.jsonl"; { tuser 2026-10-28T21:00:00Z "fix the parser"; } > "$f"
+irec 2026-10-28T21:00:03Z sess-b false true > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the classifier never switches the mode ON (safe direction only)" "$f" "$IC" interactive
+
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }
