@@ -417,6 +417,12 @@ def auto_class(it, repo, human_rx):
             return "ai", "the agent's own work (ledger exit)"
         if it.get("exit") == "in-pr":  # carried_by_pr found no open PR in the exit line
             return "ai", "its in-pr exit names no open PR any more — tick it or name what is left"
+        # An exit outside the skill's vocabulary read as untouched agent work: measured 2026-10-28,
+        # `waits-on-others`, `deferred`, `ask-operator` on open entries of one brain.
+        if it.get("exit") in ("done-already", "drop"):
+            return "ai", f"its exit says {it['exit']} but the box is open — tick it with the evidence"
+        if it.get("exit") and it["exit"] not in EXITS:
+            return "ai", f"unknown exit '{it['exit']}' — write one of {', '.join(sorted(EXITS))} (skill backlog-catch-up)"
         if it.get("lclass") == "decision":
             return "human", "a decision in the ledger"
         return "ai", "ledger work item"
@@ -559,6 +565,8 @@ LEDGER_FIELD = re.compile(r"\b(id|class|origin):\s*`?([\w.:/-]+)")
 LEDGER_EXIT = re.compile(r"\bexit:\s*(other-side|parked|later-at-system)\s+(\d{4}-\d{2}-\d{2})")
 # Every exit line of the skill's table; the LAST one in an entry is its current state.
 ANY_EXIT = re.compile(r"^\s*exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re.M)
+# The exits of skill backlog-catch-up, step 3.
+EXITS = {"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
 
 
 def blame_times(root, rel):
