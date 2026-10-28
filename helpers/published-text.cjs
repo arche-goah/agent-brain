@@ -139,7 +139,24 @@ function publishedText(cmd, ps) {
       }
     }
   }
-  return { texts, files, spans };
+  return { texts, files: files.map((f) => expandVars(f, cmd) ?? f), spans };
+}
+
+// `$VAR` / `${VAR}` in a handed file path, resolved as the shell would: an assignment in the same
+// command first, then the environment. null while a variable stays unknown (the caller says so).
+// Measured 2026-10-28 (Windows instance of another brain): `--body-file "$S/pr156-comment.md"`
+// was read literally, the instance key in the file went unseen and the post was blocked.
+function expandVars(f, cmd) {
+  let unknown = false;
+  const out = String(f).replace(/\$(?:\{(\w+)\}|(\w+))/g, (all, a, b) => {
+    const name = a || b;
+    const set = [...String(cmd).matchAll(new RegExp(`(?:^|[;&|\\s])${name}=("[^"]*"|'[^']*'|[^\\s;&|]+)`, 'g'))].pop();
+    if (set) return unquote(set[1]);
+    if (process.env[name] !== undefined) return process.env[name];
+    unknown = true;
+    return all;
+  });
+  return unknown ? null : out;
 }
 
 function invocations(cmd, ps, prog, subs, verbs) {
@@ -171,4 +188,4 @@ function withoutPublished(cmd, ps) {
   return out;
 }
 
-module.exports = { shellSegments, publishedText, invocations, withoutPublished, unquote };
+module.exports = { shellSegments, publishedText, invocations, withoutPublished, unquote, expandVars };
