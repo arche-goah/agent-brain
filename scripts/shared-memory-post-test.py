@@ -140,11 +140,25 @@ def main() -> int:
                                               "--answers", "core/LOG@2026-01-01#7")),
             ("SELF unset", post(repo, "request", "--area", "core", "--to", "kim-pc", "--title", "w", me="")),
             ("a folder that is not an area", post(repo, "note", "--area", "nowhere", "--to", "kim-pc", "--title", "v")),
+            # 2026-10-28: a Windows check sent to one device never reached the other Windows instances
+            ("a Windows check addressed to one device",
+             post(repo, "request", "--area", "core", "--to", "alex-win", "--title", "u",
+                  "--body", "Please counter-check #7 on Windows at the head.", me="alex-mac")),
         ]
         for name, r in cases:
             check(f"refused: {name}", r.returncode == 2 and "REFUSED" in r.stdout, r.stdout + r.stderr)
         check("a refusal writes nothing",
               files(repo) == before and (repo / "core" / "LOG.md").read_text(encoding="utf-8") == log_before)
+        r = post(repo, "request", "--area", "core", "--to", "alex-win", "--title", "One machine check",
+                 "--body", "Please counter-check on Windows: only this box has the device.",
+                 "--one-machine", "the USB device sits at this box", me="alex-mac")
+        one = repo / "core" / f"request-one-machine-check-{STATE}.md"
+        check("a check for exactly one machine passes with --one-machine, and the reason is written",
+              r.returncode == 0 and one.is_file() and "one-machine: the USB device" in one.read_text(encoding="utf-8"),
+              r.stdout + r.stderr)
+        r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Windows box moved",
+                 "--body", "The Windows box now stands in room 2.", me="alex-mac")
+        check("control: a note that only names Windows (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)
     print("shared-memory-post: all cases pass" if not fails else f"shared-memory-post: {fails} FAILURES")
     return 1 if fails else 0
 
