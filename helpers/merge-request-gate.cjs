@@ -183,4 +183,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { gate, target };
+module.exports = { gate, target, saysOk };
