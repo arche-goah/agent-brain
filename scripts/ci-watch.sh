@@ -501,6 +501,16 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     pr_conflicting_check
     if (( conflict_seen )); then sleep "$POLL"; continue; fi
     if pr_run_still_open; then sleep "$POLL"; continue; fi
+    # Green needs the SAME head on two polls. Measured 2026-10-28 on a core PR: a watch armed
+    # right after `gh pr update-branch` said `GREEN — 14 checks` on its first poll — the PR head
+    # AND its branch tip still named the old commit (the merge commit the API writes appears a
+    # few seconds later), so the head check above saw nothing behind; the new head's ten jobs
+    # were all queued. One more poll costs POLL seconds and catches every such lag.
+    ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || { sleep "$POLL"; continue; }
+    if [[ "$gh_out" != "${green_head:-}" ]]; then
+      green_head=$gh_out
+      sleep "$POLL"; continue
+    fi
     echo "CI-WATCH GREEN: $REPO PR #$TARGET — $total checks, none failing"
     exit 0
   fi
