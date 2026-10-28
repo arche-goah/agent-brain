@@ -33,6 +33,10 @@ C="$T/repo"
 
 turn "$T/1.jsonl" "Everything persisted - you can shut down."
 expect "clean release, nothing open" allow "$(run "$T/1.jsonl" "$C")"
+turn "$T/1n.jsonl" "Everything persisted, no hand step is open - you can shut down."
+expect "a negated hand step names none" allow "$(run "$T/1n.jsonl" "$C")"
+turn "$T/1h.jsonl" "Persisted - you can shut down. One hand step: plug the router back in."
+expect "an affirmative hand step still blocks (control)" block "$(run "$T/1h.jsonl" "$C")"
 
 turn "$T/2.jsonl" "Persisted - you can shut down.
 - notes written
