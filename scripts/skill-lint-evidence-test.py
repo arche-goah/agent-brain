@@ -9,7 +9,13 @@ followed by another `## ` section is flagged as not last.
 Usage: python3 scripts/skill-lint-evidence-test.py   (exit 0 = all pass)
 """
 import importlib.util
+import sys
 from pathlib import Path
+
+# Labels carry non-cp1252 characters (the warning sign of a planted story). A redirected
+# stdout on Windows is the ANSI codepage, and the print raised before a verdict (CI
+# 2026-10-28, windows-latest). Pin the stream, not the labels.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 spec = importlib.util.spec_from_file_location("skill_lint", Path(__file__).with_name("skill-lint.py"))
 lint = importlib.util.module_from_spec(spec)
