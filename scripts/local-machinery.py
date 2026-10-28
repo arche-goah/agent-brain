@@ -476,6 +476,32 @@ def scan_rules(C):
     return out
 
 
+def scan_guard_rules(C):
+    """Guard rules of the instance (`.claude/rules/mechanism-rules.json`), one item per rule:
+    a rule refuses or allows a command in this brain only, so a general one is a deviation
+    like a hook (measured 2026-10-28: a rule keeping marketplace pins on the owner's word
+    lived in one brain for weeks, and its read exemption refused plain reads - nothing
+    reported it, the inventory looked at hooks and rule text, not at guard data). A rule whose
+    pattern the core's own mechanism-rules.json or the template also carries is core."""
+    rules = load(C.root / ".claude" / "rules" / "mechanism-rules.json")
+    rules = (rules or {}).get("rules") if isinstance(rules, dict) else rules
+    known = set()
+    for f in (C.root / "core" / "mechanism-rules.json", TEMPLATES / "rules-instance" / "mechanism-rules.json"):
+        data = load(f)
+        data = (data or {}).get("rules") if isinstance(data, dict) else data
+        known |= {r.get("pattern") for r in data or [] if isinstance(r, dict)}
+    out = []
+    for i, r in enumerate(rules or []):
+        if not isinstance(r, dict) or not r.get("pattern"):
+            continue
+        rid = f".claude/rules/mechanism-rules.json#{r.get('id') or i}"
+        if r["pattern"] in known:
+            C.core_hooks.append(("guard-rule", f"{rid} (core)"))
+            continue
+        out.append(item("guard-rule", rid, json.dumps(r, ensure_ascii=False)))
+    return out
+
+
 def scan_scripts(C):
     """Every script in the brain outside the core and the other carriers. Fixtures (test-*,
     *-test.*, test_*.py, *_test.py) belong to the script they test."""
@@ -510,6 +536,7 @@ CARRIERS = {
     "agent": md_carrier("agents", "agent"),
     "command": md_carrier("commands", "command"),
     "rule": scan_rules,
+    "guard-rule": scan_guard_rules,
     "script": scan_scripts,
 }
 
