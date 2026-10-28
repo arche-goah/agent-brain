@@ -272,6 +272,13 @@ f="$T/20e.jsonl"; { boot_ok startup "$SM"; user "stand?"; asst "1 request handle
 check "ai item without a standing class, no question" "$f" block "$EN"
 f="$T/20f.jsonl"; { boot_ok startup "$SM"; user "stand?"; asst "1 request handled under the standing approval (the fixture run). 1 more I can answer myself — shall I?"; } > "$f"
 check "ai item asked, standing item reported" "$f" allow "$EN"
+# Standing PRs folded into one line (open-items.py, 2026-10-28): each number is still an item,
+# so the count the reply must carry is the number of PRs, not of lines.
+SF="open for us: 6 — ai 0 · human 0 · unclassified 0 · standing 6${NL}${SG1}${NL}- [PR-standing] 6 PRs: core#1, core#2, core#3, core#4, core#5, suite-x#6 — first report"
+f="$T/20g.jsonl"; { boot_ok startup "$SF"; user "stand?"; asst "6 PRs handled under the standing approval: CI watched, reviews answered."; } > "$f"
+check "folded standing PRs: count of PRs reported" "$f" allow "$EN"
+f="$T/20h.jsonl"; { boot_ok startup "$SF"; user "stand?"; asst "1 line handled under the standing approval."; } > "$f"
+check "folded standing PRs: count of lines is not the count (control)" "$f" block "$EN"
 # Only ai and unclassified items own the opening question; a standing item does not, so
 # stoppen-gate judges a closing question after it as anywhere else.
 check "stoppen-gate: a standing item does not own the opening question" "$T/20b.jsonl" block "$EN" false "$SG"
