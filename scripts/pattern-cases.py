@@ -97,9 +97,15 @@ def write_call():
 
 
 def answer(q, a):
+    """A question-tool answer as the transcript records it: the AskUserQuestion call, then its result
+    under the same id. A reader that counts only answers to a real call (core #188) needs both."""
     body = f'Your questions have been answered: "{q}"="{a}". You can now continue'
-    return {"type": "user", "message": {"role": "user", "content": [
-        {"type": "tool_result", "tool_use_id": "toolu_pc2", "content": body}]}}
+    return [
+        {"type": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "toolu_pc2", "name": "AskUserQuestion", "input": {"questions": []}}]}},
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_pc2", "content": body}]}},
+    ]
 
 
 def case_form(kind, case):
@@ -129,7 +135,7 @@ def scenario(kind, case):
     if kind == "mode":
         recs = []
         for s in case.get("steps", [text]):
-            recs.append(user(s) if isinstance(s, str) else answer(s["q"], s["a"]))
+            recs.extend([user(s)] if isinstance(s, str) else answer(s["q"], s["a"]))
         return recs, None
     if kind == "order":
         return [user(text)], {"tool_name": "Workflow", "tool_input": {}}
