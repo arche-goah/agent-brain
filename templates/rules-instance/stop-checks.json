@@ -36,9 +36,10 @@
       "marker": "OPEN-ITEMS-GATE",
       "cmd": "core/helpers/open-items-gate.cjs",
       "mode": "block",
-      "extract": "Missing:",
-      "template": "The open items from the session start are missing from the first reply",
-      "maxLength": 200
+      "_note": "The gate has several branches (first reply, close report, 'is anything open?', a wait without record, a failed bootup); the line names which one fired and what is missing. A fixed sentence read 'missing from the first reply' at a session close (measured 2026-10-28).",
+      "extract": "^(.{10,160}?)(?: —|\\.)[\\s\\S]*Missing: ([^\\n]*)",
+      "template": "{1} — missing: {2}",
+      "maxLength": 160
     },
     {
       "label": "WATCHER",
