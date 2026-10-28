@@ -69,6 +69,11 @@ POLL="${CI_WATCH_POLL:-15}"
 usage() { echo "usage: ci-watch.sh pr|ref <owner/repo> <pr-number|ref> [timeout_s]" >&2; exit 2; }
 [[ "$MODE" == "pr" || "$MODE" == "ref" ]] || usage
 [[ -n "$REPO" && -n "$TARGET" ]] || usage
+# The form is checked here, not by the first gh call (2026-10-27: `pr 33 --repo x` took 33 as the
+# repo and `--repo` as the PR and died later on an unbound variable instead of naming the usage).
+[[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "ci-watch: '$REPO' is not <owner/repo>" >&2; usage; }
+[[ "$MODE" != "pr" || "$TARGET" =~ ^[0-9]+$ ]] || { echo "ci-watch: '$TARGET' is not a PR number" >&2; usage; }
+[[ "$TIMEOUT" =~ ^[0-9]+$ ]] || { echo "ci-watch: timeout '$TIMEOUT' is not a number of seconds" >&2; usage; }
 
 # --- one watch per target on this machine (point 6, 2026-10-26) ---------------------------
 # Several sessions and agents on one machine and one GitHub account each armed their own watch
@@ -165,11 +170,23 @@ rl_wait() {
   deadline=$(( deadline + wait ))
 }
 
+# A transport failure is weather, not a verdict (2026-10-27: `pr 157` ended UNKNOWN on one
+# "TLS handshake timeout" while its CI kept running). ghq retries it a poll later, up to
+# CI_WATCH_NET_MAX in a row (default 5); the waited time extends the deadline like a block.
+NET_RE='TLS handshake timeout|i/o timeout|connection reset|connection refused|unexpected EOF|no such host|context deadline exceeded|HTTP 50[234]'
+NET_MAX=${CI_WATCH_NET_MAX:-5}
+net_fails=0
 ghq() {
   while :; do
     gh_out=$(gh "$@" 2>"$GH_ERR"); gh_rc=$?
     gh_err=$(cat "$GH_ERR" 2>/dev/null)
     if (( gh_rc != 0 )) && grep -qiE "$RL_RE" <<<"$gh_out$gh_err"; then rl_wait; continue; fi
+    if (( gh_rc != 0 )) && grep -qiE "$NET_RE" <<<"$gh_err" && (( net_fails < NET_MAX )); then
+      net_fails=$(( net_fails + 1 ))
+      echo "ci-watch: network error ($(grep -oiE "$NET_RE" <<<"$gh_err" | head -1)), try $net_fails of $NET_MAX — again in ${POLL}s" >&2
+      sleep "$POLL"; deadline=$(( deadline + POLL )); continue
+    fi
+    (( gh_rc == 0 )) && net_fails=0
     if (( rl_since > 0 )); then
       echo "ci-watch: rate-limit block over after $(( $(date +%s) - rl_since ))s — polling resumed" >&2
       rl_since=0; rl_step=0
