@@ -31,6 +31,7 @@ const TAIL_BYTES = 4 * 1024 * 1024;
 const BUILTIN = [/\bfrom now on\b/i, /\bgoing forward\b/i, /\bin future,? i(?:'ll| will)\b/i,
   /\bi(?:'ll| will) always\b/i, /\bfrom here on\b/i, /\bhenceforth\b/i];
 const FIRST = [/\b(i|we)\b/i, /\bi'(ll|m)\b/i];
+const RETRACT = [/\bi take (that|it|this|the promise|the statement) back\b/i, /\bis not guaranteed\b/i, /\bi withdraw (that|it|the promise)\b/i];
 const STOP = new Set(['which', 'every', 'their', 'there', 'these', 'those', 'about', 'after', 'before', 'where',
   'would', 'should', 'could', 'other', 'being', 'doing', 'start', 'starts', 'always', 'future', 'going', 'forward']);
 const MECH = /\/helpers\/[^/]+\.(?:c?js|mjs|sh)$|\/scripts\/[^/]+\.(?:py|sh|c?js|mjs|ps1)$|\/hooks\/|\/\.claude\/(?:settings(?:\.local)?\.json|rules\/[^/]+\.json)$|mechanism-rules\.json$|\/\.github\/workflows\//i;
@@ -109,8 +110,13 @@ function looseCommitments(events, inst) {
   const stop = new Set([...STOP, ...(inst.stopwords || []).map((s) => s.toLowerCase())]);
   const mech = events.filter((e) => e.kind === 'write' && MECH.test(e.file))
     .map((e) => words(e.text + ' ' + path.basename(e.file).replace(/[^A-Za-z]+/g, ' '), stop));
-  const out = [];
+  // A later text of the same turn that takes the promise back clears what came before it — the
+  // way out the block message names. Measured 2026-10-28: the retraction was written, and the gate
+  // read the earlier sentence again on every stop, a loop.
+  const retract = RETRACT.concat((inst.retract_patterns || []).map((p) => new RegExp(p, 'iu')));
+  let out = [];
   for (const e of events.filter((x) => x.kind === 'text')) {
+    if (retract.some((p) => p.test(e.text))) { out = []; continue; }
     for (const sent of e.text.split(/(?<=[.!?])\s+|\n+/)) {
       const bare = sent.replace(/„[^“”]*[“”]|"[^"]*"|`[^`]*`|'[^']{3,}'/g, ' ');
       if (!patterns.some((p) => p.test(bare)) || !first.some((p) => p.test(bare))) continue;

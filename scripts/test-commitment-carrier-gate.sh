@@ -75,5 +75,12 @@ expect "instance rule word (data) in a prose file blocks" block "$(run "$tmp/n.j
 turn "$tmp/o.jsonl" "x" "$(wr "$tmp/AGENTS.md" 'Flashing by hand is forbidden. Held by: core/helpers/flash-gate.cjs')"
 expect "instance carrier word (data) naming an existing mechanism passes" pass "$(run "$tmp/o.jsonl")"
 
+# 2026-10-28: a later text that takes the promise back clears it (the block message names that way out;
+# without this the earlier sentence blocked every stop again)
+turn "$tmp/p.jsonl" "x" "$(txt 'From now on I never open a window on the operator machine.')" "$(txt 'I take that back: it is not guaranteed until the gate is pinned.')"
+expect "a promise taken back in a later text of the same turn passes" pass "$(run "$tmp/p.jsonl")"
+turn "$tmp/q.jsonl" "x" "$(txt 'I take that back.')" "$(txt 'From now on I never open a window on the operator machine.')"
+expect "a promise made AFTER a retraction still blocks" block "$(run "$tmp/q.jsonl")"
+
 [ $fail -eq 0 ] && echo "test-commitment-carrier-gate: all passed" || echo "test-commitment-carrier-gate: FAILED"
 exit $fail
