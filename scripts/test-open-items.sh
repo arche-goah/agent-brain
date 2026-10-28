@@ -404,6 +404,28 @@ cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" -
 out=$(run "" "$L")
 has "[ledger|ai]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"
 
+# 2026-10-28 (macOS instance, 95 ledger rows): the shown date was the first date anywhere in the
+# text, "nothing done yet" was printed unmeasured, a `class: decision` read as the operator's
+# although its exit said otherwise, and an entry without id: was keyed by its line number.
+G="$T/root-git"; mkdir -p "$G/.claude/rules" "$G/docs/x"
+printf '%s\n' '{"ledgers": ["docs/x/open.md"]}' > "$G/.claude/rules/ledgers.json"
+printf '%s\n' '# x' '' '- [ ] Harden the box (checklist 2026-01-01)' '  id: harden-box' '  class: todo' '' \
+  '- [ ] Pick a colour' '  id: pick-colour' '  class: decision' '  exit: ai-does-it 2026-10-20 — measurable' '' \
+  '- [ ] No id here' '  class: todo' > "$G/docs/x/open.md"
+git -C "$G" init -q
+git -C "$G" add -A
+GIT_AUTHOR_DATE="2026-09-21T12:00:00" GIT_COMMITTER_DATE="2026-09-21T12:00:00" git -C "$G" -c user.email=t@t -c user.name=t commit -qm init
+out=$(run "" "$G")
+has "[ledger|ai] 2026-09-21 harden-box" "$out" && ok "ledger date = the entry's first commit, not a date in its text" || bad "ledger date: $out"
+has "[ledger|ai] 2026-09-21 pick-colour" "$out" && ok "exit ai-does-it outranks class: decision" || bad "exit vs class: $out"
+has "docs/x/open.md#no-id-here" "$out" && ok "entry without id: keyed by its title" || bad "title key: $out"
+printf '%s\n' '' '- [ ] Late entry' '  id: late' '  exit: operator-decision 2026-10-28 — only the operator' >> "$G/docs/x/open.md"
+git -C "$G" add -A
+git -C "$G" -c user.email=t@t -c user.name=t commit -qm late
+out=$(run "" "$G")
+has "[ledger|human]" "$out" && has " late " "$out" && ok "exit operator-decision lists for the operator" || bad "operator-decision: $out"
+has "docs/x/open.md#no-id-here" "$out" && ok "title key survives a line inserted elsewhere" || bad "title key moved: $out"
+
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")

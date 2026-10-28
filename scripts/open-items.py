@@ -409,6 +409,12 @@ def auto_class(it, repo, human_rx):
     if it["kind"] == "session":
         return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it["kind"] == "ledger":
+        # The sorted exit says who moves (skill backlog-catch-up); `class: decision` alone does not
+        # — measured 2026-10-28: 9 of 11 "human" ledger rows were no operator decision.
+        if it.get("exit") == "operator-decision":
+            return "human", "an operator decision (ledger exit)"
+        if it.get("exit") == "ai-does-it":
+            return "ai", "the agent's own work (ledger exit)"
         if it.get("lclass") == "decision":
             return "human", "a decision in the ledger"
         return "ai", "ledger work item"
@@ -549,6 +555,34 @@ def sessions(root, hook_input):
 # ledgers — a list that calls itself THE list had read two of its three sources.
 LEDGER_FIELD = re.compile(r"\b(id|class|origin):\s*`?([\w.:/-]+)")
 LEDGER_EXIT = re.compile(r"\bexit:\s*(other-side|parked|later-at-system)\s+(\d{4}-\d{2}-\d{2})")
+# Every exit line of the skill's table; the LAST one in an entry is its current state.
+ANY_EXIT = re.compile(r"^\s*exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re.M)
+
+
+def blame_times(root, rel):
+    """{line number: (author time, committer time, line text)} of a tracked file, {} when git
+    cannot say. Measured 2026-10-28 on the macOS instance: a ledger entry's shown date was the
+    first date anywhere in its text (28 of 95 wrong, e.g. a checklist's 2026-01-01 on an entry
+    written 2026-09-21, a deadline 2026-11-10 shown as its age), and "nothing done yet" was
+    printed for 81 entries without any measurement (8 false). The file's own history says both."""
+    rc, out = run(["git", "-C", str(root), "blame", "--line-porcelain", "--", rel])
+    if rc != 0:
+        return {}
+    times, n, a, c = {}, 0, 0, 0
+    for line in out.splitlines():
+        if re.match(r"^[0-9a-f]{40} \d+ (\d+)", line):
+            n = int(line.split()[2])
+        elif line.startswith("author-time "):
+            a = int(line.split()[1])
+        elif line.startswith("committer-time "):
+            c = int(line.split()[1])
+        elif line.startswith("\t"):
+            times[n] = (a, c, line[1:])
+    return times
+
+
+def day(ts):
+    return datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else ""
 
 
 def ledgers(root):
@@ -575,22 +609,39 @@ def ledgers(root):
         if not found and re.search(r"^[\s>*-]*`?id:", text, re.M):
             unread.append(f"{rel} (id: fields but no '- [ ]' entries, so the reader sees none)")
             continue
+        blame = blame_times(root, rel)
         for e in found:
             f = {}
             for k, v in LEDGER_FIELD.findall(e["text"]):
                 f.setdefault(k, v.rstrip(".:"))
             if e["done"] or f.get("class") == "lesson":
                 continue
-            ident = f.get("id") or f"{rel}:{e['line']}"
+            # Without an `id:` the key is the title, never the line number: a line inserted above
+            # renumbered the entry and reset its repeat counter to "first report" (measured
+            # 2026-10-28, nine entries of one ledger).
+            slug = re.sub(r"[^a-z0-9]+", "-", re.sub(r"[*`]", "", e["title"]).lower()).strip("-")[:60]
+            ident = f.get("id") or f"{rel}#{slug}"
             d, m = mod.DATE.search(e["text"]), WAIT_MARK.search(e["text"])
             # The backlog-catch-up exits that put the move elsewhere (skill backlog-catch-up, step 4):
-            # listed quietly as waiting, never as the agent's open work.
-            x = LEDGER_EXIT.search(e["text"])
-            items.append({"id": f"ledger:{ident}", "kind": "ledger", "date": d.group(1) if d else "",
-                          "who": f.get("origin", "ledger"), "text": re.sub(r"[*`]", "", e["title"])[:100],
-                          "scope": rel, "ref": ident, "lclass": f.get("class", ""),
-                          "until": (m.group(1), m.group(2).strip()) if m else None,
-                          "waiting_on": (f"the ledger exit {x.group(1)}", f"since {x.group(2)}") if x else None})
+            # listed quietly as waiting, never as the agent's open work. The LAST exit line counts.
+            exits = ANY_EXIT.findall(e["text"])
+            last = exits[-1] if exits else None
+            x = last if last and LEDGER_EXIT.search(f"exit: {last[0]} {last[1]}") else None
+            rows = [blame[k] for k in range(e["line"], e["line"] + e["text"].count("\n") + 1) if k in blame]
+            # Created = the entry's oldest line; the last own move = its newest line that is not an
+            # exit line (sorting an entry is no work on it).
+            created = day(min(r[0] for r in rows)) if rows else ""
+            moved = [r[1] for r in rows if not ANY_EXIT.match(r[2])]
+            item = {"id": f"ledger:{ident}", "kind": "ledger",
+                    "date": created or (d.group(1) if d else ""),
+                    "who": f.get("origin", "ledger"), "text": re.sub(r"[*`]", "", e["title"])[:100],
+                    "scope": rel, "ref": ident, "lclass": f.get("class", ""),
+                    "exit": last[0] if last else "",
+                    "until": (m.group(1), m.group(2).strip()) if m else None,
+                    "waiting_on": (f"the ledger exit {x[0]}", f"since {x[1]}") if x else None}
+            if rows:
+                item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
+            items.append(item)
     return items, unread
 
 
@@ -760,6 +811,9 @@ def main():
         it["first"], it["n"] = rec["first"], sum(1 for s in rec["sessions"] if counts(s))
         it["parked"] = any(r.search(it["scope"]) for r in parked_rx)
         own = lookup(store, it)
+        # A ledger exit is newer than a stored class: it was set by measuring the entry.
+        if own and it.get("exit") in ("ai-does-it", "operator-decision"):
+            own = None
         it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx)
         it["cls"] = it["cls"] or "?"
         # Parked means not WORKED ON, never unanswered: a request from another side in a parked
@@ -833,8 +887,11 @@ def main():
             print("- standing approval — handle these, then report what was done (no question needed):")
         if i["n"] > 1 and i.get("ours", "")[:10] >= i["first"]:
             age = f"!! reported in {i['n']} sessions since {i['first']}, last own move {i['ours'][:10]} — still ours"
-        elif i["n"] > 1:
+        elif i["n"] > 1 and "ours" in i:
             age = f"!! reported in {i['n']} sessions since {i['first']}, nothing done yet"
+        elif i["n"] > 1:
+            # No own move is measured for this source — "nothing done yet" would be a claim.
+            age = f"!! reported in {i['n']} sessions since {i['first']}, still open (own moves not measured here)"
         else:
             age = "first report"
         # A date marker is a claim about the work, the work's record is the measurement: a
