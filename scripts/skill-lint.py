@@ -26,6 +26,9 @@ CHECKS:
                    a baseline entry that is no longer needed has to LEAVE the baseline
   7. provenance    a skill whose frontmatter carries no `provenance:` — a procedure
                    whose steps name no source is a draft, not a verified skill
+  8. evidence      a dated incident story inside the instruction steps of a SKILL.md
+                   instead of its closing `## Evidence` section (CONVENTIONS §5), and
+                   an `## Evidence` section that is not the last one
 
 WHY 6+7 (measured 2026-08-19/20, incident `macro5001`): an instance wrote four skills
 out of its own live-session memory, straight into its private brain. One of them was
@@ -156,6 +159,52 @@ def yaml_problem(text: str) -> str:
     return ""
 
 
+# 8. A dated incident story, in the forms the core's own skills used (measured 2026-10-28 over
+# every skills/*/SKILL.md: 13 lines in 5 skills, all of them stories, no false positive).
+# Case-sensitive on purpose: "Measured <date>:" and "On <date>" open a sentence that tells
+# what happened; a lowercase "(measured 2026-10-11)" or "(since 2026-08-10)" is a short
+# origin stamp and stays inline. Narrow beats complete — a broad pattern goes red on
+# instruction text, and a linter that is red over non-defects gets ignored.
+STORY_RE = re.compile(
+    r"\bMeasured (?:on |again )?\d{4}-\d{2}-\d{2}"
+    r"|\bOn \d{4}-\d{2}-\d{2}\b"
+    r"|\b(?:[Ii]ncident|INCIDENT) \d{4}-\d{2}-\d{2}"
+    r"|\b\d{4}-\d{2}-\d{2} incident\b"
+    r"|\bThe incident\b")
+EVIDENCE_HEADING = "## Evidence"
+
+
+def story_lines(text: str) -> tuple[list[tuple[int, str]], bool]:
+    """(story lines outside `## Evidence` as (line number, text), evidence-not-last).
+
+    Frontmatter and fenced code are skipped: a description or an example block is not a
+    step. Everything under `## Evidence` up to the next `## ` heading is exempt — that is
+    where the stories belong; a `## ` heading after it means the section is not last."""
+    lines = text.splitlines()
+    start = 0
+    if text.startswith("---"):
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                start = i + 1
+                break
+    hits, in_fence, in_evidence, not_last = [], False, False, False
+    for i in range(start, len(lines)):
+        line = lines[i]
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if line.startswith("## "):
+            if in_evidence:
+                not_last = True
+            in_evidence = line.rstrip() == EVIDENCE_HEADING
+            continue
+        if not in_evidence and STORY_RE.search(line):
+            hits.append((i + 1, line.strip()[:100]))
+    return hits, not_last
+
+
 def tokens(s: str) -> set[str]:
     return {w for w in re.findall(r"[a-zA-Zaeoeuess]{4,}", s.lower()) if w not in STOP}
 
@@ -184,7 +233,7 @@ def lint(skills: Path, thresh: float, ctx: int) -> dict:
     # A linter that stays permanently red over non-defects gets ignored.
     f: dict[str, list] = {k: [] for k in
                           ("frontmatter", "budget", "collisions", "dead_refs", "registry",
-                           "placement", "provenance", "body_size")}
+                           "placement", "provenance", "evidence", "body_size")}
     meta: dict[str, dict] = {}
     domains, legacy, opted_in = placement_cfg(PLACEMENT_CFG)
 
@@ -240,6 +289,16 @@ def lint(skills: Path, thresh: float, ctx: int) -> dict:
             f["body_size"].append({"skill": d.name, "issue": "SKILL.md body very long "
                                    "(check progressive disclosure)",
                                    "lines": n_lines, "max": MAX_BODY_LINES})
+
+        # 8. evidence — a story in a step, or an Evidence section that is not last
+        stories, not_last = story_lines(text)
+        for ln, snippet in stories:
+            f["evidence"].append({"skill": d.name, "line": ln, "issue": "dated incident "
+                                  "story outside '## Evidence' — move it there, leave "
+                                  "'(why: Evidence, <date>)' in the step", "text": snippet})
+        if not_last:
+            f["evidence"].append({"skill": d.name, "issue": "'## Evidence' is not the "
+                                  "last section of the SKILL.md"})
 
         # NOTE: check ONLY skills that have their own resource folder. The first run
         # 2026-08-02 reported 31 "dead" refs that were mostly PROSE about foreign paths
@@ -403,7 +462,7 @@ def main() -> int:
                   f"({PLACEMENT_CFG} absent) — drafts are still checked")
         if hard == 0:
             print("no defects (frontmatter, budget, collisions, refs, registry, "
-                  "placement, provenance).")
+                  "placement, provenance, evidence).")
     hard = sum(v for k, v in rep["counts"].items() if k != "body_size")
     return 1 if hard else 0
 

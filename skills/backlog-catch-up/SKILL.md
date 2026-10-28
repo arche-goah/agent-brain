@@ -40,6 +40,7 @@ the brain.
    |---|---|---|---|
    | done already | `done-already` | a later session built it | tick it off with the evidence |
    | the AI does it | `ai-does-it` | clear, reversible, own brain / own suite / a core PR | do it (ordered audits order their clear fixes), report in the summary |
+   | carried by a PR | `in-pr` | the whole remaining work is ONE open PR (or several), named in the exit line as `<repo>#<n>`: `exit: in-pr 2026-10-28 agent-brain#165` | nothing until the PR closes; the aggregator lists the entry as waiting on it while the PR is open and as the AI's work again once it is closed — then tick it or name what is left. An entry with work beyond the PR stays `ai-does-it` |
    | the other side | `other-side` | a collaborator is on the move | one shared-memory note to that side's AI; it is decided there |
    | parked or postponed | `parked` | the operator parked the domain or named a later date | leave it; a REQUEST from another side still gets a receipt |
    | later, at the system | `later-at-system` | a hand-step at a device or work on one specific system | mark it, raise it when work on that system starts |

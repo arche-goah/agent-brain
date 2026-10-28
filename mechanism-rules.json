@@ -9,13 +9,13 @@
       "needs_operator_word": true
     },
     {
-      "pattern": "(?:\\bci-watch\\.sh\\s+(?:pr|ref)\\b|\\bgh\\s+run\\s+watch\\b|\\bgh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
+      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?ci-watch\\.sh\\s+(?:pr|ref)\\b|gh\\s+run\\s+watch\\b|gh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
       "foreground_only": true,
       "was": "waiting for CI in the foreground - a core CI run takes about 15 minutes and holds the whole session; several PRs in a row cost hours",
       "instead": "Start the same command with Bash run_in_background and keep working; the verdict arrives as a notification (Working Rule #9). Not through Monitor: the harness ends a Monitor after 30 min at most, and a core CI run takes about 36 min (2026-10-26). Several PRs: one detached watch each, in parallel."
     },
     {
-      "pattern": "(?:^|[^\\w-])ci-lint-local\\.sh\\b",
+      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?ci-lint-local\\.sh\\b",
       "foreground_only": true,
       "was": "running the local CI mirror in the foreground - measured 2026-10-25 on the macOS instance: the lint job runs the fixture suites and holds the session for minutes, the operator had to background it by hand",
       "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; read its summary line before claiming green (Working Rule #13)."
@@ -33,7 +33,7 @@
       "instead": "Start the loop detached (Bash run_in_background, or Monitor) and keep working; its end arrives as a notification. A background job you already started notifies on its own - no loop needed (Working Rule #13)."
     },
     {
-      "pattern": "(?:^|[^\\w-])(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
+      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
       "foreground_only": true,
       "was": "a waiting script (wait-*.sh, *-watch.sh: reconnect, link, collab, repo-activity, shared-memory watches) in the foreground - the class sweep of the wait-loop rule (2026-10-26): these scripts are the same wait under a name, and only ci-watch.sh was listed",
       "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A help call passes, and so do the `status`/`disarm` subcommands of the two scripts that have them (repo-activity-watch.sh, shared-memory-watch.sh) - collab-watch.sh has none: `collab-watch.sh status` ARMS the watch (measured 2026-10-26)."
@@ -42,6 +42,12 @@
       "pattern": "(?:\\bgit\\b[^|;&\\n]*?\\spush\\b[^|;&\\n]*\\s:[^\\s:]|\\bgit\\s+(?:-c\\s+\\S+\\s+)+(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?push\\b[^|;&\\n]*\\s(?:--force|-f\\b|--mirror\\b|\\+))",
       "was": "a destructive push in a form no permission pattern can catch: a branch delete by colon refspec (`git push origin :feat`), or a force/mirror push behind `git -c k=v` - a deny pattern ending in `:*` is read as a trailing wildcard (docs permissions: `Bash(ls:*)` equals `Bash(ls *)`), so `git push * :*` would deny every push with two arguments, and `-c` moves `push` out of every prefix pattern (found 2026-10-26 by the macOS instance's review of the settings template)",
       "instead": "Deleting a remote branch or rewriting remote history is the operator's word (destructive). A merged PR's branch goes with `gh pr merge --delete-branch`; anything else: report it and wait for the word.",
+      "needs_operator_word": true
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?:\\S*/)?(?!(?:cat|less|head|tail|grep|rg|jq|wc|echo|printf|sed\\s+-n|awk|diff|cmp|git\\s+(?:-C\\s+\\S+\\s+)?(?:diff|log|show|status|blame|commit))\\b)[^\\n;&|]*\\.claude-plugin/marketplace\\.json|>\\s*\\S*\\.claude-plugin/marketplace\\.json",
+      "was": "moving a marketplace pin (any write to a `.claude-plugin/marketplace.json`: editor script, sed -i, cp, redirect) - a pin pulls a plugin update onto EVERY consumer of the marketplace, other parties included; ported 2026-10-28 from an instance rule that only one brain carried. Read-only access (cat, head, grep, jq, sed -n, awk, diff, cmp, git diff/log/show) passes",
+      "instead": "A pin moves on its owner's word: the core channel on the operator's word, a suite's pin on the word of that suite's owner (the owner's own pin PR is that word). A green CI run, a measurement on both systems or a hold field that reads its own condition as met is no substitute - those are artefacts the AI wrote. After every move run the marketplace's own pin check and read its verdict.",
       "needs_operator_word": true
     }
   ]

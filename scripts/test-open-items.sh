@@ -404,6 +404,60 @@ cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" -
 out=$(run "" "$L")
 has "[ledger|ai]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"
 
+# 2026-10-28 (macOS instance, 95 ledger rows): the shown date was the first date anywhere in the
+# text, "nothing done yet" was printed unmeasured, a `class: decision` read as the operator's
+# although its exit said otherwise, and an entry without id: was keyed by its line number.
+G="$T/root-git"; mkdir -p "$G/.claude/rules" "$G/docs/x"
+printf '%s\n' '{"ledgers": ["docs/x/open.md"]}' > "$G/.claude/rules/ledgers.json"
+printf '%s\n' '# x' '' '- [ ] Harden the box (checklist 2026-01-01)' '  id: harden-box' '  class: todo' '' \
+  '- [ ] Pick a colour' '  id: pick-colour' '  class: decision' '  exit: ai-does-it 2026-10-20 — measurable' '' \
+  '- [ ] No id here' '  class: todo' > "$G/docs/x/open.md"
+git -C "$G" init -q
+git -C "$G" add -A
+GIT_AUTHOR_DATE="2026-09-21T12:00:00" GIT_COMMITTER_DATE="2026-09-21T12:00:00" git -C "$G" -c user.email=t@t -c user.name=t commit -qm init
+out=$(run "" "$G")
+has "[ledger|ai] 2026-09-21 harden-box" "$out" && ok "ledger date = the entry's first commit, not a date in its text" || bad "ledger date: $out"
+has "[ledger|ai] 2026-09-21 pick-colour" "$out" && ok "exit ai-does-it outranks class: decision" || bad "exit vs class: $out"
+has "docs/x/open.md#no-id-here" "$out" && ok "entry without id: keyed by its title" || bad "title key: $out"
+printf '%s\n' '' '- [ ] Late entry' '  id: late' '  exit: operator-decision 2026-10-28 — only the operator' >> "$G/docs/x/open.md"
+git -C "$G" add -A
+git -C "$G" -c user.email=t@t -c user.name=t commit -qm late
+out=$(run "" "$G")
+has "[ledger|human]" "$out" && has " late " "$out" && ok "exit operator-decision lists for the operator" || bad "operator-decision: $out"
+has "docs/x/open.md#no-id-here" "$out" && ok "title key survives a line inserted elsewhere" || bad "title key moved: $out"
+# A ledger key with '#' is no PR key: when the PR source is unread, a done ledger entry's counter
+# is dropped, not kept as if it were a PR (found 2026-10-28 by the parallel session reading #164).
+mkdir -p "$T/tx"; : > "$T/tx/sk1.jsonl"; : > "$T/tx/sk2.jsonl"
+run sk1 "$G" >/dev/null
+grep -q 'no-id-here' "$G/.claude-state/open-items-seen.json" && ok "ledger key written to the counter store" || bad "ledger key not stored"
+sed -i.bak 's/^- \[ \] No id here/- [x] No id here/' "$G/docs/x/open.md"
+OWNER="" run sk2 "$G" >/dev/null
+grep -q 'no-id-here' "$G/.claude-state/open-items-seen.json" && bad "done ledger entry kept as if a PR (PR source unread)" \
+  || ok "done ledger entry with '#' dropped although the PR source is unread"
+
+# 2026-10-28 (macOS instance): entries whose whole work was an open core PR printed as the agent's
+# open work next to that same PR. `exit: in-pr` + an open PR = waiting on it; a PR number in the
+# text alone, an ambiguous bare #N and a closed PR stay ours.
+printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2026-10-28 #31' '' \
+  '- [ ] Carried by repo ref' '  id: carried-ref' '  exit: in-pr 2026-10-28 core#32' '' \
+  '- [ ] Ambiguous number' '  id: ambiguous' '  exit: in-pr 2026-10-28 #33' '' \
+  '- [ ] Text mention only' '  id: issue-only' '  STAND: Kern-PR #31 offen, plus own work' '  exit: ai-does-it 2026-10-28' '' \
+  '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' '' \
+  '- [ ] Odd exit' '  id: odd-exit' '  exit: waits-on-others 2026-10-28' '' \
+  '- [ ] Done but open' '  id: done-open' '  exit: done-already 2026-10-28 — built' >> "$G/docs/x/open.md"
+git -C "$G" add -A
+git -C "$G" -c user.email=t@t -c user.name=t commit -qm carried
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":4,"nodes":[%s,%s,%s,%s]}}}\n' \
+  "$(pr core 31 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr core 32 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" \
+  "$(pr core 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr suite-x 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" > "$T/prs-carried.json"
+out=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-carried.json")" OPEN_ITEMS_WAIT_COLLAPSE=50 run "" "$G")
+has "waiting on the open PR core#31" "$(line ' carried ' "$out")" && ok "entry naming an open PR waits on it" || bad "carried: $(line ' carried ' "$out")"
+has "waiting on the open PR core#32" "$(line ' carried-ref ' "$out")" && ok "repo#N names the PR" || bad "carried-ref: $(line ' carried-ref ' "$out")"
+has "[ledger|ai]" "$(line ' ambiguous ' "$out")" && ok "bare #N with two open PRs stays ours" || bad "ambiguous: $(line ' ambiguous ' "$out")"
+has "[ledger|ai]" "$(line ' issue-only ' "$out")" && ok "a PR named in the text alone does not carry the entry" || bad "text mention: $(line ' issue-only ' "$out")"
+has "names no open PR any more" "$(line ' closed-pr ' "$out")" && ok "a PR no longer open hands the entry back, saying so" || bad "closed: $(line ' closed-pr ' "$out")"
+has "unknown exit 'waits-on-others'" "$(line ' odd-exit ' "$out")" && ok "an exit outside the vocabulary is named" || bad "odd exit: $(line ' odd-exit ' "$out")"
+has "but the box is open" "$(line ' done-open ' "$out")" && ok "exit done-already on an open box asks for the tick" || bad "done-open: $(line ' done-open ' "$out")"
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")

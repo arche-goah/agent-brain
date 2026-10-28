@@ -86,7 +86,35 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=5 scripts/brain-friction.py=1 scripts/brain-selftest.sh=3 scripts/brain-update.sh=7 scripts/freshness-gate-test.py=9 scripts/gate-precision.py=4 scripts/hook-coverage.py=20 scripts/memory-lint-test.py=6 scripts/shared-memory-lint.py=1 scripts/test-open-items.sh=1 scripts/test-suite-plugin-linkage.sh=2 scripts/transcript-recall-test.py=5 scripts/local-machinery.py=1 scripts/caveman-armed.py=6 scripts/always-loaded.py=4 scripts/commitments.py=5 scripts/device-status.py=16 scripts/orphan-check.py=1 scripts/orphan-check-test.py=7 scripts/autonomy-diagnose.py=26 scripts/plugin-records-test.py=1 scripts/backprop-report.py=5 scripts/recorder-report.py=3 scripts/live-doc-lint.py=3 scripts/live-doc-lint-test.py=2 scripts/lesson-carriers.py=2 scripts/shared-reach-check.py=8 scripts/carrier-audit.py=11 scripts/carrier-audit-test.py=20
+known:     helpers/session-bootup.sh=5
+known:     scripts/always-loaded.py=4
+known:     scripts/autonomy-diagnose.py=26
+known:     scripts/backprop-report.py=5
+known:     scripts/brain-friction.py=1
+known:     scripts/brain-selftest.sh=3
+known:     scripts/brain-update.sh=7
+known:     scripts/carrier-audit-test.py=20
+known:     scripts/carrier-audit.py=11
+known:     scripts/caveman-armed.py=6
+known:     scripts/commitments.py=5
+known:     scripts/device-status.py=16
+known:     scripts/freshness-gate-test.py=9
+known:     scripts/gate-precision.py=4
+known:     scripts/hook-coverage.py=20
+known:     scripts/lesson-carriers.py=2
+known:     scripts/live-doc-lint-test.py=2
+known:     scripts/live-doc-lint.py=3
+known:     scripts/local-machinery.py=1
+known:     scripts/memory-lint-test.py=6
+known:     scripts/orphan-check-test.py=7
+known:     scripts/orphan-check.py=1
+known:     scripts/plugin-records-test.py=1
+known:     scripts/recorder-report.py=3
+known:     scripts/shared-memory-lint.py=1
+known:     scripts/shared-reach-check.py=8
+known:     scripts/test-open-items.sh=1
+known:     scripts/test-suite-plugin-linkage.sh=2
+known:     scripts/transcript-recall-test.py=5
 instances: 5
 repeat:    yes
 status:    closed
@@ -162,7 +190,26 @@ CRLF on Windows — against a `.gitattributes` that says LF the whole file reads
 changed, or git rewrites it behind the run.
 pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
-known:     scripts/always-loaded.py=1 scripts/brain-scan-prep.py=3 scripts/ci-lint-local-parse.py=1 scripts/changelog-assemble.py=1 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/invariant-index.py=1 scripts/open-items.py=1 scripts/os-traps-export.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=1 scripts/shared-memory-index.py=3 scripts/shared-memory-lint.py=1 scripts/shared-memory-log-rotate.py=1 scripts/device-status.py=1 scripts/autonomy-diagnose.py=1 scripts/decision-review.py=1 scripts/shared-memory-post.py=2 scripts/ledger-reconcile.py=3 scripts/template-drift.py=1
+known:     scripts/always-loaded.py=1
+known:     scripts/autonomy-diagnose.py=1
+known:     scripts/brain-scan-prep.py=3
+known:     scripts/changelog-assemble.py=1
+known:     scripts/ci-lint-local-parse.py=1
+known:     scripts/decision-review.py=1
+known:     scripts/device-status.py=1
+known:     scripts/ecosystem-sync.py=1
+known:     scripts/english-only.py=1
+known:     scripts/invariant-index.py=1
+known:     scripts/ledger-reconcile.py=3
+known:     scripts/open-items.py=1
+known:     scripts/os-traps-export.py=1
+known:     scripts/regen-skill-registry.py=1
+known:     scripts/session-audit.py=1
+known:     scripts/shared-memory-index.py=3
+known:     scripts/shared-memory-lint.py=1
+known:     scripts/shared-memory-log-rotate.py=1
+known:     scripts/shared-memory-post.py=2
+known:     scripts/template-drift.py=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -201,7 +248,87 @@ not resolve for a native process — the process reads nothing, and a gate that 
 BLOCK stays silent, which the fixture cannot distinguish from a gate working correctly.
 pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
-known:     scripts/test-absence-gate.sh=1 scripts/test-always-loaded.sh=1 scripts/test-autonomous-mode.sh=1 scripts/test-autonomy-diagnose-run.sh=1 scripts/test-autonomy-diagnose.sh=1 scripts/test-bootup-declared-alpha.sh=1 scripts/test-bootup-git-login.sh=1 scripts/test-bootup-time-budget.sh=1 scripts/test-brain-check-brief.sh=1 scripts/test-brain-scan-files.sh=1 scripts/test-caveman-armed.sh=1 scripts/test-change-level.sh=1 scripts/test-ci-lint-local.sh=1 scripts/test-code-scanning-alerts.sh=1 scripts/test-coherence-scan-files.sh=1 scripts/test-collab-watch-plan.sh=1 scripts/test-conditional-order-gate.sh=1 scripts/test-decision-readiness.sh=1 scripts/test-decision-review.sh=1 scripts/test-delivered-read-gate.sh=1 scripts/test-eco-owner.sh=1 scripts/test-full-audit-synthesis-files.sh=1 scripts/test-git-hooks.sh=1 scripts/test-git-sandbox.sh=1 scripts/test-guards.sh=4 scripts/test-hook-coverage.sh=1 scripts/test-instance-key-gate.sh=1 scripts/test-leak-scan.sh=1 scripts/test-merge-request-gate.sh=1 scripts/test-live-read-gate.sh=1 scripts/test-live-watchdog.sh=1 scripts/test-local-machinery.sh=1 scripts/test-memory-dream-files.sh=1 scripts/test-monitor-arm-shape.sh=1 scripts/test-onboarding-leak-check.sh=1 scripts/test-open-items-gate.sh=1 scripts/test-open-items-wake.sh=1 scripts/test-open-items.sh=1 scripts/test-order-list-reader.sh=1 scripts/test-parallel-sessions.sh=1 scripts/test-pr-ball.sh=1 scripts/test-pre-commit-behind.sh=1 scripts/test-premise-gate.sh=1 scripts/test-promise-gate.sh=1 scripts/test-public-text-guard.sh=1 scripts/test-python-probe.sh=1 scripts/test-question-gate.sh=1 scripts/test-recall-gate.sh=1 scripts/test-repo-activity-watch.sh=1 scripts/test-session-closing.sh=1 scripts/test-session-helpers.sh=1 scripts/test-session-pull.sh=1 scripts/test-setup-shell-start.sh=1 scripts/test-shared-memory-channels.sh=1 scripts/test-shared-memory-check.sh=1 scripts/test-shared-working-copy-guard.sh=1 scripts/test-skill-gate.sh=1 scripts/test-stop-checks.sh=1 scripts/test-stop-dispatcher.sh=5 scripts/test-stoppen-gate.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-transcript-archive.sh=1 scripts/test-turn-kind.sh=1 scripts/test-verification-gate.sh=1 scripts/test-wait-mcp-reconnect.sh=1 scripts/test-watch-gate.sh=1 scripts/test-watch-readiness.sh=1 scripts/test-watch-supervisor.sh=1 scripts/test-text-leaks-notice.sh=1 scripts/test-workflow-path-args.sh=1 scripts/test-watch-pr.sh=1 scripts/test-no-input-control.sh=1 scripts/test-commitment-carrier-gate.sh=1 scripts/test-decision-presentation-gate.sh=1 scripts/test-autonomous-gate.sh=1 scripts/test-root-cause-gate.sh=1 scripts/test-close-loss-gate.sh=1 scripts/test-template-drift.sh=1 scripts/test-ecosystem-sync.sh=1
+known:     scripts/test-absence-gate.sh=1
+known:     scripts/test-always-loaded.sh=1
+known:     scripts/test-autonomous-gate.sh=1
+known:     scripts/test-autonomous-mode.sh=1
+known:     scripts/test-autonomy-diagnose-run.sh=1
+known:     scripts/test-autonomy-diagnose.sh=1
+known:     scripts/test-bootup-declared-alpha.sh=1
+known:     scripts/test-bootup-git-login.sh=1
+known:     scripts/test-bootup-time-budget.sh=1
+known:     scripts/test-brain-check-brief.sh=1
+known:     scripts/test-brain-scan-files.sh=1
+known:     scripts/test-caveman-armed.sh=1
+known:     scripts/test-change-level.sh=1
+known:     scripts/test-ci-lint-local.sh=1
+known:     scripts/test-close-loss-gate.sh=1
+known:     scripts/test-code-scanning-alerts.sh=1
+known:     scripts/test-coherence-scan-files.sh=1
+known:     scripts/test-collab-watch-plan.sh=1
+known:     scripts/test-commitment-carrier-gate.sh=1
+known:     scripts/test-conditional-order-gate.sh=1
+known:     scripts/test-dead-carriers.sh=1
+known:     scripts/test-decision-presentation-gate.sh=1
+known:     scripts/test-decision-readiness.sh=1
+known:     scripts/test-decision-review.sh=1
+known:     scripts/test-delivered-read-gate.sh=1
+known:     scripts/test-eco-owner.sh=1
+known:     scripts/test-ecosystem-sync.sh=1
+known:     scripts/test-full-audit-synthesis-files.sh=1
+known:     scripts/test-git-hooks.sh=1
+known:     scripts/test-git-sandbox.sh=1
+known:     scripts/test-guards.sh=4
+known:     scripts/test-hook-coverage.sh=1
+known:     scripts/test-instance-key-gate.sh=1
+known:     scripts/test-leak-scan.sh=1
+known:     scripts/test-live-read-gate.sh=1
+known:     scripts/test-live-watchdog.sh=1
+known:     scripts/test-local-machinery.sh=1
+known:     scripts/test-memory-dream-files.sh=1
+known:     scripts/test-merge-request-gate.sh=1
+known:     scripts/test-monitor-arm-shape.sh=1
+known:     scripts/test-no-input-control.sh=1
+known:     scripts/test-onboarding-leak-check.sh=1
+known:     scripts/test-open-items-gate.sh=1
+known:     scripts/test-open-items-wake.sh=1
+known:     scripts/test-open-items.sh=1
+known:     scripts/test-order-list-reader.sh=1
+known:     scripts/test-parallel-sessions.sh=1
+known:     scripts/test-pattern-cases.sh=1
+known:     scripts/test-pr-ball.sh=1
+known:     scripts/test-pre-commit-behind.sh=1
+known:     scripts/test-premise-gate.sh=1
+known:     scripts/test-promise-gate.sh=1
+known:     scripts/test-public-text-guard.sh=1
+known:     scripts/test-python-probe.sh=1
+known:     scripts/test-question-gate.sh=1
+known:     scripts/test-recall-gate.sh=1
+known:     scripts/test-repo-activity-watch.sh=1
+known:     scripts/test-root-cause-gate.sh=1
+known:     scripts/test-session-closing.sh=1
+known:     scripts/test-session-helpers.sh=1
+known:     scripts/test-session-pull.sh=1
+known:     scripts/test-setup-shell-start.sh=1
+known:     scripts/test-shared-memory-channels.sh=1
+known:     scripts/test-shared-memory-check.sh=1
+known:     scripts/test-shared-working-copy-guard.sh=1
+known:     scripts/test-skill-gate.sh=1
+known:     scripts/test-stop-checks.sh=1
+known:     scripts/test-stop-dispatcher.sh=5
+known:     scripts/test-stoppen-gate.sh=1
+known:     scripts/test-suite-plugin-linkage.sh=1
+known:     scripts/test-template-drift.sh=1
+known:     scripts/test-text-leaks-notice.sh=1
+known:     scripts/test-transcript-archive.sh=1
+known:     scripts/test-turn-kind.sh=1
+known:     scripts/test-verification-gate.sh=1
+known:     scripts/test-wait-mcp-reconnect.sh=1
+known:     scripts/test-watch-gate.sh=1
+known:     scripts/test-watch-pr.sh=1
+known:     scripts/test-watch-readiness.sh=1
+known:     scripts/test-watch-supervisor.sh=1
+known:     scripts/test-workflow-path-args.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -260,6 +387,11 @@ reads — and goes through `cygpath -m`. It matters for the discriminator: the o
 asserts SILENCE, and an unresolvable path would read no answer and fire the line instead, so
 the case would fail loudly rather than pass for the wrong reason; the foreign-text control
 asserts a line and would pass either way. Green on Windows (Git Bash) the same day.
+2026-10-28, test-pattern-cases.sh baselined after the same review: every synthetic brain reaches
+python as an ARGUMENT through `native()`; pattern-cases.py makes its own temp brain with
+`tempfile`, so every path it hands to node (the transcript, the cwd field, CLAUDE_PROJECT_DIR) is
+native by construction. The brief case hands the brain to brain-check.sh (bash) through
+CLAUDE_PROJECT_DIR; bash passes it on to python as an argument. Windows run owed at baseline time.
 2026-10-09, test-live-read-gate.sh baselined after the same review: paths cross into node in
 five places — the transcript, the project dir (env), the absolute required path inside the
 instance file, the `filePath` of each delivered-Read record, and the path inside each `cat`
@@ -378,7 +510,25 @@ the diagnostic replaces exactly the output it was asked to produce, and only in 
 failure path, where nobody has a second copy.
 pattern:   \| *grep -[b-zA-Z]
 paths:     --include=*.sh scripts helpers
-known:     helpers/session-closing.sh=1 helpers/shared-memory-check.sh=1 scripts/brain-update.sh=1 scripts/ci-watch.sh=1 scripts/lint-placeholders.sh=1 scripts/onboarding-verify.sh=4 scripts/parallel-sessions.sh=1 scripts/portability-smoke.sh=2 scripts/preflight.sh=1 scripts/shared-memory-watch.sh=1 scripts/test-guards.sh=2 scripts/test-stop-dispatcher.sh=1 scripts/test-suite-plugin-linkage.sh=1 scripts/test-live-read-gate.sh=2 scripts/test-shared-working-copy-guard.sh=1 scripts/test-decision-review.sh=2 scripts/test-live-watchdog.sh=3 scripts/test-text-leaks-notice.sh=12 scripts/release-preflight.sh=5
+known:     helpers/session-closing.sh=1
+known:     helpers/shared-memory-check.sh=1
+known:     scripts/brain-update.sh=1
+known:     scripts/ci-watch.sh=1
+known:     scripts/lint-placeholders.sh=1
+known:     scripts/onboarding-verify.sh=4
+known:     scripts/parallel-sessions.sh=1
+known:     scripts/portability-smoke.sh=2
+known:     scripts/preflight.sh=1
+known:     scripts/release-preflight.sh=3
+known:     scripts/shared-memory-watch.sh=1
+known:     scripts/test-decision-review.sh=2
+known:     scripts/test-guards.sh=2
+known:     scripts/test-live-read-gate.sh=2
+known:     scripts/test-live-watchdog.sh=3
+known:     scripts/test-shared-working-copy-guard.sh=1
+known:     scripts/test-stop-dispatcher.sh=1
+known:     scripts/test-suite-plugin-linkage.sh=1
+known:     scripts/test-text-leaks-notice.sh=12
 instances: 3
 repeat:    yes
 status:    closed
@@ -421,7 +571,8 @@ stdin program never runs, and the argument is EXECUTED instead. Pass such a valu
 environment.
 pattern:   "\$PY" - "
 paths:     --include=*.sh scripts helpers
-known:     scripts/brain-selftest.sh=2 scripts/suite-install.sh=2
+known:     scripts/brain-selftest.sh=2
+known:     scripts/suite-install.sh=2
 instances: 1
 repeat:    no
 status:    closed
@@ -508,7 +659,8 @@ in real paths; `id -un` and the basename of $HOME return only the long one. A co
 built on that alone answers "foreign" for the machine it is running on.
 pattern:   \$\(id -un\)
 paths:     --include=*.sh scripts helpers
-known:     scripts/onboarding-verify.sh=1 scripts/test-onboarding-leak-check.sh=1
+known:     scripts/onboarding-verify.sh=1
+known:     scripts/test-onboarding-leak-check.sh=1
 instances: 1
 repeat:    no
 status:    closed
@@ -541,7 +693,33 @@ stops at the first invalid byte instead of failing, and a trailing CR turns an e
 number into a string. Both end as a WRONG VALUE, not as an error.
 pattern:   print\(.*[^\x00-\x7F]
 paths:     --include=*.py scripts helpers
-known:     scripts/brain-friction.py=3 scripts/changelog-assemble.py=1 scripts/check-table.py=1 scripts/clock-skew.py=1 scripts/commitments.py=1 scripts/dep-install.py=2 scripts/ecosystem-sync.py=1 scripts/english-only.py=1 scripts/fork-drift.py=2 scripts/invariant-check.py=3 scripts/memory-lint-test.py=1 scripts/memory-lint.py=1 scripts/open-items.py=8 scripts/orphan-check.py=2 scripts/os-traps-export.py=3 scripts/pending-clauses.py=3 scripts/plugin-scope-check-test.py=1 scripts/regen-skill-registry.py=1 scripts/session-audit.py=3 scripts/shared-memory-index.py=4 scripts/shared-memory-lint.py=1 scripts/transcript-recall.py=1 scripts/backprop-report.py=4 scripts/live-doc-lint.py=2 scripts/lesson-carriers.py=2 scripts/shared-reach-check.py=4 scripts/carrier-audit.py=1
+known:     scripts/backprop-report.py=4
+known:     scripts/brain-friction.py=3
+known:     scripts/carrier-audit.py=1
+known:     scripts/changelog-assemble.py=1
+known:     scripts/check-table.py=1
+known:     scripts/clock-skew.py=1
+known:     scripts/commitments.py=1
+known:     scripts/dep-install.py=2
+known:     scripts/ecosystem-sync.py=1
+known:     scripts/english-only.py=1
+known:     scripts/fork-drift.py=2
+known:     scripts/invariant-check.py=3
+known:     scripts/lesson-carriers.py=2
+known:     scripts/live-doc-lint.py=2
+known:     scripts/memory-lint-test.py=1
+known:     scripts/memory-lint.py=1
+known:     scripts/open-items.py=8
+known:     scripts/orphan-check.py=2
+known:     scripts/os-traps-export.py=3
+known:     scripts/pending-clauses.py=3
+known:     scripts/plugin-scope-check-test.py=1
+known:     scripts/regen-skill-registry.py=1
+known:     scripts/session-audit.py=3
+known:     scripts/shared-memory-index.py=4
+known:     scripts/shared-memory-lint.py=1
+known:     scripts/shared-reach-check.py=4
+known:     scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
 status:    open
@@ -598,7 +776,10 @@ variable that holds paths or path globs (`ls $globs`), not only the `for` form: 
 is kept as an array (`a=("$R"/x/*.md)`), never as a space-joined string.
 pattern:   for [A-Za-z_]+ in \$[A-Za-z_]+;|disable=SC2086
 paths:     --include=*.sh scripts helpers
-known:     scripts/brain-update.sh=2 scripts/handover-gate.sh=2 scripts/suite-install.sh=1 scripts/release-preflight.sh=1
+known:     scripts/brain-update.sh=2
+known:     scripts/handover-gate.sh=2
+known:     scripts/release-preflight.sh=1
+known:     scripts/suite-install.sh=1
 instances: 2
 repeat:    yes
 status:    closed
@@ -834,7 +1015,9 @@ path on the current drive's root and fails; the hook swallows the read error and
 without the file — on macOS and Linux the same path is the native one, so the defect is invisible there.
 pattern:   publishedText\(
 paths:     --include=*.cjs helpers
-known:     helpers/instance-key-gate.cjs=1 helpers/public-text-guard.cjs=1 helpers/published-text.cjs=3
+known:     helpers/instance-key-gate.cjs=1
+known:     helpers/public-text-guard.cjs=1
+known:     helpers/published-text.cjs=3
 instances: 2
 repeat:    yes
 status:    closed

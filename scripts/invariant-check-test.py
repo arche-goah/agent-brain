@@ -79,6 +79,24 @@ status: closed
             ok("2 a new site fails loudly")
         else:
             bad(f"2 expected NEW site + rc 1, got rc={rc}")
+
+        # 2b. the baseline may span lines, one entry each (2026-10-28: one long `known:` line made
+        #     every parallel PR that added a fixture conflict); both entries count
+        reg2 = write(tmp, """## X-2 — a baseline over two lines
+invariant: the thing must not spread
+pattern: FORBIDDEN_CALL
+paths: --include=*.py src
+known: src/a.py=1
+known: src/b.py=1
+instances: 2
+repeat: no
+status: closed
+""")
+        out, rc = run(reg2)
+        if "  ok  X-2" in out and rc == 0:
+            ok("2b a baseline over several known: lines counts every line")
+        else:
+            bad(f"2b expected ok over two known: lines, got rc={rc}: {out.strip()[:160]}")
         (tmp / "src" / "b.py").unlink()
 
         # 3. NO pattern and NO reason -> '??' and counted in the closing summary. This is

@@ -79,8 +79,12 @@ mg_probe() { # $1 name, $2 command, $3 block|allow
   local out rc
   local helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
   out=$(printf '{"tool_name":"%s","tool_input":{"command":"%s"},"cwd":"%s"}' "${4:-Bash}" "$2" "$MG" \
-        | CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1)
+        | HOME="$MG" USERPROFILE="$(if command -v cygpath >/dev/null 2>&1; then cygpath -m "$MG"; else printf '%s' "$MG"; fi)" \
+          CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1)
   rc=$?
+  # HOME/USERPROFILE: the guard also loads the rules of every plugin enabled in ~/.claude. Without
+  # them a machine with the core plugin enabled ran these fixture cases against the core's own
+  # rules too and went red where CI (no plugins) was green (measured 2026-10-28, macOS).
   if [ "$rc" -eq 2 ] || printf '%s' "$out" | grep -q '"permissionDecision": *"deny"'; then
     [ "$3" = block ] && ok "$1 blocks" || bad "$1 blocked what it should allow"
   else
@@ -273,6 +277,21 @@ if CR=$(resolve mechanism-rules.json); then
   # collab-watch.sh has no status subcommand - the call arms the watch (measured 2026-10-26)
   tr_probe "mechanism-guard/core rule: collab-watch 'status' arms the watch" Bash command "bash core/scripts/collab-watch.sh status" block
   tr_probe "mechanism-guard/core rule: a watch script's own fixture" Bash command "bash scripts/test-shared-memory-watch.sh" allow
+  # 2026-10-28: the name as an ARGUMENT of a reader is no call (grep/sed/awk on the script were
+  # refused three times in one session, and a grep for "ci-watch.sh pr" once more)
+  tr_probe "mechanism-guard/core rule: grep in ci-watch.sh" Bash command "grep -n usage core/scripts/ci-watch.sh" allow
+  tr_probe "mechanism-guard/core rule: grep for the call text" Bash command "grep -n 'ci-watch.sh pr o/r 5' scripts/test-x.sh" allow
+  tr_probe "mechanism-guard/core rule: sed on a watch script" Bash command "sed -n 1,25p core/scripts/shared-memory-watch.sh" allow
+  tr_probe "mechanism-guard/core rule: ci-watch after ; still blocks" Bash command "echo go; bash core/scripts/ci-watch.sh pr o/r 5" block
+  tr_probe "mechanism-guard/core rule: ci-watch inside until still blocks" Bash command "until bash core/scripts/ci-watch.sh pr o/r 5; do :; done" block
+  tr_probe "mechanism-guard/core rule: wait script by bare path still blocks" Bash command "core/scripts/wait-mcp-reconnect.sh td" block
+  tr_probe "mechanism-guard/core rule: wait script with an env prefix still blocks" Bash command "X=1 bash core/scripts/wait-link.sh sw1" block
+  # The third foreground rule of the same shape (2026-10-28): a grep in the lint script and a test
+  # string naming it were refused as "running the local CI mirror".
+  tr_probe "mechanism-guard/core rule: grep in ci-lint-local.sh" Bash command "grep -n PY scripts/ci-lint-local.sh" allow
+  tr_probe "mechanism-guard/core rule: lint name inside a node test string" Bash command "node -e 'f(\`ci-lint-local.sh\` 11/11)'" allow
+  tr_probe "mechanism-guard/core rule: lint run by path still blocks" Bash command "bash /x/scripts/ci-lint-local.sh" block
+  tr_probe "mechanism-guard/core rule: lint run after ; still blocks" Bash command "cd /x; scripts/ci-lint-local.sh" block
   # 2026-10-26: destructive pushes no permission pattern can catch (colon refspec, git -c ... push -f)
   tr_probe "mechanism-guard/core rule: delete by colon refspec" Bash command "git push origin :feat" block
   tr_probe "mechanism-guard/core rule: delete by colon refspec with -C" Bash command 'git -C /r push -q origin :feat' block
@@ -280,6 +299,16 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: push HEAD:feat (control)" Bash command "git push origin HEAD:feat" allow
   tr_probe "mechanism-guard/core rule: push to a URL (control)" Bash command "git push https://example.com/o/r.git feat" allow
   tr_probe "mechanism-guard/core rule: plain feature push (control)" Bash command 'git -C /r push -u origin feat/x' allow
+  # marketplace pin (ported 2026-10-28): writes block, reads pass
+  tr_probe "mechanism-guard/core rule: pin edit by sed -i" Bash command "sed -i 's/v1/v2/' m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by redirect" Bash command "echo x > m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by script" Bash command "python3 bump.py m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by cp" Bash command "cp /tmp/x m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin read by cat (control)" Bash command "cat m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by sed -n (control)" Bash command "sed -n 1,40p m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by awk (control)" Bash command "awk '/name/' m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by diff (control)" Bash command "diff m/.claude-plugin/marketplace.json /tmp/x" allow
+  tr_probe "mechanism-guard/core rule: pin read by jq (control)" Bash command "jq .plugins m/.claude-plugin/marketplace.json" allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
