@@ -433,7 +433,9 @@ printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2
   '- [ ] Carried by repo ref' '  id: carried-ref' '  exit: in-pr 2026-10-28 core#32' '' \
   '- [ ] Ambiguous number' '  id: ambiguous' '  exit: in-pr 2026-10-28 #33' '' \
   '- [ ] Text mention only' '  id: issue-only' '  STAND: Kern-PR #31 offen, plus own work' '  exit: ai-does-it 2026-10-28' '' \
-  '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' >> "$G/docs/x/open.md"
+  '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' '' \
+  '- [ ] Odd exit' '  id: odd-exit' '  exit: waits-on-others 2026-10-28' '' \
+  '- [ ] Done but open' '  id: done-open' '  exit: done-already 2026-10-28 — built' >> "$G/docs/x/open.md"
 git -C "$G" add -A
 git -C "$G" -c user.email=t@t -c user.name=t commit -qm carried
 printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":4,"nodes":[%s,%s,%s,%s]}}}\n' \
@@ -445,6 +447,8 @@ has "waiting on the open PR core#32" "$(line ' carried-ref ' "$out")" && ok "rep
 has "[ledger|ai]" "$(line ' ambiguous ' "$out")" && ok "bare #N with two open PRs stays ours" || bad "ambiguous: $(line ' ambiguous ' "$out")"
 has "[ledger|ai]" "$(line ' issue-only ' "$out")" && ok "a PR named in the text alone does not carry the entry" || bad "text mention: $(line ' issue-only ' "$out")"
 has "names no open PR any more" "$(line ' closed-pr ' "$out")" && ok "a PR no longer open hands the entry back, saying so" || bad "closed: $(line ' closed-pr ' "$out")"
+has "unknown exit 'waits-on-others'" "$(line ' odd-exit ' "$out")" && ok "an exit outside the vocabulary is named" || bad "odd exit: $(line ' odd-exit ' "$out")"
+has "but the box is open" "$(line ' done-open ' "$out")" && ok "exit done-already on an open box asks for the tick" || bad "done-open: $(line ' done-open ' "$out")"
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
