@@ -415,6 +415,14 @@ def auto_class(it, repo, human_rx):
             return "human", "an operator decision (ledger exit)"
         if it.get("exit") == "ai-does-it":
             return "ai", "the agent's own work (ledger exit)"
+        if it.get("exit") == "in-pr":  # carried_by_pr found no open PR in the exit line
+            return "ai", "its in-pr exit names no open PR any more — tick it or name what is left"
+        # An exit outside the skill's vocabulary read as untouched agent work: measured 2026-10-28,
+        # `waits-on-others`, `deferred`, `ask-operator` on open entries of one brain.
+        if it.get("exit") in ("done-already", "drop"):
+            return "ai", f"its exit says {it['exit']} but the box is open — tick it with the evidence"
+        if it.get("exit") and it["exit"] not in EXITS:
+            return "ai", f"unknown exit '{it['exit']}' — write one of {', '.join(sorted(EXITS))} (skill backlog-catch-up)"
         if it.get("lclass") == "decision":
             return "human", "a decision in the ledger"
         return "ai", "ledger work item"
@@ -557,6 +565,8 @@ LEDGER_FIELD = re.compile(r"\b(id|class|origin):\s*`?([\w.:/-]+)")
 LEDGER_EXIT = re.compile(r"\bexit:\s*(other-side|parked|later-at-system)\s+(\d{4}-\d{2}-\d{2})")
 # Every exit line of the skill's table; the LAST one in an entry is its current state.
 ANY_EXIT = re.compile(r"^\s*exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re.M)
+# The exits of skill backlog-catch-up, step 3.
+EXITS = {"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
 
 
 def blame_times(root, rel):
@@ -636,13 +646,42 @@ def ledgers(root):
                     "date": created or (d.group(1) if d else ""),
                     "who": f.get("origin", "ledger"), "text": re.sub(r"[*`]", "", e["title"])[:100],
                     "scope": rel, "ref": ident, "lclass": f.get("class", ""),
-                    "exit": last[0] if last else "",
+                    "exit": last[0] if last else "", "body": e["text"],
                     "until": (m.group(1), m.group(2).strip()) if m else None,
                     "waiting_on": (f"the ledger exit {x[0]}", f"since {x[1]}") if x else None}
             if rows:
                 item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
             items.append(item)
     return items, unread
+
+
+# `<repo>#N` or a bare `#N` in an `exit: in-pr` line.
+PR_MENTION = re.compile(r"(?<![\w/#])([\w.-]+)?#(\d+)\b")
+
+
+def carried_by_pr(ledger_items, pr_items):
+    """An entry whose exit is `in-pr` waits on the open PR its exit line names. Measured
+    2026-10-28 on the macOS instance: four entries whose whole remaining work was an open core PR
+    printed as the agent's open work with "nothing done yet", next to the same PR in the list.
+    Reading any PR number in the entry's text would have hidden two more entries that have work
+    beyond their PR, so the writer says it (skill backlog-catch-up), the reader only measures
+    whether that PR is still open. A bare `#N` counts only when exactly one open PR has that
+    number; with none open the entry is the agent's again — tick it or name what is left."""
+    by_num = {}
+    for p in pr_items:
+        by_num.setdefault(p["ref"].rsplit("#", 1)[1], []).append(p["ref"])
+    for it in ledger_items:
+        if it.get("exit") != "in-pr":
+            continue
+        line = (re.findall(r"^\s*exit:\s*in-pr\b.*$", it.get("body", ""), re.M) or [""])[-1]
+        hits = set()
+        for repo, n in PR_MENTION.findall(line):
+            refs = [r for r in by_num.get(n, []) if not repo or r == f"{repo}#{n}"]
+            if len(refs) == 1:
+                hits.add(refs[0])
+        if hits:
+            it["waiting_on"] = ("the open PR " + ", ".join(sorted(hits)),
+                                "the PR carries this entry; it is listed again once the PR closes")
 
 
 def lookup(store, it):
@@ -771,6 +810,7 @@ def main():
     pr = prs(a.owner, cfg.get("owners") or {}, [c["repo"] for c in chans], cfg.get("pr_owners") or [])
     ses = sessions(root, a.hook_input)
     led, led_unread = ledgers(root)
+    carried_by_pr(led or [], pr or [])
     failed = [name for name, v in ([("shared-memory requests" + ("" if c["default"] else f" [{c['label']}]"), r)
                                     for c, r in reads]
                                    + [("PR search" if a.owner else "PRs (no owner given)", pr),

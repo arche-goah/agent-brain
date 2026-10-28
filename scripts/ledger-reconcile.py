@@ -258,7 +258,8 @@ def main():
             lines.append(f"!! ledger: {len(items)} {head}: {shown} - {tail}")
 
     say("done_open", "entr(y/ies) done but still open (its check passes)",
-        "tick it with the evidence, and name why the ledger missed it (copied from a report? fixed in passing?)")
+        "tick it with the evidence, and name why the ledger missed it (copied from a report? fixed in passing?)"
+        " - or, with work left, the check measures only a part: make it measure the exit")
     say("regressed", "ticked entr(y/ies) whose check fails",
         "reopen it, or the check no longer measures the thing")
     say("broken", "check(s) that could not give an answer",
