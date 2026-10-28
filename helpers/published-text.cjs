@@ -180,9 +180,13 @@ function withoutPublished(cmd, ps) {
   let out = cmd;
   for (const [a, b] of [...pub.spans].sort((x, y) => y[0] - x[0])) {
     const raw = cmd.slice(a, b);
-    // A value in single quotes is literal; anything else holding $( … ) or backquotes runs code.
+    // A value in single quotes is literal; anything else holding $( … ) or backquotes runs code —
+    // unless the shell's own escape makes them literal (`\`` and `\$(` in double quotes). Measured
+    // 2026-10-28: a PR comment quoting "\`bash scripts/<lint>.sh\`" in double quotes kept its body,
+    // and a foreground rule fired on the quoted script name.
     const literal = /^'[\s\S]*'$/.test(raw.replace(/^--?[\w-]+=/, ''));
-    if (/\$\(|`/.test(raw) && !literal) continue;
+    // PowerShell has no backslash escape (its escape is the backquote itself): there it stays.
+    if (/\$\(|`/.test(ps ? raw : raw.replace(/\\[\s\S]/g, '')) && !literal) continue;
     out = out.slice(0, a) + '<MESSAGE-STRIPPED>' + out.slice(b);
   }
   return out;
