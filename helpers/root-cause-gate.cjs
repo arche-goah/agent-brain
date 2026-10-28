@@ -90,6 +90,32 @@ const BUILTIN_CAUSE = [
   '\\bcaused by\\b',
 ];
 
+// A cause named is half the step: the same turn writes the mechanism that keeps it from coming back, or
+// says why none can (operator 2026-10-28, translated: "how do you get to anchor it mechanically by
+// yourself in that moment, without my hint? — exactly that is what we worked on today"). Measured the
+// same day on the macOS instance, one session: a misaddressed check request was re-posted correctly, a
+// misclassed PR was merged by hand — each time the cause was named and only the instance fixed; the
+// tool that let it through stayed as it was until the operator said so. Rule prose (.md) is no
+// mechanism here — that is the class the commitment gate holds.
+const BUILTIN_NOCARRIER = [
+  '^[ \\t>*_-]*(carrier|mechanism)\\b[^\\n]{0,24}:\\s*(none|not possible|n/a)\\b[^\\n]{8,}',
+];
+const isMechanismWrite = (p) => MECHANISM_PATH.test(p) && !/\.md$/i.test(p);
+// Every cause with its carrier — or the reason none can carry it — goes into ONE register the review
+// re-reads (operator 2026-10-28, translated: "if none is possible, that reason belongs in a clean register
+// of its own, so we can check again and again whether it really is impossible; the mechanisms found too,
+// indexed, with incident, cause, effect, related cases, new historical cases the new detector finds").
+// Path: instance data `carrier_register` in root-cause-patterns.json; template templates/carrier-register.md.
+const DEFAULT_REGISTER = 'docs/maintenance/carrier-register.md';
+function registerPath(cwd) {
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'rules', 'root-cause-patterns.json'), 'utf8'));
+    if (typeof d.carrier_register === 'string' && d.carrier_register) return d.carrier_register;
+  } catch (e) { /* default */ }
+  return DEFAULT_REGISTER;
+}
+const writesTo = (writes, rel) => writes.some((w) => String(w).replace(/\\/g, '/').endsWith('/' + rel.replace(/\\/g, '/')));
+
 function loadPatterns(cwd, key, builtins, flags) {
   const patterns = [...builtins];
   try {
@@ -186,8 +212,25 @@ function gate(input) {
   const turn = turns[turns.length - 1];
   if (!turn || turn.fired) return;
   const hit = correctionIn(turn.prompt, loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'));
+  const cause = causeIn(turn.texts, loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu'));
+  if (cause) {
+    const reg = registerPath(cwd);
+    const mech = turn.writes.some(isMechanismWrite)
+      || causeIn(turn.texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'));
+    const registered = writesTo(turn.writes, reg);
+    if (mech && registered) return;
+    const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`].filter(Boolean).join(', ');
+    process.stdout.write(JSON.stringify(declare({
+      decision: 'block',
+      reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}. Fixing the instance (a re-post, a manual merge, a `
+        + 'ledger or memory note) leaves the tool that let it happen as it was. Before this turn ends: change the '
+        + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
+        + 'lives) with a fixture, or say Carrier: none - <why no mechanism can carry it>; AND write the entry in '
+        + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits.`,
+    }, input)));
+    return;
+  }
   if (!hit) return;
-  if (causeIn(turn.texts, loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu'))) return;
   process.stdout.write(JSON.stringify(declare({
     decision: 'block',
     reason: `ROOT-CAUSE-GATE: the operator's message that opened this turn reads as a correction or a mishap: "${hit.slice(0, 160)}". `
@@ -221,14 +264,24 @@ function review(args) {
     files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(dir, f))
       .map((f) => ({ f, m: fs.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m).slice(0, n).map((x) => x.f);
   } catch (e) { console.log(`root-cause review: no transcripts under ${dir}`); return 1; }
+  const rxN = loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu');
   const found = [];
-  let turnsTotal = 0;
+  let turnsTotal = 0, causeTurns = 0, causeNoMech = 0;
+  const causeNoMechList = [];
   for (const f of files) {
     let turns;
     try { turns = readTurns(f, false); } catch (e) { continue; }
     turnsTotal += turns.length;
     turns.forEach((t, i) => {
       if (since && t.when.slice(0, 10) < since) return;
+      // the cause-needs-a-carrier check (2026-10-28), replayed: every turn that names a cause
+      if (causeIn(t.texts, rxZ)) {
+        causeTurns++;
+        if (!t.writes.some(isMechanismWrite) && !causeIn(t.texts, rxN)) {
+          causeNoMech++;
+          causeNoMechList.push(`${t.when.slice(0, 10)} ${path.basename(f, '.jsonl').slice(0, 8)}: "${t.prompt.replace(/\s+/g, ' ').slice(0, 100)}"`);
+        }
+      }
       const hit = correctionIn(t.prompt, rxC);
       if (!hit) return;
       const cause = causeIn(t.texts, rxZ);
@@ -244,7 +297,8 @@ function review(args) {
   console.log(`# Root-cause review — ${new Date().toISOString().slice(0, 10)}\n`);
   console.log(`transcripts ${files.length} · operator turns ${turnsTotal} · corrections ${found.length}`
     + ` · reply named a cause ${withCause} (${pct(withCause, found.length)})`
-    + ` · a mechanism file written within ${CARRIER_TURNS} turns ${withCarrier} (${pct(withCarrier, found.length)})\n`);
+    + ` · a mechanism file written within ${CARRIER_TURNS} turns ${withCarrier} (${pct(withCarrier, found.length)})`
+    + ` · turns naming a cause ${causeTurns}, without a mechanism write in the same turn ${causeNoMech} (${pct(causeNoMech, causeTurns)})\n`);
   const months = {};
   for (const x of found) {
     const k = x.when.slice(0, 7) || '?';
@@ -257,6 +311,20 @@ function review(args) {
   for (const x of found.filter((y) => !y.cause)) {
     console.log(`- ${x.when} ${x.session} ${x.carrier ? '(mechanism written later)' : '(no mechanism within 5 turns)'}: "${x.hit.replace(/\s+/g, ' ').slice(0, 140)}"`);
   }
+  // The register, re-read: a "none" whose recheck date has come, an entry without its replay.
+  let regText = '';
+  try { regText = fs.readFileSync(path.join(cwd, registerPath(cwd)), 'utf8'); } catch (e) { /* none yet */ }
+  const entries = regText.split(/^## /m).slice(1);
+  const today = new Date().toISOString().slice(0, 10);
+  const due = entries.filter((e) => /^\s*carrier:\s*none\b/im.test(e)
+    && (/^\s*recheck:\s*(\d{4}-\d{2}-\d{2})/im.exec(e) || [])[1] <= today);
+  const noReplay = entries.filter((e) => !/^\s*replay:\s*\S/im.test(e));
+  console.log(`\n## Carrier register (${registerPath(cwd)}): ${entries.length} entries · "none" due for recheck ${due.length}`
+    + ` · without a replay ${noReplay.length}\n`);
+  for (const e of due) console.log(`- recheck due: ${e.split('\n')[0].trim()}`);
+  for (const e of noReplay) console.log(`- no replay yet: ${e.split('\n')[0].trim()}`);
+  console.log('\n## Turns that named a cause and wrote no mechanism (newest 40)\n');
+  for (const x of causeNoMechList.sort().slice(-40)) console.log(`- ${x}`);
   console.log('\n## Corrections whose reply named a cause\n');
   for (const x of found.filter((y) => y.cause)) {
     console.log(`- ${x.when} ${x.session} ${x.carrier ? '(mechanism written later)' : ''}: "${x.hit.replace(/\s+/g, ' ').slice(0, 140)}"`);
