@@ -8,9 +8,18 @@
     "to a question-tool question carrying an on-word sets it again. Anything else ('status?', a remark) keeps it.",
     "Example for a German operator: on \"\\\\bautonom\", \"\\\\ballein abarbeiten\\\\b\", \"\\\\bich bin weg\\\\b\";",
     "off \"\\\\bnormalmodus\\\\b\", \"\\\\bnicht mehr autonom\\\\b\"; yes \"^\\\\s*ja\\\\b\". Read by autonomous-gate",
-    "(no question tool, no ask dialog in the mode), stoppen-gate and open-items-gate."
+    "(no question tool, no ask dialog in the mode), stoppen-gate and open-items-gate.",
+    "_cases: the operator's real wording with the mode the latch must reach (steps = prompts in order, {q, a} =",
+    "a question-tool answer); run through autonomous-mode.cjs by core/scripts/pattern-cases.py at every",
+    "self-test. Replace the English examples with the operator's own words, the answer path included."
   ],
   "on_patterns": [],
   "off_patterns": [],
-  "yes_patterns": []
+  "yes_patterns": [],
+  "_cases": [
+    {"steps": ["work through the list autonomously"], "expect": "autonomous"},
+    {"steps": ["work through the list autonomously", "anything open for me?",
+               {"q": "Continue autonomously?", "a": "Yes, continue"}], "expect": "autonomous"},
+    {"steps": ["work through the list autonomously", "anything open for me?"], "expect": "interactive"}
+  ]
 }

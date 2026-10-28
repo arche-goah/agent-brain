@@ -5,16 +5,8 @@ description: Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstae
 
 # Autonomous Run (time-boxed)
 
-> **Why this skill exists (incident 2026-08-02):** The operator ordered "komplett autonom
-> durchziehen fuer 2h" ("push through completely autonomously for 2h"). What actually ran
-> was **54 minutes** (08:49–09:43, proven by commit timestamps) — then the phase list was
-> done, I disarmed the watchdog and reported, although the reserve pool still carried
-> four items.
-> **Three causes, all mechanical:** (1) `ScheduleWakeup` was never set, although it was
-> in my own plan — so there was no continuation mechanism at all; (2) the watchdog is a
-> **reporter, not a motor** and was wrongly treated as the safety net; (3) nobody knew
-> the deadline — neither script nor loop knew when the "2h" would be up. The times in
-> the report were **estimated, not read off**.
+> **Why this skill exists:** a time-boxed run that ended long before its time was up
+> (why: Evidence, 2026-08-02).
 
 ## Distinction — which mode applies?
 
@@ -110,7 +102,7 @@ The `disarm` output is the evidence that belongs in the report:
 2. **No reserve pool discussed → do not start** (otherwise the run drifts).
 3. **Turn ends without `ScheduleWakeup` → the run is dead.** Set it before every turn end.
 4. **Times in the report ALWAYS from `disarm`/`remaining`**, never estimated.
-   (On 2026-08-02, "10:15/10:45" was reported; reality was 09:15/09:43.)
+   (why: Evidence, 2026-08-02)
 5. **Do not finish because the work feels done** — the run ends at `remaining` = 0, or
    earlier ONLY through the explicit "pool empty, time was still left" report of step 4
    (that is order fidelity #3 applied inside a time-boxed run, not a contradiction of it),
@@ -154,3 +146,23 @@ The `disarm` output is the evidence that belongs in the report:
 Times come from `date`, `git log --date=format:'%H:%M:%S'` or the watchdog —
 **not** from debug output of other machines (the TD Windows timestamps led to a
 self-assessment that was off by one hour on 2026-08-02).
+
+## Evidence
+
+The incident behind this skill. It stays with the skill so the rules keep their measured
+reason; the text above carries only pointers.
+
+2026-08-02 — why this skill exists:
+
+> **Why this skill exists (incident 2026-08-02):** The operator ordered "komplett autonom
+> durchziehen fuer 2h" ("push through completely autonomously for 2h"). What actually ran
+> was **54 minutes** (08:49–09:43, proven by commit timestamps) — then the phase list was
+> done, I disarmed the watchdog and reported, although the reserve pool still carried
+> four items.
+> **Three causes, all mechanical:** (1) `ScheduleWakeup` was never set, although it was
+> in my own plan — so there was no continuation mechanism at all; (2) the watchdog is a
+> **reporter, not a motor** and was wrongly treated as the safety net; (3) nobody knew
+> the deadline — neither script nor loop knew when the "2h" would be up. The times in
+> the report were **estimated, not read off**.
+
+- **2026-08-02 — hard gate 4, times read off.** (On 2026-08-02, "10:15/10:45" was reported; reality was 09:15/09:43.)

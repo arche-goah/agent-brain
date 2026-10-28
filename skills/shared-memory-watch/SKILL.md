@@ -132,9 +132,7 @@ same care as any other entry there — leak discipline, format, push when done.
 list lives in `.claude/rules/open-items-standing.json` (the same file the session-start list
 reads, `rules/intelligence.md`). A find that is a request addressed to this instance and
 matches a class there is worked and answered in the same session, then reported — the
-mid-session twin of the session-start rule. Measured 2026-10-16: the standing class only
-fired at the next session start, so a request that arrived while the session ran waited
-for the operator's go although he had given it for good. Check the match with
+mid-session twin of the session-start rule (why: Evidence, 2026-10-16). Check the match with
 `python3 core/scripts/open-items.py --owner <owner>` (the item prints as `standing`).
 
 ## Limits, deliberately
@@ -156,3 +154,12 @@ bash core/scripts/shared-memory-watch-test.sh      # negative control
 After a `TaskStop` the lock can survive (the monitor kills the process, the trap does
 not always run) — `disarm` before arming again, otherwise the script reports "already
 armed" and does nothing.
+
+## Evidence
+
+The measurement behind a rule above. It stays with the skill so the rule keeps its measured
+reason; the text above carries only a pointer.
+
+- **2026-10-16 — a request under a standing approval is handled, not asked.** Measured 2026-10-16: the standing class only
+  fired at the next session start, so a request that arrived while the session ran waited
+  for the operator's go although he had given it for good.
