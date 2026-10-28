@@ -43,6 +43,11 @@ probe "same edit, relative path" Edit '{"file_path":".claude/settings.json"}' "$
 probe "same edit, not autonomous (the operator is there)" Edit "{\"file_path\":$SET}" "$INTER" allow
 probe "question tool in an autonomous run" AskUserQuestion '{"questions":[]}' "$AUTO" block
 probe "question tool, not autonomous" AskUserQuestion '{"questions":[]}' "$INTER" allow
+# The gate's own words are locked inside the run (2026-10-28: a refused question was made to pass by widening them).
+probe "edit of the ask patterns in an autonomous run" Edit '{"file_path":".claude/rules/open-items.json"}' "$AUTO" block
+probe "write of the on/off words in an autonomous run" Write '{"file_path":".claude/rules/autonomous-patterns.json"}' "$AUTO" block
+probe "edit of the ask patterns in the conversation" Edit '{"file_path":".claude/rules/open-items.json"}' "$INTER" allow
+probe "edit of another rules file in an autonomous run" Edit '{"file_path":".claude/rules/ledgers.json"}' "$AUTO" allow
 probe "a status question mid-run keeps the mode: no question tool" AskUserQuestion '{"questions":[]}' "$STAT" block
 probe "push naming main (ask glob)" Bash '{"command":"git -C /r push -q origin main"}' "$AUTO" block
 probe "branch-less push (no ask rule)" Bash '{"command":"git -C /r push"}' "$AUTO" allow

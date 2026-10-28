@@ -57,6 +57,13 @@ jobs:
         run: env python3 -c "open('marker-py-env', 'w').write('ok')"
       - name: needs a missing tool
         run: no-such-tool-xyz --severity=error
+  partial:
+    runs-on: ubuntu-latest
+    steps:
+      - name: passes but names what it did not see
+        run: echo "   note: 1 untracked file(s) NOT checked — stage them and re-run before trusting this: new.py"
+      - name: a test name with the same words is no note
+        run: echo "  OK  count mismatch = NOT checked"
 YML
 
 # A Windows-shaped PATH for the py job: `python3` is a stub that only prints the Store message
@@ -117,6 +124,12 @@ PATH="$T/winbin:$PATH" run py; rc=$?
 grep -q "SKIP py / needs a missing tool (not installed here: no-such-tool-xyz" "$T/out" \
   && ok "a missing tool is SKIP with its name, not FAIL" || bad "a missing tool is SKIP with its name, not FAIL"
 [ "$rc" = 0 ] && ok "missing tool alone does not make the run red (rc 0)" || bad "missing tool alone does not make the run red (rc $rc)"
+
+# A step that passes but says it did NOT check something (2026-10-28: an unstaged new file with
+# German words passed here and went red in CI) is shown and keeps the run from reading green.
+run partial; rc=$?
+grep -q "untracked file(s) NOT checked" "$T/out" && ok "a step's NOT-checked note is printed under its OK" || bad "a step's NOT-checked note is printed under its OK"
+[ "$rc" = 1 ] && grep -q "ci-lint-local: 1 step(s) passed but did NOT check everything" "$T/out" && ok "a NOT-checked note makes the run not green (rc 1), a test name with the words does not count" || bad "a NOT-checked note makes the run not green (rc $rc)"
 rm -f "$T/repo/marker-py"
 # BASH_ENV cleared: when this fixture itself runs under ci-lint-local (its fixture-suite step), the
 # outer run's prelude would put its own python3 first and the control would not see the stub.

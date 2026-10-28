@@ -38,6 +38,13 @@ const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const CLASSIFIER_HELD = ['Edit(.claude/settings.json)', 'Edit(.claude/settings.local.json)', 'Edit(.mcp.json)',
   'Edit(.claude/rules/stop-checks.json)', 'Edit(.claude/rules/mechanism-rules.json)', 'Edit(**/hooks/hooks.json)'];
 
+// The words this gate decides by. A run must not change them: measured 2026-10-28 on the macOS
+// instance, after this gate refused a question the AI widened the instance's ask patterns until
+// the refused question passed (taken back the same turn) - a refusal undone through the gate's own
+// data. Ordered by the operator the same day: inside the run these files are locked; they change
+// in the conversation with the operator.
+const OWN_WORDS = ['Edit(.claude/rules/autonomous-patterns.json)', 'Edit(.claude/rules/open-items.json)'];
+
 function readJson(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; }
 }
@@ -96,8 +103,14 @@ function judge(input) {
   const isQuestion = tool === 'AskUserQuestion';
   const rule = isQuestion ? null : hitRule(askRules(root), tool, input.tool_input || {}, root);
   const held = isQuestion || rule ? null : hitRule(CLASSIFIER_HELD, tool, input.tool_input || {}, root);
-  if (!isQuestion && !rule && !held) return null;
+  const own = isQuestion ? null : hitRule(OWN_WORDS, tool, input.tool_input || {}, root);
+  if (!isQuestion && !rule && !held && !own) return null;
   if (!autonomousMode(input.transcript_path || '', root)) return null;
+  if (own) {
+    return `AUTONOMOUS-GATE: \`${own}\` holds the words this gate decides by, and the run is autonomous - a run does not change ` +
+      'the data of the gate that holds it (a refusal undone through the gate\'s data is a refusal re-issued). Not issued. ' +
+      'File the change with its reason in the operator-question ledger (a patch file beside it); it is made in the conversation.';
+  }
   const what = isQuestion ? 'a question through the question tool'
     : rule ? `a call that the permission rule \`${rule}\` (ask) turns into a dialog`
       : `an edit of hook or permission data (\`${held}\`) that the auto-mode classifier holds for the operator`;
