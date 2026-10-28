@@ -76,6 +76,11 @@ spr 'feat: x' '["macOS: OK at `abc1234` - lint rc 0 (the macOS instance). Window
 sprobe "macOS OK, Windows named open in the same line" "$M" allow "$D"
 spr 'feat: x' '["Windows OK at head `abc1234`, macOS open"]'
 sprobe "Windows OK, macOS open in the same line" "$M" block "$D"
+# 2026-10-28 (#164): a file name in a code span is no verdict; the same word outside one still is.
+spr 'feat: x' '["**macOS OK at head `abc1234`**: `test-open-items.sh` all cases pass", "Windows OK at head `abc1234`"]'
+sprobe "a code span naming a file with a negation word" "$M" allow "$D"
+spr 'feat: x' '["**macOS OK at head `abc1234`**: test-open-items.sh red", "Windows OK at head `abc1234`"]'
+sprobe "the same word outside a code span (control)" "$M" block "$D"
 
 # 2026-10-28 (#157): an earlier head separated only by "update branch" merges still counts.
 cpr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "fff0000aaa", body: "feat: x", commits: JSON.parse(process.argv[2]), comments: JSON.parse(process.argv[1]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }
