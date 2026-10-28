@@ -12,6 +12,10 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  # The merge queue builds main + the queued PRs and needs the required checks on that
+  # build (operator 2026-10-28: the queue replaces "branches up to date", which forced an
+  # update and a full run after every merge — seven PRs, about five hours of waiting).
+  merge_group:
 
 # The default token is read-only on every job. A job that needs more declares it
 # itself — none does today, and a PR that adds one is a review event.
@@ -50,8 +54,8 @@ jobs:
       # base..head; a push scans before..after, or the whole history when the ref is new.
       - name: leak scan (commits)
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
           if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
             python3 scripts/leak-scan.py --no-tree --commits "$HEAD"
@@ -80,7 +84,7 @@ jobs:
       # baseline file may not GAIN German (a push on main has no base; the file rules hold).
       - name: english-only ratchet
         env:
-          ENGLISH_ONLY_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || '' }}
+          ENGLISH_ONLY_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || github.event.merge_group.base_sha || '' }}
         run: python3 scripts/english-only.py
       # Every change declares its level (rules/working-rules.md, "Identity is written, state is
       # read"): each changelog fragment carries (level: …; higher: …; debt: …). The same check runs
