@@ -215,6 +215,27 @@ def main():
             time.sleep(0.1)
         ok(brief.exists(), "--cached with a relative --root: the background run writes its result")
 
+        # a reused result older than a commit says so (2026-10-28: three entries reported done but
+        # open from a 22:23 run had been ticked after it)
+        with tempfile.TemporaryDirectory() as gd:
+            G = pathlib.Path(gd)
+            (G / ".claude-state").mkdir()
+            (G / ".claude-state" / "ledger-reconcile.brief").write_text("!! ledger: 1 entr(y/ies) done but still open: x\n", encoding="utf-8")
+            st = G / ".claude-state" / "ledger-reconcile.stamp"
+            st.write_text("2026-10-28 12:00\n", encoding="utf-8")
+            os.utime(st, (time.time() - 100, time.time() - 100))
+            subprocess.run(["git", "-C", gd, "init", "-q"], check=True)
+            (G / "f").write_text("x")
+            subprocess.run(["git", "-C", gd, "add", "f"], check=True)
+            subprocess.run(["git", "-C", gd, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "tick"], check=True)
+            rc, out = run(gd, "--cached")
+            ok("1 commit(s) since that result" in out, "--cached: a commit after the result is named", out)
+            os.utime(st, (time.time() + 100, time.time() + 100))
+            (G / ".claude-state" / "ledger-reconcile.brief").write_text("!! ledger: 1 entr(y/ies) done but still open: x\n", encoding="utf-8")
+            rc, out = run(gd, "--cached")
+            ok("since that result" not in out, "--cached: no note when nothing is newer", out)
+            time.sleep(1)  # let the background run end before the directory goes
+
         # the default allow list (no "allowed" in the config)
         (R / "docs" / "orders.md").write_text(
             "- [ ] **reads** — derived (2026-10-15)\n  check: grep -q . marker-present || test -f marker-present\n  id: default-read\n\n"

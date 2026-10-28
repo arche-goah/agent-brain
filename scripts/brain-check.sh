@@ -54,6 +54,14 @@ if [ "${1:-}" = "--cached" ]; then
   if [ -s "$OUT" ]; then
     cat "$OUT"
     echo "   (brain-check: result of $(cat "$STAMP" 2>/dev/null || echo 'an earlier start'); the next run is measuring in the background)"
+    # A reused result can be overtaken by a commit made after it (measured 2026-10-28 on the
+    # macOS instance: a self-test red at 12:44, fixed at 13:00, still read FAILURE at the 13:48
+    # start). Count the commits since the run; the reader then knows a finding may be fixed.
+    since=$(cat "$STAMP.epoch" 2>/dev/null)
+    if [ -n "$since" ]; then
+      newer=$(git log -n 200 --format=%ct 2>/dev/null | awk -v s="$since" '$1 > s' | wc -l | tr -d ' ')
+      [ "${newer:-0}" -gt 0 ] && echo "   ($newer commit(s) since that result — a finding above may be fixed already; the background run re-measures)"
+    fi
   else
     echo "brain-check: first run measuring in the background — its result comes at the next session start"
   fi
@@ -75,6 +83,7 @@ else
 fi
 mkdir -p .claude-state
 date '+%Y-%m-%d %H:%M' > "$STAMP"
+date +%s > "$STAMP.epoch"
 
 if [ "${1:-}" != "--brief" ]; then
   printf '%s\n\n%s\n' "$self_out" "$fric_out"

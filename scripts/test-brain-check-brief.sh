@@ -62,6 +62,22 @@ case "$second" in *'(brain-check: result of '*) ok "--cached: the stored result 
 n=0; while ! [ "$C/.claude-state/brain-check.brief" -nt "$C/marker" ] && [ "$n" -lt 50 ]; do sleep 0.2; n=$((n + 1)); done
 [ "$C/.claude-state/brain-check.brief" -nt "$C/marker" ] && ok "--cached: the second background run finished" || bad "second background run never finished"
 ls "$C/.claude-state/brain-check.brief."* >/dev/null 2>&1 && bad "a temporary result file was left behind" || ok "--cached: no temporary file left behind"
+[ -s "$C/.claude-state/brain-check.stamp.epoch" ] && ok "--cached: the run stores its time as a number" || bad "no epoch stamp"
+
+# A commit after the stored result (2026-10-28: a self-test red at 12:44, fixed at 13:00, still
+# read FAILURE at the 13:48 start): the reused result says that commits came after it.
+G="$T/cachedgit"; mkdir -p "$G/.claude-state"
+cp "$C/.claude-state/brain-check.brief" "$G/.claude-state/"
+date '+%Y-%m-%d %H:%M' > "$G/.claude-state/brain-check.stamp"
+echo $(( $(date +%s) - 100 )) > "$G/.claude-state/brain-check.stamp.epoch"
+git -C "$G" init -q; printf x > "$G/f"; git -C "$G" add f
+git -C "$G" -c user.email=t@t -c user.name=t commit -qm fix
+gcached() { CLAUDE_PROJECT_DIR="$(native "$G")" BRAIN_CHECK_STUB_SELF="$(native "$T/self.txt")" BRAIN_CHECK_STUB_RC=1 bash "$S" --cached 2>&1; }
+out=$(gcached)
+case "$out" in *'1 commit(s) since that result'*) ok "--cached: a commit after the result is named";; *) bad "newer commit not named: '$out'";; esac
+echo $(( $(date +%s) + 100 )) > "$G/.claude-state/brain-check.stamp.epoch"
+out=$(gcached)
+case "$out" in *'since that result'*) bad "named commits although none is newer: '$out'";; *) ok "--cached: no note when nothing is newer";; esac
 
 [ "$fail" = 0 ] && echo "brain-check-brief: all checks passed" || echo "brain-check-brief: FAILURES"
 exit "$fail"
