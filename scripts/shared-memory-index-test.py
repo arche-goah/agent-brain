@@ -265,6 +265,14 @@ with tempfile.TemporaryDirectory() as td:
     ok("24 answers/closes in a file or a LOG line settle a request; a claim and a LOG id do not",
        listed == {"req-d", "req-e"}, f"listed {sorted(listed)}")
 
+    # 25. --mine: the session start's "your move" line counts the open, unsettled entries that
+    #     name this device in `next` (2026-10-28: 2 such entries on the macOS instance, no line said so)
+    out = run_main_args(repo, ["--mine", "kim-pc"])
+    ok("25 --mine counts the open unsettled entries naming the id in next",
+       "your move: 2 open entries" in out, out.strip()[:160])
+    out = run_main_args(repo, ["--mine", "nobody-here"])
+    ok("26 --mine is silent when no entry names the id", out.strip() == "", out.strip()[:160])
+
 print()
 if fails:
     print(f"shared-memory-index: {len(fails)} fixture(s) FAILED")

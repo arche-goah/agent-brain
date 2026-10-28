@@ -438,6 +438,30 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
     return "\n".join(root) + "\n", topic_files, entries, open_files
 
 
+def mine(repo: Path, ids: list[str], ref: str | None = None) -> int:
+    """The third cut of the routing fields (docs/shared-memory-fields.md, "not in this cut"): the
+    session start says how many open entries wait on THIS device. Measured 2026-10-28 on the macOS
+    instance: two weeks after `next` arrived, 31 open entries in one area carried it, and nothing
+    told a device which of them were its move. Same selection as OPEN.md: status open, not settled
+    by an `answers:`/`closes:` (file or LOG), and `next` naming one of the ids."""
+    if not repo.is_dir() or not ids:
+        return 0
+    _root, _topics, entries, _opens = build(repo, ref)
+    logs = [p.read_text(encoding="utf-8", errors="replace") for p in repo.glob(f"*/{LOG_NAME}")]
+    settled = settled_stems(entries, logs)
+    hits = [e for e in entries if e["status"] == OPEN_STATUS and Path(e["path"]).stem not in settled
+            and any(n in ids for n in e["next"])]
+    if not hits:
+        return 0  # a clean check is silence
+    hits.sort(key=lambda e: e.get("date") or "")
+    oldest = hits[0]
+    areas = sorted({e["topic"] for e in hits})
+    print(f"shared memory, your move: {len(hits)} open entr{'y' if len(hits) == 1 else 'ies'} name this device "
+          f"in `next` - oldest {age_days(oldest)}: {title_of(oldest)} ({oldest['path']}); see "
+          + ", ".join(f"{t}/{OPEN_NAME}" for t in areas))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--repo", type=Path, default=REPO_DEFAULT)
@@ -450,7 +474,12 @@ def main() -> int:
     ap.add_argument("--topic", help="with --since: restrict to one topic folder")
     ap.add_argument("--ref", help="with --since: read the entries at this git ref (e.g. a "
                                   "fetched origin/main) instead of the working tree")
+    ap.add_argument("--mine", metavar="ID[,ID…]",
+                    help="print ONE line: how many open entries name one of these ids in `next` "
+                         "(the session start's 'your move' line) and exit — writes nothing")
     a = ap.parse_args()
+    if a.mine is not None:
+        return mine(a.repo, [x.strip() for x in a.mine.split(",") if x.strip()], a.ref)
     if a.ref and a.write:
         print("ERROR: --ref is read-only; it does not combine with --write", file=sys.stderr)
         return 2
