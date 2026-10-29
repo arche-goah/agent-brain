@@ -33,6 +33,7 @@
  * case-insensitive, merged in.
  *
  * CLI: node autonomous-mode.cjs <transcript> [cwd]  -> prints "autonomous" or "interactive".
+ * For the operator (what the modes mean, what they do not, how to switch): docs/run-modes.md.
  */
 'use strict';
 const fs = require('fs');
