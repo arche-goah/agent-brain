@@ -6,7 +6,7 @@
 # Usage: bash scripts/test-instrument-watch.sh   (exit 0 = all pass)
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-PY="$(command -v python3 || command -v python)"
+PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 fail=0
