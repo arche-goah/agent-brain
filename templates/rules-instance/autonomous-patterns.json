@@ -13,7 +13,8 @@
     "a question-tool answer); run through autonomous-mode.cjs by core/scripts/pattern-cases.py at every",
     "self-test. Replace the English examples with the operator's own words, the answer path included.",
     "statusline_labels (optional): the words helpers/statusline.cjs shows for the mode, e.g.",
-    "{\"autonomous\": \"AUTONOM\", \"interactive\": \"INTERAKTIV\"}; default AUTONOMOUS / INTERACTIVE."
+    "{\"autonomous\": \"AUTONOM\", \"interactive\": \"INTERAKTIV\", \"help\": \"docs/run-mode.md\"}; default AUTONOMOUS /",
+    "INTERACTIVE. `help` (a project path or a URL) makes the word a Cmd/Ctrl+click link to a page explaining the mode."
   ],
   "on_patterns": [],
   "off_patterns": [],

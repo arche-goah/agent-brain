@@ -31,8 +31,13 @@ function runMode(d) {
       try { fs.writeFileSync(cache, JSON.stringify({ size, auto })); } catch {}
     }
     // 24-bit colours, not the 16-colour palette: the theme's "bright magenta" rendered as a soft red (operator 2026-10-29)
-    return auto ? `\x1b[1;38;2;199;125;255m${labels.autonomous || 'AUTONOMOUS'}\x1b[0m`      // neon violet
-      : `\x1b[1;38;2;150;255;190m${labels.interactive || 'INTERACTIVE'}\x1b[0m`;           // sage neon
+    const word = auto ? `\x1b[1;38;2;199;125;255m${labels.autonomous || 'AUTONOMOUS'}\x1b[0m`      // neon violet
+      : `\x1b[1;38;2;150;255;190m${labels.interactive || 'INTERACTIVE'}\x1b[0m`;                 // sage neon
+    // No hover tooltip exists for the status line (docs: statusline, "Links": OSC 8 only, Cmd/Ctrl+click). The
+    // instance names a page that explains the mode and how to switch (`statusline_labels.help`: a path in the
+    // project or a URL); the word becomes a link to it.
+    const help = labels.help && (/^[a-z]+:\/\//.test(labels.help) ? labels.help : 'file://' + path.resolve(dir, labels.help));
+    return help ? `\x1b]8;;${help}\x07${word}\x1b]8;;\x07` : word;
   } catch { return null; }
 }
 

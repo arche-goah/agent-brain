@@ -91,6 +91,9 @@ mkdir -p "$T/lab/.claude/rules" "$T/lab/core"
 ln -s "$ROOT/$(dirname "$(resolve helpers/autonomous-mode.cjs)")" "$T/lab/core/helpers" 2>/dev/null || cp -R "$ROOT/$(dirname "$(resolve helpers/autonomous-mode.cjs)")" "$T/lab/core/helpers"
 printf '%s\n' '{"statusline_labels":{"autonomous":"AUTONOM","interactive":"INTERAKTIV"}}' > "$T/lab/.claude/rules/autonomous-patterns.json"
 case "$(sl "$T/auto.jsonl" "$T/lab")" in *AUTONOM*) ok "statusline labels come from instance data";; *) bad "instance labels not used";; esac
+case "$(sl "$T/auto.jsonl" "$T/lab")" in *']8;;'*) bad "a link without a help page";; *) ok "no help page, no link";; esac
+printf '%s\n' '{"statusline_labels":{"autonomous":"AUTONOM","interactive":"INTERAKTIV","help":"docs/modes.md"}}' > "$T/lab/.claude/rules/autonomous-patterns.json"
+case "$(sl "$T/auto.jsonl" "$T/lab")" in *']8;;file://'*'docs/modes.md'*AUTONOM*']8;;'*) ok "the mode word links to the instance's help page (OSC 8)";; *) bad "help link missing";; esac
 
 # --- framing-intake: instance-only, so absence is a skip, not a failure ---------
 FI=$(resolve scripts/hooks/framing-intake.sh || true)
