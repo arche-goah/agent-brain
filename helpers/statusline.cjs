@@ -30,14 +30,18 @@ function runMode(d) {
       auto = require(helper).autonomousMode(tp, dir);
       try { fs.writeFileSync(cache, JSON.stringify({ size, auto })); } catch {}
     }
-    // 24-bit colours, not the 16-colour palette: the theme's "bright magenta" rendered as a soft red (operator 2026-10-29)
-    const word = auto ? `\x1b[1;38;2;199;125;255m${labels.autonomous || 'AUTONOMOUS'}\x1b[0m`      // neon violet
-      : `\x1b[1;38;2;150;255;190m${labels.interactive || 'INTERACTIVE'}\x1b[0m`;                 // sage neon
+    // Both modes side by side, the active one bold in a 24-bit signal colour (the theme's 16-colour "bright magenta"
+    // rendered as a soft red, operator 2026-10-29), the other dim. A click cannot switch: a status-line link only
+    // opens a URL, and the mode comes from the operator's words in the transcript, nothing else.
+    const dim = (s) => `\x1b[38;2;110;110;110m${s}\x1b[0m`;
+    const a = labels.autonomous || 'AUTONOMOUS', i = labels.interactive || 'INTERACTIVE';
+    const pair = auto ? `\x1b[1;38;2;199;125;255m${a}\x1b[0m ${dim(i)}`      // neon violet
+      : `${dim(a)} \x1b[1;38;2;150;255;190m${i}\x1b[0m`;                    // sage neon
     // No hover tooltip exists for the status line (docs: statusline, "Links": OSC 8 only, Cmd/Ctrl+click). The
-    // instance names a page that explains the mode and how to switch (`statusline_labels.help`: a path in the
-    // project or a URL); the word becomes a link to it.
+    // instance names a page that explains the modes and how to switch (`statusline_labels.help`: a project path or
+    // a URL); it gets its own ⓘ link next to the pair.
     const help = labels.help && (/^[a-z]+:\/\//.test(labels.help) ? labels.help : 'file://' + path.resolve(dir, labels.help));
-    return help ? `\x1b]8;;${help}\x07${word}\x1b]8;;\x07` : word;
+    return help ? `${pair} \x1b]8;;${help}\x07\x1b[1;38;2;140;200;255mⓘ\x1b[0m\x1b]8;;\x07` : pair;
   } catch { return null; }
 }
 

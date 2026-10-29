@@ -79,12 +79,15 @@ printf '%s\n' '{"type":"user","message":{"role":"user","content":"work through t
 printf '%s\n' '{"type":"user","message":{"role":"user","content":"status?"}}' > "$T/inter.jsonl"
 sl() { printf '{"cwd":"%s","workspace":{"project_dir":"%s"},"transcript_path":"%s","model":{"display_name":"test"}}' \
          "$(nat "$2")" "$(nat "$2")" "$(nat "$1")" | node "$SL" 2>/dev/null; }
-case "$(sl "$T/auto.jsonl" "$ROOT")" in *AUTONOMOUS*) ok "statusline shows AUTONOMOUS after an on word";; *) bad "no AUTONOMOUS after an on word";; esac
-case "$(sl "$T/inter.jsonl" "$ROOT")" in *INTERACTIVE*) ok "statusline shows INTERACTIVE without one";; *) bad "no INTERACTIVE without an on word";; esac
-case "$(sl "$T/not-yet-written.jsonl" "$ROOT")" in *INTERACTIVE*) ok "a fresh session without a transcript file shows INTERACTIVE";; *) bad "a fresh session shows no mode";; esac
+# both words are shown; the ACTIVE one is bold in its signal colour (AON / ION), the other dim
+AON='[1;38;2;199;125;255mAUTONOMOUS'; ION='[1;38;2;150;255;190mINTERACTIVE'
+case "$(sl "$T/auto.jsonl" "$ROOT")" in *"$AON"*INTERACTIVE*) ok "statusline marks AUTONOMOUS active after an on word, both shown";; *) bad "AUTONOMOUS not active after an on word";; esac
+case "$(sl "$T/inter.jsonl" "$ROOT")" in *AUTONOMOUS*"$ION"*) ok "statusline marks INTERACTIVE active without one, both shown";; *) bad "INTERACTIVE not active without an on word";; esac
+case "$(sl "$T/inter.jsonl" "$ROOT")" in *"$AON"*) bad "an interactive session marks AUTONOMOUS active";; *) ok "an interactive session does not mark AUTONOMOUS active";; esac
+case "$(sl "$T/not-yet-written.jsonl" "$ROOT")" in *"$ION"*) ok "a fresh session without a transcript file is INTERACTIVE";; *) bad "a fresh session shows no mode";; esac
 # two sessions side by side keep their own mode (the cache is keyed per transcript)
 a=$(sl "$T/auto.jsonl" "$ROOT"); b=$(sl "$T/inter.jsonl" "$ROOT"); a2=$(sl "$T/auto.jsonl" "$ROOT")
-case "$a|$b|$a2" in *AUTONOMOUS*"|"*INTERACTIVE*"|"*AUTONOMOUS*) ok "parallel sessions show their own modes";; *) bad "sessions share a mode: $a | $b | $a2";; esac
+case "$a|$b|$a2" in *"$AON"*"|"*"$ION"*"|"*"$AON"*) ok "parallel sessions show their own modes";; *) bad "sessions share a mode: $a | $b | $a2";; esac
 mkdir -p "$T/nocore"
 case "$(sl "$T/auto.jsonl" "$T/nocore")" in *AUTONOMOUS*|*INTERACTIVE*) bad "a project without the mode reader shows a mode";; *) ok "a project without the mode reader shows none";; esac
 mkdir -p "$T/lab/.claude/rules" "$T/lab/core"
@@ -93,7 +96,7 @@ printf '%s\n' '{"statusline_labels":{"autonomous":"AUTONOM","interactive":"INTER
 case "$(sl "$T/auto.jsonl" "$T/lab")" in *AUTONOM*) ok "statusline labels come from instance data";; *) bad "instance labels not used";; esac
 case "$(sl "$T/auto.jsonl" "$T/lab")" in *']8;;'*) bad "a link without a help page";; *) ok "no help page, no link";; esac
 printf '%s\n' '{"statusline_labels":{"autonomous":"AUTONOM","interactive":"INTERAKTIV","help":"docs/modes.md"}}' > "$T/lab/.claude/rules/autonomous-patterns.json"
-case "$(sl "$T/auto.jsonl" "$T/lab")" in *']8;;file://'*'docs/modes.md'*AUTONOM*']8;;'*) ok "the mode word links to the instance's help page (OSC 8)";; *) bad "help link missing";; esac
+case "$(sl "$T/auto.jsonl" "$T/lab")" in *AUTONOM*INTERAKTIV*']8;;file://'*'docs/modes.md'*'ⓘ'*']8;;'*) ok "an ⓘ next to the pair links to the instance's help page (OSC 8)";; *) bad "help link missing";; esac
 
 # --- framing-intake: instance-only, so absence is a skip, not a failure ---------
 FI=$(resolve scripts/hooks/framing-intake.sh || true)
