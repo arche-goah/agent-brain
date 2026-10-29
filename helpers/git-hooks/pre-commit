@@ -108,8 +108,26 @@ behind_check() {
 }
 behind_check
 
-# No invariant-check here: it exits 1 whenever a register carries OPEN invariants, which is its
-# normal state — a report, not a gate. Only real pass/fail checks belong in a blocking hook.
+# 6. A NEW site of a known OS trap (operator, 2026-10-29: build it): on one instance three closed
+#    traps came back in a single day and each was found only by CI on the other OS. This step never
+#    reads invariant-check.py's exit code (it also reports open classes and prose-only entries); it
+#    blocks only on a "NEW site" line under a [closed] trap, i.e. drift against the register's
+#    baseline. Only where the repo ships the register and the checker (the core); ~0.4 s.
+if [ -f "$root/docs/os-traps.md" ] && [ -f "$root/scripts/invariant-check.py" ]; then
+  # only CLOSED traps: a new site of an open class is the register's normal growth, not a regression.
+  # awk, not `| grep -q`: that is OS-5 itself.
+  new=$("$py" "$root/scripts/invariant-check.py" "$root/docs/os-traps.md" 2>&1 \
+        | awk '/^  (!!|ok|\?\?)  / { head = $0; closed = ($0 ~ /\[closed\]/) } /NEW site/ && closed { print head; print }')
+  if [ -n "$new" ]; then
+    echo ""
+    echo "pre-commit: a closed OS trap has a NEW site (docs/os-traps.md) — fix it, or extend the register's known: baseline with the reason"
+    printf '%s\n' "$new"
+    fail=1
+  fi
+fi
+
+# invariant-check as a whole is a report, not a gate (open classes are a register's normal state);
+# step 6 reads only its drift lines under closed traps.
 if [ "$fail" -ne 0 ]; then
   echo ""
   echo "Nothing was committed. Fix it — or, with a reason: git commit --no-verify"
