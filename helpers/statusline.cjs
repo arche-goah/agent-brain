@@ -35,8 +35,10 @@ function runMode(d) {
     // opens a URL, and the mode comes from the operator's words in the transcript, nothing else.
     const dim = (s) => `\x1b[38;2;110;110;110m${s}\x1b[0m`;
     const a = labels.autonomous || 'AUTONOMOUS', i = labels.interactive || 'INTERACTIVE';
-    const pair = auto ? `\x1b[1;38;2;199;125;255m${a}\x1b[0m ${dim(i)}`      // neon violet
-      : `${dim(a)} \x1b[1;38;2;150;255;190m${i}\x1b[0m`;                    // sage neon
+    // interactive first (the default), a separator, then autonomous (operator 2026-10-29)
+    const on = (s, rgb) => `\x1b[1;38;2;${rgb}m${s}\x1b[0m`;
+    const pair = (auto ? dim(i) : on(i, '150;255;190')) + ' \x1b[90m|\x1b[0m '     // sage neon
+      + (auto ? on(a, '199;125;255') : dim(a));                                   // neon violet
     // No hover tooltip exists for the status line (docs: statusline, "Links": OSC 8 only, Cmd/Ctrl+click). The
     // instance names a page that explains the modes and how to switch (`statusline_labels.help`: a project path or
     // a URL); it gets its own ⓘ link next to the pair.

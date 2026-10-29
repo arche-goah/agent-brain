@@ -81,8 +81,8 @@ sl() { printf '{"cwd":"%s","workspace":{"project_dir":"%s"},"transcript_path":"%
          "$(nat "$2")" "$(nat "$2")" "$(nat "$1")" | node "$SL" 2>/dev/null; }
 # both words are shown; the ACTIVE one is bold in its signal colour (AON / ION), the other dim
 AON='[1;38;2;199;125;255mAUTONOMOUS'; ION='[1;38;2;150;255;190mINTERACTIVE'
-case "$(sl "$T/auto.jsonl" "$ROOT")" in *"$AON"*INTERACTIVE*) ok "statusline marks AUTONOMOUS active after an on word, both shown";; *) bad "AUTONOMOUS not active after an on word";; esac
-case "$(sl "$T/inter.jsonl" "$ROOT")" in *AUTONOMOUS*"$ION"*) ok "statusline marks INTERACTIVE active without one, both shown";; *) bad "INTERACTIVE not active without an on word";; esac
+case "$(sl "$T/auto.jsonl" "$ROOT")" in *INTERACTIVE*'|'*"$AON"*) ok "statusline marks AUTONOMOUS active after an on word, both shown, interactive first";; *) bad "AUTONOMOUS not active after an on word";; esac
+case "$(sl "$T/inter.jsonl" "$ROOT")" in *"$ION"*'|'*AUTONOMOUS*) ok "statusline marks INTERACTIVE active without one, separator before AUTONOMOUS";; *) bad "INTERACTIVE not active without an on word";; esac
 case "$(sl "$T/inter.jsonl" "$ROOT")" in *"$AON"*) bad "an interactive session marks AUTONOMOUS active";; *) ok "an interactive session does not mark AUTONOMOUS active";; esac
 case "$(sl "$T/not-yet-written.jsonl" "$ROOT")" in *"$ION"*) ok "a fresh session without a transcript file is INTERACTIVE";; *) bad "a fresh session shows no mode";; esac
 # two sessions side by side keep their own mode (the cache is keyed per transcript)
@@ -96,7 +96,7 @@ printf '%s\n' '{"statusline_labels":{"autonomous":"AUTONOM","interactive":"INTER
 case "$(sl "$T/auto.jsonl" "$T/lab")" in *AUTONOM*) ok "statusline labels come from instance data";; *) bad "instance labels not used";; esac
 case "$(sl "$T/auto.jsonl" "$T/lab")" in *']8;;'*) bad "a link without a help page";; *) ok "no help page, no link";; esac
 printf '%s\n' '{"statusline_labels":{"autonomous":"AUTONOM","interactive":"INTERAKTIV","help":"docs/modes.md"}}' > "$T/lab/.claude/rules/autonomous-patterns.json"
-case "$(sl "$T/auto.jsonl" "$T/lab")" in *AUTONOM*INTERAKTIV*']8;;file://'*'docs/modes.md'*'ⓘ'*']8;;'*) ok "an ⓘ next to the pair links to the instance's help page (OSC 8)";; *) bad "help link missing";; esac
+case "$(sl "$T/auto.jsonl" "$T/lab")" in *INTERAKTIV*AUTONOM*']8;;file://'*'docs/modes.md'*'ⓘ'*']8;;'*) ok "an ⓘ next to the pair links to the instance's help page (OSC 8)";; *) bad "help link missing";; esac
 
 # --- framing-intake: instance-only, so absence is a skip, not a failure ---------
 FI=$(resolve scripts/hooks/framing-intake.sh || true)
