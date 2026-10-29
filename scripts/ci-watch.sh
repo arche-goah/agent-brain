@@ -44,6 +44,7 @@
 #   scripts/ci-watch.sh pr  <owner/repo> <pr-number> [timeout_s]
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
 #   CI_WATCH_SHA=<pushed sha> scripts/ci-watch.sh pr …   # after a push: wait for THAT head
+#   CI_WATCH_WAIT_ALL=1 scripts/ci-watch.sh pr …         # pr: no early red, wait for every check
 #   A second call for the same target on this machine attaches to the first (point 6).
 # Defaults: timeout 3600 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
 # The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
@@ -485,14 +486,21 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # the watch silent the whole time and the red unseen. Only `fail` counts here — a `cancel`
     # can be a superseded run and still waits for the full picture; the head check guards the
     # old-run race as for every verdict.
-    if (( pending > 0 && ${failed:-0} > 0 )) && ! pr_head_behind_branch && ! pr_red_not_of_head; then
+    # CI_WATCH_WAIT_ALL=1 waits for every check before the verdict and names the failing ones (2026-10-29,
+    # measured on the macOS instance: one check red on every PR for a runner image change - each watch ended
+    # at once, and twice "only that check is red" was read while the other jobs still ran; one of them was
+    # really red). Without the variable the early report above stays the default.
+    if (( pending > 0 && ${failed:-0} > 0 )) && [[ "${CI_WATCH_WAIT_ALL:-}" != 1 ]] && ! pr_head_behind_branch && ! pr_red_not_of_head; then
       echo "CI-WATCH RED: $REPO PR #$TARGET — $failed failing check(s), $pending still running (a failed check does not turn green)"
       exit 1
     fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if pr_head_behind_branch; then sleep "$POLL"; continue; fi
     if (( bad > 0 )) && pr_red_not_of_head; then sleep "$POLL"; continue; fi
-    if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
+    if (( bad > 0 )); then
+      names=$("$PY" -c 'import json,sys; print(", ".join(sorted({c.get("name","?") for c in json.load(sys.stdin) if c.get("bucket") in ("fail","cancel")})))' <<<"$json" 2>/dev/null)
+      echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)${names:+: $names}"; exit 1
+    fi
     # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
     # the checks then predate the base change and are never recomputed (measured
     # 2026-09-02 on a live PR: 7 SUCCESS checks, mergeable CONFLICTING, merge → 405).
