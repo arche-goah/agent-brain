@@ -250,6 +250,7 @@ pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
 known:     scripts/test-absence-gate.sh=1
 known:     scripts/test-always-loaded.sh=1
+known:     scripts/test-auto-fire-coverage.sh=1
 known:     scripts/test-autonomous-gate.sh=1
 known:     scripts/test-autonomous-mode.sh=1
 known:     scripts/test-autonomy-diagnose-run.sh=1
