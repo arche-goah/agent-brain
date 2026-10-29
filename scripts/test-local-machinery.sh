@@ -116,6 +116,15 @@ out=$(run); grep -q '^!! local machinery: 1 instance item(s) shadow a core item 
 printf 'import runpy\nrunpy.run_path("core/scripts/invariant-check.py")\n' > "$T/b/scripts/invariant-check.py"
 out=$(run); grep -q '^!! local machinery: 1 same-named instance wrapper(s) only call the core item: scripts/invariant-check.py' <<< "$out" \
   && ! grep -q 'shadow a core item' <<< "$out" && ok "thin-wrapper-named-as-wrapper-not-shadow" || bad "thin-wrapper-named-as-wrapper-not-shadow: $out"
+# 2026-10-27: a declared alpha copy of a merged core change the pin does not carry yet is told
+# "remove the copy" — wrong while it differs from the pinned file, right once the pin equals it.
+printf 'newer\n' > "$T/b/scripts/invariant-check.py"
+decl '{"alpha":{"scripts/invariant-check.py":{"until":"2099-01-01","why":"core main ahead of the pin"}}}'
+out=$(run); ! grep -q 'shadow a core item' <<< "$out" && ok "alpha-copy-ahead-of-pin-not-shadow" || bad "alpha-copy-ahead-of-pin-not-shadow: $out"
+printf 'x\n' > "$T/b/scripts/invariant-check.py"
+out=$(run); grep -q 'shadow a core item of the same name: scripts/invariant-check.py' <<< "$out" \
+  && ok "alpha-copy-equal-to-pin-is-shadow" || bad "alpha-copy-equal-to-pin-is-shadow: $out"
+decl '{}'
 rm -f "$T/b/scripts/invariant-check.py"
 printf 'ssh rig-switch-a\n' > "$T/b/scripts/rig-check.sh"; printf 'x\n' > "$T/b/scripts/test-rig-check.sh"
 out=$(run); grep -q 'without a declaration (script 1).*: scripts/rig-check.sh' <<< "$out" && ! grep -q 'test-rig-check' <<< "$out" \
@@ -183,7 +192,7 @@ else
 fi
 
 # --- plugins: core and suites are not items ------------------------------------------------
-mk '{"enabledPlugins":{"brain-core@m":true,"brain-core-next@m":true,"td@m":true,"off@m":false}}' '' '' >/dev/null
+mk '{"enabledPlugins":{"brain-core@m":false,"brain-core-next@m":true,"td@m":true,"off@m":false}}' '' '' >/dev/null
 mkdir -p "$T/b/config"; printf '{"repos":{"td-suite":{"kind":"suite","consumer_plugin":"td@m"}}}' > "$T/b/config/ecosystem.json"
 out=$(run); [[ -z "$out" ]] && ok "core-suite-disabled-plugins-silent" || bad "core-suite-disabled-plugins-silent: $out"
 printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
@@ -199,6 +208,17 @@ out=$(run); ! grep -q 'plugin:td@m' <<< "$out" && ok "marketplace-plugin-of-list
 printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
 out=$(run); grep -q 'plugin:td@m' <<< "$out" && ok "marketplace-plugin-of-unlisted-repo-reported" || bad "marketplace-plugin-of-unlisted-repo-reported: $out"
 rm -rf "$T/fakehome/.claude/plugins/marketplaces"
+# 2026-10-28 (operator word): the stable AND the beta channel of one suite enabled at once is loud;
+# one channel, or the other plugin disabled, is silent.
+mk '{"enabledPlugins":{"brain-core-next@m":true,"td@m":true,"td-next@m":true}}' '' '' >/dev/null
+printf '{"repos":{"td-suite":{"kind":"suite","consumer_plugin":"td-next@m"}}}' > "$T/b/config/ecosystem.json"
+out=$(run); grep -q '^!! local machinery: 1 suite(s) with the stable AND the beta plugin enabled at once: td + td-next (m)' <<< "$out" \
+  && ok "both-channels-loud" || bad "both-channels-loud: $out"
+mk '{"enabledPlugins":{"brain-core-next@m":true,"td@m":false,"td-next@m":true}}' '' '' >/dev/null
+out=$(run); ! grep -q 'stable AND the beta' <<< "$out" && ok "one-channel-silent" || bad "one-channel-silent: $out"
+mk '{"enabledPlugins":{"brain-core@m":true,"brain-core-next@m":true}}' '' '' >/dev/null
+out=$(run); grep -q 'brain-core + brain-core-next (m)' <<< "$out" && ok "both-core-channels-loud" || bad "both-core-channels-loud: $out"
+printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
 
 # --- git hooks: global hooksPath outside the brain ----------------------------------------
 mk "$CORE_HOOK" '' '' >/dev/null; git -C "$T/b" init -q
@@ -281,6 +301,7 @@ for f in .claude/hooks/h.cjs .claude/hooks/sc.cjs tools/srv.js tools/s.sh githoo
          .claude/skills/myskill/SKILL.md .claude/workflows/w.js .claude/output-styles/o.md \
          .claude/agents/a.md .claude/commands/c.md; do printf 'planted\n' > "$T/b/$f"; done
 printf '## Planted\nalways do x\n' > "$T/b/.claude/rules/r.md"
+printf '[{"id":"planted","pattern":"\\\\bplanted-shortcut\\\\b","was":"x"}]' > "$T/b/.claude/rules/mechanism-rules.json"
 printf '<plist><string>%s/tools/s.sh</string></plist>\n' "$(nat "$T/b")" > "$T/fakehome/Library/LaunchAgents/x.plist"
 mkdir -p "$T/fakehome/.claude/plugins"
 printf '{"plugins":{"extra@mkt":[{"installPath":"%s"}]}}' "$(nat "$T/plug")" > "$T/fakehome/.claude/plugins/installed_plugins.json"
@@ -296,6 +317,7 @@ output-style=.claude/output-styles/o.md
 agent=.claude/agents/a.md
 command=.claude/commands/c.md
 rule=.claude/rules/r.md#Planted
+guard-rule=.claude/rules/mechanism-rules.json#planted
 script=tools/s.sh"
 has() { awk -v c="$2" -v i="$3" '$2==c && $3==i {f=1} END {exit !f}' <<< "$1"; }
 listing=$(run --list)
@@ -362,6 +384,21 @@ cp "$HERE/../templates/rules-instance/working-rules-instance.md" "$T/b/.claude/r
 listing=$(run --list)
 grep -qE ' rule +\.claude/rules/other\.md#Language$' <<< "$listing" \
   && ok "template-text-elsewhere-reported" || bad "template-text-elsewhere-reported: $listing"
+rm -rf "$T/b"
+
+# --- guard rules: a rule the template (or the core) carries is core, an own rule is an item ----
+# Measured 2026-10-28: a general guard rule lived in one brain only; the inventory never read
+# guard data. The template's example rule stands in for "the core carries it".
+mkdir -p "$T/b/.claude/rules"
+"$PY" -c 'import json, sys
+t = json.load(open(sys.argv[1], encoding="utf-8"))
+json.dump([t[0], {"id": "mine", "pattern": "my-shortcut", "was": "x"}], open(sys.argv[2], "w", encoding="utf-8"))' \
+  "$HERE/../templates/rules-instance/mechanism-rules.json" "$T/b/.claude/rules/mechanism-rules.json"
+listing=$(run --list)
+grep -qE '^core +guard-rule +\.claude/rules/mechanism-rules\.json#0 \(core\)' <<< "$listing" \
+  && ok "template-guard-rule-is-core" || bad "template-guard-rule-is-core: $listing"
+grep -qE '^[a-z]+ +guard-rule +\.claude/rules/mechanism-rules\.json#mine$' <<< "$listing" \
+  && ok "own-guard-rule-reported" || bad "own-guard-rule-reported: $listing"
 rm -rf "$T/b"
 
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }

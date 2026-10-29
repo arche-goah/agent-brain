@@ -42,6 +42,15 @@ HOME="$T" USERPROFILE="$T" probe "create, key in --body-file ~/<file>" "gh pr cr
 # A Git Bash path (`/c/...`, `/tmp/...`): the shell reads it, node on Windows did not (2026-10-14).
 # Elsewhere the POSIX path is the native one, so the case runs on every OS.
 probe "create, key in --body-file as a POSIX path" "gh pr create --head x --title t --body-file $T/body.md" allow
+# A variable in the path (2026-10-28, Windows instance of another brain: `--body-file "$S/x.md"` was
+# read literally and the post blocked). Set in the same command, or in the environment.
+G="g""h"
+probe "key in --body-file \"\$S/<file>\", S set in the command" "S=$(native "$T"); $G pr comment 5 -R o/r --body-file \"\$S/body.md\"" allow
+S2="$(native "$T")" probe "key in --body-file \"\${S2}/<file>\", S2 from the environment" "$G pr comment 5 -R o/r --body-file \"\${S2}/body.md\"" allow
+out=$(printf '%s' "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"gh pr comment 5 --body-file \\\"\$NOSUCHVAR/body.md\\\"\"}}" \
+      | CLAUDE_PROJECT_DIR="$(native "$T/brain")" SHARED_MEMORY_SELF=mac node "$(native "$GATE")" 2>&1); rc=$?
+[ "$rc" -eq 2 ] && case "$out" in *"write the path out"*) true ;; *) false ;; esac \
+  && ok "unknown variable in the path blocks and says so" || bad "unknown variable: rc=$rc ${out:0:160}"
 probe "issue comment without key" "gh issue comment 9 -R o/r --body hi" block
 probe "review --approve without a body" "gh pr review 5 -R o/r --approve" block
 probe "merge with a marker comment is not a post" "gh pr merge 5 -R o/r --squash # MECHANISM-OK: x" allow
