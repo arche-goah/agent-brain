@@ -42,6 +42,9 @@ f="$T/4b.jsonl"; { user "work through the open points autonomously"; asst "BLOCK
 check "a BLOCKED line without measuring the list in this turn" "$f" block
 f="$T/4c.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; user "<task-notification><task-id>x</task-id></task-notification>"; asst "POOL EMPTY: measured earlier"; } > "$f"
 check "a measurement of an earlier turn does not count" "$f" block
+# Measured on an instance: eight end lines stood on the list piped into a filter that kept only the counts.
+f="$T/4e.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS | head -3"; asst "BLOCKED: item D — the peer's merge"; } > "$f"
+check "the list piped into a filter is no measurement" "$f" block
 IN="$T/inst"; mkdir -p "$IN/.claude/rules"
 printf '%s\n' '{"own_items_commands": ["offene-punkte\\.py"]}' > "$IN/.claude/rules/autonomous-patterns.json"
 f="$T/4d.jsonl"; { user "work through the open points autonomously"; bash_cmd "scripts/offene-punkte.py --liste"; asst "BLOCKED: item D — the peer's merge"; } > "$f"

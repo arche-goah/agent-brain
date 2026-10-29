@@ -69,7 +69,9 @@ function turnOf(tp) {
 
 /** The commands that measure the brain's own open items: the core's, plus the instance's (data). */
 function measurers(root) {
-  const out = [/open-items\.py\b/];
+  // Nothing may follow the view: measured on an instance, eight end lines stood on the list piped into a
+  // filter that kept the counts and dropped every item (and its open exit).
+  const out = [/open-items\.py\b[^\n|;&]*$/];
   try {
     const d = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'autonomous-patterns.json'), 'utf8'));
     for (const s of (d && d.own_items_commands) || []) { try { out.push(new RegExp(s)); } catch (e) { /* skip */ } }
