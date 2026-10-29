@@ -18,6 +18,10 @@ case "${CI_WATCH_STUB:?}" in
   pr_fail_pending)   echo '[{"bucket":"fail","name":"lint"},{"bucket":"pending","name":"portability"}]' ;;
   # ...but a cancel can be a superseded run: it still waits for the running job.
   pr_cancel_pending) echo '[{"bucket":"cancel","name":"lint"},{"bucket":"pending","name":"portability"}]' ;;
+  # 2026-10-29 wait-all: one known-red check, the rest first running, then done.
+  pr_fail_then_done) f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"bucket":"fail","name":"python-floor"},{"bucket":"pass","name":"portability"}]'
+              else touch "$f"; echo '[{"bucket":"fail","name":"python-floor"},{"bucket":"pending","name":"portability"}]'; fi ;;
   pr_zero)    echo '[]' ;;
   # gh's wording when the run has not been created yet. rc=1, not rc=8.
   pr_nochecks) echo "no checks reported on the 'feature' branch" >&2; exit 1 ;;
@@ -329,6 +333,13 @@ check "pr one failing check"            pr_red     1 pr 12
 check "pr failed check while another runs = RED at once" pr_fail_pending 1 pr 12 30
 grep -q "still running" "$TMP/out" && echo "  OK   early red names the running checks" \
   || { echo "  FAIL early red does not name the running checks"; fails=$((fails+1)); }
+export CI_WATCH_WAIT_ALL=1
+check "wait-all: a failed check while another runs keeps waiting until the deadline" pr_fail_pending 2 pr 12 2
+check "wait-all: once nothing runs, RED with the failing names" pr_fail_then_done 1 pr 12 30
+grep -q "RED: owner/repo PR #12 — 1 failing/cancelled check(s): python-floor" "$TMP/out" \
+  && echo "  OK   wait-all: the verdict names the failing check" \
+  || { echo "  FAIL wait-all: names missing"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+unset CI_WATCH_WAIT_ALL
 check "pr cancelled check while another runs = wait, timeout(2)" pr_cancel_pending 2 pr 12 2
 check "pr cancel superseded by a green run of the same check = GREEN" pr_cancel_superseded 0 pr 12
 check "ref cancelled run superseded by a newer run on the same commit = GREEN" ref_cancel_superseded 0 ref main
