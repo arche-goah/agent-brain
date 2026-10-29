@@ -21,14 +21,16 @@ function runMode(d) {
     // the transcript grows with every message: cache the verdict per size, the full read costs ~0.15 s on 30 MB
     // per session: every session hands its OWN transcript, the cache is keyed by it — five parallel sessions show
     // five modes. A fresh session has no transcript file yet: no on word was said, so it is interactive.
-    let size = -1;
-    try { size = fs.statSync(tp).size; } catch {}
-    const cache = path.join(os.tmpdir(), 'statusline-mode-' + path.basename(tp) + '.json');
+    let size = -1, mtime = 0;
+    try { const st = fs.statSync(tp); size = st.size; mtime = st.mtimeMs; } catch {}
+    // keyed by the FULL path (two transcripts can share a file name) and checked against size + mtime
+    const key = require('crypto').createHash('sha1').update(path.resolve(tp)).digest('hex').slice(0, 16);
+    const cache = path.join(os.tmpdir(), 'statusline-mode-' + key + '.json');
     let auto = size < 0 ? false : undefined;
-    if (auto === undefined) try { const c = JSON.parse(fs.readFileSync(cache, 'utf8')); if (c.size === size) auto = c.auto; } catch {}
+    if (auto === undefined) try { const c = JSON.parse(fs.readFileSync(cache, 'utf8')); if (c.size === size && c.mtime === mtime) auto = c.auto; } catch {}
     if (auto === undefined) {
       auto = require(helper).autonomousMode(tp, dir);
-      try { fs.writeFileSync(cache, JSON.stringify({ size, auto })); } catch {}
+      try { fs.writeFileSync(cache, JSON.stringify({ size, mtime, auto })); } catch {}
     }
     // Both modes side by side, the active one bold in a 24-bit signal colour (the theme's 16-colour "bright magenta"
     // rendered as a soft red, operator 2026-10-29), the other dim. A click cannot switch: a status-line link only
