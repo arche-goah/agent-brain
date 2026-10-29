@@ -51,7 +51,9 @@ function runMode(d) {
     // No hover tooltip exists for the status line (docs: statusline, "Links": OSC 8 only, Cmd/Ctrl+click). The
     // instance names a page that explains the modes and how to switch (`statusline_labels.help`: a project path or
     // a URL); it gets its own ⓘ link next to the pair.
-    const help = labels.help && (/^[a-z]+:\/\//.test(labels.help) ? labels.help : 'file://' + path.resolve(dir, labels.help));
+    // a file URL through pathToFileURL: 'file://' + a Windows path carried backslashes (CI on Windows, 2026-10-29)
+    const help = labels.help && (/^[a-z]+:\/\//.test(labels.help) ? labels.help
+      : require('url').pathToFileURL(path.resolve(dir, labels.help)).href);
     return help ? `${pair} \x1b]8;;${help}\x07\x1b[1;38;2;140;200;255mⓘ\x1b[0m\x1b]8;;\x07` : pair;
   } catch { return null; }
 }

@@ -84,7 +84,7 @@ AON='[1;38;2;199;125;255mAUTONOMOUS'; ION='[1;38;2;150;255;190mINTERACTIVE'
 o1=$(sl "$T/auto.jsonl" "$ROOT"); o2=$(sl "$T/inter.jsonl" "$ROOT")
 case "$o1" in *INTERACTIVE*"$AON"*) ok "statusline marks AUTONOMOUS active after an on word, both shown, interactive first";; *) bad "AUTONOMOUS not active after an on word: $(printf %s "$o1" | od -c | head -3 | tr -s ' ' | tr '\n' ' ')";; esac
 case "$o2" in *"$ION"*AUTONOMOUS*) ok "statusline marks INTERACTIVE active without one, interactive first";; *) bad "INTERACTIVE not active without an on word: $(printf %s "$o2" | od -c | head -3 | tr -s ' ' | tr '\n' ' ')";; esac
-printf %s "$o2" | grep -qF '│' && ok "a divider stands between the two modes" || bad "no divider between the modes"
+printf %s "$o2" | grep -aqF '│' && ok "a divider stands between the two modes" || bad "no divider between the modes"
 case "$(sl "$T/inter.jsonl" "$ROOT")" in *'[48;2;'*INTERACTIVE*AUTONOMOUS*) ok "the mode pair sits on a tile of its own (background)";; *) bad "no tile around the mode pair";; esac
 case "$(sl "$T/inter.jsonl" "$ROOT")" in *'|'*'[48;2;'*) bad "the field separator stands before the mode tile";; *) ok "no field separator before the mode tile";; esac
 case "$(sl "$T/inter.jsonl" "$ROOT")" in *"$AON"*) bad "an interactive session marks AUTONOMOUS active";; *) ok "an interactive session does not mark AUTONOMOUS active";; esac
