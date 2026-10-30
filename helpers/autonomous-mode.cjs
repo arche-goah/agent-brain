@@ -137,8 +137,13 @@ function promptModes(transcriptPath, cwd) {
     if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isPeerMessage(d) || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
       for (const [q, a] of answers(d.message)) {
-        if (!w.on.test(q)) continue;
-        state = w.yes.test(a) && !w.off.test(a);
+        // A yes/no to the mode question decides by yes; an answer to any other question is read
+        // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
+        // "yes, work through them autonomously" to "shall I handle them?" set nothing).
+        if (w.on.test(q)) state = w.yes.test(a) && !w.off.test(a);
+        else if (w.off.test(a)) state = false;
+        else if (ordersOn(w.on, a)) state = true;
+        else continue;
         out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true });
       }
     }

@@ -52,6 +52,11 @@ f="$T/3g.jsonl"; { user "autonomous, please"; user "anything open for me?"; answ
 mode "no to continue autonomously keeps it off" "$f" "$EN" interactive
 f="$T/3h.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
 mode "yes to another question sets nothing" "$f" "$EN" interactive
+# An order inside the answer to another question counts like a prompt (macOS instance 2026-10-30).
+f="$T/3k.jsonl"; { user "status?"; answer '"Shall I handle the 42 items?"="yes, work through them autonomously. document false reports"'; } > "$f"
+mode "an autonomous order inside an answer to another question sets it" "$f" "$EN" autonomous
+f="$T/3l.jsonl"; { user "autonomous, please"; answer '"Shall I run the scan?"="no, back to normal mode"'; } > "$f"
+mode "an off word inside an answer to another question ends it" "$f" "$EN" interactive
 f="$T/3i.jsonl"; { user "fix the parser"; answer '"Continue autonomously?"="Yes"'; user "status?"; } > "$f"
 mode "after the yes a status question keeps it" "$f" "$EN" autonomous
 # The operator's complaints carry the word "interactive" and mean the opposite (macOS finding on #142).
