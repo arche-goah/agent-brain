@@ -441,7 +441,7 @@ grep -q 'no-id-here' "$G/.claude-state/open-items-seen.json" && bad "done ledger
 printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2026-10-28 #31' '' \
   '- [ ] Carried by repo ref' '  id: carried-ref' '  exit: in-pr 2026-10-28 core#32' '' \
   '- [ ] Carried by owner ref' '  id: carried-own' '  exit: in-pr 2026-10-28 me/core#32 — full form' '' \
-  '- [ ] Ask at the stand' '  id: ask-topic' '  class: decision' '  ask-when: thema st(ae|ä)nder' '' \
+  '- [ ] Ask at the stand' '  id: ask-topic' '  class: decision' '  ask-when: topic stand' '' \
   '- [ ] Ask next year' '  id: ask-later' '  exit: ai-does-it 2026-10-28' '  ask-when: 2099-01-01' '' \
   '- [ ] Ask since long' '  id: ask-due' '  class: decision' '  ask-when: 2026-01-01' '' \
   '- [ ] Ambiguous number' '  id: ambiguous' '  exit: in-pr 2026-10-28 #33' '' \
