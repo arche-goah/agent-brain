@@ -194,6 +194,21 @@ out="$(printf '{"tool_name":"Workflow","tool_input":{},"transcript_path":"%s","c
   "$(native "$T/missing.jsonl")" "$(native "$T")" | node "$G" 2>&1)"
 [ -z "$out" ] && ok "missing transcript allows (fail-open, measured not guessed)" || bad "missing transcript: '$out'"
 
+# --- the prompt classifier's record reads a condition the words miss (2026-10-30, macOS instance)
+CIC="$T/cls"; mkdir -p "$CIC/.claude-state"
+# (German text, no language data in this cwd: the words cannot read it — the operator's real case was "Nach #217 und #195")
+{
+  printf '{"message":{"role":"user","content":"earlier prompt"}}\n'
+  printf '{"timestamp":"2026-10-30T19:00:00.000Z","message":{"role":"user","content":"Nach #217 und #195 Tag und Pin"}}\n'
+} > "$T/cls-cond.jsonl"
+run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-10-30T19:00:04.000Z","session":"cls-cond","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-cond block Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-10-30T19:00:04.000Z","session":"cls-cond","mode":"hook","model":{"condition":false}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-10-30T19:00:04.000Z","session":"other","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
+
 echo
 [ "$fail" -eq 0 ] && echo "conditional-order-gate fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
