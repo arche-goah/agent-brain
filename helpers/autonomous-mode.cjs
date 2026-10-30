@@ -59,7 +59,10 @@ const BUILTIN_ASK = [
 const BUILTIN_YES = ['^\\s*yes\\b'];
 const HOOK_ECHO = /^\s*Stop hook feedback:/;
 // The tool result of an answered AskUserQuestion: `"<question>"="<answer>"` pairs.
-const ANSWERED = 'questions have been answered';
+// Two wordings in the wild (measured 2026-10-30, macOS instance: "Your questions have been answered: …" and
+// "The user answered: …", the second in 58 of 514 transcripts) — the first answer of that evening carried the
+// second and set nothing.
+const ANSWERED = /questions have been answered|The user answered:/;
 const PAIR = /"([^"]*)"="([^"]*)"/g;
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
@@ -109,7 +112,7 @@ function answers(msg) {
     if (!b || b.type !== 'tool_result') continue;
     const s = typeof b.content === 'string' ? b.content
       : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('\n') : '';
-    if (!s.includes(ANSWERED)) continue;
+    if (!ANSWERED.test(s)) continue;
     for (const m of s.matchAll(PAIR)) out.push([m[1], m[2]]);
   }
   return out;

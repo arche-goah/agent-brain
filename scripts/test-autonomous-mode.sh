@@ -55,6 +55,11 @@ mode "yes to another question sets nothing" "$f" "$EN" interactive
 # An order inside the answer to another question counts like a prompt (macOS instance 2026-10-30).
 f="$T/3k.jsonl"; { user "status?"; answer '"Shall I handle the 42 items?"="yes, work through them autonomously. document false reports"'; } > "$f"
 mode "an autonomous order inside an answer to another question sets it" "$f" "$EN" autonomous
+# The second wording of the answer record ("The user answered: …", 58 of 514 transcripts on the macOS instance).
+answer2() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t8","name":"AskUserQuestion","input":{"questions":[]}}]}}\n'
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t8","content":%s}]}}\n' "$(js "The user answered: $1. Read the answers carefully")"; }
+f="$T/3m.jsonl"; { user "status?"; answer2 '"Shall I handle the 42 items?"="yes, work through them autonomously"'; } > "$f"
+mode "the 'The user answered:' wording counts as an answer too" "$f" "$EN" autonomous
 f="$T/3l.jsonl"; { user "autonomous, please"; answer '"Shall I run the scan?"="no, back to normal mode"'; } > "$f"
 mode "an off word inside an answer to another question ends it" "$f" "$EN" interactive
 f="$T/3i.jsonl"; { user "fix the parser"; answer '"Continue autonomously?"="Yes"'; user "status?"; } > "$f"
