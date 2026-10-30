@@ -128,5 +128,18 @@ for c in t1 t2 t3; do GATE="$T/stub.cjs" check "stub on $c" "$T/$c.jsonl" block 
 caught=$fail; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed"
 
+# --- the prompt classifier's record opens the inquiry when the words miss (2026-10-30, macOS instance)
+IC="$T/intent"; mkdir -p "$IC/.claude-state"
+WHEN=2026-10-30T18:13:30.000Z
+{ user "go"; asst "ok"; user "find the cause and fix it at the root, now"; asst "Done."; } > "$T/sess-rc.jsonl"
+check "words miss, no classifier record: allows (control)" "$T/sess-rc.jsonl" allow "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rc","mode":"hook","model":{"asks_open":false,"mode_on":false,"mode_off":false,"correction":true}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "classifier reads correction=true: the inquiry opens" "$T/sess-rc.jsonl" block "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"other","mode":"hook","model":{"correction":true}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "a record of another session does not count" "$T/sess-rc.jsonl" allow "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rc","mode":"hook","model":{"correction":false}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "classifier reads no correction: allows" "$T/sess-rc.jsonl" allow "$IC"
+unset WHEN
+
 [ "$fail" = 0 ] && echo "root-cause-gate: all checks passed" || echo "root-cause-gate: FAILURES"
 exit "$fail"

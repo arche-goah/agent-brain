@@ -195,7 +195,7 @@ function autonomousMode(transcriptPath, cwd) {
   return modes.length ? modes[modes.length - 1].autonomous : false;
 }
 
-module.exports = { autonomousMode, promptModes, words };
+module.exports = { autonomousMode, promptModes, words, intents, intentFor };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);
