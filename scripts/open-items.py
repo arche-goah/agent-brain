@@ -565,8 +565,13 @@ LEDGER_FIELD = re.compile(r"\b(id|class|origin):\s*`?([\w.:/-]+)")
 LEDGER_EXIT = re.compile(r"\bexit:\s*(other-side|parked|later-at-system)\s+(\d{4}-\d{2}-\d{2})")
 # Every exit line of the skill's table; the LAST one in an entry is its current state.
 ANY_EXIT = re.compile(r"^\s*exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re.M)
+# `ask-when: <date>` or `ask-when: thema|topic <regex>` (operator decision 2026-10-29 on the macOS
+# instance, "questions at the right time"; decision-presentation-gate reads it the same way): a date
+# still ahead or a topic is not due at the session start. Measured 2026-10-30: nine entries with a
+# topic trigger printed every session, seven of them as "needs you".
+ASK_WHEN = re.compile(r"^\s*ask-when:\s*(.+?)\s*$", re.M)
 # The exits of skill backlog-catch-up, step 3.
-EXITS = {"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
+EXITS ={"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
 
 
 def blame_times(root, rel):
@@ -637,7 +642,16 @@ def ledgers(root):
             exits = ANY_EXIT.findall(e["text"])
             last = exits[-1] if exits else None
             x = last if last and LEDGER_EXIT.search(f"exit: {last[0]} {last[1]}") else None
-            rows = [blame[k] for k in range(e["line"], e["line"] + e["text"].count("\n") + 1) if k in blame]
+            until = (m.group(1), m.group(2).strip()) if m else None
+            topic = None
+            aw = ASK_WHEN.search(e["text"])
+            if aw:
+                ad = re.match(r"(\d{4}-\d{2}-\d{2})\b", aw.group(1))
+                if ad:
+                    until = until or (ad.group(1), "ask-when")
+                else:
+                    topic = aw.group(1)
+            rows =[blame[k] for k in range(e["line"], e["line"] + e["text"].count("\n") + 1) if k in blame]
             # Created = the entry's oldest line; the last own move = its newest line that is not an
             # exit line (sorting an entry is no work on it).
             created = day(min(r[0] for r in rows)) if rows else ""
@@ -647,16 +661,19 @@ def ledgers(root):
                     "who": f.get("origin", "ledger"), "text": re.sub(r"[*`]", "", e["title"])[:100],
                     "scope": rel, "ref": ident, "lclass": f.get("class", ""),
                     "exit": last[0] if last else "", "body": e["text"],
-                    "until": (m.group(1), m.group(2).strip()) if m else None,
-                    "waiting_on": (f"the ledger exit {x[0]}", f"since {x[1]}") if x else None}
+                    "until": until,
+                    "waiting_on": (f"the ledger exit {x[0]}", f"since {x[1]}") if x
+                    else ("its trigger", f"ask-when {topic}") if topic else None}
             if rows:
                 item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
             items.append(item)
     return items, unread
 
 
-# `<repo>#N` or a bare `#N` in an `exit: in-pr` line.
-PR_MENTION = re.compile(r"(?<![\w/#])([\w.-]+)?#(\d+)\b")
+# `<owner>/<repo>#N`, `<repo>#N` or a bare `#N` in an `exit: in-pr` line. Measured 2026-10-30 on
+# the macOS instance: the full form matched nothing (the lookbehind refused the repo after `/`),
+# seven entries carried by an open PR printed as "its in-pr exit names no open PR any more".
+PR_MENTION = re.compile(r"(?<![\w/#])(?:[\w.-]+/)?([\w.-]+)?#(\d+)\b")
 
 
 def carried_by_pr(ledger_items, pr_items):
