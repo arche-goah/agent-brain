@@ -29,11 +29,24 @@ check() { # $1 label, $2 transcript, $3 block|allow, [$4 brain root]
 f="$T/1.jsonl"; { user "work through the open points autonomously"; tool Bash; user "<task-notification>CI green</task-notification>"; asst "PR 185 is green. Still with me: three items, not started."; } > "$f"
 check "the incident: a notification turn ends on a status report, a watcher running" "$f" block
 f="$T/2.jsonl"; { user "work through the open points autonomously"; asst "Done with A."; tool ScheduleWakeup; } > "$f"
-check "ScheduleWakeup in the turn continues the run" "$f" allow
+# A wakeup alone is no continuation (measured on an instance, 2026-10-29: a 15-min wakeup while own work was doable).
+check "ScheduleWakeup alone does not end the turn" "$f" block
 bash_cmd() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"b1","name":"Bash","input":{"command":%s}}]}}\n' "$(js "$1")"; }
 MEAS="core/scripts/open-items.py --brief"   # the gate matches the script, not the interpreter (OS-17 reads a bare interpreter name as a choice)
 f="$T/3.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "BLOCKED: item C — needs the operator's word on the deploy"; } > "$f"
 check "a BLOCKED line after measuring the list ends the turn" "$f" allow
+# A beta tag / pin / Windows check blocks the merge, not the building (third case on an instance, 2026-10-30).
+f="$T/3w.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "BLOCKED: follow-up PRs — the rest comes after the next beta tag"; } > "$f"
+check "a BLOCKED line that waits on a beta tag is no build blocker" "$f" block
+f="$T/3x.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "BLOCKED: start report as core PR — by the operator's order only after the alpha ends, then the Windows check"; } > "$f"
+check "the same wait backed by the operator's order passes" "$f" allow
+f="$T/3y.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "BLOCKED: run-gate check — the PR is merged, the check turns green with the beta tag"; } > "$f"
+check "work already merged, only the release waits: passes" "$f" allow
+IX="$T/instx"; mkdir -p "$IX/.claude/rules"
+printf '%s\n' '{"blocked_exempt_patterns": ["\\bweisung\\b"]}' > "$IX/.claude/rules/autonomous-patterns.json"
+f="$T/3z.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "BLOCKED: follow-up PRs — per Weisung after the next beta tag"; } > "$f"
+check "an exempt word from instance data lets the line stand" "$f" allow "$IX"
+check "the same line without the instance data is no build blocker (control)" "$f" block
 f="$T/4.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "POOL EMPTY: open-items lists 0 agent items (run 18:20)"; } > "$f"
 check "a POOL EMPTY line after measuring the list ends the turn" "$f" allow
 # 2026-10-28 (macOS instance): "BLOCKED: waiting on the watchers, the peer, the operator" while the session
@@ -55,7 +68,7 @@ check "outside the autonomous mode it is silent" "$f" allow
 f="$T/6.jsonl"; { user "work through the open points autonomously"; asst "x"; user "back to normal mode"; asst "Here is the summary."; } > "$f"
 check "after the off word it is silent" "$f" allow
 out=$(printf '{"transcript_path":"%s","cwd":"%s","stop_hook_active":true}' "$(native "$T/1.jsonl")" "$(native "$B")" | CLAUDE_PROJECT_DIR="$(native "$B")" node "$(native "$G")" 2>&1)
-[ -z "$out" ] && ok "a re-issue (stop_hook_active) passes" || bad "re-issue blocked: $out"
+case "$out" in *'"block"'*) ok "a re-issue (stop_hook_active) without an end line is judged and blocks";; *) bad "re-issue passed: $out";; esac
 f="$T/7.jsonl"; { user "work through the open points autonomously"; asst "The word BLOCKED: in the middle of a sentence is no end line, nor is it here."; } > "$f"
 check "BLOCKED only counts as its own line" "$f" block
 echo

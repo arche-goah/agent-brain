@@ -42,6 +42,12 @@ function turnOf(tp) {
   let lines;
   try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return null; }
   let text = ''; let wake = false; let cmds = [];
+  // Background waiters still running at the turn's end (armed, no end reported yet).
+  const armed = new Set(); const ended = new Set();
+  for (const line of lines) {
+    const m = line.match(/<tool-use-id>(toolu_[A-Za-z0-9]+)<\/tool-use-id>[\s\S]{0,800}?<status>(completed|failed|killed|cancelled|stopped|expired|timeout)/);
+    if (m) ended.add(m[1]);
+  }
   for (const line of lines) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
@@ -60,17 +66,20 @@ function turnOf(tp) {
       for (const b of msg.content) {
         if (b && b.type === 'text' && b.text) text = b.text;
         if (b && b.type === 'tool_use' && b.name === 'ScheduleWakeup') wake = true;
+        if (b && b.type === 'tool_use' && (b.name === 'Monitor'
+          || ((b.name === 'Bash' || b.name === 'Agent') && b.input && b.input.run_in_background === true))) armed.add(b.id);
         if (b && b.type === 'tool_use' && b.input && typeof b.input.command === 'string') cmds.push(b.input.command);
       }
     }
   }
-  return { text, wake, cmds };
+  const waiting = [...armed].some((id) => !ended.has(id));
+  return { text, wake, cmds, waiting };
 }
 
 /** The commands that measure the brain's own open items: the core's, plus the instance's (data). */
 function measurers(root) {
-  // Nothing may follow the view: measured on an instance, eight end lines stood on the list piped into a
-  // filter that kept the counts and dropped every item (and its open exit).
+  // Nothing may follow the view: measured on an instance, the list piped into a filter kept the counts and
+  // dropped every item (and its open exit).
   const out = [/open-items\.py\b[^\n|;&]*$/];
   try {
     const d = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'autonomous-patterns.json'), 'utf8'));
@@ -79,16 +88,50 @@ function measurers(root) {
   return out;
 }
 
+/** Words that let a beta-tag / pin / Windows BLOCKED line stand: the operator's order, or the work already merged.
+ *  English built in; other languages as data (`blocked_exempt_patterns`). */
+function exemptWords(root) {
+  const list = ['\\boperator\\b', '\\border\\b', '\\bmerged\\b', '\\bis built\\b', '\\balready built\\b'];
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'autonomous-patterns.json'), 'utf8'));
+    for (const x of (d && d.blocked_exempt_patterns) || []) { try { new RegExp(x); list.push(x); } catch (e) { /* skip */ } }
+  } catch (e) { /* no data: English only */ }
+  return new RegExp(list.join('|'), 'i');
+}
+
 function judge(input) {
-  if (input.stop_hook_active || !input.transcript_path) return null;
+  // The retry after a block is judged too (measured on an instance, 2026-10-29): the second attempt ended on a
+  // BLOCKED line over a sliced list and passed unread, because stop_hook_active skipped the whole judgement.
+  // The demand is cheap to meet (one reading command), so no loop. Pair it with `onReissue: run` in the
+  // brain's stop-checks.json row: without it the dispatcher never calls this gate after ANOTHER gate's block
+  // (2026-10-30: a 15-min wakeup after two other blocks passed with 67 own items open).
+  if (!input.transcript_path) return null;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   if (!autonomousMode(input.transcript_path, root)) return null;
   const t = turnOf(input.transcript_path);
   if (!t || !t.text) return null;
-  if (t.wake) return null;
+  // A wakeup alone is no continuation (measured on an instance, 2026-10-29, the operator asking why it stopped
+  // again): a 15-min wakeup while own work was doable now was the same idle stop under another name — and a
+  // waiter was running too, so "wakeup + waiter" would have let it pass as well. Only the end lines below end
+  // a turn: BLOCKED (every item left waits on something named) or POOL EMPTY — both measured against the list.
+  void t.wake; void t.waiting;
   if (END_LINE.test(t.text)) {
     const m = measurers(root);
-    if (t.cmds.some((c) => m.some((r) => r.test(c)))) return null;
+    if (t.cmds.some((c) => m.some((r) => r.test(c)))) {
+      const exempt = exemptWords(root);
+      // A BLOCKED line whose reason is a pin / beta tag / Windows check blocks the MERGE or the release, never the
+      // building (third case on an instance, 2026-10-30: follow-up PRs held "until the next beta tag" while they
+      // could be built stacked). Another party's merge may block (a peer's work comes first) and stays free.
+      // It passes when it cites the operator's order for that sequence, or when the work is already merged;
+      // other languages' words for both come from autonomous-patterns.json `blocked_exempt_patterns`.
+      const mergeOnly = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:/.test(l)
+        && /(beta-tag|beta tag|\bpin\b|windows)/i.test(l)
+        && !exempt.test(l));
+      if (!mergeOnly.length) return null;
+      return 'AUTONOMOUS-IDLE: a BLOCKED line waits on a merge, pin, beta tag or Windows check — that blocks the merge, '
+        + `not the building: "${mergeOnly[0].trim().slice(0, 140)}". Build it now (stacked on the open PR if needed), `
+        + 'or name the operator\'s order that sets this sequence. Missing: continuation';
+    }
     return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY line, but the list behind it was not measured ' +
       'in this turn — the line is a recollection, not a reading. Run the brain\'s own-items measurement now ' +
       '(core/scripts/open-items.py, or the instance command in .claude/rules/autonomous-patterns.json ' +
@@ -97,8 +140,8 @@ function judge(input) {
   }
   return 'AUTONOMOUS-IDLE: the run is autonomous and this turn ends without its continuation. ' +
     'Do the next item now (tool calls in this turn), or end the turn in one of the run\'s end forms: ' +
-    'ScheduleWakeup (the run continues itself), a line `BLOCKED: <item> — <what restores it, who>`, or a line ' +
-    '`POOL EMPTY: <how measured>`. A running watcher (CI, a peer) continues only its own event, not your items. ' +
+    'a line `BLOCKED: <item> — <what restores it, who>` or a line ' +
+    '`POOL EMPTY: <how measured>`, both after measuring the list in this turn. A wakeup alone is no continuation, and a running watcher (CI, a peer) continues only its own event, not your items. ' +
     'Missing: continuation';
 }
 

@@ -124,8 +124,9 @@
       "cmd": "core/helpers/autonomous-idle-gate.cjs",
       "mode": "block",
       "extract": "Missing: continuation",
-      "template": "The run is autonomous and this turn ends idle - do the next item, or end with ScheduleWakeup, a BLOCKED: line or a POOL EMPTY: line",
+      "template": "The run is autonomous and this turn ends idle - do the next item, or end with a measured BLOCKED: or POOL EMPTY: line (a wakeup alone is no continuation)",
       "maxLength": 200,
+      "onReissue": "run",
       "required": true
     },
     {
