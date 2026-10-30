@@ -59,7 +59,10 @@ const BUILTIN_ASK = [
 const BUILTIN_YES = ['^\\s*yes\\b'];
 const HOOK_ECHO = /^\s*Stop hook feedback:/;
 // The tool result of an answered AskUserQuestion: `"<question>"="<answer>"` pairs.
-const ANSWERED = 'questions have been answered';
+// Two wordings in the wild (measured 2026-10-30, macOS instance: "Your questions have been answered: …" and
+// "The user answered: …", the second in 58 of 514 transcripts) — the first answer of that evening carried the
+// second and set nothing.
+const ANSWERED = /questions have been answered|The user answered:/;
 const PAIR = /"([^"]*)"="([^"]*)"/g;
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
@@ -109,7 +112,7 @@ function answers(msg) {
     if (!b || b.type !== 'tool_result') continue;
     const s = typeof b.content === 'string' ? b.content
       : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('\n') : '';
-    if (!s.includes(ANSWERED)) continue;
+    if (!ANSWERED.test(s)) continue;
     for (const m of s.matchAll(PAIR)) out.push([m[1], m[2]]);
   }
   return out;
@@ -137,8 +140,13 @@ function promptModes(transcriptPath, cwd) {
     if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isPeerMessage(d) || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
       for (const [q, a] of answers(d.message)) {
-        if (!w.on.test(q)) continue;
-        state = w.yes.test(a) && !w.off.test(a);
+        // A yes/no to the mode question decides by yes; an answer to any other question is read
+        // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
+        // "yes, work through them autonomously" to "shall I handle them?" set nothing).
+        if (w.on.test(q)) state = w.yes.test(a) && !w.off.test(a);
+        else if (w.off.test(a)) state = false;
+        else if (ordersOn(w.on, a)) state = true;
+        else continue;
         out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true });
       }
     }
