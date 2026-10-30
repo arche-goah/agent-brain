@@ -197,6 +197,9 @@ function judge(call) {
         return { was: '`git add -A/-u/.` stages the other session\'s edits too', instead: 'stage by path: `git add <paths>`' };
       return null;
     case 'stash':
+      // `stash list` and `stash show` only read (measured 2026-10-30: a brain-scan could not list the stashes and left
+      // the check unmeasured); every other form moves work out of the shared tree.
+      if (pos[0] === 'list' || pos[0] === 'show') return null;
       return { was: '`git stash` removes the other session\'s uncommitted work from the tree', instead: 'commit your own files by path instead of stashing; the tree is shared' };
     case 'reset':
       if (hasOpt(args, '--hard', '--merge', '--keep')) return { was: '`git reset --hard/--merge/--keep` discards the other session\'s uncommitted work',
