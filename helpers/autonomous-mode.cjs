@@ -116,6 +116,39 @@ function answers(msg) {
 }
 
 /**
+ * A brain's prompt classifier, if it has one, appends one record per operator prompt to
+ * .claude-state/intent-classifier.jsonl: {at, session, mode: "hook", model: {asks_open, mode_off, …}}.
+ * Measured 2026-10-28 on the macOS instance (classifier as instance alpha, read by no gate): the
+ * word lists missed "you need something?" and "give me interactive questions …" (the operator's
+ * language, translated) — both asks for what is
+ * open — and the model read both right; the run kept refusing the question tool the operator had
+ * asked for. The model is read in the SAFE direction only (asks what is open, ends the mode): a
+ * false yes there costs one question, a false "autonomous" would silence the operator's questions.
+ * Matched by session and time: the first record within 90 s after the prompt. No file = words only.
+ */
+const INTENT_WINDOW_MS = 90 * 1000;
+function intents(transcriptPath, cwd) {
+  const session = path.basename(transcriptPath || '', '.jsonl');
+  const file = process.env.INTENT_CLASSIFIER_LOG || path.join(cwd || '.', '.claude-state', 'intent-classifier.jsonl');
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { return []; }
+  const out = [];
+  for (const line of text.split('\n')) {
+    let r; try { r = JSON.parse(line); } catch (e) { continue; }
+    if (!r || r.session !== session || r.mode !== 'hook' || !r.model) continue;
+    const at = Date.parse(r.at);
+    if (!Number.isNaN(at)) out.push({ at, model: r.model });
+  }
+  return out;
+}
+function intentFor(list, ts) {
+  const t = Date.parse(ts || '');
+  if (Number.isNaN(t)) return null;
+  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS);
+  return hit ? hit.model : null;
+}
+
+/**
  * Every operator word of the transcript in order, each with the latch AFTER it:
  * [{text, autonomous, queued, asks, answer}]. `asks`: the prompt asks what is open. `answer`: the
  * entry is a yes/no to an autonomy question, not a prompt. The last entry is the mode now.
@@ -126,6 +159,7 @@ function promptModes(transcriptPath, cwd) {
   try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return []; }
   const out = [];
   let state = false;
+  const known = intents(transcriptPath, cwd);
   for (const line of lines) {
     if (!line.includes('"user"') && !line.includes('queued_command')) continue;
     let d;
@@ -146,8 +180,9 @@ function promptModes(transcriptPath, cwd) {
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
-    const asks = w.ask.test(text);
-    if (w.off.test(text) || asks) state = false;
+    const intent = intentFor(known, d.timestamp);
+    const asks = w.ask.test(text) || Boolean(intent && intent.asks_open);
+    if (w.off.test(text) || asks || (intent && intent.mode_off)) state = false;
     else if (ordersOn(w.on, text)) state = true;
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false });
   }
@@ -160,7 +195,7 @@ function autonomousMode(transcriptPath, cwd) {
   return modes.length ? modes[modes.length - 1].autonomous : false;
 }
 
-module.exports = { autonomousMode, promptModes, words };
+module.exports = { autonomousMode, promptModes, words, intents, intentFor };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);

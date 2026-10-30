@@ -44,6 +44,7 @@ const path = require('path');
 const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
+const { intents, intentFor } = require('./autonomous-mode.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -130,6 +131,7 @@ function analyze(transcriptPath) {
     fs.closeSync(fd);
   }
   let operator = null;
+  let operatorAt = '';
   let texts = [];
   let agents = 0;
   for (const line of lines) {
@@ -137,7 +139,7 @@ function analyze(transcriptPath) {
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
     const queued = queuedHumanPrompt(d);
-    if (queued !== null) { operator = queued; texts = []; agents = 0; continue; }
+    if (queued !== null) { operator = queued; operatorAt = d.timestamp || ''; texts = []; agents = 0; continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
@@ -145,7 +147,7 @@ function analyze(transcriptPath) {
       if (isSkillExpansion(d) || isPeerMessage(d)) continue;
       const t = promptText(msg);
       if (t === null || HOOK_ECHO.test(t) || isNotification(t)) continue;
-      operator = t; texts = []; agents = 0;   // a new turn starts here
+      operator = t; operatorAt = d.timestamp || ''; texts = []; agents = 0;   // a new turn starts here
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -156,7 +158,7 @@ function analyze(transcriptPath) {
       }
     }
   }
-  return { operator, texts, agents };
+  return { operator, operatorAt, texts, agents };
 }
 
 function deny(hit, why) {
@@ -203,6 +205,12 @@ process.stdin.on('end', () => {
   for (const s of sentences(stripQuoted(seen.operator))) {
     const m = s.match(condition);
     if (m) { hit = { sentence: s, word: m[0] }; break; }
+  }
+  // The prompt classifier's record decides too, in the safe direction (2026-10-30, macOS instance: "after #217 and
+  // #195", in the operator's language, passed the word list). It can only add a check, never waive one.
+  if (!hit) {
+    const intent = intentFor(intents(input.transcript_path, cwd), seen.operatorAt);
+    if (intent && intent.condition) hit = { sentence: sentences(stripQuoted(seen.operator))[0] || seen.operator, word: 'the prompt classifier read a condition' };
   }
   if (!hit) return allow();
   // The line may also stand in the call itself (a `# CONDITION-NONE: …` comment in the command,
