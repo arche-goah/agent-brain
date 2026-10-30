@@ -212,8 +212,8 @@ function gate(input) {
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
   const turn = turns[turns.length - 1];
   if (!turn || turn.fired) return;
-  // The prompt classifier's record decides too (2026-10-30, macOS instance: "ursache finden und an der wurzel beheben"
-  // passed the word list, the classifier read correction=true). Safe direction only: it can open the inquiry (one
+  // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
+  // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
   // cause line owed), never close one the words opened.
   let hit = correctionIn(turn.prompt, loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'));
   if (!hit) {
