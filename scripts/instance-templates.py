@@ -47,11 +47,11 @@ def main() -> int:
         if name in unclassified:
             continue
         fail = 1
-        print(f"!! {name}: read by {', '.join(sorted(seen[name]))} — no template in templates/rules-instance/ and no "
+        print(f"!! {name}: read by {', '.join(sorted(seen[name]))} - no template in templates/rules-instance/ and no "
               "optional reason in templates/instance-files-optional.json")
     stale = sorted(n for n in unclassified if n in have or n in optional or n not in seen)
     for name in stale:
-        print(f"-- {name}: listed as unclassified but covered or no longer read — drop it from the list")
+        print(f"-- {name}: listed as unclassified but covered or no longer read - drop it from the list")
     covered = sum(1 for n in seen if n in have or n in optional)
     print(f"instance-templates: {len(seen)} read, {covered} covered, {len([n for n in seen if n in unclassified])} "
           f"known unclassified, {'FAILED' if fail else 'ok'}")

@@ -41,6 +41,6 @@ for name, files, decl, want_rc, want_text in cases:
     rc, out = run(files, decl)
     ok = rc == want_rc and want_text in out
     fail += not ok
-    print(f"{'ok  ' if ok else 'FAIL'} {name}" + ("" if ok else f" — rc={rc} out={out!r}"))
+    print(f"{'ok  ' if ok else 'FAIL'} {name}" + ("" if ok else f" - rc={rc} out={out!r}"))
 print(f"instance-templates-test: {len(cases) - fail}/{len(cases)} passed")
 sys.exit(1 if fail else 0)

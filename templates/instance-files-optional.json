@@ -1,25 +1,25 @@
 {
-  "_comment": "Read by scripts/instance-templates.py. `optional`: instance files the core reads that need no template, each with the reason (the reader falls back to built-ins, the file is written by a tool, ...). `unclassified`: the gaps measured when the check was built (2026-10-30, 19 names) — a ratchet: a name may only leave this list (a template in templates/rules-instance/ or an optional reason here), never join it.",
-  "optional": {},
-  "unclassified": [
-    "backprop.json",
-    "brain-scan-prep.json",
-    "class-gate.json",
-    "dead-carriers.json",
-    "freshness-gate.json",
-    "friction-accepted.json",
-    "gate-answer-markers.json",
-    "leak-names.json",
-    "manual-tools.json",
-    "no-input-control.json",
-    "open-items.json",
-    "orphan-check.json",
-    "premise-patterns.json",
-    "promise-patterns.json",
-    "secret-patterns.json",
-    "shared-memory-post.json",
-    "skill-placement.json",
-    "stop-patterns.json",
-    "watch-gate.json"
-  ]
+  "_comment": "Read by scripts/instance-templates.py. `optional`: instance files the core reads that need no template in templates/rules-instance/, each with the reason measured at its reader (2026-10-30). A brain looking for what it MAY add reads this list. `unclassified`: a shrink-only ratchet for gaps not yet judged - a name may leave it, never join it.",
+  "optional": {
+    "backprop.json": "backprop-report.py: rule files and search paths; missing file = built-in defaults that fit a brain",
+    "brain-scan-prep.json": "brain-scan-prep.py: decided/dropped words in the instance's language; missing file = English built-ins",
+    "class-gate.json": "class-gate.cjs: level_patterns in the instance's language; missing file = English built-ins",
+    "dead-carriers.json": "dead-carriers.py: absence_patterns in the instance's language; missing file = English built-ins",
+    "freshness-gate.json": "freshness-gate.cjs: per-brain thresholds; missing file = built-in defaults (14 days)",
+    "friction-accepted.json": "brain-friction.py: accepted frictions with reasons; missing file = nothing accepted, every friction reported",
+    "gate-answer-markers.json": "gate-precision.py: extra answer markers; missing file = built-in markers",
+    "leak-names.json": "leak-scan.py, public-text-guard.cjs and others: the template lives at templates/leak-names.json, copied by bootstrap-brain.sh",
+    "manual-tools.json": "brain-friction.py, brain-selftest.sh, local-machinery.py: hand tools a brain runs on purpose; missing file = none declared",
+    "no-input-control.json": "no-input-control.cjs: extra patterns and allows with reasons; missing file is the normal case",
+    "open-items.json": "open-items-gate.cjs, autonomous-mode.cjs and others: the instance's language (`<key>_patterns`, generic_words) and its waiting map; missing file = English built-ins, no waits",
+    "orphan-check.json": "orphan-check.py: extra process paths and allows with reasons; missing file = built-ins only",
+    "premise-patterns.json": "premise-gate.cjs: generalisation/instruction patterns in the instance's language; missing file = English built-ins",
+    "promise-patterns.json": "promise-gate.cjs: commitment/condition patterns in the instance's language; missing file = English built-ins",
+    "secret-patterns.json": "secret-guard.cjs: extra file/bash patterns; missing file is the normal case, a broken one never widens the guard",
+    "shared-memory-post.json": "shared-memory-post.py: check_words in the instance's language; missing file = English built-ins",
+    "skill-placement.json": "skill-lint.py: opt-in placement ratchet; missing file = placement check off, provenance only for drafts (by design)",
+    "stop-patterns.json": "stoppen-gate.cjs: stop patterns in the instance's language; missing file = English built-ins",
+    "watch-gate.json": "watch-gate.cjs, done-claim.cjs, verification-gate.cjs: hand-step/done-claim words in the instance's language; missing file = English built-ins"
+  },
+  "unclassified": []
 }
