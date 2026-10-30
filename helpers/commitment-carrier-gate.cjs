@@ -65,12 +65,23 @@ function addedLines(old, neu) {
 /** This turn: [{kind:'text', text}] and [{kind:'write', file, text, added}] since the last operator message. */
 function turnEvents(transcriptPath) {
   const events = [];
+  // The operator's answer through the question tool is an operator word too. Measured 2026-10-30: every answer of
+  // the day came that way, so the "turn" reached back past a compaction to a promise hours old, and the gate
+  // blocked every stop on it (a loop). Only the tool_result of a question-tool call counts, matched by its id —
+  // never text that merely looks like an answer.
+  const asked = new Set();
   for (const line of readTail(transcriptPath)) {
     if (!line.trim()) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      if (msg.content.some((b) => b && b.type === 'tool_result' && asked.has(b.tool_use_id) && !b.is_error)) {
+        events.push({ boundary: true });
+      }
+      continue;
+    }
     if (msg.role === 'user' && typeof msg.content === 'string') {
       if (HOOK_ECHO.test(msg.content)) continue;
       if (!isNotification(msg.content) && !isAgentOrigin(d)) events.push({ boundary: true });
@@ -80,6 +91,7 @@ function turnEvents(transcriptPath) {
     for (const b of msg.content) {
       if (b.type === 'text' && b.text) events.push({ kind: 'text', text: b.text });
       if (b.type !== 'tool_use' || !b.input) continue;
+      if (b.name === 'AskUserQuestion' && b.id) asked.add(b.id);
       const file = String(b.input.file_path || '').replace(/\\/g, '/');
       if (!file) continue;
       let text = '', added = '';
