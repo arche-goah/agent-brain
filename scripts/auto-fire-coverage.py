@@ -19,6 +19,9 @@ verbatim in the table file. Skipped: skills whose description starts with
 in an `<!-- auto-fire-ignore: id id ... -->` comment in the table file (a skill the
 brain deliberately does not auto-fire; a plugin name alone ignores all its skills).
 
+ALSO (2026-10-30): every `.mcp.json` server and every `.claude/skills/<name>/` the table names nowhere — as a word,
+or for a server by its tool prefix `mcp__<name>__` or a wildcard row `mcp__<start>*`. Drafts (`_draft-…`) are skipped.
+
 Usage: auto-fire-coverage.py [brain-root]     (default: cwd)
 Output: one line per missing skill id. Exit 0 and silent when covered or when the
 brain has no table file; exit 1 when something is missing.
@@ -108,12 +111,40 @@ def stale(root):
     return out
 
 
+def unlisted_local(root):
+    """The brain's own surface (measured 2026-10-30 on the macOS instance: a brain-scan found five rows missing by
+    hand — chrome-devtools, touchdesigner-mac, rig-storage-audit, writing-plans, executing-plans — while this check
+    stayed silent, because it read plugin skills only): every `.mcp.json` server and every `.claude/skills/<name>/`
+    that the table names nowhere as a word. Ignored ids work as for plugin skills."""
+    table, ignored = table_and_ignored(root)
+    if table is None:
+        return []
+    named = lambda n: re.search(r"(?<![\w-])" + re.escape(n) + r"(?![\w-])", table) is not None
+    # A server is also named by its tool prefix: `mcp__<name>__…`, or a wildcard row `mcp__<start>*`.
+    wild = re.findall(r"mcp__([\w-]+?)\*", table)
+    tool_named = lambda n: f"mcp__{n}__" in table or any(n.startswith(w) for w in wild)
+    out = []
+    for server in sorted((load(root / ".mcp.json").get("mcpServers") or {})):
+        if server not in ignored and not named(server) and not tool_named(server):
+            out.append(f"mcp server: {server}")
+    skills_dir = root / ".claude" / "skills"
+    for skill_md in sorted(skills_dir.glob("*/SKILL.md")) if skills_dir.is_dir() else []:
+        name = skill_md.parent.name
+        if name.startswith("_") or name in ignored or description(skill_md).startswith("DEPRECATED"):
+            continue
+        if not named(name):
+            out.append(f"instance skill: {name}")
+    return out
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
-    gaps, dead = missing(root), stale(root)
+    gaps, dead, local = missing(root), stale(root), unlisted_local(root)
     for sid in gaps:
         print(sid)
     for sid in dead:
         print(f"stale row: {sid} (the plugin ships no such skill)")
-    sys.exit(1 if gaps or dead else 0)
+    for line in local:
+        print(line)
+    sys.exit(1 if gaps or dead or local else 0)
