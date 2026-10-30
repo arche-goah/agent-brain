@@ -82,5 +82,20 @@ expect "a promise taken back in a later text of the same turn passes" pass "$(ru
 turn "$tmp/q.jsonl" "x" "$(txt 'I take that back.')" "$(txt 'From now on I never open a window on the operator machine.')"
 expect "a promise made AFTER a retraction still blocks" block "$(run "$tmp/q.jsonl")"
 
+# 2026-10-30: the operator's answer through the question tool is an operator word. Every answer of that day came
+# that way; the turn reached back past a compaction and the gate blocked every stop on an old promise (a loop).
+ask() { node -e 'console.log(JSON.stringify([{type:"tool_use",id:process.argv[1],name:process.argv[2],input:{}}]))' "$1" "$2"; }
+res() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":%s,"content":"The user answered: yes, go on"}]}}\n' "$1" "$2"; }
+promise="$(txt 'From now on I never open a window on the operator machine.')"
+asst() { printf '{"type":"assistant","message":{"role":"assistant","content":%s}}\n' "$1"; }
+turn "$tmp/r.jsonl" "x" "$promise" "$(ask q1 AskUserQuestion)"; res q1 false >> "$tmp/r.jsonl"; asst "$(txt 'Done.')" >> "$tmp/r.jsonl"
+expect "a promise before a question-tool answer belongs to the previous turn" pass "$(run "$tmp/r.jsonl")"
+turn "$tmp/s.jsonl" "x" "$promise" "$(ask b1 Bash)"; res b1 false >> "$tmp/s.jsonl"; asst "$(txt 'Done.')" >> "$tmp/s.jsonl"
+expect "another tool's result that reads like an answer is no boundary" block "$(run "$tmp/s.jsonl")"
+turn "$tmp/t.jsonl" "x" "$promise" "$(ask q2 AskUserQuestion)"; res q2 true >> "$tmp/t.jsonl"; asst "$(txt 'Done.')" >> "$tmp/t.jsonl"
+expect "a refused question (error result) is no boundary" block "$(run "$tmp/t.jsonl")"
+turn "$tmp/u.jsonl" "x" "$(ask q3 AskUserQuestion)"; res q3 false >> "$tmp/u.jsonl"; asst "$promise" >> "$tmp/u.jsonl"
+expect "a promise AFTER a question-tool answer still blocks" block "$(run "$tmp/u.jsonl")"
+
 [ $fail -eq 0 ] && echo "test-commitment-carrier-gate: all passed" || echo "test-commitment-carrier-gate: FAILED"
 exit $fail
