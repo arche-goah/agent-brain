@@ -46,8 +46,29 @@ same set of checks for the PowerShell view; the Git Bash edition is authoritativ
 
 ## 2. Marketplace registration — the default is ONLY the core
 
-Your org publishes plugins through a marketplace repo that pins released tags of this
-repo. Register it once, then install the core plugin:
+**Without a marketplace of your own** (one person, or a first try): this repo is its own
+public marketplace, named `agent-brain`. Register it once, then install the core plugin:
+
+```
+claude plugin marketplace add arche-goah/agent-brain
+claude plugin install brain-core@agent-brain
+```
+
+It offers the core in two channels, both pinned to release tags of this repo, never to
+`main`. `brain-core` is **stable**: a tag moves there only after it ran as a beta without
+regression. `brain-core-next` is the **beta**: the newest tag under check, for a machine
+that helps check it. Enable one of the two, never both — they ship the same skills and
+hooks; to switch, `claude plugin disable brain-core@agent-brain`, then
+`claude plugin install brain-core-next@agent-brain` (and the reverse to go back). The pins
+move only on the core owner's word (AGENTS.md #12). The plugin carries the core's hooks
+from tag v2.0.4 on (`claude plugin list` shows the version a channel installed), and they
+run the helpers of your brain's `core/` submodule: step 3 is not optional — install,
+create your brain, then start Claude in it. This marketplace carries the core only; suites
+(step 4) come from a team marketplace.
+
+**With your org's own marketplace** (a team that pins the core for itself): your org
+publishes plugins through a marketplace repo that pins released tags of this repo.
+Register it once, then install the core plugin:
 
 ```
 claude plugin marketplace add your-org/claude-marketplace
@@ -101,7 +122,9 @@ This creates your brain from `templates/` (CLAUDE.md skeleton, instance rules, e
 feedback file, settings with hooks) and mounts this repo as the `core/` submodule.
 One hand step afterwards (the template is deliberately generic): in your new brain's
 `.claude/settings.json`, replace the placeholder `<your-org>` (angle brackets included)
-with your real org — a Claude session in the brain does that for you if you ask.
+with your real org — a Claude session in the brain does that for you if you ask. On the
+public marketplace of step 2 the entry is named `agent-brain`, its repo is
+`arche-goah/agent-brain`, and the plugin is `brain-core@agent-brain` (or the beta).
 
 **Your brain is yours:** a private repo under YOUR account, never shared. Creating
 the remote and pushing stays with you.

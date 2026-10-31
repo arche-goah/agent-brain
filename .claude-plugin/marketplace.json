@@ -1,0 +1,29 @@
+{
+  "name": "agent-brain",
+  "owner": {
+    "name": "ArcheGoah"
+  },
+  "metadata": {
+    "description": "Public marketplace of the agent-brain core: one plugin in two channels, brain-core (stable) and brain-core-next (beta). Every entry pins a release tag of this repo, never main - an untagged change reaches nobody. The pins move only on the core owner's word (AGENTS.md #12); scripts/suite-check.py fails an entry whose ref is not an existing release tag."
+  },
+  "plugins": [
+    {
+      "name": "brain-core",
+      "source": {
+        "source": "github",
+        "repo": "arche-goah/agent-brain",
+        "ref": "v2.0.0"
+      },
+      "description": "Stable channel of the agent-brain core: the general-purpose skills listed in skills/REGISTRY.md, the caveman output style and the audit workflows. From tag v2.0.4 on the plugin also ships the core's hooks (hooks/hooks.json); they run the helpers of a brain's core/ submodule (ONBOARDING.md, step 3). This pin moves to a tag only after it ran as a beta without regression."
+    },
+    {
+      "name": "brain-core-next",
+      "source": {
+        "source": "github",
+        "repo": "arche-goah/agent-brain",
+        "ref": "v2.0.5"
+      },
+      "description": "Beta channel of the same plugin, pinned at or ahead of brain-core: for a machine that checks a release before it goes stable. Enable this OR brain-core, never both - they ship the same skills and hooks. Which systems a beta was checked on stands in CHANGELOG.md and in the release notes of its tag."
+    }
+  ]
+}

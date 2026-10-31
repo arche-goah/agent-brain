@@ -36,6 +36,65 @@ ALLOWED_HOME = re.compile(r"^/Users/Shared\b")
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv"}
 SKIP_SUFFIX = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".gz", ".ico", ".lock",
                ".woff", ".woff2", ".ttf", ".mp4", ".mov", ".wav"}
+RELEASE_TAG = re.compile(r"^v\d+\.\d+\.\d+$")
+
+
+def git_out(repo: Path, *args: str) -> str:
+    try:
+        return subprocess.run(["git", "-C", str(repo), *args],
+                              capture_output=True, text=True, timeout=15).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def repo_slug(text: str) -> str:
+    """owner/name out of a GitHub slug or a git URL, lowercase; '' if none."""
+    m = re.search(r"([^/:\s]+/[^/:\s]+?)(?:\.git)?/?$", str(text or "").strip())
+    return m.group(1).lower() if m else ""
+
+
+def marketplace_findings(repo: Path):
+    """A marketplace in the repo pins release tags, never a branch (AGENTS.md #5).
+
+    WHY: the core carries its own public marketplace since 2026-10-31; an entry without a
+    ref, on a branch, or on a tag that does not exist would reach every consumer as main or
+    as a failed install. A ref is checked against the repo's tags only when the entry points
+    at THIS repo (origin) — another repo's tags are not readable offline.
+    """
+    out = []
+    mj = repo / ".claude-plugin" / "marketplace.json"
+    if not mj.exists():
+        return out
+    try:
+        plugins = json.loads(mj.read_text(encoding="utf-8")).get("plugins")
+    except (json.JSONDecodeError, AttributeError) as e:
+        return [("ERROR", f".claude-plugin/marketplace.json does not parse: {e}")]
+    if not isinstance(plugins, list):
+        return [("ERROR", ".claude-plugin/marketplace.json: 'plugins' is not a list")]
+    own = repo_slug(git_out(repo, "remote", "get-url", "origin"))
+    tags = set(git_out(repo, "tag", "-l").split())
+    for p in plugins:
+        name = p.get("name", "?") if isinstance(p, dict) else "?"
+        src = p.get("source") if isinstance(p, dict) else None
+        where = f".claude-plugin/marketplace.json: {name}"
+        if isinstance(src, str):
+            out.append(("ERROR", f"{where}: relative source {src!r} follows the branch the "
+                                 "marketplace clone is on, not a release tag"))
+            continue
+        if not isinstance(src, dict) or not (src.get("repo") or src.get("url")):
+            continue
+        ref = str(src.get("ref") or "")
+        if not ref:
+            out.append(("ERROR", f"{where}: no ref - the entry follows the default branch"))
+        elif not RELEASE_TAG.match(ref):
+            out.append(("ERROR", f"{where}: ref {ref!r} is not a release tag (vX.Y.Z)"))
+        elif own and repo_slug(src.get("repo") or src.get("url")) == own:
+            if not tags:
+                out.append(("WARN", f"{where}: no tags in this checkout (shallow clone?) - "
+                                    f"ref {ref} unchecked"))
+            elif ref not in tags:
+                out.append(("ERROR", f"{where}: ref {ref} is no tag of this repo"))
+    return out
 
 
 def parse_version(text):
@@ -141,6 +200,7 @@ def check(repo: Path, contract: dict):
                     add("ERROR", f".claude-plugin/plugin.json: missing {field!r}")
         except json.JSONDecodeError as e:
             add("ERROR", f".claude-plugin/plugin.json does not parse: {e}")
+    out.extend(marketplace_findings(repo))
 
     # dependency manifest + the core declaration
     dj = repo / "dependencies.json"
