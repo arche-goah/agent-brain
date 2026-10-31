@@ -22,8 +22,40 @@ STATE="$STATE_DIR/loop-watchdog.state"
 mkdir -p "$STATE_DIR"
 
 notify() {  # macOS notification + log; Telegram deliberately NOT wired (rig chain stays separate)
-  osascript -e "display notification \"$1\" with title \"Claude Loop-Watchdog\"" 2>/dev/null || true
+  # A fixture must not put a notification on the operator's screen (LOOP_WATCHDOG_NO_NOTIFY).
+  [ -n "${LOOP_WATCHDOG_NO_NOTIFY:-}" ] || osascript -e "display notification \"$1\" with title \"Claude Loop-Watchdog\"" 2>/dev/null || true
   echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$STATE_DIR/loop-watchdog.log"
+  issue_alarm "$1"
+}
+
+# An alarm outside a session reaches the operator only through a channel they read away from
+# the machine. A desktop notification is not one: the operator decided (2026-10-15, macOS
+# instance) on an issue in the instance's private repo, which GitHub mails. Instance data:
+# .claude/rules/loop-watchdog.json {"issue_repo": "<owner>/<repo>"}; without it nothing is
+# opened. launchd starts this script without the shell's PATH, so gh is also looked for at the
+# usual install places. Every outcome is a log line — a failed issue is never silent.
+issue_alarm() {
+  local cfg repo gh="" c
+  cfg="$(dirname "$STATE_DIR")/.claude/rules/loop-watchdog.json"
+  [ -f "$cfg" ] || return 0
+  repo=$(sed -n 's/.*"issue_repo"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -1)
+  [ -n "$repo" ] || return 0
+  gh=$(command -v gh 2>/dev/null || true)
+  for c in "${LOOP_WATCHDOG_GH:-}" /opt/homebrew/bin/gh /usr/local/bin/gh /usr/bin/gh; do
+    [ -z "$gh" ] && [ -n "$c" ] && [ -x "$c" ] && gh="$c"
+  done
+  [ -n "${LOOP_WATCHDOG_GH:-}" ] && gh="$LOOP_WATCHDOG_GH"
+  if [ -z "$gh" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') issue NOT opened in $repo: gh not found (PATH and the usual places)" >> "$STATE_DIR/loop-watchdog.log"
+    return 0
+  fi
+  if "$gh" issue create -R "$repo" --title "loop-watchdog: $1" \
+      --body "Raised by core/scripts/loop-watchdog.sh check at $(date '+%Y-%m-%d %H:%M'): the session that armed the loop stopped writing its heartbeat. The next session start reports it as well; clear it there with core/scripts/loop-watchdog.sh disarm." \
+      >> "$STATE_DIR/loop-watchdog.log" 2>&1; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') issue opened in $repo" >> "$STATE_DIR/loop-watchdog.log"
+  else
+    echo "$(date '+%Y-%m-%d %H:%M:%S') issue NOT opened in $repo: gh failed (line above)" >> "$STATE_DIR/loop-watchdog.log"
+  fi
 }
 
 hm() {  # epoch -> HH:MM. `date -r` means TWO things: BSD takes seconds, GNU takes a FILE
@@ -99,7 +131,10 @@ case "${1:-check}" in
         echo "$(date '+%Y-%m-%d %H:%M:%S') loop '$name' ended after ${el} min" >> "$STATE_DIR/loop-watchdog.log"
       else echo "disarmed"; fi
       rm -f "$STATE"
-    else echo "no loop armed"; fi ;;
+    elif [ -f "$STATE.stale" ]; then
+      echo "cleared the alarm of '$(sed -n 1p "$STATE.stale")'"; rm -f "$STATE.stale"
+    else echo "no loop armed"; fi
+    rm -f "$STATE.stale" ;;
   check)
     [ -f "$STATE" ] || exit 0
     name=$(sed -n 1p "$STATE"); maxmin=$(sed -n 2p "$STATE"); last=$(sed -n 3p "$STATE")
@@ -124,6 +159,13 @@ case "${1:-check}" in
       # session is not a finding; ONE line and exit 1 when the beat is older than the limit,
       # or the deadline passed with the core reported done (an open core may overrun, see
       # header). The caller prints the line as is.
+      # An alarm `check` already raised moved the state to .stale — without this line the next
+      # start said nothing about it (measured 2026-10-28 on the macOS instance: the bootup read
+      # only the armed state, so the alarm that fired was the one case it never reported).
+      if [ ! -f "$STATE" ] && [ -f "$STATE.stale" ]; then
+        echo "!! loop-watchdog raised an alarm while no session watched: '$(sed -n 1p "$STATE.stale")' — $(grep -a 'Loop ' "$STATE_DIR/loop-watchdog.log" 2>/dev/null | tail -1 | cut -c1-160); read loop-watchdog.log, then clear it: core/scripts/loop-watchdog.sh disarm"
+        exit 1
+      fi
       [ -f "$STATE" ] || exit 0
       name=$(sed -n 1p "$STATE"); maxmin=$(sed -n 2p "$STATE"); last=$(sed -n 3p "$STATE")
       dl=$(sed -n 5p "$STATE" 2>/dev/null || echo 0); dl=${dl:-0}

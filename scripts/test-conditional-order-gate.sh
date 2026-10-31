@@ -169,6 +169,11 @@ run_case peer allow Bash '{"command":"git push"}'
 mk "$T/peer-as-human.jsonl" '"weiter im programm"' 0 ''
 printf '{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"take it out of draft sobald 1 and 2 are in"}}\n' >> "$T/peer-as-human.jsonl"
 run_case peer-as-human block Bash '{"command":"git push"}'
+# A timer-fired prompt (ScheduleWakeup, /loop: queuePriority "later", no human origin; measured
+# 2026-10-28, Claude Code 2.1.312) is the agent's own text, not the operator's last word.
+mk "$T/tick.jsonl" '"weiter im programm"' 0 ''
+printf '{"type":"user","isMeta":true,"promptSource":"system","queuePriority":"later","message":{"role":"user","content":"check the PR, push it sobald CI is green"}}\n' >> "$T/tick.jsonl"
+run_case tick allow Bash '{"command":"git push"}'
 
 # --- the measured shapes (2026-10-26): a compaction summary is a user record with isCompactSummary
 # --- and retells conditions the operator gave long ago; it is no operator message.

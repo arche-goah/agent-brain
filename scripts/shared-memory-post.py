@@ -19,6 +19,9 @@ words. The answerer KNOWS what it answers; this tool makes it write that down.
             and stays on yours until you answer or close it. Refused when someone else
             already claimed it.
 
+Every message carries `os:` and `core:` — the writing device's system and core version
+(`core: unknown` when no core checkout is found, never left out).
+
 Every message also gets one LOG line in the area (`## <date> · <von> — AN <to> (status: s):
 <title>` plus the file path), so the conversation stream stays readable; the file carries the
 state. Addressees are checked against parties.json, an `answers:` target against the repo;
@@ -47,6 +50,7 @@ from importlib import import_module  # noqa: E402
 
 _parties = import_module("shared-memory-parties")
 _lint = import_module("shared-memory-lint")
+_device = import_module("device-status")
 
 STATUS = {"request": "open", "reply": "answered", "note": "info", "claim": "info"}
 HANDOVER_AREAS = ("core", "ops")   # core and AI mechanics, what touches several brains
@@ -192,8 +196,12 @@ def main() -> int:
         return refuse(f"{path.relative_to(a.repo).as_posix()} exists - change the title")
 
     q = '"' + a.title.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    # The writer's system and core version, written by the producer at write time (operator order
+    # 2026-10-28; first asked 2026-10-18 and built then only as a commit trailer): activity per core
+    # version is read from the entries (`device-status.py entries`). Same source as that trailer.
+    os_name, core = _device.entry_origin()
     meta = ["  type: project", f"  von: {von}", f"  audience: {', '.join(to)}", f"  topic: {a.area}",
-            f"  date: {a.date}", f"  status: {status}"]
+            f"  date: {a.date}", f"  os: {os_name}", f"  core: {core}", f"  status: {status}"]
     if status == "open":
         nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower() and d not in handed]
         meta.append(f"  next: {', '.join(nxt)}")

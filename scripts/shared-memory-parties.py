@@ -239,8 +239,11 @@ def addressees(title: str) -> str | None:
     """`AN x + y: title` -> `x + y`; None when the heading names nobody. The colon of an
     audience category (`AN os:windows: title`) is not the end of the addressees."""
     safe = re.sub(r"\b(os|person):(?=[\w-])", "\\1\x00", title or "")
+    # A reason in parentheses ("(one-machine: why)") carries a colon of its own and is no addressee
+    # (measured 2026-10-19: the heading was cut inside it and "<device> (one-machine" was read).
+    safe = re.sub(r"\s*\([^()]*\)", "", safe)
     m = re.match(r"^(?:AN|An|an|TO|To)\s+([^:]+):", safe)
-    return m.group(1).replace("\x00", ":") if m else None
+    return m.group(1).strip().replace("\x00", ":") if m else None
 
 
 # A message that asks for a check on Windows: names Windows AND a check word, in either

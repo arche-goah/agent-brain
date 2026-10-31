@@ -104,6 +104,10 @@ def main() -> int:
     check("tokens keep categories whole", parties_mod.tokens("os:windows, person:kim, kim-pc") == {"os:windows", "person:kim", "kim-pc"})
     check("heading colon after a category", parties_mod.addressees("AN os:windows, kim-mac: title") == "os:windows, kim-mac")
     check("plain heading unchanged", parties_mod.addressees("AN kim-mac: title") == "kim-mac")
+    # a one-machine reason in parentheses carries a colon of its own (measured 2026-10-19: the
+    # heading was cut there and "kim-pc (one-machine" read as the addressee)
+    check("one-machine reason is not the end of the addressees",
+          parties_mod.addressees("AN kim-pc (one-machine: only it has the desk): title") == "kim-pc")
 
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
