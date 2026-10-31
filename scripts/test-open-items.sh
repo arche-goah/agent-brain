@@ -23,6 +23,7 @@ cp "$(dirname "$SRC")/project_dir.py" "$T/core/scripts/project_dir.py"
 cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
 cp "$(dirname "$SRC")/shared_channels.py" "$T/core/scripts/shared_channels.py"
 cp "$(dirname "$SRC")/ledger-reconcile.py" "$T/core/scripts/ledger-reconcile.py"
+cp "$(dirname "$SRC")/eco_owner.py" "$T/core/scripts/eco_owner.py"
 # The work-ledger registry: empty here (registered nothing on purpose); the ledger cases below
 # use their own root.
 mkdir -p "$T/root/.claude/rules"; printf '%s\n' '{"ledgers": []}' > "$T/root/.claude/rules/ledgers.json"
@@ -41,9 +42,10 @@ mkdir -p "$T/tx"
 printf '%s\n' '{"data":{"viewer":{"login":"me"},"search":{"issueCount":0,"nodes":[]}}}' > "$T/noprs.json"
 export OPEN_ITEMS_PR_FIXTURE; OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")"
 run() { # $1 session id ("" = hand run), [$2 root]; the transcript path sits next to the others
-  local hi="{}"
+  local hi="{}" own=(--owner "${OWNER-me}")
+  [ -n "${NO_OWNER_ARG:-}" ] && own=()  # a hand run without --owner: open-items asks eco_owner.py
   [ -n "$1" ] && hi="{\"session_id\":\"$1\",\"transcript_path\":\"$(native "$T/tx/$1.jsonl")\"}"
-  "$PY" "$(native "$T/core/scripts/open-items.py")" --owner "${OWNER-me}" --repo "$(native "$T/repo")" \
+  "$PY" "$(native "$T/core/scripts/open-items.py")" ${own[@]+"${own[@]}"} --repo "$(native "$T/repo")" \
     --root "$(native "${2:-$T/root}")" --hook-input "$hi" 2>&1
 }
 # A transcript in which the list reached a human: the bootup block, then a real prompt.
@@ -98,10 +100,25 @@ printf '%s\n' 'shared-memory open requests to this instance: 0 (last 36500 days)
 out=$(run e)
 has "- nothing open" "$out" && ok "clean = 'nothing open' said" || bad "clean not said: $out"
 has "open for us: 0" "$out" && ok "clean count 0" || bad "clean count: $out"
-# A source that was never asked is not "nothing open" (measured 2026-10-09: no --owner).
+# No owner at all (--owner "": eco_owner.py found none — no gh, not logged in): the PRs were never
+# asked, so never "nothing open" (measured 2026-10-09) — but no red NOT checked line either, which
+# no re-run could clear (fresh-brain trial 2026-10-31): one neutral note naming how to set it.
 out=$(OWNER= run e2)
-has "PRs (no owner given) NOT checked" "$out" && ok "no owner = PRs NOT checked" || bad "no owner silent: $out"
+has "NOT checked" "$out" && bad "no owner gave a red NOT checked line: $out" || ok "no owner = no red NOT checked line"
+has 'note: open PRs not looked for' "$out" && has 'set "owner" there' "$out" && ok "no owner = one note naming config/ecosystem.json" \
+  || bad "no owner note missing: $out"
 has "- nothing open" "$out" && bad "no owner read as nothing open: $out" || ok "no owner is not 'nothing open'"
+# A real failure keeps its loud line: an owner is known and the search fails (gh error, offline).
+out=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/no-such-answer.json")" run e3)
+has "PR search NOT checked" "$out" && ok "owner known, search failed = PR search NOT checked" || bad "failed search silent: $out"
+has "note: open PRs not looked for" "$out" && bad "failed search read as no owner: $out" || ok "failed search is not 'no owner'"
+# A hand run without --owner asks eco_owner.py, the resolver the session start uses (here the
+# brain's own word, so no network): the search runs and the clean state reads as nothing open.
+mkdir -p "$T/root/config"; printf '%s\n' '{"owner": "me", "repos": {}}' > "$T/root/config/ecosystem.json"
+out=$(NO_OWNER_ARG=1 OPEN_ITEMS_SHOW_PR_SEARCH=1 run e4)
+has "pr-search: user:me " "$out" && has "- nothing open" "$out" && ok "no --owner: the owner from config/ecosystem.json" \
+  || bad "hand run without --owner: $out"
+rm -f "$T/root/config/ecosystem.json"
 
 # Parked: one line, not dropped, not counted as active.
 mkdir -p "$T/root/.claude/rules"

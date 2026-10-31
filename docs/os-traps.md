@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=5
+known:     helpers/session-bootup.sh=4
 known:     scripts/always-loaded.py=4
 known:     scripts/autonomy-diagnose.py=26
 known:     scripts/backprop-report.py=5
@@ -179,6 +179,8 @@ reaches stdout is the unreadable-protocol notice for a human.
 script opens, stats or hands to `git -C` (the instance data file, the ledgers, a private document, the
 shared file); every path it REPORTS comes from git porcelain (forward-slashed) or from the pointer text
 inside a document, never from a join.
+2026-10-31: the ecosystem-owner snippet moved out of session-bootup.sh into scripts/eco_owner.py
+(bootup 5 -> 4); the new file builds its paths with pathlib and prints only the owner's name.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -197,6 +199,7 @@ known:     scripts/changelog-assemble.py=1
 known:     scripts/ci-lint-local-parse.py=1
 known:     scripts/decision-review.py=1
 known:     scripts/device-status.py=1
+known:     scripts/eco_owner.py=1
 known:     scripts/ecosystem-sync.py=1
 known:     scripts/english-only.py=1
 known:     scripts/invariant-index.py=1
@@ -237,6 +240,8 @@ form so the same writes stay visible; the two `open` sites that already pinned
 TextIOWrapper.
 2026-10-16, scripts/autonomy-diagnose.py baselined: its one write (`--out`) opens with
 `newline="\n"`; the report is not git-tracked anyway (it goes to the person who asked).
+2026-10-31, scripts/eco_owner.py baselined: its one write (the per-machine answer cache under
+`.claude-state/`, not git-tracked) opens with `newline="\n"`.
 
 ## OS-3 — a fixture hands a shell path to a native process
 
@@ -710,7 +715,7 @@ known:     scripts/lesson-carriers.py=2
 known:     scripts/live-doc-lint.py=2
 known:     scripts/memory-lint-test.py=1
 known:     scripts/memory-lint.py=1
-known:     scripts/open-items.py=8
+known:     scripts/open-items.py=9
 known:     scripts/orphan-check.py=2
 known:     scripts/os-traps-export.py=3
 known:     scripts/pending-clauses.py=3
@@ -762,6 +767,9 @@ so stdout is pinned at import, like the others.
 parsed by brain-scan-prep.py and the session-close step; stdout is pinned at the top of the script.
 2026-10-25, scripts/shared-reach-check.py (4): the question answered yes — the session-close step reads its
 FAIL lines and summary — so stdout is pinned at import, like lesson-carriers.py.
+2026-10-31, open-items.py 8 -> 9 after the same question: the new site is the no-owner note
+(`note: open PRs not looked for — …`); the bootup and open-items-gate.cjs parse this output, and
+the script pins stdout in `main()`, so the em dash leaves as UTF-8 on every platform.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
 

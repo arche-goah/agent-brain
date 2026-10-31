@@ -168,6 +168,11 @@ f="$T/11d.jsonl"; { boot_ok startup "$FAILED"; user "stand?"; asst "Brain clean.
 check "failed source not said" "$f" block "$EN"
 f="$T/11e.jsonl"; { boot_ok startup "$FAILED"; user "stand?"; asst "PR search not checked (offline)."; } > "$f"
 check "failed source said" "$f" allow "$EN"
+# No GitHub owner known (open-items.py, 2026-10-31): a neutral note, no failed source — the
+# reply owes it nothing, so the start cannot carry a demand no action clears.
+NOOWNER="open for us: 0 — ai 0 · human 0 · unclassified 0${NL}note: open PRs not looked for — no GitHub owner is known for this brain"
+f="$T/11f.jsonl"; { boot_ok startup "$NOOWNER"; user "stand?"; asst "Brain clean."; } > "$f"
+check "no owner: the note demands nothing" "$f" allow "$EN"
 
 # 12 — a PR number that only PREFIXES another must not count (#61 vs #610).
 H3="- [PR|human] 2026-10-07 claude-marketplace#61 — someone: pin — first report"

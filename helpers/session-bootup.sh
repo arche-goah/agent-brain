@@ -296,27 +296,13 @@ fi
 
 # Open PRs across the ecosystem (operator order 2026-08-13): NAME them at session
 # start — visibility only. Merging is maintainer work through the review pipeline;
-# this line never offers it. Owner derived from the marketplace repo in settings
-# (no hardcoded org — core is generic). One search call, offline-silent, capped.
+# this line never offers it. ONE owner for every GitHub question below (PR search, whose
+# move, code-scanning alerts, the shared-memory repo): scripts/eco_owner.py — "owner" in
+# config/ecosystem.json, else the first marketplace's org when the gh login can really see
+# it, else the login itself (fresh-brain trial 2026-10-31: the first marketplace alone made a
+# stranger's every start query another organisation's PRs and repos). Offline-silent.
 boot_mark suite-update
-eco_owner=$("$PY" -c '
-import json, os
-def load(p):
-    try:
-        with open(p, encoding="utf-8") as f: return json.load(f)
-    except Exception: return {}
-cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
-for s in (load(".claude/settings.json"), load(os.path.join(cfg, "settings.json"))):
-    for m in (s.get("extraKnownMarketplaces") or {}).values():
-        r = (m.get("source") or {}).get("repo", "")
-        if "/" not in r: continue
-        # The FIRST marketplace decides, as before. A template placeholder there means no
-        # owner, never a fall-through to the next (a vendor marketplace is no owner either):
-        # "your-org" is a real GitHub organisation (2026-10-21, 41 PRs of strangers listed).
-        o = r.split("/")[0]
-        if not any(c in o for c in "<>") and o.lower() != "your-org": print(o)
-        raise SystemExit
-' 2>/dev/null)
+eco_owner=$("$PY" "$HERE/../scripts/eco_owner.py" --root . --hook-input "$HOOK_INPUT" 2>/dev/null)
 # The open PRs themselves are listed by scripts/open-items.py further down (2026-10-07),
 # every one of them, with a repeat counter — the "open PRs (6 shown)" line that stood here
 # capped the list at six and was the line a first reply could skim past.
@@ -353,11 +339,12 @@ fi
 # Open code-scanning alerts across the owner's repos (operator order 2026-09-30): eight
 # CodeQL alerts in the core stood open for seven weeks because nothing showed them. One
 # call per repo (~7.7 s measured), so cached for 6 h and refreshed in the background —
-# foreign state, time is the only key. Printed only when there is something to act on;
+# foreign state, so time is the key — plus the owner, so a changed owner never replays the
+# alerts of the one before. Printed only when there is something to act on;
 # a reused result carries its age (cached-verdict's own line).
 boot_mark pr-ball
 if [[ -n "$eco_owner" && -f "$HERE/../scripts/code-scanning-alerts.sh" && -f "$HERE/../scripts/cached-verdict.sh" ]]; then
-  csa=$(bash "$HERE/../scripts/cached-verdict.sh" code-scanning --max-age 21600 --background-on-miss \
+  csa=$(bash "$HERE/../scripts/cached-verdict.sh" code-scanning --key "$eco_owner" --max-age 21600 --background-on-miss \
         -- bash "$HERE/../scripts/code-scanning-alerts.sh" "$eco_owner" 2>/dev/null)
   if grep -qE '^(!! )?code scanning' <<< "$csa"; then printf '%s\n' "$csa"; fi
 fi
@@ -704,7 +691,7 @@ boot_mark shared-memory-check
 if [[ -f "$HERE/../scripts/open-items.py" ]]; then
   CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/open-items.py" --owner "$eco_owner" \
       --hook-input "$HOOK_INPUT" 2>/dev/null \
-    || echo "!! open for us: NOT checked — open-items.py failed; run: $PY core/scripts/open-items.py --owner $eco_owner"
+    || echo "!! open for us: NOT checked — open-items.py failed; run: $PY core/scripts/open-items.py"
 fi
 # Watch readiness (operator order 2026-10-16: core functions must run by default on every
 # instance): can a standing watch run here, and does it poll where PRs for us arrive? Reads the
