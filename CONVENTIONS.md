@@ -165,10 +165,18 @@ lived only as instance prose on two brains, measured the same day.
    its head on macOS AND Windows (a machine of the operator counts; green Windows CI is not "checked
    on Windows"), then merged, then shipped with a beta tag through the `-next` channel
    (`brain-core-next`, `<suite>-next`) — one beta tag per strand, once no important candidate of
-   the strand is still being worked out, never a tag because the board is green. A merge checked on
-   one system only is a labelled beta of that system (§11, item 11).
-3. **Stable — after a verified period at everyone's.** The stable pin moves only after the beta ran
-   without regression on every instance that uses it (`scripts/device-status.py` shows which
+   the strand is still being worked out, never a tag because the board is green. **This is the
+   canonical beta-readiness rule** (operator correction 2026-10-28: for a beta, judge above all
+   whether an important feature is about to follow — do not tag or pin too early when something
+   important comes soon): an important candidate in work is an open PR labelled `beta-candidate`,
+   set by whoever judges it important for the strand; the beta waits while one is open.
+   Neither a quiet main nor the absence of open PRs is a condition — no 24 h gap appeared in 80
+   main commits at the measured merge rate, and most open PRs are no candidate. Carrier:
+   `scripts/release-preflight.sh` check 6. A merge checked on one system only is a labelled
+   beta of that system (§11, item 11).
+3. **Stable — after an active, problem-free run time on the beta** (operator correction
+   2026-10-28). The stable pin moves only after the beta ran — in real sessions, not merely
+   installed — without regression on every instance that uses it (`scripts/device-status.py` shows which
    instance runs what; changelog entries carry the test level they were checked at,
    `(test: T0/T1/T2)`), on the operator's word for the core, and on the suite owner's word plus the
    operator's for a suite with an owner. "Verified" is measured, not remembered: every instance that

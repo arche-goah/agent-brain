@@ -247,7 +247,9 @@ def main():
         (R / "victim").write_text("keep me")
         json.dump({"ledgers": ["docs/orders.md"]}, open(cfg, "w", encoding="utf-8"))
         rc, out = run(root, "--brief")
-        ok("default-read" in out and "done but still open" in out, "default list: grep/test run", out)
+        # it ran and passed; new in a root that already has a memory, so it is reported as unproven
+        ok("default-read" in out and ("done but still open" in out or "negative control missing" in out),
+           "default list: grep/test run", out)
         ok("default-write" in next((l for l in out.splitlines() if "refused" in l), "")
            and not (R / "written-by-default").exists(), "default list: touch is refused", out)
         refl = next((l for l in out.splitlines() if "refused" in l), "")
@@ -274,6 +276,44 @@ def main():
     for cmd in ["grep -q x file", "test -f a && git log -1 --format=%H", "git log --oneline | grep -q fix",
                 "! grep -q draft notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md"]:
         ok(lr.permitted(cmd, lr.ALLOWED), f"allowed: {cmd!r}")
+
+    # Negative control (operator 2026-10-28): a check green the first time it is seen on an open
+    # entry never showed it can be red — measured that day: two checks grepped a word that stood in
+    # the file before the work. Such an entry is UNPROVEN, not done. A brain's first run is a
+    # baseline (old checks are not judged); a check seen red once and green later is DONE-OPEN.
+    with tempfile.TemporaryDirectory() as root:
+        R = pathlib.Path(root)
+        (R / "here").write_text("")
+        (R / "docs").mkdir()
+        (R / ".claude" / "rules").mkdir(parents=True)
+        json.dump({"ledgers": ["docs/l.md"], "allowed": ["test"]},
+                  open(R / ".claude" / "rules" / "ledgers.json", "w", encoding="utf-8"))
+        led = R / "docs" / "l.md"
+        old = "- [ ] **old** — derived (2026-10-01)\n  id: old-green\n  check: test -f here\n"
+        led.write_text(old, encoding="utf-8")
+        rc, out = run(root, "--brief")
+        ok("old-green" in next((l for l in out.splitlines() if "done but still open" in l), ""),
+           "first run = baseline: an old green check stays DONE-OPEN", out)
+        ok((R / ".claude-state" / "ledger-reconcile-seen.json").is_file(), "first run writes the memory")
+        new = old + ("- [ ] **weak** — derived (2026-10-28)\n  id: weak-check\n  check: test -f here\n"
+                     "- [ ] **real** — derived (2026-10-28)\n  id: real-work\n  check: test -f built\n")
+        led.write_text(new, encoding="utf-8")
+        rc, out = run(root, "--brief")
+        un = next((l for l in out.splitlines() if "negative control missing" in l), "")
+        do = next((l for l in out.splitlines() if "done but still open" in l), "")
+        ok("weak-check" in un and "weak-check" not in do, "a new check green at once = UNPROVEN, not done", out)
+        ok("old-green" in do and "old-green" not in un, "the baseline entry is not re-judged on later runs", out)
+        ok("real-work" not in out, "a new check that is red is not reported", out)
+        (R / "built").write_text("")
+        rc, out = run(root, "--brief")
+        do = next((l for l in out.splitlines() if "done but still open" in l), "")
+        ok("real-work" in do, "seen red once, green now = DONE-OPEN (the work happened)", out)
+        led.write_text(new.replace("id: weak-check\n  check: test -f here", "id: weak-check\n  check: test -f later"),
+                       encoding="utf-8")
+        rc, out = run(root, "--brief")
+        ok("weak-check" not in out, "a sharpened check is seen anew (red now, not reported)", out)
+        rc, out = run(root, "--brief", "--ledger", "docs/l.md")
+        ok("negative control missing" not in out, "a hand run with --ledger keeps no memory and judges nothing new", out)
 
     print()
     if fails:
