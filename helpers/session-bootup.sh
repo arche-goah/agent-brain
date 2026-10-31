@@ -370,6 +370,11 @@ boot_mark code-scanning
 if [[ -f "$HERE/../scripts/local-machinery.py" ]]; then
   "$PY" "$HERE/../scripts/local-machinery.py" --repo "$R" 2>/dev/null || true
 fi
+# An instrument for an unexplained failure is owed while its cause stays open (operator order
+# 2026-10-29): a Monitor ends after 30 min, a session ends — the start says which one is not running.
+if [[ -f "$HERE/../scripts/instrument-watch.py" ]]; then
+  "$PY" "$HERE/../scripts/instrument-watch.py" --repo "$R" 2>/dev/null || true
+fi
 # The other direction: what the core template carries and this brain does not. A template is
 # copied once at bootstrap, so its later permission rules never reach an existing brain (measured
 # 2026-10-26: 22 of 83 allow rules, an autonomous run stopped on a refused `gh pr ready`).
