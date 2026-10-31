@@ -474,6 +474,14 @@ def standing_classes(root):
         classes.append({"name": name, "kind": e["kind"], "scope": scope, "title": title, "excludes": excludes,
                         "audience": {str(t).lower() for t in e.get("audience") or []},
                         "granted": DAY.search(granted).group(0)})
+        # A standing approval is reviewed routinely (operator order 2026-10-29): it keeps applying, but
+        # after REVIEW_DAYS without a fresh `reviewed` date the start report names it once per start.
+        stamp = str(e.get("reviewed") or DAY.search(granted).group(0))
+        today = datetime.date.fromisoformat(os.environ.get("OPEN_ITEMS_TODAY") or datetime.date.today().isoformat())
+        if stamp < (today - datetime.timedelta(days=90)).isoformat():
+            refused.append(f"standing approval '{name}' due for review (granted {DAY.search(granted).group(0)}, "
+                           f"reviewed {e.get('reviewed') or 'never'}) — still applies; ask the operator whether "
+                           "the class still fits, then set \"reviewed\": \"<today>\"")
     return classes, refused
 
 

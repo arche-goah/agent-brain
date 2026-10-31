@@ -7,6 +7,7 @@
 # sources are clean, parked items stay on one line, a lost counter says so.
 # Usage: bash scripts/test-open-items.sh (exit 0 = pass)
 set -u
+export OPEN_ITEMS_TODAY=2026-10-29  # a standing approval's review date is judged against this, not the calendar
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 SRC="$(cd "$(dirname "$0")" && pwd)/open-items.py"
@@ -370,6 +371,11 @@ gl=$(grep -n -F -- '- standing approval — handle these, then report what was d
 pl=$(grep -n -F -- 'request-person' <<<"$st" | cut -d: -f1)
 ml=$(grep -n -F -- 'request-mine' <<<"$st" | cut -d: -f1)
 [ -n "$gl" ] && [ "$gl" -gt "$pl" ] && [ "$ml" -gt "$gl" ] && ok "standing items form their own group after the others" || bad "standing group order: $st"
+! grep -q "due for review" <<<"$st" && ok "a standing approval granted 18 days ago is not due" || bad "fresh approval named due: $st"
+st_old=$(OPEN_ITEMS_TODAY=2027-02-01 run st1b "$SR")
+grep -q "standing approval 'requests to this machine' due for review (granted 2026-10-11, reviewed never)" <<<"$st_old" \
+  && has "[request|standing]" "$(line 'request-mine' "$st_old")" \
+  && ok "a standing approval older than 90 days is named due and still applies" || bad "due approval: $st_old"
 printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","audience":["inst-a"],"granted":"the operator said so 2026-10-11"}]}' \
   > "$SR/.claude/rules/open-items-standing.json"
 st=$(run st2 "$SR")
