@@ -33,6 +33,10 @@
 #      time EXTENDS the verdict deadline. A block longer than CI_WATCH_RL_CEILING
 #      (default 7200 s: a primary window resets hourly, so two hours of block is not
 #      weather) ends as UNKNOWN naming the duration.
+#   8. (2026-10-28; point 7 is taken by core #197) The deadline is no verdict while a
+#      check-run of the watched commit is still in_progress: it moves on poll by poll until
+#      the run ends, up to CI_WATCH_RUN_CEILING (default 7200 s) after the oldest running
+#      check-run started. Nothing running, nothing readable, or past the ceiling = UNKNOWN.
 # This script matches refs via the run's headBranch FIELD from JSON (works for tags
 # and branches alike), enumerates every terminal state, and cannot end silently:
 # exit 0 = all green · 1 = something failed/cancelled/timed out in CI · 2 = could
@@ -413,10 +417,44 @@ print("real" if real else "old")
   return 0
 }
 
+# Header point 8: a deadline that passes while a job of the watched commit still RUNS is no
+# verdict yet. Measured 2026-10-27: a main run's macOS/Windows jobs were 90 min in (steps 4/7,
+# 3/7) when the watch gave up; 2026-10-28 five parallel PR runs kept a Windows job at step 4/7
+# after 35 min. The deadline moves on poll by poll while a check-run of that commit is
+# in_progress and the oldest of them started less than CI_WATCH_RUN_CEILING (default 7200 s)
+# ago; past the ceiling, or with nothing running or nothing readable, the timeout stands.
+RUN_CEILING=${CI_WATCH_RUN_CEILING:-7200}
+warned_running=0
+still_running() {   # exit 0 = a check-run of the watched commit is still in progress, under the ceiling
+  local sha age
+  if [[ "$MODE" == pr ]]; then
+    ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 1
+    sha=$gh_out
+  else sha=$last_sha; fi
+  [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 1
+  ghq api "repos/$REPO/commits/$sha/check-runs?status=in_progress&per_page=100" \
+      --jq '[.check_runs[].started_at] | "\(length) \(min // "")"' || return 1
+  age=$("$PY" -c '
+import sys, datetime as d
+n, _, first = sys.argv[1].partition(" ")
+t = d.datetime.strptime(first.strip(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=d.timezone.utc)
+print(f"{int(n)} {int(sys.argv[2]) - int(t.timestamp())}" if int(n) > 0 else "0 0")
+' "$gh_out" "$now" 2>/dev/null) || return 1
+  read -r n age <<<"$age"
+  (( n > 0 && age < RUN_CEILING )) || return 1
+  if (( warned_running == 0 )); then
+    echo "ci-watch: ${TIMEOUT}s passed, but $n check-run(s) of ${sha:0:7} are still running" \
+         "(oldest started $(( age / 60 )) min ago) — waiting for the run itself, ceiling ${RUN_CEILING}s per run" >&2
+    warned_running=1
+  fi
+  return 0
+}
+
 while :; do
   now=$(date +%s)
   if (( now >= deadline )); then
-    fail_unknown "timeout after ${TIMEOUT}s — $MODE $REPO $TARGET never reached a terminal verdict (do NOT read this as green)"
+    if still_running; then deadline=$(( now + POLL ))
+    else fail_unknown "timeout after ${TIMEOUT}s — $MODE $REPO $TARGET never reached a terminal verdict (do NOT read this as green)"; fi
   fi
 
   if [[ "$MODE" == "pr" ]]; then
