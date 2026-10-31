@@ -181,6 +181,20 @@ case "${CI_WATCH_STUB:?}" in
                       if [[ "$CI_WATCH_STUB" == pr_run_flip && -f "$f" ]]; then echo 0; else touch "$f"; echo 1; fi
                     else echo '[{"bucket":"pass","name":"CodeQL"},{"bucket":"pass","name":"Analyze"}]'; fi ;;
   # 2026-10-16: right after a push the PR still shows the OLD head and its green checks.
+  # 2026-10-28 (point 8): the deadline passes while a check-run of the head still runs. flip: it
+  # turns green 60 fake seconds in; stuck: it never ends (the ceiling ends it); old: it started
+  # in 2000, so the ceiling is long past at the first deadline.
+  pr_running_flip|pr_running_stuck|pr_running_old)
+                    if [[ "$*" == *status=in_progress* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_running_old ]]; then echo "1 2000-01-01T00:00:00Z"
+                      else echo "1 $("$REAL_DATE" -u +%Y-%m-%dT%H:%M:%SZ)"; fi
+                    elif [[ "$*" == *headRefOid* ]]; then echo abcdef1234567890abcdef1234567890abcdef12
+                    elif [[ "$*" == *check-runs* ]]; then echo '[]'
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    elif [[ "$CI_WATCH_STUB" == pr_running_flip && "$(cat "$CI_WATCH_FAKE_CLOCK")" -ge 60 ]]; then
+                      echo '[{"bucket":"pass","name":"portability"}]'
+                    else echo '[{"bucket":"pending","name":"portability"}]'; fi ;;
   # pr_head_lag: the head flips to the pushed commit on the second read; pr_head_stuck: never.
   pr_head_lag|pr_head_stuck)
                     f="${CI_WATCH_STATE:?}"
@@ -405,6 +419,19 @@ check "pr: head flips after the first green poll = no GREEN, waits, timeout(2)" 
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head still old, then flips = GREEN on the new head" pr_head_lag 0 pr 12 30
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head never reaches it = wait, timeout(2)"   pr_head_stuck 2 pr 12 2
 check "pr: without CI_WATCH_SHA the old head's green counts (unchanged behaviour)"        pr_head_stuck 0 pr 12 30
+echo 0 > "$TMP/fakeclock-r1"
+CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r1" \
+  check "pr: deadline passes while a check-run runs, then green = GREEN (point 8)" pr_running_flip 0 pr 12 20
+grep -q "still running (oldest started" "$TMP/out" && echo "  OK   the extension names the running check-runs" \
+  || { echo "  FAIL extension not named"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+echo 0 > "$TMP/fakeclock-r2"
+CI_WATCH_POLL=10 CI_WATCH_RUN_CEILING=50 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r2" \
+  check "pr: a check-run running past the ceiling = timeout(2)" pr_running_stuck 2 pr 12 20
+echo 0 > "$TMP/fakeclock-r3"
+CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r3" \
+  check "pr: a check-run that started long before the ceiling = timeout(2) at the deadline" pr_running_old 2 pr 12 20
+grep -q "still running" "$TMP/out" && { echo "  FAIL an old run extended the deadline"; fails=$((fails+1)); } \
+  || echo "  OK   an old run does not extend the deadline"
 check "pr: PR head behind its branch tip, old head red, then catches up green = GREEN"  pr_tip_lag 0 pr 12 30
 grep -q "has not caught up with" "$TMP/out" && echo "  OK   the lagging head is named" \
   || { echo "  FAIL lagging head not named"; fails=$((fails+1)); }
