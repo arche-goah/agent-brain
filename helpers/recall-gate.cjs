@@ -54,6 +54,7 @@ const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
 const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
+const { ownEcho, declare } = require('./stop-echo.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -63,7 +64,7 @@ const RECORD = process.argv.includes('--record');
 function allow() { process.exit(0); }
 
 const HOOK_ECHO = /^Stop hook feedback:/;
-const OWN_ECHO = /RECALL-GATE/;
+let OWN_ECHO = /RECALL-GATE/;
 const COOLDOWN_TURNS = 3;
 const TAIL_BYTES = 16 * 1024 * 1024;
 
@@ -223,6 +224,7 @@ function analyze(transcriptPath, cfg) {
 process.stdin.on('end', () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { return allow(); }
+  OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active) return allow();
   if (!input.transcript_path) return allow();
 
@@ -253,7 +255,7 @@ process.stdin.on('end', () => {
     ? `established ${seen.claims} verified finding(s) — last: "${seen.claimTexts.slice(-1)[0] || ''}"`
       + (byResearch ? ` and read a live system ${seen.research}×` : '')
     : `read a live system ${seen.research}× (${seen.top.join(', ')})`;
-  console.log(JSON.stringify({
+  console.log(JSON.stringify(declare({
     decision: 'block',
     reason:
       `RECALL-GATE — routine, not an error. This session ${what} and persisted nothing since. ` +
@@ -261,7 +263,7 @@ process.stdin.on('end', () => {
       'ledger entry, suite reference, shared-memory — or answer "⚙ nothing reusable". ' +
       '(Before the NEXT live read: scripts/transcript-recall.py <keyword> finds what earlier ' +
       'sessions already read.)',
-  }));
+  }, input)));
   process.exit(0);
 });
 

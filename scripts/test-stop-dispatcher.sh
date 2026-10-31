@@ -91,7 +91,9 @@ fi
 # declare it (class-gate, not converted yet) keeps its token, or its cooldown would die.
 case "$OUT" in *'[PREMISE-GATE]'*) bad "PREMISE line still carries its token: $OUT";;
   *'PREMISE '*) ok "PREMISE line without a token (gate reads its echo by label)";; *) bad "PREMISE finding lost: $OUT";; esac
-case "$OUT" in *'[CLASS-GATE]'*) ok "keeps the CLASS-GATE token for a gate that still reads it";; *) bad "CLASS-GATE marker lost";; esac
+# class-gate reads its echo by label since 2026-10-31 too: its line goes out without the token.
+case "$OUT" in *'[CLASS-GATE]'*) bad "CLASS line still carries its token: $OUT";;
+  *'CLASS '*) ok "CLASS line without a token (gate reads its echo by label)";; *) bad "CLASS finding lost: $OUT";; esac
 lines=$(printf '%s' "$OUT" | "$PY" -c "import json,sys; print(len(json.load(sys.stdin)['reason'].splitlines()))")
 [ "$lines" -le 6 ] && ok "compact ($lines lines)" || bad "not compact ($lines lines)"
 
