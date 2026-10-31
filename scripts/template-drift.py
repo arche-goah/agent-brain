@@ -62,6 +62,19 @@ def load(path):
         return None
 
 
+def py_name():
+    """The interpreter a printed command names: the one the caller resolved (PYTHON — the session
+    start passes its own), else the one running this script; never a fixed `python3`, which on
+    Windows can be the Store stub (os-traps OS-17). Measured 2026-10-31 in a fresh-brain trial on
+    Windows: the session start resolved `python` and this line still told the person to run
+    `! python3 core/scripts/template-drift.py --apply-user`."""
+    name = os.environ.get("PYTHON", "").strip()
+    if name:
+        return name
+    exe = os.path.basename(sys.executable or "")
+    return (exe[:-4] if exe.lower().endswith(".exe") else exe) or "python3"
+
+
 def user_settings_path():
     cfg = os.environ.get("CLAUDE_CONFIG_DIR")
     return (pathlib.Path(cfg) if cfg else pathlib.Path.home() / ".claude") / "settings.json"
@@ -105,7 +118,7 @@ def project_drift(repo, template):
             f".claude/settings.json - {'; '.join(parts)}. A missing allow leaves the step to the "
             f"harness (in auto mode the classifier may refuse it), a missing deny or ask drops a "
             f"limit. Take them over, or declare why in permissions._template_deviations "
-            f"(full list: python3 core/scripts/autonomy-diagnose.py, section 4)")
+            f"(full list: {py_name()} core/scripts/autonomy-diagnose.py, section 4)")
 
 
 def wanted_auto(user_template, org, key="autoMode"):
@@ -133,7 +146,7 @@ def user_drift(user, user_template, org):
     return (f"!! settings: autoMode in ~/.claude/settings.json is behind the core template ({', '.join(parts)}) - "
             f"the auto-mode classifier reads its trust only from there, so an autonomous run stops on steps it "
             f"would clear, or keeps a trust the template withdrew. The person at this machine runs: "
-            f"! python3 core/scripts/template-drift.py --apply-user"), missing, stale
+            f"! {py_name()} core/scripts/template-drift.py --apply-user"), missing, stale
 
 
 def apply_user(user_template, org_arg, repo):

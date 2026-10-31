@@ -64,6 +64,14 @@ U="$T/user7"; mkdir -p "$U"; printf '%s\n' '{"theme":"dark"}' > "$U/settings.jso
 urun() { CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b7")" --template "$(native "$TPL")" --rules-template "$(native "$T/no-rules")" --user-template "$(native "$UT")" "$@" 2>&1; }
 out="$(urun)"
 case "$out" in *'(4 missing)'*'--apply-user'*) ok "missing autoMode entries are named, with the command";; *) bad "missing autoMode not named: '$out'";; esac
+# The printed command names the interpreter the caller resolved (PYTHON — the session start passes
+# its own), else the running one; never a fixed python3 (fresh-brain trial 2026-10-31 on Windows,
+# where python3 was the Store stub and the session start had resolved python).
+out="$(PYTHON=pyfix urun)"
+case "$out" in *'! pyfix core/scripts/template-drift.py --apply-user'*) ok "the command names the interpreter the caller resolved";; *) bad "PYTHON not used: '$out'";; esac
+own=$("$PY" -c 'import os,sys; e=os.path.basename(sys.executable); print(e[:-4] if e.lower().endswith(".exe") else e)' | tr -d '\r')
+out="$(unset PYTHON; urun)"
+case "$out" in *"! $own core/scripts/template-drift.py --apply-user"*) ok "without PYTHON it names the running interpreter ($own)";; *) bad "running interpreter not named ($own): '$out'";; esac
 out="$(urun --apply-user)"
 case "$out" in *'4 autoMode entr(y/ies) written'*'(org acme)'*) ok "--apply-user writes, org from the marketplace repo";; *) bad "--apply-user did not write: '$out'";; esac
 grep -q 'github.com/acme' "$U/settings.json" && grep -q '"theme": "dark"' "$U/settings.json" \
