@@ -68,6 +68,13 @@ function ledgerDecisions(root) {
       // 1 ai-does-it — none an operator decision.
       const exits = [...body.matchAll(/^\s*exit:\s*([\w-]+)/gm)];
       if (exits.length && exits[exits.length - 1][1] !== 'operator-decision') continue;
+      // `ask-when:` (operator decision 2026-10-29 on the macOS instance: "questions at the right time"): a date
+      // still ahead, or a topic (`ask-when: thema|topic <regex>`, put when the operator's work touches it) - not due here.
+      const when = /^\s*ask-when:\s*(.+)$/m.exec(body);
+      if (when) {
+        const d = /^(\d{4}-\d{2}-\d{2})\b/.exec(when[1].trim());
+        if (!d || d[1] > new Date().toISOString().slice(0, 10)) continue;
+      }
       out.push((circle ? '' : '(no circle) ') + m[1].replace(/\*\*/g, '').slice(0, 80));
     }
   }

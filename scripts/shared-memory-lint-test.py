@@ -202,6 +202,17 @@ def main() -> int:
             bad(f"16 LOG handling wrong: {c}")
         (repo / "ops" / "LOG.md").write_text("short\n", encoding="utf-8")
         check("17 small LOG is silent", run(repo), "limits", 0)
+        # 17a. a NEW LOG entry over the entry cap is the writer's finding; an old one is protocol (ratchet)
+        long_body = "x" * 400
+        (repo / "ops" / "LOG.md").write_text(
+            f"## {sml.LOG_CAP_SINCE} · sam-laptop — AN kim-win (status: info): new and long\n{long_body}\n", encoding="utf-8")
+        check("17a new LOG entry over the cap flagged", run(repo), "limits", 1)
+        (repo / "ops" / "LOG.md").write_text(
+            f"## 2026-10-01 · sam-laptop — AN kim-win (status: info): old and long\n{long_body}\n", encoding="utf-8")
+        check("17a an entry before the ratchet date is not judged", run(repo), "limits", 0)
+        (repo / "ops" / "LOG.md").write_text(
+            f"## {sml.LOG_CAP_SINCE} · sam-laptop — AN kim-win (status: info): new and short\nops/fact.md\n", encoding="utf-8")
+        check("17a a new short entry is silent", run(repo), "limits", 0)
         # 17b. a dated LOG heading no shape recognises is a finding (reader drops nothing, the
         #      writer hears it); a session after the sender is a KNOWN shape. Negative control
         #      is the pre-fix pattern: it would call the second heading unknown too.

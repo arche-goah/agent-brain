@@ -31,11 +31,13 @@ printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$N/.claude/rules/ledgers.js
 printf '%s\n' '- [ ] Write the docs' '  - class: todo' '- [x] Old decision' '  - class: decision' \
   '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Their desk layout' '  - class: decision' '  - circle: D' \
   '- [ ] Router hand step' '  - class: hand-step' '  exit: later-at-system 2026-10-28 — at the router' \
-  '- [ ] Stable pin' '  - class: decision' '  - circle: B' '  exit: operator-decision 2026-10-20' '  exit: other-side 2026-10-28 — field use first' > "$N/docs/questions.md"
+  '- [ ] Stable pin' '  - class: decision' '  - circle: B' '  exit: operator-decision 2026-10-20' '  exit: other-side 2026-10-28 — field use first' \
+  '- [ ] Stand joint' '  - class: decision' '  - circle: B' '  exit: operator-decision 2026-10-29' '  ask-when: thema stand' \
+  '- [ ] Budget next year' '  - class: decision' '  - circle: B' '  exit: operator-decision 2026-10-29' '  ask-when: 2099-01-01' > "$N/docs/questions.md"
 # The entry's last exit says who moves (2026-10-28: 22 counted, none an operator decision by its exit).
 X="$T/exit"; mkdir -p "$X/.claude/rules" "$X/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$X/.claude/rules/ledgers.json"
-printf '%s\n' '- [ ] Parked choice' '  - class: decision' '  exit: parked 2026-10-20' '- [ ] Release now' '  - class: decision' '  exit: operator-decision 2026-10-28' > "$X/docs/questions.md"
+printf '%s\n' '- [ ] Parked choice' '  - class: decision' '  exit: parked 2026-10-20' '- [ ] Release now' '  - class: decision' '  exit: operator-decision 2026-10-28' '  ask-when: 2026-01-01' > "$X/docs/questions.md"   # a date reached: due (counter-case to ask-when in $N)
 O="$T/circle"; mkdir -p "$O/.claude/rules" "$O/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$O/.claude/rules/ledgers.json"
 printf '%s\n' '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Release now' '  - class: decision' '  - circle: B' > "$O/docs/questions.md"
