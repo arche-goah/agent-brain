@@ -291,6 +291,27 @@ else
   skip "open-items template line"
 fi
 
+# --- one short line per finding, the cut text in a detail file (2026-10-31) -----------------
+# A gate text of several sentences whose template does not match (the gate's wording moved on)
+# used to go out in full. Now: the first sentence, cut; the full text in .claude-state/stop-detail.txt.
+CFG5="$(mktemp -d)"; mkdir -p "$CFG5/.claude/rules"
+trap 'rm -rf "$T" "$CFG" "$CFG2" "$CFG3" "$CFG4" "$CFG5"' EXIT
+LONG="$T/long.cjs"
+printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'AUTONOMOUS-IDLE: this turn ends on a BLOCKED line, but the list behind it was not measured. Run the own-items measurement now, do what it lists.\nMissing: own-items measurement'}))" > "$LONG"
+feed5() { printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TR2")" "$(native "$CFG5")" \
+  | CLAUDE_PROJECT_DIR="$(native "$CFG5")" node "$D" 2>/dev/null; }
+printf '{"header":"","checks":[{"label":"IDLE","marker":"IDLE-PROBE","cmd":"%s","mode":"block","extract":"Missing: continuation","template":"never matches"},{"label":"SECOND","marker":"SECOND-PROBE","cmd":"%s","mode":"block","short":"own items not measured"}]}' \
+  "$(native "$LONG")" "$(native "$LONG")" > "$CFG5/.claude/rules/stop-checks.json"
+OUT10="$(feed5)"
+case "$OUT10" in *'Run the own-items'*) bad "a cut line still carries the gate's full text: $OUT10";; *) ok "a template that no longer matches cuts to the first sentence";; esac
+case "$OUT10" in *'IDLE'*'this turn ends on a BLOCKED line'*) ok "the first sentence stays (the finding is not swallowed)";; *) bad "first sentence lost: $OUT10";; esac
+case "$OUT10" in *'SECOND'*'own items not measured'*) ok "a fixed short line replaces the text";; *) bad "short line not used: $OUT10";; esac
+case "$OUT10" in *'Details: .claude-state/stop-detail.txt'*) ok "the reply names the detail file once";; *) bad "no detail pointer: $OUT10";; esac
+grep -q 'Run the own-items measurement now' "$CFG5/.claude-state/stop-detail.txt" 2>/dev/null \
+  && ok "the detail file holds the full text" || bad "detail file lacks the full text"
+case "$OUT10" in *'"reason":"\n'*|*'"reason":"·'*) ok "an empty header prints no header line";; *'STOP-CHECKS'*) bad "empty header still printed";; *) bad "unexpected shape: $OUT10";; esac
+case "$OUT10" in *'"reason":"\n'*) bad "an empty header left an empty first line: $OUT10";; *) ok "no empty first line";; esac
+
 echo
 [ "$fail" -eq 0 ] && echo "stop-dispatcher fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

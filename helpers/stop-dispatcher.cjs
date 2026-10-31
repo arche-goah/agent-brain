@@ -267,19 +267,49 @@ process.stdin.on('end', async () => {
     process.exit(0);
   }
 
-  const body = ({ check, reason }) => compress(check, reason)
-    // No match => the full original text, never a swallowed finding.
-    || reason.split('\n').filter((l) => l.trim()).join(' ').trim();
+  // SHORT LINES, NOTHING SWALLOWED (2026-10-31, the operator: the stop hook "is really a background
+  // process I would hide completely if I could - keep it as short and informative as possible").
+  // The block reason is shown to the operator AND read by the model; it cannot be split. So every
+  // finding is ONE line: the check's template, else its fixed `short` line, else the first sentence
+  // of the gate's text cut to `maxLength`. Whatever a line cuts goes in full to a detail file the
+  // model can read, named once at the end. Measured on the proving brain 2026-10-17..10-31: 478
+  // stop feedbacks, 77 lines passed the gate's full English text through (a template whose extract
+  // no longer matched, or none), median 595 characters for the worst check.
+  const flat = (s) => s.split('\n').map((l) => l.trim()).filter(Boolean).join(' ');
+  const cutFallback = (check, reason) => {
+    if (typeof check.short === 'string' && check.short.trim()) return check.short.trim();
+    const t = flat(reason);
+    const first = (/^(.+?[.!?])(?:\s|$)/.exec(t) || [null, t])[1];
+    return short(first, check.maxLength || 140);
+  };
+  const lines = results.map((r) => {
+    const compressed = compress(r.check, r.reason);
+    const text = compressed || cutFallback(r.check, r.reason);
+    return { r, text, cut: !compressed && text !== flat(r.reason) };
+  });
+  let detail = '';
+  if (lines.some((l) => l.cut)) {
+    const rel = path.join('.claude-state', 'stop-detail.txt');
+    try {
+      fs.mkdirSync(path.join(ROOT, '.claude-state'), { recursive: true });
+      fs.writeFileSync(path.join(ROOT, rel),
+        lines.filter((l) => l.cut).map((l) => `${l.r.check.label} [${l.r.check.marker}]\n${l.r.reason.trim()}\n`).join('\n'));
+      detail = `\nDetails: ${rel.split(path.sep).join('/')}`;
+    } catch (e) {
+      // Cannot write the detail file: never swallow, fall back to the full text.
+      for (const l of lines) if (l.cut) { l.text = flat(l.r.reason); l.cut = false; }
+    }
+  }
 
   // The bracket stays only for a check that still finds its echo by the token.
   const tag = (r) => (r.byLabel ? '' : `   [${r.check.marker}]`);
-  const label = (r) => `${r.check.label} — ${body(r)}${tag(r)}`;
   const width = Math.max(...results.map((r) => r.check.label.length));
+  const header = cfg.header.trim() ? `${cfg.header.replace('{n}', String(results.length))}\n` : '';
 
-  const reason = results.length === 1
-    ? label(results[0])
-    : `${cfg.header.replace('{n}', String(results.length))}\n`
-      + results.map((r) => `· ${r.check.label.padEnd(width)} ${body(r)}${tag(r)}`).join('\n');
+  const reason = (results.length === 1
+    ? `${lines[0].r.check.label} — ${lines[0].text}${tag(lines[0].r)}`
+    : header + lines.map((l) => `· ${l.r.check.label.padEnd(width)} ${l.text}${tag(l.r)}`).join('\n'))
+    + detail;
 
   console.log(JSON.stringify(notes.length
     ? { decision: 'block', reason, systemMessage: notes.join('\n') }
