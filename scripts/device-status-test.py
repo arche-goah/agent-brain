@@ -118,6 +118,8 @@ try:
           "last_post = the newest entry with this device's von:, another device's and a LOG.md are not counted")
     check(str(tmp) not in devfile.read_text(encoding="utf-8") and "/secret" not in devfile.read_text(encoding="utf-8"),
           "no path in the device file")
+    check(isinstance(doc.get("decisions"), dict) and "questions" in doc["decisions"],
+          "the report carries this brain's decision numbers (decision-review --numbers, 7 days)")
     check(git("rev-list", "--count", "HEAD", cwd=bare) == str(commits()), "report pushed")
     rc, out = ds("report")
     check(rc == 0 and commits() == n0 + 1 and "unchanged" in out, "NEGATIVE: unchanged state does not commit again")

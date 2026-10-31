@@ -124,6 +124,16 @@ def hook_commands(repo, core):
                 for h in m.get("hooks", []):
                     if h.get("command"):
                         cmds.append(h["command"])
+    # The stop dispatcher (a hook itself) runs every row of the instance's stop-checks.json —
+    # those checks are wired just as much. Measured 2026-10-28 on the macOS instance: a Stop check
+    # wired only there was called "report only", and the pre-commit refused a protocol entry
+    # naming it as its carrier.
+    try:
+        with open(os.path.join(repo, ".claude", "rules", "stop-checks.json"), encoding="utf-8") as f:
+            rows = (json.load(f) or {}).get("checks") or []
+    except (OSError, ValueError, AttributeError):
+        rows = []
+    cmds += [r["cmd"] for r in rows if isinstance(r, dict) and isinstance(r.get("cmd"), str)]
     return cmds
 
 

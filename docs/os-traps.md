@@ -93,8 +93,8 @@ known:     scripts/backprop-report.py=5
 known:     scripts/brain-friction.py=1
 known:     scripts/brain-selftest.sh=3
 known:     scripts/brain-update.sh=7
-known:     scripts/carrier-audit-test.py=20
-known:     scripts/carrier-audit.py=11
+known:     scripts/carrier-audit-test.py=22
+known:     scripts/carrier-audit.py=12
 known:     scripts/caveman-armed.py=6
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
@@ -274,6 +274,7 @@ known:     scripts/test-decision-readiness.sh=1
 known:     scripts/test-decision-review.sh=1
 known:     scripts/test-delivered-read-gate.sh=1
 known:     scripts/test-eco-owner.sh=1
+known:     scripts/test-ecosystem-sync.sh=1
 known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
@@ -328,6 +329,7 @@ known:     scripts/test-watch-pr.sh=1
 known:     scripts/test-watch-readiness.sh=1
 known:     scripts/test-watch-supervisor.sh=1
 known:     scripts/test-workflow-path-args.sh=1
+known:     scripts/test-loop-watchdog-alarm.sh=1
 instances: 3
 repeat:    yes
 status:    closed
