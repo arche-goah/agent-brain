@@ -111,4 +111,20 @@ mkdir -p "$T/d1/.claude/rules"; cp "$RT/autonomous-patterns.json" "$T/d1/.claude
 out="$(drun)"
 [ -z "$out" ] && ok "with the data file in place the report is silent" || bad "still reported: '$out'"
 
+# --copy-data (bootstrap-brain.sh; fresh-brain trial 2026-10-31: bootstrap's own hand list carried
+# 8 of the 16 files, the first start was red): copies exactly what the report names, never over a file.
+printf '%s\n' '{"rules":[]}' > "$RT/skill-gate.json"
+printf '%s\n' "const g = path.join(cwd, '.claude', 'rules', 'skill-gate.json');" > "$HL/skill-gate.cjs"
+brain d2 '{"permissions":{}}'; mkdir -p "$T/d2/.claude/rules"
+printf '%s\n' '{"on_patterns":["mine"]}' > "$T/d2/.claude/rules/autonomous-patterns.json"
+crun() { "$PY" "$S" --repo "$(native "$T/d2")" --rules-template "$(native "$RT")" --helpers "$(native "$HL")" "$@" 2>&1; }
+out="$(crun --copy-data)"
+case "$out" in *"1 data file(s) copied"*"skill-gate.json"*) ok "--copy-data copies the helper-read file the brain lacks";; *) bad "--copy-data: '$out'";; esac
+[ -f "$T/d2/.claude/rules/skill-gate.json" ] && [ ! -e "$T/d2/.claude/rules/nobody-reads.json" ] \
+  && ok "--copy-data leaves out a file no helper reads" || bad "--copy-data copied the wrong set: $(ls "$T/d2/.claude/rules")"
+grep -q '"mine"' "$T/d2/.claude/rules/autonomous-patterns.json" && ok "--copy-data never overwrites an existing file" \
+  || bad "--copy-data overwrote: $(cat "$T/d2/.claude/rules/autonomous-patterns.json")"
+out="$(crun)"
+case "$out" in *"data file(s) of core/templates"*) bad "after --copy-data the report still names data files: '$out'";; *) ok "after --copy-data the data report is silent";; esac
+
 [ "$fail" = 0 ] && echo "template-drift: all cases pass" || { echo "template-drift: FAILURES"; exit 1; }

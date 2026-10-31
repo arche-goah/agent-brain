@@ -35,6 +35,10 @@ Usage:
                                            ~/.claude/settings.json, after a dated copy of it.
                                            Run by the PERSON at the machine (`! <command>`):
                                            widening the classifier's trust is their step.
+  template-drift.py --copy-data [--repo DIR] [--rules-template D] [--helpers D]
+                                           copy the data files of invariant 3 the brain lacks
+                                           from the template, never over an existing file
+                                           (bootstrap-brain.sh, against the consumed core).
 """
 import argparse
 import datetime
@@ -187,14 +191,36 @@ def apply_user(user_template, org_arg, repo):
     return 0
 
 
-def data_drift(repo, rules_tpl, helpers):
-    """Template data files a core helper reads that this brain's .claude/rules/ lacks (invariant 3)."""
+def data_gone(repo, rules_tpl, helpers):
+    """Names of the template data files a core helper reads that this brain's .claude/rules/ lacks
+    (invariant 3) — the ONE list, read by the session start's report and by bootstrap's copy."""
     rules_tpl, helpers = pathlib.Path(rules_tpl), pathlib.Path(helpers)
     if not rules_tpl.is_dir() or not helpers.is_dir():
-        return None
+        return []
     code = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted(helpers.glob("*.cjs")))
     here = pathlib.Path(repo) / ".claude" / "rules"
-    gone = [p.name for p in sorted(rules_tpl.glob("*.json")) if f"'{p.name}'" in code and not (here / p.name).exists()]
+    return [p.name for p in sorted(rules_tpl.glob("*.json")) if f"'{p.name}'" in code and not (here / p.name).exists()]
+
+
+def copy_data(repo, rules_tpl, helpers):
+    """Copy every data file data_gone() names from the template into .claude/rules/, never over an
+    existing file. Caller: scripts/bootstrap-brain.sh — a hand-kept copy list there fell behind this
+    one (fresh-brain trial 2026-10-31: 8 of 16 files missing, the first session start was red)."""
+    here = pathlib.Path(repo) / ".claude" / "rules"
+    here.mkdir(parents=True, exist_ok=True)
+    done = []
+    for name in data_gone(repo, rules_tpl, helpers):
+        if not (here / name).exists():
+            shutil.copyfile(pathlib.Path(rules_tpl) / name, here / name)
+            done.append(name)
+    print(f"template-drift: {len(done)} data file(s) copied into .claude/rules/"
+          + (f" - {', '.join(done)}" if done else " - nothing was missing"))
+    return 0
+
+
+def data_drift(repo, rules_tpl, helpers):
+    """The session-start line for data_gone(), or None."""
+    gone = data_gone(repo, rules_tpl, helpers)
     if not gone:
         return None
     return (f"!! settings: {len(gone)} data file(s) of core/templates/rules-instance/ that a core helper reads are "
@@ -212,10 +238,13 @@ def main():
     a.add_argument("--rules-template", default=str(TEMPLATES / "rules-instance"))
     a.add_argument("--helpers", default=str(TEMPLATES.parent / "helpers"))
     a.add_argument("--apply-user", action="store_true")
+    a.add_argument("--copy-data", action="store_true")
     a.add_argument("--org")
     args = a.parse_args()
     if args.apply_user:
         return apply_user(args.user_template, args.org, args.repo)
+    if args.copy_data:
+        return copy_data(args.repo, args.rules_template, args.helpers)
     for line in (project_drift(args.repo, args.template),
                  data_drift(args.repo, args.rules_template, args.helpers)):
         if line:
