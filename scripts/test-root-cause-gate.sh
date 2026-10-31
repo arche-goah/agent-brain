@@ -44,13 +44,28 @@ check "why-did-you answered with an apology" "$T/t2.jsonl" block "$CWD"
 { user "go"; asst "ok"; user "the same failure class again, this keeps happening"; tres; asst "Fixed."; } > "$T/t3.jsonl"
 check "failure class named by the operator, reply says fixed" "$T/t3.jsonl" block "$CWD"
 
-# --- must allow: a cause named, in any text of the turn
-{ user "go"; asst "ok"; user "that is already active! something went wrong"; asst "Cause: the register record is a snapshot of 2026-10-16, nothing re-measured the topic (question-gate.cjs list, line 296). Class: every deferred record. Carrier: core PR."; } > "$T/t4.jsonl"
-check "correction answered with a cause line" "$T/t4.jsonl" allow "$CWD"
-{ user "go"; asst "ok"; user "why did you ask that again?"; asst "Reading the record."; tres; asst "The cause was a stale record (asked 2026-10-16, never re-measured)."; } > "$T/t5.jsonl"
+# --- must allow: a cause named, in any text of the turn — with its mechanism and its register entry
+# (2026-10-28: a cause named is half the step; the same turn writes the carrier and the register)
+REG="docs/maintenance/carrier-register.md"
+{ user "go"; asst "ok"; user "that is already active! something went wrong"; asst "Cause: the register record is a snapshot of 2026-10-16, nothing re-measured the topic (question-gate.cjs list, line 296). Class: every deferred record."; write "core/helpers/question-gate.cjs"; write "$CWD/$REG"; } > "$T/t4.jsonl"
+check "correction answered with a cause line, a mechanism and the register" "$T/t4.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "why did you ask that again?"; asst "Reading the record."; tres; asst "The cause was a stale record (asked 2026-10-16, never re-measured)."; write "scripts/recheck.py"; write "$CWD/$REG"; } > "$T/t5.jsonl"
 check "the cause named in a later text of the same turn" "$T/t5.jsonl" allow "$CWD"
-{ user "go"; asst "ok"; user "something went wrong"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day."; } > "$T/t6.jsonl"
-check "cause unknown, with what is missing" "$T/t6.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "something went wrong"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
+Carrier: none — the cause is unknown, nothing to build until it is measured"; write "$CWD/$REG"; } > "$T/t6.jsonl"
+check "cause unknown, carrier none with a reason, registered" "$T/t6.jsonl" allow "$CWD"
+# --- must block: the instance fixed, the tool left as it was
+{ user "go"; asst "Re-posted the request to the right group."; asst "Cause: the post tool does not check the audience."; } > "$T/t20.jsonl"
+check "a self-found cause, no correction, no mechanism (the 2026-10-28 class)" "$T/t20.jsonl" block "$CWD"
+{ user "go"; asst "Cause: the post tool does not check the audience."; write "scripts/post.py"; } > "$T/t21.jsonl"
+check "cause and mechanism, but no register entry" "$T/t21.jsonl" block "$CWD"
+{ user "go"; asst "Cause: the post tool does not check the audience."; write "$CWD/$REG"; } > "$T/t22.jsonl"
+check "cause and register, but neither mechanism nor a carrier-none line" "$T/t22.jsonl" block "$CWD"
+{ user "go"; asst "Cause: the post tool does not check the audience."; write ".claude/rules/working-rules.md"; write "$CWD/$REG"; } > "$T/t23.jsonl"
+check "a rule written as prose (.md) is no mechanism" "$T/t23.jsonl" block "$CWD"
+{ user "go"; asst "Cause: the post tool does not check the audience.
+Carrier: none — the harness owns that path and offers no hook"; write "$CWD/$REG"; } > "$T/t24.jsonl"
+check "carrier none with a reason, registered" "$T/t24.jsonl" allow "$CWD"
 # --- must allow: no correction
 { user "go"; asst "ok"; user "and the show?"; asst "Fixed."; } > "$T/t7.jsonl"
 check "no correction in the prompt" "$T/t7.jsonl" allow "$CWD"
@@ -95,7 +110,7 @@ printf '%s\n' '{"correction_patterns": ["\\bschief ?gelaufen\\b", "\\bist doch s
 { user "los"; asst "ok"; user "ist doch schon aktiv! da ist was schief gelaufen"; asst "Frage im Register geschlossen."; } > "$T/t14.jsonl"
 check "German correction without instance data" "$T/t14.jsonl" allow "$CWD"
 check "German correction with instance data, no cause" "$T/t14.jsonl" block "$DE"
-{ user "los"; asst "ok"; user "ist doch schon aktiv! da ist was schief gelaufen"; asst "Ursache: der Eintrag ist ein Schnappschuss vom 16.10., das Thema war seitdem ungelesen."; } > "$T/t15.jsonl"
+{ user "los"; asst "ok"; user "ist doch schon aktiv! da ist was schief gelaufen"; asst "Ursache: der Eintrag ist ein Schnappschuss vom 16.10., das Thema war seitdem ungelesen."; write "core/helpers/question-gate.cjs"; write "$DE/$REG"; } > "$T/t15.jsonl"
 check "German correction with a German cause line" "$T/t15.jsonl" allow "$DE"
 
 # --- the review: counts over a directory of transcripts, carrier = a mechanism file written

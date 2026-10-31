@@ -30,6 +30,11 @@ case "${CI_WATCH_STUB:?}" in
               if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
               else touch "$f"; echo '[{"bucket":"pending"},{"bucket":"pass"}]'; fi ;;
   gh_broken)  echo "HTTP 500 boom" >&2; exit 1 ;;
+  # 2026-10-27: one TLS timeout ended a watch on a running CI. Once = wait; always = unknown.
+  net_flip)   f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
+              else touch "$f"; echo 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout' >&2; exit 1; fi ;;
+  net_dead)   echo 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout' >&2; exit 1 ;;
   # point 6: every gh call is counted, each answer takes real time, so a second watch can attach.
   pr_slow)    echo x >> "${CI_WATCH_STATE:?}.calls"; "$REAL_SLEEP" 1; echo '[{"bucket":"pass"}]' ;;
   # 2026-10-10: right after a merge, `pr checks` answered with exit 0 and a reply that was not
@@ -162,7 +167,8 @@ case "${CI_WATCH_STUB:?}" in
                     if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
                     elif [[ "${1:-}" == api ]]; then echo '[{"name":"test","conclusion":"success"},{"name":"release-preflight","conclusion":'"$c"'}]'
-                    elif [[ "$CI_WATCH_STUB" != pr_stale_running && -f "$f" ]]; then echo "second poll reached" >&2; exit 1
+                    # since 2026-10-28 GREEN needs the same head on two polls: green may read twice
+                    elif [[ "$CI_WATCH_STUB" == pr_stale_red && -f "$f" ]]; then echo "second poll reached" >&2; exit 1
                     else touch "$f"; echo '[{"bucket":"pass","name":"test"},{"bucket":"pending","name":"release-preflight"}]'; fi ;;
   # 2026-10-16: the listed checks are all green, but a second workflow run of the head commit
   # is in_progress and has not listed its jobs yet. pr_run_open: it stays open (no verdict);
@@ -183,6 +189,20 @@ case "${CI_WATCH_STUB:?}" in
                       else touch "$f"; echo aaaa111100000000000000000000000000000000; fi
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
                     elif [[ "${1:-}" == api ]]; then echo 0
+                    else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
+  # 2026-10-28: after `gh pr update-branch` the PR head AND its branch tip still named the old
+  # commit on the first poll (old checks green); the new head appears on the next read with its
+  # checks queued. GREEN must not come from the first poll — without CI_WATCH_SHA.
+  pr_head_flip_green)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ -f "$f" ]]; then H=bbbb333300000000000000000000000000000000; else H=aaaa333300000000000000000000000000000000; fi
+                    if [[ "$*" == *headRefName* ]]; then printf '%s\tfeat\to/r\n' "$H"
+                    elif [[ "$*" == *headRefOid* ]]; then echo "$H"; touch "$f"
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api && "$*" == *actions/runs* ]]; then echo 0
+                    elif [[ "${1:-}" == api && "$*" == *git/ref* ]]; then echo "$H"
+                    elif [[ "${1:-}" == api ]]; then echo '[]'
+                    elif [[ -f "$f" ]]; then echo '[{"bucket":"pending","name":"lint"}]'
                     else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
   # ...and a pending entry that is a commit STATUS (no check-run of that name) keeps waiting.
   pr_stale_status)  if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
@@ -323,6 +343,8 @@ check "pr 'no checks reported' waits, then timeout(2)" pr_nochecks 2 pr 12 2
 check "pr 'no checks' then green"       pr_nochecks_flip 0 pr 12
 check "pr pending then green"           pr_flip    0 pr 12
 check "gh hard error = unknown"         gh_broken  2 pr 12
+check "one network timeout, then green = GREEN" net_flip 0 pr 12 30
+check "network down on every poll = unknown(2)" net_dead 2 pr 12 30
 check "pr unparseable once, then green" pr_garbage_flip 0 pr 12
 check "pr unparseable three polls = unknown(2)" pr_garbage 2 pr 12 30
 grep -q "3 polls in a row" "$TMP/out" && echo "  OK   unknown names the repeated unparseable reply" \
@@ -369,7 +391,7 @@ check "pr: 'no checks' wording + no workflows = NO-CI(3)" pr_noci_nochecks 3 pr 
 check "pr: zero checks, workflows exist = wait, timeout(2)" pr_zero_hasci 2 pr 12 2
 check "pr: zero checks, count unreadable = wait, timeout(2)" pr_zero_apierr 2 pr 12 2
 check "ref: repo without workflows = NO-CI(3)"         ref_noci        3 ref main 30
-check "pr: stale check-run (in_progress + conclusion success) = GREEN on the first poll" pr_stale_green 0 pr 12 30
+check "pr: stale check-run (in_progress + conclusion success) = GREEN without waiting for the status" pr_stale_green 0 pr 12 30
 grep -q "left the status stale" "$TMP/out" && echo "  OK   stale check-run is named in the output" \
   || { echo "  FAIL stale check-run not named"; fails=$((fails+1)); }
 check "pr: stale check-run with conclusion failure = RED"           pr_stale_red     1 pr 12 30
@@ -379,6 +401,7 @@ grep -q "left the status stale" "$TMP/out" && { echo "  FAIL running check-run w
 check "pr: pending commit status without a check-run = wait, timeout(2)" pr_stale_status 2 pr 12 2
 check "pr: listed checks green, a workflow run still open = wait, timeout(2)" pr_run_open 2 pr 12 2
 check "pr: listed checks green, the open run completes = GREEN"          pr_run_flip 0 pr 12 30
+check "pr: head flips after the first green poll = no GREEN, waits, timeout(2)" pr_head_flip_green 2 pr 12 3
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head still old, then flips = GREEN on the new head" pr_head_lag 0 pr 12 30
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head never reaches it = wait, timeout(2)"   pr_head_stuck 2 pr 12 2
 check "pr: without CI_WATCH_SHA the old head's green counts (unchanged behaviour)"        pr_head_stuck 0 pr 12 30
@@ -466,6 +489,19 @@ mkdir -p "$TMP/locks/stale"; echo 999999 > "$TMP/locks/stale/pid"
 L_STALE=$(printf '%s|%s|%s|%s' pr owner/repo 79 "" | cksum | tr -c '0-9\n' '-')
 mv "$TMP/locks/stale" "$TMP/locks/$L_STALE"
 check "dead owner's leftover lock is taken over" pr_green 0 pr 79
+
+# --- argument form (2026-10-27: `pr 33 --repo x` died on an unbound variable) ------------
+form() { # label expected_rc expected_text args...
+  local label="$1" want="$2" text="$3"; shift 3
+  CI_WATCH_STUB=pr_green CI_WATCH_STATE="$TMP/state-form" bash "$WATCH" "$@" >"$TMP/out" 2>&1
+  local got=$?
+  if [[ "$got" == "$want" ]] && grep -q -- "$text" "$TMP/out"; then echo "  OK   $label (rc=$got)"
+  else echo "  FAIL $label: rc=$got wanted $want with '$text'"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); fi
+}
+form "repo not owner/name names the form"  2 "is not <owner/repo>"   pr 33 --repo owner/repo
+form "pr target not a number names it"     2 "is not a PR number"     pr owner/repo --repo
+form "timeout not a number names it"       2 "is not a number of seconds" pr owner/repo 12 soon
+form "valid form still watches (control)"  0 "CI-WATCH GREEN"          pr owner/repo 12 5
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi

@@ -85,6 +85,16 @@ function words(cwd) {
   };
 }
 
+/**
+ * An on-word orders the run only outside a question. Measured 2026-10-27 on the macOS instance: the
+ * operator asked (translated) "got no continue-autonomously question, did I? why?" - the word in that
+ * question set the latch, and the gate then held the very mode question the operator was missing.
+ * A sentence ending in "?" mentions the mode; it does not order it.
+ */
+function ordersOn(on, text) {
+  return (text.match(/[^.!?\n]+[.!?]*/g) || []).some((s) => !/\?\s*$/.test(s) && on.test(s));
+}
+
 function promptText(msg) {
   const c = msg && msg.content;
   if (typeof c === 'string') return c;
@@ -143,7 +153,7 @@ function promptModes(transcriptPath, cwd) {
     const own = operatorWords(text);
     const asks = w.ask.test(own);
     if (w.off.test(own) || asks) state = false;
-    else if (w.on.test(own)) state = true;
+    else if (ordersOn(w.on, own)) state = true;
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false });
   }
   return out;

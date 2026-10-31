@@ -173,8 +173,11 @@ alternative access path is always a DECISION, never a repair.**
 refused (permission rule, auto-mode classifier, hook) is NOT re-issued in another form —
 another command for the same effect, another tool, another session or party. Report what
 was refused and for what, and who can take the step; retrying after the operator granted
-it is no re-issue. Carried by the core's
-`mechanism-rules.json`.
+it is no re-issue. **A second defined path is no re-issue only by the ground test** (operator
+decisions 2026-10-22 and 2026-10-27, both modes): it is reversible, on own terrain, overrides
+no barrier, and the refusal's NAMED ground (guard id, classifier label, hook name) demonstrably
+does not apply to it; an unreadable ground counts as a refusal of the EFFECT, so no second path.
+Carried by the core's `mechanism-rules.json`.
 
 **THE REQUIRED OUTCOME is binary:** find the defined path and take it — or "there is no
 defined path" → it gets DISCUSSED, raised BY THE AGENT BEFORE acting, through the fitting

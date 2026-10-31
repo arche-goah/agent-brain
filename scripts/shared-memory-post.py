@@ -88,6 +88,42 @@ def resolve_next(to: list[str], parties: dict) -> list[str]:
     return out
 
 
+# A check request goes to every machine of that OS (`os:<os>`), never to one device, unless exactly
+# one machine can do it (README of the shared memory; docs/shared-memory-audience.md). Measured
+# 2026-10-28 on the macOS instance: Windows checks for six core PRs went to one Windows device as
+# part of replies; the other Windows instances never saw them and the PRs waited. Check words are
+# English here; an instance adds its language in .claude/rules/shared-memory-post.json
+# {"check_words": [regex, ...]}.
+OS_NAMES = {"windows": r"\bwindows\b|\bwin(?:10|11)?\b", "macos": r"\bmac\s?os\b", "linux": r"\blinux\b"}
+CHECK_WORDS = [r"\bcounter-?check", r"\bcheck(?:s|ed)? (?:it |them )?(?:on|at)\b", r"\bplease (?:run|check|verify|test)\b",
+               r"\bverify (?:on|at)\b"]
+
+
+def check_words():
+    words = list(CHECK_WORDS)
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    try:
+        import json
+        words += (json.loads((Path(root) / ".claude" / "rules" / "shared-memory-post.json").read_text(encoding="utf-8"))
+                  .get("check_words") or [])
+    except (OSError, ValueError):
+        pass
+    return [re.compile(w, re.I) for w in words]
+
+
+def os_check_misaddressed(text, to, one_machine):
+    """The refusal text when `text` asks for a check on an OS whose `os:` category is not addressed."""
+    if one_machine or not any(w.search(text) for w in check_words()):
+        return ""
+    wanted = [o for o, rx in OS_NAMES.items() if re.search(rx, text, re.I)]
+    missing = [o for o in wanted if f"os:{o}" not in to and not any(t.startswith("all") for t in to)]
+    if not missing:
+        return ""
+    return (f"this asks for a check on {', '.join(missing)} but is addressed to {', '.join(to)} - a check request "
+            f"goes to {', '.join('os:' + o for o in missing)} (whoever comes first takes it); a check only one "
+            "machine can do: --one-machine <reason>")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("kind", choices=sorted(STATUS))
@@ -100,6 +136,7 @@ def main() -> int:
     ap.add_argument("--status")
     ap.add_argument("--repo", type=Path, default=_lint.REPO_DEFAULT)
     ap.add_argument("--date", default=dt.date.today().isoformat())
+    ap.add_argument("--one-machine", default="", help="a check that needs exactly this machine: the reason")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 
@@ -134,6 +171,9 @@ def main() -> int:
     if status not in _lint.VALID_STATUS:
         return refuse(f"status '{status}' is not in {sorted(_lint.VALID_STATUS)}")
     body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else a.body
+    miss = os_check_misaddressed(a.title + "\n" + body, to, a.one_machine)
+    if miss:
+        return refuse(miss)
     stem = f"{a.kind}-{slug(a.title)}-{a.date}"
     path = area_dir / f"{stem}.md"
     if path.exists():
@@ -147,6 +187,8 @@ def main() -> int:
         meta.append(f"  next: {', '.join(nxt)}")
     if answers:
         meta.append(f"  {'claims' if a.kind == 'claim' else 'answers'}: {', '.join(answers)}")
+    if a.one_machine:
+        meta.append(f"  one-machine: {a.one_machine}")
     text = "---\n" + f"name: {stem}\ndescription: {q}\nmetadata:\n" + "\n".join(meta) + "\n---\n\n" + body.strip() + "\n"
     rel = path.relative_to(a.repo).as_posix()
     log = area_dir / "LOG.md"

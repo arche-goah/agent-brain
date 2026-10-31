@@ -71,7 +71,7 @@ local_context() { # $1 = variable name -> prints its local value, rc 1 when ther
   esac
 }
 
-fail=0; ran=0; skipped=0
+fail=0; ran=0; skipped=0; partial=0
 while IFS=$'\t' read -r n job name why; do
   for s in "${skips[@]+"${skips[@]}"}"; do
     [[ -n "$s" && "$name" == *"$s"* ]] && why="skip:--skip $s"
@@ -92,6 +92,15 @@ while IFS=$'\t' read -r n job name why; do
   # this loop reads — measured 2026-10-21, four steps vanished and the run still said "all passed".
   if (cd "$ROOT" && eval "$set_env" && BASH_ENV="$PRE" bash -e "$T/$n.sh") </dev/null >"$T/$n.log" 2>&1; then
     echo "  OK   $job / $name${set_env:+ (GitHub context set locally: ${why#env:})}"
+    # A step that passed but says it did NOT check something (english-only names unstaged files):
+    # locally that is not the run CI will see. Measured 2026-10-28 on the macOS instance: a new
+    # script with German words passed here unstaged and went red in CI; the step's own note never
+    # reached the reader, because only the OK line was printed.
+    # Only a step's own note line counts: fixture suites print test NAMES with these words.
+    if grep -qE '^[[:space:]]*note: .*NOT checked' "$T/$n.log"; then
+      grep -E '^[[:space:]]*note: .*NOT checked' "$T/$n.log" | sed 's/^ */       /'
+      partial=$((partial+1))
+    fi
   elif [[ $? -eq 127 ]] && miss=$(sed -n 's/.*: \([^:]*\): command not found.*/\1/p' "$T/$n.log" | head -1) && [[ -n "$miss" ]]; then
     # A tool the step needs is not installed here (the runner installs it): not checked, said so —
     # never a finding, never a silent pass.
@@ -111,4 +120,8 @@ if (( ran + skipped != want )); then
   echo "ci-lint-local: only $((ran + skipped)) of $want step(s) judged — the step list was cut short"; exit 1
 fi
 if (( fail )); then echo "ci-lint-local: $fail of $ran step(s) FAILED ($skipped skipped)"; exit 1; fi
+if (( partial )); then
+  echo "ci-lint-local: $partial step(s) passed but did NOT check everything (lines above) — stage the files and re-run; this is not the run CI will see"
+  exit 1
+fi
 echo "ci-lint-local: all $ran step(s) passed ($skipped skipped)"

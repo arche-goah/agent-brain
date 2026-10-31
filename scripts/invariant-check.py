@@ -121,7 +121,13 @@ def parse(path):
             continue
         m = re.match(r"^(%s):\s*(.*)$" % "|".join(FIELDS), line.strip())
         if m and cur is not None:
-            cur[m.group(1)] = m.group(2).strip()
+            # `known` may span lines, one `path=N` each: one long line was rewritten by every PR
+            # that added a fixture, and parallel PRs conflicted on it (measured 2026-10-28 on the
+            # macOS instance: four PRs in one day). Both forms read the same.
+            if m.group(1) == "known" and cur.get("known"):
+                cur["known"] += " " + m.group(2).strip()
+            else:
+                cur[m.group(1)] = m.group(2).strip()
     return root, blocks
 
 

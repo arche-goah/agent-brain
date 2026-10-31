@@ -92,6 +92,11 @@ f="$T/8d.jsonl"; { user "fix the parser"; asst "x"; user "${PB1}autonomous, plea
 mode "the on word between two pasted blocks (c)" "$f" "$EN" autonomous
 f="$T/8e.jsonl"; { user "work through the list autonomously"; asst "x"; qcmd "${PB1}"; } > "$f"
 mode "a pasted ask typed mid-turn keeps the run" "$f" "$EN" autonomous
+# The word inside a question mentions the mode, it does not order it (macOS finding 2026-10-27).
+f="$T/9a.jsonl"; { user "fix the parser"; user "did I not get the continue autonomously question? why?"; } > "$f"
+mode "the word in a question sets nothing" "$f" "$EN" interactive
+f="$T/9b.jsonl"; { user "why did it stop? carry on autonomously."; } > "$f"
+mode "an order after a question in the same message sets it" "$f" "$EN" autonomous
 
 # --- stoppen-gate: which way it demands, and the line that passes only in the mode
 gate() { # $1 name, $2 transcript, $3 block|allow, $4 expected text in the reason (block)
