@@ -80,4 +80,21 @@ function queuedHumanPrompt(d) {
   return typeof a.prompt === 'string' && a.prompt.trim() ? a.prompt : null;
 }
 
-module.exports = { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL };
+/**
+ * A prompt the harness fires on a timer (ScheduleWakeup, a /loop tick) arrives as a user record with
+ * `queuePriority: "later"` and no human origin (measured 2026-10-28 on the macOS instance, Claude Code
+ * 2.1.312: `isMeta: true, promptSource: "system", queuePriority: "later"`, text "# Autonomous loop
+ * check …"; the same shape in transcripts of 2026-07 and 2026-08). The agent wrote that text, or the
+ * harness did — not the operator; the operator's own words carry `origin.kind "human"`.
+ */
+function isScheduledPrompt(d) {
+  return Boolean(d && d.queuePriority === 'later' && !(d.origin && d.origin.kind === 'human'));
+}
+
+/** Words of an agent or the harness in a user record — another agent's message or a timer-fired
+ * prompt: no operator word, no operator turn. The one predicate every gate asks. */
+function isAgentOrigin(d) {
+  return isPeerMessage(d) || isScheduledPrompt(d);
+}
+
+module.exports = { isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL };
