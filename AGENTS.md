@@ -156,8 +156,9 @@ session start.
      release and the stable marketplace pin are the code owner's decision. Before stable,
      a beta tag on the testing channel (`<plugin>-next`): cut by the maintaining agent
      when the state is round — CHANGELOG matched against `git log <last-tag>..main`,
-     preflight and `main` green, nothing half-done — and at most ONE beta tag per work
-     strand. A fix merged after it waits for the next round cut, bridged by a named
+     preflight and `main` green, nothing half-done, no open PR labelled `beta-candidate`
+     (the canonical rule: CONVENTIONS.md §6 item 2; stable: item 3) — and at most ONE beta
+     tag per work strand. A fix merged after it waits for the next round cut, bridged by a named
      workaround. A hotfix only for real damage from waiting, and then on the code
      owner's word.
    - **A beta names its platform scope — in the state table, not in the tag** (operator
