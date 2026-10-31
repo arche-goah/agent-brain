@@ -294,8 +294,7 @@ fi
 # --- one short line per finding, the cut text in a detail file (2026-10-31) -----------------
 # A gate text of several sentences whose template does not match (the gate's wording moved on)
 # used to go out in full. Now: the first sentence, cut; the full text in .claude-state/stop-detail.txt.
-CFG5="$(mktemp -d)"; mkdir -p "$CFG5/.claude/rules"
-trap 'rm -rf "$T" "$CFG" "$CFG2" "$CFG3" "$CFG4" "$CFG5"' EXIT
+CFG5="$T/cfg5"; mkdir -p "$CFG5/.claude/rules"
 LONG="$T/long.cjs"
 printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'AUTONOMOUS-IDLE: this turn ends on a BLOCKED line, but the list behind it was not measured. Run the own-items measurement now, do what it lists.\nMissing: own-items measurement'}))" > "$LONG"
 feed5() { printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TR2")" "$(native "$CFG5")" \
