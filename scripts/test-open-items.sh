@@ -56,7 +56,7 @@ tx() {
 has() { case "$2" in *"$1"*) return 0;; esac; return 1; }
 
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
+  '  - 2026-09-05 [widget-suite] peer-b: ANFRAGE an inst-a (widget-suite/anfrage-ui-2026-09-05.md)' \
   '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
 
 out=$(run a); tx a
@@ -367,7 +367,7 @@ printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","
 st=$(run st3 "$SR")
 has "standing approval 'requests to this machine' refused" "$st" && ! has "[request|standing]" "$st" && ok "entry without a date is refused" || bad "undated grant accepted: $st"
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
+  '  - 2026-09-05 [widget-suite] peer-b: ANFRAGE an inst-a (widget-suite/anfrage-ui-2026-09-05.md)' \
   '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
 
 # Work ledgers (measured 2026-10-25: "open for us: 3" while ordered points sat in the brain's

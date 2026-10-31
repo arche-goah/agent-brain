@@ -11,7 +11,8 @@
 #
 # Steps:
 #   python  find a Python that RUNS (a Windows Store `python3` stub resolves in PATH but does not run)
-#   script  autonomy-diagnose.py -> autonomy-report.md (exact numbers; no model)
+#   script  autonomy-diagnose.py -> autonomy-report.md (exact numbers; no model). The copy next to
+#           this runner; downloaded only from an explicit DIAG_SCRIPT_URL, never by default
 #   prompt  the agent brief: the --prompt file from its marker line `<!-- agent-brief -->` on (a file
 #           without the marker is used whole; a leading `---` would be read as a CLI option, so the
 #           brief always goes in on stdin)
@@ -22,8 +23,10 @@
 #   bash autonomy-diagnose-run.sh --prompt FILE [--brain DIR]
 # Output: ~/diagnose/run-<timestamp>/ with summary.txt, env.txt, run.log, the two reports and the
 #   stderr of every step. Exit 0 always.
+# DIAG_SCRIPT_URL: where to download autonomy-diagnose.py when it is not next to this runner
+#   (unset: no download, the script step names the missing file).
 # Seams for the fixture only (nothing in normal use sets them): DIAG_OUT_ROOT, DIAG_PYTHONS,
-#   DIAG_CLAUDE, DIAG_SCRIPT_URL. On Windows, DIAG_OUT_ROOT must be a native path (OS-3).
+#   DIAG_CLAUDE. On Windows, DIAG_OUT_ROOT must be a native path (OS-3).
 set -u
 
 BRAIN="$PWD"
@@ -76,10 +79,11 @@ fi
 # ---------- script
 SCRIPT="$here/autonomy-diagnose.py"
 if [ -n "$PY" ]; then
-  if [ ! -f "$SCRIPT" ]; then
+  # The copy next to this runner is the default; nothing is fetched and run unless the person
+  # running it names the source in DIAG_SCRIPT_URL.
+  if [ ! -f "$SCRIPT" ] && [ -n "${DIAG_SCRIPT_URL:-}" ]; then
     SCRIPT="$OUT/autonomy-diagnose.py"
-    url="${DIAG_SCRIPT_URL:-https://raw.githubusercontent.com/arche-goah/agent-brain/main/scripts/autonomy-diagnose.py}"
-    curl -fsSL "$url" -o "$SCRIPT" 2>>"$OUT/script.stderr" || log "download of $url failed (rc $?)"
+    curl -fsSL "$DIAG_SCRIPT_URL" -o "$SCRIPT" 2>>"$OUT/script.stderr" || log "download of $DIAG_SCRIPT_URL failed (rc $?)"
   fi
   if [ -f "$SCRIPT" ]; then
     "$PY" "$SCRIPT" --repo "$BRAIN" --out "$OUT/autonomy-report.md" >>"$LOG" 2>>"$OUT/script.stderr"; rc=$?
@@ -88,8 +92,10 @@ if [ -n "$PY" ]; then
     else
       result script FAILED "rc $rc — see script.stderr: $(tail -1 "$OUT/script.stderr" 2>/dev/null)"
     fi
+  elif [ -n "${DIAG_SCRIPT_URL:-}" ]; then
+    result script FAILED "autonomy-diagnose.py not next to this runner and not downloadable from DIAG_SCRIPT_URL — see script.stderr"
   else
-    result script FAILED "autonomy-diagnose.py neither next to this runner nor downloadable — see script.stderr"
+    result script FAILED "autonomy-diagnose.py not next to this runner — copy it alongside, or set DIAG_SCRIPT_URL to download it"
   fi
 else
   result script SKIPPED "no Python"
