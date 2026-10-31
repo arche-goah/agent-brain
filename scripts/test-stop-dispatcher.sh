@@ -322,6 +322,28 @@ grep -q 'Run the own-items measurement now' "$CFG5/.claude-state/stop-detail.txt
 case "$OUT10" in *'"reason":"\n'*|*'"reason":"·'*) ok "an empty header prints no header line";; *'STOP-CHECKS'*) bad "empty header still printed";; *) bad "unexpected shape: $OUT10";; esac
 case "$OUT10" in *'"reason":"\n'*) bad "an empty header left an empty first line: $OUT10";; *) ok "no empty first line";; esac
 
+# --- loop brake (2026-10-31): the third block in a row of one check lets the turn end -------------
+# Measured: 27 runs of >= 3 consecutive blocks of one check, the longest 33. A check that judges text
+# the new reply cannot change has no exit; the dispatcher ends the loop loudly instead.
+CFG6="$T/cfg6"; mkdir -p "$CFG6/.claude/rules"
+printf '{"checks":[{"label":"PLAIN","marker":"PLAIN-PROBE","cmd":"%s","mode":"block"}]}' "$(native "$PROBE")" > "$CFG6/.claude/rules/stop-checks.json"
+fb() { printf '{"message":{"role":"user","content":"Stop hook feedback:\\nPLAIN — kind=operator   [PLAIN-PROBE]"}}\n'; }
+said() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$1"; }
+feed6() { printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$1")" "$(native "$CFG6")" \
+  | CLAUDE_PROJECT_DIR="$(native "$CFG6")" node "$D" 2>/dev/null; }
+L1="$T/loop1.jsonl"; { printf '%s\n' '{"message":{"role":"user","content":"frage"}}'; said a; fb; said b; } > "$L1"
+case "$(feed6 "$L1")" in *'"decision":"block"'*) ok "a second block in a row still blocks";; *) bad "braked too early: $(feed6 "$L1")";; esac
+L2="$T/loop2.jsonl"; { cat "$L1"; fb; said c; } > "$L2"
+OUT11="$(feed6 "$L2")"
+case "$OUT11" in *'"decision"'*) bad "the third block in a row still blocks: $OUT11";;
+  *'PLAIN'*'loop brake'*) ok "the third block in a row ends the turn with a loud line";; *) bad "loop brake silent: $OUT11";; esac
+grep -q '"marker":"PLAIN-PROBE"' "$CFG6/.claude-state/stop-loops.jsonl" 2>/dev/null && ok "the loop is recorded" || bad "loop not recorded"
+L3="$T/loop3.jsonl"; { cat "$L2"; printf '%s\n' '{"message":{"role":"user","content":"weiter"}}'; said d; } > "$L3"
+case "$(feed6 "$L3")" in *'"decision":"block"'*) ok "an operator prompt resets the count";; *) bad "count not reset by a prompt";; esac
+L4="$T/loop4.jsonl"; { printf '%s\n' '{"message":{"role":"user","content":"frage"}}'; said a; fb; said b
+  printf '%s\n' '{"message":{"role":"user","content":"Stop hook feedback:\nOTHER — x   [OTHER-PROBE]"}}'; said c; fb; said d; } > "$L4"
+case "$(feed6 "$L4")" in *'"decision":"block"'*) ok "a feedback without the check breaks its streak";; *) bad "streak not broken by another check's feedback";; esac
+
 echo
 [ "$fail" -eq 0 ] && echo "stop-dispatcher fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
