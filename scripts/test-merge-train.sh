@@ -6,6 +6,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 S="$ROOT/scripts/merge-train.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
 fail=0
 ok()  { echo "  OK   $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
@@ -22,7 +23,7 @@ TWO_HEAD="$(git -C "$T/seed" rev-parse feat/two)"
 # a working clone whose origin URL looks like github (the script reads owner/repo from it)
 g clone "$T/origin.git" "$T/work"
 git -C "$T/work" remote set-url origin "https://github.com/o/r.git"
-git -C "$T/work" config "url.$T/origin.git.insteadOf" "https://github.com/o/r.git"
+git -C "$T/work" config "url.$(native "$T")/origin.git.insteadOf" "https://github.com/o/r.git"
 
 stub="$T/gh"
 cat > "$stub" <<'EOF'
