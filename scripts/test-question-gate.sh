@@ -299,5 +299,22 @@ R="$T/r-reask3"; GATE="$T/stub.cjs" ask "stub on the orphan re-ask" "$Q" deny "$
 caught=$fail; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed"
 
+# 2026-10-31: a question that names a ledger entry runs its check first; green = done, not a question.
+# The incident: points from an older report went to the operator while their checks were already green.
+if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+  R="$T/r-ledger"; fresh "$R"; mkdir -p "$R/.claude/rules" "$R/docs"
+  printf '{"ledgers": ["docs/list.md"]}\n' > "$R/.claude/rules/ledgers.json"
+  printf '%s\n' '# list' '' '- [ ] **The thing is built**' '  id: built-thing-here' '  check: test -f built.txt' '' \
+    '- [ ] **The other thing is still to do**' '  id: still-open-thing' '  check: test -f missing.txt' > "$R/docs/list.md"
+  : > "$R/built.txt"
+  ask "a question about a ledger item whose check passes" "Shall I build built-thing-here now?" deny "$R"
+  ask "a question about a ledger item whose check fails" "Shall I build still-open-thing now?" allow "$R"
+  ask "a slug that is no ledger id" "Shall I rename some-other-slug-here?" allow "$R"
+  rm -f "$R/built.txt"
+  ask "the same item once its check fails (control)" "Shall I build built-thing-here now?" allow "$R"
+else
+  echo "  SKIP ledger-check cases: no python interpreter"
+fi
+
 [ "$fail" = 0 ] && echo "question-gate: all checks passed" || echo "question-gate: FAILURES"
 exit "$fail"
