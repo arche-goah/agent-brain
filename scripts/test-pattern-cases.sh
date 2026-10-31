@@ -110,6 +110,20 @@ run fixed
 has "fixed data: all three cases pass" "ok  autonomous-patterns.json: 3 case(s) pass"
 rc "fixed data passes" 0
 
+# --- commitments.json: the commitment gate, with a take-back in the same turn (2026-10-28)
+brain promise >/dev/null
+brain promise2 >/dev/null
+put promise commitments.json '{"retract_patterns": ["\\bwithdrawn here\\b"], "_cases": [
+ {"text": "From now on I will push for both sessions.", "expect": "block"},
+ {"text": "From now on I will push for both sessions.", "then": "That promise is withdrawn here.", "expect": "allow"},
+ {"text": "The run is green.", "expect": "allow"}]}'
+run promise
+has "commitments.json: promise held, take-back clears it, plain text passes" "ok  commitments.json: 3 case(s) pass"
+put promise2 commitments.json '{"_cases": [
+ {"text": "From now on I will push for both sessions.", "then": "That promise is withdrawn here.", "expect": "allow"}]}'
+run promise2
+has "without the take-back words the same reply stays held (control)" "case 1: expected allow, commitment-carrier-gate.cjs says block"
+
 # --- the session-start report: a failing case reaches the brain-check brief
 B="$T/lookahead"
 BRIEF="$(CLAUDE_PROJECT_DIR="$B" CACHED_VERDICT_STATE="$T/verdict" BRAIN_SELFTEST_BG= bash "$HERE/brain-check.sh" --brief 2>&1)"
