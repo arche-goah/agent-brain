@@ -72,6 +72,36 @@ out=$(printf '{"session_id":"fix","cwd":"%s","model":{"display_name":"test"}}' "
 [ "$(printf '%s' "$out" | wc -l | tr -d ' ')" -le 1 ] \
   && ok "statusline stays one line" || bad "statusline printed multiple lines"
 
+# --- statusline run mode (2026-10-29): the latch of autonomous-mode.cjs at the right end ---------
+SL="$(resolve helpers/statusline.cjs)"
+nat() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"work through the open points autonomously"}}' > "$T/auto.jsonl"
+printf '%s\n' '{"type":"user","message":{"role":"user","content":"status?"}}' > "$T/inter.jsonl"
+sl() { printf '{"cwd":"%s","workspace":{"project_dir":"%s"},"transcript_path":"%s","model":{"display_name":"test"}}' \
+         "$(nat "$2")" "$(nat "$2")" "$(nat "$1")" | node "$SL" 2>/dev/null; }
+# both words are shown; the ACTIVE one is bold in its signal colour (AON / ION), the other dim
+AON='[1;38;2;199;125;255mAUTONOMOUS'; ION='[1;38;2;150;255;190mINTERACTIVE'
+o1=$(sl "$T/auto.jsonl" "$ROOT"); o2=$(sl "$T/inter.jsonl" "$ROOT")
+case "$o1" in *INTERACTIVE*"$AON"*) ok "statusline marks AUTONOMOUS active after an on word, both shown, interactive first";; *) bad "AUTONOMOUS not active after an on word: $(printf %s "$o1" | od -c | head -3 | tr -s ' ' | tr '\n' ' ')";; esac
+case "$o2" in *"$ION"*AUTONOMOUS*) ok "statusline marks INTERACTIVE active without one, interactive first";; *) bad "INTERACTIVE not active without an on word: $(printf %s "$o2" | od -c | head -3 | tr -s ' ' | tr '\n' ' ')";; esac
+printf %s "$o2" | grep -aqF '│' && ok "a divider stands between the two modes" || bad "no divider between the modes"
+case "$(sl "$T/inter.jsonl" "$ROOT")" in *'[48;2;'*INTERACTIVE*AUTONOMOUS*) ok "the mode pair sits on a tile of its own (background)";; *) bad "no tile around the mode pair";; esac
+case "$(sl "$T/inter.jsonl" "$ROOT")" in *'|'*'[48;2;'*) bad "the field separator stands before the mode tile";; *) ok "no field separator before the mode tile";; esac
+case "$(sl "$T/inter.jsonl" "$ROOT")" in *"$AON"*) bad "an interactive session marks AUTONOMOUS active";; *) ok "an interactive session does not mark AUTONOMOUS active";; esac
+case "$(sl "$T/not-yet-written.jsonl" "$ROOT")" in *"$ION"*) ok "a fresh session without a transcript file is INTERACTIVE";; *) bad "a fresh session shows no mode";; esac
+# two sessions side by side keep their own mode (the cache is keyed per transcript)
+a=$(sl "$T/auto.jsonl" "$ROOT"); b=$(sl "$T/inter.jsonl" "$ROOT"); a2=$(sl "$T/auto.jsonl" "$ROOT")
+case "$a|$b|$a2" in *"$AON"*"|"*"$ION"*"|"*"$AON"*) ok "parallel sessions show their own modes";; *) bad "sessions share a mode: $a | $b | $a2";; esac
+mkdir -p "$T/nocore"
+case "$(sl "$T/auto.jsonl" "$T/nocore")" in *AUTONOMOUS*|*INTERACTIVE*) bad "a project without the mode reader shows a mode";; *) ok "a project without the mode reader shows none";; esac
+mkdir -p "$T/lab/.claude/rules" "$T/lab/core"
+ln -s "$ROOT/$(dirname "$(resolve helpers/autonomous-mode.cjs)")" "$T/lab/core/helpers" 2>/dev/null || cp -R "$ROOT/$(dirname "$(resolve helpers/autonomous-mode.cjs)")" "$T/lab/core/helpers"
+printf '%s\n' '{"statusline_labels":{"autonomous":"AUTONOM","interactive":"INTERAKTIV"}}' > "$T/lab/.claude/rules/autonomous-patterns.json"
+case "$(sl "$T/auto.jsonl" "$T/lab")" in *AUTONOM*) ok "statusline labels come from instance data";; *) bad "instance labels not used";; esac
+case "$(sl "$T/auto.jsonl" "$T/lab")" in *']8;;'*) bad "a link without a help page";; *) ok "no help page, no link";; esac
+printf '%s\n' '{"statusline_labels":{"autonomous":"AUTONOM","interactive":"INTERAKTIV","help":"docs/modes.md"}}' > "$T/lab/.claude/rules/autonomous-patterns.json"
+case "$(sl "$T/auto.jsonl" "$T/lab")" in *INTERAKTIV*AUTONOM*']8;;file://'*'docs/modes.md'*'ⓘ'*']8;;'*) ok "an ⓘ next to the pair links to the instance's help page (OSC 8)";; *) bad "help link missing";; esac
+
 # --- framing-intake: instance-only, so absence is a skip, not a failure ---------
 FI=$(resolve scripts/hooks/framing-intake.sh || true)
 if [ -n "$FI" ]; then

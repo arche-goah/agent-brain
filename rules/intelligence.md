@@ -144,7 +144,9 @@ ORDERED; content, structures, UI artifacts and features stay propose-not-build.
 
 ## Presenting to the Operator
 
-What reaches the operator is sorted first (operator decision 2026-09-18).
+What reaches the operator is sorted first (operator decision 2026-09-18). **Run modes** (INTERACTIVE asks at once,
+AUTONOMOUS collects questions and keeps working — no extra rights; how to switch): `docs/run-modes.md` — the answer when
+an operator asks what the modes mean (operator order 2026-10-29).
 
 - **Only real operator decisions** (the instance's operator-only list, `working-rules.md` ASK OR ACT)
   are presented — each with a recommendation, answerable by number; that includes yes/no questions
