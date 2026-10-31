@@ -20,7 +20,7 @@
  * Exit 0 always; a block is `{decision: "block"}` on stdout. Fails open on unreadable input.
  */
 const fs = require('fs');
-const { isNotification, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
 
 // Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
 const { ownEcho, declare } = require('./stop-echo.cjs');
@@ -67,7 +67,7 @@ function analyze(lines) {
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
       const t = textOf(msg.content);
-      if (typeof msg.content === 'string' && !HOOK_ECHO.test(t) && !isNotification(t) && !isPeerMessage(d)) turn = [];
+      if (typeof msg.content === 'string' && !HOOK_ECHO.test(t) && !isNotification(t) && !isAgentOrigin(d)) turn = [];
       turn.push({ user: t });
       continue;
     }

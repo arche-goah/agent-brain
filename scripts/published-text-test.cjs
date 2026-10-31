@@ -49,6 +49,15 @@ ok('a value that can execute stays',
   p.withoutPublished('git commit -m "$(danger)"', false) === 'git commit -m "$(danger)"');
 ok('a single-quoted $( ) is literal and blanked',
   p.withoutPublished("git commit -m '$(not run)'", false) === 'git commit -m <MESSAGE-STRIPPED>');
+// 2026-10-28: an escaped backquote or $( in double quotes is literal to the shell.
+ok('an escaped backquote in double quotes is literal and blanked',
+  p.withoutPublished('gh pr comment 1 --body "run \\`bash x.sh\\` there"', false) === 'gh pr comment 1 --body <MESSAGE-STRIPPED>');
+ok('an unescaped backquote in double quotes still stays',
+  p.withoutPublished('gh pr comment 1 --body "run `bash x.sh` there"', false) === 'gh pr comment 1 --body "run `bash x.sh` there"');
+ok('an escaped $( in double quotes is literal and blanked',
+  p.withoutPublished('git commit -m "\\$(not run)"', false) === 'git commit -m <MESSAGE-STRIPPED>');
+ok('PowerShell: a backslash before $( escapes nothing, the value stays',
+  p.withoutPublished('git commit -m "\\$(run)"', true) === 'git commit -m "\\$(run)"');
 ok('no gh/git: nothing blanked', p.withoutPublished('tool --body "x"', false) === 'tool --body "x"');
 ok('an unreadable line returns null', p.withoutPublished('git commit -m "open', false) === null);
 
