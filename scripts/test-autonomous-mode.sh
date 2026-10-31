@@ -66,6 +66,10 @@ f="$T/3g.jsonl"; { user "autonomous, please"; user "anything open for me?"; answ
 mode "no to continue autonomously keeps it off" "$f" "$EN" interactive
 f="$T/3h.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
 mode "yes to another question sets nothing" "$f" "$EN" interactive
+f="$T/3k.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"The autonomous gate held the settings edit back; the patch is in a file. Shall I apply it now?"="Yes, apply it now"'; } > "$f"
+mode "an on-word outside the question sentence makes no mode question (2026-10-31)" "$f" "$EN" interactive
+f="$T/3l.jsonl"; { user "anything open for me?"; answer '"Patch applied. Continue autonomously?"="Yes"'; } > "$f"
+mode "the on-word in the question sentence still is the mode question (control)" "$f" "$EN" autonomous
 f="$T/3i.jsonl"; { user "fix the parser"; answer '"Continue autonomously?"="Yes"'; user "status?"; } > "$f"
 mode "after the yes a status question keeps it" "$f" "$EN" autonomous
 f="$T/3r.jsonl"; { user "autonomous, please"; asst "x"; readres '"Continue autonomously?"="No, interactive"'; } > "$f"
