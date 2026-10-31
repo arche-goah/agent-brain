@@ -271,16 +271,19 @@ process.stdin.on('end', () => {
       : r.target === 'path'
       ? `A file write cannot carry the marker. If the documented path really doesn't fit, do it as a\n` +
         `shell command that ends with "# MECHANISM-OK: <justification>" — visible and justified.`
-      : `If the documented path really doesn't fit: repeat the command with a comment\n` +
-        `"# MECHANISM-OK: <justification>" — the justification then belongs in the\n` +
-        `change log. A silent deviation is not intended.` +
+      : `Only if that path does not fit: the same command with "# MECHANISM-OK: <why>" (goes in the change log).` +
         (r.needsOperatorWord
           ? `\nThis rule needs the operator's word: the justification must quote it ("…" plus the\n` +
             `date YYYY-MM-DD) or point at a decision file that exists (path[:line]).`
           : '');
+    // Short (operator 2026-10-31: hook output "as short and informative as possible"): measured
+    // 238 refusals in two weeks on the macOS instance, median 923 characters - mostly the rule's
+    // incident story and a three-line marker boilerplate. The first clause of `was` says what is
+    // refused; the incident stays in the rule file it came from.
+    const what = String(r.was).split(/\s(?:—|-)\s|:\s(?:measured|gemessen)|\.\s/)[0].slice(0, 200);
     const msg =
-      `MECHANISM CHECK (${r.source}): ${r.was}\n\n` +
-      `The setup has a documented path for this:\n  ${r.instead}\n\n` + how;
+      `MECHANISM CHECK (${r.source}): ${what}\n` +
+      `Documented path: ${r.instead}\n` + how;
     cmd = cmd || `write ${filePath}`;
     try {
       fs.appendFileSync(
