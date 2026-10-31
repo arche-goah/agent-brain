@@ -285,6 +285,8 @@ History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operat
    order** (2026-08-18): a question what a plan MEANS is answered, then wait; a ledger
    entry proves the TOPIC, never scope, time or machine — settle WHICH machine first.
 8. **Test material comes from the order, never from the disk** (2026-09-25) — ask which.
+   Not a question: material the AI made itself (its scratch), and in a lab the operator
+   released to it, which show to use and in what order (2026-10-25).
 9. **An ordered audit orders its clear fixes** (2026-09-02): clear plus safe (reversible,
    no live system, no shared carrier) = do it; against a documented operator decision =
    proposal.

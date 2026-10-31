@@ -29,7 +29,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const os = require('os');
-const { isNotification, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
 
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
@@ -67,7 +67,7 @@ function replyText(transcriptPath) {
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user' && typeof msg.content === 'string') {
-      if (!HOOK_ECHO.test(msg.content) && !isNotification(msg.content) && !isPeerMessage(d)) parts = [];
+      if (!HOOK_ECHO.test(msg.content) && !isNotification(msg.content) && !isAgentOrigin(d)) parts = [];
       continue;
     }
     if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
