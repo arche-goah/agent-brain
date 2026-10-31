@@ -63,6 +63,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { segments } = require('./shell-segments.cjs');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
 const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
@@ -164,7 +165,7 @@ function bashPaths(cmd, cwd) {
   if (cd) base = resolveFrom(cwd, cd[1]);
   const out = [];
   // Only the segments that actually search; `cd x && grep -r foo .` -> the grep part.
-  for (const seg of cmd.split(/&&|\|\||;|\|/)) {
+  for (const seg of segments(cmd)) {   // outside quotes only: `grep -E "a|b" dir` is one segment
     if (!SEARCH_BASH.test(seg)) continue;
     const toks = seg.match(/"[^"]*"|'[^']*'|\S+/g) || [];
     let pathish = 0;
