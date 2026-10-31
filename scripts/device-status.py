@@ -13,6 +13,9 @@ in the shared-memory repo.
         --brief                             one line with only what is off; nothing when all is fine
   device-status.py trailer [--topic <t>]    git trailer lines (Device-State, Suite-State) for a shared-memory
                                             commit — written by helpers/git-hooks/prepare-commit-msg
+  device-status.py entries [--device <id>] [--since-core vA.B.C]
+                                            shared-memory entries by their `von:` and `core:` fields (date, device,
+                                            os, core, path) — what a device wrote since a core version
 
 THIS device = first token of SHARED_MEMORY_SELF (the instance's settings `env`). Shared-memory repo =
 SHARED_MEMORY_REPO, default ~/Projects/brain-shared-memory. People and devices come from `parties.json` at the
@@ -78,14 +81,56 @@ def strip_v(s):
     return (s or "")[1:] if (s or "").startswith("v") else (s or "")
 
 
-# ---------- report ----------------------------------------------------------------------------------------------
+def platform_os():
+    """The running platform in the audience vocabulary (macos | windows | linux)."""
+    return {"darwin": "macos", "win32": "windows"}.get(sys.platform, "linux")
 
-def gather(brain, cfg):
-    """This device's state, as data without paths."""
-    core = os.path.join(brain, "core")
+
+def is_checkout(path):
+    """True when `path` is the top of a git checkout of its own — not a folder inside another repo."""
+    if not path:
+        return False
+    rc, top = run(["git", "-C", path, "rev-parse", "--show-toplevel"])
+    return rc == 0 and os.path.realpath(top) == os.path.realpath(path)
+
+
+def writer_core(brain=None):
+    """(brain, core dir) of the brain that is writing — ("", "") when none is found.
+
+    WHY (measured 2026-10-28): the commit trailer took the cwd as the brain; the commit hook runs
+    INSIDE the shared-memory repo, whose `core/` is a topic folder, so `git describe` there named
+    that repo's own parent commit as "the core". Order: the project dir's `core/` when it is a
+    checkout of its own; else the checkout this script runs from (the hook and the post tool are
+    the brain's own core); else nothing — the caller writes `unknown`, never a foreign hash."""
+    b = brain or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    if is_checkout(os.path.join(b, "core")):
+        return b, os.path.join(b, "core")
+    if is_checkout(CORE_ROOT):
+        parent = os.path.dirname(os.path.realpath(CORE_ROOT))
+        return (parent if os.path.isdir(os.path.join(parent, ".claude")) else ""), CORE_ROOT
+    return "", ""
+
+
+def core_state(core):
+    """tag / commit / local edits of a core checkout; tag "unknown" when there is none."""
+    if not core:
+        return {"tag": "unknown", "commit": "", "local_edits": False}
     _, tag = run(["git", "-C", core, "describe", "--tags", "--always"])
     _, commit = run(["git", "-C", core, "rev-parse", "--short=12", "HEAD"])
     rc, dirty = run(["git", "-C", core, "status", "--porcelain"])
+    return {"tag": tag or "unknown", "commit": commit, "local_edits": bool(rc == 0 and dirty)}
+
+
+def entry_origin():
+    """The two origin fields every shared-memory entry carries: (os, core version)."""
+    return platform_os(), core_state(writer_core()[1])["tag"]
+
+
+# ---------- report ----------------------------------------------------------------------------------------------
+
+def gather(brain, cfg, core=None):
+    """This device's state, as data without paths."""
+    core = core or os.path.join(brain, "core")
     # All three layers Claude Code reads: a plugin enabled only in settings.local.json (a beta
     # channel switched on for one machine) was invisible here (measured 2026-10-11, macOS).
     settings = [load(os.path.join(brain, ".claude", "settings.local.json"), {}),
@@ -137,7 +182,7 @@ def gather(brain, cfg):
     for name, v in live.items():
         suites.setdefault(name, v)
     return {
-        "core": {"tag": tag, "commit": commit, "local_edits": bool(rc == 0 and dirty)},
+        "core": core_state(core),
         "plugins": plugins,
         "suites": suites,
         "watch": {"standing": standing_watch(brain)},
@@ -162,6 +207,25 @@ def last_post(repo, dev):
         if von and date and von.group(1) == dev and date.group(1) > best:
             best = date.group(1)
     return best
+
+
+def decision_numbers(brain):
+    """This brain's last seven days from decision-review.py --numbers (questions to the human, needless ones,
+    corrections, ...), or None. Operator order 2026-10-16 (decision register): every brain can see how able to act
+    and how accurate it is, and the others see it too. Measured 2026-10-28: the numbers existed per brain, but no
+    device report carried them, so one brain could not read another's without a session there."""
+    script = Path(__file__).with_name("decision-review.py")
+    if not script.is_file():
+        return None
+    rc, out = run([sys.executable or "python3", str(script), "--root", brain, "--days", "7", "--numbers"])
+    if rc != 0:
+        return None
+    try:
+        d = json.loads(out)
+    except ValueError:
+        return None
+    keep = ("sessions", "questions", "per_session", "unneeded", "referral", "overreach", "corrections", "correction_rate")
+    return {k: d[k] for k in keep if k in d}
 
 
 def standing_watch(brain):
@@ -210,12 +274,17 @@ def report(args):
     today = datetime.date.today().isoformat()
     path = os.path.join(repo, "devices", dev + ".json")
     old = load(path, {}) or {}
-    old_state = {k: v for k, v in old.items() if k not in ("device", "reported")}
+    old_state = {k: v for k, v in old.items() if k not in ("device", "reported", "decisions")}
     age = days_since(old.get("reported"))
+    # The decision numbers change every session; compared, they would rewrite the file at every start.
+    # They ride along whenever the report is written anyway (a real change, or the refresh age).
     if old_state == state and age is not None and age < REFRESH_DAYS:
         print(f"device-status: {dev} unchanged (reported {age} d ago) - nothing written")
         return 0
     doc = {"device": dev, "reported": today, **state}
+    nums = decision_numbers(brain)
+    if nums is not None:
+        doc["decisions"] = nums
     text = json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
     if args.dry_run:
         print(f"device-status: DRY RUN - would write devices/{dev}.json:")
@@ -380,6 +449,11 @@ def table(args):
                 print(f"  suite  {name}: {s.get('version') or '-'} {s.get('commit') or ''}".rstrip() + tag)
             for prob in problems(r):
                 print(f"  off: {prob}")
+            d = rep.get("decisions")
+            if isinstance(d, dict):
+                print(f"  decisions (7 d): {d.get('questions', '?')} questions to the human in {d.get('sessions', '?')} sessions, "
+                      f"{d.get('unneeded', '?')} needless, {d.get('overreach', '?')} acted alone where a person was needed, "
+                      f"{d.get('corrections', '?')} corrections")
     return 0
 
 
@@ -391,21 +465,24 @@ def trailer(args):
     no longer tells two states apart. In the commit, not in the text: every AI would phrase a
     hand-written line differently, and the LOG lines are meant to stay short. Ids, versions and
     commits only — never a path, host name or address (the repo is shared)."""
-    brain = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    # The hook runs inside the shared-memory repo: the brain is found from the core, never the cwd
+    # (writer_core, measured 2026-10-28 — the cwd gave that repo's own parent commit as the core).
+    brain, core_dir = writer_core()
     cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
-    dev = self_device(brain) or "?"
+    dev = self_device(brain or os.getcwd()) or "?"
     try:
-        st = gather(brain, cfg)
+        st = gather(brain, cfg, core_dir) if brain else {"plugins": [], "suites": {}}
     except Exception:
         return 0
+    st["core"] = core_state(core_dir)
     repo = os.environ.get("SHARED_MEMORY_REPO") or shared_repo()
-    osname = (parties(repo).get(dev) or (None, None))[1] or {"darwin": "macos", "win32": "windows"}.get(
-        sys.platform, "linux")
+    osname = (parties(repo).get(dev) or (None, None))[1] or platform_os()
     core = st["core"]
     chan = next((p["plugin"].split("@")[0] for p in st["plugins"] if p["plugin"].startswith("brain-core")), "-")
     _, ccv = run(["claude", "--version"])
     ccv = (ccv.split() or ["?"])[0]
-    print(f"Device-State: device={dev} os={osname} core={core['tag']}@{core['commit'][:7]} channel={chan} cc={ccv}"
+    ver = f"{core['tag']}@{core['commit'][:7]}" if core["commit"] else "unknown"
+    print(f"Device-State: device={dev} os={osname} core={ver} channel={chan} cc={ccv}"
           + (" core-edits=yes" if core.get("local_edits") else ""))
     topic = (args.topic or "").strip().lower()
     if topic and topic != "core":
@@ -416,9 +493,48 @@ def trailer(args):
     return 0
 
 
+def version_key(v):
+    """vA.B.C[-N-g<sha>] -> (A, B, C, N); None when the value is no version (unknown, a bare sha)."""
+    m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:-(\d+)-g[0-9a-f]+)?", (v or "").strip())
+    return tuple(int(x or 0) for x in m.groups()) if m else None
+
+
+def entries(args):
+    """Every entry by `von:` and `core:` — "all messages from device X since core Y" (operator order 2026-10-18).
+    An entry without a readable core version cannot be placed after Y: it is counted, never listed as matching."""
+    repo = shared_repo()
+    since = version_key(args.since_core) if args.since_core else None
+    if args.since_core and since is None:
+        sys.exit(f"device-status: --since-core '{args.since_core}' is no version (vA.B.C)")
+    hits, unplaced = [], 0
+    for p in sorted(Path(repo).glob("*/*.md")):
+        if p.name in ("INDEX.md", "OPEN.md", "LOG.md"):
+            continue
+        try:
+            head = p.read_text(encoding="utf-8", errors="replace").split("\n---", 1)[0]
+        except OSError:
+            continue
+        field = {k: (re.search(rf"^\s*{k}:\s*(\S+)", head, re.M) or [None, ""])[1] for k in ("von", "date", "os", "core")}
+        if args.device and field["von"] != args.device:
+            continue
+        if since is not None:
+            key = version_key(field["core"])
+            if key is None:
+                unplaced += 1
+                continue
+            if key < since:
+                continue
+        hits.append((field["date"], field["von"], field["os"] or "-", field["core"] or "-", p.relative_to(repo).as_posix()))
+    for h in sorted(hits):
+        print("  ".join(h))
+    print(f"{len(hits)} entries" + (f"; {unplaced} without core version, not placed" if unplaced else ""))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("cmd", nargs="?", default="table", choices=("table", "report", "trailer"))
+    ap.add_argument("cmd", nargs="?", default="table", choices=("table", "report", "trailer", "entries"))
+    ap.add_argument("--since-core", help="entries: only entries written on this core version or later")
     ap.add_argument("--topic", help="trailer: the shared-memory topic (folder) of the commit; adds that suite's state")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--brief", action="store_true")
@@ -427,6 +543,8 @@ def main():
     args = ap.parse_args()
     if args.cmd == "trailer":
         return trailer(args)
+    if args.cmd == "entries":
+        return entries(args)
     return report(args) if args.cmd == "report" else table(args)
 
 

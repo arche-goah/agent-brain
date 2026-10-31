@@ -447,6 +447,20 @@ if [ ! -f docs/maintenance/invariants.md ] && [ -f core/templates/invariants.md 
     || echo "WARN could not create the invariant register"
 fi
 
+# 4b2) instance data a core template carries but this brain lacks — bootstrap-brain.sh copies the
+# templates into a NEW brain only; a template added later reached existing brains as a CHANGELOG
+# sentence (measured 2026-10-27: class-gate.json read by class-gate.cjs since its level words,
+# created by hand in the macOS brain, offered to none). Reported with the copy command, never
+# copied: an empty language file next to a filled one is harmless, but rules/ is instance territory.
+if [ -d core/templates/rules-instance ]; then
+  for t in core/templates/rules-instance/*.json; do
+    [ -f "$t" ] || continue
+    n=$(basename "$t")
+    [ -f ".claude/rules/$n" ] && continue
+    echo "WARN instance data .claude/rules/$n missing — the core ships a template: cp $t .claude/rules/$n"
+  done
+fi
+
 # 4c) hook coverage — since 2.0.4 the plugin ships the core hooks (hooks/hooks.json), so a
 # release reaches every brain on its next start; what is left to report: a core hook still
 # copied into this brain's settings.json (fires twice), a brain without the plugin that

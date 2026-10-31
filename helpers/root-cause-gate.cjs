@@ -49,7 +49,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isPeerMessage, isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 
 let OWN_ECHO = /ROOT-CAUSE-GATE/;
@@ -185,7 +185,7 @@ function readTurns(tp, tail) {
     const t = promptText(msg);
     if (t === null) continue;
     if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t) && cur) cur.fired = true; continue; }
-    if (isNotification(t) || isPeerMessage(d) || isSkillExpansion(d) || HARNESS_NOTICE.test(t)) continue;
+    if (isNotification(t) || isAgentOrigin(d) || isSkillExpansion(d) || HARNESS_NOTICE.test(t)) continue;
     cur = { prompt: t, when: d.timestamp || '', texts: [], writes: [], fired: false };
     turns.push(cur);
   }

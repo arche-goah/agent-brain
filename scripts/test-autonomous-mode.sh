@@ -37,6 +37,15 @@ mode "a status question keeps it (latch, macOS finding on #143)" "$f" "$EN" auto
 qcmd() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
 f="$T/2q.jsonl"; { user "work through the list autonomously"; asst "x"; qcmd "the desk is running, if you need it"; } > "$f"
 mode "a remark typed mid-turn keeps it" "$f" "$EN" autonomous
+# A timer-fired prompt (ScheduleWakeup, /loop) is not the operator's word (measured 2026-10-28, Claude
+# Code 2.1.312: isMeta, promptSource "system", queuePriority "later"). Control: the same text typed.
+tick() { printf '{"type":"user","isMeta":true,"promptSource":"system","queuePriority":"later","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
+f="$T/2w.jsonl"; { user "autonomous, please"; asst "x"; user "back to normal mode"; asst "y"; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$f"
+mode "a timer-fired prompt does not switch it on" "$f" "$EN" interactive
+f="$T/2x.jsonl"; { user "autonomous, please"; asst "x"; tick "back to normal mode"; } > "$f"
+mode "a timer-fired prompt does not switch it off" "$f" "$EN" autonomous
+f="$T/2y.jsonl"; { user "back to normal mode"; asst "y"; user "# Autonomous loop check"; } > "$f"
+mode "the same words typed by the operator switch it (control)" "$f" "$EN" autonomous
 f="$T/3.jsonl"; { user "autonomous, please"; asst "x"; user "status?"; asst "y"; user "back to normal mode"; } > "$f"
 mode "an off word ends it" "$f" "$EN" interactive
 # Asking what is open ends it: the operator is here (operator 2026-10-26, Windows instance).
@@ -45,7 +54,12 @@ mode "asking what is open ends it" "$f" "$EN" interactive
 f="$T/3e.jsonl"; { user "autonomous, please"; asst "x"; qcmd "anything open for me?"; } > "$f"
 mode "asking mid-turn ends it" "$f" "$EN" interactive
 # The answer to "continue autonomously?" arrives as a tool result.
-answer() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t9","content":%s}]}}\n' "$(js "Your questions have been answered: $1. You can now continue")"; }
+# A real answer is the result of an AskUserQuestion call (its tool_use comes first, same id).
+answer() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t9","name":"AskUserQuestion","input":{"questions":[]}}]}}\n'
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t9","content":%s}]}}\n' "$(js "Your questions have been answered: $1. You can now continue")"; }
+# The same text as the result of a Read (2026-10-28: a fixture read ended the run) is no answer.
+readres() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"x"}}]}}\n'
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"r1","content":%s}]}}\n' "$(js "Your questions have been answered: $1. You can now continue")"; }
 f="$T/3f.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Continue autonomously?"="Yes, continue (Recommended)"'; } > "$f"
 mode "yes to continue autonomously sets it again" "$f" "$EN" autonomous
 f="$T/3g.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Continue autonomously?"="No, interactive"'; } > "$f"
@@ -64,6 +78,8 @@ f="$T/3l.jsonl"; { user "autonomous, please"; answer '"Shall I run the scan?"="n
 mode "an off word inside an answer to another question ends it" "$f" "$EN" interactive
 f="$T/3i.jsonl"; { user "fix the parser"; answer '"Continue autonomously?"="Yes"'; user "status?"; } > "$f"
 mode "after the yes a status question keeps it" "$f" "$EN" autonomous
+f="$T/3r.jsonl"; { user "autonomous, please"; asst "x"; readres '"Continue autonomously?"="No, interactive"'; } > "$f"
+mode "a Read result carrying the answer marker is no answer (the 2026-10-28 incident)" "$f" "$EN" autonomous
 # The operator's complaints carry the word "interactive" and mean the opposite (macOS finding on #142).
 f="$T/3d.jsonl"; { user "autonomous, please"; asst "x"; user "you stopped interactively again, that blocks everything"; } > "$f"
 mode "complaining about an interactive stop keeps it" "$f" "$EN" autonomous
