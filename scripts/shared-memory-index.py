@@ -28,8 +28,8 @@ The shape this produces:
                       stale list never stands and no area gets an empty page it never asked for.
   the file            the full text, where it always was.
 
-Each level has one job, and a reader looking for a show-tools fact never pays for 62
-grandMA3 entries. Measured on the real repo: a lookup costs 19,115 characters (~4.8k
+Each level has one job, and a reader looking for a fact in one area never pays for the
+62 entries of another. Measured on the real repo: a lookup costs 19,115 characters (~4.8k
 tokens) against 91,185 (~22.8k) today — 4.8x cheaper.
 
 WHAT IT NEVER DOES: invent, summarise or shorten a file's content. The discriminator is
