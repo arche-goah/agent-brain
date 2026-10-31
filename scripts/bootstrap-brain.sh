@@ -222,8 +222,9 @@ _sub_err="$(git submodule add "$CORE_URL" core 2>&1 >/dev/null)" || {
   exit 1
 }
 
-# A core is consumed at a release tag, never at untagged main (CONVENTIONS section 6, AGENTS.md
-# #5: an untagged change reaches nobody). The clone above sits on the default branch — measured
+# A core is consumed at a release tag, never at untagged main (CONVENTIONS section 13: the core/
+# submodule follows the pinned tag; AGENTS.md #5: an untagged change reaches nobody). The clone
+# above sits on the default branch — measured
 # 2026-10-31 in a fresh-brain trial: v2.0.5-30-g317916c, thirty unreleased commits. Newest
 # vX.Y.Z by version order, no pre-release suffix; BOOTSTRAP_CORE_REF names another tag, branch
 # or commit. brain-update.sh later moves it to the marketplace pin.
