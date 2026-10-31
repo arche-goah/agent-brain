@@ -41,7 +41,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, operatorWords } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
 
@@ -200,7 +200,9 @@ process.stdin.on('end', () => {
 
   const condition = buildRegex(cwd);
   let hit = null;
-  for (const s of sentences(stripQuoted(seen.operator))) {
+  // Pasted text is not the operator's order (turn-kind.cjs operatorWords, 2026-10-28: the "then" of a
+  // pasted trading plan held every push of a session); a prompt that is only a paste names no condition.
+  for (const s of sentences(stripQuoted(operatorWords(seen.operator)))) {
     const m = s.match(condition);
     if (m) { hit = { sentence: s, word: m[0] }; break; }
   }
