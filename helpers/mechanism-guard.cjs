@@ -280,7 +280,7 @@ process.stdin.on('end', () => {
     // 238 refusals in two weeks on the macOS instance, median 923 characters - mostly the rule's
     // incident story and a three-line marker boilerplate. The first clause of `was` says what is
     // refused; the incident stays in the rule file it came from.
-    const what = String(r.was).split(/\s(?:—|-)\s|:\s(?:measured|gemessen)|\.\s/)[0].slice(0, 200);
+    const what = String(r.was).split(/\s(?:—|-)\s|:\s\S+\s20\d\d-\d\d-\d\d|\.\s/)[0].slice(0, 200);
     const msg =
       `MECHANISM CHECK (${r.source}): ${what}\n` +
       `Documented path: ${r.instead}\n` + how;
