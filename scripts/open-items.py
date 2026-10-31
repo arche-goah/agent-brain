@@ -931,11 +931,20 @@ def main():
               + " then core/scripts/session-audit.py --ack <id>")
     if not items and not failed:
         print("- nothing open (requests, PRs and work ledgers read)")
+    # Standing PRs need no topic words (the gate names them by number); above a handful they
+    # share one line like the waiting ones (measured 2026-10-28: 16 such lines, 4.2 of 20 KB of
+    # the session start). A dated one keeps its own line for its date warning.
+    collapse = int(os.environ.get("OPEN_ITEMS_WAIT_COLLAPSE", "5") or 5)
+    fold = [i for i in active if i["cls"] == "standing" and i["kind"] == "PR" and not i["overdue"]]
+    if len(fold) <= collapse:
+        fold = []
     group = False
     for i in active:
         if i["cls"] == "standing" and not group:
             group = True
             print("- standing approval — handle these, then report what was done (no question needed):")
+        if i in fold:
+            continue
         if i["n"] > 1 and i.get("ours", "")[:10] >= i["first"]:
             age = f"!! reported in {i['n']} sessions since {i['first']}, last own move {i['ours'][:10]} — still ours"
         elif i["n"] > 1 and "ours" in i:
@@ -954,9 +963,12 @@ def main():
                    "undone, then move or drop the waiting-until line; " + age)
         why = f" ({i['why']})" if i["why"] else ""
         print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{why}")
+    if fold:
+        rep = [i["n"] for i in fold if i["n"] > 1]
+        print(f"- [PR-standing] {len(fold)} PRs: " + ", ".join(i["ref"] for i in fold)
+              + (f" — !! {len(rep)} of them reported in {max(rep)} sessions at most" if rep else " — first report"))
     # Waiting items need no relay; above a handful, one line keeps the start readable
     # (Windows check 2026-10-09: 20 own PRs waiting on that very check filled 20 lines).
-    collapse = int(os.environ.get("OPEN_ITEMS_WAIT_COLLAPSE", "5") or 5)
     if len(waiting) > collapse:
         print(f"- [wait] {len(waiting)} waiting on others or a date: "
               + ", ".join(i["ref"].rsplit("/", 1)[-1] for i in waiting[:12])
