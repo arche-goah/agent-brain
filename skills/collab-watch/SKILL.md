@@ -178,13 +178,16 @@ test, `rules/intelligence.md`) gets decided, and only what MUST be the operator'
 is parked and listed later. No duration is needed — the watch runs until the operator
 stops it. Allowed
 actions must go through; a prompt on one is a finding about the allow list, not a reason to
-stop the watch. This holds ONLY while the watch is armed (and in `autonomous-run`); outside
-these modes the operator gets the interactive question with clear options as always.
-**Two halves, two triggers** (operator decision 2026-10-19): parking ACTIONS that may raise a
-permission prompt holds whenever the watch is armed — a prompt blinds every channel. Parking
-the operator's DECISIONS holds only in autonomous mode, which the operator orders in words
-(`autonomous-run`, hard gate 7); a standing watch alone is not that mode, so with the
-operator at hand a real decision is asked through the question tool.
+stop the watch. This holds ONLY in autonomous mode (next paragraph); outside it the operator
+gets the interactive question with clear options as always.
+**One trigger for both halves** (operator decision 2026-10-27, replaces the split of
+2026-10-19): parking ACTIONS that may raise a permission prompt, and parking the operator's
+DECISIONS, both hold only in autonomous mode, which the operator orders in words
+(`autonomous-run`, hard gate 7, `helpers/autonomous-mode.cjs`). A standing watch alone is not
+that mode: it is armed from the first reply in every session (watch-gate case g), so parking
+actions whenever it is armed parked every prompting step of every interactive session too —
+the operator at hand then never saw the prompt they were there to answer. With the operator
+at hand, a prompting action is issued and a real decision is asked through the question tool.
 
 ## Local cross-session hand-off
 
