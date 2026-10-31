@@ -80,6 +80,10 @@ Carrier: `permissions.allow` carries `Bash(gh pr merge * --match-head-commit *)`
 
 Carrier: permission rule `--match-head-commit` in the settings.
 
+## 2026-10-28 — A rule written as prose is caught at the write
+
+Carrier: Stop check `scripts/hooks/prose-carrier-gate.cjs`.
+
 ## 2026-10-19 — Instance keys end a carrier block
 
 Carrier: prose, because it is clear.
@@ -113,8 +117,12 @@ def build_brain(root):
         f.write("const p = '.claude/rules/stop-checks.json'; const v = 'plugin.json';\n")
     with open(os.path.join(root, "core", "helpers", "mechanism-guard.cjs"), "w", encoding="utf-8") as f:
         f.write("const p = 'mechanism-rules.json';\n")
+    # a Stop check wired ONLY as a row of stop-checks.json (the dispatcher runs it) - 2026-10-28
+    os.makedirs(os.path.join(root, "scripts", "hooks"))
+    with open(os.path.join(root, "scripts", "hooks", "prose-carrier-gate.cjs"), "w", encoding="utf-8") as f:
+        f.write("// a stop check run by the dispatcher\n")
     with open(os.path.join(root, ".claude", "rules", "stop-checks.json"), "w", encoding="utf-8") as f:
-        f.write("{}")
+        json.dump({"checks": [{"label": "PROSA", "cmd": "scripts/hooks/prose-carrier-gate.cjs", "mode": "block"}]}, f)
     with open(os.path.join(root, ".claude", "rules", "mechanism-rules.json"), "w", encoding="utf-8") as f:
         json.dump({"rules": [{"id": "download", "pattern": "curl"}]}, f)
     # NOT wired: a report script, and a gate helper nobody hooked up
@@ -154,6 +162,7 @@ with tempfile.TemporaryDirectory() as d:
     check(cls("A second beta tag on the same ") == "REPORT", "a script that only reports is REPORT, not binding")
     check(cls("Tags only for a delivery") == "PENDING", "a PR number alone is PENDING")
     check(cls("Network drives: hard stop") == "REPORT", "a gate file wired NOWHERE does not bind (REPORT)")
+    check(cls("A rule written as prose is ca") == "GATE", "a Stop check wired only as a stop-checks.json row binds (2026-10-28)")
     check(cls("No release without the operato") != "GATE", "a manifest (plugin.json) a wired helper reads is no gate (Windows review)")
     check(cls("Merge with the rule quoted who") == "GATE", "a permission rule quoted whole, spaces included, binds (Windows re-check)")
     check(cls("Merge only the reviewed head") == "GATE", "a permission rule in the settings binds (Windows review)")

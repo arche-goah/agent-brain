@@ -200,6 +200,19 @@ has "[parked] grandma-suite#7" "$out" && ok "parked PR on the parked line" || ba
 has "(+5 waiting on others or a date)" "$out" && ok "header counts the waits apart" || bad "wait header: $(head -1 <<<"$out")"
 outc=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=2 run p3)
 has "- [wait] 5 waiting on others or a date: " "$outc" && [ -z "$(line '|wait] ' "$outc")" ] && ok "many waits collapse into one line" || bad "collapse: $outc"
+# Standing PRs collapse the same way (measured 2026-10-28: 16 such lines, 4.2 of 20 KB of the
+# session start); a standing request keeps its line — the gate names it by its topic words.
+PS="$T/root-ps"; mkdir -p "$PS/.claude/rules"; cp "$T/root/.claude/rules/open-items.json" "$PS/.claude/rules/"
+printf '%s\n' '{"classes":[{"name":"our PRs","kind":"PR","granted":"\"handle them\" 2026-10-11"}]}' > "$PS/.claude/rules/open-items-standing.json"
+outs=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=2 run p4 "$PS")
+has "- [PR-standing] 3 PRs: suite-x#2, owned#4, owned#9 — first report" "$outs" \
+  && ok "many standing PRs collapse into one line" || bad "standing collapse: $outs"
+[ "$(line '[PR|standing]' "$outs" | grep -ac .)" = 1 ] && has "core#6 " "$(line '[PR|standing]' "$outs")" \
+  && ok "a standing PR past its date keeps its own line" || bad "dated standing: $outs"
+has "standing 4" "$(head -1 <<<"$outs")" && ok "header still counts each standing PR" || bad "standing header: $(head -1 <<<"$outs")"
+outs=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=5 run p5 "$PS")
+[ "$(grep -c -F '[PR|standing]' <<<"$outs")" = 4 ] && ! has "[PR-standing]" "$outs" \
+  && ok "negative control: few standing PRs keep their lines" || bad "below threshold: $outs"
 l1=$(line 'suite-x#1 ' "$out2")
 has "waiting on peer" "$l1" && ! has "reported in" "$l1" && ok "a wait does not count up" || bad "a wait was counted: $l1"
 has "!! reported in 2 sessions" "$(line 'core#6 ' "$out2")" && ok "past wait counts up" || bad "past wait count: $(line 'core#6 ' "$out2")"
