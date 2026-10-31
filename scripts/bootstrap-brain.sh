@@ -121,6 +121,8 @@ cp "$CORE_SRC/templates/rules-instance/absence-sources.json" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/condition-patterns.json" .claude/rules/
 # Language data of autonomous-mode.cjs (built-ins English; the operator's words go here).
 cp "$CORE_SRC/templates/rules-instance/autonomous-patterns.json" .claude/rules/
+# Language data of class-gate.cjs (level words of the gear line; built-ins English).
+cp "$CORE_SRC/templates/rules-instance/class-gate.json" .claude/rules/
 # Language data of decision-review.py (built-ins English; the operator's words go here).
 cp "$CORE_SRC/templates/rules-instance/decision-review.json" .claude/rules/
 # The standing watch's data (skill collab-watch). Copied with its placeholders: watch-readiness.py

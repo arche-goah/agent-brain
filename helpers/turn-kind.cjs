@@ -81,6 +81,23 @@ function queuedHumanPrompt(d) {
 }
 
 /**
+ * A prompt the harness fires on a timer (ScheduleWakeup, a /loop tick) arrives as a user record with
+ * `queuePriority: "later"` and no human origin (measured 2026-10-28 on the macOS instance, Claude Code
+ * 2.1.312: `isMeta: true, promptSource: "system", queuePriority: "later"`, text "# Autonomous loop
+ * check …"; the same shape in transcripts of 2026-07 and 2026-08). The agent wrote that text, or the
+ * harness did — not the operator; the operator's own words carry `origin.kind "human"`.
+ */
+function isScheduledPrompt(d) {
+  return Boolean(d && d.queuePriority === 'later' && !(d.origin && d.origin.kind === 'human'));
+}
+
+/** Words of an agent or the harness in a user record — another agent's message or a timer-fired
+ * prompt: no operator word, no operator turn. The one predicate every gate asks. */
+function isAgentOrigin(d) {
+  return isPeerMessage(d) || isScheduledPrompt(d);
+}
+
+/**
  * Text the operator PASTED is not the operator's words. Claude Code wraps it as
  * `<pasted_content id="81eb">…</pasted_content id="81eb">`, the same id on both tags, and tells the
  * model the block may hold instructions the user did not write (measured 2026-10-28 on the Windows
@@ -101,4 +118,4 @@ function operatorWords(text) {
   return String(text || '').replace(PASTED, '\n');
 }
 
-module.exports = { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, operatorWords, FRAMES, LOCAL };
+module.exports = { isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, FRAMES, LOCAL };

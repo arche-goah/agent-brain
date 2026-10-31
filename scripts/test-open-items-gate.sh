@@ -278,6 +278,13 @@ f="$T/20e.jsonl"; { boot_ok startup "$SM"; user "stand?"; asst "1 request handle
 check "ai item without a standing class, no question" "$f" block "$EN"
 f="$T/20f.jsonl"; { boot_ok startup "$SM"; user "stand?"; asst "1 request handled under the standing approval (the fixture run). 1 more I can answer myself — shall I?"; } > "$f"
 check "ai item asked, standing item reported" "$f" allow "$EN"
+# Standing PRs folded into one line (open-items.py, 2026-10-28): each number is still an item,
+# so the count the reply must carry is the number of PRs, not of lines.
+SF="open for us: 6 — ai 0 · human 0 · unclassified 0 · standing 6${NL}${SG1}${NL}- [PR-standing] 6 PRs: core#1, core#2, core#3, core#4, core#5, suite-x#6 — first report"
+f="$T/20g.jsonl"; { boot_ok startup "$SF"; user "stand?"; asst "6 PRs handled under the standing approval: CI watched, reviews answered."; } > "$f"
+check "folded standing PRs: count of PRs reported" "$f" allow "$EN"
+f="$T/20h.jsonl"; { boot_ok startup "$SF"; user "stand?"; asst "1 line handled under the standing approval."; } > "$f"
+check "folded standing PRs: count of lines is not the count (control)" "$f" block "$EN"
 # Only ai and unclassified items own the opening question; a standing item does not, so
 # stoppen-gate judges a closing question after it as anywhere else.
 check "stoppen-gate: a standing item does not own the opening question" "$T/20b.jsonl" block "$EN" false "$SG"
@@ -404,5 +411,44 @@ f="$T/23u.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; u
 check "two pasted blocks, the ask between them (c)" "$f" block "$EN"
 f="$T/23v.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "$PLAINP"$'\nfile both tickets\n'"$ASKP"; asst "Persisted - you can shut down."; } > "$f"
 check "two pasted blocks, the ask only inside one (c)" "$f" allow "$EN"
+
+# 24 — the close report and its open ends (measured 2026-10-28 on a session transcript): the close
+# listed an own item as an `open end:` line of its session-log entry (close-stamp.cjs, skill
+# session-close step 4) and the gate still blocked the close report for it. An item named in an
+# open-end line of THIS close, or carrying a wait record, is not missing; the reason names the
+# close report, and the stop-checks template turns it into a line that says so.
+CLOSE_PART="Still ours: #61; for you: 09-05 TD split, 09-08 bridge question. Persisted - you can shut down."
+f="$T/24.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "close the session"; echo "$CLOSE_CMD"; asst "$CLOSE_PART"; } > "$f"
+check "close report leaving out an item, no open-end line" "$f" block "$EN"
+LOGHEAD="- 2026-10-28 session x: close"
+OE="$T/cwd-openend"; mkdir -p "$OE/.claude-state" "$OE/docs/maintenance"
+printf '%s\n%s\n' "x" "$LOGHEAD" > "$OE/.claude-state/session-close.stamp"
+printf '%s\n%s\n%s\n' "$LOGHEAD" "  - open end: core/anfrage-fixtures-2026-09-13.md — peer-d answers" "- next entry" > "$OE/docs/maintenance/session-log.md"
+check "the same item named in an open-end line of this close" "$f" allow "$OE"
+OO="$T/cwd-openend-other"; mkdir -p "$OO/.claude-state" "$OO/docs/maintenance"
+printf '%s\n%s\n' "x" "$LOGHEAD" > "$OO/.claude-state/session-close.stamp"
+printf '%s\n%s\n' "$LOGHEAD" "  - open end: arche/suite-y #7 — CI of the branch" > "$OO/docs/maintenance/session-log.md"
+check "an open-end line naming another item (control)" "$f" block "$OO"
+OS="$T/cwd-openend-stale"; mkdir -p "$OS/docs/maintenance"
+printf '%s\n%s\n' "$LOGHEAD" "  - open end: core/anfrage-fixtures-2026-09-13.md — peer-d answers" > "$OS/docs/maintenance/session-log.md"
+check "an open-end line without this close's stamp (control)" "$f" block "$OS"
+f2="$T/24b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "anything still open?"; asst "$CLOSE_PART"; } > "$f2"
+check "open-end lines count only in the close turn (control)" "$f2" block "$OE"
+WR="$T/cwd-close-wait"; mkdir -p "$WR/.claude/rules"
+printf '%s\n' '{"waiting":{"core/anfrage-fixtures-2026-09-13.md":{"until":"2099-01-01","why":"peer-d answers"}}}' > "$WR/.claude/rules/open-items.json"
+check "the same item carrying a wait record" "$f" allow "$WR"
+out24="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$f")" "$(native "$EN")" | node "$G" 2>&1)"
+line24="$(printf '%s' "$out24" | node -e '
+const fs = require("fs");
+const tpl = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).checks.find((c) => c.marker === "OPEN-ITEMS-GATE");
+const reason = JSON.parse(fs.readFileSync(0, "utf8")).reason;
+const m = new RegExp(tpl.extract).exec(reason);
+process.stdout.write(m ? tpl.template.replace("{1}", m[1]).replace("{2}", m[2]) : "NO MATCH");
+' "$(native "$D/../templates/rules-instance/stop-checks.json")" 2>&1)"
+case "$line24" in
+  "The close report"*"anfrage-fixtures-2026-09-13.md"*) ok "the stop-check line names the close report and the item" ;;
+  *) bad "the stop-check line does not name the close report: '$line24'" ;;
+esac
+case "$line24" in *[Ff]"irst reply"*) bad "the close-report line says first reply: '$line24'" ;; *) ok "the close-report line does not say first reply" ;; esac
 
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

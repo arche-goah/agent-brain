@@ -16,6 +16,10 @@ The script runs every `check:` of the registered ledgers and reports:
   DONE-OPEN   the entry is open, its check passes      -> tick it, and name why it was missed
   REGRESSED   the entry is ticked, its check fails     -> reopen it, or the check is wrong
   NO-CHECK    an open entry dated on/after `ratchet_since` names no check at all
+  UNPROVEN    an open entry whose check was green the first time it was seen: no negative
+              control, so "done" is unproven (operator 2026-10-28). The first results live in
+              .claude-state/ledger-reconcile-seen.json; a brain's first run is a baseline, a
+              changed check is seen anew, a hand run with --ledger keeps no memory.
 A check that times out or cannot start is reported as such, never as done.
 
 Two bounds, because the checks run on their own at every session start:
@@ -177,9 +181,12 @@ def label(e, path):
     return ident[0] if ident else f"{path}:{e['line']}"
 
 
-def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0):
+def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0, seen=None):
+    """`seen`: {entry + check: result on the run that first saw that check}, updated in place.
+    None = no memory (hand runs with --ledger); an empty dict on a brain's first run = baseline."""
     out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": [],
-           "refused": [], "not_run": []}
+           "refused": [], "not_run": [], "unproven": []}
+    baseline = seen is not None and not seen
     deadline = time.monotonic() + budget
     for rel in ledgers:
         path = pathlib.Path(root) / rel
@@ -206,8 +213,19 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
                 out["not_run"].append(label(e, rel))
                 continue
             res = run_check(chk, root, timeout, shell)
+            # Negative control (operator 2026-10-28): a check that is green the first time it is
+            # seen on an open entry never showed it can be red — measured that day, two checks
+            # grepped a word that stood in the file before the work, one waited for a format the
+            # work never writes. Such an entry is UNPROVEN, not done, until its check is changed.
+            key = f"{label(e, rel)}\x1f{chk}"
+            first = None
+            # A brain's first run records "baseline": checks written before this rule are not judged.
+            if seen is not None and res in ("pass", "fail"):
+                first = seen.setdefault(key, "baseline" if baseline else res)
             if res in ("timeout", "error"):
                 out["broken"].append(f"{label(e, rel)} ({res})")
+            elif res == "pass" and not e["done"] and first == "pass":
+                out["unproven"].append(label(e, rel))
             elif res == "pass" and not e["done"]:
                 out["done_open"].append(label(e, rel))
             elif res == "fail" and e["done"]:
@@ -248,7 +266,21 @@ def main():
     budget = float(cfg.get("budget_s") or 30)
     allowed = cfg.get("allowed") or ALLOWED
     shell = find_shell(a.shell)
-    r = reconcile(a.root, ledgers, since, timeout, shell, allowed, budget)
+    # The memory of first results lives beside the cached result; only a registered run keeps it.
+    seen_path = pathlib.Path(a.root) / ".claude-state" / "ledger-reconcile-seen.json"
+    seen = None
+    if not a.ledger:
+        try:
+            seen = json.loads(seen_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            seen = {}
+    r = reconcile(a.root, ledgers, since, timeout, shell, allowed, budget, seen)
+    if seen is not None:
+        seen_path.parent.mkdir(exist_ok=True)
+        tmp = seen_path.with_name(f"{seen_path.name}.{os.getpid()}")
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(seen, f, ensure_ascii=False, sort_keys=True)
+        os.replace(tmp, seen_path)
     lines = []
 
     def say(key, head, tail):
@@ -260,6 +292,9 @@ def main():
     say("done_open", "entr(y/ies) done but still open (its check passes)",
         "tick it with the evidence, and name why the ledger missed it (copied from a report? fixed in passing?)"
         " - or, with work left, the check measures only a part: make it measure the exit")
+    say("unproven", "open entr(y/ies) whose check was green from its first run - negative control missing",
+        "a check must be red while the work is missing: run it against the state before the work, sharpen it"
+        " until it is, then it counts (a changed check is seen anew)")
     say("regressed", "ticked entr(y/ies) whose check fails",
         "reopen it, or the check no longer measures the thing")
     say("broken", "check(s) that could not give an answer",

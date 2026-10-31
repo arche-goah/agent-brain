@@ -41,7 +41,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, operatorWords } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
 
@@ -142,7 +142,7 @@ function analyze(transcriptPath) {
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
       // A loaded skill's text: no condition, no new turn (2026-10-19, "then" in session-close).
-      if (isSkillExpansion(d) || isPeerMessage(d)) continue;
+      if (isSkillExpansion(d) || isAgentOrigin(d)) continue;
       const t = promptText(msg);
       if (t === null || HOOK_ECHO.test(t) || isNotification(t)) continue;
       operator = t; texts = []; agents = 0;   // a new turn starts here
