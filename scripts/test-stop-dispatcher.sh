@@ -287,6 +287,15 @@ if [ -f "$ROOT/templates/rules-instance/stop-checks.json" ]; then
   case "$OI" in *"The close report leaves out"*"missing: core#7"*) ok "open-items line names the branch and what is missing";;
     *) bad "open-items line: $OI";; esac
   case "$OI" in *"first reply"*) bad "open-items line still says first reply: $OI";; *) ok "no first-reply wording on a close-report block";; esac
+  # The idle check's template line matches every "Missing:" branch of the gate (2026-10-31: the
+  # gate grew "own-items measurement"; the template matched only "continuation" and the full text went out).
+  printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'AUTONOMOUS-IDLE: this turn ends on a BLOCKED line, but the list behind it was not measured in this turn. Missing: own-items measurement'}))" > "$T/idle-gate.cjs"
+  node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).checks.find(x=>x.marker==="AUTONOMOUS-IDLE");c.cmd=process.argv[2];fs.writeFileSync(process.argv[3],JSON.stringify({checks:[c]}))' \
+    "$(native "$ROOT/templates/rules-instance/stop-checks.json")" "$(native "$T/idle-gate.cjs")" "$(native "$P/.claude/rules/stop-checks.json")"
+  ID=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$TR")" "$(native "$P")" | CLAUDE_PROJECT_DIR="$P" node "$D")
+  case "$ID" in *"missing: own-items measurement"*) ok "idle line names the missing branch in one short line";;
+    *) bad "idle line: $ID";; esac
+  case "$ID" in *"not measured in this turn"*) bad "idle line still carries the full text: $ID";; *) ok "idle line without the gate's full text";; esac
 else
   skip "open-items template line"
 fi

@@ -65,8 +65,9 @@
       "cmd": "core/helpers/root-cause-gate.cjs",
       "mode": "block",
       "extract": "reads as a correction or a mishap:\\s*\"([^\"]+)\"",
-      "template": "\"{1}\" reads as a correction or a mishap, and the reply names no cause - measure it and write the Cause line before the turn ends",
-      "maxLength": 120
+      "template": "No cause named for \"{1}\"",
+      "maxLength": 60,
+      "short": "A cause is named, but no carrier and no register entry"
     },
     {
       "label": "PREMISE",
@@ -123,11 +124,12 @@
       "marker": "AUTONOMOUS-IDLE",
       "cmd": "core/helpers/autonomous-idle-gate.cjs",
       "mode": "block",
-      "extract": "Missing: continuation",
-      "template": "The run is autonomous and this turn ends idle - do the next item, or end with a measured BLOCKED: or POOL EMPTY: line (a wakeup alone is no continuation)",
-      "maxLength": 200,
+      "extract": "Missing: ([^\\n]+)",
+      "template": "Autonomous run ends idle - missing: {1}",
+      "maxLength": 60,
       "onReissue": "run",
-      "required": true
+      "required": true,
+      "short": "Autonomous run ends idle - do the next item, or end with a measured BLOCKED: line"
     },
     {
       "label": "DECISIONS",
