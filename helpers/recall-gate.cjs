@@ -2,8 +2,7 @@
 /**
  * Stop Hook: RESEARCH THAT LEAVES NO CARRIER IS RESEARCH SOMEONE PAYS FOR TWICE.
  *
- * Measured on the Windows instance 2026-08-21 (shared memory,
- * grandma3/zentrale-erkenntnisablage-gegen-doppelrecherche-2026-08-21.md): one session
+ * Measured on the Windows instance 2026-08-21 (recorded in the organisation's shared memory): one session
  * burned ~60 % of its limit reading a reference showfile live, wrote ONE summary line
  * into the session log and no memory file; the next session re-read the same
  * structures live until the operator stopped it. The findings were not lost — they sat

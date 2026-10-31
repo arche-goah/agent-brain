@@ -174,8 +174,8 @@ session start.
      result is `pass`, `fail — <what>` or `n/a — <why>`; the header carries
      `required_os: <system, system>`. The OS is a field every device enters, not a column, so
      a new system or a second device on the same system changes no table. Results live in
-     the repo, a script renders them, never hand-kept; heavy-metal's `platform_check.py` +
-     `platforms_table.py` are the pattern for producing the lines. Entries are appended,
+     the repo, a script renders them, never hand-kept; a hardware project's `platform_check.py` +
+     `platforms_table.py` (one script measures, one renders) are the pattern for producing the lines. Entries are appended,
      never overwritten, and an open `fail` keeps the check red. The **owner's word has its
      own section** (what the owner judged, in the owner's words) — it is a condition for
      stable, not a checked line; (2) the GitHub release of the tag is marked pre-release and its title and
