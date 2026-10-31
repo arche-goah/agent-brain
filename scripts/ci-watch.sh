@@ -357,6 +357,41 @@ pr_run_still_open() {   # exit 0 = a run of the head commit is still open
   return 0
 }
 
+# Green also needs the repo's main workflow to have RUN on the head. Measured 2026-10-31 on a core
+# PR: the branch conflicted with main, GitHub created no `pull_request` run of `CI` at all, the
+# four fast CodeQL checks were green, and the watch said `GREEN — 4 checks` — mergeable still read
+# UNKNOWN right after the PR was opened, so the two-read conflict check above never fired. The
+# absence of the workflow was read as green. CI_WATCH_REQUIRE_WORKFLOW names that workflow
+# (default `CI`; empty = off). It counts only where the repo HAS an active workflow of that name,
+# so a repo without one is untouched; every unreadable answer leaves the old verdict. A missing
+# run is a wait for REQUIRE_MAX polls (GitHub creates the run seconds after the push), then a
+# named UNKNOWN.
+REQUIRE_WF="${CI_WATCH_REQUIRE_WORKFLOW-CI}"
+REQUIRE_MAX="${CI_WATCH_REQUIRE_MAX:-3}"
+require_missing=0
+pr_required_run_missing() {   # exit 0 = the named workflow exists but has no run on the head
+  local sha have runs
+  [[ -n "$REQUIRE_WF" ]] || return 1
+  ghq api "repos/$REPO/actions/workflows?per_page=100" \
+      --jq "[.workflows[] | select(.state == \"active\" and .name == \"$REQUIRE_WF\")] | length" || return 1
+  have=$gh_out
+  [[ "$have" =~ ^[0-9]+$ ]] && (( have > 0 )) || return 1
+  ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 1
+  sha=$gh_out
+  [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 1
+  ghq api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
+      --jq "[.workflow_runs[] | select(.name == \"$REQUIRE_WF\")] | length" || return 1
+  runs=$gh_out
+  [[ "$runs" =~ ^[0-9]+$ ]] || return 1
+  if (( runs > 0 )); then require_missing=0; return 1; fi
+  require_missing=$((require_missing + 1))
+  if (( require_missing >= REQUIRE_MAX )); then
+    fail_unknown "$REPO PR #$TARGET — the listed checks are green, but workflow '$REQUIRE_WF' has no run on head ${sha:0:7} ($require_missing reads). GitHub starts none for a PR that conflicts with its base: rebase or merge main into the branch, then re-arm. Not green."
+  fi
+  echo "ci-watch: PR #$TARGET has no run of workflow '$REQUIRE_WF' on head ${sha:0:7} yet (read $require_missing of $REQUIRE_MAX) — waiting" >&2
+  return 0
+}
+
 warned_stale=0
 stale_checkrun_recount() {   # reads $json, may lower $pending and raise $bad
   local sha cr recount stale
@@ -560,6 +595,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     pr_conflicting_check
     if (( conflict_seen )); then sleep "$POLL"; continue; fi
     if pr_run_still_open; then sleep "$POLL"; continue; fi
+    if pr_required_run_missing; then sleep "$POLL"; continue; fi
     # Green needs the SAME head on two polls. Measured 2026-10-28 on a core PR: a watch armed
     # right after `gh pr update-branch` said `GREEN — 14 checks` on its first poll — the PR head
     # AND its branch tip still named the old commit (the merge commit the API writes appears a
