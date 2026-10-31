@@ -57,7 +57,7 @@ const fs = require('fs');
 const path = require('path');
 const { isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { autonomousMode } = require('./autonomous-mode.cjs');
-const { PRE_COMMIT } = require('./close-stamp.cjs');
+const { PRE_COMMIT, closeOpenEnds } = require('./close-stamp.cjs');
 
 const MAX_BYTES = 16 * 1024 * 1024; // the first turn sits at the top; a huge file is past it
 const BOOTUP = /session-bootup\.sh/;
@@ -141,6 +141,7 @@ function readTurn(tp) {
   let last = []; // the running turn: every reply since the newest operator prompt
   let lastCmds = []; // ...and its shell commands (is it the session-close turn?)
   let lastPrompt = '';
+  let since = ''; // when the running turn began (the close stamp must be no older)
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     let d;
@@ -163,7 +164,7 @@ function readTurn(tp) {
     if (msg.role === 'user') {
       if (isSkillExpansion(d) || isAgentOrigin(d)) continue;   // a loaded skill's text or another agent's report is no second prompt
       const t = promptText(msg);
-      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; last = []; lastCmds = []; lastPrompt = t; if (prompts === 1) first = t; }
+      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; last = []; lastCmds = []; lastPrompt = t; since = d.timestamp || ''; if (prompts === 1) first = t; }
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -183,7 +184,7 @@ function readTurn(tp) {
       }
     }
   }
-  return { boot, prompts, total, first, reply: reply.join('\n'), last: last.join('\n'), lastCmds, lastPrompt };
+  return { boot, prompts, total, first, reply: reply.join('\n'), last: last.join('\n'), lastCmds, lastPrompt, since };
 }
 
 /**
@@ -334,7 +335,7 @@ const hasNumber = (n, text) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(text);
  * (its record in .claude-state/open-items-seen.json). A bullet under a heading that says
  * "with others" says it too.
  */
-function relabelled(t, cwd) {
+function relabelled(t, cwd, sessionId) {
   if (!t.boot || t.boot.kind !== 'ok' || !t.last) return null;
   const blk = parseBlock(t.boot.text);
   if (!blk) return null;
@@ -379,7 +380,15 @@ function relabelled(t, cwd) {
   const closing = (t.lastCmds || []).some((c) => PRE_COMMIT.test(c));
   const asked = patterns(cwd, 'ask').test(t.lastPrompt || '');
   if (!closing && !asked && !patterns(cwd, 'nothing').test(t.last)) return null;
-  const left = ours.filter((it) => !named(it, t.last, ageRx, generic));
+  // An item this close already carries as an `open end:` line of its session-log entry
+  // (close-stamp.cjs, skill session-close step 4) is named — on record, where the next session
+  // takes it over. Measured 2026-10-28: a close listed its own items as open ends and the gate
+  // still blocked the close report for them.
+  const ends = closing ? closeOpenEnds(cwd, { sessionId, since: t.since,
+    calls: (t.lastCmds || []).map((cmd) => ({ cmd })) }) : null;
+  const endText = (ends || []).join('\n');
+  const left = ours.filter((it) => !named(it, t.last, ageRx, generic)
+    && !(endText && named(it, endText, ageRx, generic)));
   if (!left.length) return null;
   return `${closing ? 'The close report' : asked ? 'The answer to "is anything open?"' : 'This reply says nothing is open, but it'} leaves out what the session start lists as ours and is still open — the operator shuts down on this answer. Name each as ours (with where it stands), or record its wait as data first. Missing: ${left.map((it) => it.ref).join(', ')}`;
 }
@@ -393,7 +402,7 @@ function judge(input) {
     if (t.total !== 1) return null;
     return 'The session-start output never arrived in this session, so the open points were not shown. Run `python3 core/scripts/open-items.py --owner <org>` (or `python`) and report them. Missing: bootup';
   }
-  const moved = relabelled(t, cwd);
+  const moved = relabelled(t, cwd, input.session_id);
   if (moved) return moved;
   if (t.boot.source === 'compact' || t.prompts !== 1) return null;
   if (t.boot.kind === 'cancelled') {
