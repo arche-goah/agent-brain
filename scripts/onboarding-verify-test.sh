@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# covers: onboarding-verify (where the report lands)
+# covers: onboarding-verify (where the report lands; check 1 access, check 5 bootup hook, check 12)
 #
 # The verifier writes a report INTO the brain it checks. Until 2026-09-13 that meant the
 # brain ROOT — a file the root whitelist (rules/working-rules.md) has no seat for, so
@@ -109,6 +109,56 @@ printf '{"env":{"SHARED_MEMORY_SELF":"me-test"}}\n' > "$B7/.claude/settings.json
     SHARED_MEMORY_REPO="$T/smr" bash "$V" "$B7" >/dev/null 2>&1 )
 grep -q "^OK   12 Shared-memory self — SHARED_MEMORY_SELF=me-test" "$B7/docs/maintenance/$NAME" && ok "self: set in settings env, OK" \
   || bad "self: set in settings env not seen"
+
+# Stubs for gh, ssh and claude: checks 1 and 5 below must not depend on the runner's own logins.
+stubs() { # stubs <dir> <gh exit code> <what ssh says>
+  mkdir -p "$1"
+  printf '#!/bin/sh\nexit %s\n' "$2" > "$1/gh"
+  printf '#!/bin/sh\necho "%s"\nexit 1\n' "$3" > "$1/ssh"
+  printf '#!/bin/sh\nexit 1\n' > "$1/claude"
+  chmod +x "$1/gh" "$1/ssh" "$1/claude"
+}
+SSH_OK="Hi fixture! You've successfully authenticated, but GitHub does not provide shell access."
+SSH_RED="git@github.com: Permission denied (publickey)."
+
+# --- 8 check 1: the gh login is mandatory, missing SSH is only a warning (the preflight's rule;
+# fresh-brain trial 2026-10-31: HTTPS through gh, as ONBOARDING.md allows, read FAIL here) -------
+access() { # access <stub dir> -> the report's check-1 line
+  local b="$T/brain-access"; rm -rf "$b"; make_brain "$b"
+  ( cd "$b" && PATH="$1:$PATH" HOME="$T/home" CLAUDE_CONFIG_DIR="$T/cfg" env -u BRAIN_DIR bash "$V" "$b" >/dev/null 2>&1 )
+  grep -a ' 1 Access' "$b/docs/maintenance/$NAME"
+}
+stubs "$T/bin-both" 0 "$SSH_OK"; stubs "$T/bin-https" 0 "$SSH_RED"; stubs "$T/bin-ssh" 1 "$SSH_OK"
+line=$(access "$T/bin-both")
+case "$line" in "OK    1 Access — gh=ok, ssh=ok"*) ok "access: gh and SSH, OK";; *) bad "access: gh and SSH: '$line'";; esac
+line=$(access "$T/bin-https")
+case "$line" in "WARN  1 Access — gh=ok, ssh=red"*) ok "access: gh without SSH, WARN (not FAIL)";; *) bad "access: gh without SSH: '$line'";; esac
+line=$(access "$T/bin-ssh")
+case "$line" in "FAIL  1 Access — gh=red, ssh=ok"*) ok "access: SSH without the gh login, FAIL";; *) bad "access: SSH without gh: '$line'";; esac
+
+# --- 9 check 5: the bootup hook shipped by the brain-core plugin (hooks/hooks.json, since 2.0.4)
+# counts; a brain's settings.json no longer names it (fresh-brain trial 2026-10-31: FAIL forever).
+# installPath is DATA for python, so it is stated natively (docs/os-traps.md OS-3).
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+plugin_brain() { # plugin_brain <brain> <config dir> <install ships hooks/hooks.json: yes|no>
+  local inst="$2/plugins/cache/fx/brain-core/9.9.9"
+  make_brain "$1"; mkdir -p "$1/core/helpers" "$inst"
+  printf '%s\n' '#!/usr/bin/env bash' 'echo "=== BRAIN BOOTUP CHECK ==="' > "$1/core/helpers/session-bootup.sh"
+  printf '{"enabledPlugins": {"brain-core@fx": true}}\n' > "$1/.claude/settings.json"
+  if [ "$3" = yes ]; then mkdir -p "$inst/hooks"; cp "$HERE/../hooks/hooks.json" "$inst/hooks/"; fi
+  printf '{"plugins": {"brain-core@fx": [{"scope": "user", "installPath": "%s"}]}}\n' "$(native "$inst")" \
+    > "$2/plugins/installed_plugins.json"
+}
+hooks5() { # hooks5 <brain> <config dir> -> the report's check-5 line
+  ( cd "$1" && PATH="$T/bin-both:$PATH" HOME="$T/home" CLAUDE_CONFIG_DIR="$(native "$2")" env -u BRAIN_DIR bash "$V" "$1" >/dev/null 2>&1 )
+  grep -a ' 5 Brain+hooks' "$1/docs/maintenance/$NAME"
+}
+plugin_brain "$T/brain9" "$T/cfg9" yes
+line=$(hooks5 "$T/brain9" "$T/cfg9")
+case "$line" in "OK    5 Brain+hooks"*"plugin brain-core@fx"*"appears"*) ok "plugin-shipped bootup hook: OK, and the bootup ran";; *) bad "plugin-shipped bootup hook: '$line'";; esac
+plugin_brain "$T/brain9b" "$T/cfg9b" no
+line=$(hooks5 "$T/brain9b" "$T/cfg9b")
+case "$line" in "FAIL  5 Brain+hooks"*"runs no core/helpers/session-bootup.sh"*) ok "plugin cache without hooks/, no settings line: FAIL";; *) bad "no hook anywhere: '$line'";; esac
 
 echo
 if (( fails )); then echo "onboarding-verify-test: $fails FAILURE(S)"; exit 1; fi

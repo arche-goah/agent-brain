@@ -111,5 +111,22 @@ case "$rc:$out" in
   *) bad "no-plugin case: rc=$rc out='$(printf '%s' "$out" | head -1)'";;
 esac
 
+# 5) --runs: where one helper runs (onboarding-verify check 5) — the plugin's hooks.json counts,
+#    a plugin cache without hooks/ and no settings line is "nowhere" (exit 1, no line)
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" --runs SessionStart session-bootup.sh "$T/clean" 2>&1)"; rc=$?
+case "$rc:$out" in
+  "0:the plugin brain-core-next@fixture (hooks/hooks.json)") ok "--runs names the plugin that ships the bootup hook (exit 0)";;
+  *) bad "--runs plugin case: rc=$rc out='$out'";;
+esac
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-old" "$PY" "$HC" --runs SessionStart session-bootup.sh "$T/old" 2>&1)"; rc=$?
+if [ "$rc" -eq 1 ] && [ -z "$out" ]; then ok "--runs: no settings line, no shipped hooks.json -> nowhere (exit 1)"
+else bad "--runs nowhere case: rc=$rc out='$out'"; fi
+printf '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"bash core/helpers/session-bootup.sh"}]}]}}\n' > "$T/old/.claude/settings.local.json"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-old" "$PY" "$HC" --runs SessionStart session-bootup.sh "$T/old" 2>&1)"; rc=$?
+case "$rc:$out" in
+  "0:.claude/settings.local.json") ok "--runs names the settings scope that wires it";;
+  *) bad "--runs settings case: rc=$rc out='$out'";;
+esac
+
 if [ "$fail" -eq 0 ]; then echo "hook-coverage fixtures: ALL passed"; else echo "hook-coverage fixtures: FAILED"; fi
 exit "$fail"
