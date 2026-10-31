@@ -106,7 +106,8 @@ lines appeared since the last register, or a finding came back a third time with
 fix — with the measured price. The AI tells the operator; nothing starts on its own.
 
 **Repeat gate (HARD, since 2026-08-04):** This run is the most expensive single
-workflow in the system (measured: 16 agents, ~1.55M tokens, 39 min). Before every new
+workflow in the system (price per run: `rules/intelligence.md`, "Three levels of
+self-check" — the one place it is stated). Before every new
 start, `core/rules/intelligence.md` → "Repeat Runs" applies:
 **first read the `journal.jsonl` of the last run, then check the 14-day freshness,
 only then start.** Until now this held only via the `full-audit` conductor — a
