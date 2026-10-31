@@ -471,8 +471,11 @@ fi
 # three brain-scans in a row found the hand-kept table short after plugin updates).
 # Repeats every session until a row (or an auto-fire-ignore) is added; never edits.
 if [[ -f "$HERE/../scripts/auto-fire-coverage.py" ]]; then
-  afc=$("$PY" "$HERE/../scripts/auto-fire-coverage.py" "$R" 2>/dev/null)
+  afc_all=$("$PY" "$HERE/../scripts/auto-fire-coverage.py" "$R" 2>/dev/null)
+  afc=$(grep -v '^stale row: ' <<< "$afc_all")
+  afs=$(grep '^stale row: ' <<< "$afc_all" | sed 's/^stale row: //; s/ (the plugin ships no such skill)$//')
   [[ -n "$afc" ]] && echo "!! skills not in the auto-fire table (.claude/rules/intelligence-instance.md): ${afc//$'\n'/ · } — add a pattern row, or list the id in <!-- auto-fire-ignore: ... --> if it must not auto-fire"
+  [[ -n "$afs" ]] && echo "!! auto-fire rows name a skill the plugin no longer ships: ${afs//$'\n'/ · } — the pattern fires into nothing; point the row at the successor or remove it"
 fi
 
 # Statusline selfheal (operator directive 2026-08-10): the statusline lives at user
