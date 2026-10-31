@@ -291,6 +291,7 @@ known:     scripts/test-live-watchdog.sh=1
 known:     scripts/test-local-machinery.sh=1
 known:     scripts/test-memory-dream-files.sh=1
 known:     scripts/test-merge-request-gate.sh=1
+known:     scripts/test-merge-train.sh=1
 known:     scripts/test-monitor-arm-shape.sh=1
 known:     scripts/test-no-input-control.sh=1
 known:     scripts/test-onboarding-leak-check.sh=1
