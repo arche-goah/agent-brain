@@ -328,6 +328,7 @@ known:     scripts/test-watch-pr.sh=1
 known:     scripts/test-watch-readiness.sh=1
 known:     scripts/test-watch-supervisor.sh=1
 known:     scripts/test-workflow-path-args.sh=1
+known:     scripts/test-loop-watchdog-alarm.sh=1
 instances: 3
 repeat:    yes
 status:    closed
