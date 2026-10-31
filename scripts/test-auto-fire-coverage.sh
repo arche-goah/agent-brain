@@ -43,5 +43,21 @@ table '| x | `suite:alpha` · `suite:beta` · `suite:gone` |
 <!-- auto-fire-ignore: suite:gone -->'
 out=$(run); [[ -z "$out" ]] && ok "an ignored id is neither missing nor stale" || bad "ignored: '$out'"
 
+# The brain's own surface (2026-10-30): .mcp.json servers and instance skills the table names nowhere.
+printf '{"mcpServers":{"probe":{},"bridge":{},"tdmac":{},"res-arena":{}}}' > "$B/.mcp.json"
+mkdir -p "$B/.claude/skills/plan-writer" "$B/.claude/skills/_draft-x"
+printf -- '---\nname: plan-writer\ndescription: p\n---\n' > "$B/.claude/skills/plan-writer/SKILL.md"
+printf -- '---\nname: x\ndescription: d\n---\n' > "$B/.claude/skills/_draft-x/SKILL.md"
+table '| x | `suite:alpha` · `suite:beta` · MCP `mcp__bridge__*` · `mcp__res-*` |'
+out=$(run)
+grep -qx 'mcp server: probe' <<< "$out" && ok "an unnamed .mcp.json server is listed" || bad "server probe: '$out'"
+grep -qx 'mcp server: tdmac' <<< "$out" && ok "a second unnamed server is listed" || bad "server tdmac: '$out'"
+grep -q 'bridge' <<< "$out" && bad "a server named by its tool prefix was listed: '$out'" || ok "a server named as mcp__<name>__ counts as named"
+grep -q 'res-arena' <<< "$out" && bad "a server under a wildcard row was listed: '$out'" || ok "a wildcard row mcp__<start>* names the server"
+grep -qx 'instance skill: plan-writer' <<< "$out" && ok "an unnamed instance skill is listed" || bad "skill: '$out'"
+grep -q '_draft-x' <<< "$out" && bad "a draft skill was listed: '$out'" || ok "a draft skill (_draft-) is no finding"
+table '| x | `suite:alpha` · `suite:beta` · MCP `mcp__bridge__*` · `mcp__res-*` · `probe` · tdmac · `plan-writer` |'
+out=$(run); rc=$?; [[ -z "$out" && $rc -eq 0 ]] && ok "fully named local surface is silent" || bad "local covered: rc=$rc '$out'"
+
 (( fail )) && { echo "test-auto-fire-coverage: FAILED"; exit 1; }
 echo "test-auto-fire-coverage: all checks passed"
