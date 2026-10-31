@@ -1,0 +1,24 @@
+{
+  "_doc": "Basics in use: what a new operator needs to know to work with a brain, taught at the moment it is needed. helpers/basics-hint.cjs (UserPromptSubmit) shows at most ONE new basic per session, only when the operator's prompt matches its trigger, and never again once the proof shows the operator used it. A proof is matched against the session's tool calls (their input as JSON), or with \"proof_in\": \"prompt\" against the operator's own prompts. Triggers are English; an instance adds its language in .claude/rules/basics.json ({\"triggers\": {\"<id>\": [\"regex\", ...]}}) and may add basics of its own (\"basics\": [...]). Keep the list short — every entry is a sentence the operator reads.",
+  "basics": [
+    {
+      "id": "session-close",
+      "trigger": ["\\b(done|finished|stopping) for (today|tonight|now)\\b", "\\bshut(ting)?( it| everything)? down\\b", "\\bcall(ing)? it a day\\b", "\\b(log|logging) off\\b", "\\bend (the|this) session\\b"],
+      "proof": "\"skill\"\\s*:\\s*\"(?:[\\w.-]+:)?session-close\"",
+      "say": "To end a session, say \"close the session\": the AI saves open work, memory and the log, then tells you when you can shut down. Closing the window skips all of that."
+    },
+    {
+      "id": "autonomous",
+      "trigger": ["\\b(do|handle|work through) (it|this|everything|all of it) (yourself|on your own|alone)\\b", "\\bwithout asking( me)?\\b", "\\bdon'?t (ask|wait for) me\\b"],
+      "proof": "\\bautonomous(ly)?\\b",
+      "proof_in": "prompt",
+      "say": "Say \"autonomously\" (\"work through it autonomously\") and the AI does everything it may decide alone and collects the questions for you; ask \"anything for me?\" to get them, one by one."
+    },
+    {
+      "id": "watch",
+      "trigger": ["\\b(a|the|their|his|her) (pr|pull request)\\b.{0,40}\\b(coming|incoming|arrives?|opened|sent)\\b", "\\bkeep an eye on\\b", "\\bwhat'?s new from\\b"],
+      "proof": "collab-watch\\.sh",
+      "say": "Say \"watch\" (\"keep an eye on the PRs\") and the AI arms one watch over pull requests, comments and the shared memory, and handles what arrives by itself."
+    }
+  ]
+}
