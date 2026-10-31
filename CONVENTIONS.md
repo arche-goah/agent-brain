@@ -142,8 +142,7 @@ Rules:
 - Changelog format, one style everywhere: **newest entry first**, headings
   `## <version> — <date>` **without a `v` prefix** (tags keep theirs). Decided
   2026-08-10: the core wrote oldest-first with `v`, the suites newest-first without,
-  and a suite release derailed when one habit was applied to the other repo
-  (grandma3-suite PR #2); 4 of 5 repos already wrote prefix-less. §8 governs what an
+  and a suite release derailed when one habit was applied to the other repo; 4 of 5 repos already wrote prefix-less. §8 governs what an
   entry says (why + origin); this line governs where it goes.
 - Each suite declares the core it was built against as `requires_core` in its
   `dependencies.json` (machine-checked). The README may repeat it for humans.
