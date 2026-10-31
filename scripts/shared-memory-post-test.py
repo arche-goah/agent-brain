@@ -184,6 +184,9 @@ def main() -> int:
         check("a check for exactly one machine passes with --one-machine, and the reason is written",
               r.returncode == 0 and one.is_file() and "one-machine: the USB device" in one.read_text(encoding="utf-8"),
               r.stdout + r.stderr)
+        check("the LOG line carries the one-machine reason too (the lint reads it there)",
+              f"core/request-one-machine-check-{STATE}.md · one-machine: the USB device sits at this box"
+              in (repo / "core" / "LOG.md").read_text(encoding="utf-8"))
         r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Windows box moved",
                  "--body", "The Windows box now stands in room 2.", me="alex-mac")
         check("control: a note that only names Windows (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)

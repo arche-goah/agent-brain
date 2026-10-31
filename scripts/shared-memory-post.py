@@ -276,7 +276,10 @@ def main() -> int:
     rel = path.relative_to(a.repo).as_posix()
     log = area_dir / "LOG.md"
     old = log.read_text(encoding="utf-8")
-    line = f"## {a.date} · {von} — AN {', '.join(to)} (status: {status}): {a.title}\n{rel}\n"
+    # The lint reads the LOG line too: without the reason there it refused the commit of an entry whose file
+    # carried --one-machine (measured three times on 2026-10-31, each LOG line fixed by hand).
+    reason = f" · one-machine: {a.one_machine}" if a.one_machine else ""
+    line = f"## {a.date} · {von} — AN {', '.join(to)} (status: {status}): {a.title}\n{rel}{reason}\n"
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
     with open(log, "w", encoding="utf-8", newline="\n") as fh:
