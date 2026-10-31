@@ -68,7 +68,7 @@ SCRIPT_EXT = (".sh", ".py", ".cjs", ".js", ".mjs", ".ps1")
 TEXT_EXT = SCRIPT_EXT + (".md", ".json", ".txt", ".toml", ".yaml", ".yml", ".plist", ".xml", ".ts")
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "site-packages", ".claude-state"}
 CORE_PLUGIN_PREFIXES = ("brain-core@", "brain-core-next@")  # same as plugin-scope-check.py
-LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence")
+LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels")
 CLASSES = LOUD + ("duplicate", "undeclared")
 
 
@@ -319,6 +319,30 @@ def scan_scheduled(C):
     return out
 
 
+def enabled_plugins(C):
+    """plugin id -> enabled flag, with Claude Code's precedence: local over project over user."""
+    enabled = {}
+    user, project, local = settings_files(C)[2], settings_files(C)[0], settings_files(C)[1]
+    for f in (user, project, local):
+        for pid, on in ((load(f) or {}).get("enabledPlugins") or {}).items():
+            enabled[pid] = on
+    return enabled
+
+
+def both_channels(C):
+    """Suites whose stable plugin AND its `-next` beta are enabled at once. Both ship the same
+    skills, hooks and MCP server, so the session runs two versions side by side and which one
+    answers is undefined. "Never both channels on" was discipline only (operator assessment of
+    the beta/stable marketplace, 2026-10-11); operator word 2026-10-28: make it a start check."""
+    on = {pid for pid, v in enabled_plugins(C).items() if v is True}
+    out = []
+    for pid in sorted(on):
+        name, _, market = pid.partition("@")
+        if name.endswith("-next") and f"{name[:-5]}@{market}" in on:
+            out.append(f"{name[:-5]} + {name} ({market})")
+    return out
+
+
 def scan_plugins(C):
     """Enabled plugins that are neither the core plugin nor a suite listed in
     config/ecosystem.json (kind suite/core, field consumer_plugin)."""
@@ -332,11 +356,7 @@ def scan_plugins(C):
         if repo.split("/")[-1] in suites:
             known.update(ids)
     installed = (load(C.home / ".claude" / "plugins" / "installed_plugins.json") or {}).get("plugins") or {}
-    enabled = {}
-    user, project, local = settings_files(C)[2], settings_files(C)[0], settings_files(C)[1]
-    for f in (user, project, local):  # Claude Code precedence: local over project over user
-        for pid, on in ((load(f) or {}).get("enabledPlugins") or {}).items():
-            enabled[pid] = on
+    enabled = enabled_plugins(C)
     out = []
     for pid, on in sorted(enabled.items()):
         if on is not True or pid in known or pid.startswith(CORE_PLUGIN_PREFIXES):
@@ -476,6 +496,32 @@ def scan_rules(C):
     return out
 
 
+def scan_guard_rules(C):
+    """Guard rules of the instance (`.claude/rules/mechanism-rules.json`), one item per rule:
+    a rule refuses or allows a command in this brain only, so a general one is a deviation
+    like a hook (measured 2026-10-28: a rule keeping marketplace pins on the owner's word
+    lived in one brain for weeks, and its read exemption refused plain reads - nothing
+    reported it, the inventory looked at hooks and rule text, not at guard data). A rule whose
+    pattern the core's own mechanism-rules.json or the template also carries is core."""
+    rules = load(C.root / ".claude" / "rules" / "mechanism-rules.json")
+    rules = (rules or {}).get("rules") if isinstance(rules, dict) else rules
+    known = set()
+    for f in (C.root / "core" / "mechanism-rules.json", TEMPLATES / "rules-instance" / "mechanism-rules.json"):
+        data = load(f)
+        data = (data or {}).get("rules") if isinstance(data, dict) else data
+        known |= {r.get("pattern") for r in data or [] if isinstance(r, dict)}
+    out = []
+    for i, r in enumerate(rules or []):
+        if not isinstance(r, dict) or not r.get("pattern"):
+            continue
+        rid = f".claude/rules/mechanism-rules.json#{r.get('id') or i}"
+        if r["pattern"] in known:
+            C.core_hooks.append(("guard-rule", f"{rid} (core)"))
+            continue
+        out.append(item("guard-rule", rid, json.dumps(r, ensure_ascii=False)))
+    return out
+
+
 def scan_scripts(C):
     """Every script in the brain outside the core and the other carriers. Fixtures (test-*,
     *-test.*, test_*.py, *_test.py) belong to the script they test."""
@@ -510,6 +556,7 @@ CARRIERS = {
     "agent": md_carrier("agents", "agent"),
     "command": md_carrier("commands", "command"),
     "rule": scan_rules,
+    "guard-rule": scan_guard_rules,
     "script": scan_scripts,
 }
 
@@ -607,14 +654,22 @@ def judge(items, decl, C, today):
     for it in items:
         it["class"] = "ok"
         name = it["name"]
-        if name and name in core and it["carrier"] in ("script", "skill", "workflow"):
-            # Same name: a thin wrapper that only calls the core one looks like a copy from
-            # outside (measured 2026-10-09) — say which, the fix differs.
-            cls = "wrapper" if ("core/" + core[name]) in it["content"].replace("\\", "/") else "shadow"
-            it["class"] = cls
-            found[cls].append(it["id"])
-            continue
         ka, ki = match(alpha, it), match(inst, it)
+        if name and name in core and it["carrier"] in ("script", "skill", "workflow"):
+            # A declared alpha copy of a core item the pin does not carry yet is the deviation
+            # itself, not a shadow: measured 2026-10-27, two copies of merged core changes ahead
+            # of the pin were told "remove the copy" — removing them would drop the behaviour.
+            # Once the pinned core file equals the copy, the pin carries it: then it IS a shadow.
+            pinned = C.root / "core" / core[name]
+            if ka and pinned.is_file() and it["content"] and read(pinned) != it["content"]:
+                pass
+            else:
+                # Same name: a thin wrapper that only calls the core one looks like a copy from
+                # outside (measured 2026-10-09) — say which, the fix differs.
+                cls = "wrapper" if ("core/" + core[name]) in it["content"].replace("\\", "/") else "shadow"
+                it["class"] = cls
+                found[cls].append(it["id"])
+                continue
         if name in manual and it["carrier"] in ("hook", "stop-check", "git-hook", "scheduled", "mcp"):
             found["contradiction"].append(f"{it['id']} (manual-tools.json, yet wired as {it['carrier']})")
         if ka and ki:
@@ -775,6 +830,7 @@ MESSAGES = {
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
     "noevidence": "!! local machinery: {n} instance declaration(s) give a reason without evidence: {x} — add \"evidence\": the instance-specific token the item relies on",
     "badevidence": "!! local machinery: {n} item(s) do not contain the evidence their declaration names: {x} — the declaration is wrong or stale; reclassify",
+    "channels": "!! local machinery: {n} suite(s) with the stable AND the beta plugin enabled at once: {x} — both ship the same skills and server, which one answers is undefined; disable one (the beta on a machine that checks the beta, else the beta) and start a new session",
     "duplicate": "local machinery: {n} item(s) look like a near-duplicate of a core item: {x} — for the AI: same purpose = use the core one; different = declare \"distinct_from\"",
     "undeclared": "local machinery: {n} item(s) without a declaration{c}: {x} — for the AI: classify each; general = core PR, instance-only = declare why + evidence",
 }
@@ -800,6 +856,7 @@ def main(argv):
     found = judge(items, decl, C, a.today)
     found["edited"] = edited_core(C)
     found["missing"] = C.missing
+    found["channels"] = both_channels(C)
     alpha = decl.get("alpha") or {}
     tops = tool_source_tops(C)
     # Every declared source checkout has its date read, on main or off it. Before, a clone ON main
@@ -828,8 +885,8 @@ def main(argv):
         for it in items:
             print(f"{it['class']:11} {it['carrier']:12} {it['id']}")
 
-    for cls in ("missing", "edited", "offmain", "clone", "shadow", "wrapper", "contradiction", "expired", "outside", "general", "noevidence",
-                "badevidence", "duplicate", "undeclared"):
+    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "expired", "outside", "general",
+                "noevidence", "badevidence", "duplicate", "undeclared"):
         xs = uniq(found[cls])
         if not xs:
             continue
