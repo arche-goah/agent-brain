@@ -37,6 +37,9 @@ reader must reach on it:
       a handoff or an announcement.
   secret-patterns.json (secret-guard.cjs): text = a shell command, or a path with "tool": "Read"
       (or "Edit"/"Write"). "block" = denied (or asked).
+  commitments.json (commitment-carrier-gate.cjs): text = a reply; "then" (optional) = a later
+      reply of the same turn, the place a take-back stands. "block" = a promise without a mechanism
+      is left standing; "allow" = none, or it was taken back.
 
 Each case runs the REAL reader as its hook runs it (node, a JSON payload on stdin or the CLI
 form), against a throwaway copy of the brain's `.claude/rules/*.json` — the reader sees exactly the
@@ -78,6 +81,7 @@ READERS = {
     "promise-patterns.json": ("promise-gate.cjs", "reply"),
     "stop-patterns.json": ("stoppen-gate.cjs", "reply"),
     "secret-patterns.json": ("secret-guard.cjs", "tool"),
+    "commitments.json": ("commitment-carrier-gate.cjs", "promise"),
 }
 VERDICTS = {"mode": ("autonomous", "interactive")}
 GATE_VERDICTS = ("block", "allow")
@@ -97,9 +101,15 @@ def write_call():
 
 
 def answer(q, a):
+    """A question-tool answer as the transcript records it: the AskUserQuestion call, then its result
+    under the same id. A reader that counts only answers to a real call (core #188) needs both."""
     body = f'Your questions have been answered: "{q}"="{a}". You can now continue'
-    return {"type": "user", "message": {"role": "user", "content": [
-        {"type": "tool_result", "tool_use_id": "toolu_pc2", "content": body}]}}
+    return [
+        {"type": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "toolu_pc2", "name": "AskUserQuestion", "input": {"questions": []}}]}},
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_pc2", "content": body}]}},
+    ]
 
 
 def case_form(kind, case):
@@ -129,7 +139,7 @@ def scenario(kind, case):
     if kind == "mode":
         recs = []
         for s in case.get("steps", [text]):
-            recs.append(user(s) if isinstance(s, str) else answer(s["q"], s["a"]))
+            recs.extend([user(s)] if isinstance(s, str) else answer(s["q"], s["a"]))
         return recs, None
     if kind == "order":
         return [user(text)], {"tool_name": "Workflow", "tool_input": {}}
@@ -142,6 +152,11 @@ def scenario(kind, case):
         return recs, {"stop_hook_active": False}
     if kind == "reply":
         return [user(case.get("prompt", "go on")), asst(text)], {"stop_hook_active": False}
+    if kind == "promise":
+        recs = [user(case.get("prompt", "go on")), asst(text)]
+        if case.get("then"):
+            recs.append(asst(case["then"]))
+        return recs, {"stop_hook_active": False}
     if kind == "tool":
         tool = case.get("tool", "Bash")
         ti = {"command": text} if tool in ("Bash", "PowerShell") else {"file_path": text}

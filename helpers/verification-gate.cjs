@@ -25,7 +25,7 @@
  */
 'use strict';
 const fs = require('fs');
-const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
 const { doneClaimRegex } = require('./done-claim.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 
@@ -72,7 +72,7 @@ function scan(tp, echo) {
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
-      if (isSkillExpansion(d) || isPeerMessage(d)) continue; // a loaded skill's text, another agent's report
+      if (isSkillExpansion(d) || isAgentOrigin(d)) continue; // a loaded skill's text, another agent's report
       const t = promptText(msg);
       if (t === null) continue;
       if (HOOK_ECHO.test(t)) { if (echo.test(t)) fired = true; continue; }
