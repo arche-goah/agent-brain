@@ -227,8 +227,20 @@ $PRIOR
 $ECHO_OWN"
 # planted: the prose decision question blocks and names the tool
 run_gate ask-prose-no-tool "$DQ" block "$CWD" "" false "question tool (AskUserQuestion)"
-# the same closing prose in a turn that DID call the tool passes
-run_gate ask-through-tool "$DQ" allow "$CWD" "$ASKQ" false
+# A question asked EARLY in the turn (answered) does not excuse a closing prose question (operator order
+# 2026-10-29; before, any question-tool call anywhere in the turn passed whatever closing prose followed).
+run_gate ask-early-then-prose "$DQ" block "$CWD" "$ASKQ" false "question tool (AskUserQuestion)"
+# the question as the turn's END - text first, then the tool call, nothing after it - passes
+tr="$T/ask-last.jsonl"
+printf '%s\n' '{"message":{"role":"user","content":"frage"}}' > "$tr"
+printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s},{"type":"tool_use","id":"toolu_q9","name":"AskUserQuestion","input":{"questions":[]}}]}}\n' "$DQ" >> "$tr"
+out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$tr")" "$(native "$CWD")" | node "$G" 2>&1)"
+[ -z "$out" ] && ok "ask-as-last-step allows" || bad "ask-as-last-step blocked wrongly: '$out'"
+# A named hand step: the handoff ("let me know when ...") passes; a closing question in the same reply still blocks.
+run_gate hand-step-handoff '"Your hand: plug the controller back in. Let me know when it is in."' allow "$CWD" "" false
+run_gate hand-step-command-block '"Run this on the desk machine:\n```\nsudo reboot\n```\nLet me know when it is back."' allow "$CWD" "" false
+run_gate hand-step-with-question '"Your hand: plug the controller in. Shall I merge the fix afterwards?"' block "$CWD" "" false
+run_gate handoff-without-hand-step '"The fix is ready. Let me know when you want it merged."' block "$CWD" "" false
 # the tool is missing here and the reply says so in its one line
 run_gate ask-no-tool-line '"⚙ no question tool: this run is headless.\nThe fix is ready. Should I proceed with the merge?"' allow "$CWD" "" false
 # re-issue without tool and without the line: still blocks, in full (no dispatcher compression line)
@@ -236,8 +248,12 @@ run_gate ask-reissue-blocks "$DQ" block "$CWD" "$ONE_BLOCK" true "re-issuing it 
 # third issue in the same turn: let through, loudly
 run_gate ask-third-issue-loud "$DQ" loud "$CWD" "$TWO_BLOCKS" true "without AskUserQuestion"
 # the re-issue that called the tool, or carries the line, passes
-run_gate ask-reissue-with-tool "$DQ" allow "$CWD" "$ONE_BLOCK
-$ASKQ" true
+# the re-issue that calls the tool as its LAST step (text first, then the question tool) passes
+tr="$T/ask-reissue-with-tool.jsonl"
+printf '%s\n' '{"message":{"role":"user","content":"frage"}}' "$ONE_BLOCK" > "$tr"
+printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s},{"type":"tool_use","id":"toolu_q8","name":"AskUserQuestion","input":{"questions":[]}}]}}\n' "$DQ" >> "$tr"
+out="$(printf '{"transcript_path":"%s","stop_hook_active":true,"cwd":"%s"}' "$(native "$tr")" "$(native "$CWD")" | node "$G" 2>&1)"
+[ -z "$out" ] && ok "ask-reissue-with-tool allows" || bad "ask-reissue-with-tool blocked wrongly: '$out'"
 run_gate ask-reissue-no-tool-line '"⚙ no question tool: scheduled run.\nShould I proceed with the merge?"' allow "$CWD" "$ONE_BLOCK" true
 # unchanged: a re-issue after ANOTHER gate's block passes as it always did
 run_gate reissue-after-other-gate "$DQ" allow "$CWD" "$PRIOR
@@ -251,8 +267,9 @@ run_gate clarification-question '"Two log files match. Which of them did you mea
 # unchanged: the German pack grips the same way through the instance file
 run_gate de-ask-reissue-blocks '"Bericht fertig. Soll ich das jetzt umsetzen?"' block "$DE" '{"message":{"role":"assistant","content":[{"type":"text","text":"Bericht fertig. Soll ich das jetzt umsetzen?"}]}}
 '"$ECHO_OWN" true "question tool"
-# NEGATIVE CONTROL: a turn with the tool call and an unrelated prose question still passes
-run_gate tool-plus-unrelated-question '"Merged as chosen. Do you want me to tidy the old branch as well?"' allow "$CWD" "$ASKQ" false
+# CHANGED 2026-10-29 (operator order): a question-tool call EARLY in the turn no longer excuses a later
+# permission question in prose - before, this case passed by design.
+run_gate tool-plus-unrelated-question '"Merged as chosen. Do you want me to tidy the old branch as well?"' block "$CWD" "$ASKQ" false
 # ... but asking is not doing: an announcement after the tool call is still judged
 run_gate tool-then-announcement '"Merge chosen. Doing that now."' block "$CWD" "$ASKQ" false
 
