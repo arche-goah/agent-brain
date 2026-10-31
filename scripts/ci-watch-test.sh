@@ -208,6 +208,29 @@ case "${CI_WATCH_STUB:?}" in
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
                     elif [[ "${1:-}" == api ]]; then echo 0
                     else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
+  # 2026-10-28: the bound sha (CI_WATCH_SHA=bbbb2222) is left behind. pr_sha_superseded: the head
+  # is cccc4444 and compare says `ahead` (bound sha is its ancestor) = UNKNOWN at once, `pr checks`
+  # is never reached. pr_sha_404 / pr_sha_diverged: the head is aaaa1111 and compare answers 404
+  # (bound sha not visible yet) or `diverged` (unrelated) = keep waiting; the head reaches the
+  # bound sha on the third read and the watch turns green.
+  pr_sha_superseded|pr_sha_404|pr_sha_diverged)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *compare/* ]]; then
+                      case "$CI_WATCH_STUB" in
+                        pr_sha_superseded) if [[ "$*" == *compare/bbbb2222...cccc4444* ]]; then echo ahead; else echo "wrong compare: $*"; fi ;;
+                        pr_sha_404)        echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+                        pr_sha_diverged)   echo diverged ;;
+                      esac
+                    elif [[ "$*" == *headRefOid* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_sha_superseded ]]; then echo cccc444400000000000000000000000000000000
+                      else n=$(cat "$f" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" >"$f"
+                        if (( n < 3 )); then echo aaaa111100000000000000000000000000000000
+                        else echo bbbb222200000000000000000000000000000000; fi
+                      fi
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    elif [[ "$CI_WATCH_STUB" == pr_sha_superseded ]]; then echo "pr checks reached" >&2; exit 1
+                    else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
   # 2026-10-28: after `gh pr update-branch` the PR head AND its branch tip still named the old
   # commit on the first poll (old checks green); the new head appears on the next read with its
   # checks queued. GREEN must not come from the first poll — without CI_WATCH_SHA.
@@ -430,6 +453,14 @@ check "pr: head flips after the first green poll = no GREEN, waits, timeout(2)" 
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head still old, then flips = GREEN on the new head" pr_head_lag 0 pr 12 30
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head never reaches it = wait, timeout(2)"   pr_head_stuck 2 pr 12 2
 check "pr: without CI_WATCH_SHA the old head's green counts (unchanged behaviour)"        pr_head_stuck 0 pr 12 30
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA superseded (ancestor of the head) = unknown(2) at once" pr_sha_superseded 2 pr 12 30
+grep -q "bound sha bbbb222 is superseded .*head is now cccc444" "$TMP/out" && ! grep -q "pr checks reached" "$TMP/out" \
+  && echo "  OK   the superseded verdict names both shas, before any checks are read" \
+  || { echo "  FAIL superseded verdict does not name both shas or came late"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA not visible yet (compare 404), then head reaches it = GREEN" pr_sha_404 0 pr 12 30
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA not an ancestor (diverged), then head reaches it = GREEN"   pr_sha_diverged 0 pr 12 30
+grep -q "superseded" "$TMP/out" && { echo "  FAIL a non-ancestor was called superseded"; fails=$((fails+1)); } \
+  || echo "  OK   a non-ancestor keeps waiting, not superseded"
 echo 0 > "$TMP/fakeclock-r1"
 CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r1" \
   check "pr: deadline passes while a check-run runs, then green = GREEN (point 8)" pr_running_flip 0 pr 12 20
