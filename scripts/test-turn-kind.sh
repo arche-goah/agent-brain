@@ -44,6 +44,12 @@ peer() { node -e 'const {isPeerMessage}=require(process.argv[1]);process.stdout.
 [ "$(peer '{"type":"user","isMeta":true,"origin":{"kind":"peer","from":"a1"}}')" = true ] && ok "a peer record is another agent's message" || bad "peer record not recognised"
 [ "$(peer '{"type":"user","origin":{"kind":"human"}}')" = false ] && ok "an operator record is no peer message" || bad "operator record read as peer"
 [ "$(peer '{"type":"user","isMeta":true}')" = false ] && ok "isMeta alone is no peer message (mid-turn operator text)" || bad "isMeta alone read as peer"
+# A timer-fired prompt (ScheduleWakeup, /loop; Claude Code 2.1.312): queuePriority "later", no human origin.
+agent() { node -e 'const {isAgentOrigin}=require(process.argv[1]);process.stdout.write(String(isAgentOrigin(JSON.parse(process.argv[2]))))' "$(native "$D/turn-kind.cjs")" "$1"; }
+[ "$(agent '{"type":"user","isMeta":true,"promptSource":"system","queuePriority":"later"}')" = true ] && ok "a timer-fired prompt is agent origin" || bad "timer prompt not recognised"
+[ "$(agent '{"type":"user","isMeta":true,"origin":{"kind":"peer"}}')" = true ] && ok "a peer record is agent origin" || bad "peer not agent origin"
+[ "$(agent '{"type":"user","queuePriority":"later","origin":{"kind":"human"}}')" = false ] && ok "a human prompt waiting in the queue is the operator's" || bad "queued human prompt read as agent"
+[ "$(agent '{"type":"user","isMeta":true}')" = false ] && ok "isMeta alone is no agent origin" || bad "isMeta alone read as agent"
 
 # --- the effect on a cooldown ----------------------------------------------------------
 user() { printf '{"message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
