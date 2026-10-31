@@ -55,7 +55,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
+const { isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { autonomousMode } = require('./autonomous-mode.cjs');
 const { PRE_COMMIT } = require('./close-stamp.cjs');
 
@@ -161,7 +161,7 @@ function readTurn(tp) {
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
-      if (isSkillExpansion(d) || isPeerMessage(d)) continue;   // a loaded skill's text or another agent's report is no second prompt
+      if (isSkillExpansion(d) || isAgentOrigin(d)) continue;   // a loaded skill's text or another agent's report is no second prompt
       const t = promptText(msg);
       if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; last = []; lastCmds = []; lastPrompt = t; if (prompts === 1) first = t; }
       continue;

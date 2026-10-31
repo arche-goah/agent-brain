@@ -37,7 +37,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL } = require('./turn-kind.cjs');
 
 const BUILTIN_ON = [
   '\\bautonomous(ly)?\\b',
@@ -148,7 +148,10 @@ function promptModes(transcriptPath, cwd) {
     // record (turn-kind.cjs, #139): it sets or clears the mode like any prompt. `queued` marks it,
     // so a reader that counts turn BOUNDARIES can leave it out.
     const queued = queuedHumanPrompt(d);
-    if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isPeerMessage(d) || !d.message || d.message.role !== 'user')) continue;
+    // A timer-fired prompt is the agent's or the harness's text: its "Autonomous loop check"
+    // switched the mode back on after the operator had said "interactive" (measured 2026-10-27).
+    if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isAgentOrigin(d)
+        || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
       for (const [q, a] of answers(d.message, askIds)) {
         if (!w.on.test(q)) continue;
