@@ -41,7 +41,8 @@ CHECKS (all read-only, no writes, stdlib only):
                      USES them: `status` outside the vocabulary; `status: open` without
                      `next`; `next` naming no device of parties.json (when it exists);
                      `related` / `supersedes` pointing at no file; `topics` naming a
-                     folder that is not an area (a folder with a LOG.md).
+                     folder that is not an area (a folder with a LOG.md); from
+                     ORIGIN_SINCE on, an entry without `os:` or `core:`.
   11. relations      `answers` / `claims` / `closes` name a file stem or a LOG id
                      (`<area>/LOG@<date>#<n>`) that exists; from STATE_SINCE on, a LOG
                      heading to a party that is no report and points at no file is a
@@ -137,6 +138,12 @@ OPEN_NAME = "OPEN.md"
 VALID_STATUS = {"open", "decided", "superseded", "info", "answered", "done", "closed", "draft"}
 PATH_FIELDS = ("related", "supersedes")
 FIELDS_SINCE = "2026-10-14"
+# ORIGIN FIELDS (operator order 2026-10-28): every entry carries the writing device's system
+# (`os:`) and core version (`core:`, `unknown` when unreadable) — shared-memory-post.py writes
+# both. Measured that day: 1 of 1076 entries carried a version. Judged for entries dated
+# ORIGIN_SINCE or later; older entries are not re-judged (same ratchet as FIELDS_SINCE).
+ORIGIN_SINCE = "2026-10-29"
+ORIGIN_FIELDS = ("os", "core")
 
 # From the repo's OWN README (section Format), not from the brain's auto-memory schema:
 # this repo has `decision` and does not have `user`. Copying the brain's four across
@@ -480,6 +487,11 @@ def field_findings(f: dict, rel: str, meta: dict, repo: Path, areas: set[str],
         if t not in areas:
             add("topics names a folder that is not an area", topic=t,
                 fix="an area is a folder with a LOG.md; create it or fix the name")
+    missing = [k for k in ORIGIN_FIELDS if not str(meta.get(k, "") or "").strip()]
+    if missing and str(meta.get("date", "") or "") >= ORIGIN_SINCE:
+        add("origin fields missing", fields=missing,
+            fix="write entries with scripts/shared-memory-post.py (it stamps os: and core:); "
+                "by hand: `os: <macos|windows|linux>`, `core: <core version or unknown>`")
 
 
 REL_FIELDS = ("answers", "claims", "closes")
