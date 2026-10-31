@@ -7,6 +7,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GUARD="$ROOT/helpers/mechanism-guard.cjs"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
+NT="$(native "$T")"
 mkdir -p "$T/.claude/rules" "$T/.claude-state" "$T/scripts"
 echo '[]' > "$T/.claude/rules/mechanism-rules.json"
 printf '#!/usr/bin/env bash\n# long-run: detached\nsleep 1\n' > "$T/scripts/slow-lint.sh"
@@ -17,9 +19,9 @@ fail=0
 # $1 label, $2 expected block|pass, $3 command, $4 background true|false, $5 transcript
 verdict() {
   local out got
-  out="$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",transcript_path:process.argv[3],tool_input:{command:process.argv[1],run_in_background:process.argv[2]==="true"}}))' "$3" "$4" "${5:-}" \
-        | HOME="$T" CLAUDE_PROJECT_DIR="$T" node "$GUARD")"
-  if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then got=block; else got=pass; fi
+  out="$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",transcript_path:process.argv[3],tool_input:{command:process.argv[1],run_in_background:process.argv[2]==="true"}}))' "$3" "$4" "${5:+$(native "$5")}" \
+        | HOME="$NT" CLAUDE_PROJECT_DIR="$NT" node "$GUARD")"
+  if printf '%s' "$out" | grep -aq '"permissionDecision":"deny"'; then got=block; else got=pass; fi
   if [ "$got" = "$2" ]; then echo "  OK   $1"; else echo "  FAIL $1 (expected $2, got $got)"; fail=1; fi
 }
 
@@ -33,9 +35,9 @@ verdict "a marker opens it" pass 'bash scripts/slow-lint.sh # MECHANISM-OK: meas
 
 # a script relative to the call's working directory (a worktree outside the project)
 W="$T/worktree"; mkdir -p "$W/scripts"; cp "$T/scripts/slow-lint.sh" "$W/scripts/wt-lint.sh"
-out="$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[2],tool_input:{command:process.argv[1]}}))' 'bash scripts/wt-lint.sh' "$W" \
-      | HOME="$T" CLAUDE_PROJECT_DIR="$T" node "$GUARD")"
-printf '%s' "$out" | grep -q '"permissionDecision":"deny"' && echo "  OK   a declared script in the call's cwd is held" || { echo "  FAIL cwd-relative declared script passed"; fail=1; }
+out="$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[2],tool_input:{command:process.argv[1]}}))' 'bash scripts/wt-lint.sh' "$(native "$W")" \
+      | HOME="$NT" CLAUDE_PROJECT_DIR="$NT" node "$GUARD")"
+printf '%s' "$out" | grep -aq '"permissionDecision":"deny"' && echo "  OK   a declared script in the call's cwd is held" || { echo "  FAIL cwd-relative declared script passed"; fail=1; }
 
 # learned: the transcript shows the operator backgrounded wrapper.sh by hand
 TR="$T/session.jsonl"
@@ -44,7 +46,7 @@ printf '%s\n' \
   '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"Command was manually backgrounded by user"}]},"toolUseResult":{"backgroundTaskId":"b1","backgroundedByUser":true}}' > "$TR"
 verdict "without the transcript the wrapper passes (control)" pass 'bash scripts/wrapper.sh 6' false
 verdict "a run the operator backgrounded by hand is held next time" block 'bash scripts/wrapper.sh 6' false "$TR"
-grep -q '"wrapper.sh"' "$T/.claude-state/long-runs.json" 2>/dev/null && echo "  OK   the lesson is stored for later sessions" || { echo "  FAIL store not written"; fail=1; }
+grep -aq '"wrapper.sh"' "$T/.claude-state/long-runs.json" 2>/dev/null && echo "  OK   the lesson is stored for later sessions" || { echo "  FAIL store not written"; fail=1; }
 verdict "a later session without that transcript still holds it" block 'bash scripts/wrapper.sh 7' false
 verdict "detached it passes" pass 'bash scripts/wrapper.sh 7' true
 
