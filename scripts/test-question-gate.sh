@@ -267,6 +267,27 @@ ask2 "two decisions without a mode question" "Change the rule file now?" "Merge 
 ask2 "a question ABOUT autonomy that is not the last one" "How autonomous should the loop be at the desk?" "Merge PR 5 now?" allow "$R"
 ask "'continue autonomously?' asked alone" "Continue autonomously?" allow "$R"
 ask2 "a last decision that only mentions the autonomous gate in its context (2026-10-31)" "Merge PR 5 now?" "The autonomous gate held the edit back; the patch is in a file. Shall I apply it now?" allow "$R"
+# --- the same across calls (2026-10-31): two question calls in ONE message, read by message id
+qcall() { # $1 message id, $2 tool_use id, $3 question
+  printf '{"type":"assistant","message":{"id":"%s","role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":%s,"header":"h","options":[]}]}}]}}\n' "$1" "$2" "$(js "$3")"; }
+askp() { # $1 name, $2 transcript, $3 tool_use id of this call, $4 its question, $5 deny|allow, $6 root
+  local out
+  out="$(printf '{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","transcript_path":%s,"tool_use_id":"%s","tool_input":{"questions":[{"question":%s,"header":"a","options":[{"label":"yes","description":"y"},{"label":"no","description":"n"}]}]}}' "$(js "$(native "$2")")" "$3" "$(js "$4")" \
+    | CLAUDE_PROJECT_DIR="$(native "$6")" node "${GATE:-$G}" 2>&1)"
+  if [ "$5" = deny ]; then
+    case "$out" in *'"permissionDecision":"deny"'*'mode question'*) ok "$1 is refused";; *) bad "$1 was not refused: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 passes" || bad "$1 refused wrongly: '$out'"
+  fi
+}
+f="$T/par.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; qcall m1 t2 "Continue autonomously?"; } > "$f"
+askp "the mode question in a parallel call next to a decision (the 2026-10-31 incident)" "$f" t2 "Continue autonomously?" deny "$R"
+askp "the decision call next to a parallel mode question" "$f" t1 "Put the five write tools on ask?" deny "$R"
+f="$T/seq.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; tres; qcall m2 t2 "Continue autonomously?"; } > "$f"
+askp "the mode question as its own later call (control)" "$f" t2 "Continue autonomously?" allow "$R"
+f="$T/par2.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; qcall m1 t2 "Merge PR 5 now?"; } > "$f"
+askp "two parallel decisions without a mode question" "$f" t2 "Merge PR 5 now?" allow "$R"
+askp "a call not yet in the transcript fails open" "$f" t9 "Continue autonomously?" allow "$R"
 mkdir -p "$R/.claude/rules"; printf '{"on_patterns":["\\\\bcarry on alone\\\\b"]}\n' > "$R/.claude/rules/autonomous-patterns.json"
 ask2 "the instance's mode words count too" "Switch the rule now?" "Carry on alone?" deny "$R"
 

@@ -301,6 +301,33 @@ function staleRecords(state, sessionId) {
   });
 }
 
+/**
+ * The question sets of the OTHER question-tool calls in the assistant message that carries
+ * `toolUseId`. The harness writes each tool_use of one message as its own record with the same
+ * message id (measured 2026-10-31: two records 2 s apart, one id). Reads the transcript tail only;
+ * fails open (no siblings) without a transcript or when this call is not written yet.
+ */
+function siblingQuestionSets(tp, toolUseId) {
+  if (!tp || !toolUseId) return [];
+  let lines;
+  try { lines = fs.readFileSync(tp, 'utf8').split('\n').slice(-400); } catch (e) { return []; }
+  const calls = [];
+  let msgId = null;
+  for (const l of lines) {
+    let d;
+    try { d = JSON.parse(l); } catch (e) { continue; }
+    const m = d && d.type === 'assistant' && d.message;
+    if (!m || !Array.isArray(m.content)) continue;
+    for (const c of m.content) {
+      if (!c || c.type !== 'tool_use' || c.name !== 'AskUserQuestion') continue;
+      calls.push({ id: c.id, msg: m.id, qs: ((c.input || {}).questions || []) });
+      if (c.id === toolUseId) msgId = m.id;
+    }
+  }
+  if (!msgId) return [];
+  return calls.filter((c) => c.msg === msgId && c.id !== toolUseId && Array.isArray(c.qs) && c.qs.length).map((c) => c.qs);
+}
+
 /** PreToolUse on the question tool: an aged question is measured before it is asked again. */
 function preTool(input) {
   if (String(input.tool_name || '') !== 'AskUserQuestion') return;
@@ -311,7 +338,13 @@ function preTool(input) {
   // file" and "continue autonomously" in ONE call; the edit ran afterwards, its permission dialog
   // came up in the run that was already autonomous again (operator: "you gave me an interactive
   // request in the autonomous part again"). The mode words are the run's on-words (autonomous-mode.cjs).
-  if (qs.length > 1) {
+  // The same holds across calls (2026-10-31, macOS instance): two question-tool calls in ONE message
+  // run side by side - a decision and the mode question - and the answers come back together; the
+  // edit the decision needed was then held by the autonomous gate (operator: "you switched to
+  // autonomous before you sent me the dialog"). Siblings are read from the transcript by the
+  // message id of this call.
+  const siblings = siblingQuestionSets(input.transcript_path, input.tool_use_id);
+  if (qs.length > 1 || siblings.length) {
     let on = null;
     let asksMode = null;
     try {
@@ -319,20 +352,25 @@ function preTool(input) {
       on = am.words(root(input.cwd)).on;
       asksMode = am.asksMode;
     } catch (e) { on = null; }
-    // Only the LAST question counts: that is where the mode question stands by rule, and a question
-    // ABOUT autonomy earlier in the call ("how autonomous should the loop be?") is a decision, not the
-    // mode question (replayed over the history 2026-10-26: matching any question hit two such).
+    // Only the LAST question of a call counts: that is where the mode question stands by rule, and a
+    // question ABOUT autonomy earlier in the call ("how autonomous should the loop be?") is a decision,
+    // not the mode question (replayed over the history 2026-10-26: matching any question hit two such).
     // And within it only the question sentence (2026-10-31, the same reader as autonomous-mode.cjs): a
     // decision that merely mentions "the autonomous gate" in its context is no mode question.
-    const lastQ = qs[qs.length - 1] || {};
-    const mode = on && asksMode && asksMode(on, String(lastQ.question || '')) ? lastQ : null;
+    const isMode = (set) => {
+      const lastQ = set[set.length - 1] || {};
+      return on && asksMode && asksMode(on, String(lastQ.question || '')) ? lastQ : null;
+    };
+    const others = qs.length - 1 + siblings.reduce((n, s) => n + s.length, 0);
+    const mode = isMode(qs) || siblings.map(isMode).find(Boolean) || null;
     if (mode) {
       process.stdout.write(JSON.stringify({
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
           permissionDecisionReason:
-            `QUESTION-GATE: the mode question ("${String(mode.question || '').slice(0, 80)}") is asked together with ${qs.length - 1} other question(s). `
+            `QUESTION-GATE: the mode question ("${String(mode.question || '').slice(0, 80)}") is asked together with ${others} other question(s)`
+            + (siblings.length ? ` (${siblings.length + 1} question calls in one message)` : '') + '. '
             + 'Ask the decisions first, carry out every step their answers need (an edit behind an ask rule, a merge the classifier holds, a hand step), '
             + 'and only then ask the mode question ALONE, as the last call - otherwise those steps open their dialogs in the run that is autonomous again. '
             + '(Measured 2026-10-26.)',
