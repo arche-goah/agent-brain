@@ -119,6 +119,15 @@ def handed_over_to(person: str, parties: dict) -> str:
     return str((h or {}).get("to") or "").lower() if isinstance(h, dict) else ""
 
 
+def handed_to_me(sender: str, parties: dict) -> set[str]:
+    """The devices whose person handed their AI questions to the sender's person (`ai_handover.to`)."""
+    devs = devices(parties)
+    me = devs.get((sender or "").strip().lower())
+    if not me:
+        return set()
+    return {d for d, (person, _os) in devs.items() if handed_over_to(person, parties) == me[0]}
+
+
 def handover_referral(sender: str, audience: str, text: str, parties: dict) -> str | None:
     """The person a message sends an AI question BACK to although they handed it over, or None.
 

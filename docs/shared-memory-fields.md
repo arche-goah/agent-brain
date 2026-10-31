@@ -77,10 +77,12 @@ project dir's `core/` checkout, else the checkout the script runs from). No core
 entry dated `ORIGIN_SINCE` = 2026-10-29 or later without them; older entries are not re-judged.
 Read them back with `scripts/device-status.py entries --device <id> --since-core vA.B.C`.
 
-## Not in this cut (deliberately)
+## The session start's "your move" line
 
-A root line "on the move: <device> N · …" and a bootup line "open, you are on the move: N"
-wait for the first weeks of real `next` values — the count in the root pointer line and
-the per-area page are the measurement they will be built on.
+Built after two weeks of real `next` values (2026-10-28: 31 open entries with `next` in one
+area). `shared-memory-index.py --mine <id>[,<id>…]` prints one line — how many open, unsettled
+entries name one of the ids in `next`, the oldest of them, and the areas' `OPEN.md` — and the
+session start runs it with `SHARED_MEMORY_SELF`. Silent when none. The same selection as
+`OPEN.md`. A root line "on the move: <device> N · …" for all devices is not built.
 
 Related: `shared-memory-audience.md` (who an entry is for, and how a request is settled).

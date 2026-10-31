@@ -7,6 +7,7 @@
 # sources are clean, parked items stay on one line, a lost counter says so.
 # Usage: bash scripts/test-open-items.sh (exit 0 = pass)
 set -u
+export OPEN_ITEMS_TODAY=2026-10-29  # a standing approval's review date is judged against this, not the calendar
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 SRC="$(cd "$(dirname "$0")" && pwd)/open-items.py"
@@ -56,7 +57,7 @@ tx() {
 has() { case "$2" in *"$1"*) return 0;; esac; return 1; }
 
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
+  '  - 2026-09-05 [widget-suite] peer-b: ANFRAGE an inst-a (widget-suite/anfrage-ui-2026-09-05.md)' \
   '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
 
 out=$(run a); tx a
@@ -370,6 +371,11 @@ gl=$(grep -n -F -- '- standing approval — handle these, then report what was d
 pl=$(grep -n -F -- 'request-person' <<<"$st" | cut -d: -f1)
 ml=$(grep -n -F -- 'request-mine' <<<"$st" | cut -d: -f1)
 [ -n "$gl" ] && [ "$gl" -gt "$pl" ] && [ "$ml" -gt "$gl" ] && ok "standing items form their own group after the others" || bad "standing group order: $st"
+! grep -q "due for review" <<<"$st" && ok "a standing approval granted 18 days ago is not due" || bad "fresh approval named due: $st"
+st_old=$(OPEN_ITEMS_TODAY=2027-02-01 run st1b "$SR")
+grep -q "standing approval 'requests to this machine' due for review (granted 2026-10-11, reviewed never)" <<<"$st_old" \
+  && has "[request|standing]" "$(line 'request-mine' "$st_old")" \
+  && ok "a standing approval older than 90 days is named due and still applies" || bad "due approval: $st_old"
 printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","audience":["inst-a"],"granted":"the operator said so 2026-10-11"}]}' \
   > "$SR/.claude/rules/open-items-standing.json"
 st=$(run st2 "$SR")
@@ -380,7 +386,7 @@ printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","
 st=$(run st3 "$SR")
 has "standing approval 'requests to this machine' refused" "$st" && ! has "[request|standing]" "$st" && ok "entry without a date is refused" || bad "undated grant accepted: $st"
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
+  '  - 2026-09-05 [widget-suite] peer-b: ANFRAGE an inst-a (widget-suite/anfrage-ui-2026-09-05.md)' \
   '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
 
 # Work ledgers (measured 2026-10-25: "open for us: 3" while ordered points sat in the brain's
@@ -453,6 +459,10 @@ grep -q 'no-id-here' "$G/.claude-state/open-items-seen.json" && bad "done ledger
 # text alone, an ambiguous bare #N and a closed PR stay ours.
 printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2026-10-28 #31' '' \
   '- [ ] Carried by repo ref' '  id: carried-ref' '  exit: in-pr 2026-10-28 core#32' '' \
+  '- [ ] Carried by owner ref' '  id: carried-own' '  exit: in-pr 2026-10-28 me/core#32 — full form' '' \
+  '- [ ] Ask at the stand' '  id: ask-topic' '  class: decision' '  ask-when: topic stand' '' \
+  '- [ ] Ask next year' '  id: ask-later' '  exit: ai-does-it 2026-10-28' '  ask-when: 2099-01-01' '' \
+  '- [ ] Ask since long' '  id: ask-due' '  class: decision' '  ask-when: 2026-01-01' '' \
   '- [ ] Ambiguous number' '  id: ambiguous' '  exit: in-pr 2026-10-28 #33' '' \
   '- [ ] Text mention only' '  id: issue-only' '  STAND: Kern-PR #31 offen, plus own work' '  exit: ai-does-it 2026-10-28' '' \
   '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' '' \
@@ -466,6 +476,10 @@ printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":4,"nodes":[%s,%s
 out=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-carried.json")" OPEN_ITEMS_WAIT_COLLAPSE=50 run "" "$G")
 has "waiting on the open PR core#31" "$(line ' carried ' "$out")" && ok "entry naming an open PR waits on it" || bad "carried: $(line ' carried ' "$out")"
 has "waiting on the open PR core#32" "$(line ' carried-ref ' "$out")" && ok "repo#N names the PR" || bad "carried-ref: $(line ' carried-ref ' "$out")"
+has "waiting on the open PR core#32" "$(line ' carried-own ' "$out")" && ok "owner/repo#N names the PR" || bad "carried-own: $(line ' carried-own ' "$out")"
+has "[ledger|wait]" "$(line ' ask-topic ' "$out")" && has "ask-when" "$(line ' ask-topic ' "$out")" && ok "ask-when topic waits for its trigger" || bad "ask-topic: $(line ' ask-topic ' "$out")"
+has "[ledger|wait]" "$(line ' ask-later ' "$out")" && ok "ask-when date ahead waits, even under ai-does-it" || bad "ask-later: $(line ' ask-later ' "$out")"
+has "[ledger|human]" "$(line ' ask-due ' "$out")" && ok "ask-when date reached is due" || bad "ask-due: $(line ' ask-due ' "$out")"
 has "[ledger|ai]" "$(line ' ambiguous ' "$out")" && ok "bare #N with two open PRs stays ours" || bad "ambiguous: $(line ' ambiguous ' "$out")"
 has "[ledger|ai]" "$(line ' issue-only ' "$out")" && ok "a PR named in the text alone does not carry the entry" || bad "text mention: $(line ' issue-only ' "$out")"
 has "names no open PR any more" "$(line ' closed-pr ' "$out")" && ok "a PR no longer open hands the entry back, saying so" || bad "closed: $(line ' closed-pr ' "$out")"
