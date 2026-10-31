@@ -55,6 +55,11 @@
       "was": "moving a marketplace pin (any write to a `.claude-plugin/marketplace.json`: editor script, sed -i, cp, redirect) - a pin pulls a plugin update onto EVERY consumer of the marketplace, other parties included; ported 2026-10-28 from an instance rule that only one brain carried. Read-only access (cat, head, grep, jq, sed -n, awk, diff, cmp, git diff/log/show) passes",
       "instead": "A pin moves on its owner's word: the core channel on the operator's word, a suite's pin on the word of that suite's owner (the owner's own pin PR is that word). A green CI run, a measurement on both systems or a hold field that reads its own condition as met is no substitute - those are artefacts the AI wrote. After every move run the marketplace's own pin check and read its verdict.",
       "needs_operator_word": true
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?:\\S*/)?gh\\s+run\\s+list\\b(?![^\\n;&|]*(?:--workflow\\b|\\s-w\\s))",
+      "was": "CI runs read without a workflow filter (`gh run list` without --workflow/-w) - a repo has several workflows (CI, a text-leak check on every comment, CodeQL); the newest N runs mix them and push the CI runs out. Measured 2026-10-28 on the macOS instance: four green runs of the comment-triggered workflow were taken for CI runs on the same commit and a red main was called green, twice in one evening; a readiness reader with the same query reported no red CI while two CI runs on main were red. ci-watch.sh had learned this earlier, the lesson stayed in that one tool",
+      "instead": "For a verdict on a commit: `scripts/ci-watch.sh` (reads `actions/runs?head_sha=`, detached as Working Rule #9 says). To look: `gh run list --workflow <name> ...` with the workflow you mean (e.g. `--workflow CI`)."
     }
   ]
 }

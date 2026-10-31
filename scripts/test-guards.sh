@@ -313,6 +313,16 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: pin read by awk (control)" Bash command "awk '/name/' m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by diff (control)" Bash command "diff m/.claude-plugin/marketplace.json /tmp/x" allow
   tr_probe "mechanism-guard/core rule: pin read by jq (control)" Bash command "jq .plugins m/.claude-plugin/marketplace.json" allow
+  # 2026-10-28: CI runs read without a workflow filter - runs of a comment-triggered workflow
+  # were taken for CI runs on the same commit and a red main was called green, twice
+  tr_probe "mechanism-guard/core rule: run list on main, no workflow" Bash command "gh run list -R o/r --branch main --limit 4 --json headSha,conclusion" block
+  tr_probe "mechanism-guard/core rule: run list after ;, no workflow" Bash command "x=1; gh run list --branch main" block
+  tr_probe "mechanism-guard/core rule: run list by path, no workflow" Bash command "/opt/bin/gh run list --limit 50" block
+  tr_probe "mechanism-guard/core rule: run list --workflow (control)" Bash command "gh run list -R o/r --workflow CI --branch main --limit 4" allow
+  tr_probe "mechanism-guard/core rule: run list -w (control)" Bash command "gh run list -w CI --branch feat/x" allow
+  tr_probe "mechanism-guard/core rule: run list --workflow= (control)" Bash command "gh run list --workflow=ci.yml --branch main" allow
+  tr_probe "mechanism-guard/core rule: run list named in a commit message (control)" Bash command 'git -C /r commit -m \"guard: gh run list without a workflow filter\"' allow
+  tr_probe "mechanism-guard/core rule: gh run view (control)" Bash command "gh run view 123 -R o/r --log-failed" allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
