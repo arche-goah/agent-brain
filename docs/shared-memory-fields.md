@@ -59,6 +59,24 @@ for its headings: at commit (`--staged`) the lint names a heading inserted, edit
 within a day that stays. `open-items.py` keys a LOG request by the same id, so its class and
 repeat counter stay with it when its wording changes.
 
+## The origin fields: `os`, `core`
+
+```yaml
+metadata:
+  os: windows          # macos | windows | linux — the platform the writing device runs
+  core: v2.0.5         # the writing brain's core version (`git describe --tags`), or `unknown`
+```
+
+The operator's order (2026-10-18, repeated 2026-10-28): every message carries the system and
+the core version it was written on, so activity per core version can be read from the entries
+themselves. Measured 2026-10-28: 1 of 1076 entries carried a version field. The producer writes
+them at write time: `scripts/shared-memory-post.py` stamps both on every entry, from the same
+source as the commit trailer `Device-State:` (`device-status.py`, `writer_core()` — the
+project dir's `core/` checkout, else the checkout the script runs from). No core found is
+`core: unknown`, never an omitted field and never another repo's hash. Lint check 10 names an
+entry dated `ORIGIN_SINCE` = 2026-10-29 or later without them; older entries are not re-judged.
+Read them back with `scripts/device-status.py entries --device <id> --since-core vA.B.C`.
+
 ## The session start's "your move" line
 
 Built after two weeks of real `next` values (2026-10-28: 31 open entries with `next` in one

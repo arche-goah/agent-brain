@@ -33,7 +33,6 @@ reasons to RECOMMEND it with its price, not to start it (see "Trigger"):
 - Memory index (MEMORY.md) approaching 200 lines
 - Suspected duplicate or contradictory memories
 - After intensive sessions with many new memories
-- Regular maintenance (recommended: weekly)
 
 ## Pipeline
 
@@ -114,10 +113,11 @@ Check CLAUDE.md:
 - **A state is a reason to RECOMMEND, never to start:** after sessions with 3+ new memories,
   MEMORY.md > 150 lines, contradictions found in passing. memory-dream is a deep check
   (`rules/intelligence.md`, "Three levels of self-check"): the AI names what, why now and the
-  measured price (~0.6M tokens per run on the proving brain) and waits for the yes. Until
+  measured price (stated once, in that section) and waits for the yes. Until
   2026-10-12 this section said the analysis "may run automatically" — that run IS the
-  ~0.6M-token workflow, so the state triggers contradicted the deep-check rule (coherence scan
-  of a Windows instance, 2026-10-12).
+  priced workflow, so the state triggers contradicted the deep-check rule (coherence scan
+  of a Windows instance, 2026-10-12). A fixed cadence ("weekly") stood in "When to use" until
+  2026-10-28 against the same rule: a deep check runs on a reason, never on a calendar.
 - **Before a repeat run:** `core/rules/intelligence.md` → "Repeat Runs"
   (repeat runs: read the artifacts of the last run → 14-day freshness → only then start).
 - **Fixes NEVER run automatically** — even on a casual "aufraeumen", first show the

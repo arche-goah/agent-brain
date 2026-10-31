@@ -23,7 +23,9 @@
  * later turn's push), and (3) the stamp names this session, or no session (an older harness
  * leaves the id empty; (1) then carries the attribution).
  *
- * Fixtures: scripts/test-watch-gate.sh and scripts/test-question-gate.sh.
+ * Readers: watch-gate.cjs, question-gate.cjs and open-items-gate.cjs (an own open item listed as
+ * an open end is named in the close report).
+ * Fixtures: scripts/test-watch-gate.sh, scripts/test-question-gate.sh, scripts/test-open-items-gate.sh.
  */
 const fs = require('fs');
 const path = require('path');

@@ -37,7 +37,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL } = require('./turn-kind.cjs');
 
 const BUILTIN_ON = [
   '\\bautonomous(ly)?\\b',
@@ -83,6 +83,16 @@ function words(cwd) {
   };
 }
 
+/**
+ * An on-word orders the run only outside a question. Measured 2026-10-27 on the macOS instance: the
+ * operator asked (translated) "got no continue-autonomously question, did I? why?" - the word in that
+ * question set the latch, and the gate then held the very mode question the operator was missing.
+ * A sentence ending in "?" mentions the mode; it does not order it.
+ */
+function ordersOn(on, text) {
+  return (text.match(/[^.!?\n]+[.!?]*/g) || []).some((s) => !/\?\s*$/.test(s) && on.test(s));
+}
+
 function promptText(msg) {
   const c = msg && msg.content;
   if (typeof c === 'string') return c;
@@ -90,13 +100,20 @@ function promptText(msg) {
   return c.filter((b) => b && b.type === 'text').map((b) => b.text).join('\n') || null;
 }
 
-/** [question, answer] pairs of an answered question tool in this record. */
-function answers(msg) {
+/**
+ * [question, answer] pairs of an answered question tool in this record. Only the result of an
+ * AskUserQuestion call counts (`askIds`): measured 2026-10-28 on the macOS instance, a Read of a
+ * fixture that carries the answer marker ("Continue autonomously?"="No, interactive") ended the
+ * operator's autonomous run, and the next call that an ask rule turns into a dialog stopped on the
+ * operator. A replay over one brain's transcripts found 11 such results (Read and Bash) in 5 sessions.
+ */
+function answers(msg, askIds) {
   const c = msg && msg.content;
   if (!Array.isArray(c)) return [];
   const out = [];
   for (const b of c) {
     if (!b || b.type !== 'tool_result') continue;
+    if (askIds && !askIds.has(b.tool_use_id)) continue;
     const s = typeof b.content === 'string' ? b.content
       : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('\n') : '';
     if (!s.includes(ANSWERED)) continue;
@@ -116,7 +133,14 @@ function promptModes(transcriptPath, cwd) {
   try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return []; }
   const out = [];
   let state = false;
+  const askIds = new Set();
   for (const line of lines) {
+    if (line.includes('"AskUserQuestion"')) {
+      try {
+        const c = (JSON.parse(line).message || {}).content;
+        for (const b of Array.isArray(c) ? c : []) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') askIds.add(b.id);
+      } catch (e) { /* not a record */ }
+    }
     if (!line.includes('"user"') && !line.includes('queued_command')) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
@@ -124,9 +148,12 @@ function promptModes(transcriptPath, cwd) {
     // record (turn-kind.cjs, #139): it sets or clears the mode like any prompt. `queued` marks it,
     // so a reader that counts turn BOUNDARIES can leave it out.
     const queued = queuedHumanPrompt(d);
-    if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isPeerMessage(d) || !d.message || d.message.role !== 'user')) continue;
+    // A timer-fired prompt is the agent's or the harness's text: its "Autonomous loop check"
+    // switched the mode back on after the operator had said "interactive" (measured 2026-10-27).
+    if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isAgentOrigin(d)
+        || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
-      for (const [q, a] of answers(d.message)) {
+      for (const [q, a] of answers(d.message, askIds)) {
         if (!w.on.test(q)) continue;
         state = w.yes.test(a) && !w.off.test(a);
         out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true });
@@ -138,7 +165,7 @@ function promptModes(transcriptPath, cwd) {
     if (!text.trim()) continue;
     const asks = w.ask.test(text);
     if (w.off.test(text) || asks) state = false;
-    else if (w.on.test(text)) state = true;
+    else if (ordersOn(w.on, text)) state = true;
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false });
   }
   return out;
