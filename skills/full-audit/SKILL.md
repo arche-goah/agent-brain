@@ -66,11 +66,13 @@ stage.
    missing (instance artifact, optional), the proposals go into the overall report and
    the absence is reported — do not improvise creating it.
 6. **Closing report to the operator:** overall report path, findings balance, the
-   decision agenda as a list. Implementation only after operator OK (promote items to
-   the list's own operator marker — `origin: operator` in field-convention ledgers,
-   `von: Operator` / the documented operator name in legacy lists; "obvious fixes done
-   myself" only if the operator explicitly grants that as a blanket approval, as on
-   2026-08-01).
+   decision agenda as a list. What to implement follows Order Fidelity #9
+   (`rules/working-rules.md`): the audit was ordered, so its clear AND safe fixes
+   (reversible, no live system, no shared carrier) are ordered too — done and reported;
+   anything against a documented operator decision, and every item of the decision
+   agenda, stays a proposal until the operator promotes it (the list's own operator
+   marker — `origin: operator` in field-convention ledgers, `von: Operator` / the
+   documented operator name in legacy lists).
 
 ## Trigger & cadence
 
@@ -79,7 +81,8 @@ stage.
   system, and without the operator at the end of the synthesis it fizzles out (the
   decision agenda needs them).
 - Mechanical reminder: the brain-scan machine step writes "deep check suggested:
-  full-audit" with the measured price (~6M tokens on the proving brain) when an open
+  full-audit" with the measured price (`rules/intelligence.md`, "Three levels of
+  self-check") when an open
   order-list entry carries the token `rebuild-ahead` (no auto-run; the 90-day reminder it
   replaces could never fire at the real cadence).
 
