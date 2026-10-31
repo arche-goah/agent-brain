@@ -76,6 +76,10 @@ probe "commit --amend"               "$TWO" "git -C $REPO_N commit --amend --no-
 probe "commit by path"               "$TWO" "git -C $REPO_N commit a.txt -m x"                     allow
 probe "commit by path after --"      "$TWO" "git -C $REPO_N commit -m x -- a.txt"                  allow
 probe "commit -F file by path"       "$TWO" "git -C $REPO_N commit -F $TMP_N/msg a.txt"              allow
+# 2026-10-28: a "(" or ";" inside the quoted message cut the line before the pathspec.
+probe "by path, ( and ; in the message" "$TWO" "git -C $REPO_N commit -q -m \\\"gate (alpha; yes): x\\\" -- a.txt" allow
+probe "no pathspec, ( in the message"   "$TWO" "git -C $REPO_N commit -m \\\"gate (alpha)\\\""         block
+probe "a real ; after the message still splits" "$TWO" "git -C $REPO_N commit -m x -- a.txt; git -C $REPO_N commit -m y" block
 probe "add -A"                       "$TWO" "git -C $REPO_N add -A"                                 block
 probe "add ."                        "$TWO" "git -C $REPO_N add ."                                  block
 probe "add by path"                  "$TWO" "git -C $REPO_N add a.txt b.txt"                        allow
