@@ -9,6 +9,7 @@
     "friction-accepted.json": "brain-friction.py: accepted frictions with reasons; missing file = nothing accepted, every friction reported",
     "gate-answer-markers.json": "gate-precision.py: extra answer markers; missing file = built-in markers",
     "leak-names.json": "leak-scan.py, public-text-guard.cjs and others: the template lives at templates/leak-names.json, copied by bootstrap-brain.sh",
+    "loop-watchdog.json": "loop-watchdog.sh: the repo an alarm outside a session opens its issue in; missing file = no issue opened, the alarm still reaches the next start report",
     "manual-tools.json": "brain-friction.py, brain-selftest.sh, local-machinery.py: hand tools a brain runs on purpose; missing file = none declared",
     "no-input-control.json": "no-input-control.cjs: extra patterns and allows with reasons; missing file is the normal case",
     "open-items.json": "open-items-gate.cjs, autonomous-mode.cjs and others: the instance's language (`<key>_patterns`, generic_words) and its waiting map; missing file = English built-ins, no waits",
