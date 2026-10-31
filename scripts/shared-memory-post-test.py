@@ -10,8 +10,10 @@ Exit 0 = all pass.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -35,10 +37,31 @@ def check(name: str, cond: bool, detail: str = "") -> None:
     fails += 0 if cond else 1
 
 
-def post(repo: Path, *args: str, me: str = "kim-pc") -> subprocess.CompletedProcess:
-    env = {**os.environ, "SHARED_MEMORY_SELF": me}
-    return subprocess.run([sys.executable, str(POST), *args, "--repo", str(repo), "--date", STATE],
+BRAIN = Path(tempfile.mkdtemp())  # the writing brain; by default without a core/ checkout
+atexit.register(shutil.rmtree, BRAIN, True)
+# Where the script's own checkout would be found, a folder that is none: the fixture runs from a
+# clone of the core, and that clone's tag must not stand in for "the writing brain's core".
+os.environ["DEVICE_STATUS_CORE"] = str(BRAIN)
+ORIGIN_SINCE = getattr(sml, "ORIGIN_SINCE", "2026-10-29")
+THIS_OS = {"darwin": "macos", "win32": "windows"}.get(sys.platform, "linux")
+
+
+def post(repo: Path, *args: str, me: str = "kim-pc", brain: Path = BRAIN,
+         date: str = STATE) -> subprocess.CompletedProcess:
+    env = {**os.environ, "SHARED_MEMORY_SELF": me, "CLAUDE_PROJECT_DIR": str(brain)}
+    return subprocess.run([sys.executable, str(POST), *args, "--repo", str(repo), "--date", date],
                           capture_output=True, text=True, encoding="utf-8", env=env)
+
+
+def tagged_brain(root: Path, tag: str) -> Path:
+    """A brain whose core/ is a git checkout of its own on `tag`."""
+    core = root / "brain" / "core"
+    core.mkdir(parents=True)
+    (core / "f.txt").write_text("x", encoding="utf-8")
+    for c in (["init", "-q"], ["add", "-A"], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "c"],
+              ["tag", tag]):
+        subprocess.run(["git", "-C", str(core), *c], capture_output=True)
+    return root / "brain"
 
 
 def inbox(repo: Path, me: str) -> str:
@@ -75,6 +98,11 @@ def main() -> int:
         text = req.read_text(encoding="utf-8") if req.is_file() else ""
         check("its state is written: status open, next = the Windows devices but the sender",
               "  status: open\n" in text and "  next: alex-win\n" in text, text)
+        # Origin fields (operator order 2026-10-28): the writer's system and core version, so
+        # activity per core version is readable from the entries. Measured: 1 of 1076 carried one.
+        check("the entry carries the writing device's system (os:)", f"  os: {THIS_OS}\n" in text, text)
+        check("a brain whose core is unreadable writes `core: unknown`, never omits it",
+              "  core: unknown\n" in text, text)
         log = (repo / "core" / "LOG.md").read_text(encoding="utf-8")
         check("one LOG line points at the file",
               f"## {STATE} · kim-pc — AN os:windows (status: open): Check core #42 on Windows\ncore/{req.name}" in log, log)
@@ -159,6 +187,29 @@ def main() -> int:
         r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Windows box moved",
                  "--body", "The Windows box now stands in room 2.", me="alex-mac")
         check("control: a note that only names Windows (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)
+
+        brain = tagged_brain(BRAIN, "v9.9.9")  # outside the shared-memory repo
+        r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Core version stamp",
+                 me="alex-mac", brain=brain, date=ORIGIN_SINCE)
+        stamped = repo / "core" / f"note-core-version-stamp-{ORIGIN_SINCE}.md"
+        st = stamped.read_text(encoding="utf-8") if stamped.is_file() else ""
+        check("a brain with a core checkout writes its core version (`core: v9.9.9`)",
+              r.returncode == 0 and "  core: v9.9.9\n" in st, r.stdout + r.stderr + st)
+
+        def origin_hits(name: str) -> list:
+            return [i for i in sml.lint(repo)["findings"]["fields"] if name in json.dumps(i)]
+
+        check("the lint finds nothing in a new entry the tool wrote", not origin_hits(stamped.name),
+              json.dumps(origin_hits(stamped.name)))
+        for stem, date in (("note-hand-new", ORIGIN_SINCE), ("note-hand-old", STATE)):
+            (repo / "core" / f"{stem}.md").write_text(
+                f"---\nname: {stem}\ndescription: \"by hand\"\nmetadata:\n  type: project\n  von: alex-mac\n"
+                f"  audience: kim-pc\n  topic: core\n  date: {date}\n---\n\nx\n", encoding="utf-8")
+        new_hits = origin_hits("note-hand-new.md")
+        check("the lint names a new entry without core:",
+              any("core" in (i.get("fields") or []) for i in new_hits), json.dumps(new_hits))
+        check("NEGATIVE: an entry dated before the rule is not judged", not origin_hits("note-hand-old.md"),
+              json.dumps(origin_hits("note-hand-old.md")))
     print("shared-memory-post: all cases pass" if not fails else f"shared-memory-post: {fails} FAILURES")
     return 1 if fails else 0
 

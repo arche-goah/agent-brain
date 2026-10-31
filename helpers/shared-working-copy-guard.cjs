@@ -127,11 +127,15 @@ function topLevel(repo) {
   return r.status === 0 ? (r.stdout || '').trim() : null;
 }
 
+// Command segments split only OUTSIDE quotes (shell-segments.cjs; a "(" inside a commit message
+// cut the pathspec off, measured 2026-10-28).
+const { segments } = require('./shell-segments.cjs');
+
 // Split a shell line into the git invocations at command position: start of line or after
 // ; & | ( — with an optional sudo/env/VAR= prefix. Returns [{repo, sub, args[]}].
 function gitCalls(cmd, project) {
   const calls = [];
-  for (const seg of cmd.split(/\n|;|&&|\|\||\||&|\$\(|\(/)) {
+  for (const seg of segments(cmd)) {
     const m = /^\s*(?:(?:sudo|env)\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:\S*[\\/])?git\s+(.*)$/.exec(seg);
     if (!m) continue;
     const toks = tokens(m[1]);
