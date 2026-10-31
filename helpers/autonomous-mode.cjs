@@ -181,7 +181,11 @@ function promptModes(transcriptPath, cwd) {
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
     const intent = intentFor(known, d.timestamp);
-    const asks = w.ask.test(text) || Boolean(intent && intent.asks_open);
+    // The model's asks_open yields to an order to work autonomously in the SAME prompt (2026-10-31, macOS
+    // instance): "work through all open points, handle them autonomously" read as asks_open, and the run the
+    // operator had just ordered went interactive. Replay over the classifier log: 7 prompts carry both, the one
+    // genuine question among them ("anything for me? you worked 5 h autonomously") is caught by the words.
+    const asks = w.ask.test(text) || Boolean(intent && intent.asks_open && !ordersOn(w.on, text));
     if (w.off.test(text) || asks || (intent && intent.mode_off)) state = false;
     else if (ordersOn(w.on, text)) state = true;
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false });

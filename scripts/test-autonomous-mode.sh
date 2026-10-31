@@ -123,6 +123,12 @@ mode "a record far after the prompt does not count" "$f" "$IC" autonomous
 f="$T/sess-b.jsonl"; { tuser 2026-10-28T21:00:00Z "fix the parser"; } > "$f"
 irec 2026-10-28T21:00:03Z sess-b false true > "$IC/.claude-state/intent-classifier.jsonl"
 mode "the classifier never switches the mode ON (safe direction only)" "$f" "$IC" interactive
+f="$T/sess-c.jsonl"; { tuser 2026-10-31T15:40:00Z "work through all open points, everything you can do yourself, handle it autonomously"; } > "$f"
+irec 2026-10-31T15:40:05Z sess-c true true > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the model's asks_open does not cancel an autonomous order in the same prompt" "$f" "$IC" autonomous
+f="$T/sess-d.jsonl"; { tuser 2026-10-31T15:40:00Z "work through the list autonomously"; asst "x"; tuser 2026-10-31T16:40:00Z "anything for me?"; } > "$f"
+irec 2026-10-31T16:40:05Z sess-d true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "an ask without an order still ends the run (control)" "$f" "$IC" interactive
 
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }
