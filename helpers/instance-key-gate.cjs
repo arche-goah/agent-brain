@@ -115,19 +115,23 @@ function gate(input) {
   const mark = `<!-- instance-key: ${key} -->`;
   const cwd = input.cwd || process.cwd();
   let text = cmd;
+  const unread = [];
   const pub = require('./published-text.cjs').publishedText(cmd, ps);
   for (const f of pub ? pub.files : handedFiles(cmd)) {
     // `~` expands as the shell does it: a `--body-file ~/<file>` that stays unread hides its key (2026-10-18).
     // A Git Bash path (`/c/...`, `/tmp/...`) is what the shell sees; node on Windows cannot open it, so
     // the key in it went unseen and the post was blocked (measured 2026-10-14, Windows instance) - the
     // same translation public-text-guard.cjs uses.
-    const p = require('./public-text-guard.cjs').nativePath(f.replace(/^~(?=$|[\\/])/, require('os').homedir()));
+    const v = require('./published-text.cjs').expandVars(f, cmd);
+    if (v === null) { unread.push(f); continue; }
+    const p = require('./public-text-guard.cjs').nativePath(v.replace(/^~(?=$|[\\/])/, require('os').homedir()));
     try { text += '\n' + fs.readFileSync(path.resolve(cwd, p), 'utf8'); } catch (e) { /* the write fails on it too */ }
   }
   if (new RegExp(`<!--\\s*instance-key:\\s*${key}\\s*-->`, 'i').test(text)) return 0;
   const noBody = /\bgh\s+pr\s+review\b/.test(cmd) && !/--body(-file)?\b|\s-b\s|\s-F\s/.test(cmd);
   console.error(
     `BLOCKED (instance-key-gate): this GitHub text carries no instance key. Add this line to its body:\n  ${mark}\n` +
+    (unread.length ? `A handed file names a variable this gate cannot resolve (${unread.join(', ')}) - write the path out.\n` : '') +
     (noBody ? 'A review without a body has no place for it - add --body "<one line> ' + mark + '".\n' : '') +
     'Why: several instances can post under one GitHub login; the readers that decide whose move a PR\n' +
     'is (pr-ball.py, open-items.py) tell them apart only by this key. It is a hash and names nobody.');

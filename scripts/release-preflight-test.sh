@@ -9,14 +9,34 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 OLD="$(date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "2 days ago" +%Y-%m-%dT%H:%M:%SZ)"
-# readiness checks 6-10 (2026-10-25): every case below names a consumer and uses an EMPTY
-# shared-memory fixture, so only the case that breaks a readiness check sees it red
+# readiness checks 6-9 (2026-10-25, check 6 reworked 2026-10-28): every case below names a
+# consumer and uses an EMPTY shared-memory fixture, so only the case that breaks a readiness
+# check sees it red
 SHM="$TMP/shared"; mkdir -p "$SHM/core"
 export RELEASE_CONSUMER="fixture consumer" SHARED_MEMORY_REPO="$SHM" RELEASE_TOPIC=core
 # Each preflight run writes here, and a failing check prints it: on 2026-10-28 two cases failed
 # once on ubuntu-latest (rc=1 for 0) and the log held only the summary line, so the cause could
 # not be read.
 LAST="$TMP/last-run.out"; : > "$LAST"
+# a gh stub first on PATH for every case (check 6 fails closed without a readable gh); it answers
+# from files: gh-label (does the label beta-candidate exist: 1/0), gh-cand (open beta-candidate
+# PR numbers), gh-open (any open PR numbers), proof.txt (pr view), gh-down (beta-candidate
+# queries fail). Case 10 runs on the real PATH on purpose.
+REALPATH="$PATH"
+GHDEF="$TMP/gh-default"; mkdir -p "$GHDEF"
+printf '#!/usr/bin/env bash
+d="%s"
+case "$*" in
+  *beta-candidate*) [ -e "$d/gh-down" ] && exit 1
+    case "$*" in *"label list"*) cat "$d/gh-label";; *) cat "$d/gh-cand";; esac ;;
+  *isDraft*) cat "$d/gh-open" ;;
+  *"pr view"*) cat "$d/proof.txt" ;;
+  *) echo 0 ;;
+esac
+' "$TMP" > "$GHDEF/gh"
+chmod +x "$GHDEF/gh"
+echo 1 > "$TMP/gh-label"; : > "$TMP/gh-cand"; : > "$TMP/gh-open"; : > "$TMP/proof.txt"
+export PATH="$GHDEF:$PATH"
 check() { # check <name> <expected-rc> <actual-rc>
   if [ "$2" = "$3" ]; then pass=$((pass+1)); echo "PASS $1";
   else fail=$((fail+1)); echo "FAIL $1 (expected rc=$2, got rc=$3)"; sed 's/^/      | /' "$LAST" | tail -15; fi
@@ -31,7 +51,7 @@ mkrepo() { # fresh repo with manifest+changelog at version $1, origin = bare twi
   printf '# Changelog\n\n## %s — 2026-01-01\n\n- entry\n' "$ver" > "$d/CHANGELOG.md"
   git -C "$d" init --quiet -b main
   git -C "$d" -c user.email=t@t -c user.name=t add -A
-  # two days old: check 6 (quiet main) is green unless a case moves main on purpose
+  # two days old (a commit age no check depends on since 2026-10-28; kept for stable fixtures)
   GIT_COMMITTER_DATE="$OLD" GIT_AUTHOR_DATE="$OLD" git -C "$d" -c user.email=t@t -c user.name=t commit --quiet -m init
   git init --quiet --bare "$d-origin.git"
   git -C "$d" remote add origin "$d-origin.git"
@@ -94,7 +114,7 @@ check "malformed tag rejected" 2 $?
 #     (GitHub) checkout against a fixture whose origin is a bare local repo, gh must not
 #     answer — a green "no competing open release PR" here is the caller's repo speaking.
 R="$(mkrepo 2.0.0)"
-OUT="$(cd "$(dirname "$S")" && RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"
+OUT="$(cd "$(dirname "$S")" && PATH="$REALPATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"
 case "$OUT" in *"no competing open release PR"*) rc=1;; *) rc=0;; esac
 check "release-PR check queries the repo under test" 0 $rc
 
@@ -141,21 +161,41 @@ native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else pri
 RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --ci-tag v2.1.0 >"$LAST" 2>&1
 check "preflight green after a real changelog-assemble cut" 0 $?
 
-# 14. readiness, check 6: a commit on main younger than the floor -> FAIL; the operator's
-#     word (quote + date) waives it; a paraphrase without quote marks or date does not
+# 14. readiness, check 6 (operator correction 2026-10-28: a beta waits for an important
+#     candidate still in work, not for a quiet main): an open PR labelled beta-candidate -> FAIL
+#     naming it; none -> PASS; an unrelated open PR and a fresh commit on main no longer fail;
+#     gh unreadable -> FAIL (closed); the label not existing, said explicitly by gh -> PASS;
+#     the operator's quoted word waives a candidate, a paraphrase does not
 R="$(mkrepo 2.0.0)"
 git -C "$R" -c user.email=t@t -c user.name=t commit --quiet --allow-empty -m fresh
 git -C "$R" push --quiet origin main
 RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
-check "main moved within the floor fails (the strand still collects)" 1 $?
+check "a fresh commit on main no longer fails" 0 $?
+echo 12 > "$TMP/gh-open"
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "an unrelated open PR no longer fails" 0 $?
+: > "$TMP/gh-open"
+echo 42 > "$TMP/gh-cand"
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"FAIL"*"#42"*) named=0;; *) named=1;; esac
+check "an open beta-candidate PR fails and is named" 1 $(( rc * (1 - named) ))
 RELEASE_PREFLIGHT_ROOT="$R" RELEASE_EARLY_OK='operator 2026-10-25 "cut it today"' bash "$S" v2.0.0 >"$LAST" 2>&1
-check "the operator's quoted word with a date waives the floor" 0 $?
+check "the operator's quoted word with a date waives the candidate" 0 $?
 RELEASE_PREFLIGHT_ROOT="$R" RELEASE_EARLY_OK='the operator said it is fine' bash "$S" v2.0.0 >"$LAST" 2>&1
 check "a paraphrase without quote and date does not waive" 1 $?
-RELEASE_PREFLIGHT_ROOT="$R" RELEASE_QUIET_HOURS=0 bash "$S" v2.0.0 >"$LAST" 2>&1
-check "a floor of 0 h accepts a fresh main (the knob works)" 0 $?
+: > "$TMP/gh-cand"
+touch "$TMP/gh-down"
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"FAIL"*"beta-candidate"*) said=0;; *) said=1;; esac
+check "gh unreadable fails closed" 1 $(( rc * (1 - said) ))
+rm -f "$TMP/gh-down"
+echo 0 > "$TMP/gh-label"
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"does not exist"*) said=0;; *) said=1;; esac
+check "label absent (gh says so) counts as no candidate, and is said" 0 $(( rc + said ))
+echo 1 > "$TMP/gh-label"
 
-# 15. readiness, check 8: an open shared-memory entry under the topic -> FAIL; closed -> PASS;
+# 15. readiness, check 7: an open shared-memory entry under the topic -> FAIL; closed -> PASS;
 #     no clone -> a note, not red
 R="$(mkrepo 2.0.0)"
 printf -- '---\nname: x\nmetadata:\n  status: open\n---\nPR follows\n' > "$SHM/core/request-x.md"
@@ -169,21 +209,18 @@ case "$OUT" in *"NOT run"*) said=0;; *) said=1;; esac
 check "no shared-memory clone: said, not red" 0 $(( rc + said ))
 rm -f "$SHM/core/request-x.md"
 
-# 16. readiness, check 10: no consumer named -> FAIL
+# 16. readiness, check 9: no consumer named -> FAIL
 R="$(mkrepo 2.0.0)"
 RELEASE_PREFLIGHT_ROOT="$R" RELEASE_CONSUMER= bash "$S" v2.0.0 >"$LAST" 2>&1
 check "no consumer named fails" 1 $?
 
-# 17. readiness, check 9: a PR merged since the previous tag without both OS proofs -> FAIL;
-#     with both (instance key + the OS words) -> PASS. gh is a stub answering from a file.
+# 17. readiness, check 8: a PR merged since the previous tag without both OS proofs -> FAIL;
+#     with both (instance key + the OS words) -> PASS. gh is the default stub (proof.txt).
 R="$(mkrepo 2.0.0)"
 git -C "$R" tag v1.9.0
 GIT_COMMITTER_DATE="$OLD" GIT_AUTHOR_DATE="$OLD" git -C "$R" -c user.email=t@t -c user.name=t commit --quiet --allow-empty -m "Merge pull request #7 from o/x"
 git -C "$R" push --quiet origin main v1.9.0
-GHSTUB="$TMP/gh-proof"; mkdir -p "$GHSTUB"
-# check 5 asks for a count (release PRs), check 7 for a list of numbers (isDraft in the query)
-printf '#!/usr/bin/env bash\ncase "$*" in *isDraft*) echo "";; *"pr list"*) echo 0;; *"pr view"*) cat "%s/proof.txt";; *) echo 0;; esac\n' "$TMP" > "$GHSTUB/gh"
-chmod +x "$GHSTUB/gh"
+GHSTUB="$GHDEF"
 # the stub answers like gh with `@base64`: one base64 line per text (body, comments)
 b64() { printf '%s' "$1" | base64 | tr -d '\n'; echo; }
 { b64 'instance-key: abc — checked on macOS'; } > "$TMP/proof.txt"
