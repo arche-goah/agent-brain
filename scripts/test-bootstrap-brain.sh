@@ -80,4 +80,14 @@ boot b4
 [ "$rc" = 0 ] && [ "$(at b4)" = "$(git -C "$C" rev-parse HEAD)" ] && ok "no release tag: core/ stays on its branch, exit 0" || bad "untagged: rc=$rc out='$out'"
 case "$out" in *"no release tag (vX.Y.Z)"*) ok "no release tag: said so";; *) bad "untagged not said: '$out'";; esac
 
+# 6 the hand-copied templates follow the pinned core/, not the clone the script runs from (stranger
+#   trial 2026-11-01: the newest tag sat 187 commits behind the clone, templates and core disagreed)
+C="$T/core-tpl"; mkdir -p "$C"; cp -r "$ROOT/templates" "$ROOT/helpers" "$C/"
+echo "PINNED-TEMPLATE-MARKER" >> "$C/templates/CLAUDE.md"
+git -C "$C" init -q; git -C "$C" add -A; git -C "$C" commit -qm base; git -C "$C" tag v3.0.0
+boot b5
+grep -q PINNED-TEMPLATE-MARKER "$T/b5/CLAUDE.md" 2>/dev/null \
+  && ok "templates come from the pinned core/ when it is another commit than the clone" || bad "templates not from core/: rc=$rc out='$out'"
+case "$out" in *"templates taken from core/"*) ok "the template source is named";; *) bad "template source not named: '$out'";; esac
+
 [ "$fail" = 0 ] && echo "bootstrap-brain: all cases pass" || { echo "bootstrap-brain: FAILURES"; exit 1; }

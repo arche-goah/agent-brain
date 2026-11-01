@@ -102,30 +102,35 @@ mkdir -p "$TARGET"
 cd "$TARGET"
 git init -q
 
-# 2. Templates
-cp "$CORE_SRC/templates/CLAUDE.md" CLAUDE.md
+# 2. Templates — from the clone this script runs from; step 3 takes them again from core/ once it
+# is pinned to another commit, so templates and core always match. A template the pinned core
+# does not have stays the clone's and is named.
 mkdir -p .claude/rules .claude/skills docs/maintenance config scripts src
-cp "$CORE_SRC/templates/settings.json" .claude/settings.json
-cp "$CORE_SRC/templates/feedback.md" .claude/rules/feedback.md
-cp "$CORE_SRC/templates/rules-instance/working-rules-instance.md" .claude/rules/
-cp "$CORE_SRC/templates/rules-instance/intelligence-instance.md" .claude/rules/
+TPL="$CORE_SRC/templates"
+_kept=""
+tcp() { if [ -f "$TPL/$1" ]; then cp "$TPL/$1" "$2"; else _kept="$_kept $1"; fi; }
+copy_templates() {
+tcp CLAUDE.md CLAUDE.md
+tcp settings.json .claude/settings.json
+tcp feedback.md .claude/rules/feedback.md
+tcp rules-instance/working-rules-instance.md .claude/rules/
+tcp rules-instance/intelligence-instance.md .claude/rules/
 # The data files a core HELPER reads (stop-checks.json for the plugin's one Stop hook, the gates'
 # language and live-system data, collab-watch.json, ...) are copied in step 3, from the consumed
 # core, by template-drift.py --copy-data — the list the session start checks. The two below are
 # read by scripts only, so that list does not carry them.
 # ASK OR ACT names "the instance's operator-only list" as the one set of matters that need the
 # operator; without the file every rule pointing at it points at nothing (operator 2026-10-16).
-cp "$CORE_SRC/templates/rules-instance/operator-only.json" .claude/rules/
+tcp rules-instance/operator-only.json .claude/rules/
 # Language data of decision-review.py (built-ins English; the operator's words go here).
-cp "$CORE_SRC/templates/rules-instance/decision-review.json" .claude/rules/
-cp "$CORE_SRC/templates/leak-names.json" .claude/rules/leak-names.json
+tcp rules-instance/decision-review.json .claude/rules/
+tcp leak-names.json .claude/rules/leak-names.json
 # MEMORY.md seed: Claude Code creates Auto-Memory itself — the seed documents the format.
-mkdir -p docs/maintenance
-cp "$CORE_SRC/templates/MEMORY.md" docs/maintenance/memory-seed-referenz.md
+tcp MEMORY.md docs/maintenance/memory-seed-referenz.md
 # Invariant register from day one (operator order 2026-08-19): a class needs a place
 # where it stays open — without the register, the class-discipline rules reach a
 # fresh brain as prose only.
-cp "$CORE_SRC/templates/invariants.md" docs/maintenance/invariants.md
+tcp invariants.md docs/maintenance/invariants.md
 # Brain-scan checklist + order list from day one (collaborator request 2026-09-13): the
 # scan workflow reads both by fixed path and the bootup counts the open orders — a brain
 # without them runs its first scan against nothing and the two brains' reports do not
@@ -133,8 +138,11 @@ cp "$CORE_SRC/templates/invariants.md" docs/maintenance/invariants.md
 # instance's to grow.
 # The target name is German because the workflows read that exact path in every
 # instance; the TEMPLATE is English-named because this repo is public-bound (rule 7).
-cp "$CORE_SRC/templates/brain-scan-checklist.md" docs/maintenance/brain-scan-checklist.md
-cp "$CORE_SRC/templates/brain-scan-orders.md" docs/maintenance/brain-scan-auftraege.md
+tcp brain-scan-checklist.md docs/maintenance/brain-scan-checklist.md
+tcp brain-scan-orders.md docs/maintenance/brain-scan-auftraege.md
+}
+copy_templates
+if [ -n "$_kept" ]; then echo "bootstrap-brain: templates missing in $TPL:$_kept — aborting."; exit 1; fi
 
 # .gitattributes BEFORE the first commit: Git for Windows defaults to core.autocrlf=true
 # and then checks out CRLF. The workflow tool rejects a script with CR ("script contains
@@ -240,6 +248,13 @@ elif git -C core checkout -q "$_core_ref" 2>/dev/null; then
 else
   echo "bootstrap-brain: core ref '$_core_ref' cannot be checked out in core/ (no such tag, branch or commit in $CORE_URL?) — aborting."
   exit 1
+fi
+# The step-2 templates came from the clone; when core/ now sits on another commit (stranger trial
+# 2026-11-01: the newest tag 187 commits behind the clone, and the first start named 8 template
+# permission rules the brain lacked), take them again from the pinned core.
+if [ "$(git -C core rev-parse HEAD)" != "$(git -C "$CORE_SRC" rev-parse HEAD 2>/dev/null || true)" ]; then
+  TPL=core/templates; _kept=""; copy_templates
+  echo "bootstrap-brain: templates taken from core/ at $(git -C core describe --tags --always 2>/dev/null) (the clone is another commit)${_kept:+; not in that core, kept from the clone:$_kept}."
 fi
 # Every template data file a helper of THIS core reads, from this core's templates: the list
 # template-drift.py checks at every session start, so no hand list here can fall behind it (the
