@@ -41,7 +41,9 @@ const HOOK_ECHO = /^Stop hook feedback:/;
 function turnOf(tp) {
   let lines;
   try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return null; }
-  let text = ''; let wake = false; let cmds = [];
+  let text = ''; let wake = false; let cmds = []; let prev = null; let lastUserIsNotification = false;
+  // Every command of the session in order, with its time: an earlier measurement can still stand (see judge).
+  const all = [];
   // Background waiters still running at the turn's end (armed, no end reported yet).
   const armed = new Set(); const ended = new Set();
   for (const line of lines) {
@@ -59,7 +61,14 @@ function turnOf(tp) {
         : Array.isArray(c) && !c.some((b) => b && b.type === 'tool_result') ? c.map((b) => (b && b.text) || '').join('\n') : null;
       // Every new user record that is no tool result starts a turn — an operator prompt, a
       // notification or a peer message alike: each of them is a turn that can end idle.
-      if (t !== null && !HOOK_ECHO.test(t)) { text = ''; wake = false; cmds = []; }
+      // A notification that lands AFTER the turn's closing text (a watcher's event between the reply and the Stop
+      // check, measured 2026-10-31 on the macOS instance: four loops in one evening, each reset the BLOCKED line
+      // and the measurement away) starts a turn with nothing in it yet - the turn being judged is the one before.
+      if (t !== null && !HOOK_ECHO.test(t)) {
+        lastUserIsNotification = /<task-notification>|<cross-session-message\b/.test(t);
+        if (text) prev = { text, wake, cmds };
+        text = ''; wake = false; cmds = [];
+      }
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -69,11 +78,31 @@ function turnOf(tp) {
         if (b && b.type === 'tool_use' && (b.name === 'Monitor'
           || ((b.name === 'Bash' || b.name === 'Agent') && b.input && b.input.run_in_background === true))) armed.add(b.id);
         if (b && b.type === 'tool_use' && b.input && typeof b.input.command === 'string') cmds.push(b.input.command);
+        if (b && b.type === 'tool_use') all.push({ name: b.name, cmd: (b.input && typeof b.input.command === 'string') ? b.input.command : '', ts: Date.parse(d.timestamp || '') || 0 });
       }
     }
   }
   const waiting = [...armed].some((id) => !ended.has(id));
-  return { text, wake, cmds, waiting };
+  if (!text && prev && lastUserIsNotification) return { ...prev, waiting, all };
+  return { text, wake, cmds, waiting, all };
+}
+
+/** A measurement from an EARLIER turn still stands when nothing was done since and it is fresh.
+ *  Measured 2026-10-31 on the macOS instance over 80 sessions: 31 of 86 idle blocks were answered by re-running the
+ *  same measurement and re-sending the same text - each watcher notification starts a turn, and the turn before had
+ *  measured already. "Nothing done" = no tool call that changes state (an edit, a commit, a push, a merge, a post) after
+ *  the measurement; "fresh" = at most STANDING_MIN minutes old. */
+const STANDING_MIN = 30;
+const CHANGES = /\bgit\b[^\n|;&]*\b(commit|push|merge|rebase|tag)\b|\bgh\s+(pr|issue)\s+(create|merge|comment|edit|close)\b|shared-memory-post|\bgh\s+api\s+-X/;
+const CHANGE_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit', 'MultiEdit']);
+function standingMeasurement(all, measurers, now) {
+  if (!Array.isArray(all)) return false;
+  let at = -1;
+  all.forEach((c, i) => { if (c.cmd && measurers.some((r) => r.test(c.cmd))) at = i; });
+  if (at < 0) return false;
+  const ts = all[at].ts;
+  if (!ts || (now || Date.now()) - ts > STANDING_MIN * 60000) return false;
+  return !all.slice(at + 1).some((c) => CHANGE_TOOLS.has(c.name) || (c.cmd && CHANGES.test(c.cmd)));
 }
 
 /** The commands that measure the brain's own open items: the core's, plus the instance's (data). */
@@ -99,7 +128,7 @@ function exemptWords(root) {
   return new RegExp(list.join('|'), 'i');
 }
 
-function judge(input) {
+function judge(input, now) {
   // The retry after a block is judged too (measured on an instance, 2026-10-29): the second attempt ended on a
   // BLOCKED line over a sliced list and passed unread, because stop_hook_active skipped the whole judgement.
   // The demand is cheap to meet (one reading command), so no loop. Pair it with `onReissue: run` in the
@@ -117,7 +146,7 @@ function judge(input) {
   void t.wake; void t.waiting;
   if (END_LINE.test(t.text)) {
     const m = measurers(root);
-    if (t.cmds.some((c) => m.some((r) => r.test(c)))) {
+    if (t.cmds.some((c) => m.some((r) => r.test(c))) || standingMeasurement(t.all, m, now)) {
       const exempt = exemptWords(root);
       // A BLOCKED line whose reason is a pin / beta tag / Windows check blocks the MERGE or the release, never the
       // building (third case on an instance, 2026-10-30: follow-up PRs held "until the next beta tag" while they
@@ -130,7 +159,10 @@ function judge(input) {
       if (!mergeOnly.length) return null;
       return 'AUTONOMOUS-IDLE: a BLOCKED line waits on a merge, pin, beta tag or Windows check — that blocks the merge, '
         + `not the building: "${mergeOnly[0].trim().slice(0, 140)}". Build it now (stacked on the open PR if needed), `
-        + 'or name the operator\'s order that sets this sequence. Missing: continuation';
+        + 'or name the operator\'s order that sets this sequence. Missing: build or the order behind the wait';
+      // Its own last words (2026-10-31): with "Missing: continuation" the dispatcher's LEERLAUF row turned this
+      // specific reason into the generic idle sentence, and the real cause (a Windows word in the BLOCKED line)
+      // stayed hidden through four retries.
     }
     return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY line, but the list behind it was not measured ' +
       'in this turn — the line is a recollection, not a reading. Run the brain\'s own-items measurement now ' +
