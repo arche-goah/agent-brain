@@ -231,7 +231,21 @@ with tempfile.TemporaryDirectory() as td:
     ok("a gate with neither cooldown nor frequency design is still reported",
        "no-cooldown" in out and "f-gate.cjs" in out, f"output was: {out.strip()[:300]}")
 
+# 12. an accepted candidate is judged again after 90 days (operator order 2026-10-29)
+for today, want_back, label in (("2026-10-29", False, "an acceptance 13 days old stays suppressed"),
+                                ("2027-02-01", True, "an acceptance older than 90 days comes back, marked due")):
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        build_recorder_brain(root, {**GATES, "core/helpers/f-gate.cjs": "// blocks always\n"})
+        (root / ".claude" / "rules" / "friction-accepted.json").write_text(json.dumps({"accepted": [
+            {"kind": "no-cooldown", "match": "f-gate.cjs", "since": "2026-10-16", "reason": "judged"}]}), encoding="utf-8")
+        res = subprocess.run([sys.executable, str(SCANNER), str(root)], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", env={**os.environ, "BRAIN_FRICTION_TODAY": today})
+        out = res.stdout + res.stderr
+        back = "f-gate.cjs" in out and "due for review" in out
+        ok(label, back == want_back, f"output was: {out.strip()[:300]}")
+
 if fails:
     print(f"brain-friction-test: {len(fails)} FAILURE(S)")
     sys.exit(1)
-print("brain-friction-test: all 12 fixtures passed")
+print("brain-friction-test: all 14 fixtures passed")
