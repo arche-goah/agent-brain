@@ -46,7 +46,8 @@
  * Language: a PR is named by `#<n>`, a count as digits; a request by its date, its topic
  * words (file slug), or its age in days. The phrase patterns are English built-ins; an
  * instance adds its own language as DATA in .claude/rules/open-items.json (`<key>_patterns`,
- * lists of regexes; keys: nothing, failed, parked, offer, repeat, age_unit, goahead, handled).
+ * lists of regexes; keys: nothing, failed, parked, offer, repeat, age_unit, goahead, handled,
+ * ask, wait, ours).
  * Items printed `[...|wait]` (the move is someone else's, or a dated wait) need no relay.
  *
  * Output: {"decision":"block","reason":"... Missing: <what>"} — the dispatcher compresses
@@ -54,8 +55,9 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isSkillExpansion, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { autonomousMode } = require('./autonomous-mode.cjs');
+const { PRE_COMMIT, closeOpenEnds } = require('./close-stamp.cjs');
 
 const MAX_BYTES = 16 * 1024 * 1024; // the first turn sits at the top; a huge file is past it
 const BOOTUP = /session-bootup\.sh/;
@@ -74,6 +76,15 @@ const BUILTIN = {
   goahead: ['\\bgo ahead\\b', '\\b(handle|do|finish|work through) (it all|them all|all of (it|them)|everything)\\b'],
   // items under a standing approval: reported as done or under way
   handled: ['\\b(handled|handling|answered|answering|done|in progress|under ?way|working on|taken care of|taking care of)\\b'],
+  // an item said to be someone else's move (the relabel check below)
+  // an operator prompt that asks whether anything is still open — the answer names what is ours
+  ask: ['\\banything (still |else )?(open|left|pending)\\b', '\\b(are we|is everything|all) (done|finished|closed)\\b'],
+  // (not "the other side": that also describes a peer's own activity — fixture 19a)
+  wait: ['\\bwait(s|ing)? (on|for)\\b', '\\bwith (the )?others\\b', '\\btheir (move|turn)\\b'],
+  // a wait line that keeps the item ours or hands it to the operator, not to someone else
+  // ("still ours - waiting for CI, then I merge it", "waits for your decision")
+  ours: ['\\bstill ours\\b', '\\bours\\b', "\\bI(?: will|'ll)? (merge|handle|do|finish|answer)\\b",
+    '\\bwait(s|ing)? (on|for) (you|your)\\b'],
 };
 
 /** n -> RegExp matching "<n> <day unit>"; units are built-ins plus instance `age_unit_patterns`. */
@@ -127,6 +138,10 @@ function readTurn(tp) {
   let first = '';
   let total = 0;
   let reply = [];
+  let last = []; // the running turn: every reply since the newest operator prompt
+  let lastCmds = []; // ...and its shell commands (is it the session-close turn?)
+  let lastPrompt = '';
+  let since = ''; // when the running turn began (the close stamp must be no older)
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     let d;
@@ -137,16 +152,26 @@ function readTurn(tp) {
       if (att.type === 'hook_cancelled') boot = { kind: 'cancelled', source, ms: att.durationMs };
       else if (att.type === 'hook_success') boot = { kind: 'ok', source, text: persistedText(String(att.content || att.stdout || '')) };
       else continue;
-      prompts = 0; reply = []; first = '';
+      prompts = 0; reply = []; first = ''; last = []; lastCmds = [];
       continue;
     }
+    // A message typed mid-turn (queued_command, turn-kind #139) is the operator's WORD - it can be
+    // the "is anything open?" this gate answers - but no turn BOUNDARY: the reply buffer stays.
+    const queued = queuedHumanPrompt(d);
+    if (queued) { lastPrompt = queued; continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
-      if (isSkillExpansion(d) || isPeerMessage(d)) continue;   // a loaded skill's text or another agent's report is no second prompt
+      if (isSkillExpansion(d) || isAgentOrigin(d)) continue;   // a loaded skill's text or another agent's report is no second prompt
       const t = promptText(msg);
-      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; if (prompts === 1) first = t; }
+      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; last = []; lastCmds = []; lastPrompt = t; since = d.timestamp || ''; if (prompts === 1) first = t; }
       continue;
+    }
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const b of msg.content) {
+        if (b.type === 'text' && b.text) last.push(b.text);
+        else if (b.type === 'tool_use' && b.input && typeof b.input.command === 'string') lastCmds.push(b.input.command);
+      }
     }
     if (msg.role === 'assistant' && prompts === 1 && Array.isArray(msg.content)) {
       for (const b of msg.content) {
@@ -159,7 +184,7 @@ function readTurn(tp) {
       }
     }
   }
-  return { boot, prompts, total, first, reply: reply.join('\n') };
+  return { boot, prompts, total, first, reply: reply.join('\n'), last: last.join('\n'), lastCmds, lastPrompt, since };
 }
 
 /**
@@ -220,6 +245,12 @@ function parseBlock(text) {
     let m;
     if ((m = /^- \[PR\|(\w+|\?)\] \S+ (\S+?)#(\d+) /.exec(l))) {
       items.push({ cls: m[1], ref: `${m[2]}#${m[3]}`, key: `${m[2]}#${m[3]}`, num: m[3], repeat });
+    } else if (/^- \[PR-standing\] \d+ PRs: /.test(l)) {
+      // Standing PRs folded into one line (open-items.py): one item per number, as before.
+      const list = l.replace(/^- \[PR-standing\] \d+ PRs: /, '').split(' — ')[0];
+      for (const [, repo, num] of list.matchAll(/(\S+?)#(\d+)/g)) {
+        items.push({ cls: 'standing', ref: `${repo}#${num}`, key: `${repo}#${num}`, num, repeat });
+      }
     } else if ((m = /^- \[request\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — (?:[^:]+: (.+?) — )?/.exec(l))) {
       const ref = m[5];
       const base = ref.split('/').pop();
@@ -298,6 +329,76 @@ function named(item, reply, ageRx, generic) {
 
 const hasNumber = (n, text) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(text);
 
+/**
+ * Any turn, not only the first: a reply may not move an item the list prints as OURS onto
+ * someone else's plate in prose. Measured 2026-10-26 (Windows instance): one own PR stood as
+ * "[PR|ai] … still ours" at three session starts; at each close, and in answers to the
+ * operator's "is anything still open?", the reply put it under "open (with others) — waits on
+ * the collaborator's read", following a superseded line of that repo's own rules. The operator
+ * closed on that answer each time. The list was right; the prose overrode it with nothing on
+ * record. A wait counts only as data: the PR's `waiting-until:` line, the instance's `waiting`
+ * map in open-items.json, or a fresh open-items.py run that now prints the item as waiting
+ * (its record in .claude-state/open-items-seen.json). A bullet under a heading that says
+ * "with others" says it too.
+ */
+function relabelled(t, cwd, sessionId) {
+  if (!t.boot || t.boot.kind !== 'ok' || !t.last) return null;
+  const blk = parseBlock(t.boot.text);
+  if (!blk) return null;
+  let waits = {};
+  let seen = {};
+  try { waits = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'rules', 'open-items.json'), 'utf8')).waiting || {}; } catch (e) { /* none */ }
+  try { seen = JSON.parse(fs.readFileSync(path.join(cwd, '.claude-state', 'open-items-seen.json'), 'utf8')).items || {}; } catch (e) { /* none */ }
+  const keys = (it) => [it.id, it.key, it.base].filter(Boolean);
+  const recorded = (it) => keys(it).some((k) => waits[k] || (seen[k] && seen[k].wait));
+  // A later open-items.py run that no longer lists the item: closed meanwhile (a merged PR).
+  const gone = (it) => Object.keys(seen).length > 0 && !keys(it).some((k) => seen[k]);
+  const ours = blk.items.filter((it) => ['ai', 'human', 'standing'].includes(it.cls) && !recorded(it) && !gone(it));
+  if (!ours.length) return null;
+  const ageRx = ageMatcher(cwd);
+  const generic = genericWords(cwd);
+  // `human` items are the operator's move already: "waits for your decision" is the truth, not a
+  // relabel (false block measured 2026-10-26 on the Windows instance, agent-brain#120). They stay
+  // in `ours` for the close check below — the operator must still hear them.
+  const movable = ours.filter((it) => it.cls !== 'human');
+  const waitRx = patterns(cwd, 'wait');
+  const oursRx = patterns(cwd, 'ours');
+  // Blocking direction: named only by `#n`, a date or the exact file — the lenient first-reply
+  // matcher read "2D" in "the worlds 2D, 3D" as a request two days old (same measurement).
+  const strict = (it, l) => (it.num ? new RegExp(`#${it.num}(?!\\d)`).test(l)
+    : (it.date && l.includes(it.date.join('-'))) || (it.base && l.includes(it.base)));
+  const bad = [];
+  let head = false;
+  for (const l of t.last.split('\n')) {
+    const under = /^\s+[-*\d]/.test(l);
+    if (!under) head = waitRx.test(l) && !oursRx.test(l) && /:[*_]*\s*$/.test(l);
+    if ((!waitRx.test(l) || oursRx.test(l)) && !(under && head)) continue;
+    for (const it of movable) if (!bad.includes(it) && strict(it, l)) bad.push(it);
+  }
+  if (bad.length) {
+    return `This reply puts ${bad.map((it) => it.ref).join(', ')} with someone else, but the session start lists it as ours and no wait is on record. Say it as ours (do it, or ask), or record the wait as data first: a \`waiting-until: <date>: <why>\` line in the PR body, the \`waiting\` map in .claude/rules/open-items.json, or a rerun of open-items.py when the other side's move is on record. Missing: wait record for ${bad.map((it) => it.ref).join(', ')}`;
+  }
+  // The close report, the answer to "is anything still open?", and every "nothing open" name
+  // what is still ours — the operator shuts down on that answer (measured 2026-10-25: asked
+  // "surely all closed, final?", the reply said "persisted, you can shut down" and named none).
+  // The first turn has its own check below.
+  if (t.prompts === 1) return null;
+  const closing = (t.lastCmds || []).some((c) => PRE_COMMIT.test(c));
+  const asked = patterns(cwd, 'ask').test(t.lastPrompt || '');
+  if (!closing && !asked && !patterns(cwd, 'nothing').test(t.last)) return null;
+  // An item this close already carries as an `open end:` line of its session-log entry
+  // (close-stamp.cjs, skill session-close step 4) is named — on record, where the next session
+  // takes it over. Measured 2026-10-28: a close listed its own items as open ends and the gate
+  // still blocked the close report for them.
+  const ends = closing ? closeOpenEnds(cwd, { sessionId, since: t.since,
+    calls: (t.lastCmds || []).map((cmd) => ({ cmd })) }) : null;
+  const endText = (ends || []).join('\n');
+  const left = ours.filter((it) => !named(it, t.last, ageRx, generic)
+    && !(endText && named(it, endText, ageRx, generic)));
+  if (!left.length) return null;
+  return `${closing ? 'The close report' : asked ? 'The answer to "is anything open?"' : 'This reply says nothing is open, but it'} leaves out what the session start lists as ours and is still open — the operator shuts down on this answer. Name each as ours (with where it stands), or record its wait as data first. Missing: ${left.map((it) => it.ref).join(', ')}`;
+}
+
 function judge(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const t = readTurn(input.transcript_path);
@@ -307,6 +408,8 @@ function judge(input) {
     if (t.total !== 1) return null;
     return 'The session-start output never arrived in this session, so the open points were not shown. Run `python3 core/scripts/open-items.py --owner <org>` (or `python`) and report them. Missing: bootup';
   }
+  const moved = relabelled(t, cwd, input.session_id);
+  if (moved) return moved;
   if (t.boot.source === 'compact' || t.prompts !== 1) return null;
   if (t.boot.kind === 'cancelled') {
     return `The session-start hook was cancelled after ${Math.round((t.boot.ms || 0) / 1000)} s — the open points never arrived. Run \`python3 core/scripts/open-items.py --owner <org>\` (or \`python\`) and report them. Clear why in THIS session too: time \`bash core/helpers/session-bootup.sh\`, name the slow part, fix or report it, then \`session-audit.py --ack start:<this session id>\`. Missing: bootup (cancelled)`;

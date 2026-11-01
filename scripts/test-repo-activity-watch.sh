@@ -136,7 +136,7 @@ has "blind watch announces itself" "WATCH-ERROR: gh cannot reach GitHub" "$out"
 cur=$(tr -d '\r\n' < "$T/state/repo-activity-f-cursor.txt")
 [[ "$cur" == "2026-01-01T00:00:00Z" ]] && ok || bad "cursor unchanged while blind" "got $cur"
 
-echo "budget guard: a short interval slows itself when the shared account runs low"
+echo "budget guard: a short interval slows itself when the account's API budget runs low"
 low='{"resources":{"core":{"remaining":4000,"limit":5000},"graphql":{"remaining":600,"limit":5000}}}'
 full='{"resources":{"core":{"remaining":4900,"limit":5000},"graphql":{"remaining":4800,"limit":5000}}}'
 seed h; out=$(run h "acme/one" FAKE_RATE="$low")

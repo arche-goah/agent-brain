@@ -144,7 +144,9 @@ ORDERED; content, structures, UI artifacts and features stay propose-not-build.
 
 ## Presenting to the Operator
 
-What reaches the operator is sorted first (operator decision 2026-09-18).
+What reaches the operator is sorted first (operator decision 2026-09-18). **Run modes** (INTERACTIVE asks at once,
+AUTONOMOUS collects questions and keeps working — no extra rights; how to switch): `docs/run-modes.md` — the answer when
+an operator asks what the modes mean (operator order 2026-10-29).
 
 - **Only real operator decisions** (the instance's operator-only list, `working-rules.md` ASK OR ACT)
   are presented — each with a recommendation, answerable by number; that includes yes/no questions
@@ -159,7 +161,14 @@ What reaches the operator is sorted first (operator decision 2026-09-18).
   ASK OR ACT and the comparative test first.
 - **Measurable is not an open point** (operator decision 2026-10-04): what a tool can read live is
   measured BEFORE the report.
-- **Hands-on items** surface only when work is on exactly that system (operator decision 2026-09-18).
+- **Hands-on items** surface only when work is on exactly that system (operator decision 2026-09-18),
+  unless the hand step blocks an ordered or expected point — then it stands in the first report
+  next to the point it blocks (operator decision 2026-10-27).
+- **A step that needs only the operator's word is a question, never an instruction** (operator
+  correction 2026-10-26): "Shall I run X now?" through the question tool, and on yes the AI runs it
+  and measures the effect — no "type `!` and then …" in prose. Only a step their hand alone can take
+  is written out, as the first line, alone. The close report holds its release while one is open
+  (skill `session-close`, step 5).
 - **Parked domains** are neither presented nor worked (operator decision 2026-09-18); a security
   finding on a wired carrier is reported once, another party's request gets an answer (2026-10-08).
 - **A point the operator deferred is said once per session — and only the operator defers**
@@ -168,7 +177,10 @@ What reaches the operator is sorted first (operator decision 2026-09-18).
   report. A question replied past is unanswered, not deferred: asked again with an own prefix line
   ("open since N sessions:") before the byte-identical question. **The agent closes its own question
   once its work has answered it** (operator decision 2026-10-11) as `answered`; only `deferred` needs
-  the operator's words. Carried by `core/helpers/question-gate.cjs`.
+  the operator's words. **A recorded question is measured before it is asked again** (2026-10-26):
+  the record is a snapshot of the day it was asked — its topic (ledger, device, log) is read first,
+  and an answer found there closes it. Carried by `core/helpers/question-gate.cjs` (`recheck`, and a
+  hook on the question tool).
 - **Name the server, never "the MCP"** (operator decision 2026-08-20); generally, check that a
   proposal's load-bearing word is unambiguous for the reader (2026-09-18).
 
@@ -186,7 +198,9 @@ separate phase workflows; resumable scripts and salvage after a limit-kill: `cor
 **Multi-agent invariant — only the producer writes:** bulk data goes to a file written by the agent
 that PRODUCED it; across the agent boundary travel only path, count, verdict and a narrow validated
 index; a script-side count beats an agent's (abort on mismatch). Carried by `relay()`/`assertCount()`
-and `core/scripts/test-workflow-relays.sh`; mechanism: `core/docs/multi-agent-relay.md`.
+and `core/scripts/test-workflow-relays.sh`; mechanism: `core/docs/multi-agent-relay.md`. **Where the
+harness refuses the agent its file** (2026-10-26), it returns TEXT and names the refusal — never works
+around it (another tool, a script, a rename); the spawning brief asks for exactly that.
 
 History: core/docs/rule-history.md, "Model Routing".
 

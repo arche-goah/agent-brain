@@ -20,6 +20,8 @@
  *           "needs_operator_word": true|false, "foreground_only": true|false }, ...]
  * `foreground_only: true` = the rule fires only for a command that would hold the session
  * (Bash without run_in_background); the same command detached is the defined path.
+ * `monitor_only: true` = the rule fires only for a Monitor command — a stream whose buffering decides
+ * whether its events arrive at all (a background Bash reports once at its end; buffering is moot there).
  * If the file is missing or broken, the guard blocks nothing (fail-open, read-only hook).
  * Every newly discovered shortcut gets added there as a rule — the system learns.
  *
@@ -104,9 +106,11 @@ function compile(list, source) {
     .map((r) => {
       try {
         return { re: new RegExp(r.pattern), was: r.was, instead: r.stattdessen || r.instead,
-                 target: r.target === 'path' ? 'path' : 'command', source,
+                 // 'raw': the command with its message text left in — for a rule about the FORM of
+                 // that text (multi-line text belongs in a file), which the cut below would hide.
+                 target: r.target === 'path' ? 'path' : r.target === 'raw' ? 'raw' : 'command', source,
                  needsOperatorWord: r.needs_operator_word === true,
-                 foregroundOnly: r.foreground_only === true };
+                 foregroundOnly: r.foreground_only === true, monitorOnly: r.monitor_only === true };
       } catch (_) { return null; }
     })
     .filter(Boolean);
@@ -225,12 +229,14 @@ process.stdin.on('end', () => {
   let cmd = '';
   let filePath = '';
   let background = false;
+  let monitor = false;
   try {
     const hin = JSON.parse(input);
     const ti = hin.tool_input || {};
     cmd = ti.command || '';
     // Monitor always runs detached; Bash only with run_in_background.
-    background = hin.tool_name === 'Monitor' || ti.run_in_background === true;
+    monitor = hin.tool_name === 'Monitor';
+    background = monitor || ti.run_in_background === true;
     filePath = (ti.file_path || ti.notebook_path || '').replace(/\\/g, '/');
   } catch (_) {
     process.exit(0);
@@ -247,8 +253,9 @@ process.stdin.on('end', () => {
   // (published-text.cjs). A line it cannot read to the end keeps the two older cuts.
   const stripped = (cmd && withoutPublished(cmd, false)) || stripMessages(stripHeredocs(cmd));
   for (const r of rules) {
-    const hit = r.target === 'path' ? (filePath && r.re.test(filePath)) : (cmd && r.re.test(stripped));
-    if (!hit || (r.foregroundOnly && background)) continue;
+    const hit = r.target === 'path' ? (filePath && r.re.test(filePath))
+      : r.target === 'raw' ? (cmd && r.re.test(cmd)) : (cmd && r.re.test(stripped));
+    if (!hit || (r.foregroundOnly && background) || (r.monitorOnly && !monitor)) continue;
     let missing = [];
     if (marker) {
       if (!r.needsOperatorWord) continue;

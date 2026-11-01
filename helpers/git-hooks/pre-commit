@@ -55,6 +55,16 @@ if [ -f "$root/parties.json" ] && [ -f "$core/scripts/shared-memory-lint.py" ]; 
   run_check "shared-memory-lint" "$py" "$core/scripts/shared-memory-lint.py" --repo "$root" --staged
 fi
 
+# 4b. Lessons bind or they are not written (operator, 2026-10-26: "a rule entered in the feedback amounts
+#     to an empty promise in the long run"). A brain whose feedback protocol is configured
+#     (.claude/rules/lesson-carriers.json) cannot commit a NEW protocol entry whose carrier is prose, a
+#     report or nothing — only a wired gate, a data row such a gate reads, a mechanism-rules id, a CI step,
+#     a PR reference (pending), or the operator's quoted ok. Old entries never block here; the
+#     brain-scan reports them (scripts/carrier-audit.py, report mode).
+if [ -f "$root/.claude/rules/lesson-carriers.json" ] && [ -f "$core/scripts/carrier-audit.py" ]; then
+  run_check "carrier-audit" "$py" "$core/scripts/carrier-audit.py" --repo "$root" --core "$core" --staged
+fi
+
 # 5. Behind the upstream (operator order 2026-10-22, agreed by both core parties): a commit on a
 #    checkout that another machine pushed past lands on an old state, and its push is refused
 #    afterwards (measured 2026-10-22, and twice on 2026-10-25, on Windows brains). The start pull
@@ -97,6 +107,29 @@ behind_check() {
   fail=1
 }
 behind_check
+
+# Every staged .json parses (2026-10-29, measured on the macOS instance: a regex edit broke
+# .claude/rules/local-machinery.json — "Invalid control character" — and the commit went through).
+# Nearly every gate reads its rules from JSON and fails OPEN on an unreadable file, so a broken
+# rule file switches its gate off without a sound. The STAGED content is parsed (git show :path),
+# not the working copy: that is what the commit carries.
+json_check() {
+  local f bad=""
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if ! git show ":$f" | "$py" -c 'import json,sys; json.load(sys.stdin)' >/dev/null 2>&1; then
+      bad="$bad
+  $f: $(git show ":$f" | "$py" -c 'import json,sys
+try: json.load(sys.stdin)
+except Exception as e: print(e)' 2>&1 | head -1)"
+    fi
+  done < <(git diff --cached --name-only --diff-filter=ACMR -- '*.json')
+  [ -z "$bad" ] && return 0
+  echo ""
+  echo "pre-commit: staged JSON does not parse - a gate reading it would fail open:$bad"
+  fail=1
+}
+json_check
 
 # No invariant-check here: it exits 1 whenever a register carries OPEN invariants, which is its
 # normal state — a report, not a gate. Only real pass/fail checks belong in a blocking hook.

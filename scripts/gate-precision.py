@@ -26,12 +26,15 @@ def project_dir(root=None):
     """Where this project's transcripts live, derived — never hardcoded.
 
     Claude Code stores them under ~/.claude/projects/<slug>, where the slug is the
-    project path with every separator replaced by a dash. Deriving it is what lets the
+    project path with every non-alphanumeric character replaced by a dash (the drive colon,
+    a dot or an underscore too - helpers/memory-sync.cjs measured it on Windows 2026-08-03;
+    the earlier form here dropped the colon and kept dots, so it pointed at a folder that does
+    not exist on Windows or for any path with a dot). Deriving it is what lets the
     same script run in another brain, on another OS, under another user; the earlier
     version carried one machine's path and would have measured nothing anywhere else.
     """
     root = os.path.abspath(root or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
-    slug = root.replace(os.sep, "-").replace(":", "").replace("/", "-")
+    slug = re.sub(r"[^A-Za-z0-9]", "-", root)
     return os.path.join(os.path.expanduser("~"), ".claude", "projects", slug)
 GATE = re.compile(r'\b([A-Z][A-Z-]{2,}-GATE|CLASS-GATE|KLASSEN-GATE)\b')
 # Lines a gate ASKS FOR are not a correction — answering a gate must not read as one.

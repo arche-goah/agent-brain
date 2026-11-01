@@ -41,7 +41,8 @@ CHECKS (all read-only, no writes, stdlib only):
                      USES them: `status` outside the vocabulary; `status: open` without
                      `next`; `next` naming no device of parties.json (when it exists);
                      `related` / `supersedes` pointing at no file; `topics` naming a
-                     folder that is not an area (a folder with a LOG.md).
+                     folder that is not an area (a folder with a LOG.md); from
+                     ORIGIN_SINCE on, an entry without `os:` or `core:`.
   11. relations      `answers` / `claims` / `closes` name a file stem or a LOG id
                      (`<area>/LOG@<date>#<n>`) that exists; from STATE_SINCE on, a LOG
                      heading to a party that is no report and points at no file is a
@@ -84,6 +85,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from importlib import import_module  # noqa: E402
 
 _parties = import_module("shared-memory-parties")
+_rotate = import_module("shared-memory-log-rotate")
 
 REPO_DEFAULT = Path(os.environ.get("SHARED_MEMORY_REPO", Path.home() / "Projects/brain-shared-memory"))
 
@@ -137,6 +139,12 @@ OPEN_NAME = "OPEN.md"
 VALID_STATUS = {"open", "decided", "superseded", "info", "answered", "done", "closed", "draft"}
 PATH_FIELDS = ("related", "supersedes")
 FIELDS_SINCE = "2026-10-14"
+# ORIGIN FIELDS (operator order 2026-10-28): every entry carries the writing device's system
+# (`os:`) and core version (`core:`, `unknown` when unreadable) — shared-memory-post.py writes
+# both. Measured that day: 1 of 1076 entries carried a version. Judged for entries dated
+# ORIGIN_SINCE or later; older entries are not re-judged (same ratchet as FIELDS_SINCE).
+ORIGIN_SINCE = "2026-10-29"
+ORIGIN_FIELDS = ("os", "core")
 
 # From the repo's OWN README (section Format), not from the brain's auto-memory schema:
 # this repo has `decision` and does not have `user`. Copying the brain's four across
@@ -169,6 +177,11 @@ MAX_INDEX_LINE = 1200
 # text of live entries and never delete.
 MAX_INDEX_BYTES = 50_000
 LOG_ROTATE_BYTES = 60_000
+# A NEW LOG entry over the entry cap is the writer's finding (proposal to all AIs 2026-10-28, no objection by
+# 2026-10-30): the LOG is heading + pointer, the substance lives in a fact file. Measured in October: 621 of 1368
+# entries over 300 B across seven writers; the session start's report reached only the own instance. A ratchet:
+# entries dated before LOG_CAP_SINCE are protocol and never rewritten. Size and split come from the rotate tool.
+LOG_CAP_SINCE = "2026-10-31"
 
 WIKILINK = re.compile(r"\[\[([^\]|#]+)")
 INDEX_LINK = re.compile(r"\[[^\]]*\]\(([^)]+\.md)\)")
@@ -480,6 +493,11 @@ def field_findings(f: dict, rel: str, meta: dict, repo: Path, areas: set[str],
         if t not in areas:
             add("topics names a folder that is not an area", topic=t,
                 fix="an area is a folder with a LOG.md; create it or fix the name")
+    missing = [k for k in ORIGIN_FIELDS if not str(meta.get(k, "") or "").strip()]
+    if missing and str(meta.get("date", "") or "") >= ORIGIN_SINCE:
+        add("origin fields missing", fields=missing,
+            fix="write entries with scripts/shared-memory-post.py (it stamps os: and core:); "
+                "by hand: `os: <macos|windows|linux>`, `core: <core version or unknown>`")
 
 
 REL_FIELDS = ("answers", "claims", "closes")
@@ -515,6 +533,22 @@ def relation_findings(f: dict, rel: str, meta: dict, targets: set[str]) -> None:
                                        "target": v,
                                        "fix": "the request's file stem, or its LOG id `<area>/LOG@<date>#<n>` "
                                               "as the inbox prints it"})
+
+
+def log_long_entries(f: dict, rel: str, text: str) -> None:
+    """6c. A LOG entry dated LOG_CAP_SINCE or later over the rotate tool's ENTRY_CAP: heading + one line, the
+    substance in a fact file (`shared-memory-post.py` writes both). Older entries are never judged."""
+    _, blocks = _rotate.split_log(text)
+    for b in blocks:
+        m = re.match(r"^## (\d{4}-\d{2}-\d{2})", b)
+        if not m or m.group(1) < LOG_CAP_SINCE:
+            continue
+        size = len(b.rstrip("\n").encode("utf-8"))
+        if size > _rotate.ENTRY_CAP:
+            f["limits"].append({"issue": "LOG entry over the entry cap", "where": f"{rel}: {b.splitlines()[0][:80]}",
+                                "bytes": size, "max": _rotate.ENTRY_CAP,
+                                "fix": "heading + one line in the LOG, the substance in a fact file "
+                                       "(scripts/shared-memory-post.py writes both)"})
 
 
 def log_requests_without_file(f: dict, rel: str, text: str) -> None:
@@ -698,6 +732,7 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
         log_text = log.read_text(encoding="utf-8", errors="replace")
         log_unknown_headings(f, log.relative_to(repo).as_posix(), log_text)
         log_requests_without_file(f, log.relative_to(repo).as_posix(), log_text)
+        log_long_entries(f, log.relative_to(repo).as_posix(), log_text)
         if parties:
             log_audience(f, log.relative_to(repo).as_posix(), log_text, parties, known)
         size = log.stat().st_size

@@ -118,6 +118,8 @@ try:
           "last_post = the newest entry with this device's von:, another device's and a LOG.md are not counted")
     check(str(tmp) not in devfile.read_text(encoding="utf-8") and "/secret" not in devfile.read_text(encoding="utf-8"),
           "no path in the device file")
+    check(isinstance(doc.get("decisions"), dict) and "questions" in doc["decisions"],
+          "the report carries this brain's decision numbers (decision-review --numbers, 7 days)")
     check(git("rev-list", "--count", "HEAD", cwd=bare) == str(commits()), "report pushed")
     rc, out = ds("report")
     check(rc == 0 and commits() == n0 + 1 and "unchanged" in out, "NEGATIVE: unchanged state does not commit again")
@@ -225,6 +227,43 @@ try:
           "--device marks a suite version that comes from the record")
     rc, out = ds("--person", "alpha", "--os", "windows")
     check(rc == 0 and "alpha-mac" not in out, "filters combine")
+
+    print("trailer: the writing brain's core, never the shared-memory repo's")
+    # Measured 2026-10-28: the commit hook runs inside the shared-memory repo, whose `core/` is a
+    # topic folder; the trailer described THAT repo and stamped its parent commit as the core.
+    write(shared / "core" / "LOG.md", "# Log\n")
+    git("add", "-A", cwd=shared); git("commit", "-q", "-m", "core topic", cwd=shared)
+    shared_head = git("rev-parse", "--short=7", "HEAD", cwd=shared)
+    tenv = {k: v for k, v in env.items() if k != "CLAUDE_PROJECT_DIR"}
+
+    def trailer(**over: str) -> str:
+        p = subprocess.run([sys.executable, str(SCRIPT), "trailer"], capture_output=True, text=True,
+                           cwd=shared, env={**tenv, **over})
+        return p.stdout + p.stderr
+
+    out = trailer()
+    check("core=v1.0.0@" in out and shared_head not in out,
+          f"cwd in the shared-memory repo, no project dir: the core the script belongs to ({out.strip()[:90]})")
+    out = trailer(CLAUDE_PROJECT_DIR=str(brain), DEVICE_STATUS_CORE=str(tmp / "nowhere"))
+    check("core=v1.0.0@" in out, "the project dir's core/ checkout is read first")
+    out = trailer(DEVICE_STATUS_CORE=str(tmp / "nowhere"))
+    check("core=unknown" in out and shared_head not in out,
+          f"NEGATIVE: no brain core found -> core=unknown, never a foreign hash ({out.strip()[:90]})")
+
+    print("entries by device and core version")
+    for stem, von, ver in (("e-old", "alpha-mac", "v1.0.0"), ("e-new", "alpha-mac", "v1.2.0-3-gabc1234"),
+                           ("e-other", "beta-win", "v1.3.0"), ("e-none", "alpha-mac", "")):
+        write(shared / "topic" / f"{stem}.md", f"---\nname: {stem}\nmetadata:\n  von: {von}\n  date: 2026-10-29\n"
+              + (f"  os: macos\n  core: {ver}\n" if ver else "") + "---\nx\n")
+    rc, out = ds("entries", "--device", "alpha-mac", "--since-core", "v1.1.0")
+    check(rc == 0 and "topic/e-new.md" in out and "v1.2.0-3-gabc1234" in out,
+          "entries --device --since-core lists that device's entries at or after the version")
+    check("e-old" not in out and "e-other" not in out and "topic/e-none.md" not in out,
+          "NEGATIVE: an older core, another device and an entry without core are not listed")
+    check("without core" in out, "entries without a core field are counted, not silently dropped")
+    rc, out = ds("entries", "--device", "alpha-mac")
+    check("topic/e-old.md" in out and "topic/e-new.md" in out and "topic/e-none.md" in out and "e-other" not in out,
+          "without --since-core every entry of the device is listed")
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

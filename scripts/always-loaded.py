@@ -82,11 +82,21 @@ def main(argv):
         try:
             os.makedirs(os.path.dirname(state), exist_ok=True)
             with open(state, "w", encoding="utf-8", newline="\n") as f:
-                json.dump({"bytes": now, "date": datetime.date.today().isoformat()}, f)
+                json.dump({"bytes": now, "date": datetime.date.today().isoformat(),
+                           "memory": bool(a.memory)}, f)
         except OSError:
             pass
         if a.accept:
             print(f"always-loaded baseline set: {now} bytes")
+        return 0
+    # A baseline accepted over a different file set is no baseline: `--accept` typed by hand
+    # without --memory, then the session start measuring with it, reported the whole memory
+    # index as growth (+22 KB, macOS instance 2026-10-27). Say which half is missing instead.
+    if "memory" in base and bool(base["memory"]) != bool(a.memory):
+        print(f"always-loaded baseline of {base.get('date', '?')} was accepted "
+              f"{'with' if base['memory'] else 'without'} the memory index and this run measures "
+              f"{'without' if base['memory'] else 'with'} it — no growth figure; re-accept with the "
+              "same arguments the session start uses (always-loaded.py --memory <MEMORY.md> --accept)")
         return 0
     grown = now - int(base.get("bytes", now))
     if grown > a.slack:

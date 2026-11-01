@@ -36,9 +36,10 @@
       "marker": "OPEN-ITEMS-GATE",
       "cmd": "core/helpers/open-items-gate.cjs",
       "mode": "block",
-      "extract": "Missing:",
-      "template": "The open items from the session start are missing from the first reply",
-      "maxLength": 200
+      "_note": "The gate has several branches (first reply, close report, 'is anything open?', a wait without record, a failed bootup); the line names which one fired and what is missing. A fixed sentence read 'missing from the first reply' at a session close (measured 2026-10-28).",
+      "extract": "^(.{10,160}?)(?: —|\\.)[\\s\\S]*Missing: ([^\\n]*)",
+      "template": "{1} — missing: {2}",
+      "maxLength": 160
     },
     {
       "label": "WATCHER",
@@ -59,6 +60,15 @@
       "maxLength": 200
     },
     {
+      "label": "CAUSE",
+      "marker": "ROOT-CAUSE-GATE",
+      "cmd": "core/helpers/root-cause-gate.cjs",
+      "mode": "block",
+      "extract": "reads as a correction or a mishap:\\s*\"([^\"]+)\"",
+      "template": "\"{1}\" reads as a correction or a mishap, and the reply names no cause - measure it and write the Cause line before the turn ends",
+      "maxLength": 120
+    },
+    {
       "label": "PREMISE",
       "marker": "PREMISE-GATE",
       "cmd": "core/helpers/premise-gate.cjs",
@@ -69,27 +79,77 @@
       "marker": "PROMISE-GATE",
       "cmd": "core/helpers/promise-gate.cjs",
       "mode": "record",
-      "args": ["--record"]
+      "args": [
+        "--record"
+      ]
     },
     {
       "label": "RECALL",
       "marker": "RECALL-GATE",
       "cmd": "core/helpers/recall-gate.cjs",
       "mode": "record",
-      "args": ["--record"]
+      "args": [
+        "--record"
+      ]
     },
     {
       "label": "ABSENCE",
       "marker": "ABSENCE-GATE",
       "cmd": "core/helpers/absence-gate.cjs",
       "mode": "record",
-      "args": ["--record"]
+      "args": [
+        "--record"
+      ]
     },
     {
       "label": "UNREAD",
       "marker": "DELIVERED-READ",
       "cmd": "core/helpers/delivered-read-gate.cjs",
       "mode": "block"
+    },
+    {
+      "label": "EMPTY PROMISE",
+      "marker": "COMMITMENT-CARRIER-GATE",
+      "cmd": "core/helpers/commitment-carrier-gate.cjs",
+      "mode": "block",
+      "extract": "without a mechanism written this turn:\\s*([\\s\\S]+?)\\nBuild",
+      "template": "A promise about future conduct without a mechanism built this turn: {1} - build the gate now or take the promise back",
+      "maxLength": 240,
+      "onReissue": "run",
+      "required": true
+    },
+    {
+      "label": "IDLE",
+      "marker": "AUTONOMOUS-IDLE",
+      "cmd": "core/helpers/autonomous-idle-gate.cjs",
+      "mode": "block",
+      "extract": "Missing: continuation",
+      "template": "The run is autonomous and this turn ends idle - do the next item, or end with a measured BLOCKED: or POOL EMPTY: line (a wakeup alone is no continuation)",
+      "maxLength": 200,
+      "onReissue": "run",
+      "required": true
+    },
+    {
+      "label": "DECISIONS",
+      "marker": "DECISION-PRESENTATION",
+      "cmd": "core/helpers/decision-presentation-gate.cjs",
+      "mode": "block",
+      "extract": "Missing:\\s*([^\\n]+)",
+      "template": "Open operator decisions are due now - put them through the question tool, the last question 'continue autonomously?' when a run was on: {1}",
+      "maxLength": 240,
+      "onReissue": "run",
+      "required": true
+    },
+    {
+      "label": "CLOSE-LOSS",
+      "marker": "CLOSE-LOSS",
+      "cmd": "core/helpers/close-loss-gate.cjs",
+      "mode": "block",
+      "extract": "Open:\\s*([^\\n]+)",
+      "template": "The reply releases the operator while something can still be lost: {1} - finish it or withhold the release",
+      "maxLength": 240,
+      "onReissue": "run",
+      "required": true
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",

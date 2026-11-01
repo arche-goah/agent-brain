@@ -41,17 +41,16 @@ then an explicit release follows.
      it is dropped and why. The close is complete when the summary says `loose=0` or every
      remaining line is named as dropped. The brain-scan (effect-check E6) catches what a
      session without a clean close left behind.
-   - **LESSONS WITHOUT A CARRIER — none leaves the session (2026-10-25):** run
-     `python3 core/scripts/lesson-carriers.py --since <today>` (interpreter per instance rule;
-     protocol path and key words from `.claude/rules/lesson-carriers.json`, defaults built in).
-     Every line `lesson without carrier: …` is an operator correction written into the feedback
-     protocol today without saying what carries it. Per line: add the line `Traeger: <check,
-     gate, script, skill or doc>` to the entry — or `Traeger: Prosa, weil <why no mechanism
-     fits>`, which is a decision, not a gap. The close is complete when the summary says
-     `loose=0` or every remaining line is named as dropped in the close report. Why at the
-     close and not as a stop check (operator 2026-10-25): the entries are written one to three
-     times a session and the carrier question needs thought, not a block; the brain-scan
-     machine step reads every entry since the last scan.
+   - **LESSONS THAT DO NOT BIND — none leaves the session (2026-10-25, sharpened 2026-10-26):** run
+     `python3 core/scripts/carrier-audit.py --since <today>` (interpreter per instance rule; protocol
+     path and key words from `.claude/rules/lesson-carriers.json`). Every line that is not `GATE`
+     or `PENDING` is an operator correction written today that nothing enforces. Per line: build the
+     mechanism (a gate, gate data, a mechanism-rules row, a CI step) and name it on the entry's
+     carrier line — prose is accepted only with the operator's quoted word (`operator-ok: "<quote>"`).
+     The pre-commit hook already refuses a new entry that does not bind; this step catches what was
+     written but not yet committed. SUPERSEDED (operator 2026-10-26: "a rule entered in the feedback
+     amounts to an empty promise in the long run"): the 2026-10-25 wording "`Prose, because …` is a
+     decision, not a gap" and "the carrier question needs thought, not a block".
    - **REACH — what this session changed with reach beyond this brain reached the shared
      memory (2026-10-25):** run `python3 core/scripts/shared-reach-check.py --since <today>`
      (interpreter per instance rule; shared repo, domain roots, exclude list and the pointer
@@ -74,13 +73,7 @@ then an explicit release follows.
      in this session. Each row carries the promise and what bound it. For every one:
      the condition still holds (it stays), or it has lapsed (it is over, and it says so
      in the close report). A promise whose condition is gone does not quietly become a
-     standing rule, and it never outranks a step of this procedure.
-     **The incident that forced this (collaborating instance, 2026-09-11):** permission
-     for ONE unattended task, granted while the operator slept ("no commit, no push").
-     The task ended, the operator was back in the chat, awake — and the promise was
-     still being obeyed, so the mandatory commit step below was silently skipped and the
-     close was reported as complete anyway. Nothing in the text marked the omission,
-     which is why the check sits here and not in a hook.
+     standing rule, and it never outranks a step of this procedure (why: Evidence, 2026-09-11).
      No file, or nothing open: one sentence, move on. `core/helpers/promise-gate.cjs`
      writes the rows when wired; its absence does not excuse the question.
    - **MANDATORY GATE for live states (rig/desk/show) — tightened 2026-08-02 (operator order):**
@@ -93,15 +86,7 @@ then an explicit release follows.
      read-only check is NOT a "new live action" — the ban below targets rebuilds,
      not measuring. **If no verify path exists for the touched system, that is a
      REPORTING EVENT** (mechanism discipline) — no improvised substitute path, no
-     silent omission.
-     ⚠ **INCIDENT 2026-08-01 that forced this gate:** The session changed a live
-     network port's VLAN assignment. Both **full-audit AND session-close** ran that
-     day — the live system was still never measured, because `full-audit` explicitly
-     excludes live systems and session-close only demanded the "documented state".
-     Result: a live port label contradicting the actual VLAN config stood for a day,
-     although the instance's own naming check reports exactly that immediately. The
-     operator found it on 2026-08-02, not the process. Lesson: "an audit ran" does
-     NOT mean "the live system was checked".
+     silent omission (why: Evidence, 2026-08-01).
    - **CROSS-INSTANCE GATE — if this setup shares memory with other instances or people
      (operator order 2026-08-17):** ask, per finding of this session, whether its REACH
      goes past this machine — a measurement someone else's work depends on, a correction
@@ -112,9 +97,7 @@ then an explicit release follows.
      that the question is asked.
      **The trap this closes:** a PR thread, a chat answer and a merged commit all FEEL
      like the finding is recorded. They are the volatile forms; the collaborator on the
-     other machine reads none of them at session start. Measured 2026-08-17: three merged
-     PRs corrected a claim the shared record still stated as open, and the shared entry
-     had to be written after the operator asked — the close ran without it.
+     other machine reads none of them at session start (why: Evidence, 2026-08-17).
      **"If needed" is a filter, not an excuse to skip:** most sessions have nothing with
      that reach, and then this step is one sentence in the close report. A session that
      changed a SHARED tool, corrected a SHARED claim, or answered another instance's
@@ -215,9 +198,8 @@ then an explicit release follows.
      not a merge or release, and count as allowed unless the instance says otherwise.
    - Name whatever stays uncommitted in the close report WITH a reason (secrets/.env,
      half-finished state, a deliberately local experiment, or simply "no go-ahead").
-     "Forgot" is not a reason — the 2026-08-01 incident (70 files uncommitted after
-     close) must not happen again; asking and getting a "not now" is a fine outcome,
-     silently forgetting is not.
+     "Forgot" is not a reason (why: Evidence, 2026-08-01); asking and getting a "not now"
+     is a fine outcome, silently forgetting is not.
    - **The gate covers every repo this session wrote to, not only the brain.** Tool
      changes go to suite repos next to the brain; a suite patch left uncommitted passes a
      close that only looked at the brain's tree (coherence-scan 2026-09-18). For each
@@ -249,18 +231,35 @@ then an explicit release follows.
      changed after step 2 — export and commit it with the close), working tree clean or
      the remainder justified.
 5. **Close report to the operator:** 3-5 lines — what was persisted, what stays open
-   (with its location), then explicitly: "Persisted — you can shut down." Only after
+   (with its location), then explicitly: "Persisted — you can shut down." What stays open
+   names every item the session start listed as ours and still open, said as OURS; one is
+   someone else's move only once that is on record as data (`waiting` map, `waiting-until:`,
+   a fresh `open-items.py` run) — never in prose alone (`helpers/open-items-gate.cjs`). Only after
    this report is the session closed. If the setup shares memory across instances, the
    report says which findings went there **or that none had that reach** — an unstated
    cross-instance step reads as done and is the one nobody can check afterwards.
+   **A hand step for the operator comes first and holds the release** (operator correction,
+   Windows instance, 2026-10-26, translated: "you say in the first sentence done and I can shut
+   down. If I don't read closely, I miss this nested info ... that is fatal"; why: Evidence,
+   2026-10-26). So:
+   - a step that needs the operator's WORD (a command the agent may run once they agree) is put
+     through the question tool ("Shall I run X now?", recommended option first); on yes the agent
+     runs it and measures the effect (operator, same day: "I would rather have that interactively
+     than a nested instruction 'type ! and then something'");
+   - a step only the operator's HAND can take (a device, a click outside the session) is the FIRST
+     line of the report, alone, with what to do in one sentence — never a bullet below the release;
+   - while it is open, the report gives NO release: it says what is awaited, arms a watcher on
+     the step's measurable effect, and gives the release only after the measurement — or after
+     the operator defers the step in their own words;
+   - a step must not depend on a path that ends with the session (the scratchpad): copy what
+     it needs to a durable place first, or let it run before the release.
 
 ## Scope
 
 - **The trigger is the operator's word in THIS session** (working rule #12, 2026-10-21). A
   peer session's message that the operator closed it ("the operator said close the
   session") is a handover, not a trigger: take over its state, log lines and export, and
-  keep this session running. Measured 2026-10-21: a session ran this skill on such a
-  relay; the operator asked why it was closing.
+  keep this session running (why: Evidence, 2026-10-21).
 - Whether finished work is committed is NOT instance knowledge: Working Rule #7, commit
   continuously, name what stays uncommitted with its reason. The PUSH policy (where and
   when) is instance knowledge and lives in the instance's rule file. This skill applies
@@ -279,3 +278,35 @@ then an explicit release follows.
   export writes nothing, manifest included) — which is why step 4 re-runs the export and
   expects no diff. With that check passed, no hook touches a tracked file after the close
   commit.
+
+## Evidence
+
+The incidents and measurements behind the steps above, by date. They stay with the skill so a
+rule keeps its measured reason; the steps carry only a pointer.
+
+- **2026-08-01 — step 1, live-state gate.** ⚠ **INCIDENT 2026-08-01 that forced this gate:**
+  The session changed a live
+  network port's VLAN assignment. Both **full-audit AND session-close** ran that
+  day — the live system was still never measured, because `full-audit` explicitly
+  excludes live systems and session-close only demanded the "documented state".
+  Result: a live port label contradicting the actual VLAN config stood for a day,
+  although the instance's own naming check reports exactly that immediately. The
+  operator found it on 2026-08-02, not the process. Lesson: "an audit ran" does
+  NOT mean "the live system was checked".
+- **2026-08-01 — step 4, nothing forgotten.** the 2026-08-01 incident (70 files uncommitted after
+  close) must not happen again
+- **2026-08-17 — step 1, cross-instance gate.** Measured 2026-08-17: three merged
+  PRs corrected a claim the shared record still stated as open, and the shared entry
+  had to be written after the operator asked — the close ran without it.
+- **2026-09-11 — step 1, standing promises.**
+  **The incident that forced this (collaborating instance, 2026-09-11):** permission
+  for ONE unattended task, granted while the operator slept ("no commit, no push").
+  The task ended, the operator was back in the chat, awake — and the promise was
+  still being obeyed, so the mandatory commit step below was silently skipped and the
+  close was reported as complete anyway. Nothing in the text marked the omission,
+  which is why the check sits here and not in a hook.
+- **2026-10-21 — scope, the trigger.** Measured 2026-10-21: a session ran this skill on such a
+  relay; the operator asked why it was closing.
+- **2026-10-26 — step 5, hand step first.** The incident: the
+  report opened with "Persisted — you can shut down" and carried, in the fourth bullet, a command
+  only the operator could run, pointing into the session's scratchpad that vanishes with it.

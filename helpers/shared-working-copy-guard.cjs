@@ -127,11 +127,15 @@ function topLevel(repo) {
   return r.status === 0 ? (r.stdout || '').trim() : null;
 }
 
+// Command segments split only OUTSIDE quotes (shell-segments.cjs; a "(" inside a commit message
+// cut the pathspec off, measured 2026-10-28).
+const { segments } = require('./shell-segments.cjs');
+
 // Split a shell line into the git invocations at command position: start of line or after
 // ; & | ( — with an optional sudo/env/VAR= prefix. Returns [{repo, sub, args[]}].
 function gitCalls(cmd, project) {
   const calls = [];
-  for (const seg of cmd.split(/\n|;|&&|\|\||\||&|\$\(|\(/)) {
+  for (const seg of segments(cmd)) {
     const m = /^\s*(?:(?:sudo|env)\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:\S*[\\/])?git\s+(.*)$/.exec(seg);
     if (!m) continue;
     const toks = tokens(m[1]);
@@ -197,6 +201,9 @@ function judge(call) {
         return { was: '`git add -A/-u/.` stages the other session\'s edits too', instead: 'stage by path: `git add <paths>`' };
       return null;
     case 'stash':
+      // `stash list` and `stash show` only read (measured 2026-10-30: a brain-scan could not list the stashes and left
+      // the check unmeasured); every other form moves work out of the shared tree.
+      if (pos[0] === 'list' || pos[0] === 'show') return null;
       return { was: '`git stash` removes the other session\'s uncommitted work from the tree', instead: 'commit your own files by path instead of stashing; the tree is shared' };
     case 'reset':
       if (hasOpt(args, '--hard', '--merge', '--keep')) return { was: '`git reset --hard/--merge/--keep` discards the other session\'s uncommitted work',
@@ -273,6 +280,9 @@ process.stdin.on('end', () => {
     return count;
   };
 
+  // The hook runs before the command: an operation a call starts is not open yet for the calls after it in
+  // the same command, so a later read must not clear the owner the earlier call wrote (measured 2026-10-26).
+  const startedHere = new Set();
   for (const call of calls) {
     const top = topLevel(call.repo);
     if (!top) continue;
@@ -306,7 +316,8 @@ process.stdin.on('end', () => {
     if (verdict && verdict.starts && sid) {
       // An operation that is allowed to start (marker, or no second session) belongs to this session.
       try { fs.writeFileSync(ownerPath, sid + '\n'); } catch (_) {}
-    } else if (!op) {
+      startedHere.add(gd);
+    } else if (!op && !startedHere.has(gd)) {
       try { fs.unlinkSync(ownerPath); } catch (_) {}
     }
   }

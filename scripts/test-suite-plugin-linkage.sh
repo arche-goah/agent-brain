@@ -110,7 +110,8 @@ BOOTUP="$ROOT/helpers/session-bootup.sh"
 [ -f "$BOOTUP" ] || BOOTUP="$ROOT/../helpers/session-bootup.sh"
 
 mkremote() { # mkremote <tagged-version> -> prints path to a bare repo tagged v<version>
-  local ver="$1" d="$T/remote-$RANDOM.git" src="$T/remote-src-$RANDOM"
+  # mktemp, not $RANDOM: two calls drawing the same number would share a repo (release-preflight-test, 2026-10-28)
+  local ver="$1" d src; d="$(mktemp -d "$T/remote-XXXXXX")"; src="$(mktemp -d "$T/remote-src-XXXXXX")"
   mkdir -p "$src"
   git_ -C "$src" init --quiet -b main
   (cd "$src" && echo x > f && git_ add -A && git_ commit --quiet -m init && git_ tag "v$ver")
@@ -120,7 +121,7 @@ mkremote() { # mkremote <tagged-version> -> prints path to a bare repo tagged v<
   printf '%s' "$d"
 }
 mkcheckout() { # mkcheckout <remote-bare-path> -> local clone, sitting exactly on its tag
-  local remote="$1" d="$T/checkout-$RANDOM"
+  local remote="$1" d; d="$(mktemp -d "$T/checkout-XXXXXX")"
   git_ clone --quiet "$remote" "$d"
   printf '%s' "$d"
 }

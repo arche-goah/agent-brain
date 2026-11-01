@@ -205,13 +205,14 @@ def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset()):
     comments = (p.get("comments") or {}).get("nodes", [])
     touched = [r.get("submittedAt") or "" for r in reviews if ours(r)]
     touched += [c.get("createdAt") or "" for c in comments if ours(c)]
+    # A sibling of our OS looked at this head (its key in the text): that look stands for
+    # ours, as in pr-ball.py — measured 2026-10-22 on the operator's second macOS instance,
+    # which listed all 13 PRs of the first one as our move until it touched each itself; and
+    # for a PR of ANOTHER login that asked us for a review alike (Windows finding on #122).
+    touched += [n.get("submittedAt") or n.get("createdAt") or "" for n in reviews + comments
+                if (n.get("author") or {}).get("login", "") == me
+                and key_in(n.get("body") or "") in same_os]
     if author == me and not ours(p):
-        # A sibling of our OS looked at this head (its key in the text): that look stands for
-        # ours, as in pr-ball.py — measured 2026-10-22 on the operator's second macOS instance,
-        # which listed all 13 PRs of the first one as our move until it touched each itself.
-        touched += [n.get("submittedAt") or n.get("createdAt") or "" for n in reviews + comments
-                    if (n.get("author") or {}).get("login", "") == me
-                    and key_in(n.get("body") or "") in same_os]
         # A sibling instance's PR (same login, another key): ours to look at, whatever repo
         # it sits in — the sibling asked us, not the repo's owner. Our own look after its
         # last commit hands the move back to the sibling.
@@ -408,6 +409,20 @@ def auto_class(it, repo, human_rx):
     if it["kind"] == "session":
         return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it["kind"] == "ledger":
+        # The sorted exit says who moves (skill backlog-catch-up); `class: decision` alone does not
+        # — measured 2026-10-28: 9 of 11 "human" ledger rows were no operator decision.
+        if it.get("exit") == "operator-decision":
+            return "human", "an operator decision (ledger exit)"
+        if it.get("exit") == "ai-does-it":
+            return "ai", "the agent's own work (ledger exit)"
+        if it.get("exit") == "in-pr":  # carried_by_pr found no open PR in the exit line
+            return "ai", "its in-pr exit names no open PR any more — tick it or name what is left"
+        # An exit outside the skill's vocabulary read as untouched agent work: measured 2026-10-28,
+        # `waits-on-others`, `deferred`, `ask-operator` on open entries of one brain.
+        if it.get("exit") in ("done-already", "drop"):
+            return "ai", f"its exit says {it['exit']} but the box is open — tick it with the evidence"
+        if it.get("exit") and it["exit"] not in EXITS:
+            return "ai", f"unknown exit '{it['exit']}' — write one of {', '.join(sorted(EXITS))} (skill backlog-catch-up)"
         if it.get("lclass") == "decision":
             return "human", "a decision in the ledger"
         return "ai", "ledger work item"
@@ -459,6 +474,14 @@ def standing_classes(root):
         classes.append({"name": name, "kind": e["kind"], "scope": scope, "title": title, "excludes": excludes,
                         "audience": {str(t).lower() for t in e.get("audience") or []},
                         "granted": DAY.search(granted).group(0)})
+        # A standing approval is reviewed routinely (operator order 2026-10-29): it keeps applying, but
+        # after REVIEW_DAYS without a fresh `reviewed` date the start report names it once per start.
+        stamp = str(e.get("reviewed") or DAY.search(granted).group(0))
+        today = datetime.date.fromisoformat(os.environ.get("OPEN_ITEMS_TODAY") or datetime.date.today().isoformat())
+        if stamp < (today - datetime.timedelta(days=90)).isoformat():
+            refused.append(f"standing approval '{name}' due for review (granted {DAY.search(granted).group(0)}, "
+                           f"reviewed {e.get('reviewed') or 'never'}) — still applies; ask the operator whether "
+                           "the class still fits, then set \"reviewed\": \"<today>\"")
     return classes, refused
 
 
@@ -548,6 +571,41 @@ def sessions(root, hook_input):
 # ledgers — a list that calls itself THE list had read two of its three sources.
 LEDGER_FIELD = re.compile(r"\b(id|class|origin):\s*`?([\w.:/-]+)")
 LEDGER_EXIT = re.compile(r"\bexit:\s*(other-side|parked|later-at-system)\s+(\d{4}-\d{2}-\d{2})")
+# Every exit line of the skill's table; the LAST one in an entry is its current state.
+ANY_EXIT = re.compile(r"^\s*exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re.M)
+# `ask-when: <date>` or `ask-when: thema|topic <regex>` (operator decision 2026-10-29 on the macOS
+# instance, "questions at the right time"; decision-presentation-gate reads it the same way): a date
+# still ahead or a topic is not due at the session start. Measured 2026-10-30: nine entries with a
+# topic trigger printed every session, seven of them as "needs you".
+ASK_WHEN = re.compile(r"^\s*ask-when:\s*(.+?)\s*$", re.M)
+# The exits of skill backlog-catch-up, step 3.
+EXITS ={"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
+
+
+def blame_times(root, rel):
+    """{line number: (author time, committer time, line text)} of a tracked file, {} when git
+    cannot say. Measured 2026-10-28 on the macOS instance: a ledger entry's shown date was the
+    first date anywhere in its text (28 of 95 wrong, e.g. a checklist's 2026-01-01 on an entry
+    written 2026-09-21, a deadline 2026-11-10 shown as its age), and "nothing done yet" was
+    printed for 81 entries without any measurement (8 false). The file's own history says both."""
+    rc, out = run(["git", "-C", str(root), "blame", "--line-porcelain", "--", rel])
+    if rc != 0:
+        return {}
+    times, n, a, c = {}, 0, 0, 0
+    for line in out.splitlines():
+        if re.match(r"^[0-9a-f]{40} \d+ (\d+)", line):
+            n = int(line.split()[2])
+        elif line.startswith("author-time "):
+            a = int(line.split()[1])
+        elif line.startswith("committer-time "):
+            c = int(line.split()[1])
+        elif line.startswith("\t"):
+            times[n] = (a, c, line[1:])
+    return times
+
+
+def day(ts):
+    return datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else ""
 
 
 def ledgers(root):
@@ -574,23 +632,81 @@ def ledgers(root):
         if not found and re.search(r"^[\s>*-]*`?id:", text, re.M):
             unread.append(f"{rel} (id: fields but no '- [ ]' entries, so the reader sees none)")
             continue
+        blame = blame_times(root, rel)
         for e in found:
             f = {}
             for k, v in LEDGER_FIELD.findall(e["text"]):
                 f.setdefault(k, v.rstrip(".:"))
             if e["done"] or f.get("class") == "lesson":
                 continue
-            ident = f.get("id") or f"{rel}:{e['line']}"
+            # Without an `id:` the key is the title, never the line number: a line inserted above
+            # renumbered the entry and reset its repeat counter to "first report" (measured
+            # 2026-10-28, nine entries of one ledger).
+            slug = re.sub(r"[^a-z0-9]+", "-", re.sub(r"[*`]", "", e["title"]).lower()).strip("-")[:60]
+            ident = f.get("id") or f"{rel}#{slug}"
             d, m = mod.DATE.search(e["text"]), WAIT_MARK.search(e["text"])
             # The backlog-catch-up exits that put the move elsewhere (skill backlog-catch-up, step 4):
-            # listed quietly as waiting, never as the agent's open work.
-            x = LEDGER_EXIT.search(e["text"])
-            items.append({"id": f"ledger:{ident}", "kind": "ledger", "date": d.group(1) if d else "",
-                          "who": f.get("origin", "ledger"), "text": re.sub(r"[*`]", "", e["title"])[:100],
-                          "scope": rel, "ref": ident, "lclass": f.get("class", ""),
-                          "until": (m.group(1), m.group(2).strip()) if m else None,
-                          "waiting_on": (f"the ledger exit {x.group(1)}", f"since {x.group(2)}") if x else None})
+            # listed quietly as waiting, never as the agent's open work. The LAST exit line counts.
+            exits = ANY_EXIT.findall(e["text"])
+            last = exits[-1] if exits else None
+            x = last if last and LEDGER_EXIT.search(f"exit: {last[0]} {last[1]}") else None
+            until = (m.group(1), m.group(2).strip()) if m else None
+            topic = None
+            aw = ASK_WHEN.search(e["text"])
+            if aw:
+                ad = re.match(r"(\d{4}-\d{2}-\d{2})\b", aw.group(1))
+                if ad:
+                    until = until or (ad.group(1), "ask-when")
+                else:
+                    topic = aw.group(1)
+            rows =[blame[k] for k in range(e["line"], e["line"] + e["text"].count("\n") + 1) if k in blame]
+            # Created = the entry's oldest line; the last own move = its newest line that is not an
+            # exit line (sorting an entry is no work on it).
+            created = day(min(r[0] for r in rows)) if rows else ""
+            moved = [r[1] for r in rows if not ANY_EXIT.match(r[2])]
+            item = {"id": f"ledger:{ident}", "kind": "ledger",
+                    "date": created or (d.group(1) if d else ""),
+                    "who": f.get("origin", "ledger"), "text": re.sub(r"[*`]", "", e["title"])[:100],
+                    "scope": rel, "ref": ident, "lclass": f.get("class", ""),
+                    "exit": last[0] if last else "", "body": e["text"],
+                    "until": until,
+                    "waiting_on": (f"the ledger exit {x[0]}", f"since {x[1]}") if x
+                    else ("its trigger", f"ask-when {topic}") if topic else None}
+            if rows:
+                item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
+            items.append(item)
     return items, unread
+
+
+# `<owner>/<repo>#N`, `<repo>#N` or a bare `#N` in an `exit: in-pr` line. Measured 2026-10-30 on
+# the macOS instance: the full form matched nothing (the lookbehind refused the repo after `/`),
+# seven entries carried by an open PR printed as "its in-pr exit names no open PR any more".
+PR_MENTION = re.compile(r"(?<![\w/#])(?:[\w.-]+/)?([\w.-]+)?#(\d+)\b")
+
+
+def carried_by_pr(ledger_items, pr_items):
+    """An entry whose exit is `in-pr` waits on the open PR its exit line names. Measured
+    2026-10-28 on the macOS instance: four entries whose whole remaining work was an open core PR
+    printed as the agent's open work with "nothing done yet", next to the same PR in the list.
+    Reading any PR number in the entry's text would have hidden two more entries that have work
+    beyond their PR, so the writer says it (skill backlog-catch-up), the reader only measures
+    whether that PR is still open. A bare `#N` counts only when exactly one open PR has that
+    number; with none open the entry is the agent's again — tick it or name what is left."""
+    by_num = {}
+    for p in pr_items:
+        by_num.setdefault(p["ref"].rsplit("#", 1)[1], []).append(p["ref"])
+    for it in ledger_items:
+        if it.get("exit") != "in-pr":
+            continue
+        line = (re.findall(r"^\s*exit:\s*in-pr\b.*$", it.get("body", ""), re.M) or [""])[-1]
+        hits = set()
+        for repo, n in PR_MENTION.findall(line):
+            refs = [r for r in by_num.get(n, []) if not repo or r == f"{repo}#{n}"]
+            if len(refs) == 1:
+                hits.add(refs[0])
+        if hits:
+            it["waiting_on"] = ("the open PR " + ", ".join(sorted(hits)),
+                                "the PR carries this entry; it is listed again once the PR closes")
 
 
 def lookup(store, it):
@@ -719,6 +835,7 @@ def main():
     pr = prs(a.owner, cfg.get("owners") or {}, [c["repo"] for c in chans], cfg.get("pr_owners") or [])
     ses = sessions(root, a.hook_input)
     led, led_unread = ledgers(root)
+    carried_by_pr(led or [], pr or [])
     failed = [name for name, v in ([("shared-memory requests" + ("" if c["default"] else f" [{c['label']}]"), r)
                                     for c, r in reads]
                                    + [("PR search" if a.owner else "PRs (no owner given)", pr),
@@ -752,10 +869,16 @@ def main():
         # A wait is not a report: the counter only runs while the move is ours.
         if not it["wait"] and sid and sid not in rec["sessions"]:
             rec["sessions"] = (rec["sessions"] + [sid])[-50:]
+        # The latest run's wait, for open-items-gate: a reply may call an item someone else's
+        # move only when a run on record says so.
+        rec["wait"] = it["wait"]
         keep[it["id"]] = rec
         it["first"], it["n"] = rec["first"], sum(1 for s in rec["sessions"] if counts(s))
         it["parked"] = any(r.search(it["scope"]) for r in parked_rx)
         own = lookup(store, it)
+        # A ledger exit is newer than a stored class: it was set by measuring the entry.
+        if own and it.get("exit") in ("ai-does-it", "operator-decision"):
+            own = None
         it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx)
         it["cls"] = it["cls"] or "?"
         # Parked means not WORKED ON, never unanswered: a request from another side in a parked
@@ -780,10 +903,13 @@ def main():
     lost = tuple(f"{c['label']}:" for c, r in reads[1:] if r is None)
     for k, v in old.items():
         is_ses = k.startswith(("start:", "end:"))
-        chan = ":" in k and not k.startswith(("start:", "end:", "wake:"))
-        if k not in keep and ((req is None and "#" not in k and not is_ses and not k.startswith(labels))
+        # A ledger key carries ':' and, without an id:, a '#' (`ledger:<file>#<slug>`): it is neither a
+        # channel id nor a PR (found 2026-10-28 by the parallel session reading #164).
+        is_led = k.startswith("ledger:")
+        chan = ":" in k and not is_led and not k.startswith(("start:", "end:", "wake:"))
+        if k not in keep and ((req is None and "#" not in k and not is_ses and not is_led and not k.startswith(labels))
                               or k.startswith(lost) or (chan_error and chan)
-                              or (pr is None and "#" in k) or (ses is None and is_ses)
+                              or (pr is None and "#" in k and not is_led) or (ses is None and is_ses)
                               or ((led is None or led_unread) and k.startswith("ledger:"))):
             keep[k] = v
     # Only the bootup (a real session id) writes the counter. Measured 2026-10-09: a hand run
@@ -822,15 +948,27 @@ def main():
               + " then core/scripts/session-audit.py --ack <id>")
     if not items and not failed:
         print("- nothing open (requests, PRs and work ledgers read)")
+    # Standing PRs need no topic words (the gate names them by number); above a handful they
+    # share one line like the waiting ones (measured 2026-10-28: 16 such lines, 4.2 of 20 KB of
+    # the session start). A dated one keeps its own line for its date warning.
+    collapse = int(os.environ.get("OPEN_ITEMS_WAIT_COLLAPSE", "5") or 5)
+    fold = [i for i in active if i["cls"] == "standing" and i["kind"] == "PR" and not i["overdue"]]
+    if len(fold) <= collapse:
+        fold = []
     group = False
     for i in active:
         if i["cls"] == "standing" and not group:
             group = True
             print("- standing approval — handle these, then report what was done (no question needed):")
+        if i in fold:
+            continue
         if i["n"] > 1 and i.get("ours", "")[:10] >= i["first"]:
             age = f"!! reported in {i['n']} sessions since {i['first']}, last own move {i['ours'][:10]} — still ours"
-        elif i["n"] > 1:
+        elif i["n"] > 1 and "ours" in i:
             age = f"!! reported in {i['n']} sessions since {i['first']}, nothing done yet"
+        elif i["n"] > 1:
+            # No own move is measured for this source — "nothing done yet" would be a claim.
+            age = f"!! reported in {i['n']} sessions since {i['first']}, still open (own moves not measured here)"
         else:
             age = "first report"
         # A date marker is a claim about the work, the work's record is the measurement: a
@@ -842,9 +980,12 @@ def main():
                    "undone, then move or drop the waiting-until line; " + age)
         why = f" ({i['why']})" if i["why"] else ""
         print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{why}")
+    if fold:
+        rep = [i["n"] for i in fold if i["n"] > 1]
+        print(f"- [PR-standing] {len(fold)} PRs: " + ", ".join(i["ref"] for i in fold)
+              + (f" — !! {len(rep)} of them reported in {max(rep)} sessions at most" if rep else " — first report"))
     # Waiting items need no relay; above a handful, one line keeps the start readable
     # (Windows check 2026-10-09: 20 own PRs waiting on that very check filled 20 lines).
-    collapse = int(os.environ.get("OPEN_ITEMS_WAIT_COLLAPSE", "5") or 5)
     if len(waiting) > collapse:
         print(f"- [wait] {len(waiting)} waiting on others or a date: "
               + ", ".join(i["ref"].rsplit("/", 1)[-1] for i in waiting[:12])

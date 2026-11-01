@@ -122,6 +122,15 @@ Rules:
   listing budget not exceeded.
 - A skill that requires hardware states its precondition in the first section.
 - A skill never writes outside the working directory it was invoked in.
+- **Steps instruct; stories go to `## Evidence`** (operator decision 2026-10-28). A dated
+  incident or measurement story ("Measured 2026-08-17: …", "The incident that forced this …",
+  "On 2026-08-01 the audit ran …") never stands inside an instruction step. It moves, word
+  for word, into ONE section at the end of the SKILL.md headed exactly `## Evidence`; the step
+  keeps the instruction and at most a pointer "(why: Evidence, <date>)". A short origin
+  stamp — "(operator order 2026-08-17)", "(since 2026-08-10)", "(measured 2026-10-11)" — is
+  no story and stays inline. Why the section and not a pointer elsewhere: the reason has to
+  ship with the skill, or the rule is rationalised away at the next rebuild. Carrier:
+  `skill-lint.py` check 8 (`evidence`), fixture `scripts/skill-lint-evidence-test.py`.
 
 ## 6. Versioning and compatibility
 
@@ -133,8 +142,7 @@ Rules:
 - Changelog format, one style everywhere: **newest entry first**, headings
   `## <version> — <date>` **without a `v` prefix** (tags keep theirs). Decided
   2026-08-10: the core wrote oldest-first with `v`, the suites newest-first without,
-  and a suite release derailed when one habit was applied to the other repo
-  (grandma3-suite PR #2); 4 of 5 repos already wrote prefix-less. §8 governs what an
+  and a suite release derailed when one habit was applied to the other repo; 4 of 5 repos already wrote prefix-less. §8 governs what an
   entry says (why + origin); this line governs where it goes.
 - Each suite declares the core it was built against as `requires_core` in its
   `dependencies.json` (machine-checked). The README may repeat it for humans.
@@ -156,10 +164,18 @@ lived only as instance prose on two brains, measured the same day.
    its head on macOS AND Windows (a machine of the operator counts; green Windows CI is not "checked
    on Windows"), then merged, then shipped with a beta tag through the `-next` channel
    (`brain-core-next`, `<suite>-next`) — one beta tag per strand, once no important candidate of
-   the strand is still being worked out, never a tag because the board is green. A merge checked on
-   one system only is a labelled beta of that system (§11, item 11).
-3. **Stable — after a verified period at everyone's.** The stable pin moves only after the beta ran
-   without regression on every instance that uses it (`scripts/device-status.py` shows which
+   the strand is still being worked out, never a tag because the board is green. **This is the
+   canonical beta-readiness rule** (operator correction 2026-10-28: for a beta, judge above all
+   whether an important feature is about to follow — do not tag or pin too early when something
+   important comes soon): an important candidate in work is an open PR labelled `beta-candidate`,
+   set by whoever judges it important for the strand; the beta waits while one is open.
+   Neither a quiet main nor the absence of open PRs is a condition — no 24 h gap appeared in 80
+   main commits at the measured merge rate, and most open PRs are no candidate. Carrier:
+   `scripts/release-preflight.sh` check 6. A merge checked on one system only is a labelled
+   beta of that system (§11, item 11).
+3. **Stable — after an active, problem-free run time on the beta** (operator correction
+   2026-10-28). The stable pin moves only after the beta ran — in real sessions, not merely
+   installed — without regression on every instance that uses it (`scripts/device-status.py` shows which
    instance runs what; changelog entries carry the test level they were checked at,
    `(test: T0/T1/T2)`), on the operator's word for the core, and on the suite owner's word plus the
    operator's for a suite with an owner. "Verified" is measured, not remembered: every instance that
@@ -274,8 +290,8 @@ Two consequences that are not optional:
 - **A new capability never starts life inside a private brain.** Not "for now", not "until
   it settles". Something built in the private layer acquires that layer's assumptions —
   its paths, its addresses, its habits — and pulling it out later costs more than starting
-  it right. Measured on this setup: every extraction so far (chataigne, show-tools,
-  resolume) had to fix paths that only ever resolved inside the brain.
+  it right. Measured on this setup: every extraction so far (three suites) had to fix
+  paths that only ever resolved inside the brain.
 - **The core is an explicit include-list, not a leftover.** After every suite has moved
   out, what remains is core *plus* private instance. Deciding the core by subtraction ships
   somebody's private data.
@@ -468,9 +484,9 @@ SSH remotes with a loaded ssh-agent, or run marketplace update manually.
 
 ## 14. Every repo: the setup contract
 
-A repo set up by hand gets whatever its first session remembered. Measured 2026-10-10 on
-one account: 7 of 18 private repos had no workflow at all, and branch protection was
-unavailable on every private one (free plan, HTTP 403 "Upgrade to GitHub Pro"); the
+A repo set up by hand gets whatever its first session remembered. Measured 2026-10-10:
+7 of 18 private repos had no workflow at all, and branch protection was unavailable on
+every private one (HTTP 403 "Upgrade to GitHub Pro" — a plan without it); the
 "pull requests only" rule of two project repos lived in a local hook nobody could see.
 This section is what every repo carries from its first commit, by kind.
 `scripts/repo-check.py` checks a repo against it; `templates/repo/` is the starting set.

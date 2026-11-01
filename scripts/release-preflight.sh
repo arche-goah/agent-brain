@@ -26,25 +26,27 @@
 # the carrier "must test more than twice a day — pin maturity of the PRs, expected incoming
 # contributions"). A tag is a delivery, never the close of a merge; "the strand is closed"
 # was true every evening, so these checks measure it instead of asking:
-#   6. main is QUIET: the newest commit on origin/main is older than RELEASE_QUIET_HOURS
-#      (default 24) — a strand that still moves is not collected
-#   7. no open pull request (drafts excluded) — an open PR is an expected contribution
-#   8. nothing announced in the shared memory for this repo's topic: no entry with
+#   6. no important candidate still in work: no open pull request (drafts included) carries
+#      the label `beta-candidate`. The rule this measures is CONVENTIONS.md §6 item 2 (operator
+#      correction 2026-10-28: a beta waits while something important is about to follow; the
+#      earlier "main quiet for 24 h" and "no open PR at all" could never pass at the measured
+#      merge rate — no 24 h gap in 80 main commits, largest 16 h). gh unreadable = FAIL; the
+#      label missing on the repo, said by gh, = no candidate can be marked = green with a note.
+#   7. nothing announced in the shared memory for this repo's topic: no entry with
 #      `status: open` under <shared repo>/<topic>/ (RELEASE_TOPIC, default from the repo
 #      name: agent-brain -> core, <x>-suite -> <x>; SHARED_MEMORY_REPO, default
 #      ~/Projects/brain-shared-memory; no clone = said, not green)
-#   9. every PR merged since the previous tag carries BOTH OS proofs in its thread: a body
+#   8. every PR merged since the previous tag carries BOTH OS proofs in its thread: a body
 #      or comment with an instance key that says macOS, and one that says Windows
-#  10. the consumer is named: RELEASE_CONSUMER="<who gets this tag and why now>"
+#   9. the consumer is named: RELEASE_CONSUMER="<who gets this tag and why now>"
 # Earlier than the strand allows ONLY on the operator's word: RELEASE_EARLY_OK="<quote> <YYYY-MM-DD>"
-# (a quotation in quote marks plus the date it was said) lets 6, 7 and 8 pass and prints the
-# quote; 9 and 10 are never waived. Measured on the real case: v2.0.4 was cut 29 minutes
-# after the last merge with eight PRs opened half an hour later — 6 and 7 would have refused it.
+# (a quotation in quote marks plus the date it was said) lets an open candidate (6) and open
+# shared-memory entries (7) pass and prints the quote; an unreadable gh, 8 and 9 are never waived.
 # CI mode runs 1, 2 and 2b against the checked-out tag — a broken tag turns red on the
 # repo page instead of failing silently on the next consumer update.
 #
-# Env: RELEASE_PREFLIGHT_ROOT overrides the repo root (tests); RELEASE_QUIET_HOURS,
-# RELEASE_TOPIC, SHARED_MEMORY_REPO, RELEASE_CONSUMER, RELEASE_EARLY_OK as above.
+# Env: RELEASE_PREFLIGHT_ROOT overrides the repo root (tests); RELEASE_TOPIC,
+# SHARED_MEMORY_REPO, RELEASE_CONSUMER, RELEASE_EARLY_OK as above.
 set -uo pipefail
 
 # Resolve the Python interpreter: the python.org installer on Windows ships ONLY
@@ -69,6 +71,10 @@ checks=0; failed=0
 ok()  { checks=$((checks+1)); echo "OK   $1"; }
 bad() { checks=$((checks+1)); failed=$((failed+1)); echo "FAIL $1"; }
 note(){ echo "     $1"; }
+# stdin text has a line saying OK for system $1 (the reader of helpers/merge-request-gate.cjs)
+GATE_JS="$(cd "$(dirname "$0")/.." && pwd)/helpers/merge-request-gate.cjs"
+command -v cygpath >/dev/null 2>&1 && GATE_JS="$(cygpath -m "$GATE_JS")"
+os_ok() { node -e 'const {saysOk}=require(process.argv[1]); const t=require("fs").readFileSync(0,"utf8"); process.exit(t.split(/\r?\n/).some((l)=>saysOk(l,process.argv[2]))?0:1)' "$GATE_JS" "$1"; }
 
 # 1. manifest version == tag — the v1.2.0 class: same version string, different content
 MANIFEST="$ROOT/.claude-plugin/plugin.json"
@@ -134,48 +140,41 @@ if [ "$MODE" = "local" ]; then
     note "gh not available — competing-release-PR check NOT run (counts as unchecked, not as green)"
   fi
 
-  # --- readiness of the strand (6-10) ---------------------------------------------------
+  # --- readiness of the strand (6-9) ----------------------------------------------------
   EARLY="${RELEASE_EARLY_OK:-}"
   early_ok=0
   if [ -n "$EARLY" ]; then
     # the operator's word in checkable form: quote marks around words, plus the date it was said
     if printf '%s' "$EARLY" | grep -qE '["“„].+["”“]' && printf '%s' "$EARLY" | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}'; then
-      early_ok=1; note "RELEASE_EARLY_OK carries the operator's word: $EARLY — checks 6-8 pass on it, 9 and 10 still run"
+      early_ok=1; note "RELEASE_EARLY_OK carries the operator's word: $EARLY — checks 6 and 7 pass on it, 8 and 9 still run"
     else
       note "RELEASE_EARLY_OK set but it is no quotation with a date (\"…\" YYYY-MM-DD) — ignored, a paraphrase is not the operator's word"
     fi
   fi
 
-  # 6. quiet main
-  QH="${RELEASE_QUIET_HOURS:-24}"
-  LAST_TS="$(git -C "$ROOT" log -1 --format=%ct origin/main 2>/dev/null || echo 0)"
-  NOW_TS="$(date +%s)"
-  AGE_H=$(( (NOW_TS - LAST_TS) / 3600 ))
-  if [ "$early_ok" = 1 ]; then
-    ok "main quiet for ${AGE_H} h — waived by the operator's word"
-  elif [ "$LAST_TS" != 0 ] && [ "$AGE_H" -ge "$QH" ]; then
-    ok "main quiet for ${AGE_H} h (floor ${QH} h) — the strand has settled"
-  else
-    bad "main moved ${AGE_H} h ago (floor ${QH} h) — the strand is still collecting; a tag is a delivery, not the close of a merge"
-  fi
-
-  # 7. open pull requests = expected contributions
+  # 6. an important candidate still in work = an open PR labelled beta-candidate (drafts count:
+  # a draft is work in progress). gh lists an unknown label as an empty result, so "none"
+  # alone cannot tell "no candidate" from "label never created" — the label list says which.
+  # The full list, not --search: with --search and no hit gh prints NOTHING at rc 0
+  # (measured 2026-10-28), which would read as unreadable; an empty output stays "?".
+  CAND="?"; LABEL="?"
   if command -v gh >/dev/null 2>&1; then
-    OPEN_PRS="$(cd "$ROOT" && gh pr list --state open --json number,isDraft --jq '[.[] | select(.isDraft | not) | .number] | join(" ")' 2>/dev/null || echo "?")"
-    if [ "$OPEN_PRS" = "?" ]; then
-      note "gh query failed — open-PR check NOT run (counts as unchecked, not as green)"
-    elif [ -z "$OPEN_PRS" ]; then
-      ok "no open pull request"
-    elif [ "$early_ok" = 1 ]; then
-      ok "open PR(s) #${OPEN_PRS// / #} — waived by the operator's word"
-    else
-      bad "open PR(s) #${OPEN_PRS// / #} — expected contributions; merge or close them, then collect"
-    fi
+    CAND="$(cd "$ROOT" && gh pr list --label beta-candidate --state open --json number --jq '[.[].number] | join(" ")' 2>/dev/null || echo "?")"
+    [ -n "$CAND" ] || LABEL="$(cd "$ROOT" && gh label list --limit 1000 --json name --jq '[.[] | select(.name == "beta-candidate")] | length' 2>/dev/null || echo "?")"
+  fi
+  if [ "$CAND" = "?" ] || { [ -z "$CAND" ] && [ "$LABEL" != 0 ] && [ "$LABEL" != 1 ]; }; then
+    bad "beta-candidate PRs could not be read (gh missing, not logged in or not this repo) — fails closed: an unread strand is not a collected one"
+  elif [ -n "$CAND" ] && [ "$early_ok" = 1 ]; then
+    ok "open beta-candidate PR(s) #${CAND// / #} — waived by the operator's word"
+  elif [ -n "$CAND" ]; then
+    bad "open beta-candidate PR(s) #${CAND// / #} — an important candidate of the strand is still in work; the beta waits for it (or the label comes off)"
+  elif [ "$LABEL" = 0 ]; then
+    ok "no beta-candidate PR — the label beta-candidate does not exist on this repo, so none can be marked (maintainer: gh label create beta-candidate)"
   else
-    note "gh not available — open-PR check NOT run (counts as unchecked, not as green)"
+    ok "no open beta-candidate PR — no important candidate of the strand is in work"
   fi
 
-  # 8. nothing announced in the shared memory for this repo's topic
+  # 7. nothing announced in the shared memory for this repo's topic
   SHARED="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
   base="$(basename "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$ROOT")")"
   case "$base" in agent-brain) dtopic=core ;; *-suite) dtopic="${base%-suite}" ;; *) dtopic="$base" ;; esac
@@ -202,7 +201,7 @@ if [ "$MODE" = "local" ]; then
     note "no shared-memory clone at $SHARED/$TOPIC — announced-contributions check NOT run (counts as unchecked, not as green)"
   fi
 
-  # 9. both OS proofs on every PR merged since the previous tag — pin maturity
+  # 8. both OS proofs on every PR merged since the previous tag — pin maturity
   PREV="$(git -C "$ROOT" describe --tags --abbrev=0 origin/main 2>/dev/null || true)"
   if [ -n "$PREV" ]; then RANGE="$PREV..origin/main"; else RANGE="origin/main"; fi
   PRS="$(git -C "$ROOT" log --format=%s "$RANGE" 2>/dev/null | grep -oE 'Merge pull request #[0-9]+|\(#[0-9]+\)$' | grep -oE '[0-9]+' | sort -un | tr '\n' ' ')"
@@ -220,8 +219,10 @@ if [ "$MODE" = "local" ]; then
         [ -n "$line" ] || continue
         txt="$(printf '%s' "$line" | base64 -d 2>/dev/null || true)"
         printf '%s' "$txt" | grep -q 'instance-key:' || continue
-        printf '%s' "$txt" | grep -qi 'macos' && has_mac=1
-        printf '%s' "$txt" | grep -qi 'windows' && has_win=1
+        # a proof is a line that says OK for that system (merge-request-gate's reader): a line
+        # that names Windows only as still open counted as a Windows proof (measured 2026-10-28)
+        printf '%s' "$txt" | os_ok macOS && has_mac=1
+        printf '%s' "$txt" | os_ok Windows && has_win=1
       done <<< "$B64"
       [ "$has_mac" = 1 ] && [ "$has_win" = 1 ] || missing="$missing #$n($( [ "$has_mac" = 1 ] && echo "no Windows" || { [ "$has_win" = 1 ] && echo "no macOS" || echo "neither"; } ))"
     done
@@ -234,7 +235,7 @@ if [ "$MODE" = "local" ]; then
     note "gh not available — OS-proof check NOT run (counts as unchecked, not as green)"
   fi
 
-  # 10. the consumer is named
+  # 9. the consumer is named
   if [ -n "${RELEASE_CONSUMER:-}" ]; then
     ok "consumer named: ${RELEASE_CONSUMER}"
   else

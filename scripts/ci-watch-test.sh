@@ -18,6 +18,10 @@ case "${CI_WATCH_STUB:?}" in
   pr_fail_pending)   echo '[{"bucket":"fail","name":"lint"},{"bucket":"pending","name":"portability"}]' ;;
   # ...but a cancel can be a superseded run: it still waits for the running job.
   pr_cancel_pending) echo '[{"bucket":"cancel","name":"lint"},{"bucket":"pending","name":"portability"}]' ;;
+  # 2026-10-29 wait-all: one known-red check, the rest first running, then done.
+  pr_fail_then_done) f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"bucket":"fail","name":"python-floor"},{"bucket":"pass","name":"portability"}]'
+              else touch "$f"; echo '[{"bucket":"fail","name":"python-floor"},{"bucket":"pending","name":"portability"}]'; fi ;;
   pr_zero)    echo '[]' ;;
   # gh's wording when the run has not been created yet. rc=1, not rc=8.
   pr_nochecks) echo "no checks reported on the 'feature' branch" >&2; exit 1 ;;
@@ -30,6 +34,13 @@ case "${CI_WATCH_STUB:?}" in
               if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
               else touch "$f"; echo '[{"bucket":"pending"},{"bucket":"pass"}]'; fi ;;
   gh_broken)  echo "HTTP 500 boom" >&2; exit 1 ;;
+  # 2026-10-27: one TLS timeout ended a watch on a running CI. Once = wait; always = unknown.
+  net_flip)   f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"bucket":"pass"}]'
+              else touch "$f"; echo 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout' >&2; exit 1; fi ;;
+  net_dead)   echo 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout' >&2; exit 1 ;;
+  # point 6: every gh call is counted, each answer takes real time, so a second watch can attach.
+  pr_slow)    echo x >> "${CI_WATCH_STATE:?}.calls"; "$REAL_SLEEP" 1; echo '[{"bucket":"pass"}]' ;;
   # 2026-10-10: right after a merge, `pr checks` answered with exit 0 and a reply that was not
   # the JSON list (the run was being registered); the next poll had 11 green checks. One
   # unparseable poll is a wait; only a repeat is a verdict.
@@ -64,6 +75,20 @@ case "${CI_WATCH_STUB:?}" in
               echo '[{"headBranch":"main","headSha":"abc1234def0","status":"completed","conclusion":"success"}]' ;;
   ref_sha_red) [[ "$*" == */commits/* ]] && { echo abc1234def0; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc1234def0","status":"completed","conclusion":"failure"}]' ;;
+  # 2026-10-26: two runs of one workflow on one commit, the concurrency group cancelled the
+  # older; the newer is the verdict. pr mode read the cancel bucket as red, exit 1.
+  pr_cancel_superseded) echo '[{"bucket":"cancel","name":"lint"},{"bucket":"pass","name":"lint"},{"bucket":"pass","name":"portability"}]' ;;
+  ref_cancel_superseded) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              echo '[{"id":1,"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"cancelled","name":"CI","event":"push"},
+                     {"id":2,"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"CI","event":"push"}]' ;;
+  # 2026-10-26: a push run on main waited 25 min in the queue behind the previous run of the ref
+  # (concurrency), then ran 36 min; the watch ended UNKNOWN at its deadline. Queue time extends it.
+  ref_queued_flip) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              f="${CI_WATCH_STATE:?}"; n=$(cat "$f" 2>/dev/null || echo 0); echo $(( n + 1 )) > "$f"
+              if (( n < 3 )); then echo '[{"id":5,"headBranch":"main","headSha":"abc123","status":"queued","conclusion":null,"name":"CI","event":"push"}]'
+              else echo '[{"id":5,"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"CI","event":"push"}]'; fi ;;
+  ref_queued_forever) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
+              echo '[{"id":5,"headBranch":"main","headSha":"abc123","status":"queued","conclusion":null,"name":"CI","event":"push"}]' ;;
   # one workflow of the tip still running: not a verdict yet.
   ref_partial) [[ "$*" == */commits/* ]] && { echo abc123; exit 0; }
               echo '[{"headBranch":"main","headSha":"abc123","status":"completed","conclusion":"success","name":"dynamic"},
@@ -146,7 +171,8 @@ case "${CI_WATCH_STUB:?}" in
                     if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
                     elif [[ "${1:-}" == api ]]; then echo '[{"name":"test","conclusion":"success"},{"name":"release-preflight","conclusion":'"$c"'}]'
-                    elif [[ "$CI_WATCH_STUB" != pr_stale_running && -f "$f" ]]; then echo "second poll reached" >&2; exit 1
+                    # since 2026-10-28 GREEN needs the same head on two polls: green may read twice
+                    elif [[ "$CI_WATCH_STUB" == pr_stale_red && -f "$f" ]]; then echo "second poll reached" >&2; exit 1
                     else touch "$f"; echo '[{"bucket":"pass","name":"test"},{"bucket":"pending","name":"release-preflight"}]'; fi ;;
   # 2026-10-16: the listed checks are all green, but a second workflow run of the head commit
   # is in_progress and has not listed its jobs yet. pr_run_open: it stays open (no verdict);
@@ -159,6 +185,20 @@ case "${CI_WATCH_STUB:?}" in
                       if [[ "$CI_WATCH_STUB" == pr_run_flip && -f "$f" ]]; then echo 0; else touch "$f"; echo 1; fi
                     else echo '[{"bucket":"pass","name":"CodeQL"},{"bucket":"pass","name":"Analyze"}]'; fi ;;
   # 2026-10-16: right after a push the PR still shows the OLD head and its green checks.
+  # 2026-10-28 (point 8): the deadline passes while a check-run of the head still runs. flip: it
+  # turns green 60 fake seconds in; stuck: it never ends (the ceiling ends it); old: it started
+  # in 2000, so the ceiling is long past at the first deadline.
+  pr_running_flip|pr_running_stuck|pr_running_old)
+                    if [[ "$*" == *status=in_progress* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_running_old ]]; then echo "1 2000-01-01T00:00:00Z"
+                      else echo "1 $("$REAL_DATE" -u +%Y-%m-%dT%H:%M:%SZ)"; fi
+                    elif [[ "$*" == *headRefOid* ]]; then echo abcdef1234567890abcdef1234567890abcdef12
+                    elif [[ "$*" == *check-runs* ]]; then echo '[]'
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    elif [[ "$CI_WATCH_STUB" == pr_running_flip && "$(cat "$CI_WATCH_FAKE_CLOCK")" -ge 60 ]]; then
+                      echo '[{"bucket":"pass","name":"portability"}]'
+                    else echo '[{"bucket":"pending","name":"portability"}]'; fi ;;
   # pr_head_lag: the head flips to the pushed commit on the second read; pr_head_stuck: never.
   pr_head_lag|pr_head_stuck)
                     f="${CI_WATCH_STATE:?}"
@@ -167,6 +207,43 @@ case "${CI_WATCH_STUB:?}" in
                       else touch "$f"; echo aaaa111100000000000000000000000000000000; fi
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
                     elif [[ "${1:-}" == api ]]; then echo 0
+                    else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
+  # 2026-10-28: the bound sha (CI_WATCH_SHA=bbbb2222) is left behind. pr_sha_superseded: the head
+  # is cccc4444 and compare says `ahead` (bound sha is its ancestor) = UNKNOWN at once, `pr checks`
+  # is never reached. pr_sha_404 / pr_sha_diverged: the head is aaaa1111 and compare answers 404
+  # (bound sha not visible yet) or `diverged` (unrelated) = keep waiting; the head reaches the
+  # bound sha on the third read and the watch turns green.
+  pr_sha_superseded|pr_sha_404|pr_sha_diverged)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *compare/* ]]; then
+                      case "$CI_WATCH_STUB" in
+                        pr_sha_superseded) if [[ "$*" == *compare/bbbb2222...cccc4444* ]]; then echo ahead; else echo "wrong compare: $*"; fi ;;
+                        pr_sha_404)        echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+                        pr_sha_diverged)   echo diverged ;;
+                      esac
+                    elif [[ "$*" == *headRefOid* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_sha_superseded ]]; then echo cccc444400000000000000000000000000000000
+                      else n=$(cat "$f" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" >"$f"
+                        if (( n < 3 )); then echo aaaa111100000000000000000000000000000000
+                        else echo bbbb222200000000000000000000000000000000; fi
+                      fi
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    elif [[ "$CI_WATCH_STUB" == pr_sha_superseded ]]; then echo "pr checks reached" >&2; exit 1
+                    else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
+  # 2026-10-28: after `gh pr update-branch` the PR head AND its branch tip still named the old
+  # commit on the first poll (old checks green); the new head appears on the next read with its
+  # checks queued. GREEN must not come from the first poll — without CI_WATCH_SHA.
+  pr_head_flip_green)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ -f "$f" ]]; then H=bbbb333300000000000000000000000000000000; else H=aaaa333300000000000000000000000000000000; fi
+                    if [[ "$*" == *headRefName* ]]; then printf '%s\tfeat\to/r\n' "$H"
+                    elif [[ "$*" == *headRefOid* ]]; then echo "$H"; touch "$f"
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api && "$*" == *actions/runs* ]]; then echo 0
+                    elif [[ "${1:-}" == api && "$*" == *git/ref* ]]; then echo "$H"
+                    elif [[ "${1:-}" == api ]]; then echo '[]'
+                    elif [[ -f "$f" ]]; then echo '[{"bucket":"pending","name":"lint"}]'
                     else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
   # ...and a pending entry that is a commit STATUS (no check-run of that name) keeps waiting.
   pr_stale_status)  if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
@@ -269,6 +346,8 @@ STUB
 chmod +x "$TMP/date" "$TMP/sleep"
 export PATH="$TMP:$PATH"
 export CI_WATCH_POLL=0
+# The one-watch-per-target lock (point 6) lives in the fixture's own folder, never in the real $HOME.
+export CI_WATCH_LOCK_DIR="$TMP/locks"
 # Rate-limit waits in the fixtures: no backoff, no reset slack (a case that needs real time sets its own).
 export CI_WATCH_RL_BACKOFF=0 CI_WATCH_RL_MARGIN=0
 # The script under test; point it at an older copy to run the fixtures as a negative control.
@@ -291,12 +370,29 @@ check "pr one failing check"            pr_red     1 pr 12
 check "pr failed check while another runs = RED at once" pr_fail_pending 1 pr 12 30
 grep -q "still running" "$TMP/out" && echo "  OK   early red names the running checks" \
   || { echo "  FAIL early red does not name the running checks"; fails=$((fails+1)); }
+export CI_WATCH_WAIT_ALL=1
+check "wait-all: a failed check while another runs keeps waiting until the deadline" pr_fail_pending 2 pr 12 2
+check "wait-all: once nothing runs, RED with the failing names" pr_fail_then_done 1 pr 12 30
+grep -q "RED: owner/repo PR #12 — 1 failing/cancelled check(s): python-floor" "$TMP/out" \
+  && echo "  OK   wait-all: the verdict names the failing check" \
+  || { echo "  FAIL wait-all: names missing"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+unset CI_WATCH_WAIT_ALL
 check "pr cancelled check while another runs = wait, timeout(2)" pr_cancel_pending 2 pr 12 2
+check "pr cancel superseded by a green run of the same check = GREEN" pr_cancel_superseded 0 pr 12
+check "ref cancelled run superseded by a newer run on the same commit = GREEN" ref_cancel_superseded 0 ref main
+echo 0 > "$TMP/fakeclock-q1"
+CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-q1" \
+  check "ref run queued 30 s past a 20 s deadline, then green = GREEN (queue extends)" ref_queued_flip 0 ref main 20
+echo 0 > "$TMP/fakeclock-q2"
+CI_WATCH_POLL=10 CI_WATCH_QUEUE_CEILING=40 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-q2" \
+  check "ref run queued past the queue ceiling = unknown(2)" ref_queued_forever 2 ref main 20
 check "pr zero checks = wait, then timeout(2)"  pr_zero          2 pr 12 2
 check "pr 'no checks reported' waits, then timeout(2)" pr_nochecks 2 pr 12 2
 check "pr 'no checks' then green"       pr_nochecks_flip 0 pr 12
 check "pr pending then green"           pr_flip    0 pr 12
 check "gh hard error = unknown"         gh_broken  2 pr 12
+check "one network timeout, then green = GREEN" net_flip 0 pr 12 30
+check "network down on every poll = unknown(2)" net_dead 2 pr 12 30
 check "pr unparseable once, then green" pr_garbage_flip 0 pr 12
 check "pr unparseable three polls = unknown(2)" pr_garbage 2 pr 12 30
 grep -q "3 polls in a row" "$TMP/out" && echo "  OK   unknown names the repeated unparseable reply" \
@@ -343,7 +439,7 @@ check "pr: 'no checks' wording + no workflows = NO-CI(3)" pr_noci_nochecks 3 pr 
 check "pr: zero checks, workflows exist = wait, timeout(2)" pr_zero_hasci 2 pr 12 2
 check "pr: zero checks, count unreadable = wait, timeout(2)" pr_zero_apierr 2 pr 12 2
 check "ref: repo without workflows = NO-CI(3)"         ref_noci        3 ref main 30
-check "pr: stale check-run (in_progress + conclusion success) = GREEN on the first poll" pr_stale_green 0 pr 12 30
+check "pr: stale check-run (in_progress + conclusion success) = GREEN without waiting for the status" pr_stale_green 0 pr 12 30
 grep -q "left the status stale" "$TMP/out" && echo "  OK   stale check-run is named in the output" \
   || { echo "  FAIL stale check-run not named"; fails=$((fails+1)); }
 check "pr: stale check-run with conclusion failure = RED"           pr_stale_red     1 pr 12 30
@@ -353,9 +449,31 @@ grep -q "left the status stale" "$TMP/out" && { echo "  FAIL running check-run w
 check "pr: pending commit status without a check-run = wait, timeout(2)" pr_stale_status 2 pr 12 2
 check "pr: listed checks green, a workflow run still open = wait, timeout(2)" pr_run_open 2 pr 12 2
 check "pr: listed checks green, the open run completes = GREEN"          pr_run_flip 0 pr 12 30
+check "pr: head flips after the first green poll = no GREEN, waits, timeout(2)" pr_head_flip_green 2 pr 12 3
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head still old, then flips = GREEN on the new head" pr_head_lag 0 pr 12 30
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head never reaches it = wait, timeout(2)"   pr_head_stuck 2 pr 12 2
 check "pr: without CI_WATCH_SHA the old head's green counts (unchanged behaviour)"        pr_head_stuck 0 pr 12 30
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA superseded (ancestor of the head) = unknown(2) at once" pr_sha_superseded 2 pr 12 30
+grep -q "bound sha bbbb222 is superseded .*head is now cccc444" "$TMP/out" && ! grep -q "pr checks reached" "$TMP/out" \
+  && echo "  OK   the superseded verdict names both shas, before any checks are read" \
+  || { echo "  FAIL superseded verdict does not name both shas or came late"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA not visible yet (compare 404), then head reaches it = GREEN" pr_sha_404 0 pr 12 30
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA not an ancestor (diverged), then head reaches it = GREEN"   pr_sha_diverged 0 pr 12 30
+grep -q "superseded" "$TMP/out" && { echo "  FAIL a non-ancestor was called superseded"; fails=$((fails+1)); } \
+  || echo "  OK   a non-ancestor keeps waiting, not superseded"
+echo 0 > "$TMP/fakeclock-r1"
+CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r1" \
+  check "pr: deadline passes while a check-run runs, then green = GREEN (point 8)" pr_running_flip 0 pr 12 20
+grep -q "still running (oldest started" "$TMP/out" && echo "  OK   the extension names the running check-runs" \
+  || { echo "  FAIL extension not named"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+echo 0 > "$TMP/fakeclock-r2"
+CI_WATCH_POLL=10 CI_WATCH_RUN_CEILING=50 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r2" \
+  check "pr: a check-run running past the ceiling = timeout(2)" pr_running_stuck 2 pr 12 20
+echo 0 > "$TMP/fakeclock-r3"
+CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r3" \
+  check "pr: a check-run that started long before the ceiling = timeout(2) at the deadline" pr_running_old 2 pr 12 20
+grep -q "still running" "$TMP/out" && { echo "  FAIL an old run extended the deadline"; fails=$((fails+1)); } \
+  || echo "  OK   an old run does not extend the deadline"
 check "pr: PR head behind its branch tip, old head red, then catches up green = GREEN"  pr_tip_lag 0 pr 12 30
 grep -q "has not caught up with" "$TMP/out" && echo "  OK   the lagging head is named" \
   || { echo "  FAIL lagging head not named"; fails=$((fails+1)); }
@@ -404,6 +522,55 @@ check "pr: rate-limited mergeable read (errors swallowed there) = waits, GREEN" 
 blocked_is "a swallowed call's block is announced too" 1
 check "ref: six rate-limited runs reads, then green = GREEN" ref_rl 0 ref main 30
 blocked_is "ref: one block, one BLOCKED line" 1
+
+# --- point 6: one watch per target on this machine ------------------------------------
+# A second watch on the same PR attaches to the first: same verdict and rc, no gh call of its own.
+rm -f "$TMP/state-pr_slow".*
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 77 30 >"$TMP/solo" 2>&1
+solo=$(wc -l < "$TMP/state-pr_slow.calls" | tr -d ' ')
+rm -f "$TMP/state-pr_slow".*
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 77 30 >"$TMP/first" 2>&1 &
+first=$!
+"$REAL_SLEEP" 0.3
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 77 30 >"$TMP/second" 2>&1
+rc2=$?; wait "$first"; rc1=$?
+both=$(wc -l < "$TMP/state-pr_slow.calls" | tr -d ' ')
+if [[ "$rc1" == 0 && "$rc2" == 0 && "$both" == "$solo" ]] && grep -q "CI-WATCH SHARED" "$TMP/second" \
+   && grep -q "CI-WATCH GREEN" "$TMP/second"; then
+  echo "  OK   second watch on the same PR attaches: rc $rc1/$rc2, gh calls $both = one watch alone ($solo)"
+else
+  echo "  FAIL second watch on the same PR: rc $rc1/$rc2, gh calls $both vs alone $solo"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
+fi
+# ...a watch on ANOTHER PR does not attach (control).
+rm -f "$TMP/state-pr_slow".*
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 77 30 >"$TMP/first" 2>&1 &
+first=$!
+"$REAL_SLEEP" 0.3
+CI_WATCH_STUB=pr_slow CI_WATCH_STATE="$TMP/state-pr_slow" bash "$WATCH" pr owner/repo 78 30 >"$TMP/second" 2>&1
+wait "$first"
+if ! grep -q "CI-WATCH SHARED" "$TMP/second" && grep -q "CI-WATCH GREEN" "$TMP/second"; then
+  echo "  OK   a watch on another PR polls on its own (control)"
+else
+  echo "  FAIL a watch on another PR attached or failed"; sed 's/^/       /' "$TMP/second"; fails=$((fails+1))
+fi
+# ...and a dead owner's leftover directory is taken over, not waited on.
+mkdir -p "$TMP/locks/stale"; echo 999999 > "$TMP/locks/stale/pid"
+L_STALE=$(printf '%s|%s|%s|%s' pr owner/repo 79 "" | cksum | tr -c '0-9\n' '-')
+mv "$TMP/locks/stale" "$TMP/locks/$L_STALE"
+check "dead owner's leftover lock is taken over" pr_green 0 pr 79
+
+# --- argument form (2026-10-27: `pr 33 --repo x` died on an unbound variable) ------------
+form() { # label expected_rc expected_text args...
+  local label="$1" want="$2" text="$3"; shift 3
+  CI_WATCH_STUB=pr_green CI_WATCH_STATE="$TMP/state-form" bash "$WATCH" "$@" >"$TMP/out" 2>&1
+  local got=$?
+  if [[ "$got" == "$want" ]] && grep -q -- "$text" "$TMP/out"; then echo "  OK   $label (rc=$got)"
+  else echo "  FAIL $label: rc=$got wanted $want with '$text'"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); fi
+}
+form "repo not owner/name names the form"  2 "is not <owner/repo>"   pr 33 --repo owner/repo
+form "pr target not a number names it"     2 "is not a PR number"     pr owner/repo --repo
+form "timeout not a number names it"       2 "is not a number of seconds" pr owner/repo 12 soon
+form "valid form still watches (control)"  0 "CI-WATCH GREEN"          pr owner/repo 12 5
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi

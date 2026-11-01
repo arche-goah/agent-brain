@@ -44,6 +44,12 @@ peer() { node -e 'const {isPeerMessage}=require(process.argv[1]);process.stdout.
 [ "$(peer '{"type":"user","isMeta":true,"origin":{"kind":"peer","from":"a1"}}')" = true ] && ok "a peer record is another agent's message" || bad "peer record not recognised"
 [ "$(peer '{"type":"user","origin":{"kind":"human"}}')" = false ] && ok "an operator record is no peer message" || bad "operator record read as peer"
 [ "$(peer '{"type":"user","isMeta":true}')" = false ] && ok "isMeta alone is no peer message (mid-turn operator text)" || bad "isMeta alone read as peer"
+# A timer-fired prompt (ScheduleWakeup, /loop; Claude Code 2.1.312): queuePriority "later", no human origin.
+agent() { node -e 'const {isAgentOrigin}=require(process.argv[1]);process.stdout.write(String(isAgentOrigin(JSON.parse(process.argv[2]))))' "$(native "$D/turn-kind.cjs")" "$1"; }
+[ "$(agent '{"type":"user","isMeta":true,"promptSource":"system","queuePriority":"later"}')" = true ] && ok "a timer-fired prompt is agent origin" || bad "timer prompt not recognised"
+[ "$(agent '{"type":"user","isMeta":true,"origin":{"kind":"peer"}}')" = true ] && ok "a peer record is agent origin" || bad "peer not agent origin"
+[ "$(agent '{"type":"user","queuePriority":"later","origin":{"kind":"human"}}')" = false ] && ok "a human prompt waiting in the queue is the operator's" || bad "queued human prompt read as agent"
+[ "$(agent '{"type":"user","isMeta":true}')" = false ] && ok "isMeta alone is no agent origin" || bad "isMeta alone read as agent"
 
 # --- the effect on a cooldown ----------------------------------------------------------
 user() { printf '{"message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
@@ -58,5 +64,19 @@ build "$T/notif.jsonl" "$NOTE"
 build "$T/oper.jsonl" "go on"
 [ -z "$(run "$T/notif.jsonl")" ] && ok "three notification turns keep the cooldown" || bad "notification turns ran the cooldown out"
 case "$(run "$T/oper.jsonl")" in *'"decision":"block"'*) ok "three operator turns end the cooldown";; *) bad "operator turns did not end the cooldown";; esac
+
+# --- questionAnswers(): the operator's question-tool answer is an operator word (2026-10-30) -----------
+qa() { node -e '
+const { questionAnswers } = require(process.argv[1]);
+const t = questionAnswers();
+const recs = JSON.parse(process.argv[2]);
+console.log(recs.map((r) => t(r) ? 1 : 0).join(""));' "$D/turn-kind.cjs" "$1"; }
+ASK='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{}}]}}'
+BASH='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"b1","name":"Bash","input":{}}]}}'
+res() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":%s,"content":"The user answered: yes"}]}}' "$1" "$2"; }
+[ "$(qa "[$ASK,$(res q1 false)]")" = 01 ] && ok "a question-tool answer is a boundary" || bad "question-tool answer not seen"
+[ "$(qa "[$BASH,$(res b1 false)]")" = 00 ] && ok "another tool's answer-like result is no boundary" || bad "answer-like tool output taken as an answer"
+[ "$(qa "[$ASK,$(res q1 true)]")" = 00 ] && ok "a refused question is no boundary" || bad "refused question taken as an answer"
+[ "$(qa "[$(res q1 false)]")" = 0 ] && ok "a result without its question in the pass is no boundary" || bad "orphan result taken as an answer"
 
 [ "$fail" = 0 ] && echo "turn-kind: all cases pass" || { echo "turn-kind: FAILURES"; exit 1; }

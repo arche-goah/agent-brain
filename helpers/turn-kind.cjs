@@ -58,8 +58,61 @@ function isPeerMessage(d) {
  * operator's last message and refused every externally effective call of the turn. Only `user` and
  * `assistant` records are the conversation; a record without a type (older transcripts) counts too. */
 function isTranscriptRecord(d) {
+  // The summary a compaction writes is a user record with isCompactSummary (measured 2026-10-26,
+  // macOS instance): the harness's retelling of the session, not the operator's words. The
+  // conditional-order gate took a sentence of it ("only allowed after the operator grants it") for
+  // the operator's last message and held every push of the turn.
+  if (d && d.isCompactSummary === true) return false;
   const t = d && d.type;
   return t === undefined || t === null || t === 'user' || t === 'assistant';
 }
 
-module.exports = { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, FRAMES, LOCAL };
+/**
+ * A message the operator types while the agent works never becomes a user record: it lands as
+ * `{"type":"attachment","attachment":{"type":"queued_command","prompt":…,"origin":{"kind":"human"}}}`
+ * (measured 2026-10-26, macOS instance, three such records in one turn). A gate that looks for the
+ * operator's LAST words misses all of them. Returns the operator's text, or null for every other
+ * record (peer messages and task notifications ride the same attachment type with another origin).
+ */
+function queuedHumanPrompt(d) {
+  const a = d && d.type === 'attachment' && d.attachment;
+  if (!a || a.type !== 'queued_command' || !a.origin || a.origin.kind !== 'human') return null;
+  return typeof a.prompt === 'string' && a.prompt.trim() ? a.prompt : null;
+}
+
+/**
+ * A prompt the harness fires on a timer (ScheduleWakeup, a /loop tick) arrives as a user record with
+ * `queuePriority: "later"` and no human origin (measured 2026-10-28 on the macOS instance, Claude Code
+ * 2.1.312: `isMeta: true, promptSource: "system", queuePriority: "later"`, text "# Autonomous loop
+ * check …"; the same shape in transcripts of 2026-07 and 2026-08). The agent wrote that text, or the
+ * harness did — not the operator; the operator's own words carry `origin.kind "human"`.
+ */
+function isScheduledPrompt(d) {
+  return Boolean(d && d.queuePriority === 'later' && !(d.origin && d.origin.kind === 'human'));
+}
+
+/** Words of an agent or the harness in a user record — another agent's message or a timer-fired
+ * prompt: no operator word, no operator turn. The one predicate every gate asks. */
+function isAgentOrigin(d) {
+  return isPeerMessage(d) || isScheduledPrompt(d);
+}
+
+/** A tracker for one pass over a transcript: returns true for the record that carries the operator's answer
+ * through the question tool — an operator word like a typed prompt, so it ends a gate's turn window. Matched by
+ * the id of an AskUserQuestion call seen earlier in the pass; an error result (a refused question) is no answer,
+ * and text that merely reads like an answer never counts. Measured 2026-10-30: every answer of a day came this
+ * way, a window reached back past a compaction to an hours-old promise, and a stop gate blocked every stop. */
+function questionAnswers() {
+  const asked = new Set();
+  return (d) => {
+    const m = d && d.message;
+    if (!m || !Array.isArray(m.content)) return false;
+    if (m.role === 'assistant') {
+      for (const b of m.content) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && b.id) asked.add(b.id);
+      return false;
+    }
+    return m.role === 'user' && m.content.some((b) => b && b.type === 'tool_result' && asked.has(b.tool_use_id) && !b.is_error);
+  };
+}
+
+module.exports = { isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, questionAnswers, FRAMES, LOCAL };

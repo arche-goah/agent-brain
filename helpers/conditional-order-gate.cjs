@@ -4,8 +4,8 @@
  * is checked — the mirror of promise-gate.cjs, on the operator's side of the sentence.
  *
  * The class (measured on a collaborating instance, 2026-10-16): the operator wrote
- * "dann coherence scan" — "then", meaning AFTER the answer the two other instances had
- * been asked for, and after the core update they had recommended first. The agent read
+ * "then coherence scan" (in their own language), meaning AFTER the answer the two other
+ * instances had been asked for, and after the core update they had recommended first. The agent read
  * "then" as "now", started nine analysis agents, and mentioned the recommendation in its
  * text without waiting for it. The operator stopped the run ("why do you work AGAINST
  * the recommendation?"); the tokens were spent. Nothing in the core carried the case:
@@ -41,7 +41,9 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
+// A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
+const { isGitPush } = require('./git-push.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -52,7 +54,7 @@ function allow() { process.exit(0); }
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const AGENT_THRESHOLD = 3;   // the call that trips the gate: this many Agent calls in one turn
-const EXTERNAL = /(?:^|[\s;&|(`])(?:claude\s+-p\b|git\b[^\n|;&]*\bpush\b|gh\s+pr\s+(?:create|comment|review|merge)\b|gh\s+issue\s+(?:create|comment)\b|gh\s+api\b[^\n|;&]*\s-X\s)/i;
+const EXTERNAL = /(?:^|[\s;&|(`])(?:claude\s+-p\b|gh\s+pr\s+(?:create|comment|review|merge)\b|gh\s+issue\s+(?:create|comment)\b|gh\s+api\b[^\n|;&]*\s-X\s)/i;
 const MET = /CONDITION-MET:\s*(\S[^\n]{19,})/;
 const NONE = /CONDITION-NONE:\s*(\S[^\n]{14,})/;
 
@@ -134,11 +136,13 @@ function analyze(transcriptPath) {
     if (!line.trim()) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
+    const queued = queuedHumanPrompt(d);
+    if (queued !== null) { operator = queued; texts = []; agents = 0; continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
       // A loaded skill's text: no condition, no new turn (2026-10-19, "then" in session-close).
-      if (isSkillExpansion(d) || isPeerMessage(d)) continue;
+      if (isSkillExpansion(d) || isAgentOrigin(d)) continue;
       const t = promptText(msg);
       if (t === null || HOOK_ECHO.test(t) || isNotification(t)) continue;
       operator = t; texts = []; agents = 0;   // a new turn starts here
@@ -168,7 +172,7 @@ function deny(hit, why) {
         + '  CONDITION-MET: <the condition in the operator\'s words> — <evidence: where and when it was met>\n'
         + '  CONDITION-NONE: <why this word is no condition here>\n'
         + 'Reads, edits, commits and a single agent stay free — they are how the condition gets checked. '
-        + '(Measured 2026-10-16: "then the coherence scan" meant "after the answer"; nine agents started before it came.)',
+        + '(Example: "then run the audit", written while an answer is pending, means "after that answer", not "now".)',
     },
   }));
   process.exit(0);
@@ -182,7 +186,7 @@ process.stdin.on('end', () => {
   let why = '';
   if (tool === 'Workflow') why = 'a workflow (an audit-sized run)';
   else if (tool === 'Agent') why = `agent number ${AGENT_THRESHOLD} or more in this turn`;
-  else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string' && EXTERNAL.test(ti.command)) {
+  else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string' && (EXTERNAL.test(ti.command) || isGitPush(ti.command))) {
     why = 'externally effective (it leaves the machine or starts a model run)';
   } else return allow();
   if (!input.transcript_path) return allow();

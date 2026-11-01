@@ -76,10 +76,18 @@ probe "commit --amend"               "$TWO" "git -C $REPO_N commit --amend --no-
 probe "commit by path"               "$TWO" "git -C $REPO_N commit a.txt -m x"                     allow
 probe "commit by path after --"      "$TWO" "git -C $REPO_N commit -m x -- a.txt"                  allow
 probe "commit -F file by path"       "$TWO" "git -C $REPO_N commit -F $TMP_N/msg a.txt"              allow
+# 2026-10-28: a "(" or ";" inside the quoted message cut the line before the pathspec.
+probe "by path, ( and ; in the message" "$TWO" "git -C $REPO_N commit -q -m \\\"gate (alpha; yes): x\\\" -- a.txt" allow
+probe "no pathspec, ( in the message"   "$TWO" "git -C $REPO_N commit -m \\\"gate (alpha)\\\""         block
+probe "a real ; after the message still splits" "$TWO" "git -C $REPO_N commit -m x -- a.txt; git -C $REPO_N commit -m y" block
 probe "add -A"                       "$TWO" "git -C $REPO_N add -A"                                 block
 probe "add ."                        "$TWO" "git -C $REPO_N add ."                                  block
 probe "add by path"                  "$TWO" "git -C $REPO_N add a.txt b.txt"                        allow
 probe "stash"                        "$TWO" "git -C $REPO_N stash"                                  block
+probe "stash list only reads"        "$TWO" "git -C $REPO_N stash list"                             allow
+probe "stash show only reads"        "$TWO" "git -C $REPO_N stash show -p stash@{0}"                allow
+probe "stash push still moves work"  "$TWO" "git -C $REPO_N stash push -m x"                        block
+probe "stash pop still moves work"   "$TWO" "git -C $REPO_N stash pop"                              block
 probe "reset --hard"                 "$TWO" "git -C $REPO_N reset --hard HEAD~1"                    block
 probe "reset --soft"                 "$TWO" "git -C $REPO_N reset --soft HEAD~1"                    allow
 probe "checkout branch"              "$TWO" "git -C $REPO_N checkout fixture-private"              block
@@ -129,6 +137,12 @@ probe "foreign rebase, one session"  "$ONE" "git -C $REPO_N rebase --continue"  
 rmdir "$GD/rebase-merge"
 probe "no operation: write passes"   "$TWO" "git -C $REPO_N add a.txt"                              allow sess-B
 [ -e "$GD/claude-op-owner" ] && bad "owner file not cleared after the operation ended" || ok "owner file cleared"
+# measured 2026-10-26 (Windows): the documented path "pull --rebase with the marker" followed by a status in the
+# same command — the status call saw no operation yet (the hook runs before the command) and deleted the owner
+# the pull had just recorded; the session's own `rebase --continue` was then refused as foreign
+probe "marker pull --rebase; status"  "$TWO" "git -C $REPO_N pull --rebase; git -C $REPO_N status --short  # MECHANISM-OK: fixture" allow sess-A
+[ "$(cat "$GD/claude-op-owner" 2>/dev/null)" = "sess-A" ] && ok "owner kept when a later call in the same command reads" || bad "owner dropped by a later call in the same command"
+rm -f "$GD/claude-op-owner"
 
 echo "fail-open:"
 probe "not a git repo"               "$TWO" "git -C $TMP_N/nowhere commit -m x"                     allow

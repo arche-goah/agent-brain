@@ -52,20 +52,20 @@ printf '%s\n' '{"nothing_patterns":["nichts offen"],"failed_patterns":["nicht ge
   > "$DE/.claude/rules/open-items.json"
 
 NL=$'\n'
-H1="- [request|human] 2026-09-05 show-tools/anfrage-td-2026-09-05.md — peer-b: ANFRAGE — !! reported in 3 sessions since 2026-10-01, nothing done yet (circle E)"
-H2="- [request|human] 2026-09-08 event-network/anfrage-bridge-2026-09-08.md — peer-c: Rueckfrage — first report (addressed to a person)"
-A1="- [PR|ai] 2026-10-07 claude-marketplace#61 — someone: pin(td) — first report (PR: review/merge is agent work)"
+H1="- [request|human] 2026-09-05 widget-suite/anfrage-ui-2026-09-05.md — peer-b: ANFRAGE — !! reported in 3 sessions since 2026-10-01, nothing done yet (circle E)"
+H2="- [request|human] 2026-09-08 demo-area/anfrage-bridge-2026-09-08.md — peer-c: Rueckfrage — first report (addressed to a person)"
+A1="- [PR|ai] 2026-10-07 example-market#61 — someone: pin(widget) — first report (PR: review/merge is agent work)"
 A2="- [request|ai] 2026-09-13 core/anfrage-fixtures-2026-09-13.md — peer-d: ANFRAGE — first report (circle C)"
 BLOCK="=== BRAIN BOOTUP CHECK ===${NL}open for us: 4 — ai 2 · human 2 · unclassified 0 (+1 parked)${NL}${H1}${NL}${H2}${NL}${A1}${NL}${A2}${NL}- [parked] grandma3-suite#112${NL}=== END BOOTUP ==="
 
 GOOD_EN="2 items I can handle myself (the marketplace pin, an answer on the fixtures) — shall I go ahead?
 2 need you:
-- 2026-09-05 the workstation needs the TD work split — already reported, still open
+- 2026-09-05 the workstation needs the UI layout — already reported, still open
 - 2026-09-08 a question about the bridge device
 grandMA stays parked (#112)."
 GOOD_DE="2 Punkte kann ich selbst beantworten — soll ich?
 2 Anliegen brauchen dich:
-- 5.9. die Workstation braucht die TD-Arbeitsteilung — bereits mehrfach gemeldet
+- 5.9. die Workstation braucht das UI-Layout — bereits mehrfach gemeldet
 - 8.9. Rueckfrage zum Brueckengeraet
 grandMA bleibt geparkt."
 
@@ -110,7 +110,7 @@ f="$T/7b.jsonl"; { boot_ok startup "$MANY"; user "stand?"; asst "5 items need yo
 check "more than three: no offer" "$f" block "$EN"
 
 # 8 — an unclassified item blocks until the class file holds it.
-Q="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-09-06 event-network/anfrage-net-2026-09-06.md — peer-c: ANFRAGE — first report"
+Q="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-09-06 demo-area/anfrage-net-2026-09-06.md — peer-c: ANFRAGE — first report"
 f="$T/8.jsonl"; { boot_ok startup "$Q"; user "stand?"; asst "1 needs you: 2026-09-06 the network definition."; } > "$f"
 check "unclassified item" "$f" block "$EN"
 CL="$T/cwd-cls"; mkdir -p "$CL/.claude-state"
@@ -170,7 +170,7 @@ f="$T/11e.jsonl"; { boot_ok startup "$FAILED"; user "stand?"; asst "PR search no
 check "failed source said" "$f" allow "$EN"
 
 # 12 — a PR number that only PREFIXES another must not count (#61 vs #610).
-H3="- [PR|human] 2026-10-07 claude-marketplace#61 — someone: pin — first report"
+H3="- [PR|human] 2026-10-07 example-market#61 — someone: pin — first report"
 P="open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${H3}"
 f="$T/12.jsonl"; { boot_ok startup "$P"; user "stand?"; asst "1 needs you: PR #610."; } > "$f"
 check "#610 does not name #61" "$f" block "$EN"
@@ -191,11 +191,11 @@ f="$T/14b.jsonl"; { boot_ok startup "$P4"; user "stand?"; asst "1 needs you: pee
 check "a wrong age names nothing" "$f" block "$EN"
 
 # 15 — a request named by its topic words in plain language, no date, no file name.
-H5="- [request|human] 2026-09-06 show-tools/anfrage-arbeitsteilung-touchdesigner-2026-09-06.md — peer-b: ANFRAGE — first report"
+H5="- [request|human] 2026-09-06 widget-suite/anfrage-renderer-handover-2026-09-06.md — peer-b: ANFRAGE — first report"
 P5="open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${H5}"
-f="$T/15a.jsonl"; { boot_ok startup "$P5"; user "stand?"; asst "1 needs you: how the TouchDesigner Arbeitsteilung is split."; } > "$f"
+f="$T/15a.jsonl"; { boot_ok startup "$P5"; user "stand?"; asst "1 needs you: who takes the renderer handover."; } > "$f"
 check "request named by its topic words" "$f" allow "$EN"
-f="$T/15b.jsonl"; { boot_ok startup "$P5"; user "stand?"; asst "1 needs you: an Anfrage from peer-b about TouchDesigner."; } > "$f"
+f="$T/15b.jsonl"; { boot_ok startup "$P5"; user "stand?"; asst "1 needs you: an Anfrage from peer-b about the renderer."; } > "$f"
 check "one topic word plus the generic kind (instance data) is not enough" "$f" block "$DE"
 
 # 16 — items waiting on others or a date need no relay and no opening question.
@@ -217,18 +217,18 @@ check "no ordering bootup line, no exception" "$f" block "$EN" false "$SG"
 
 # 18 — the operator's prompt already ordered the work (measured 2026-10-09, German go-ahead
 # "alles durchziehen"): the count and the repeats are still said, the shall-I question is moot.
-GO="8 Punkte kann ich selbst abhandeln, die Freigabe liegt mit deinem Auftrag vor. Davon 5 schon in bis zu 6 Sessions gemeldet. 2 brauchen dich: 2026-09-05 TD-Arbeitsteilung, 2026-09-08 Brueckengeraet. grandMA bleibt geparkt."
+GO="8 Punkte kann ich selbst abhandeln, die Freigabe liegt mit deinem Auftrag vor. Davon 5 schon in bis zu 6 Sessions gemeldet. 2 brauchen dich: 2026-09-05 UI-Layout, 2026-09-08 Brueckengeraet. grandMA bleibt geparkt."
 f="$T/18a.jsonl"; { boot_ok startup "$BLOCK"; user "bitte alles durchziehen"; asst "${GO/8 Punkte/2 Punkte}"; } > "$f"
 check "go-ahead in the prompt makes the question moot (instance data)" "$f" allow "$DE"
 f="$T/18b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "${GO/8 Punkte/2 Punkte}"; } > "$f"
 check "no go-ahead, no question" "$f" block "$DE"
-f="$T/18c.jsonl"; { boot_ok startup "$BLOCK"; user "go ahead and handle everything"; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
+f="$T/18c.jsonl"; { boot_ok startup "$BLOCK"; user "go ahead and handle everything"; asst "2 items I can handle, 2 need you: 2026-09-05 the UI layout (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
 check "English go-ahead built in" "$f" allow "$EN"
 # An autonomous order is a go-ahead (autonomous-mode.cjs): the offer question would be the stop
 # the rule forbids. Same reply under "stand?" blocks (18b-shape discriminator in English).
-f="$T/18d.jsonl"; { boot_ok startup "$BLOCK"; user "work through the list autonomously"; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
+f="$T/18d.jsonl"; { boot_ok startup "$BLOCK"; user "work through the list autonomously"; asst "2 items I can handle, 2 need you: 2026-09-05 the UI layout (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
 check "an autonomous order needs no offer question" "$f" allow "$EN"
-f="$T/18e.jsonl"; { boot_ok startup "$BLOCK"; user "status?"; asst "2 items I can handle, 2 need you: 2026-09-05 the TD split (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
+f="$T/18e.jsonl"; { boot_ok startup "$BLOCK"; user "status?"; asst "2 items I can handle, 2 need you: 2026-09-05 the UI layout (already reported, still open), 2026-09-08 the bridge. grandMA stays parked."; } > "$f"
 check "the same reply without the order still needs the question" "$f" block "$EN"
 
 # Wake-up of a parked domain (operator order 2026-10-11): an operator item like any other —
@@ -272,6 +272,13 @@ f="$T/20e.jsonl"; { boot_ok startup "$SM"; user "stand?"; asst "1 request handle
 check "ai item without a standing class, no question" "$f" block "$EN"
 f="$T/20f.jsonl"; { boot_ok startup "$SM"; user "stand?"; asst "1 request handled under the standing approval (the fixture run). 1 more I can answer myself — shall I?"; } > "$f"
 check "ai item asked, standing item reported" "$f" allow "$EN"
+# Standing PRs folded into one line (open-items.py, 2026-10-28): each number is still an item,
+# so the count the reply must carry is the number of PRs, not of lines.
+SF="open for us: 6 — ai 0 · human 0 · unclassified 0 · standing 6${NL}${SG1}${NL}- [PR-standing] 6 PRs: core#1, core#2, core#3, core#4, core#5, suite-x#6 — first report"
+f="$T/20g.jsonl"; { boot_ok startup "$SF"; user "stand?"; asst "6 PRs handled under the standing approval: CI watched, reviews answered."; } > "$f"
+check "folded standing PRs: count of PRs reported" "$f" allow "$EN"
+f="$T/20h.jsonl"; { boot_ok startup "$SF"; user "stand?"; asst "1 line handled under the standing approval."; } > "$f"
+check "folded standing PRs: count of lines is not the count (control)" "$f" block "$EN"
 # Only ai and unclassified items own the opening question; a standing item does not, so
 # stoppen-gate judges a closing question after it as anywhere else.
 check "stoppen-gate: a standing item does not own the opening question" "$T/20b.jsonl" block "$EN" false "$SG"
@@ -310,5 +317,121 @@ check "persisted bootup under a path with a space: the file is read" "$f" allow 
 PREVIEW_GONE="<persisted-output> Output too large (10.3KB). Full output saved to: $(native "$T")/gone.txt Preview (first 2KB): === BRAIN BOOTUP CHECK ==="
 f="$T/22c.jsonl"; { boot_ok startup "$PREVIEW_GONE"; user "stand?"; asst "$GOOD_EN"; } > "$f"
 check "persisted bootup whose file is gone: preview only, no block found (control)" "$f" block "$EN"
+
+# 23 — any later turn: an item the list prints as ours is not moved to someone else in prose
+# (measured 2026-10-26 on the Windows instance: an own PR, "[PR|ai] … still ours" at three
+# starts, went under "open (with others)" at each close; the operator closed on that answer).
+# A wait passes only as data: the instance's `waiting` map or a fresh open-items.py record.
+CLOSE_BAD="Persisted.
+- **Open (with others):**
+  - example-market #61 waits for the reviewer's read.
+You can shut down."
+CLOSE_OURS="Persisted. Still ours: example-market #61 — I merge it next session. You can shut down."
+f="$T/23a.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_BAD"; } > "$f"
+check "later turn: an ours item put under a with-others heading" "$f" block "$EN"
+f="$T/23b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Only #61, it is waiting on the owner."; } > "$f"
+check "later turn: an ours item said to wait, same line" "$f" block "$EN"
+f="$T/23c.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_OURS"; } > "$f"
+check "later turn: the same item said as ours" "$f" allow "$EN"
+f="$T/23d.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "#112 is waiting on its owner."; } > "$f"
+check "later turn: a parked item said to wait (not ours, control)" "$f" allow "$EN"
+WS="$T/cwd-seen"; mkdir -p "$WS/.claude-state"
+printf '%s\n' '{"items":{"example-market#61":{"first":"2026-10-07","sessions":[],"wait":"waiting on someone: our review is in"}}}' > "$WS/.claude-state/open-items-seen.json"
+f="$T/23e.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_BAD"; } > "$f"
+check "later turn: the wait on record in a fresh open-items run" "$f" allow "$WS"
+WM="$T/cwd-wait"; mkdir -p "$WM/.claude/rules"
+printf '%s\n' '{"waiting":{"example-market#61":{"until":"2099-01-01","why":"reviewer"}}}' > "$WM/.claude/rules/open-items.json"
+check "later turn: the wait on record in the instance waiting map" "$f" allow "$WM"
+WD="$T/cwd-wait-de"; mkdir -p "$WD/.claude/rules"
+printf '%s\n' '{"wait_patterns":["\\bbei anderen\\b","\\bwartet auf\\b"]}' > "$WD/.claude/rules/open-items.json"
+f="$T/23f.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "noch was offen?"; asst "Gesichert.
+- **Offen (bei anderen):**
+  - example-market #61: es fehlt nur noch die Durchsicht."; } > "$f"
+check "later turn, German heading through instance data" "$f" block "$WD"
+check "later turn, German heading without instance data (built-ins are English)" "$f" allow "$EN"
+# 23w-z — the three false blocks measured on the Windows instance at 762da50 (agent-brain#120).
+f="$T/23w.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Open: the UI layout from 2026-09-05 waits for your decision."; } > "$f"
+check "later turn: a human item relayed as waiting for the operator (not a relabel)" "$f" allow "$EN"
+f="$T/23x.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Still ours: #61 - waiting for CI to go green, then I merge it."; } > "$f"
+check "later turn: an ours item waiting for CI, said as ours" "$f" allow "$EN"
+f="$T/23y.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Waiting on others:
+  - a fixtures anfrage of their own, worlds 2D and 3D."; } > "$f"
+check "later turn: topic words under a wait heading do not name an item (strict naming; the old matcher took two slug words)" "$f" allow "$EN"
+f="$T/23z.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Waiting on others:
+  - core/anfrage-fixtures-2026-09-13.md, their review."; } > "$f"
+check "later turn: the exact file under a wait heading still names the item" "$f" block "$EN"
+# The close turn (session-closing.sh --pre-commit ran) and every "nothing open" must name what
+# is still ours (measured 2026-10-25: a close said "all saved" and named none).
+CLOSE_CMD='{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"bash core/helpers/session-closing.sh --pre-commit --session x"}}]}}'
+GOOD_ALL="$GOOD_EN"
+f="$T/23g.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "close the session"; echo "$CLOSE_CMD"; asst "Persisted - you can shut down."; } > "$f"
+check "close report naming none of the ours items" "$f" block "$EN"
+f="$T/23h.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "close the session"; echo "$CLOSE_CMD"; asst "Still ours: #61, the fixtures answer (09-13); for you: 09-05 UI layout, 09-08 bridge question. Persisted - you can shut down."; } > "$f"
+check "close report naming every ours item" "$f" allow "$EN"
+f="$T/23i.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "anything left?"; asst "No, nothing is open."; } > "$f"
+check "a later 'nothing open' while ours items stand" "$f" block "$EN"
+WG="$T/cwd-gone"; mkdir -p "$WG/.claude-state"
+printf '%s\n' '{"items":{"widget-suite/anfrage-ui-2026-09-05.md":{"first":"2026-10-01","sessions":[]},"demo-area/anfrage-bridge-2026-09-08.md":{"first":"2026-10-01","sessions":[]},"core/anfrage-fixtures-2026-09-13.md":{"first":"2026-10-01","sessions":[]}}}' > "$WG/.claude-state/open-items-seen.json"
+f="$T/23j.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "and now?"; asst "Persisted.
+- **Open (with others):**
+  - #61 merged, waiting for a tag."; } > "$f"
+check "an item a later run no longer lists (merged) under a with-others heading" "$f" allow "$WG"
+check "the same reply while the item still stands (control)" "$f" block "$EN"
+# The operator asks whether anything is still open: the answer names what is ours (measured
+# 2026-10-25: "surely all closed, final?" — "persisted, you can shut down", nothing named).
+f="$T/23k.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "anything still open?"; asst "Persisted - you can shut down."; } > "$f"
+check "'anything still open?' answered without the ours items" "$f" block "$EN"
+f="$T/23l.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "anything still open?"; asst "Still ours: #61 and the fixtures answer (09-13); for you: 09-05 UI layout, 09-08 bridge question."; } > "$f"
+check "'anything still open?' answered with every ours item" "$f" allow "$EN"
+# The same question typed mid-turn is a queued_command attachment (turn-kind #139): it is the
+# operator's word, so it counts as the ask; it opens no new turn, so the reply buffer stays.
+qcmd() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
+f="$T/23q.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "fix the parser"; asst "working on it"; qcmd "anything still open?"; asst "Persisted - you can shut down."; } > "$f"
+check "'anything still open?' typed mid-turn, answered without the ours items" "$f" block "$EN"
+f="$T/23r.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "fix the parser"; asst "working on it"; asst "Persisted - you can shut down."; } > "$f"
+check "the same turn without the mid-turn question (control)" "$f" allow "$EN"
+f="$T/23m.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "sicher alles abgeschlossen final?"; asst "Persistiert, du kannst herunterfahren."; } > "$f"
+printf '%s\n' '{"ask_patterns":["\\balles\\b[^?\\n]{0,30}\\babgeschlossen\\b"]}' > "$WD/.claude/rules/open-items.json"
+check "German ask through instance data" "$f" block "$WD"
+check "German ask without instance data (control)" "$f" allow "$EN"
+
+# 24 — the close report and its open ends (measured 2026-10-28 on a session transcript): the close
+# listed an own item as an `open end:` line of its session-log entry (close-stamp.cjs, skill
+# session-close step 4) and the gate still blocked the close report for it. An item named in an
+# open-end line of THIS close, or carrying a wait record, is not missing; the reason names the
+# close report, and the stop-checks template turns it into a line that says so.
+CLOSE_PART="Still ours: #61; for you: 09-05 TD split, 09-08 bridge question. Persisted - you can shut down."
+f="$T/24.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "close the session"; echo "$CLOSE_CMD"; asst "$CLOSE_PART"; } > "$f"
+check "close report leaving out an item, no open-end line" "$f" block "$EN"
+LOGHEAD="- 2026-10-28 session x: close"
+OE="$T/cwd-openend"; mkdir -p "$OE/.claude-state" "$OE/docs/maintenance"
+printf '%s\n%s\n' "x" "$LOGHEAD" > "$OE/.claude-state/session-close.stamp"
+printf '%s\n%s\n%s\n' "$LOGHEAD" "  - open end: core/anfrage-fixtures-2026-09-13.md — peer-d answers" "- next entry" > "$OE/docs/maintenance/session-log.md"
+check "the same item named in an open-end line of this close" "$f" allow "$OE"
+OO="$T/cwd-openend-other"; mkdir -p "$OO/.claude-state" "$OO/docs/maintenance"
+printf '%s\n%s\n' "x" "$LOGHEAD" > "$OO/.claude-state/session-close.stamp"
+printf '%s\n%s\n' "$LOGHEAD" "  - open end: arche/suite-y #7 — CI of the branch" > "$OO/docs/maintenance/session-log.md"
+check "an open-end line naming another item (control)" "$f" block "$OO"
+OS="$T/cwd-openend-stale"; mkdir -p "$OS/docs/maintenance"
+printf '%s\n%s\n' "$LOGHEAD" "  - open end: core/anfrage-fixtures-2026-09-13.md — peer-d answers" > "$OS/docs/maintenance/session-log.md"
+check "an open-end line without this close's stamp (control)" "$f" block "$OS"
+f2="$T/24b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; user "anything still open?"; asst "$CLOSE_PART"; } > "$f2"
+check "open-end lines count only in the close turn (control)" "$f2" block "$OE"
+WR="$T/cwd-close-wait"; mkdir -p "$WR/.claude/rules"
+printf '%s\n' '{"waiting":{"core/anfrage-fixtures-2026-09-13.md":{"until":"2099-01-01","why":"peer-d answers"}}}' > "$WR/.claude/rules/open-items.json"
+check "the same item carrying a wait record" "$f" allow "$WR"
+out24="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$f")" "$(native "$EN")" | node "$G" 2>&1)"
+line24="$(printf '%s' "$out24" | node -e '
+const fs = require("fs");
+const tpl = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).checks.find((c) => c.marker === "OPEN-ITEMS-GATE");
+const reason = JSON.parse(fs.readFileSync(0, "utf8")).reason;
+const m = new RegExp(tpl.extract).exec(reason);
+process.stdout.write(m ? tpl.template.replace("{1}", m[1]).replace("{2}", m[2]) : "NO MATCH");
+' "$(native "$D/../templates/rules-instance/stop-checks.json")" 2>&1)"
+case "$line24" in
+  "The close report"*"anfrage-fixtures-2026-09-13.md"*) ok "the stop-check line names the close report and the item" ;;
+  *) bad "the stop-check line does not name the close report: '$line24'" ;;
+esac
+case "$line24" in *[Ff]"irst reply"*) bad "the close-report line says first reply: '$line24'" ;; *) ok "the close-report line does not say first reply" ;; esac
 
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

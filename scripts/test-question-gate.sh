@@ -186,10 +186,94 @@ stamp "$R" S1 "  open end: question $id"
 check "close stamp, but this turn never ran the close" "$T/qc2.jsonl" block "$R"
 SID=""
 
+# --- a recorded question is measured before it is asked again (2026-10-26): the question tool
+# call that raises a deferred, unanswered or orphaned record is refused until the record carries
+# a fresh `recheck` stamp or is settled. The incident: a question postponed ten days earlier was
+# re-asked word for word from the record while the device already carried the answer.
+ask() { # $1 name, $2 question text, $3 deny|allow, $4 root; $SID = session id
+  local out
+  out="$(printf '{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","session_id":"%s","tool_input":{"questions":[{"question":%s,"header":"h","options":[{"label":"yes","description":"go"},{"label":"no","description":"later"}]}]}}' "${SID:-}" "$(js "$2")" \
+    | CLAUDE_PROJECT_DIR="$(native "$4")" node "${GATE:-$G}" 2>&1)"
+  if [ "$3" = deny ]; then
+    case "$out" in *'"permissionDecision":"deny"'*) ok "$1 is refused";; *) bad "$1 was not refused: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 passes" || bad "$1 refused wrongly: '$out'"
+  fi
+}
+R="$T/r-reask"; fresh "$R"
+{ user "check the PRs"; asst "Checked the clock drift ledger entry and the launchd schedule. $Q"; user "later, not now please — first the show"; asst "Noted."; } > "$T/t-reask.jsonl"
+check "first run records the question (re-ask case)" "$T/t-reask.jsonl" block "$R" >/dev/null
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+cli "$R" resolve "$id=deferred:later, not now" >/dev/null
+case "$(cli "$R" list)" in *"measure its topic: node core/helpers/question-gate.cjs recheck $id="*) ok "a deferred record is listed with its recheck call";;
+  *) bad "no recheck call for the deferred record: $(cli "$R" list)";; esac
+ask "the deferred question, same sentence" "Clock check (deferred since Monday): $Q" deny "$R"
+# the match thresholds come from a replay over the history (header of raisesAgain): most of the
+# record's content words, sentence and context together, and only when there are enough of them
+ask "the deferred question, paraphrased from the record and its context" "Shall we build the clock drift check now — the ledger entry and the launchd schedule say it is due?" deny "$R"
+ask "a question sharing only the recurring words" "Shall I build the PR list check first?" allow "$R"
+ask "an unrelated question" "Shall I order the spare cable for the stage switch?" allow "$R"
+R="$T/r-reask-bare"; fresh "$R"
+{ user "go"; asst "Shall I?"; user "something else"; asst "ok"; } > "$T/t-bare.jsonl"
+mkdir -p "$R/.claude/rules"; printf '{"question_patterns":["^shall i\\\\?$"]}\n' > "$R/.claude/rules/open-questions.json"
+check "first run records the bare question" "$T/t-bare.jsonl" block "$R" >/dev/null
+bid="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+[ -n "$bid" ] && cli "$R" resolve "$bid=unanswered:fixture" >/dev/null
+ask "a recorded bare 'shall I?' is inside every question and matches none" "Shall I order the spare cable for the stage switch?" allow "$R"
+R="$T/r-reask"
+out="$(cli "$R" recheck "$id=")"; rc=$?
+case "$rc:$out" in [1-9]*:*"needs the measurement in words"*) ok "a bare recheck stamp is refused";; *) bad "bare recheck accepted (rc=$rc): $out";; esac
+ask "still refused after the refused stamp" "Clock check: $Q" deny "$R"
+cli "$R" recheck "$id=ledger clock-check still open, no PR on GitHub, measured now" >/dev/null && ok "recheck with the measurement is accepted" || bad "recheck refused"
+ask "the same question after a fresh recheck" "Clock check: $Q" allow "$R"
+node -e '
+const fs=require("fs");const p=process.argv[1];const s=JSON.parse(fs.readFileSync(p,"utf8"));
+for (const k in s) s[k].rechecked="2020-01-01T00:00:00.000Z";fs.writeFileSync(p,JSON.stringify(s));' "$R/.claude-state/open-questions.json"
+ask "the same question with a stale recheck" "Clock check: $Q" deny "$R"
+cli "$R" resolve "$id=answered:the PR exists since Tuesday" >/dev/null
+ask "the same question once the record is settled" "Clock check: $Q" allow "$R"
+# an unanswered record and an orphan (open, earlier day) are measured before a re-ask as well;
+# an open question of this session and day passes — the operator has not seen it yet
+R="$T/r-reask2"; fresh "$R"
+check "first run records the question (unanswered re-ask case)" "$T/t1.jsonl" block "$R" >/dev/null
+id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+SID=S9 ask "an open question of this session and day" "$Q" allow "$R"
+cli "$R" resolve "$id=unanswered:fixture" >/dev/null
+ask "an unanswered question asked again without a measurement" "$Q" deny "$R"
+R="$T/r-reask3"; fresh "$R"
+check "first run records the question (orphan re-ask case)" "$T/t1.jsonl" block "$R" >/dev/null
+node -e '
+const fs=require("fs");const p=process.argv[1];const s=JSON.parse(fs.readFileSync(p,"utf8"));
+for (const k in s) s[k].asked="2020-01-01T00:00:00.000Z";fs.writeFileSync(p,JSON.stringify(s));' "$R/.claude-state/open-questions.json"
+ask "an orphan (open, earlier day) asked again without adopting it" "$Q" deny "$R"
+out="$(printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"}}' | CLAUDE_PROJECT_DIR="$(native "$R")" node "$G" 2>&1)"
+[ -z "$out" ] && ok "a Bash call passes the question hook" || bad "Bash call judged: $out"
+
+# --- the mode question is asked alone (2026-10-26): bundled with decisions, the steps those
+# decisions need opened their dialogs in the run that was autonomous again
+ask2() { # $1 name, $2 first question, $3 second question, $4 deny|allow, $5 root
+  local out
+  out="$(printf '{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":%s,"header":"a","options":[{"label":"yes","description":"y"},{"label":"no","description":"n"}]},{"question":%s,"header":"b","options":[{"label":"yes","description":"y"},{"label":"no","description":"n"}]}]}}' "$(js "$2")" "$(js "$3")" \
+    | CLAUDE_PROJECT_DIR="$(native "$5")" node "${GATE:-$G}" 2>&1)"
+  if [ "$4" = deny ]; then
+    case "$out" in *'"permissionDecision":"deny"'*'mode question'*) ok "$1 is refused";; *) bad "$1 was not refused: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 passes" || bad "$1 refused wrongly: '$out'"
+  fi
+}
+R="$T/r-mode"; fresh "$R"
+ask2 "a decision bundled with 'continue autonomously?'" "Change the rule file now?" "Continue autonomously?" deny "$R"
+ask2 "two decisions without a mode question" "Change the rule file now?" "Merge PR 5 now?" allow "$R"
+ask2 "a question ABOUT autonomy that is not the last one" "How autonomous should the loop be at the desk?" "Merge PR 5 now?" allow "$R"
+ask "'continue autonomously?' asked alone" "Continue autonomously?" allow "$R"
+mkdir -p "$R/.claude/rules"; printf '{"on_patterns":["\\\\bcarry on alone\\\\b"]}\n' > "$R/.claude/rules/autonomous-patterns.json"
+ask2 "the instance's mode words count too" "Switch the rule now?" "Carry on alone?" deny "$R"
+
 # --- negative control
 printf 'process.stdin.resume();process.stdin.on("end",()=>process.exit(0));\n' > "$T/stub.cjs"
 before=$fail; fail=0
 for c in t1 t2; do R="$T/stub-$c"; fresh "$R"; GATE="$T/stub.cjs" check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
+R="$T/r-reask3"; GATE="$T/stub.cjs" ask "stub on the orphan re-ask" "$Q" deny "$R" >/dev/null
 caught=$fail; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed"
 

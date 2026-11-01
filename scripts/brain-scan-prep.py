@@ -333,11 +333,17 @@ def machine(repo, core, last_date, today):
         # whole prep step runs inside ONE tool call capped at 600 s (workflows/brain-scan.js) —
         # the old 420 s limit cut it, and no limit under that cap can hold a cold run.
         "brain-selftest.sh": ([bash, str(S / "brain-selftest.sh"), str(repo)], 420, {"BRAIN_SELFTEST_BG": "1"}),
-        "local-machinery.py": ([py, str(S / "local-machinery.py"), "--repo", str(repo)], 120),
+        # --review-all: EVERY declared deviation is judged again in the scan, not only the few the
+        # session start shows (operator order 2026-10-29: in a brain-scan every one of them is looked through).
+        "local-machinery.py": ([py, str(S / "local-machinery.py"), "--repo", str(repo), "--review-all"], 120),
         "commitments.py": ([py, str(S / "commitments.py"), "--repo", str(repo), "--days", str(days)], 120),
         # Operator corrections without a carrier line (2026-10-25): every entry of the feedback
         # protocol since the last scan names its Traeger/Carrier, or it is a finding.
         "lesson-carriers.py": ([py, str(S / "lesson-carriers.py"), "--repo", str(repo), "--since", str(last_date or "0000-00-00")], 60),
+        # A dated state in rule prose ("alpha until <date>") that expired or disagrees with its record.
+        "state-prose-lint.py": ([py, str(S / "state-prose-lint.py"), "--repo", str(repo), "--today", today], 30),
+        # A carrier the rules name but that does not exist (operator order 2026-10-28, KS-82).
+        "dead-carriers.py": ([py, str(S / "dead-carriers.py"), "--repo", str(repo)], 30),
         # Reads every transcript of the window: here and not at the session start.
         "decision-review.py": ([py, str(S / "decision-review.py"), "--root", str(repo), "--days", str(days)], 300),
         # The only reader of the stop dispatcher's recorder logs: would a recording gate
@@ -364,10 +370,21 @@ def machine(repo, core, last_date, today):
         findings += map_selftest(*out["brain-selftest.sh"])
     if "local-machinery.py" in out:
         findings += map_lines("local-machinery", *out["local-machinery.py"], "!!", "local machinery summary:", "P1")
+        rc_lm, out_lm = out["local-machinery.py"][:2]
+        if rc_lm == 0:
+            # One finding per declared deviation: the scan judges each again (reason, carrier, use);
+            # map_lines caps at ten, a review must not.
+            findings += [F("P2", f"local-machinery review: {l.strip()[len('review: '):]} — judge again: reason still true, "
+                                 "core or suite carries it by now, still used? then core PR, unwire, or reviewed: <today>")
+                         for l in out_lm.splitlines() if l.strip().startswith("review: ")]
     if "commitments.py" in out:
         findings += map_lines("commitments", *out["commitments.py"], "loose commitment", "commitments summary:", "P2")
     if "lesson-carriers.py" in out:
         findings += map_lines("lesson-carriers", *out["lesson-carriers.py"], "lesson without carrier", "lesson-carriers summary:", "P2")
+    if "state-prose-lint.py" in out:
+        findings += map_lines("state-prose", *out["state-prose-lint.py"], "state in prose:", "state-prose summary:", "P2")
+    if "dead-carriers.py" in out:
+        findings += map_lines("dead-carriers", *out["dead-carriers.py"], "dead carrier:", "dead-carriers summary:", "P2")
     if "recorder-report.py" in out:
         findings += map_lines("recorder-report", *out["recorder-report.py"], "!!", "recorder report summary:", "P2")
     if "fork-drift.py" in out:

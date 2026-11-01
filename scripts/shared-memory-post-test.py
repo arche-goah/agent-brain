@@ -10,8 +10,10 @@ Exit 0 = all pass.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -35,10 +37,31 @@ def check(name: str, cond: bool, detail: str = "") -> None:
     fails += 0 if cond else 1
 
 
-def post(repo: Path, *args: str, me: str = "kim-pc") -> subprocess.CompletedProcess:
-    env = {**os.environ, "SHARED_MEMORY_SELF": me}
-    return subprocess.run([sys.executable, str(POST), *args, "--repo", str(repo), "--date", STATE],
+BRAIN = Path(tempfile.mkdtemp())  # the writing brain; by default without a core/ checkout
+atexit.register(shutil.rmtree, BRAIN, True)
+# Where the script's own checkout would be found, a folder that is none: the fixture runs from a
+# clone of the core, and that clone's tag must not stand in for "the writing brain's core".
+os.environ["DEVICE_STATUS_CORE"] = str(BRAIN)
+ORIGIN_SINCE = getattr(sml, "ORIGIN_SINCE", "2026-10-29")
+THIS_OS = {"darwin": "macos", "win32": "windows"}.get(sys.platform, "linux")
+
+
+def post(repo: Path, *args: str, me: str = "kim-pc", brain: Path = BRAIN,
+         date: str = STATE) -> subprocess.CompletedProcess:
+    env = {**os.environ, "SHARED_MEMORY_SELF": me, "CLAUDE_PROJECT_DIR": str(brain)}
+    return subprocess.run([sys.executable, str(POST), *args, "--repo", str(repo), "--date", date],
                           capture_output=True, text=True, encoding="utf-8", env=env)
+
+
+def tagged_brain(root: Path, tag: str) -> Path:
+    """A brain whose core/ is a git checkout of its own on `tag`."""
+    core = root / "brain" / "core"
+    core.mkdir(parents=True)
+    (core / "f.txt").write_text("x", encoding="utf-8")
+    for c in (["init", "-q"], ["add", "-A"], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "c"],
+              ["tag", tag]):
+        subprocess.run(["git", "-C", str(core), *c], capture_output=True)
+    return root / "brain"
 
 
 def inbox(repo: Path, me: str) -> str:
@@ -65,7 +88,9 @@ def main() -> int:
         (repo / "INDEX.md").write_text("# Index\n", encoding="utf-8")
         (repo / "parties.json").write_text(json.dumps({"people": {
             "kim": {"github": "k", "devices": {"kim-pc": {"os": "windows"}}},
-            "alex": {"github": "a", "devices": {"alex-mac": {"os": "macos"}, "alex-win": {"os": "windows"}}}}}),
+            "alex": {"github": "a", "devices": {"alex-mac": {"os": "macos"}, "alex-win": {"os": "windows"}}},
+            # sam handed core and AI mechanics to kim's AIs: a Windows fan-out from kim skips sam-win
+            "sam": {"github": "s", "devices": {"sam-win": {"os": "windows"}}, "ai_handover": {"to": "kim"}}}}),
             encoding="utf-8")
 
         r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Check core #42 on Windows",
@@ -75,6 +100,11 @@ def main() -> int:
         text = req.read_text(encoding="utf-8") if req.is_file() else ""
         check("its state is written: status open, next = the Windows devices but the sender",
               "  status: open\n" in text and "  next: alex-win\n" in text, text)
+        # Origin fields (operator order 2026-10-28): the writer's system and core version, so
+        # activity per core version is readable from the entries. Measured: 1 of 1076 carried one.
+        check("the entry carries the writing device's system (os:)", f"  os: {THIS_OS}\n" in text, text)
+        check("a brain whose core is unreadable writes `core: unknown`, never omits it",
+              "  core: unknown\n" in text, text)
         log = (repo / "core" / "LOG.md").read_text(encoding="utf-8")
         check("one LOG line points at the file",
               f"## {STATE} · kim-pc — AN os:windows (status: open): Check core #42 on Windows\ncore/{req.name}" in log, log)
@@ -140,11 +170,61 @@ def main() -> int:
                                               "--answers", "core/LOG@2026-01-01#7")),
             ("SELF unset", post(repo, "request", "--area", "core", "--to", "kim-pc", "--title", "w", me="")),
             ("a folder that is not an area", post(repo, "note", "--area", "nowhere", "--to", "kim-pc", "--title", "v")),
+            # 2026-10-28: a Windows check sent to one device never reached the other Windows instances
+            ("a Windows check addressed to one device",
+             post(repo, "request", "--area", "core", "--to", "alex-win", "--title", "u",
+                  "--body", "Please counter-check #7 on Windows at the head.", me="alex-mac")),
+            # 2026-10-29: a core check went by name to a party that handed core mechanics to the sender's side
+            ("a core request to a party that handed core mechanics over",
+             post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "t")),
+            ("the same by person", post(repo, "request", "--area", "core", "--to", "person:sam", "--title", "s")),
         ]
         for name, r in cases:
             check(f"refused: {name}", r.returncode == 2 and "REFUSED" in r.stdout, r.stdout + r.stderr)
         check("a refusal writes nothing",
               files(repo) == before and (repo / "core" / "LOG.md").read_text(encoding="utf-8") == log_before)
+        r = post(repo, "request", "--area", "core", "--to", "alex-win", "--title", "One machine check",
+                 "--body", "Please counter-check on Windows: only this box has the device.",
+                 "--one-machine", "the USB device sits at this box", me="alex-mac")
+        one = repo / "core" / f"request-one-machine-check-{STATE}.md"
+        check("a check for exactly one machine passes with --one-machine, and the reason is written",
+              r.returncode == 0 and one.is_file() and "one-machine: the USB device" in one.read_text(encoding="utf-8"),
+              r.stdout + r.stderr)
+        r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Windows box moved",
+                 "--body", "The Windows box now stands in room 2.", me="alex-mac")
+        check("control: a note that only names Windows (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)
+        r = post(repo, "note", "--area", "core", "--to", "sam-win", "--title", "Core 2.1 is out")
+        check("control: a note to the handing-over party passes", r.returncode == 0, r.stdout + r.stderr)
+        r = post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "Confirm the USB prompt",
+                 "--body", "handover-keeps: a dialog only the person at that box can confirm")
+        check("control: a request the handover keeps passes with handover-keeps", r.returncode == 0, r.stdout + r.stderr)
+        r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Run lint at head", me="alex-mac")
+        nxt = (repo / "core" / f"request-run-lint-at-head-{STATE}.md").read_text(encoding="utf-8")
+        check("control: from a sender the handover does not name, the fan-out still reaches sam-win",
+              "sam-win" in nxt and "kim-pc" in nxt, nxt)
+
+        brain = tagged_brain(BRAIN, "v9.9.9")  # outside the shared-memory repo
+        r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Core version stamp",
+                 me="alex-mac", brain=brain, date=ORIGIN_SINCE)
+        stamped = repo / "core" / f"note-core-version-stamp-{ORIGIN_SINCE}.md"
+        st = stamped.read_text(encoding="utf-8") if stamped.is_file() else ""
+        check("a brain with a core checkout writes its core version (`core: v9.9.9`)",
+              r.returncode == 0 and "  core: v9.9.9\n" in st, r.stdout + r.stderr + st)
+
+        def origin_hits(name: str) -> list:
+            return [i for i in sml.lint(repo)["findings"]["fields"] if name in json.dumps(i)]
+
+        check("the lint finds nothing in a new entry the tool wrote", not origin_hits(stamped.name),
+              json.dumps(origin_hits(stamped.name)))
+        for stem, date in (("note-hand-new", ORIGIN_SINCE), ("note-hand-old", STATE)):
+            (repo / "core" / f"{stem}.md").write_text(
+                f"---\nname: {stem}\ndescription: \"by hand\"\nmetadata:\n  type: project\n  von: alex-mac\n"
+                f"  audience: kim-pc\n  topic: core\n  date: {date}\n---\n\nx\n", encoding="utf-8")
+        new_hits = origin_hits("note-hand-new.md")
+        check("the lint names a new entry without core:",
+              any("core" in (i.get("fields") or []) for i in new_hits), json.dumps(new_hits))
+        check("NEGATIVE: an entry dated before the rule is not judged", not origin_hits("note-hand-old.md"),
+              json.dumps(origin_hits("note-hand-old.md")))
     print("shared-memory-post: all cases pass" if not fails else f"shared-memory-post: {fails} FAILURES")
     return 1 if fails else 0
 

@@ -7,6 +7,7 @@
 # sources are clean, parked items stay on one line, a lost counter says so.
 # Usage: bash scripts/test-open-items.sh (exit 0 = pass)
 set -u
+export OPEN_ITEMS_TODAY=2026-10-29  # a standing approval's review date is judged against this, not the calendar
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 SRC="$(cd "$(dirname "$0")" && pwd)/open-items.py"
@@ -56,7 +57,7 @@ tx() {
 has() { case "$2" in *"$1"*) return 0;; esac; return 1; }
 
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
+  '  - 2026-09-05 [widget-suite] peer-b: ANFRAGE an inst-a (widget-suite/anfrage-ui-2026-09-05.md)' \
   '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
 
 out=$(run a); tx a
@@ -163,6 +164,16 @@ osrun() { # $1 session, $2 key of the commenter
 }
 has "after the sibling instance's last commit" "$(line 'owned#13 ' "$(osrun o1 "$KMAC")")" && ok "same-OS sibling looked at the head = waiting" || bad "same-OS look: $(line 'owned#13 ' "$(osrun o1 "$KMAC")")"
 has "[PR|ai]" "$(line 'owned#13 ' "$(osrun o2 "$KWS")")" && ok "negative control: another OS's look leaves the move with us" || bad "other-OS look: $(line 'owned#13 ' "$(osrun o2 "$KWS")")"
+# The same for a PR of ANOTHER login that asked us for a review (Windows finding on #122:
+# pr-ball.py went quiet, open-items.py kept it as our move).
+peerrun() { # $1 session, $2 key of the commenter
+  local c='[{"author":{"login":"me"},"createdAt":"2026-10-07T10:00:00Z","body":"checked <!-- instance-key: KEY -->"}]'
+  printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+    "$(pr core 14 peer 2026-10-06 "fix" 2026-10-06T11:00:00Z '[]' '[{"requestedReviewer":{"login":"me"}}]' "${c/KEY/$2}")" > "$T/prs-peer.json"
+  OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-peer.json")" SHARED_MEMORY_SELF=mac2 OWNER=me run "$1"
+}
+has "we reviewed or commented after the last commit" "$(line 'core#14 ' "$(peerrun o3 "$KMAC")")" && ok "another login's PR: same-OS sibling looked at the head = waiting" || bad "peer same-OS look: $(line 'core#14 ' "$(peerrun o3 "$KMAC")")"
+has "[PR|ai]" "$(line 'core#14 ' "$(peerrun o4 "$KWS")")" && ok "negative control: another login's PR, another OS's look = our move" || bad "peer other-OS look: $(line 'core#14 ' "$(peerrun o4 "$KWS")")"
 rm -f "$T/repo/parties.json"
 # The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
 # sibling PRs checked at their heads stayed "our move"). Our text naming THIS head = waiting;
@@ -190,6 +201,19 @@ has "[parked] grandma-suite#7" "$out" && ok "parked PR on the parked line" || ba
 has "(+5 waiting on others or a date)" "$out" && ok "header counts the waits apart" || bad "wait header: $(head -1 <<<"$out")"
 outc=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=2 run p3)
 has "- [wait] 5 waiting on others or a date: " "$outc" && [ -z "$(line '|wait] ' "$outc")" ] && ok "many waits collapse into one line" || bad "collapse: $outc"
+# Standing PRs collapse the same way (measured 2026-10-28: 16 such lines, 4.2 of 20 KB of the
+# session start); a standing request keeps its line — the gate names it by its topic words.
+PS="$T/root-ps"; mkdir -p "$PS/.claude/rules"; cp "$T/root/.claude/rules/open-items.json" "$PS/.claude/rules/"
+printf '%s\n' '{"classes":[{"name":"our PRs","kind":"PR","granted":"\"handle them\" 2026-10-11"}]}' > "$PS/.claude/rules/open-items-standing.json"
+outs=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=2 run p4 "$PS")
+has "- [PR-standing] 3 PRs: suite-x#2, owned#4, owned#9 — first report" "$outs" \
+  && ok "many standing PRs collapse into one line" || bad "standing collapse: $outs"
+[ "$(line '[PR|standing]' "$outs" | grep -ac .)" = 1 ] && has "core#6 " "$(line '[PR|standing]' "$outs")" \
+  && ok "a standing PR past its date keeps its own line" || bad "dated standing: $outs"
+has "standing 4" "$(head -1 <<<"$outs")" && ok "header still counts each standing PR" || bad "standing header: $(head -1 <<<"$outs")"
+outs=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=5 run p5 "$PS")
+[ "$(grep -c -F '[PR|standing]' <<<"$outs")" = 4 ] && ! has "[PR-standing]" "$outs" \
+  && ok "negative control: few standing PRs keep their lines" || bad "below threshold: $outs"
 l1=$(line 'suite-x#1 ' "$out2")
 has "waiting on peer" "$l1" && ! has "reported in" "$l1" && ok "a wait does not count up" || bad "a wait was counted: $l1"
 has "!! reported in 2 sessions" "$(line 'core#6 ' "$out2")" && ok "past wait counts up" || bad "past wait count: $(line 'core#6 ' "$out2")"
@@ -347,6 +371,11 @@ gl=$(grep -n -F -- '- standing approval — handle these, then report what was d
 pl=$(grep -n -F -- 'request-person' <<<"$st" | cut -d: -f1)
 ml=$(grep -n -F -- 'request-mine' <<<"$st" | cut -d: -f1)
 [ -n "$gl" ] && [ "$gl" -gt "$pl" ] && [ "$ml" -gt "$gl" ] && ok "standing items form their own group after the others" || bad "standing group order: $st"
+! grep -q "due for review" <<<"$st" && ok "a standing approval granted 18 days ago is not due" || bad "fresh approval named due: $st"
+st_old=$(OPEN_ITEMS_TODAY=2027-02-01 run st1b "$SR")
+grep -q "standing approval 'requests to this machine' due for review (granted 2026-10-11, reviewed never)" <<<"$st_old" \
+  && has "[request|standing]" "$(line 'request-mine' "$st_old")" \
+  && ok "a standing approval older than 90 days is named due and still applies" || bad "due approval: $st_old"
 printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","audience":["inst-a"],"granted":"the operator said so 2026-10-11"}]}' \
   > "$SR/.claude/rules/open-items-standing.json"
 st=$(run st2 "$SR")
@@ -357,7 +386,7 @@ printf '%s\n' '{"classes":[{"name":"requests to this machine","kind":"request","
 st=$(run st3 "$SR")
 has "standing approval 'requests to this machine' refused" "$st" && ! has "[request|standing]" "$st" && ok "entry without a date is refused" || bad "undated grant accepted: $st"
 printf '%s\n' 'shared-memory open requests to this instance: 2' \
-  '  - 2026-09-05 [show-tools] peer-b: ANFRAGE an inst-a (show-tools/anfrage-td-2026-09-05.md)' \
+  '  - 2026-09-05 [widget-suite] peer-b: ANFRAGE an inst-a (widget-suite/anfrage-ui-2026-09-05.md)' \
   '  - 2026-10-05 [core] peer-b: AN inst-a: #196 Windows-Check OK (core/LOG@2026-10-05#1)' > "$T/inbox.txt"
 
 # Work ledgers (measured 2026-10-25: "open for us: 3" while ordered points sat in the brain's
@@ -394,6 +423,68 @@ cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" -
 out=$(run "" "$L")
 has "[ledger|ai]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"
 
+# 2026-10-28 (macOS instance, 95 ledger rows): the shown date was the first date anywhere in the
+# text, "nothing done yet" was printed unmeasured, a `class: decision` read as the operator's
+# although its exit said otherwise, and an entry without id: was keyed by its line number.
+G="$T/root-git"; mkdir -p "$G/.claude/rules" "$G/docs/x"
+printf '%s\n' '{"ledgers": ["docs/x/open.md"]}' > "$G/.claude/rules/ledgers.json"
+printf '%s\n' '# x' '' '- [ ] Harden the box (checklist 2026-01-01)' '  id: harden-box' '  class: todo' '' \
+  '- [ ] Pick a colour' '  id: pick-colour' '  class: decision' '  exit: ai-does-it 2026-10-20 — measurable' '' \
+  '- [ ] No id here' '  class: todo' > "$G/docs/x/open.md"
+git -C "$G" init -q
+git -C "$G" add -A
+GIT_AUTHOR_DATE="2026-09-21T12:00:00" GIT_COMMITTER_DATE="2026-09-21T12:00:00" git -C "$G" -c user.email=t@t -c user.name=t commit -qm init
+out=$(run "" "$G")
+has "[ledger|ai] 2026-09-21 harden-box" "$out" && ok "ledger date = the entry's first commit, not a date in its text" || bad "ledger date: $out"
+has "[ledger|ai] 2026-09-21 pick-colour" "$out" && ok "exit ai-does-it outranks class: decision" || bad "exit vs class: $out"
+has "docs/x/open.md#no-id-here" "$out" && ok "entry without id: keyed by its title" || bad "title key: $out"
+printf '%s\n' '' '- [ ] Late entry' '  id: late' '  exit: operator-decision 2026-10-28 — only the operator' >> "$G/docs/x/open.md"
+git -C "$G" add -A
+git -C "$G" -c user.email=t@t -c user.name=t commit -qm late
+out=$(run "" "$G")
+has "[ledger|human]" "$out" && has " late " "$out" && ok "exit operator-decision lists for the operator" || bad "operator-decision: $out"
+has "docs/x/open.md#no-id-here" "$out" && ok "title key survives a line inserted elsewhere" || bad "title key moved: $out"
+# A ledger key with '#' is no PR key: when the PR source is unread, a done ledger entry's counter
+# is dropped, not kept as if it were a PR (found 2026-10-28 by the parallel session reading #164).
+mkdir -p "$T/tx"; : > "$T/tx/sk1.jsonl"; : > "$T/tx/sk2.jsonl"
+run sk1 "$G" >/dev/null
+grep -q 'no-id-here' "$G/.claude-state/open-items-seen.json" && ok "ledger key written to the counter store" || bad "ledger key not stored"
+sed -i.bak 's/^- \[ \] No id here/- [x] No id here/' "$G/docs/x/open.md"
+OWNER="" run sk2 "$G" >/dev/null
+grep -q 'no-id-here' "$G/.claude-state/open-items-seen.json" && bad "done ledger entry kept as if a PR (PR source unread)" \
+  || ok "done ledger entry with '#' dropped although the PR source is unread"
+
+# 2026-10-28 (macOS instance): entries whose whole work was an open core PR printed as the agent's
+# open work next to that same PR. `exit: in-pr` + an open PR = waiting on it; a PR number in the
+# text alone, an ambiguous bare #N and a closed PR stay ours.
+printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2026-10-28 #31' '' \
+  '- [ ] Carried by repo ref' '  id: carried-ref' '  exit: in-pr 2026-10-28 core#32' '' \
+  '- [ ] Carried by owner ref' '  id: carried-own' '  exit: in-pr 2026-10-28 me/core#32 — full form' '' \
+  '- [ ] Ask at the stand' '  id: ask-topic' '  class: decision' '  ask-when: topic stand' '' \
+  '- [ ] Ask next year' '  id: ask-later' '  exit: ai-does-it 2026-10-28' '  ask-when: 2099-01-01' '' \
+  '- [ ] Ask since long' '  id: ask-due' '  class: decision' '  ask-when: 2026-01-01' '' \
+  '- [ ] Ambiguous number' '  id: ambiguous' '  exit: in-pr 2026-10-28 #33' '' \
+  '- [ ] Text mention only' '  id: issue-only' '  STAND: Kern-PR #31 offen, plus own work' '  exit: ai-does-it 2026-10-28' '' \
+  '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' '' \
+  '- [ ] Odd exit' '  id: odd-exit' '  exit: waits-on-others 2026-10-28' '' \
+  '- [ ] Done but open' '  id: done-open' '  exit: done-already 2026-10-28 — built' >> "$G/docs/x/open.md"
+git -C "$G" add -A
+git -C "$G" -c user.email=t@t -c user.name=t commit -qm carried
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":4,"nodes":[%s,%s,%s,%s]}}}\n' \
+  "$(pr core 31 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr core 32 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" \
+  "$(pr core 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr suite-x 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" > "$T/prs-carried.json"
+out=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-carried.json")" OPEN_ITEMS_WAIT_COLLAPSE=50 run "" "$G")
+has "waiting on the open PR core#31" "$(line ' carried ' "$out")" && ok "entry naming an open PR waits on it" || bad "carried: $(line ' carried ' "$out")"
+has "waiting on the open PR core#32" "$(line ' carried-ref ' "$out")" && ok "repo#N names the PR" || bad "carried-ref: $(line ' carried-ref ' "$out")"
+has "waiting on the open PR core#32" "$(line ' carried-own ' "$out")" && ok "owner/repo#N names the PR" || bad "carried-own: $(line ' carried-own ' "$out")"
+has "[ledger|wait]" "$(line ' ask-topic ' "$out")" && has "ask-when" "$(line ' ask-topic ' "$out")" && ok "ask-when topic waits for its trigger" || bad "ask-topic: $(line ' ask-topic ' "$out")"
+has "[ledger|wait]" "$(line ' ask-later ' "$out")" && ok "ask-when date ahead waits, even under ai-does-it" || bad "ask-later: $(line ' ask-later ' "$out")"
+has "[ledger|human]" "$(line ' ask-due ' "$out")" && ok "ask-when date reached is due" || bad "ask-due: $(line ' ask-due ' "$out")"
+has "[ledger|ai]" "$(line ' ambiguous ' "$out")" && ok "bare #N with two open PRs stays ours" || bad "ambiguous: $(line ' ambiguous ' "$out")"
+has "[ledger|ai]" "$(line ' issue-only ' "$out")" && ok "a PR named in the text alone does not carry the entry" || bad "text mention: $(line ' issue-only ' "$out")"
+has "names no open PR any more" "$(line ' closed-pr ' "$out")" && ok "a PR no longer open hands the entry back, saying so" || bad "closed: $(line ' closed-pr ' "$out")"
+has "unknown exit 'waits-on-others'" "$(line ' odd-exit ' "$out")" && ok "an exit outside the vocabulary is named" || bad "odd exit: $(line ' odd-exit ' "$out")"
+has "but the box is open" "$(line ' done-open ' "$out")" && ok "exit done-already on an open box asks for the tick" || bad "done-open: $(line ' done-open ' "$out")"
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")

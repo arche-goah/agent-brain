@@ -1,0 +1,10 @@
+{
+  "_comment": [
+    "Where this brain's MCP table lives, read by core/scripts/mcp-table-check.py at session start.",
+    "Copy to .claude/rules/mcp-table.json ONLY if the table is not in the core template's place",
+    "(.claude/rules/intelligence-instance.md, section '## MCP Servers'). table = repo-relative file,",
+    "heading = the heading line the table sits under (its start is enough). Keys starting with _ are ignored."
+  ],
+  "table": "docs/maintenance/mcp-server.md",
+  "heading": "## MCP Servers"
+}

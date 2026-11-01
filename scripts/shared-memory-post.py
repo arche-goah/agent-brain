@@ -19,6 +19,9 @@ words. The answerer KNOWS what it answers; this tool makes it write that down.
             and stays on yours until you answer or close it. Refused when someone else
             already claimed it.
 
+Every message carries `os:` and `core:` — the writing device's system and core version
+(`core: unknown` when no core checkout is found, never left out).
+
 Every message also gets one LOG line in the area (`## <date> · <von> — AN <to> (status: s):
 <title>` plus the file path), so the conversation stream stays readable; the file carries the
 state. Addressees are checked against parties.json, an `answers:` target against the repo;
@@ -47,8 +50,10 @@ from importlib import import_module  # noqa: E402
 
 _parties = import_module("shared-memory-parties")
 _lint = import_module("shared-memory-lint")
+_device = import_module("device-status")
 
 STATUS = {"request": "open", "reply": "answered", "note": "info", "claim": "info"}
+HANDOVER_AREAS = ("core", "ops")   # core and AI mechanics, what touches several brains
 
 
 def foreign_claims(repo: Path, target: str, me: set[str]) -> list[str]:
@@ -88,6 +93,42 @@ def resolve_next(to: list[str], parties: dict) -> list[str]:
     return out
 
 
+# A check request goes to every machine of that OS (`os:<os>`), never to one device, unless exactly
+# one machine can do it (README of the shared memory; docs/shared-memory-audience.md). Measured
+# 2026-10-28 on the macOS instance: Windows checks for six core PRs went to one Windows device as
+# part of replies; the other Windows instances never saw them and the PRs waited. Check words are
+# English here; an instance adds its language in .claude/rules/shared-memory-post.json
+# {"check_words": [regex, ...]}.
+OS_NAMES = {"windows": r"\bwindows\b|\bwin(?:10|11)?\b", "macos": r"\bmac\s?os\b", "linux": r"\blinux\b"}
+CHECK_WORDS = [r"\bcounter-?check", r"\bcheck(?:s|ed)? (?:it |them )?(?:on|at)\b", r"\bplease (?:run|check|verify|test)\b",
+               r"\bverify (?:on|at)\b"]
+
+
+def check_words():
+    words = list(CHECK_WORDS)
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    try:
+        import json
+        words += (json.loads((Path(root) / ".claude" / "rules" / "shared-memory-post.json").read_text(encoding="utf-8"))
+                  .get("check_words") or [])
+    except (OSError, ValueError):
+        pass
+    return [re.compile(w, re.I) for w in words]
+
+
+def os_check_misaddressed(text, to, one_machine):
+    """The refusal text when `text` asks for a check on an OS whose `os:` category is not addressed."""
+    if one_machine or not any(w.search(text) for w in check_words()):
+        return ""
+    wanted = [o for o, rx in OS_NAMES.items() if re.search(rx, text, re.I)]
+    missing = [o for o in wanted if f"os:{o}" not in to and not any(t.startswith("all") for t in to)]
+    if not missing:
+        return ""
+    return (f"this asks for a check on {', '.join(missing)} but is addressed to {', '.join(to)} - a check request "
+            f"goes to {', '.join('os:' + o for o in missing)} (whoever comes first takes it); a check only one "
+            "machine can do: --one-machine <reason>")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("kind", choices=sorted(STATUS))
@@ -100,6 +141,7 @@ def main() -> int:
     ap.add_argument("--status")
     ap.add_argument("--repo", type=Path, default=_lint.REPO_DEFAULT)
     ap.add_argument("--date", default=dt.date.today().isoformat())
+    ap.add_argument("--one-machine", default="", help="a check that needs exactly this machine: the reason")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 
@@ -134,19 +176,39 @@ def main() -> int:
     if status not in _lint.VALID_STATUS:
         return refuse(f"status '{status}' is not in {sorted(_lint.VALID_STATUS)}")
     body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else a.body
+    miss = os_check_misaddressed(a.title + "\n" + body, to, a.one_machine)
+    if miss:
+        return refuse(miss)
+    # A request about core or AI mechanics never goes to a party that handed those questions to the
+    # sender's AIs (parties.json `ai_handover`; Working Across Parties #6 (c)). Measured 2026-10-29 on
+    # the macOS instance: a Windows check of a core CI change went by name to such a device; nothing
+    # here read the handover. `handover-keeps: <why>` in the text marks what the handover keeps.
+    handed = _parties.handed_to_me(von, parties) if parties and a.kind == "request" and a.area in HANDOVER_AREAS else set()
+    if handed and not _parties.HANDOVER_KEEPS.search(a.title + "\n" + body):
+        named = [t for t in to if t in handed or (t.startswith("person:") and
+                 any(_parties.devices(parties)[d][0] == t[7:] for d in handed))]
+        if named:
+            return refuse(f"{', '.join(named)} handed core and AI mechanics to your side (ai_handover) - "
+                          f"decide it yourselves, or mark what the handover keeps: handover-keeps: <why>")
     stem = f"{a.kind}-{slug(a.title)}-{a.date}"
     path = area_dir / f"{stem}.md"
     if path.exists():
         return refuse(f"{path.relative_to(a.repo).as_posix()} exists - change the title")
 
     q = '"' + a.title.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    # The writer's system and core version, written by the producer at write time (operator order
+    # 2026-10-28; first asked 2026-10-18 and built then only as a commit trailer): activity per core
+    # version is read from the entries (`device-status.py entries`). Same source as that trailer.
+    os_name, core = _device.entry_origin()
     meta = ["  type: project", f"  von: {von}", f"  audience: {', '.join(to)}", f"  topic: {a.area}",
-            f"  date: {a.date}", f"  status: {status}"]
+            f"  date: {a.date}", f"  os: {os_name}", f"  core: {core}", f"  status: {status}"]
     if status == "open":
-        nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower()]
+        nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower() and d not in handed]
         meta.append(f"  next: {', '.join(nxt)}")
     if answers:
         meta.append(f"  {'claims' if a.kind == 'claim' else 'answers'}: {', '.join(answers)}")
+    if a.one_machine:
+        meta.append(f"  one-machine: {a.one_machine}")
     text = "---\n" + f"name: {stem}\ndescription: {q}\nmetadata:\n" + "\n".join(meta) + "\n---\n\n" + body.strip() + "\n"
     rel = path.relative_to(a.repo).as_posix()
     log = area_dir / "LOG.md"

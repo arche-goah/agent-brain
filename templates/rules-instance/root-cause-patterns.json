@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Instance data for core/helpers/root-cause-gate.cjs: regex strings in the operator's own language.",
+    "correction_patterns = the operator's message reads as a correction or a mishap; cause_patterns = a reply",
+    "line names a cause. The built-ins are English ('something went wrong', 'why did you', 'it was already",
+    "active', 'failure class' / 'Cause:', 'the cause was', 'cause unknown'). A brain whose operator writes in",
+    "another language and leaves these lists empty has a SILENT gate: no correction is ever recognised",
+    "(measured 2026-10-26 on a Windows instance: 0 corrections in 183 operator turns, two of them corrections).",
+    "Match the FORM, not the bare word: a narrated 'again' or 'wrong' is no correction; the subject is the agent",
+    "or its result. Example for a German operator: correction \"\\\\bschief ?gelaufen\\\\b\", \"\\\\bwarum hast du\\\\b\",",
+    "\"\\\\bist doch schon\\\\b\", \"\\\\bfehlerklasse\\\\b\"; cause \"^[ \\\\t>*_-]*ursache\\\\b[^\\\\n]{0,24}:\".",
+    "Measure before relying on it: node core/helpers/root-cause-gate.cjs --review 40 counts corrections over",
+    "this project's transcripts — zero over a working month means the patterns miss the operator's wording.",
+    "_cases: the operator's real wording with the verdict the gate must reach (text = the message that opens the",
+    "turn, reply = the answer, default 'Done.'); run by core/scripts/pattern-cases.py at every self-test."
+  ],
+  "correction_patterns": [],
+  "cause_patterns": [],
+  "_cases": [
+    {"text": "why did you ask that again?", "expect": "block"},
+    {"text": "why did you ask that again?", "reply": "Cause: the record was a stale snapshot.", "expect": "block"},
+    {"text": "how is the show going?", "expect": "allow"}
+  ]
+}

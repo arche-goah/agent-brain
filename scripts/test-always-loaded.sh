@@ -23,6 +23,15 @@ grow "$T/MEMORY.md" 10
 out=$(run); grep -q '+2510' <<< "$out" && ok "memory-index-counted" || bad "memory-index-counted: $out"
 out=$(run --accept); grep -q 'baseline set: 4810' <<< "$out" && ok "accept-sets-baseline" || bad "accept-sets-baseline: $out"
 out=$(run); [[ -z "$out" ]] && ok "after-accept-silent" || bad "after-accept-silent: $out"
+# a baseline over another file set is named, never read as growth (the incident: --accept by
+# hand without --memory, the session start measuring with it reported the index as +22 KB)
+nomem() { "$PY" "$HERE/always-loaded.py" --repo "$T/b" "$@"; }
+out=$(nomem); grep -q 'accepted with the memory index and this run measures without it' <<< "$out" && ok "file-set-mismatch-named-not-growth" || bad "file-set-mismatch-named-not-growth: $out"
+out=$(nomem --accept); grep -q 'baseline set: 4500' <<< "$out" && ok "accept-without-memory" || bad "accept-without-memory: $out"
+out=$(run); grep -q 'accepted without the memory index and this run measures with it' <<< "$out" && ok "mismatch-other-way-named" || bad "mismatch-other-way-named: $out"
+grep -q 'grew from' <<< "$out" && bad "mismatch-reported-as-growth" || ok "mismatch-not-growth"
+out=$(run --accept); grep -q 'baseline set: 4810' <<< "$out" && ok "re-accept-with-memory" || bad "re-accept-with-memory: $out"
+out=$(run); [[ -z "$out" ]] && ok "after-re-accept-silent" || bad "after-re-accept-silent: $out"
 # the hard limit: silent below 90 %, named from 90 %, OVER above — independent of the baseline
 out=$(run --limit 6000); [[ -z "$out" ]] && ok "below-90pct-of-limit-silent" || bad "below-90pct-of-limit-silent: $out"
 out=$(run --limit 5300); grep -q 'at 4810 of 5300 bytes (90 % of the harness limit)' <<< "$out" && ok "at-90pct-of-limit-named" || bad "at-90pct-of-limit-named: $out"

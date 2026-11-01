@@ -21,8 +21,9 @@
  * list of things that needed his word and he answered "ask me a clean question, I do not
  * know what to tell you"; once the same session put three decisions to him through
  * AskUserQuestion he ordered it for every operator decision, anchored mechanically).
- * So: a turn that called AskUserQuestion passes this check whatever its closing prose
- * says, and so does a reply carrying a line that starts `⚙ no question tool:` (the harness
+ * So: a turn whose LAST step is an AskUserQuestion call (no text after it) passes this check
+ * (operator order 2026-10-29: before, a question asked early in the turn excused any closing
+ * prose that followed), and so does a reply carrying a line that starts `⚙ no question tool:` (the harness
  * has no such tool — headless, a scheduled run). Without either, the re-issue of a closing
  * decision question NO LONGER passes by repetition: the second pass in the same turn blocks
  * again and names the tool. After two blocks in one turn the third pass is let through with
@@ -52,7 +53,7 @@ const fs = require('fs');
 const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
-const { isNotification, isPeerMessage, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -115,6 +116,8 @@ const BUILTIN_PATTERNS = [
 const BUILTIN_ANNOUNCE = [
   "\\b(now|next),? i(?:'ll| will)\\b",
   "\\bi(?:'ll| will) (now|next)\\b",
+  // "I will build it next" — the verb before "next" (measured 2026-10-26, the class above missed it)
+  "\\bi(?:'ll| will) [a-z]+(?: (?:it|this|that|them|the [a-z-]+))? (?:next|right away)\\b",
   "\\bi(?:'ll| will) (continue|keep going|move on)\\b",
   '\\b(continuing|moving on) (with|to)\\b',
   '\\b(doing|on) (it|that|this) now\\b',
@@ -126,6 +129,12 @@ const BUILTIN_ANNOUNCE = [
 // stop — just do it. failure class!!" Any running waiter excused any announcement. Now the
 // sentence that carries the announcement must name its condition. Data key:
 // `announce_condition_patterns` (an instance adds its language).
+// A named hand step for the operator (English built-ins; other languages are data `hand_step_patterns`).
+const BUILTIN_HAND_STEP = [
+  "\\b(your|operator'?s) hand\\b",
+  '\\bhand step\\b',
+  '\\bon your side:',
+];
 const BUILTIN_CONDITION = [
   '\\b(once|when|after|as soon as|until|if)\\b',
 ];
@@ -229,6 +238,7 @@ function analyze(transcriptPath) {
         // A wakeup never reports an end; it counts only inside the turn that set it.
         if (b.type === 'tool_use' && b.name === 'ScheduleWakeup') events.push({ wake: true });
         if (b.type === 'tool_use' && b.name === QUESTION_TOOL) events.push({ ask: true });
+        if (b.type === 'text' && b.text) events.push({ said: true });
       }
     }
     if (msg.role === 'user' && typeof msg.content === 'string') {
@@ -236,7 +246,7 @@ function analyze(transcriptPath) {
         if (OWN_ECHO.test(msg.content)) events.push({ gate: true });
         continue;
       }
-      if (!isNotification(msg.content) && !isPeerMessage(d)) events.push({ boundary: true });
+      if (!isNotification(msg.content) && !isAgentOrigin(d)) events.push({ boundary: true });
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -267,7 +277,9 @@ function analyze(transcriptPath) {
   // The running turn only: did it call the question tool, and how often did THIS gate block
   // in it (the same echo count the cooldown reads, cut at the turn's start).
   const turn = events.slice(last);
-  const asked = turn.some((e) => e.ask);
+  // The question counts only as the turn's END: no text after it (operator order 2026-10-29). Replayed
+  // over one brain's transcripts: 232 turns asked early and closed in prose, 14 verdicts change.
+  const asked = turn.findLastIndex((e) => e.ask) > turn.findLastIndex((e) => e.said);
   const gatesThisTurn = turn.filter((e) => e.gate).length;
   return { finalText, quiet: turnsSinceGate < COOLDOWN_TURNS, waiting, asked, gatesThisTurn };
 }
@@ -291,9 +303,14 @@ process.stdin.on('end', () => {
   };
   try {
     seen = analyze(input.transcriptPath || input.transcript_path);
-    // A re-issue after ANOTHER gate's block passes as it always did; only a re-issue after
-    // this gate's own block is judged again (and the cooldown it set itself does not count).
-    if (reissue ? seen.gatesThisTurn === 0 : seen.quiet) return allow();
+    // A re-issue after ANOTHER gate's block: its closing QUESTION passes as it always did (this gate
+    // saw that question at the first stop), but its ANNOUNCEMENTS are judged — the answer to another
+    // gate is new text (measured 2026-10-26: the answer to a verification/watcher block carried a new
+    // "… I build it next" and passed unseen; the autonomous run stood still for 90 minutes).
+    // A re-issue after this gate's OWN block keeps its re-issue rules below; its cooldown does not count.
+    const ownBlocked = reissue && seen.gatesThisTurn > 0;
+    const afterOther = reissue && !ownBlocked;
+    if (!ownBlocked && seen.quiet) return allow();
     if (!seen.finalText) return allow();
     const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     const tail = stripQuoted(seen.finalText).slice(-TAIL_CHARS);
@@ -301,16 +318,34 @@ process.stdin.on('end', () => {
     // question is not judged. (An announcement still is — asking is not doing the work.)
     // The autonomous line counts only while the mode really holds — outside it, it is no way out.
     const filed = AUTONOMOUS_LINE.test(seen.finalText) && autonomousMode(input.transcript_path, cwd);
-    if (!seen.asked && !NO_TOOL_LINE.test(seen.finalText) && !filed) {
+    if (!afterOther && !seen.asked && !NO_TOOL_LINE.test(seen.finalText) && !filed) {
       uniq(tail.match(loadPatterns(cwd)), hits);
+      // A named hand step is a named turn end (core ASK OR ACT: "a hand step for the operator — end with
+      // the command block"): a reply that carries one (a hand-step line or a command block) may hand
+      // over ("let me know when it is plugged in"). A closing QUESTION still blocks — only hits without
+      // a '?' (the handoff shape) fall away. Replayed 2026-10-29: ~7 of 14 changed verdicts were such
+      // hand-step closings. Data key `hand_step_patterns` (the same one own-open-gate reads).
+      const handStep = loadPatterns(cwd, 'hand_step_patterns', BUILTIN_HAND_STEP);
+      if (handStep.test(stripQuoted(seen.finalText)) || /```/.test(seen.finalText)) {
+        const kept = hits.filter((h) => h.includes('?'));
+        hits.length = 0;
+        hits.push(...kept);
+      }
     }
-    if (!hits.length && !reissue) {
+    if (!hits.length && !ownBlocked) {
       const rx = loadPatterns(cwd, 'announce_patterns', BUILTIN_ANNOUNCE);
       const cond = loadPatterns(cwd, 'announce_condition_patterns', BUILTIN_CONDITION);
-      for (const m of tail.matchAll(rx)) {
+      // The WHOLE final text, not its tail: an announcement in item 1 of a four-item status list
+      // ends the turn just the same (measured 2026-10-26, macOS: "… I build it next." stood ~1000
+      // characters before the end, the 400-character tail missed it, the session stood still for
+      // 90 minutes in an autonomous run — the operator: "a fatal failure class for autonomous work").
+      // The closing QUESTION stays a tail check: a question mid-reply that the reply then answers is
+      // no turn end.
+      const body = stripQuoted(seen.finalText);
+      for (const m of body.matchAll(rx)) {
         // A running waiter excuses only the announcement whose sentence names what it waits for.
         cond.lastIndex = 0;
-        if (seen.waiting && cond.test(sentenceAt(tail, m.index))) continue;
+        if (seen.waiting && cond.test(sentenceAt(body, m.index))) continue;
         uniq([m[0]], announced);
       }
     }

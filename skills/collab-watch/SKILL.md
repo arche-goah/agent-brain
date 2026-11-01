@@ -102,10 +102,15 @@ opt-out and holds for that session only.
    over this step). A live-behaviour row without its measurement state (date · machine ·
    method, `rules/thinking-protocol.md` evidence chain) gets the question for that state
    as the FIRST review comment — no merge on plausibility; where the suite opted in,
-   `scripts/live-doc-lint.py --changed <base>` names such rows. A counter-check "OK on this OS" of a core PR runs
-   `bash scripts/ci-lint-local.sh` at the PR head (the CI's own steps, read from the
-   workflow) and names its result line — the fixtures of the touched parts alone missed a
-   CI lint step twice on 2026-10-21.
+   `scripts/live-doc-lint.py --changed <base>` names such rows. A counter-check "OK on this OS" of a core PR has two
+   halves (operator decision 2026-10-26): CI runs every fixture suite on ubuntu, macOS and
+   Windows (job `portability`), and the check waits for it green (`ci-watch.sh`, exit 0) —
+   that half replaced the full local run, which took 12-22 min per PR and machine and repeated
+   what CI does; the other half runs on the real machine what CI cannot see: the suites of the
+   touched parts and, where the PR claims behaviour on a live system, that system. Name both
+   result lines. `bash scripts/ci-lint-local.sh` stays the tool for a push without a CI round
+   trip, not part of the check (it was, after the touched fixtures alone missed a CI lint step
+   twice on 2026-10-21 — the CI watch catches that now).
 2. **Findings go on the PR** (`gh pr comment`): values with date, sources with URL. The
    thread is the shared memory of the collaborating brains.
 3. **Measure CI, do not read it off:** `Monitor` on
@@ -116,8 +121,9 @@ opt-out and holds for that session only.
    off, workflow filter), or — most often — a merge CONFLICT, for which GitHub builds no
    merge ref and starts no run. Separate them with one look:
    `gh pr view <nr> --json mergeable` (`CONFLICTING` = rebase, not "CI broken"); an empty
-   `gh run list --branch <branch>` plus an empty check rollup = CI is not firing, a report
-   event for the operator. A second branch as a control comes BEFORE any outage diagnosis.
+   `gh run list --workflow <ci workflow> --branch <branch>` plus an empty check rollup = CI
+   is not firing, a report event for the operator (without `--workflow` a run of any other
+   workflow makes CI look alive — the guard refuses that form). A second branch as a control comes BEFORE any outage diagnosis.
 4. **Merge when both sides said yes — whoever comes first** (operator decision 2026-10-11:
    a ready PR that waits for one particular person "hangs for nothing"). Shared work is
    merged by whichever party gets to it first, once ALL of these hold: the author reported
@@ -172,13 +178,16 @@ test, `rules/intelligence.md`) gets decided, and only what MUST be the operator'
 is parked and listed later. No duration is needed — the watch runs until the operator
 stops it. Allowed
 actions must go through; a prompt on one is a finding about the allow list, not a reason to
-stop the watch. This holds ONLY while the watch is armed (and in `autonomous-run`); outside
-these modes the operator gets the interactive question with clear options as always.
-**Two halves, two triggers** (operator decision 2026-10-19): parking ACTIONS that may raise a
-permission prompt holds whenever the watch is armed — a prompt blinds every channel. Parking
-the operator's DECISIONS holds only in autonomous mode, which the operator orders in words
-(`autonomous-run`, hard gate 7); a standing watch alone is not that mode, so with the
-operator at hand a real decision is asked through the question tool.
+stop the watch. This holds ONLY in autonomous mode (next paragraph); outside it the operator
+gets the interactive question with clear options as always.
+**One trigger for both halves** (operator decision 2026-10-27, replaces the split of
+2026-10-19): parking ACTIONS that may raise a permission prompt, and parking the operator's
+DECISIONS, both hold only in autonomous mode, which the operator orders in words
+(`autonomous-run`, hard gate 7, `helpers/autonomous-mode.cjs`). A standing watch alone is not
+that mode: it is armed from the first reply in every session (watch-gate case g), so parking
+actions whenever it is armed parked every prompting step of every interactive session too —
+the operator at hand then never saw the prompt they were there to answer. With the operator
+at hand, a prompting action is issued and a real decision is asked through the question tool.
 
 ## Local cross-session hand-off
 

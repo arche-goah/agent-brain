@@ -2,8 +2,8 @@
 """Repo setup check — does a repo carry the setup contract of its kind? (CONVENTIONS §14)
 
 WHY: a repo set up by hand gets whatever its first session remembered. Measured
-2026-10-10 on one account: of 18 private repos, 7 had no workflow at all, and branch
-protection was unavailable on every one of them (free plan, HTTP 403) — the "PR only"
+2026-10-10: of 18 private repos, 7 had no workflow at all, and branch protection was
+unavailable on every one of them (HTTP 403, a plan without it) — the "PR only"
 rule of two project repos lived in a local hook nobody could see from outside. This
 script names, per kind, what is there and what is missing.
 

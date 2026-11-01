@@ -85,6 +85,11 @@ expect "named commit AUTHOR in a public clone blocks"       block "$T/namedclone
 expect "named author via git -C, no message flag, blocks"   block "$T" "git -C $NT/namedclone commit --amend --no-edit"
 expect "named author in a private clone passes"             allow "$T/namedpriv" 'git commit -m "clean message"'
 expect "neutral author in a public clone passes"            allow "$T/pubclone" 'git commit -m "clean message"'
+# A write word INSIDE quotes is data (measured 2026-10-29 on the macOS instance: a grep pattern "a|git tag|b" in a
+# clone with a named author was refused as a tag); a quoted command that a shell RUNS stays a write.
+expect "write word inside a quoted grep pattern passes"     allow "$T/namedclone" 'git grep -n -E "heredoc|git tag|gh pr merge" -- x'
+expect "a commit run through bash -c still blocks"          block "$T/namedclone" 'bash -c "git commit -m x"'
+expect "named author via a quoted git -C path blocks"       block "$T" "git -C \"$NT/namedclone\" commit --amend --no-edit"
 # home paths built at run time: a literal one would trip the core's own leak-scan. The file under
 # the named home EXISTS here (2026-10-25: an unreadable file blocks on its own, see below), so
 # what this case proves is that the name in the PATH is not scanned.
