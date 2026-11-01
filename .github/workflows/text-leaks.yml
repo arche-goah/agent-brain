@@ -29,6 +29,12 @@ permissions:
 
 jobs:
   text:
+    # Only posts by the repo's own people are scanned (2026-10-31). The watch list protects what
+    # THEY must not post; a stranger's post leaks nothing of ours. Scanning a stranger's post made
+    # the job an oracle for the secret list: anyone can comment guessed names, one per line, and
+    # read from the hidden comment and the notice's line number which names the list holds. It
+    # also turned every fork PR red, since a fork run gets no secrets (exit 2).
+    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.review.author_association || github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     env:
       LEAK_NAMES_JSON: ${{ secrets.LEAK_NAMES_JSON }}

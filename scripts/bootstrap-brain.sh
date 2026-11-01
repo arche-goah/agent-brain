@@ -22,6 +22,9 @@
 # warned since 2026-08-04 when it's missing), and a bootstrap that ships the
 # helper but never wires it up produces exactly that warning.
 # Disable with BOOTSTRAP_STATUSLINE=0.
+# The core's git hooks go into the new brain's own git config. BOOTSTRAP_GIT_HOOKS=global
+# sets them for every repo of the user instead (a setup whose suites and shared memory should
+# run them too) — opt-in, because it overrides other tools' hooks in every repo.
 set -euo pipefail
 
 # Resolve the Python interpreter: the python.org installer on Windows ships ONLY
@@ -121,6 +124,8 @@ cp "$CORE_SRC/templates/rules-instance/absence-sources.json" .claude/rules/
 cp "$CORE_SRC/templates/rules-instance/condition-patterns.json" .claude/rules/
 # Language data of autonomous-mode.cjs (built-ins English; the operator's words go here).
 cp "$CORE_SRC/templates/rules-instance/autonomous-patterns.json" .claude/rules/
+# Language data of class-gate.cjs (level words of the gear line; built-ins English).
+cp "$CORE_SRC/templates/rules-instance/class-gate.json" .claude/rules/
 # Language data of decision-review.py (built-ins English; the operator's words go here).
 cp "$CORE_SRC/templates/rules-instance/decision-review.json" .claude/rules/
 # The standing watch's data (skill collab-watch). Copied with its placeholders: watch-readiness.py
@@ -215,8 +220,8 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   esac
 fi
 
-# The core's git hooks (pre-commit checks, shared-memory state trailer) — one path for every brain.
-# Installed once the submodule exists (below); see the call after `git submodule add`.
+# The core's git hooks (pre-commit checks, shared-memory state trailer) — in this brain's own git
+# config unless BOOTSTRAP_GIT_HOOKS=global (header). Installed once the submodule exists (below).
 
 _sub_err="$(git submodule add "$CORE_URL" core 2>&1 >/dev/null)" || {
   case "$_sub_err" in
@@ -234,7 +239,10 @@ _sub_err="$(git submodule add "$CORE_URL" core 2>&1 >/dev/null)" || {
 }
 
 if [ -f core/scripts/install-git-hooks.sh ]; then
-  bash core/scripts/install-git-hooks.sh || echo "bootstrap-brain: git hooks not installed — run 'bash core/scripts/install-git-hooks.sh'."
+  _hooks_scope=""
+  [ "${BOOTSTRAP_GIT_HOOKS:-local}" = "global" ] && _hooks_scope="--global"
+  bash core/scripts/install-git-hooks.sh $_hooks_scope \
+    || echo "bootstrap-brain: git hooks not installed — run 'bash core/scripts/install-git-hooks.sh $_hooks_scope'."
 fi
 
 # 5. Usage statusline (user scope, idempotent, can be disabled)

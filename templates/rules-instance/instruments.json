@@ -1,0 +1,4 @@
+{
+  "_comment": "Instance data for core/scripts/instrument-watch.py (session start). An instrument for an unexplained failure stays owed while its cause is open in a registered ledger (`- [ ]` with `id: <cause>`); the start names one whose process is not running, with the command that re-arms it detached. Remove the entry once the cause is ticked, or let it go quiet on its own.",
+  "instruments": []
+}

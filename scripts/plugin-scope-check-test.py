@@ -45,7 +45,7 @@ def entry(pid, scope, enabled=True):
 
 # 1. The shape `claude plugin list --json` prints (measured 2.1.x): a bare list.
 single = json.dumps([entry("brain-core@arche-goah", "user"),
-                     entry("brain-internal@arche-goah", "user")])
+                     entry("widget-suite@arche-goah", "user")])
 rc, note = run(single)
 ok("single scope is green", rc == 0 and note == "brain-core@arche-goah:user", f"rc={rc} {note!r}")
 

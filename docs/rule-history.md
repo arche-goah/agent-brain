@@ -1099,6 +1099,17 @@ while the array was cut)
 
 Moved verbatim to `docs/multi-agent-relay.md` (rule now: `rules/intelligence.md` § Model Routing).
 
+#### A refused file is returned as text (2026-10-26)
+
+Measured 2026-10-18 on the Windows workstation instance: the harness refused subagents (Agent tool,
+not workflow stages) their report files, and two agents whose brief named a file target worked around
+the refusal (a Python write, a rename). The instance carried "subagents return results as text, no
+file as target" as its own rule; offered to the core, the macOS instance answered (shared memory, core,
+2026-10-26) that in this form it contradicts "only the producer writes", and proposed the harmonised
+sentence now in § Model Routing: the producer writes where the harness lets it, a refused file comes
+back as text with the refusal named, and the refusal is never worked around (Working Rules, "A
+refusal is a decision").
+
 ### Repeat Runs (CANONICAL place — skills point here)
 
 (measured 2026-08-04: a register reported
