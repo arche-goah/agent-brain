@@ -91,7 +91,7 @@ def pushes(items: list, repo: str, self_login: str, only_set: set) -> None:
             print(f"{it.get('headRefName', '')}\tREADY {repo} #{it.get('number')}: {it.get('title', '')} "
                   f"(draft marked ready for review; PR by {who})")
     try:
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
             json.dump(heads, f, indent=0, sort_keys=True)
     except OSError:
         print(f"WATCH-ERROR: cannot write the PR heads to {path} - new commits on open PRs are NOT reported")
