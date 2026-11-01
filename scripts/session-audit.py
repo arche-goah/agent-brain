@@ -22,7 +22,11 @@ session:
   * the session START: `hook_cancelled` on the bootup hook (timeout) or a `hook_success`
     whose output lacks the bootup's closing marker = FAILED START, reported on its own.
 A transcript touched in the last LIVE_MIN minutes may be a parallel session still running:
-it is left for a later start (said in the summary, never reported as unclosed).
+it is left for a later start (said in the summary, never reported as unclosed). So is a
+session the harness still lists as running: `~/.claude/sessions/<pid>.json` names its
+`sessionId`, and a live pid means the session runs, however long it has been idle (measured
+2026-10-31 on the macOS instance: a helper session idle for 70 minutes was reported "ended
+without session-close" while it answered messages). SESSION_AUDIT_REGISTRY points elsewhere.
 
 LOUD UNTIL ACKNOWLEDGED. Findings are handed to `scripts/open-items.py` as items of kind
 `session` with class `ai` — the cause is in the transcript, so the AI reads it and says
@@ -179,12 +183,43 @@ def local(ts):
         return ts[:16].replace("T", " ")
 
 
+def pid_alive(pid):
+    if os.name == "nt":
+        # os.kill(pid, 0) TERMINATES the process on Windows; ask for a handle instead.
+        import ctypes
+        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        ctypes.windll.kernel32.CloseHandle(h)
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True  # exists, owned by someone else
+    return True
+
+
+def running_sessions():
+    """Session ids the harness registry lists with a live pid. Unreadable = none."""
+    reg = Path(os.environ.get("SESSION_AUDIT_REGISTRY") or Path.home() / ".claude" / "sessions")
+    ids = set()
+    for f in reg.glob("*.json") if reg.is_dir() else []:
+        d = load_json(f, {})
+        pid, sid = d.get("pid"), d.get("sessionId")
+        if isinstance(pid, int) and pid > 0 and isinstance(sid, str) and sid and pid_alive(pid):
+            ids.add(sid)
+    return ids
+
+
 def scan(tdir, state, current, window_start, use_cache=True, now=None):
     now = now or datetime.datetime.now().timestamp()
     cache = state.setdefault("cache", {}) if use_cache else {}
     out, live = [], 0
     if not tdir.is_dir():
         return None, 0
+    running = running_sessions()
     for p in sorted(tdir.glob("*.jsonl")):
         sid = p.stem
         if sid == current:
@@ -195,7 +230,7 @@ def scan(tdir, state, current, window_start, use_cache=True, now=None):
             continue
         if window_start is not None and st.st_mtime < window_start:
             continue
-        if now - st.st_mtime < LIVE_MIN * 60:
+        if sid in running or now - st.st_mtime < LIVE_MIN * 60:
             live += 1
             continue
         key = f"{st.st_size}:{int(st.st_mtime)}"

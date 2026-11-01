@@ -301,7 +301,53 @@ function staleRecords(state, sessionId) {
   });
 }
 
+/**
+ * The question sets of the OTHER question-tool calls in the assistant message that carries
+ * `toolUseId`. The harness writes each tool_use of one message as its own record with the same
+ * message id (measured 2026-10-31: two records 2 s apart, one id). Reads the transcript tail only;
+ * fails open (no siblings) without a transcript or when this call is not written yet.
+ */
+function siblingQuestionSets(tp, toolUseId) {
+  if (!tp || !toolUseId) return [];
+  let lines;
+  try { lines = fs.readFileSync(tp, 'utf8').split('\n').slice(-400); } catch (e) { return []; }
+  const calls = [];
+  let msgId = null;
+  for (const l of lines) {
+    let d;
+    try { d = JSON.parse(l); } catch (e) { continue; }
+    const m = d && d.type === 'assistant' && d.message;
+    if (!m || !Array.isArray(m.content)) continue;
+    for (const c of m.content) {
+      if (!c || c.type !== 'tool_use' || c.name !== 'AskUserQuestion') continue;
+      calls.push({ id: c.id, msg: m.id, qs: ((c.input || {}).questions || []) });
+      if (c.id === toolUseId) msgId = m.id;
+    }
+  }
+  if (!msgId) return [];
+  return calls.filter((c) => c.msg === msgId && c.id !== toolUseId && Array.isArray(c.qs) && c.qs.length).map((c) => c.qs);
+}
+
 /** PreToolUse on the question tool: an aged question is measured before it is asked again. */
+/** Ledger ids named in the questions whose `check:` passes now (core/scripts/ledger-reconcile.py --ids).
+ *  Candidates are slugs of three or more parts; the script answers only for ids its registered ledgers carry.
+ *  Fails open: no interpreter, a timeout or an unreadable answer = no hit. */
+function doneLedgerIds(input, qs) {
+  const text = qs.map((q) => [q.question, q.header, ...((q.options || []).map((o) => `${o.label || ''} ${o.description || ''}`))].join(' ')).join(' ');
+  const ids = [...new Set(text.match(/\b[a-z0-9]+(?:-[a-z0-9]+){2,}\b/g) || [])];
+  if (!ids.length) return [];
+  const r = root(input.cwd);
+  const script = path.join(__dirname, '..', 'scripts', 'ledger-reconcile.py');
+  const { spawnSync } = require('child_process');
+  // python3 first; on Windows it can be the Store stub (OS-17), so an answer that is not JSON tries `python`.
+  for (const py of ['python3', 'python']) {
+    const p = spawnSync(py, [script, '--root', r, '--ids', ids.join(',')], { encoding: 'utf8', timeout: 8000, windowsHide: true });
+    let res; try { res = JSON.parse(String(p.stdout || '').trim().split('\n').pop()); } catch (e) { continue; }
+    return Object.entries(res || {}).filter(([, v]) => v === 'pass').map(([k]) => k);
+  }
+  return [];
+}
+
 function preTool(input) {
   if (String(input.tool_name || '') !== 'AskUserQuestion') return;
   const qs = ((input.tool_input || {}).questions || []);
@@ -311,21 +357,39 @@ function preTool(input) {
   // file" and "continue autonomously" in ONE call; the edit ran afterwards, its permission dialog
   // came up in the run that was already autonomous again (operator: "you gave me an interactive
   // request in the autonomous part again"). The mode words are the run's on-words (autonomous-mode.cjs).
-  if (qs.length > 1) {
+  // The same holds across calls (2026-10-31, macOS instance): two question-tool calls in ONE message
+  // run side by side - a decision and the mode question - and the answers come back together; the
+  // edit the decision needed was then held by the autonomous gate (operator: "you switched to
+  // autonomous before you sent me the dialog"). Siblings are read from the transcript by the
+  // message id of this call.
+  const siblings = siblingQuestionSets(input.transcript_path, input.tool_use_id);
+  if (qs.length > 1 || siblings.length) {
     let on = null;
-    try { on = require('./autonomous-mode.cjs').words(root(input.cwd)).on; } catch (e) { on = null; }
-    // Only the LAST question counts: that is where the mode question stands by rule, and a question
-    // ABOUT autonomy earlier in the call ("how autonomous should the loop be?") is a decision, not the
-    // mode question (replayed over the history 2026-10-26: matching any question hit two such).
-    const lastQ = qs[qs.length - 1] || {};
-    const mode = on && on.test(`${lastQ.question || ''} ${lastQ.header || ''}`) ? lastQ : null;
+    let asksMode = null;
+    try {
+      const am = require('./autonomous-mode.cjs');
+      on = am.words(root(input.cwd)).on;
+      asksMode = am.asksMode;
+    } catch (e) { on = null; }
+    // Only the LAST question of a call counts: that is where the mode question stands by rule, and a
+    // question ABOUT autonomy earlier in the call ("how autonomous should the loop be?") is a decision,
+    // not the mode question (replayed over the history 2026-10-26: matching any question hit two such).
+    // And within it only the question sentence (2026-10-31, the same reader as autonomous-mode.cjs): a
+    // decision that merely mentions "the autonomous gate" in its context is no mode question.
+    const isMode = (set) => {
+      const lastQ = set[set.length - 1] || {};
+      return on && asksMode && asksMode(on, String(lastQ.question || '')) ? lastQ : null;
+    };
+    const others = qs.length - 1 + siblings.reduce((n, s) => n + s.length, 0);
+    const mode = isMode(qs) || siblings.map(isMode).find(Boolean) || null;
     if (mode) {
       process.stdout.write(JSON.stringify({
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
           permissionDecisionReason:
-            `QUESTION-GATE: the mode question ("${String(mode.question || '').slice(0, 80)}") is asked together with ${qs.length - 1} other question(s). `
+            `QUESTION-GATE: the mode question ("${String(mode.question || '').slice(0, 80)}") is asked together with ${others} other question(s)`
+            + (siblings.length ? ` (${siblings.length + 1} question calls in one message)` : '') + '. '
             + 'Ask the decisions first, carry out every step their answers need (an edit behind an ask rule, a merge the classifier holds, a hand step), '
             + 'and only then ask the mode question ALONE, as the last call - otherwise those steps open their dialogs in the run that is autonomous again. '
             + '(Measured 2026-10-26.)',
@@ -333,6 +397,24 @@ function preTool(input) {
       }));
       return;
     }
+  }
+  // A question that names a ledger entry runs that entry's check first (operator 2026-10-31, question tool:
+  // "Ja, Kern-PR bauen"). Measured twice that evening on the macOS instance: points taken from a register and
+  // from a three-hour-old start report went to the operator as decisions while their checks were green - 2 of 4,
+  // then 4 of 4 already done. A green check = the item is done: report it, do not ask.
+  const done = doneLedgerIds(input, qs);
+  if (done.length) {
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason:
+          `QUESTION-GATE: this question names ledger item(s) whose check passes now: ${done.slice(0, 4).join(', ')}. `
+          + 'A green check means the item is done - tick it with the evidence and report it; ask only what is still open. '
+          + '(Measured 2026-10-31: points from an older report reached the operator although they were done.)',
+      },
+    }));
+    return;
   }
   const state = load(root(input.cwd));
   const hits = [];

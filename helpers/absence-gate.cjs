@@ -67,6 +67,7 @@ const { segments } = require('./shell-segments.cjs');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
 const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
+const { ownEcho, declare } = require('./stop-echo.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -76,7 +77,7 @@ const RECORD = process.argv.includes('--record');
 function allow() { process.exit(0); }
 
 const HOOK_ECHO = /^Stop hook feedback:/;
-const OWN_ECHO = /ABSENCE-GATE/;
+let OWN_ECHO = /ABSENCE-GATE/;
 const COOLDOWN_TURNS = 2;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const WIN = process.platform === 'win32';
@@ -278,6 +279,7 @@ function analyze(transcriptPath, cwd) {
 process.stdin.on('end', () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { return allow(); }
+  OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active) return allow();
   if (!input.transcript_path) return allow();
 
@@ -325,7 +327,7 @@ process.stdin.on('end', () => {
     'Search those before saying it exists nowhere. A narrower search on purpose is ' +
     'fine when it is visible: add a line "⚙ scope: <what was searched, and why only ' +
     'that>" and re-issue.';
-  console.log(JSON.stringify({ decision: 'block', reason }));
+  console.log(JSON.stringify(declare({ decision: 'block', reason }, input)));
   process.exit(0);
 });
 

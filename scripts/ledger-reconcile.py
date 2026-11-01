@@ -243,6 +243,7 @@ def main():
     ap.add_argument("--shell", help="POSIX shell that runs the checks (native path)")
     ap.add_argument("--cached", action="store_true")
     ap.add_argument("--out", help=argparse.SUPPRESS)   # the background run's result file
+    ap.add_argument("--ids", help="comma list: run only these entries' checks, print {id: pass|fail|refused|none} as JSON")
     a = ap.parse_args()
     # Absolute once, here: the --cached child runs with cwd=<root> AND gets --root, so a relative
     # root was resolved twice and the background run wrote nothing (Windows review, 2026-10-19).
@@ -266,6 +267,25 @@ def main():
     budget = float(cfg.get("budget_s") or 30)
     allowed = cfg.get("allowed") or ALLOWED
     shell = find_shell(a.shell)
+    if a.ids is not None:
+        # One question to the operator names ledger ids (question-gate, 2026-10-31): their checks run NOW,
+        # so a done item is reported instead of asked. Only the named ids; unknown ids are left out.
+        want = {x for x in a.ids.split(",") if x}
+        res = {}
+        for rel in ledgers:
+            try:
+                text = (pathlib.Path(a.root) / rel).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            for e in entries(text):
+                ident = label(e, rel)
+                if ident not in want or ident in res:
+                    continue
+                chk = e["fields"].get("check", "")
+                res[ident] = ("none" if not chk or NONE.match(chk) else
+                              "refused" if not permitted(chk, allowed) else run_check(chk, a.root, timeout, shell))
+        sys.stdout.write(json.dumps(res, sort_keys=True) + "\n")
+        return 0
     # The memory of first results lives beside the cached result; only a registered run keeps it.
     seen_path = pathlib.Path(a.root) / ".claude-state" / "ledger-reconcile-seen.json"
     seen = None

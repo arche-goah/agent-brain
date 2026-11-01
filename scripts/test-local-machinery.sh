@@ -414,5 +414,26 @@ decl '{"instance":{"c/":{"reviewed":"2026-10-01","why":"w","evidence":"x"}}}'
 out=$(run); ! grep -q 'due for review' <<< "$out" && ok "review-fresh-silent" || bad "review-fresh-silent: $out"
 rm -rf "$T/b"
 
+# --- an alpha the running core caught up with (operator 2026-10-31: unwired with the update) -------
+# `replaces`: the core file equals the copy with its core-relative requires read back.
+mk "$X_HOOK" '' '' >/dev/null
+mkdir -p "$T/b/scripts/hooks"
+printf "const t = require('../../core/helpers/a.cjs');\n// gate v2\n" > "$T/b/scripts/hooks/x.cjs"
+printf "const t = require('./a.cjs');\n// gate v1\n" > "$T/b/core/helpers/x.cjs"
+decl '{"alpha":{"scripts/hooks/x.cjs":{"until":"2026-12-01","why":"alpha copy of core x","replaces":"helpers/x.cjs"}}}'
+out=$(run); ! grep -q 'caught up' <<< "$out" && ok "alpha-ahead-of-core-silent" || bad "alpha-ahead-of-core-silent: $out"
+printf "const t = require('./a.cjs');\n// gate v2\n" > "$T/b/core/helpers/x.cjs"
+out=$(run); grep -q '^!! local machinery: 1 alpha(s) the running core has caught up with' <<< "$out" && grep -q 'core/helpers/x.cjs is the same' <<< "$out" \
+  && ok "alpha-caught-up-by-file-loud" || bad "alpha-caught-up-by-file-loud: $out"
+# `core_commit`: caught up once the commit is an ancestor of the core checkout's HEAD.
+printf "const t = require('./a.cjs');\n// gate v1\n" > "$T/b/core/helpers/x.cjs"
+git -C "$T/b/core" init -q 2>/dev/null; git -C "$T/b/core" -c user.email=t@t -c user.name=t commit -q --allow-empty -m one
+SHA=$(git -C "$T/b/core" rev-parse HEAD)
+decl "{\"alpha\":{\"scripts/hooks/x.cjs\":{\"until\":\"2026-12-01\",\"why\":\"alpha\",\"core_commit\":\"$SHA\"}}}"
+out=$(run); grep -q "core carries ${SHA:0:7}" <<< "$out" && ok "alpha-caught-up-by-commit-loud" || bad "alpha-caught-up-by-commit-loud: $out"
+decl '{"alpha":{"scripts/hooks/x.cjs":{"until":"2026-12-01","why":"alpha","core_commit":"0123456789abcdef0123456789abcdef01234567"}}}'
+out=$(run); ! grep -q 'caught up' <<< "$out" && ok "alpha-commit-not-in-core-silent" || bad "alpha-commit-not-in-core-silent: $out"
+rm -rf "$T/b"
+
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"
