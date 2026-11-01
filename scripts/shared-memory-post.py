@@ -53,6 +53,7 @@ _lint = import_module("shared-memory-lint")
 _device = import_module("device-status")
 
 STATUS = {"request": "open", "reply": "answered", "note": "info", "claim": "info"}
+HANDOVER_AREAS = ("core", "ops")   # core and AI mechanics, what touches several brains
 
 
 def foreign_claims(repo: Path, target: str, me: set[str]) -> list[str]:
@@ -251,6 +252,17 @@ def main() -> int:
         early = os_check_not_ready(a.title + "\n" + body)
         if early:
             return refuse(early)
+    # A request about core or AI mechanics never goes to a party that handed those questions to the
+    # sender's AIs (parties.json `ai_handover`; Working Across Parties #6 (c)). Measured 2026-10-29 on
+    # the macOS instance: a Windows check of a core CI change went by name to such a device; nothing
+    # here read the handover. `handover-keeps: <why>` in the text marks what the handover keeps.
+    handed = _parties.handed_to_me(von, parties) if parties and a.kind == "request" and a.area in HANDOVER_AREAS else set()
+    if handed and not _parties.HANDOVER_KEEPS.search(a.title + "\n" + body):
+        named = [t for t in to if t in handed or (t.startswith("person:") and
+                 any(_parties.devices(parties)[d][0] == t[7:] for d in handed))]
+        if named:
+            return refuse(f"{', '.join(named)} handed core and AI mechanics to your side (ai_handover) - "
+                          f"decide it yourselves, or mark what the handover keeps: handover-keeps: <why>")
     stem = f"{a.kind}-{slug(a.title)}-{a.date}"
     path = area_dir / f"{stem}.md"
     if path.exists():
@@ -264,7 +276,7 @@ def main() -> int:
     meta = ["  type: project", f"  von: {von}", f"  audience: {', '.join(to)}", f"  topic: {a.area}",
             f"  date: {a.date}", f"  os: {os_name}", f"  core: {core}", f"  status: {status}"]
     if status == "open":
-        nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower()]
+        nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower() and d not in handed]
         meta.append(f"  next: {', '.join(nxt)}")
     if answers:
         meta.append(f"  {'claims' if a.kind == 'claim' else 'answers'}: {', '.join(answers)}")

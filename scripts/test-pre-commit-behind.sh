@@ -82,6 +82,17 @@ s=$(date +%s); o=$(PRE_COMMIT_FETCH_TIMEOUT=1 hook "$T/a"); rc=$?; e=$(( $(date 
 [[ $e -le 8 ]] && ok "  ... and the hook returns within the limit (${e}s for 1 s)" || bad "slow fetch time" "${e}s"
 [[ "$o" == *"took over 1 s"* ]] && ok "  ... and says the check was skipped" || bad "timeout note" "$o"
 
+echo "staged JSON parses (2026-10-29: a broken rule file went through and its gate failed open)"
+J="$T/j"; gq init -q "$J"; gq -C "$J" config brain.preCommitFetch false
+printf '{"a": 1}\n' > "$J/ok.json"; gq -C "$J" add ok.json
+passes "valid staged JSON passes" "$J"
+printf '{"a": "x\n"}\n' > "$J/bad.json"; gq -C "$J" add bad.json
+refuses "a staged JSON that does not parse is refused" "$J" "bad.json"
+printf '{"a": 2}\n' > "$J/bad.json"
+refuses "  ... the STAGED content counts, not the working copy" "$J" "bad.json"
+gq -C "$J" add bad.json
+passes "  ... and once the staged content parses, it passes" "$J"
+
 echo
 if [[ $fails -eq 0 ]]; then echo "test-pre-commit-behind: all $checks checks passed"; exit 0; fi
 echo "test-pre-commit-behind: $fails of $checks checks FAILED"; exit 1

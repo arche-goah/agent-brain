@@ -88,7 +88,9 @@ def main() -> int:
         (repo / "INDEX.md").write_text("# Index\n", encoding="utf-8")
         (repo / "parties.json").write_text(json.dumps({"people": {
             "kim": {"github": "k", "devices": {"kim-pc": {"os": "windows"}}},
-            "alex": {"github": "a", "devices": {"alex-mac": {"os": "macos"}, "alex-win": {"os": "windows"}}}}}),
+            "alex": {"github": "a", "devices": {"alex-mac": {"os": "macos"}, "alex-win": {"os": "windows"}}},
+            # sam handed core and AI mechanics to kim's AIs: a Windows fan-out from kim skips sam-win
+            "sam": {"github": "s", "devices": {"sam-win": {"os": "windows"}}, "ai_handover": {"to": "kim"}}}}),
             encoding="utf-8")
 
         r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Check core #42 on Windows",
@@ -172,6 +174,10 @@ def main() -> int:
             ("a Windows check addressed to one device",
              post(repo, "request", "--area", "core", "--to", "alex-win", "--title", "u",
                   "--body", "Please counter-check #7 on Windows at the head.", me="alex-mac")),
+            # 2026-10-29: a core check went by name to a party that handed core mechanics to the sender's side
+            ("a core request to a party that handed core mechanics over",
+             post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "t")),
+            ("the same by person", post(repo, "request", "--area", "core", "--to", "person:sam", "--title", "s")),
         ]
         for name, r in cases:
             check(f"refused: {name}", r.returncode == 2 and "REFUSED" in r.stdout, r.stdout + r.stderr)
@@ -190,6 +196,15 @@ def main() -> int:
         r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Windows box moved",
                  "--body", "The Windows box now stands in room 2.", me="alex-mac")
         check("control: a note that only names Windows (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)
+        r = post(repo, "note", "--area", "core", "--to", "sam-win", "--title", "Core 2.1 is out")
+        check("control: a note to the handing-over party passes", r.returncode == 0, r.stdout + r.stderr)
+        r = post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "Confirm the USB prompt",
+                 "--body", "handover-keeps: a dialog only the person at that box can confirm")
+        check("control: a request the handover keeps passes with handover-keeps", r.returncode == 0, r.stdout + r.stderr)
+        r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Run lint at head", me="alex-mac")
+        nxt = (repo / "core" / f"request-run-lint-at-head-{STATE}.md").read_text(encoding="utf-8")
+        check("control: from a sender the handover does not name, the fan-out still reaches sam-win",
+              "sam-win" in nxt and "kim-pc" in nxt, nxt)
 
         # An OS check request waits for green CI at the PR's head (2026-10-31: 50 Windows runs, 28 thrown away).
         ghb = Path(tempfile.mkdtemp())
