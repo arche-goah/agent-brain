@@ -2,6 +2,7 @@
   "_comment": "Read by scripts/instance-templates.py. `optional`: instance files the core reads that need no template in templates/rules-instance/, each with the reason measured at its reader (2026-10-30). A brain looking for what it MAY add reads this list. `unclassified`: a shrink-only ratchet for gaps not yet judged - a name may leave it, never join it.",
   "optional": {
     "backprop.json": "backprop-report.py: rule files and search paths; missing file = built-in defaults that fit a brain",
+    "basics.json": "basics-hint.cjs: triggers in the instance's language and basics of its own; missing file = the core's English list in basics.json",
     "brain-scan-prep.json": "brain-scan-prep.py: decided/dropped words in the instance's language; missing file = English built-ins",
     "class-gate.json": "class-gate.cjs: level_patterns in the instance's language; missing file = English built-ins",
     "dead-carriers.json": "dead-carriers.py: absence_patterns in the instance's language; missing file = English built-ins",
