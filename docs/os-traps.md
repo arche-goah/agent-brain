@@ -968,6 +968,27 @@ trivially because the watcher never ran. The search found a second site, `projec
 where the same 127 made "watcher keeps the brain's cursor" pass without a watcher — it now also
 fails when the command did not run. Both fixed in #342; zero hits after the fix.
 
+## OS-20 — `os.kill(pid, 0)` asks "is it alive?" on POSIX and kills the process on Windows
+
+shape: B
+
+invariant: A liveness probe in Python never calls `os.kill(pid, 0)` unguarded. On POSIX signal 0
+only checks that the pid exists; on Windows `os.kill` with anything but the two console events
+calls `TerminateProcess` — the probe ends the very session it asks about. Branch on `os.name`
+and ask Windows for a handle (`OpenProcess` with `PROCESS_QUERY_LIMITED_INFORMATION`); each
+known site is such a guarded branch.
+pattern:   ^[^#]*os\.kill\([^)]*, *0\)
+paths:     --include=*.py scripts helpers
+known:     scripts/session-audit.py=1
+instances: 1
+repeat:    no
+status:    closed
+note:      Registered 2026-10-31 BEFORE a defect, with the first site: `session-audit.py` learned to
+read the harness session registry (`~/.claude/sessions/<pid>.json`) and must test the pid. Python
+documentation, `os.kill`: "Windows: … any other value for sig will cause the process to be
+unconditionally killed by the TerminateProcess API". The Windows branch is unmeasured until the
+PR's Windows check.
+
 ## OS-17 — `python3` exists on Windows but is the Store stub, and a script that only checks existence runs nothing
 
 shape: B
