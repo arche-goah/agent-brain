@@ -14,11 +14,11 @@
 
 | # | Check | Green means |
 |---|---|---|
-| 1 | `gh auth status` + `ssh -T git@github.com` | access works, over SSH and not just HTTPS |
+| 1 | `gh auth status` + `ssh -T git@github.com` | `gh` is logged in (mandatory); SSH greets you too. gh without SSH is `WARN`, not red — HTTPS through gh is enough to start, as in the preflight |
 | 2 | `claude plugin list` | marketplace registered, `brain-core` installed AND enabled (suites noted as opt-in only) |
 | 3 | plugin skills present | at least 1 core skill findable in the plugin cache (suite skills only with an installed suite) |
 | 4 | output style | `caveman.md` comes from the brain-core plugin cache |
-| 5 | SessionStart hooks | own brain exists and wires `core/helpers/session-bootup.sh`; the script runs |
+| 5 | SessionStart hooks | own brain exists and `core/helpers/session-bootup.sh` runs at SessionStart — shipped by the enabled brain-core plugin (`hooks/hooks.json`, since 2.0.4) or wired in a settings scope (`hook-coverage.py --runs`); the script runs |
 | 6 | suite runtime deps | *only with an installed suite:* `node_modules` present — the plugin's npm install hook has fired |
 | 7 | suite MCP startable | *only with an installed suite:* server manifest in the plugin cache + node >= 23.6 (a live round-trip needs the connected device) |
 | 8 | leak check across the own tree | no foreign home paths or names landed in the own brain |

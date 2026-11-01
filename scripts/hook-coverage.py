@@ -56,6 +56,12 @@ Output: one line per missing hook — "<event>: <template command>".
 Exit 0 and silent when covered; exit 1 when something is missing.
 Callers: helpers/session-bootup.sh (!! line each session) and
 scripts/brain-update.sh (WARN in the release catch-up).
+
+       hook-coverage.py --runs <event> <helper file> [brain-root]
+Where one core helper runs on <event> in this brain: one line per settings scope that wires it
+and one for the enabled brain-core plugin that ships it. Exit 0 when it runs, 1 when nowhere.
+Caller: scripts/onboarding-verify.sh check 5 (its grep of settings.json failed every brain whose
+hooks come from the plugin - fresh-brain trial 2026-10-31).
 """
 import json
 import os
@@ -231,23 +237,50 @@ def plugin_shipped_hooks(root, cfg):
     return None, {}
 
 
+def settings_scopes(root, cfg):
+    """(path, label) of every settings file whose hooks run in this brain; the label is a fixed
+    forward-slashed name for the output."""
+    return ((os.path.join(root, ".claude", "settings.json"), ".claude/settings.json"),
+            (os.path.join(root, ".claude", "settings.local.json"), ".claude/settings.local.json"),
+            (os.path.join(cfg, "settings.json"), "the user settings.json"))
+
+
+def config_dir():
+    return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+
+
+def runs_where(root, cfg, event, helper):
+    """Where `helper` runs on `event` in this brain: the settings scopes that wire it, and the
+    enabled brain-core plugin whose install ships it. An empty list = it runs nowhere."""
+    where = [label for p, label in settings_scopes(root, cfg)
+             if any(helper in c for _m, c, _f in commands_by_event(load(p)).get(event, []))]
+    plugin_id, shipped = plugin_shipped_hooks(root, cfg)
+    if any(helper in c for _m, c, _f in commands_by_event(shipped).get(event, [])):
+        where.append("the plugin %s (hooks/hooks.json)" % plugin_id)
+    return where
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--runs":
+        if len(sys.argv) < 4:
+            print("usage: hook-coverage.py --runs <event> <helper file> [brain-root]")
+            return 2
+        where = runs_where(sys.argv[4] if len(sys.argv) > 4 else ".", config_dir(), sys.argv[2], sys.argv[3])
+        for line in where:
+            print(line)
+        return 0 if where else 1
     root = sys.argv[1] if len(sys.argv) > 1 else "."
     template = load(os.path.join(root, "core", "templates", "settings.json"))
     if not template:
         return 0  # no consumed template (not a brain, or pre-template core): nothing to demand
     demand = demanded_hooks(root, template)
 
-    cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    cfg = config_dir()
     wired = {}
     have_allow = []
     have_timeout = {}
     scopes = {}  # (event, command) -> the settings scope that wires it, as a fixed forward-slashed label
-    for p, label in (
-        (os.path.join(root, ".claude", "settings.json"), ".claude/settings.json"),
-        (os.path.join(root, ".claude", "settings.local.json"), ".claude/settings.local.json"),
-        (os.path.join(cfg, "settings.json"), "the user settings.json"),
-    ):
+    for p, label in settings_scopes(root, cfg):
         s = load(p)
         for event, pairs in commands_by_event(s).items():
             wired.setdefault(event, []).extend(pairs)

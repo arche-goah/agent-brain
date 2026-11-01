@@ -365,8 +365,9 @@ fi
 # The other direction: what the core template carries and this brain does not. A template is
 # copied once at bootstrap, so its later permission rules never reach an existing brain (measured
 # 2026-10-26: 22 of 83 allow rules, an autonomous run stopped on a refused `gh pr ready`).
+# PYTHON: the command it prints for the person names the interpreter resolved above, not `python3`.
 if [[ -f "$HERE/../scripts/template-drift.py" ]]; then
-  "$PY" "$HERE/../scripts/template-drift.py" --repo "$R" 2>/dev/null || true
+  PYTHON="$PY" "$PY" "$HERE/../scripts/template-drift.py" --repo "$R" 2>/dev/null || true
 fi
 # Every server in .mcp.json has a row in the instance's MCP table and every row a server
 # (a recurring brain-scan finding); silent when both match, table place is instance data.

@@ -10,7 +10,9 @@
 #   1. git init in the target
 #   2. copy templates/ over (CLAUDE.md, .claude/settings.json, instance rules,
 #      feedback.md, MEMORY.md seed as doc reference)
-#   3. mount agent-brain as submodule `core/`
+#   3. mount agent-brain as submodule `core/`, checked out at its newest release tag
+#      (vX.Y.Z; BOOTSTRAP_CORE_REF=<tag|branch|commit> picks another), then copy every
+#      template data file a helper of THAT core reads (template-drift.py --copy-data)
 #   4. base structure (docs/maintenance, config, scripts, src, .claude/skills)
 #   5. wire up the usage statusline (user scope, see below)
 #   6. record state: REGISTRY.md + ecosystem pin (so handover-gate is green)
@@ -100,45 +102,35 @@ mkdir -p "$TARGET"
 cd "$TARGET"
 git init -q
 
-# 2. Templates
-cp "$CORE_SRC/templates/CLAUDE.md" CLAUDE.md
+# 2. Templates — from the clone this script runs from; step 3 takes them again from core/ once it
+# is pinned to another commit, so templates and core always match. A template the pinned core
+# does not have stays the clone's and is named.
 mkdir -p .claude/rules .claude/skills docs/maintenance config scripts src
-cp "$CORE_SRC/templates/settings.json" .claude/settings.json
-cp "$CORE_SRC/templates/feedback.md" .claude/rules/feedback.md
-cp "$CORE_SRC/templates/rules-instance/working-rules-instance.md" .claude/rules/
-cp "$CORE_SRC/templates/rules-instance/intelligence-instance.md" .claude/rules/
-cp "$CORE_SRC/templates/rules-instance/mechanism-rules.json" .claude/rules/
+TPL="$CORE_SRC/templates"
+_kept=""
+tcp() { if [ -f "$TPL/$1" ]; then cp "$TPL/$1" "$2"; else _kept="$_kept $1"; fi; }
+copy_templates() {
+tcp CLAUDE.md CLAUDE.md
+tcp settings.json .claude/settings.json
+tcp feedback.md .claude/rules/feedback.md
+tcp rules-instance/working-rules-instance.md .claude/rules/
+tcp rules-instance/intelligence-instance.md .claude/rules/
+# The data files a core HELPER reads (stop-checks.json for the plugin's one Stop hook, the gates'
+# language and live-system data, collab-watch.json, ...) are copied in step 3, from the consumed
+# core, by template-drift.py --copy-data — the list the session start checks. The two below are
+# read by scripts only, so that list does not carry them.
 # ASK OR ACT names "the instance's operator-only list" as the one set of matters that need the
 # operator; without the file every rule pointing at it points at nothing (operator 2026-10-16).
-cp "$CORE_SRC/templates/rules-instance/operator-only.json" .claude/rules/
-# The plugin's hooks/hooks.json wires ONE Stop hook, the dispatcher; without this file it runs nothing.
-cp "$CORE_SRC/templates/rules-instance/stop-checks.json" .claude/rules/
-# Data of two gates the templates wire (live-read-gate, absence-gate). Copied empty: the
-# session start names them until they are filled or carry "inert_ok": "<reason>"
-# (scripts/hook-coverage.py) — measured 2026-10-12, a brain with three live systems ran
-# live-read-gate for weeks without its file, a silent no-op.
-cp "$CORE_SRC/templates/rules-instance/live-read.json" .claude/rules/
-cp "$CORE_SRC/templates/rules-instance/live-watchdog.json" .claude/rules/
-cp "$CORE_SRC/templates/rules-instance/absence-sources.json" .claude/rules/
-# Language data of conditional-order-gate (built-ins English; the operator's words go here).
-cp "$CORE_SRC/templates/rules-instance/condition-patterns.json" .claude/rules/
-# Language data of autonomous-mode.cjs (built-ins English; the operator's words go here).
-cp "$CORE_SRC/templates/rules-instance/autonomous-patterns.json" .claude/rules/
-# Language data of class-gate.cjs (level words of the gear line; built-ins English).
-cp "$CORE_SRC/templates/rules-instance/class-gate.json" .claude/rules/
+tcp rules-instance/operator-only.json .claude/rules/
 # Language data of decision-review.py (built-ins English; the operator's words go here).
-cp "$CORE_SRC/templates/rules-instance/decision-review.json" .claude/rules/
-# The standing watch's data (skill collab-watch). Copied with its placeholders: watch-readiness.py
-# names them at every start until filled; from then on watch-gate case (g) keeps the watch alive.
-cp "$CORE_SRC/templates/rules-instance/collab-watch.json" .claude/rules/
-cp "$CORE_SRC/templates/leak-names.json" .claude/rules/leak-names.json
+tcp rules-instance/decision-review.json .claude/rules/
+tcp leak-names.json .claude/rules/leak-names.json
 # MEMORY.md seed: Claude Code creates Auto-Memory itself — the seed documents the format.
-mkdir -p docs/maintenance
-cp "$CORE_SRC/templates/MEMORY.md" docs/maintenance/memory-seed-referenz.md
+tcp MEMORY.md docs/maintenance/memory-seed-referenz.md
 # Invariant register from day one (operator order 2026-08-19): a class needs a place
 # where it stays open — without the register, the class-discipline rules reach a
 # fresh brain as prose only.
-cp "$CORE_SRC/templates/invariants.md" docs/maintenance/invariants.md
+tcp invariants.md docs/maintenance/invariants.md
 # Brain-scan checklist + order list from day one (collaborator request 2026-09-13): the
 # scan workflow reads both by fixed path and the bootup counts the open orders — a brain
 # without them runs its first scan against nothing and the two brains' reports do not
@@ -146,8 +138,11 @@ cp "$CORE_SRC/templates/invariants.md" docs/maintenance/invariants.md
 # instance's to grow.
 # The target name is German because the workflows read that exact path in every
 # instance; the TEMPLATE is English-named because this repo is public-bound (rule 7).
-cp "$CORE_SRC/templates/brain-scan-checklist.md" docs/maintenance/brain-scan-checklist.md
-cp "$CORE_SRC/templates/brain-scan-orders.md" docs/maintenance/brain-scan-auftraege.md
+tcp brain-scan-checklist.md docs/maintenance/brain-scan-checklist.md
+tcp brain-scan-orders.md docs/maintenance/brain-scan-auftraege.md
+}
+copy_templates
+if [ -n "$_kept" ]; then echo "bootstrap-brain: templates missing in $TPL:$_kept — aborting."; exit 1; fi
 
 # .gitattributes BEFORE the first commit: Git for Windows defaults to core.autocrlf=true
 # and then checks out CRLF. The workflow tool rejects a script with CR ("script contains
@@ -238,6 +233,36 @@ _sub_err="$(git submodule add "$CORE_URL" core 2>&1 >/dev/null)" || {
   exit 1
 }
 
+# A core is consumed at a release tag, never at untagged main (CONVENTIONS section 13: the core/
+# submodule follows the pinned tag; AGENTS.md #5: an untagged change reaches nobody). The clone
+# above sits on the default branch — measured
+# 2026-10-31 in a fresh-brain trial: v2.0.5-30-g317916c, thirty unreleased commits. Newest
+# vX.Y.Z by version order, no pre-release suffix; BOOTSTRAP_CORE_REF names another tag, branch
+# or commit. brain-update.sh later moves it to the marketplace pin.
+_core_ref="${BOOTSTRAP_CORE_REF:-}"
+[ -n "$_core_ref" ] || _core_ref="$(git -C core tag -l 'v*' --sort=-v:refname | grep -aE '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+if [ -z "$_core_ref" ]; then
+  echo "bootstrap-brain: no release tag (vX.Y.Z) in $CORE_URL — core stays at $(git -C core describe --tags --always 2>/dev/null) on its default branch; BOOTSTRAP_CORE_REF=<ref> pins another."
+elif git -C core checkout -q "$_core_ref" 2>/dev/null; then
+  echo "bootstrap-brain: core at $_core_ref ($(git -C core rev-parse --short HEAD))$([ -n "${BOOTSTRAP_CORE_REF:-}" ] && echo ', from BOOTSTRAP_CORE_REF' || echo ', the newest release tag')."
+else
+  echo "bootstrap-brain: core ref '$_core_ref' cannot be checked out in core/ (no such tag, branch or commit in $CORE_URL?) — aborting."
+  exit 1
+fi
+# The step-2 templates came from the clone; when core/ now sits on another commit (stranger trial
+# 2026-11-01: the newest tag 187 commits behind the clone, and the first start named 8 template
+# permission rules the brain lacked), take them again from the pinned core.
+if [ "$(git -C core rev-parse HEAD)" != "$(git -C "$CORE_SRC" rev-parse HEAD 2>/dev/null || true)" ]; then
+  TPL=core/templates; _kept=""; copy_templates
+  echo "bootstrap-brain: templates taken from core/ at $(git -C core describe --tags --always 2>/dev/null) (the clone is another commit)${_kept:+; not in that core, kept from the clone:$_kept}."
+fi
+# Every template data file a helper of THIS core reads, from this core's templates: the list
+# template-drift.py checks at every session start, so no hand list here can fall behind it (the
+# fresh-brain trial: bootstrap carried 8 of 16, the first start was red). Never over a file above.
+"$PY" "$CORE_SRC/scripts/template-drift.py" --repo . --rules-template core/templates/rules-instance \
+  --helpers core/helpers --copy-data \
+  || echo "bootstrap-brain: template data files not copied — copy the ones the session start names from core/templates/rules-instance/ into .claude/rules/."
+
 if [ -f core/scripts/install-git-hooks.sh ]; then
   _hooks_scope=""
   [ "${BOOTSTRAP_GIT_HOOKS:-local}" = "global" ] && _hooks_scope="--global"
@@ -256,9 +281,9 @@ fi
 #    REGISTRY.md (skill-lint requires it, even with zero skills) and the
 #    ecosystem pin (otherwise check 5 reports "core contract: pinned None").
 "$PY" core/scripts/regen-skill-registry.py --skills .claude/skills >/dev/null 2>&1 ||
-  echo "bootstrap-brain: REGISTRY.md not generated — run 'python3 core/scripts/regen-skill-registry.py --skills .claude/skills' to catch up."
+  echo "bootstrap-brain: REGISTRY.md not generated — run '$PY core/scripts/regen-skill-registry.py --skills .claude/skills' to catch up."
 "$PY" core/scripts/ecosystem-sync.py --write >/dev/null 2>&1 ||
-  echo "bootstrap-brain: ecosystem.json not pinned — run 'python3 core/scripts/ecosystem-sync.py --write' to catch up."
+  echo "bootstrap-brain: ecosystem.json not pinned — run '$PY core/scripts/ecosystem-sync.py --write' to catch up."
 
 # 7. Initial commit
 git add -A
