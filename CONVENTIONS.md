@@ -194,7 +194,8 @@ Every shared repo runs on pull request, blocking:
    hostnames and site names. A hit fails the build. Documentation ranges are allowed on
    purpose (RFC 5737 `192.0.2.x`, RFC 7042 `00:00:5E:00:53:xx`), and any other exception
    must say in the scanner *why* it is a constant and not somebody's network.
-3. `plugin.json` / `marketplace.json` parse + path check (no absolute paths).
+3. `plugin.json` / `marketplace.json` parse + path check (no absolute paths); every
+   marketplace entry pins an existing release tag, never a branch (`suite-check.py`).
 4. `suite-check.py` — the contract itself (§12). A suite that fails it does not merge.
 5. `dep-lint` — the dependency manifest resolves (§9).
 

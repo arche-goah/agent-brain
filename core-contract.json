@@ -11,8 +11,13 @@
     "Every bump gets a line in the history below with WHY. A bump without a reason cannot",
     "be judged by the other person."
   ],
-  "contract_version": "1.2.0",
+  "contract_version": "1.3.0",
   "history": [
+    {
+      "version": "1.3.0",
+      "date": "2026-10-31",
+      "why": "suite-check reads .claude-plugin/marketplace.json when a repo carries one: every entry pins a release tag (vX.Y.Z), never a branch, a missing ref or a relative source, and an entry pointing at the repo itself names a tag that exists (ERROR; a checkout without tags only WARNs). Reason: the core carries its own public marketplace since 2026-10-31 (two channels, pins on the core owner's word), and a ref on main would reach every consumer unreleased. Strictly a blocking check would be major; measured impact is zero - on 2026-10-31 the only repo under suite-check with a marketplace.json is the core, and the one private marketplace repo does not run suite-check in its CI. Minor by measured impact, as for 1.1.0."
+    },
     {
       "version": "1.2.0",
       "date": "2026-10-25",
