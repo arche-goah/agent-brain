@@ -218,14 +218,24 @@ function promptModes(transcriptPath, cwd) {
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
     const intent = intentFor(known, d.timestamp, t);
-    // The model's asks_open yields to an order to work autonomously in the SAME prompt (2026-10-31, macOS
-    // instance): "work through all open points, handle them autonomously" read as asks_open, and the run the
-    // operator had just ordered went interactive. Replay over the classifier log: 7 prompts carry both, the one
-    // genuine question among them ("anything for me? you worked 5 h autonomously") is caught by the words.
-    const asks = w.ask.test(text) || Boolean(intent && intent.asks_open && !ordersOn(w.on, text));
-    if (w.off.test(text) || asks || (intent && intent.mode_off)) state = false;
-    else if (ordersOn(w.on, text)) state = true;
-    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false });
+    // A matched classifier record DECIDES; the word lists are the fallback when there is none (operator order
+    // 2026-10-28, "this detection must be semantic, not word logic"; sharpened 2026-11-01 when the words were
+    // patched again). Measured the same day on the macOS instance, three prompts where the words were wrong
+    // and the model right: "thought it was autonomous" (words mode_on, model not), "lay the open questions
+    // before me" (model asks_open, words not), and the start "status?" (both none).
+    // The model's asks_open yields to its own mode_on in the SAME prompt (2026-10-31: "work through all open
+    // points, handle them autonomously" carried both; the run the operator had just ordered must start).
+    let asks;
+    if (intent && typeof intent.asks_open === 'boolean') {
+      asks = intent.asks_open && !intent.mode_on;
+      if (intent.mode_off || asks) state = false;
+      else if (intent.mode_on) state = true;
+    } else {
+      asks = w.ask.test(text);
+      if (w.off.test(text) || asks) state = false;
+      else if (ordersOn(w.on, text)) state = true;
+    }
+    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words' });
   }
   return out;
 }

@@ -148,7 +148,7 @@ irec 2026-10-28T21:35:00Z sess-a true false > "$IC/.claude-state/intent-classifi
 mode "a record far after the prompt does not count" "$f" "$IC" autonomous
 f="$T/sess-b.jsonl"; { tuser 2026-10-28T21:00:00Z "fix the parser"; } > "$f"
 irec 2026-10-28T21:00:03Z sess-b false true > "$IC/.claude-state/intent-classifier.jsonl"
-mode "the classifier never switches the mode ON (safe direction only)" "$f" "$IC" interactive
+mode "a matched record decides: the model's mode_on switches it on (operator 2026-10-28/11-01, semantic not word logic)" "$f" "$IC" autonomous
 f="$T/sess-c.jsonl"; { tuser 2026-10-31T15:40:00Z "work through all open points, everything you can do yourself, handle it autonomously"; } > "$f"
 irec 2026-10-31T15:40:05Z sess-c true true > "$IC/.claude-state/intent-classifier.jsonl"
 mode "the model's asks_open does not cancel an autonomous order in the same prompt" "$f" "$IC" autonomous
@@ -166,6 +166,18 @@ mode "the operator's own record wins over a notification's record in the window"
 mode "a notification's ask does not end the run (control)" "$f" "$IC" autonomous
 irec 2026-11-01T07:53:43Z sess-e true false > "$IC/.claude-state/intent-classifier.jsonl"
 mode "a record without a prompt field still matches by time" "$f" "$IC" interactive
+
+# The record decides over the words (2026-11-01, three measured prompts of one session).
+irecf() { printf '{"at":"%s","session":"%s","mode":"hook","prompt":%s,"model":{"asks_open":%s,"mode_on":%s,"mode_off":false,"correction":false}}\n' "$1" "$2" "$(js "$3")" "$4" "$5"; }
+f="$T/sess-f.jsonl"; { tuser 2026-11-01T06:31:00Z "status?"; asst "x"; tuser 2026-11-01T06:44:20Z "you switched to interactive, right? I thought it was autonomous."; } > "$f"
+{ irecf 2026-11-01T06:31:02Z sess-f "status?" false false; irecf 2026-11-01T06:44:26Z sess-f "you switched to interactive, right? I thought it was autonomous." false false; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the words see 'autonomous', the model sees no order: the model decides" "$f" "$IC" interactive
+mode "without a record the words decide (control: the belief reads as an order)" "$f" "$EN" autonomous
+f="$T/sess-g.jsonl"; { tuser 2026-11-01T07:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-01T07:53:40Z "go on, give me what you have collected"; } > "$f"
+{ irecf 2026-11-01T07:00:02Z sess-g "work through the list autonomously" false true; irecf 2026-11-01T07:53:44Z sess-g "go on, give me what you have collected" true false; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the model reads an ask the words miss: the run ends" "$f" "$IC" interactive
+printf '%s\n' '{"at":"2026-11-01T07:53:44Z","session":"sess-g","mode":"hook","prompt":"go on, give me what you have collected","model":{}}' > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record without readable fields falls back to the words" "$f" "$IC" autonomous
 
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }
