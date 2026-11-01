@@ -33,6 +33,7 @@
  * case-insensitive, merged in.
  *
  * CLI: node autonomous-mode.cjs <transcript> [cwd]  -> prints "autonomous" or "interactive".
+ * For the operator (what the modes mean, what they do not, how to switch): docs/run-modes.md.
  */
 'use strict';
 const fs = require('fs');
@@ -59,7 +60,10 @@ const BUILTIN_ASK = [
 const BUILTIN_YES = ['^\\s*yes\\b'];
 const HOOK_ECHO = /^\s*Stop hook feedback:/;
 // The tool result of an answered AskUserQuestion: `"<question>"="<answer>"` pairs.
-const ANSWERED = 'questions have been answered';
+// Two wordings in the wild (measured 2026-10-30, macOS instance: "Your questions have been answered: …" and
+// "The user answered: …", the second in 58 of 514 transcripts) — the first answer of that evening carried the
+// second and set nothing.
+const ANSWERED = /questions have been answered|The user answered:/;
 const PAIR = /"([^"]*)"="([^"]*)"/g;
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
@@ -127,10 +131,43 @@ function answers(msg, askIds) {
     if (askIds && !askIds.has(b.tool_use_id)) continue;
     const s = typeof b.content === 'string' ? b.content
       : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('\n') : '';
-    if (!s.includes(ANSWERED)) continue;
+    if (!ANSWERED.test(s)) continue;
     for (const m of s.matchAll(PAIR)) out.push([m[1], m[2]]);
   }
   return out;
+}
+
+/**
+ * A brain's prompt classifier, if it has one, appends one record per operator prompt to
+ * .claude-state/intent-classifier.jsonl: {at, session, mode: "hook", model: {asks_open, mode_off, …}}.
+ * Measured 2026-10-28 on the macOS instance (classifier as instance alpha, read by no gate): the
+ * word lists missed "you need something?" and "give me interactive questions …" (the operator's
+ * language, translated) — both asks for what is
+ * open — and the model read both right; the run kept refusing the question tool the operator had
+ * asked for. The model is read in the SAFE direction only (asks what is open, ends the mode): a
+ * false yes there costs one question, a false "autonomous" would silence the operator's questions.
+ * Matched by session and time: the first record within 90 s after the prompt. No file = words only.
+ */
+const INTENT_WINDOW_MS = 90 * 1000;
+function intents(transcriptPath, cwd) {
+  const session = path.basename(transcriptPath || '', '.jsonl');
+  const file = process.env.INTENT_CLASSIFIER_LOG || path.join(cwd || '.', '.claude-state', 'intent-classifier.jsonl');
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { return []; }
+  const out = [];
+  for (const line of text.split('\n')) {
+    let r; try { r = JSON.parse(line); } catch (e) { continue; }
+    if (!r || r.session !== session || r.mode !== 'hook' || !r.model) continue;
+    const at = Date.parse(r.at);
+    if (!Number.isNaN(at)) out.push({ at, model: r.model });
+  }
+  return out;
+}
+function intentFor(list, ts) {
+  const t = Date.parse(ts || '');
+  if (Number.isNaN(t)) return null;
+  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS);
+  return hit ? hit.model : null;
 }
 
 /**
@@ -145,6 +182,7 @@ function promptModes(transcriptPath, cwd) {
   const out = [];
   let state = false;
   const askIds = new Set();
+  const known = intents(transcriptPath, cwd);
   for (const line of lines) {
     if (line.includes('"AskUserQuestion"')) {
       try {
@@ -165,8 +203,14 @@ function promptModes(transcriptPath, cwd) {
         || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
       for (const [q, a] of answers(d.message, askIds)) {
-        if (!asksMode(w.on, q)) continue;
-        state = w.yes.test(a) && !w.off.test(a);
+        // A yes/no to the mode question decides by yes; an answer to any other question is read
+        // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
+        // "yes, work through them autonomously" to "shall I handle them?" set nothing). The mode
+        // question is read from its question sentence (asksMode), not from any on-word in the text.
+        if (asksMode(w.on, q)) state = w.yes.test(a) && !w.off.test(a);
+        else if (w.off.test(a)) state = false;
+        else if (ordersOn(w.on, a)) state = true;
+        else continue;
         out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true });
       }
     }
@@ -174,8 +218,13 @@ function promptModes(transcriptPath, cwd) {
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
-    const asks = w.ask.test(text);
-    if (w.off.test(text) || asks) state = false;
+    const intent = intentFor(known, d.timestamp);
+    // The model's asks_open yields to an order to work autonomously in the SAME prompt (2026-10-31, macOS
+    // instance): "work through all open points, handle them autonomously" read as asks_open, and the run the
+    // operator had just ordered went interactive. Replay over the classifier log: 7 prompts carry both, the one
+    // genuine question among them ("anything for me? you worked 5 h autonomously") is caught by the words.
+    const asks = w.ask.test(text) || Boolean(intent && intent.asks_open && !ordersOn(w.on, text));
+    if (w.off.test(text) || asks || (intent && intent.mode_off)) state = false;
     else if (ordersOn(w.on, text)) state = true;
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false });
   }

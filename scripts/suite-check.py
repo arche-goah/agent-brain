@@ -177,10 +177,10 @@ def check(repo: Path, contract: dict):
         if live_docs_declared and "live-doc-lint.py" not in text:
             add("WARN", "dependencies.json declares live_docs but no CI step runs live-doc-lint.py "
                         "(core scripts/live-doc-lint.py --changed <base-ref>)")
-        # Actions minutes are a shared account budget: an unfiltered `push` trigger runs
-        # every PR branch twice (push event + pull_request event). That pattern exhausted
-        # the account's 2000-min free quota mid-month on 2026-08-13 and killed CI
-        # account-wide. macOS bills 10x, Windows 2x.
+        # Actions minutes are a limited quota: an unfiltered `push` trigger runs every PR
+        # branch twice (push event + pull_request event). Measured 2026-08-13: that pattern
+        # used up a monthly quota mid-month and stopped CI in every repo drawing on it.
+        # macOS runners count 10x, Windows 2x.
         for f in sorted(ci.glob("*.yml")):
             for lvl, msg in workflow_trigger_findings(
                     f.read_text(encoding="utf-8", errors="replace")):

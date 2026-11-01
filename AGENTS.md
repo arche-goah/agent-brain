@@ -44,22 +44,22 @@ session start.
    manifest+CHANGELOG on every pushed `v*` tag, so a broken tag turns red on the
    repo page instead of failing silently on the next consumer update (the v1.2.0
    incident: tagged with the manifest still on 1.1.2).
-6. **CI must stay meaningful — and paid for by a shared budget.** `ci.yml` runs
+6. **CI must stay meaningful — and within its minutes quota.** `ci.yml` runs
    leak-scan, skill-lint, content-guard, shellcheck and suite-check against this repo
    itself. Never replace a failing check with an echo, and never silence
    content-guard by editing a pattern — an inline `content-guard-ok: <reason>` is the
    visible way, and it is a review event. Actions are pinned by commit SHA (Dependabot
    proposes bumps); the token is read-only; `main` requires a code-owner review and
    green required checks (ruleset), so a fork PR from a collaborator is reviewed here
-   before it runs in anyone's brain. Actions minutes are one account-wide pot: `push`
+   before it runs in anyone's brain. Actions minutes are a limited quota: `push`
    triggers are always branch/tag-filtered (an unfiltered `push` plus `pull_request`
-   runs every PR branch twice — that exhausted the account quota mid-month on
-   2026-08-13 and killed CI everywhere), and macOS/Windows runners (10x/2x billing)
-   run only where the check needs that OS. `scripts/suite-check.py` enforces the
-   trigger rule for every repo it sweeps. Cut branches from FRESH main: push events
-   run the ci.yml of the pushed ref, so a branch forked before a trigger fix keeps
-   burning minutes under the old config (measured 2026-08-13 on a pre-#53 branch) —
-   no lint on main can catch that.
+   runs every PR branch twice — measured 2026-08-13, that used up a monthly quota
+   mid-month and stopped CI in every repo drawing on it), and macOS/Windows runners
+   (10x/2x minute multipliers) run only where the check needs that OS.
+   `scripts/suite-check.py` enforces the trigger rule for every repo it sweeps. Cut
+   branches from FRESH main: push events run the ci.yml of the pushed ref, so a branch
+   forked before a trigger fix keeps burning minutes under the old config (measured
+   2026-08-13 on a pre-#53 branch) — no lint on main can catch that.
 7. **Language: English only** (operator order 2026-08-13 — supersedes the earlier
    "German content stays German" clause). Everything in this repo and anything else
    that may ever go public — rules, skills, helpers, scripts, templates, workflows,
@@ -175,9 +175,9 @@ session start.
      result is `pass`, `fail — <what>` or `n/a — <why>`; the header carries
      `required_os: <system, system>`. The OS is a field every device enters, not a column, so
      a new system or a second device on the same system changes no table. Results live in
-     the repo, a script renders them, never hand-kept; heavy-metal's `platform_check.py` +
-     `platforms_table.py` are the pattern for producing the lines. Entries are appended,
-     never overwritten, and an open `fail` keeps the check red. The **owner's word has its
+     the repo, a script renders them, never hand-kept; the pattern is a check script in the
+     repo that appends the lines, and `scripts/check-table.py` reads and renders them.
+     Entries are appended, never overwritten, and an open `fail` keeps the check red. The **owner's word has its
      own section** (what the owner judged, in the owner's words) — it is a condition for
      stable, not a checked line; (2) the GitHub release of the tag is marked pre-release and its title and
      text carry the scope ("beta — checked on macOS, Windows unchecked") and the rendered
