@@ -156,5 +156,26 @@ f="$T/sess-d.jsonl"; { tuser 2026-10-31T15:40:00Z "work through the list autonom
 irec 2026-10-31T16:40:05Z sess-d true false > "$IC/.claude-state/intent-classifier.jsonl"
 mode "an ask without an order still ends the run (control)" "$f" "$IC" interactive
 
+# initial_mode: a brain whose operator wants every session autonomous until asked (measured
+# 2026-11-01, macOS instance: a start prompt "status?" with no on-word left the session interactive,
+# and a mid-run question reached the operator who believed the run autonomous).
+AU="$T/au"; mkdir -p "$AU/.claude/rules"
+printf '%s\n' '{"initial_mode": "autonomous"}' > "$AU/.claude/rules/autonomous-patterns.json"
+f="$T/init1.jsonl"; { user "status?"; asst "x"; } > "$f"
+mode "initial_mode autonomous: a start prompt without an on-word keeps it" "$f" "$AU" autonomous
+mode "without initial_mode the same transcript is interactive (control)" "$f" "$EN" interactive
+f="$T/init0.jsonl"; : > "$f"
+mode "initial_mode autonomous: an empty transcript is autonomous" "$f" "$AU" autonomous
+mode "default: an empty transcript is interactive (control)" "$f" "$EN" interactive
+f="$T/init2.jsonl"; { user "status?"; asst "x"; user "anything open for me?"; } > "$f"
+mode "initial_mode autonomous: asking what is open still ends it" "$f" "$AU" interactive
+f="$T/init3.jsonl"; { user "status?"; asst "x"; user "back to normal mode"; } > "$f"
+mode "initial_mode autonomous: an off word still ends it" "$f" "$AU" interactive
+f="$T/init4.jsonl"; { user "anything open for me?"; asst "x"; user "fine, autonomous again"; } > "$f"
+mode "initial_mode autonomous: an on word sets it again after an ask" "$f" "$AU" autonomous
+printf '%s\n' '{"initial_mode": "interactive"}' > "$AU/.claude/rules/autonomous-patterns.json"
+f="$T/init1.jsonl"
+mode "initial_mode interactive: same as the default" "$f" "$AU" interactive
+
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }
