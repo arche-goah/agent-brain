@@ -61,7 +61,7 @@ do NOT delete them, otherwise the rules only sit on disk instead of in context):
 ## Ecosystem
 
 `config/ecosystem.json` = which state of which suite runs here (repo × commit ×
-version × requires_core). Maintenance: `python3 core/scripts/ecosystem-sync.py --write`.
+version × requires_core). Maintenance: `python3 core/scripts/ecosystem-sync.py --write` (Windows: `python` - there `python3` is often the Microsoft Store stub).
 Before every hand-over/take-over: `core/scripts/handover-gate.sh`.
 
 ## Memory

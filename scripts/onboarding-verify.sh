@@ -154,7 +154,7 @@ hook_at=""
 [ -n "$BRAIN" ] && [ -d "$BRAIN" ] && hook_at=$("$PY" "$(dirname "$0")/hook-coverage.py" --runs SessionStart session-bootup.sh "$BRAIN" 2>/dev/null | head -1 | tr -d '\r')
 if [ -n "$hook_at" ]; then
   # The bootup advances the shared-memory cursor; a verify run is no session and must not
-  # mark entries as seen that no session ever showed (sam-reiselaptop, 2026-09-30).
+  # mark entries as seen that no session ever showed (a Windows instance, 2026-09-30).
   # A throwaway copy keeps the output identical and the real cursor untouched.
   sm_tmp=$(mktemp)
   cp "$BRAIN/.claude-state/shared-memory-state.json" "$sm_tmp" 2>/dev/null \

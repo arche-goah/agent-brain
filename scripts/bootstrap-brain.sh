@@ -281,9 +281,9 @@ fi
 #    REGISTRY.md (skill-lint requires it, even with zero skills) and the
 #    ecosystem pin (otherwise check 5 reports "core contract: pinned None").
 "$PY" core/scripts/regen-skill-registry.py --skills .claude/skills >/dev/null 2>&1 ||
-  echo "bootstrap-brain: REGISTRY.md not generated — run 'python3 core/scripts/regen-skill-registry.py --skills .claude/skills' to catch up."
+  echo "bootstrap-brain: REGISTRY.md not generated — run '$PY core/scripts/regen-skill-registry.py --skills .claude/skills' to catch up."
 "$PY" core/scripts/ecosystem-sync.py --write >/dev/null 2>&1 ||
-  echo "bootstrap-brain: ecosystem.json not pinned — run 'python3 core/scripts/ecosystem-sync.py --write' to catch up."
+  echo "bootstrap-brain: ecosystem.json not pinned — run '$PY core/scripts/ecosystem-sync.py --write' to catch up."
 
 # 7. Initial commit
 git add -A
