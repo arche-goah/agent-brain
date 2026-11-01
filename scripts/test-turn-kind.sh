@@ -84,4 +84,18 @@ build "$T/oper.jsonl" "go on"
 [ -z "$(run "$T/notif.jsonl")" ] && ok "three notification turns keep the cooldown" || bad "notification turns ran the cooldown out"
 case "$(run "$T/oper.jsonl")" in *'"decision":"block"'*) ok "three operator turns end the cooldown";; *) bad "operator turns did not end the cooldown";; esac
 
+# --- questionAnswers(): the operator's question-tool answer is an operator word (2026-10-30) -----------
+qa() { node -e '
+const { questionAnswers } = require(process.argv[1]);
+const t = questionAnswers();
+const recs = JSON.parse(process.argv[2]);
+console.log(recs.map((r) => t(r) ? 1 : 0).join(""));' "$D/turn-kind.cjs" "$1"; }
+ASK='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{}}]}}'
+BASH='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"b1","name":"Bash","input":{}}]}}'
+res() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":%s,"content":"The user answered: yes"}]}}' "$1" "$2"; }
+[ "$(qa "[$ASK,$(res q1 false)]")" = 01 ] && ok "a question-tool answer is a boundary" || bad "question-tool answer not seen"
+[ "$(qa "[$BASH,$(res b1 false)]")" = 00 ] && ok "another tool's answer-like result is no boundary" || bad "answer-like tool output taken as an answer"
+[ "$(qa "[$ASK,$(res q1 true)]")" = 00 ] && ok "a refused question is no boundary" || bad "refused question taken as an answer"
+[ "$(qa "[$(res q1 false)]")" = 0 ] && ok "a result without its question in the pass is no boundary" || bad "orphan result taken as an answer"
+
 [ "$fail" = 0 ] && echo "turn-kind: all cases pass" || { echo "turn-kind: FAILURES"; exit 1; }

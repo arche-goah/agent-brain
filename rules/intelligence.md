@@ -144,7 +144,9 @@ ORDERED; content, structures, UI artifacts and features stay propose-not-build.
 
 ## Presenting to the Operator
 
-What reaches the operator is sorted first (operator decision 2026-09-18).
+What reaches the operator is sorted first (operator decision 2026-09-18). **Run modes** (INTERACTIVE asks at once,
+AUTONOMOUS collects questions and keeps working — no extra rights; how to switch): `docs/run-modes.md` — the answer when
+an operator asks what the modes mean (operator order 2026-10-29).
 
 - **Only real operator decisions** (the instance's operator-only list, `working-rules.md` ASK OR ACT)
   are presented — each with a recommendation, answerable by number; that includes yes/no questions
@@ -196,7 +198,9 @@ separate phase workflows; resumable scripts and salvage after a limit-kill: `cor
 **Multi-agent invariant — only the producer writes:** bulk data goes to a file written by the agent
 that PRODUCED it; across the agent boundary travel only path, count, verdict and a narrow validated
 index; a script-side count beats an agent's (abort on mismatch). Carried by `relay()`/`assertCount()`
-and `core/scripts/test-workflow-relays.sh`; mechanism: `core/docs/multi-agent-relay.md`.
+and `core/scripts/test-workflow-relays.sh`; mechanism: `core/docs/multi-agent-relay.md`. **Where the
+harness refuses the agent its file** (2026-10-26), it returns TEXT and names the refusal — never works
+around it (another tool, a script, a rename); the spawning brief asks for exactly that.
 
 History: core/docs/rule-history.md, "Model Routing".
 
