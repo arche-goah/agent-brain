@@ -32,6 +32,10 @@ Windows: after EVERY installation, open a new terminal. Windows does not propaga
 PATH changes to already-running processes — otherwise the preflight reports tools as
 missing although they are installed, and you install things twice.
 
+New to Claude Code, plugins and hooks? `docs/onboarding-explained.md` is the picture behind
+these steps: the three layers (core, your brain, suites), the four carriers of behaviour,
+the Windows traps in depth, and a glossary. Nothing in it has to be executed.
+
 **SSH is recommended; HTTPS is enough to start.** Clones and fetches work over HTTPS.
 Where a plugin install or the background marketplace refresh fails on a machine without
 SSH, setting up SSH is the fix. The preflight measures both: it is green once
