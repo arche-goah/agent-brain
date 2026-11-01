@@ -169,14 +169,25 @@ function intents(transcriptPath, cwd) {
     let r; try { r = JSON.parse(line); } catch (e) { continue; }
     if (!r || r.session !== session || r.mode !== 'hook' || !r.model) continue;
     const at = Date.parse(r.at);
-    if (!Number.isNaN(at)) out.push({ at, model: r.model });
+    if (!Number.isNaN(at)) out.push({ at, model: r.model, prompt: typeof r.prompt === 'string' ? r.prompt : null });
   }
   return out;
 }
-function intentFor(list, ts) {
+/**
+ * The record of THIS prompt: inside the window and, when the record carries its prompt, the same
+ * text. Measured 2026-11-01 on the macOS instance: an operator message typed mid-turn ("lay the open
+ * questions before me", translated) was read by the model as asks_open, but a task notification's
+ * record 1.6 s earlier was the first one in the window - the operator's ask was read as "nothing", the
+ * run stayed autonomous and the question tool was refused. A record without a prompt field (an older
+ * classifier) still matches by time alone.
+ */
+function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 40); }
+function intentFor(list, ts, text) {
   const t = Date.parse(ts || '');
   if (Number.isNaN(t)) return null;
-  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS);
+  const want = norm(text);
+  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS
+    && (r.prompt === null || !want || norm(r.prompt).slice(0, want.length) === want.slice(0, norm(r.prompt).length)));
   return hit ? hit.model : null;
 }
 
@@ -228,7 +239,7 @@ function promptModes(transcriptPath, cwd) {
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
-    const intent = intentFor(known, d.timestamp);
+    const intent = intentFor(known, d.timestamp, t);
     // The model's asks_open yields to an order to work autonomously in the SAME prompt (2026-10-31, macOS
     // instance): "work through all open points, handle them autonomously" read as asks_open, and the run the
     // operator had just ordered went interactive. Replay over the classifier log: 7 prompts carry both, the one
