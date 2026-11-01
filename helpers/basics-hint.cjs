@@ -93,7 +93,10 @@ function judge(input, now) {
     const prompts = t.prompts.concat(prompt).join('\n');
     for (const b of open) {
       let re; try { re = new RegExp(b.proof || '(?!)', 'i'); } catch (e) { continue; }
-      if (re.test(b.proof_in === 'prompt' ? prompts : t.tools)) st.learned[b.id] = day;
+      // "both" (Windows review of #257, 2026-11-01): a skill can be used as a tool call OR typed as a slash
+      // command, which the transcript records as a prompt `<command-name>/<plugin>:<skill></command-name>`.
+      const hay = b.proof_in === 'prompt' ? prompts : b.proof_in === 'both' ? `${t.tools}\n${prompts}` : t.tools;
+      if (re.test(hay)) st.learned[b.id] = day;
     }
   }
   let out = null;

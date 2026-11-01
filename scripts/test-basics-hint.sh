@@ -40,6 +40,19 @@ out=$(run "$B" "$f" s4 "done for today"); quiet "a basic whose proof is in the t
 grep -q '"session-close": "20' "$B/.claude-state/basics.json" && ok "the learned date is written to the brain's state" \
   || bad "learned date missing: $(cat "$B/.claude-state/basics.json")"
 
+# A close typed as a slash command (Windows review of #257, 2026-11-01): recorded as a prompt, not a tool call.
+B7="$T/typed"; P7="$T/p-typed"; mkdir -p "$B7" "$P7"
+f7="$P7/s1.jsonl"; { user "fix it"; user "<command-message>brain-core:session-close</command-message>
+<command-name>/brain-core:session-close</command-name>"; } > "$f7"
+out=$(run "$B7" "$f7" s2 "ok done for today"); quiet "a close typed as a slash command is learned too" "$out"
+B8="$T/typed-no"; P8="$T/p-typed-no"; mkdir -p "$B8" "$P8"
+f8="$P8/s1.jsonl"; { user "<command-message>loop</command-message>
+<command-name>/loop</command-name>"; } > "$f8"
+out=$(run "$B8" "$f8" s2 "ok done for today"); says "another typed command is no proof of the close (control)" "$out" session-close
+B9="$T/said"; P9="$T/p-said"; mkdir -p "$B9" "$P9"
+f9="$P9/s1.jsonl"; user "how does session-close work?" > "$f9"
+out=$(run "$B9" "$f9" s2 "done for today"); says "the word session-close in a question is no proof (control)" "$out" session-close
+
 # A proof that only NAMES the command (start report, skill text) is no use of it.
 B2="$T/named"; P2="$T/p-named"; mkdir -p "$B2" "$P2"
 f2="$P2/s1.jsonl"; { user "hi"; asst "arm it with bash core/scripts/collab-watch.sh"; } > "$f2"

@@ -1,10 +1,11 @@
 {
-  "_doc": "Basics in use: what a new operator needs to know to work with a brain, taught at the moment it is needed. helpers/basics-hint.cjs (UserPromptSubmit) shows at most ONE new basic per session, only when the operator's prompt matches its trigger, and never again once the proof shows the operator used it. A proof is matched against the session's tool calls (their input as JSON), or with \"proof_in\": \"prompt\" against the operator's own prompts. Triggers are English; an instance adds its language in .claude/rules/basics.json ({\"triggers\": {\"<id>\": [\"regex\", ...]}}) and may add basics of its own (\"basics\": [...]). Keep the list short — every entry is a sentence the operator reads.",
+  "_doc": "Basics in use: what a new operator needs to know to work with a brain, taught at the moment it is needed. helpers/basics-hint.cjs (UserPromptSubmit) shows at most ONE new basic per session, only when the operator's prompt matches its trigger, and never again once the proof shows the operator used it. A proof is matched against the session's tool calls (their input as JSON), or with \"proof_in\": \"prompt\" against the operator's own prompts, or with \"both\" against either (a skill typed as a slash command is a prompt `<command-name>/…</command-name>`, not a tool call). Triggers are English; an instance adds its language in .claude/rules/basics.json ({\"triggers\": {\"<id>\": [\"regex\", ...]}}) and may add basics of its own (\"basics\": [...]). Keep the list short — every entry is a sentence the operator reads.",
   "basics": [
     {
       "id": "session-close",
       "trigger": ["\\b(done|finished|stopping) for (today|tonight|now)\\b", "\\bshut(ting)?( it| everything)? down\\b", "\\bcall(ing)? it a day\\b", "\\b(log|logging) off\\b", "\\bend (the|this) session\\b"],
-      "proof": "\"skill\"\\s*:\\s*\"(?:[\\w.-]+:)?session-close\"",
+      "proof": "\"skill\"\\s*:\\s*\"(?:[\\w.-]+:)?session-close\"|<command-name>/(?:[\\w.-]+:)?session-close\\b",
+      "proof_in": "both",
       "say": "To end a session, say \"close the session\": the AI saves open work, memory and the log, then tells you when you can shut down. Closing the window skips all of that."
     },
     {
