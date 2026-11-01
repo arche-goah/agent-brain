@@ -97,6 +97,17 @@ function ordersOn(on, text) {
   return (text.match(/[^.!?\n]+[.!?]*/g) || []).some((s) => !/\?\s*$/.test(s) && on.test(s));
 }
 
+/**
+ * The mirror of ordersOn: a question-tool question is the MODE question only when the on-word stands in its
+ * question sentence itself. Measured 2026-10-31 on the macOS instance: "… The autonomous gate held the edit
+ * back; the patch is in <file>. Shall I apply it now?" was read as the mode question, the operator's "yes,
+ * apply it" switched the moment back to autonomous, and the gate then held the very edit the operator had
+ * just agreed to.
+ */
+function asksMode(on, question) {
+  return (question.match(/[^.!?\n]+[.!?]*/g) || []).some((s) => /\?\s*$/.test(s) && on.test(s));
+}
+
 function promptText(msg) {
   const c = msg && msg.content;
   if (typeof c === 'string') return c;
@@ -195,7 +206,7 @@ function promptModes(transcriptPath, cwd) {
         // A yes/no to the mode question decides by yes; an answer to any other question is read
         // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
         // "yes, work through them autonomously" to "shall I handle them?" set nothing).
-        if (w.on.test(q)) state = w.yes.test(a) && !w.off.test(a);
+        if (asksMode(w.on, q)) state = w.yes.test(a) && !w.off.test(a);
         else if (w.off.test(a)) state = false;
         else if (ordersOn(w.on, a)) state = true;
         else continue;
@@ -225,7 +236,7 @@ function autonomousMode(transcriptPath, cwd) {
   return modes.length ? modes[modes.length - 1].autonomous : false;
 }
 
-module.exports = { autonomousMode, promptModes, words };
+module.exports = { autonomousMode, promptModes, words, asksMode };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);
