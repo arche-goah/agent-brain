@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # release-preflight.sh — the release-race and broken-tag classes, caught BEFORE they ship.
+# long-run: detached
+# (check 8 asks GitHub for both OS proofs of every PR since the previous tag: measured 2026-11-01 on
+# the macOS instance, 55 PRs, over 37 s in the foreground until the operator saw it - run it detached)
 #
 # A release is one atomic promise: tag name, manifest version and CHANGELOG section
 # all say the same thing, exactly once, from exactly one session. Every part of that
