@@ -268,6 +268,10 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: wait loop via Monitor" Monitor command "until [ -s out.txt ]; do sleep 10; done; cat out.txt" allow
   tr_probe "mechanism-guard/core rule: a loop without sleep" Bash command "for f in a b; do echo \$f; done" allow
   tr_probe "mechanism-guard/core rule: a short retry with sub-second sleep" Bash command "until mkdir lock 2>/dev/null; do sleep 0.2; done" allow
+  # a Monitor stream through a buffered grep delivers late or never (monitor_only, 2026-10-28)
+  tr_probe "mechanism-guard/core rule: Monitor stream through a buffered grep" Monitor command "tail -f run.log | grep ERROR" block
+  tr_probe "mechanism-guard/core rule: Monitor stream through grep --line-buffered" Monitor command "tail -f run.log | grep --line-buffered ERROR" allow
+  tr_probe "mechanism-guard/core rule: the same grep in the foreground is no stream" Bash command "cat run.log | grep ERROR" allow
   # class sweep of the same day: waiting scripts by name
   tr_probe "mechanism-guard/core rule: wait-mcp-reconnect in the foreground" Bash command "bash core/scripts/wait-mcp-reconnect.sh touchdesigner" block
   tr_probe "mechanism-guard/core rule: shared-memory-watch in the foreground" Bash command "bash core/scripts/shared-memory-watch.sh watch 300" block
@@ -309,12 +313,43 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: pin read by awk (control)" Bash command "awk '/name/' m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by diff (control)" Bash command "diff m/.claude-plugin/marketplace.json /tmp/x" allow
   tr_probe "mechanism-guard/core rule: pin read by jq (control)" Bash command "jq .plugins m/.claude-plugin/marketplace.json" allow
+  # 2026-10-29, ported from the macOS instance: five rules that carry a core rule or harness mechanics.
+  # Detached (Monitor) on purpose where a foreground rule would block anyway - these hold in both modes.
+  tr_probe "mechanism-guard/core rule: hand-built CI poll loop, detached" Monitor command "while true; do gh pr checks 5 -R o/r; sleep 30; done" block
+  tr_probe "mechanism-guard/core rule: CI poll loop around ci-watch.sh (control)" Monitor command "until bash core/scripts/ci-watch.sh pr o/r 5; do sleep 60; done" allow
+  tr_probe "mechanism-guard/core rule: waiting script with output thrown away" Monitor command "bash core/scripts/shared-memory-watch.sh watch 300 > /dev/null" block
+  tr_probe "mechanism-guard/core rule: waiting script armed with &" Bash command "bash core/scripts/wait-mcp-reconnect.sh td &" block
+  tr_probe "mechanism-guard/core rule: CI status cut by tail" Bash command "gh pr checks 5 -R o/r | tail -3" block
+  tr_probe "mechanism-guard/core rule: run list cut by head" Bash command "gh run list -R o/r --workflow CI | head -2" block
+  tr_probe "mechanism-guard/core rule: heredoc fed to python" Bash command 'python3 - <<EOF\nprint(1)\nEOF' block
+  tr_probe "mechanism-guard/core rule: here-string is no heredoc (control)" Bash command 'cat <<< "x"' allow
+  tr_probe "mechanism-guard/core rule: commit message naming a heredoc (control)" Bash command 'git commit -m "no <<EOF here"' allow
+  tr_probe "mechanism-guard/core rule: push through a cd chain" Bash command "cd /r && git push" block
+  tr_probe "mechanism-guard/core rule: push with -C (control)" Bash command "git -C /r push" allow
+  # 2026-10-28: CI runs read without a workflow filter - runs of a comment-triggered workflow
+  # were taken for CI runs on the same commit and a red main was called green, twice
+  tr_probe "mechanism-guard/core rule: run list on main, no workflow" Bash command "gh run list -R o/r --branch main --limit 4 --json headSha,conclusion" block
+  tr_probe "mechanism-guard/core rule: run list after ;, no workflow" Bash command "x=1; gh run list --branch main" block
+  tr_probe "mechanism-guard/core rule: run list by path, no workflow" Bash command "/opt/bin/gh run list --limit 50" block
+  tr_probe "mechanism-guard/core rule: run list --workflow (control)" Bash command "gh run list -R o/r --workflow CI --branch main --limit 4" allow
+  tr_probe "mechanism-guard/core rule: run list -w (control)" Bash command "gh run list -w CI --branch feat/x" allow
+  tr_probe "mechanism-guard/core rule: run list --workflow= (control)" Bash command "gh run list --workflow=ci.yml --branch main" allow
+  tr_probe "mechanism-guard/core rule: run list named in a commit message (control)" Bash command 'git -C /r commit -m \"guard: gh run list without a workflow filter\"' allow
+  tr_probe "mechanism-guard/core rule: gh run view (control)" Bash command "gh run view 123 -R o/r --log-failed" allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
     bad "mechanism-guard/core rule: ci-watch with run_in_background blocked what it should allow"
   else
     ok "mechanism-guard/core rule: ci-watch with run_in_background allows"
+  fi
+  # a background Bash reports once at its end: a grep without --line-buffered there is no stream
+  out=$(printf '{"tool_name":"Bash","tool_input":{"command":"make test | grep FAIL","run_in_background":true}}' \
+        | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
+  if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
+    bad "mechanism-guard/core rule: buffered grep in a background Bash blocked what it should allow"
+  else
+    ok "mechanism-guard/core rule: buffered grep in a background Bash allows (monitor_only)"
   fi
   # 2026-10-21: a brain WITHOUT the plugin had the core's own rules inert — the submodule's
   # file is the fallback. Control: same project without core/ stays allowed.

@@ -95,6 +95,20 @@ CR="$("$PY" "$S" --root "$NR" --dir "$(native "$TC")" --numbers | "$PY" -c "impo
 [ "$CR" = "2 4 0.5" ] && echo "  OK   corrections counted per prompt (built-in + instance word)" || { echo "  FAIL corrections: '$CR'"; fail=1; }
 printf '{"unneeded": ["mach (es |das )?einfach"]}\n' > "$ROOT/.claude/rules/decision-review.json"
 
+# pasted text is not the operator's correction (helpers/turn-kind.cjs operatorWords, measured 2026-10-28): (a) a
+# correction only inside <pasted_content id="…">…</pasted_content id="…"> counts nothing, (b) outside it counts,
+# (c) between two pasted blocks it counts, inside one of two it does not; a paste-only prompt is still a prompt
+TP="$T/txp"; mkdir -p "$TP"
+pa() { printf '<pasted_content id="%s">\n%s\n</pasted_content id="%s">' "$1" "$2" "$1"; }
+gen "$TP/s-paste.jsonl" \
+    "p:$(pa a1f0 "Customer: that's not what I asked for.")"$'\nplease draft a reply' "r:Drafted." \
+    "p:$(pa b2e1 "build log")"$'\nthat\'s not what I asked' "r:Rebuilt." \
+    "p:$(pa c3d2 "log one")"$'\nwhy did you push?\n'"$(pa d4c3 "log two")" "r:Checked." \
+    "p:$(pa e5f4 "mail one: fine")"$'\ncompare both\n'"$(pa f6e5 "mail two: that's wrong")" "r:Compared." \
+    "p:$(pa a7b6 "why did you stop the service?")" "r:Read it."
+PCR="$("$PY" "$S" --root "$NR" --dir "$(native "$TP")" --numbers | "$PY" -c "import json,sys; n=json.load(sys.stdin); print(n['corrections'], n['prompts'])")"
+[ "$PCR" = "2 5" ] && echo "  OK   a correction inside pasted text is not counted, outside and between blocks it is" || { echo "  FAIL pasted corrections: '$PCR' (want '2 5')"; fail=1; }
+
 # --numbers carries counts only, never a sentence
 NUM="$("$PY" "$S" --root "$NR" --dir "$NTX" --numbers)"
 if printf '%s' "$NUM" | grep -q "push\|Shall"; then echo "  FAIL --numbers leaks text"; fail=1; else echo "  OK   --numbers carries counts only"; fi

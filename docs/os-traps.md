@@ -86,7 +86,7 @@ with `.as_posix()`. `str(p.relative_to(root))` yields backslashes on Windows, so
 such comparison misses and every such link is unfollowable.
 pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
-known:     helpers/session-bootup.sh=5
+known:     helpers/session-bootup.sh=4
 known:     scripts/always-loaded.py=4
 known:     scripts/autonomy-diagnose.py=26
 known:     scripts/backprop-report.py=5
@@ -101,7 +101,7 @@ known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
 known:     scripts/gate-precision.py=4
 known:     scripts/hook-coverage.py=20
-known:     scripts/lesson-carriers.py=2
+known:     scripts/lesson-carriers.py=5
 known:     scripts/live-doc-lint-test.py=2
 known:     scripts/live-doc-lint.py=3
 known:     scripts/local-machinery.py=1
@@ -179,6 +179,8 @@ reaches stdout is the unreadable-protocol notice for a human.
 script opens, stats or hands to `git -C` (the instance data file, the ledgers, a private document, the
 shared file); every path it REPORTS comes from git porcelain (forward-slashed) or from the pointer text
 inside a document, never from a join.
+2026-10-31: the ecosystem-owner snippet moved out of session-bootup.sh into scripts/eco_owner.py
+(bootup 5 -> 4); the new file builds its paths with pathlib and prints only the owner's name.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -197,6 +199,7 @@ known:     scripts/changelog-assemble.py=1
 known:     scripts/ci-lint-local-parse.py=1
 known:     scripts/decision-review.py=1
 known:     scripts/device-status.py=1
+known:     scripts/eco_owner.py=1
 known:     scripts/ecosystem-sync.py=1
 known:     scripts/english-only.py=1
 known:     scripts/invariant-index.py=1
@@ -237,6 +240,8 @@ form so the same writes stay visible; the two `open` sites that already pinned
 TextIOWrapper.
 2026-10-16, scripts/autonomy-diagnose.py baselined: its one write (`--out`) opens with
 `newline="\n"`; the report is not git-tracked anyway (it goes to the person who asked).
+2026-10-31, scripts/eco_owner.py baselined: its one write (the per-machine answer cache under
+`.claude-state/`, not git-tracked) opens with `newline="\n"`.
 
 ## OS-3 — a fixture hands a shell path to a native process
 
@@ -250,10 +255,14 @@ pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
 known:     scripts/test-absence-gate.sh=1
 known:     scripts/test-always-loaded.sh=1
+known:     scripts/test-auto-fire-coverage.sh=1
 known:     scripts/test-autonomous-gate.sh=1
+known:     scripts/test-autonomous-idle-gate.sh=1
 known:     scripts/test-autonomous-mode.sh=1
 known:     scripts/test-autonomy-diagnose-run.sh=1
 known:     scripts/test-autonomy-diagnose.sh=1
+known:     scripts/test-basics-hint.sh=1
+known:     scripts/test-bootstrap-brain.sh=1
 known:     scripts/test-bootup-declared-alpha.sh=1
 known:     scripts/test-bootup-git-login.sh=1
 known:     scripts/test-bootup-time-budget.sh=1
@@ -280,13 +289,18 @@ known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
 known:     scripts/test-guards.sh=4
 known:     scripts/test-hook-coverage.sh=1
+known:     scripts/test-install-git-hooks.sh=1
 known:     scripts/test-instance-key-gate.sh=1
+known:     scripts/test-instrument-watch.sh=1
 known:     scripts/test-leak-scan.sh=1
 known:     scripts/test-live-read-gate.sh=1
 known:     scripts/test-live-watchdog.sh=1
 known:     scripts/test-local-machinery.sh=1
+known:     scripts/test-long-runs.sh=1
 known:     scripts/test-memory-dream-files.sh=1
 known:     scripts/test-merge-request-gate.sh=1
+known:     scripts/test-merge-train.sh=1
+known:     scripts/test-mode-log.sh=1
 known:     scripts/test-monitor-arm-shape.sh=1
 known:     scripts/test-no-input-control.sh=1
 known:     scripts/test-onboarding-leak-check.sh=1
@@ -298,6 +312,7 @@ known:     scripts/test-parallel-sessions.sh=1
 known:     scripts/test-pattern-cases.sh=1
 known:     scripts/test-pr-ball.sh=1
 known:     scripts/test-pre-commit-behind.sh=1
+known:     scripts/test-pre-commit-os-traps.sh=1
 known:     scripts/test-premise-gate.sh=1
 known:     scripts/test-promise-gate.sh=1
 known:     scripts/test-public-text-guard.sh=1
@@ -317,7 +332,7 @@ known:     scripts/test-skill-gate.sh=1
 known:     scripts/test-stop-checks.sh=1
 known:     scripts/test-stop-dispatcher.sh=5
 known:     scripts/test-stoppen-gate.sh=1
-known:     scripts/test-suite-plugin-linkage.sh=1
+known:     scripts/test-suite-plugin-linkage.sh=3
 known:     scripts/test-template-drift.sh=1
 known:     scripts/test-text-leaks-notice.sh=1
 known:     scripts/test-transcript-archive.sh=1
@@ -345,6 +360,10 @@ discriminator case — and all three go through `native()`. The discriminator is
 it matters here more than usual: it asserts SILENCE, and an unresolvable path produces
 silence too, so without `native()` that case would pass on Windows for the wrong reason
 and certify a fixture that sees only one world state.
+2026-10-28, test-suite-plugin-linkage.sh 1 -> 3 after the review: `mkremote`/`mkcheckout` named their repos
+`$T/…-$RANDOM` and now take them from `mktemp -d "$T/…-XXXXXX"` (two calls could draw the same
+number and share a repo). Same parent `$T`, and the paths still go only to git through `git_`, as
+before — no new crossing into node or python.
 2026-09-13, test-coherence-scan-files.sh baselined after the same review: the temp dir
 never crosses into node as data — node receives the harness file as an ARGUMENT (Git Bash
 converts argv) and the lens files by NAME through env, which is the comparison the helper
@@ -705,12 +724,13 @@ known:     scripts/dep-install.py=2
 known:     scripts/ecosystem-sync.py=1
 known:     scripts/english-only.py=1
 known:     scripts/fork-drift.py=2
+known:     scripts/instrument-watch.py=3
 known:     scripts/invariant-check.py=3
-known:     scripts/lesson-carriers.py=2
+known:     scripts/lesson-carriers.py=4
 known:     scripts/live-doc-lint.py=2
 known:     scripts/memory-lint-test.py=1
 known:     scripts/memory-lint.py=1
-known:     scripts/open-items.py=8
+known:     scripts/open-items.py=9
 known:     scripts/orphan-check.py=2
 known:     scripts/os-traps-export.py=3
 known:     scripts/pending-clauses.py=3
@@ -762,6 +782,9 @@ so stdout is pinned at import, like the others.
 parsed by brain-scan-prep.py and the session-close step; stdout is pinned at the top of the script.
 2026-10-25, scripts/shared-reach-check.py (4): the question answered yes — the session-close step reads its
 FAIL lines and summary — so stdout is pinned at import, like lesson-carriers.py.
+2026-10-31, open-items.py 8 -> 9 after the same question: the new site is the no-owner note
+(`note: open PRs not looked for — …`); the bootup and open-items-gate.cjs parse this output, and
+the script pins stdout in `main()`, so the em dash leaves as UTF-8 on every platform.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
 
@@ -957,6 +980,27 @@ note:      Measured 2026-10-14 on the macOS instance (bash 3.2): `shared-memory-
 trivially because the watcher never ran. The search found a second site, `project-dir-test.sh`,
 where the same 127 made "watcher keeps the brain's cursor" pass without a watcher — it now also
 fails when the command did not run. Both fixed in #342; zero hits after the fix.
+
+## OS-20 — `os.kill(pid, 0)` asks "is it alive?" on POSIX and kills the process on Windows
+
+shape: B
+
+invariant: A liveness probe in Python never calls `os.kill(pid, 0)` unguarded. On POSIX signal 0
+only checks that the pid exists; on Windows `os.kill` with anything but the two console events
+calls `TerminateProcess` — the probe ends the very session it asks about. Branch on `os.name`
+and ask Windows for a handle (`OpenProcess` with `PROCESS_QUERY_LIMITED_INFORMATION`); each
+known site is such a guarded branch.
+pattern:   ^[^#]*os\.kill\([^)]*, *0\)
+paths:     --include=*.py scripts helpers
+known:     scripts/session-audit.py=1
+instances: 1
+repeat:    no
+status:    closed
+note:      Registered 2026-10-31 BEFORE a defect, with the first site: `session-audit.py` learned to
+read the harness session registry (`~/.claude/sessions/<pid>.json`) and must test the pid. Python
+documentation, `os.kill`: "Windows: … any other value for sig will cause the process to be
+unconditionally killed by the TerminateProcess API". The Windows branch is unmeasured until the
+PR's Windows check.
 
 ## OS-17 — `python3` exists on Windows but is the Store stub, and a script that only checks existence runs nothing
 

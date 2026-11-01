@@ -78,6 +78,14 @@ REALPY="$(for c in python3 python; do "$c" -c 'import sys' >/dev/null 2>&1 && { 
 case_run stubpy env DIAG_PYTHONS="$STUB $REALPY" bash "$RUN" --prompt "$P"
 always stubpy; check stubpy "via '$REALPY'"; check stubpy "script  ok"
 
+# the runner sent alone, without its script: nothing is downloaded unless DIAG_SCRIPT_URL names a source
+SOLO="$T/solo"; mkdir -p "$SOLO"; cp "$RUN" "$SOLO/"
+case_run solo bash "$SOLO/autonomy-diagnose-run.sh" --prompt "$P"
+always solo; check solo "script  FAILED"; check solo "copy it alongside, or set DIAG_SCRIPT_URL"
+if [ -e "$(dirname "$SUMF")/autonomy-diagnose.py" ]; then bad "solo: a script was fetched without DIAG_SCRIPT_URL"; else ok "solo: nothing fetched by default"; fi
+case_run solourl env DIAG_SCRIPT_URL="file:///no-such-dir/autonomy-diagnose.py" bash "$SOLO/autonomy-diagnose-run.sh" --prompt "$P"
+always solourl; check solourl "not downloadable from DIAG_SCRIPT_URL"
+
 case_run agentfail env FAKE_FAIL=1 bash "$RUN" --prompt "$P"
 always agentfail; check agentfail "agent   FAILED"; check agentfail "fake: model overloaded"
 

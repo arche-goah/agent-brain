@@ -53,6 +53,7 @@ _lint = import_module("shared-memory-lint")
 _device = import_module("device-status")
 
 STATUS = {"request": "open", "reply": "answered", "note": "info", "claim": "info"}
+HANDOVER_AREAS = ("core", "ops")   # core and AI mechanics, what touches several brains
 
 
 def foreign_claims(repo: Path, target: str, me: set[str]) -> list[str]:
@@ -128,6 +129,74 @@ def os_check_misaddressed(text, to, one_machine):
             "machine can do: --one-machine <reason>")
 
 
+# A check request for a PR whose CI at the head is not green is a check that will be thrown away: the
+# fix for the red CI moves the head, and the merge gate binds an OS OK to the head. Measured 2026-10-31
+# on the macOS instance: 50 core PRs were checked on Windows while 23 of them were red at python-floor
+# (a CI image, fixed by a PR that sat in the same queue); after the fix 28 heads were new and the
+# Windows run was due again. The operator (translated): "the first check was useless from the start,
+# and that could have been avoided". A PR labelled `ci-unblock` (it fixes the red CI for the others)
+# may be asked for while others are red - its own CI still has to be green.
+PR_REF = re.compile(r"(?<![\w/])(?:([\w.-]+/[\w.-]+))?#(\d+)\b")
+
+
+def pr_repo_default() -> str:
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    try:
+        import json
+        return (json.loads((Path(root) / ".claude" / "rules" / "shared-memory-post.json").read_text(encoding="utf-8"))
+                .get("pr_repo") or "")
+    except (OSError, ValueError):
+        return ""
+
+
+def ci_state(repo: str, n: str) -> str:
+    """'green', 'red: <checks>', 'pending: <n>' or 'unread: <why>' for the CI at the PR's head."""
+    import json
+    gh = os.environ.get("SHARED_MEMORY_POST_GH", "gh")
+    try:
+        r = subprocess.run([gh, "pr", "view", n, "-R", repo, "--json", "statusCheckRollup"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"unread: {e}"
+    if r.returncode != 0:
+        return f"unread: {(r.stderr or r.stdout).strip()[:120]}"
+    try:
+        checks = json.loads(r.stdout).get("statusCheckRollup") or []
+    except ValueError:
+        return "unread: no JSON"
+    if not checks:
+        return "pending: no check has run yet"
+    red = [c.get("name") or c.get("context") or "?" for c in checks
+           if (c.get("conclusion") or c.get("state") or "").upper() in ("FAILURE", "ERROR", "CANCELLED", "TIMED_OUT")]
+    if red:
+        return "red: " + ", ".join(red)
+    running = [c for c in checks if (c.get("status") or "COMPLETED").upper() != "COMPLETED"
+               or (c.get("state") or "").upper() == "PENDING"]
+    if running:
+        return f"pending: {len(running)} check(s) still running"
+    return "green"
+
+
+def os_check_not_ready(text: str) -> str:
+    """The refusal text when `text` asks an OS check of a PR whose CI at the head is not green."""
+    if not any(w.search(text) for w in check_words()) or not any(re.search(rx, text, re.I) for rx in OS_NAMES.values()):
+        return ""
+    default = pr_repo_default()
+    bad = []
+    for repo, n in dict.fromkeys(PR_REF.findall(text)):
+        repo = repo or default
+        if not repo:
+            continue
+        st = ci_state(repo, n)
+        if st != "green":
+            bad.append(f"{repo}#{n} ({st})")
+    if not bad:
+        return ""
+    return ("the CI at the head is not green for " + "; ".join(bad) + " - a check now is thrown away when the fix moves "
+            "the head; ask once the CI is green (a PR that fixes the red CI for the others: label it ci-unblock and "
+            "ask for it alone), or say why it has to go now: --ci-not-green-ok <reason>")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("kind", choices=sorted(STATUS))
@@ -141,6 +210,7 @@ def main() -> int:
     ap.add_argument("--repo", type=Path, default=_lint.REPO_DEFAULT)
     ap.add_argument("--date", default=dt.date.today().isoformat())
     ap.add_argument("--one-machine", default="", help="a check that needs exactly this machine: the reason")
+    ap.add_argument("--ci-not-green-ok", default="", help="an OS check request although the PR's CI is not green: why")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 
@@ -178,6 +248,21 @@ def main() -> int:
     miss = os_check_misaddressed(a.title + "\n" + body, to, a.one_machine)
     if miss:
         return refuse(miss)
+    if a.kind == "request" and not a.ci_not_green_ok:
+        early = os_check_not_ready(a.title + "\n" + body)
+        if early:
+            return refuse(early)
+    # A request about core or AI mechanics never goes to a party that handed those questions to the
+    # sender's AIs (parties.json `ai_handover`; Working Across Parties #6 (c)). Measured 2026-10-29 on
+    # the macOS instance: a Windows check of a core CI change went by name to such a device; nothing
+    # here read the handover. `handover-keeps: <why>` in the text marks what the handover keeps.
+    handed = _parties.handed_to_me(von, parties) if parties and a.kind == "request" and a.area in HANDOVER_AREAS else set()
+    if handed and not _parties.HANDOVER_KEEPS.search(a.title + "\n" + body):
+        named = [t for t in to if t in handed or (t.startswith("person:") and
+                 any(_parties.devices(parties)[d][0] == t[7:] for d in handed))]
+        if named:
+            return refuse(f"{', '.join(named)} handed core and AI mechanics to your side (ai_handover) - "
+                          f"decide it yourselves, or mark what the handover keeps: handover-keeps: <why>")
     stem = f"{a.kind}-{slug(a.title)}-{a.date}"
     path = area_dir / f"{stem}.md"
     if path.exists():
@@ -191,17 +276,22 @@ def main() -> int:
     meta = ["  type: project", f"  von: {von}", f"  audience: {', '.join(to)}", f"  topic: {a.area}",
             f"  date: {a.date}", f"  os: {os_name}", f"  core: {core}", f"  status: {status}"]
     if status == "open":
-        nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower()]
+        nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower() and d not in handed]
         meta.append(f"  next: {', '.join(nxt)}")
     if answers:
         meta.append(f"  {'claims' if a.kind == 'claim' else 'answers'}: {', '.join(answers)}")
     if a.one_machine:
         meta.append(f"  one-machine: {a.one_machine}")
+    if a.ci_not_green_ok:
+        meta.append(f"  ci-not-green-ok: {a.ci_not_green_ok}")
     text = "---\n" + f"name: {stem}\ndescription: {q}\nmetadata:\n" + "\n".join(meta) + "\n---\n\n" + body.strip() + "\n"
     rel = path.relative_to(a.repo).as_posix()
     log = area_dir / "LOG.md"
     old = log.read_text(encoding="utf-8")
-    line = f"## {a.date} · {von} — AN {', '.join(to)} (status: {status}): {a.title}\n{rel}\n"
+    # The lint reads the LOG line too: without the reason there it refused the commit of an entry whose file
+    # carried --one-machine (measured three times on 2026-10-31, each LOG line fixed by hand).
+    reason = f" · one-machine: {a.one_machine}" if a.one_machine else ""
+    line = f"## {a.date} · {von} — AN {', '.join(to)} (status: {status}): {a.title}\n{rel}{reason}\n"
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
     with open(log, "w", encoding="utf-8", newline="\n") as fh:

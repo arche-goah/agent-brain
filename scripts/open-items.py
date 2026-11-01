@@ -30,7 +30,8 @@ This script is the ONE list of open points at session start:
   * open shared-memory requests addressed to this instance (shared-memory-inbox --open,
     no cursor, no age window) — in the default shared memory and in every further channel the
     instance is a member of (scripts/shared_channels.py; such an item's id and ref start with
-    `<label>:`) — and every open PR under the ecosystem owner;
+    `<label>:`) — and every open PR under the ecosystem owner (`--owner`; without it the
+    owner scripts/eco_owner.py names, the same one the session start passes);
   * per item a class — automatic where the data says it (`circle:` A/C = ai, B/D/E/F =
     human; a request addressed to a human by name = human; a PR = ai), otherwise the
     agent classifies it ONCE (`--classify`), kept per machine in
@@ -51,6 +52,10 @@ This script is the ONE list of open points at session start:
   * a REQUEST from another side in a parked domain is not parked away — parked means not
     worked on, never unanswered; it is listed with how to answer (receipt, state, when);
   * a source that could not be read says so — it never reads as "nothing open";
+  * no owner at all (`--owner ""`: eco_owner.py found none — no gh, not logged in, offline
+    with no earlier answer) is no failed read: one neutral line says the PRs were not looked
+    for and how to name the owner; never a red NOT checked line nothing could clear, never
+    "nothing open" (fresh-brain trial 2026-10-31);
   * "nothing open" is said explicitly when both sources were read and nothing is open.
 helpers/open-items-gate.cjs (Stop) then checks the first reply against this list.
 
@@ -65,7 +70,7 @@ operator's personal account when --owner is the org; PR ids stay `<repo>#<n>`, s
 listed owners with a repo of the same name share one id).
 
 Usage:
-  open-items.py --owner <org> [--hook-input '<SessionStart JSON>'] [--repo <shared-memory>]
+  open-items.py [--owner <org>] [--hook-input '<SessionStart JSON>'] [--repo <shared-memory>]
   open-items.py --classify '<id>=ai|human[:why]' [...]      (id: as in the hint line, or its file name)
 Stdlib only; runs under `python3` or `python` (Windows python.org installer).
 """
@@ -474,6 +479,14 @@ def standing_classes(root):
         classes.append({"name": name, "kind": e["kind"], "scope": scope, "title": title, "excludes": excludes,
                         "audience": {str(t).lower() for t in e.get("audience") or []},
                         "granted": DAY.search(granted).group(0)})
+        # A standing approval is reviewed routinely (operator order 2026-10-29): it keeps applying, but
+        # after REVIEW_DAYS without a fresh `reviewed` date the start report names it once per start.
+        stamp = str(e.get("reviewed") or DAY.search(granted).group(0))
+        today = datetime.date.fromisoformat(os.environ.get("OPEN_ITEMS_TODAY") or datetime.date.today().isoformat())
+        if stamp < (today - datetime.timedelta(days=90)).isoformat():
+            refused.append(f"standing approval '{name}' due for review (granted {DAY.search(granted).group(0)}, "
+                           f"reviewed {e.get('reviewed') or 'never'}) — still applies; ask the operator whether "
+                           "the class still fits, then set \"reviewed\": \"<today>\"")
     return classes, refused
 
 
@@ -565,8 +578,13 @@ LEDGER_FIELD = re.compile(r"\b(id|class|origin):\s*`?([\w.:/-]+)")
 LEDGER_EXIT = re.compile(r"\bexit:\s*(other-side|parked|later-at-system)\s+(\d{4}-\d{2}-\d{2})")
 # Every exit line of the skill's table; the LAST one in an entry is its current state.
 ANY_EXIT = re.compile(r"^\s*exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re.M)
+# `ask-when: <date>` or `ask-when: thema|topic <regex>` (operator decision 2026-10-29 on the macOS
+# instance, "questions at the right time"; decision-presentation-gate reads it the same way): a date
+# still ahead or a topic is not due at the session start. Measured 2026-10-30: nine entries with a
+# topic trigger printed every session, seven of them as "needs you".
+ASK_WHEN = re.compile(r"^\s*ask-when:\s*(.+?)\s*$", re.M)
 # The exits of skill backlog-catch-up, step 3.
-EXITS = {"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
+EXITS ={"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
 
 
 def blame_times(root, rel):
@@ -637,7 +655,16 @@ def ledgers(root):
             exits = ANY_EXIT.findall(e["text"])
             last = exits[-1] if exits else None
             x = last if last and LEDGER_EXIT.search(f"exit: {last[0]} {last[1]}") else None
-            rows = [blame[k] for k in range(e["line"], e["line"] + e["text"].count("\n") + 1) if k in blame]
+            until = (m.group(1), m.group(2).strip()) if m else None
+            topic = None
+            aw = ASK_WHEN.search(e["text"])
+            if aw:
+                ad = re.match(r"(\d{4}-\d{2}-\d{2})\b", aw.group(1))
+                if ad:
+                    until = until or (ad.group(1), "ask-when")
+                else:
+                    topic = aw.group(1)
+            rows =[blame[k] for k in range(e["line"], e["line"] + e["text"].count("\n") + 1) if k in blame]
             # Created = the entry's oldest line; the last own move = its newest line that is not an
             # exit line (sorting an entry is no work on it).
             created = day(min(r[0] for r in rows)) if rows else ""
@@ -647,16 +674,19 @@ def ledgers(root):
                     "who": f.get("origin", "ledger"), "text": re.sub(r"[*`]", "", e["title"])[:100],
                     "scope": rel, "ref": ident, "lclass": f.get("class", ""),
                     "exit": last[0] if last else "", "body": e["text"],
-                    "until": (m.group(1), m.group(2).strip()) if m else None,
-                    "waiting_on": (f"the ledger exit {x[0]}", f"since {x[1]}") if x else None}
+                    "until": until,
+                    "waiting_on": (f"the ledger exit {x[0]}", f"since {x[1]}") if x
+                    else ("its trigger", f"ask-when {topic}") if topic else None}
             if rows:
                 item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
             items.append(item)
     return items, unread
 
 
-# `<repo>#N` or a bare `#N` in an `exit: in-pr` line.
-PR_MENTION = re.compile(r"(?<![\w/#])([\w.-]+)?#(\d+)\b")
+# `<owner>/<repo>#N`, `<repo>#N` or a bare `#N` in an `exit: in-pr` line. Measured 2026-10-30 on
+# the macOS instance: the full form matched nothing (the lookbehind refused the repo after `/`),
+# seven entries carried by an open PR printed as "its in-pr exit names no open PR any more".
+PR_MENTION = re.compile(r"(?<![\w/#])(?:[\w.-]+/)?([\w.-]+)?#(\d+)\b")
 
 
 def carried_by_pr(ledger_items, pr_items):
@@ -745,7 +775,8 @@ def classify(args, cls_file, chans, seen_file=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--owner", default="")
+    # None = not given (a hand run): ask eco_owner.py. "" = given empty: eco_owner.py found none.
+    ap.add_argument("--owner", default=None)
     ap.add_argument("--hook-input", default="")
     ap.add_argument("--repo", default=default_repo())
     ap.add_argument("--root", default=resolve_project_dir(HERE))
@@ -805,16 +836,22 @@ def main():
             return True
         return False
 
+    owner = a.owner
+    if owner is None:  # a hand run asks the resolver the session start asked
+        import eco_owner
+        owner = eco_owner.resolve(root, sid)[0]
     reads = channel_requests(chans)
     req = reads[0][1]
-    pr = prs(a.owner, cfg.get("owners") or {}, [c["repo"] for c in chans], cfg.get("pr_owners") or [])
+    pr = prs(owner, cfg.get("owners") or {}, [c["repo"] for c in chans], cfg.get("pr_owners") or [])
     ses = sessions(root, a.hook_input)
     led, led_unread = ledgers(root)
     carried_by_pr(led or [], pr or [])
+    # No owner is no failed read (nothing a re-run could fix): it gets its own neutral line below.
+    # pr stays None, so the PR counters are kept as for an unread source.
     failed = [name for name, v in ([("shared-memory requests" + ("" if c["default"] else f" [{c['label']}]"), r)
                                     for c, r in reads]
-                                   + [("PR search" if a.owner else "PRs (no owner given)", pr),
-                                      ("session audit", ses),
+                                   + ([("PR search", pr)] if owner else [])
+                                   + [("session audit", ses),
                                       ("work ledgers (no readable .claude/rules/ledgers.json)", led)]) if v is None]
     if chan_error:
         failed.append(f"shared-memory channels ({chan_error})")
@@ -921,7 +958,7 @@ def main():
               + " — clear each before the first reply: read its transcript (session-audit.py --details),"
               + " say the cause and whether work was lost as measured, never ask the operator;"
               + " then core/scripts/session-audit.py --ack <id>")
-    if not items and not failed:
+    if not items and not failed and owner:
         print("- nothing open (requests, PRs and work ledgers read)")
     # Standing PRs need no topic words (the gate names them by number); above a handful they
     # share one line like the waiting ones (measured 2026-10-28: 16 such lines, 4.2 of 20 KB of
@@ -978,6 +1015,12 @@ def main():
         for i in active:
             if i["cls"] == "?":
                 print(f"   --classify '{i['id']}=ai|human:WHY'")
+    if not owner:
+        # Last, not among the `- ` lines: open-items-gate.cjs reads the block up to the first
+        # line of another shape, and a neutral note is nothing a reply has to carry.
+        print('note: open PRs not looked for — no GitHub owner is known for this brain (no "owner" in '
+              "config/ecosystem.json, and gh named no login). To list them, set \"owner\" there to the "
+              "GitHub org or account whose PRs are yours")
     return 0
 
 

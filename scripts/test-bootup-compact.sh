@@ -18,4 +18,10 @@ run "resume asks once"             '{"session_id":"s","source":"resume"}'  ask
 run "hand run (no payload) asks"   ''                                      ask
 run "compaction does not ask"      '{"session_id":"s","source":"compact"}' no-ask
 run "compaction with spaces"       '{"source": "compact"}'                 no-ask
+# The instructions print BEFORE the block (2026-10-30: a 29.7 KB report, the harness preview held 2 KB,
+# instructions after the block were outside it).
+ins=$(grep -n "^  printf '%s\\\\n' '-> Claude: start the first reply" "$SRC" | head -1 | cut -d: -f1)
+blk=$(grep -n "^printf '%s\\\\n' '<session-bootup trust" "$SRC" | head -1 | cut -d: -f1)
+if [ -n "$ins" ] && [ -n "$blk" ] && [ "$ins" -lt "$blk" ]; then echo "ok   instructions print before the block"
+else echo "FAIL instructions print before the block (instruction line ${ins:-?}, block line ${blk:-?})"; fail=1; fi
 [ "$fail" = 0 ] && echo "bootup-compact: all cases pass" || { echo "bootup-compact: FAILURES"; exit 1; }

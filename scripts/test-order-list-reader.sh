@@ -25,7 +25,9 @@ printf '# Orders\n\n## Offen (bestellt)\n\n- [ ] **deutsche Bestellung** — von
 [ "$(run)" = 1 ] && ok "1 German headings: one open order counted, the proposal not" || bad "1 German list: got $(run) task OPEN lines"
 
 cp "$ROOT/templates/brain-scan-orders.md" "$B/docs/maintenance/brain-scan-auftraege.md"
-[ "$(run)" = 1 ] && ok "2 English template (verbatim): its skeleton order is counted" || bad "2 English template: got $(run) task OPEN lines"
+[ "$(run)" = 0 ] && ok "2 English template (verbatim): a fresh brain shows no placeholder order (stranger trial 2026-11-01)" || bad "2 English template: got $(run) task OPEN lines"
+printf '# Orders\n\n## Open (ordered)\n\n- [ ] **an English order**\n  id: e\n\n## Proposed (derived)\n\n- [ ] **a proposal**\n' > "$B/docs/maintenance/brain-scan-auftraege.md"
+[ "$(run)" = 1 ] && ok "2b English headings: one open order counted, the proposal not" || bad "2b English list: got $(run) task OPEN lines"
 
 printf '# Orders\n\n## Open (ordered)\n\n## Proposed (derived)\n\n- [ ] **only a proposal**\n\n## Done\n\n- [x] **done**\n' > "$B/docs/maintenance/brain-scan-auftraege.md"
 [ "$(run)" = 0 ] && ok "3 NEGATIVE: no open order -> no line, and the proposal does not count" || bad "3 negative: got $(run) task OPEN lines"

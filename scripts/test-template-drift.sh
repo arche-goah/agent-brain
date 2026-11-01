@@ -64,6 +64,14 @@ U="$T/user7"; mkdir -p "$U"; printf '%s\n' '{"theme":"dark"}' > "$U/settings.jso
 urun() { CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b7")" --template "$(native "$TPL")" --rules-template "$(native "$T/no-rules")" --user-template "$(native "$UT")" "$@" 2>&1; }
 out="$(urun)"
 case "$out" in *'(4 missing)'*'--apply-user'*) ok "missing autoMode entries are named, with the command";; *) bad "missing autoMode not named: '$out'";; esac
+# The printed command names the interpreter the caller resolved (PYTHON — the session start passes
+# its own), else the running one; never a fixed python3 (fresh-brain trial 2026-10-31 on Windows,
+# where python3 was the Store stub and the session start had resolved python).
+out="$(PYTHON=pyfix urun)"
+case "$out" in *'! pyfix core/scripts/template-drift.py --apply-user'*) ok "the command names the interpreter the caller resolved";; *) bad "PYTHON not used: '$out'";; esac
+own=$("$PY" -c 'import os,sys; e=os.path.basename(sys.executable); print(e[:-4] if e.lower().endswith(".exe") else e)' | tr -d '\r')
+out="$(unset PYTHON; urun)"
+case "$out" in *"! $own core/scripts/template-drift.py --apply-user"*) ok "without PYTHON it names the running interpreter ($own)";; *) bad "running interpreter not named ($own): '$out'";; esac
 out="$(urun --apply-user)"
 case "$out" in *'4 autoMode entr(y/ies) written'*'(org acme)'*) ok "--apply-user writes, org from the marketplace repo";; *) bad "--apply-user did not write: '$out'";; esac
 grep -q 'github.com/acme' "$U/settings.json" && grep -q '"theme": "dark"' "$U/settings.json" \
@@ -102,5 +110,21 @@ case "$out" in *"autonomous-patterns.json"*) case "$out" in *nobody-reads*) bad 
 mkdir -p "$T/d1/.claude/rules"; cp "$RT/autonomous-patterns.json" "$T/d1/.claude/rules/"
 out="$(drun)"
 [ -z "$out" ] && ok "with the data file in place the report is silent" || bad "still reported: '$out'"
+
+# --copy-data (bootstrap-brain.sh; fresh-brain trial 2026-10-31: bootstrap's own hand list carried
+# 8 of the 16 files, the first start was red): copies exactly what the report names, never over a file.
+printf '%s\n' '{"rules":[]}' > "$RT/skill-gate.json"
+printf '%s\n' "const g = path.join(cwd, '.claude', 'rules', 'skill-gate.json');" > "$HL/skill-gate.cjs"
+brain d2 '{"permissions":{}}'; mkdir -p "$T/d2/.claude/rules"
+printf '%s\n' '{"on_patterns":["mine"]}' > "$T/d2/.claude/rules/autonomous-patterns.json"
+crun() { "$PY" "$S" --repo "$(native "$T/d2")" --rules-template "$(native "$RT")" --helpers "$(native "$HL")" "$@" 2>&1; }
+out="$(crun --copy-data)"
+case "$out" in *"1 data file(s) copied"*"skill-gate.json"*) ok "--copy-data copies the helper-read file the brain lacks";; *) bad "--copy-data: '$out'";; esac
+[ -f "$T/d2/.claude/rules/skill-gate.json" ] && [ ! -e "$T/d2/.claude/rules/nobody-reads.json" ] \
+  && ok "--copy-data leaves out a file no helper reads" || bad "--copy-data copied the wrong set: $(ls "$T/d2/.claude/rules")"
+grep -q '"mine"' "$T/d2/.claude/rules/autonomous-patterns.json" && ok "--copy-data never overwrites an existing file" \
+  || bad "--copy-data overwrote: $(cat "$T/d2/.claude/rules/autonomous-patterns.json")"
+out="$(crun)"
+case "$out" in *"data file(s) of core/templates"*) bad "after --copy-data the report still names data files: '$out'";; *) ok "after --copy-data the data report is silent";; esac
 
 [ "$fail" = 0 ] && echo "template-drift: all cases pass" || { echo "template-drift: FAILURES"; exit 1; }

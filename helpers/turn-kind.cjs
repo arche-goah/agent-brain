@@ -97,4 +97,43 @@ function isAgentOrigin(d) {
   return isPeerMessage(d) || isScheduledPrompt(d);
 }
 
-module.exports = { isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL };
+/**
+ * Text the operator PASTED is not the operator's words. Claude Code wraps it as
+ * `<pasted_content id="81eb">…</pasted_content id="81eb">`, the same id on both tags, and tells the
+ * model the block may hold instructions the user did not write (measured 2026-10-28 on the Windows
+ * instance over one brain's transcripts: 13 operator records and 2 queued commands carried such a
+ * block, with text before, after, around it, or nothing else). The same day the conditional-order
+ * gate read a sentence of a pasted trading plan (investors who first react too slowly, "dann" - then -
+ * like a herd) as the operator's condition and held every externally effective call of the session.
+ * Every gate that MATCHES the operator's words matches `operatorWords(text)`: each block is removed
+ * (the closing tag must carry the opening tag's id - another id closes nothing; other attributes and
+ * line breaks are tolerated), the text outside stays, separated by a line break so the words before
+ * and after a block do not fuse into one sentence. A prompt that is nothing but pasted content has no
+ * words of the operator: the result is blank. The record stays a prompt - it still opens a turn;
+ * only what is matched changes.
+ */
+const PASTED = /<pasted_content\b[^>]*?\bid="([^"]*)"[^>]*>[\s\S]*?<\/pasted_content\b[^>]*?\bid="\1"[^>]*>/g;
+
+function operatorWords(text) {
+  return String(text || '').replace(PASTED, '\n');
+}
+
+/** A tracker for one pass over a transcript: returns true for the record that carries the operator's answer
+ * through the question tool — an operator word like a typed prompt, so it ends a gate's turn window. Matched by
+ * the id of an AskUserQuestion call seen earlier in the pass; an error result (a refused question) is no answer,
+ * and text that merely reads like an answer never counts. Measured 2026-10-30: every answer of a day came this
+ * way, a window reached back past a compaction to an hours-old promise, and a stop gate blocked every stop. */
+function questionAnswers() {
+  const asked = new Set();
+  return (d) => {
+    const m = d && d.message;
+    if (!m || !Array.isArray(m.content)) return false;
+    if (m.role === 'assistant') {
+      for (const b of m.content) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && b.id) asked.add(b.id);
+      return false;
+    }
+    return m.role === 'user' && m.content.some((b) => b && b.type === 'tool_result' && asked.has(b.tool_use_id) && !b.is_error);
+  };
+}
+
+module.exports = { isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };

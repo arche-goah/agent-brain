@@ -44,6 +44,9 @@ check() { # $1 nr, $2 name, $3 = 0/1 result, $4 detail
 skip() { # $1 nr, $2 name, $3 reason — check not applicable, does NOT set fail
   printf 'SKIP %2s %s — %s\n' "$1" "$2" "$3"
 }
+warn() { # $1 nr, $2 name, $3 detail — noteworthy, no reason to stop the onboarding: does NOT set fail
+  printf 'WARN %2s %s — %s\n' "$1" "$2" "$3"
+}
 
 # Resolve the Python interpreter: the python.org installer on Windows ships ONLY
 # `python`, no `python3` — items 8-10 would be red although Python is cleanly installed.
@@ -58,7 +61,17 @@ gh auth status >/dev/null 2>&1; gh_ok=$?
 # would abort ("Host key verification failed") — green key, red check.
 ssh_out=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -T git@github.com 2>&1 || true)
 printf '%s\n' "$ssh_out" | grep -q "successfully authenticated"; ssh_ok=$?
-check 1 "Access" $(( gh_ok || ssh_ok )) "gh=$([ $gh_ok -eq 0 ] && echo ok || echo red), ssh=$([ $ssh_ok -eq 0 ] && echo ok || echo red)"
+# The preflight's rule (ONBOARDING.md "SSH is recommended; HTTPS is enough to start"): the gh login
+# is mandatory, missing SSH is a warning once GitHub answers over HTTPS — and a green `gh auth
+# status` is that answer, it checks the token against the API. Until 2026-10-31 this check failed
+# unless BOTH worked, so a stranger on the HTTPS path read a red line the preflight had passed
+# (fresh-brain trial against 2.0.5).
+access="gh=$([ $gh_ok -eq 0 ] && echo ok || echo red), ssh=$([ $ssh_ok -eq 0 ] && echo ok || echo red)"
+if [ $gh_ok -eq 0 ] && [ $ssh_ok -ne 0 ]; then
+  warn 1 "Access" "$access — HTTPS through gh is enough to start; set up SSH if a plugin install or marketplace refresh fails (ONBOARDING.md)"
+else
+  check 1 "Access" $gh_ok "$access"
+fi
 
 # 2 Plugins enabled — mandatory is ONLY the core plugin; additional suites are
 # opt-in on explicit request and are checked here only WHEN installed.
@@ -132,10 +145,16 @@ fi
 st=""; [ -n "$bc_dir" ] && st=$(find "$bc_dir" -name "caveman.md" -path "*output-styles*" 2>/dev/null | head -1)
 check 4 "Output style" $([ -n "$st" ] && echo 0 || echo 1) "${st:-caveman.md not in the plugin cache}"
 
-# 5 Own brain + bootup hook
-if [ -n "$BRAIN" ] && [ -f "$BRAIN/.claude/settings.json" ] && grep -q "core/helpers/session-bootup.sh" "$BRAIN/.claude/settings.json" 2>/dev/null; then
+# 5 Own brain + bootup hook. Since 2.0.4 the core hooks ship with the plugin (hooks/hooks.json), so
+# a brain's settings.json no longer names session-bootup.sh — the grep of settings.json that stood
+# here failed every brain set up since (fresh-brain trial 2026-10-31). WHERE a hook runs is
+# hook-coverage.py's question, so it answers: a settings scope, or the enabled brain-core plugin
+# whose install ships the hook (the same plugin-record reading as the session start's coverage line).
+hook_at=""
+[ -n "$BRAIN" ] && [ -d "$BRAIN" ] && hook_at=$("$PY" "$(dirname "$0")/hook-coverage.py" --runs SessionStart session-bootup.sh "$BRAIN" 2>/dev/null | head -1 | tr -d '\r')
+if [ -n "$hook_at" ]; then
   # The bootup advances the shared-memory cursor; a verify run is no session and must not
-  # mark entries as seen that no session ever showed (sam-reiselaptop, 2026-09-30).
+  # mark entries as seen that no session ever showed (a Windows instance, 2026-09-30).
   # A throwaway copy keeps the output identical and the real cursor untouched.
   sm_tmp=$(mktemp)
   cp "$BRAIN/.claude-state/shared-memory-state.json" "$sm_tmp" 2>/dev/null \
@@ -143,9 +162,11 @@ if [ -n "$BRAIN" ] && [ -f "$BRAIN/.claude/settings.json" ] && grep -q "core/hel
   out=$(cd "$BRAIN" && export SHARED_MEMORY_STATE="$sm_tmp" && { /bin/zsh core/helpers/session-bootup.sh 2>/dev/null || bash core/helpers/session-bootup.sh 2>/dev/null; })
   rm -f "$sm_tmp"
   echo "$out" | grep -q "BRAIN BOOTUP CHECK"; b_ok=$?
-  check 5 "Brain+hooks" $b_ok "$BRAIN (bootup output $([ $b_ok -eq 0 ] && echo appears || echo MISSING))"
+  check 5 "Brain+hooks" $b_ok "$BRAIN (bootup hook in $hook_at; bootup output $([ $b_ok -eq 0 ] && echo appears || echo MISSING))"
+elif [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then
+  check 5 "Brain+hooks" 1 "$BRAIN runs no core/helpers/session-bootup.sh at SessionStart — neither a settings scope wires it nor an enabled brain-core plugin ships it (installed, enabled, restarted? see check 2)"
 else
-  check 5 "Brain+hooks" 1 "no brain with core-wired hooks found (set the argument or BRAIN_DIR?)"
+  check 5 "Brain+hooks" 1 "no brain found (set the argument or BRAIN_DIR?)"
 fi
 
 # 6+7 only when a suite is installed — the default scope is core only

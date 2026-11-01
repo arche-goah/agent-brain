@@ -20,6 +20,8 @@
  *           "needs_operator_word": true|false, "foreground_only": true|false }, ...]
  * `foreground_only: true` = the rule fires only for a command that would hold the session
  * (Bash without run_in_background); the same command detached is the defined path.
+ * `monitor_only: true` = the rule fires only for a Monitor command — a stream whose buffering decides
+ * whether its events arrive at all (a background Bash reports once at its end; buffering is moot there).
  * If the file is missing or broken, the guard blocks nothing (fail-open, read-only hook).
  * Every newly discovered shortcut gets added there as a rule — the system learns.
  *
@@ -108,7 +110,7 @@ function compile(list, source) {
                  // that text (multi-line text belongs in a file), which the cut below would hide.
                  target: r.target === 'path' ? 'path' : r.target === 'raw' ? 'raw' : 'command', source,
                  needsOperatorWord: r.needs_operator_word === true,
-                 foregroundOnly: r.foreground_only === true };
+                 foregroundOnly: r.foreground_only === true, monitorOnly: r.monitor_only === true };
       } catch (_) { return null; }
     })
     .filter(Boolean);
@@ -227,12 +229,20 @@ process.stdin.on('end', () => {
   let cmd = '';
   let filePath = '';
   let background = false;
+  let hinTool = '';
+  let transcript = '';
+  let hinCwd = '';
+  let monitor = false;
   try {
     const hin = JSON.parse(input);
+    hinTool = hin.tool_name || '';
+    transcript = hin.transcript_path || '';
+    hinCwd = hin.cwd || '';
     const ti = hin.tool_input || {};
     cmd = ti.command || '';
     // Monitor always runs detached; Bash only with run_in_background.
-    background = hin.tool_name === 'Monitor' || ti.run_in_background === true;
+    monitor = hin.tool_name === 'Monitor';
+    background = monitor || ti.run_in_background === true;
     filePath = (ti.file_path || ti.notebook_path || '').replace(/\\/g, '/');
   } catch (_) {
     process.exit(0);
@@ -251,7 +261,7 @@ process.stdin.on('end', () => {
   for (const r of rules) {
     const hit = r.target === 'path' ? (filePath && r.re.test(filePath))
       : r.target === 'raw' ? (cmd && r.re.test(cmd)) : (cmd && r.re.test(stripped));
-    if (!hit || (r.foregroundOnly && background)) continue;
+    if (!hit || (r.foregroundOnly && background) || (r.monitorOnly && !monitor)) continue;
     let missing = [];
     if (marker) {
       if (!r.needsOperatorWord) continue;
@@ -267,16 +277,19 @@ process.stdin.on('end', () => {
       : r.target === 'path'
       ? `A file write cannot carry the marker. If the documented path really doesn't fit, do it as a\n` +
         `shell command that ends with "# MECHANISM-OK: <justification>" — visible and justified.`
-      : `If the documented path really doesn't fit: repeat the command with a comment\n` +
-        `"# MECHANISM-OK: <justification>" — the justification then belongs in the\n` +
-        `change log. A silent deviation is not intended.` +
+      : `Only if that path does not fit: the same command with "# MECHANISM-OK: <why>" (goes in the change log).` +
         (r.needsOperatorWord
           ? `\nThis rule needs the operator's word: the justification must quote it ("…" plus the\n` +
             `date YYYY-MM-DD) or point at a decision file that exists (path[:line]).`
           : '');
+    // Short (operator 2026-10-31: hook output "as short and informative as possible"): measured
+    // 238 refusals in two weeks on the macOS instance, median 923 characters - mostly the rule's
+    // incident story and a three-line marker boilerplate. The first clause of `was` says what is
+    // refused; the incident stays in the rule file it came from.
+    const what = String(r.was).split(/\s(?:—|-)\s|:\s\S+\s20\d\d-\d\d-\d\d|\.\s/)[0].slice(0, 200);
     const msg =
-      `MECHANISM CHECK (${r.source}): ${r.was}\n\n` +
-      `The setup has a documented path for this:\n  ${r.instead}\n\n` + how;
+      `MECHANISM CHECK (${r.source}): ${what}\n` +
+      `Documented path: ${r.instead}\n` + how;
     cmd = cmd || `write ${filePath}`;
     try {
       fs.appendFileSync(
@@ -292,6 +305,25 @@ process.stdin.on('end', () => {
       },
     }));
     process.exit(0);
+  }
+  // A long run no rule names (2026-10-31, helpers/long-runs.cjs): a script that declares itself
+  // `long-run: detached`, or one the operator once had to background by hand. A marker opens it.
+  if (!background && !marker && hinTool === 'Bash') {
+    let lr = null;
+    try { lr = require('./long-runs.cjs').longRunScript(stripped, project, transcript, hinCwd); } catch (_) {}
+    if (lr) {
+      console.log(JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason:
+            `MECHANISM CHECK (agent-brain): ${lr.script} runs long in the foreground (${lr.why}).\n\n` +
+            'The setup has a documented path for this:\n  Start the same command with Bash run_in_background ' +
+            'and keep working; read its result line before claiming anything (Working Rule #13).',
+        },
+      }));
+      process.exit(0);
+    }
   }
   process.exit(0);
 });

@@ -98,6 +98,26 @@ check "first run records the question (quoted deferred case)" "$T/t-defer.jsonl"
 id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
 cli "$R" resolve "$id=deferred:later, not now" >/dev/null && ok "deferred with the operator's words is accepted" \
   || bad "deferred with the operator's own words refused"
+# Words that only stand in PASTED text are not the operator's (turn-kind.cjs operatorWords, 2026-10-28):
+# a pasted mail that says "later, not now" defers nothing. defer_case <name> <prompt after the question> <ok|refused>
+defer_case() {
+  local R="$T/r-defer-$1"; fresh "$R"
+  { user "check the PRs"; asst "Done. $Q"; user "$2"; asst "Noted."; } > "$T/t-defer-$1.jsonl"
+  check "first run records the question ($1)" "$T/t-defer-$1.jsonl" block "$R" >/dev/null
+  local id; id="$(cli "$R" list | sed -n 's/^- \[open\] [0-9-]* \([0-9a-f]\{8\}\) .*/\1/p')"
+  local out; out="$(cli "$R" resolve "$id=deferred:later, not now")"; local rc=$?
+  if [ "$3" = ok ]; then
+    [ "$rc" = 0 ] && ok "deferral $1: accepted" || bad "deferral $1 refused (rc=$rc): $out"
+  else
+    case "$rc:$out" in [1-9]*:*"not what the operator wrote"*) ok "deferral $1: refused";; *) bad "deferral $1 accepted (rc=$rc): $out";; esac
+  fi
+}
+MAILP=$'<pasted_content id="81eb">\nFrom the venue: later, not now - we are still waiting for the permit.\n</pasted_content id="81eb">'
+OTHERP=$'<pasted_content id="b2e1">\nsecond mail: thanks\n</pasted_content id="b2e1">'
+defer_case paste-inside "$MAILP"$'\nanswer the venue' refused
+defer_case paste-outside "$MAILP"$'\nlater, not now - first the venue' ok
+defer_case paste-two-between "$MAILP"$'\nlater, not now\n'"$OTHERP" ok
+defer_case paste-two-inside "$OTHERP"$'\nanswer both mails\n'"$MAILP" refused
 # a record whose transcript is gone cannot prove a deferral
 R="$T/r-defer-gone"; fresh "$R"; cp "$T/t-defer.jsonl" "$T/t-gone.jsonl"
 check "first run records the question (gone transcript case)" "$T/t-gone.jsonl" block "$R" >/dev/null
@@ -266,6 +286,28 @@ ask2 "a decision bundled with 'continue autonomously?'" "Change the rule file no
 ask2 "two decisions without a mode question" "Change the rule file now?" "Merge PR 5 now?" allow "$R"
 ask2 "a question ABOUT autonomy that is not the last one" "How autonomous should the loop be at the desk?" "Merge PR 5 now?" allow "$R"
 ask "'continue autonomously?' asked alone" "Continue autonomously?" allow "$R"
+ask2 "a last decision that only mentions the autonomous gate in its context (2026-10-31)" "Merge PR 5 now?" "The autonomous gate held the edit back; the patch is in a file. Shall I apply it now?" allow "$R"
+# --- the same across calls (2026-10-31): two question calls in ONE message, read by message id
+qcall() { # $1 message id, $2 tool_use id, $3 question
+  printf '{"type":"assistant","message":{"id":"%s","role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":%s,"header":"h","options":[]}]}}]}}\n' "$1" "$2" "$(js "$3")"; }
+askp() { # $1 name, $2 transcript, $3 tool_use id of this call, $4 its question, $5 deny|allow, $6 root
+  local out
+  out="$(printf '{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","transcript_path":%s,"tool_use_id":"%s","tool_input":{"questions":[{"question":%s,"header":"a","options":[{"label":"yes","description":"y"},{"label":"no","description":"n"}]}]}}' "$(js "$(native "$2")")" "$3" "$(js "$4")" \
+    | CLAUDE_PROJECT_DIR="$(native "$6")" node "${GATE:-$G}" 2>&1)"
+  if [ "$5" = deny ]; then
+    case "$out" in *'"permissionDecision":"deny"'*'mode question'*) ok "$1 is refused";; *) bad "$1 was not refused: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 passes" || bad "$1 refused wrongly: '$out'"
+  fi
+}
+f="$T/par.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; qcall m1 t2 "Continue autonomously?"; } > "$f"
+askp "the mode question in a parallel call next to a decision (the 2026-10-31 incident)" "$f" t2 "Continue autonomously?" deny "$R"
+askp "the decision call next to a parallel mode question" "$f" t1 "Put the five write tools on ask?" deny "$R"
+f="$T/seq.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; tres; qcall m2 t2 "Continue autonomously?"; } > "$f"
+askp "the mode question as its own later call (control)" "$f" t2 "Continue autonomously?" allow "$R"
+f="$T/par2.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; qcall m1 t2 "Merge PR 5 now?"; } > "$f"
+askp "two parallel decisions without a mode question" "$f" t2 "Merge PR 5 now?" allow "$R"
+askp "a call not yet in the transcript fails open" "$f" t9 "Continue autonomously?" allow "$R"
 mkdir -p "$R/.claude/rules"; printf '{"on_patterns":["\\\\bcarry on alone\\\\b"]}\n' > "$R/.claude/rules/autonomous-patterns.json"
 ask2 "the instance's mode words count too" "Switch the rule now?" "Carry on alone?" deny "$R"
 
@@ -276,6 +318,23 @@ for c in t1 t2; do R="$T/stub-$c"; fresh "$R"; GATE="$T/stub.cjs" check "stub on
 R="$T/r-reask3"; GATE="$T/stub.cjs" ask "stub on the orphan re-ask" "$Q" deny "$R" >/dev/null
 caught=$fail; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed"
+
+# 2026-10-31: a question that names a ledger entry runs its check first; green = done, not a question.
+# The incident: points from an older report went to the operator while their checks were already green.
+if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+  R="$T/r-ledger"; fresh "$R"; mkdir -p "$R/.claude/rules" "$R/docs"
+  printf '{"ledgers": ["docs/list.md"]}\n' > "$R/.claude/rules/ledgers.json"
+  printf '%s\n' '# list' '' '- [ ] **The thing is built**' '  id: built-thing-here' '  check: test -f built.txt' '' \
+    '- [ ] **The other thing is still to do**' '  id: still-open-thing' '  check: test -f missing.txt' > "$R/docs/list.md"
+  : > "$R/built.txt"
+  ask "a question about a ledger item whose check passes" "Shall I build built-thing-here now?" deny "$R"
+  ask "a question about a ledger item whose check fails" "Shall I build still-open-thing now?" allow "$R"
+  ask "a slug that is no ledger id" "Shall I rename some-other-slug-here?" allow "$R"
+  rm -f "$R/built.txt"
+  ask "the same item once its check fails (control)" "Shall I build built-thing-here now?" allow "$R"
+else
+  echo "  SKIP ledger-check cases: no python interpreter"
+fi
 
 [ "$fail" = 0 ] && echo "question-gate: all checks passed" || echo "question-gate: FAILURES"
 exit "$fail"

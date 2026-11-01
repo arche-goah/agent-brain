@@ -467,7 +467,7 @@ case "$_hc" in
 esac
 "$PY" -c 'import json,sys
 p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
-d["permissions"]["allow"]=["Bash(node core/*)","Bash(python3 core/*)","Bash(bash core/*)","Bash(core/scripts/*)",
+d["permissions"]["allow"]=["Bash(node core/*)","Bash(python3 core/*)","Bash(python core/*)","Bash(bash core/*)","Bash(core/scripts/*)",
   "Bash(claude plugin *)","Bash(git -C core remote set-url --push origin DISABLED)"]
 json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$T/hookbrain/.claude/settings.json"
 _hc="$(CLAUDE_CONFIG_DIR="$T/nocfg" "$PY" "$CORE/scripts/hook-coverage.py" "$T/hookbrain" 2>&1)"; _rc=$?
@@ -624,7 +624,7 @@ printf -- '---\nname: quiet-one\ndescription: manual only\n---\n' > "$AP/skills/
 printf -- '---\nname: hidden\ndescription: x\n---\n' > "$AC/plugins/cache/off/skills/hidden/SKILL.md"
 "$PY" -c 'import json,sys; c=sys.argv[1]; json.dump({"plugins":{"px@m":[{"installPath":c+"/plugins/cache/p"}],"off@m":[{"installPath":c+"/plugins/cache/off"}]}},open(c+"/plugins/installed_plugins.json","w"))' "$AC"
 printf '{"enabledPlugins":{"px@m":true,"off@m":false}}\n' > "$AC/settings.json"
-printf '| x | `px:other` |\n<!-- auto-fire-ignore: px:quiet-one -->\n' > "$AF/.claude/rules/intelligence-instance.md"
+printf '| x | `px:old-one` |\n<!-- auto-fire-ignore: px:quiet-one -->\n' > "$AF/.claude/rules/intelligence-instance.md"
 _af="$(CLAUDE_CONFIG_DIR="$AC" "$PY" "$CORE/scripts/auto-fire-coverage.py" "$AF" 2>&1)"; _rc=$?
 if [ "$_rc" -eq 1 ] && [ "$_af" = "px:new-one" ]; then
   ok "auto-fire-coverage names exactly the uncovered enabled skill (exit 1)"

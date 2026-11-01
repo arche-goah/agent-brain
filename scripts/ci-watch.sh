@@ -33,6 +33,13 @@
 #      time EXTENDS the verdict deadline. A block longer than CI_WATCH_RL_CEILING
 #      (default 7200 s: a primary window resets hourly, so two hours of block is not
 #      weather) ends as UNKNOWN naming the duration.
+#   7. (2026-10-28) A bound sha can be left behind: right after `gh pr update-branch` the PR's
+#      headRefOid named the OLD head once; a watch bound to it with CI_WATCH_SHA would have
+#      waited its full 3600 s for a head the PR had already moved past (stopped by hand). With
+#      CI_WATCH_SHA set and the PR head elsewhere, the compare API (`compare/<bound>...<head>`)
+#      is asked: status `ahead` = the bound sha is an ancestor of the head, the PR moved past
+#      it — UNKNOWN at once, naming both shas and the head to re-arm with. Anything else (404:
+#      the pushed sha is not visible yet; `diverged`/`behind`; unreadable) keeps today's wait.
 #   8. (2026-10-28; point 7 is taken by core #197) The deadline is no verdict while a
 #      check-run of the watched commit is still in_progress: it moves on poll by poll until
 #      the run ends, up to CI_WATCH_RUN_CEILING (default 7200 s) after the oldest running
@@ -48,6 +55,7 @@
 #   scripts/ci-watch.sh pr  <owner/repo> <pr-number> [timeout_s]
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
 #   CI_WATCH_SHA=<pushed sha> scripts/ci-watch.sh pr …   # after a push: wait for THAT head
+#   CI_WATCH_WAIT_ALL=1 scripts/ci-watch.sh pr …         # pr: no early red, wait for every check
 #   A second call for the same target on this machine attaches to the first (point 6).
 # Defaults: timeout 3600 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
 # The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
@@ -290,6 +298,12 @@ pr_head_not_yet_expected() {   # exit 0 = the PR does not show the expected head
   ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 0
   head=$gh_out
   [[ "$head" == "$EXPECTED_SHA"* ]] && return 1
+  # Header point 7: the PR moved PAST the bound sha (it is an ancestor of the head) = it will
+  # never come back to it; say so now instead of waiting out the deadline.
+  if [[ "$head" =~ ^[0-9a-f]{7,40}$ ]] \
+     && ghq api "repos/$REPO/compare/$EXPECTED_SHA...$head" --jq .status && [[ "$gh_out" == ahead ]]; then
+    fail_unknown "bound sha ${EXPECTED_SHA:0:7} is superseded — PR #$TARGET head is now ${head:0:7} (the bound sha is its ancestor); re-arm with that head: CI_WATCH_SHA=$head"
+  fi
   if (( warned_expected == 0 )); then
     echo "ci-watch: PR #$TARGET still shows head ${head:0:7}, waiting for ${EXPECTED_SHA:0:7}" >&2
     warned_expected=1
@@ -340,6 +354,41 @@ pr_run_still_open() {   # exit 0 = a run of the head commit is still open
          "head commit are still open (jobs not listed yet) — waiting" >&2
     warned_open_run=1
   fi
+  return 0
+}
+
+# Green also needs the repo's main workflow to have RUN on the head. Measured 2026-10-31 on a core
+# PR: the branch conflicted with main, GitHub created no `pull_request` run of `CI` at all, the
+# four fast CodeQL checks were green, and the watch said `GREEN — 4 checks` — mergeable still read
+# UNKNOWN right after the PR was opened, so the two-read conflict check above never fired. The
+# absence of the workflow was read as green. CI_WATCH_REQUIRE_WORKFLOW names that workflow
+# (default `CI`; empty = off). It counts only where the repo HAS an active workflow of that name,
+# so a repo without one is untouched; every unreadable answer leaves the old verdict. A missing
+# run is a wait for REQUIRE_MAX polls (GitHub creates the run seconds after the push), then a
+# named UNKNOWN.
+REQUIRE_WF="${CI_WATCH_REQUIRE_WORKFLOW-CI}"
+REQUIRE_MAX="${CI_WATCH_REQUIRE_MAX:-3}"
+require_missing=0
+pr_required_run_missing() {   # exit 0 = the named workflow exists but has no run on the head
+  local sha have runs
+  [[ -n "$REQUIRE_WF" ]] || return 1
+  ghq api "repos/$REPO/actions/workflows?per_page=100" \
+      --jq "[.workflows[] | select(.state == \"active\" and .name == \"$REQUIRE_WF\")] | length" || return 1
+  have=$gh_out
+  [[ "$have" =~ ^[0-9]+$ ]] && (( have > 0 )) || return 1
+  ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 1
+  sha=$gh_out
+  [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 1
+  ghq api "repos/$REPO/actions/runs?head_sha=$sha&per_page=100" \
+      --jq "[.workflow_runs[] | select(.name == \"$REQUIRE_WF\")] | length" || return 1
+  runs=$gh_out
+  [[ "$runs" =~ ^[0-9]+$ ]] || return 1
+  if (( runs > 0 )); then require_missing=0; return 1; fi
+  require_missing=$((require_missing + 1))
+  if (( require_missing >= REQUIRE_MAX )); then
+    fail_unknown "$REPO PR #$TARGET — the listed checks are green, but workflow '$REQUIRE_WF' has no run on head ${sha:0:7} ($require_missing reads). GitHub starts none for a PR that conflicts with its base: rebase or merge main into the branch, then re-arm. Not green."
+  fi
+  echo "ci-watch: PR #$TARGET has no run of workflow '$REQUIRE_WF' on head ${sha:0:7} yet (read $require_missing of $REQUIRE_MAX) — waiting" >&2
   return 0
 }
 
@@ -523,14 +572,21 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # the watch silent the whole time and the red unseen. Only `fail` counts here — a `cancel`
     # can be a superseded run and still waits for the full picture; the head check guards the
     # old-run race as for every verdict.
-    if (( pending > 0 && ${failed:-0} > 0 )) && ! pr_head_behind_branch && ! pr_red_not_of_head; then
+    # CI_WATCH_WAIT_ALL=1 waits for every check before the verdict and names the failing ones (2026-10-29,
+    # measured on the macOS instance: one check red on every PR for a runner image change - each watch ended
+    # at once, and twice "only that check is red" was read while the other jobs still ran; one of them was
+    # really red). Without the variable the early report above stays the default.
+    if (( pending > 0 && ${failed:-0} > 0 )) && [[ "${CI_WATCH_WAIT_ALL:-}" != 1 ]] && ! pr_head_behind_branch && ! pr_red_not_of_head; then
       echo "CI-WATCH RED: $REPO PR #$TARGET — $failed failing check(s), $pending still running (a failed check does not turn green)"
       exit 1
     fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if pr_head_behind_branch; then sleep "$POLL"; continue; fi
     if (( bad > 0 )) && pr_red_not_of_head; then sleep "$POLL"; continue; fi
-    if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
+    if (( bad > 0 )); then
+      names=$("$PY" -c 'import json,sys; print(", ".join(sorted({c.get("name","?") for c in json.load(sys.stdin) if c.get("bucket") in ("fail","cancel")})))' <<<"$json" 2>/dev/null)
+      echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)${names:+: $names}"; exit 1
+    fi
     # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
     # the checks then predate the base change and are never recomputed (measured
     # 2026-09-02 on a live PR: 7 SUCCESS checks, mergeable CONFLICTING, merge → 405).
@@ -539,6 +595,7 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     pr_conflicting_check
     if (( conflict_seen )); then sleep "$POLL"; continue; fi
     if pr_run_still_open; then sleep "$POLL"; continue; fi
+    if pr_required_run_missing; then sleep "$POLL"; continue; fi
     # Green needs the SAME head on two polls. Measured 2026-10-28 on a core PR: a watch armed
     # right after `gh pr update-branch` said `GREEN — 14 checks` on its first poll — the PR head
     # AND its branch tip still named the old commit (the merge commit the API writes appears a

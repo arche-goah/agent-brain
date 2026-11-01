@@ -4,8 +4,8 @@
  * is checked — the mirror of promise-gate.cjs, on the operator's side of the sentence.
  *
  * The class (measured on a collaborating instance, 2026-10-16): the operator wrote
- * "dann coherence scan" — "then", meaning AFTER the answer the two other instances had
- * been asked for, and after the core update they had recommended first. The agent read
+ * "then coherence scan" (in their own language), meaning AFTER the answer the two other
+ * instances had been asked for, and after the core update they had recommended first. The agent read
  * "then" as "now", started nine analysis agents, and mentioned the recommendation in its
  * text without waiting for it. The operator stopped the run ("why do you work AGAINST
  * the recommendation?"); the tokens were spent. Nothing in the core carried the case:
@@ -41,9 +41,10 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
+const { intents, intentFor } = require('./autonomous-mode.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -130,6 +131,7 @@ function analyze(transcriptPath) {
     fs.closeSync(fd);
   }
   let operator = null;
+  let operatorAt = '';
   let texts = [];
   let agents = 0;
   for (const line of lines) {
@@ -137,7 +139,7 @@ function analyze(transcriptPath) {
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
     const queued = queuedHumanPrompt(d);
-    if (queued !== null) { operator = queued; texts = []; agents = 0; continue; }
+    if (queued !== null) { operator = queued; operatorAt = d.timestamp || ''; texts = []; agents = 0; continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
@@ -145,7 +147,7 @@ function analyze(transcriptPath) {
       if (isSkillExpansion(d) || isAgentOrigin(d)) continue;
       const t = promptText(msg);
       if (t === null || HOOK_ECHO.test(t) || isNotification(t)) continue;
-      operator = t; texts = []; agents = 0;   // a new turn starts here
+      operator = t; operatorAt = d.timestamp || ''; texts = []; agents = 0;   // a new turn starts here
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -156,7 +158,7 @@ function analyze(transcriptPath) {
       }
     }
   }
-  return { operator, texts, agents };
+  return { operator, operatorAt, texts, agents };
 }
 
 function deny(hit, why) {
@@ -172,7 +174,7 @@ function deny(hit, why) {
         + '  CONDITION-MET: <the condition in the operator\'s words> — <evidence: where and when it was met>\n'
         + '  CONDITION-NONE: <why this word is no condition here>\n'
         + 'Reads, edits, commits and a single agent stay free — they are how the condition gets checked. '
-        + '(Measured 2026-10-16: "then the coherence scan" meant "after the answer"; nine agents started before it came.)',
+        + '(Example: "then run the audit", written while an answer is pending, means "after that answer", not "now".)',
     },
   }));
   process.exit(0);
@@ -200,9 +202,17 @@ process.stdin.on('end', () => {
 
   const condition = buildRegex(cwd);
   let hit = null;
-  for (const s of sentences(stripQuoted(seen.operator))) {
+  // Pasted text is not the operator's order (turn-kind.cjs operatorWords, 2026-10-28: the "then" of a
+  // pasted trading plan held every push of a session); a prompt that is only a paste names no condition.
+  for (const s of sentences(stripQuoted(operatorWords(seen.operator)))) {
     const m = s.match(condition);
     if (m) { hit = { sentence: s, word: m[0] }; break; }
+  }
+  // The prompt classifier's record decides too, in the safe direction (2026-10-30, macOS instance: "after #217 and
+  // #195", in the operator's language, passed the word list). It can only add a check, never waive one.
+  if (!hit) {
+    const intent = intentFor(intents(input.transcript_path, cwd), seen.operatorAt);
+    if (intent && intent.condition) hit = { sentence: sentences(stripQuoted(seen.operator))[0] || seen.operator, word: 'the prompt classifier read a condition' };
   }
   if (!hit) return allow();
   // The line may also stand in the call itself (a `# CONDITION-NONE: …` comment in the command,

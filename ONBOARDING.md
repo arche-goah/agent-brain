@@ -6,6 +6,12 @@ you forward. A Claude Code session started in this repo (or later in your fresh 
 can execute these steps for you — you explain where you are, it runs the commands and
 re-measures. The scripts referenced here all live in this repo.
 
+**Prefer to be guided?** Clone this repo, `cd` into the clone, run `claude`, type
+`/onboard`. An agent then walks you through the steps below in order, measures after each
+one, stops on anything unexpected, and asks before every step that changes something
+outside the clone. After a pause or a restart, type `/onboard` again: it measures where you
+stand and goes on from there.
+
 Throughout this document, `your-org` is a placeholder — replace it with the GitHub
 organization that hosts your marketplace and private repos.
 
@@ -25,6 +31,10 @@ Before anything else you need, in this order:
 Windows: after EVERY installation, open a new terminal. Windows does not propagate
 PATH changes to already-running processes — otherwise the preflight reports tools as
 missing although they are installed, and you install things twice.
+
+New to Claude Code, plugins and hooks? `docs/onboarding-explained.md` is the picture behind
+these steps: the three layers (core, your brain, suites), the four carriers of behaviour,
+the Windows traps in depth, and a glossary. Nothing in it has to be executed.
 
 **SSH is recommended; HTTPS is enough to start.** Clones and fetches work over HTTPS.
 Where a plugin install or the background marketplace refresh fails on a machine without
@@ -125,8 +135,9 @@ bash scripts/bootstrap-brain.sh ~/Projects/<your-name>-brain
 ```
 
 This creates your brain from `templates/` (CLAUDE.md skeleton, instance rules, empty
-feedback file, settings with hooks) and mounts this repo as the `core/` submodule.
-One hand step afterwards (the template is deliberately generic): in your new brain's
+feedback file, settings with hooks) and mounts this repo as the `core/` submodule,
+checked out at its newest release tag (`BOOTSTRAP_CORE_REF=<tag|branch|commit>` picks
+another; the bootstrap names the ref it took). One hand step afterwards (the template is deliberately generic): in your new brain's
 `.claude/settings.json`, replace the placeholder `<your-org>` (angle brackets included)
 with your real org — a Claude session in the brain does that for you if you ask. On the
 public marketplace of step 2 the entry is named `agent-brain`, its repo is

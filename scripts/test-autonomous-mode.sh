@@ -66,6 +66,20 @@ f="$T/3g.jsonl"; { user "autonomous, please"; user "anything open for me?"; answ
 mode "no to continue autonomously keeps it off" "$f" "$EN" interactive
 f="$T/3h.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
 mode "yes to another question sets nothing" "$f" "$EN" interactive
+# An order inside the answer to another question counts like a prompt (macOS instance 2026-10-30).
+f="$T/3k.jsonl"; { user "status?"; answer '"Shall I handle the 42 items?"="yes, work through them autonomously. document false reports"'; } > "$f"
+mode "an autonomous order inside an answer to another question sets it" "$f" "$EN" autonomous
+# The second wording of the answer record ("The user answered: …", 58 of 514 transcripts on the macOS instance).
+answer2() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t8","name":"AskUserQuestion","input":{"questions":[]}}]}}\n'
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t8","content":%s}]}}\n' "$(js "The user answered: $1. Read the answers carefully")"; }
+f="$T/3m.jsonl"; { user "status?"; answer2 '"Shall I handle the 42 items?"="yes, work through them autonomously"'; } > "$f"
+mode "the 'The user answered:' wording counts as an answer too" "$f" "$EN" autonomous
+f="$T/3l.jsonl"; { user "autonomous, please"; answer '"Shall I run the scan?"="no, back to normal mode"'; } > "$f"
+mode "an off word inside an answer to another question ends it" "$f" "$EN" interactive
+f="$T/3n.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"The autonomous gate held the settings edit back; the patch is in a file. Shall I apply it now?"="Yes, apply it now"'; } > "$f"
+mode "an on-word outside the question sentence makes no mode question (2026-10-31)" "$f" "$EN" interactive
+f="$T/3o.jsonl"; { user "anything open for me?"; answer '"Patch applied. Continue autonomously?"="Yes"'; } > "$f"
+mode "the on-word in the question sentence still is the mode question (control)" "$f" "$EN" autonomous
 f="$T/3i.jsonl"; { user "fix the parser"; answer '"Continue autonomously?"="Yes"'; user "status?"; } > "$f"
 mode "after the yes a status question keeps it" "$f" "$EN" autonomous
 f="$T/3r.jsonl"; { user "autonomous, please"; asst "x"; readres '"Continue autonomously?"="No, interactive"'; } > "$f"
@@ -93,10 +107,25 @@ mode "the operator's ask wording from instance data ends it" "$f" "$DE" interact
 f="$T/7c.jsonl"; { user "weiter autonom"; user "irgendwas offen?"; answer '"Weiter autonom?"="Ja, weiter autonom"'; } > "$f"
 mode "the operator's yes from instance data sets it again" "$f" "$DE" autonomous
 mode "missing transcript fails toward interactive" "$T/none.jsonl" "$EN" interactive
+# Pasted text is not the operator's word (turn-kind.cjs operatorWords, measured 2026-10-28): an ON, OFF or
+# ASK word inside <pasted_content id="…">…</pasted_content id="…"> switches nothing; outside it, it does.
+PA=$'<pasted_content id="81eb">\nThe agent then works autonomously through the backlog.\n</pasted_content id="81eb">'
+f="$T/8a.jsonl"; { user "$PA"$'\nsummarise this article'; } > "$f"
+mode "an on word only inside a pasted block (a)" "$f" "$EN" interactive
+f="$T/8b.jsonl"; { user "$PA"$'\nwork through the list autonomously'; } > "$f"
+mode "the on word outside the pasted block (b)" "$f" "$EN" autonomous
+PB1=$'<pasted_content id="a1f0">\nis anything still open for me?\n</pasted_content id="a1f0">\n'
+PB2=$'\n<pasted_content id="b2e1">\nback to normal mode\n</pasted_content id="b2e1">'
+f="$T/8c.jsonl"; { user "work through the list autonomously"; asst "x"; user "${PB1}look at these two tickets${PB2}"; } > "$f"
+mode "ask and off words only inside two pasted blocks keep the run (c)" "$f" "$EN" autonomous
+f="$T/8d.jsonl"; { user "fix the parser"; asst "x"; user "${PB1}autonomous, please${PB2}"; } > "$f"
+mode "the on word between two pasted blocks (c)" "$f" "$EN" autonomous
+f="$T/8e.jsonl"; { user "work through the list autonomously"; asst "x"; qcmd "${PB1}"; } > "$f"
+mode "a pasted ask typed mid-turn keeps the run" "$f" "$EN" autonomous
 # The word inside a question mentions the mode, it does not order it (macOS finding 2026-10-27).
-f="$T/8.jsonl"; { user "fix the parser"; user "did I not get the continue autonomously question? why?"; } > "$f"
+f="$T/9a.jsonl"; { user "fix the parser"; user "did I not get the continue autonomously question? why?"; } > "$f"
 mode "the word in a question sets nothing" "$f" "$EN" interactive
-f="$T/8c.jsonl"; { user "why did it stop? carry on autonomously."; } > "$f"
+f="$T/9b.jsonl"; { user "why did it stop? carry on autonomously."; } > "$f"
 mode "an order after a question in the same message sets it" "$f" "$EN" autonomous
 
 # --- stoppen-gate: which way it demands, and the line that passes only in the mode
@@ -120,6 +149,75 @@ $Q"; } > "$f"
 gate "the same line outside the mode is no way out" "$f" block "AskUserQuestion"
 f="$T/g4.jsonl"; { user "status?"; asst "$Q"; } > "$f"
 gate "interactive closing question still asks for the tool" "$f" block "AskUserQuestion"
+
+# A prompt classifier's record (.claude-state/intent-classifier.jsonl) decides in the SAFE direction
+# (measured 2026-10-28, macOS instance: "you need something?" and "give me interactive questions", in
+# the operator's language, were asks
+# for what is open; the words missed both, the model read both right). Matched by session + time.
+IC="$T/int"; mkdir -p "$IC/.claude-state"
+tuser() { printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":%s}}\n' "$1" "$(js "$2")"; }
+irec() { printf '{"at":"%s","session":"%s","mode":"hook","model":{"asks_open":%s,"mode_on":%s,"mode_off":false,"correction":false}}\n' "$1" "$2" "$3" "$4"; }
+f="$T/sess-a.jsonl"; { tuser 2026-10-28T20:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-10-28T21:29:00Z "you need something?"; } > "$f"
+irec 2026-10-28T21:29:05Z sess-a true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the classifier reads an ask the words miss: the mode ends" "$f" "$IC" interactive
+mode "without the classifier record the words alone keep it (control)" "$f" "$EN" autonomous
+irec 2026-10-28T21:29:05Z other-session true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record of another session does not count" "$f" "$IC" autonomous
+irec 2026-10-28T21:35:00Z sess-a true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record far after the prompt does not count" "$f" "$IC" autonomous
+f="$T/sess-b.jsonl"; { tuser 2026-10-28T21:00:00Z "fix the parser"; } > "$f"
+irec 2026-10-28T21:00:03Z sess-b false true > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a matched record decides: the model's mode_on switches it on (operator 2026-10-28/11-01, semantic not word logic)" "$f" "$IC" autonomous
+f="$T/sess-c.jsonl"; { tuser 2026-10-31T15:40:00Z "work through all open points, everything you can do yourself, handle it autonomously"; } > "$f"
+irec 2026-10-31T15:40:05Z sess-c true true > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the model's asks_open does not cancel an autonomous order in the same prompt" "$f" "$IC" autonomous
+f="$T/sess-d.jsonl"; { tuser 2026-10-31T15:40:00Z "work through the list autonomously"; asst "x"; tuser 2026-10-31T16:40:00Z "anything for me?"; } > "$f"
+irec 2026-10-31T16:40:05Z sess-d true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "an ask without an order still ends the run (control)" "$f" "$IC" interactive
+
+# The record of THIS prompt (2026-11-01, macOS instance): a notification's record 1.6 s before the
+# operator's own record was the first in the window, and the operator's ask was read as "nothing".
+irecp() { printf '{"at":"%s","session":"%s","mode":"hook","prompt":%s,"model":{"asks_open":%s,"mode_on":false,"mode_off":false,"correction":false}}\n' "$1" "$2" "$(js "$3")" "$4"; }
+f="$T/sess-e.jsonl"; { tuser 2026-11-01T07:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-01T07:53:40Z "please lay the open questions before me"; } > "$f"
+{ irecp 2026-11-01T07:53:42Z sess-e "<task-notification> a build finished" false; irecp 2026-11-01T07:53:44Z sess-e "please lay the open questions before me" true; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the operator's own record wins over a notification's record in the window" "$f" "$IC" interactive
+{ irecp 2026-11-01T07:53:42Z sess-e "<task-notification> a build finished" true; irecp 2026-11-01T07:53:44Z sess-e "please lay the open questions before me" false; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a notification's ask does not end the run (control)" "$f" "$IC" autonomous
+irec 2026-11-01T07:53:43Z sess-e true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record without a prompt field still matches by time" "$f" "$IC" interactive
+
+# The record decides over the words (2026-11-01, three measured prompts of one session).
+irecf() { printf '{"at":"%s","session":"%s","mode":"hook","prompt":%s,"model":{"asks_open":%s,"mode_on":%s,"mode_off":false,"correction":false}}\n' "$1" "$2" "$(js "$3")" "$4" "$5"; }
+f="$T/sess-f.jsonl"; { tuser 2026-11-01T06:31:00Z "status?"; asst "x"; tuser 2026-11-01T06:44:20Z "you switched to interactive, right? I thought it was autonomous."; } > "$f"
+{ irecf 2026-11-01T06:31:02Z sess-f "status?" false false; irecf 2026-11-01T06:44:26Z sess-f "you switched to interactive, right? I thought it was autonomous." false false; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the words see 'autonomous', the model sees no order: the model decides" "$f" "$IC" interactive
+mode "without a record the words decide (control: the belief reads as an order)" "$f" "$EN" autonomous
+f="$T/sess-g.jsonl"; { tuser 2026-11-01T07:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-01T07:53:40Z "go on, give me what you have collected"; } > "$f"
+{ irecf 2026-11-01T07:00:02Z sess-g "work through the list autonomously" false true; irecf 2026-11-01T07:53:44Z sess-g "go on, give me what you have collected" true false; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the model reads an ask the words miss: the run ends" "$f" "$IC" interactive
+printf '%s\n' '{"at":"2026-11-01T07:53:44Z","session":"sess-g","mode":"hook","prompt":"go on, give me what you have collected","model":{}}' > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record without readable fields falls back to the words" "$f" "$IC" autonomous
+
+# initial_mode: a brain whose operator wants every session autonomous until asked (measured
+# 2026-11-01, macOS instance: a start prompt "status?" with no on-word left the session interactive,
+# and a mid-run question reached the operator who believed the run autonomous).
+AU="$T/au"; mkdir -p "$AU/.claude/rules"
+printf '%s\n' '{"initial_mode": "autonomous"}' > "$AU/.claude/rules/autonomous-patterns.json"
+f="$T/init1.jsonl"; { user "status?"; asst "x"; } > "$f"
+mode "initial_mode autonomous: a start prompt without an on-word keeps it" "$f" "$AU" autonomous
+mode "without initial_mode the same transcript is interactive (control)" "$f" "$EN" interactive
+f="$T/init0.jsonl"; : > "$f"
+mode "initial_mode autonomous: an empty transcript is autonomous" "$f" "$AU" autonomous
+mode "default: an empty transcript is interactive (control)" "$f" "$EN" interactive
+f="$T/init2.jsonl"; { user "status?"; asst "x"; user "anything open for me?"; } > "$f"
+mode "initial_mode autonomous: asking what is open still ends it" "$f" "$AU" interactive
+f="$T/init3.jsonl"; { user "status?"; asst "x"; user "back to normal mode"; } > "$f"
+mode "initial_mode autonomous: an off word still ends it" "$f" "$AU" interactive
+f="$T/init4.jsonl"; { user "anything open for me?"; asst "x"; user "fine, autonomous again"; } > "$f"
+mode "initial_mode autonomous: an on word sets it again after an ask" "$f" "$AU" autonomous
+printf '%s\n' '{"initial_mode": "interactive"}' > "$AU/.claude/rules/autonomous-patterns.json"
+f="$T/init1.jsonl"
+mode "initial_mode interactive: same as the default" "$f" "$AU" interactive
 
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }

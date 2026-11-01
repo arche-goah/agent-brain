@@ -46,7 +46,7 @@ grep -q 'item(s) without a declaration (hook 1)' <<< "$out" && grep -q 'x.cjs' <
 
 mk "$X_HOOK" '' '' >/dev/null
 mkdir -p "$T/b/scripts/hooks"; printf '// opens the slicer of plotter-7\n' > "$T/b/scripts/hooks/x.cjs"
-decl '{"instance":{"scripts/hooks/x.cjs":{"why":"renders only for this printer","evidence":"plotter-7"}}}'
+decl '{"instance":{"scripts/hooks/x.cjs":{"reviewed":"2026-10-01","why":"renders only for this printer","evidence":"plotter-7"}}}'
 out=$(run); [[ -z "$out" ]] && ok "declared-with-evidence-silent" || bad "declared-with-evidence-silent: $out"
 decl '{"instance":{"scripts/hooks/x.cjs":"renders only for this printer"}}'
 out=$(run); grep -q '^!! local machinery: 1 instance declaration(s) give a reason without evidence: scripts/hooks/x.cjs' <<< "$out" \
@@ -129,7 +129,7 @@ rm -f "$T/b/scripts/invariant-check.py"
 printf 'ssh rig-switch-a\n' > "$T/b/scripts/rig-check.sh"; printf 'x\n' > "$T/b/scripts/test-rig-check.sh"
 out=$(run); grep -q 'without a declaration (script 1).*: scripts/rig-check.sh' <<< "$out" && ! grep -q 'test-rig-check' <<< "$out" \
   && ok "undeclared-script-listed-fixture-skipped" || bad "undeclared-script-listed-fixture-skipped: $out"
-decl '{"instance":{"scripts/rig-":{"why":"probes this venue only","evidence":"rig-switch-a"}}}'
+decl '{"instance":{"scripts/rig-":{"reviewed":"2026-10-01","why":"probes this venue only","evidence":"rig-switch-a"}}}'
 out=$(run); [[ -z "$out" ]] && ok "declared-prefix-with-evidence-silent" || bad "declared-prefix-with-evidence-silent: $out"
 decl '{"alpha":{"scripts/rig-check.sh":{"until":"2026-10-20","why":"core port"}}}'
 out=$(run); [[ -z "$out" ]] && ok "alpha-script-in-date-silent" || bad "alpha-script-in-date-silent: $out"
@@ -146,12 +146,12 @@ printf 'ping 203.0.113.70\n' > "$T/b/scripts/rig-check.sh"   # a longer IP is no
 out=$(run); grep -q 'presumably general' <<< "$out" && ok "identity-token-word-boundary" || bad "identity-token-word-boundary: $out"
 # --- external (third-party, used as is) and reach analysis as evidence --------------------
 T_ID='"identity_tokens":["rig-switch-a"]'
-decl "{$T_ID,\"external\":{\"scripts/rig-check.sh\":{\"source\":\"vendor pack 1.2\"}}}"
+decl "{$T_ID,\"external\":{\"scripts/rig-check.sh\":{\"reviewed\":\"2026-10-01\",\"source\":\"vendor pack 1.2\"}}}"
 out=$(run); [[ -z "$out" ]] && ok "external-with-source-silent" || bad "external-with-source-silent: $out"
 decl "{$T_ID,\"external\":{\"scripts/rig-check.sh\":{\"why\":\"someone's\"}}}"
 out=$(run); grep -q 'noevidence=1' <<< "$out" && ok "external-without-source-loud" || bad "external-without-source-loud: $out"
 mkdir -p "$T/b/docs"; printf '| scripts/rig-check.sh | instance |\n' > "$T/b/docs/reach.md"
-decl "{$T_ID,\"instance\":{\"scripts/rig-check.sh\":{\"why\":\"judged\",\"reach\":\"docs/reach.md\"}}}"
+decl "{$T_ID,\"instance\":{\"scripts/rig-check.sh\":{\"reviewed\":\"2026-10-01\",\"why\":\"judged\",\"reach\":\"docs/reach.md\"}}}"
 out=$(run); [[ -z "$out" ]] && ok "reach-naming-the-item-silent" || bad "reach-naming-the-item-silent: $out"
 printf 'nothing here\n' > "$T/b/docs/reach.md"
 out=$(run); grep -q 'badevidence=1' <<< "$out" && ok "reach-not-naming-the-item-loud" || bad "reach-not-naming-the-item-loud: $out"
@@ -160,7 +160,7 @@ out=$(run); grep -q 'badevidence=1' <<< "$out" && ok "reach-file-missing-loud" |
 # a folder declared by prefix: naming the prefix in the reach analysis covers every file in it
 mkdir -p "$T/b/scripts/tool"; printf 'echo a\n' > "$T/b/scripts/tool/a.sh"; printf 'echo b\n' > "$T/b/scripts/tool/b.sh"
 printf '| scripts/rig-check.sh | instance |\n| scripts/tool/ | instance, one tool |\n' > "$T/b/docs/reach.md"
-decl "{$T_ID,\"instance\":{\"scripts/rig-check.sh\":{\"why\":\"judged\",\"reach\":\"docs/reach.md\"},\"scripts/tool/\":{\"why\":\"one tool\",\"reach\":\"docs/reach.md\"}}}"
+decl "{$T_ID,\"instance\":{\"scripts/rig-check.sh\":{\"reviewed\":\"2026-10-01\",\"why\":\"judged\",\"reach\":\"docs/reach.md\"},\"scripts/tool/\":{\"reviewed\":\"2026-10-01\",\"why\":\"one tool\",\"reach\":\"docs/reach.md\"}}}"
 out=$(run); [[ -z "$out" ]] && ok "reach-naming-the-prefix-silent" || bad "reach-naming-the-prefix-silent: $out"
 printf '| scripts/rig-check.sh | instance |\n' > "$T/b/docs/reach.md"
 out=$(run); grep -q 'badevidence=2' <<< "$out" && ok "reach-naming-neither-prefix-nor-file-loud" || bad "reach-naming-neither-prefix-nor-file-loud: $out"
@@ -173,7 +173,7 @@ printf 'restart helper\n' > "$T/b/scripts/wait-mcp-restart.sh"
 out=$(run); grep -q 'near-duplicate of a core item: scripts/wait-mcp-restart.sh (core scripts/wait-mcp-reconnect.sh)' <<< "$out" \
   && ok "near-duplicate-named" || bad "near-duplicate-named: $out"
 grep -q 'rig-check.sh (core' <<< "$out" && bad "one-shared-token-is-not-a-duplicate: $out" || ok "one-shared-token-is-not-a-duplicate"
-decl '{"instance":{"scripts/wait-mcp-restart.sh":{"why":"x","evidence":"restart","distinct_from":"wait-mcp-reconnect"}}}'
+decl '{"instance":{"scripts/wait-mcp-restart.sh":{"reviewed":"2026-10-01","why":"x","evidence":"restart","distinct_from":"wait-mcp-reconnect"}}}'
 out=$(run); ! grep -q 'near-duplicate' <<< "$out" && ! grep -q 'wait-mcp-restart' <<< "$out" && ok "distinct-from-silences-duplicate" || bad "distinct-from-silences-duplicate: $out"
 
 # --- skill and workflow shadows -----------------------------------------------------------
@@ -399,6 +399,40 @@ grep -qE '^core +guard-rule +\.claude/rules/mechanism-rules\.json#0 \(core\)' <<
   && ok "template-guard-rule-is-core" || bad "template-guard-rule-is-core: $listing"
 grep -qE '^[a-z]+ +guard-rule +\.claude/rules/mechanism-rules\.json#mine$' <<< "$listing" \
   && ok "own-guard-rule-reported" || bad "own-guard-rule-reported: $listing"
+rm -rf "$T/b"
+
+# --- review: a declared deviation is judged again, routinely (operator 2026-10-29) -----------------
+mkdir -p "$T/b/.claude/rules"
+decl '{"instance":{"a/":{"why":"w","evidence":"x"},"b/":{"reviewed":"2026-01-01","why":"w","evidence":"x"},"c/":{"reviewed":"2026-10-01","why":"w","evidence":"x"},"d/":{"why":"w","evidence":"x"},"e/":{"why":"w","evidence":"x"}},"external":{"f/":{"source":"s"}}}'
+out=$(run)
+grep -q 'local machinery: 5 declared deviation(s) due for review (oldest 3 shown)' <<< "$out" && ! grep -q 'c/ (instance' <<< "$out" \
+  && grep -q 'review=5' <<< "$out" && ok "review-batch-of-the-oldest" || bad "review-batch-of-the-oldest: $out"
+TODAY=2026-10-08 out=$(run --review-all)
+grep -q 'local machinery review: 6 declared deviation(s), all listed' <<< "$out" && grep -q 'c/ (instance, reviewed 2026-10-01)' <<< "$out" \
+  && ok "review-all-lists-every-declaration" || bad "review-all-lists-every-declaration: $out"
+decl '{"instance":{"c/":{"reviewed":"2026-10-01","why":"w","evidence":"x"}}}'
+out=$(run); ! grep -q 'due for review' <<< "$out" && ok "review-fresh-silent" || bad "review-fresh-silent: $out"
+rm -rf "$T/b"
+
+# --- an alpha the running core caught up with (operator 2026-10-31: unwired with the update) -------
+# `replaces`: the core file equals the copy with its core-relative requires read back.
+mk "$X_HOOK" '' '' >/dev/null
+mkdir -p "$T/b/scripts/hooks"
+printf "const t = require('../../core/helpers/a.cjs');\n// gate v2\n" > "$T/b/scripts/hooks/x.cjs"
+printf "const t = require('./a.cjs');\n// gate v1\n" > "$T/b/core/helpers/x.cjs"
+decl '{"alpha":{"scripts/hooks/x.cjs":{"until":"2026-12-01","why":"alpha copy of core x","replaces":"helpers/x.cjs"}}}'
+out=$(run); ! grep -q 'caught up' <<< "$out" && ok "alpha-ahead-of-core-silent" || bad "alpha-ahead-of-core-silent: $out"
+printf "const t = require('./a.cjs');\n// gate v2\n" > "$T/b/core/helpers/x.cjs"
+out=$(run); grep -q '^!! local machinery: 1 alpha(s) the running core has caught up with' <<< "$out" && grep -q 'core/helpers/x.cjs is the same' <<< "$out" \
+  && ok "alpha-caught-up-by-file-loud" || bad "alpha-caught-up-by-file-loud: $out"
+# `core_commit`: caught up once the commit is an ancestor of the core checkout's HEAD.
+printf "const t = require('./a.cjs');\n// gate v1\n" > "$T/b/core/helpers/x.cjs"
+git -C "$T/b/core" init -q 2>/dev/null; git -C "$T/b/core" -c user.email=t@t -c user.name=t commit -q --allow-empty -m one
+SHA=$(git -C "$T/b/core" rev-parse HEAD)
+decl "{\"alpha\":{\"scripts/hooks/x.cjs\":{\"until\":\"2026-12-01\",\"why\":\"alpha\",\"core_commit\":\"$SHA\"}}}"
+out=$(run); grep -q "core carries ${SHA:0:7}" <<< "$out" && ok "alpha-caught-up-by-commit-loud" || bad "alpha-caught-up-by-commit-loud: $out"
+decl '{"alpha":{"scripts/hooks/x.cjs":{"until":"2026-12-01","why":"alpha","core_commit":"0123456789abcdef0123456789abcdef01234567"}}}'
+out=$(run); ! grep -q 'caught up' <<< "$out" && ok "alpha-commit-not-in-core-silent" || bad "alpha-commit-not-in-core-silent: $out"
 rm -rf "$T/b"
 
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }

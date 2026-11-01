@@ -91,6 +91,11 @@ jobs:
       # before `gh pr create` (instance-key-gate.cjs); here it catches a fragment edited later.
       - name: change level declared
         run: node helpers/change-level.cjs check
+      # Every .claude/rules/<name>.json the core reads has a template a new brain gets, or a
+      # declared reason why none is needed (templates/instance-files-optional.json; its
+      # `unclassified` list may only shrink).
+      - name: instance files have templates
+        run: python3 scripts/instance-templates.py
       # This repo ships hooks that run silently in every consuming brain and text that
       # becomes model instruction. A virus scanner sees none of that; this scans for
       # what a review can miss in text: invisible/bidi characters, homoglyphs, opaque
@@ -236,7 +241,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # A single PR runs the fixture suites on Ubuntu only; macOS and Windows run on a merge train
+        # (branch train/*, scripts/merge-train.sh), on main and on tags (operator 2026-10-31: "PR schnell,
+        # Zug voll"). Measured the same day: 21 PR runs of ~13 jobs each sat queued for over half an hour.
+        # Nothing is skipped in total — every PR reaches main only inside a train, and the ruleset still
+        # requires the macOS and Windows checks, so a PR alone cannot be merged past the train.
+        os: ${{ fromJSON((github.event_name == 'pull_request' && !startsWith(github.head_ref, 'train/')) && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

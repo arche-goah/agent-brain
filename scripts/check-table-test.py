@@ -80,7 +80,7 @@ case("n/a with a reason satisfies the OS", rc, 0, out)
 rc, out = run(doc(ALL + [row("c1", "lin1", "Linux", "2026-10-11", "fail — odd")], req="macOS, Windows"))
 case("an OS that is not required still keeps a fail open", rc, 1, out, "RED")
 
-# --cells: the per-cell view (off by default). Cases from the heavy-metal session's own stable rule.
+# --cells: the per-cell view (off by default). Cases from a suite session's own stable rule.
 def cells(rows):
     return run(doc(rows), "--cells")[1]
 

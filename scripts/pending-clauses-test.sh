@@ -42,6 +42,27 @@ printf '%s\n' '# rules' 'The check runs at every start (core v1.4.0).' > "$TMP/b
 out=$("$PY" "$HERE/pending-clauses.py" --repo "$TMP/brain" --core "$TMP/core" 2>&1)
 [ -z "$out" ] && ok "resolved rules: no output" || bad "resolved rules: no output (got: $out)"
 
+# Date conditions (2026-10-31): a forward date clause past its date is EXPIRED; one still ahead,
+# history in prose, and a file with its own dated reader stay silent.
+printf '%s\n' '# rules' \
+  'The probe is an alpha until 2026-10-20, then core PR.' \
+  'The probe is an alpha until 2026-12-24, then core PR.' \
+  'The value that stood here until 2026-10-01 was replaced.' \
+  'Gate runs ALPHA bis 2026-10-20.' > "$TMP/brain/CLAUDE.md"
+printf '{"x": {"until": "2026-10-24", "why": "waits on a review"}}\n' > "$TMP/brain/.claude/rules/waits.json"
+printf '{"x": {"until": "2026-10-24"}}\n' > "$TMP/brain/.claude/rules/local-machinery.json"
+rm -f "$TMP/brain/.claude/rules/pending-clauses.json"
+out=$("$PY" "$HERE/pending-clauses.py" --repo "$TMP/brain" --core "$TMP/core" --today 2026-10-31 2>&1)
+grep -q "EXPIRED CLAUDE.md:2 — condition date 2026-10-20" <<<"$out" && ok "a forward date clause past its date is EXPIRED" || bad "a forward date clause past its date is EXPIRED (got: $out)"
+grep -q 'EXPIRED .claude/rules/waits.json:1 — condition date 2026-10-24' <<<"$out" && ok "a JSON until field past its date is EXPIRED" || bad "a JSON until field past its date is EXPIRED"
+grep -q "CLAUDE.md:3" <<<"$out" && bad "a date still ahead stays silent" || ok "a date still ahead stays silent"
+grep -q "CLAUDE.md:4" <<<"$out" && bad "history in prose stays silent" || ok "history in prose stays silent"
+grep -q "local-machinery.json" <<<"$out" && bad "a file with its own dated reader is left to it" || ok "a file with its own dated reader is left to it"
+grep -q "CLAUDE.md:5" <<<"$out" && bad "a German date clause without instance data stays silent" || ok "a German date clause without instance data stays silent"
+printf '{"date_words": ["\\\\bALPHA bis\\\\b"]}\n' > "$TMP/brain/.claude/rules/pending-clauses.json"
+out=$("$PY" "$HERE/pending-clauses.py" --repo "$TMP/brain" --core "$TMP/core" --today 2026-10-31 2>&1)
+grep -q "EXPIRED CLAUDE.md:5" <<<"$out" && ok "a German date clause found with instance date_words" || bad "a German date clause found with instance date_words (got: $out)"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "pending-clauses-test: all checks passed"; exit 0; fi
 echo "pending-clauses-test: $fails check(s) FAILED"; exit 1

@@ -142,8 +142,7 @@ Rules:
 - Changelog format, one style everywhere: **newest entry first**, headings
   `## <version> — <date>` **without a `v` prefix** (tags keep theirs). Decided
   2026-08-10: the core wrote oldest-first with `v`, the suites newest-first without,
-  and a suite release derailed when one habit was applied to the other repo
-  (grandma3-suite PR #2); 4 of 5 repos already wrote prefix-less. §8 governs what an
+  and a suite release derailed when one habit was applied to the other repo; 4 of 5 repos already wrote prefix-less. §8 governs what an
   entry says (why + origin); this line governs where it goes.
 - Each suite declares the core it was built against as `requires_core` in its
   `dependencies.json` (machine-checked). The README may repeat it for humans.
@@ -292,8 +291,8 @@ Two consequences that are not optional:
 - **A new capability never starts life inside a private brain.** Not "for now", not "until
   it settles". Something built in the private layer acquires that layer's assumptions —
   its paths, its addresses, its habits — and pulling it out later costs more than starting
-  it right. Measured on this setup: every extraction so far (chataigne, show-tools,
-  resolume) had to fix paths that only ever resolved inside the brain.
+  it right. Measured on this setup: every extraction so far (three suites) had to fix
+  paths that only ever resolved inside the brain.
 - **The core is an explicit include-list, not a leftover.** After every suite has moved
   out, what remains is core *plus* private instance. Deciding the core by subtraction ships
   somebody's private data.
@@ -381,6 +380,11 @@ Prose is not the contract; `suite-check.py` is. Sections 1–11 describe what it
   one file per brain recording which repo is pinned at which version and commit. Run it
   without arguments to see drift, with `--write` to record an intended state. It is
   instance data — each person keeps their own; the suites are the shared part.
+  Optional top-level field `"owner": "<GitHub org or account>"` (kept by `--write`): the
+  owner whose open PRs, code-scanning alerts and shared-memory repo the session start asks
+  GitHub about. Without it `scripts/eco_owner.py` takes the org of the first marketplace in
+  the settings when the gh login can see that repo (private, or the login may write to it),
+  else the gh login itself; a template placeholder is never an owner.
 
 **Changing an existing shared repo** therefore means: change it, keep `suite-check` green,
 add a CHANGELOG line with the reason, tag if the interface moved, and let the other side
@@ -486,9 +490,9 @@ SSH remotes with a loaded ssh-agent, or run marketplace update manually.
 
 ## 14. Every repo: the setup contract
 
-A repo set up by hand gets whatever its first session remembered. Measured 2026-10-10 on
-one account: 7 of 18 private repos had no workflow at all, and branch protection was
-unavailable on every private one (free plan, HTTP 403 "Upgrade to GitHub Pro"); the
+A repo set up by hand gets whatever its first session remembered. Measured 2026-10-10:
+7 of 18 private repos had no workflow at all, and branch protection was unavailable on
+every private one (HTTP 403 "Upgrade to GitHub Pro" — a plan without it); the
 "pull requests only" rule of two project repos lived in a local hook nobody could see.
 This section is what every repo carries from its first commit, by kind.
 `scripts/repo-check.py` checks a repo against it; `templates/repo/` is the starting set.
