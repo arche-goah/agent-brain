@@ -268,8 +268,11 @@ def main():
             m = re.search(r"core/(helpers|scripts)/([\w.-]+)", cmd)
             if not m:
                 continue
+            # Whole file name only: a bare substring took `autonomous-question-gate.cjs`
+            # for a copy of `question-gate.cjs`.
+            name_rx = re.compile(r"(?<![\w.-])%s(?![\w.-])" % re.escape(m.group(2)))
             for _wm, wc, _wf in wired.get(event, []):
-                if m.group(2) in wc:
+                if name_rx.search(wc):
                     duplicate.append("%s: %s runs twice - the plugin %s ships it (hooks/hooks.json) and %s wires a "
                                      "copy; drop the copy from %s" % (event, m.group(2), plugin_id,
                                                                       scopes.get((event, wc), "a settings scope"),
