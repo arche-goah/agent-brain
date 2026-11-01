@@ -50,6 +50,7 @@ const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
 const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
+const { ownEcho, declare } = require('./stop-echo.cjs');
 
 let data = '';
 process.stdin.setEncoding('utf8');
@@ -60,7 +61,7 @@ function allow() { process.exit(0); }
 // The harness replays a blocked turn's feedback as an operator message. It must not
 // end the turn window — after the first block the window would be empty otherwise.
 const HOOK_ECHO = /^Stop hook feedback:/;
-const OWN_ECHO = /CLASS-GATE|KLASSEN-GATE/; // legacy marker kept: old echoes still count
+let OWN_ECHO = /CLASS-GATE|KLASSEN-GATE/; // legacy marker kept: old echoes still count
 
 // After a block the gate stays quiet for this many real operator turns. 3 instead of
 // "every time": often enough that a fix chain cannot slip through, rare enough that
@@ -168,6 +169,7 @@ function analyze(transcriptPath) {
 process.stdin.on('end', () => {
   let input = {};
   try { input = JSON.parse(data); } catch (e) { return allow(); }
+  OWN_ECHO = ownEcho(input, OWN_ECHO);
 
   // Prevent infinite loop — one block per turn is the whole point.
   if (input.stop_hook_active) return allow();
@@ -229,7 +231,7 @@ process.stdin.on('end', () => {
   // answer). Terse is not the goal, readable is. The agent's mechanics live in
   // rules/thinking-protocol.md → Class Discipline and need no repetition here;
   // the demanded ⚙ line is addressed to the human, so it must be plain language.
-  console.log(JSON.stringify({
+  console.log(JSON.stringify(declare({
     decision: 'block',
     reason:
       `CLASS-GATE — routine success check, not an error. Touched this turn: ${shown}\n` +
@@ -239,7 +241,7 @@ process.stdin.on('end', () => {
       'template, a rule, a helper) or the owning suite carry the same thing — core PR, instance-only ' +
       'with the reason, or already there? Nothing transferable: ' +
       '"⚙ writer level, no class elsewhere, core has it" — the level is always named.',
-  }));
+  }, input)));
   process.exit(0);
 });
 
