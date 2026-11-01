@@ -313,12 +313,19 @@ function preTool(input) {
   // request in the autonomous part again"). The mode words are the run's on-words (autonomous-mode.cjs).
   if (qs.length > 1) {
     let on = null;
-    try { on = require('./autonomous-mode.cjs').words(root(input.cwd)).on; } catch (e) { on = null; }
+    let asksMode = null;
+    try {
+      const am = require('./autonomous-mode.cjs');
+      on = am.words(root(input.cwd)).on;
+      asksMode = am.asksMode;
+    } catch (e) { on = null; }
     // Only the LAST question counts: that is where the mode question stands by rule, and a question
     // ABOUT autonomy earlier in the call ("how autonomous should the loop be?") is a decision, not the
     // mode question (replayed over the history 2026-10-26: matching any question hit two such).
+    // And within it only the question sentence (2026-10-31, the same reader as autonomous-mode.cjs): a
+    // decision that merely mentions "the autonomous gate" in its context is no mode question.
     const lastQ = qs[qs.length - 1] || {};
-    const mode = on && on.test(`${lastQ.question || ''} ${lastQ.header || ''}`) ? lastQ : null;
+    const mode = on && asksMode && asksMode(on, String(lastQ.question || '')) ? lastQ : null;
     if (mode) {
       process.stdout.write(JSON.stringify({
         hookSpecificOutput: {

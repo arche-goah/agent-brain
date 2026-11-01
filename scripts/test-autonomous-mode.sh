@@ -66,6 +66,10 @@ f="$T/3g.jsonl"; { user "autonomous, please"; user "anything open for me?"; answ
 mode "no to continue autonomously keeps it off" "$f" "$EN" interactive
 f="$T/3h.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
 mode "yes to another question sets nothing" "$f" "$EN" interactive
+f="$T/3n.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"The autonomous gate held the settings edit back; the patch is in a file. Shall I apply it now?"="Yes, apply it now"'; } > "$f"
+mode "an on-word outside the question sentence makes no mode question (2026-10-31)" "$f" "$EN" interactive
+f="$T/3o.jsonl"; { user "anything open for me?"; answer '"Patch applied. Continue autonomously?"="Yes"'; } > "$f"
+mode "the on-word in the question sentence still is the mode question (control)" "$f" "$EN" autonomous
 # An order inside the answer to another question counts like a prompt (macOS instance 2026-10-30).
 f="$T/3k.jsonl"; { user "status?"; answer '"Shall I handle the 42 items?"="yes, work through them autonomously. document false reports"'; } > "$f"
 mode "an autonomous order inside an answer to another question sets it" "$f" "$EN" autonomous

@@ -266,6 +266,7 @@ ask2 "a decision bundled with 'continue autonomously?'" "Change the rule file no
 ask2 "two decisions without a mode question" "Change the rule file now?" "Merge PR 5 now?" allow "$R"
 ask2 "a question ABOUT autonomy that is not the last one" "How autonomous should the loop be at the desk?" "Merge PR 5 now?" allow "$R"
 ask "'continue autonomously?' asked alone" "Continue autonomously?" allow "$R"
+ask2 "a last decision that only mentions the autonomous gate in its context (2026-10-31)" "Merge PR 5 now?" "The autonomous gate held the edit back; the patch is in a file. Shall I apply it now?" allow "$R"
 mkdir -p "$R/.claude/rules"; printf '{"on_patterns":["\\\\bcarry on alone\\\\b"]}\n' > "$R/.claude/rules/autonomous-patterns.json"
 ask2 "the instance's mode words count too" "Switch the rule now?" "Carry on alone?" deny "$R"
 
