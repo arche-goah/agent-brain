@@ -21,7 +21,7 @@
       "source": {
         "source": "github",
         "repo": "arche-goah/agent-brain",
-        "ref": "v2.0.5"
+        "ref": "v2.1.0"
       },
       "description": "Beta channel of the same plugin, pinned at or ahead of brain-core: for a machine that checks a release before it goes stable. Enable this OR brain-core, never both - they ship the same skills and hooks. Which systems a beta was checked on stands in CHANGELOG.md and in the release notes of its tag."
     }
