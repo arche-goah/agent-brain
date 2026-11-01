@@ -127,6 +127,24 @@ def main():
         ok(out.startswith("!! session audit: 1 session(s) ended without session-close · 2 session start(s) failed"),
            "the bootup summary is its own loud line")
 
+        # 2026-10-31: an idle session the harness still runs is not "ended" — the registry
+        # ~/.claude/sessions/<pid>.json names it; a dead pid there does not hide a killed one.
+        root2, tdir2, reg = tmp / "brain2", tmp / "transcripts2", tmp / "registry"
+        for d in (root2, tdir2, reg):
+            d.mkdir()
+        write(tdir2, "bbbb0001-idle-running", [boot(), user("helper, stand by")])
+        write(tdir2, "bbbb0002-dead-pid", [boot(), user("work")])
+        write(tdir2, "bbbb0003-current", [boot(), user("me")])
+        (reg / "1.json").write_text(json.dumps({"pid": os.getpid(), "sessionId": "bbbb0001-idle-running"}), encoding="utf-8")
+        (reg / "2.json").write_text(json.dumps({"pid": 2 ** 22 + 7, "sessionId": "bbbb0002-dead-pid"}), encoding="utf-8")
+        (reg / "3.json").write_text("not json", encoding="utf-8")
+        hook2 = {"session_id": "bbbb0003-current", "transcript_path": str(tdir2 / "bbbb0003-current.jsonl")}
+        rc, out = run(["--json"], root2, hook2, env={"SESSION_AUDIT_REGISTRY": str(reg)})
+        found2 = {f["id"] for f in json.loads(out.strip().splitlines()[-1])}
+        ok("end:bbbb0001-idle-running" not in found2, "an idle session the harness registry runs (live pid) is not reported")
+        ok("end:bbbb0002-dead-pid" in found2, "a registry entry with a dead pid does not hide an ended session")
+        ok(len(found2) == 1, f"registry pass: exactly one finding (got {len(found2)})")
+
         # The relay: open-items lists them as agent items (the transcript holds the cause), the gate makes the first reply name them.
         rc2 = subprocess.run([sys.executable, str(OI), "--root", str(root), "--repo", str(tmp / "no-shared"),
                               "--hook-input", json.dumps(hook)], capture_output=True, text=True, encoding="utf-8")

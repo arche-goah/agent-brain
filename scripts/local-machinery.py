@@ -72,7 +72,7 @@ SCRIPT_EXT = (".sh", ".py", ".cjs", ".js", ".mjs", ".ps1")
 TEXT_EXT = SCRIPT_EXT + (".md", ".json", ".txt", ".toml", ".yaml", ".yml", ".plist", ".xml", ".ts")
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "site-packages", ".claude-state"}
 CORE_PLUGIN_PREFIXES = ("brain-core@", "brain-core-next@")  # same as plugin-scope-check.py
-LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels")
+LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels", "caughtup")
 CLASSES = LOUD + ("duplicate", "undeclared", "review")
 # A deviation is not justified once and for all (operator order 2026-10-29: a local deviation must not
 # stay justified once and never questioned again; past exceptions need routine review). Measured the same day on the macOS
@@ -670,6 +670,36 @@ def identity_matcher(tokens_):
     return re.compile(rf"(?<![A-Za-z0-9])(?:{alt})(?![A-Za-z0-9])", re.IGNORECASE)
 
 
+def caught_up(C, d, it):
+    """An alpha that names what it anticipates is caught up once the running core carries it
+    (operator 2026-10-31: alphas are unwired with the core update, not left running until their date).
+    `core_commit`: the core commit the copy anticipates - caught up when it is an ancestor of the
+    core checkout's HEAD. `replaces`: the core file it copies - caught up when the core file equals
+    the copy with its core-relative requires read back (`../../core/helpers/` -> `./`)."""
+    core = C.root / "core"
+    if not core.is_dir():
+        return ""
+    sha = str(d.get("core_commit") or "").strip()
+    if sha:
+        try:
+            r = subprocess.run(["git", "-C", str(core), "merge-base", "--is-ancestor", sha, "HEAD"],
+                               capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                return f"core carries {sha[:7]}"
+        except (OSError, subprocess.SubprocessError):
+            pass
+    rep = str(d.get("replaces") or "").strip()
+    if rep:
+        try:
+            mine = (it.get("content") or "").replace("../../core/helpers/", "./")
+            theirs = (core / rep).read_text(encoding="utf-8")
+            if mine.strip() and mine.strip() == theirs.strip():
+                return f"core/{rep} is the same"
+        except OSError:
+            pass
+    return ""
+
+
 def judge(items, decl, C, today):
     inst, alpha = decl.get("instance") or {}, decl.get("alpha") or {}
     ext = decl.get("external") or {}
@@ -703,6 +733,11 @@ def judge(items, decl, C, today):
         if ka and ki:
             found["contradiction"].append(f"{it['id']} (declared both instance '{ki}' and alpha '{ka}')")
         if ka:
+            caught = caught_up(C, alpha[ka], it) if isinstance(alpha[ka], dict) else ""
+            if caught:
+                it["class"] = "caughtup"
+                found["caughtup"].append(f"{ka} ({caught})")
+                continue
             until = str((alpha[ka] or {}).get("until", "")) if isinstance(alpha[ka], dict) else ""
             if not until or until < today:
                 it["class"] = "expired"
@@ -853,6 +888,7 @@ MESSAGES = {
     "wrapper": "!! local machinery: {n} same-named instance wrapper(s) only call the core item: {x} — remove the wrapper and call the core one directly",
     "contradiction": "!! local machinery: {n} item(s) are declared in two contradicting places: {x} — decide which one is true and fix the other",
     "shadow": "!! local machinery: {n} instance item(s) shadow a core item of the same name: {x} — use the core one and remove the copy, or rename it if it is a different tool",
+    "caughtup": "!! local machinery: {n} alpha(s) the running core has caught up with, still wired: {x} — unwire the copy and its wiring now (the core carries it)",
     "expired": "!! local machinery: {n} alpha(s) past their date, still wired: {x} — merge, extend with a reason, or unwire",
     "outside": "!! local machinery: {n} item(s) run from outside this brain and outside the core, undeclared: {x} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR",
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
@@ -924,7 +960,7 @@ def main(argv):
         for it in items:
             print(f"{it['class']:11} {it['carrier']:12} {it['id']}")
 
-    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "expired", "outside", "general",
+    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "caughtup", "expired", "outside", "general",
                 "noevidence", "badevidence", "duplicate", "undeclared", "review"):
         xs = uniq(found[cls])
         if not xs:

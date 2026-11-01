@@ -76,6 +76,10 @@ f="$T/3m.jsonl"; { user "status?"; answer2 '"Shall I handle the 42 items?"="yes,
 mode "the 'The user answered:' wording counts as an answer too" "$f" "$EN" autonomous
 f="$T/3l.jsonl"; { user "autonomous, please"; answer '"Shall I run the scan?"="no, back to normal mode"'; } > "$f"
 mode "an off word inside an answer to another question ends it" "$f" "$EN" interactive
+f="$T/3n.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"The autonomous gate held the settings edit back; the patch is in a file. Shall I apply it now?"="Yes, apply it now"'; } > "$f"
+mode "an on-word outside the question sentence makes no mode question (2026-10-31)" "$f" "$EN" interactive
+f="$T/3o.jsonl"; { user "anything open for me?"; answer '"Patch applied. Continue autonomously?"="Yes"'; } > "$f"
+mode "the on-word in the question sentence still is the mode question (control)" "$f" "$EN" autonomous
 f="$T/3i.jsonl"; { user "fix the parser"; answer '"Continue autonomously?"="Yes"'; user "status?"; } > "$f"
 mode "after the yes a status question keeps it" "$f" "$EN" autonomous
 f="$T/3r.jsonl"; { user "autonomous, please"; asst "x"; readres '"Continue autonomously?"="No, interactive"'; } > "$f"
@@ -155,6 +159,27 @@ mode "the model's asks_open does not cancel an autonomous order in the same prom
 f="$T/sess-d.jsonl"; { tuser 2026-10-31T15:40:00Z "work through the list autonomously"; asst "x"; tuser 2026-10-31T16:40:00Z "anything for me?"; } > "$f"
 irec 2026-10-31T16:40:05Z sess-d true false > "$IC/.claude-state/intent-classifier.jsonl"
 mode "an ask without an order still ends the run (control)" "$f" "$IC" interactive
+
+# initial_mode: a brain whose operator wants every session autonomous until asked (measured
+# 2026-11-01, macOS instance: a start prompt "status?" with no on-word left the session interactive,
+# and a mid-run question reached the operator who believed the run autonomous).
+AU="$T/au"; mkdir -p "$AU/.claude/rules"
+printf '%s\n' '{"initial_mode": "autonomous"}' > "$AU/.claude/rules/autonomous-patterns.json"
+f="$T/init1.jsonl"; { user "status?"; asst "x"; } > "$f"
+mode "initial_mode autonomous: a start prompt without an on-word keeps it" "$f" "$AU" autonomous
+mode "without initial_mode the same transcript is interactive (control)" "$f" "$EN" interactive
+f="$T/init0.jsonl"; : > "$f"
+mode "initial_mode autonomous: an empty transcript is autonomous" "$f" "$AU" autonomous
+mode "default: an empty transcript is interactive (control)" "$f" "$EN" interactive
+f="$T/init2.jsonl"; { user "status?"; asst "x"; user "anything open for me?"; } > "$f"
+mode "initial_mode autonomous: asking what is open still ends it" "$f" "$AU" interactive
+f="$T/init3.jsonl"; { user "status?"; asst "x"; user "back to normal mode"; } > "$f"
+mode "initial_mode autonomous: an off word still ends it" "$f" "$AU" interactive
+f="$T/init4.jsonl"; { user "anything open for me?"; asst "x"; user "fine, autonomous again"; } > "$f"
+mode "initial_mode autonomous: an on word sets it again after an ask" "$f" "$AU" autonomous
+printf '%s\n' '{"initial_mode": "interactive"}' > "$AU/.claude/rules/autonomous-patterns.json"
+f="$T/init1.jsonl"
+mode "initial_mode interactive: same as the default" "$f" "$AU" interactive
 
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }
