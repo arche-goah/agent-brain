@@ -229,9 +229,15 @@ process.stdin.on('end', () => {
   let cmd = '';
   let filePath = '';
   let background = false;
+  let hinTool = '';
+  let transcript = '';
+  let hinCwd = '';
   let monitor = false;
   try {
     const hin = JSON.parse(input);
+    hinTool = hin.tool_name || '';
+    transcript = hin.transcript_path || '';
+    hinCwd = hin.cwd || '';
     const ti = hin.tool_input || {};
     cmd = ti.command || '';
     // Monitor always runs detached; Bash only with run_in_background.
@@ -299,6 +305,25 @@ process.stdin.on('end', () => {
       },
     }));
     process.exit(0);
+  }
+  // A long run no rule names (2026-10-31, helpers/long-runs.cjs): a script that declares itself
+  // `long-run: detached`, or one the operator once had to background by hand. A marker opens it.
+  if (!background && !marker && hinTool === 'Bash') {
+    let lr = null;
+    try { lr = require('./long-runs.cjs').longRunScript(stripped, project, transcript, hinCwd); } catch (_) {}
+    if (lr) {
+      console.log(JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason:
+            `MECHANISM CHECK (agent-brain): ${lr.script} runs long in the foreground (${lr.why}).\n\n` +
+            'The setup has a documented path for this:\n  Start the same command with Bash run_in_background ' +
+            'and keep working; read its result line before claiming anything (Working Rule #13).',
+        },
+      }));
+      process.exit(0);
+    }
   }
   process.exit(0);
 });

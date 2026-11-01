@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ci-lint-local.sh — run the CI's own check steps on this checkout, read from
 # .github/workflows/ci.yml, so a counter-check of a PR runs what CI runs.
+# long-run: detached
 #
 # WHY (measured 2026-10-21, twice in one day on the macOS instance): a PR counter-check ran
 # the fixtures of the touched parts and reported "macOS OK"; CI then went red in a lint step

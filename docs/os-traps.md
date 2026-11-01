@@ -294,6 +294,7 @@ known:     scripts/test-leak-scan.sh=1
 known:     scripts/test-live-read-gate.sh=1
 known:     scripts/test-live-watchdog.sh=1
 known:     scripts/test-local-machinery.sh=1
+known:     scripts/test-long-runs.sh=1
 known:     scripts/test-memory-dream-files.sh=1
 known:     scripts/test-merge-request-gate.sh=1
 known:     scripts/test-merge-train.sh=1
