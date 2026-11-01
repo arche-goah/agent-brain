@@ -9,7 +9,9 @@ is this page plus the instance's own word lists (below).
 `helpers/autonomous-mode.cjs` reads the operator's words in the session's transcript and keeps a latch. Every gate
 that behaves differently per mode reads this one function — there is no second copy, no setting, no file. Each session
 has its own mode (its own transcript); five parallel sessions can show five different modes. A fresh session is
-INTERACTIVE. The status line shows the mode of its session at the right end (`helpers/statusline.cjs`).
+INTERACTIVE — unless the brain's `.claude/rules/autonomous-patterns.json` sets `"initial_mode": "autonomous"` (the
+operator's standing word that every session runs autonomously until they ask what is open); the words below switch
+it either way. The status line shows the mode of its session at the right end (`helpers/statusline.cjs`).
 
 ## INTERACTIVE (the default)
 

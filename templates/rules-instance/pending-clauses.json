@@ -1,7 +1,10 @@
 {
-  "_comment": "Instance patterns for core/scripts/pending-clauses.py — phrases in YOUR rule language that make a sentence wait for a core state (the English ones are built in). Run by brain-update.sh after every pin move; a clause whose PR is already in the pinned core is reported STALE, any other pending clause as READ. Regexes, case-insensitive. Replace the examples with your language's phrases or delete the file.",
+  "_comment": "Instance patterns for core/scripts/pending-clauses.py — phrases in YOUR rule language that make a sentence wait for a core state or a date (the English ones are built in). Run by brain-update.sh after every pin move; a clause whose PR is already in the pinned core is reported STALE, any other pending clause as READ, a forward date word followed by an ISO date before today as EXPIRED. Only FORWARD forms belong in date_words ('alpha until', 'valid until'): a bare 'until' in prose is mostly history. Regexes, case-insensitive. Replace the examples with your language's phrases or delete the file.",
   "patterns": [
     "<phrase for 'once the pin carries it'>",
     "\\b<word for 'until'> (?:core )?PR #\\d+"
+  ],
+  "date_words": [
+    "\\b<word for 'alpha'> <word for 'until'>\\b"
   ]
 }

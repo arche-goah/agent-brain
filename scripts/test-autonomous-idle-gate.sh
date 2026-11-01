@@ -42,6 +42,20 @@ f="$T/3x.jsonl"; { user "work through the open points autonomously"; bash_cmd "$
 check "the same wait backed by the operator's order passes" "$f" allow
 f="$T/3y.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "BLOCKED: run-gate check — the PR is merged, the check turns green with the beta tag"; } > "$f"
 check "work already merged, only the release waits: passes" "$f" allow
+# 2026-10-31: a measurement of an EARLIER turn stands while nothing was done since and it is fresh (31 of 86 idle
+# blocks over 80 sessions were answered by re-running the same measurement after a watcher notification).
+ago() { node -e 'process.stdout.write(new Date(Date.now()-Number(process.argv[1])*60000).toISOString())' "$1"; }
+bash_at() { printf '{"type":"assistant","timestamp":"%s","message":{"role":"assistant","content":[{"type":"tool_use","id":"t%s","name":"Bash","input":{"command":%s}}]}}\n' "$(ago "$1")" "$1" "$(js "$2")"; }
+edit_at() { printf '{"type":"assistant","timestamp":"%s","message":{"role":"assistant","content":[{"type":"tool_use","id":"e%s","name":"Edit","input":{"file_path":"x"}}]}}\n' "$(ago "$1")" "$1"; }
+BL="BLOCKED: item C — needs the operator's word on the deploy"
+f="$T/3s.jsonl"; { user "work through the open points autonomously"; bash_at 5 "$MEAS"; asst "$BL"; user "<task-notification>CI green</task-notification>"; asst "$BL"; } > "$f"
+check "a measurement from the turn before, nothing done since, stands" "$f" allow
+f="$T/3t.jsonl"; { user "work through the open points autonomously"; bash_at 6 "$MEAS"; asst "$BL"; user "<task-notification>CI green</task-notification>"; bash_at 2 "git commit -m x"; asst "$BL"; } > "$f"
+check "a commit after the measurement voids it (control)" "$f" block
+f="$T/3u.jsonl"; { user "work through the open points autonomously"; bash_at 6 "$MEAS"; asst "$BL"; user "<task-notification>CI green</task-notification>"; edit_at 2; asst "$BL"; } > "$f"
+check "an edit after the measurement voids it (control)" "$f" block
+f="$T/3v.jsonl"; { user "work through the open points autonomously"; bash_at 45 "$MEAS"; asst "$BL"; user "<task-notification>CI green</task-notification>"; asst "$BL"; } > "$f"
+check "a measurement older than 30 minutes does not stand (control)" "$f" block
 IX="$T/instx"; mkdir -p "$IX/.claude/rules"
 printf '%s\n' '{"blocked_exempt_patterns": ["\\bweisung\\b"]}' > "$IX/.claude/rules/autonomous-patterns.json"
 f="$T/3z.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "BLOCKED: follow-up PRs — per Weisung after the next beta tag"; } > "$f"
@@ -54,7 +68,7 @@ check "a POOL EMPTY line after measuring the list ends the turn" "$f" allow
 f="$T/4b.jsonl"; { user "work through the open points autonomously"; asst "BLOCKED: waiting on the CI watchers and the operator"; } > "$f"
 check "a BLOCKED line without measuring the list in this turn" "$f" block
 f="$T/4c.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; user "<task-notification><task-id>x</task-id></task-notification>"; asst "POOL EMPTY: measured earlier"; } > "$f"
-check "a measurement of an earlier turn does not count" "$f" block
+check "a measurement of an earlier turn without a known time does not count" "$f" block
 # Measured on an instance: eight end lines stood on the list piped into a filter that kept only the counts.
 f="$T/4e.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS | head -3"; asst "BLOCKED: item D — the peer's merge"; } > "$f"
 check "the list piped into a filter is no measurement" "$f" block

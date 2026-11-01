@@ -36,7 +36,7 @@ const TAIL_BYTES = 4 * 1024 * 1024;
 const BUILTIN_RELEASE = ['\\byou can (now )?(shut (it )?down|close (the session|everything)|end the session|turn (it|everything) off)\\b',
   '\\bsafe to (shut down|close the session|end the session)\\b'];
 // "no hand step" names none (2026-10-28: a negated hand word blocked a clean close)
-const BUILTIN_HAND = ['(?<!\\bno )(?<!\\bwithout )\\bhand step\\b', '(^|\\n)\\s*[-*]?\\s*`?!\\s?[a-z]'];
+const BUILTIN_HAND = ['(?<!\\bno )(?<!\\bwithout )\\bhand step\\b(?!-)', '(^|\\n)\\s*[-*]?\\s*`?!\\s?[a-z]'];
 const SCRATCH = /\/(?:private\/)?tmp\/claude-[^\s`'")]*\/scratchpad\b[^\s`'")]*/;
 
 function rx(builtins, extra) {

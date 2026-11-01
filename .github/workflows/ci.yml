@@ -241,7 +241,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # A single PR runs the fixture suites on Ubuntu only; macOS and Windows run on a merge train
+        # (branch train/*, scripts/merge-train.sh), on main and on tags (operator 2026-10-31: "PR schnell,
+        # Zug voll"). Measured the same day: 21 PR runs of ~13 jobs each sat queued for over half an hour.
+        # Nothing is skipped in total — every PR reaches main only inside a train, and the ruleset still
+        # requires the macOS and Windows checks, so a PR alone cannot be merged past the train.
+        os: ${{ fromJSON((github.event_name == 'pull_request' && !startsWith(github.head_ref, 'train/')) && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
