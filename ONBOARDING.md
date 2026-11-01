@@ -6,6 +6,12 @@ you forward. A Claude Code session started in this repo (or later in your fresh 
 can execute these steps for you — you explain where you are, it runs the commands and
 re-measures. The scripts referenced here all live in this repo.
 
+**Prefer to be guided?** Clone this repo, `cd` into the clone, run `claude`, type
+`/onboard`. An agent then walks you through the steps below in order, measures after each
+one, stops on anything unexpected, and asks before every step that changes something
+outside the clone. After a pause or a restart, type `/onboard` again: it measures where you
+stand and goes on from there.
+
 Throughout this document, `your-org` is a placeholder — replace it with the GitHub
 organization that hosts your marketplace and private repos.
 
