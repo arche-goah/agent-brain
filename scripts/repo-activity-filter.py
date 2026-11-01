@@ -37,6 +37,7 @@ mark branches that exist in the local clone; last line "CURSOR <newest timestamp
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # parsed by bash (OS-9)
@@ -52,6 +53,48 @@ RED = {"failure", "cancelled", "timed_out", "startup_failure", "action_required"
 
 def login(obj) -> str:
     return (obj or {}).get("login") or "?"
+
+
+def pushes(items: list, repo: str, self_login: str, only_set: set) -> None:
+    """New commits on a PR that was already open. Measured 2026-11-01 on the macOS instance: a
+    collaborator's AI pushed a commit to an open PR (the public marketplace pins) and the watch
+    said nothing - `open` keys on `createdAt`, which a push does not move; the operator reported
+    it by hand. The heads of the open PRs are kept in $REPO_ACTIVITY_HEADS (a JSON file the
+    caller owns); a PR seen for the first time is stored, not reported, so arming the watch
+    floods nothing. The PR's author is the filter (who pushed is not in the list answer)."""
+    path = os.environ.get("REPO_ACTIVITY_HEADS")
+    if not path:
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            heads = json.load(f)
+    except (OSError, ValueError):
+        heads = {}
+    for it in items:
+        oid = it.get("headRefOid")
+        if not oid:
+            continue
+        k = f"{repo}#{it.get('number')}"
+        old = heads.get(k)
+        # A draft turned ready is the author's "done" - the event a merger waits for, and it moves no
+        # `createdAt` either (same class as the push, swept 2026-11-01). Kept as "<oid> draft".
+        draft = bool(it.get("isDraft"))
+        heads[k] = oid + (" draft" if draft else "")
+        who = login(it.get("author"))
+        if not old or who == self_login or (only_set and who not in only_set):
+            continue
+        old_oid, was_draft = old.split(" ")[0], old.endswith(" draft")
+        if old_oid != oid:
+            print(f"{it.get('headRefName', '')}\tPUSH {repo} #{it.get('number')}: {it.get('title', '')} "
+                  f"(new head {oid[:7]}, was {old_oid[:7]}; PR by {who})")
+        if was_draft and not draft:
+            print(f"{it.get('headRefName', '')}\tREADY {repo} #{it.get('number')}: {it.get('title', '')} "
+                  f"(draft marked ready for review; PR by {who})")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(heads, f, indent=0, sort_keys=True)
+    except OSError:
+        print(f"WATCH-ERROR: cannot write the PR heads to {path} - new commits on open PRs are NOT reported")
 
 
 def superseded(run: dict, runs: list) -> bool:
@@ -99,6 +142,8 @@ def main(argv: list) -> int:
         return 0
 
     key = TS[mode]
+    if mode == "open":
+        pushes(items, repo, self_login, only_set)
     if mode == "runs":
         red_runs(items, repo, since)
         items = [it for it in items if it.get("status") == "completed"]  # a running run moves its stamp again

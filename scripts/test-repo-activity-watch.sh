@@ -188,6 +188,29 @@ if [[ $gone -eq 1 ]]; then ok; else
 fi
 [[ ! -f "$T/armstate/repo-activity-arm.pid" ]] && ok || bad "payload released its lock on TERM" "lock still there"
 
+PY=python3; "$PY" -c "import sys" >/dev/null 2>&1 || PY=python
+echo "a new commit on an already open PR is reported (2026-11-01: a push to an open PR went unseen)"
+H="$T/heads.json"; rm -f "$H"
+o1='[{"number":5,"title":"public marketplace","author":{"login":"peer"},"createdAt":"2026-01-01T00:00:00Z","headRefName":"feat/x","headRefOid":"aaaaaaa1111"}]'
+o2='[{"number":5,"title":"public marketplace","author":{"login":"peer"},"createdAt":"2026-01-01T00:00:00Z","headRefName":"feat/x","headRefOid":"bbbbbbb2222"}]'
+out=$(printf '%s' "$o1" | REPO_ACTIVITY_HEADS="$H" "$PY" "$HERE/repo-activity-filter.py" open acme/one 2026-06-01T00:00:00Z - -)
+hasnt "the first sighting is stored, not reported (arming floods nothing)" "PUSH" "$out"
+out=$(printf '%s' "$o1" | REPO_ACTIVITY_HEADS="$H" "$PY" "$HERE/repo-activity-filter.py" open acme/one 2026-06-01T00:00:00Z - -)
+hasnt "an unchanged head reports nothing" "PUSH" "$out"
+out=$(printf '%s' "$o2" | REPO_ACTIVITY_HEADS="$H" "$PY" "$HERE/repo-activity-filter.py" open acme/one 2026-06-01T00:00:00Z - -)
+has   "a moved head is a PUSH line" "PUSH acme/one #5: public marketplace (new head bbbbbbb, was aaaaaaa; PR by peer)" "$out"
+out=$(printf '%s' "$o1" | REPO_ACTIVITY_HEADS="$H" "$PY" "$HERE/repo-activity-filter.py" open acme/one 2026-06-01T00:00:00Z peer -)
+hasnt "a PR of the own login is filtered like a new PR (self filter)" "PUSH" "$out"
+out=$(printf '%s' "$o2" | "$PY" "$HERE/repo-activity-filter.py" open acme/one 2026-06-01T00:00:00Z - -)
+hasnt "without the heads file the filter stays as before (control)" "PUSH" "$out"
+d1='[{"number":6,"title":"done soon","author":{"login":"peer"},"createdAt":"2026-01-01T00:00:00Z","headRefName":"feat/y","headRefOid":"ccccccc3333","isDraft":true}]'
+d2='[{"number":6,"title":"done soon","author":{"login":"peer"},"createdAt":"2026-01-01T00:00:00Z","headRefName":"feat/y","headRefOid":"ccccccc3333","isDraft":false}]'
+out=$(printf '%s' "$d1" | REPO_ACTIVITY_HEADS="$H" "$PY" "$HERE/repo-activity-filter.py" open acme/one 2026-06-01T00:00:00Z - -)
+hasnt "a draft seen the first time is stored, not reported" "READY" "$out"
+out=$(printf '%s' "$d2" | REPO_ACTIVITY_HEADS="$H" "$PY" "$HERE/repo-activity-filter.py" open acme/one 2026-06-01T00:00:00Z - -)
+has   "a draft turned ready is a READY line (the author's done)" "READY acme/one #6: done soon (draft marked ready for review; PR by peer)" "$out"
+hasnt "turning ready with the same head is no PUSH" "PUSH acme/one #6" "$out"
+
 echo
 if [[ $fails -eq 0 ]]; then echo "test-repo-activity-watch: all $checks checks passed"; exit 0; fi
 echo "test-repo-activity-watch: $fails of $checks checks FAILED"; exit 1
