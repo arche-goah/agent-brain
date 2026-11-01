@@ -156,5 +156,16 @@ f="$T/sess-d.jsonl"; { tuser 2026-10-31T15:40:00Z "work through the list autonom
 irec 2026-10-31T16:40:05Z sess-d true false > "$IC/.claude-state/intent-classifier.jsonl"
 mode "an ask without an order still ends the run (control)" "$f" "$IC" interactive
 
+# The record of THIS prompt (2026-11-01, macOS instance): a notification's record 1.6 s before the
+# operator's own record was the first in the window, and the operator's ask was read as "nothing".
+irecp() { printf '{"at":"%s","session":"%s","mode":"hook","prompt":%s,"model":{"asks_open":%s,"mode_on":false,"mode_off":false,"correction":false}}\n' "$1" "$2" "$(js "$3")" "$4"; }
+f="$T/sess-e.jsonl"; { tuser 2026-11-01T07:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-01T07:53:40Z "please lay the open questions before me"; } > "$f"
+{ irecp 2026-11-01T07:53:42Z sess-e "<task-notification> a build finished" false; irecp 2026-11-01T07:53:44Z sess-e "please lay the open questions before me" true; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the operator's own record wins over a notification's record in the window" "$f" "$IC" interactive
+{ irecp 2026-11-01T07:53:42Z sess-e "<task-notification> a build finished" true; irecp 2026-11-01T07:53:44Z sess-e "please lay the open questions before me" false; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a notification's ask does not end the run (control)" "$f" "$IC" autonomous
+irec 2026-11-01T07:53:43Z sess-e true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record without a prompt field still matches by time" "$f" "$IC" interactive
+
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }
