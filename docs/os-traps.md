@@ -308,6 +308,7 @@ known:     scripts/test-parallel-sessions.sh=1
 known:     scripts/test-pattern-cases.sh=1
 known:     scripts/test-pr-ball.sh=1
 known:     scripts/test-pre-commit-behind.sh=1
+known:     scripts/test-pre-commit-os-traps.sh=1
 known:     scripts/test-premise-gate.sh=1
 known:     scripts/test-promise-gate.sh=1
 known:     scripts/test-public-text-guard.sh=1
