@@ -6,11 +6,7 @@ allowed-tools:
   - Glob
   - Grep
   - Bash(bash scripts/preflight.sh)
-  - Bash(claude plugin marketplace add *)
-  - Bash(claude plugin install brain-core@*)
   - Bash(claude plugin list)
-  - Bash(bash scripts/bootstrap-brain.sh *)
-  - Bash(bash scripts/setup-shell-start.sh *)
   - Bash(bash scripts/onboarding-verify.sh *)
 ---
 
@@ -74,10 +70,11 @@ written for people who develop the core; they do not describe this job.
 
 ## Permissions
 
-The commands of the default path are pre-approved only for the turn in which `/onboard` is
-typed. After the person's next message Claude Code asks before each command again; that
-prompt is their yes for the step, not an error. Typing `/onboard` again re-applies the
-pre-approval for that turn.
+Only the read-only checks (the preflight, `claude plugin list`, `onboarding-verify.sh`) are
+pre-approved, and only for the turn in which `/onboard` is typed. Every step that changes
+something - marketplace, plugin install, bootstrap, shell start - goes through Claude Code's
+permission prompt; that prompt is the person's yes for the step, not an error. Typing
+`/onboard` again re-applies the pre-approval of the checks for that turn.
 
 ## The end
 
