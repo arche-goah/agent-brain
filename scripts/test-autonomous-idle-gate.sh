@@ -85,6 +85,21 @@ out=$(printf '{"transcript_path":"%s","cwd":"%s","stop_hook_active":true}' "$(na
 case "$out" in *'"block"'*) ok "a re-issue (stop_hook_active) without an end line is judged and blocks";; *) bad "re-issue passed: $out";; esac
 f="$T/7.jsonl"; { user "work through the open points autonomously"; asst "The word BLOCKED: in the middle of a sentence is no end line, nor is it here."; } > "$f"
 check "BLOCKED only counts as its own line" "$f" block
+
+# The session close ends the run (2026-10-31 and 2026-11-01, macOS instance: "Missing: continuation" after a
+# successful session-close). A close stamp written in THIS turn by session-closing.sh --pre-commit passes.
+C="$T/closed"; mkdir -p "$C/.claude" "$C/.claude-state" "$C/docs/maintenance"
+tsuser() { printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":%s}}\n' "$1" "$(js "$2")"; }
+precommit() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"c1","name":"Bash","input":{"command":"bash core/helpers/session-closing.sh --pre-commit sess-x"}}]}}\n'; }
+printf -- '- 2026-11-01 close of sess-x\n  open end: arche-goah/agent-brain #267 - windows check\n' > "$C/docs/maintenance/session-log.md"
+printf 'sess-x\n- 2026-11-01 close of sess-x\n' > "$C/.claude-state/session-close.stamp"
+f="$T/close1.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "close the session"; precommit; asst "Session closed. You can shut down."; } > "$f"
+check "a session close with this turn's stamp ends the run" "$f" allow "$C"
+f="$T/close2.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "close the session"; asst "Session closed. You can shut down."; } > "$f"
+check "a closing text without the pre-commit call is no close (control)" "$f" block "$C"
+rm "$C/.claude-state/session-close.stamp"
+f="$T/close3.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "close the session"; precommit; asst "Session closed."; } > "$f"
+check "the pre-commit call without a stamp file is no close (control)" "$f" block "$C"
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-idle-gate: all cases pass" || echo "autonomous-idle-gate: FAILURES"
 exit "$fail"

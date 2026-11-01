@@ -33,6 +33,7 @@ const fs = require('fs');
 const path = require('path');
 const { autonomousMode } = require('./autonomous-mode.cjs');
 const { isTranscriptRecord } = require('./turn-kind.cjs');
+const { closeOpenEnds } = require('./close-stamp.cjs');
 
 const END_LINE = /^[ \t>*_-]*(BLOCKED|POOL EMPTY):\s*\S/m;
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -41,7 +42,7 @@ const HOOK_ECHO = /^Stop hook feedback:/;
 function turnOf(tp) {
   let lines;
   try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return null; }
-  let text = ''; let wake = false; let cmds = []; let prev = null; let lastUserIsNotification = false;
+  let text = ''; let wake = false; let cmds = []; let prev = null; let lastUserIsNotification = false; let since = '';
   // Every command of the session in order, with its time: an earlier measurement can still stand (see judge).
   const all = [];
   // Background waiters still running at the turn's end (armed, no end reported yet).
@@ -66,8 +67,8 @@ function turnOf(tp) {
       // and the measurement away) starts a turn with nothing in it yet - the turn being judged is the one before.
       if (t !== null && !HOOK_ECHO.test(t)) {
         lastUserIsNotification = /<task-notification>|<cross-session-message\b/.test(t);
-        if (text) prev = { text, wake, cmds };
-        text = ''; wake = false; cmds = [];
+        if (text) prev = { text, wake, cmds, since };
+        text = ''; wake = false; cmds = []; since = d.timestamp || '';
       }
       continue;
     }
@@ -84,7 +85,7 @@ function turnOf(tp) {
   }
   const waiting = [...armed].some((id) => !ended.has(id));
   if (!text && prev && lastUserIsNotification) return { ...prev, waiting, all };
-  return { text, wake, cmds, waiting, all };
+  return { text, wake, cmds, since, waiting, all };
 }
 
 /** A measurement from an EARLIER turn still stands when nothing was done since and it is fresh.
@@ -139,6 +140,11 @@ function judge(input, now) {
   if (!autonomousMode(input.transcript_path, root)) return null;
   const t = turnOf(input.transcript_path);
   if (!t || !t.text) return null;
+  // The session close ends the run (measured 2026-10-31 and again 2026-11-01 on the macOS instance: after a
+  // successful `session-close`, this gate blocked the closing report with "Missing: continuation" - a closed
+  // session continues nothing, and its open ends stand in the session log). The same checkable carrier the
+  // watch and question gates accept: a close stamp written in THIS turn by `session-closing.sh --pre-commit`.
+  if (closeOpenEnds(root, { sessionId: input.session_id, since: t.since, calls: t.cmds.map((cmd) => ({ cmd })) }) !== null) return null;
   // A wakeup alone is no continuation (measured on an instance, 2026-10-29, the operator asking why it stopped
   // again): a 15-min wakeup while own work was doable now was the same idle stop under another name — and a
   // waiter was running too, so "wakeup + waiter" would have let it pass as well. Only the end lines below end
