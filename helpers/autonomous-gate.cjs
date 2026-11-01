@@ -28,7 +28,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { autonomousMode } = require('./autonomous-mode.cjs');
+const { autonomousMode, promptModes } = require('./autonomous-mode.cjs');
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 // Hook and permission data: the auto-mode classifier holds an edit of these for the operator even
@@ -44,6 +44,62 @@ const CLASSIFIER_HELD = ['Edit(.claude/settings.json)', 'Edit(.claude/settings.l
 // data. Ordered by the operator the same day: inside the run these files are locked; they change
 // in the conversation with the operator.
 const OWN_WORDS = ['Edit(.claude/rules/autonomous-patterns.json)', 'Edit(.claude/rules/open-items.json)'];
+
+// The way out stays open (measured 2026-11-01 on the macOS instance): the operator wrote "continue
+// interactively" (translated) twice, no off-pattern matched that word order, the run stayed autonomous,
+// and the lock refused the edit that would have taught the list those words - the operator could not
+// leave the mode in their own words. An edit passes the lock only when it ADDS off-patterns
+// (autonomous-patterns.json) or ask-patterns (open-items.json), each new pattern matches the operator's
+// LATEST prompt and none of the prompts that switched the run on, and nothing else changes but
+// `_`-prefixed notes and cases. The 2026-10-28 incident (patterns widened until a refused question
+// passed) matched no operator prompt and stays held.
+const WAY_OUT_KEY = { 'autonomous-patterns.json': 'off_patterns', 'open-items.json': 'ask_patterns' };
+
+function applyEdit(before, tool, input) {
+  if (tool === 'Write') return typeof input.content === 'string' ? input.content : null;
+  const edits = tool === 'MultiEdit' ? input.edits : [input];
+  let s = before;
+  for (const e of Array.isArray(edits) ? edits : []) {
+    if (!e || typeof e.old_string !== 'string' || typeof e.new_string !== 'string' || !s.includes(e.old_string)) return null;
+    s = e.replace_all ? s.split(e.old_string).join(e.new_string) : s.replace(e.old_string, () => e.new_string);
+  }
+  return s;
+}
+
+function stripNotes(o) {
+  const out = {};
+  for (const k of Object.keys(o || {})) if (!k.startsWith('_')) out[k] = o[k];
+  return out;
+}
+
+/** true when this edit of the run's own words only teaches them what the operator said in this session. */
+function wayOut(tool, input, root, transcriptPath) {
+  const file = norm(input.file_path || '');
+  const key = WAY_OUT_KEY[path.basename(file)];
+  if (!key) return false;
+  const abs = path.isAbsolute(file) || /^[A-Za-z]:\//.test(file) ? file : path.join(root, file);
+  let raw; let before; let after;
+  try { raw = fs.readFileSync(abs, 'utf8'); before = JSON.parse(raw); } catch (e) { return false; }
+  try { after = JSON.parse(applyEdit(raw, tool, input)); } catch (e) { return false; }
+  const old = Array.isArray(before[key]) ? before[key] : [];
+  const neu = Array.isArray(after[key]) ? after[key] : [];
+  if (!old.every((p) => neu.includes(p))) return false;
+  const added = neu.filter((p) => !old.includes(p));
+  if (!added.length) return false;
+  const a = stripNotes(after); const b = stripNotes(before);
+  delete a[key]; delete b[key];
+  if (JSON.stringify(a) !== JSON.stringify(b)) return false;
+  // The operator's LATEST prompt is what the list is taught; a pattern that also matches a prompt which
+  // switched the run on would end the operator's own order (too broad - "\bthe\b"), so it stays held.
+  const said = promptModes(transcriptPath, root).filter((m) => !m.answer);
+  if (!said.length) return false;
+  const last = said[said.length - 1].text;
+  const orders = said.filter((m, i) => m.autonomous && !(i > 0 && said[i - 1].autonomous)).map((m) => m.text);
+  return added.every((p) => {
+    let rx; try { rx = new RegExp(p, 'iu'); } catch (e) { return false; }
+    return rx.test(last) && !orders.some((t) => rx.test(t));
+  });
+}
 
 function readJson(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; }
@@ -106,6 +162,7 @@ function judge(input) {
   const own = isQuestion ? null : hitRule(OWN_WORDS, tool, input.tool_input || {}, root);
   if (!isQuestion && !rule && !held && !own) return null;
   if (!autonomousMode(input.transcript_path || '', root)) return null;
+  if (own && wayOut(tool, input.tool_input || {}, root, input.transcript_path || '')) return null;
   if (own) {
     return `AUTONOMOUS-GATE: \`${own}\` holds the words this gate decides by, and the run is autonomous - a run does not change ` +
       'the data of the gate that holds it (a refusal undone through the gate\'s data is a refusal re-issued). Not issued. ' +
