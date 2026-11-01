@@ -66,6 +66,12 @@ run the helpers of your brain's `core/` submodule: step 3 is not optional — in
 create your brain, then start Claude in it. This marketplace carries the core only; suites
 (step 4) come from a team marketplace.
 
+**Which channel a new brain takes:** the one pinned to this repo's newest release tag.
+Step 3 puts your brain's `core/` on that tag, and the plugin should be the same release as
+the core its hooks run. Compare `git tag -l 'v*' --sort=-v:refname | head -1` in this clone
+with the two `ref` values in `.claude-plugin/marketplace.json`; right after a release that
+is the beta, so install `brain-core-next@agent-brain` instead of `brain-core@agent-brain`.
+
 **With your org's own marketplace** (a team that pins the core for itself): your org
 publishes plugins through a marketplace repo that pins released tags of this repo.
 Register it once, then install the core plugin:

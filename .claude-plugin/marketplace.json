@@ -12,7 +12,7 @@
       "source": {
         "source": "github",
         "repo": "arche-goah/agent-brain",
-        "ref": "v2.0.0"
+        "ref": "v2.0.5"
       },
       "description": "Stable channel of the agent-brain core: the general-purpose skills listed in skills/REGISTRY.md, the caveman output style and the audit workflows. From tag v2.0.4 on the plugin also ships the core's hooks (hooks/hooks.json); they run the helpers of a brain's core/ submodule (ONBOARDING.md, step 3). This pin moves to a tag only after it ran as a beta without regression."
     },
