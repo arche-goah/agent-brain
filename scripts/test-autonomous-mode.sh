@@ -107,10 +107,25 @@ mode "the operator's ask wording from instance data ends it" "$f" "$DE" interact
 f="$T/7c.jsonl"; { user "weiter autonom"; user "irgendwas offen?"; answer '"Weiter autonom?"="Ja, weiter autonom"'; } > "$f"
 mode "the operator's yes from instance data sets it again" "$f" "$DE" autonomous
 mode "missing transcript fails toward interactive" "$T/none.jsonl" "$EN" interactive
+# Pasted text is not the operator's word (turn-kind.cjs operatorWords, measured 2026-10-28): an ON, OFF or
+# ASK word inside <pasted_content id="…">…</pasted_content id="…"> switches nothing; outside it, it does.
+PA=$'<pasted_content id="81eb">\nThe agent then works autonomously through the backlog.\n</pasted_content id="81eb">'
+f="$T/8a.jsonl"; { user "$PA"$'\nsummarise this article'; } > "$f"
+mode "an on word only inside a pasted block (a)" "$f" "$EN" interactive
+f="$T/8b.jsonl"; { user "$PA"$'\nwork through the list autonomously'; } > "$f"
+mode "the on word outside the pasted block (b)" "$f" "$EN" autonomous
+PB1=$'<pasted_content id="a1f0">\nis anything still open for me?\n</pasted_content id="a1f0">\n'
+PB2=$'\n<pasted_content id="b2e1">\nback to normal mode\n</pasted_content id="b2e1">'
+f="$T/8c.jsonl"; { user "work through the list autonomously"; asst "x"; user "${PB1}look at these two tickets${PB2}"; } > "$f"
+mode "ask and off words only inside two pasted blocks keep the run (c)" "$f" "$EN" autonomous
+f="$T/8d.jsonl"; { user "fix the parser"; asst "x"; user "${PB1}autonomous, please${PB2}"; } > "$f"
+mode "the on word between two pasted blocks (c)" "$f" "$EN" autonomous
+f="$T/8e.jsonl"; { user "work through the list autonomously"; asst "x"; qcmd "${PB1}"; } > "$f"
+mode "a pasted ask typed mid-turn keeps the run" "$f" "$EN" autonomous
 # The word inside a question mentions the mode, it does not order it (macOS finding 2026-10-27).
-f="$T/8.jsonl"; { user "fix the parser"; user "did I not get the continue autonomously question? why?"; } > "$f"
+f="$T/9a.jsonl"; { user "fix the parser"; user "did I not get the continue autonomously question? why?"; } > "$f"
 mode "the word in a question sets nothing" "$f" "$EN" interactive
-f="$T/8c.jsonl"; { user "why did it stop? carry on autonomously."; } > "$f"
+f="$T/9b.jsonl"; { user "why did it stop? carry on autonomously."; } > "$f"
 mode "an order after a question in the same message sets it" "$f" "$EN" autonomous
 
 # --- stoppen-gate: which way it demands, and the line that passes only in the mode
@@ -152,13 +167,36 @@ irec 2026-10-28T21:35:00Z sess-a true false > "$IC/.claude-state/intent-classifi
 mode "a record far after the prompt does not count" "$f" "$IC" autonomous
 f="$T/sess-b.jsonl"; { tuser 2026-10-28T21:00:00Z "fix the parser"; } > "$f"
 irec 2026-10-28T21:00:03Z sess-b false true > "$IC/.claude-state/intent-classifier.jsonl"
-mode "the classifier never switches the mode ON (safe direction only)" "$f" "$IC" interactive
+mode "a matched record decides: the model's mode_on switches it on (operator 2026-10-28/11-01, semantic not word logic)" "$f" "$IC" autonomous
 f="$T/sess-c.jsonl"; { tuser 2026-10-31T15:40:00Z "work through all open points, everything you can do yourself, handle it autonomously"; } > "$f"
 irec 2026-10-31T15:40:05Z sess-c true true > "$IC/.claude-state/intent-classifier.jsonl"
 mode "the model's asks_open does not cancel an autonomous order in the same prompt" "$f" "$IC" autonomous
 f="$T/sess-d.jsonl"; { tuser 2026-10-31T15:40:00Z "work through the list autonomously"; asst "x"; tuser 2026-10-31T16:40:00Z "anything for me?"; } > "$f"
 irec 2026-10-31T16:40:05Z sess-d true false > "$IC/.claude-state/intent-classifier.jsonl"
 mode "an ask without an order still ends the run (control)" "$f" "$IC" interactive
+
+# The record of THIS prompt (2026-11-01, macOS instance): a notification's record 1.6 s before the
+# operator's own record was the first in the window, and the operator's ask was read as "nothing".
+irecp() { printf '{"at":"%s","session":"%s","mode":"hook","prompt":%s,"model":{"asks_open":%s,"mode_on":false,"mode_off":false,"correction":false}}\n' "$1" "$2" "$(js "$3")" "$4"; }
+f="$T/sess-e.jsonl"; { tuser 2026-11-01T07:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-01T07:53:40Z "please lay the open questions before me"; } > "$f"
+{ irecp 2026-11-01T07:53:42Z sess-e "<task-notification> a build finished" false; irecp 2026-11-01T07:53:44Z sess-e "please lay the open questions before me" true; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the operator's own record wins over a notification's record in the window" "$f" "$IC" interactive
+{ irecp 2026-11-01T07:53:42Z sess-e "<task-notification> a build finished" true; irecp 2026-11-01T07:53:44Z sess-e "please lay the open questions before me" false; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a notification's ask does not end the run (control)" "$f" "$IC" autonomous
+irec 2026-11-01T07:53:43Z sess-e true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record without a prompt field still matches by time" "$f" "$IC" interactive
+
+# The record decides over the words (2026-11-01, three measured prompts of one session).
+irecf() { printf '{"at":"%s","session":"%s","mode":"hook","prompt":%s,"model":{"asks_open":%s,"mode_on":%s,"mode_off":false,"correction":false}}\n' "$1" "$2" "$(js "$3")" "$4" "$5"; }
+f="$T/sess-f.jsonl"; { tuser 2026-11-01T06:31:00Z "status?"; asst "x"; tuser 2026-11-01T06:44:20Z "you switched to interactive, right? I thought it was autonomous."; } > "$f"
+{ irecf 2026-11-01T06:31:02Z sess-f "status?" false false; irecf 2026-11-01T06:44:26Z sess-f "you switched to interactive, right? I thought it was autonomous." false false; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the words see 'autonomous', the model sees no order: the model decides" "$f" "$IC" interactive
+mode "without a record the words decide (control: the belief reads as an order)" "$f" "$EN" autonomous
+f="$T/sess-g.jsonl"; { tuser 2026-11-01T07:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-01T07:53:40Z "go on, give me what you have collected"; } > "$f"
+{ irecf 2026-11-01T07:00:02Z sess-g "work through the list autonomously" false true; irecf 2026-11-01T07:53:44Z sess-g "go on, give me what you have collected" true false; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the model reads an ask the words miss: the run ends" "$f" "$IC" interactive
+printf '%s\n' '{"at":"2026-11-01T07:53:44Z","session":"sess-g","mode":"hook","prompt":"go on, give me what you have collected","model":{}}' > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record without readable fields falls back to the words" "$f" "$IC" autonomous
 
 # initial_mode: a brain whose operator wants every session autonomous until asked (measured
 # 2026-11-01, macOS instance: a start prompt "status?" with no on-word left the session interactive,

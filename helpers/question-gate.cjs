@@ -82,7 +82,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { isNotification, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isTranscriptRecord, operatorWords } = require('./turn-kind.cjs');
 const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
 // Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
@@ -457,13 +457,14 @@ function cli(args) {
           bad = 1; continue;
         }
         // The words must be the OPERATOR's, after the question — checkable, so checked (#269 gap 4).
+        // Text the operator pasted is not their words (turn-kind.cjs operatorWords, 2026-10-28).
         const after = state[m[1]].transcript ? operatorAfter(state[m[1]].transcript, state[m[1]].q, rx) : undefined;
         if (after === undefined || after === null) {
           console.log(`${m[1]}: deferred cannot be checked — the asking transcript is not readable; `
             + "file it 'unanswered' and ask again, or quote the operator from a prompt of THIS session via adopt");
           bad = 1; continue;
         }
-        if (!after.some((p) => squash(p).includes(squash(words)))) {
+        if (!after.some((p) => squash(operatorWords(p)).includes(squash(words)))) {
           console.log(`${m[1]}: "${words}" is not what the operator wrote after the question (${after.length} prompt(s) read) — `
             + "a paraphrase is not a quotation; an overlooked question is 'unanswered'");
           bad = 1; continue;

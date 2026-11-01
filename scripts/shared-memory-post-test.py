@@ -190,6 +190,9 @@ def main() -> int:
         check("a check for exactly one machine passes with --one-machine, and the reason is written",
               r.returncode == 0 and one.is_file() and "one-machine: the USB device" in one.read_text(encoding="utf-8"),
               r.stdout + r.stderr)
+        check("the LOG line carries the one-machine reason too (the lint reads it there)",
+              f"core/request-one-machine-check-{STATE}.md · one-machine: the USB device sits at this box"
+              in (repo / "core" / "LOG.md").read_text(encoding="utf-8"))
         r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Windows box moved",
                  "--body", "The Windows box now stands in room 2.", me="alex-mac")
         check("control: a note that only names Windows (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)
@@ -202,6 +205,51 @@ def main() -> int:
         nxt = (repo / "core" / f"request-run-lint-at-head-{STATE}.md").read_text(encoding="utf-8")
         check("control: from a sender the handover does not name, the fan-out still reaches sam-win",
               "sam-win" in nxt and "kim-pc" in nxt, nxt)
+
+        # An OS check request waits for green CI at the PR's head (2026-10-31: 50 Windows runs, 28 thrown away).
+        ghb = Path(tempfile.mkdtemp())
+        stub = ghb / "gh-stub.py"
+        stub.write_text(
+            "import json, sys\n"
+            "n = sys.argv[3]\n"
+            "rows = {'1': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
+            "        '2': [{'name': 'python-floor', 'status': 'COMPLETED', 'conclusion': 'FAILURE'},\n"
+            "              {'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
+            "        '3': [{'name': 'lint', 'status': 'IN_PROGRESS', 'conclusion': ''}]}\n"
+            "if n not in rows:\n"
+            "    print('no such PR', file=sys.stderr); sys.exit(1)\n"
+            "print(json.dumps({'statusCheckRollup': rows[n]}))\n", encoding="utf-8")
+        launcher = ghb / ("gh.cmd" if os.name == "nt" else "gh")
+        launcher.write_text((f'@"{sys.executable}" "{stub}" %*\n' if os.name == "nt"
+                             else f'#!/bin/sh\nexec "{sys.executable}" "{stub}" "$@"\n'), encoding="utf-8")
+        launcher.chmod(0o755)
+        cib = Path(tempfile.mkdtemp())
+        (cib / ".claude" / "rules").mkdir(parents=True)
+        (cib / ".claude" / "rules" / "shared-memory-post.json").write_text(json.dumps({"pr_repo": "o/core"}), encoding="utf-8")
+        os.environ["SHARED_MEMORY_POST_GH"] = str(launcher)
+        try:
+            for n, want, label in (("1", 0, "green CI at the head passes"),
+                                   ("2", 2, "red CI at the head is refused"),
+                                   ("3", 2, "running CI at the head is refused"),
+                                   ("4", 2, "an unreadable CI state is refused, never read as green")):
+                r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", f"Please check PR #{n} on Windows",
+                         "--body", f"Please run the fixture on Windows at the head of #{n}.", me="alex-mac", brain=cib)
+                check(f"OS check request: {label}", r.returncode == want and (want == 0 or "CI at the head is not green" in r.stdout),
+                      r.stdout + r.stderr)
+            r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Please check PR #2 on Windows now",
+                     "--body", "Please run on Windows: #2 fixes the red CI for all others.",
+                     "--ci-not-green-ok", "#2 is the ci-unblock fix", me="alex-mac", brain=cib)
+            check("--ci-not-green-ok lets it go and writes the reason",
+                  r.returncode == 0 and "ci-not-green-ok: #2 is the ci-unblock fix" in
+                  (repo / "core" / f"request-please-check-pr-2-on-windows-now-{STATE}.md").read_text(encoding="utf-8"),
+                  r.stdout + r.stderr)
+            r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "PR #2 is red",
+                     "--body", "FYI #2 is red on Windows.", me="alex-mac", brain=cib)
+            check("control: a note naming a red PR (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)
+        finally:
+            os.environ.pop("SHARED_MEMORY_POST_GH", None)
+            shutil.rmtree(ghb, True)
+            shutil.rmtree(cib, True)
 
         brain = tagged_brain(BRAIN, "v9.9.9")  # outside the shared-memory repo
         r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Core version stamp",

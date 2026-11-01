@@ -73,6 +73,21 @@ check "no correction in the prompt" "$T/t7.jsonl" allow "$CWD"
 check "a correction only quoted" "$T/t8.jsonl" allow "$CWD"
 { user "go"; asst "ok"; user "why is the fan loud?"; asst "The fan curve."; } > "$T/t9.jsonl"
 check "a why-question about the work, not about the agent" "$T/t9.jsonl" allow "$CWD"
+# --- pasted text is not the operator's correction (turn-kind.cjs operatorWords, measured 2026-10-28):
+# a pasted e-mail or log that says "why did you" / "something went wrong" opens no inquiry
+MAIL=$'<pasted_content id="81eb">\nHi, why did you cancel the booking? Something went wrong on our side.\n</pasted_content id="81eb">'
+{ user "go"; asst "ok"; user "$MAIL"$'\nplease draft a reply'; asst "Drafted."; } > "$T/t9a.jsonl"
+check "a correction only inside a pasted block (a)" "$T/t9a.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "$MAIL"; asst "Read it."; } > "$T/t9b.jsonl"
+check "a prompt that is only a paste" "$T/t9b.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "$MAIL"$'\nsomething went wrong with your last draft'; asst "Redrafted."; } > "$T/t9c.jsonl"
+check "the correction outside the pasted block (b)" "$T/t9c.jsonl" block "$CWD"
+P1=$'<pasted_content id="a1f0">\nlog one: fatal error\n</pasted_content id="a1f0">\n'
+P2=$'\n<pasted_content id="b2e1">\nlog two: why did you restart?\n</pasted_content id="b2e1">'
+{ user "go"; asst "ok"; user "${P1}compare these two logs${P2}"; asst "Compared."; } > "$T/t9d.jsonl"
+check "two pasted blocks, plain words between them (c)" "$T/t9d.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "${P1}why did you skip the second one?${P2}"; asst "Reading it now."; } > "$T/t9e.jsonl"
+check "two pasted blocks, the correction between them (c)" "$T/t9e.jsonl" block "$CWD"
 # --- turn mechanics
 { user "go"; asst "ok"; user "something went wrong"; asst "Looking."; user "<task-notification>ci done</task-notification>"; asst "CI green."; } > "$T/t10.jsonl"
 check "a notification turn after the correction (dispatcher says notification)" "$T/t10.jsonl" allow "$CWD" false notification
@@ -127,6 +142,19 @@ before=$fail; fail=0
 for c in t1 t2 t3; do GATE="$T/stub.cjs" check "stub on $c" "$T/$c.jsonl" block "$CWD" >/dev/null; done
 caught=$fail; fail=$before
 [ "$caught" = 1 ] && ok "always-allow stub fails the must-block cases" || bad "negative control: stub passed"
+
+# --- the prompt classifier's record opens the inquiry when the words miss (2026-10-30, macOS instance)
+IC="$T/intent"; mkdir -p "$IC/.claude-state"
+WHEN=2026-10-30T18:13:30.000Z
+{ user "go"; asst "ok"; user "find the cause and fix it at the root, now"; asst "Done."; } > "$T/sess-rc.jsonl"
+check "words miss, no classifier record: allows (control)" "$T/sess-rc.jsonl" allow "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rc","mode":"hook","model":{"asks_open":false,"mode_on":false,"mode_off":false,"correction":true}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "classifier reads correction=true: the inquiry opens" "$T/sess-rc.jsonl" block "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"other","mode":"hook","model":{"correction":true}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "a record of another session does not count" "$T/sess-rc.jsonl" allow "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rc","mode":"hook","model":{"correction":false}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "classifier reads no correction: allows" "$T/sess-rc.jsonl" allow "$IC"
+unset WHEN
 
 [ "$fail" = 0 ] && echo "root-cause-gate: all checks passed" || echo "root-cause-gate: FAILURES"
 exit "$fail"

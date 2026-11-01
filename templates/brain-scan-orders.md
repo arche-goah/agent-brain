@@ -28,14 +28,17 @@ the prose around them may be in your language:
 - `reach:` project | brain | shared — `shared` means it belongs in the shared-memory repo as one-file-one-fact, with a back-reference to this id
 - `origin:` operator | derived
 
-## Open (ordered)
+An order, as it goes under "Open" (the example is indented so the session start does not count it
+as a real order — a fresh brain starts with an empty list):
 
-- [ ] **<title of the order>** — origin: operator (<date>, "<the operator's words, quoted>").
-  id: <slug>
-  class: todo
-  reach: brain
-  origin: operator
-  <what exactly, measured state, what "done" means; pointers to the plan or the finding>
+    - [ ] **<title of the order>** — origin: operator (<date>, "<the operator's words, quoted>").
+      id: <slug>
+      class: todo
+      reach: brain
+      origin: operator
+      <what exactly, measured state, what "done" means; pointers to the plan or the finding>
+
+## Open (ordered)
 
 ## Proposed (derived)
 

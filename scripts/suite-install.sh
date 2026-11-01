@@ -12,7 +12,8 @@
 #
 # What it does, in order, all idempotent:
 #   1. resolve the suite's path + remote — from config/ecosystem.json when the
-#      brain records it (kind "suite"), else ~/Projects/<suite> on the default org
+#      brain records it (kind "suite"), else ~/Projects/<suite> on SUITE_ORG or the
+#      owner of the brain's registered marketplace
 #   2. clone when missing, fetch when present; local changes are a HARD STOP
 #      (this script updates consumers, it never eats a developer checkout)
 #   3. check out the requested tag, or the newest v* tag
@@ -36,9 +37,24 @@ PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 
 BRAIN="${BRAIN_UPDATE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
-ORG="${SUITE_ORG:-arche-goah}"
 BASE="${SUITE_BASE_DIR:-$HOME/Projects}"
 ECO="$BRAIN/config/ecosystem.json"
+# The org a suite without an ecosystem record is cloned from: SUITE_ORG, else the owner of the
+# marketplace the brain's settings register. No built-in org: a stranger's brain must never clone
+# from the core maintainers' org by default (stranger trial 2026-11-01).
+market_org() {
+  [ -f "$BRAIN/.claude/settings.json" ] || return 0
+  # the path goes in the environment, not as argv (OS-6, docs/os-traps.md)
+  SUITE_SETTINGS="$BRAIN/.claude/settings.json" "$PY" - <<'PY' 2>/dev/null
+import json, os
+for m in (json.load(open(os.environ["SUITE_SETTINGS"], encoding="utf-8")).get("extraKnownMarketplaces") or {}).values():
+    repo = ((m or {}).get("source") or {}).get("repo", "")
+    if "/" in repo and not repo.startswith("<"):
+        print(repo.split("/", 1)[0]); break
+PY
+}
+ORG="${SUITE_ORG:-}"
+[ -n "$ORG" ] || ORG="$(market_org)"
 
 usage() { echo "usage: suite-install.sh <suite>|--all [tag]" >&2; exit 2; }
 [ $# -ge 1 ] || usage
@@ -69,7 +85,10 @@ install_one() {  # install_one <suite> [tag]
   dir="$(eco_field "$suite" path || true)"; dir="${dir/#\~/$HOME}"
   [ -n "$dir" ] || dir="$BASE/$suite"
   remote="$(eco_field "$suite" remote || true)"
-  [ -n "$remote" ] || remote="https://github.com/$ORG/$suite.git"
+  if [ -z "$remote" ]; then
+    [ -n "$ORG" ] || { echo "FAIL $suite: no remote in config/ecosystem.json and no org - set SUITE_ORG=<your-org> or register your marketplace in .claude/settings.json"; return 1; }
+    remote="https://github.com/$ORG/$suite.git"
+  fi
 
   if [ ! -d "$dir/.git" ]; then
     git clone --quiet "$remote" "$dir" || { echo "FAIL clone $remote"; return 1; }

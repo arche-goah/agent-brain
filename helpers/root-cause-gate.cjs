@@ -49,8 +49,9 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
+const { intents, intentFor } = require('./autonomous-mode.cjs');
 
 let OWN_ECHO = /ROOT-CAUSE-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -192,8 +193,10 @@ function readTurns(tp, tail) {
   return turns;
 }
 
+// The gate and `--review` both judge here: a pasted e-mail or log is not the operator's correction
+// (turn-kind.cjs operatorWords, 2026-10-28).
 function correctionIn(prompt, rx) {
-  const clean = stripQuoted(prompt);
+  const clean = stripQuoted(operatorWords(prompt));
   const m = rx.exec(clean);
   return m ? sentenceAt(clean, m.index) : null;
 }
@@ -211,7 +214,14 @@ function gate(input) {
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
   const turn = turns[turns.length - 1];
   if (!turn || turn.fired) return;
-  const hit = correctionIn(turn.prompt, loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'));
+  // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
+  // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
+  // cause line owed), never close one the words opened.
+  let hit = correctionIn(turn.prompt, loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'));
+  if (!hit) {
+    const intent = intentFor(intents(input.transcript_path, cwd), turn.when);
+    if (intent && intent.correction) hit = sentenceAt(stripQuoted(turn.prompt), 0);
+  }
   const cause = causeIn(turn.texts, loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu'));
   if (cause) {
     const reg = registerPath(cwd);

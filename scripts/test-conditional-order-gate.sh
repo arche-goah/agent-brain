@@ -194,10 +194,60 @@ mk "$T/queued-peer.jsonl" '"run the scan"' 0 ''
 printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":"after the mac answers, push it","origin":{"kind":"peer"}}}\n' >> "$T/queued-peer.jsonl"
 run_case queued-peer allow Bash '{"command":"git push origin feat/x"}'
 
+# --- the measured shape (2026-10-28, Windows instance): text the operator PASTES arrives wrapped as
+# --- <pasted_content id="…">…</pasted_content id="…"> (same id on both tags), and the harness says it may
+# --- hold instructions the operator did not write. A pasted trading plan ("… erst zu langsam und dann
+# --- herdenartig reagieren") was read as the operator's condition and held every push of the session.
+js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
+PLAN=$'<pasted_content id="81eb">\nAnleger, die erst zu langsam und dann herdenartig reagieren.\nThen the price overshoots.\n</pasted_content id="81eb">'
+# (a) the condition word only inside the pasted block: no condition
+mk "$T/paste-only-inside.jsonl" "$(js "$PLAN"$'\nread this plan and push the summary branch')" 0 ''
+run_case paste-only-inside allow Bash '{"command":"git push origin feat/x"}'
+mk "$T/paste-only.jsonl" "$(js "$PLAN")" 0 ''
+run_case paste-only allow Bash '{"command":"git push origin feat/x"}'
+# ... tag attributes besides the id are tolerated
+mk "$T/paste-attrs.jsonl" "$(js $'<pasted_content source="clipboard" id="81eb" lines="2">\nwait for the CI, then merge\n</pasted_content id="81eb">\nmerge it now')" 0 ''
+run_case paste-attrs allow Bash '{"command":"gh pr merge 12 -R o/r --merge"}'
+# ... a pasted block in a message typed mid-turn (queued_command, measured: two such records)
+mk "$T/paste-queued.jsonl" '"run the scan"' 0 ''
+printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$PLAN"$'\npush it now')" >> "$T/paste-queued.jsonl"
+run_case paste-queued allow Bash '{"command":"git push origin feat/x"}'
+# (b) the same word outside the tags is still the operator's condition
+mk "$T/paste-word-outside.jsonl" "$(js "$PLAN"$'\ndann push es')" 0 ''
+run_case paste-word-outside block Bash '{"command":"git push origin feat/x"}'
+mk "$T/paste-word-before.jsonl" "$(js $'after the mac answers, push it\n'"$PLAN")" 0 ''
+run_case paste-word-before block Bash '{"command":"git push origin feat/x"}'
+# (c) two pasted blocks with the operator's text between them: the text between counts ...
+TWO_A=$'<pasted_content id="a1f0">\nplan one, dann sell\n</pasted_content id="a1f0">\n'
+TWO_B=$'\n<pasted_content id="b2e1">\nplan two, then buy\n</pasted_content id="b2e1">'
+mk "$T/paste-two-between-cond.jsonl" "$(js "${TWO_A}after the mac answers, push it${TWO_B}")" 0 ''
+run_case paste-two-between-cond block Bash '{"command":"git push origin feat/x"}'
+# ... and with plain words between them, neither block's condition word counts
+mk "$T/paste-two-between-plain.jsonl" "$(js "${TWO_A}compare the two plans and push the notes${TWO_B}")" 0 ''
+run_case paste-two-between-plain allow Bash '{"command":"git push origin feat/x"}'
+# discriminator: a closing tag with ANOTHER id closes nothing - the text is not stripped, the word binds
+mk "$T/paste-id-mismatch.jsonl" "$(js $'<pasted_content id="a1f0">\nwait for the CI\n</pasted_content id="ffff">')" 0 ''
+run_case paste-id-mismatch block Bash '{"command":"git push origin feat/x"}'
+
 # --- fail-open: no transcript -> silent
 out="$(printf '{"tool_name":"Workflow","tool_input":{},"transcript_path":"%s","cwd":"%s"}' \
   "$(native "$T/missing.jsonl")" "$(native "$T")" | node "$G" 2>&1)"
 [ -z "$out" ] && ok "missing transcript allows (fail-open, measured not guessed)" || bad "missing transcript: '$out'"
+
+# --- the prompt classifier's record reads a condition the words miss (2026-10-30, macOS instance)
+CIC="$T/cls"; mkdir -p "$CIC/.claude-state"
+# (German text, no language data in this cwd: the words cannot read it — the operator's real case was "Nach #217 und #195")
+{
+  printf '{"message":{"role":"user","content":"earlier prompt"}}\n'
+  printf '{"timestamp":"2026-10-30T19:00:00.000Z","message":{"role":"user","content":"Nach #217 und #195 Tag und Pin"}}\n'
+} > "$T/cls-cond.jsonl"
+run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-10-30T19:00:04.000Z","session":"cls-cond","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-cond block Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-10-30T19:00:04.000Z","session":"cls-cond","mode":"hook","model":{"condition":false}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-10-30T19:00:04.000Z","session":"other","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
 
 echo
 [ "$fail" -eq 0 ] && echo "conditional-order-gate fixtures: ALL passed" || echo "FAILURE"

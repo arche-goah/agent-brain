@@ -62,5 +62,20 @@ probe "a bare tool rule from the user settings" WebFetch '{"url":"https://exampl
 probe "a tool no rule names" Read '{"file_path":"README.md"}' "$AUTO" allow
 probe "a mid-turn operator message ends the mode: the asked-for question passes" AskUserQuestion '{"questions":[]}' "$MID" allow
 probe "a queued message from another origin keeps the mode (control)" AskUserQuestion '{"questions":[]}' "$PEER" block
+# The way out stays open (2026-11-01, macOS instance): the operator's "continue interactively" matched no
+# off-pattern and the lock refused the edit that would have taught it. An added pattern passes only when it
+# matches an operator prompt of this session and nothing else changes.
+mkdir -p "$B/.claude/rules"
+printf '%s\n' '{"_note":"x","on_patterns":[],"off_patterns":["\\bbye\\b"]}' > "$B/.claude/rules/autonomous-patterns.json"
+printf '%s\n' '{"ask_patterns":[]}' > "$B/.claude/rules/open-items.json"
+STUCK="$T/stuck.jsonl"; { user "work through the open points autonomously"; user "carry on interactively, if you need anything"; } > "$STUCK"
+probe "the stuck run is still autonomous (precondition)" AskUserQuestion '{"questions":[]}' "$STUCK" block
+AP='.claude/rules/autonomous-patterns.json'
+probe "adding the operator's own off-words passes" Edit "{\"file_path\":\"$AP\",\"old_string\":\"\\\"\\\\\\\\bbye\\\\\\\\b\\\"]\",\"new_string\":\"\\\"\\\\\\\\bbye\\\\\\\\b\\\",\\\"carry on interactively\\\"]\"}" "$STUCK" allow
+probe "an off-word that also matches the order which switched the run on stays held" Edit "{\"file_path\":\"$AP\",\"old_string\":\"\\\"\\\\\\\\bbye\\\\\\\\b\\\"]\",\"new_string\":\"\\\"\\\\\\\\bbye\\\\\\\\b\\\",\\\"\\\\\\\\bpoints\\\\\\\\b\\\"]\"}" "$STUCK" block
+probe "an off-word plus a changed on-list stays held" Edit "{\"file_path\":\"$AP\",\"old_string\":\"\\\"on_patterns\\\":[],\\\"off_patterns\\\":[\\\"\\\\\\\\bbye\\\\\\\\b\\\"]\",\"new_string\":\"\\\"on_patterns\\\":[\\\"go\\\"],\\\"off_patterns\\\":[\\\"\\\\\\\\bbye\\\\\\\\b\\\",\\\"carry on interactively\\\"]\"}" "$STUCK" block
+probe "removing an off-word stays held" Edit "{\"file_path\":\"$AP\",\"old_string\":\"\\\"\\\\\\\\bbye\\\\\\\\b\\\"\",\"new_string\":\"\\\"carry on interactively\\\"\"}" "$STUCK" block
+probe "the 2026-10-28 incident: an ask-pattern no prompt carries stays held" Edit '{"file_path":".claude/rules/open-items.json","old_string":"[]","new_string":"[\"\\\\bzebra\\\\b\"]"}' "$STUCK" block
+probe "a note-only edit is no way out (held)" Edit "{\"file_path\":\"$AP\",\"old_string\":\"\\\"x\\\"\",\"new_string\":\"\\\"y\\\"\"}" "$STUCK" block
 
 [ "$fail" = 0 ] && echo "autonomous-gate: all cases pass" || { echo "autonomous-gate: FAILURES"; exit 1; }

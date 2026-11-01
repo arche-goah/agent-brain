@@ -57,6 +57,31 @@
       "needs_operator_word": true
     },
     {
+      "pattern": "^(?![\\s\\S]*ci-watch\\.sh)[\\s\\S]*?(?:^|[\\n;&|(])\\s*(?:while\\s+true|until\\s|for\\s*\\(\\(|sleep\\s+\\d+)[\\s\\S]*?(?<=(?:^|[\\n;&|(]|\\b(?:do|then|until|while))\\s*)gh\\s+(?:pr\\s+checks|run\\s+(?:list|view|watch))\\b",
+      "was": "waiting for CI through a hand-built poll loop (while/until/sleep around gh pr checks / gh run) - also when detached: `gh pr checks` exits 8 while checks run, an ad-hoc loop reads that as an error and swallows it, and silence looks like 'still running' (measured: 60 historical cases on the macOS instance; the Windows instance's #109 incident)",
+      "instead": "core/scripts/ci-watch.sh pr <owner/repo> <nr> (or ref <owner/repo> <ref>), started detached (Bash run_in_background). Exit 0 green, 1 red, 2 NOT measurable (loud, not green), 3 the repo has no CI. A compound that calls ci-watch.sh itself passes."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b[^|;\\n]*(?:&\\s*(?:$|\\n)|>\\s*/dev/null)",
+      "was": "a waiting script armed with '&' or with its output thrown away - the process hangs on the tool session and dies with it, the harness never knows it and can never notify; measured 2026-08-08 on the macOS instance: an operator's restart ran into nothing",
+      "instead": "Start it with Bash run_in_background (or Monitor for a stream), never with '&'. Its OUTPUT is the report path: no >/dev/null. Afterwards check that it runs."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?:\\S*/)?gh\\s+(?:pr\\s+checks|run\\s+(?:list|view|watch))[^|;\\n]*\\|\\s*(?:tail|head)\\b",
+      "was": "a CI or check status cut down by tail/head - a part is read as the whole; measured 2026-08-10 on the macOS instance: `gh pr checks --watch | tail -3` showed the last (green) lines, the red run above was cut off",
+      "instead": "Read the verdict from the machine state, never from a filtered subset: the exit code of `gh pr checks`, or `--json conclusion` per run; look at the full output or the exit code."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(]\\s*)[A-Za-z0-9_/.\\\"'$-]+\\s+[^\\n]*(?:<<HEREDOC-STRIPPED>>|(?<!<)<<(?!<)-?\\s*(['\\\"]?)([A-Za-z_][\\w-]*)\\1[^\\n]*\\n(?:[\\s\\S]*?\\n)?[ \\t]*\\2[ \\t]*(?:$|[\\n)]))",
+      "was": "a shell heredoc (<<MARKER) - Working Rule #8 (multi-line content goes into a file): it trips the obfuscation heuristics and bypasses the file tools; measured 2026-08-13 on the macOS instance: four heredocs in one day despite the rule and two announcements to stop",
+      "instead": "Write the content to a file in the scratchpad (the Write tool), then run or append it: a script = Write <scratchpad>/x.py + python3 <scratchpad>/x.py; an append = Edit/Write on the target file. A one-line `python3 -c '...'` is fine. A here-string (<<<) is no heredoc."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*cd\\s+\\S+\\s*(?:&&|;|\\|\\|)\\s*git\\s+push\\b",
+      "was": "a push into another repo through a cd chain (cd <path> && git push) - Working Rule #8: another directory goes through the tool's own flag; the cd chain matches no permission pattern and walks past the list",
+      "instead": "git -C <abs-path> push (the form permission patterns are written for); inside the repo itself a plain `git push`."
+    },
+    {
       "pattern": "(?:^|[\\n;&|(])\\s*(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?:\\S*/)?gh\\s+run\\s+list\\b(?![^\\n;&|]*(?:--workflow\\b|\\s-w\\s))",
       "was": "CI runs read without a workflow filter (`gh run list` without --workflow/-w) - a repo has several workflows (CI, a text-leak check on every comment, CodeQL); the newest N runs mix them and push the CI runs out. Measured 2026-10-28 on the macOS instance: four green runs of the comment-triggered workflow were taken for CI runs on the same commit and a red main was called green, twice in one evening; a readiness reader with the same query reported no red CI while two CI runs on main were red. ci-watch.sh had learned this earlier, the lesson stayed in that one tool",
       "instead": "For a verdict on a commit: `scripts/ci-watch.sh` (reads `actions/runs?head_sha=`, detached as Working Rule #9 says). To look: `gh run list --workflow <name> ...` with the workflow you mean (e.g. `--workflow CI`)."

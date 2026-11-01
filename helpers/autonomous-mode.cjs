@@ -25,7 +25,9 @@
  * stop the run (macOS findings on #143 and #142, 2026-10-26).
  * No transcript or no ON prompt: interactive.
  * Operator words only: no notification, hook echo, loaded skill text, request blob, peer message,
- * or the harness's instruction frames (a CLAUDE.md that mentions "autonomous" must not switch anything).
+ * or the harness's instruction frames (a CLAUDE.md that mentions "autonomous" must not switch anything),
+ * and no text the operator PASTED (turn-kind.cjs operatorWords, 2026-10-28): a pasted article that says
+ * "autonomously" or "anything open" switches nothing; the prompt still counts as a prompt.
  *
  * Words: English built-ins below; the operator's language is instance data —
  * `.claude/rules/autonomous-patterns.json` {"on_patterns", "off_patterns", "yes_patterns"} and the
@@ -38,7 +40,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, FRAMES, LOCAL } = require('./turn-kind.cjs');
 
 const BUILTIN_ON = [
   '\\bautonomous(ly)?\\b',
@@ -169,14 +171,25 @@ function intents(transcriptPath, cwd) {
     let r; try { r = JSON.parse(line); } catch (e) { continue; }
     if (!r || r.session !== session || r.mode !== 'hook' || !r.model) continue;
     const at = Date.parse(r.at);
-    if (!Number.isNaN(at)) out.push({ at, model: r.model });
+    if (!Number.isNaN(at)) out.push({ at, model: r.model, prompt: typeof r.prompt === 'string' ? r.prompt : null });
   }
   return out;
 }
-function intentFor(list, ts) {
+/**
+ * The record of THIS prompt: inside the window and, when the record carries its prompt, the same
+ * text. Measured 2026-11-01 on the macOS instance: an operator message typed mid-turn ("lay the open
+ * questions before me", translated) was read by the model as asks_open, but a task notification's
+ * record 1.6 s earlier was the first one in the window - the operator's ask was read as "nothing", the
+ * run stayed autonomous and the question tool was refused. A record without a prompt field (an older
+ * classifier) still matches by time alone.
+ */
+function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 40); }
+function intentFor(list, ts, text) {
   const t = Date.parse(ts || '');
   if (Number.isNaN(t)) return null;
-  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS);
+  const want = norm(text);
+  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS
+    && (r.prompt === null || !want || norm(r.prompt).slice(0, want.length) === want.slice(0, norm(r.prompt).length)));
   return hit ? hit.model : null;
 }
 
@@ -215,7 +228,8 @@ function promptModes(transcriptPath, cwd) {
       for (const [q, a] of answers(d.message, askIds)) {
         // A yes/no to the mode question decides by yes; an answer to any other question is read
         // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
-        // "yes, work through them autonomously" to "shall I handle them?" set nothing).
+        // "yes, work through them autonomously" to "shall I handle them?" set nothing). The mode
+        // question is read from its question sentence (asksMode), not from any on-word in the text.
         if (asksMode(w.on, q)) state = w.yes.test(a) && !w.off.test(a);
         else if (w.off.test(a)) state = false;
         else if (ordersOn(w.on, a)) state = true;
@@ -227,15 +241,28 @@ function promptModes(transcriptPath, cwd) {
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
-    const intent = intentFor(known, d.timestamp);
-    // The model's asks_open yields to an order to work autonomously in the SAME prompt (2026-10-31, macOS
-    // instance): "work through all open points, handle them autonomously" read as asks_open, and the run the
-    // operator had just ordered went interactive. Replay over the classifier log: 7 prompts carry both, the one
-    // genuine question among them ("anything for me? you worked 5 h autonomously") is caught by the words.
-    const asks = w.ask.test(text) || Boolean(intent && intent.asks_open && !ordersOn(w.on, text));
-    if (w.off.test(text) || asks || (intent && intent.mode_off)) state = false;
-    else if (ordersOn(w.on, text)) state = true;
-    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false });
+    // The words are matched without pasted blocks; `text` keeps them, so a reader that finds this
+    // prompt again in the transcript by its text (decision-presentation-gate) still finds it.
+    const own = operatorWords(text);
+    const intent = intentFor(known, d.timestamp, t);
+    // A matched classifier record DECIDES; the word lists are the fallback when there is none (operator order
+    // 2026-10-28, "this detection must be semantic, not word logic"; sharpened 2026-11-01 when the words were
+    // patched again). Measured the same day on the macOS instance, three prompts where the words were wrong
+    // and the model right: "thought it was autonomous" (words mode_on, model not), "lay the open questions
+    // before me" (model asks_open, words not), and the start "status?" (both none).
+    // The model's asks_open yields to its own mode_on in the SAME prompt (2026-10-31: "work through all open
+    // points, handle them autonomously" carried both; the run the operator had just ordered must start).
+    let asks;
+    if (intent && typeof intent.asks_open === 'boolean') {
+      asks = intent.asks_open && !intent.mode_on;
+      if (intent.mode_off || asks) state = false;
+      else if (intent.mode_on) state = true;
+    } else {
+      asks = w.ask.test(own);
+      if (w.off.test(own) || asks) state = false;
+      else if (ordersOn(w.on, own)) state = true;
+    }
+    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words' });
   }
   return out;
 }
@@ -246,7 +273,7 @@ function autonomousMode(transcriptPath, cwd) {
   return modes.length ? modes[modes.length - 1].autonomous : words(cwd).initial;
 }
 
-module.exports = { autonomousMode, promptModes, words, asksMode };
+module.exports = { autonomousMode, promptModes, words, asksMode, intents, intentFor };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);
