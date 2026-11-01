@@ -31,7 +31,11 @@ Declarations: `.claude/rules/local-machinery.json`
                   path or the declared prefix)
    "external": {"<id or prefix>": {"source": "<where it comes from>", "why": "..."}},
                  (third-party skills/plugins used as they are — not ours to port to the core)
-   "alpha":   {"<id or prefix>": {"until": "YYYY-MM-DD", "why": "<what is being measured>"}}}
+   "alpha":   {"<id or prefix>": {"until": "YYYY-MM-DD", "why": "<what is being measured>"}},
+   "review_days": 90, "review_batch": 3}
+Every instance/external declaration carries "reviewed": "YYYY-MM-DD" — a deviation is judged again,
+not justified once for good. Missing or older than review_days = due; the session start names the
+review_batch oldest, `--review-all` (the brain-scan) lists every declaration.
 An item id is its repo-relative path (`~/` for the user's Claude dir, `<file>#<heading>` for a
 rule section, `plugin:<id>`, `mcp:<server>`, `launchd:<file>`, `schtasks:<task>`). A key
 matches when the id starts with it or a hook command contains it. The old string form
@@ -69,7 +73,31 @@ TEXT_EXT = SCRIPT_EXT + (".md", ".json", ".txt", ".toml", ".yaml", ".yml", ".pli
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "site-packages", ".claude-state"}
 CORE_PLUGIN_PREFIXES = ("brain-core@", "brain-core-next@")  # same as plugin-scope-check.py
 LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels")
-CLASSES = LOUD + ("duplicate", "undeclared")
+CLASSES = LOUD + ("duplicate", "undeclared", "review")
+# A deviation is not justified once and for all (operator order 2026-10-29: a local deviation must not
+# stay justified once and never questioned again; past exceptions need routine review). Measured the same day on the macOS
+# instance: 144 instance and 18 external declarations, none with a date — only an alpha carried one.
+REVIEW_DAYS = 90
+REVIEW_BATCH = 3
+
+
+def review_due(decl, today, review_all=False):
+    """Instance/external declarations whose `reviewed` date is missing or older than review_days,
+    oldest first (never reviewed = oldest). Returns (total due, the batch to show). The session start
+    shows a few at a time (routine, never a wall); the brain-scan passes review_all: EVERY declaration,
+    due or not, is judged again there (operator order 2026-10-29: in a brain-scan all of them are
+    looked through)."""
+    days = 0 if review_all else int(decl.get("review_days") or REVIEW_DAYS)
+    batch = None if review_all else int(decl.get("review_batch") or REVIEW_BATCH)
+    limit = (datetime.date.fromisoformat(today) - datetime.timedelta(days=days)).isoformat()
+    due = []
+    for sec in ("instance", "external"):
+        for key, d in (decl.get(sec) or {}).items():
+            rev = str(d.get("reviewed", "")) if isinstance(d, dict) else ""
+            if review_all or not rev or rev < limit:
+                due.append((rev, sec, key))
+    due.sort()
+    return len(due), [f"{key} ({sec}, reviewed {rev or 'never'})" for rev, sec, key in due[:batch]]
 
 
 def load(path):
@@ -833,6 +861,7 @@ MESSAGES = {
     "channels": "!! local machinery: {n} suite(s) with the stable AND the beta plugin enabled at once: {x} — both ship the same skills and server, which one answers is undefined; disable one (the beta on a machine that checks the beta, else the beta) and start a new session",
     "duplicate": "local machinery: {n} item(s) look like a near-duplicate of a core item: {x} — for the AI: same purpose = use the core one; different = declare \"distinct_from\"",
     "undeclared": "local machinery: {n} item(s) without a declaration{c}: {x} — for the AI: classify each; general = core PR, instance-only = declare why + evidence",
+    "review": "local machinery: {n} declared deviation(s) due for review{c}: {x} — for the AI, this session: judge each again (is the reason still true? does the core or a suite carry it by now? is it still used?), then core PR, unwire, or set \"reviewed\": \"<today>\" with what was checked",
 }
 
 
@@ -844,6 +873,8 @@ def main(argv):
     ap.add_argument("--today", default=datetime.date.today().isoformat())
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--carriers", action="store_true", help="print the carrier types and exit")
+    ap.add_argument("--review-all", action="store_true",
+                    help="brain-scan: list EVERY instance/external declaration for review, not the few due ones")
     a = ap.parse_args(argv)
     if a.carriers:
         print("\n".join(CARRIERS))
@@ -857,6 +888,14 @@ def main(argv):
     found["edited"] = edited_core(C)
     found["missing"] = C.missing
     found["channels"] = both_channels(C)
+    n_due, found["review"] = review_due(decl, a.today, a.review_all)
+    if a.review_all:
+        print(f"local machinery review: {n_due} declared deviation(s), all listed - judge each again "
+              "(reason still true? core or suite carries it by now? still used?), then core PR, unwire, "
+              "or \"reviewed\": \"<today>\" with what was checked")
+        for x in found["review"]:
+            print(f"  review: {x}")
+        found["review"] = []  # listed in full above; the routine batch line below would repeat it
     alpha = decl.get("alpha") or {}
     tops = tool_source_tops(C)
     # Every declared source checkout has its date read, on main or off it. Before, a clone ON main
@@ -886,11 +925,14 @@ def main(argv):
             print(f"{it['class']:11} {it['carrier']:12} {it['id']}")
 
     for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "expired", "outside", "general",
-                "noevidence", "badevidence", "duplicate", "undeclared"):
+                "noevidence", "badevidence", "duplicate", "undeclared", "review"):
         xs = uniq(found[cls])
         if not xs:
             continue
         c = ""
+        if cls == "review":
+            print(MESSAGES[cls].format(n=n_due, x=", ".join(xs), c=f" (oldest {len(xs)} shown)"))
+            continue
         if cls == "undeclared":
             per = {}
             for it in items:
@@ -901,7 +943,7 @@ def main(argv):
                 c += " [no identity_tokens declared: general items cannot be told apart]"
         print(MESSAGES[cls].format(n=len(xs), x=short(xs), c=c))
     if any(found[c] for c in CLASSES) or C.unchecked:
-        counts = " ".join(f"{c}={len(uniq(found[c]))}" for c in CLASSES)
+        counts = " ".join(f"{c}={n_due if c == 'review' else len(uniq(found[c]))}" for c in CLASSES)
         un = f" unchecked={','.join(C.unchecked)}" if C.unchecked else ""
         print(f"local machinery summary: items={len(items)} {counts}{un}")
     return 0

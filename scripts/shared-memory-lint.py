@@ -85,6 +85,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from importlib import import_module  # noqa: E402
 
 _parties = import_module("shared-memory-parties")
+_rotate = import_module("shared-memory-log-rotate")
 
 REPO_DEFAULT = Path(os.environ.get("SHARED_MEMORY_REPO", Path.home() / "Projects/brain-shared-memory"))
 
@@ -176,6 +177,11 @@ MAX_INDEX_LINE = 1200
 # text of live entries and never delete.
 MAX_INDEX_BYTES = 50_000
 LOG_ROTATE_BYTES = 60_000
+# A NEW LOG entry over the entry cap is the writer's finding (proposal to all AIs 2026-10-28, no objection by
+# 2026-10-30): the LOG is heading + pointer, the substance lives in a fact file. Measured in October: 621 of 1368
+# entries over 300 B across seven writers; the session start's report reached only the own instance. A ratchet:
+# entries dated before LOG_CAP_SINCE are protocol and never rewritten. Size and split come from the rotate tool.
+LOG_CAP_SINCE = "2026-10-31"
 
 WIKILINK = re.compile(r"\[\[([^\]|#]+)")
 INDEX_LINK = re.compile(r"\[[^\]]*\]\(([^)]+\.md)\)")
@@ -529,6 +535,22 @@ def relation_findings(f: dict, rel: str, meta: dict, targets: set[str]) -> None:
                                               "as the inbox prints it"})
 
 
+def log_long_entries(f: dict, rel: str, text: str) -> None:
+    """6c. A LOG entry dated LOG_CAP_SINCE or later over the rotate tool's ENTRY_CAP: heading + one line, the
+    substance in a fact file (`shared-memory-post.py` writes both). Older entries are never judged."""
+    _, blocks = _rotate.split_log(text)
+    for b in blocks:
+        m = re.match(r"^## (\d{4}-\d{2}-\d{2})", b)
+        if not m or m.group(1) < LOG_CAP_SINCE:
+            continue
+        size = len(b.rstrip("\n").encode("utf-8"))
+        if size > _rotate.ENTRY_CAP:
+            f["limits"].append({"issue": "LOG entry over the entry cap", "where": f"{rel}: {b.splitlines()[0][:80]}",
+                                "bytes": size, "max": _rotate.ENTRY_CAP,
+                                "fix": "heading + one line in the LOG, the substance in a fact file "
+                                       "(scripts/shared-memory-post.py writes both)"})
+
+
 def log_requests_without_file(f: dict, rel: str, text: str) -> None:
     """11. From STATE_SINCE on a request to a party is a FILE (`shared-memory-post.py request`):
     a file has a name the answer can carry and fields the reader trusts. A LOG heading to a
@@ -710,6 +732,7 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
         log_text = log.read_text(encoding="utf-8", errors="replace")
         log_unknown_headings(f, log.relative_to(repo).as_posix(), log_text)
         log_requests_without_file(f, log.relative_to(repo).as_posix(), log_text)
+        log_long_entries(f, log.relative_to(repo).as_posix(), log_text)
         if parties:
             log_audience(f, log.relative_to(repo).as_posix(), log_text, parties, known)
         size = log.stat().st_size

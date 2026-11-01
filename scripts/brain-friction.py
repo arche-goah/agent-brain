@@ -234,12 +234,23 @@ for path, text in sources.items():
 # A scanner that keeps reporting a decision that was already made becomes noise, and
 # noise is how the working checks lose their audience. Accepted entries carry the
 # REASON, so disagreeing later is possible against something concrete.
+# An acceptance is judged again after REVIEW_DAYS (operator order 2026-10-29: a deviation allowed once
+# is reviewed routinely, not left alone for good): `reviewed`, else `since`, older than that = the
+# candidate comes back, marked, until the entry carries a fresh `reviewed` date.
+import datetime as _dt
+REVIEW_DAYS = 90
+_today = _dt.date.fromisoformat(os.environ.get("BRAIN_FRICTION_TODAY") or _dt.date.today().isoformat())
+_limit = (_today - _dt.timedelta(days=REVIEW_DAYS)).isoformat()
 accepted = read_json(".claude/rules/friction-accepted.json").get("accepted", [])
 suppressed = 0
 kept = []
 for kind, text, why in findings:
-    if any(a.get("kind") == kind and a.get("match", "") in text for a in accepted):
+    hit = next((a for a in accepted if a.get("kind") == kind and a.get("match", "") in text), None)
+    stamp = str((hit or {}).get("reviewed") or (hit or {}).get("since") or "")
+    if hit and stamp >= _limit:
         suppressed += 1
+    elif hit:
+        kept.append((kind, text, f"{why} [accepted {stamp or 'undated'}, due for review: still true? then set \"reviewed\": \"<today>\"]"))
     else:
         kept.append((kind, text, why))
 findings = kept

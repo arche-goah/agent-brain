@@ -33,6 +33,17 @@
 #      time EXTENDS the verdict deadline. A block longer than CI_WATCH_RL_CEILING
 #      (default 7200 s: a primary window resets hourly, so two hours of block is not
 #      weather) ends as UNKNOWN naming the duration.
+#   7. (2026-10-28) A bound sha can be left behind: right after `gh pr update-branch` the PR's
+#      headRefOid named the OLD head once; a watch bound to it with CI_WATCH_SHA would have
+#      waited its full 3600 s for a head the PR had already moved past (stopped by hand). With
+#      CI_WATCH_SHA set and the PR head elsewhere, the compare API (`compare/<bound>...<head>`)
+#      is asked: status `ahead` = the bound sha is an ancestor of the head, the PR moved past
+#      it — UNKNOWN at once, naming both shas and the head to re-arm with. Anything else (404:
+#      the pushed sha is not visible yet; `diverged`/`behind`; unreadable) keeps today's wait.
+#   8. (2026-10-28; point 7 is taken by core #197) The deadline is no verdict while a
+#      check-run of the watched commit is still in_progress: it moves on poll by poll until
+#      the run ends, up to CI_WATCH_RUN_CEILING (default 7200 s) after the oldest running
+#      check-run started. Nothing running, nothing readable, or past the ceiling = UNKNOWN.
 # This script matches refs via the run's headBranch FIELD from JSON (works for tags
 # and branches alike), enumerates every terminal state, and cannot end silently:
 # exit 0 = all green · 1 = something failed/cancelled/timed out in CI · 2 = could
@@ -44,6 +55,7 @@
 #   scripts/ci-watch.sh pr  <owner/repo> <pr-number> [timeout_s]
 #   scripts/ci-watch.sh ref <owner/repo> <ref>       [timeout_s]   # branch or tag
 #   CI_WATCH_SHA=<pushed sha> scripts/ci-watch.sh pr …   # after a push: wait for THAT head
+#   CI_WATCH_WAIT_ALL=1 scripts/ci-watch.sh pr …         # pr: no early red, wait for every check
 #   A second call for the same target on this machine attaches to the first (point 6).
 # Defaults: timeout 3600 s, poll every 15 s (override: CI_WATCH_POLL). Needs gh.
 # The default must outlast the slowest job of the core's own CI: measured 2026-10-12,
@@ -286,6 +298,12 @@ pr_head_not_yet_expected() {   # exit 0 = the PR does not show the expected head
   ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 0
   head=$gh_out
   [[ "$head" == "$EXPECTED_SHA"* ]] && return 1
+  # Header point 7: the PR moved PAST the bound sha (it is an ancestor of the head) = it will
+  # never come back to it; say so now instead of waiting out the deadline.
+  if [[ "$head" =~ ^[0-9a-f]{7,40}$ ]] \
+     && ghq api "repos/$REPO/compare/$EXPECTED_SHA...$head" --jq .status && [[ "$gh_out" == ahead ]]; then
+    fail_unknown "bound sha ${EXPECTED_SHA:0:7} is superseded — PR #$TARGET head is now ${head:0:7} (the bound sha is its ancestor); re-arm with that head: CI_WATCH_SHA=$head"
+  fi
   if (( warned_expected == 0 )); then
     echo "ci-watch: PR #$TARGET still shows head ${head:0:7}, waiting for ${EXPECTED_SHA:0:7}" >&2
     warned_expected=1
@@ -413,10 +431,44 @@ print("real" if real else "old")
   return 0
 }
 
+# Header point 8: a deadline that passes while a job of the watched commit still RUNS is no
+# verdict yet. Measured 2026-10-27: a main run's macOS/Windows jobs were 90 min in (steps 4/7,
+# 3/7) when the watch gave up; 2026-10-28 five parallel PR runs kept a Windows job at step 4/7
+# after 35 min. The deadline moves on poll by poll while a check-run of that commit is
+# in_progress and the oldest of them started less than CI_WATCH_RUN_CEILING (default 7200 s)
+# ago; past the ceiling, or with nothing running or nothing readable, the timeout stands.
+RUN_CEILING=${CI_WATCH_RUN_CEILING:-7200}
+warned_running=0
+still_running() {   # exit 0 = a check-run of the watched commit is still in progress, under the ceiling
+  local sha age
+  if [[ "$MODE" == pr ]]; then
+    ghq pr view "$TARGET" -R "$REPO" --json headRefOid --jq .headRefOid || return 1
+    sha=$gh_out
+  else sha=$last_sha; fi
+  [[ "$sha" =~ ^[0-9a-f]{7,40}$ ]] || return 1
+  ghq api "repos/$REPO/commits/$sha/check-runs?status=in_progress&per_page=100" \
+      --jq '[.check_runs[].started_at] | "\(length) \(min // "")"' || return 1
+  age=$("$PY" -c '
+import sys, datetime as d
+n, _, first = sys.argv[1].partition(" ")
+t = d.datetime.strptime(first.strip(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=d.timezone.utc)
+print(f"{int(n)} {int(sys.argv[2]) - int(t.timestamp())}" if int(n) > 0 else "0 0")
+' "$gh_out" "$now" 2>/dev/null) || return 1
+  read -r n age <<<"$age"
+  (( n > 0 && age < RUN_CEILING )) || return 1
+  if (( warned_running == 0 )); then
+    echo "ci-watch: ${TIMEOUT}s passed, but $n check-run(s) of ${sha:0:7} are still running" \
+         "(oldest started $(( age / 60 )) min ago) — waiting for the run itself, ceiling ${RUN_CEILING}s per run" >&2
+    warned_running=1
+  fi
+  return 0
+}
+
 while :; do
   now=$(date +%s)
   if (( now >= deadline )); then
-    fail_unknown "timeout after ${TIMEOUT}s — $MODE $REPO $TARGET never reached a terminal verdict (do NOT read this as green)"
+    if still_running; then deadline=$(( now + POLL ))
+    else fail_unknown "timeout after ${TIMEOUT}s — $MODE $REPO $TARGET never reached a terminal verdict (do NOT read this as green)"; fi
   fi
 
   if [[ "$MODE" == "pr" ]]; then
@@ -485,14 +537,21 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     # the watch silent the whole time and the red unseen. Only `fail` counts here — a `cancel`
     # can be a superseded run and still waits for the full picture; the head check guards the
     # old-run race as for every verdict.
-    if (( pending > 0 && ${failed:-0} > 0 )) && ! pr_head_behind_branch && ! pr_red_not_of_head; then
+    # CI_WATCH_WAIT_ALL=1 waits for every check before the verdict and names the failing ones (2026-10-29,
+    # measured on the macOS instance: one check red on every PR for a runner image change - each watch ended
+    # at once, and twice "only that check is red" was read while the other jobs still ran; one of them was
+    # really red). Without the variable the early report above stays the default.
+    if (( pending > 0 && ${failed:-0} > 0 )) && [[ "${CI_WATCH_WAIT_ALL:-}" != 1 ]] && ! pr_head_behind_branch && ! pr_red_not_of_head; then
       echo "CI-WATCH RED: $REPO PR #$TARGET — $failed failing check(s), $pending still running (a failed check does not turn green)"
       exit 1
     fi
     if (( pending > 0 )); then sleep "$POLL"; continue; fi
     if pr_head_behind_branch; then sleep "$POLL"; continue; fi
     if (( bad > 0 )) && pr_red_not_of_head; then sleep "$POLL"; continue; fi
-    if (( bad > 0 )); then echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)"; exit 1; fi
+    if (( bad > 0 )); then
+      names=$("$PY" -c 'import json,sys; print(", ".join(sorted({c.get("name","?") for c in json.load(sys.stdin) if c.get("bucket") in ("fail","cancel")})))' <<<"$json" 2>/dev/null)
+      echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)${names:+: $names}"; exit 1
+    fi
     # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
     # the checks then predate the base change and are never recomputed (measured
     # 2026-09-02 on a live PR: 7 SUCCESS checks, mergeable CONFLICTING, merge → 405).

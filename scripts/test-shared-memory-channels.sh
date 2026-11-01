@@ -90,7 +90,7 @@ refuse "broken JSON" '{"channels": [' "not valid JSON"
 echo "open-items: every member channel read, ids labelled"
 mkdir -p "$T/core/scripts"
 for f in open-items.py instance_key.py project_dir.py shared_answers.py shared_channels.py \
-         shared-memory-inbox.py shared-memory-index.py shared-memory-lint.py shared-memory-parties.py \
+         shared-memory-inbox.py shared-memory-index.py shared-memory-lint.py shared-memory-log-rotate.py shared-memory-parties.py \
          ledger-reconcile.py; do
   cp "$HERE/$f" "$T/core/scripts/"
 done

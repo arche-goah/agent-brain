@@ -245,6 +245,12 @@ function parseBlock(text) {
     let m;
     if ((m = /^- \[PR\|(\w+|\?)\] \S+ (\S+?)#(\d+) /.exec(l))) {
       items.push({ cls: m[1], ref: `${m[2]}#${m[3]}`, key: `${m[2]}#${m[3]}`, num: m[3], repeat });
+    } else if (/^- \[PR-standing\] \d+ PRs: /.test(l)) {
+      // Standing PRs folded into one line (open-items.py): one item per number, as before.
+      const list = l.replace(/^- \[PR-standing\] \d+ PRs: /, '').split(' — ')[0];
+      for (const [, repo, num] of list.matchAll(/(\S+?)#(\d+)/g)) {
+        items.push({ cls: 'standing', ref: `${repo}#${num}`, key: `${repo}#${num}`, num, repeat });
+      }
     } else if ((m = /^- \[request\|(\w+|\?)\] (\d{4})-(\d{2})-(\d{2}) (.+?) — (?:[^:]+: (.+?) — )?/.exec(l))) {
       const ref = m[5];
       const base = ref.split('/').pop();

@@ -18,6 +18,10 @@ case "${CI_WATCH_STUB:?}" in
   pr_fail_pending)   echo '[{"bucket":"fail","name":"lint"},{"bucket":"pending","name":"portability"}]' ;;
   # ...but a cancel can be a superseded run: it still waits for the running job.
   pr_cancel_pending) echo '[{"bucket":"cancel","name":"lint"},{"bucket":"pending","name":"portability"}]' ;;
+  # 2026-10-29 wait-all: one known-red check, the rest first running, then done.
+  pr_fail_then_done) f="${CI_WATCH_STATE:?}"
+              if [[ -f "$f" ]]; then echo '[{"bucket":"fail","name":"python-floor"},{"bucket":"pass","name":"portability"}]'
+              else touch "$f"; echo '[{"bucket":"fail","name":"python-floor"},{"bucket":"pending","name":"portability"}]'; fi ;;
   pr_zero)    echo '[]' ;;
   # gh's wording when the run has not been created yet. rc=1, not rc=8.
   pr_nochecks) echo "no checks reported on the 'feature' branch" >&2; exit 1 ;;
@@ -181,6 +185,20 @@ case "${CI_WATCH_STUB:?}" in
                       if [[ "$CI_WATCH_STUB" == pr_run_flip && -f "$f" ]]; then echo 0; else touch "$f"; echo 1; fi
                     else echo '[{"bucket":"pass","name":"CodeQL"},{"bucket":"pass","name":"Analyze"}]'; fi ;;
   # 2026-10-16: right after a push the PR still shows the OLD head and its green checks.
+  # 2026-10-28 (point 8): the deadline passes while a check-run of the head still runs. flip: it
+  # turns green 60 fake seconds in; stuck: it never ends (the ceiling ends it); old: it started
+  # in 2000, so the ceiling is long past at the first deadline.
+  pr_running_flip|pr_running_stuck|pr_running_old)
+                    if [[ "$*" == *status=in_progress* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_running_old ]]; then echo "1 2000-01-01T00:00:00Z"
+                      else echo "1 $("$REAL_DATE" -u +%Y-%m-%dT%H:%M:%SZ)"; fi
+                    elif [[ "$*" == *headRefOid* ]]; then echo abcdef1234567890abcdef1234567890abcdef12
+                    elif [[ "$*" == *check-runs* ]]; then echo '[]'
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    elif [[ "$CI_WATCH_STUB" == pr_running_flip && "$(cat "$CI_WATCH_FAKE_CLOCK")" -ge 60 ]]; then
+                      echo '[{"bucket":"pass","name":"portability"}]'
+                    else echo '[{"bucket":"pending","name":"portability"}]'; fi ;;
   # pr_head_lag: the head flips to the pushed commit on the second read; pr_head_stuck: never.
   pr_head_lag|pr_head_stuck)
                     f="${CI_WATCH_STATE:?}"
@@ -189,6 +207,29 @@ case "${CI_WATCH_STUB:?}" in
                       else touch "$f"; echo aaaa111100000000000000000000000000000000; fi
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
                     elif [[ "${1:-}" == api ]]; then echo 0
+                    else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
+  # 2026-10-28: the bound sha (CI_WATCH_SHA=bbbb2222) is left behind. pr_sha_superseded: the head
+  # is cccc4444 and compare says `ahead` (bound sha is its ancestor) = UNKNOWN at once, `pr checks`
+  # is never reached. pr_sha_404 / pr_sha_diverged: the head is aaaa1111 and compare answers 404
+  # (bound sha not visible yet) or `diverged` (unrelated) = keep waiting; the head reaches the
+  # bound sha on the third read and the watch turns green.
+  pr_sha_superseded|pr_sha_404|pr_sha_diverged)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *compare/* ]]; then
+                      case "$CI_WATCH_STUB" in
+                        pr_sha_superseded) if [[ "$*" == *compare/bbbb2222...cccc4444* ]]; then echo ahead; else echo "wrong compare: $*"; fi ;;
+                        pr_sha_404)        echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+                        pr_sha_diverged)   echo diverged ;;
+                      esac
+                    elif [[ "$*" == *headRefOid* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_sha_superseded ]]; then echo cccc444400000000000000000000000000000000
+                      else n=$(cat "$f" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" >"$f"
+                        if (( n < 3 )); then echo aaaa111100000000000000000000000000000000
+                        else echo bbbb222200000000000000000000000000000000; fi
+                      fi
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo 0
+                    elif [[ "$CI_WATCH_STUB" == pr_sha_superseded ]]; then echo "pr checks reached" >&2; exit 1
                     else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
   # 2026-10-28: after `gh pr update-branch` the PR head AND its branch tip still named the old
   # commit on the first poll (old checks green); the new head appears on the next read with its
@@ -329,6 +370,13 @@ check "pr one failing check"            pr_red     1 pr 12
 check "pr failed check while another runs = RED at once" pr_fail_pending 1 pr 12 30
 grep -q "still running" "$TMP/out" && echo "  OK   early red names the running checks" \
   || { echo "  FAIL early red does not name the running checks"; fails=$((fails+1)); }
+export CI_WATCH_WAIT_ALL=1
+check "wait-all: a failed check while another runs keeps waiting until the deadline" pr_fail_pending 2 pr 12 2
+check "wait-all: once nothing runs, RED with the failing names" pr_fail_then_done 1 pr 12 30
+grep -q "RED: owner/repo PR #12 — 1 failing/cancelled check(s): python-floor" "$TMP/out" \
+  && echo "  OK   wait-all: the verdict names the failing check" \
+  || { echo "  FAIL wait-all: names missing"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+unset CI_WATCH_WAIT_ALL
 check "pr cancelled check while another runs = wait, timeout(2)" pr_cancel_pending 2 pr 12 2
 check "pr cancel superseded by a green run of the same check = GREEN" pr_cancel_superseded 0 pr 12
 check "ref cancelled run superseded by a newer run on the same commit = GREEN" ref_cancel_superseded 0 ref main
@@ -405,6 +453,27 @@ check "pr: head flips after the first green poll = no GREEN, waits, timeout(2)" 
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head still old, then flips = GREEN on the new head" pr_head_lag 0 pr 12 30
 CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA, head never reaches it = wait, timeout(2)"   pr_head_stuck 2 pr 12 2
 check "pr: without CI_WATCH_SHA the old head's green counts (unchanged behaviour)"        pr_head_stuck 0 pr 12 30
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA superseded (ancestor of the head) = unknown(2) at once" pr_sha_superseded 2 pr 12 30
+grep -q "bound sha bbbb222 is superseded .*head is now cccc444" "$TMP/out" && ! grep -q "pr checks reached" "$TMP/out" \
+  && echo "  OK   the superseded verdict names both shas, before any checks are read" \
+  || { echo "  FAIL superseded verdict does not name both shas or came late"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA not visible yet (compare 404), then head reaches it = GREEN" pr_sha_404 0 pr 12 30
+CI_WATCH_SHA=bbbb2222 check "pr: CI_WATCH_SHA not an ancestor (diverged), then head reaches it = GREEN"   pr_sha_diverged 0 pr 12 30
+grep -q "superseded" "$TMP/out" && { echo "  FAIL a non-ancestor was called superseded"; fails=$((fails+1)); } \
+  || echo "  OK   a non-ancestor keeps waiting, not superseded"
+echo 0 > "$TMP/fakeclock-r1"
+CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r1" \
+  check "pr: deadline passes while a check-run runs, then green = GREEN (point 8)" pr_running_flip 0 pr 12 20
+grep -q "still running (oldest started" "$TMP/out" && echo "  OK   the extension names the running check-runs" \
+  || { echo "  FAIL extension not named"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+echo 0 > "$TMP/fakeclock-r2"
+CI_WATCH_POLL=10 CI_WATCH_RUN_CEILING=50 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r2" \
+  check "pr: a check-run running past the ceiling = timeout(2)" pr_running_stuck 2 pr 12 20
+echo 0 > "$TMP/fakeclock-r3"
+CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-r3" \
+  check "pr: a check-run that started long before the ceiling = timeout(2) at the deadline" pr_running_old 2 pr 12 20
+grep -q "still running" "$TMP/out" && { echo "  FAIL an old run extended the deadline"; fails=$((fails+1)); } \
+  || echo "  OK   an old run does not extend the deadline"
 check "pr: PR head behind its branch tip, old head red, then catches up green = GREEN"  pr_tip_lag 0 pr 12 30
 grep -q "has not caught up with" "$TMP/out" && echo "  OK   the lagging head is named" \
   || { echo "  FAIL lagging head not named"; fails=$((fails+1)); }

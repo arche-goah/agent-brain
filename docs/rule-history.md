@@ -516,7 +516,13 @@ Wording before the context diet of 2026-10-20, verbatim. The rule file now carri
 8. **Test material comes from the order, never from the disk** (operator decision
    2026-09-25): the operator's own files are used only when named or already part of
    the running order. A test that needs more material asks which — it does not search
-   the disk and pick.
+   the disk and pick. Scope (operator decision 2026-10-25, through the question tool: "we are
+   in the lab, you do not need to ask me at every step — I only started it for you", translated; recorded
+   in the coherence register 2026-10-25 as KS-96): the rule protects the operator's OWN files.
+   What the AI made itself is its own scratch, and in a lab the operator released to it, the
+   choice of show and the order of steps are the AI's decision — a question there asks the
+   operator something they need not decide. A live show or another party's desk keeps that
+   party's rule.
 9. **An ordered audit orders its clear fixes** (operator decision 2026-09-02): clear
    (one correct version) plus safe (reversible, no live system, no shared carrier) =
    do it, do not present it. Structural changes against a documented operator decision
@@ -1092,6 +1098,17 @@ while the array was cut)
 #### Wording before the 2026-10-20 diet
 
 Moved verbatim to `docs/multi-agent-relay.md` (rule now: `rules/intelligence.md` § Model Routing).
+
+#### A refused file is returned as text (2026-10-26)
+
+Measured 2026-10-18 on the Windows workstation instance: the harness refused subagents (Agent tool,
+not workflow stages) their report files, and two agents whose brief named a file target worked around
+the refusal (a Python write, a rename). The instance carried "subagents return results as text, no
+file as target" as its own rule; offered to the core, the macOS instance answered (shared memory, core,
+2026-10-26) that in this form it contradicts "only the producer writes", and proposed the harmonised
+sentence now in § Model Routing: the producer writes where the harness lets it, a refused file comes
+back as text with the refusal named, and the refusal is never worked around (Working Rules, "A
+refusal is a decision").
 
 ### Repeat Runs (CANONICAL place — skills point here)
 
