@@ -93,8 +93,28 @@ function watchList(root) {
   }
 }
 
+// Where a write word sits decides whether it is one. Outside quotes it is a command; inside quotes it is data
+// (measured 2026-10-29 on the macOS instance: `git grep -E "heredoc|git tag|gh pr merge"` in a clone with a
+// named author was refused as a tag). Except where a shell RUNS the quoted text - `bash -c "…"`, `eval`, `$( )`,
+// backticks: there the quoted text is read as a command too (before this, `bash -c "git commit -m x"` passed
+// the author check: the anchor wanted whitespace or a separator before `git`, and found a quote).
+const { segments } = require('./shell-segments.cjs');
+const RUNS_QUOTED = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-c\b|\beval\b|\$\(|`/;
+const QUOTED = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
+
+// Each command text as { judge, raw }: `judge` has its quoted parts emptied (what decides whether it is a write),
+// `raw` keeps them (where a quoted `git -C "<dir with spaces>"` is read from).
+function commandParts(cmd) {
+  const outside = segments(cmd).map((s) => ({ judge: s.replace(QUOTED, '""').trim(), raw: s.trim() }));
+  if (!RUNS_QUOTED.test(cmd)) return outside;
+  const inside = [...cmd.matchAll(QUOTED)].map((m) => m[0].slice(1, -1));
+  return [...outside, ...inside.flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
+}
+const commandTexts = (cmd) => commandParts(cmd).map((p) => p.judge);
+
 function isWrite(cmd) {
-  if (WRITE_RX.some((rx) => rx.test(cmd)) || AUTHOR_RX.test(cmd)) return true;
+  const texts = commandTexts(cmd);
+  if (texts.some((t) => WRITE_RX.some((rx) => rx.test(t)) || AUTHOR_RX.test(t))) return true;
   for (const m of cmd.matchAll(GH_API_RX)) {
     const args = m[2];
     if (/\s(-f|-F|--field|--raw-field|--input)\b/.test(args)) return true;
@@ -238,7 +258,7 @@ function gate(input) {
     scan(cmd.replace(/(\/Users\/|\/home\/|[A-Za-z]:[\\/]+Users[\\/]+)[^\/\\\s"']+/g, '$1<home>'), 'the command, read whole');
     readFiles(referencedFiles(cmd));
   }
-  const a = AUTHOR_RX.exec(cmd);
+  const a = commandParts(cmd).filter((p) => AUTHOR_RX.test(p.judge)).map((p) => AUTHOR_RX.exec(p.raw)).find(Boolean);
   if (a) {
     const dir = resolveFrom(cwd, a[3] ? unquote(a[3]) : '.');
     try {

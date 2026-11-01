@@ -24,6 +24,9 @@
 # warned since 2026-08-04 when it's missing), and a bootstrap that ships the
 # helper but never wires it up produces exactly that warning.
 # Disable with BOOTSTRAP_STATUSLINE=0.
+# The core's git hooks go into the new brain's own git config. BOOTSTRAP_GIT_HOOKS=global
+# sets them for every repo of the user instead (a setup whose suites and shared memory should
+# run them too) — opt-in, because it overrides other tools' hooks in every repo.
 set -euo pipefail
 
 # Resolve the Python interpreter: the python.org installer on Windows ships ONLY
@@ -204,8 +207,8 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   esac
 fi
 
-# The core's git hooks (pre-commit checks, shared-memory state trailer) — one path for every brain.
-# Installed once the submodule exists (below); see the call after `git submodule add`.
+# The core's git hooks (pre-commit checks, shared-memory state trailer) — in this brain's own git
+# config unless BOOTSTRAP_GIT_HOOKS=global (header). Installed once the submodule exists (below).
 
 _sub_err="$(git submodule add "$CORE_URL" core 2>&1 >/dev/null)" || {
   case "$_sub_err" in
@@ -246,7 +249,10 @@ fi
   || echo "bootstrap-brain: template data files not copied — copy the ones the session start names from core/templates/rules-instance/ into .claude/rules/."
 
 if [ -f core/scripts/install-git-hooks.sh ]; then
-  bash core/scripts/install-git-hooks.sh || echo "bootstrap-brain: git hooks not installed — run 'bash core/scripts/install-git-hooks.sh'."
+  _hooks_scope=""
+  [ "${BOOTSTRAP_GIT_HOOKS:-local}" = "global" ] && _hooks_scope="--global"
+  bash core/scripts/install-git-hooks.sh $_hooks_scope \
+    || echo "bootstrap-brain: git hooks not installed — run 'bash core/scripts/install-git-hooks.sh $_hooks_scope'."
 fi
 
 # 5. Usage statusline (user scope, idempotent, can be disabled)

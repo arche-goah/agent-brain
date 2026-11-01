@@ -108,6 +108,29 @@ behind_check() {
 }
 behind_check
 
+# Every staged .json parses (2026-10-29, measured on the macOS instance: a regex edit broke
+# .claude/rules/local-machinery.json — "Invalid control character" — and the commit went through).
+# Nearly every gate reads its rules from JSON and fails OPEN on an unreadable file, so a broken
+# rule file switches its gate off without a sound. The STAGED content is parsed (git show :path),
+# not the working copy: that is what the commit carries.
+json_check() {
+  local f bad=""
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    if ! git show ":$f" | "$py" -c 'import json,sys; json.load(sys.stdin)' >/dev/null 2>&1; then
+      bad="$bad
+  $f: $(git show ":$f" | "$py" -c 'import json,sys
+try: json.load(sys.stdin)
+except Exception as e: print(e)' 2>&1 | head -1)"
+    fi
+  done < <(git diff --cached --name-only --diff-filter=ACMR -- '*.json')
+  [ -z "$bad" ] && return 0
+  echo ""
+  echo "pre-commit: staged JSON does not parse - a gate reading it would fail open:$bad"
+  fail=1
+}
+json_check
+
 # No invariant-check here: it exits 1 whenever a register carries OPEN invariants, which is its
 # normal state — a report, not a gate. Only real pass/fail checks belong in a blocking hook.
 if [ "$fail" -ne 0 ]; then

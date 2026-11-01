@@ -97,4 +97,22 @@ function isAgentOrigin(d) {
   return isPeerMessage(d) || isScheduledPrompt(d);
 }
 
-module.exports = { isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL };
+/** A tracker for one pass over a transcript: returns true for the record that carries the operator's answer
+ * through the question tool — an operator word like a typed prompt, so it ends a gate's turn window. Matched by
+ * the id of an AskUserQuestion call seen earlier in the pass; an error result (a refused question) is no answer,
+ * and text that merely reads like an answer never counts. Measured 2026-10-30: every answer of a day came this
+ * way, a window reached back past a compaction to an hours-old promise, and a stop gate blocked every stop. */
+function questionAnswers() {
+  const asked = new Set();
+  return (d) => {
+    const m = d && d.message;
+    if (!m || !Array.isArray(m.content)) return false;
+    if (m.role === 'assistant') {
+      for (const b of m.content) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion' && b.id) asked.add(b.id);
+      return false;
+    }
+    return m.role === 'user' && m.content.some((b) => b && b.type === 'tool_result' && asked.has(b.tool_use_id) && !b.is_error);
+  };
+}
+
+module.exports = { isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, questionAnswers, FRAMES, LOCAL };

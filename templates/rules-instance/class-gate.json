@@ -1,0 +1,10 @@
+{
+  "_comment": [
+    "Instance data for core/helpers/class-gate.cjs: regex strings in the operator's own language that",
+    "NAME THE LEVEL of a change in the gear line the gate asks for (built-ins English: symptom, reader,",
+    "writer, producer, design, base model). Without them a gear line in another language does not pass.",
+    "Example for a German operator: \"\\\\bSymptom\\\\b\", \"\\\\bLeser(ebene)?\\\\b\", \"\\\\bErzeuger(ebene)?\\\\b\",",
+    "\"\\\\bSchreiber(ebene)?\\\\b\", \"\\\\bEntwurf(sebene)?\\\\b\", \"\\\\bGrundmodell\\\\b\", \"\\\\bEbene\\\\b\"."
+  ],
+  "level_patterns": []
+}
