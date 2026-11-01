@@ -4,8 +4,8 @@
  * is checked — the mirror of promise-gate.cjs, on the operator's side of the sentence.
  *
  * The class (measured on a collaborating instance, 2026-10-16): the operator wrote
- * "dann coherence scan" — "then", meaning AFTER the answer the two other instances had
- * been asked for, and after the core update they had recommended first. The agent read
+ * "then coherence scan" (in their own language), meaning AFTER the answer the two other
+ * instances had been asked for, and after the core update they had recommended first. The agent read
  * "then" as "now", started nine analysis agents, and mentioned the recommendation in its
  * text without waiting for it. The operator stopped the run ("why do you work AGAINST
  * the recommendation?"); the tokens were spent. Nothing in the core carried the case:
@@ -174,7 +174,7 @@ function deny(hit, why) {
         + '  CONDITION-MET: <the condition in the operator\'s words> — <evidence: where and when it was met>\n'
         + '  CONDITION-NONE: <why this word is no condition here>\n'
         + 'Reads, edits, commits and a single agent stay free — they are how the condition gets checked. '
-        + '(Measured 2026-10-16: "then the coherence scan" meant "after the answer"; nine agents started before it came.)',
+        + '(Example: "then run the audit", written while an answer is pending, means "after that answer", not "now".)',
     },
   }));
   process.exit(0);

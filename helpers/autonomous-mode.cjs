@@ -33,6 +33,7 @@
  * case-insensitive, merged in.
  *
  * CLI: node autonomous-mode.cjs <transcript> [cwd]  -> prints "autonomous" or "interactive".
+ * For the operator (what the modes mean, what they do not, how to switch): docs/run-modes.md.
  */
 'use strict';
 const fs = require('fs');
@@ -59,7 +60,10 @@ const BUILTIN_ASK = [
 const BUILTIN_YES = ['^\\s*yes\\b'];
 const HOOK_ECHO = /^\s*Stop hook feedback:/;
 // The tool result of an answered AskUserQuestion: `"<question>"="<answer>"` pairs.
-const ANSWERED = 'questions have been answered';
+// Two wordings in the wild (measured 2026-10-30, macOS instance: "Your questions have been answered: …" and
+// "The user answered: …", the second in 58 of 514 transcripts) — the first answer of that evening carried the
+// second and set nothing.
+const ANSWERED = /questions have been answered|The user answered:/;
 const PAIR = /"([^"]*)"="([^"]*)"/g;
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
@@ -116,7 +120,7 @@ function answers(msg, askIds) {
     if (askIds && !askIds.has(b.tool_use_id)) continue;
     const s = typeof b.content === 'string' ? b.content
       : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('\n') : '';
-    if (!s.includes(ANSWERED)) continue;
+    if (!ANSWERED.test(s)) continue;
     for (const m of s.matchAll(PAIR)) out.push([m[1], m[2]]);
   }
   return out;
@@ -166,8 +170,8 @@ function promptModes(transcriptPath, cwd) {
   try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return []; }
   const out = [];
   let state = false;
-  const known = intents(transcriptPath, cwd);
   const askIds = new Set();
+  const known = intents(transcriptPath, cwd);
   for (const line of lines) {
     if (line.includes('"AskUserQuestion"')) {
       try {
@@ -188,8 +192,13 @@ function promptModes(transcriptPath, cwd) {
         || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
       for (const [q, a] of answers(d.message, askIds)) {
-        if (!w.on.test(q)) continue;
-        state = w.yes.test(a) && !w.off.test(a);
+        // A yes/no to the mode question decides by yes; an answer to any other question is read
+        // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
+        // "yes, work through them autonomously" to "shall I handle them?" set nothing).
+        if (w.on.test(q)) state = w.yes.test(a) && !w.off.test(a);
+        else if (w.off.test(a)) state = false;
+        else if (ordersOn(w.on, a)) state = true;
+        else continue;
         out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true });
       }
     }
@@ -198,7 +207,11 @@ function promptModes(transcriptPath, cwd) {
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
     const intent = intentFor(known, d.timestamp);
-    const asks = w.ask.test(text) || Boolean(intent && intent.asks_open);
+    // The model's asks_open yields to an order to work autonomously in the SAME prompt (2026-10-31, macOS
+    // instance): "work through all open points, handle them autonomously" read as asks_open, and the run the
+    // operator had just ordered went interactive. Replay over the classifier log: 7 prompts carry both, the one
+    // genuine question among them ("anything for me? you worked 5 h autonomously") is caught by the words.
+    const asks = w.ask.test(text) || Boolean(intent && intent.asks_open && !ordersOn(w.on, text));
     if (w.off.test(text) || asks || (intent && intent.mode_off)) state = false;
     else if (ordersOn(w.on, text)) state = true;
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false });

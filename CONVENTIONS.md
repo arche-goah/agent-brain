@@ -142,8 +142,7 @@ Rules:
 - Changelog format, one style everywhere: **newest entry first**, headings
   `## <version> — <date>` **without a `v` prefix** (tags keep theirs). Decided
   2026-08-10: the core wrote oldest-first with `v`, the suites newest-first without,
-  and a suite release derailed when one habit was applied to the other repo
-  (grandma3-suite PR #2); 4 of 5 repos already wrote prefix-less. §8 governs what an
+  and a suite release derailed when one habit was applied to the other repo; 4 of 5 repos already wrote prefix-less. §8 governs what an
   entry says (why + origin); this line governs where it goes.
 - Each suite declares the core it was built against as `requires_core` in its
   `dependencies.json` (machine-checked). The README may repeat it for humans.
@@ -291,8 +290,8 @@ Two consequences that are not optional:
 - **A new capability never starts life inside a private brain.** Not "for now", not "until
   it settles". Something built in the private layer acquires that layer's assumptions —
   its paths, its addresses, its habits — and pulling it out later costs more than starting
-  it right. Measured on this setup: every extraction so far (chataigne, show-tools,
-  resolume) had to fix paths that only ever resolved inside the brain.
+  it right. Measured on this setup: every extraction so far (three suites) had to fix
+  paths that only ever resolved inside the brain.
 - **The core is an explicit include-list, not a leftover.** After every suite has moved
   out, what remains is core *plus* private instance. Deciding the core by subtraction ships
   somebody's private data.
@@ -485,9 +484,9 @@ SSH remotes with a loaded ssh-agent, or run marketplace update manually.
 
 ## 14. Every repo: the setup contract
 
-A repo set up by hand gets whatever its first session remembered. Measured 2026-10-10 on
-one account: 7 of 18 private repos had no workflow at all, and branch protection was
-unavailable on every private one (free plan, HTTP 403 "Upgrade to GitHub Pro"); the
+A repo set up by hand gets whatever its first session remembered. Measured 2026-10-10:
+7 of 18 private repos had no workflow at all, and branch protection was unavailable on
+every private one (HTTP 403 "Upgrade to GitHub Pro" — a plan without it); the
 "pull requests only" rule of two project repos lived in a local hook nobody could see.
 This section is what every repo carries from its first commit, by kind.
 `scripts/repo-check.py` checks a repo against it; `templates/repo/` is the starting set.
