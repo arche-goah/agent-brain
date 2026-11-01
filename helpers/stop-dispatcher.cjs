@@ -124,6 +124,54 @@ function turnKind(transcriptPath) {
   }
 }
 
+// LOOP BRAKE (operator 2026-10-31, question tool: "Ja, Bremse bauen"). A check that judges text the
+// new reply cannot change (an earlier reply of the turn, a sentence the operator wrote) blocks every
+// re-issue and the turn never ends. Measured over the macOS instance's transcripts: 27 runs of >= 3
+// consecutive blocks of one check, the longest 33 (empty promise), 14 (clock), 11 (close loss).
+// So: how many Stop feedbacks IN A ROW (no other string record between - an operator prompt, a
+// notification or a scheduled prompt resets; tool work does not) carried this check's line.
+// From the third block on, the check lets the turn end with a loud systemMessage instead.
+const LOOP_LIMIT = 2;
+
+function priorStreaks(transcriptPath, checks) {
+  const streak = new Map();
+  try {
+    const size = fs.statSync(transcriptPath).size;
+    const start = Math.max(0, size - TAIL_BYTES);
+    const fd = fs.openSync(transcriptPath, 'r');
+    const buf = Buffer.alloc(size - start);
+    try { fs.readSync(fd, buf, 0, buf.length, start); } finally { fs.closeSync(fd); }
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tests = checks.map((c) => ({
+      c, re: new RegExp(`(?:^|\\n)(?:· )?${esc(c.label)}(?: —|\\s)|\\[${esc(c.marker)}\\]`, 'u'),
+    }));
+    for (const line of buf.toString('utf8').split('\n')) {
+      if (!line.trim()) continue;
+      let d;
+      try { d = JSON.parse(line); } catch (e) { continue; }
+      if (!d.message || d.message.role !== 'user') continue;
+      const t = recordText(d.message);
+      if (t === null) continue; // a tool result: work inside the turn, no reset
+      if (!HOOK_ECHO.test(t)) { streak.clear(); continue; }
+      for (const { c, re } of tests) {
+        if (re.test(t)) streak.set(c.marker, (streak.get(c.marker) || 0) + 1);
+        else streak.delete(c.marker);
+      }
+    }
+  } catch (e) { /* unreadable transcript: no brake, the checks judge as before */ }
+  return streak;
+}
+
+function recordLoop(r, n) {
+  try {
+    fs.mkdirSync(path.join(ROOT, '.claude-state'), { recursive: true });
+    fs.appendFileSync(path.join(ROOT, '.claude-state', 'stop-loops.jsonl'), JSON.stringify({
+      at: new Date().toISOString(), label: r.check.label, marker: r.check.marker, blocks: n + 1,
+      reason: short(r.reason, 300),
+    }) + '\n');
+  } catch (e) { /* the systemMessage still names it */ }
+}
+
 // REQUIRED CHECKS REACH EVERY BRAIN (2026-10-26). The template reaches a brain once, at bootstrap — a
 // check added to it later shipped with the plugin and ran nowhere (same class as hook-coverage.py). A
 // template check marked `"required": true` therefore runs in every brain whose instance file lacks its
@@ -260,8 +308,19 @@ process.stdin.on('end', async () => {
     .filter(Boolean);
   // A let-through never comes back as hook feedback, so no cooldown reads it: the label
   // names the check, no token needed.
-  const notes = answered.filter((r) => r.message).map((r) => `${r.check.label} — ${r.message}`);
-  const results = answered.filter((r) => r.reason);
+  let notes = answered.filter((r) => r.message).map((r) => `${r.check.label} — ${r.message}`);
+  let results = answered.filter((r) => r.reason);
+  // Loop brake: a check that blocked the last LOOP_LIMIT Stop passes in a row lets the turn end now.
+  if (results.length && input.transcript_path) {
+    const streaks = priorStreaks(input.transcript_path, results.map((r) => r.check));
+    const braked = results.filter((r) => (streaks.get(r.check.marker) || 0) >= LOOP_LIMIT);
+    for (const r of braked) {
+      const n = streaks.get(r.check.marker);
+      recordLoop(r, n);
+      notes.push(`${r.check.label} — blocked ${n + 1} times in a row, the turn ends anyway (loop brake; .claude-state/stop-loops.jsonl)`);
+    }
+    results = results.filter((r) => !braked.includes(r));
+  }
   if (results.length === 0) {
     if (notes.length) console.log(JSON.stringify({ systemMessage: notes.join('\n') }));
     process.exit(0);
