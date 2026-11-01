@@ -76,6 +76,12 @@
       "mode": "record"
     },
     {
+      "label": "MODE LOG",
+      "marker": "MODE-LOG",
+      "cmd": "core/helpers/mode-log.cjs",
+      "mode": "record"
+    },
+    {
       "label": "PROMISE",
       "marker": "PROMISE-GATE",
       "cmd": "core/helpers/promise-gate.cjs",
