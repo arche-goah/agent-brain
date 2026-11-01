@@ -84,6 +84,10 @@ probe "add -A"                       "$TWO" "git -C $REPO_N add -A"             
 probe "add ."                        "$TWO" "git -C $REPO_N add ."                                  block
 probe "add by path"                  "$TWO" "git -C $REPO_N add a.txt b.txt"                        allow
 probe "stash"                        "$TWO" "git -C $REPO_N stash"                                  block
+probe "stash list only reads"        "$TWO" "git -C $REPO_N stash list"                             allow
+probe "stash show only reads"        "$TWO" "git -C $REPO_N stash show -p stash@{0}"                allow
+probe "stash push still moves work"  "$TWO" "git -C $REPO_N stash push -m x"                        block
+probe "stash pop still moves work"   "$TWO" "git -C $REPO_N stash pop"                              block
 probe "reset --hard"                 "$TWO" "git -C $REPO_N reset --hard HEAD~1"                    block
 probe "reset --soft"                 "$TWO" "git -C $REPO_N reset --soft HEAD~1"                    allow
 probe "checkout branch"              "$TWO" "git -C $REPO_N checkout fixture-private"              block

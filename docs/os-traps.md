@@ -93,15 +93,15 @@ known:     scripts/backprop-report.py=5
 known:     scripts/brain-friction.py=1
 known:     scripts/brain-selftest.sh=3
 known:     scripts/brain-update.sh=7
-known:     scripts/carrier-audit-test.py=20
-known:     scripts/carrier-audit.py=11
+known:     scripts/carrier-audit-test.py=22
+known:     scripts/carrier-audit.py=12
 known:     scripts/caveman-armed.py=6
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
 known:     scripts/gate-precision.py=4
 known:     scripts/hook-coverage.py=20
-known:     scripts/lesson-carriers.py=2
+known:     scripts/lesson-carriers.py=5
 known:     scripts/live-doc-lint-test.py=2
 known:     scripts/live-doc-lint.py=3
 known:     scripts/local-machinery.py=1
@@ -250,7 +250,9 @@ pattern:   mktemp -d
 paths:     --include=test-*.sh scripts
 known:     scripts/test-absence-gate.sh=1
 known:     scripts/test-always-loaded.sh=1
+known:     scripts/test-auto-fire-coverage.sh=1
 known:     scripts/test-autonomous-gate.sh=1
+known:     scripts/test-autonomous-idle-gate.sh=1
 known:     scripts/test-autonomous-mode.sh=1
 known:     scripts/test-autonomy-diagnose-run.sh=1
 known:     scripts/test-autonomy-diagnose.sh=1
@@ -274,18 +276,22 @@ known:     scripts/test-decision-readiness.sh=1
 known:     scripts/test-decision-review.sh=1
 known:     scripts/test-delivered-read-gate.sh=1
 known:     scripts/test-eco-owner.sh=1
+known:     scripts/test-ecosystem-sync.sh=1
 known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
 known:     scripts/test-guards.sh=4
 known:     scripts/test-hook-coverage.sh=1
+known:     scripts/test-install-git-hooks.sh=1
 known:     scripts/test-instance-key-gate.sh=1
+known:     scripts/test-instrument-watch.sh=1
 known:     scripts/test-leak-scan.sh=1
 known:     scripts/test-live-read-gate.sh=1
 known:     scripts/test-live-watchdog.sh=1
 known:     scripts/test-local-machinery.sh=1
 known:     scripts/test-memory-dream-files.sh=1
 known:     scripts/test-merge-request-gate.sh=1
+known:     scripts/test-merge-train.sh=1
 known:     scripts/test-monitor-arm-shape.sh=1
 known:     scripts/test-no-input-control.sh=1
 known:     scripts/test-onboarding-leak-check.sh=1
@@ -317,7 +323,7 @@ known:     scripts/test-skill-gate.sh=1
 known:     scripts/test-stop-checks.sh=1
 known:     scripts/test-stop-dispatcher.sh=5
 known:     scripts/test-stoppen-gate.sh=1
-known:     scripts/test-suite-plugin-linkage.sh=1
+known:     scripts/test-suite-plugin-linkage.sh=3
 known:     scripts/test-template-drift.sh=1
 known:     scripts/test-text-leaks-notice.sh=1
 known:     scripts/test-transcript-archive.sh=1
@@ -329,6 +335,7 @@ known:     scripts/test-watch-pr.sh=1
 known:     scripts/test-watch-readiness.sh=1
 known:     scripts/test-watch-supervisor.sh=1
 known:     scripts/test-workflow-path-args.sh=1
+known:     scripts/test-loop-watchdog-alarm.sh=1
 instances: 3
 repeat:    yes
 status:    closed
@@ -344,6 +351,10 @@ discriminator case — and all three go through `native()`. The discriminator is
 it matters here more than usual: it asserts SILENCE, and an unresolvable path produces
 silence too, so without `native()` that case would pass on Windows for the wrong reason
 and certify a fixture that sees only one world state.
+2026-10-28, test-suite-plugin-linkage.sh 1 -> 3 after the review: `mkremote`/`mkcheckout` named their repos
+`$T/…-$RANDOM` and now take them from `mktemp -d "$T/…-XXXXXX"` (two calls could draw the same
+number and share a repo). Same parent `$T`, and the paths still go only to git through `git_`, as
+before — no new crossing into node or python.
 2026-09-13, test-coherence-scan-files.sh baselined after the same review: the temp dir
 never crosses into node as data — node receives the harness file as an ARGUMENT (Git Bash
 converts argv) and the lens files by NAME through env, which is the comparison the helper
@@ -704,8 +715,9 @@ known:     scripts/dep-install.py=2
 known:     scripts/ecosystem-sync.py=1
 known:     scripts/english-only.py=1
 known:     scripts/fork-drift.py=2
+known:     scripts/instrument-watch.py=3
 known:     scripts/invariant-check.py=3
-known:     scripts/lesson-carriers.py=2
+known:     scripts/lesson-carriers.py=4
 known:     scripts/live-doc-lint.py=2
 known:     scripts/memory-lint-test.py=1
 known:     scripts/memory-lint.py=1

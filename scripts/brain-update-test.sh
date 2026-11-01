@@ -144,6 +144,11 @@ rm -rf "$NB" "$NC" "$NU"
 SB=$(mktemp -d); ORIG="$SB/origin.git"; STUB="$SB/bin"
 git -c init.defaultBranch=main init -q "$SB/src"
 for v in 1.0.0 2.0.0; do
+  # v2.0.0 ships an instance-data template (step 4b2: reported when the brain lacks the file)
+  if [ "$v" = 2.0.0 ]; then
+    mkdir -p "$SB/src/templates/rules-instance"; echo '{}' > "$SB/src/templates/rules-instance/demo-data.json"
+    git -C "$SB/src" add templates
+  fi
   git -C "$SB/src" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$v"
   git -C "$SB/src" tag "v$v"
 done
@@ -243,8 +248,23 @@ else case "$out" in
   *"WARN marketplace other not refreshed"*) ok "an unrelated failed marketplace does not block core/ (v1.0.0 -> v2.0.0)" ;;
   *) bad "core moved, but the failed marketplace was not reported" ;;
 esac; fi
+# 6. the new core ships a template the brain lacks: named with its copy command (2026-10-27,
+#    class-gate.json reached no existing brain) ...
+case "$out" in
+  *"WARN instance data .claude/rules/demo-data.json missing"*"cp core/templates/rules-instance/demo-data.json"*)
+    ok "a template without its instance file is named with the copy command" ;;
+  *) bad "missing instance data not reported: $(printf %s "$out" | grep -a -m1 'demo-data')" ;;
+esac
+# ... and a brain that has the file hears nothing about it (control).
+mk_brain hasdata v1.0.0 2.0.0 "mk" ""
+mkdir -p "$SB/hasdata/.claude/rules"; echo '{}' > "$SB/hasdata/.claude/rules/demo-data.json"
+out=$(run_brain hasdata)
+case "$out" in
+  *"demo-data.json missing"*) bad "instance data present, still reported missing" ;;
+  *) ok "instance data present: no report (control)" ;;
+esac
 rm -rf "$SB"
 
 echo
 if (( fails )); then echo "brain-update-test: $fails FAILURE(S)"; exit 1; fi
-echo "brain-update-test: all 13 checks passed"
+echo "brain-update-test: all 15 checks passed"

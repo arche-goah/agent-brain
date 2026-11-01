@@ -6,6 +6,10 @@ decision, not a gap), an entry
 without the line is loose and named with date and title, --since drops older entries, a heading
 without a date is no entry, an unreadable protocol is said and exits 0, instance data renames
 the key. Negative control: with the carrier keys emptied every entry turns loose.
+--resolve/--prs: a named path that exists (also on a continuation line, also by basename in
+another root) is carried, a moved one is named missing, a branch name is no path; named PRs map
+to their repo by date and alias, an open one is named. Negative control: deleting a carrier file
+turns it missing.
 Run: scripts/lesson-carriers-test.py    Exit 0 = all green.
 """
 from __future__ import annotations
@@ -99,6 +103,54 @@ with tempfile.TemporaryDirectory() as d:
     # unreadable protocol: said, exit 0
     rc, out = run(repo, "--protocol", str(repo / "nope.md"))
     check(rc == 0 and "NOT checked" in out, "an unreadable protocol is said, never read as clean")
+
+    # --resolve: does the named carrier exist? (2026-10-30)
+    PROTO2 = """# Feedback protocol
+
+## 2026-10-20 — Carrier exists
+Carrier: `scripts/foo-gate.cjs` (wired) and the fixture
+  `scripts/test-foo-gate.sh` on the next line.
+
+## 2026-10-21 — Carrier moved away
+Carrier: `scripts/hooks/old-gate.cjs`
+Reach: every brain.
+
+## 2026-10-22 — Bare file name in another root
+Carrier: `bar.json` read by the gate; branch `feat/bar-gate` is no file.
+
+## 2026-10-23 — Named PRs
+Carrier: core #12 and grandma3-suite #7; issue #3 of nothing.
+"""
+    (repo / "scripts" / "hooks").mkdir(parents=True)
+    (repo / "scripts" / "foo-gate.cjs").write_text("x", encoding="utf-8")
+    (repo / "scripts" / "test-foo-gate.sh").write_text("x", encoding="utf-8")
+    (repo / "core" / "data").mkdir(parents=True)
+    (repo / "core" / "data" / "bar.json").write_text("{}", encoding="utf-8")
+    (repo / "p2.md").write_text(PROTO2, encoding="utf-8")
+    rc, out = run(repo, "--protocol", str(repo / "p2.md"), "--resolve")
+    check("paths_ok=3 missing=1" in out, f"three named paths found (one on a continuation line, one by basename in core/), one missing: {out.strip().splitlines()[-1]}")
+    check("carrier missing: 2026-10-21 — Carrier moved away — `scripts/hooks/old-gate.cjs` not found" in out, "the moved carrier is named")
+    check("feat/bar-gate" not in out, "a branch name is not read as a path")
+    rc, out = run(repo, "--protocol", str(repo / "p2.md"))
+    check("missing=" not in out, "without --resolve the report is unchanged")
+    # negative control: the existing carrier removed -> it turns missing
+    (repo / "scripts" / "foo-gate.cjs").unlink()
+    rc, out = run(repo, "--protocol", str(repo / "p2.md"), "--resolve")
+    check("missing=2" in out and "`scripts/foo-gate.cjs` not found" in out, "negative control: a deleted carrier is reported missing")
+
+    # --prs: named PRs map to repos by date and alias; the PR state is read through pr_state (stubbed)
+    cfg = {"pr_repos": [{"since": "2026-10-18", "repo": "o/core"}, {"repo": "o/core-archive"}],
+           "pr_aliases": {"grandma3-suite": "o/grandma3-suite"}}
+    check(lc.named_prs("core #12 and grandma3-suite #7; issue #3", cfg, "2026-10-23")
+          == [("o/core", 12), ("o/grandma3-suite", 7)], "core #N and alias #N resolve, 'issue #N' does not")
+    check(lc.named_prs("Kern #5", cfg, "2026-10-01") == [("o/core-archive", 5)], "a PR before the history cut goes to the archive repo")
+    (rules / "lesson-carriers.json").write_text(json.dumps(cfg), encoding="utf-8")
+    real = lc.pr_state
+    lc.pr_state = lambda repo, n, cache: "MERGED" if n == 12 else "OPEN"
+    rc, out = run(repo, "--protocol", str(repo / "p2.md"), "--resolve", "--prs")
+    lc.pr_state = real
+    check("carrier open: 2026-10-23 — Named PRs — o/grandma3-suite#7 is OPEN" in out, "an open PR is named")
+    check("o/core#12" not in out and "prs=2 open=1" in out, "a merged PR is carried")
 
 print("lesson-carriers-test: " + ("all checks passed" if fails == 0 else f"{fails} check(s) FAILED"))
 sys.exit(1 if fails else 0)

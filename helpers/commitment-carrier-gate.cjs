@@ -23,7 +23,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
 const { declare } = require('./stop-echo.cjs');
 
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -65,12 +65,14 @@ function addedLines(old, neu) {
 /** This turn: [{kind:'text', text}] and [{kind:'write', file, text, added}] since the last operator message. */
 function turnEvents(transcriptPath) {
   const events = [];
+  const questionAnswered = questionAnswers();   // the operator's question-tool answer ends the window too
   for (const line of readTail(transcriptPath)) {
     if (!line.trim()) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
+    if (questionAnswered(d)) { events.push({ boundary: true }); continue; }
     if (msg.role === 'user' && typeof msg.content === 'string') {
       if (HOOK_ECHO.test(msg.content)) continue;
       if (!isNotification(msg.content) && !isAgentOrigin(d)) events.push({ boundary: true });
