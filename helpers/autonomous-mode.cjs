@@ -40,8 +40,12 @@ const fs = require('fs');
 const path = require('path');
 const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, FRAMES, LOCAL } = require('./turn-kind.cjs');
 
+// A belief about the past is no order (measured 2026-11-01 on the macOS instance: "thought it was
+// autonomous" in a complaint switched an interactive session on; once the word lists were fixed the
+// session flipped back to interactive mid-run). Only belief verbs in the same sentence - "was" or
+// "were" alone would also cut "I was away, work autonomously".
 const BUILTIN_ON = [
-  '\\bautonomous(ly)?\\b',
+  '(?<!\\b(?:thought|believed|assumed|figured)\\b[^.!?\\n]{0,40})\\bautonomous(ly)?\\b',
   '\\bwork (the list|through (it|them|everything)) (alone|on your own)\\b',
   "\\bi'?m away\\b",
 ];
