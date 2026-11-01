@@ -91,6 +91,18 @@ case "$rc:$out" in
   *) bad "inert case under the plugin: rc=$rc out='$(printf '%s' "$out" | head -1)'";;
 esac
 
+#    ... and an instance hook whose file name merely ENDS in a shipped name is no copy
+B="$T/suffix"; make_brain "$B"
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+d["hooks"]={"PreToolUse":[{"matcher":"AskUserQuestion","hooks":[{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/scripts/hooks/autonomous-question-gate.cjs\"","timeout":10}]}]}
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"runs twice"*) bad "autonomous-question-gate.cjs taken for a copy of question-gate.cjs: '$(printf '%s' "$out" | grep -a 'runs twice' | head -1)'";;
+  *) ok "a hook whose file name ends in a shipped name is not a duplicate";;
+esac
+
 # 3) plugin enabled, cache without hooks/ -> the brain must wire them itself (as before 2.0.4)
 B="$T/old"; make_brain "$B"; make_cfg "$T/cfg-old" "$T/cache-old" no
 out="$(CLAUDE_CONFIG_DIR="$T/cfg-old" "$PY" "$HC" "$B" 2>&1)"; rc=$?
