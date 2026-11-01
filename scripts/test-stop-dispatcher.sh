@@ -91,7 +91,9 @@ fi
 # declare it (class-gate, not converted yet) keeps its token, or its cooldown would die.
 case "$OUT" in *'[PREMISE-GATE]'*) bad "PREMISE line still carries its token: $OUT";;
   *'PREMISE '*) ok "PREMISE line without a token (gate reads its echo by label)";; *) bad "PREMISE finding lost: $OUT";; esac
-case "$OUT" in *'[CLASS-GATE]'*) ok "keeps the CLASS-GATE token for a gate that still reads it";; *) bad "CLASS-GATE marker lost";; esac
+# class-gate reads its echo by label since 2026-10-31 too: its line goes out without the token.
+case "$OUT" in *'[CLASS-GATE]'*) bad "CLASS line still carries its token: $OUT";;
+  *'CLASS '*) ok "CLASS line without a token (gate reads its echo by label)";; *) bad "CLASS finding lost: $OUT";; esac
 lines=$(printf '%s' "$OUT" | "$PY" -c "import json,sys; print(len(json.load(sys.stdin)['reason'].splitlines()))")
 [ "$lines" -le 6 ] && ok "compact ($lines lines)" || bad "not compact ($lines lines)"
 
@@ -287,9 +289,60 @@ if [ -f "$ROOT/templates/rules-instance/stop-checks.json" ]; then
   case "$OI" in *"The close report leaves out"*"missing: core#7"*) ok "open-items line names the branch and what is missing";;
     *) bad "open-items line: $OI";; esac
   case "$OI" in *"first reply"*) bad "open-items line still says first reply: $OI";; *) ok "no first-reply wording on a close-report block";; esac
+  # The idle check's template line matches every "Missing:" branch of the gate (2026-10-31: the
+  # gate grew "own-items measurement"; the template matched only "continuation" and the full text went out).
+  printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'AUTONOMOUS-IDLE: this turn ends on a BLOCKED line, but the list behind it was not measured in this turn. Missing: own-items measurement'}))" > "$T/idle-gate.cjs"
+  node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).checks.find(x=>x.marker==="AUTONOMOUS-IDLE");c.cmd=process.argv[2];fs.writeFileSync(process.argv[3],JSON.stringify({checks:[c]}))' \
+    "$(native "$ROOT/templates/rules-instance/stop-checks.json")" "$(native "$T/idle-gate.cjs")" "$(native "$P/.claude/rules/stop-checks.json")"
+  ID=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$TR")" "$(native "$P")" | CLAUDE_PROJECT_DIR="$P" node "$D")
+  case "$ID" in *"missing: own-items measurement"*) ok "idle line names the missing branch in one short line";;
+    *) bad "idle line: $ID";; esac
+  case "$ID" in *"not measured in this turn"*) bad "idle line still carries the full text: $ID";; *) ok "idle line without the gate's full text";; esac
 else
   skip "open-items template line"
 fi
+
+# --- one short line per finding, the cut text in a detail file (2026-10-31) -----------------
+# A gate text of several sentences whose template does not match (the gate's wording moved on)
+# used to go out in full. Now: the first sentence, cut; the full text in .claude-state/stop-detail.txt.
+CFG5="$T/cfg5"; mkdir -p "$CFG5/.claude/rules"
+LONG="$T/long.cjs"
+printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'AUTONOMOUS-IDLE: this turn ends on a BLOCKED line, but the list behind it was not measured. Run the own-items measurement now, do what it lists.\nMissing: own-items measurement'}))" > "$LONG"
+feed5() { printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TR2")" "$(native "$CFG5")" \
+  | CLAUDE_PROJECT_DIR="$(native "$CFG5")" node "$D" 2>/dev/null; }
+printf '{"header":"","checks":[{"label":"IDLE","marker":"IDLE-PROBE","cmd":"%s","mode":"block","extract":"Missing: continuation","template":"never matches"},{"label":"SECOND","marker":"SECOND-PROBE","cmd":"%s","mode":"block","short":"own items not measured"}]}' \
+  "$(native "$LONG")" "$(native "$LONG")" > "$CFG5/.claude/rules/stop-checks.json"
+OUT10="$(feed5)"
+case "$OUT10" in *'Run the own-items'*) bad "a cut line still carries the gate's full text: $OUT10";; *) ok "a template that no longer matches cuts to the first sentence";; esac
+case "$OUT10" in *'IDLE'*'this turn ends on a BLOCKED line'*) ok "the first sentence stays (the finding is not swallowed)";; *) bad "first sentence lost: $OUT10";; esac
+case "$OUT10" in *'SECOND'*'own items not measured'*) ok "a fixed short line replaces the text";; *) bad "short line not used: $OUT10";; esac
+case "$OUT10" in *'Details: .claude-state/stop-detail.txt'*) ok "the reply names the detail file once";; *) bad "no detail pointer: $OUT10";; esac
+grep -q 'Run the own-items measurement now' "$CFG5/.claude-state/stop-detail.txt" 2>/dev/null \
+  && ok "the detail file holds the full text" || bad "detail file lacks the full text"
+case "$OUT10" in *'"reason":"\n'*|*'"reason":"·'*) ok "an empty header prints no header line";; *'STOP-CHECKS'*) bad "empty header still printed";; *) bad "unexpected shape: $OUT10";; esac
+case "$OUT10" in *'"reason":"\n'*) bad "an empty header left an empty first line: $OUT10";; *) ok "no empty first line";; esac
+
+# --- loop brake (2026-10-31): the third block in a row of one check lets the turn end -------------
+# Measured: 27 runs of >= 3 consecutive blocks of one check, the longest 33. A check that judges text
+# the new reply cannot change has no exit; the dispatcher ends the loop loudly instead.
+CFG6="$T/cfg6"; mkdir -p "$CFG6/.claude/rules"
+printf '{"checks":[{"label":"PLAIN","marker":"PLAIN-PROBE","cmd":"%s","mode":"block"}]}' "$(native "$PROBE")" > "$CFG6/.claude/rules/stop-checks.json"
+fb() { printf '{"message":{"role":"user","content":"Stop hook feedback:\\nPLAIN — kind=operator   [PLAIN-PROBE]"}}\n'; }
+said() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$1"; }
+feed6() { printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$1")" "$(native "$CFG6")" \
+  | CLAUDE_PROJECT_DIR="$(native "$CFG6")" node "$D" 2>/dev/null; }
+L1="$T/loop1.jsonl"; { printf '%s\n' '{"message":{"role":"user","content":"frage"}}'; said a; fb; said b; } > "$L1"
+case "$(feed6 "$L1")" in *'"decision":"block"'*) ok "a second block in a row still blocks";; *) bad "braked too early: $(feed6 "$L1")";; esac
+L2="$T/loop2.jsonl"; { cat "$L1"; fb; said c; } > "$L2"
+OUT11="$(feed6 "$L2")"
+case "$OUT11" in *'"decision"'*) bad "the third block in a row still blocks: $OUT11";;
+  *'PLAIN'*'loop brake'*) ok "the third block in a row ends the turn with a loud line";; *) bad "loop brake silent: $OUT11";; esac
+grep -q '"marker":"PLAIN-PROBE"' "$CFG6/.claude-state/stop-loops.jsonl" 2>/dev/null && ok "the loop is recorded" || bad "loop not recorded"
+L3="$T/loop3.jsonl"; { cat "$L2"; printf '%s\n' '{"message":{"role":"user","content":"weiter"}}'; said d; } > "$L3"
+case "$(feed6 "$L3")" in *'"decision":"block"'*) ok "an operator prompt resets the count";; *) bad "count not reset by a prompt";; esac
+L4="$T/loop4.jsonl"; { printf '%s\n' '{"message":{"role":"user","content":"frage"}}'; said a; fb; said b
+  printf '%s\n' '{"message":{"role":"user","content":"Stop hook feedback:\nOTHER — x   [OTHER-PROBE]"}}'; said c; fb; said d; } > "$L4"
+case "$(feed6 "$L4")" in *'"decision":"block"'*) ok "a feedback without the check breaks its streak";; *) bad "streak not broken by another check's feedback";; esac
 
 echo
 [ "$fail" -eq 0 ] && echo "stop-dispatcher fixtures: ALL passed" || echo "FAILURE"

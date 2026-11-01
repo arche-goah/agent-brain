@@ -379,6 +379,11 @@ Prose is not the contract; `suite-check.py` is. Sections 1–11 describe what it
   one file per brain recording which repo is pinned at which version and commit. Run it
   without arguments to see drift, with `--write` to record an intended state. It is
   instance data — each person keeps their own; the suites are the shared part.
+  Optional top-level field `"owner": "<GitHub org or account>"` (kept by `--write`): the
+  owner whose open PRs, code-scanning alerts and shared-memory repo the session start asks
+  GitHub about. Without it `scripts/eco_owner.py` takes the org of the first marketplace in
+  the settings when the gh login can see that repo (private, or the login may write to it),
+  else the gh login itself; a template placeholder is never an owner.
 
 **Changing an existing shared repo** therefore means: change it, keep `suite-check` green,
 add a CHANGELOG line with the reason, tag if the interface moved, and let the other side
