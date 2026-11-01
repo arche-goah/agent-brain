@@ -329,6 +329,25 @@ function siblingQuestionSets(tp, toolUseId) {
 }
 
 /** PreToolUse on the question tool: an aged question is measured before it is asked again. */
+/** Ledger ids named in the questions whose `check:` passes now (core/scripts/ledger-reconcile.py --ids).
+ *  Candidates are slugs of three or more parts; the script answers only for ids its registered ledgers carry.
+ *  Fails open: no interpreter, a timeout or an unreadable answer = no hit. */
+function doneLedgerIds(input, qs) {
+  const text = qs.map((q) => [q.question, q.header, ...((q.options || []).map((o) => `${o.label || ''} ${o.description || ''}`))].join(' ')).join(' ');
+  const ids = [...new Set(text.match(/\b[a-z0-9]+(?:-[a-z0-9]+){2,}\b/g) || [])];
+  if (!ids.length) return [];
+  const r = root(input.cwd);
+  const script = path.join(__dirname, '..', 'scripts', 'ledger-reconcile.py');
+  const { spawnSync } = require('child_process');
+  // python3 first; on Windows it can be the Store stub (OS-17), so an answer that is not JSON tries `python`.
+  for (const py of ['python3', 'python']) {
+    const p = spawnSync(py, [script, '--root', r, '--ids', ids.join(',')], { encoding: 'utf8', timeout: 8000, windowsHide: true });
+    let res; try { res = JSON.parse(String(p.stdout || '').trim().split('\n').pop()); } catch (e) { continue; }
+    return Object.entries(res || {}).filter(([, v]) => v === 'pass').map(([k]) => k);
+  }
+  return [];
+}
+
 function preTool(input) {
   if (String(input.tool_name || '') !== 'AskUserQuestion') return;
   const qs = ((input.tool_input || {}).questions || []);
@@ -378,6 +397,24 @@ function preTool(input) {
       }));
       return;
     }
+  }
+  // A question that names a ledger entry runs that entry's check first (operator 2026-10-31, question tool:
+  // "Ja, Kern-PR bauen"). Measured twice that evening on the macOS instance: points taken from a register and
+  // from a three-hour-old start report went to the operator as decisions while their checks were green - 2 of 4,
+  // then 4 of 4 already done. A green check = the item is done: report it, do not ask.
+  const done = doneLedgerIds(input, qs);
+  if (done.length) {
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason:
+          `QUESTION-GATE: this question names ledger item(s) whose check passes now: ${done.slice(0, 4).join(', ')}. `
+          + 'A green check means the item is done - tick it with the evidence and report it; ask only what is still open. '
+          + '(Measured 2026-10-31: points from an older report reached the operator although they were done.)',
+      },
+    }));
+    return;
   }
   const state = load(root(input.cwd));
   const hits = [];
