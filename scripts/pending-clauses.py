@@ -16,14 +16,22 @@ subject is in its history — squash merges carry the PR number there. In the pi
 the clause describes the past. A pending line without a PR number is listed for a reading.
 Reports only, never edits: the wording of a rule is the instance's.
 
+Second kind (2026-10-31): a condition on a DATE — "until 2026-10-24", `"until": "2026-10-24"`,
+"expires 2026-11-07". Measured on an instance's coherence scan 2026-10-25: a waiting line past its
+date stood in a rule file, read as current. A date word followed by an ISO date before today is
+EXPIRED. Files that carry their own dated reader are left to it (local-machinery.json — alpha
+expiry in `local-machinery.py`; open-items.json — waiting lines in `open-items.py`).
+
 Patterns: English built in; other languages are instance data in
-`.claude/rules/pending-clauses.json` ({"patterns": ["<regex>", ...]}, template shipped).
+`.claude/rules/pending-clauses.json` ({"patterns": ["<regex>", ...], "date_words": ["<regex>", ...]},
+template shipped).
 
 Usage: pending-clauses.py [--repo <instance root>] [--core <core checkout>]
 Output: nothing when no pending clause is found; otherwise one line per clause and a
 summary. Exit 0 always (a report, not a gate); 2 = unusable arguments.
 """
 import argparse
+import datetime
 import json
 import re
 import subprocess
@@ -39,15 +47,35 @@ BUILTIN = [
 ]
 
 
-def load_patterns(repo):
-    pats = list(BUILTIN)
+# Only FORWARD forms: a bare "until <date>" in prose is mostly history ("the value that stood here until
+# 2026-10-27 …"; measured on the macOS instance 2026-10-31: all three bare hits were such narration).
+DATE_WORDS = [r"\"(?:until|expires|expiry|due|waiting_until)\"", r"\bwaiting-until\b",
+              r"\b(?:valid|runs?|alpha|holds?|waits?|stays?|active|deferred|parked|open) until\b",
+              r"\bexpires?\b", r"\bexpiry\b", r"\bdue (?:on|by)\b", r"\bdrop (?:it |this )?(?:on|after|by)\b"]
+# Files whose dates another reader measures already (see the docstring).
+OWN_DATE_READER = {"local-machinery.json", "open-items.json"}
+
+
+def instance_data(repo):
     f = repo / ".claude" / "rules" / "pending-clauses.json"
     if f.is_file():
         try:
-            pats += [p for p in json.loads(f.read_text(encoding="utf-8")).get("patterns", []) if isinstance(p, str)]
+            d = json.loads(f.read_text(encoding="utf-8"))
+            return d if isinstance(d, dict) else {}
         except (OSError, ValueError) as e:
             print(f"pending-clauses: {f} unreadable ({e}) — built-in patterns only", file=sys.stderr)
+    return {}
+
+
+def load_patterns(repo):
+    pats = list(BUILTIN) + [p for p in instance_data(repo).get("patterns", []) if isinstance(p, str)]
     return [re.compile(p, re.IGNORECASE) for p in pats]
+
+
+def load_date_pattern(repo):
+    words = DATE_WORDS + [w for w in instance_data(repo).get("date_words", []) if isinstance(w, str)]
+    # the word, then (within a few characters: quotes, a colon, "on") an ISO date
+    return re.compile(r"(?:" + "|".join(words) + r")[\"':\s]{0,6}(?:on\s+)?(\d{4}-\d{2}-\d{2})", re.IGNORECASE)
 
 
 def rule_files(repo):
@@ -78,6 +106,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--repo", default=".")
     ap.add_argument("--core", default=None)
+    ap.add_argument("--today", default=None, help="YYYY-MM-DD instead of the clock (fixtures)")
     a = ap.parse_args()
     repo = Path(a.repo).resolve()
     core = Path(a.core).resolve() if a.core else repo / "core"
@@ -90,7 +119,9 @@ def main():
     except (OSError, subprocess.SubprocessError):
         tag = "?"
     pats = load_patterns(repo)
-    cache, stale, unread = {}, [], []
+    datep = load_date_pattern(repo)
+    today = a.today or datetime.date.today().isoformat()
+    cache, stale, unread, expired = {}, [], [], []
     for f in rule_files(repo):
         try:
             lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -98,6 +129,10 @@ def main():
             continue
         rel = f.relative_to(repo).as_posix()
         for i, line in enumerate(lines, 1):
+            if f.name not in OWN_DATE_READER:
+                past = sorted({d for d in datep.findall(line) if d < today})
+                if past:
+                    expired.append(f"  EXPIRED {rel}:{i} — condition date {', '.join(past)} is past: {line.strip()[:110]}")
             if not any(p.search(line) for p in pats):
                 continue
             prs = [int(x) for x in re.findall(r"#(\d{1,6})\b", line)]
@@ -115,13 +150,13 @@ def main():
                 # A silent drop here would hide exactly the clauses this tool exists for.
                 unread.append(f"  READ  {rel}:{i} — {', '.join('#' + str(n) for n in prs)} not provably in the "
                               f"pin (open, or merged via a candidate branch): {snippet}")
-    if not stale and not unread:
+    if not stale and not unread and not expired:
         return 0
-    print(f"pending clauses against the pinned core ({tag}):")
-    for l in stale + unread:
+    print(f"pending clauses against the pinned core ({tag}) and today ({today}):")
+    for l in expired + stale + unread:
         print(l)
-    print(f"pending-clauses: {len(stale)} stale, {len(unread)} to read — turn each into the measured state "
-          f"or drop the condition (the rule's wording is the instance's)")
+    print(f"pending-clauses: {len(expired)} expired, {len(stale)} stale, {len(unread)} to read — turn each into the "
+          f"measured state or drop the condition (the rule's wording is the instance's)")
     return 0
 
 

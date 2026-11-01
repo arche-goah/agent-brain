@@ -74,7 +74,16 @@ function rx(builtins, extra) {
   return new RegExp(list.join('|'), 'iu');
 }
 
-/** The four word sets of a brain: on, off, ask, yes. */
+/**
+ * The four word sets of a brain (on, off, ask, yes) and its start state. `initial_mode` in the
+ * instance data is the mode a session has before the operator's first word: "autonomous" or the
+ * default "interactive". Measured 2026-11-01 on the macOS instance: the operator's standing word
+ * ("run fully autonomously until I ask what is pending for me", translated, 2026-10-26) stood only
+ * in prose; every session began interactive, a start prompt with no on-word left it there, and a
+ * mid-run question reached the operator who believed the run autonomous. The words still switch:
+ * an off-word or a question for what is open ends the mode, an on-word or a yes to the mode
+ * question sets it again.
+ */
 function words(cwd) {
   const dir = cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const ap = readJson(path.join(dir, '.claude', 'rules', 'autonomous-patterns.json')) || {};
@@ -84,6 +93,7 @@ function words(cwd) {
     off: rx(BUILTIN_OFF, ap.off_patterns),
     ask: rx(BUILTIN_ASK, oi.ask_patterns),
     yes: rx(BUILTIN_YES, ap.yes_patterns),
+    initial: String(ap.initial_mode || '').toLowerCase() === 'autonomous',
   };
 }
 
@@ -95,6 +105,17 @@ function words(cwd) {
  */
 function ordersOn(on, text) {
   return (text.match(/[^.!?\n]+[.!?]*/g) || []).some((s) => !/\?\s*$/.test(s) && on.test(s));
+}
+
+/**
+ * The mirror of ordersOn: a question-tool question is the MODE question only when the on-word stands in its
+ * question sentence itself. Measured 2026-10-31 on the macOS instance: "… The autonomous gate held the edit
+ * back; the patch is in <file>. Shall I apply it now?" was read as the mode question, the operator's "yes,
+ * apply it" switched the moment back to autonomous, and the gate then held the very edit the operator had
+ * just agreed to.
+ */
+function asksMode(on, question) {
+  return (question.match(/[^.!?\n]+[.!?]*/g) || []).some((s) => /\?\s*$/.test(s) && on.test(s));
 }
 
 function promptText(msg) {
@@ -169,7 +190,7 @@ function promptModes(transcriptPath, cwd) {
   let lines;
   try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return []; }
   const out = [];
-  let state = false;
+  let state = w.initial;
   const askIds = new Set();
   const known = intents(transcriptPath, cwd);
   for (const line of lines) {
@@ -195,7 +216,7 @@ function promptModes(transcriptPath, cwd) {
         // A yes/no to the mode question decides by yes; an answer to any other question is read
         // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
         // "yes, work through them autonomously" to "shall I handle them?" set nothing).
-        if (w.on.test(q)) state = w.yes.test(a) && !w.off.test(a);
+        if (asksMode(w.on, q)) state = w.yes.test(a) && !w.off.test(a);
         else if (w.off.test(a)) state = false;
         else if (ordersOn(w.on, a)) state = true;
         else continue;
@@ -222,10 +243,10 @@ function promptModes(transcriptPath, cwd) {
 /** true when the operator's autonomous order is in force at the end of the transcript. */
 function autonomousMode(transcriptPath, cwd) {
   const modes = promptModes(transcriptPath, cwd);
-  return modes.length ? modes[modes.length - 1].autonomous : false;
+  return modes.length ? modes[modes.length - 1].autonomous : words(cwd).initial;
 }
 
-module.exports = { autonomousMode, promptModes, words };
+module.exports = { autonomousMode, promptModes, words, asksMode };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);
