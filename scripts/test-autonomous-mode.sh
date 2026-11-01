@@ -156,5 +156,15 @@ f="$T/sess-d.jsonl"; { tuser 2026-10-31T15:40:00Z "work through the list autonom
 irec 2026-10-31T16:40:05Z sess-d true false > "$IC/.claude-state/intent-classifier.jsonl"
 mode "an ask without an order still ends the run (control)" "$f" "$IC" interactive
 
+# A belief about the past is no order (2026-11-01, macOS instance, the operator's complaint).
+f="$T/belief1.jsonl"; { user "status?"; user "you switched to interactive, right? I thought it was autonomous and now you hang in a question."; } > "$f"
+mode "'I thought it was autonomous' is no order" "$f" "$EN" interactive
+f="$T/belief2.jsonl"; { user "status?"; user "I assumed you were working autonomously."; } > "$f"
+mode "'I assumed … autonomously' is no order" "$f" "$EN" interactive
+f="$T/belief3.jsonl"; { user "I was away, work through it autonomously."; } > "$f"
+mode "'I was away, … autonomously' still orders it (control)" "$f" "$EN" autonomous
+f="$T/belief4.jsonl"; { user "I thought so. Now work autonomously."; } > "$f"
+mode "a belief in an earlier sentence does not cut the order (control)" "$f" "$EN" autonomous
+
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }
