@@ -245,6 +245,21 @@ case "${CI_WATCH_STUB:?}" in
                     elif [[ "${1:-}" == api ]]; then echo '[]'
                     elif [[ -f "$f" ]]; then echo '[{"bucket":"pending","name":"lint"}]'
                     else echo '[{"bucket":"pass","name":"lint"}]'; fi ;;
+  # 2026-10-31: green CodeQL checks, but the repo's `CI` workflow never ran on the head (the PR
+  # conflicted, GitHub created no pull_request run). pr_noci_run: never appears = named UNKNOWN;
+  # pr_noci_late: the run appears on the second read = green; pr_noci_nowf: the repo has no
+  # active `CI` workflow = the old verdict (green).
+  pr_noci_run|pr_noci_late|pr_noci_nowf)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *actions/workflows* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_noci_nowf ]]; then echo 0; else echo 1; fi
+                    elif [[ "$*" == *actions/runs*select*CI* ]]; then
+                      if [[ "$CI_WATCH_STUB" == pr_noci_late && -f "$f" ]]; then echo 1; else touch "$f"; echo 0; fi
+                    elif [[ "$*" == *actions/runs* ]]; then echo 0
+                    elif [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo UNKNOWN
+                    elif [[ "${1:-}" == api ]]; then echo '[]'
+                    else echo '[{"bucket":"pass","name":"Analyze (python)"},{"bucket":"pass","name":"Analyze (actions)"}]'; fi ;;
   # ...and a pending entry that is a commit STATUS (no check-run of that name) keeps waiting.
   pr_stale_status)  if [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
                     elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
@@ -411,6 +426,12 @@ check "green checks + real conflict = unknown(2), NOT green"          pr_green_c
 grep -q "STALE" "$TMP/out" && echo "  OK   green-but-conflicting verdict names stale checks" \
   || { echo "  FAIL verdict does not explain stale green checks"; fails=$((fails+1)); }
 check "green checks + stale conflict read heals to green"             pr_green_conflict_stale 0 pr 12
+check "green checks, CI workflow never ran on the head = named unknown(2)" pr_noci_run 2 pr 12 30
+grep -q "has no run on head" "$TMP/out" && echo "  OK   missing-run verdict names the workflow and the head" \
+  || { echo "  FAIL missing-run verdict unnamed"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
+check "CI workflow run appears on the second read = GREEN"            pr_noci_late 0 pr 12 30
+check "repo without an active CI workflow = old verdict, GREEN"       pr_noci_nowf 0 pr 12 30
+CI_WATCH_REQUIRE_WORKFLOW='' check "required workflow switched off = GREEN" pr_noci_run 0 pr 12 30
 check "ref (tag) success"               ref_green  0 ref v9.9.9
 check "ref (tag) failure"               ref_red    1 ref v9.9.9
 check "ref never appears = timeout(2)"  ref_absent 2 ref v9.9.9 2

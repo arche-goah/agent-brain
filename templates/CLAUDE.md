@@ -62,6 +62,9 @@ do NOT delete them, otherwise the rules only sit on disk instead of in context):
 
 `config/ecosystem.json` = which state of which suite runs here (repo × commit ×
 version × requires_core). Maintenance: `python3 core/scripts/ecosystem-sync.py --write`.
+Its optional `"owner"` names the GitHub org or account whose open PRs the session start
+lists (unset: `core/scripts/eco_owner.py` decides — your marketplace's org if your login
+can see it, else your own account).
 Before every hand-over/take-over: `core/scripts/handover-gate.sh`.
 
 ## Memory
