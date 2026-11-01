@@ -73,6 +73,21 @@ check "no correction in the prompt" "$T/t7.jsonl" allow "$CWD"
 check "a correction only quoted" "$T/t8.jsonl" allow "$CWD"
 { user "go"; asst "ok"; user "why is the fan loud?"; asst "The fan curve."; } > "$T/t9.jsonl"
 check "a why-question about the work, not about the agent" "$T/t9.jsonl" allow "$CWD"
+# --- pasted text is not the operator's correction (turn-kind.cjs operatorWords, measured 2026-10-28):
+# a pasted e-mail or log that says "why did you" / "something went wrong" opens no inquiry
+MAIL=$'<pasted_content id="81eb">\nHi, why did you cancel the booking? Something went wrong on our side.\n</pasted_content id="81eb">'
+{ user "go"; asst "ok"; user "$MAIL"$'\nplease draft a reply'; asst "Drafted."; } > "$T/t9a.jsonl"
+check "a correction only inside a pasted block (a)" "$T/t9a.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "$MAIL"; asst "Read it."; } > "$T/t9b.jsonl"
+check "a prompt that is only a paste" "$T/t9b.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "$MAIL"$'\nsomething went wrong with your last draft'; asst "Redrafted."; } > "$T/t9c.jsonl"
+check "the correction outside the pasted block (b)" "$T/t9c.jsonl" block "$CWD"
+P1=$'<pasted_content id="a1f0">\nlog one: fatal error\n</pasted_content id="a1f0">\n'
+P2=$'\n<pasted_content id="b2e1">\nlog two: why did you restart?\n</pasted_content id="b2e1">'
+{ user "go"; asst "ok"; user "${P1}compare these two logs${P2}"; asst "Compared."; } > "$T/t9d.jsonl"
+check "two pasted blocks, plain words between them (c)" "$T/t9d.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "${P1}why did you skip the second one?${P2}"; asst "Reading it now."; } > "$T/t9e.jsonl"
+check "two pasted blocks, the correction between them (c)" "$T/t9e.jsonl" block "$CWD"
 # --- turn mechanics
 { user "go"; asst "ok"; user "something went wrong"; asst "Looking."; user "<task-notification>ci done</task-notification>"; asst "CI green."; } > "$T/t10.jsonl"
 check "a notification turn after the correction (dispatcher says notification)" "$T/t10.jsonl" allow "$CWD" false notification

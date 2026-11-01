@@ -55,7 +55,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt } = require('./turn-kind.cjs');
+const { isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords } = require('./turn-kind.cjs');
 const { autonomousMode } = require('./autonomous-mode.cjs');
 const { PRE_COMMIT, closeOpenEnds } = require('./close-stamp.cjs');
 
@@ -384,7 +384,8 @@ function relabelled(t, cwd, sessionId) {
   // The first turn has its own check below.
   if (t.prompts === 1) return null;
   const closing = (t.lastCmds || []).some((c) => PRE_COMMIT.test(c));
-  const asked = patterns(cwd, 'ask').test(t.lastPrompt || '');
+  // A pasted ticket that asks "anything open?" is not the operator asking (operatorWords, 2026-10-28).
+  const asked = patterns(cwd, 'ask').test(operatorWords(t.lastPrompt));
   if (!closing && !asked && !patterns(cwd, 'nothing').test(t.last)) return null;
   // An item this close already carries as an `open end:` line of its session-log entry
   // (close-stamp.cjs, skill session-close step 4) is named — on record, where the next session
@@ -450,8 +451,8 @@ function judge(input) {
     // asking again is a disguised stop; the count still has to be said.
     // An autonomous order is a go-ahead too, and there the question would be the very stop the
     // rule forbids (autonomous-mode.cjs; this gate judges the first turn only, so the newest
-    // prompt is the first one).
-    if (!patterns(cwd, 'offer').test(text) && !patterns(cwd, 'goahead').test(t.first)
+    // prompt is the first one). A go-ahead inside pasted text is not the operator's (operatorWords).
+    if (!patterns(cwd, 'offer').test(text) && !patterns(cwd, 'goahead').test(operatorWords(t.first))
       && !autonomousMode(input.transcript_path, cwd)) missing.push('one question whether to handle them');
   }
   // A standing approval replaces the question with a report; asking anyway is not wrong.
