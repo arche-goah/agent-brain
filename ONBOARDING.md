@@ -225,6 +225,10 @@ Two opt-in pieces, both off until the brain has their file:
   NOT `git submodule update --remote core`: that tracks `main` instead of the pin.
 - Own changes to a suite or to the core: branch in that repo, PR, CI green, merge,
   tag, marketplace pin. Never in the plugin cache, never as a copy in your brain.
+  **Without write access to this repo:** never fix the core locally and never work in a
+  fork — open an issue (bug report, feature request, or local-deviation request) and it
+  is fixed for every brain. `CONTRIBUTING.md` says how, and how to declare a local
+  deviation meanwhile so your session start does not report it as undeclared.
   The working checkout belongs at `~/Projects/<repo-name>` — the repo's name, no
   abbreviation, so `ecosystem.json` entries match their repos and the next person
   finds the checkout.

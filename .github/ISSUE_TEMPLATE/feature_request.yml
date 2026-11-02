@@ -1,0 +1,37 @@
+name: Feature request
+description: A capability the core should have, with a target that can be tested. A complete request can be built by anyone - you do not have to build it.
+title: "<area>: <one line - what the core should do>"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The target is the contract: if it is not testable, it is not a request yet. No personal names or machine names - this repo is public.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: The situation you are in when you need this, and why the existing helpers, gates or skills do not cover it (name what you tried).
+    validations:
+      required: true
+  - type: textarea
+    id: target
+    attributes:
+      label: Target - unambiguous and testable
+      description: "Given <brain state>, running <helper/script> does <result>."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and not in scope
+      description: Optional. What is explicitly out, so the builder does not widen it.
+  - type: dropdown
+    id: builder
+    attributes:
+      label: Who builds it
+      options:
+        - I will (I have write access - a branch in this repo follows)
+        - open for a maintainer
+    validations:
+      required: true

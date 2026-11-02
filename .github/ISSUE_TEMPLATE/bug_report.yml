@@ -1,0 +1,65 @@
+name: Bug report
+description: Something a core helper, gate or script does wrong in your brain. Fill every required field and anyone can build the fix without asking back.
+title: "<helper or script>: <one line - what is wrong>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not fix it inside your brain's `core/` checkout: `brain-update.sh` resets it, and the fix would reach nobody else.
+        Raw values, not adjectives: paste tool output and error text verbatim. No personal names or machine names - this repo is public.
+  - type: input
+    id: version
+    attributes:
+      label: Core version and channel
+      description: The core version your session start prints, and the plugin channel (`brain-core` stable or `brain-core-next` beta).
+      placeholder: "core v2.1.2 · brain-core-next"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and version, shell (Git Bash, zsh, …), Claude Code version.
+      placeholder: "Windows 11 23H2 · Git Bash · Claude Code 2.1.310"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you did and what happened, in one paragraph. Name the helper, hook or script.
+    validations:
+      required: true
+  - type: textarea
+    id: measured
+    attributes:
+      label: Measured
+      description: Output and error text verbatim (session-start lines, hook messages, the script's output).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What should have happened - as a statement someone can test.
+    validations:
+      required: true
+  - type: textarea
+    id: replication
+    attributes:
+      label: Replication
+      description: Steps someone else can run in a fresh brain to see it.
+      placeholder: |
+        1. fresh brain via `scripts/bootstrap-brain.sh`
+        2. ...
+    validations:
+      required: true
+  - type: checkboxes
+    id: local
+    attributes:
+      label: Local changes
+      options:
+        - label: My brain's `core/` checkout has no local edits (`git -C core status --short` is empty)
+          required: true
