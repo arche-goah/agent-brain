@@ -9,3 +9,6 @@
     is held as before. Fixture +3 (19/19).
   - `scripts/brain-scan-prep.py` suggests the partial run, with its `since`, when the last register is under 14 days old.
     Fixture +1.
+  - The return channel's recurrence count no longer stops at a bare tick: a ledger entry ticked without a `check:` line is
+    `done-unproven` and keeps counting toward the third-time decision (on 2026-10-30 seven keys the channel called done
+    came back; the six that returned after a tick had no check). An index exit `done-already` stays done. Fixture +2.

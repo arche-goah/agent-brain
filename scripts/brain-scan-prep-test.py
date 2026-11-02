@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as d:
     report(r, "2026-10-01", [("gone", "ai-does-it"), ("tracked", "ai-does-it"), ("fixed", "ai-does-it"),
                              ("dropme", "drop"), ("settled", "operator-decision"), ("already", "done-already")])
     report(r, "2026-10-09", [("gone", "ai-does-it")])  # today's own report: never "previous"
-    orders(r, "- [ ] **tracked**\n  id: tracked\n\n- [x] **fixed**\n  id: fixed\n\n"
+    orders(r, "- [ ] **tracked**\n  id: tracked\n\n- [x] **fixed**\n  id: fixed\n  check: test -f x\n\n"
               "- [ ] **settled**\n  id: settled\n  decided 2026-10-05: accepted as is\n")
     code, summ, rc, mach, head = run(r, "--skip-machine")
     check(code == 0, "exit 0")
@@ -114,9 +114,14 @@ with tempfile.TemporaryDirectory() as d:
     _, summ, _, _, _ = run(t, "--skip-machine")
     check(any("came back a third time" in l for l in deep(summ, "coherence-scan")),
           "three appearances without a fix suggest a coherence-scan")
+    # 2026-11-02 (audit-audit): a tick without a check line is a claim — the recurrer stays a decision
     orders(t, "- [x] **again**\n  id: again\n")
+    _, summ, rc2, _, _ = run(t, "--skip-machine")
+    check("again" in summ.get("decision_due", []) and state(rc2, "again") == "done-unproven",
+          "a recurrer ticked without a check stays decision-due (done-unproven)")
+    orders(t, "- [x] **again**\n  id: again\n  check: test -f fixed-file\n")
     _, summ, _, _, _ = run(t, "--skip-machine")
-    check("again" not in summ.get("decision_due", []), "a fixed recurrer is no decision")
+    check("again" not in summ.get("decision_due", []), "a fixed recurrer with its check is no decision")
 
     # ── deep check: new dated rules, 5 fires, 4 stays silent ────────────────
     for n, expect in ((5, True), (4, False)):
