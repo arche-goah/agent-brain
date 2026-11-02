@@ -66,6 +66,11 @@ probe "secret-guard/read .env" secret-guard.cjs \
   '{"tool_name":"Read","tool_input":{"file_path":"'"$FG"'/.env"},"cwd":"'"$FG"'"}' block
 probe "secret-guard/read a doc" secret-guard.cjs \
   '{"tool_name":"Read","tool_input":{"file_path":"'"$FG"'/README.md"},"cwd":"'"$FG"'"}' allow
+# Monitor streams a shell command's output into context like Bash does.
+probe "secret-guard/Monitor tail .env" secret-guard.cjs \
+  '{"tool_name":"Monitor","tool_input":{"command":"tail -f .env"},"cwd":"'"$FG"'"}' block
+probe "secret-guard/Monitor tail a log" secret-guard.cjs \
+  '{"tool_name":"Monitor","tool_input":{"command":"tail -f build.log"},"cwd":"'"$FG"'"}' allow
 
 # --- mechanism-guard: a documented path exists, so the shortcut is refused ---
 # The RULES are instance data, so the fixture brings its own instead of depending on
