@@ -92,6 +92,30 @@ sprobe "OKs at an older head before a real commit" "$M" block "$D"
 cpr "$OKS" '[{"oid":"abc1234def","messageHeadline":"fix: x"},{"oid":"eee1111bbb","messageHeadline":"fix: y"},{"oid":"fff0000aaa","messageHeadline":"Merge branch '"'"'main'"'"' into fix/x"}]'
 sprobe "update-branch merge after a real commit past the OK" "$M" block "$D"
 
+# Third + fourth check (2026-10-26, merge table conditions "CI green" and "open own findings"):
+# gh merges on red CI where no branch protection asks, and nothing read an open own finding.
+rpr() { node -e 'process.stdout.write(JSON.stringify({body: "feat: x", statusCheckRollup: JSON.parse(process.argv[1]), comments: JSON.parse(process.argv[2]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }
+rpr '[{"name":"lint","status":"COMPLETED","conclusion":"SUCCESS"},{"name":"tag","status":"COMPLETED","conclusion":"SKIPPED"}]' '[]'
+probe "CI green, skipped check (control)" "$M" allow
+rpr '[]' '[]'
+probe "no CI at all (control)" "$M" allow
+rpr '[{"name":"lint","status":"COMPLETED","conclusion":"FAILURE"}]' '[]'
+probe "CI red" "$M" block
+probe "CI red, marker says why" "$M # CI-RED-OK: flaky runner, rerun green on main" allow
+rpr '[{"name":"lint","status":"IN_PROGRESS","conclusion":""}]' '[]'
+probe "CI still running" "$M" block
+rpr '[{"context":"ci/legacy","state":"FAILURE"}]' '[]'
+probe "a failed commit status" "$M" block
+rpr '[]' "[\"**Finding:** the guard misses \`x\` <!-- instance-key: $KEY -->\"]"
+probe "own finding open" "$M" block
+probe "own finding, marker names where it closed" "$M # FINDING-CLOSED: follow-up PR #9" allow
+rpr '[]' "[\"Finding: x <!-- instance-key: $KEY -->\", \"Fixed at head, OK <!-- instance-key: $KEY -->\"]"
+probe "own finding, later own OK" "$M" allow
+rpr '[]' '["Finding: x <!-- instance-key: 0123456789 -->"]'
+probe "another instance's finding (not this gate's)" "$M" allow
+rpr '[]' "[\"Windows OK; leak-scan 0 findings, the old pattern fails both cases <!-- instance-key: $KEY -->\"]"
+probe "an OK that mentions findings and fails in prose (control)" "$M" allow
+
 echo
 [ "$fail" -eq 0 ] && echo "test-merge-request-gate: all checks passed" || echo "test-merge-request-gate: FAILURES"
 exit "$fail"

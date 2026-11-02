@@ -24,6 +24,10 @@
  * sha. Required OS: `required_os` in that file, default macOS + Windows. Otherwise the merge
  * names itself a beta: `# BETA-MERGE: <system checked>, <other> open` in the call.
  *
+ * THIRD CHECK — CI green at the head (`# CI-RED-OK: <why>` overrides); FOURTH CHECK — no own
+ * finding left open in the thread (`# FINDING-CLOSED: <where>` overrides). Both read merge-table
+ * conditions that stood in prose only (2026-10-26); see ciNotGreen / findingOpen below.
+ *
  * Unreadable PR (no repo or number in the command, gh fails) = allow, said on stderr — the
  * merge itself fails on the same cause. No instance key = allow, said on stderr.
  * MERGE_REQUEST_GATE_GH / MERGE_REQUEST_GATE_OS / MERGE_REQUEST_GATE_DEPS are fixture seams
@@ -53,7 +57,7 @@ function target(cmd) {
 
 function readPr(t) {
   const fake = process.env.MERGE_REQUEST_GATE_GH;
-  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid,commits'];
+  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid,commits,statusCheckRollup'];
   const out = execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
   return JSON.parse(out);
@@ -133,7 +137,7 @@ function gate(input) {
   if (!t) { console.error('merge-request-gate: no repo and number in the command, nothing checked'); return 0; }
   let pr;
   try { pr = readPr(t); } catch (e) { console.error('merge-request-gate: PR unreadable, nothing checked'); return 0; }
-  const blocked = requestOpen(pr, key, t);
+  const blocked = requestOpen(pr, key, t) || ciNotGreen(pr, t, cmd) || findingOpen(pr, key, t, cmd);
   if (blocked) return blocked;
   if (/#\s*BETA-MERGE:\s*\S/.test(cmd)) {
     console.error('merge-request-gate: merged as a beta (BETA-MERGE) - say in the PR which system was checked and which is open');
@@ -173,6 +177,56 @@ function requestOpen(pr, key, t) {
   return 2;
 }
 
+/**
+ * Third check — CI green at the head (merge table condition 3). Measured 2026-10-26: in a repo
+ * without branch protection `gh pr merge` goes through on red CI; nothing read the condition.
+ * Red = a check run that concluded failure/cancelled/timed out/action required, or a status
+ * that failed; pending = a check run not completed, a status pending. No checks at all = the repo
+ * has no CI, nothing to wait for. Override, said in the call: `# CI-RED-OK: <why>`.
+ */
+const RED = new Set(['FAILURE', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
+function ciNotGreen(pr, t, cmd) {
+  if (/#\s*CI-RED-OK:\s*\S/.test(cmd)) return 0;
+  const checks = Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup : [];
+  const bad = checks.filter((c) => RED.has(String(c.conclusion || c.state || '').toUpperCase()) ||
+    (c.status ? String(c.status).toUpperCase() !== 'COMPLETED' : ['PENDING', 'EXPECTED'].includes(String(c.state || '').toUpperCase())));
+  if (!bad.length) return 0;
+  console.error(
+    `BLOCKED (merge-request-gate): ${t.repo}#${t.nr} - CI is not green at the head: ` +
+    bad.slice(0, 5).map((c) => `${c.name || c.context || '?'}=${c.conclusion || c.state || c.status}`).join(', ') + '.\n' +
+    'Wait for the run (scripts/ci-watch.sh pr <repo> <nr>) and merge on green. A red check that does not ' +
+    'concern this PR: add `# CI-RED-OK: <why>` to the call and say it in the PR.\n' +
+    'Why: 2026-10-26, the merge table names "CI green", and gh merges on red CI where no branch protection asks.');
+  return 2;
+}
+
+/**
+ * Fourth check — an own finding still open (merge table: "open own findings hold the merge").
+ * A FINDING: an own comment (this instance's key) with a line that starts with "finding" or
+ * "FAIL". Closed by a LATER own comment that says OK and is no finding itself.
+ * Override, said in the call: `# FINDING-CLOSED: <where>`.
+ */
+const FINDING_RX = /^\s*(?:[-*>]\s*)*(?:\*\*)?(?:finding|FAIL)\b/im;
+function findingOpen(pr, key, t, cmd) {
+  if (/#\s*FINDING-CLOSED:\s*\S/.test(cmd)) return 0;
+  const mine = new RegExp(`<!--\\s*instance-key:\\s*${key}\\s*-->`, 'i');
+  let open = null;
+  for (const c of pr.comments || []) {
+    const b = String(c.body || '');
+    if (!mine.test(b)) continue;
+    if (FINDING_RX.test(b)) open = b;
+    else if (OK_RX.test(b)) open = null;
+  }
+  if (!open) return 0;
+  console.error(
+    `BLOCKED (merge-request-gate): ${t.repo}#${t.nr} - an own finding is still open:\n` +
+    '  > ' + (open.split(/\r?\n/).find((l) => FINDING_RX.test(l)) || '').trim().slice(0, 200) + '\n' +
+    'Close it with a later comment of this instance that says OK at the head, or, settled elsewhere: ' +
+    'add `# FINDING-CLOSED: <where>` to the call.\n' +
+    'Why: 2026-10-26, the merge table says open own findings hold the merge; nothing read it.');
+  return 2;
+}
+
 if (require.main === module) {
   let data = '';
   process.stdin.setEncoding('utf8');
@@ -185,4 +239,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { gate, target, saysOk };
+module.exports = { gate, target, saysOk, ciNotGreen, findingOpen };
