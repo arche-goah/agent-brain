@@ -435,5 +435,14 @@ decl '{"alpha":{"scripts/hooks/x.cjs":{"until":"2026-12-01","why":"alpha","core_
 out=$(run); ! grep -q 'caught up' <<< "$out" && ok "alpha-commit-not-in-core-silent" || bad "alpha-commit-not-in-core-silent: $out"
 rm -rf "$T/b"
 
+# A `#` key names ONE rule, never a prefix (measured 2026-10-30 on the macOS instance: the declaration of
+# mechanism-rules.json#merge covered #mergelint, a rule nobody had declared).
+mk '{}' '' '' >/dev/null
+printf '[{"id":"merge","pattern":"\\\\bmerge-x\\\\b","was":"x"},{"id":"mergelint","pattern":"\\\\bmergelint-x\\\\b","was":"y"}]' > "$T/b/.claude/rules/mechanism-rules.json"
+decl '{"instance":{".claude/rules/mechanism-rules.json#merge":{"reviewed":"2026-10-01","why":"our merge matrix","evidence":"merge-x"}}}'
+out=$(run); grep -q '^local machinery summary: items=2 .*badevidence=0 .*undeclared=1' <<< "$out" && grep -q 'without a declaration.*#mergelint' <<< "$out" \
+  && ok "hash-key-declares-one-rule-not-a-prefix" || bad "hash-key-declares-one-rule-not-a-prefix: $out"
+rm -rf "$T/b"
+
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"

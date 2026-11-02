@@ -655,8 +655,14 @@ def near_duplicate(name, core):
 
 # ---------------------------------------------------------------- judging
 
+def covers(k, ident):
+    """A path key covers what lies under it; a `#` key names ONE rule or section (measured 2026-10-30:
+    the declaration of mechanism-rules.json#merge covered #mergelint, a rule nobody had declared)."""
+    return ident == k if "#" in k else ident.startswith(k)
+
+
 def match(decl, it):
-    keys = [k for k in decl if it["id"].startswith(k) or (it["cmd"] and k in it["cmd"])]
+    keys = [k for k in decl if covers(k, it["id"]) or (it["cmd"] and k in it["cmd"])]
     return max(keys, key=len) if keys else None
 
 
