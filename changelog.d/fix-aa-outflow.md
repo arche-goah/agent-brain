@@ -1,0 +1,11 @@
+- **Coherence scan: a partial run under the cadence; findings get the brain-scan's outflow** (test: T1) (level: writer;
+  higher: design — one shared exit checker every audit report runs through is the class fix, built after this; debt:
+  that checker). Measured on the macOS instance 2026-11-02 (audit-audit): four full coherence runs in 24 days, ~6.7 M
+  tokens over the 14-day cadence, because the trigger "five new dated rules" is met at almost any rule pace; operator
+  decision the same day: "Teil-Lauf bei Bedarf".
+  - `workflows/coherence-scan.js`: `args.partial = {since: "YYYY-MM-DD"}` audits only the rule sources changed since
+    that date against CLAUDE.md and every core and instance rule file, with three lenses and no scenario traces.
+  - `helpers/freshness-gate.cjs` lets a partial run through under the cadence; a full run, or a partial without a date,
+    is held as before. Fixture +3 (19/19).
+  - `scripts/brain-scan-prep.py` suggests the partial run, with its `since`, when the last register is under 14 days old.
+    Fixture +1.

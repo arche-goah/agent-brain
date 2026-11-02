@@ -207,8 +207,23 @@ def deep_checks(repo, rc, orders, mem_dir):
     ahead = [e for e in orders if not e["checked"] and "rebuild-ahead" in e["text"]]
     if ahead:
         say("full-audit", f"the order list announces a structural rebuild ({title_of(ahead[0])})")
-    return [f"deep check suggested: {c} — {'; '.join(r)} — measured price on the proving brain: "
-            f"~{PRICE[c]}M tokens per run (brain-scan ~{PRICE['brain-scan']}M)" for c, r in why.items()]
+    # Under the 14-day cadence a coherence trigger suggests the PARTIAL run (operator decision 2026-11-02, macOS
+    # instance: four full runs in 24 days, ~6.7 M tokens over the cadence) — args partial: {since: <last register>}.
+    lines = []
+    for c, r in why.items():
+        if c == "coherence-scan" and last_reg:
+            try:
+                age = (datetime.date.today() - datetime.date.fromisoformat(last_reg)).days
+            except ValueError:
+                age = None
+            if age is not None and age < 14:
+                lines.append(f"deep check suggested: coherence-scan PARTIAL (args partial: {{since: \"{last_reg}\"}}) — "
+                             f"{'; '.join(r)} — the last full register is {age} day(s) old, a full run waits for day 14; "
+                             f"a partial run audits only the rule files changed since, three lenses")
+                continue
+        lines.append(f"deep check suggested: {c} — {'; '.join(r)} — measured price on the proving brain: "
+                     f"~{PRICE[c]}M tokens per run (brain-scan ~{PRICE['brain-scan']}M)")
+    return lines
 
 
 # ── machine checks ─────────────────────────────────────────────────────────

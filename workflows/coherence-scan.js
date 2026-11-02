@@ -34,6 +34,13 @@ let A = args
 if (typeof A === 'string') { try { A = slashPaths(JSON.parse(A)) } catch (e) { A = null } }
 if (!A || !A.date || !A.scratch) throw new Error('coherence-scan requires args {date:"YYYY-MM-DD", scratch:"<abs. path>"} — date via `date +%F`, scratch = session scratchpad subfolder')
 const DATE = A.date
+// PARTIAL RUN (operator decision 2026-11-02, macOS instance: "Teil-Lauf bei Bedarf" — four full runs in 24 days cost
+// ~6.7 M tokens over the 14-day cadence, because the trigger "five new dated rules" is met at almost any rule pace):
+// args.partial = {since: "YYYY-MM-DD"} audits only the rule sources changed since that date, against CLAUDE.md and the
+// core rules, with the three text lenses (contradiction, redundancy-drift, dead-rules) and no scenario traces. The
+// freshness gate lets a partial run through under 14 days; a full run stays at the cadence.
+const PARTIAL = A.partial && typeof A.partial === 'object' && /^\d{4}-\d{2}-\d{2}$/.test(String(A.partial.since || ''))
+  ? { since: String(A.partial.since) } : null
 const CORPUS = `${A.scratch}/corpus`
 // Every stage's bulk output lives here; the next stage reads it from disk.
 const FINDINGS_DIR = `${A.scratch}/findings`
@@ -137,7 +144,7 @@ const assertReport = (expected, claimedPath, bytes, what) => {
 // ── Phase 1: Inventory ─────────────────────────────────────────────────────
 phase('Inventory')
 const inv = await agent(
-  `Build the norm corpus for a coherence audit. Copy the following sources to ${CORPUS}/ (mkdir -p, one subfolder per source, Bash commands individually/atomically):
+  `Build the norm corpus for a coherence audit. ${PARTIAL ? `PARTIAL RUN since ${PARTIAL.since}: copy (1) and (2) in full (CLAUDE.md and every core and instance rule file are the yardstick), and of every OTHER source below ONLY the files changed since ${PARTIAL.since} — measure that with \`git -C ${REPO} log --since=${PARTIAL.since} --name-only --pretty=format:\` (and the same with -C ${REPO}/core for core files; memory files: by mtime, \`find <dir> -newermt ${PARTIAL.since}\`). Write the changed-file list into MANIFEST.md under "Partial run". ` : ''}Copy the following sources to ${CORPUS}/ (mkdir -p, one subfolder per source, Bash commands individually/atomically):
 1. ${REPO}/CLAUDE.md → corpus/claude-md/
 2. ${REPO}/core/rules/*.md AND ${REPO}/.claude/rules/*.md → corpus/rules/ (since the core split, the core rules live under core/rules/ and the instance additions under .claude/rules/ — a corpus without the core half audits only half the norm)
 3. ${REPO}/docs/maintenance/brain-scan-checklist.md → corpus/checklist/
@@ -181,7 +188,9 @@ const SCENARIOS = [
   { slug: 'trace-measurement', prompt: `SCENARIO TRACE: "The operator asks 'is the signal arriving at the receiver?' about a live system — looks like 30 seconds of work." Walk: whatever measurement duties the CORPUS mandates before the first tool call (instance rule files may add their own — walk only rules that exist in the corpus, a walked rule that exists nowhere is itself a finding), evidence-chain-or-silence, read-before-ask, caveman brevity, act-proactively. Is the mandatory overhead for the trivial question defined, or do "answer fast" and the measurement protocol collide? Where is the cut-off edge?` },
 ]
 
-const ALL_LENSES = [...LENSES, ...SCENARIOS]
+const PARTIAL_LENSES = ['contradiction', 'redundancy-drift', 'dead-rules']
+const ALL_LENSES = PARTIAL ? LENSES.filter(l => PARTIAL_LENSES.includes(l.slug)) : [...LENSES, ...SCENARIOS]
+if (PARTIAL) log(`Partial run since ${PARTIAL.since}: ${ALL_LENSES.length} lenses, no scenario traces`)
 const lensFile = (slug) => `${FINDINGS_DIR}/lens-${slug}.json`
 const lensFiles = ALL_LENSES.map(a => lensFile(a.slug))
 

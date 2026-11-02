@@ -132,6 +132,17 @@ with tempfile.TemporaryDirectory() as d:
             check("~2.6M tokens per run" in got[0] and "(2026-09-18)" in got[0], "the line names why and the measured price")
             check(got[0] in head, "the line reaches the report head verbatim")
 
+    # 2026-11-02 (operator decision): under 14 days the trigger suggests the PARTIAL run, never a full one
+    import datetime as _dt
+    recent = (_dt.date.today() - _dt.timedelta(days=3)).isoformat()
+    p = Path(d) / "partial"
+    write(p / f"docs/research/coherence-scan/register-{recent}.md", "# register\n")
+    write(p / ".claude/rules/feedback.md", "".join(f"- rule {i} (operator {_dt.date.today().isoformat()})\n" for i in range(6)))
+    _, summ, _, _, _ = run(p, "--skip-machine")
+    lines = [l for l in summ.get("deep_check", []) if "coherence-scan" in l]
+    check(len(lines) == 1 and "coherence-scan PARTIAL" in lines[0] and f'since: "{recent}"' in lines[0],
+          "a coherence trigger 3 days after the last register suggests the partial run")
+
     # a register in the pre-rename folder kohaerenz-scan/ counts as the last register
     k = Path(d) / "legacy-register"
     write(k / "docs/research/kohaerenz-scan/register-2026-09-18.md", "# register\n")
