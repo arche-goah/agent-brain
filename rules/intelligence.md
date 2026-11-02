@@ -41,6 +41,11 @@ Across Parties #6). Reasons: five or more new dated rules since the last coheren
 index near its limit or contradictions found; a restructuring ahead; a brain-scan finding back for
 the third time. Price per run on one brain (2026-08/10): brain-scan ~1.5M tokens, memory-dream ~0.6M,
 coherence-scan ~2.6M, full audit ~6M — said in plain words ("about four times a brain-scan").
+**Above them, the audit-audit** (operator decision 2026-11-02, skill `audit-audit`): it checks the checks
+— function, cost, effect, findability — and ends with an action plan in which every finding has an exit
+(`scripts/audit-audit-plan-check.py`); same rule, proposed with reason and price (~1.4M), never started
+alone. Reasons: three or more new analyses or check levels since its last run, or a question "which
+checks exist / what is above the full audit" the rules cannot answer.
 
 **The summary is written for the operator, not relayed from the machine** (operator correction
 2026-08-13): hook output is input, never chat vocabulary — no `!!` markers, return codes, tags or hook
