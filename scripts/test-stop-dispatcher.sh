@@ -141,7 +141,7 @@ case "$OUT5" in *'SKIP-PROBE'*'PLAIN-PROBE'*|*'PLAIN-PROBE'*'SKIP-PROBE'*) ok "b
 case "$OUT5" in *'kind=operator'*) ok "checks are told turn_kind=operator";; *) bad "operator kind missing: $OUT5";; esac
 
 # A wired row whose file is gone says so (audit-audit 2026-11-02: the dispatcher skipped it without a word).
-CFG3="$(mktemp -d)"
+CFG3="$T/ghost-cfg"
 mkdir -p "$CFG3/.claude/rules"
 printf '{"checks":[{"label":"GHOST","marker":"GHOST-GATE","cmd":"helpers/gone-gate.cjs","mode":"block"}]}' \
   > "$CFG3/.claude/rules/stop-checks.json"

@@ -31,6 +31,7 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 # OS-9: brain-scan-prep.py parses this stdout; pin UTF-8 and LF on every platform.
 try:
@@ -83,9 +84,8 @@ def main(argv=None):
         rows = [e for p in paths for e in entries(p)
                 if str(e.get("at") or e.get("ts") or "")[:10] >= since]
         label = c.get("label") or c["marker"]
-        state = os.path.join(a.root, ".claude-state")
-        logs = [n for n in names if os.path.exists(os.path.join(state, n))
-                or os.path.exists(os.path.join(state, n[:-len(".jsonl")] + ".1.jsonl"))]
+        state = Path(a.root) / ".claude-state"
+        logs = [n for n in names if (state / n).exists() or (state / (n[:-len(".jsonl")] + ".1.jsonl")).exists()]
         if logs and logs != [own]:
             label += f" (logs {', '.join(logs)})"
         if not logs:
