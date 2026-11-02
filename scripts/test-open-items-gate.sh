@@ -109,6 +109,17 @@ check "more than three: count + offer" "$f" allow "$EN"
 f="$T/7b.jsonl"; { boot_ok startup "$MANY"; user "stand?"; asst "5 items need you directly."; } > "$f"
 check "more than three: no offer" "$f" block "$EN"
 
+# 7c — a list cut by the hook's 32 KiB limit: the head line counts 9 items the agent can
+# handle, 1 is left visible. Naming the head line's number passes; naming no count still blocks.
+CUT="open for us: 11 — ai 9 · human 2 · unclassified 0${NL}${H1}${NL}${H2}${NL}${A1}${NL}[... truncated at 32 KiB]"
+CUT_TAIL="2 need you:
+- 2026-09-05 the workstation needs the UI layout — already reported, still open
+- 2026-09-08 a question about the bridge device"
+f="$T/7c.jsonl"; { boot_ok startup "$CUT"; user "stand?"; asst "9 items I can handle myself — shall I go ahead?${NL}${CUT_TAIL}"; } > "$f"
+check "cut list: head line count passes" "$f" allow "$EN"
+f="$T/7d.jsonl"; { boot_ok startup "$CUT"; user "stand?"; asst "Some items I can handle myself — shall I go ahead?${NL}${CUT_TAIL}"; } > "$f"
+check "cut list: no count blocks" "$f" block "$EN"
+
 # 8 — an unclassified item blocks until the class file holds it.
 Q="open for us: 1 — ai 0 · human 0 · unclassified 1${NL}- [request|?] 2026-09-06 demo-area/anfrage-net-2026-09-06.md — peer-c: ANFRAGE — first report"
 f="$T/8.jsonl"; { boot_ok startup "$Q"; user "stand?"; asst "1 needs you: 2026-09-06 the network definition."; } > "$f"
