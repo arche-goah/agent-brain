@@ -52,6 +52,7 @@ const TOOL_NAME = /(?:^|__)computer[-_]?use(?:__|$)|(?:^|__)computer_(?:click|ty
 const OWN_FILES = /(?:^|[\\/])(?:no-input-control\.cjs|test-no-input-control\.sh|no-input-control\.json)$/;
 const SCRIPT_EXT = /\.(?:py|js|cjs|mjs|sh|ps1|ahk|applescript|scpt|vbs|bat|cmd)$/i;
 const DOC_EXT = /\.(?:md|mdx|markdown|txt|rst)$/i;
+const RUNNER = /(?:^|[\s;&|(`])(?:python[\d.]*|py|node|deno|bun|bash|sh|zsh|pwsh|powershell(?:\.exe)?|cscript|wscript|osascript|ruby|perl|source|\.|iex|invoke-expression)(?=[\s;&|)`]|$)/i;
 
 function loadInstance(projectDir) {
   const fp = projectDir && path.join(projectDir, '.claude', 'rules', 'no-input-control.json');
@@ -91,8 +92,12 @@ function texts(toolName, ti, cwd) {
   for (const e of Array.isArray(ti.edits) ? ti.edits : []) if (e && typeof e.new_string === 'string') out.push(e.new_string);
   // A command that runs a script file: the file's content counts as if it were typed here.
   if (typeof ti.command === 'string') {
+    // A documentation file a command hands to an interpreter or an eval is a script for that command
+    // (a collaborator's Windows check on #302, 2026-11-02: write the code into notes.txt, then
+    // `python3 notes.txt` or `iex (Get-Content notes.txt -Raw)` - both steps passed). `cat`/`grep` stay unread.
+    const runs = RUNNER.test(ti.command);
     for (const tok of ti.command.split(/[\s;&|()<>"'`]+/)) {
-      if (!SCRIPT_EXT.test(tok) || OWN_FILES.test(tok)) continue;
+      if (!(SCRIPT_EXT.test(tok) || (runs && DOC_EXT.test(tok))) || OWN_FILES.test(tok)) continue;
       const fp = path.isAbsolute(tok) ? tok : path.join(cwd || process.cwd(), tok);
       try { if (fs.statSync(fp).size < 2_000_000) out.push(fs.readFileSync(fp, 'utf8')); } catch (e) { /* not a file */ }
     }

@@ -53,6 +53,11 @@ SK="$(w Send Keys)"
 expect "a skill doc line naming the input API" allow "$(call Write "$(wr /x/skills/a/SKILL.md "the primitive uses Win32 Send Input / $SK")")"
 expect "the same text into a script file" deny "$(call Write "$(wr /x/a.ps1 "[W]::$(w SetForeground Window)(\$h); $SK")")"
 expect "the same text in a command (running stays checked)" deny "$(call Bash "{\"command\":$(js "echo x | $(w nir cmd) sendkeypress enter")}")"
+# --- the two-step path (a collaborator's Windows check on #302): code written into a doc file, then run
+printf 'import %s\n' "$(w py auto gui)" > "$T/notes.txt"
+expect "an interpreter runs a doc file holding input code" deny "$(call Bash "{\"command\":$(js "python3 $(native "$T/notes.txt")")}")"
+expect "an eval of a doc file holding input code" deny "$(call PowerShell "{\"command\":$(js "iex (Get-Content $(native "$T/notes.txt") -Raw)")}")"
+expect "reading a doc file is no run (control)" allow "$(call Bash "{\"command\":$(js "cat $(native "$T/notes.txt")")}")"
 printf '@echo off\necho build done\n' > "$T/drive2.bat"
 expect "a batch file without input calls" allow "$(call Bash "{\"command\":$(js "cmd /c $(native "$T/drive2.bat")")}")"
 
