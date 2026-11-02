@@ -37,5 +37,21 @@ if grep -q '"mode":"autonomous"' "$T/.claude-state/mode-log.jsonl" 2>/dev/null &
   ok "the dispatcher appends the record with time, session and check"
 else bad "no mode-log.jsonl line: $(cat "$T/.claude-state/mode-log.jsonl" 2>&1)"; fi
 
+# A re-issued turn (stop_hook_active) ends like any other: in an autonomous run nearly every turn is one, because a
+# check held it (measured 2026-11-02 on the macOS instance: one record in a morning of turns). The TEMPLATE entry
+# must carry onReissue, or the dispatcher skips the recorder on that pass.
+node -e 'const [t,h]=process.argv.slice(1);const e=JSON.parse(require("fs").readFileSync(t,"utf8")).checks.find((c)=>c.marker==="MODE-LOG");e.cmd=h;console.log(JSON.stringify({checks:[e]}))' \
+  "$(native "$_D/../templates/rules-instance/stop-checks.json")" "$(native "$H")" > "$T/.claude/rules/stop-checks.json"
+before=$(wc -l < "$T/.claude-state/mode-log.jsonl")
+printf '{"transcript_path":%s,"cwd":%s,"stop_hook_active":true}' "$(js "$(native "$f")")" "$(js "$(native "$T")")" \
+  | CLAUDE_PROJECT_DIR="$(native "$T")" node "$(native "$_D/../helpers/stop-dispatcher.cjs")" >/dev/null 2>&1
+after=$(wc -l < "$T/.claude-state/mode-log.jsonl")
+[ "$after" -gt "$before" ] && ok "the template entry records on a re-issued turn too" || bad "re-issue pass wrote no record ($before -> $after)"
+printf '%s\n' '{"checks":[{"label":"MODE LOG","marker":"MODE-LOG","cmd":"'"$(native "$H")"'","mode":"record"}]}' > "$T/.claude/rules/stop-checks.json"
+printf '{"transcript_path":%s,"cwd":%s,"stop_hook_active":true}' "$(js "$(native "$f")")" "$(js "$(native "$T")")" \
+  | CLAUDE_PROJECT_DIR="$(native "$T")" node "$(native "$_D/../helpers/stop-dispatcher.cjs")" >/dev/null 2>&1
+again=$(wc -l < "$T/.claude-state/mode-log.jsonl")
+[ "$again" -eq "$after" ] && ok "without onReissue the re-issue pass skips the recorder (control)" || bad "control wrote a record"
+
 [ $fail -eq 0 ] && echo "mode-log: all passed" || echo "mode-log: FAILED"
 exit $fail
