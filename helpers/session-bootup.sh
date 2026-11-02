@@ -403,6 +403,12 @@ if command -v node >/dev/null 2>&1 && [[ -f "$HERE/question-gate.cjs" ]]; then
   CLAUDE_PROJECT_DIR="$R" node "$HERE/question-gate.cjs" list 2>/dev/null
 fi
 
+# Start mode guard (autonomous-mode.cjs initialState, operator 2026-11-02): an autonomous start the brain
+# could not end in the operator's language is refused - said here, loud, with the way to fix it.
+if command -v node >/dev/null 2>&1 && [[ -f "$HERE/autonomous-mode.cjs" ]]; then
+  node -e 'const s=require(process.argv[1]).initialState(process.argv[2]); if (s.wanted && !s.granted) console.log("!! start mode: " + s.why + " - add off_patterns/ask_patterns in your language, or enable the intent classifier; until then end a run with \"ask mode\"")' "$HERE/autonomous-mode.cjs" "$R" 2>/dev/null
+fi
+
 # Level debts of the core (change-level.cjs): silent unless a change named a debt more than
 # 14 days ago and no later change settled it — what "you only notice it some time later"
 # looks like before it happens (operator decision 2026-10-19).
