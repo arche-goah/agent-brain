@@ -209,6 +209,16 @@ function doImport() {
     const entry = m.files[name];
 
     if (liveContent == null) {
+      // Deleted HERE: this machine's base holds the file with exactly the snapshot's hash - it was synced
+      // here and nobody changed it since, so the live copy is gone because it was deleted on this machine.
+      // Bringing it back would undo the deletion. Measured 2026-11-02 on the macOS instance: a memory deleted
+      // the evening before (no prune, the session still open) came back at the next session's start import.
+      // The mirror of export's guarded prune; a snapshot that MOVED since (another machine changed it) still
+      // comes in, and so does a file this base never saw.
+      if (base && base.hash === snapHash) {
+        kept++; log(`[memory-sync] not re-imported (deleted here, unchanged in the snapshot since this machine synced it): ${name}`);
+        continue;
+      }
       fs.writeFileSync(livePath, snapContent);
       b.files[name] = { hash: snapHash };
       m.files[name] = { hash: snapHash, updated: (entry && entry.updated) || nowISO() };

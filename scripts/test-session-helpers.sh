@@ -192,6 +192,19 @@ ms_run import
 [ "$(cat "$T/plive/note.md")" = "theirs v2" ] && [ ! -f "$T/plive/note.incoming.md" ] \
   && ok "memory-sync import takes the pulled snapshot into an unchanged live" \
   || bad "memory-sync import did not bring the pulled snapshot in cleanly"
+# deleted HERE (2026-11-02): base and snapshot agree, the live copy was deleted on this machine
+printf 'gone soon\n' > "$T/plive/old.md"; ms_run export
+rm -f "$T/plive/old.md"
+cp "$T/plive/.sync-base.json" "$T/base.keep"
+ms_run import
+[ ! -f "$T/plive/old.md" ] && ok "memory-sync import does not bring back a memory deleted here" \
+  || bad "memory-sync import restored a memory this machine deleted (the 2026-11-02 return)"
+# control: the other machine changed it after this machine synced it - it comes in
+printf 'gone soon, then edited elsewhere\n' > "$T/p/docs/memory-snapshot/old.md"
+ms_run import
+[ -f "$T/plive/old.md" ] && ok "memory-sync import brings in a snapshot that moved since this machine synced it (control)" \
+  || bad "memory-sync import dropped a file another machine changed"
+rm -f "$T/plive/old.md" "$T/p/docs/memory-snapshot/old.md"
 # both sides move
 printf 'mine v3\n' > "$T/plive/note.md"
 printf 'theirs v3\n' > "$T/p/docs/memory-snapshot/note.md"; set_manifest_hash "$pman" note.md "$T/p/docs/memory-snapshot/note.md"
