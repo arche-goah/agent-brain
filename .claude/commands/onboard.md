@@ -61,7 +61,8 @@ written for people who develop the core; they do not describe this job.
   - any change to the global git configuration the preflight suggests.
 - **Never push, never create a remote repository**, never change a GitHub setting. The
   brain is the person's private repo; creating its remote and pushing stay with them.
-- **Only the core by default.** Install `brain-core` and nothing else. A suite (step 4) only
+- **Only the core by default.** Install the core channel ONBOARDING.md step 2 names (today
+  `brain-core-next`, while the stable pin predates the plugin's hooks) and nothing else. A suite (step 4) only
   when the person asks for that suite by name.
 - **Hand steps stay with the person.** Installing a tool, logging in (`gh auth login`),
   restarting Claude Code, starting `claude` in the new brain and accepting the trust dialog:

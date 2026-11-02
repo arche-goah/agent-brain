@@ -85,6 +85,29 @@ with tempfile.TemporaryDirectory() as td:
     untagged = make_repo(base, "shallow", tags=())
     ok(levels(untagged, [entry("a", "v1.0.0")]) == ["WARN"],
        "a checkout without tags (shallow clone): WARN, not ERROR")
+    # The tag-push checkout (2026-11-02, v2.1.1): shallow, holding only the pushed tag.
+    git(repo, "commit", "-q", "--allow-empty", "-m", "second")
+    git(repo, "tag", "v1.0.2")
+    one = base / "one-tag"
+    subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", "v1.0.2",
+                    (repo.resolve()).as_uri(), str(one)], check=True, capture_output=True)
+    (one / ".claude-plugin").mkdir(exist_ok=True)
+    git(one, "remote", "set-url", "origin", "https://github.com/o/r.git")
+    ok(levels(one, [entry("a", "v1.0.0"), entry("a-next", "v1.0.2")]) == ["WARN"],
+       "a shallow tag checkout holding only the pushed tag: the other pin WARNs, not ERROR")
+    ok(levels(repo, [entry("a", "v9.9.9")]) == ["ERROR"],
+       "the same missing tag in a full checkout stays an ERROR (control)")
+    # One train carries fixes + version bump + pin (2026-11-02): a pin on the version this checkout
+    # ships is the tag the release cuts at its merge.
+    rel = make_repo(base, "release", tags=("v1.0.0",))
+    (rel / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "p", "version": "1.0.1"}), encoding="utf-8")
+    ok(levels(rel, [entry("a", "v1.0.0"), entry("a-next", "v1.0.1")]) == ["INFO"],
+       "a pin on the version plugin.json ships (the tag this release cuts): INFO, not ERROR")
+    ok(levels(rel, [entry("a-next", "v1.0.2")]) == ["ERROR"],
+       "a pin on a missing tag that is NOT the shipped version stays an ERROR (control)")
+    (rel / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "p", "version": "1.0.0"}), encoding="utf-8")
+    ok(levels(rel, [entry("a-next", "v1.0.0")]) == [],
+       "the shipped version whose tag exists already: an ordinary pin, no finding (control)")
 
 core_levels = [lvl for lvl, _ in sc.marketplace_findings(HERE.parent)]
 ok((HERE.parent / ".claude-plugin" / "marketplace.json").exists() and "ERROR" not in core_levels,

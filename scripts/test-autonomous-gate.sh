@@ -58,6 +58,17 @@ probe "stop-checks.json, no ask rule, autonomous" Edit '{"file_path":".claude/ru
 probe "plugin hooks.json, autonomous" Write '{"file_path":"hooks/hooks.json"}' "$AUTO" block
 probe "stop-checks.json outside the mode" Edit '{"file_path":".claude/rules/stop-checks.json"}' "$INTER" allow
 probe "local-machinery.json is not held (control)" Edit '{"file_path":".claude/rules/local-machinery.json"}' "$AUTO" allow
+# Rights are the same in both modes, only questions are collected (operator 2026-11-02). The operator
+# answered a collected point in this turn ("hooks yes"): the held edit goes to the harness's dialog.
+tend() { printf '%s\n' '{"type":"system","subtype":"turn_duration","durationMs":1000}'; }
+note() { user "<task-notification><task-id>x</task-id><status>completed</status></task-notification>"; }
+APPR="$T/appr.jsonl"; { user "work through the open points autonomously"; tend; user "hooks yes, coordinate with the collaborator"; } > "$APPR"
+APPQ="$T/appq.jsonl"; { user "work through the open points autonomously"; tend; queued "hooks yes"; } > "$APPQ"
+GONE="$T/gone.jsonl"; { user "work through the open points autonomously"; tend; user "hooks yes"; tend; note; } > "$GONE"
+probe "operator answered in this turn: held hooks edit goes to the dialog" Write '{"file_path":"hooks/hooks.json"}' "$APPR" allow
+probe "operator answered mid-turn: the ask rule goes to the dialog" Edit "{\"file_path\":$SET}" "$APPQ" allow
+probe "the answer's turn has ended, a notification woke the run: held again" Write '{"file_path":"hooks/hooks.json"}' "$GONE" block
+probe "operator in this turn, but the question tool stays collected" AskUserQuestion '{"questions":[]}' "$APPR" block
 probe "a bare tool rule from the user settings" WebFetch '{"url":"https://example.com"}' "$AUTO" block
 probe "a tool no rule names" Read '{"file_path":"README.md"}' "$AUTO" allow
 probe "a mid-turn operator message ends the mode: the asked-for question passes" AskUserQuestion '{"questions":[]}' "$MID" allow

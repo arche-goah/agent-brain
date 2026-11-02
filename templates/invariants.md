@@ -6,7 +6,8 @@
 > with the search command that spans its space — a class needs a place where it
 > stays OPEN instead of vanishing into a feedback line.
 >
-> Check: `python3 core/scripts/invariant-check.py <this file>` (re-runs every
+> Check: `python3 core/scripts/invariant-check.py <this file>` (`python` on Windows,
+> where `python3` can be the Store stub - OS-17 in `core/docs/os-traps.md`; re-runs every
 > registered search; drift and new sites fail loudly). The class question is a
 > SEARCH, not a resolution — executed, it returns measurements.
 >

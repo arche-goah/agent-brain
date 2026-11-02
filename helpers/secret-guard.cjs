@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * PreToolUse Hook (Read|Edit|Write|Bash): blocks reading, modifying, and
+ * PreToolUse Hook (Read|Edit|Write|Bash|PowerShell|Monitor): blocks reading, modifying, and
  * exfiltrating secret material through the tool layer.
  *
  * Complements file-guard.cjs, which only covers Edit/Write on known file
@@ -200,7 +200,8 @@ function check(toolName, toolInput, safetyLevel, instance) {
   if (['Read', 'Edit', 'Write'].includes(toolName)) {
     return checkFilePath(toolInput && toolInput.file_path, level, instance);
   }
-  if (toolName === 'Bash' || toolName === 'PowerShell') {
+  // Monitor runs a shell command too (a `tail -f .env` streams the secret into context).
+  if (toolName === 'Bash' || toolName === 'PowerShell' || toolName === 'Monitor') {
     return checkBashCommand(toolInput && toolInput.command, level, instance);
   }
   return { blocked: false, pattern: null };
@@ -214,7 +215,7 @@ async function main() {
     const data = JSON.parse(input);
     const { tool_name, tool_input, session_id, cwd, permission_mode } = data;
 
-    if (!['Read', 'Edit', 'Write', 'Bash', 'PowerShell'].includes(tool_name)) {
+    if (!['Read', 'Edit', 'Write', 'Bash', 'PowerShell', 'Monitor'].includes(tool_name)) {
       return console.log('{}');
     }
 
@@ -228,7 +229,7 @@ async function main() {
       const target = (tool_input && tool_input.file_path) || (tool_input && tool_input.command || '').slice(0, 100);
       log({ decision, id: p.id, priority: p.level, tool: tool_name, target, session_id, cwd, permission_mode });
 
-      const action = { Read: 'read', Edit: 'modify', Write: 'write to', Bash: 'execute' }[tool_name];
+      const action = { Read: 'read', Edit: 'modify', Write: 'write to', Bash: 'execute', PowerShell: 'execute', Monitor: 'execute' }[tool_name];
       return console.log(JSON.stringify({
         hookSpecificOutput: {
           hookEventName: 'PreToolUse',

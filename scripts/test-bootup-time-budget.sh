@@ -26,6 +26,9 @@ check() { # name, output, expect: line|no-line, [extra text that must appear]
 native() {
   if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
 }
+# A home of its own (2026-11-02): the bootup heals the statusline into ~/.claude - never the
+# real one of the machine running this. USERPROFILE: Python and node read it on Windows, not HOME.
+mkdir -p "$TMP/home"; export HOME="$TMP/home" USERPROFILE="$(native "$TMP/home")" CLAUDE_CONFIG_DIR="$(native "$TMP/home")/.claude"
 run() { CLAUDE_PROJECT_DIR="$(native "$TMP")" SHARED_MEMORY_REPO="$(native "$TMP")/no-shared-memory" bash "$BOOT" < /dev/null 2>/dev/null; }
 
 out="$(BOOTUP_TIMEOUT_S=0 run)"

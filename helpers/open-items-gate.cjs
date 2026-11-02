@@ -238,6 +238,9 @@ function parseBlock(text) {
   const lines = text.split('\n');
   const head = lines.findIndex((l) => /^open for us: \d+/.test(l));
   if (head < 0) return null;
+  // The head line's own count. The hook output is cut at 32 KiB, so a long list can lose
+  // its tail while the head line still names the full number the operator reads.
+  const headAi = Number((/\bai (\d+)/.exec(lines[head]) || [])[1]) || 0;
   const items = [];
   let failed = false;
   let parked = false;
@@ -285,7 +288,7 @@ function parseBlock(text) {
     } else if (/^- \[parked\]/.test(l)) parked = true;
     else if (/^- nothing open/.test(l)) nothing = true;
   }
-  return { items, failed, parked, nothing };
+  return { items, failed, parked, nothing, headAi };
 }
 
 // Words that name a request's KIND, not its topic — every request carries them. English
@@ -451,7 +454,12 @@ function judge(input) {
     for (const it of cleared) if (!named(it, text, ageRx, generic)) missing.push(it.ref);
   }
   if (ai.length) {
-    if (!hasNumber(ai.length, text)) missing.push(`count of items you can handle (${ai.length})`);
+    // A list cut by the hook's output limit shows fewer lines than its head line counts: the
+    // head line's number is then the one the operator reads, and it counts as well.
+    const headAi = blk.headAi > ai.length ? blk.headAi : 0;
+    if (!hasNumber(ai.length, text) && !(headAi && hasNumber(headAi, text))) {
+      missing.push(`count of items you can handle (${headAi || ai.length})`);
+    }
     // The operator's prompt may already be the go-ahead ("work through everything") — then
     // asking again is a disguised stop; the count still has to be said.
     // An autonomous order is a go-ahead too, and there the question would be the very stop the

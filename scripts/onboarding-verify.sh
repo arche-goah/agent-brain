@@ -164,7 +164,7 @@ if [ -n "$hook_at" ]; then
   echo "$out" | grep -q "BRAIN BOOTUP CHECK"; b_ok=$?
   check 5 "Brain+hooks" $b_ok "$BRAIN (bootup hook in $hook_at; bootup output $([ $b_ok -eq 0 ] && echo appears || echo MISSING))"
 elif [ -n "$BRAIN" ] && [ -d "$BRAIN" ]; then
-  check 5 "Brain+hooks" 1 "$BRAIN runs no core/helpers/session-bootup.sh at SessionStart — neither a settings scope wires it nor an enabled brain-core plugin ships it (installed, enabled, restarted? see check 2)"
+  check 5 "Brain+hooks" 1 "$BRAIN runs no core/helpers/session-bootup.sh at SessionStart — neither a settings scope wires it nor an enabled brain-core plugin ships it (installed, enabled, restarted? see check 2; a channel pinned below v2.0.4, such as stable brain-core at v2.0.0, ships no hooks — take brain-core-next, ONBOARDING.md step 2)"
 else
   check 5 "Brain+hooks" 1 "no brain found (set the argument or BRAIN_DIR?)"
 fi

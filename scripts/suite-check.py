@@ -73,6 +73,15 @@ def marketplace_findings(repo: Path):
         return [("ERROR", ".claude-plugin/marketplace.json: 'plugins' is not a list")]
     own = repo_slug(git_out(repo, "remote", "get-url", "origin"))
     tags = set(git_out(repo, "tag", "-l").split())
+    # The release this checkout ships: a pin on exactly that version is the tag the release cuts at its
+    # merge, so fixes, version bump and pin travel in ONE train (operator 2026-11-02: "a whole instance
+    # every day only preparing a release - that does not work"; v2.1.1 took three trains).
+    try:
+        cutting = "v" + str(json.loads((repo / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("version") or "")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        cutting = ""
+    if cutting == "v" or cutting in tags:
+        cutting = ""  # no version, or that tag exists already: nothing is being cut here
     for p in plugins:
         name = p.get("name", "?") if isinstance(p, dict) else "?"
         src = p.get("source") if isinstance(p, dict) else None
@@ -89,11 +98,21 @@ def marketplace_findings(repo: Path):
         elif not RELEASE_TAG.match(ref):
             out.append(("ERROR", f"{where}: ref {ref!r} is not a release tag (vX.Y.Z)"))
         elif own and repo_slug(src.get("repo") or src.get("url")) == own:
-            if not tags:
+            if ref == cutting:
+                out.append(("INFO", f"{where}: ref {ref} is the release this checkout cuts "
+                                    "(plugin.json) - tag it at the merge"))
+            elif not tags:
                 out.append(("WARN", f"{where}: no tags in this checkout (shallow clone?) - "
                                     f"ref {ref} unchecked"))
             elif ref not in tags:
-                out.append(("ERROR", f"{where}: ref {ref} is no tag of this repo"))
+                # A tag-push CI run checks out the pushed tag alone, shallow: the other pinned tags are
+                # absent from the checkout, not from the repo (measured 2026-11-02, the v2.1.1 tag run:
+                # "ref v2.0.0 is no tag" while v2.0.0 exists). Shallow = unchecked, like no tags at all.
+                if git_out(repo, "rev-parse", "--is-shallow-repository").strip() == "true":
+                    out.append(("WARN", f"{where}: ref {ref} not among the tags of this shallow "
+                                        "checkout - unchecked"))
+                else:
+                    out.append(("ERROR", f"{where}: ref {ref} is no tag of this repo"))
     return out
 
 

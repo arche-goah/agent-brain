@@ -11,6 +11,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BOOTUP="$ROOT/helpers/session-bootup.sh"
 [ -f "$BOOTUP" ] || { echo "  --  session-bootup not in this layout"; exit 0; }
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+# A home of its own (2026-11-02): the bootup heals the statusline into ~/.claude - never the
+# real one of the machine running this. USERPROFILE: Python and node read it on Windows, not HOME.
+HN="$(cygpath -m "$T/home" 2>/dev/null || printf '%s' "$T/home")"
+mkdir -p "$T/home"; export HOME="$T/home" USERPROFILE="$HN" CLAUDE_CONFIG_DIR="$HN/.claude"
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
