@@ -439,6 +439,22 @@ has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ok "exit ai-does-it stays open
 cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" --repo "$(native "$T/repo")" --classify 'ledger:pick-name=ai:mine' 2>&1)
 out=$(run "" "$L")
 has "[ledger|ai]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"
+# audit-audit 2026-11-02, package D: an entry whose check ledger-reconcile found green (DONE-OPEN) stayed listed as
+# open own work for up to 17 sessions. A result fresher than the ledger lists it once as "tick it", never as work;
+# a ledger changed after the result (negative control) lists it as work again.
+ln=$(grep -n 'Mine to build' "$L/docs/x/open.md" | cut -d: -f1)
+mkdir -p "$L/.claude-state"
+"$PY" -c 'import json,sys,time; json.dump({"at": time.time() + 5, "done_open": [{"ledger": "docs/x/open.md", "line": int(sys.argv[2]), "id": "mine-thing"}]}, open(sys.argv[1], "w", encoding="utf-8"))' \
+  "$(native "$L/.claude-state/ledger-reconcile.json")" "$ln"
+out=$(run "" "$L")
+has "check green — tick it: 1 ledger entr(y/ies)" "$out" && has "mine-thing" "$out" \
+  && ok "a fresh green check lists the entry as tick-it" || bad "tick-it line missing: $out"
+has "[ledger|ai] 2026-10-25 mine-thing" "$out" && bad "green entry still listed as open work: $out" || ok "a green entry is no open work"
+"$PY" -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p, encoding="utf-8")); d["at"]=0; json.dump(d, open(p, "w", encoding="utf-8"))' "$(native "$L/.claude-state/ledger-reconcile.json")"
+out=$(run "" "$L")
+has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ! has "tick it" "$out" \
+  && ok "a result older than the ledger counts nothing (negative control)" || bad "stale result still ticks: $out"
+rm -f "$L/.claude-state/ledger-reconcile.json"
 
 # 2026-10-28 (macOS instance, 95 ledger rows): the shown date was the first date anywhere in the
 # text, "nothing done yet" was printed unmeasured, a `class: decision` read as the operator's

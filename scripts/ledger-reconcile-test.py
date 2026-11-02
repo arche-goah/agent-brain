@@ -308,6 +308,18 @@ def main():
         rc, out = run(root, "--brief")
         do = next((l for l in out.splitlines() if "done but still open" in l), "")
         ok("real-work" in do, "seen red once, green now = DONE-OPEN (the work happened)", out)
+        # The same result machine-readably for open-items.py (audit-audit 2026-11-02, package D): DONE-OPEN only.
+        try:
+            res = json.loads((R / ".claude-state" / "ledger-reconcile.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            res = {}
+        ids = {d.get("id") for d in res.get("done_open", [])}
+        ok(isinstance(res.get("at"), (int, float)) and {"real-work", "old-green"} <= ids,
+           "the DONE-OPEN entries are written to ledger-reconcile.json with the run's time", json.dumps(res))
+        ok("weak-check" not in ids, "an UNPROVEN entry is not written as DONE-OPEN", json.dumps(res))
+        row = next((d for d in res.get("done_open", []) if d.get("id") == "real-work"), {})
+        ok(row.get("ledger") == "docs/l.md" and isinstance(row.get("line"), int),
+           "each row names its ledger and entry line", json.dumps(row))
         led.write_text(new.replace("id: weak-check\n  check: test -f here", "id: weak-check\n  check: test -f later"),
                        encoding="utf-8")
         rc, out = run(root, "--brief")
