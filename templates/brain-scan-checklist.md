@@ -61,7 +61,7 @@ the deny — not from the scan, the scan is read-only). → maximum `configured`
 
 - [ ] `.claude/settings.json` is valid JSON and every registered hook event is a valid Claude Code event.
 - [ ] Every hook script exists; its stdin/output schema matches the current hook API (spot check: echo test).
-- [ ] Stop checks are registered in `.claude/rules/stop-checks.json` only — `settings.json` carries the dispatcher, never a second check.
+- [ ] Stop checks are registered in `.claude/rules/stop-checks.json` only — the core plugin's `hooks/hooks.json` wires the dispatcher (since 2.0.4); `settings.json` carries neither the dispatcher nor a second check.
 - [ ] `timeout` values are plausible (seconds, not milliseconds) and the session-start hook finishes inside its timeout (measure it; a killed bootup reports nothing).
 - [ ] Every mechanism that shapes behaviour hangs on a MECHANISM (hook, gate, lint), not on prose — a rule that exists only as text is a finding.
 - [ ] Hooks that inject FOREIGN text into the context (file contents, git lines, task lines) frame it as data and sanitise it.

@@ -14,7 +14,8 @@ do NOT delete them, otherwise the rules only sit on disk instead of in context):
 @core/rules/techniques.md
 @core/rules/working-rules.md
 @core/rules/intelligence.md
-- Hooks/helpers: `core/helpers/` (wired up in `.claude/settings.json`).
+- Hooks/helpers: `core/helpers/`. The core hooks are wired by the brain-core plugin (`hooks/hooks.json`,
+  since 2.0.4); `.claude/settings.json` carries only the instance's own hooks - a copy there fires twice.
 - Contract: `core/CONVENTIONS.md` + `core/core-contract.json`. Core changes go
   as a PR against `agent-brain`, NEVER as a local copy (CONVENTIONS §13). The way:
   a worktree of `core/` under the session scratchpad
