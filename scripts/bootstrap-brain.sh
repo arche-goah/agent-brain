@@ -172,7 +172,7 @@ EOF
 
 cat > config/ecosystem.json <<EOF
 {
-  "_comment": "Which version of which suite is running here. Maintain with: python3 core/scripts/ecosystem-sync.py --write",
+  "_comment": "Which version of which suite is running here. Maintain with: python3 core/scripts/ecosystem-sync.py --write (python on Windows, where python3 can be the Store stub)",
   "repos": {}
 }
 EOF

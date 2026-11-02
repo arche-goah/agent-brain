@@ -36,9 +36,13 @@ New to Claude Code, plugins and hooks? `docs/onboarding-explained.md` is the pic
 these steps: the three layers (core, your brain, suites), the four carriers of behaviour,
 the Windows traps in depth, and a glossary. Nothing in it has to be executed.
 
-**SSH is recommended; HTTPS is enough to start.** Clones and fetches work over HTTPS.
-Where a plugin install or the background marketplace refresh fails on a machine without
-SSH, setting up SSH is the fix. The preflight measures both: it is green once
+**SSH is recommended; HTTPS is enough to start, with one step.** Clones and fetches work
+over HTTPS, and `claude plugin marketplace add` falls back to HTTPS by itself ("SSH not
+configured, cloning via HTTPS"). `claude plugin install` does not: without SSH it stops
+with `Permission denied (publickey)` (measured on Windows, Claude Code 2.1.310). Before the
+install, either set up SSH or let git take HTTPS for GitHub:
+`git config --global url."https://github.com/".insteadOf git@github.com:`. The same
+applies to the background marketplace refresh. The preflight measures both: it is green once
 `ssh -T git@github.com` greets you by name, and it reports missing SSH only as a warning
 when an HTTPS `git ls-remote` to GitHub succeeds; it fails only when neither works.
 
@@ -61,8 +65,11 @@ public marketplace, named `agent-brain`. Register it once, then install the core
 
 ```
 claude plugin marketplace add arche-goah/agent-brain
-claude plugin install brain-core@agent-brain
+claude plugin install brain-core-next@agent-brain
 ```
+
+(`brain-core-next` while the stable channel's pin is older than v2.0.4 — see "Which
+channel" below.)
 
 It offers the core in two channels, both pinned to release tags of this repo, never to
 `main`. `brain-core` is **stable**: a tag moves there only after it ran as a beta without
@@ -76,11 +83,12 @@ run the helpers of your brain's `core/` submodule: step 3 is not optional — in
 create your brain, then start Claude in it. This marketplace carries the core only; suites
 (step 4) come from a team marketplace.
 
-**Which channel a new brain takes:** the one pinned to this repo's newest release tag.
-Step 3 puts your brain's `core/` on that tag, and the plugin should be the same release as
-the core its hooks run. Compare `git tag -l 'v*' --sort=-v:refname | head -1` in this clone
-with the two `ref` values in `.claude-plugin/marketplace.json`; right after a release that
-is the beta, so install `brain-core-next@agent-brain` instead of `brain-core@agent-brain`.
+**Which channel a new brain takes:** the one whose `ref` in
+`.claude-plugin/marketplace.json` is the higher release tag — right after a release that is
+the beta, `brain-core-next@agent-brain`. A channel pinned below v2.0.4 ships no hooks at
+all: a brain on it runs without its gates, and `scripts/onboarding-verify.sh` check 5 stays
+red. The newest tag of this repo (`git tag -l 'v*' --sort=-v:refname | head -1`) can be
+newer than both refs for a while: a tag is cut before its pin moves.
 
 **With your org's own marketplace** (a team that pins the core for itself): your org
 publishes plugins through a marketplace repo that pins released tags of this repo.
@@ -92,8 +100,8 @@ claude plugin install brain-core@your-org
 ```
 
 **Restart Claude Code afterwards.** Skills, hooks and the output style of a freshly
-installed plugin are only read on the next start. Check with `claude plugin list`:
-`brain-core` must be installed AND enabled.
+installed plugin are only read on the next start. Check with `claude plugin list`: the
+core channel you chose (`brain-core` or `brain-core-next`) must be installed AND enabled.
 
 Everything else in the marketplace (tool-domain suites) is opt-in — install a suite
 only when you explicitly want and need it (step 4).
@@ -141,7 +149,8 @@ another; the bootstrap names the ref it took). One hand step afterwards (the tem
 `.claude/settings.json`, replace the placeholder `<your-org>` (angle brackets included)
 with your real org — a Claude session in the brain does that for you if you ask. On the
 public marketplace of step 2 the entry is named `agent-brain`, its repo is
-`arche-goah/agent-brain`, and the plugin is `brain-core@agent-brain` (or the beta).
+`arche-goah/agent-brain`, and the plugin is the channel step 2 chose (today
+`brain-core-next@agent-brain`).
 
 **Your brain is yours:** a private repo under YOUR account, never shared. Creating
 the remote and pushing stays with you.

@@ -8,6 +8,9 @@
 >
 > Lives at `docs/maintenance/brain-scan-checklist.md`.
 >
+> The commands below say `python3`. On Windows, where `python3` can be the Microsoft Store
+> stub (OS-17 in `core/docs/os-traps.md`), run them with `python`.
+>
 > **What a scan does with this file** (operator decisions 2026-10-09, after an audit of the
 > audit process): it first states what became of the LAST run's findings (done / decided /
 > dropped / still open / vanished — `core/scripts/brain-scan-prep.py`, deterministic), then
