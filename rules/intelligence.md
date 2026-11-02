@@ -43,7 +43,7 @@ the third time. Price per run on one brain (2026-08/10): brain-scan ~1.5M tokens
 coherence-scan ~2.6M, full audit ~6M — said in plain words ("about four times a brain-scan").
 **Above them, the audit-audit** (operator decision 2026-11-02, skill `audit-audit`): it checks the checks
 — function, cost, effect, findability — and ends with an action plan in which every finding has an exit
-(`scripts/audit-audit-plan-check.py`); same rule, proposed with reason and price (~1.4M), never started
+(`core/scripts/audit-audit-plan-check.py`); same rule, proposed with reason and price (~1.4M), never started
 alone. Reasons: three or more new analyses or check levels since its last run, or a question "which
 checks exist / what is above the full audit" the rules cannot answer.
 
