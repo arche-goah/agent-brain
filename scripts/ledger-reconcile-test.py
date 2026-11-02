@@ -347,7 +347,9 @@ def main():
             "- [ ] **other repo** — derived (2026-11-02)\n  id: other-repo\n  check: none — pin carries grandma3-suite#1\n\n"
             "- [ ] **no anchor word** — derived (2026-11-02)\n  id: no-pin-word\n  check: none — see #1\n\n"
             "- [ ] **unreadable** — derived (2026-11-02)\n  id: unreadable\n  check: none — the pin with #9\n\n"
-            "- [x] **ticked** — derived (2026-11-02)\n  id: ticked-pin\n  check: none — the pin with #1\n",
+            "- [x] **ticked** — derived (2026-11-02)\n  id: ticked-pin\n  check: none — the pin with #1\n\n"
+            "- [ ] **looked at** — derived (2026-11-02)\n  id: looked-at\n  check: none — the pin with #1\n"
+            "  exit: other-side 2099-01-01 — set to its real state after the pin moved\n",
             encoding="utf-8")
         env = dict(os.environ, LEDGER_RECONCILE_PR_SHAS=str(shas))
         r = subprocess.run([sys.executable, SCRIPT, "--root", root, "--brief"], env=env,
@@ -357,7 +359,8 @@ def main():
         ok("waits-met" in pm, "PIN-MET: every named PR is in the pin (head or merge commit an ancestor)", out)
         for i, why in (("one-outside", "one PR outside the pin"), ("other-repo", "another repo's #N"),
                        ("no-pin-word", "no word pin"), ("unreadable", "an unreadable PR"),
-                       ("ticked-pin", "a ticked entry")):
+                       ("ticked-pin", "a ticked entry"),
+                       ("looked-at", "an exit dated on or after the pin's commit")):
             ok(i not in out, f"PIN-MET negative: {why} keeps the entry silent", out)
         (R / ".claude" / "rules" / "ledgers.json").write_text(
             json.dumps({"ledgers": ["docs/l.md"], "allowed": ["test"], "pin_repo": "nowhere"}), encoding="utf-8")
