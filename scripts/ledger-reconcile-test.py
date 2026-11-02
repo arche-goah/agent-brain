@@ -74,6 +74,7 @@ Prose after the list.
 - [ ] **inline none** — derived (2026-10-21). id: inline-none | class: todo | check: none - needs the operator's eye
 - [ ] **inline prose, field line wins** — derived (2026-10-21). id: inline-overridden | check: `test -f x` = 1 and more prose
   check: none - the field line of its own decides
+- [ ] **dot form** — derived (2026-10-21) — id: `dot-done` · class: todo · check: `test -f marker-present` · reach: project ·
 """
 
 
@@ -132,6 +133,7 @@ def main():
         ok("inline-done" in done_line, "an inline `| check: ... |` is read and run, ending before the next field", out)
         ok("inline-none" not in out, "an inline `check: none - <why>` is a declaration", out)
         ok("inline-overridden" not in out, "a check field line of its own outranks an inline check", out)
+        ok("dot-done" in done_line and "dot-done`" not in out, "the middle-dot form: id and check end at ` · ` and their backtick", out)
         br = next((l for l in out.splitlines() if "could not give an answer" in l), "")
         ok("hangs (timeout)" in br, "a check that times out is reported as such", out)
         ok("hangs" not in done_line, "a timed-out check is never counted as done", out)

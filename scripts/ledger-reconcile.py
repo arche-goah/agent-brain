@@ -69,10 +69,12 @@ ENTRY = re.compile(r"^- \[( |x|X)\] (.*)$")
 # `  - `key: value``: measured 2026-10-26 on the Windows instance, 20 of 20 entries the ratchet
 # named as "without a check" were in list form, ids and checks unread.
 FIELD = re.compile(r"^\s{2,}(?:[-*]\s+)?`?([a-z_-]+):\s?(.*)$")
-# `id:` and `check:` kept on the entry line itself, between ` | ` separators, as open-items.py reads `id:` there
-# (measured 2026-11-02 on the Windows instance: 23 open entries wrote `| check: ...` inline, the ratchet named
-# them all "without a check"). A value ends where the next ` | <word>:` field or the line ends.
-INLINE_FIELD = re.compile(r"(?:^|\s)(id|check):\s*(.+?)\s*(?=\s\|\s[^\s|]+:|$)")
+# `id:` and `check:` kept on the entry line itself, as open-items.py reads `id:` there (measured 2026-11-02 on the
+# Windows instance: 23 open entries wrote `| check: ...` inline, the ratchet named them all "without a check").
+# Fields are separated by ` | `, ` · ` or ` ; ` (the macOS instance keeps the middle dot, the separators
+# live-doc-lint.py accepts too); a value ends before the next `<sep> <word>:` or at the line end, and a value
+# that opens with a backtick ends at its closing one.
+INLINE_FIELD = re.compile(r"(?:^|\s)(id|check):\s*(`[^`]*`|.+?)\s*(?=\s[|·;]\s[^\s|·;]+:|$)")
 DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 NONE = re.compile(r"^none\b", re.I)
 
@@ -89,7 +91,7 @@ def entries(text):
                    "text": line, "line": n}
             for f in INLINE_FIELD.finditer(m.group(2)):
                 if f.group(1) not in cur["fields"]:
-                    cur["fields"][f.group(1)] = f.group(2).strip().strip("`").strip()
+                    cur["fields"][f.group(1)] = f.group(2).strip().strip(" |·;").strip("`").strip()
                     cur.setdefault("inline", set()).add(f.group(1))
             continue
         if cur is None:
