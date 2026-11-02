@@ -313,6 +313,58 @@ def map_decision_review(rc, out):
     return res
 
 
+RC_SUMMARY = re.compile(r"corrections (\d+) · reply named a cause (\d+).*?without a mechanism write in the same turn (\d+)")
+
+
+def map_root_cause(rc, out, *_):
+    """The cause-review count: due when a correction stayed without a cause, or a cause without a mechanism."""
+    m = RC_SUMMARY.search(out or "")
+    if rc != 0 or not m:
+        return [crash("root-cause-gate --review", rc, out)]
+    corr, named, bare = (int(x) for x in m.groups())
+    if corr - named > 0 or bare > 0:
+        return [F("P2", f"root-cause review due: {corr} correction(s) since the last scan, {corr - named} without a "
+                        f"cause in the reply, {bare} turn(s) named a cause without a mechanism — run skill "
+                        "root-cause-review (report only) and decide the classes it groups")]
+    return []
+
+
+def unread_logs(repo, core):
+    """A log in .claude-state/ that no file but its writer names has no reader (audit-audit 2026-11-02, macOS instance:
+    claim-gate, mdm-hint and three guard logs were written for weeks and read by nothing). A reader is any second file
+    under the brain's or the core's scripts/helpers/skills, or a stop-checks row whose recorder recorder-report reads."""
+    state = repo / ".claude-state"
+    if not state.is_dir():
+        return []
+    texts = []
+    for base in (repo / "scripts", repo / ".claude", core / "scripts", core / "helpers", core / "skills"):
+        if base.is_dir():
+            for p in base.rglob("*"):
+                if p.is_file() and p.suffix in (".py", ".sh", ".cjs", ".js", ".json", ".md") and p.stat().st_size < 2_000_000:
+                    try:
+                        texts.append(p.read_text(encoding="utf-8", errors="ignore"))
+                    except OSError:
+                        pass
+    # The dispatcher names a recorder's log after its marker (<marker>.jsonl); recorder-report reads every one.
+    read_by_report = set()
+    try:
+        for c in json.loads((repo / ".claude/rules/stop-checks.json").read_text(encoding="utf-8")).get("checks", []):
+            if c.get("mode") == "record" and c.get("marker"):
+                read_by_report.add(c["marker"].lower() + ".jsonl")
+    except (OSError, ValueError):
+        pass
+    out = []
+    for log in sorted(state.glob("*.jsonl")) + sorted(state.glob("*.log")):
+        if log.stat().st_size == 0 or re.search(r"\.\d+\.jsonl$", log.name) or log.name in read_by_report:
+            continue
+        stem = log.name.rsplit(".", 1)[0]
+        named = sum(1 for t in texts if log.name in t or f"'{stem}'" in t or f'"{stem}"' in t)
+        if named < 2:
+            out.append(F("P2", f"log without a reader: .claude-state/{log.name} ({log.stat().st_size // 1024} KB) — "
+                               "named by at most its writer; give it a reader (a scan job, recorder-report) or stop writing it"))
+    return out
+
+
 def machine(repo, core, last_date, today):
     py = sys.executable or "python3"
     bash = shutil.which("bash") or "bash"
@@ -352,8 +404,13 @@ def machine(repo, core, last_date, today):
                                 "--today", today], 60),
         # Network (GitHub): here and not at the session start, whose budget is seconds.
         "fork-drift.py": ([py, str(S / "fork-drift.py"), "--brain", str(repo)], 300),
+        # The count behind skill root-cause-review (audit-audit 2026-11-02, macOS instance: its cadence "every
+        # two weeks with the brain-scan" stood only in prose, nothing here ran it, the review never ran).
+        "root-cause-gate.cjs": (["node", str(core / "helpers" / "root-cause-gate.cjs"), "--review",
+                                 "--since", str(last_date or "0000-00-00")], 180, {"CLAUDE_PROJECT_DIR": str(repo)}),
     }
-    missing = [n for n in jobs if not (S / n).is_file()]
+    where = {"root-cause-gate.cjs": core / "helpers"}
+    missing = [n for n in jobs if not (where.get(n, S) / n).is_file()]
     findings = []
     if not register.is_file() and "invariant-check.py" not in missing:
         findings.append(F("INFO", "no invariant register at docs/maintenance/invariants.md — section not executed"))
@@ -391,6 +448,9 @@ def machine(repo, core, last_date, today):
         findings += map_fork_drift(*out["fork-drift.py"])
     if "decision-review.py" in out:
         findings += map_decision_review(*out["decision-review.py"])
+    if "root-cause-gate.cjs" in out:
+        findings += map_root_cause(*out["root-cause-gate.cjs"])
+    findings += unread_logs(repo, core)
     if missing:
         findings.append(F("INFO", f"not available in this core checkout: {', '.join(missing)}"))
     return findings, sorted(run_jobs)

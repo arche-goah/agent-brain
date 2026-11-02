@@ -236,7 +236,8 @@ function gate(input) {
         + 'ledger or memory note) leaves the tool that let it happen as it was. Before this turn ends: change the '
         + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
         + 'lives) with a fixture, or say Carrier: none - <why no mechanism can carry it>; AND write the entry in '
-        + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits.`,
+        + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits, `
+        + 'found-by (operator | work | ci | <the check that found it>; when not a check: should-have: <the check that should have>).',
     }, input)));
     return;
   }
@@ -329,8 +330,13 @@ function review(args) {
   const due = entries.filter((e) => /^\s*carrier:\s*none\b/im.test(e)
     && (/^\s*recheck:\s*(\d{4}-\d{2}-\d{2})/im.exec(e) || [])[1] <= today);
   const noReplay = entries.filter((e) => !/^\s*replay:\s*\S/im.test(e));
+  // Who found it (audit-audit 2026-11-02, macOS instance: of 144 register entries the operator found 54 %, a check
+  // 6 % — counted by keyword, because no entry said it). The field makes the checks' hit rate a reading, not a guess.
+  const finder = (e) => ((/^\s*found-by:\s*([^\n]+)/im.exec(e) || [])[1] || '').trim().toLowerCase();
+  const withFinder = entries.filter((e) => finder(e));
+  const byCheck = withFinder.filter((e) => !/^(operator|work|ci)\b/.test(finder(e)));
   console.log(`\n## Carrier register (${registerPath(cwd)}): ${entries.length} entries · "none" due for recheck ${due.length}`
-    + ` · without a replay ${noReplay.length}\n`);
+    + ` · without a replay ${noReplay.length} · found-by named ${withFinder.length}, of them by a check ${byCheck.length}\n`);
   for (const e of due) console.log(`- recheck due: ${e.split('\n')[0].trim()}`);
   for (const e of noReplay) console.log(`- no replay yet: ${e.split('\n')[0].trim()}`);
   console.log('\n## Turns that named a cause and wrote no mechanism (newest 40)\n');

@@ -126,6 +126,11 @@ case "$out" in *'| 2026-09 | 1 | 0 | 0 |'*'| 2026-10 | 2 | 1 | 1 |'*) ok "review
 case "$out" in *'(no mechanism within 5 turns): "that is wrong"'*'(mechanism written later): "something went wrong"'*) ok "review lists the corrections without a cause, oldest first";; *) bad "review list: $out";; esac
 out="$(cd "$CWD" && node "$G" --review 10 --since 2026-10-02 --dir "$(native "$RD")" 2>&1)"
 case "$out" in *'corrections 1 ·'*) ok "review --since cuts older turns";; *) bad "review since: $out";; esac
+# 2026-11-02 (audit-audit): the register says who found each mishap; the review counts it.
+mkdir -p "$CWD/docs/maintenance"
+printf '%s\n' '# reg' '## a' 'found-by: operator' 'should-have: brain-scan' 'replay: 1' '## b' 'found-by: recorder-report' 'replay: 1' '## c' 'replay: 1' > "$CWD/$REG"
+out="$(cd "$CWD" && node "$G" --review 10 --dir "$(native "$RD")" 2>&1)"
+case "$out" in *'found-by named 2, of them by a check 1'*) ok "review counts who found the register entries";; *) bad "found-by: $out";; esac
 # without --dir the transcripts are found where Claude Code keeps them: every non-alphanumeric
 # character of the project path becomes '-' (a dot here; the drive colon on Windows)
 PROJ="$T/my.brain"; mkdir -p "$PROJ"
