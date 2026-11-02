@@ -365,6 +365,30 @@ def main():
                            capture_output=True, text=True, encoding="utf-8")
         ok("waiting for a pin" not in r.stdout, "PIN-MET: no pin checkout, nothing measured", r.stdout)
 
+    # PARKED (2026-11-02, agreed between the instances): an open `check: none` entry that holds a
+    # command in backticks is named; a reason with a path or a name in backticks, a ticked entry and
+    # a plain reason stay silent.
+    with tempfile.TemporaryDirectory() as root:
+        R = pathlib.Path(root)
+        (R / "docs").mkdir()
+        (R / ".claude" / "rules").mkdir(parents=True)
+        json.dump({"ledgers": ["docs/l.md"], "allowed": ["test"]},
+                  open(R / ".claude" / "rules" / "ledgers.json", "w", encoding="utf-8"))
+        (R / "docs" / "l.md").write_text(
+            "- [ ] **parked** - derived (2026-11-02)\n  id: parked-grep\n  check: none - `grep -c Monitor core/x.cjs` > 0\n\n"
+            "- [ ] **parked test** - derived (2026-11-02)\n  id: parked-test\n  check: none - `test -s core/y.md` once merged\n\n"
+            "- [ ] **path only** - derived (2026-11-02)\n  id: path-reason\n  check: none - the text in `core/x.md` needs a reader, see `#315`\n\n"
+            "- [ ] **plain reason** - derived (2026-11-02)\n  id: plain-reason\n  check: none - the operator decides\n\n"
+            "- [x] **ticked** - derived (2026-11-02)\n  id: ticked-parked\n  check: none - `grep -c x core/z.md` = 1\n",
+            encoding="utf-8")
+        rc, out = run(root, "--ledger", "docs/l.md")
+        pk = next((l for l in out.splitlines() if "park a command" in l), "")
+        ok("parked-grep" in pk and "parked-test" in pk and pk.startswith("!! ledger: 2 "),
+           "PARKED: two open entries with a command behind none are named", out)
+        for i, why in (("path-reason", "a path and a PR number in backticks"), ("plain-reason", "a plain reason"),
+                       ("ticked-parked", "a ticked entry")):
+            ok(i not in pk, f"PARKED negative: {why} stays silent", out)
+
     print()
     if fails:
         print(f"ledger-reconcile-test: {fails} FAILURE(S)")

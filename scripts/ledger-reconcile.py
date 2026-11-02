@@ -24,6 +24,11 @@ The script runs every `check:` of the registered ledgers and reports:
               every one of them is in the brain's pinned core (`pin_repo`, default `core`): its
               head or merge commit is an ancestor of the checkout (`gh pr view` + `git merge-base
               --is-ancestor`). A PR that cannot be read keeps the entry silent, never "met".
+  PARKED      an open `check: none` entry whose text holds a command in backticks
+              (`` check: none - `grep -c x f` = 1 ``): the measurement exists, but `none` is never
+              run. Measured 2026-11-02 on a Windows brain: 16 entries of one ledger parked a command
+              there; 5 of the open ones were done (work in the pin or on main) and still open. Write it as the check (a command that exits 0 when done: `grep -q`,
+              `test -s`), or keep `none` with a reason and no command.
 A check that times out or cannot start is reported as such, never as done.
 
 Two bounds, because the checks run on their own at every session start:
@@ -83,6 +88,9 @@ PR_REF = re.compile(r"(?:(?<![\w-])agent-brain#|(?<![\w/#-])#)(\d+)\b")
 FIELD = re.compile(r"^\s{2,}(?:[-*]\s+)?`?([a-z_-]+):\s?(.*)$")
 DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 NONE = re.compile(r"^none\b", re.I)
+# A command parked as text behind `none` (see PARKED above): a backtick span whose first word is a
+# command. A path or a name in backticks (`core/x.md`, `#315`) is no command and stays a reason.
+PARKED_CMD = re.compile(r"`\s*(?:test|\[|grep|ls|wc|head|tail|cat|diff|git|gh|python3?|node|bash|sh|find|jq)\s[^`]+`")
 
 
 def entries(text):
@@ -245,7 +253,7 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
     None = no memory (hand runs with --ledger); an empty dict on a brain's first run = baseline.
     `pin`: the pinned core checkout; open `check: none` entries waiting for its PRs are measured."""
     out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": [],
-           "refused": [], "not_run": [], "unproven": [], "pin_met": []}
+           "refused": [], "not_run": [], "unproven": [], "pin_met": [], "parked": []}
     baseline = seen is not None and not seen
     deadline = time.monotonic() + budget
     for rel in ledgers:
@@ -263,6 +271,8 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
                     out["no_check"].append(label(e, rel))
                 continue
             if NONE.match(chk):
+                if not e["done"] and PARKED_CMD.search(chk):
+                    out["parked"].append(label(e, rel))
                 if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout):
                     out["pin_met"].append(label(e, rel))
                 continue
@@ -381,6 +391,9 @@ def main():
         " until it is, then it counts (a changed check is seen anew)")
     say("pin_met", "open `check: none` entr(y/ies) waiting for a pin whose named PRs are all in it",
         "condition met - measure the exit now: do the waiting work, or tick it with the evidence")
+    say("parked", "open `check: none` entr(y/ies) that park a command as text - never run",
+        "write it as the check, a command that exits 0 when done (`grep -q` instead of `grep -c ... = 1`,"
+        " `test -s` for \"not empty\"), or keep `none` with a reason and no command")
     say("regressed", "ticked entr(y/ies) whose check fails",
         "reopen it, or the check no longer measures the thing")
     say("broken", "check(s) that could not give an answer",
