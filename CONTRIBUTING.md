@@ -49,6 +49,9 @@ how someone else can reproduce it. Measured values, not impressions.
 
 ## Pull requests (write access)
 
+Write access is granted per person by the maintainers, usually after a few issues have shown how
+you work. Ask in an issue; there is no other way in.
+
 - Branch in this repo, one topic per PR, a `changelog.d/<slug>.md` fragment with its test class and
   level (`changelog.d/README.md`).
 - CI must be green; the PR is reviewed by a second instance, on macOS and Windows where it matters.
