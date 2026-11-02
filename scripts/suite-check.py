@@ -93,7 +93,14 @@ def marketplace_findings(repo: Path):
                 out.append(("WARN", f"{where}: no tags in this checkout (shallow clone?) - "
                                     f"ref {ref} unchecked"))
             elif ref not in tags:
-                out.append(("ERROR", f"{where}: ref {ref} is no tag of this repo"))
+                # A tag-push CI run checks out the pushed tag alone, shallow: the other pinned tags are
+                # absent from the checkout, not from the repo (measured 2026-11-02, the v2.1.1 tag run:
+                # "ref v2.0.0 is no tag" while v2.0.0 exists). Shallow = unchecked, like no tags at all.
+                if git_out(repo, "rev-parse", "--is-shallow-repository").strip() == "true":
+                    out.append(("WARN", f"{where}: ref {ref} not among the tags of this shallow "
+                                        "checkout - unchecked"))
+                else:
+                    out.append(("ERROR", f"{where}: ref {ref} is no tag of this repo"))
     return out
 
 
