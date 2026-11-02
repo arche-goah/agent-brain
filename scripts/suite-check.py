@@ -73,6 +73,15 @@ def marketplace_findings(repo: Path):
         return [("ERROR", ".claude-plugin/marketplace.json: 'plugins' is not a list")]
     own = repo_slug(git_out(repo, "remote", "get-url", "origin"))
     tags = set(git_out(repo, "tag", "-l").split())
+    # The release this checkout ships: a pin on exactly that version is the tag the release cuts at its
+    # merge, so fixes, version bump and pin travel in ONE train (operator 2026-11-02: "a whole instance
+    # every day only preparing a release - that does not work"; v2.1.1 took three trains).
+    try:
+        cutting = "v" + str(json.loads((repo / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("version") or "")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        cutting = ""
+    if cutting == "v" or cutting in tags:
+        cutting = ""  # no version, or that tag exists already: nothing is being cut here
     for p in plugins:
         name = p.get("name", "?") if isinstance(p, dict) else "?"
         src = p.get("source") if isinstance(p, dict) else None
@@ -89,7 +98,10 @@ def marketplace_findings(repo: Path):
         elif not RELEASE_TAG.match(ref):
             out.append(("ERROR", f"{where}: ref {ref!r} is not a release tag (vX.Y.Z)"))
         elif own and repo_slug(src.get("repo") or src.get("url")) == own:
-            if not tags:
+            if ref == cutting:
+                out.append(("INFO", f"{where}: ref {ref} is the release this checkout cuts "
+                                    "(plugin.json) - tag it at the merge"))
+            elif not tags:
                 out.append(("WARN", f"{where}: no tags in this checkout (shallow clone?) - "
                                     f"ref {ref} unchecked"))
             elif ref not in tags:
