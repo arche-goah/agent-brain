@@ -461,6 +461,17 @@ git -C "$G" -c user.email=t@t -c user.name=t commit -qm late
 out=$(run "" "$G")
 has "[ledger|human]" "$out" && has " late " "$out" && ok "exit operator-decision lists for the operator" || bad "operator-decision: $out"
 has "docs/x/open.md#no-id-here" "$out" && ok "title key survives a line inserted elsewhere" || bad "title key moved: $out"
+# A standing approval of own ledger items (2026-11-02, macOS instance: "all own items" reached requests
+# and PRs only; ledger entries were asked at every start). An excluded text and an operator-decision
+# exit stay out of the class.
+printf '%s\n' '{"classes":[{"name":"own ledger items","kind":"ledger","excludes":["\\bcolour\\b"],"granted":"\"handle all own items\" 2026-10-26"}]}' \
+  > "$G/.claude/rules/open-items-standing.json"
+out=$(run "" "$G")
+has "[ledger|standing] 2026-09-21 harden-box" "$out" && ok "an own ledger item of a standing class = standing" || bad "ledger standing missed: $out"
+has "[ledger|ai] 2026-09-21 pick-colour" "$out" && ok "negative control: an excluded ledger text stays ai" || bad "excluded ledger: $out"
+has "[ledger|human]" "$(line ' late ' "$out")" && ok "negative control: an operator-decision exit stays human" || bad "operator ledger became standing: $out"
+! has "refused" "$out" && ok "kind ledger is accepted" || bad "ledger kind refused: $out"
+rm "$G/.claude/rules/open-items-standing.json"
 # A ledger key with '#' is no PR key: when the PR source is unread, a done ledger entry's counter
 # is dropped, not kept as if it were a PR (found 2026-10-28 by the parallel session reading #164).
 mkdir -p "$T/tx"; : > "$T/tx/sk1.jsonl"; : > "$T/tx/sk2.jsonl"
