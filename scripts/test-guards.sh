@@ -20,6 +20,10 @@ fail=0
 # a throwaway directory — otherwise the fixture measures the checkout, not the guard.
 FG="$(mktemp -d)"
 trap 'rm -rf "$FG"' EXIT
+# A home of its own (2026-11-02): secret-guard appends every decision to ~/.claude/hooks-logs, so
+# the probes wrote into the real home of the machine. USERPROFILE: node reads it on Windows, not HOME.
+mkdir -p "$FG/home"
+export HOME="$FG/home" USERPROFILE="$(if command -v cygpath >/dev/null 2>&1; then cygpath -m "$FG/home"; else printf '%s' "$FG/home"; fi)"
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
 
