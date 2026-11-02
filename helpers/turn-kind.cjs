@@ -24,8 +24,16 @@ const FRAMES = /<system-reminder>[\s\S]*?<\/system-reminder>|<task-notification>
 const LOCAL = /<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<local-command-std(?:out|err)>[\s\S]*?<\/local-command-std(?:out|err)>|<command-(?:name|message|args)>[\s\S]*?<\/command-(?:name|message|args)>/g;
 const LOCAL_MARK = /<local-command-(?:caveat|stdout|stderr)>|<command-name>/;
 
+// A Stop hook's block comes back as a user record "Stop hook feedback:\n…" with isMeta and no
+// sourceToolUseID - the shape of a message the operator types mid-turn (measured 2026-11-02, Windows
+// instance, Claude Code transcript). autonomous-gate's operatorInTurn read it as the operator speaking,
+// handed an ask-rule edit (.claude/settings.json) to the harness dialog in an autonomous run, and the
+// operator got the dialog ("you are in auto mode and still send interactive requests").
+const STOP_FEEDBACK = /^\s*Stop hook feedback:/;
+
 function isNotification(text) {
   if (typeof text !== 'string') return false;
+  if (STOP_FEEDBACK.test(text.replace(FRAMES, ''))) return true;
   if (/<task-notification>/.test(text) && !text.replace(FRAMES, '').trim()) return true;
   return LOCAL_MARK.test(text) && !text.replace(FRAMES, '').replace(LOCAL, '').trim();
 }
