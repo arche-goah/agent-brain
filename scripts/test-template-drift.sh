@@ -5,17 +5,30 @@
 # Usage: bash scripts/test-template-drift.sh (exit 0 = pass)
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-S="$HERE/template-drift.py"
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
-# The org comes from eco_owner.py, so gh is a stand-in for every case: it prints $GH_STUB (empty =
-# offline), never the real login (the real one made the cases depend on who runs them).
-mkdir -p "$T/bin"
-printf '%s\n' '#!/usr/bin/env bash' 'printf %s "${GH_STUB:-}"' > "$T/bin/gh"; chmod +x "$T/bin/gh"
-export PATH="$T/bin:$PATH" GH_STUB=""
+# The org comes from eco_owner.py, so gh is a stand-in for every case: it answers $GH_STUB (empty =
+# offline), never the real login (the real one made the cases depend on who runs them). The stand-in
+# replaces subprocess.run inside the same Python process, as test-eco-owner.sh does: a stub script
+# named `gh` on PATH is never found by Windows' CreateProcess (OS-14) — measured on a Windows
+# machine with gh logged in, 2026-11-02 (#297 review): the stub was skipped and the real login came back.
+export DRIFT_SCRIPT="$(native "$HERE/template-drift.py")" GH_STUB=""
+cat > "$T/drift.py" <<'PY'
+import os, runpy, subprocess, sys
+class R:
+    def __init__(self, out): self.returncode, self.stdout, self.stderr = (0 if out else 1), out, ""
+def run(a, **k):
+    if not a or a[0] != "gh":
+        raise AssertionError("unexpected command %r" % (a,))
+    return R(os.environ.get("GH_STUB", ""))
+subprocess.run = run
+sys.argv = [os.environ["DRIFT_SCRIPT"]] + sys.argv[1:]
+runpy.run_path(os.environ["DRIFT_SCRIPT"], run_name="__main__")
+PY
+S="$(native "$T/drift.py")"
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
