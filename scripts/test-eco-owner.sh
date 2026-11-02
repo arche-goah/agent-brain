@@ -156,10 +156,15 @@ asks() { # $1 = project repos -> "ask <repo>" when the update check would call G
   read -ra pr <<< "$1"
   rm -rf "$T/p" "$T/cfg"; mkdir -p "$T/p/.claude" "$T/cfg"
   mk "$T/p/.claude/settings.json" "${pr[@]}"
+  # A plugin of marketplace m1 is enabled: the update check reads each plugin's pin from ITS marketplace
+  # (2026-11-02, #283) and asks no marketplace that has no enabled plugin. $2 = "none" leaves it out.
+  [ "${2:-}" = none ] || "$PY" -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["enabledPlugins"]={"brain-core-next@m1": True}; json.dump(d, open(p, "w"))' "$T/p/.claude/settings.json"
   (cd "$T/p" && CLAUDE_CONFIG_DIR="$T/cfg" "$PY" -c "$REC$UPDS")
 }
 echo "7. update check: asks GitHub only about a real marketplace"
 is "real owner: one call (control)"                  "$(asks some-team/claude-marketplace)" "ask some-team/claude-marketplace"
+is "a marketplace without an enabled plugin: no call" "$(asks some-team/claude-marketplace none)" ""
+is "two marketplaces, the enabled plugin's one asked" "$(asks 'other-org/claude-marketplace some-team/agent-brain')" "ask other-org/claude-marketplace"
 is "template placeholder your-org: no call"          "$(asks your-org/claude-marketplace)" ""
 is "case does not matter (Your-Org): no call"        "$(asks Your-Org/claude-marketplace)" ""
 is "<placeholder>: no call"                          "$(asks '<your-org>/claude-marketplace')" ""
