@@ -136,4 +136,15 @@ function questionAnswers() {
   };
 }
 
-module.exports = { isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };
+/**
+ * True for the record the harness writes once a turn has really ended - after every Stop hook let it
+ * through (`system/turn_duration`). A blocked stop writes none, so a re-issued reply stays in its turn.
+ * WHY (measured 2026-11-02 on the macOS instance): every later operator word arrived mid-turn
+ * (queued_command) or as a question-tool answer, neither of which counts as a prompt; a first-turn gate
+ * kept judging the whole session as its first reply.
+ */
+function isTurnEnd(d) {
+  return Boolean(d && d.type === 'system' && d.subtype === 'turn_duration');
+}
+
+module.exports = { isTurnEnd, isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };
