@@ -14,5 +14,9 @@
     came back; the six that returned after a tick had no check). An index exit `done-already` stays done. Fixture +2.
   - `workflows/brain-scan.js`: a gate that fails after the report was written names in its error the report path, the
     findings folder, the decisions and the top findings (the 10-15 run lost its return that way). The gate still fails.
+  - The coherence register writes a "Finding index" with ONE exit per finding of every severity (backlog-catch-up
+    vocabulary), appends every finding — P2 included — to the order list with `id:`, `exit:` and a red-today `check:`,
+    and the workflow aborts when a verified finding has no valid exit. "Next steps" follows order fidelity #9 instead of
+    "every fix needs the operator's decision".
   - The coherence corpus takes the first 40 lines of every instance script and of every synthesis/register/report under
     `docs/research/` (a 10-25 register said no level above the full audit exists; the audit-audit reports stood there).

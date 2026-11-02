@@ -62,6 +62,8 @@ defend the system. STRICTLY READ-ONLY outside your return value and the one outp
 file this task names. Every claim needs file + verbatim quote.`
 
 const SEVERITY = { type: 'string', enum: ['P0', 'P1', 'P2', 'INFO'] }
+// The exit vocabulary of skill backlog-catch-up — the same the brain-scan's index uses.
+const COH_EXITS = ['done-already', 'ai-does-it', 'other-side', 'parked', 'later-at-system', 'drop', 'operator-decision', 'in-pr']
 // Shape of ONE finding as it is written to the lens files and the merged file. It is
 // prompt text now, not a StructuredOutput schema: the findings never come back through
 // a return value (see the producer-writes block below).
@@ -283,7 +285,7 @@ phase('Register')
 const p0Machine = surviving.filter(f => f.severity === 'P0').length
 const p1Machine = surviving.filter(f => f.severity === 'P1').length
 const report = await agent(
-  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.\nDATA BASIS ON DISK — read ALL of these completely before writing, never from memory of earlier stages: ${MERGED} (the consolidated findings, full text) and ${verifyFiles.join(', ')} (verdicts with reasoning). The findings that survived verification (index; REFUTED ones are already removed by the script — write exactly these, nothing more, nothing less): ${relay(surviving, 8000, 'surviving index')}\n\nAUTHORITATIVE numbers (machine-derived from the verified index): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if a summary in the files deviates from them, the index wins. Return them unchanged — a deviation in your returned counts aborts the run.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — explicitly: EVERY fix needs the operator's decision.\nTHEN append the P0/P1 findings to ${AUFTRAEGE} under the existing structure as proposal items, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), 1 line each with a pointer to the register — implement NONE of it.\nAfter writing, MEASURE the register: run \`wc -c < ${REGISTER}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.\nReturn via StructuredOutput: files_read (every data file you read, from your ls), report_path, report_bytes, findings_written (count the finding entries in the register you wrote — measure, e.g. grep -c on the finding headings), p0_count, p1_count, appended_orders.`,
+  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.\nDATA BASIS ON DISK — read ALL of these completely before writing, never from memory of earlier stages: ${MERGED} (the consolidated findings, full text) and ${verifyFiles.join(', ')} (verdicts with reasoning). The findings that survived verification (index; REFUTED ones are already removed by the script — write exactly these, nothing more, nothing less): ${relay(surviving, 8000, 'surviving index')}\n\nAUTHORITATIVE numbers (machine-derived from the verified index): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if a summary in the files deviates from them, the index wins. Return them unchanged — a deviation in your returned counts aborts the run.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — order fidelity #9 (rules/working-rules.md): the run was ordered, so the session applies the clear and safe fixes (reversible, no live system, no shared carrier) and proposes the structural, uncertain ones or those against a documented operator decision; (5) section "## Finding index": ONE line per finding of EVERY severity (P2 and INFO too), exactly \`- key: KS-<short-slug> | severity: <P0|P1|P2|INFO> | exit: <one of ${COH_EXITS.join(', ')}> | title: <the title>\`.\nTHEN append EVERY finding (all severities — measured 2026-11-02: P2 findings that stood only in the register never reached a decision) to ${AUFTRAEGE} under the existing structure, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), each with the lines \`id: <the index key>\`, \`exit: <the same exit> ${DATE} — <one clause why>\` and \`check: <a shell command that is RED while the work is missing — run it now, it must fail>\` or \`check: none — <why not machine-checkable>\`, and a pointer to the register. Write no fix yourself.\nAfter writing, MEASURE the register: run \`wc -c < ${REGISTER}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.\nReturn via StructuredOutput: files_read (every data file you read, from your ls), report_path, report_bytes, findings_written (count the finding entries in the register you wrote — measure, e.g. grep -c on the finding headings), p0_count, p1_count, appended_orders.`,
   { label: 'register', phase: 'Register', ...modelFor('register'), schema: {
     type: 'object', required: ['files_read', 'report_path', 'report_bytes', 'findings_written', 'p0_count', 'p1_count'],
     properties: {
@@ -293,10 +295,22 @@ const report = await agent(
       findings_written: { type: 'number' },
       p0_count: { type: 'number' }, p1_count: { type: 'number' },
       appended_orders: { type: 'number' },
+      index: { type: 'array', maxItems: 60, items: { type: 'object', required: ['key', 'exit'],
+        properties: { key: { type: 'string' }, exit: { type: 'string' } } } },
     },
   } },
 )
 if (!report) throw new Error('Register agent failed')
+// Every verified finding leaves with exactly ONE exit, like the brain-scan's (audit-audit 2026-11-02, macOS instance:
+// the coherence scan had no index, no exits, P2 findings only in the register, and its head said "NOTHING implemented").
+{
+  const idx = report.index || []
+  const bad = idx.filter(i => !COH_EXITS.includes(String(i.exit)))
+  if (bad.length) throw new Error(`coherence-scan exits: ${bad.length} finding(s) without a valid exit (${bad.map(i => `${i.key}=${i.exit}`).join(', ')}) — one of: ${COH_EXITS.join(', ')}.`)
+  const keys = idx.map(i => i.key)
+  if (new Set(keys).size !== keys.length) throw new Error('coherence-scan exits: a key is used twice — one key, one exit.')
+  assertCount(surviving.length, idx.length, 'coherence-scan findings with an exit in the index')
+}
 assertFiles([MERGED, ...verifyFiles], report.files_read, 'register: data files read from disk')
 assertCount(surviving.length, report.findings_written, 'coherence-scan register findings')
 assertCount(p0Machine, report.p0_count, 'coherence-scan P0')
