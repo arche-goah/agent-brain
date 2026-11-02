@@ -1,11 +1,11 @@
 # Skill Registry
 
 **Total skills:** 27
-**Generated:** 2026-10-26
+**Generated:** 2026-11-02
 
-> Auto-generated from the `.claude/skills/*/SKILL.md` files via `core/scripts/regen-skill-registry.py` — **do not maintain by hand**. Re-run the script after changing a skill.
+> Auto-generated from the `skills/*/SKILL.md` files via `core/scripts/regen-skill-registry.py` — **do not maintain by hand**. Re-run the script after changing a skill.
 
-Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` (each with YAML frontmatter `name` + `description`). This registry is the human-readable overview.
+Claude Code discovers skills automatically from a project's `.claude/skills/*/SKILL.md` and from installed plugins (each with YAML frontmatter `name` + `description`). This registry is the human-readable overview.
 
 ## Other (27)
 
