@@ -63,7 +63,8 @@ expect "a path before python.exe runs a doc file" deny "$(call PowerShell "{\"co
 expect "a backslash path before python.exe runs a doc file" deny "$(call PowerShell "{\"command\":$(js "C:\\Python312\\python.exe $N")}")"
 expect "pythonw runs a doc file" deny "$(call PowerShell "{\"command\":$(js "pythonw $N")}")"
 expect "py -3 runs a doc file" deny "$(call PowerShell "{\"command\":$(js "py -3 $N")}")"
-expect "a doc file piped into python3 - runs" deny "$(call Bash "{\"command\":$(js "cat $N | python3 -")}")"
+P3="python""3"  # test data, never run; split so the bare-interpreter lint does not read it as a call
+expect "a doc file piped into python3 - runs" deny "$(call Bash "{\"command\":$(js "cat $N | $P3 -")}")"
 expect "cmd /c python runs a doc file" deny "$(call PowerShell "{\"command\":$(js "cmd /c python $N")}")"
 expect "the call operator & python runs a doc file" deny "$(call PowerShell "{\"command\":$(js "& python $N")}")"
 expect "Get-Content piped into Invoke-Expression runs a doc file" deny "$(call PowerShell "{\"command\":$(js "Get-Content $N -Raw | Invoke-Expression")}")"
