@@ -89,4 +89,21 @@ probe "removing an off-word stays held" Edit "{\"file_path\":\"$AP\",\"old_strin
 probe "the 2026-10-28 incident: an ask-pattern no prompt carries stays held" Edit '{"file_path":".claude/rules/open-items.json","old_string":"[]","new_string":"[\"\\\\bzebra\\\\b\"]"}' "$STUCK" block
 probe "a note-only edit is no way out (held)" Edit "{\"file_path\":\"$AP\",\"old_string\":\"\\\"x\\\"\",\"new_string\":\"\\\"y\\\"\"}" "$STUCK" block
 
+# Permission mode `default` (2026-11-02): the harness dialog for a call without an allow rule comes before
+# any hook; the gate says it once per session, then lets the call through.
+mprobe() { # $1 label, $2 permission_mode, $3 session, $4 transcript, $5 block|allow
+  local out
+  out=$(printf '{"tool_name":"Bash","tool_input":{"command":"ls"},"permission_mode":"%s","session_id":"%s","transcript_path":"%s","cwd":"%s"}' "$2" "$3" "$(native "$4")" "$(native "$B")" \
+        | CLAUDE_PROJECT_DIR="$(native "$B")" CLAUDE_CONFIG_DIR="$(native "$T/userdir")" node "$(native "$G")" 2>&1)
+  case "$out" in
+    *'"permissionDecision":"deny"'*) [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:160}";;
+    *) [ "$5" = allow ] && ok "$1 allows" || bad "$1 did NOT block: '${out:0:160}'";;
+  esac
+}
+mprobe "default mode, autonomous run: first call says it" default s1 "$AUTO" block
+mprobe "default mode, same session: second call passes" default s1 "$AUTO" allow
+mprobe "default mode, a new session says it again" default s2 "$AUTO" block
+mprobe "auto mode, autonomous run (control)" auto s3 "$AUTO" allow
+mprobe "default mode, not autonomous (control)" default s4 "$INTER" allow
+
 [ "$fail" = 0 ] && echo "autonomous-gate: all cases pass" || { echo "autonomous-gate: FAILURES"; exit 1; }

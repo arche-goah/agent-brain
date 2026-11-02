@@ -185,9 +185,31 @@ function operatorInTurn(transcriptPath, root) {
   return !(last && last.autonomous && !(prev && prev.autonomous));
 }
 
+// A run in permission mode `default` still stops at the harness's own dialog for every call no
+// allow rule covers - that dialog comes before any hook can collect it (Windows instance, read in the
+// code 2026-11-02, confirmed by the macOS instance the same day; the operator: "auto mode collects
+// everything, interactive asks directly"). Rebuilding the allow list here would be the error-prone
+// half (globs, MCP names, three settings layers); instead the gate says it ONCE per session, on the
+// first call of the run: switch to auto, or dialogs will come. Marker: .claude-state/, per session.
+function defaultModeNotice(input, root) {
+  if (input.permission_mode !== 'default') return null;
+  if (!autonomousMode(input.transcript_path || '', root)) return null;
+  const sid = String(input.session_id || 'no-session').replace(/[^\w-]/g, '');
+  const mark = path.join(root, '.claude-state', `autonomous-default-mode-${sid}`);
+  if (fs.existsSync(mark)) return null;
+  try { fs.mkdirSync(path.dirname(mark), { recursive: true }); fs.writeFileSync(mark, new Date().toISOString() + '\n'); }
+  catch (e) { /* unwritable: say it every call rather than never */ }
+  return 'AUTONOMOUS-GATE: the run is autonomous, but this session runs in permission mode `default` - every call that ' +
+    'no allow rule covers opens a harness dialog that stops the run until someone clicks it, before any hook can collect it. ' +
+    'Not issued, once per session: tell the operator NOW, as a hand step, to switch the session to auto mode (Shift+Tab) ' +
+    'or to stay at the machine; file it in the operator-question ledger as well. Then repeat this call - it passes.';
+}
+
 function judge(input) {
   const tool = input.tool_name || '';
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  const notice = defaultModeNotice(input, root);
+  if (notice) return notice;
   const isQuestion = tool === 'AskUserQuestion';
   const rule = isQuestion ? null : hitRule(askRules(root), tool, input.tool_input || {}, root);
   const held = isQuestion || rule ? null : hitRule(CLASSIFIER_HELD, tool, input.tool_input || {}, root);
