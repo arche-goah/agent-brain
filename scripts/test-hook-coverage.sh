@@ -178,6 +178,24 @@ case "$out" in
   *"PreToolUse: node"*"core/helpers/no-input-control.cjs"*) ok "a same-named instance script does not count as the core hook (still missing)";;
   *) bad "same-named instance script counted as the core hook: '$(printf '%s' "$out" | head -1)'";;
 esac
+#    ... and a broken path that only ends in the core's file name does not stand in for it either
+#    (review on the macOS instance 2026-11-02), while the duplicate check keeps the careful side
+wire_input_guard "$B" ".*" 'node "$CLAUDE_PROJECT_DIR/scripts/gone/no-input-control.cjs"'
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-none" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"PreToolUse: node"*"core/helpers/no-input-control.cjs"*) ok "a broken same-named path does not count as the core hook (still missing)";;
+  *) bad "broken same-named path counted as the core hook: '$(printf '%s' "$out" | head -1)'";;
+esac
+B="$T/gone"; make_brain "$B"
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+d["hooks"]={"PreToolUse":[{"matcher":"Write|Edit|MultiEdit","hooks":[{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/old/file-guard.cjs\"","onFailure":"block"}]}]}
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"PreToolUse: file-guard.cjs runs twice"*) ok "a broken same-named path next to the plugin is still named as a duplicate (careful side)";;
+  *) bad "broken same-named path next to the plugin not named: '$(printf '%s' "$out" | head -1)'";;
+esac
 
 # 5) --runs: where one helper runs (onboarding-verify check 5) — the plugin's hooks.json counts,
 #    a plugin cache without hooks/ and no settings line is "nowhere" (exit 1, no line)

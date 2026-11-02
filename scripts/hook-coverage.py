@@ -144,14 +144,18 @@ def same_script(path, core_file):
     return difflib.SequenceMatcher(None, mine, core, autojunk=False).ratio() >= 0.5
 
 
-def runs_file(cmd, core_file, root):
+def runs_file(cmd, core_file, root, missing=True):
     """True when a wired command runs `core_file` (core/<helpers|scripts>/<name>) or a copy of it.
     The whole file name must match (`autonomous-question-gate.cjs` is no `question-gate.cjs`),
     in any path notation. A file of the same name that resolves to ANOTHER script is another
     hook: measured 2026-11-02 on a Windows brain, an instance's messaging hook
     `scripts/telegram-notify/notify.cjs` (13 % of lines shared with the core's sound
     `notify.cjs`) and the operator's own input guard, older than the core's and sharing 9 %,
-    were both reported as copies that run twice."""
+    were both reported as copies that run twice.
+    `missing`: what a same-named path outside core/ that does not exist counts as. The duplicate
+    check keeps the careful side (a copy); the demand check passes False, so a broken path that
+    merely ends in the core's file name does not stand in for the core hook (review on the macOS
+    instance, 2026-11-02)."""
     name = os.path.basename(core_file)
     sub = os.path.basename(os.path.dirname(core_file))
     for dq, sq, bare in re.findall(r'"([^"]+)"|\'([^\']+)\'|(\S+)', cmd):
@@ -160,10 +164,13 @@ def runs_file(cmd, core_file, root):
             continue
         if re.search(r"(?<![\w.-])core/%s/%s$" % (sub, re.escape(name)), path):
             return True
-        path = os.path.expanduser(path.replace("${CLAUDE_PROJECT_DIR}", root).replace("$CLAUDE_PROJECT_DIR", root))
+        path = path.replace("${CLAUDE_PROJECT_DIR}", root).replace("$CLAUDE_PROJECT_DIR", root)
+        path = os.path.expanduser(os.path.expandvars(path))
         if not os.path.isabs(path):
             path = os.path.join(root, path)
-        return not os.path.isfile(path) or same_script(path, core_file)
+        if not os.path.isfile(path):
+            return missing
+        return same_script(path, core_file)
     return False
 
 
@@ -295,9 +302,9 @@ def runs_where(root, cfg, event, helper):
     core_file = next((p for p in (os.path.join(root, "core", s, helper) for s in ("helpers", "scripts"))
                       if os.path.isfile(p)), os.path.join(root, "core", "helpers", helper))
     where = [label for p, label in settings_scopes(root, cfg)
-             if any(runs_file(c, core_file, root) for _m, c, _f in commands_by_event(load(p)).get(event, []))]
+             if any(runs_file(c, core_file, root, missing=False) for _m, c, _f in commands_by_event(load(p)).get(event, []))]
     plugin_id, shipped = plugin_shipped_hooks(root, cfg)
-    if any(runs_file(c, core_file, root) for _m, c, _f in commands_by_event(shipped).get(event, [])):
+    if any(runs_file(c, core_file, root, missing=False) for _m, c, _f in commands_by_event(shipped).get(event, [])):
         where.append("the plugin %s (hooks/hooks.json)" % plugin_id)
     return where
 
@@ -397,7 +404,7 @@ def main():
             if not os.path.isfile(os.path.join(root, "core", sub, helper)):
                 continue  # not in the consumed core yet: nothing to wire
             core_file = os.path.join(root, "core", sub, helper)
-            runs = [(m, c, f) for m, c, f in wired.get(event, []) if runs_file(c, core_file, root)]
+            runs = [(m, c, f) for m, c, f in wired.get(event, []) if runs_file(c, core_file, root, missing=False)]
             hits = [(m, c) for m, c, _f in runs]
             # A gate the template makes fail CLOSED (onFailure: block, Claude Code >= 2.1.295)
             # but this brain wires with the default "continue": a crash, a timeout or a
