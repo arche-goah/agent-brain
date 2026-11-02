@@ -20,6 +20,10 @@ The script runs every `check:` of the registered ledgers and reports:
               control, so "done" is unproven (operator 2026-10-28). The first results live in
               .claude-state/ledger-reconcile-seen.json; a brain's first run is a baseline, a
               changed check is seen anew, a hand run with --ledger keeps no memory.
+  PIN-MET     an open `check: none` entry that names the pin and PRs (`#N`, `agent-brain#N`), and
+              every one of them is in the brain's pinned core (`pin_repo`, default `core`): its
+              head or merge commit is an ancestor of the checkout (`gh pr view` + `git merge-base
+              --is-ancestor`). A PR that cannot be read keeps the entry silent, never "met".
 A check that times out or cannot start is reported as such, never as done.
 
 Two bounds, because the checks run on their own at every session start:
@@ -39,7 +43,8 @@ Two bounds, because the checks run on their own at every session start:
 
 Ledgers are instance data: `.claude/rules/ledgers.json`
     {"ledgers": ["docs/maintenance/orders.md", ...], "ratchet_since": "YYYY-MM-DD",
-     "timeout_s": 5, "budget_s": 10, "allowed": ["test", "grep", "git log", ...]}
+     "timeout_s": 5, "budget_s": 10, "allowed": ["test", "grep", "git log", ...],
+     "pin_repo": "core"}
 Paths are relative to the brain root. No file = nothing registered (said once, not a gate).
 
 Usage: ledger-reconcile.py [--root DIR] [--brief|--cached] [--ledger PATH ...] [--since DATE]
@@ -65,6 +70,13 @@ except Exception:
     pass
 
 ENTRY = re.compile(r"^- \[( |x|X)\] (.*)$")
+# An open `check: none` entry that waits for "the pin that carries #N" (2026-11-02, operator: yes,
+# core PR): measured that day, four such PRs were in the brain's pin and none of the five entries
+# moved — `none` was never looked at again. A bare `#N` or `agent-brain#N` is a PR of the pin repo;
+# `<other-repo>#N` is not.
+PIN_WORD = re.compile(r"(?<![\w-])pin\b", re.I)   # not inside a slug (`none-pin-bedingung`)
+PIN_NEAR = 80   # characters on each side of the word pin in which a #N is the condition
+PR_REF = re.compile(r"(?:(?<![\w-])agent-brain#|(?<![\w/#-])#)(\d+)\b")
 # A field line is `  key: value`, and just as often a list item `  - key: value` or a code span
 # `  - `key: value``: measured 2026-10-26 on the Windows instance, 20 of 20 entries the ratchet
 # named as "without a check" were in list form, ids and checks unread.
@@ -175,17 +187,65 @@ def run_check(cmd, root, timeout, shell):
     return "pass" if r.returncode == 0 else "fail"
 
 
+def pr_commits(pin, n, timeout):
+    """Head and merge commit of PR n of the pin repo, or None when unreadable.
+    A PR in a merge train is closed, not merged: its head is in the pin, not a merge commit.
+    The archive history before a repo cut reuses the numbers, so the subject line is no proof."""
+    fake = os.environ.get("LEDGER_RECONCILE_PR_SHAS")   # fixtures: {"N": ["sha", ...]}
+    if fake:
+        try:
+            return json.loads(pathlib.Path(fake).read_text(encoding="utf-8")).get(str(n))
+        except (OSError, ValueError):
+            return None
+    try:
+        r = subprocess.run(["gh", "pr", "view", str(n), "--json", "headRefOid,mergeCommit"], cwd=pin,
+                           capture_output=True, text=True, encoding="utf-8", timeout=timeout)
+        d = json.loads(r.stdout) if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if not d:
+        return None
+    return [s for s in (d.get("headRefOid"), (d.get("mergeCommit") or {}).get("oid")) if s]
+
+
+def in_pin(pin, sha, timeout):
+    try:
+        return subprocess.run(["git", "-C", pin, "merge-base", "--is-ancestor", sha, "HEAD"],
+                              capture_output=True, timeout=timeout).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def pin_met(e, pin, timeout):
+    """Every PR an open `check: none` entry names next to the word pin is in the pin: True."""
+    if e["done"] or not pin:
+        return False
+    # Only the PRs written near the word count: measured 2026-11-02 on the macOS instance, the whole
+    # entry's #N made a 25-PR collection entry and a suite's "Pin `x` folgt" read as conditions.
+    t = e["text"]
+    nums = sorted({n for m in PIN_WORD.finditer(t)
+                   for n in PR_REF.findall(t[max(0, m.start() - PIN_NEAR):m.end() + PIN_NEAR])}, key=int)
+    if not nums:
+        return False
+    for n in nums:
+        shas = pr_commits(pin, n, timeout)
+        if not shas or not any(in_pin(pin, s, timeout) for s in shas):
+            return False
+    return True
+
+
 def label(e, path):
     # Some ledgers keep several fields on one line ("id: x · class: todo"): the id is its first word.
     ident = (e["fields"].get("id") or "").replace("`", " ").split()
     return ident[0] if ident else f"{path}:{e['line']}"
 
 
-def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0, seen=None):
+def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0, seen=None, pin=None):
     """`seen`: {entry + check: result on the run that first saw that check}, updated in place.
-    None = no memory (hand runs with --ledger); an empty dict on a brain's first run = baseline."""
+    None = no memory (hand runs with --ledger); an empty dict on a brain's first run = baseline.
+    `pin`: the pinned core checkout; open `check: none` entries waiting for its PRs are measured."""
     out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": [],
-           "refused": [], "not_run": [], "unproven": []}
+           "refused": [], "not_run": [], "unproven": [], "pin_met": []}
     baseline = seen is not None and not seen
     deadline = time.monotonic() + budget
     for rel in ledgers:
@@ -203,6 +263,8 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
                     out["no_check"].append(label(e, rel))
                 continue
             if NONE.match(chk):
+                if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout):
+                    out["pin_met"].append(label(e, rel))
                 continue
             if not permitted(chk, allowed):
                 out["refused"].append(label(e, rel))
@@ -294,7 +356,9 @@ def main():
             seen = json.loads(seen_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             seen = {}
-    r = reconcile(a.root, ledgers, since, timeout, shell, allowed, budget, seen)
+    pin = pathlib.Path(a.root) / cfg.get("pin_repo", "core")
+    pin = str(pin) if (pin / ".git").exists() else None
+    r = reconcile(a.root, ledgers, since, timeout, shell, allowed, budget, seen, pin)
     if seen is not None:
         seen_path.parent.mkdir(exist_ok=True)
         tmp = seen_path.with_name(f"{seen_path.name}.{os.getpid()}")
@@ -315,6 +379,8 @@ def main():
     say("unproven", "open entr(y/ies) whose check was green from its first run - negative control missing",
         "a check must be red while the work is missing: run it against the state before the work, sharpen it"
         " until it is, then it counts (a changed check is seen anew)")
+    say("pin_met", "open `check: none` entr(y/ies) waiting for a pin whose named PRs are all in it",
+        "condition met - measure the exit now: do the waiting work, or tick it with the evidence")
     say("regressed", "ticked entr(y/ies) whose check fails",
         "reopen it, or the check no longer measures the thing")
     say("broken", "check(s) that could not give an answer",
