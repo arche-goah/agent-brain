@@ -220,6 +220,39 @@ function visibility(slug, root) {
   return v;
 }
 
+// The leak-scan patterns (home path, private IP, MAC, mail address) on the published text — through
+// scripts/leak-scan.py itself (`--text --no-tree`), so the patterns and their allow-lists stay in ONE
+// place. Measured 2026-10-25 on the Windows instance: a home-path placeholder went into a public PR body;
+// the names check passed it, and only the repo's CI leak scan saw it - after it was public. The names stay
+// with the check above (the leak-scan root is an empty folder, it reads no watch list here). No python
+// that runs the script = allowed, said on stderr: the repo's CI runs the same scan as the last barrier.
+const LEAK_CHECKS = new Set(['private_ip', 'mac', 'home_path', 'email']);
+function leakPatterns(texts) {
+  const body = texts.filter((t) => t.trim()).join('\n');
+  if (!body) return [];
+  const script = path.join(__dirname, '..', 'scripts', 'leak-scan.py');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ptg-'));
+  const file = path.join(tmp, 'published.txt');
+  try {
+    fs.writeFileSync(file, body);
+    for (const py of process.env.PUBLIC_TEXT_GUARD_PYTHON ? [process.env.PUBLIC_TEXT_GUARD_PYTHON] : ['python3', 'python']) {
+      let out;
+      try {
+        out = execFileSync(py, [script, '--no-tree', '--text', file, '--json', '--root', tmp],
+          { stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000 }).toString();
+      } catch (e) {
+        if (e.status === 1 && e.stdout) out = e.stdout.toString(); // findings = exit 1
+        else continue; // not this interpreter
+      }
+      try { return JSON.parse(out).filter((f) => LEAK_CHECKS.has(f.check)); } catch (e) { continue; }
+    }
+    console.error('public-text-guard: no python ran scripts/leak-scan.py - leak patterns not checked here (the repo CI still scans)');
+    return [];
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) { /* temp */ }
+  }
+}
+
 function gate(input) {
   if (!input || !['Bash', 'PowerShell'].includes(input.tool_name)) return 0;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
@@ -234,7 +267,9 @@ function gate(input) {
   const rx = new RegExp('\\b(' + names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'gi');
   const cwd = input.cwd || process.cwd();
   const found = new Map(); // word -> where
-  const scan = (text, where) => {
+  const published = []; // the texts that reach GitHub, for the leak-scan patterns below
+  const scan = (text, where, isText = true) => {
+    if (isText) published.push(String(text));
     for (const m of String(text).matchAll(rx)) if (!found.has(m[1].toLowerCase())) found.set(m[1].toLowerCase(), where);
   };
   const pub = publishedText(cmd, input.tool_name === 'PowerShell');
@@ -264,14 +299,24 @@ function gate(input) {
     try {
       const ident = execFileSync('git', ['-C', dir, 'var', 'GIT_AUTHOR_IDENT'],
         { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().replace(/\s+\d+\s+[+-]\d{4}\s*$/, '');
-      scan(ident, 'the commit author - set git config --local user.name/user.email to the account and its noreply address');
+      scan(ident, 'the commit author - set git config --local user.name/user.email to the account and its noreply address', false);
     } catch (e) { /* no identity: git refuses the commit itself */ }
   }
-  if (!found.size && !unreadable.length) return 0;
+  if (!found.size && !unreadable.length && !published.some((t) => t.trim())) return 0;
   const repos = targetRepos(cmd, cwd);
   const open = repos.filter((s) => visibility(s, root) !== 'private' && visibility(s, root) !== 'internal');
   if (repos.length && !open.length) return 0;
   const target = open.join(', ') || 'a repo whose visibility is unknown';
+  const leaks = found.size || unreadable.length ? [] : leakPatterns(published);
+  if (!found.size && !unreadable.length && !leaks.length) return 0;
+  if (leaks.length) {
+    console.error(
+      `BLOCKED (public-text-guard): text for ${target} carries what the core's leak-scan refuses: ` +
+      leaks.slice(0, 5).map((l) => `${l.check} "${l.match}"`).join(', ') + '.\n' +
+      'A home path, a private address, a MAC or a personal mail address is instance material - write a placeholder\n' +
+      '(<home>, the device role, the noreply address). Same patterns as scripts/leak-scan.py, read through it.');
+    return 2;
+  }
   if (unreadable.length) {
     console.error(
       `BLOCKED (public-text-guard): text for ${target} that the guard cannot read: ${unreadable.join(', ')}.\n` +
