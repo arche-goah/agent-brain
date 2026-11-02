@@ -442,6 +442,12 @@ printf '[{"id":"merge","pattern":"\\\\bmerge-x\\\\b","was":"x"},{"id":"mergelint
 decl '{"instance":{".claude/rules/mechanism-rules.json#merge":{"reviewed":"2026-10-01","why":"our merge matrix","evidence":"merge-x"}}}'
 out=$(run); grep -q '^local machinery summary: items=2 .*badevidence=0 .*undeclared=1' <<< "$out" && grep -q 'without a declaration.*#mergelint' <<< "$out" \
   && ok "hash-key-declares-one-rule-not-a-prefix" || bad "hash-key-declares-one-rule-not-a-prefix: $out"
+# A prefix cut at a word boundary still covers on purpose (Windows instance 2026-11-02: `#2026-` for every dated
+# section): `#merge-` covers `#merge-x` and `#merge-y`.
+printf '[{"id":"merge-x","pattern":"\\\\bmx\\\\b","was":"x"},{"id":"merge-y","pattern":"\\\\bmy\\\\b","was":"y"}]' > "$T/b/.claude/rules/mechanism-rules.json"
+decl '{"instance":{".claude/rules/mechanism-rules.json#merge-":{"reviewed":"2026-10-01","why":"our merge rules","evidence":"was"}}}'
+out=$(run); [[ -z "$out" ]] \
+  && ok "hash-key-prefix-at-word-boundary-covers" || bad "hash-key-prefix-at-word-boundary-covers: $out"
 rm -rf "$T/b"
 
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
