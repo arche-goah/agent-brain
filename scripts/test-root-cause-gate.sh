@@ -126,6 +126,11 @@ case "$out" in *'| 2026-09 | 1 | 0 | 0 |'*'| 2026-10 | 2 | 1 | 1 |'*) ok "review
 case "$out" in *'(no mechanism within 5 turns): "that is wrong"'*'(mechanism written later): "something went wrong"'*) ok "review lists the corrections without a cause, oldest first";; *) bad "review list: $out";; esac
 out="$(cd "$CWD" && node "$G" --review 10 --since 2026-10-02 --dir "$(native "$RD")" 2>&1)"
 case "$out" in *'corrections 1 ·'*) ok "review --since cuts older turns";; *) bad "review since: $out";; esac
+# 2026-11-02: a headless classifier call's transcript (entrypoint sdk-cli) is no session and adds no correction.
+printf '{"type":"user","entrypoint":"sdk-cli","timestamp":"2026-10-03T10:00:00.000Z","message":{"role":"user","content":"something went wrong"}}\n' > "$RD/headless.jsonl"
+out="$(cd "$CWD" && node "$G" --review 10 --dir "$(native "$RD")" 2>&1)"
+case "$out" in *'transcripts 3 · operator turns 6 · corrections 3 ·'*) ok "a headless classifier transcript is left out";; *) bad "headless counted: $out";; esac
+rm -f "$RD/headless.jsonl"
 # 2026-11-02 (audit-audit): the register says who found each mishap; the review counts it.
 mkdir -p "$CWD/docs/maintenance"
 printf '%s\n' '# reg' '## a' 'found-by: operator' 'should-have: brain-scan' 'replay: 1' '## b' 'found-by: recorder-report' 'replay: 1' '## c' 'replay: 1' > "$CWD/$REG"

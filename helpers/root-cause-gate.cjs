@@ -272,7 +272,22 @@ function review(args) {
   const rxZ = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
   let files;
   try {
+    // A headless model call (the prompt classifier, `claude -p`) leaves a transcript of its own whose records carry
+    // `entrypoint: "sdk-cli"`; its prompt quotes the operator and matches the correction words. Measured 2026-11-02 on
+    // the macOS instance: 116 such transcripts in a week, 63 "corrections" instead of 16, and as the newest files they
+    // pushed the real sessions out of the newest-N window. They are no session — left out before the window is cut.
+    const headless = (p) => {
+      try {
+        // 256 KB: the first record of such a call is its whole prompt, the field can stand after it (measured: not
+        // within the first 4 KB). The FIRST entrypoint value decides, so a quoted field later in a session does not.
+        const fd = fs.openSync(p, 'r'); const buf = Buffer.alloc(256 * 1024);
+        const len = fs.readSync(fd, buf, 0, buf.length, 0); fs.closeSync(fd);
+        const m = /"entrypoint"\s*:\s*"([^"]+)"/.exec(buf.toString('utf8', 0, len));
+        return !!m && m[1] === 'sdk-cli';
+      } catch (e) { return false; }
+    };
     files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(dir, f))
+      .filter((f) => !headless(f))
       .map((f) => ({ f, m: fs.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m).slice(0, n).map((x) => x.f);
   } catch (e) { console.log(`root-cause review: no transcripts under ${dir}`); return 1; }
   const rxN = loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu');

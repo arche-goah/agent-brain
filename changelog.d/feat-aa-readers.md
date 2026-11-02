@@ -10,4 +10,7 @@
     recorder-report, counts as read).
   - The carrier-register entry gains `found-by:` (operator | work | ci | the check) and `should-have:`; the cause gate
     asks for it and `--review` counts how many entries a check found.
-  Fixtures: brain-scan-prep-test +3 cases, test-root-cause-gate +1.
+  - `root-cause-gate.cjs --review` leaves out headless model calls (first `entrypoint` = `sdk-cli`): 24 of the 40 newest
+    transcripts were prompt-classifier calls, whose prompt quotes the operator and matched the correction words; with
+    them out the same window reads 499 operator turns instead of 224.
+  Fixtures: brain-scan-prep-test +3 cases, test-root-cause-gate +2.
