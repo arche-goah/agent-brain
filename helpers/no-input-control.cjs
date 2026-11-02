@@ -51,6 +51,7 @@ const HOTKEY_SCRIPT = /(?:^|[\s;&|("'`])[^\s;&|()"'`]*\.ahk\b/i;
 const TOOL_NAME = /(?:^|__)computer[-_]?use(?:__|$)|(?:^|__)computer_(?:click|type|key|move|drag|scroll|mouse)|remote-devices__computer/i;
 const OWN_FILES = /(?:^|[\\/])(?:no-input-control\.cjs|test-no-input-control\.sh|no-input-control\.json)$/;
 const SCRIPT_EXT = /\.(?:py|js|cjs|mjs|sh|ps1|ahk|applescript|scpt|vbs|bat|cmd)$/i;
+const DOC_EXT = /\.(?:md|mdx|markdown|txt|rst)$/i;
 
 function loadInstance(projectDir) {
   const fp = projectDir && path.join(projectDir, '.claude', 'rules', 'no-input-control.json');
@@ -77,6 +78,11 @@ function texts(toolName, ti, cwd) {
   if (!ti || typeof ti !== 'object') return out;
   const target = ti.file_path || ti.notebook_path || '';
   if (target && OWN_FILES.test(target)) return out;
+  // Text written into a documentation file names an API, it calls nothing; running anything stays
+  // checked (the command path below). Measured 2026-11-02 on the macOS instance: translating two skill
+  // files of a suite was refused because one doc line names the input API (the operator chose this cut:
+  // check only what can run). A file without one of these endings is still checked.
+  if (target && DOC_EXT.test(target)) return out;
   // Not an agent's prompt: a brief that NAMES an API is text about it, not a call (the alpha checked
   // command, content, new_string and script).
   for (const k of ['command', 'content', 'new_string', 'new_source', 'script']) {

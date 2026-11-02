@@ -48,6 +48,11 @@ expect "a batch file the command runs uses the NirSoft tool" deny "$(call Bash "
 expect "a call that switches the focused window" deny "$(call PowerShell "{\"command\":$(js "[W]::$(w SetForeground Window)(\$h)")}")"
 expect "a NirSoft call in a command" deny "$(call Bash "{\"command\":$(js "$(w nir cmd) setcursor 10 10")}")"
 expect "a hotkey script run directly" deny "$(call Bash "{\"command\":$(js "start C:/x/clicker$(w .a hk)")}")"
+# --- documentation names the API, it calls nothing (operator 2026-11-02: check only what can run)
+SK="$(w Send Keys)"
+expect "a skill doc line naming the input API" allow "$(call Write "$(wr /x/skills/a/SKILL.md "the primitive uses Win32 Send Input / $SK")")"
+expect "the same text into a script file" deny "$(call Write "$(wr /x/a.ps1 "[W]::$(w SetForeground Window)(\$h); $SK")")"
+expect "the same text in a command (running stays checked)" deny "$(call Bash "{\"command\":$(js "echo x | $(w nir cmd) sendkeypress enter")}")"
 printf '@echo off\necho build done\n' > "$T/drive2.bat"
 expect "a batch file without input calls" allow "$(call Bash "{\"command\":$(js "cmd /c $(native "$T/drive2.bat")")}")"
 
