@@ -53,7 +53,8 @@ def main() -> int:
     if p.returncode != 0:
         print(f"staged-names: git diff failed: {p.stderr.strip()}", file=sys.stderr)
         return 2
-    rx = re.compile(r"\b(" + "|".join(re.escape(n) for n in names) + r")\b", re.I)
+    # s?: the German genitive is the name too (2026-11-02, same as public-text-guard.cjs)
+    rx = re.compile(r"\b(" + "|".join(re.escape(n) for n in names) + r")s?\b", re.I)
     hits, path = [], ""
     for line in p.stdout.splitlines():
         if line.startswith("+++ "):

@@ -94,6 +94,13 @@ def t_longer_word_passes(d):
     return rc == 0, (rc, out)
 
 
+def t_genitive_blocks(d):
+    brain, repo = setup(d)
+    put(repo, "g.md", "see reply-vexmoors-wort.md\n")
+    rc, out, _ = run(repo, brain)
+    return rc == 1, (rc, out)
+
+
 def t_no_list_says_so(d):
     _, repo = setup(d)
     put(repo, "f.md", "zorblax quint\n")
@@ -109,6 +116,7 @@ if __name__ == "__main__":
         case("negative control: the name only in a removed line passes", t_removed_line_passes),
         case("negative control: an unstaged change is not checked", t_unstaged_passes),
         case("negative control: the name inside a longer word passes", t_longer_word_passes),
+        case("the German genitive of a name blocks (file slug)", t_genitive_blocks),
         case("no watch list: passes and says nothing was checked", t_no_list_says_so),
     ]
     sys.exit(0 if all(results) else 1)
