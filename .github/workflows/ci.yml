@@ -32,6 +32,31 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # The big runs (portability on three OS, python-floor) run ONCE per content (operator 2026-11-02: "the big
+  # runs only once"). A push to main or a tag on the merge commit of a train whose tree equals the train head
+  # brings no new content: the train PR's run already checked exactly that tree (measured 2026-11-02: release
+  # train head a1fc703 and main 7e6dd1f carry the same tree 4288ab7, and main ran the same 54 min again).
+  # Only push events are skipped - no merge is gated on them; every PR and every train keeps its full run.
+  proven:
+    runs-on: ubuntu-latest
+    outputs:
+      same: ${{ steps.tree.outputs.same }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - id: tree
+        name: is this push a merge whose tree a train run already checked?
+        run: |
+          same=false
+          if [ "${{ github.event_name }}" = "push" ] && git rev-parse -q --verify HEAD^2 >/dev/null; then
+            head_tree=$(git rev-parse HEAD^{tree}); side_tree=$(git rev-parse HEAD^2^{tree})
+            msg=$(git log -1 --format=%s HEAD)
+            case "$msg" in *"from arche-goah/train/"*) [ "$head_tree" = "$side_tree" ] && same=true ;; esac
+          fi
+          echo "same=$same" >> "$GITHUB_OUTPUT"
+          echo "proven by a train run: $same"
+
   leaks:
     runs-on: ubuntu-latest
     # The watch list arrives as a secret (never in the repo); LEAK_NAMES_REQUIRED makes a
@@ -164,9 +189,15 @@ jobs:
   # ("The version '3.9' with architecture 'x64' was not found for Ubuntu 26.04."); the
   # actions/python-versions manifest carries 3.9 up to 24.04.
   python-floor:
+    needs: proven
+    if: needs.proven.outputs.same != 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the fixture suites read tags (suite-check-test checks the core's own marketplace pins);
+          # a shallow tag-push checkout holds only the pushed tag (v2.1.1 run, 2026-11-02)
+          fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.9"
@@ -238,6 +269,8 @@ jobs:
   # bootup died on every non-Mac, and no check here saw it. windows-latest with
   # shell: bash IS the Git Bash environment of the Windows brain.
   portability:
+    needs: proven
+    if: needs.proven.outputs.same != 'true'
     strategy:
       fail-fast: false
       matrix:
