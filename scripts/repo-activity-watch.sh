@@ -38,6 +38,8 @@ STATE_DIR="${REPO_ACTIVITY_STATE_DIR:-$(resolve_project_dir "$HERE")/.claude-sta
 TAG="${REPO_ACTIVITY_TAG:+-$REPO_ACTIVITY_TAG}"
 CURSOR="$STATE_DIR/repo-activity${TAG}-cursor.txt"
 LOCK="$STATE_DIR/repo-activity${TAG}.pid"
+# Heads of the open PRs, so a new commit on an already open PR is reported (PUSH lines, 2026-11-01).
+export REPO_ACTIVITY_HEADS="$STATE_DIR/repo-activity${TAG}-heads.json"
 CLONE_ROOT="${COLLAB_WATCH_CLONE_ROOT:-$HOME/Projects}"
 MODE="${1:-60}"
 mkdir -p "$STATE_DIR"
@@ -168,7 +170,7 @@ while true; do
           | "$PY" "$HERE/repo-activity-filter.py" comments "$full" "$SINCE" "$SELF" "$ONLY")
       done
       emit "$clone" < <(gh pr list --repo "$full" --state open --limit 50 \
-          --json number,title,author,createdAt,headRefName 2>/dev/null \
+          --json number,title,author,createdAt,headRefName,headRefOid,isDraft 2>/dev/null \
         | "$PY" "$HERE/repo-activity-filter.py" open "$full" "$SINCE" "$SELF" "$ONLY")
       emit "$clone" < <(gh pr list --repo "$full" --state merged --limit 50 \
           --json number,title,mergedBy,mergedAt,headRefName 2>/dev/null \
