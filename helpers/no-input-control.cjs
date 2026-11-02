@@ -52,7 +52,8 @@ const TOOL_NAME = /(?:^|__)computer[-_]?use(?:__|$)|(?:^|__)computer_(?:click|ty
 const OWN_FILES = /(?:^|[\\/])(?:no-input-control\.cjs|test-no-input-control\.sh|no-input-control\.json)$/;
 const SCRIPT_EXT = /\.(?:py|js|cjs|mjs|sh|ps1|ahk|applescript|scpt|vbs|bat|cmd)$/i;
 const DOC_EXT = /\.(?:md|mdx|markdown|txt|rst)$/i;
-const RUNNER = /(?:^|[\s;&|(`])(?:python[\d.]*|py|node|deno|bun|bash|sh|zsh|pwsh|powershell(?:\.exe)?|cscript|wscript|osascript|ruby|perl|source|\.|iex|invoke-expression)(?=[\s;&|)`]|$)/i;
+// A path in front (C:/Python312/python.exe, /usr/bin/python3) and an .exe ending are the same runner.
+const RUNNER = /(?:^|[\s;&|(`"'\/\\])(?:python[\d.]*w?|pyw?|node|deno|bun|bash|sh|zsh|pwsh|powershell|cscript|wscript|osascript|ruby|perl|source|\.|iex|invoke-expression)(?:\.exe)?(?=[\s;&|)`"']|$)/i;
 
 function loadInstance(projectDir) {
   const fp = projectDir && path.join(projectDir, '.claude', 'rules', 'no-input-control.json');
