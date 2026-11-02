@@ -202,7 +202,8 @@ mode "a record without readable fields falls back to the words" "$f" "$IC" auton
 # 2026-11-01, macOS instance: a start prompt "status?" with no on-word left the session interactive,
 # and a mid-run question reached the operator who believed the run autonomous).
 AU="$T/au"; mkdir -p "$AU/.claude/rules"
-printf '%s\n' '{"initial_mode": "autonomous"}' > "$AU/.claude/rules/autonomous-patterns.json"
+# (the brain names its own way out; without one the start guard below refuses the autonomous start)
+printf '%s\n' '{"initial_mode": "autonomous", "off_patterns": ["\\bweiter interaktiv\\b"]}' > "$AU/.claude/rules/autonomous-patterns.json"
 f="$T/init1.jsonl"; { user "status?"; asst "x"; } > "$f"
 mode "initial_mode autonomous: a start prompt without an on-word keeps it" "$f" "$AU" autonomous
 mode "without initial_mode the same transcript is interactive (control)" "$f" "$EN" interactive
@@ -218,6 +219,31 @@ mode "initial_mode autonomous: an on word sets it again after an ask" "$f" "$AU"
 printf '%s\n' '{"initial_mode": "interactive"}' > "$AU/.claude/rules/autonomous-patterns.json"
 f="$T/init1.jsonl"
 mode "initial_mode interactive: same as the default" "$f" "$AU" interactive
+
+# Start guard (operator 2026-11-02): initial_mode autonomous with no way out in the operator's language
+# (no own off/ask words, no classifier records) starts interactive, and initialState says why.
+NG="$T/noguard"; mkdir -p "$NG/.claude/rules"
+printf '%s\n' '{"initial_mode": "autonomous"}' > "$NG/.claude/rules/autonomous-patterns.json"
+f="$T/init0.jsonl"
+mode "start guard: autonomous wanted, no way out - starts interactive" "$f" "$NG" interactive
+why="$(node -e 'const s=require(process.argv[1]).initialState(process.argv[2]); process.stdout.write(s.wanted && !s.granted ? s.why : "")' "$(native "$_D/../helpers/autonomous-mode.cjs")" "$(native "$NG")")"
+[ -n "$why" ] && ok "start guard: initialState names why" || bad "start guard: no reason given"
+mkdir -p "$NG/.claude-state"; printf '%s\n' '{"at":"x"}' > "$NG/.claude-state/intent-classifier.jsonl"
+mode "start guard: classifier records are a way out - starts autonomous" "$f" "$NG" autonomous
+
+# Short mode words, the same in every language (operator 2026-11-02): "auto mode" on, "ask mode" off.
+f="$T/sw1.jsonl"; { user "auto mode"; asst "x"; } > "$f"
+mode "short word: 'auto mode' alone starts the run" "$f" "$EN" autonomous
+f="$T/sw2.jsonl"; { user "Auto-Modus, bitte"; asst "x"; } > "$f"
+mode "short word: 'Auto-Modus' at the start starts it too" "$f" "$EN" autonomous
+f="$T/sw3.jsonl"; { user "ist auto mode gerade aktiv?"; asst "x"; } > "$f"
+mode "short word: a question about auto mode starts nothing" "$f" "$EN" interactive
+f="$T/sw4.jsonl"; { user "the auto mode classifier refused that command"; asst "x"; } > "$f"
+mode "short word: 'auto mode' mid-sentence (the permission mode) starts nothing" "$f" "$EN" interactive
+f="$T/sw5.jsonl"; { user "auto mode"; asst "x"; user "ask mode"; } > "$f"
+mode "short word: 'ask mode' ends the run" "$f" "$EN" interactive
+f="$T/sw6.jsonl"; { user "auto mode"; asst "x"; user "ok"; } > "$f"
+mode "short word: a later plain prompt keeps it (control)" "$f" "$EN" autonomous
 
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }
