@@ -342,9 +342,10 @@ try {
   assertCount(prep.deep_check.length, summary.deep_check_lines, 'deep-check lines in the report')
   assertReport(REPORT, summary.report_path, summary.report_bytes, 'brain-scan report')
 } catch (e) {
-  const top = (summary.findings || []).slice(0, 10).map(f => `[${f.severity}] ${f.title}`).join(' | ')
+  const top = (summary.findings || []).slice(0, 10).map(f => `[${f.severity}] ${f.title}`).join(' | ').slice(0, 2000)
+  const dec = JSON.stringify(summary.decisions || []).slice(0, 2000)
   throw new Error(`${e.message}\n— Not lost: report ${summary.report_path || REPORT} (${summary.report_bytes || 0} bytes, written `
-    + `before this gate); findings dir ${FINDINGS_DIR}; decisions ${JSON.stringify(summary.decisions || [])}; top: ${top}`)
+    + `before this gate); findings dir ${FINDINGS_DIR}; decisions ${dec}; top: ${top}`)
 }
 
 const exitCounts = {}
