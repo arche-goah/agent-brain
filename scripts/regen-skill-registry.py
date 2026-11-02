@@ -154,16 +154,22 @@ def main() -> None:
     lines.append(f"**Total skills:** {total}")
     lines.append(f"**Generated:** {today}")
     lines.append("")
+    # Name the folder this run read: the core's own registry is built from skills/, an
+    # instance's from .claude/skills/ (the header used to say .claude/skills for both).
+    try:
+        source = SKILLS_DIR.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        source = SKILLS_DIR.name
     lines.append(
-        "> Auto-generated from the `.claude/skills/*/SKILL.md` files via "
+        f"> Auto-generated from the `{source}/*/SKILL.md` files via "
         "`core/scripts/regen-skill-registry.py` — **do not maintain by hand**. "
         "Re-run the script after changing a skill."
     )
     lines.append("")
     lines.append(
-        "Claude Code discovers skills automatically from `.claude/skills/*/SKILL.md` "
-        "(each with YAML frontmatter `name` + `description`). This registry is the "
-        "human-readable overview."
+        "Claude Code discovers skills automatically from a project's `.claude/skills/*/SKILL.md` "
+        "and from installed plugins (each with YAML frontmatter `name` + `description`). "
+        "This registry is the human-readable overview."
     )
     lines.append("")
 
