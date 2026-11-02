@@ -26,6 +26,11 @@ import sys
 
 PATH_RX = re.compile(r"`((?:core|scripts|docs|config|src|\.claude)/[^`\s]+|~/[^`\s]+)`")
 SKILL_RX = re.compile(r"\bbrain-core:([a-z0-9][a-z0-9-]*)")
+# A bare script name in backticks (`memory-usage.py --precision`) names a carrier too (audit-audit 2026-11-02,
+# macOS instance: the measurement tool of a running alpha lived in no folder of the brain or its pin, and this
+# check said "0 missing" because it only read names that start with a folder).
+BARE_RX = re.compile(r"`([\w.-]+\.(?:py|sh|cjs))(?:\s[^`]*)?`")
+BARE_DIRS = ("scripts", "scripts/hooks", "core/scripts", "core/helpers", "helpers")
 SKIP = re.compile(r"[*<>{}$|]")
 # Absence words: English built-ins; an instance adds its language as data
 # (.claude/rules/dead-carriers.json {"absence_patterns": [...]}), the core stays English.
@@ -62,11 +67,19 @@ def targets(path, gone):
                 yield n, "path", p, roots
         for m in SKILL_RX.finditer(line):
             yield n, "skill", m.group(1), []
+        for m in BARE_RX.finditer(line):
+            yield n, "script", m.group(1), roots
 
 
 def exists(repo, kind, x, roots):
     if kind == "skill":
-        return (repo / "core" / "skills" / x).is_dir()
+        # brain-core:<name> names a skill or a workflow the plugin offers as one (brain-scan, coherence-scan).
+        return (repo / "core" / "skills" / x).is_dir() or (repo / "core" / "workflows" / f"{x}.js").exists()
+    if kind == "script":
+        if any((r / d / x).exists() for r in [repo, *roots] for d in BARE_DIRS) or any((r / x).exists() for r in roots):
+            return True
+        # A skill's own script (`mt.py` of a suite skill linked under .claude/skills/).
+        return any(True for _ in (repo / ".claude" / "skills").glob(f"*/**/{x}"))
     if x.startswith("~/"):
         return pathlib.Path(os.path.expanduser(x)).exists()
     return any((r / x).exists() for r in [repo, *roots])

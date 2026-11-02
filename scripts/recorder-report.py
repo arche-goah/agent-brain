@@ -73,22 +73,40 @@ def main(argv=None):
                 src = fh.read()
         except OSError:
             src = ""
-        names = sorted(set(re.findall(r"['\"]([\w.-]+\.jsonl)['\"]", src))
-                       - {c["marker"].lower() + ".jsonl"}) or [c["marker"].lower() + ".jsonl"]
+        # Both logs, never one instead of the other (audit-audit 2026-11-02, macOS instance: the
+        # dispatcher's promise-gate.jsonl carried 31 would_block:true in 14 days while the report read
+        # only the gate's own promises.jsonl and printed 0).
+        own = c["marker"].lower() + ".jsonl"
+        names = sorted(set(re.findall(r"['\"]([\w.-]+\.jsonl)['\"]", src)) | {own})
         paths = [os.path.join(a.root, ".claude-state", n) for n in names]
         paths = [p[:-len(".jsonl")] + ".1.jsonl" for p in paths] + paths
         rows = [e for p in paths for e in entries(p)
                 if str(e.get("at") or e.get("ts") or "")[:10] >= since]
         label = c.get("label") or c["marker"]
-        if len(names) == 1 and names[0] != c["marker"].lower() + ".jsonl":
-            label += f" (own log {names[0]})"
-        if not any(os.path.exists(p) for p in paths):
+        state = os.path.join(a.root, ".claude-state")
+        logs = [n for n in names if os.path.exists(os.path.join(state, n))
+                or os.path.exists(os.path.join(state, n[:-len(".jsonl")] + ".1.jsonl"))]
+        if logs and logs != [own]:
+            label += f" (logs {', '.join(logs)})"
+        if not logs:
             print(f"   {label}: no log yet - the recorder has never fired")
             continue
-        blocked = sum(1 for e in rows if e.get("would_block") is True)
         sessions = len({e.get("session") for e in rows})
-        line = (f"{label}: {len(rows)} entr{'y' if len(rows) == 1 else 'ies'} in {a.days} days, "
-                f"{sessions} session(s), {blocked} would have blocked")
+        head = f"{label}: {len(rows)} entr{'y' if len(rows) == 1 else 'ies'} in {a.days} days, {sessions} session(s), "
+        # A log whose entries carry no would_block field cannot say "0 would have blocked" - that zero
+        # was one symbol for two states (audit-audit 2026-11-02: time-gate writes `anchored`, the closing
+        # classifier `model.*`; both printed 0). Say it cannot count; never a quiet zero.
+        # A pure log (mode-log: which mode held when) blocks nothing by design; its row says so.
+        if c.get("counts_blocks") is False:
+            print(f"   {head}a log - it blocks nothing by design (counts_blocks: false)")
+            continue
+        if rows and not any("would_block" in e for e in rows):
+            due += 1
+            print(f"!! {head}blocks NOT countable - no entry carries a would_block field; "
+                  "write it in the recorder, or read the log by hand before deciding")
+            continue
+        blocked = sum(1 for e in rows if e.get("would_block") is True)
+        line = head + f"{blocked} would have blocked"
         if blocked:
             due += 1
             print(f"!! {line} - decide: block, keep recording, or unwire")
