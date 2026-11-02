@@ -312,6 +312,18 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: push HEAD:feat (control)" Bash command "git push origin HEAD:feat" allow
   tr_probe "mechanism-guard/core rule: push to a URL (control)" Bash command "git push https://example.com/o/r.git feat" allow
   tr_probe "mechanism-guard/core rule: plain feature push (control)" Bash command 'git -C /r push -u origin feat/x' allow
+  # 2026-11-02: the template dropped its `git -C * push ...` text rules (they matched commit messages);
+  # the guard, which blanks quoted messages, carries every -C form, delete and --no-verify instead
+  tr_probe "mechanism-guard/core rule: force with -C" Bash command 'git -C /r push --force origin b' block
+  tr_probe "mechanism-guard/core rule: +refspec with -C" Bash command 'git -C /r push origin +main' block
+  tr_probe "mechanism-guard/core rule: --delete with -C" Bash command 'git -C /r push origin --delete feat' block
+  tr_probe "mechanism-guard/core rule: -d with -C" Bash command 'git -C /r push -d origin feat' block
+  tr_probe "mechanism-guard/core rule: --no-verify skips the pre-push hook" Bash command 'git -C /r push --no-verify origin main' block
+  tr_probe "mechanism-guard/core rule: force-with-lease" Bash command 'git -C /r push --force-with-lease' block
+  # (no double quotes in these values: tr_probe writes them into JSON unescaped, and a broken JSON reads as allow)
+  tr_probe "mechanism-guard/core rule: pre-push marker needs the word" Bash command 'PUSH_GUARD_OK=cleanup git -C /r push origin feat' block
+  tr_probe "mechanism-guard/core rule: commit message with push and +3 (control)" Bash command "git -C /r commit -q -m 'a push is judged by the branch' -m 'Fixture +3 with a real repo' -- a.cjs" allow
+  tr_probe "mechanism-guard/core rule: commit message naming push --force (control)" Bash command "git -C /r commit -m 'never push --force again'" allow
   # marketplace pin (ported 2026-10-28): writes block, reads pass
   tr_probe "mechanism-guard/core rule: pin edit by sed -i" Bash command "sed -i 's/v1/v2/' m/.claude-plugin/marketplace.json" block
   tr_probe "mechanism-guard/core rule: pin edit by redirect" Bash command "echo x > m/.claude-plugin/marketplace.json" block
