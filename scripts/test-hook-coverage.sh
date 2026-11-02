@@ -103,6 +103,31 @@ case "$out" in
   *) ok "a hook whose file name ends in a shipped name is not a duplicate";;
 esac
 
+#    ... and an instance script that merely SHARES a shipped file name is another hook (a
+#    messaging notify.cjs next to the core's sound notify.cjs, measured 2026-11-02), while a
+#    copy of a core hook at another path is still named
+B="$T/samename"; make_brain "$B"; mkdir -p "$B/scripts/hooks" "$B/hooks-copy"
+printf '%s\n' '// posts a message to a chat bot; unrelated to the core sound hook' 'process.exit(0);' > "$B/scripts/hooks/notify.cjs"
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+d["hooks"]={"Notification":[{"hooks":[{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/scripts/hooks/notify.cjs\" wait"}]}]}
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"notify.cjs runs twice"*) bad "an instance script with a shipped file name taken for a copy: '$(printf '%s' "$out" | grep -a 'runs twice' | head -1)'";;
+  *) ok "an instance script that shares a shipped file name is not a duplicate";;
+esac
+{ cat "$B/core/helpers/file-guard.cjs"; echo '// a stale local edit'; } > "$B/hooks-copy/file-guard.cjs"
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+d["hooks"]={"PreToolUse":[{"matcher":"Write|Edit|MultiEdit","hooks":[{"type":"command","command":"node \""+sys.argv[2]+"/hooks-copy/file-guard.cjs\"","onFailure":"block"}]}]}
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json" "$(native "$B")"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"PreToolUse: file-guard.cjs runs twice"*) ok "a copy of a core hook at another path is still named as a duplicate";;
+  *) bad "copy at another path not named: '$(printf '%s' "$out" | head -1)'";;
+esac
+
 # 3) plugin enabled, cache without hooks/ -> the brain must wire them itself (as before 2.0.4)
 B="$T/old"; make_brain "$B"; make_cfg "$T/cfg-old" "$T/cache-old" no
 out="$(CLAUDE_CONFIG_DIR="$T/cfg-old" "$PY" "$HC" "$B" 2>&1)"; rc=$?
@@ -121,6 +146,37 @@ out="$(CLAUDE_CONFIG_DIR="$T/cfg-none" "$PY" "$HC" "$B" 2>&1)"; rc=$?
 case "$rc:$out" in
   1:*"Stop: node"*) ok "no plugin: the hooks of core/hooks/hooks.json are demanded from settings.json";;
   *) bad "no-plugin case: rc=$rc out='$(printf '%s' "$out" | head -1)'";;
+esac
+
+#    ... a matcher `.*` covers every tool (never "runs only on"), a narrower one is named, and an
+#    instance script that only shares the file name does not stand in for the core hook
+wire_input_guard() { # wire_input_guard <brain> <matcher> <command>: hooks.json as settings, one hook changed
+  "$PY" -c 'import json,sys
+p,m,c=sys.argv[1:4]; d=json.load(open(p,encoding="utf-8")); h=json.load(open(sys.argv[4],encoding="utf-8"))
+for g in h["hooks"]["PreToolUse"]:
+    for x in g["hooks"]:
+        if "no-input-control.cjs" in x["command"]: g["matcher"]=m; x["command"]=c
+d["hooks"]=h["hooks"]; json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$1/.claude/settings.json" "$2" "$3" "$1/core/hooks/hooks.json"
+}
+B="$T/matcher"; make_brain "$B"
+wire_input_guard "$B" ".*" 'node "$CLAUDE_PROJECT_DIR/core/helpers/no-input-control.cjs"'
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-none" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"no-input-control.cjs runs only on"*) bad "matcher .* taken for a narrower one: '$(printf '%s' "$out" | grep -a 'runs only on' | head -1)'";;
+  *) ok "a matcher .* covers every tool";;
+esac
+wire_input_guard "$B" "Bash" 'node "$CLAUDE_PROJECT_DIR/core/helpers/no-input-control.cjs"'
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-none" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"no-input-control.cjs runs only on Bash"*) ok "a narrower matcher is named (negative control)";;
+  *) bad "matcher Bash not named as narrower: '$(printf '%s' "$out" | head -1)'";;
+esac
+mkdir -p "$B/scripts/hooks"; printf '%s\n' '// an unrelated instance script' > "$B/scripts/hooks/no-input-control.cjs"
+wire_input_guard "$B" ".*" 'node "$CLAUDE_PROJECT_DIR/scripts/hooks/no-input-control.cjs"'
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-none" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"PreToolUse: node"*"core/helpers/no-input-control.cjs"*) ok "a same-named instance script does not count as the core hook (still missing)";;
+  *) bad "same-named instance script counted as the core hook: '$(printf '%s' "$out" | head -1)'";;
 esac
 
 # 5) --runs: where one helper runs (onboarding-verify check 5) — the plugin's hooks.json counts,
