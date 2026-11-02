@@ -56,7 +56,9 @@ PRIVW_N=$(native "$PRIVW"); LOOK_N=$(native "$LOOK")
 # $1 name, $2 sessions fixture ("cwd1;cwd2" or ""), $3 command, $4 block|allow, [$5 session id]
 probe() {
   local out rc sid="${5:-sess-A}"
-  out=$(printf '{"tool_name":"Bash","session_id":"%s","cwd":"%s","tool_input":{"command":"%s"}}' "$sid" "$REPO_N" "$3" \
+  # JSON built by node from argv (a printf-built input broke on a bare double quote, 2026-11-02); the probes keep
+  # writing \" and \n as JSON escapes, unesc() turns them into the characters.
+  out=$(node -e 'const a=process.argv;const unesc=(s)=>s.replace(/\\(["\\\/nt])/g,(m,c)=>c==="n"?"\n":c==="t"?"\t":c);process.stdout.write(JSON.stringify({tool_name:"Bash",session_id:a[1],cwd:a[2],tool_input:{command:unesc(a[3])}}))' "$sid" "$REPO_N" "$3" \
         | SHARED_COPY_FIXTURE_SESSIONS="$2" CLAUDE_PROJECT_DIR="$TMP_N" node "$HELPER" 2>&1)
   rc=$?
   if printf '%s' "$out" | grep -q '"permissionDecision": *"deny"'; then
@@ -71,6 +73,7 @@ ONE="$REPO_N"
 
 echo "shared working copy, two sessions:"
 probe "commit without pathspec"      "$TWO" "git -C $REPO_N commit -m \\\"x\\\""                    block
+probe "commit without pathspec, bare quotes (escaping)" "$TWO" "git -C $REPO_N commit -m \"x\""     block
 probe "commit -a"                    "$TWO" "git -C $REPO_N commit -a -m x"                         block
 probe "commit --amend"               "$TWO" "git -C $REPO_N commit --amend --no-edit"              block
 probe "commit by path"               "$TWO" "git -C $REPO_N commit a.txt -m x"                     allow

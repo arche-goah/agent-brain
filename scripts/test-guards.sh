@@ -84,10 +84,15 @@ MG=$(mktemp -d)
 mkdir -p "$MG/.claude/rules"
 printf '%s' '[{"pattern":"\\bfixture-shortcut\\b","was":"fixture","stattdessen":"the documented path"}]' \
   > "$MG/.claude/rules/mechanism-rules.json"
+# Node prelude for the probe inputs below: argv as `a`, and unesc() for a value written with JSON escapes (\n, \", \\).
+UNESC='const a=process.argv;const unesc=(s)=>s.replace(/\\(["\\\/nt])/g,(m,c)=>c==="n"?"\n":c==="t"?"\t":c);'
 mg_probe() { # $1 name, $2 command, $3 block|allow
   local out rc
   local helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
-  out=$(printf '{"tool_name":"%s","tool_input":{"command":"%s"},"cwd":"%s"}' "${4:-Bash}" "$2" "$MG" \
+  # JSON built by node from argv: a printf-built input broke on a bare double quote in the command, the guard exited 0
+  # on the bad JSON and the probe read as "allow" (2026-11-02). The probes keep writing \n and \" as JSON escapes;
+  # unesc() turns those into the characters, a bare " stays a quote.
+  out=$(node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:{command:unesc(a[2])},cwd:a[3]}))' "${4:-Bash}" "$2" "$MG" \
         | HOME="$MG" USERPROFILE="$(if command -v cygpath >/dev/null 2>&1; then cygpath -m "$MG"; else printf '%s' "$MG"; fi)" \
           CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1)
   rc=$?
@@ -101,6 +106,7 @@ mg_probe() { # $1 name, $2 command, $3 block|allow
   fi
 }
 mg_probe "mechanism-guard/known shortcut" "fixture-shortcut --now" block
+mg_probe "mechanism-guard/bare double quote in the command (escaping)" 'fixture-shortcut --msg "x"' block
 mg_probe "mechanism-guard/plain command" "git status --short" allow
 # The marker is the guard's own escape hatch — if it stopped working, every documented
 # shortcut would be unreachable and the guard would be switched off within a day.
@@ -220,7 +226,7 @@ printf '%s' '{"enabledPlugins":{"on@fx":true,"off@fx":false}}' > "$TR/fakeuser/.
 tr_probe() { # $1 name, $2 tool_name, $3 field (command|file_path), $4 value, $5 block|allow
   local out helper
   helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
-  out=$(printf '{"tool_name":"%s","tool_input":{"%s":"%s"}}' "$2" "$3" "$4" \
+  out=$(node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:{[a[2]]:unesc(a[3])}}))' "$2" "$3" "$4" \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$helper" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
     [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked what it should allow"
@@ -229,6 +235,7 @@ tr_probe() { # $1 name, $2 tool_name, $3 field (command|file_path), $4 value, $5
   fi
 }
 tr_probe "mechanism-guard/tool rule via .mcp.json clone (command)" Bash command "fixture-server-by-hand --x" block
+tr_probe "mechanism-guard/tool rule, bare double quote in the value (escaping)" Bash command 'fixture-server-by-hand --x "y"' block
 tr_probe "mechanism-guard/tool rule via clone (path, Write)" Write file_path "$(native "$TR")/x/fixture-ipc.txt" block
 tr_probe "mechanism-guard/tool rule via clone (path, Edit)" Edit file_path "$(native "$TR")/x/fixture-ipc.txt" block
 tr_probe "mechanism-guard/path rule ignores commands" Bash command "cat notes-about-fixture-ipc.txt.md" allow

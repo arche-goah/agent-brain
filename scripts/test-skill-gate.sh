@@ -88,9 +88,10 @@ skillcall "tdp:td-core" > "$T/sess-empty/subagents/agent-a1loaded.jsonl"
 readcall "$NT/somewhere/skills/lazy/SKILL.md" > "$T/sess-empty/subagents/agent-a3readlazy.jsonl"
 
 run() { # engine tool transcript [file_path] [agent_id]
-  local inp agent=""
-  [ -n "${5:-}" ] && agent=",\"agent_id\":\"$5\""
-  inp=$(printf '{"tool_name":"%s","tool_input":{"file_path":"%s"},"transcript_path":"%s"%s}' "$2" "${4:-}" "$(native "$T/$3")" "$agent")
+  local inp
+  # JSON built by node from argv (escaping; a printf-built input broke on a double quote, 2026-11-02)
+  inp=$(node -e 'const a=process.argv;const o={tool_name:a[1],tool_input:{file_path:a[2]},transcript_path:a[3]};if(a[4])o.agent_id=a[4];process.stdout.write(JSON.stringify(o))' \
+    "$2" "${4:-}" "$(native "$T/$3")" "${5:-}")
   printf '%s' "$inp" | CLAUDE_PROJECT_DIR="$NT/proj" SKILL_GATE_HOME="$NT/fakehome" node "$1" 2>/dev/null \
     | grep -aq '"permissionDecision":"deny"' && echo block || echo allow
 }
@@ -115,6 +116,7 @@ expect allow mcp__other__x          empty.jsonl            "" "undeclared tool s
 expect allow Bash                   empty.jsonl            "" "plugin disabled in a higher settings layer is not read"
 expect block Edit                   empty.jsonl "$NT/proj/a.py" "project skill with a path filter: .py edit blocks"
 expect allow Edit                   empty.jsonl "$NT/proj/a.md" "path filter: .md edit stays silent"
+expect block Edit                   empty.jsonl "$NT/proj/a \"b\".py" "a double quote in the path still blocks (escaping)"
 expect allow Edit                   loaded-local.jsonl "$NT/proj/a.py" "project skill loaded"
 expect block NotebookEdit           empty.jsonl            "" "instance rule from skill-gate.json"
 expect allow Skill                  empty.jsonl            "" "the Skill tool itself is never gated"
