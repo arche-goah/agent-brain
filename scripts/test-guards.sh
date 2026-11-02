@@ -196,6 +196,23 @@ mg_probe "mechanism-guard/operator word: unflagged rule without marker (control)
 mg_probe "mechanism-guard/operator word: plain command (control)" "git status --short" allow
 rm -rf "$MG"
 
+# --- mechanism-guard: the TEMPLATE's release-tag rule, read from the template itself ---------
+# Measured 2026-10-26: `\bv\d+.\d+.\d+\b` caught a feature branch `data/v1.1.31-windows-package-check`
+# (`\b` matches after `/`) as a release tag; the push went through by renaming the branch. The
+# version token now counts only as an argument of its own.
+MG="$(native "$(mktemp -d)")"
+mkdir -p "$MG/.claude/rules"
+cp "$ROOT/templates/rules-instance/mechanism-rules.json" "$MG/.claude/rules/mechanism-rules.json"
+mg_probe "mechanism-guard/template tag rule: push a version tag" "git push origin v1.2.3" block
+mg_probe "mechanism-guard/template tag rule: push a pre-release tag" "git -C /x push origin v1.2.3-beta.1" block
+mg_probe "mechanism-guard/template tag rule: tag via refspec" "git push origin v1.2.3:refs/tags/v1.2.3" block
+mg_probe "mechanism-guard/template tag rule: --tags" "git push --tags" block
+mg_probe "mechanism-guard/template tag rule: branch named with a version" \
+  "git -C /x push -u origin data/v1.1.31-windows-package-check" allow
+mg_probe "mechanism-guard/template tag rule: branch with a version in the middle" \
+  "git push origin fix/bump-to-v2.1.2-notes" allow
+rm -rf "$MG"
+
 # --- mechanism-guard: TOOL rules — a tool declares its own internals ------------------
 # Incident 2026-10-11: a session on a second machine could not take the defined path and
 # built its own client, wrote probes into the tool's IPC file and drove the GUI. The guard
