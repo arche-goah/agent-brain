@@ -155,9 +155,9 @@ function hitRule(rules, tool, input, root) {
 }
 
 // Rights are the same in both modes; the run differs only in that a question is collected instead of
-// asked (the operator, 2026-11-02: "Rechte sollten in interaktiv und autonom gleich sein. Einziger
-// Unterschied ist, dass Fragen nicht gestellt sondern gesammelt werden"). Measured the same day on the
-// macOS instance: after the operator answered a collected point ("Hooks ja"), this gate refused the very
+// asked (the operator, 2026-11-02, translated: "rights should be the same in interactive and autonomous;
+// the only difference is that questions are collected instead of asked"). Measured the same day on the
+// macOS instance: after the operator answered a collected point ("hooks yes"), this gate refused the very
 // edit again, so an approved change stuck until the mode ended - interactively the harness would simply
 // have asked. So: when the operator spoke in THIS turn (a prompt or a mid-turn message after the last
 // turn end) and that prompt was not the order that switched the run on, an ask rule or a held edit goes
