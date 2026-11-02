@@ -11,6 +11,11 @@ PY=python3
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
+# The org comes from eco_owner.py, so gh is a stand-in for every case: it prints $GH_STUB (empty =
+# offline), never the real login (the real one made the cases depend on who runs them).
+mkdir -p "$T/bin"
+printf '%s\n' '#!/usr/bin/env bash' 'printf %s "${GH_STUB:-}"' > "$T/bin/gh"; chmod +x "$T/bin/gh"
+export PATH="$T/bin:$PATH" GH_STUB=""
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
@@ -60,6 +65,7 @@ case "$out" in *'permission rule(s) of the core template'*'allow '[1-9]*) ok "th
 UT="$T/user-template.json"
 printf '%s\n' '{"autoMode":{"environment":["$defaults","Source control: github.com/<org>"],"allow":["$defaults","Own PRs in github.com/<org> may be marked ready"]}}' > "$UT"
 brain b7 '{"extraKnownMarketplaces":{"m":{"source":{"source":"github","repo":"acme/claude-marketplace"}}},"permissions":{"allow":["Bash(gh pr ready*)","Bash(gh pr create*)","Bash(git status*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"]}}'
+mkdir -p "$T/b7/config"; printf '%s\n' '{"owner":"acme"}' > "$T/b7/config/ecosystem.json"
 U="$T/user7"; mkdir -p "$U"; printf '%s\n' '{"theme":"dark"}' > "$U/settings.json"
 urun() { CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b7")" --template "$(native "$TPL")" --rules-template "$(native "$T/no-rules")" --user-template "$(native "$UT")" "$@" 2>&1; }
 out="$(urun)"
@@ -83,6 +89,17 @@ out="$(urun --apply-user)"
 case "$out" in *'nothing written'*) ok "a second --apply-user writes nothing";; *) bad "second apply: '$out'";; esac
 out="$(CLAUDE_CONFIG_DIR="$(native "$U")" "$PY" "$S" --repo "$(native "$T/b2")" --template "$(native "$TPL")" --rules-template "$(native "$T/no-rules")" --user-template "$(native "$UT")" 2>&1)"
 [ -z "$out" ] && ok "no marketplace repo, no org: the user half stays silent (control)" || bad "no-org case reported: '$out'"
+
+# The outsider trial on Windows, 2026-11-02: a stranger whose only marketplace is the public core one
+# (owner "maint", readable by anyone) got "maint" written into ~/.claude as the organisation's own repos.
+brain s1 '{"extraKnownMarketplaces":{"agent-brain":{"source":{"source":"github","repo":"maint/agent-brain"}}}}'
+US="$T/user-s1"; mkdir -p "$US"; printf '%s\n' '{}' > "$US/settings.json"
+srun() { CLAUDE_CONFIG_DIR="$(native "$US")" "$PY" "$S" --repo "$(native "$T/s1")" --template "$(native "$TPL")" --rules-template "$(native "$T/no-rules")" --user-template "$(native "$UT")" "$@" 2>&1; }
+out="$(GH_STUB='{"data":{"viewer":{"login":"stranger"},"repository":{"isPrivate":false,"viewerPermission":"READ"}}}' srun --apply-user)"
+case "$out" in *'(org stranger)'*) ! grep -q 'github.com/maint' "$US/settings.json" && ok "a public marketplace someone else owns is not the org; the login is" || bad "maint written: $(cat "$US/settings.json")";; *) bad "stranger apply: '$out'";; esac
+printf '%s\n' '{}' > "$US/settings.json"; rm -rf "$T/s1/.claude-state"
+out="$(GH_STUB='' srun --apply-user)"
+case "$out" in *'no owner known'*'nothing written'*) ! grep -q 'github.com/' "$US/settings.json" && ok "no owner known (gh offline): nothing is written, no org guessed" || bad "offline wrote an org: $(cat "$US/settings.json")";; *) bad "offline apply: '$out'";; esac
 
 # 12-14 a narrowed entry: its wider old form is RETIRED and must go, not stay next to it (2026-10-26)
 UR="$T/user-template-retired.json"

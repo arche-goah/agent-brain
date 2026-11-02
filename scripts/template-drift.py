@@ -84,14 +84,14 @@ def user_settings_path():
     return (pathlib.Path(cfg) if cfg else pathlib.Path.home() / ".claude") / "settings.json"
 
 
-def org_of(*settings):
-    """The org of the marketplace repo the settings name (same derivation as session-bootup.sh)."""
-    for s in settings:
-        for m in ((s or {}).get("extraKnownMarketplaces") or {}).values():
-            repo = ((m or {}).get("source") or {}).get("repo", "")
-            if "/" in repo and not repo.startswith("<"):
-                return repo.split("/")[0]
-    return None
+def org_of(repo):
+    """The owner this brain treats as its own, from eco_owner.py (ecosystem owner, else a marketplace
+    the login may write to, else the login), or None. Not the org of the first marketplace: a
+    stranger whose only marketplace is the public core one got the core maintainers' org written
+    into ~/.claude as "the organisation's own repositories" (outsider trial on Windows, 2026-11-02)."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import eco_owner
+    return eco_owner.resolve(repo)[0] or None
 
 
 def shown(kind, gone):
@@ -160,9 +160,10 @@ def apply_user(user_template, org_arg, repo):
         print(f"template-drift: {path.as_posix()} is not valid JSON - nothing written")
         return 1
     user = user or {}
-    org = org_arg or org_of(load(pathlib.Path(repo) / ".claude" / "settings.json"), user)
+    org = org_arg or org_of(repo)
     if not org:
-        print("template-drift: no org found (no marketplace repo in the settings) - pass --org <org>")
+        print("template-drift: no owner known (config/ecosystem.json \"owner\", a marketplace this login may write to, "
+              "or the gh login) - nothing written; pass --org <org>")
         return 1
     _, missing, stale = user_drift(user, user_template, org)
     if not missing and not stale:
@@ -250,7 +251,7 @@ def main():
         if line:
             print(line)
     user = load(user_settings_path())
-    org = args.org or org_of(load(pathlib.Path(args.repo) / ".claude" / "settings.json"), user)
+    org = args.org or org_of(args.repo)
     if org:
         uline, _, _ = user_drift(user, args.user_template, org)
         if uline:
