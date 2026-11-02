@@ -49,6 +49,7 @@ memory, not here.
 ```bash
 ollama --version
 # If missing: brew install ollama  (app: brew install --cask ollama)
+# Windows:    winget install --id Ollama.Ollama --exact
 ```
 The service runs on `http://localhost:11434`.
 
