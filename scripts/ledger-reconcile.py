@@ -216,9 +216,27 @@ def in_pin(pin, sha, timeout):
         return False
 
 
-def pin_met(e, pin, timeout):
-    """Every PR an open `check: none` entry names next to the word pin is in the pin: True."""
+EXIT_DATE = re.compile(r"^\s*(?:[-*]\s+)?`?exit:\s*[\w-]+\s+(20\d\d-\d\d-\d\d)", re.M)
+
+
+def pin_date(pin, timeout):
+    """Commit date of the pinned checkout (YYYY-MM-DD), or "" when unreadable."""
+    try:
+        return subprocess.run(["git", "-C", pin, "log", "-1", "--format=%cs", "HEAD"], capture_output=True,
+                              text=True, timeout=timeout).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def pin_met(e, pin, timeout, since=""):
+    """Every PR an open `check: none` entry names next to the word pin is in the pin: True.
+    `since` = the pin's commit date: an entry whose newest exit is dated on or after it was looked at
+    after the pin moved, and stays silent (macOS instance, 2026-11-02: entries already set to their
+    real state were named again on every run)."""
     if e["done"] or not pin:
+        return False
+    exits = EXIT_DATE.findall(e["text"])
+    if since and exits and max(exits) >= since:
         return False
     # Only the PRs written near the word count: measured 2026-11-02 on the macOS instance, the whole
     # entry's #N made a 25-PR collection entry and a suite's "Pin `x` folgt" read as conditions.
@@ -246,6 +264,7 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
     `pin`: the pinned core checkout; open `check: none` entries waiting for its PRs are measured."""
     out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": [],
            "refused": [], "not_run": [], "unproven": [], "pin_met": []}
+    pin_since = pin_date(pin, timeout) if pin else ""
     baseline = seen is not None and not seen
     deadline = time.monotonic() + budget
     for rel in ledgers:
@@ -263,7 +282,7 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
                     out["no_check"].append(label(e, rel))
                 continue
             if NONE.match(chk):
-                if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout):
+                if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout, pin_since):
                     out["pin_met"].append(label(e, rel))
                 continue
             if not permitted(chk, allowed):
