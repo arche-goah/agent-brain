@@ -30,6 +30,9 @@ T="$(mktemp -d)"
 # below usable by both git (fine with either form) and python (needs the native one).
 command -v cygpath >/dev/null 2>&1 && T="$(cygpath -w "$T")"
 trap 'rm -rf "$T"' EXIT
+# A home of its own (2026-11-02): the bootup heals the statusline into ~/.claude - never the
+# real one of the machine running this. USERPROFILE: Python and node read it on Windows, not HOME.
+H="$T/home"; mkdir -p "$H"; export HOME="$H" USERPROFILE="$H" CLAUDE_CONFIG_DIR="$H/.claude"
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }

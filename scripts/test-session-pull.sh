@@ -25,6 +25,9 @@ T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 # A path handed to a native process as DATA (env) must be in its form (os-traps OS-3).
 native() { cygpath -m "$1" 2>/dev/null || printf '%s' "$1"; }
+# A home of its own (2026-11-02): the bootup heals the statusline into ~/.claude - never the
+# real one of the machine running this. USERPROFILE: Python and node read it on Windows, not HOME.
+mkdir -p "$T/home"; export HOME="$T/home" USERPROFILE="$(native "$T/home")" CLAUDE_CONFIG_DIR="$(native "$T/home")/.claude"
 git_q() { git -c user.email=t@t -c user.name=t -c init.defaultBranch=main -c protocol.file.allow=always "$@" >/dev/null 2>&1; }
 head_of() { git -C "$1" rev-parse HEAD 2>/dev/null; }
 n=0

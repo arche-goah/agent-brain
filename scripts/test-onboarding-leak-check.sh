@@ -32,6 +32,10 @@ bad() { echo "  FAIL $1"; fail=1; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+# A home of its own (2026-11-02): the verify run calls the claude CLI, which rewrote the real
+# ~/.claude.json and left a backup under ~/backups. USERPROFILE: Python and node read it on Windows.
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
+mkdir -p "$TMP/home"; export HOME="$TMP/home" USERPROFILE="$(native "$TMP/home")" CLAUDE_CONFIG_DIR="$(native "$TMP/home")/.claude"
 BRAIN="$TMP/brain"
 mkdir -p "$BRAIN/.claude/rules" "$BRAIN/docs/maintenance" "$BRAIN/core"
 printf '{}\n' > "$BRAIN/.claude/settings.json"
