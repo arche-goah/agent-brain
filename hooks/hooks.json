@@ -31,7 +31,7 @@
         ]
       },
       {
-        "matcher": "Read|Edit|Write|Bash|PowerShell",
+        "matcher": "Read|Edit|Write|Bash|PowerShell|Monitor",
         "hooks": [
           {
             "type": "command",
@@ -140,7 +140,8 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/no-input-control.cjs\"",
-            "timeout": 5
+            "timeout": 5,
+            "onFailure": "block"
           }
         ]
       }
