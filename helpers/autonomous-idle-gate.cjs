@@ -25,14 +25,29 @@
  * macOS instance: a turn ended on "BLOCKED: waiting on the CI watchers, the peer, the operator" while the
  * session start listed 16 own items; the line was the AI's recollection that "its strand was empty",
  * never read against the list — the operator: "so everything is done on your side? or why did you stop?"
- * Outside the mode, and on a re-issue (stop_hook_active), it is silent. Fails open on unreadable input.
+ * Fails open on unreadable input.
+ *
+ * INTERACTIVE, for released work (operator decision 2026-11-02 on the macOS instance, question tool): the same
+ * state check holds outside the autonomous mode, but only for own work the operator RELEASED in this session.
+ * Measured the same day: an interactive turn closed on "Next: package A …" while the operator had released that
+ * plan in the session; the word-pattern gates missed the sentence, and the operator is against more word lists.
+ * Released = an OPEN entry of a registered ledger (.claude/rules/ledgers.json) whose last exit is `ai-does-it`
+ * and which carries `released: "<the operator's words>"` — and those words stand in one of the operator's own
+ * messages of THIS transcript (a prompt, a message typed mid-turn, a question-tool answer). A quote the agent
+ * invents releases nothing. With such an entry open, the turn may end only:
+ *   - with an AskUserQuestion call in this turn, or a line `HAND STEP: <what the operator does>`, or
+ *   - when every released entry is named by its id in a `BLOCKED: <id> — <what restores it>` line, after
+ *     measuring the list (as above). A running waiter is no end, even with its condition named (operator,
+ *     2026-11-02: while a waiter waits 15 minutes there is always something to work on): it explains why ONE
+ *     item waits, and that item then stands in its own BLOCKED line.
+ * It holds once per turn: the re-issue after its block (stop_hook_active) passes. Autonomous behaviour unchanged.
  * Fixture: scripts/test-autonomous-idle-gate.sh.
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { autonomousMode } = require('./autonomous-mode.cjs');
-const { isTranscriptRecord } = require('./turn-kind.cjs');
+const { autonomousMode, answers, promptText, HOOK_ECHO: PROMPT_ECHO } = require('./autonomous-mode.cjs');
+const { isTranscriptRecord, isNotification, isSkillExpansion, isAgentOrigin, queuedHumanPrompt, operatorWords, FRAMES, LOCAL } = require('./turn-kind.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
 
 const END_LINE = /^[ \t>*_-]*(BLOCKED|POOL EMPTY):\s*\S/m;
@@ -42,7 +57,8 @@ const HOOK_ECHO = /^Stop hook feedback:/;
 function turnOf(tp) {
   let lines;
   try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return null; }
-  let text = ''; let wake = false; let cmds = []; let prev = null; let lastUserIsNotification = false; let since = '';
+  let text = ''; let wake = false; let asked = false; let ans = ''; let cmds = []; let prev = null; let lastUserIsNotification = false; let since = '';
+  const askIds = new Set();
   // Every command of the session in order, with its time: an earlier measurement can still stand (see judge).
   const all = [];
   // Background waiters still running at the turn's end (armed, no end reported yet).
@@ -67,8 +83,10 @@ function turnOf(tp) {
       // and the measurement away) starts a turn with nothing in it yet - the turn being judged is the one before.
       if (t !== null && !HOOK_ECHO.test(t)) {
         lastUserIsNotification = /<task-notification>|<cross-session-message\b/.test(t);
-        if (text) prev = { text, wake, cmds, since };
-        text = ''; wake = false; cmds = []; since = d.timestamp || '';
+        if (text) prev = { text, wake, asked, answers: ans, cmds, since };
+        text = ''; wake = false; asked = false; ans = ''; cmds = []; since = d.timestamp || '';
+      } else if (t === null) {
+        for (const [, a] of answers(msg, askIds)) ans += '\n' + squash(a); // the operator's answers in this turn
       }
       continue;
     }
@@ -76,6 +94,7 @@ function turnOf(tp) {
       for (const b of msg.content) {
         if (b && b.type === 'text' && b.text) text = b.text;
         if (b && b.type === 'tool_use' && b.name === 'ScheduleWakeup') wake = true;
+        if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') { asked = true; askIds.add(b.id); }
         if (b && b.type === 'tool_use' && (b.name === 'Monitor'
           || ((b.name === 'Bash' || b.name === 'Agent') && b.input && b.input.run_in_background === true))) armed.add(b.id);
         if (b && b.type === 'tool_use' && b.input && typeof b.input.command === 'string') cmds.push(b.input.command);
@@ -85,7 +104,98 @@ function turnOf(tp) {
   }
   const waiting = [...armed].some((id) => !ended.has(id));
   if (!text && prev && lastUserIsNotification) return { ...prev, waiting, all };
-  return { text, wake, cmds, since, waiting, all };
+  return { text, wake, asked, answers: ans, cmds, since, waiting, all };
+}
+
+/** Everything the operator wrote in this transcript, squashed: prompts, messages typed mid-turn and question-tool
+ *  answers — never a notification, a hook echo, a loaded skill, a peer's or the harness's text, frames or pasted
+ *  blocks. The same filters as autonomous-mode.cjs promptModes. */
+const squash = (s) => String(s || '').toLowerCase().replace(/[\s ]+/g, ' ').trim();
+function operatorSaid(tp) {
+  let lines;
+  try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return ''; }
+  const out = []; const askIds = new Set();
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    const queued = queuedHumanPrompt(d);
+    if (queued) { out.push(operatorWords(queued.replace(FRAMES, ' ').replace(LOCAL, ' '))); continue; }
+    if (!isTranscriptRecord(d) || isSkillExpansion(d) || isAgentOrigin(d) || !d.message) continue;
+    const msg = d.message;
+    if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      for (const b of msg.content) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') askIds.add(b.id);
+      continue;
+    }
+    if (msg.role !== 'user') continue;
+    for (const [, a] of answers(msg, askIds)) out.push(a);
+    const t = promptText(msg);
+    if (!t || PROMPT_ECHO.test(t) || isNotification(t)) continue;
+    out.push(operatorWords(t.replace(FRAMES, ' ').replace(LOCAL, ' ')));
+  }
+  return squash(out.join('\n'));
+}
+
+/** Open entries of the registered ledgers that the operator released in this session (see the header):
+ *  last exit `ai-does-it`, a `released: "<words>"` clause, the words found in what the operator said.
+ *  Returns their ids; [] on any unreadable part (fail open). The entry shape is the one open-items.py and
+ *  decision-presentation-gate.cjs read: a `- [ ]` line and its indented lines. */
+const RELEASED = /\breleased:\s*["„“”]([^"„“”\n]{4,})["“”]/gu;
+function releasedOpen(root, tp) {
+  let cfg;
+  try { cfg = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'ledgers.json'), 'utf8')); } catch (e) { return []; }
+  const out = []; let said = null;
+  for (const rel of (cfg && cfg.ledgers) || []) {
+    let text;
+    try { text = fs.readFileSync(path.join(root, rel), 'utf8'); } catch (e) { continue; }
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const m = /^- \[ \] (.*)$/.exec(lines[i]);
+      if (!m) continue;
+      const block = [lines[i]];
+      for (let j = i + 1; j < lines.length && lines[j].startsWith(' '); j++) block.push(lines[j]);
+      const body = block.join('\n');
+      if (!body.includes('released:')) continue;
+      const exits = [...body.matchAll(/^[\s-]*`?exit:\s*`?([\w-]+)/gm)];
+      if (exits.length && exits[exits.length - 1][1] !== 'ai-does-it') continue;
+      const quotes = [...body.matchAll(RELEASED)].map((q) => squash(q[1]));
+      if (!quotes.length) continue;
+      if (said === null) said = operatorSaid(tp);
+      const found = quotes.filter((q) => said.includes(q));
+      if (!found.length) continue;
+      const id = /\bid:\s*`?([\w.:/-]+)/.exec(body);
+      out.push({ id: id ? id[1].replace(/[.:]+$/, '') : m[1].replace(/[*`]/g, '').slice(0, 60), quotes: found });
+    }
+  }
+  return out;
+}
+
+const HAND_STEP_LINE = /^[ \t>*_-]*HAND STEP:\s*\S/m;
+
+/** The interactive variant: one block per turn while released work is open and the turn has no allowed end. */
+function judgeInteractive(input, root, now) {
+  if (input.stop_hook_active) return null; // holds once: the re-issue after its own block passes
+  const rel = releasedOpen(root, input.transcript_path);
+  if (!rel.length) return null;
+  const ids = rel.map((r) => r.id);
+  const t = turnOf(input.transcript_path);
+  if (!t || !t.text) return null;
+  // A question asked in this turn ends it — unless its own answer released the work: then the turn goes on with it.
+  const releasedNow = rel.some((r) => r.quotes.some((q) => t.answers.includes(q)));
+  if ((t.asked && !releasedNow) || HAND_STEP_LINE.test(t.text)) return null;
+  if (closeOpenEnds(root, { sessionId: input.session_id, since: t.since, calls: t.cmds.map((cmd) => ({ cmd })) }) !== null) return null;
+  const m = measurers(root);
+  const measured = t.cmds.some((c) => m.some((r) => r.test(c))) || standingMeasurement(t.all, m, now);
+  const blockedLines = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:\s*\S/.test(l));
+  const unnamed = ids.filter((id) => !blockedLines.some((l) => l.includes(id)));
+  if (measured && !unnamed.length) return null;
+  const list = (unnamed.length ? unnamed : ids).slice(0, 5).join(', ');
+  return `IDLE (interactive, released work): the operator released ${list} in this session and this turn ends without `
+    + 'working on it. Do the next step now (tool calls in this turn), or end in one of the allowed forms: a question '
+    + 'through the question tool, a line `HAND STEP: <what the operator does>`, or every released entry named in a '
+    + 'line `BLOCKED: <id> — <what restores it, who>` after measuring the list in this turn '
+    + '(core/scripts/open-items.py or the instance command). A running waiter is no end, even with its condition: '
+    + 'it explains why one item waits — name that one as BLOCKED and work on the others. This check holds once per turn. '
+    + `Missing: ${!measured && !unnamed.length ? 'own-items measurement' : 'continuation on released work'}`;
 }
 
 /** A measurement from an EARLIER turn still stands when nothing was done since and it is fresh.
@@ -137,7 +247,7 @@ function judge(input, now) {
   // (2026-10-30: a 15-min wakeup after two other blocks passed with 67 own items open).
   if (!input.transcript_path) return null;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-  if (!autonomousMode(input.transcript_path, root)) return null;
+  if (!autonomousMode(input.transcript_path, root)) return judgeInteractive(input, root, now);
   const t = turnOf(input.transcript_path);
   if (!t || !t.text) return null;
   // The session close ends the run (measured 2026-10-31 and again 2026-11-01 on the macOS instance: after a
