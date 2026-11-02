@@ -69,6 +69,10 @@ ENTRY = re.compile(r"^- \[( |x|X)\] (.*)$")
 # `  - `key: value``: measured 2026-10-26 on the Windows instance, 20 of 20 entries the ratchet
 # named as "without a check" were in list form, ids and checks unread.
 FIELD = re.compile(r"^\s{2,}(?:[-*]\s+)?`?([a-z_-]+):\s?(.*)$")
+# `id:` and `check:` kept on the entry line itself, between ` | ` separators, as open-items.py reads `id:` there
+# (measured 2026-11-02 on the Windows instance: 23 open entries wrote `| check: ...` inline, the ratchet named
+# them all "without a check"). A value ends where the next ` | <word>:` field or the line ends.
+INLINE_FIELD = re.compile(r"(?:^|\s)(id|check):\s*(.+?)\s*(?=\s\|\s[^\s|]+:|$)")
 DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 NONE = re.compile(r"^none\b", re.I)
 
@@ -83,6 +87,10 @@ def entries(text):
                 yield cur
             cur = {"done": m.group(1) != " ", "title": m.group(2).strip(), "fields": {},
                    "text": line, "line": n}
+            for f in INLINE_FIELD.finditer(m.group(2)):
+                if f.group(1) not in cur["fields"]:
+                    cur["fields"][f.group(1)] = f.group(2).strip().strip("`").strip()
+                    cur.setdefault("inline", set()).add(f.group(1))
             continue
         if cur is None:
             continue
@@ -92,8 +100,10 @@ def entries(text):
             continue
         cur["text"] += "\n" + line
         f = FIELD.match(line)
-        if f and f.group(1) not in cur["fields"]:
+        # a field line of its own outranks the same field kept inline on the entry line
+        if f and (f.group(1) not in cur["fields"] or f.group(1) in cur.get("inline", ())):
             cur["fields"][f.group(1)] = f.group(2).strip().strip("`").strip()
+            cur.get("inline", set()).discard(f.group(1))
     if cur:
         yield cur
 
