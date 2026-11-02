@@ -39,19 +39,12 @@ PY=python3
 BRAIN="${BRAIN_UPDATE_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 BASE="${SUITE_BASE_DIR:-$HOME/Projects}"
 ECO="$BRAIN/config/ecosystem.json"
-# The org a suite without an ecosystem record is cloned from: SUITE_ORG, else the owner of the
-# marketplace the brain's settings register. No built-in org: a stranger's brain must never clone
-# from the core maintainers' org by default (stranger trial 2026-11-01).
+# The org a suite without an ecosystem record is cloned from: SUITE_ORG, else the owner eco_owner.py
+# gives (ecosystem owner, a marketplace the login may write to, the login). No built-in org, and not
+# the org of the first marketplace: a stranger whose only marketplace is the public core one would
+# clone from the core maintainers' org (stranger trials 2026-11-01 and, on Windows, 2026-11-02).
 market_org() {
-  [ -f "$BRAIN/.claude/settings.json" ] || return 0
-  # the path goes in the environment, not as argv (OS-6, docs/os-traps.md)
-  SUITE_SETTINGS="$BRAIN/.claude/settings.json" "$PY" - <<'PY' 2>/dev/null
-import json, os
-for m in (json.load(open(os.environ["SUITE_SETTINGS"], encoding="utf-8")).get("extraKnownMarketplaces") or {}).values():
-    repo = ((m or {}).get("source") or {}).get("repo", "")
-    if "/" in repo and not repo.startswith("<"):
-        print(repo.split("/", 1)[0]); break
-PY
+  "$PY" "$(dirname "$0")/eco_owner.py" --root "$BRAIN" 2>/dev/null
 }
 ORG="${SUITE_ORG:-}"
 [ -n "$ORG" ] || ORG="$(market_org)"
