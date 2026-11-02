@@ -83,12 +83,14 @@ def slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:50].rstrip("-") or "message"
 
 
-def resolve_next(to: list[str], parties: dict) -> list[str]:
-    """The devices an addressee list reaches — what `next:` names."""
+def resolve_next(to: list[str], parties: dict, text: str = "") -> list[str]:
+    """The devices an addressee list reaches — what `next:` names. A category address leaves out the
+    devices of a person who cannot see a repo the text names; a device named by itself stays."""
     devs = _parties.devices(parties)
     out = []
     for t in to:
-        hit = sorted(d for d in devs if t in _parties.EVERYONE or t in _parties.categories(d, parties))
+        hit = sorted(d for d in devs if (t in _parties.EVERYONE or t in _parties.categories(d, parties))
+                     and not _parties.without_access(d, text, parties))
         out += [d for d in (hit or [t]) if d not in out]
     return out
 
@@ -276,7 +278,8 @@ def main() -> int:
     meta = ["  type: project", f"  von: {von}", f"  audience: {', '.join(to)}", f"  topic: {a.area}",
             f"  date: {a.date}", f"  os: {os_name}", f"  core: {core}", f"  status: {status}"]
     if status == "open":
-        nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower() and d not in handed]
+        nxt = [d for d in (resolve_next(to, parties, a.title + "\n" + body) if parties else to)
+               if d != von.lower() and d not in handed]
         meta.append(f"  next: {', '.join(nxt)}")
     if answers:
         meta.append(f"  {'claims' if a.kind == 'claim' else 'answers'}: {', '.join(answers)}")
