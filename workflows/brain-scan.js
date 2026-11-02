@@ -331,12 +331,21 @@ AUTHORITATIVE numbers (machine-derived): ${rawCount} findings, ${nonOk} of them 
 // the report path the SCRIPT had named — the same silent hole as memory-dream's empty path.
 if (!summary) throw new Error('Report agent failed')
 // Second gate, measured: what the consumer found on disk, against what was started.
-assertFiles(dataFiles, summary.files_read, 'report: data files read from disk')
-assertCount(rawCount, summary.finding_count, 'brain-scan findings read by the report')
-assertExits(summary.index, nonOk, prep.decision_due, summary.decisions, 'brain-scan exits', DEEP_NAMES)
-// The deep-check lines come from the script head; a report without them dropped the head.
-assertCount(prep.deep_check.length, summary.deep_check_lines, 'deep-check lines in the report')
-assertReport(REPORT, summary.report_path, summary.report_bytes, 'brain-scan report')
+// A gate that fails AFTER the report was written must not take the run's result with it (audit-audit 2026-11-02,
+// macOS instance: the 10-15 run threw in assertExits, scan-2026-10-15.md stood on disk, the return with its
+// decisions and top findings was lost). The gate still fails the run; its error carries what the return would have.
+try {
+  assertFiles(dataFiles, summary.files_read, 'report: data files read from disk')
+  assertCount(rawCount, summary.finding_count, 'brain-scan findings read by the report')
+  assertExits(summary.index, nonOk, prep.decision_due, summary.decisions, 'brain-scan exits', DEEP_NAMES)
+  // The deep-check lines come from the script head; a report without them dropped the head.
+  assertCount(prep.deep_check.length, summary.deep_check_lines, 'deep-check lines in the report')
+  assertReport(REPORT, summary.report_path, summary.report_bytes, 'brain-scan report')
+} catch (e) {
+  const top = (summary.findings || []).slice(0, 10).map(f => `[${f.severity}] ${f.title}`).join(' | ')
+  throw new Error(`${e.message}\n— Not lost: report ${summary.report_path || REPORT} (${summary.report_bytes || 0} bytes, written `
+    + `before this gate); findings dir ${FINDINGS_DIR}; decisions ${JSON.stringify(summary.decisions || [])}; top: ${top}`)
+}
 
 const exitCounts = {}
 for (const i of summary.index) exitCounts[i.exit] = (exitCounts[i.exit] || 0) + 1

@@ -12,3 +12,7 @@
   - The return channel's recurrence count no longer stops at a bare tick: a ledger entry ticked without a `check:` line is
     `done-unproven` and keeps counting toward the third-time decision (on 2026-10-30 seven keys the channel called done
     came back; the six that returned after a tick had no check). An index exit `done-already` stays done. Fixture +2.
+  - `workflows/brain-scan.js`: a gate that fails after the report was written names in its error the report path, the
+    findings folder, the decisions and the top findings (the 10-15 run lost its return that way). The gate still fails.
+  - The coherence corpus takes the first 40 lines of every instance script and of every synthesis/register/report under
+    `docs/research/` (a 10-25 register said no level above the full audit exists; the audit-audit reports stood there).
