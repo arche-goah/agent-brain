@@ -207,6 +207,7 @@ known:     scripts/ledger-reconcile.py=4
 known:     scripts/open-items.py=1
 known:     scripts/os-traps-export.py=1
 known:     scripts/regen-skill-registry.py=1
+known:     scripts/repo-activity-filter.py=1
 known:     scripts/session-audit.py=1
 known:     scripts/shared-memory-index.py=3
 known:     scripts/shared-memory-lint.py=1

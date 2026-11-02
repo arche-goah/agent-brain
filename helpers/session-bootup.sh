@@ -131,36 +131,44 @@ def load(p):
     except Exception: return {}
 cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
 proj, user = load(".claude/settings.json"), load(os.path.join(cfg, "settings.json"))
-repo = None
-for s in (proj, user):
-    for m in (s.get("extraKnownMarketplaces") or {}).values():
-        repo = repo or (m.get("source") or {}).get("repo")
-# a template placeholder is no marketplace to ask (same test as the ecosystem owner below)
-o = (repo or "").split("/")[0]
-if not repo or any(c in o for c in "<>") or o.lower() == "your-org": sys.exit()
-try:
-    raw = subprocess.run(
-        ["gh", "api", f"repos/{repo}/contents/.claude-plugin/marketplace.json",
-         "--jq", ".content"], capture_output=True, text=True, timeout=15)
-    if raw.returncode != 0: sys.exit()
-    import base64
-    mkt = json.loads(base64.b64decode(raw.stdout))
-except Exception:
-    sys.exit()
-# Pins for EVERY plugin this marketplace ships — the check covers every suite the
-# brain has INSTALLED (operator order 2026-08-13: grandMA etc. included), never
-# ones it does not have.
-pins = {p.get("name", ""): p.get("source", {}).get("ref", "")
-        for p in mkt.get("plugins", [])}
 enabled = {k for s in (proj, user)
            for k, v in (s.get("enabledPlugins") or {}).items() if v}
+# Every plugin's pin comes from ITS OWN marketplace - the part after "@" in the enabled id, looked up in
+# extraKnownMarketplaces. Measured 2026-11-02 on the macOS instance after the core moved to the public
+# marketplace: the first marketplace listed was read for every pin, so the private one's old core pin
+# produced "update available: brain-core-next 2.1.0 -> v2.0.5", an invitation to step back.
+repos = {}
+for s in (proj, user):
+    for name, m in (s.get("extraKnownMarketplaces") or {}).items():
+        r = (m.get("source") or {}).get("repo")
+        o = (r or "").split("/")[0]
+        # a template placeholder is no marketplace to ask (same test as the ecosystem owner below)
+        if r and not any(c in o for c in "<>") and o.lower() != "your-org":
+            repos.setdefault(name, r)
+import base64
+pins = {}
+for mname in sorted({k.split("@", 1)[1] for k in enabled if "@" in k} & set(repos)):
+    try:
+        raw = subprocess.run(
+            ["gh", "api", f"repos/{repos[mname]}/contents/.claude-plugin/marketplace.json",
+             "--jq", ".content"], capture_output=True, text=True, timeout=15)
+        if raw.returncode != 0: continue
+        mkt = json.loads(base64.b64decode(raw.stdout))
+    except Exception:
+        continue
+    # Pins for EVERY plugin this marketplace ships — the check covers every suite the
+    # brain has INSTALLED (operator order 2026-08-13: grandMA etc. included), never
+    # ones it does not have.
+    for p in mkt.get("plugins", []):
+        pins[f"{p.get('name', '')}@{mname}"] = p.get("source", {}).get("ref", "")
+if not pins: sys.exit()
 stale = []
 # The submodule is compared against the ENABLED core channel, not the literal name:
 # a beta machine runs brain-core-next while brain-core (disabled) is deliberately
 # pinned behind — comparing against the held pin would flag a correct beta state as
 # stale (same class as the updater's silent submodule skip, 2026-09-02).
-core_channel = next((n for n in ("brain-core-next", "brain-core")
-                     if any(k.startswith(n + "@") for k in enabled)), "brain-core")
+core_channel = next((k for n in ("brain-core-next", "brain-core")
+                     for k in sorted(enabled) if k.startswith(n + "@")), "")
 core_pin = pins.get(core_channel, "")
 if core_pin and os.path.isdir("core") and not os.environ.get("BOOT_CORE_ALPHA"):
     sub = ""
@@ -194,7 +202,7 @@ if core_pin and os.path.isdir("core") and not os.environ.get("BOOT_CORE_ALPHA"):
 plugs = load(os.path.join(cfg, "plugins", "installed_plugins.json")).get("plugins") or {}
 for pid, entries in plugs.items():
     name = pid.split("@", 1)[0]
-    if pid not in enabled or not pins.get(name): continue
+    if pid not in enabled or not pins.get(pid): continue
     # This brain's record, never another project's (plugin_records.py; rec[0] picked a stranger's).
     try:
         sys.path.insert(0, os.path.join("core", "scripts"))
@@ -203,7 +211,7 @@ for pid, entries in plugs.items():
     except Exception:
         own = (entries or [{}])[0]
     v = own.get("version", "")
-    if v and f"v{v}" != pins[name]: stale.append(f"{name} {v} -> {pins[name]}")
+    if v and f"v{v}" != pins[pid]: stale.append(f"{name} {v} -> {pins[pid]}")
 if stale: print(", ".join(stale))
 PY
 )
@@ -401,6 +409,12 @@ fi
 # they replied past (unanswered) may scroll away for good.
 if command -v node >/dev/null 2>&1 && [[ -f "$HERE/question-gate.cjs" ]]; then
   CLAUDE_PROJECT_DIR="$R" node "$HERE/question-gate.cjs" list 2>/dev/null
+fi
+
+# Start mode guard (autonomous-mode.cjs initialState, operator 2026-11-02): an autonomous start the brain
+# could not end in the operator's language is refused - said here, loud, with the way to fix it.
+if command -v node >/dev/null 2>&1 && [[ -f "$HERE/autonomous-mode.cjs" ]]; then
+  node -e 'const s=require(process.argv[1]).initialState(process.argv[2]); if (s.wanted && !s.granted) console.log("!! start mode: " + s.why + " - add off_patterns/ask_patterns in your language, or enable the intent classifier; until then end a run with \"ask mode\"")' "$HERE/autonomous-mode.cjs" "$R" 2>/dev/null
 fi
 
 # Level debts of the core (change-level.cjs): silent unless a change named a debt more than

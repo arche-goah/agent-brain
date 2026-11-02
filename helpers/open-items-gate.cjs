@@ -55,7 +55,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords } = require('./turn-kind.cjs');
+const { isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, isTurnEnd } = require('./turn-kind.cjs');
 const { autonomousMode } = require('./autonomous-mode.cjs');
 const { PRE_COMMIT, closeOpenEnds } = require('./close-stamp.cjs');
 
@@ -142,6 +142,7 @@ function readTurn(tp) {
   let lastCmds = []; // ...and its shell commands (is it the session-close turn?)
   let lastPrompt = '';
   let since = ''; // when the running turn began (the close stamp must be no older)
+  let ended = false; // the first turn has ended (turn-kind isTurnEnd)
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     let d;
@@ -152,9 +153,13 @@ function readTurn(tp) {
       if (att.type === 'hook_cancelled') boot = { kind: 'cancelled', source, ms: att.durationMs };
       else if (att.type === 'hook_success') boot = { kind: 'ok', source, text: persistedText(String(att.content || att.stdout || '')) };
       else continue;
-      prompts = 0; reply = []; first = ''; last = []; lastCmds = [];
+      prompts = 0; reply = []; first = ''; last = []; lastCmds = []; ended = false;
       continue;
     }
+    // The first turn is over once the harness wrote its end (every Stop hook let it through). Later
+    // operator words that arrive mid-turn or as question-tool answers are no prompts, so without this
+    // the whole session read as the first reply (measured 2026-11-02).
+    if (isTurnEnd(d)) { if (prompts >= 1 || total >= 1) ended = true; continue; }
     // A message typed mid-turn (queued_command, turn-kind #139) is the operator's WORD - it can be
     // the "is anything open?" this gate answers - but no turn BOUNDARY: the reply buffer stays.
     const queued = queuedHumanPrompt(d);
@@ -184,7 +189,7 @@ function readTurn(tp) {
       }
     }
   }
-  return { boot, prompts, total, first, reply: reply.join('\n'), last: last.join('\n'), lastCmds, lastPrompt, since };
+  return { boot, prompts, total, ended, first, reply: reply.join('\n'), last: last.join('\n'), lastCmds, lastPrompt, since };
 }
 
 /**
@@ -196,7 +201,7 @@ function readTurn(tp) {
 function firstTurnOwnsQuestion(tp) {
   try {
     const t = readTurn(tp);
-    if (!t || !t.boot || t.boot.kind !== 'ok' || t.boot.source === 'compact' || t.prompts !== 1) return false;
+    if (!t || t.ended || !t.boot || t.boot.kind !== 'ok' || t.boot.source === 'compact' || t.prompts !== 1) return false;
     const blk = parseBlock(t.boot.text);
     if (!blk) return false;
     const human = blk.items.filter((it) => it.cls === 'human').length;
@@ -406,12 +411,12 @@ function judge(input) {
   if (!t) return null;
   if (!t.boot) {
     // No bootup record at all: only the very first turn of a session is ours to judge.
-    if (t.total !== 1) return null;
+    if (t.total !== 1 || t.ended) return null;
     return 'The session-start output never arrived in this session, so the open points were not shown. Run `python3 core/scripts/open-items.py --owner <org>` (or `python`) and report them. Missing: bootup';
   }
   const moved = relabelled(t, cwd, input.session_id);
   if (moved) return moved;
-  if (t.boot.source === 'compact' || t.prompts !== 1) return null;
+  if (t.boot.source === 'compact' || t.prompts !== 1 || t.ended) return null;
   if (t.boot.kind === 'cancelled') {
     return `The session-start hook was cancelled after ${Math.round((t.boot.ms || 0) / 1000)} s — the open points never arrived. Run \`python3 core/scripts/open-items.py --owner <org>\` (or \`python\`) and report them. Clear why in THIS session too: time \`bash core/helpers/session-bootup.sh\`, name the slow part, fix or report it, then \`session-audit.py --ack start:<this session id>\`. Missing: bootup (cancelled)`;
   }

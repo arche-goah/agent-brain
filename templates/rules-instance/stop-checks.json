@@ -79,7 +79,8 @@
       "label": "MODE LOG",
       "marker": "MODE-LOG",
       "cmd": "core/helpers/mode-log.cjs",
-      "mode": "record"
+      "mode": "record",
+      "onReissue": "run"
     },
     {
       "label": "PROMISE",

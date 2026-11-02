@@ -154,6 +154,16 @@ check "compaction" "$f" allow "$EN"
 check "stop_hook_active" "$T/1.jsonl" allow "$EN" true
 f="$T/10c.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Short."; user "Stop hook feedback: x"; asst "Longer."; user "<task-notification>x</task-notification>"; asst "Still nothing."; } > "$f"
 check "feedback/notification turns stay inside the first turn" "$f" block "$EN"
+# 2026-11-02 (macOS instance): the first turn ENDED (turn_duration), every later operator word came
+# mid-turn (queued_command) - no prompt record - and the gate kept judging the whole session.
+turn_end() { printf '{"type":"system","subtype":"turn_duration","durationMs":1000}\n'; }
+queued() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
+f="$T/10d.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; turn_end; queued "bin da, was ist offen?"; asst "Two questions."; } > "$f"
+check "after the first turn ended, a queued word opens no first turn" "$f" allow "$EN"
+f="$T/10e.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Short."; turn_end; queued "next"; asst "Done."; } > "$f"
+check "a first turn that ended with a short reply is not re-judged later" "$f" allow "$EN"
+f="$T/10f.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "Short."; queued "next"; asst "Done."; } > "$f"
+check "without the turn end the same transcript is still the first turn (control)" "$f" block "$EN"
 
 # 11 — nothing open; a failed source.
 NOTHING="open for us: 0 — ai 0 · human 0 · unclassified 0${NL}- nothing open (requests and PRs both read)"

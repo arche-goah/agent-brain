@@ -42,12 +42,18 @@ const fs = require('fs');
 const path = require('path');
 const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, FRAMES, LOCAL } = require('./turn-kind.cjs');
 
+// The short mode words, the same in every language (operator 2026-11-02, question tool: "auto mode" / "ask mode").
+// "auto mode" counts only at the start of a sentence that is no question - Claude Code calls its own permission
+// mode "auto mode" too, and "is auto mode on?" or "the auto mode classifier refused" must not start a run.
+// "ask mode" ends the run wherever it stands: a false end is the safe direction.
 const BUILTIN_ON = [
+  '^\\s*auto[- ]?mod(?:e|us)\\b',
   '\\bautonomous(ly)?\\b',
   '\\bwork (the list|through (it|them|everything)) (alone|on your own)\\b',
   "\\bi'?m away\\b",
 ];
 const BUILTIN_OFF = [
+  '\\bask[- ]?mod(?:e|us)\\b',
   '\\bnormal mode\\b',
   '\\b(stop|end) (the )?autonomous\\b',
   '\\bno longer autonomous\\b',
@@ -95,8 +101,30 @@ function words(cwd) {
     off: rx(BUILTIN_OFF, ap.off_patterns),
     ask: rx(BUILTIN_ASK, oi.ask_patterns),
     yes: rx(BUILTIN_YES, ap.yes_patterns),
-    initial: String(ap.initial_mode || '').toLowerCase() === 'autonomous',
+    initial: initialState(dir, ap, oi).granted,
   };
+}
+
+/**
+ * The start state with its guard (operator 2026-11-02, question tool: "Ja, Kern-PR bauen"): `initial_mode:
+ * autonomous` holds only when the brain can recognise the operator ending the run in the operator's own
+ * language - its own off or ask words, or a semantic intent classifier that has written records. The
+ * built-in words are English (plus the short "ask mode"); a brain that starts autonomous and hears only
+ * "weiter interaktiv" would run on. Without a way out the session starts interactive and the session start
+ * says why. Returns { wanted, granted, why }.
+ */
+function initialState(cwd, ap, oi) {
+  const dir = cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  ap = ap || readJson(path.join(dir, '.claude', 'rules', 'autonomous-patterns.json')) || {};
+  oi = oi || readJson(path.join(dir, '.claude', 'rules', 'open-items.json')) || {};
+  const wanted = String(ap.initial_mode || '').toLowerCase() === 'autonomous';
+  if (!wanted) return { wanted, granted: false, why: '' };
+  const own = (ap.off_patterns || []).length + (oi.ask_patterns || []).length;
+  let classifier = false;
+  try { classifier = fs.statSync(path.join(dir, '.claude-state', 'intent-classifier.jsonl')).size > 0; } catch (e) { /* none */ }
+  if (own || classifier) return { wanted, granted: true, why: '' };
+  return { wanted, granted: false,
+    why: 'initial_mode is "autonomous" but this brain has no own off_patterns/ask_patterns and no intent classifier records - the session starts interactive (only the English built-ins and "ask mode" would end a run)' };
 }
 
 /**
@@ -273,7 +301,7 @@ function autonomousMode(transcriptPath, cwd) {
   return modes.length ? modes[modes.length - 1].autonomous : words(cwd).initial;
 }
 
-module.exports = { autonomousMode, promptModes, words, asksMode, intents, intentFor };
+module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);
