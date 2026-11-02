@@ -85,6 +85,17 @@
       "pattern": "(?:^|[\\n;&|(])\\s*(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?:\\S*/)?gh\\s+run\\s+list\\b(?![^\\n;&|]*(?:--workflow\\b|\\s-w\\s))",
       "was": "CI runs read without a workflow filter (`gh run list` without --workflow/-w) - a repo has several workflows (CI, a text-leak check on every comment, CodeQL); the newest N runs mix them and push the CI runs out. Measured 2026-10-28 on the macOS instance: four green runs of the comment-triggered workflow were taken for CI runs on the same commit and a red main was called green, twice in one evening; a readiness reader with the same query reported no red CI while two CI runs on main were red. ci-watch.sh had learned this earlier, the lesson stayed in that one tool",
       "instead": "For a verdict on a commit: `scripts/ci-watch.sh` (reads `actions/runs?head_sha=`, detached as Working Rule #9 says). To look: `gh run list --workflow <name> ...` with the workflow you mean (e.g. `--workflow CI`)."
+    },
+    {
+      "pattern": "(?:^|[\\s;&|(])(?:>>?|cp|mv|touch|tee)\\s+[^\\n;&|]*\\.claude[/\\\\]output-styles[/\\\\]",
+      "was": "a second output-style source under .claude/output-styles/ - the core ships its style through the plugin (output-styles/, force-for-plugin: true); a brain's own copy is a second source that drifts from the core's text (measured on the Windows instance: the instance carried this rule since 2026-08-04, after a copied style had diverged)",
+      "instead": "The style comes from the enabled core plugin. If it does not take effect: update the marketplace and the plugin (`bash core/scripts/brain-update.sh`), then start a new session - do not copy the file. A brain that really wants its own style names it in .claude/rules/local-machinery.json."
+    },
+    {
+      "pattern": "(?:^|/)\\.claude/output-styles/",
+      "target": "path",
+      "was": "a second output-style source under .claude/output-styles/ (written through Write/Edit)",
+      "instead": "The style comes from the enabled core plugin. If it does not take effect: update the marketplace and the plugin (`bash core/scripts/brain-update.sh`), then start a new session - do not copy the file. A brain that really wants its own style names it in .claude/rules/local-machinery.json."
     }
   ]
 }

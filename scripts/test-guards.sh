@@ -345,6 +345,11 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: run list --workflow= (control)" Bash command "gh run list --workflow=ci.yml --branch main" allow
   tr_probe "mechanism-guard/core rule: run list named in a commit message (control)" Bash command 'git -C /r commit -m \"guard: gh run list without a workflow filter\"' allow
   tr_probe "mechanism-guard/core rule: gh run view (control)" Bash command "gh run view 123 -R o/r --log-failed" allow
+  # A second output-style source (ported from the Windows instance, 2026-11-02): the core ships the style.
+  tr_probe "mechanism-guard/core rule: copy a style into .claude/output-styles" Bash command "cp caveman.md .claude/output-styles/" block
+  tr_probe "mechanism-guard/core rule: write a style file" Write file_path ".claude/output-styles/mine.md" block
+  tr_probe "mechanism-guard/core rule: read the style dir (control)" Bash command "cat .claude/output-styles/caveman.md" allow
+  tr_probe "mechanism-guard/core rule: core's own style file (control)" Write file_path "output-styles/caveman.md" allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
