@@ -285,6 +285,7 @@ known:     scripts/test-decision-review.sh=1
 known:     scripts/test-delivered-read-gate.sh=1
 known:     scripts/test-eco-owner.sh=1
 known:     scripts/test-ecosystem-sync.sh=1
+known:     scripts/test-fixture-own-home.sh=1
 known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
@@ -1072,3 +1073,30 @@ note:      Measured twice on Windows: 2026-10-14 `instance-key-gate.cjs` blocked
 2026-10-25 `public-text-guard.cjs` let a `--body-file /c/...` holding a person's name through (unreadable =
 skipped). Both now translate with `nativePath`. The search lists the consumers of the handed-file list: a
 new consumer appears as a new site and is read for the translation.
+
+## OS-21 — a fixture runs the session start in the home of the machine running it
+
+shape: C
+
+invariant: A fixture suite that runs the session start (`helpers/session-bootup.sh`,
+`helpers/session-pull.sh`) gives it a home of its own: HOME, USERPROFILE and CLAUDE_CONFIG_DIR on a
+folder in the suite's temp dir. The bootup writes the user level (statusline selfheal:
+`~/.claude/helpers/statusline.cjs`, `~/.claude/settings.json`), and HOME alone is not the home on
+Windows: Python's `os.path.expanduser` (3.8+) and node's `os.homedir()` read USERPROFILE there. A CI
+runner's home is thrown away after the job, so CI never shows the write; it lands on every machine
+that runs the suites by hand.
+check:     scripts/test-fixture-own-home.sh — every suite with a line that runs the bootup or the pull
+sets HOME and USERPROFILE, with a negative control. Discovered by the CI fixture step.
+mechanizable: tool — "runs the bootup" and "sets its own home" are two lines of one file; a grep count
+over the tree cannot state it.
+instances: 5
+repeat:    no
+status:    closed
+note:      Measured 2026-11-01 on the Windows instance: running the suites rewrote the operator's
+user-level statusline copy and settings. Measured 2026-11-02 on the same machine with a canary (HOME,
+USERPROFILE and CLAUDE_CONFIG_DIR on an empty folder per suite): on main 7e6dd1f the five suites that
+run the bootup or the pull left 13 files there (`statusline.cjs` and `settings.json` from each, plus 3
+that suites run inside `portability-smoke.sh` wrote); with each exporting its own home, 0. With only
+HOME moved, Python and node still returned the real profile. Same canary, not this class: `test-guards.sh`
+(a secret-guard hook log) and `test-onboarding-leak-check.sh` (the claude CLI's `~/.claude.json`) write
+the home without the session start.

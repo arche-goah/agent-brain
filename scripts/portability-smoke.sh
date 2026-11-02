@@ -22,6 +22,11 @@ PY=python3
 CORE="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d)"
 trap 'rm -rf "$T" "$CORE/.claude-state"' EXIT
+# A home of its own (2026-11-02): the bootup runs below heal the statusline into ~/.claude
+# (helpers/statusline.cjs, settings.json) - run on a real machine, this smoke rewrote the
+# operator's. USERPROFILE too: Python's expanduser and node's homedir read it on Windows, not HOME.
+H="$T/home"; mkdir -p "$H"; HN="$(cygpath -m "$H" 2>/dev/null || printf '%s' "$H")"
+export HOME="$H" USERPROFILE="$HN" CLAUDE_CONFIG_DIR="$HN/.claude"
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
