@@ -293,6 +293,9 @@ jobs:
           python-version: "3.12"
       - name: portability smoke (bootup, scan-gate, run-record, loop-watchdog, line endings)
         shell: bash
+        # the suites run once, in the next step (measured 2026-11-02: both ran them, 10.7 + 8 min on ubuntu)
+        env:
+          SMOKE_SUITES_RUN_BY_CI: "1"
         run: bash scripts/portability-smoke.sh
       # Every fixture suite on every OS (operator decision 2026-10-26, "all tests in CI on 3 OS").
       # DISCOVERED, not listed: three naming shapes, all globbed (OS-4 in docs/os-traps.md).
@@ -310,7 +313,8 @@ jobs:
             echo "::group::$s"; bash "$s"; echo "::endgroup::"; n=$((n+1))
           done
           for s in scripts/*-test.py; do
-            echo "::group::$s"; "$PY" "$s"; echo "::endgroup::"; n=$((n+1))
+            # cp1252 on every OS, as the smoke loop did: a print cp1252 cannot encode crashed on windows-latest only (2026-10-28)
+            echo "::group::$s"; PYTHONIOENCODING=cp1252 "$PY" "$s"; echo "::endgroup::"; n=$((n+1))
           done
           [ "$n" -gt 0 ] || { echo "no fixture suite discovered — the glob is broken"; exit 1; }
           echo "$n fixture suite(s) run on ${{ matrix.os }}"
