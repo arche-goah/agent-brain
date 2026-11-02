@@ -1,0 +1,41 @@
+name: Local deviation request
+description: Your machine or workflow cannot follow the core as it is. Say so here instead of changing the core locally - the answer is a core change, a declared instance deviation, or a way to do without it.
+title: "deviation: <one line - what you need to do differently>"
+labels: ["local-deviation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Meanwhile declare the deviation in your brain's `.claude/rules/local-machinery.json` with a reason and a `reviewed` date (see CONTRIBUTING.md) and link this issue there. The session start reports every undeclared deviation.
+  - type: textarea
+    id: what
+    attributes:
+      label: What you need to do differently
+      description: The rule, gate, setting or script, and what you would change.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why the core as it is does not fit
+      description: Measured, not assumed - the error, the refusal text, the missing capability.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Core version and OS
+      placeholder: "core v2.1.2 · macOS 26"
+    validations:
+      required: true
+  - type: dropdown
+    id: reach
+    attributes:
+      label: Would other brains need this too?
+      options:
+        - probably yes - it belongs in the core
+        - only my setup
+        - not sure
+    validations:
+      required: true

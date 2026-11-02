@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How to contribute
+    url: https://github.com/arche-goah/agent-brain/blob/main/CONTRIBUTING.md
+    about: Never fix the core locally - report it here and it is fixed for every brain.
