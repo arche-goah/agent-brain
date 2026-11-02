@@ -195,12 +195,36 @@ case "$OUT" in *"does not exist"*) said=0;; *) said=1;; esac
 check "label absent (gh says so) counts as no candidate, and is said" 0 $(( rc + said ))
 echo 1 > "$TMP/gh-label"
 
-# 15. readiness, check 7: an open shared-memory entry under the topic -> FAIL; closed -> PASS;
-#     no clone -> a note, not red
+# 15. readiness, check 7: an open shared-memory entry under the topic that this release waits for
+#     (it names an open PR of the repo, or the version) -> FAIL; any other open entry is named, not
+#     counted (agreed 2026-11-02: two old requests to an instance that builds no release held a tag);
+#     closed -> PASS; no clone -> a note, not red
 R="$(mkrepo 2.0.0)"
-printf -- '---\nname: x\nmetadata:\n  status: open\n---\nPR follows\n' > "$SHM/core/request-x.md"
+printf -- '---\nname: x\nmetadata:\n  status: open\n---\nPR #7 follows\n' > "$SHM/core/request-x.md"
+echo 7 > "$TMP/gh-open"
 RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
-check "an open shared-memory entry under the topic fails" 1 $?
+check "an open shared-memory entry naming an open PR fails" 1 $?
+: > "$TMP/gh-open"
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"none awaited by this release"*"request-x"*) said=0;; *) said=1;; esac
+check "the same entry once its PR is closed: named, not counted" 0 $(( rc + said ))
+printf -- '---\nname: y\nmetadata:\n  status: open\n---\nwaits for another instance, nothing for a release\n' > "$SHM/core/request-y.md"
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "an open entry with no PR and no version does not hold the release" 0 $?
+printf -- '---\nname: z\nmetadata:\n  status: open\n---\nthe Windows check for v2.0.0 is still to come\n' > "$SHM/core/request-z.md"
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "an open entry naming the version being cut fails" 1 $?
+printf -- '---\nname: z\nmetadata:\n  status: open\n---\nother-suite#7 and 12.0.0 are not ours\n' > "$SHM/core/request-z.md"
+mv "$SHM/core/request-x.md" "$TMP/request-x.md"
+echo 7 > "$TMP/gh-open"
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "another repo's #7 and a longer version are not this release's" 0 $?
+mv "$TMP/request-x.md" "$SHM/core/request-x.md"
+: > "$TMP/gh-open"; rm -f "$SHM/core/request-y.md" "$SHM/core/request-z.md"
+echo 7 > "$TMP/gh-open"
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "control: the PR-naming entry blocks again while #7 is open" 1 $?
+: > "$TMP/gh-open"
 sed -i.bak 's/status: open/status: answered/' "$SHM/core/request-x.md" && rm -f "$SHM/core/request-x.md.bak"
 RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
 check "the same entry answered passes" 0 $?
