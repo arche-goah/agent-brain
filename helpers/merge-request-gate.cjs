@@ -110,7 +110,10 @@ function saysOk(line, os) {
   const others = Object.entries(NAME_RX).filter(([k]) => k !== os).map(([, r]) => r.source).join('|');
   // A code span names a file, a command or a sha, never a verdict: `test-open-items.sh` in an OK
   // line read as "open" and held a merge (2026-10-28, #164). The OK itself stays outside.
-  const rest = line.slice(at).replace(/`[^`]*`/g, '``');
+  // A bare file name (`test-fail-fast.py`) and the fixture phrase "red against the old code" are no verdict either
+  // (2026-11-02, mikrotik-suite #44: two macOS OKs held); "red against main" still is.
+  const rest = line.slice(at).replace(/`[^`]*`/g, '``').replace(/[\w./-]+\.[a-z]{1,4}\b/gi, '``')
+    .replace(/\bred (?:against|with) the old (?:code|state)\b/gi, '``');
   const end = others ? rest.slice(1).search(new RegExp(others, 'i')) : -1;
   return !NOT_RX.test(end < 0 ? rest : rest.slice(0, end + 1));
 }

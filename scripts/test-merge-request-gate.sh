@@ -81,6 +81,14 @@ spr 'feat: x' '["**macOS OK at head `abc1234`**: `test-open-items.sh` all cases 
 sprobe "a code span naming a file with a negation word" "$M" allow "$D"
 spr 'feat: x' '["**macOS OK at head `abc1234`**: test-open-items.sh red", "Windows OK at head `abc1234`"]'
 sprobe "the same word outside a code span (control)" "$M" block "$D"
+# 2026-11-02 (mikrotik-suite #44): a file name without backticks and the fixture phrase "red against the old code" are no
+# verdict either; a real "red against main" still is.
+spr 'feat: x' '["macOS: OK at `abc1234` (scripts/test-fail-fast.py, 7/7).", "Windows OK at head `abc1234`"]'
+sprobe "a bare file name with a negation word" "$M" allow "$D"
+spr 'feat: x' '["macOS OK at `abc1234`: all 7 cases pass (the new case red against the old code)", "Windows OK at head `abc1234`"]'
+sprobe "the fixture phrase red against the old code" "$M" allow "$D"
+spr 'feat: x' '["macOS OK at `abc1234`, but lint red against main", "Windows OK at head `abc1234`"]'
+sprobe "red against main stays a negation (control)" "$M" block "$D"
 
 # 2026-10-28 (#157): an earlier head separated only by "update branch" merges still counts.
 cpr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "fff0000aaa", body: "feat: x", commits: JSON.parse(process.argv[2]), comments: JSON.parse(process.argv[1]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }
