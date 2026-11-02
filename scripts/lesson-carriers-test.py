@@ -63,6 +63,10 @@ Reach: this brain only.
 
 ## 2026-10-05 — Fifth lesson, bold key
 **Carrier:** memory `x` + gate.
+
+## 2026-10-06 — Sixth lesson, carrier as a list item
+- Rule: only so.
+- Carrier: core/scripts/foo.py (check 4).
 """
 
 with tempfile.TemporaryDirectory() as d:
@@ -75,29 +79,30 @@ with tempfile.TemporaryDirectory() as d:
 
     rc, out = run(repo)
     check(rc == 0, "exit 0 (a report)")
-    check("summary: entries=5 carried=4 loose=1" in out, f"four carried, one loose: {out.strip().splitlines()[-1]}")
+    check("summary: entries=6 carried=5 loose=1" in out, f"five carried, one loose: {out.strip().splitlines()[-1]}")
+    check("2026-10-06" not in out, "a '- Carrier:' list item counts")
     check("lesson without carrier: 2026-10-04 — Fourth lesson without a carrier" in out, "the loose entry is named with date and title")
     check("2026-10-02" not in out, "a second key word from instance data counts")
     check("2026-10-03" not in out, "'prose, because' counts as a carrier (a decision, not a gap)")
     check("2026-10-05" not in out, "a bold **Carrier:** line counts")
 
     rc, out = run(repo, "--since", "2026-10-05")
-    check("entries=1 carried=1 loose=0" in out, "--since drops older entries")
+    check("entries=2 carried=2 loose=0" in out, "--since drops older entries")
 
     rc, out = run(repo, "--json")
     data = json.loads(out)
     check(data["loose"] == [{"date": "2026-10-04", "title": "Fourth lesson without a carrier"}], "--json lists the loose entry")
-    check(data["entries"] == 5, "the dateless section heading is not an entry")
+    check(data["entries"] == 6, "the dateless section heading is not an entry")
 
     # defaults only (no instance data): the second key word is unknown -> that entry turns loose
     (rules / "lesson-carriers.json").unlink()
     rc, out = run(repo)
-    check("entries=5 carried=3 loose=2" in out, "without instance data only the built-in key word counts")
+    check("entries=6 carried=4 loose=2" in out, "without instance data only the built-in key word counts")
 
     # negative control: instance data with another key word only -> every entry is loose
     (rules / "lesson-carriers.json").write_text(json.dumps({"carrier_keys": ["Mechanism"]}), encoding="utf-8")
     rc, out = run(repo)
-    check("entries=5 carried=0 loose=5" in out, "negative control: with another key word every entry is loose")
+    check("entries=6 carried=0 loose=6" in out, "negative control: with another key word every entry is loose")
     (rules / "lesson-carriers.json").unlink()
 
     # unreadable protocol: said, exit 0
@@ -137,7 +142,7 @@ with tempfile.TemporaryDirectory() as d:
     check("fb-carried.md" not in out and "fb-prose.md" not in out, "carried memories stay silent")
     check("project-fact.md" not in out and "index-feedback.md" not in out and "MEMORY.md" not in out,
           "other types, the index and topic indexes are not checked")
-    check("lesson-carriers summary: entries=5" in out, "the protocol line is unchanged by the memory source")
+    check("lesson-carriers summary: entries=6" in out, "the protocol line is unchanged by the memory source")
 
     rc, out = run(repo, "--memory", str(mem), "--since", "2026-10-15")
     check("lesson-carriers memory: memories=6" in out, "--since drops a memory modified before it (fb-old)")
