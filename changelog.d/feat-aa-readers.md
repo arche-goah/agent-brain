@@ -13,4 +13,7 @@
   - `root-cause-gate.cjs --review` leaves out headless model calls (first `entrypoint` = `sdk-cli`): 24 of the 40 newest
     transcripts were prompt-classifier calls, whose prompt quotes the operator and matched the correction words; with
     them out the same window reads 499 operator turns instead of 224.
-  Fixtures: brain-scan-prep-test +3 cases, test-root-cause-gate +2.
+  - Class of the last point: `scripts/transcript_kind.py` (`is_headless`, `sessions`) — decision-review, transcript-latency,
+    skill-first-measure and transcript-recall read the history through it; only session-audit already knew the field.
+  Fixtures: brain-scan-prep-test +3 cases, test-root-cause-gate +2, new transcript-kind-test.py (4); the four readers'
+  fixtures unchanged green.
