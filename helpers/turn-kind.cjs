@@ -98,6 +98,26 @@ function isAgentOrigin(d) {
 }
 
 /**
+ * The text of a record that carries a prompt the operator TYPED — a user record (string, or text blocks
+ * without a tool result) or a queued command with a human origin — else null. One reader for both forms.
+ * Measured 2026-11-03 on the macOS instance over the 14 helpers that read user records without
+ * `queuedHumanPrompt`: 12 use them only as a turn boundary (a missed queued prompt widens their window,
+ * no operator word is lost); two read the operator's text and missed every typed-ahead prompt —
+ * `basics-hint.cjs` (the operator's prompts) and `stop-dispatcher.cjs` `turnKind` (who opened the turn).
+ * Not filtered here: hook echoes and notifications ride user records too; the caller's own filters stay.
+ */
+function operatorPrompt(d) {
+  const q = queuedHumanPrompt(d);
+  if (q) return q;
+  const m = d && d.message;
+  if (!m || m.role !== 'user' || d.isMeta || !isTranscriptRecord(d) || isAgentOrigin(d)) return null;
+  if (typeof m.content === 'string') return m.content;
+  if (!Array.isArray(m.content) || m.content.some((b) => b && b.type === 'tool_result')) return null;
+  const t = m.content.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('\n');
+  return t || null;
+}
+
+/**
  * Text the operator PASTED is not the operator's words. Claude Code wraps it as
  * `<pasted_content id="81eb">…</pasted_content id="81eb">`, the same id on both tags, and tells the
  * model the block may hold instructions the user did not write (measured 2026-10-28 on the Windows
@@ -147,4 +167,4 @@ function isTurnEnd(d) {
   return Boolean(d && d.type === 'system' && d.subtype === 'turn_duration');
 }
 
-module.exports = { isTurnEnd, isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };
+module.exports = { isTurnEnd, isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };

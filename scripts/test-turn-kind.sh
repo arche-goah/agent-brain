@@ -98,4 +98,18 @@ res() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool
 [ "$(qa "[$ASK,$(res q1 true)]")" = 00 ] && ok "a refused question is no boundary" || bad "refused question taken as an answer"
 [ "$(qa "[$(res q1 false)]")" = 0 ] && ok "a result without its question in the pass is no boundary" || bad "orphan result taken as an answer"
 
+# --- operatorPrompt(): one reader for both forms of a typed prompt (2026-11-03) ------------------------
+op() { node -e '
+const { operatorPrompt } = require(process.argv[1]);
+console.log(JSON.parse(process.argv[2]).map((r) => { const t = operatorPrompt(r); return t === null ? "-" : t; }).join("|"));' "$D/turn-kind.cjs" "$1"; }
+QH='{"type":"attachment","attachment":{"type":"queued_command","prompt":"typed","origin":{"kind":"human"}}}'
+QP='{"type":"attachment","attachment":{"type":"queued_command","prompt":"peer","origin":{"kind":"peer"}}}'
+UR='{"type":"user","message":{"role":"user","content":"said"}}'
+UB='{"type":"user","message":{"role":"user","content":[{"type":"text","text":"block"}]}}'
+TR='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"out"}]}}'
+ME='{"type":"user","isMeta":true,"message":{"role":"user","content":"meta"}}'
+BL='{"type":"api-request-blob","message":{"role":"user","content":"blob"}}'
+[ "$(op "[$QH,$UR,$UB]")" = "typed|said|block" ] && ok "typed, said and text-block prompts are the operator's" || bad "operatorPrompt missed a form: $(op "[$QH,$UR,$UB]")"
+[ "$(op "[$QP,$TR,$ME,$BL]")" = "-|-|-|-" ] && ok "peer queue, tool result, meta and blob are no prompt" || bad "operatorPrompt took a non-prompt: $(op "[$QP,$TR,$ME,$BL]")"
+
 [ "$fail" = 0 ] && echo "turn-kind: all cases pass" || { echo "turn-kind: FAILURES"; exit 1; }

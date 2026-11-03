@@ -91,7 +91,7 @@ const DEFAULT_HEADER = 'STOP-CHECKS ({n})';
 const TAIL_BYTES = 4 * 1024 * 1024;
 const HOOK_ECHO = /^\s*Stop hook feedback/;
 // One definition of "notification record", shared with every gate's cooldown count.
-const { isNotification } = require('./turn-kind.cjs');
+const { isNotification, queuedHumanPrompt } = require('./turn-kind.cjs');
 
 function recordText(msg) {
   if (typeof msg.content === 'string') return msg.content;
@@ -113,6 +113,10 @@ function turnKind(transcriptPath) {
       if (!line.trim()) continue;
       let d;
       try { d = JSON.parse(line); } catch (e) { continue; }
+      // A prompt the operator typed while the agent worked is a queued command, never a user record
+      // (turn-kind.cjs operatorPrompt; read from the code 2026-11-03: a turn opened by a notification
+      // in which the operator then typed a prompt still read as 'notification'; fixture case added).
+      if (queuedHumanPrompt(d)) { kind = 'operator'; continue; }
       if (!d.message || d.message.role !== 'user') continue;
       const t = recordText(d.message);
       if (t === null || HOOK_ECHO.test(t)) continue;
