@@ -35,7 +35,9 @@ const { autonomousMode } = require('./autonomous-mode.cjs');
 const { isTranscriptRecord } = require('./turn-kind.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
 
-const END_LINE = /^[ \t>*_-]*(BLOCKED|POOL EMPTY):\s*\S/m;
+// LIST EMPTY (2026-11-02, coherence register P0-1): a list run ends when the ORDERED list is done -
+// Order Fidelity #3, an empty list is a success, not a reason to take the rest of the ledger as the pool.
+const END_LINE = /^[ \t>*_-]*(BLOCKED|POOL EMPTY|LIST EMPTY):\s*\S/m;
 const HOOK_ECHO = /^Stop hook feedback:/;
 
 /** The running turn: its final assistant text and whether it called ScheduleWakeup. */
@@ -194,7 +196,7 @@ function judge(input, now) {
       // specific reason into the generic idle sentence, and the real cause (a Windows word in the BLOCKED line)
       // stayed hidden through four retries.
     }
-    return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY line, but the list behind it was not measured ' +
+    return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY / LIST EMPTY line, but the list behind it was not measured ' +
       'in this turn — the line is a recollection, not a reading. Run the brain\'s own-items measurement now ' +
       '(core/scripts/open-items.py, or the instance command in .claude/rules/autonomous-patterns.json ' +
       '`own_items_commands`), do what it lists as yours, and end only when every item left is named as blocked. ' +
@@ -202,8 +204,9 @@ function judge(input, now) {
   }
   return 'AUTONOMOUS-IDLE: the run is autonomous and this turn ends without its continuation. ' +
     'Do the next item now (tool calls in this turn), or end the turn in one of the run\'s end forms: ' +
-    'a line `BLOCKED: <item> — <what restores it, who>` or a line ' +
-    '`POOL EMPTY: <how measured>`, both after measuring the list in this turn. A wakeup alone is no continuation, and a running watcher (CI, a peer) continues only its own event, not your items. ' +
+    'a line `BLOCKED: <item> — <what restores it, who>`, a line `POOL EMPTY: <how measured>`, or for a run over an ' +
+    'ordered list `LIST EMPTY: <the order, how measured>` — the pool is what the operator ordered plus an agreed ' +
+    'reserve, not the whole ledger (Order Fidelity #3). All after measuring the list in this turn. A wakeup alone is no continuation, and a running watcher (CI, a peer) continues only its own event, not your items. ' +
     'Missing: continuation';
 }
 

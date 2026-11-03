@@ -63,6 +63,10 @@ check "an exempt word from instance data lets the line stand" "$f" allow "$IX"
 check "the same line without the instance data is no build blocker (control)" "$f" block
 f="$T/4.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "POOL EMPTY: open-items lists 0 agent items (run 18:20)"; } > "$f"
 check "a POOL EMPTY line after measuring the list ends the turn" "$f" allow
+f="$T/4l.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "LIST EMPTY: the three ordered items are merged (open-items 18:20)"; } > "$f"
+check "a LIST EMPTY line after measuring the list ends the turn" "$f" allow
+f="$T/4m.jsonl"; { user "work through the open points autonomously"; asst "LIST EMPTY: all done"; } > "$f"
+check "a LIST EMPTY line without a measurement in the turn is held" "$f" block
 # 2026-10-28 (macOS instance): "BLOCKED: waiting on the watchers, the peer, the operator" while the session
 # start listed 16 own items — a recollection, never read against the list.
 f="$T/4b.jsonl"; { user "work through the open points autonomously"; asst "BLOCKED: waiting on the CI watchers and the operator"; } > "$f"
