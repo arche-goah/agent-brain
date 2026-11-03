@@ -191,6 +191,24 @@ peerrun() { # $1 session, $2 key of the commenter
 }
 has "we reviewed or commented after the last commit" "$(line 'core#14 ' "$(peerrun o3 "$KMAC")")" && ok "another login's PR: same-OS sibling looked at the head = waiting" || bad "peer same-OS look: $(line 'core#14 ' "$(peerrun o3 "$KMAC")")"
 has "[PR|ai]" "$(line 'core#14 ' "$(peerrun o4 "$KWS")")" && ok "negative control: another login's PR, another OS's look = our move" || bad "peer other-OS look: $(line 'core#14 ' "$(peerrun o4 "$KWS")")"
+# The merger is another INSTANCE behind our login (measured 2026-11-02: every own core PR with
+# both OS checks and green CI stood as "still ours"; a login-only owner could not say so).
+# `owners` names a device of parties.json: our own PR waits on it, the merger itself keeps it,
+# and a peer's PR nobody asked us about stays ours to check (our login is the merger's too).
+printf '%s\n' '{"people":{"x":{"github":"me","devices":{"mac":{"os":"macos"},"ws":{"os":"windows"}}}}}' > "$T/repo/parties.json"
+cp "$T/root/.claude/rules/open-items.json" "$T/oi-saved.json"
+printf '%s\n' '{"parked":["grandma"],"owners":{"owned":"peer","core":"mac"}}' > "$T/root/.claude/rules/open-items.json"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"nodes":[%s,%s]}}}\n' \
+  "$(pr core 15 me 2026-10-06 "fix <!-- instance-key: $KWS -->" 2026-10-06T11:00:00Z '[]' '[]')" \
+  "$(pr core 16 peer 2026-10-06 "fix" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-inst.json"
+instrun() { OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-inst.json")" SHARED_MEMORY_SELF="$2" OWNER=me run "$1"; }
+iw=$(instrun i1 ws)
+has "waiting on mac: core is mac's to merge" "$(line 'core#15 ' "$iw")" && ok "own PR, merger is a sibling instance = waiting on it" || bad "instance owner: $(line 'core#15 ' "$iw")"
+has "[PR|ai]" "$(line 'core#16 ' "$iw")" && ok "peer's PR in a sibling-merged repo, no review asked = still ours to check" || bad "instance owner, peer PR: $(line 'core#16 ' "$iw")"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 17 me 2026-10-06 "fix <!-- instance-key: $KMAC -->" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-inst.json"
+has "[PR|ai]" "$(line 'core#17 ' "$(instrun i2 mac)")" && ok "negative control: the merger instance's own PR is its own move" || bad "merger's own PR: $(line 'core#17 ' "$(instrun i2 mac)")"
+cp "$T/oi-saved.json" "$T/root/.claude/rules/open-items.json"
 rm -f "$T/repo/parties.json"
 # The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
 # sibling PRs checked at their heads stayed "our move"). Our text naming THIS head = waiting;
