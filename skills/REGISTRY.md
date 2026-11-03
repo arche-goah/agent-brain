@@ -1,13 +1,13 @@
 # Skill Registry
 
-**Total skills:** 27
+**Total skills:** 28
 **Generated:** 2026-11-02
 
 > Auto-generated from the `skills/*/SKILL.md` files via `core/scripts/regen-skill-registry.py` — **do not maintain by hand**. Re-run the script after changing a skill.
 
 Claude Code discovers skills automatically from a project's `.claude/skills/*/SKILL.md` and from installed plugins (each with YAML frontmatter `name` + `description`). This registry is the human-readable overview.
 
-## Other (27)
+## Other (28)
 
 | Skill | Short description |
 |-------|--------------------|
@@ -29,6 +29,7 @@ Claude Code discovers skills automatically from a project's `.claude/skills/*/SK
 | playwright-skill | Complete browser automation with Playwright |
 | ponytail | Forces the laziest solution that actually works: YAGNI, stdlib before custom code, native before dependencies, … |
 | pr-live-verify | Re-measure a collaborator's PR claims on OUR OWN hardware before merging, then split the result … |
+| pr-watchdog | Maintainer release chain AFTER a merge in the core or in a suite the brain … |
 | repo-recon | Rapidly orient in a large, unfamiliar codebase — map structure, languages, entry points, build/test/run commands, … |
 | root-cause-review | Review of the brain's root-cause discipline over its own history — every operator correction or … |
 | session-close | Close a session cleanly — persist open work (states to their ledger, lessons to their … |
@@ -41,4 +42,4 @@ Claude Code discovers skills automatically from a project's `.claude/skills/*/SK
 
 ---
 
-**27 skills** across 1 groups.
+**28 skills** across 1 groups.
