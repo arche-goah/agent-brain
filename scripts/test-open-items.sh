@@ -211,6 +211,23 @@ has "our check of this head is in the shared memory" "$(line 'core#12 ' "$(smrun
 sml=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sm.json")" SHARED_MEMORY_SELF="mac,person:x,os:macos" OWNER=me run m4)
 has "our check of this head is in the shared memory" "$(line 'core#12 ' "$sml")" && ok "self as a comma list: the device token counts" || bad "comma-list self: $(line 'core#12 ' "$sml")"
 rm -rf "$T/repo/core"
+# Our own open check request naming the PR (2026-11-03: own PRs waiting on a Windows check we had
+# asked for printed as our move): its addressee moves for one day, then it is ours with a reminder.
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"nodes":[%s,%s]}}}\n' \
+  "$(pr core 40 me 2026-10-06 "fix" 2026-10-06T11:00:00Z '[]' '[]')" "$(pr core 42 me 2026-10-06 "fix" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-req.json"
+mkdir -p "$T/repo/core"
+reqfile() { printf '%s\n' '---' 'name: r' "description: \"Windows check core #40 #41\"" 'metadata:' '  von: mac' "  date: $1" "  status: $2" '  next: ws' '---' 'please' > "$T/repo/core/request-x.md"; }
+rqrun() { OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-req.json")" SHARED_MEMORY_SELF=mac OWNER=me run "$1"; }
+reqfile "$("$PY" -c 'import datetime; print(datetime.date.today())')" open
+rq=$(rqrun q1)
+has "waiting on ws" "$(line 'core#40 ' "$rq")" && ok "own open check request names the PR = waiting on its addressee" || bad "request wait: $(line 'core#40 ' "$rq")"
+has "[PR|ai]" "$(line 'core#42 ' "$rq")" && ok "negative control: a PR the request does not name stays ours" || bad "unnamed PR: $(line 'core#42 ' "$rq")"
+reqfile 2026-01-01 open
+has "has no answer - ask that machine by name" "$(line 'core#40 ' "$(rqrun q2)")" && ok "a request older than a day hands the PR back with the reminder" \
+  || bad "old request: $(line 'core#40 ' "$(rqrun q2)")"
+reqfile "$("$PY" -c 'import datetime; print(datetime.date.today())')" answered
+has "[PR|ai]" "$(line 'core#40 ' "$(rqrun q3)")" && ok "negative control: an answered request no longer holds the PR" || bad "answered: $(line 'core#40 ' "$(rqrun q3)")"
+rm -rf "$T/repo/core"
 has "waiting until $NOW: alpha measurement" "$(line 'core#5 ' "$out")" && ok "dated wait is quiet" || bad "dated wait: $(line 'core#5 ' "$out")"
 has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder" || bad "past wait: $(line 'core#6 ' "$out")"
 has "2026-09-28 suite-x#1" "$out" && ok "shown date = opened date" || bad "date: $out"

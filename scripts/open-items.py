@@ -87,7 +87,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from instance_key import is_self, key_in, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
-from shared_answers import checked_head, default_repo, own_shared_shas, sibling_keys_same_os  # noqa: E402
+from shared_answers import checked_head, default_repo, own_open_requests, own_shared_shas, sibling_keys_same_os  # noqa: E402
 import shared_channels  # noqa: E402
 OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*"
@@ -304,17 +304,31 @@ def prs(owner, owners, repos=(None,), extra=()):
     # A check answered in any channel we read counts (a device channel carries such answers too).
     shas = set().union(*(own_shared_shas(r) for r in repos))
     same_os = set().union(*(sibling_keys_same_os(repo=r) for r in repos))
+    asked = {}
+    for r in repos:
+        asked.update(own_open_requests(r))
+    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
     for p in rows:
         if not p.get("number"):
             continue
         ref = f"{p['repository']['name']}#{p['number']}"
         m = WAIT_MARK.search(p.get("body") or "")
         author = (p.get("author") or {}).get("login", "?")
+        waiting, note = ball(p, me, owners, shas, same_os), ""
+        if waiting is None and ref in asked:
+            # Our own open request names this PR: its addressee moves - for one day. After that the
+            # PR is ours again with the reminder (operator rule 2026-10-21: no answer within a day =
+            # a request by name to the machine, or a hand step for the operator).
+            who, when = asked[ref]
+            if when >= yesterday:
+                waiting = (who, f"our check request of {when} is open")
+            else:
+                note = f"our check request of {when} to {who} has no answer - ask that machine by name"
         # The shown date is when the PR was OPENED — last activity would reset its age.
         items.append({"id": ref, "kind": "PR", "date": p["createdAt"][:10], "who": author, "branch": p.get("headRefName", ""),
                       "text": p["title"][:100] + (" (draft)" if p.get("isDraft") else ""),
                       "scope": p["repository"]["name"], "ref": ref,
-                      "waiting_on": ball(p, me, owners, shas, same_os),
+                      "waiting_on": waiting, "pr_note": note,
                       "until": (m.group(1), m.group(2).strip()) if m else None,
                       "events": pr_events(p),
                       # Our own last move (commit, comment, review) — "nothing done yet" is a claim
@@ -428,7 +442,7 @@ def front(it, repo):
 def auto_class(it, repo, human_rx):
     """(class, why) from the data alone, or (None, '') when the data does not say."""
     if it["kind"] == "PR":
-        return "ai", "pull request: review or merge is agent work"
+        return "ai", it.get("pr_note") or "pull request: review or merge is agent work"
     if it["kind"] == "session":
         return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it["kind"] == "ledger":

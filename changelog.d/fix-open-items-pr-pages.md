@@ -17,3 +17,10 @@
     (`headRefName` joins the query): `in-pr` + open PR = waiting as before; `in-pr` with no reference says "names no PR
     at all"; `ai-does-it` naming an open PR says "its exit says ai-does-it, but <PR> is open — write in-pr if the PR
     carries the rest" and stays the agent's (the writer decides). Fixture +4, all four red on the old reader.
+  - Our own open check request names the PR: the PR waits on the request's `next` for one day, then it is ours again
+    with "our check request of <date> to <next> has no answer - ask that machine by name" (operator rule 2026-10-21).
+    `shared_answers.own_open_requests()` reads frontmatter `von` = this device, `status: open`, PRs as `<repo>#N [#M …]`
+    in `description`. Measured the same day: three own PRs waiting on a Windows check were printed as our move. Fixture +4.
+  - `suite-check.py`: a pin on a tag missing from a single-branch clone (fetch refspec names one branch) is WARN
+    "unchecked (git fetch --tags)", not "is no tag of this repo" — the push lint of a fresh `--single-branch` clone went red
+    on v2.0.0, which origin has. Offline on purpose: an `ls-remote` variant cost ~45 s of fixture time. Fixture +2.

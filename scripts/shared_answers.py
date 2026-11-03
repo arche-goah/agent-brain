@@ -55,6 +55,36 @@ def own_shared_shas(repo=None):
     return found
 
 
+REQ_PR = re.compile(r"([A-Za-z][\w.-]*)\s?#(\d+)((?:,?\s#\d+)*)")
+
+
+def own_open_requests(repo=None):
+    """{"<repo>#N": (next, date)} for our own open requests (frontmatter `von:` = this device,
+    `status: open`) whose description names PRs as `<repo>#N` (more numbers may follow: `#N #M`).
+    Measured on the macOS instance 2026-11-03: own PRs waiting on a Windows check we had asked
+    for printed as our move; the request said who moves, the PR list never read it."""
+    me = os.environ.get("SHARED_MEMORY_SELF", "").split(",")[0].strip()
+    root = Path(repo or default_repo())
+    if not me or not (root / ".git").is_dir():
+        return {}
+    out = {}
+    for f in root.glob("*/*.md"):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if not text.startswith("---"):
+            continue
+        front = text.split("\n---", 2)[0]
+        field = lambda k: (re.search(rf"^\s*{k}:\s*(.*?)\s*$", front, re.M) or [None, ""])[1].strip("\"'")
+        if field("von") != me or field("status") != "open":
+            continue
+        for name, first, more in REQ_PR.findall(field("description")):
+            for n in [first] + re.findall(r"\d+", more):
+                out[f"{name.rsplit('/', 1)[-1]}#{n}"] = (field("next") or "?", field("date"))
+    return out
+
+
 def checked_head(oid, shas):
     """True when one of our shas is a prefix of this head's full oid."""
     oid = (oid or "").lower()
