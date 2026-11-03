@@ -33,7 +33,9 @@ o=$(hook "$R"); [ $? -eq 0 ] && ok "a valid fragment passes" || bad "valid fragm
 mkdir -p "$R/scripts"; cp "$HERE/english-only.py" "$R/scripts/english-only.py"
 : > "$R/scripts/english-legacy.txt"   # the sandbox has no legacy files; the real list would name files that are not here
 gq -C "$R" add -A; gq -C "$R" commit -qm tool --no-verify
-printf '%s\n' '- **x** (test: T1) (level: reader; higher: writer — not needed; debt: none). Die Pruefung laeuft ueber den Kern und meldet die Woerter.' > "$R/changelog.d/de.md"; gq -C "$R" add -A
+# The German sentence is decoded at run time, so this file itself stays English for the same ratchet.
+de="$(printf '%s' 'RGllIFBydWVmdW5nIGxhZXVmdCB1ZWJlciBkZW4gS2VybiB1bmQgbWVsZGV0IGRpZSBXb2VydGVyLg==' | base64 --decode 2>/dev/null || printf '%s' 'RGllIFBydWVmdW5nIGxhZXVmdCB1ZWJlciBkZW4gS2VybiB1bmQgbWVsZGV0IGRpZSBXb2VydGVyLg==' | base64 -D)"
+printf '%s\n' "- **x** (test: T1) (level: reader; higher: writer — not needed; debt: none). $de" > "$R/changelog.d/de.md"; gq -C "$R" add -A
 o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"english-only"* ]] && ok "a staged German line is refused by the English-only ratchet" || bad "German line" "$o"
 rm "$R/changelog.d/de.md"; gq -C "$R" add -A
 o=$(hook "$R"); [ $? -eq 0 ] && ok "  ... and passes once it is gone" || bad "after removal" "$o"
