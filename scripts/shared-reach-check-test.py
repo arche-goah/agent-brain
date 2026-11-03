@@ -126,6 +126,27 @@ with tempfile.TemporaryDirectory() as tmp:
     rc, out = run(brain, shared, "--since", "2026-10-24")
     check("docs/net/segments.md changed privately, no shared counterpart" in out, "German marker needs the instance word")
 
+    print("project repo: results moved, shared topic did not follow (2026-11-03)")
+    proj = Path(tmp) / "project"
+    proj.mkdir()
+    git(proj, "init", "-q")
+    commit(proj, "docs/bench/series-1.md", "results", "2026-11-02T20:00:00Z")
+    commit(proj, "src/app.py", "code", "2026-11-02T21:00:00Z")
+    commit(shared, "proj/state-2026-10-28.md", "old state", "2026-10-28T12:00:00Z")
+    commit(shared, "proj/INDEX.md", "series-1.md listed by the generator", "2026-11-03T06:00:00Z")
+    commit(shared, "proj/reply-other-matter.md", "a newer reply about something else", "2026-11-02T23:00:00Z")
+    (rules / "shared-reach.json").write_text(json.dumps({"project_repos": [
+        {"repo": str(proj), "topic": "proj", "roots": ["docs/bench"]}]}), encoding="utf-8")
+    rc, out = run(brain, shared, "--since", "2026-10-30")
+    check("FAIL shared-reach: project" in out and "names docs/bench/series-1.md" in out,
+          "a changed result no topic fact names is a FAIL (a newer unrelated reply and INDEX do not hide it)")
+    commit(shared, "proj/state-2026-11-02.md", "results: see docs/bench/series-1.md", "2026-11-02T22:00:00Z")
+    rc, out = run(brain, shared, "--since", "2026-10-30")
+    check("FAIL shared-reach: project" not in out and "projects_behind=0" in out, "control: a fact file after the results is silent")
+    rc, out = run(brain, shared, "--since", "2026-11-03")
+    check("projects_behind=0" in out, "control: results before the window are not asked for")
+    (rules / "shared-reach.json").unlink()
+
     print("missing shared repo")
     rc, out = run(brain, Path(tmp) / "nowhere", "--since", "2026-10-24")
     check(rc == 0 and "NOT checked" in out, "a missing shared repo is said, exit 0")
