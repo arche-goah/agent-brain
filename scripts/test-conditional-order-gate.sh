@@ -107,6 +107,11 @@ mk "$T/in-call-short.jsonl" '"after the mac answers, push it"' 0 ''
 run_case in-call-short block Bash '{"command":"git push origin feat/x  # CONDITION-NONE: no"}'
 mk "$T/in-prompt.jsonl" '"dann coherence scan"' 2 ''
 run_case in-prompt allow Agent '{"prompt":"lens 3\nCONDITION-MET: dann coherence scan — the answer came 12:40 in core/LOG.md"}'
+# a saved workflow is called by name with an args OBJECT (2026-11-02): the line inside args releases it
+mk "$T/in-args.jsonl" '"dann coherence scan"' 0 ''
+run_case in-args allow Workflow '{"name":"coherence-scan","args":{"date":"2026-11-02","note":"CONDITION-MET: dann coherence scan — the answer came 12:40 in core/LOG.md"}}'
+mk "$T/in-args-none.jsonl" '"dann coherence scan"' 0 ''
+run_case in-args-none block Workflow '{"name":"coherence-scan","args":{"date":"2026-11-02"}}'
 
 # --- negative controls: each leg alone stays silent
 mk "$T/no-condition.jsonl" '"run the coherence scan now"' 5 ''

@@ -219,7 +219,12 @@ process.stdin.on('end', () => {
   // a line in an agent's prompt): the hook always sees its own input, while a text written in
   // the same response as the call reached the transcript as `thinking` (2.1.303, 2026-10-19) or
   // not at all (2026-10-21, both Windows) — the way out could not be taken.
-  const call = Object.values(ti).filter((v) => typeof v === 'string').join('\n');
+  // Nested values count too: a saved workflow is called by `name` with an `args` OBJECT, so a string-only read left a
+  // named Workflow call no field for the line (macOS instance 2026-11-02: four refusals — the line written in the
+  // answer reached the transcript as no text block, and once in `args` the hook did not read it).
+  const strings = (v) => (typeof v === 'string' ? [v]
+    : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : []);
+  const call = strings(ti).join('\n');
   const turn = seen.texts.join('\n') + '\n' + call;
   if (MET.test(turn) || NONE.test(turn)) return allow();
   deny(hit, why);
