@@ -46,6 +46,16 @@ R="$T/r1"; fresh "$R"
 { user "check the PRs"; asst "Done. $Q"; user "are your watches running?"; tres; asst "Yes, re-armed."; } > "$T/t1.jsonl"
 check "question scrolled past the operator's next prompt" "$T/t1.jsonl" block "$R"
 
+# a message typed while the agent works lands as a queued_command attachment, not a user record: it is an operator
+# prompt too (measured 2026-10-29 on the macOS instance: in one long turn every operator word came this way)
+queued() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
+R="$T/r1q"; fresh "$R"
+{ user "check the PRs"; asst "Done. $Q"; queued "are your watches running?"; tres; asst "Yes, re-armed."; } > "$T/t1q.jsonl"
+check "question scrolled past a message typed mid-turn" "$T/t1q.jsonl" block "$R"
+R="$T/r1t"; fresh "$R"
+{ user "check the PRs"; asst "Done. $Q"; printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":"tick","origin":{"kind":"task"}}}\n'; tres; asst "ok"; } > "$T/t1t.jsonl"
+check "a queued command not typed by a human is no operator prompt" "$T/t1t.jsonl" allow "$R"
+
 # notifications between question and prompt do not hide it
 R="$T/r2"; fresh "$R"
 { user "go"; asst "Done. $Q"; user "<task-notification>ci done</task-notification>"; asst "CI green."; user "next thing"; asst "ok"; } > "$T/t2.jsonl"
