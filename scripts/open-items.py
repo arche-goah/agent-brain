@@ -181,7 +181,7 @@ def requests(repo, label=""):
 PR_QUERY = """query($q: String!, $after: String) { viewer { login }
   search(query: $q, type: ISSUE, first: 50, after: $after) { issueCount
   pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
-    number title isDraft createdAt body author { login } repository { name }
+    number title isDraft createdAt body headRefName author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
     latestReviews(first: 20) { nodes { author { login } submittedAt body } }
     commits(last: 1) { nodes { commit { oid committedDate } } }
@@ -311,7 +311,7 @@ def prs(owner, owners, repos=(None,), extra=()):
         m = WAIT_MARK.search(p.get("body") or "")
         author = (p.get("author") or {}).get("login", "?")
         # The shown date is when the PR was OPENED — last activity would reset its age.
-        items.append({"id": ref, "kind": "PR", "date": p["createdAt"][:10], "who": author,
+        items.append({"id": ref, "kind": "PR", "date": p["createdAt"][:10], "who": author, "branch": p.get("headRefName", ""),
                       "text": p["title"][:100] + (" (draft)" if p.get("isDraft") else ""),
                       "scope": p["repository"]["name"], "ref": ref,
                       "waiting_on": ball(p, me, owners, shas, same_os),
@@ -437,9 +437,9 @@ def auto_class(it, repo, human_rx):
         if it.get("exit") == "operator-decision":
             return "human", "an operator decision (ledger exit)"
         if it.get("exit") == "ai-does-it":
-            return "ai", "the agent's own work (ledger exit)"
+            return "ai", it.get("pr_note") or "the agent's own work (ledger exit)"
         if it.get("exit") == "in-pr":  # carried_by_pr found no open PR in the exit line
-            return "ai", "its in-pr exit names no open PR any more — tick it or name what is left"
+            return "ai", it.get("pr_note") or "its in-pr exit names no open PR any more — tick it or name what is left"
         # An exit outside the skill's vocabulary read as untouched agent work: measured 2026-10-28,
         # `waits-on-others`, `deferred`, `ask-operator` on open entries of one brain.
         if it.get("exit") in ("done-already", "drop"):
@@ -715,21 +715,36 @@ def carried_by_pr(ledger_items, pr_items):
     beyond their PR, so the writer says it (skill backlog-catch-up), the reader only measures
     whether that PR is still open. A bare `#N` counts only when exactly one open PR has that
     number; with none open the entry is the agent's again — tick it or name what is left."""
-    by_num = {}
+    by_num, by_branch = {}, {}
     for p in pr_items:
         by_num.setdefault(p["ref"].rsplit("#", 1)[1], []).append(p["ref"])
+        if p.get("branch"):
+            by_branch[p["branch"]] = p["ref"]
     for it in ledger_items:
-        if it.get("exit") != "in-pr":
+        if it.get("exit") not in ("in-pr", "ai-does-it"):
             continue
-        line = (re.findall(r"^\s*exit:\s*in-pr\b.*$", it.get("body", ""), re.M) or [""])[-1]
-        hits = set()
-        for repo, n in PR_MENTION.findall(line):
+        # The last exit WITH its continuation lines (measured 2026-11-03: an exit naming its PR on the
+        # second line read as "no open PR"), plus the check line, which often names the PR's branch.
+        blocks = re.findall(r"^\s*exit:.*(?:\n(?![\s>*-]*(?:[\w-]+:\s|- \[)).*)*", it.get("body", ""), re.M)
+        text = (blocks[-1] if blocks else "") + "\n" + "\n".join(re.findall(r"^\s*check:.*$", it.get("body", ""), re.M))
+        hits, named = set(), bool(PR_MENTION.search(blocks[-1] if blocks else ""))
+        for repo, n in PR_MENTION.findall(text):
             refs = [r for r in by_num.get(n, []) if not repo or r == f"{repo}#{n}"]
             if len(refs) == 1:
                 hits.add(refs[0])
-        if hits:
+        hits.update(ref for branch, ref in by_branch.items() if re.search(rf"(?<![\w/.-]){re.escape(branch)}(?![\w/.-])", text))
+        named = named or bool(hits)
+        if it["exit"] == "in-pr" and hits:
             it["waiting_on"] = ("the open PR " + ", ".join(sorted(hits)),
                                 "the PR carries this entry; it is listed again once the PR closes")
+        elif it["exit"] == "in-pr" and not named:
+            # Measured 2026-11-03: "in-pr" with no PR reference read as "no open PR any more".
+            it["pr_note"] = "its in-pr exit names no PR at all — add the PR reference (owner/repo#N)"
+        elif it["exit"] == "ai-does-it" and hits:
+            # Measured 2026-11-03: seven entries carried by open PRs printed as the agent's open work
+            # because the exit was never moved when the PR opened. The writer decides; the reader says it.
+            it["pr_note"] = (f"its exit says ai-does-it, but {', '.join(sorted(hits))} is open — "
+                             "write in-pr if the PR carries the rest")
 
 
 def lookup(store, it):

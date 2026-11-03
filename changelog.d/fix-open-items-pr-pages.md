@@ -10,3 +10,10 @@
     for the competing-release and beta-candidate checks (now `--limit 1000`); `repo-activity-watch.sh` read 50 open PRs
     per repo with 49 open in the core (now 1000). Class guard in `test-pr-ball.sh`: every `gh pr list` in helpers/ and
     scripts/ names its `--limit` (red on the old preflight, two hits). Fixture +4.
+  - Exit and PR list disagreeing is said, not read as plain own work (measured the same day: seven entries carried by open
+    PRs stood as `ai-does-it` because the exit was never moved when the PR opened; one `in-pr` exit named no PR and read as
+    "no open PR any more"; one named its PR on the continuation line and was missed). The reader takes the last exit
+    WITH its continuation lines plus the `check:` line, matches PR numbers and the open PRs' head branches
+    (`headRefName` joins the query): `in-pr` + open PR = waiting as before; `in-pr` with no reference says "names no PR
+    at all"; `ai-does-it` naming an open PR says "its exit says ai-does-it, but <PR> is open — write in-pr if the PR
+    carries the rest" and stays the agent's (the writer decides). Fixture +4, all four red on the old reader.

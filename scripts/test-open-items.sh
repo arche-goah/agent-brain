@@ -484,12 +484,16 @@ printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2
   '- [ ] Text mention only' '  id: issue-only' '  STAND: Kern-PR #31 offen, plus own work' '  exit: ai-does-it 2026-10-28' '' \
   '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' '' \
   '- [ ] Odd exit' '  id: odd-exit' '  exit: waits-on-others 2026-10-28' '' \
-  '- [ ] Done but open' '  id: done-open' '  exit: done-already 2026-10-28 — built' >> "$G/docs/x/open.md"
+  '- [ ] Done but open' '  id: done-open' '  exit: done-already 2026-10-28 — built' '' \
+  '- [ ] Exit never moved' '  id: stale-exit' '  check: gh pr list --head fix/thing --state merged' '  exit: ai-does-it 2026-10-28 — build it' '' \
+  '- [ ] In-pr without a ref' '  id: inpr-noref' '  exit: in-pr 2026-10-28 — the follow-up branch' '' \
+  '- [ ] In-pr ref on the next line' '  id: inpr-cont' '  exit: in-pr 2026-10-28 — skill text as the' '  follow-up core#31' >> "$G/docs/x/open.md"
 git -C "$G" add -A
 git -C "$G" -c user.email=t@t -c user.name=t commit -qm carried
-printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":4,"nodes":[%s,%s,%s,%s]}}}\n' \
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":5,"nodes":[%s,%s,%s,%s,%s]}}}\n' \
   "$(pr core 31 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr core 32 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" \
-  "$(pr core 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr suite-x 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" > "$T/prs-carried.json"
+  "$(pr core 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr suite-x 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" \
+  "$(pr core 34 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]' | sed 's#"isDraft"#"headRefName":"fix/thing","isDraft"#')" > "$T/prs-carried.json"
 out=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-carried.json")" OPEN_ITEMS_WAIT_COLLAPSE=50 run "" "$G")
 has "waiting on the open PR core#31" "$(line ' carried ' "$out")" && ok "entry naming an open PR waits on it" || bad "carried: $(line ' carried ' "$out")"
 has "waiting on the open PR core#32" "$(line ' carried-ref ' "$out")" && ok "repo#N names the PR" || bad "carried-ref: $(line ' carried-ref ' "$out")"
@@ -502,6 +506,14 @@ has "[ledger|ai]" "$(line ' issue-only ' "$out")" && ok "a PR named in the text 
 has "names no open PR any more" "$(line ' closed-pr ' "$out")" && ok "a PR no longer open hands the entry back, saying so" || bad "closed: $(line ' closed-pr ' "$out")"
 has "unknown exit 'waits-on-others'" "$(line ' odd-exit ' "$out")" && ok "an exit outside the vocabulary is named" || bad "odd exit: $(line ' odd-exit ' "$out")"
 has "but the box is open" "$(line ' done-open ' "$out")" && ok "exit done-already on an open box asks for the tick" || bad "done-open: $(line ' done-open ' "$out")"
+# 2026-11-03 (macOS instance): seven entries carried by open PRs stood as the agent's own work - the
+# exit was never moved; one in-pr exit named no PR and read as "no open PR any more".
+has "says ai-does-it, but core#34 is open" "$(line ' stale-exit ' "$out")" && ok "ai-does-it whose check names an open PR's branch is named as a stale exit" \
+  || bad "stale exit: $(line ' stale-exit ' "$out")"
+has "[ledger|ai]" "$(line ' stale-exit ' "$out")" && ok "the stale exit stays ours (the writer decides)" || bad "stale exit class: $(line ' stale-exit ' "$out")"
+has "names no PR at all" "$(line ' inpr-noref ' "$out")" && ok "in-pr without any PR reference says so" || bad "in-pr no ref: $(line ' inpr-noref ' "$out")"
+has "waiting on the open PR core#31" "$(line ' inpr-cont ' "$out")" && ok "an in-pr exit naming its PR on the next line waits on it" \
+  || bad "in-pr continuation: $(line ' inpr-cont ' "$out")"
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
