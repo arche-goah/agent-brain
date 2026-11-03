@@ -167,7 +167,8 @@ an operator asks what the modes mean (operator order 2026-10-29).
 - **A step that needs only the operator's word is a question, never an instruction** (operator
   correction 2026-10-26): "Shall I run X now?" through the question tool, and on yes the AI runs it
   and measures the effect — no "type `!` and then …" in prose. Only a step their hand alone can take
-  is written out, as the first line, alone. The close report holds its release while one is open
+  is written out: as the command block that ends the reply, one block per device (`working-rules.md`,
+  "Named turn ends"; operator decision 2026-11-03, one form instead of three). The close report holds its release while one is open
   (skill `session-close`, step 5).
 - **Parked domains** are neither presented nor worked (operator decision 2026-09-18); a security
   finding on a wired carrier is reported once, another party's request gets an answer (2026-10-08).
