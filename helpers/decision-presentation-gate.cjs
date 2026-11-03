@@ -71,11 +71,12 @@ function ledgerDecisions(root) {
       // `operator-decision` (or no exit yet) is the operator's. Measured 2026-10-28 on the macOS
       // instance: 22 entries counted, by their exits 12 later-at-system, 5 parked, 4 other-side,
       // 1 ai-does-it — none an operator decision.
-      const exits = [...body.matchAll(/^\s*exit:\s*([\w-]+)/gm)];
+      // A field may stand as its own list item (`  - exit: ...`), as the project ledgers write it.
+      const exits = [...body.matchAll(/^\s*(?:[-*]\s+)?exit:\s*([\w-]+)/gm)];
       if (exits.length && exits[exits.length - 1][1] !== 'operator-decision') continue;
       // `ask-when:` (operator decision 2026-10-29 on the macOS instance: "questions at the right time"): a date
       // still ahead, or a topic (`ask-when: thema|topic <regex>`, put when the operator's work touches it) - not due here.
-      const when = /^\s*ask-when:\s*(.+)$/m.exec(body);
+      const when = /^\s*(?:[-*]\s+)?ask-when:\s*(.+)$/m.exec(body);
       if (when) {
         const d = /^(\d{4}-\d{2}-\d{2})\b/.exec(when[1].trim());
         if (!d || d[1] > new Date().toISOString().slice(0, 10)) continue;
