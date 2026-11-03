@@ -24,6 +24,11 @@ blob() { printf '{"type":"api-request-blob","message":{"role":"user","content":%
 EN="$T/en"; mkdir -p "$EN"
 DE="$T/de"; mkdir -p "$DE/.claude/rules"
 printf '%s\n' '{"on_patterns": ["\\bautonom"], "off_patterns": ["\\bnormalmodus\\b"]}' > "$DE/.claude/rules/autonomous-patterns.json"
+# "What is open?" leaves the run only when something IS open for the operator (operator 2026-11-03, translated:
+# "either the questions, or stay autonomous"). open_q seeds one unanswered question in a fixture dir; NONE stays empty.
+open_q() { mkdir -p "$1/.claude-state"; printf '%s\n' '{"q1": {"q": "Release now?", "status": "unanswered"}}' > "$1/.claude-state/open-questions.json"; }
+open_q "$EN"; open_q "$DE"
+NONE="$T/none"; mkdir -p "$NONE"
 
 mode() { # $1 name, $2 transcript, $3 cwd, $4 expected autonomous|interactive
   local got; got="$(node "$M" "$(native "$2")" "$(native "$3")")"
@@ -51,6 +56,7 @@ mode "an off word ends it" "$f" "$EN" interactive
 # Asking what is open ends it: the operator is here (operator 2026-10-26, Windows instance).
 f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
 mode "asking what is open ends it" "$f" "$EN" interactive
+mode "asking what is open with NOTHING open keeps the run (2026-11-03)" "$f" "$NONE" autonomous
 f="$T/3e.jsonl"; { user "autonomous, please"; asst "x"; qcmd "anything open for me?"; } > "$f"
 mode "asking mid-turn ends it" "$f" "$EN" interactive
 # The answer to "continue autonomously?" arrives as a tool result.
@@ -154,7 +160,7 @@ gate "interactive closing question still asks for the tool" "$f" block "AskUserQ
 # (measured 2026-10-28, macOS instance: "you need something?" and "give me interactive questions", in
 # the operator's language, were asks
 # for what is open; the words missed both, the model read both right). Matched by session + time.
-IC="$T/int"; mkdir -p "$IC/.claude-state"
+IC="$T/int"; mkdir -p "$IC/.claude-state"; open_q "$IC"
 tuser() { printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":%s}}\n' "$1" "$(js "$2")"; }
 irec() { printf '{"at":"%s","session":"%s","mode":"hook","model":{"asks_open":%s,"mode_on":%s,"mode_off":false,"correction":false}}\n' "$1" "$2" "$3" "$4"; }
 f="$T/sess-a.jsonl"; { tuser 2026-10-28T20:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-10-28T21:29:00Z "you need something?"; } > "$f"
@@ -201,7 +207,7 @@ mode "a record without readable fields falls back to the words" "$f" "$IC" auton
 # initial_mode: a brain whose operator wants every session autonomous until asked (measured
 # 2026-11-01, macOS instance: a start prompt "status?" with no on-word left the session interactive,
 # and a mid-run question reached the operator who believed the run autonomous).
-AU="$T/au"; mkdir -p "$AU/.claude/rules"
+AU="$T/au"; mkdir -p "$AU/.claude/rules"; open_q "$AU"
 # (the brain names its own way out; without one the start guard below refuses the autonomous start)
 printf '%s\n' '{"initial_mode": "autonomous", "off_patterns": ["\\bweiter interaktiv\\b"]}' > "$AU/.claude/rules/autonomous-patterns.json"
 f="$T/init1.jsonl"; { user "status?"; asst "x"; } > "$f"
@@ -222,7 +228,7 @@ mode "initial_mode interactive: same as the default" "$f" "$AU" interactive
 
 # Start guard (operator 2026-11-02): initial_mode autonomous with no way out in the operator's language
 # (no own off/ask words, no classifier records) starts interactive, and initialState says why.
-NG="$T/noguard"; mkdir -p "$NG/.claude/rules"
+NG="$T/noguard"; mkdir -p "$NG/.claude/rules"; open_q "$NG"
 printf '%s\n' '{"initial_mode": "autonomous"}' > "$NG/.claude/rules/autonomous-patterns.json"
 f="$T/init0.jsonl"
 mode "start guard: autonomous wanted, no way out - starts interactive" "$f" "$NG" interactive
