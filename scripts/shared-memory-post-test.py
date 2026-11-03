@@ -183,9 +183,24 @@ def main() -> int:
             check(f"refused: {name}", r.returncode == 2 and "REFUSED" in r.stdout, r.stdout + r.stderr)
         check("a refusal writes nothing",
               files(repo) == before and (repo / "core" / "LOG.md").read_text(encoding="utf-8") == log_before)
-        r = post(repo, "request", "--area", "core", "--to", "alex-win", "--title", "One machine check",
-                 "--body", "Please counter-check on Windows: only this box has the device.",
-                 "--one-machine", "the USB device sits at this box", me="alex-mac")
+        # A request to one machine needs a reason that is more than its OS, and evidence a reader can open
+        # (operator 2026-11-03; measured the same day: five requests carried "the Windows instance is the machine
+        # that does it", the last two went to a Windows device that was not running).
+        one_args = ("request", "--area", "core", "--to", "alex-win", "--title", "One machine check",
+                    "--body", "Please counter-check on Windows: only this box has the device.")
+        for name, extra, word in [
+            ("a reason without evidence", ("--one-machine", "the USB device sits at this box"), "one-machine-evidence"),
+            ("a reason that only names the OS", ("--one-machine", "the Windows instance is the machine that does it",
+                                                 "--one-machine-evidence", "https://example.org/x"), "names only the OS"),
+            ("an OS-check reason", ("--one-machine", "a Windows check at the PR head; the proposal came from here",
+                                    "--one-machine-evidence", "https://example.org/x"), "names only the OS"),
+            ("evidence nobody can open", ("--one-machine", "the USB device sits at this box",
+                                          "--one-machine-evidence", "trust me"), "no evidence a reader can open"),
+        ]:
+            r = post(repo, *one_args, *extra, me="alex-mac")
+            check(f"refused: one machine, {name}", r.returncode == 2 and word in r.stdout, r.stdout + r.stderr)
+        r = post(repo, *one_args, "--one-machine", "the USB device sits at this box",
+                 "--one-machine-evidence", "https://example.org/devices/usb-box", me="alex-mac")
         one = repo / "core" / f"request-one-machine-check-{STATE}.md"
         check("a check for exactly one machine passes with --one-machine, and the reason is written",
               r.returncode == 0 and one.is_file() and "one-machine: the USB device" in one.read_text(encoding="utf-8"),
