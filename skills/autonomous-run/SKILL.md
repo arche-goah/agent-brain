@@ -114,8 +114,9 @@ The `disarm` output is the evidence that belongs in the report:
    green; building a substitute path is gated (working-rules, Mechanism Discipline). So:
    report `BLOCKED: <path> — <what restores it, who>` with the remaining items, arm a
    watcher on the path itself (the instance's reconnect or link waiter) so the run can
-   resume when it comes back, then `disarm` and `ScheduleWakeup(stop: true)`. The report
-   goes through the instance's channel for an absent operator.
+   resume when it comes back, then `disarm --blocked "<path> — <what restores it, who>"` and
+   `ScheduleWakeup(stop: true)`. A plain `disarm` would switch the only away-channel off;
+   `--blocked` sends the reason through it (the instance's `issue_repo`) and then ends the run.
    **Resume after BLOCKED** (the watcher fires, or the next session or wake reads the
    report): first re-measure the blocker itself — is the path really back? Still down:
    stay blocked, say so, nothing else. Back: re-read the plan document, `arm` again with
