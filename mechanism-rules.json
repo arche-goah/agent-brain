@@ -91,6 +91,11 @@
       "pattern": "(?:^|[\\n;&|(])\\s*(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?:\\S*/)?gh\\s+run\\s+list\\b(?![^\\n;&|]*(?:--workflow\\b|\\s-w\\s))",
       "was": "CI runs read without a workflow filter (`gh run list` without --workflow/-w) - a repo has several workflows (CI, a text-leak check on every comment, CodeQL); the newest N runs mix them and push the CI runs out. Measured 2026-10-28 on the macOS instance: four green runs of the comment-triggered workflow were taken for CI runs on the same commit and a red main was called green, twice in one evening; a readiness reader with the same query reported no red CI while two CI runs on main were red. ci-watch.sh had learned this earlier, the lesson stayed in that one tool",
       "instead": "For a verdict on a commit: `scripts/ci-watch.sh` (reads `actions/runs?head_sha=`, detached as Working Rule #9 says). To look: `gh run list --workflow <name> ...` with the workflow you mean (e.g. `--workflow CI`)."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:\\S*/)?(?:python3?|node|bash|sh)\\s+(?:-\\S+\\s+)*-[ce]\\s+\\\"(?:[^\\\"\\\\`$]|\\\\[\\s\\S]|\\$(?!\\())*(?:`|\\$\\()",
+      "was": "an inline script in double quotes (`python3 -c \"...\"`, `node -e \"...\"`, `bash -c \"...\"`) whose text holds a backtick or `$(` - the shell runs that part as a command before the interpreter sees the text. Measured 2026-11-03 on the Windows instance: two backtick paths in a protocol entry ran as shell scripts (no file changed, the written text lost both paths); replay over that brain's transcripts: 4 such calls in 2 sessions. The macOS instance carried the same rule as instance data since 2026-10-29 (a PR text lost three names).",
+      "instead": "Multi-line or quoted text goes into a file (Working Rule #8): write the script with the Write tool and run the file, or quote the argument in single quotes. An escaped backtick (\\`) is no hit."
     }
   ]
 }
