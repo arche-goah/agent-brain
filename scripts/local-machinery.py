@@ -51,6 +51,7 @@ thin wrappers of core items, carriers declared in two contradicting places) and 
 import argparse
 import csv
 import datetime
+import difflib
 import io
 import json
 import os
@@ -114,6 +115,12 @@ def read(path, cap=262144):
             return f.read(cap)
     except OSError:
         return ""
+
+
+def copy_of(mine, core):
+    """A same-named file is a copy of the core one when it kept at least half of its lines -
+    the reading hook-coverage.py's duplicate check uses."""
+    return difflib.SequenceMatcher(None, mine.splitlines(), core.splitlines(), autojunk=False).ratio() >= 0.5
 
 
 def read_tree(d, cap=1 << 20):
@@ -735,12 +742,18 @@ def judge(items, decl, C, today):
             # of the pin were told "remove the copy" — removing them would drop the behaviour.
             # Once the pinned core file equals the copy, the pin carries it: then it IS a shadow.
             pinned = C.root / "core" / core[name]
+            calls_core = ("core/" + core[name]) in it["content"].replace("\\", "/")
             if ka and pinned.is_file() and it["content"] and read(pinned) != it["content"]:
+                pass
+            elif pinned.is_file() and it["content"] and not calls_core and not copy_of(it["content"], read(pinned)):
+                # Same name, another tool: measured 2026-11-02/03 on two Windows brains, the
+                # messaging hook scripts/telegram-notify/notify.cjs (13 % of its lines shared with
+                # the core's sound helpers/notify.cjs) was told at every start to "remove the copy".
                 pass
             else:
                 # Same name: a thin wrapper that only calls the core one looks like a copy from
                 # outside (measured 2026-10-09) — say which, the fix differs.
-                cls = "wrapper" if ("core/" + core[name]) in it["content"].replace("\\", "/") else "shadow"
+                cls = "wrapper" if calls_core else "shadow"
                 it["class"] = cls
                 found[cls].append(it["id"])
                 continue

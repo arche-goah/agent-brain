@@ -44,9 +44,12 @@ This script is the ONE list of open points at session start:
     run never counts;
   * items whose move is NOT ours print as `[...|wait]`, quietly, and do not count up: a PR
     we reviewed or commented on after its last commit (or checked at its current head and
-    answered in the shared memory, shared_answers.py), a PR in a repo that instance data
-    (`owners`: repo -> login) gives to someone else when no review was asked of us, our own
-    PR in such a repo unless someone else spoke after its last commit, and any
+    answered in the shared memory, shared_answers.py), a PR in a repo that the shared
+    memory's repo-owners.json or instance data (`owners`, the override) gives to someone else
+    (repo -> login, or repo -> a device id of the shared memory's parties.json when
+    the merger is ANOTHER INSTANCE behind our own login) when no review
+    was asked of us, our own PR in such a repo unless someone else spoke after its last
+    commit, and any
     item with a dated wait (`waiting`: id -> {until, why} in instance data, or a line
     `waiting-until: YYYY-MM-DD: <why>` in a PR body). On its date it is due, after it louder;
   * a REQUEST from another side in a parked domain is not parked away — parked means not
@@ -85,7 +88,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from instance_key import is_self, key_in, self_key  # noqa: E402
+from instance_key import is_self, key_for, key_in, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
 from shared_answers import checked_head, default_repo, own_open_requests, own_shared_shas, sibling_keys_same_os  # noqa: E402
 import shared_channels  # noqa: E402
@@ -188,7 +191,49 @@ PR_QUERY = """query($q: String!, $after: String) { viewer { login }
     comments(last: 20) { nodes { author { login } createdAt body } } } } } }"""
 WAIT_MARK = re.compile(r"^\s*waiting-until:\s*(\d{4}-\d{2}-\d{2})\s*:?\s*(.*)$", re.M | re.I)
 
-def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset()):
+def owner_party(value, repo=None):
+    """(login, instance key) of an `owners` value. A device id of the shared memory's
+    parties.json names an INSTANCE: its person's GitHub login plus key_for(device). Anything
+    else is a login, with no key. Measured 2026-11-02: the core is merged by the operator's
+    macOS instance, which posts under the same login as the Windows one - a login-only owner
+    could not say so, every own core PR with both OS checks and green CI was listed as "still
+    ours", and 11 hand-written `waiting` entries ("core merge is <macOS instance>'s") had
+    patched it one PR at a time."""
+    if not value:
+        return "", ""
+    try:
+        parties = json.loads((Path(repo or default_repo()) / "parties.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        parties = {}
+    for person in (parties.get("people") or {}).values():
+        if value in ((person or {}).get("devices") or {}) and (person or {}).get("github"):
+            return person["github"], key_for(value)
+    return value, ""
+
+
+def shared_owners(repo):
+    """repo -> owner from the shared memory's repo-owners.json, written once for every brain:
+    {"repos": {"<repo>": {"owner": "<device id or login>", "source": "<quote with date, or
+    path>"}}}. An entry without its source is skipped: who merges is a decision, and a
+    decision nobody can point to is not read as one. The instance's `owners` overrides an
+    entry (agreed 2026-11-02 between the two instances of one operator in the shared memory).
+    Measured before: the fact stood as prose in the shared memory and each brain copied it
+    into its own `owners` - one brain missed a suite's owner change and listed that owner's
+    PRs as its own work in three sessions (2026-10-10)."""
+    if not repo:
+        return {}
+    try:
+        data = json.loads((Path(repo) / "repo-owners.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for name, entry in ((data or {}).get("repos") or {}).items():
+        if isinstance(entry, dict) and entry.get("owner") and entry.get("source"):
+            out[name] = entry["owner"]
+    return out
+
+
+def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset(), parties_repo=None):
     """Whose move a PR is. None = ours. Otherwise (party, reason): for another's PR we wait on
     its author — we reviewed or commented after its last commit, or the repo belongs to
     someone else (instance data `owners`) and nobody asked us for a review; for our own PR in
@@ -210,6 +255,10 @@ def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset()):
     # commit (see own_shared_shas). A sha of an older head does not: a new commit is new work.
     checked = checked_head(oid, shared_shas)
     owner = owners.get(p["repository"]["name"])
+    owner_login, owner_key = owner_party(owner, parties_repo)
+    # Another party merges: another login, or another instance behind our login.
+    owner_other = bool(owner_login) and (owner_login.lower() != me.lower()
+                                         or bool(owner_key and my_key and owner_key != my_key))
     reviews = (p.get("latestReviews") or {}).get("nodes", [])
     comments = (p.get("comments") or {}).get("nodes", [])
     touched = [r.get("submittedAt") or "" for r in reviews if ours(r)]
@@ -236,7 +285,7 @@ def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset()):
         # answer. Measured
         # 2026-10-10: two green own PRs in a suite owned by another party were printed as
         # "nothing done yet" in three sessions, because this check ran only for others' PRs.
-        if owner and owner != me:
+        if owner_other:
             theirs = [r.get("submittedAt") or "" for r in reviews if not ours(r)]
             theirs += [c.get("createdAt") or "" for c in comments if not ours(c)]
             # Same rule as pr-ball.py: our own reply after theirs hands the move back.
@@ -250,7 +299,8 @@ def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset()):
         return author, "our check of this head is in the shared memory"
     asked = any(((n.get("requestedReviewer") or {}).get("login")) == me
                 for n in (p.get("reviewRequests") or {}).get("nodes", []))
-    if owner and owner != me and not asked:
+    # Login only here: a review asked of our login is asked of every instance behind it.
+    if owner_login and owner_login.lower() != me.lower() and not asked:
         return author, f"{p['repository']['name']} is {owner}'s to merge and no review was asked of us"
     return None
 
@@ -314,7 +364,8 @@ def prs(owner, owners, repos=(None,), extra=()):
         ref = f"{p['repository']['name']}#{p['number']}"
         m = WAIT_MARK.search(p.get("body") or "")
         author = (p.get("author") or {}).get("login", "?")
-        waiting, note = ball(p, me, owners, shas, same_os), ""
+        # parties.json lives in the first channel, the shared memory itself.
+        waiting, note = ball(p, me, owners, shas, same_os, repos[0]), ""
         if waiting is None and ref in asked:
             # Our own open request names this PR: its addressee moves - for one day. After that the
             # PR is ours again with the reminder (operator rule 2026-10-21: no answer within a day =
@@ -922,7 +973,9 @@ def main():
         owner = eco_owner.resolve(root, sid)[0]
     reads = channel_requests(chans)
     req = reads[0][1]
-    pr = prs(owner, cfg.get("owners") or {}, [c["repo"] for c in chans], cfg.get("pr_owners") or [])
+    # Owners written once in the shared memory, the instance's own map on top (an override).
+    owners = {**shared_owners(chans[0]["repo"] if chans else None), **(cfg.get("owners") or {})}
+    pr = prs(owner, owners, [c["repo"] for c in chans], cfg.get("pr_owners") or [])
     ses = sessions(root, a.hook_input)
     led, led_unread = ledgers(root)
     carried_by_pr(led or [], pr or [])
