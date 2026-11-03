@@ -1,8 +1,12 @@
-- **autonomous-gate: the operator's latest word decides whether an ask rule may reach the dialog** (test: T1) (level:
-  reader; higher: writer — a turn boundary written when a question-tool answer switches the run on would serve every
-  reader; not built, one reader is affected; debt: presence is still read from turn membership, not from time).
-  Measured on the macOS instance 2026-11-03: the turn opened with "anything open for me?", the questions were answered,
-  the last answer was "continue autonomously"; the turn ran on through a compaction, and 13 minutes later an edit of
-  `.claude/settings.json` (ask rule) raised a dialog in the autonomous run. `operatorInTurn` counted the opening prompt
-  as the operator being present and dropped question-tool answers from the mode tail. Now a latest answer that switched
-  the run on holds the call again. Fixture `scripts/test-autonomous-gate.sh` +2 (the held case passed the old gate).
+- **autonomous-gate: no dialog in an autonomous run - an operator message in the turn does not mean the operator is
+  there** (test: T1) (level: reader; higher: design — a third mode "reachable on the phone" was named by the operator
+  as a possible later mode; not built; debt: an approved held edit waits until the mode ends). The operator,
+  2026-11-03 (translated): "I am not automatically always there. Today I get this on my phone [...] Asking
+  interactively is not auto mode - then we could abolish the modes right away" and "only when I write 'questions to me
+  now' etc. shall the mode change. In auto mode no interactive prompts". This removes the exception of 2026-11-02
+  (`operatorInTurn`: a held call went to the harness dialog when the operator had spoken in the turn). Measured the
+  same day on the macOS instance: two dialogs in one autonomous run through that exception - an edit of
+  `.claude/settings.json` 13 minutes after the operator's last answer ("continue autonomously"), and a `feedback.md`
+  edit after a mid-turn remark sent from a phone. The mode still ends on the operator's ask for what is open or an
+  off-word (unchanged). Fixture `scripts/test-autonomous-gate.sh`: two cases flipped to "held", +2 (a switch-on answer
+  holds; an "interactive" answer ends the mode).
