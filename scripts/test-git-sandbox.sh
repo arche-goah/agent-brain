@@ -74,5 +74,15 @@ for t in shared-memory-audience-test shared-memory-index-test shared-memory-lint
   fi
 done
 
+# --- no sign-in window (2026-11-03): an editor's GIT_ASKPASS never reaches a fixture ---------
+got="$(GIT_ASKPASS=/editor/askpass.sh "$PY" -c "import sys; sys.path.insert(0, sys.argv[1]); import git_sandbox, os
+print(os.environ.get('GIT_ASKPASS'), os.environ.get('GIT_TERMINAL_PROMPT'))" "$HERE")"
+[ "$got" = "true 0" ] && ok "helper: an inherited GIT_ASKPASS is replaced, no prompt" || bad "helper: askpass/prompt left as '$got'"
+# Class guard: every non-interactive git call that turns the terminal prompt off also turns askpass
+# off (GIT_TERMINAL_PROMPT=0 alone still runs an askpass program — Cursor opened a GitHub sign-in).
+lone="$(grep -rnE 'GIT_TERMINAL_PROMPT=0' "$HERE/../helpers" "$HERE/../scripts" --include='*.sh' --include=pre-commit \
+  | grep -av 'GIT_ASKPASS' | grep -avE '^[^:]+:[0-9]+:\s*#|test-git-sandbox\.sh' || true)"
+[ -z "$lone" ] && ok "every GIT_TERMINAL_PROMPT=0 call also sets GIT_ASKPASS" || bad "prompt off but askpass on: $lone"
+
 if [ "$fail" -eq 0 ]; then echo "test-git-sandbox: all green"; else echo "test-git-sandbox: FAILED"; fi
 exit "$fail"
