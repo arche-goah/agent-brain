@@ -65,6 +65,27 @@ if [ -f "$root/.claude/rules/lesson-carriers.json" ] && [ -f "$core/scripts/carr
   run_check "carrier-audit" "$py" "$core/scripts/carrier-audit.py" --repo "$root" --core "$core" --staged
 fi
 
+# 4c. A new dated rule: which OLD places say something about the same thing? (rule-conflict protocol step 2,
+#     `rules/thinking-protocol.md`). REPORT ONLY, never blocks: judging an old place takes a look, not a gate.
+#     Until 2026-11-02 backprop-report.py had no caller but a prose pointer (audit of the audits, package G);
+#     the moment a rule file is committed is the moment its old places are still in mind.
+rules_staged=$(git diff --cached --name-only --diff-filter=AM 2>/dev/null \
+  | grep -E '^(rules/[^/]+\.md|\.claude/rules/[^/]+\.md|templates/feedback\.md|templates/rules-instance/[^/]+\.md)$')
+if [ -n "$rules_staged" ] && [ -f "$core/scripts/backprop-report.py" ]; then
+  if [ -d "$root/rules" ] && [ -f "$root/scripts/backprop-report.py" ]; then
+    # the core repo itself: its rule and skill trees are the old places
+    # shellcheck disable=SC2086
+    bp=$("$py" "$core/scripts/backprop-report.py" --root "$root" --search rules --search skills --search docs --search templates -- $rules_staged 2>/dev/null)
+  else
+    # shellcheck disable=SC2086
+    bp=$("$py" "$core/scripts/backprop-report.py" --root "$root" -- $rules_staged 2>/dev/null)
+  fi
+  if printf '%s' "$bp" | grep -q 'places=[1-9]'; then
+    echo "pre-commit: report (does not block) — older places that name terms of the new dated rule; mark what it supersedes:" >&2
+    printf '%s\n' "$bp" | head -40 >&2
+  fi
+fi
+
 # 5. Behind the upstream (operator order 2026-10-22, agreed by both core parties): a commit on a
 #    checkout that another machine pushed past lands on an old state, and its push is refused
 #    afterwards (measured 2026-10-22, and twice on 2026-10-25, on Windows brains). The start pull

@@ -670,12 +670,20 @@ def ledgers(root):
     except (OSError, ImportError, AttributeError):
         return None, []
     items, unread = [], []
+    # ledger-reconcile's DONE-OPEN result (audit-audit 2026-11-02, package D: entries whose work shipped in a new pin
+    # stayed listed as open own work for up to 17 sessions). It counts only while it is fresher than the ledger file:
+    # line numbers and checkboxes of an edited ledger are the reconcile's no longer.
+    green = load_json(root / ".claude-state" / "ledger-reconcile.json", None)
+    green_at = green.get("at") if isinstance(green, dict) and isinstance(green.get("at"), (int, float)) else None
+    green_rows = green.get("done_open") if green_at is not None and isinstance(green.get("done_open"), list) else []
     for rel in cfg.get("ledgers") or []:
         try:
             text = (root / rel).read_text(encoding="utf-8")
+            fresh = green_at is not None and green_at > os.path.getmtime(root / rel)
         except OSError:
             unread.append(f"{rel} (file not found)")
             continue
+        ticks = {r.get("line") for r in green_rows if fresh and isinstance(r, dict) and r.get("ledger") == rel}
         found = list(mod.entries(text))
         # Entries that are not `- [ ]` / `- [x]` lines read as an empty ledger — the same silence.
         if not found and re.search(r"^[\s>*-]*`?id:", text, re.M):
@@ -723,6 +731,8 @@ def ledgers(root):
                     else ("its trigger", f"ask-when {topic}") if topic else None}
             if rows:
                 item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
+            if e["line"] in ticks:
+                item["tick"] = True
             items.append(item)
     return items, unread
 
@@ -975,6 +985,10 @@ def main():
             it["cls"], it["why"] = "standing", f"standing approval '{c['name']}', granted {c['granted']}"
         if it["wait"]:
             it["cls"] = "wait"
+        # Its check is green and the result is fresher than the ledger: the work is done, the box is not. Listed
+        # once as "tick it", never as open work (audit-audit 2026-11-02, package D).
+        if it.get("tick"):
+            it["cls"] = "tick"
     # A source that failed keeps its old counters — a failed read is not "handled". A further
     # channel's ids carry `<label>:`; with the channel file unreadable, every such id is kept.
     labels = tuple(f"{c['label']}:" for c in chans[1:])
@@ -996,6 +1010,8 @@ def main():
                                   "last_run": now.isoformat(timespec="seconds")}) if sid else True
 
     # Standing items form their own group at the end of the active list.
+    tick = [i for i in items if i["cls"] == "tick"]
+    items = [i for i in items if i["cls"] != "tick"]
     active = sorted((i for i in items if not i["parked"] and i["cls"] != "wait"),
                     key=lambda i: (i["cls"] == "standing", -i["n"], i["date"]))
     waiting = [i for i in items if not i["parked"] and i["cls"] == "wait"]
@@ -1009,6 +1025,10 @@ def main():
           + (f" — already reported before and still open: ai {rep['ai']} · human {rep['human']}"
              + (f" · standing {rep['standing']}" if rep["standing"] else "")
              if rep["ai"] or rep["human"] or rep["standing"] else ""))
+    if tick:
+        shown = ", ".join(i["ref"] for i in tick[:8]) + (f" (+{len(tick) - 8} more)" if len(tick) > 8 else "")
+        print(f"check green — tick it: {len(tick)} ledger entr(y/ies) whose check passes "
+              f"(ledger-reconcile, fresher than the ledger): {shown}")
     for line in refused:
         print(f"!! open for us: {line}")
     if not saved:

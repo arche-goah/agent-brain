@@ -8,7 +8,7 @@ set -u
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 _D="$(cd "$(dirname "$0")" && pwd)"
-G="$_D/../helpers/autonomous-idle-gate.cjs"
+G="${IDLE_GATE:-$_D/../helpers/autonomous-idle-gate.cjs}"   # IDLE_GATE: run the cases against another build (negative control)
 fail=0
 ok()  { echo "  OK  $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
@@ -104,6 +104,51 @@ check "a closing text without the pre-commit call is no close (control)" "$f" bl
 rm "$C/.claude-state/session-close.stamp"
 f="$T/close3.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "close the session"; precommit; asst "Session closed."; } > "$f"
 check "the pre-commit call without a stamp file is no close (control)" "$f" block "$C"
+
+# INTERACTIVE, released work (operator decision 2026-11-02, macOS instance): an interactive turn closed on "Next:
+# package A ..." while the operator had released that plan in the session. Released = an open ledger entry with
+# exit ai-does-it and `released: "<words>"`, the words in the operator's own messages of this transcript.
+R="$T/rel"; mkdir -p "$R/.claude/rules" "$R/docs"
+printf '%s\n' '{"ledgers": ["docs/ledger.md"]}' > "$R/.claude/rules/ledgers.json"
+cat_ledger() { # $1 = exit line of entry A, $2 = exit line of entry B
+  printf -- '- [ ] Package A\n  id: pkg-a\n  class: todo\n  %s\n- [ ] Package B\n  id: pkg-b\n  class: todo\n  %s\n- [x] Package Z\n  id: pkg-z\n  exit: ai-does-it 2026-11-02 — released: "go ahead with the plan"\n' "$1" "$2" > "$R/docs/ledger.md"
+}
+REL='exit: ai-does-it 2026-11-02 — released: "go ahead with the plan"'
+cat_ledger "$REL" "exit: other-side 2026-11-02"
+ask() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{"questions":[{"question":"Which first?"}]}}]}}\n'; }
+answer() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q1","content":%s}]}}\n' "$(js "The user answered: \"Which first?\"=\"$1\"")"; }
+queued() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
+f="$T/i1.jsonl"; { user "go ahead with the plan"; asst "Package Z is done. Next: package A."; } > "$f"
+check "interactive: released and open, the turn ends on an announcement (the 2026-11-02 class)" "$f" block "$R"
+f="$T/i2.jsonl"; { user "go ahead with the plan"; asst "Package Z is done."; ask; } > "$f"
+check "interactive: a question-tool call in the turn ends it" "$f" allow "$R"
+f="$T/i3.jsonl"; { user "go ahead with the plan"; asst "Done with Z.
+HAND STEP: plug the desk into port 4, then say go"; } > "$f"
+check "interactive: a HAND STEP line ends it" "$f" allow "$R"
+f="$T/i4.jsonl"; { user "please continue"; asst "Next: package A."; } > "$f"
+check "interactive: a quote the operator never wrote releases nothing" "$f" allow "$R"
+f="$T/i5.jsonl"; { user "x"; queued "ok, go ahead with the plan"; asst "Next: package A."; } > "$f"
+check "interactive: the words typed mid-turn release" "$f" block "$R"
+f="$T/i6.jsonl"; { user "which package first?"; ask; answer "go ahead with the plan"; asst "Next: package A."; } > "$f"
+check "interactive: the words in a question-tool answer release" "$f" block "$R"
+f="$T/i7.jsonl"; { user "go ahead with the plan"; asst "Next: package A."; } > "$f"
+out=$(printf '{"transcript_path":"%s","cwd":"%s","stop_hook_active":true}' "$(native "$f")" "$(native "$R")" | CLAUDE_PROJECT_DIR="$(native "$R")" node "$(native "$G")" 2>&1)
+case "$out" in *'"block"'*) bad "interactive re-issue blocked again: ${out:0:160}";; *) ok "interactive: the re-issue after its own block passes (once per turn)";; esac
+f="$T/i8.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the peer's merge of the shared carrier"; } > "$f"
+check "interactive: every released entry named BLOCKED after measuring" "$f" allow "$R"
+f="$T/i9.jsonl"; { user "go ahead with the plan"; asst "BLOCKED: pkg-a — the peer's merge"; } > "$f"
+check "interactive: the BLOCKED line without measuring the list (control)" "$f" block "$R"
+cat_ledger "$REL" "$REL"
+f="$T/i10.jsonl"; { user "go ahead with the plan"; tool Bash; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the CI watcher runs, continue when PR 12 is green"; } > "$f"
+check "interactive: a waiter with its condition covers its item only, another released item open" "$f" block "$R"
+f="$T/i11.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — CI watcher, PR 12 green
+BLOCKED: pkg-b — the operator's word on the deploy"; } > "$f"
+check "interactive: both released items named BLOCKED" "$f" allow "$R"
+cat_ledger "exit: other-side 2026-11-02 — released: \"go ahead with the plan\"" "exit: parked 2026-11-02"
+f="$T/i12.jsonl"; { user "go ahead with the plan"; asst "Next: package A."; } > "$f"
+check "interactive: a released clause under another exit is no release" "$f" allow "$R"
+f="$T/i13.jsonl"; { user "go ahead with the plan"; asst "Next: package A."; } > "$f"
+check "interactive: no ledger registry, no released entry" "$f" allow
 # The loop watchdog follows the mode (2026-11-03: a list run worked over an hour unarmed). No turn is held for it.
 W="$T/wd"; mkdir -p "$W/.claude"
 wdst() { sed -n 1p "$W/.claude-state/loop-watchdog.state" 2>/dev/null; }

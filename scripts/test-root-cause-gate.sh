@@ -51,9 +51,9 @@ REG="docs/maintenance/carrier-register.md"
 check "correction answered with a cause line, a mechanism and the register" "$T/t4.jsonl" allow "$CWD"
 { user "go"; asst "ok"; user "why did you ask that again?"; asst "Reading the record."; tres; asst "The cause was a stale record (asked 2026-10-16, never re-measured)."; write "scripts/recheck.py"; write "$CWD/$REG"; } > "$T/t5.jsonl"
 check "the cause named in a later text of the same turn" "$T/t5.jsonl" allow "$CWD"
-{ user "go"; asst "ok"; user "something went wrong"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
-Carrier: none — the cause is unknown, nothing to build until it is measured"; write "$CWD/$REG"; } > "$T/t6.jsonl"
-check "cause unknown, carrier none with a reason, registered" "$T/t6.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "something went wrong, leave it, nothing to build there"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
+Carrier: none — the cause is unknown, operator-ok: \"leave it, nothing to build there\""; write "$CWD/$REG"; } > "$T/t6.jsonl"
+check "cause unknown, carrier none with the operator's own words, registered" "$T/t6.jsonl" allow "$CWD"
 # --- must block: the instance fixed, the tool left as it was
 { user "go"; asst "Re-posted the request to the right group."; asst "Cause: the post tool does not check the audience."; } > "$T/t20.jsonl"
 check "a self-found cause, no correction, no mechanism (the 2026-10-28 class)" "$T/t20.jsonl" block "$CWD"
@@ -65,7 +65,13 @@ check "cause and register, but neither mechanism nor a carrier-none line" "$T/t2
 check "a rule written as prose (.md) is no mechanism" "$T/t23.jsonl" block "$CWD"
 { user "go"; asst "Cause: the post tool does not check the audience.
 Carrier: none — the harness owns that path and offers no hook"; write "$CWD/$REG"; } > "$T/t24.jsonl"
-check "carrier none with a reason, registered" "$T/t24.jsonl" allow "$CWD"
+check "carrier none with a reason but no operator words (the 2026-11-02 class)" "$T/t24.jsonl" block "$CWD"
+{ user "go"; asst "Cause: the post tool does not check the audience.
+Carrier: none — harness path, operator-ok: \"fine, just do it\""; write "$CWD/$REG"; } > "$T/t25.jsonl"
+check "carrier none with an operator quote the operator never wrote" "$T/t25.jsonl" block "$CWD"
+{ user "the harness owns that path, no hook there"; asst "Cause: the post tool does not check the audience.
+Carrier: none — harness path, operator-ok: \"the harness owns that path\""; write "$CWD/$REG"; } > "$T/t26.jsonl"
+check "carrier none with the operator's real words" "$T/t26.jsonl" allow "$CWD"
 # --- must allow: no correction
 { user "go"; asst "ok"; user "and the show?"; asst "Fixed."; } > "$T/t7.jsonl"
 check "no correction in the prompt" "$T/t7.jsonl" allow "$CWD"
@@ -162,7 +168,7 @@ qpeer() { printf '{"type":"attachment","attachment":{"type":"queued_command","pr
 { user "work through the list"; asst "on it"; qcmd "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/q1.jsonl"
 check "a correction typed mid-turn, answered without a cause" "$T/q1.jsonl" block "$CWD"
 { user "work through the list"; asst "on it"; qcmd "that is already active! something went wrong"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
-Carrier: none — the cause is unknown, nothing to build until it is measured"; write "$CWD/$REG"; } > "$T/q2.jsonl"
+Carrier: none — the cause is unknown, nothing to build until it is measured, operator-ok: \"that is already active! something went wrong\""; write "$CWD/$REG"; } > "$T/q2.jsonl"
 check "a mid-turn correction answered with a cause line" "$T/q2.jsonl" allow "$CWD"
 { user "work through the list"; asst "on it"; qpeer "that is already active! something went wrong"; asst "noted"; } > "$T/q3.jsonl"
 check "negative control: the same words from a peer session are no operator correction" "$T/q3.jsonl" allow "$CWD"

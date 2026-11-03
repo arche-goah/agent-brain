@@ -25,7 +25,7 @@ At close, three measurements, none a guess:
      ledger-reconcile and open-items read) whose `id:` no shared file mentions — FAIL (the core's Project
      Work Ledgers rule #3: `reach: shared` is exported, deliberately, at session close).
 
-WHERE IT RUNS: at session close (skill session-close, next to lesson-carriers.py and commitments.py). A REPORT
+WHERE IT RUNS: at session close (skill session-close, next to carrier-audit.py and commitments.py). A REPORT
 with FAIL lines, not a hook: the close reads the lines and answers each one (push the shared file, write the
 export, or say "lab" / "stays private" for the unpointed ones). Exit 0 always.
 
