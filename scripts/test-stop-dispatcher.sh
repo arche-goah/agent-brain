@@ -170,6 +170,9 @@ case "$(feed2 "$TQ")" in *'kind=operator'*) ok "a typed-ahead prompt after a not
 TP="$T/queued-peer.jsonl"
 { cat "$TN"; printf '%s\n' '{"type":"attachment","attachment":{"type":"queued_command","prompt":"from a peer","origin":{"kind":"peer"}}}'; } > "$TP"
 case "$(feed2 "$TP")" in *'kind=notification'*) ok "a peer's queued message keeps the notification kind";; *) bad "peer queued message flipped the kind";; esac
+TB="$T/blob.jsonl"
+{ cat "$TN"; printf '%s\n' '{"type":"api-request-blob","message":{"role":"user","content":"# CLAUDE.md instructions dump"}}'; } > "$TB"
+case "$(feed2 "$TB")" in *'kind=notification'*) ok "an api-request-blob is no operator turn";; *) bad "blob record read as the operator";; esac
 
 # --- recorder logs rotate by size, one generation (both ways) -----------------
 # A probe recorder that always records one row. Limit 200 bytes: a log above it is

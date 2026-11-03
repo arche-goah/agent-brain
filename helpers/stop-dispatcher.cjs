@@ -91,7 +91,7 @@ const DEFAULT_HEADER = 'STOP-CHECKS ({n})';
 const TAIL_BYTES = 4 * 1024 * 1024;
 const HOOK_ECHO = /^\s*Stop hook feedback/;
 // One definition of "notification record", shared with every gate's cooldown count.
-const { isNotification, queuedHumanPrompt } = require('./turn-kind.cjs');
+const { isNotification, queuedHumanPrompt, isTranscriptRecord } = require('./turn-kind.cjs');
 
 function recordText(msg) {
   if (typeof msg.content === 'string') return msg.content;
@@ -117,6 +117,8 @@ function turnKind(transcriptPath) {
       // (turn-kind.cjs operatorPrompt; read from the code 2026-11-03: a turn opened by a notification
       // in which the operator then typed a prompt still read as 'notification'; fixture case added).
       if (queuedHumanPrompt(d)) { kind = 'operator'; continue; }
+      // An `api-request-blob` carries the instruction dump as a user message - no turn opener.
+      if (!isTranscriptRecord(d)) continue;
       if (!d.message || d.message.role !== 'user') continue;
       const t = recordText(d.message);
       if (t === null || HOOK_ECHO.test(t)) continue;
