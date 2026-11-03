@@ -144,6 +144,20 @@ probe "marker pull --rebase; status"  "$TWO" "git -C $REPO_N pull --rebase; git 
 [ "$(cat "$GD/claude-op-owner" 2>/dev/null)" = "sess-A" ] && ok "owner kept when a later call in the same command reads" || bad "owner dropped by a later call in the same command"
 rm -f "$GD/claude-op-owner"
 
+echo "one session, uncommitted work in the checkout (2026-11-03):"
+# measured: `git switch -c` ran in the operator's project checkout over their uncommitted settings — the guard held only
+# with a second session. A HEAD move or a tree clear over changes this session did not commit is held either way.
+probe "switch, clean checkout"         "$ONE" "git -C $REPO_N switch -c clean-branch"                  allow
+printf 'theirs\n' > "$REPO/a.txt"; printf 'new\n' > "$REPO/untracked.txt"
+probe "switch over uncommitted work"   "$ONE" "git -C $REPO_N switch -c over-work"                     block
+probe "checkout -b over uncommitted"   "$ONE" "git -C $REPO_N checkout -b over-work"                   block
+probe "stash over uncommitted"         "$ONE" "git -C $REPO_N stash"                                   block
+probe "commit by path still passes"    "$ONE" "git -C $REPO_N commit a.txt -m x"                       allow
+probe "marker opens it"                "$ONE" "git -C $REPO_N switch -c over-work  # MECHANISM-OK: fixture" allow
+printf 'x\n' > "$PRIV/scratch.txt"
+probe "own scratchpad worktree, dirty" "$ONE" "git -C $PRIV_N switch -c in-scratch"                    allow
+git -C "$REPO" checkout -q -- a.txt; rm -f "$REPO/untracked.txt" "$PRIV/scratch.txt"
+
 echo "fail-open:"
 probe "not a git repo"               "$TWO" "git -C $TMP_N/nowhere commit -m x"                     allow
 probe "broken json"                  "$TWO" ""                                                     allow
