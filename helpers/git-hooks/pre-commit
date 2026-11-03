@@ -82,7 +82,7 @@ behind_check() {
   remote=$(git config "branch.$br.remote" 2>/dev/null)
   [ -n "$remote" ] && [ "$remote" != "." ] || return 0
   # A watched background fetch, not `timeout` (stock macOS has none, os-traps OS-16).
-  GIT_TERMINAL_PROMPT=0 git fetch -q "$remote" >/dev/null 2>&1 &
+  GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true SSH_ASKPASS=true git fetch -q --no-write-fetch-head "$remote" >/dev/null 2>&1 &
   fpid=$!
   while kill -0 "$fpid" 2>/dev/null; do
     if [ "$ticks" -ge "$limit" ]; then
