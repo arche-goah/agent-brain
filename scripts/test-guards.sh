@@ -295,6 +295,12 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: grep in ci-watch.sh" Bash command "grep -n usage core/scripts/ci-watch.sh" allow
   tr_probe "mechanism-guard/core rule: grep for the call text" Bash command "grep -n 'ci-watch.sh pr o/r 5' scripts/test-x.sh" allow
   tr_probe "mechanism-guard/core rule: sed on a watch script" Bash command "sed -n 1,25p core/scripts/shared-memory-watch.sh" allow
+  # 2026-11-03: a `|` the shell never runs as a pipe (escaped, or inside quotes) separates nothing — a grep
+  # alternation "a\|collab-watch.sh" was held twice in one session as a pipe into the watch script.
+  tr_probe "mechanism-guard/core rule: escaped pipe in a grep pattern" Bash command 'grep -n "Monitor\|collab-watch.sh" core/skills/collab-watch/SKILL.md | head -8' allow
+  tr_probe "mechanism-guard/core rule: plain pipe inside single quotes" Bash command "grep -E 'usage|ci-watch.sh' core/scripts/ci-watch.sh" allow
+  tr_probe "mechanism-guard/core rule: a real pipe into a watch script still blocks" Bash command "echo x | bash core/scripts/ci-watch.sh pr o/r 5" block
+  tr_probe "mechanism-guard/core rule: a real pipe after a quoted '|' still blocks" Bash command "grep -E 'a|b' f | bash core/scripts/ci-watch.sh pr o/r 5" block
   tr_probe "mechanism-guard/core rule: ci-watch after ; still blocks" Bash command "echo go; bash core/scripts/ci-watch.sh pr o/r 5" block
   tr_probe "mechanism-guard/core rule: ci-watch inside until still blocks" Bash command "until bash core/scripts/ci-watch.sh pr o/r 5; do :; done" block
   tr_probe "mechanism-guard/core rule: wait script by bare path still blocks" Bash command "core/scripts/wait-mcp-reconnect.sh td" block
