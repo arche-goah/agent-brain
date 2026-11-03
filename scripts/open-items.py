@@ -462,6 +462,11 @@ def auto_class(it, repo, human_rx):
             return "ai", f"unknown exit '{it['exit']}' — write one of {', '.join(sorted(EXITS))} (skill backlog-catch-up)"
         if it.get("lclass") == "decision":
             return "human", "a decision in the ledger"
+        # No exit = never sorted: who moves next is unknown, not "ours". Measured 2026-11-03: three
+        # entries whose rest was the operator's hand at a bench printed as plain agent work for 8-11
+        # sessions. Sorting is the agent's move, and the line says that, not more.
+        if not it.get("exit"):
+            return "ai", "no exit line yet — sort it: who moves next (skill backlog-catch-up)"
         return "ai", "ledger work item"
     if it.get("file"):
         m = CIRCLE.search(front(it, repo))

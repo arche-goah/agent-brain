@@ -21,6 +21,9 @@
     with "our check request of <date> to <next> has no answer - ask that machine by name" (operator rule 2026-10-21).
     `shared_answers.own_open_requests()` reads frontmatter `von` = this device, `status: open`, PRs as `<repo>#N [#M …]`
     in `description`. Measured the same day: three own PRs waiting on a Windows check were printed as our move. Fixture +4.
+  - An own request counts as open only while no OTHER party named it (the addressee inbox's rule): ~180 own requests stood
+    on `status: open` long after their answer. A ledger entry without any exit line says "no exit line yet — sort it"
+    instead of "ledger work item" (three bench entries needing the operator's hand read as plain agent work). Fixture +3.
   - `suite-check.py`: a pin on a tag missing from a single-branch clone (fetch refspec names one branch) is WARN
     "unchecked (git fetch --tags)", not "is no tag of this repo" — the push lint of a fresh `--single-branch` clone went red
     on v2.0.0, which origin has. Offline on purpose: an `ls-remote` variant cost ~45 s of fixture time. Fixture +2.

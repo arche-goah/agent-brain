@@ -510,7 +510,8 @@ printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2
   '- [ ] Done but open' '  id: done-open' '  exit: done-already 2026-10-28 — built' '' \
   '- [ ] Exit never moved' '  id: stale-exit' '  check: gh pr list --head fix/thing --state merged' '  exit: ai-does-it 2026-10-28 — build it' '' \
   '- [ ] In-pr without a ref' '  id: inpr-noref' '  exit: in-pr 2026-10-28 — the follow-up branch' '' \
-  '- [ ] In-pr ref on the next line' '  id: inpr-cont' '  exit: in-pr 2026-10-28 — skill text as the' '  follow-up core#31' >> "$G/docs/x/open.md"
+  '- [ ] In-pr ref on the next line' '  id: inpr-cont' '  exit: in-pr 2026-10-28 — skill text as the' '  follow-up core#31' '' \
+  '- [ ] Never sorted' '  id: unsorted' '  check: none — needs a hand at the bench' >> "$G/docs/x/open.md"
 git -C "$G" add -A
 git -C "$G" -c user.email=t@t -c user.name=t commit -qm carried
 printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":5,"nodes":[%s,%s,%s,%s,%s]}}}\n' \
@@ -537,6 +538,8 @@ has "[ledger|ai]" "$(line ' stale-exit ' "$out")" && ok "the stale exit stays ou
 has "names no PR at all" "$(line ' inpr-noref ' "$out")" && ok "in-pr without any PR reference says so" || bad "in-pr no ref: $(line ' inpr-noref ' "$out")"
 has "waiting on the open PR core#31" "$(line ' inpr-cont ' "$out")" && ok "an in-pr exit naming its PR on the next line waits on it" \
   || bad "in-pr continuation: $(line ' inpr-cont ' "$out")"
+has "no exit line yet — sort it" "$(line ' unsorted ' "$out")" && ok "an entry without exit asks to be sorted, not read as plain own work" \
+  || bad "unsorted: $(line ' unsorted ' "$out")"
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
