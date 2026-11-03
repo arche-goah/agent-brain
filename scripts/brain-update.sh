@@ -511,6 +511,25 @@ if [ -f core/scripts/pending-clauses.py ]; then
   fi
 fi
 
+# 4e) ledger reconcile after the pin move — work that shipped in the new pin turns ledger checks green, and the
+# session start shows only the PREVIOUS background result (measured, audit-audit 2026-11-02 package D: entries stayed
+# listed as open own work for up to 17 sessions). A fresh registered run writes .claude-state/ledger-reconcile.json,
+# which open-items.py reads as "check green - tick it". Bounded by the brain's own budget_s (ledgers.json).
+if [ "$changed" -eq 1 ] && [ -f core/scripts/ledger-reconcile.py ] && [ -f .claude/rules/ledgers.json ]; then
+  mkdir -p .claude-state
+  if "$PY" core/scripts/ledger-reconcile.py --root . --brief --out .claude-state/ledger-reconcile.brief >/dev/null 2>&1; then
+    n=$("$PY" -c 'import json,sys; print(len(json.load(open(sys.argv[1], encoding="utf-8")).get("done_open", [])))' \
+      .claude-state/ledger-reconcile.json 2>/dev/null)
+    case "$n" in
+      ''|*[!0-9]*) echo "WARN ledger reconcile ran, but its result file is unreadable" ;;
+      0) echo "OK   ledger reconcile after the pin move: no open entry whose check passes" ;;
+      *) echo "NOTE ledger reconcile after the pin move: $n open entr(y/ies) whose check passes — tick them (core/scripts/open-items.py lists them)" ;;
+    esac
+  else
+    echo "WARN ledger reconcile after the pin move did not run (core/scripts/ledger-reconcile.py)"
+  fi
+fi
+
 # 5) commit + push (own brain repo only — that is where this script lives)
 # `git diff --quiet` answers 0 = clean, 1 = differences, >1 = it could not tell (128 in a
 # non-repo). Testing it with `if !` collapses the last two into "there are changes", and

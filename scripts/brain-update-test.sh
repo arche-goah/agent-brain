@@ -148,6 +148,9 @@ for v in 1.0.0 2.0.0; do
   if [ "$v" = 2.0.0 ]; then
     mkdir -p "$SB/src/templates/rules-instance"; echo '{}' > "$SB/src/templates/rules-instance/demo-data.json"
     git -C "$SB/src" add templates
+    # ... and the ledger reconcile (step 4e: a fresh run after the pin move)
+    mkdir -p "$SB/src/scripts"; cp "$(dirname "$UPD")/ledger-reconcile.py" "$SB/src/scripts/"
+    git -C "$SB/src" add scripts
   fi
   git -C "$SB/src" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$v"
   git -C "$SB/src" tag "v$v"
@@ -276,6 +279,23 @@ case "$out" in
   *"demo-data.json missing"*) bad "instance data present, still reported missing" ;;
   *) ok "instance data present: no report (control)" ;;
 esac
+# 7. the pin moves and a registered ledger entry's check passes (audit-audit 2026-11-02, package D: such entries
+#    stayed listed as open work for up to 17 sessions): a fresh reconcile runs and names the count ...
+case "$out" in
+  *"ledger reconcile after the pin move"*) bad "a brain without registered ledgers got a reconcile line (control)" ;;
+  *) ok "no registered ledgers: no reconcile line (control)" ;;
+esac
+mk_brain ledger v1.0.0 2.0.0 "mk" ""
+mkdir -p "$SB/ledger/.claude/rules" "$SB/ledger/docs"
+printf '%s\n' '{"ledgers": ["docs/l.md"], "allowed": ["test"]}' > "$SB/ledger/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] **shipped** — derived (2026-10-01)' '  id: shipped' '  check: test -f docs/l.md' > "$SB/ledger/docs/l.md"
+out=$(run_brain ledger)
+case "$out" in
+  *"NOTE ledger reconcile after the pin move: 1 open entr"*) ok "pin move: a fresh reconcile names the green entry" ;;
+  *) bad "pin move: no fresh reconcile count: $(printf %s "$out" | grep -a -m1 'ledger')" ;;
+esac
+[ -f "$SB/ledger/.claude-state/ledger-reconcile.json" ] && ok "pin move: the reconcile wrote its result for open-items" \
+  || bad "pin move: no .claude-state/ledger-reconcile.json"
 # 7. provenance auto-heal (2026-11-02): the cache record names an old commit and its content an old version
 #    while the pin names v2.0.0. With a reinstall that fixes it, the run heals and re-checks; with one that changes
 #    nothing (foreign content stays), the FAIL line stays.

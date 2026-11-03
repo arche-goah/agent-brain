@@ -228,6 +228,7 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
                 out["unproven"].append(label(e, rel))
             elif res == "pass" and not e["done"]:
                 out["done_open"].append(label(e, rel))
+                out.setdefault("done_open_at", []).append({"ledger": rel, "line": e["line"], "id": label(e, rel)})
             elif res == "fail" and e["done"]:
                 out["regressed"].append(label(e, rel))
     return out
@@ -301,6 +302,16 @@ def main():
         with open(tmp, "w", encoding="utf-8", newline="\n") as f:
             json.dump(seen, f, ensure_ascii=False, sort_keys=True)
         os.replace(tmp, seen_path)
+        # The DONE-OPEN entries machine-readably, with the run's time (audit-audit 2026-11-02, package D: entries
+        # whose work shipped in a new pin stayed listed as open own work for up to 17 sessions, because the brief
+        # above is prose only). open-items.py reads this file and lists such an entry as "check green - tick it",
+        # never as open work, while the result is fresher than the ledger file.
+        res_path = seen_path.with_name("ledger-reconcile.json")
+        tmp = res_path.with_name(f"{res_path.name}.{os.getpid()}")
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            json.dump({"at": time.time(), "done_open": r.get("done_open_at", [])}, f, ensure_ascii=False, sort_keys=True)
+        os.replace(tmp, res_path)
+    r.pop("done_open_at", None)
     lines = []
 
     def say(key, head, tail):
