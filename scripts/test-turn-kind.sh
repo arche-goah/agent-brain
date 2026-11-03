@@ -56,6 +56,12 @@ TWO=$'<pasted_content id="a1f0">\nplan one, then sell\n</pasted_content id="a1f0
 [ "$(words $'<pasted_content id="a1f0">\nwait for the CI\n</pasted_content id="ffff">')" = '<pasted_content id="a1f0"> wait for the CI </pasted_content id="ffff">' ] && ok "a closer with another id closes nothing (text kept)" || bad "mismatched ids stripped"
 [ "$(words 'push it, then merge')" = "push it, then merge" ] && ok "a prompt without a pasted block is unchanged" || bad "plain prompt changed"
 [ "$(node -e 'const {operatorWords}=require(process.argv[1]);process.stdout.write(JSON.stringify([operatorWords(null),operatorWords(undefined)]))' "$(native "$D/turn-kind.cjs")")" = '["",""]' ] && ok "no text gives no words" || bad "null/undefined not handled"
+# A hook refusal copied into the prompt without a paste wrapper (measured 2026-11-02: its "only then
+# ask" held two pushes as the operator's condition). The paragraph goes; the words below it stay.
+HK=$'Error: PreToolUse:AskUserQuestion hook error: QUESTION-GATE: the mode question is asked together with 3 others. Ask the decisions first, and only then ask the mode question ALONE.\n\nwhy does this gate fire in interactive mode?'
+[ "$(words "$HK")" = "why does this gate fire in interactive mode?" ] && ok "a pasted hook refusal is not the operator's words, the question below stays" || bad "hook paste: '$(words "$HK")'"
+[ -z "$(words $'Stop hook feedback:\nSTOP-CHECKS (1)\n- then do X')" ] && ok "a pasted Stop hook feedback alone leaves no words" || bad "stop feedback paste kept"
+[ "$(words 'the hook error said then wait')" = "the hook error said then wait" ] && ok "negative control: words that only mention a hook error stay" || bad "mention stripped"
 [ "$(probe "$P1")" = false ] && ok "a paste-only record is still a prompt (it opens a turn)" || bad "paste-only record read as notification"
 
 # Another agent's message (subagent hand-back, peer session): origin.kind "peer"; the operator's words: "human".
