@@ -335,7 +335,7 @@ if [[ -n "$BOOT_BG" && -f "$HERE/shared-memory-check.sh" ]]; then
 fi
 if [[ -n "$BOOT_BG" && -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
   gh api graphql -f q="user:$eco_owner is:pr is:open archived:false" -f query='query($q: String!) { viewer { login }
-    search(query: $q, type: ISSUE, first: 40) { nodes { ... on PullRequest {
+    search(query: $q, type: ISSUE, first: 100) { issueCount nodes { ... on PullRequest {
       number isDraft body repository { name } author { login }
       commits(last: 1) { nodes { commit { oid committedDate } } }
       reviews(last: 30) { nodes { author { login } state submittedAt body } }
@@ -720,8 +720,10 @@ fi
 # A failed run prints a NOT-checked line — never silence, never "nothing open".
 boot_mark shared-memory-check
 if [[ -f "$HERE/../scripts/open-items.py" ]]; then
+  # --top: the N oldest per side, the counts stay whole (operator 2026-11-03; hook output past 10 000 characters is cut
+  # silently). OPEN_ITEMS_TOP=0 shows everything.
   CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/open-items.py" --owner "$eco_owner" \
-      --hook-input "$HOOK_INPUT" 2>/dev/null \
+      --hook-input "$HOOK_INPUT" --top "${OPEN_ITEMS_TOP:-5}" 2>/dev/null \
     || echo "!! open for us: NOT checked — open-items.py failed; run: $PY core/scripts/open-items.py"
 fi
 # Watch readiness (operator order 2026-10-16: core functions must run by default on every

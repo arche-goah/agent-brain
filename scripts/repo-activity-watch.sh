@@ -169,7 +169,7 @@ while true; do
         emit "$clone" < <(gh api "repos/$full/$kind?since=$SINCE&per_page=50" 2>/dev/null \
           | "$PY" "$HERE/repo-activity-filter.py" comments "$full" "$SINCE" "$SELF" "$ONLY")
       done
-      emit "$clone" < <(gh pr list --repo "$full" --state open --limit 50 \
+      emit "$clone" < <(gh pr list --repo "$full" --state open --limit 1000 \
           --json number,title,author,createdAt,headRefName,headRefOid,isDraft 2>/dev/null \
         | "$PY" "$HERE/repo-activity-filter.py" open "$full" "$SINCE" "$SELF" "$ONLY")
       emit "$clone" < <(gh pr list --repo "$full" --state merged --limit 50 \
