@@ -37,7 +37,8 @@ printf '%s\n' '- [ ] Write the docs' '  - class: todo' '- [x] Old decision' '  -
 # The entry's last exit says who moves (2026-10-28: 22 counted, none an operator decision by its exit).
 X="$T/exit"; mkdir -p "$X/.claude/rules" "$X/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$X/.claude/rules/ledgers.json"
-printf '%s\n' '- [ ] Parked choice' '  - class: decision' '  exit: parked 2026-10-20' '- [ ] Release now' '  - class: decision' '  exit: operator-decision 2026-10-28' '  ask-when: 2026-01-01' > "$X/docs/questions.md"   # a date reached: due (counter-case to ask-when in $N)
+# "Parked choice" writes its exit as a list item, the project ledgers' form (2026-11-03: such exits went unread).
+printf '%s\n' '- [ ] Parked choice' '  - class: decision' '  - exit: parked 2026-10-20' '- [ ] Release now' '  - class: decision' '  exit: operator-decision 2026-10-28' '  ask-when: 2026-01-01' > "$X/docs/questions.md"   # a date reached: due (counter-case to ask-when in $N)
 O="$T/circle"; mkdir -p "$O/.claude/rules" "$O/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$O/.claude/rules/ledgers.json"
 printf '%s\n' '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Release now' '  - class: decision' '  - circle: B' > "$O/docs/questions.md"
@@ -55,6 +56,9 @@ f="$T/1.jsonl"; { user "fix the parser"; asst "done"; user "anything open for me
 check "the incident: asked what is open, decisions answered in prose" "$f" "$B" block
 f="$T/2.jsonl"; { user "anything open for me?"; asst "Two decisions:"; ask; } > "$f"
 check "same question, answered through the question tool" "$f" "$B" allow
+# An api-request-blob after the prompt repeats its text; it is no prompt (class sweep 2026-11-03).
+f="$T/2b.jsonl"; { user "anything open for me?"; ask; printf '%s\n' '{"type":"api-request-blob","message":{"role":"user","content":"anything open for me?"}}'; asst "Two decisions:"; } > "$f"
+check "a blob repeating the prompt does not hide the turn's question" "$f" "$B" allow
 # Typed mid-turn (queued_command, turn-kind #139): the operator's word, and an AskUserQuestion of an
 # EARLIER turn does not count for it.
 f="$T/2q.jsonl"; { user "anything open for me?"; ask; user "now fix the parser"; asst "working"; qcmd "anything open for me?"; asst "Four points, recommendation yes each."; } > "$f"
@@ -112,4 +116,29 @@ f="$T/h1.jsonl"; { user "anything open for me?"; asst "One thing: update the rou
 check "an open hand step answered in prose" "$f" "$H" block
 f="$T/h2.jsonl"; { user "anything open for me?"; asst "One hand step:"; ask; } > "$f"
 check "the same hand step through the question tool" "$f" "$H" allow
+# The close turn (measured 2026-11-02, macOS instance, the operator: the mode question is needless there):
+# a close stamp of this session and turn drops "continue autonomously?"; hand steps stay demanded.
+C="$T/close"; mkdir -p "$C/.claude/rules" "$C/docs/maintenance" "$C/.claude-state"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$C/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Write the docs' '  - class: todo' > "$C/docs/questions.md"
+printf '%s\n' '# Session log' '- 2026-11-02 17:27:36 | main | close | x' '  open end: something - awaited' > "$C/docs/maintenance/session-log.md"
+printf '%s\n' 's1' '- 2026-11-02 17:27:36 | main | close | x' > "$C/.claude-state/session-close.stamp"
+tsuser() { printf '{"type":"user","timestamp":"2020-01-01T00:00:00Z","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
+pre() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"bash core/helpers/session-closing.sh --pre-commit"}}]}}\n'; }
+checks() { # $1 label, $2 transcript, $3 brain, $4 block|allow, $5 session id
+  local out
+  out=$(printf '{"transcript_path":"%s","cwd":"%s","session_id":"%s"}' "$(native "$2")" "$(native "$3")" "$5" | CLAUDE_PROJECT_DIR="$(native "$3")" node "$(native "$G")" 2>&1)
+  case "$out" in
+    *'"decision":"block"'*) [ "$4" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:160}";;
+    *) [ "$4" = allow ] && ok "$1 allows" || bad "$1 did NOT block: '${out:0:160}'";;
+  esac
+}
+f="$T/c1.jsonl"; { user "work through everything autonomously"; asst "on it"; tsuser "normal mode again, close the session"; pre; asst "Closed. You can shut down."; } > "$f"
+checks "the close turn after an autonomous run: no mode question" "$f" "$C" allow s1
+checks "the same close, the stamp names another session" "$f" "$C" block s2
+f="$T/c2.jsonl"; { user "work through everything autonomously"; asst "on it"; tsuser "normal mode again, close the session"; asst "Closed. You can shut down."; } > "$f"
+checks "the same reply without the close in this turn" "$f" "$C" block s1
+cp "$H/docs/questions.md" "$C/docs/questions.md"
+checks "a close does not pass an open hand step" "$T/c1.jsonl" "$C" block s1
+
 [ "$fail" = 0 ] && echo "decision-presentation-gate: all cases pass" || { echo "decision-presentation-gate: FAILURES"; exit 1; }

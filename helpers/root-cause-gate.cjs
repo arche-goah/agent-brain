@@ -49,7 +49,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
 
@@ -173,6 +173,15 @@ function readTurns(tp, tail) {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    // A message the operator types while the agent works lands as a queued_command attachment, not a user
+    // record; it opens its own segment (measured on the macOS instance 2026-10-29: in one long turn every
+    // correction arrived this way and none was judged; the instance copy carried this until the pin removed it).
+    const queued = queuedHumanPrompt(d);
+    if (queued) {
+      cur = { prompt: queued, when: d.timestamp || '', texts: [], writes: [], fired: false };
+      turns.push(cur);
+      continue;
+    }
     const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       if (!cur) continue;
@@ -205,6 +214,22 @@ function causeIn(texts, rx) {
   return texts.some((t) => rx.test(stripQuoted(t)));
 }
 
+// "Carrier: none" is an escape the agent can always write, so on its own it releases nothing (operator decision
+// 2026-11-02 on the macOS instance, translated: "a cause does not only belong in the register, the fix at the root
+// is built and secured mechanically ... that in itself should be secured mechanically" - measured the same day: 41
+// register entries "carrier: none", three written in one session to pass this very check). It counts only with the
+// operator's agreement quoted on the same line, `operator-ok: "<words>"`, and those words must stand in one of the
+// operator's own messages of the transcript - an invented quote releases nothing.
+const OK_QUOTE = /operator-ok:\s*["„“]([^"„“”\n]{4,})["“”]/iu;
+function noCarrierAgreed(texts, rxNone, turns) {
+  const said = turns.map((t) => operatorWords(t.prompt || '')).join('\n').toLowerCase();
+  return texts.some((t) => t.split('\n').some((line) => {
+    if (!rxNone.test(stripQuoted(line))) return false;
+    const q = OK_QUOTE.exec(line);
+    return !!q && said.includes(q[1].trim().toLowerCase());
+  }));
+}
+
 function gate(input) {
   OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active || !input.transcript_path) return;
@@ -226,7 +251,7 @@ function gate(input) {
   if (cause) {
     const reg = registerPath(cwd);
     const mech = turn.writes.some(isMechanismWrite)
-      || causeIn(turn.texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'));
+      || noCarrierAgreed(turn.texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'), turns);
     const registered = writesTo(turn.writes, reg);
     if (mech && registered) return;
     const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`].filter(Boolean).join(', ');
@@ -235,8 +260,10 @@ function gate(input) {
       reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}. Fixing the instance (a re-post, a manual merge, a `
         + 'ledger or memory note) leaves the tool that let it happen as it was. Before this turn ends: change the '
         + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
-        + 'lives) with a fixture, or say Carrier: none - <why no mechanism can carry it>; AND write the entry in '
-        + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits.`,
+        + 'lives) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
+        + 'operator-ok: "<their words>", found in their own messages - never on the agent\'s say-so; AND write the entry in '
+        + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits, `
+        + 'found-by (operator | work | ci | <the check that found it>; when not a check: should-have: <the check that should have>).',
     }, input)));
     return;
   }
@@ -271,7 +298,22 @@ function review(args) {
   const rxZ = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
   let files;
   try {
+    // A headless model call (the prompt classifier, `claude -p`) leaves a transcript of its own whose records carry
+    // `entrypoint: "sdk-cli"`; its prompt quotes the operator and matches the correction words. Measured 2026-11-02 on
+    // the macOS instance: 116 such transcripts in a week, 63 "corrections" instead of 16, and as the newest files they
+    // pushed the real sessions out of the newest-N window. They are no session — left out before the window is cut.
+    const headless = (p) => {
+      try {
+        // 256 KB: the first record of such a call is its whole prompt, the field can stand after it (measured: not
+        // within the first 4 KB). The FIRST entrypoint value decides, so a quoted field later in a session does not.
+        const fd = fs.openSync(p, 'r'); const buf = Buffer.alloc(256 * 1024);
+        const len = fs.readSync(fd, buf, 0, buf.length, 0); fs.closeSync(fd);
+        const m = /"entrypoint"\s*:\s*"([^"]+)"/.exec(buf.toString('utf8', 0, len));
+        return !!m && m[1] === 'sdk-cli';
+      } catch (e) { return false; }
+    };
     files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(dir, f))
+      .filter((f) => !headless(f))
       .map((f) => ({ f, m: fs.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m).slice(0, n).map((x) => x.f);
   } catch (e) { console.log(`root-cause review: no transcripts under ${dir}`); return 1; }
   const rxN = loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu');
@@ -329,8 +371,13 @@ function review(args) {
   const due = entries.filter((e) => /^\s*carrier:\s*none\b/im.test(e)
     && (/^\s*recheck:\s*(\d{4}-\d{2}-\d{2})/im.exec(e) || [])[1] <= today);
   const noReplay = entries.filter((e) => !/^\s*replay:\s*\S/im.test(e));
+  // Who found it (audit-audit 2026-11-02, macOS instance: of 144 register entries the operator found 54 %, a check
+  // 6 % — counted by keyword, because no entry said it). The field makes the checks' hit rate a reading, not a guess.
+  const finder = (e) => ((/^\s*found-by:\s*([^\n]+)/im.exec(e) || [])[1] || '').trim().toLowerCase();
+  const withFinder = entries.filter((e) => finder(e));
+  const byCheck = withFinder.filter((e) => !/^(operator|work|ci)\b/.test(finder(e)));
   console.log(`\n## Carrier register (${registerPath(cwd)}): ${entries.length} entries · "none" due for recheck ${due.length}`
-    + ` · without a replay ${noReplay.length}\n`);
+    + ` · without a replay ${noReplay.length} · found-by named ${withFinder.length}, of them by a check ${byCheck.length}\n`);
   for (const e of due) console.log(`- recheck due: ${e.split('\n')[0].trim()}`);
   for (const e of noReplay) console.log(`- no replay yet: ${e.split('\n')[0].trim()}`);
   console.log('\n## Turns that named a cause and wrote no mechanism (newest 40)\n');

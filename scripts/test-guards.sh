@@ -84,10 +84,17 @@ MG=$(mktemp -d)
 mkdir -p "$MG/.claude/rules"
 printf '%s' '[{"pattern":"\\bfixture-shortcut\\b","was":"fixture","stattdessen":"the documented path"}]' \
   > "$MG/.claude/rules/mechanism-rules.json"
+# Node prelude for the probe inputs below: argv as `a`, and unesc() for a value written with JSON escapes (\n, \", \\).
+UNESC='const a=process.argv;const unesc=(s)=>s.replace(/\\(["\\\/nt])/g,(m,c)=>c==="n"?"\n":c==="t"?"\t":c);'
 mg_probe() { # $1 name, $2 command, $3 block|allow
   local out rc
   local helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
-  out=$(printf '{"tool_name":"%s","tool_input":{"command":"%s"},"cwd":"%s"}' "${4:-Bash}" "$2" "$MG" \
+  # JSON built by node from argv: a printf-built input broke on a bare double quote in the command, the guard exited 0
+  # on the bad JSON and the probe read as "allow" (2026-11-02). The probes keep writing \n and \" as JSON escapes;
+  # unesc() turns those into the characters, a bare " stays a quote.
+  # MSYS2_ARG_CONV_EXCL: Git Bash rewrites an argv value that starts with / into a Windows path ("/opt/bin/gh run"
+  # became "C:/Program Files/Git/opt/bin/gh run", the rule missed it - Windows CI 2026-11-03); the cwd goes native.
+  out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:{command:unesc(a[2])},cwd:a[3]}))' "${4:-Bash}" "$2" "$(if command -v cygpath >/dev/null 2>&1; then cygpath -m "$MG"; else printf '%s' "$MG"; fi)" \
         | HOME="$MG" USERPROFILE="$(if command -v cygpath >/dev/null 2>&1; then cygpath -m "$MG"; else printf '%s' "$MG"; fi)" \
           CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1)
   rc=$?
@@ -101,6 +108,7 @@ mg_probe() { # $1 name, $2 command, $3 block|allow
   fi
 }
 mg_probe "mechanism-guard/known shortcut" "fixture-shortcut --now" block
+mg_probe "mechanism-guard/bare double quote in the command (escaping)" 'fixture-shortcut --msg "x"' block
 mg_probe "mechanism-guard/plain command" "git status --short" allow
 # The marker is the guard's own escape hatch — if it stopped working, every documented
 # shortcut would be unreachable and the guard would be switched off within a day.
@@ -220,7 +228,7 @@ printf '%s' '{"enabledPlugins":{"on@fx":true,"off@fx":false}}' > "$TR/fakeuser/.
 tr_probe() { # $1 name, $2 tool_name, $3 field (command|file_path), $4 value, $5 block|allow
   local out helper
   helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
-  out=$(printf '{"tool_name":"%s","tool_input":{"%s":"%s"}}' "$2" "$3" "$4" \
+  out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:{[a[2]]:unesc(a[3])}}))' "$2" "$3" "$4" \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$helper" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
     [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked what it should allow"
@@ -229,6 +237,7 @@ tr_probe() { # $1 name, $2 tool_name, $3 field (command|file_path), $4 value, $5
   fi
 }
 tr_probe "mechanism-guard/tool rule via .mcp.json clone (command)" Bash command "fixture-server-by-hand --x" block
+tr_probe "mechanism-guard/tool rule, bare double quote in the value (escaping)" Bash command 'fixture-server-by-hand --x "y"' block
 tr_probe "mechanism-guard/tool rule via clone (path, Write)" Write file_path "$(native "$TR")/x/fixture-ipc.txt" block
 tr_probe "mechanism-guard/tool rule via clone (path, Edit)" Edit file_path "$(native "$TR")/x/fixture-ipc.txt" block
 tr_probe "mechanism-guard/path rule ignores commands" Bash command "cat notes-about-fixture-ipc.txt.md" allow
@@ -295,6 +304,12 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: grep in ci-watch.sh" Bash command "grep -n usage core/scripts/ci-watch.sh" allow
   tr_probe "mechanism-guard/core rule: grep for the call text" Bash command "grep -n 'ci-watch.sh pr o/r 5' scripts/test-x.sh" allow
   tr_probe "mechanism-guard/core rule: sed on a watch script" Bash command "sed -n 1,25p core/scripts/shared-memory-watch.sh" allow
+  # 2026-11-03: a `|` the shell never runs as a pipe (escaped, or inside quotes) separates nothing — a grep
+  # alternation "a\|collab-watch.sh" was held twice in one session as a pipe into the watch script.
+  tr_probe "mechanism-guard/core rule: escaped pipe in a grep pattern" Bash command 'grep -n "Monitor\|collab-watch.sh" core/skills/collab-watch/SKILL.md | head -8' allow
+  tr_probe "mechanism-guard/core rule: plain pipe inside single quotes" Bash command "grep -E 'usage|ci-watch.sh' core/scripts/ci-watch.sh" allow
+  tr_probe "mechanism-guard/core rule: a real pipe into a watch script still blocks" Bash command "echo x | bash core/scripts/ci-watch.sh pr o/r 5" block
+  tr_probe "mechanism-guard/core rule: a real pipe after a quoted '|' still blocks" Bash command "grep -E 'a|b' f | bash core/scripts/ci-watch.sh pr o/r 5" block
   tr_probe "mechanism-guard/core rule: ci-watch after ; still blocks" Bash command "echo go; bash core/scripts/ci-watch.sh pr o/r 5" block
   tr_probe "mechanism-guard/core rule: ci-watch inside until still blocks" Bash command "until bash core/scripts/ci-watch.sh pr o/r 5; do :; done" block
   tr_probe "mechanism-guard/core rule: wait script by bare path still blocks" Bash command "core/scripts/wait-mcp-reconnect.sh td" block
@@ -312,6 +327,18 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: push HEAD:feat (control)" Bash command "git push origin HEAD:feat" allow
   tr_probe "mechanism-guard/core rule: push to a URL (control)" Bash command "git push https://example.com/o/r.git feat" allow
   tr_probe "mechanism-guard/core rule: plain feature push (control)" Bash command 'git -C /r push -u origin feat/x' allow
+  # 2026-11-02: the template dropped its `git -C * push ...` text rules (they matched commit messages);
+  # the guard, which blanks quoted messages, carries every -C form, delete and --no-verify instead
+  tr_probe "mechanism-guard/core rule: force with -C" Bash command 'git -C /r push --force origin b' block
+  tr_probe "mechanism-guard/core rule: +refspec with -C" Bash command 'git -C /r push origin +main' block
+  tr_probe "mechanism-guard/core rule: --delete with -C" Bash command 'git -C /r push origin --delete feat' block
+  tr_probe "mechanism-guard/core rule: -d with -C" Bash command 'git -C /r push -d origin feat' block
+  tr_probe "mechanism-guard/core rule: --no-verify skips the pre-push hook" Bash command 'git -C /r push --no-verify origin main' block
+  tr_probe "mechanism-guard/core rule: force-with-lease" Bash command 'git -C /r push --force-with-lease' block
+  # (no double quotes in these values: tr_probe writes them into JSON unescaped, and a broken JSON reads as allow)
+  tr_probe "mechanism-guard/core rule: pre-push marker needs the word" Bash command 'PUSH_GUARD_OK=cleanup git -C /r push origin feat' block
+  tr_probe "mechanism-guard/core rule: commit message with push and +3 (control)" Bash command "git -C /r commit -q -m 'a push is judged by the branch' -m 'Fixture +3 with a real repo' -- a.cjs" allow
+  tr_probe "mechanism-guard/core rule: commit message naming push --force (control)" Bash command "git -C /r commit -m 'never push --force again'" allow
   # marketplace pin (ported 2026-10-28): writes block, reads pass
   tr_probe "mechanism-guard/core rule: pin edit by sed -i" Bash command "sed -i 's/v1/v2/' m/.claude-plugin/marketplace.json" block
   tr_probe "mechanism-guard/core rule: pin edit by redirect" Bash command "echo x > m/.claude-plugin/marketplace.json" block
@@ -345,6 +372,15 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: run list --workflow= (control)" Bash command "gh run list --workflow=ci.yml --branch main" allow
   tr_probe "mechanism-guard/core rule: run list named in a commit message (control)" Bash command 'git -C /r commit -m \"guard: gh run list without a workflow filter\"' allow
   tr_probe "mechanism-guard/core rule: gh run view (control)" Bash command "gh run view 123 -R o/r --log-failed" allow
+  # An inline script in double quotes: a backtick or $( in its text runs as a command first (measured 2026-11-03,
+  # Windows instance: two backtick paths in a protocol entry ran as scripts; ported from a macOS instance rule).
+  tr_probe "mechanism-guard/core rule: python -c with a backtick" Bash command 'python3 -c \"print(`date`)\"' block
+  tr_probe "mechanism-guard/core rule: node -e with \$(" Bash command 'node -e \"console.log($(cat f))\"' block
+  tr_probe "mechanism-guard/core rule: bash -c with a backtick" Bash command 'bash -c \"echo `id`\"' block
+  tr_probe "mechanism-guard/core rule: inline script in single quotes (control)" Bash command "python3 -c 'print(\`date\`)'" allow
+  tr_probe "mechanism-guard/core rule: inline script without substitution (control)" Bash command 'python3 -c \"print(1)\"' allow
+  tr_probe "mechanism-guard/core rule: escaped backtick (control)" Bash command 'python3 -c \"a = \\`x\\`\"' allow
+  tr_probe "mechanism-guard/core rule: a plain \$VAR (control)" Bash command 'bash -c \"echo $HOME\"' allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then

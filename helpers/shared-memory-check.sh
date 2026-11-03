@@ -114,7 +114,7 @@ fi
 # "nothing new" for a whole session (measured 2026-09-22: every network line of the
 # bootup missing, three foreign commits incl. a merge OK unseen until the operator asked).
 # A check that could not look must never look like a check that found nothing.
-if ! git -C "$REPO" fetch -q origin main 2>/dev/null; then
+if ! git -C "$REPO" fetch -q --no-write-fetch-head origin main 2>/dev/null; then
   echo "$P: NOT checked - fetch failed (offline?). Retry: bash core/helpers/shared-memory-check.sh"
   exit 0
 fi

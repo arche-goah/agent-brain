@@ -178,14 +178,33 @@ def main() -> int:
             ("a core request to a party that handed core mechanics over",
              post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "t")),
             ("the same by person", post(repo, "request", "--area", "core", "--to", "person:sam", "--title", "s")),
+            # 2026-11-03: 17 LOG lines over the entry cap since 2026-10-31, every one written by this tool
+            ("a LOG line over the entry cap",
+             post(repo, "note", "--area", "core", "--to", "kim-pc", "--title", "long title " * 30,
+                  date=sml.LOG_CAP_SINCE)),
         ]
         for name, r in cases:
             check(f"refused: {name}", r.returncode == 2 and "REFUSED" in r.stdout, r.stdout + r.stderr)
         check("a refusal writes nothing",
               files(repo) == before and (repo / "core" / "LOG.md").read_text(encoding="utf-8") == log_before)
-        r = post(repo, "request", "--area", "core", "--to", "alex-win", "--title", "One machine check",
-                 "--body", "Please counter-check on Windows: only this box has the device.",
-                 "--one-machine", "the USB device sits at this box", me="alex-mac")
+        # A request to one machine needs a reason that is more than its OS, and evidence a reader can open
+        # (operator 2026-11-03; measured the same day: five requests carried "the Windows instance is the machine
+        # that does it", the last two went to a Windows device that was not running).
+        one_args = ("request", "--area", "core", "--to", "alex-win", "--title", "One machine check",
+                    "--body", "Please counter-check on Windows: only this box has the device.")
+        for name, extra, word in [
+            ("a reason without evidence", ("--one-machine", "the USB device sits at this box"), "one-machine-evidence"),
+            ("a reason that only names the OS", ("--one-machine", "the Windows instance is the machine that does it",
+                                                 "--one-machine-evidence", "https://example.org/x"), "names only the OS"),
+            ("an OS-check reason", ("--one-machine", "a Windows check at the PR head; the proposal came from here",
+                                    "--one-machine-evidence", "https://example.org/x"), "names only the OS"),
+            ("evidence nobody can open", ("--one-machine", "the USB device sits at this box",
+                                          "--one-machine-evidence", "trust me"), "no evidence a reader can open"),
+        ]:
+            r = post(repo, *one_args, *extra, me="alex-mac")
+            check(f"refused: one machine, {name}", r.returncode == 2 and word in r.stdout, r.stdout + r.stderr)
+        r = post(repo, *one_args, "--one-machine", "the USB device sits at this box",
+                 "--one-machine-evidence", "https://example.org/devices/usb-box", me="alex-mac")
         one = repo / "core" / f"request-one-machine-check-{STATE}.md"
         check("a check for exactly one machine passes with --one-machine, and the reason is written",
               r.returncode == 0 and one.is_file() and "one-machine: the USB device" in one.read_text(encoding="utf-8"),
@@ -273,6 +292,31 @@ def main() -> int:
               any("core" in (i.get("fields") or []) for i in new_hits), json.dumps(new_hits))
         check("NEGATIVE: an entry dated before the rule is not judged", not origin_hits("note-hand-old.md"),
               json.dumps(origin_hits("note-hand-old.md")))
+    # A person whose account cannot see a private repo is left out of `next` for a category address that names
+    # that repo (measured 2026-11-02: a Windows check for a private suite PR went to three devices of a person
+    # whose account cannot open the repo). An explicitly named device stays.
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], capture_output=True)
+        (repo / "core").mkdir()
+        (repo / "core" / "LOG.md").write_text("# Log\n", encoding="utf-8")
+        (repo / "INDEX.md").write_text("# Index\n", encoding="utf-8")
+        (repo / "parties.json").write_text(json.dumps({"people": {
+            "kim": {"github": "k", "devices": {"kim-mac": {"os": "macos"}, "kim-win": {"os": "windows"}}},
+            "lee": {"github": "l", "devices": {"lee-win": {"os": "windows"}},
+                    "private_repos_without_access": ["o/secret-suite"]}}}), encoding="utf-8")
+        r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Check o/secret-suite#4 on Windows",
+                 "--body", "Run the fixture at the head.", me="kim-mac")
+        req = repo / "core" / f"request-check-o-secret-suite-4-on-windows-{STATE}.md"
+        t = req.read_text(encoding="utf-8") if req.is_file() else ""
+        check("os:windows naming a repo a person cannot see leaves that person's devices out of next",
+              "  next: kim-win\n" in t, r.stdout + r.stderr + t)
+        r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Check o/open-suite#5 on Windows",
+                 "--body", "Run the fixture at the head.", me="kim-mac")
+        req = repo / "core" / f"request-check-o-open-suite-5-on-windows-{STATE}.md"
+        t = req.read_text(encoding="utf-8") if req.is_file() else ""
+        check("NEGATIVE: a repo not on the list reaches every Windows device",
+              "  next: kim-win, lee-win\n" in t, r.stdout + r.stderr + t)
     print("shared-memory-post: all cases pass" if not fails else f"shared-memory-post: {fails} FAILURES")
     return 1 if fails else 0
 

@@ -148,6 +148,9 @@ for v in 1.0.0 2.0.0; do
   if [ "$v" = 2.0.0 ]; then
     mkdir -p "$SB/src/templates/rules-instance"; echo '{}' > "$SB/src/templates/rules-instance/demo-data.json"
     git -C "$SB/src" add templates
+    # ... and the ledger reconcile (step 4e: a fresh run after the pin move)
+    mkdir -p "$SB/src/scripts"; cp "$(dirname "$UPD")/ledger-reconcile.py" "$SB/src/scripts/"
+    git -C "$SB/src" add scripts
   fi
   git -C "$SB/src" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$v"
   git -C "$SB/src" tag "v$v"
@@ -161,6 +164,19 @@ if [ "$1 $2 $3" = "plugin marketplace update" ]; then
   exit 0
 fi
 if [ "$1 $2" = "plugin update" ] && [ -n "${STUB_PLUG_FAIL:-}" ]; then exit 1; fi
+# provenance auto-heal: a reinstall rewrites record and content to STUB_HEAL_SHA / STUB_HEAL_VER; without them the
+# reinstall "succeeds" and changes nothing (the mismatch survives, as real foreign content would)
+if [ "$1 $2" = "plugin install" ] && [ -n "${STUB_HEAL_SHA:-}" ]; then
+  PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python   # OS-17
+  "$PY" -c 'import json,os,sys
+p=os.environ["CLAUDE_CONFIG_DIR"]+"/plugins/installed_plugins.json"
+d=json.load(open(p,encoding="utf-8"))
+for x in d["plugins"][sys.argv[1]]:
+    x["gitCommitSha"]=os.environ["STUB_HEAL_SHA"]
+    q=x["installPath"]+"/.claude-plugin/plugin.json"
+    json.dump({"name":"brain-core","version":os.environ["STUB_HEAL_VER"]},open(q,"w",encoding="utf-8"))
+json.dump(d,open(p,"w",encoding="utf-8"))' "$3"
+fi
 exit 0
 SH
 printf '#!/bin/sh\nexit 1\n' > "$STUB/gh"; chmod +x "$STUB/claude" "$STUB/gh"
@@ -263,8 +279,55 @@ case "$out" in
   *"demo-data.json missing"*) bad "instance data present, still reported missing" ;;
   *) ok "instance data present: no report (control)" ;;
 esac
+# 7. the pin moves and a registered ledger entry's check passes (audit-audit 2026-11-02, package D: such entries
+#    stayed listed as open work for up to 17 sessions): a fresh reconcile runs and names the count ...
+case "$out" in
+  *"ledger reconcile after the pin move"*) bad "a brain without registered ledgers got a reconcile line (control)" ;;
+  *) ok "no registered ledgers: no reconcile line (control)" ;;
+esac
+mk_brain ledger v1.0.0 2.0.0 "mk" ""
+mkdir -p "$SB/ledger/.claude/rules" "$SB/ledger/docs"
+printf '%s\n' '{"ledgers": ["docs/l.md"], "allowed": ["test"]}' > "$SB/ledger/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] **shipped** — derived (2026-10-01)' '  id: shipped' '  check: test -f docs/l.md' > "$SB/ledger/docs/l.md"
+out=$(run_brain ledger)
+case "$out" in
+  *"NOTE ledger reconcile after the pin move: 1 open entr"*) ok "pin move: a fresh reconcile names the green entry" ;;
+  *) bad "pin move: no fresh reconcile count: $(printf %s "$out" | grep -a -m1 'ledger')" ;;
+esac
+[ -f "$SB/ledger/.claude-state/ledger-reconcile.json" ] && ok "pin move: the reconcile wrote its result for open-items" \
+  || bad "pin move: no .claude-state/ledger-reconcile.json"
+# 7. provenance auto-heal (2026-11-02): the cache record names an old commit and its content an old version
+#    while the pin names v2.0.0. With a reinstall that fixes it, the run heals and re-checks; with one that changes
+#    nothing (foreign content stays), the FAIL line stays.
+mk_prov() { # $1 name: brain on v2.0.0, plugin record at v1.0.0's commit and content 1.0.0, pin v2.0.0
+  local C="$SB/$1.cfg" ip
+  mk_brain "$1" v2.0.0 2.0.0 "mk" "arche-goah/agent-brain"
+  printf '{"plugins":[{"name":"brain-core","source":{"source":"github","repo":"arche-goah/agent-brain","ref":"v2.0.0"}}]}\n' \
+    > "$C/plugins/marketplaces/mk/.claude-plugin/marketplace.json"
+  mkdir -p "$C/plugins/cache/brain-core/.claude-plugin"
+  printf '{"name":"brain-core","version":"1.0.0"}\n' > "$C/plugins/cache/brain-core/.claude-plugin/plugin.json"
+  ip="$C/plugins/cache/brain-core"; command -v cygpath >/dev/null 2>&1 && ip="$(cygpath -m "$ip")"
+  printf '{"version":2,"plugins":{"brain-core@mk":[{"scope":"user","version":"1.0.0","gitCommitSha":"%s","installPath":"%s"}]}}\n' \
+    "$V1" "$ip" > "$C/plugins/installed_plugins.json"
+}
+mk_prov healme
+out=$(STUB_HEAL_SHA="$V2" STUB_HEAL_VER="2.0.0" run_brain healme arche-goah/agent-brain)
+case "$out" in
+  *"provenance auto-heal: was 1.0.0"*) ok "provenance mismatch: the run reinstalls, re-checks and reports it healed" ;;
+  *) bad "no auto-heal line: $(printf %s "$out" | grep -a -m2 'brain-core@mk')" ;;
+esac
+case "$out" in
+  *"cache provenance mismatch"*) bad "a healed mismatch still printed FAIL" ;;
+  *) ok "a healed mismatch leaves no FAIL line" ;;
+esac
+mk_prov foreign
+out=$(run_brain foreign arche-goah/agent-brain)
+case "$out" in
+  *"cache provenance mismatch"*"auto-heal tried a reinstall"*) ok "a mismatch that survives the reinstall stays FAIL (negative control)" ;;
+  *) bad "surviving mismatch not FAIL: $(printf %s "$out" | grep -a -m2 'brain-core@mk')" ;;
+esac
 rm -rf "$SB"
 
 echo
 if (( fails )); then echo "brain-update-test: $fails FAILURE(S)"; exit 1; fi
-echo "brain-update-test: all 15 checks passed"
+echo "brain-update-test: all 18 checks passed"

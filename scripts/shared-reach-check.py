@@ -25,7 +25,7 @@ At close, three measurements, none a guess:
      ledger-reconcile and open-items read) whose `id:` no shared file mentions — FAIL (the core's Project
      Work Ledgers rule #3: `reach: shared` is exported, deliberately, at session close).
 
-WHERE IT RUNS: at session close (skill session-close, next to lesson-carriers.py and commitments.py). A REPORT
+WHERE IT RUNS: at session close (skill session-close, next to carrier-audit.py and commitments.py). A REPORT
 with FAIL lines, not a hook: the close reads the lines and answers each one (push the shared file, write the
 export, or say "lab" / "stays private" for the unpointed ones). Exit 0 always.
 
@@ -61,6 +61,11 @@ DEFAULTS = {
                 "exports", "configs", "protokoll", "memory-snapshot", "maintenance/", "research/"],
     "markers": ["CANONICAL in shared memory:"],
     "grace_hours": 24,
+    # A project domain shared with a collaborator keeps its results in its OWN repo, not in the brain
+    # (measured 2026-11-03 on the macOS instance: a week of bench results in a project repo, the shared
+    # topic last written five days earlier, and this check silent — it read the brain's docs/ only).
+    # [{"repo": "<path>", "topic": "<shared topic dir>", "roots": ["<paths>"], "exclude": ["<path parts>"]}]
+    "project_repos": [],
 }
 
 
@@ -73,8 +78,12 @@ def load_config(repo: str) -> dict:
         for k in DEFAULTS:
             if k in data:
                 cfg[k] = data[k]
-    except (OSError, ValueError):
+    except OSError:
         pass
+    except ValueError as e:
+        # A broken instance file read as defaults reported "projects_behind=0" over real gaps (measured 2026-11-03:
+        # a straight quote inside a JSON string). Unreadable is said, never read as "nothing configured".
+        cfg["_unreadable"] = f"{path}: {e}"
     return cfg
 
 
@@ -176,6 +185,32 @@ def shared_entries(repo: str) -> list[tuple[str, str]]:
     return found
 
 
+def project_lag(shared: str, since: str, proj: dict) -> dict | None:
+    """A project repo's result documents changed inside the window and no fact file of its shared topic
+    names them. Every changed `.md` under `roots` (a result write-up; raw data files are what the write-up
+    points at) must be named by its file name in some `<topic>/*.md` other than the generated INDEX/OPEN.
+    A date comparison was tried first and measured wrong the same day: an unrelated reply in the topic
+    was newer than the results and hid them."""
+    repo = os.path.expanduser(str(proj.get("repo", "")))
+    topic, roots = str(proj.get("topic", "")), [str(r) for r in proj.get("roots") or ["."]]
+    if not topic or not os.path.isdir(os.path.join(repo, ".git")):
+        return None
+    changed = [p for p in changed_files(repo, since, roots, [str(x) for x in proj.get("exclude") or []])
+               if p.endswith(".md")]
+    if not changed:
+        return None
+    texts = ""
+    tdir = os.path.join(shared, topic)
+    for name in sorted(os.listdir(tdir)) if os.path.isdir(tdir) else []:
+        if name.endswith(".md") and name not in ("INDEX.md", "OPEN.md"):
+            with open(os.path.join(tdir, name), encoding="utf-8", errors="replace") as f:
+                texts += f.read()
+    missing = [p for p in changed if os.path.basename(p) not in texts]
+    if not missing:
+        return None
+    return {"repo": proj.get("repo"), "topic": topic, "missing": missing}
+
+
 def shared_mentions(shared: str, ident: str) -> bool:
     out = git(shared, "grep", "-l", "--fixed-strings", ident, "--", "*.md")
     return bool(out.strip())
@@ -189,10 +224,13 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     cfg = load_config(a.repo)
+    if cfg.get("_unreadable"):
+        print(f"FAIL shared-reach: instance data unreadable ({cfg['_unreadable']}) — NOT checked; fix the file")
+        return 0
     shared = os.path.expanduser(a.shared or cfg["shared_repo"])
     since = a.since or dt.date.today().isoformat()
     result = {"changed": 0, "pointed": 0, "stale": [], "unpointed": [], "shared_entries": 0, "unexported": [],
-              "shared_repo_ok": os.path.isdir(os.path.join(shared, ".git"))}
+              "projects": [], "shared_repo_ok": os.path.isdir(os.path.join(shared, ".git"))}
     if not result["shared_repo_ok"]:
         print(f"shared-reach: no shared-memory repo at {shared} — NOT checked")
     for p in changed_files(a.repo, since, cfg["domain_roots"], cfg["exclude"]):
@@ -219,18 +257,25 @@ def main() -> int:
         result["shared_entries"] += 1
         if result["shared_repo_ok"] and not shared_mentions(shared, ident):
             result["unexported"].append({"ledger": led, "id": ident})
+    for proj in cfg["project_repos"] if result["shared_repo_ok"] else []:
+        lag = project_lag(shared, since, proj if isinstance(proj, dict) else {})
+        if lag:
+            result["projects"].append(lag)
     if a.json:
         print(json.dumps(result, ensure_ascii=False, indent=1))
         return 0
+    for p in result["projects"]:
+        print(f"FAIL shared-reach: project {p['repo']} — no fact file in {p['topic']}/ names {', '.join(p['missing'])}; "
+              "write the essence (results, state of the art) there, pointing at these files")
     for s in result["stale"]:
         print(f"FAIL shared-reach: {s['private']} points to {s['shared']} — {s['why']}; update or push the canonical file")
     for u in result["unexported"]:
         print(f"FAIL shared-reach: ledger {u['ledger']} entry `{u['id']}` is reach: shared but no shared file names it — export it")
     for p in result["unpointed"]:
         print(f"shared-reach: {p} changed privately, no shared counterpart — lab or essence? (one line in the close report)")
-    print("shared-reach summary: changed=%d pointed=%d stale=%d unpointed=%d shared_entries=%d unexported=%d%s" % (
+    print("shared-reach summary: changed=%d pointed=%d stale=%d unpointed=%d shared_entries=%d unexported=%d projects_behind=%d%s" % (
         result["changed"], result["pointed"], len(result["stale"]), len(result["unpointed"]),
-        result["shared_entries"], len(result["unexported"]),
+        result["shared_entries"], len(result["unexported"]), len(result["projects"]),
         "" if result["shared_repo_ok"] else " (shared repo missing — NOT checked)"))
     return 0
 

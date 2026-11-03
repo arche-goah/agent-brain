@@ -117,7 +117,7 @@ arm_sm() {
   local repo="${2/#\~/$HOME}" cursor="$STATE/shared-memory-cursor${3:+-$3}.json"
   local lock="$STATE${3:+/shared-memory-$3}" name="shared-memory${3:+ [$3]}" sha
   if [[ ! -s "$cursor" ]]; then
-    git -C "$repo" fetch -q origin main 2>/dev/null
+    git -C "$repo" fetch -q --no-write-fetch-head origin main 2>/dev/null
     sha=$(git -C "$repo" rev-parse origin/main 2>/dev/null)
     if [[ -z "$sha" ]]; then
       echo "ERROR: cannot read origin/main in $repo — ${name/shared-memory/shared-memory channel} NOT armed"

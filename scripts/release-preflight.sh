@@ -130,7 +130,7 @@ if [ "$MODE" = "local" ]; then
   # and reports that repo's green as this one's (measured 2026-09-23: agent-brain
   # answered for touchdesigner-suite).
   if command -v gh >/dev/null 2>&1; then
-    OPEN="$(cd "$ROOT" && gh pr list --state open --json headRefName,title \
+    OPEN="$(cd "$ROOT" && gh pr list --state open --limit 1000 --json headRefName,title \
       --jq '[.[] | select((.headRefName | startswith("release/")) or (.title | startswith("chore: release")))] | length' 2>/dev/null || echo "?")"
     if [ "$OPEN" = "0" ]; then
       ok "no competing open release PR"
@@ -162,7 +162,7 @@ if [ "$MODE" = "local" ]; then
   # (measured 2026-10-28), which would read as unreadable; an empty output stays "?".
   CAND="?"; LABEL="?"
   if command -v gh >/dev/null 2>&1; then
-    CAND="$(cd "$ROOT" && gh pr list --label beta-candidate --state open --json number --jq '[.[].number] | join(" ")' 2>/dev/null || echo "?")"
+    CAND="$(cd "$ROOT" && gh pr list --label beta-candidate --state open --limit 1000 --json number --jq '[.[].number] | join(" ")' 2>/dev/null || echo "?")"
     [ -n "$CAND" ] || LABEL="$(cd "$ROOT" && gh label list --limit 1000 --json name --jq '[.[] | select(.name == "beta-candidate")] | length' 2>/dev/null || echo "?")"
   fi
   if [ "$CAND" = "?" ] || { [ -z "$CAND" ] && [ "$LABEL" != 0 ] && [ "$LABEL" != 1 ]; }; then

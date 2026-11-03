@@ -608,6 +608,27 @@ def audience_findings(f: dict, where: str, audience: str, what: str, parties: di
                                      "(`one-machine: <why>`)"})
 
 
+ONE_MACHINE_EVIDENCE_SINCE = "2026-11-04"
+HOLLOW_ONE_MACHINE = re.compile(
+    r"\b(?:the|a|an)\s+(?:windows|macos|mac|linux)\s+(?:instance|machine|device|computer|box)\b"
+    r"|^\s*an?\s+(?:windows|macos|mac|linux)\s+check\b", re.I)
+
+
+def one_machine_findings(f: dict, where: str, reason: str, evidence: str) -> None:
+    """9b. `one-machine:` names more than the OS, and `one-machine-evidence:` is a URL, a path or the operator's
+    dated quote (the same forms shared-memory-post.py accepts; the file itself is checked there, at writing)."""
+    if HOLLOW_ONE_MACHINE.search(reason):
+        f["audience"].append({"where": where, "issue": "one-machine reason names only the OS", "reason": reason,
+                              "fix": "address os:<os> - any machine of that OS fits this reason"})
+    ev = evidence.strip()
+    ok = bool(re.match(r"https?://\S+$", ev) or re.match(r"[\w./-]+\.\w+(?::\d+)?$", ev)
+              or (re.search(r"[\"„“'«].{3,}[\"“”'»]", ev) and re.search(r"\b20\d\d-\d\d-\d\d\b", ev)))
+    if not ok:
+        f["audience"].append({"where": where, "issue": "request to one machine without evidence",
+                              "fix": "one-machine-evidence: a URL, a file path[:line], or the operator's quoted "
+                                     "words with their date"})
+
+
 def log_unknown_headings(f: dict, rel: str, text: str) -> None:
     """A dated LOG heading no known shape recognises. The inbox reader prints such a line as
     UNPARSED instead of dropping it; the WRITER hears it here, at the lint. Needs no
@@ -799,6 +820,12 @@ def lint(repo: Path, baseline_path: Path | None = None, area_min: int = AREA_MIN
                                   escape=text)
                 handover_findings(f, rel, str(meta.get("von") or ""), str(meta.get("audience") or ""),
                                   text, parties)
+            # 9b. a request to one machine carries a reason beyond its OS and evidence (operator 2026-11-03,
+            # translated: "an explicit request to one instance must be clearly reasoned and evidenced, otherwise
+            # it must not go through"). Binds a hand-written file too, not only shared-memory-post.py.
+            if (str(meta.get("date", "")) >= ONE_MACHINE_EVIDENCE_SINCE and p.stem.startswith("request-")
+                    and meta.get("one-machine")):
+                one_machine_findings(f, rel, str(meta.get("one-machine")), str(meta.get("one-machine-evidence") or ""))
             # 10. routing fields — no ratchet: they are optional, judged only where used
             field_findings(f, rel, meta, repo, areas, devices)
             # 11. relations — entries dated STATE_SINCE or later. Measured the day it was written:

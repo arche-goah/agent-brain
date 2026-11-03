@@ -72,7 +72,8 @@
     is taken over (state, log lines, export) without deriving a close of one's own — the
     work, not its claims: a state it reports counts once its artifact is read. Paths
     every session writes by construction (memory snapshot, session log, handoff) are
-    committed by the session that closes last, by path, with a note (coherence finding
+    committed by every closing session, by path (operator decision 2026-11-03; "the session
+    that closes last" could not be measured), with a note (coherence finding
     2026-10-19).
 
 13. **Whatever holds the session longer than about half a minute runs detached**
@@ -135,6 +136,9 @@ History: core/docs/rule-history.md, "Session Traceability (3 layers)".
    Entries are `- [ ]` / `- [x]` lines, the file is registered in
    `.claude/rules/ledgers.json` (2026-10-25): the session start lists every open entry with
    the PRs and requests — an unregistered ledger is invisible there (`core/scripts/open-items.py`).
+   Work the operator released in the session carries `released: "<their words>"` on its
+   `exit: ai-does-it` line (2026-11-02); the idle check then holds interactively too
+   (`core/helpers/autonomous-idle-gate.cjs`).
 2. **Every overview above the detail lists is GENERATED, never hand-maintained.**
 3. **`reach: shared`** = exported to the org's shared-memory repo once a second brain
    works the project, one-file-one-fact with the source `id`, deliberately at session

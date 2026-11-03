@@ -34,6 +34,13 @@ let A = args
 if (typeof A === 'string') { try { A = slashPaths(JSON.parse(A)) } catch (e) { A = null } }
 if (!A || !A.date || !A.scratch) throw new Error('coherence-scan requires args {date:"YYYY-MM-DD", scratch:"<abs. path>"} — date via `date +%F`, scratch = session scratchpad subfolder')
 const DATE = A.date
+// PARTIAL RUN (operator decision 2026-11-02, macOS instance: "Teil-Lauf bei Bedarf" — four full runs in 24 days cost
+// ~6.7 M tokens over the 14-day cadence, because the trigger "five new dated rules" is met at almost any rule pace):
+// args.partial = {since: "YYYY-MM-DD"} audits only the rule sources changed since that date, against CLAUDE.md and the
+// core rules, with the three text lenses (contradiction, redundancy-drift, dead-rules) and no scenario traces. The
+// freshness gate lets a partial run through under 14 days; a full run stays at the cadence.
+const PARTIAL = A.partial && typeof A.partial === 'object' && /^\d{4}-\d{2}-\d{2}$/.test(String(A.partial.since || ''))
+  ? { since: String(A.partial.since) } : null
 const CORPUS = `${A.scratch}/corpus`
 // Every stage's bulk output lives here; the next stage reads it from disk.
 const FINDINGS_DIR = `${A.scratch}/findings`
@@ -55,6 +62,8 @@ defend the system. STRICTLY READ-ONLY outside your return value and the one outp
 file this task names. Every claim needs file + verbatim quote.`
 
 const SEVERITY = { type: 'string', enum: ['P0', 'P1', 'P2', 'INFO'] }
+// The exit vocabulary of skill backlog-catch-up — the same the brain-scan's index uses.
+const COH_EXITS = ['done-already', 'ai-does-it', 'other-side', 'parked', 'later-at-system', 'drop', 'operator-decision', 'in-pr']
 // Shape of ONE finding as it is written to the lens files and the merged file. It is
 // prompt text now, not a StructuredOutput schema: the findings never come back through
 // a return value (see the producer-writes block below).
@@ -137,7 +146,7 @@ const assertReport = (expected, claimedPath, bytes, what) => {
 // ── Phase 1: Inventory ─────────────────────────────────────────────────────
 phase('Inventory')
 const inv = await agent(
-  `Build the norm corpus for a coherence audit. Copy the following sources to ${CORPUS}/ (mkdir -p, one subfolder per source, Bash commands individually/atomically):
+  `Build the norm corpus for a coherence audit. ${PARTIAL ? `PARTIAL RUN since ${PARTIAL.since}: copy (1) and (2) in full (CLAUDE.md and every core and instance rule file are the yardstick), and of every OTHER source below ONLY the files changed since ${PARTIAL.since} — measure that with \`git -C ${REPO} log --since=${PARTIAL.since} --name-only --pretty=format:\` (and the same with -C ${REPO}/core for core files; memory files: by mtime, \`find <dir> -newermt ${PARTIAL.since}\`). Write the changed-file list into MANIFEST.md under "Partial run". ` : ''}Copy the following sources to ${CORPUS}/ (mkdir -p, one subfolder per source, Bash commands individually/atomically):
 1. ${REPO}/CLAUDE.md → corpus/claude-md/
 2. ${REPO}/core/rules/*.md AND ${REPO}/.claude/rules/*.md → corpus/rules/ (since the core split, the core rules live under core/rules/ and the instance additions under .claude/rules/ — a corpus without the core half audits only half the norm)
 3. ${REPO}/docs/maintenance/brain-scan-checklist.md → corpus/checklist/
@@ -150,6 +159,7 @@ const inv = await agent(
 10. EVERY ${REPO}/.claude/skills/*/SKILL.md → corpus/skills/instance-<name>.md (ALL instance skill copies, not only the behavior-shaping ones: a brain-side copy of a plugin skill is a second anchoring by construction, and drift between copy and plugin is a coherence finding — measured 2026-09-13: three such copies sat outside the corpus and the verify agents had to measure them by hand; may be none — ls evidence)
 11. EVERY ${REPO}/.claude/skills/*/references/*.md → corpus/skills/instance-<skill>-ref-<file>.md (a skill's references/ carry the mechanism and schemas its procedure points to — measured 2026-09-18: the claim schema a core rule delegates to sat outside the corpus; may be none — ls evidence)
 12. ${REPO}/core/output-styles/*.md → corpus/rules/output-style-<file>.md (a style the plugin forces shapes every reply like a rule; may be none — ls evidence)
+12b. The HEADER of every instance script — the first 40 lines of ${REPO}/scripts/**/*.{py,sh,cjs} (header comments carry WHY and what a script enforces; a script's rule is a norm) → corpus/scripts/<path with / as __>.txt; and the first 40 lines of every report in ${REPO}/docs/research/*/ whose name starts with synthese, synthesis, register or report (decisions and levels named there are norms the rules may miss — measured 2026-11-02 on the macOS instance: a register said "the corpus names no level above the full audit" while the audit-audit's own reports stood under docs/research/) → corpus/research-heads/<folder>__<file>.txt. May be none — ls evidence.
 13. CARRIER CHECK, after copying: grep ${REPO}/CLAUDE.md, ${REPO}/.claude/rules/*.md and ${REPO}/core/rules/*.md for repo-relative carrier paths (.claude/rules/<name>.json, .claude/rules/<name>.md, core/rules/<name>.md, scripts/<name>, references/<name>.md) and test each with ls (a references/ path counts as present when it exists under any ${REPO}/.claude/skills/*/ or ${REPO}/core/skills/*/, OR under the root of a suite a skill is symlinked from — realpath of the skill directory, two levels up — because suites keep references/ at their root; measured on the proving brain: without that, a suite's gate file read as dead). Every named path that does not exist is an anomaly: file + line that names it, in MANIFEST.md and in the returned missing list. A pointer to a deleted carrier is exactly the drift this audit exists to find.
 THEN write ${CORPUS}/MANIFEST.md: every file with source path + line count — MEASURE the numbers (wc -l/grep -c), never estimate; "empty"/"missing" only with ls evidence (incident 2026-08-10: a registry was recorded as empty, actually 100 lines). Its "Anomalies" section lists EVERY missing source and every dead carrier from (13); "None" only when both are empty (measured 2026-09-18: the manifest said "Anomalies: None" while three named carriers were outside the corpus). Memory sources are a live knowledge base and a full audit object; the append-only PROTOCOL label applies EXCLUSIVELY to session-log/decision-log — mark those as DELIBERATELY EXCLUDED, nothing else.
 Return via StructuredOutput: file_count, total_lines, corpus_path, anomalies during copying (missing files!).`,
@@ -181,7 +191,9 @@ const SCENARIOS = [
   { slug: 'trace-measurement', prompt: `SCENARIO TRACE: "The operator asks 'is the signal arriving at the receiver?' about a live system — looks like 30 seconds of work." Walk: whatever measurement duties the CORPUS mandates before the first tool call (instance rule files may add their own — walk only rules that exist in the corpus, a walked rule that exists nowhere is itself a finding), evidence-chain-or-silence, read-before-ask, caveman brevity, act-proactively. Is the mandatory overhead for the trivial question defined, or do "answer fast" and the measurement protocol collide? Where is the cut-off edge?` },
 ]
 
-const ALL_LENSES = [...LENSES, ...SCENARIOS]
+const PARTIAL_LENSES = ['contradiction', 'redundancy-drift', 'dead-rules']
+const ALL_LENSES = PARTIAL ? LENSES.filter(l => PARTIAL_LENSES.includes(l.slug)) : [...LENSES, ...SCENARIOS]
+if (PARTIAL) log(`Partial run since ${PARTIAL.since}: ${ALL_LENSES.length} lenses, no scenario traces`)
 const lensFile = (slug) => `${FINDINGS_DIR}/lens-${slug}.json`
 const lensFiles = ALL_LENSES.map(a => lensFile(a.slug))
 
@@ -228,7 +240,10 @@ log(`${merged.findings.length} consolidated findings in ${MERGED}`)
 
 // ── Phase 4: Adversarial verify (batches) ─────────────────────────────────
 phase('Verify')
-const BATCH = 6
+// 12, not 6 (audit-audit 2026-11-02, macOS instance): the merge cap is 24, so 6 meant four skeptics, each paying ~100k
+// of start context to read the same merged file; two runs in a row confirmed 24/24 (0.68 + 0.80 M verify tokens).
+// Two skeptics of twelve read the same file once more each — the cut is start ballast, not scrutiny per finding.
+const BATCH = 12
 const batches = []
 for (let i = 0; i < merged.findings.length; i += BATCH) batches.push(merged.findings.slice(i, i + BATCH))
 const verifyFile = (i) => `${FINDINGS_DIR}/verify-batch${i + 1}.json`
@@ -273,7 +288,7 @@ phase('Register')
 const p0Machine = surviving.filter(f => f.severity === 'P0').length
 const p1Machine = surviving.filter(f => f.severity === 'P1').length
 const report = await agent(
-  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.\nDATA BASIS ON DISK — read ALL of these completely before writing, never from memory of earlier stages: ${MERGED} (the consolidated findings, full text) and ${verifyFiles.join(', ')} (verdicts with reasoning). The findings that survived verification (index; REFUTED ones are already removed by the script — write exactly these, nothing more, nothing less): ${relay(surviving, 8000, 'surviving index')}\n\nAUTHORITATIVE numbers (machine-derived from the verified index): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if a summary in the files deviates from them, the index wins. Return them unchanged — a deviation in your returned counts aborts the run.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — explicitly: EVERY fix needs the operator's decision.\nTHEN append the P0/P1 findings to ${AUFTRAEGE} under the existing structure as proposal items, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), 1 line each with a pointer to the register — implement NONE of it. FIRST read the open ([ ]) entries of ${AUFTRAEGE}: a finding an open entry already carries (same defect, whichever run or wording filed it) gets NO new entry — append one line "  seen again ${DATE} (coherence-scan) -> <register pointer>" under that entry instead and keep its id (measured 2026-11-02: three coherence runs had filed the always-loaded rule volume as three entries, each copy one more open point at every session start). appended_orders counts only NEW entries.\nAfter writing, MEASURE the register: run \`wc -c < ${REGISTER}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.\nReturn via StructuredOutput: files_read (every data file you read, from your ls), report_path, report_bytes, findings_written (count the finding entries in the register you wrote — measure, e.g. grep -c on the finding headings), p0_count, p1_count, appended_orders.`,
+  `Write the coherence register to ${REGISTER} (mkdir -p ${REPORT_DIR}). Date: ${DATE}.\nDATA BASIS ON DISK — read ALL of these completely before writing, never from memory of earlier stages: ${MERGED} (the consolidated findings, full text) and ${verifyFiles.join(', ')} (verdicts with reasoning). The findings that survived verification (index; REFUTED ones are already removed by the script — write exactly these, nothing more, nothing less): ${relay(surviving, 8000, 'surviving index')}\n\nAUTHORITATIVE numbers (machine-derived from the verified index): ${surviving.length} findings, P0=${p0Machine}, P1=${p1Machine}. Header and prose of the register state exactly these numbers; if a summary in the files deviates from them, the index wins. Return them unchanged — a deviation in your returned counts aborts the run.\n\nStructure: (1) header with scan scope (${inv.file_count} corpus files) + one-line methodology; (2) findings grouped by severity — per finding: title, verdict (CONFIRMED/PLAUSIBLE), both/all occurrences with quote, failure scenario, resolution OPTIONS with recommendation; (3) section "Consolidation candidates" (redundancy findings with proposed canonical place + pointers); (4) section "Next steps" — order fidelity #9 (rules/working-rules.md): the run was ordered, so the session applies the clear and safe fixes (reversible, no live system, no shared carrier) and proposes the structural, uncertain ones or those against a documented operator decision; (5) section "## Finding index": ONE line per finding of EVERY severity (P2 and INFO too), exactly \`- key: KS-<short-slug> | severity: <P0|P1|P2|INFO> | exit: <one of ${COH_EXITS.join(', ')}> | title: <the title>\`.\nTHEN append EVERY finding (all severities — measured 2026-11-02: P2 findings that stood only in the register never reached a decision) to ${AUFTRAEGE} under the existing structure, origin "abgeleitet (coherence-scan ${DATE})" (abgeleitet = derived), each with the lines \`id: <the index key>\`, \`exit: <the same exit> ${DATE} — <one clause why>\` and \`check: <a shell command that is RED while the work is missing — run it now, it must fail>\` or \`check: none — <why not machine-checkable>\`, and a pointer to the register. Write no fix yourself. FIRST read the open ([ ]) entries of ${AUFTRAEGE}: a finding an open entry already carries (same defect, whichever run or wording filed it) gets NO new entry — append one line "  seen again ${DATE} (coherence-scan) -> <register pointer>" under that entry instead and keep its id (measured 2026-11-02: three coherence runs had filed the always-loaded rule volume as three entries, each copy one more open point at every session start). appended_orders counts only NEW entries.\nAfter writing, MEASURE the register: run \`wc -c < ${REGISTER}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.\nReturn via StructuredOutput: files_read (every data file you read, from your ls), report_path, report_bytes, findings_written (count the finding entries in the register you wrote — measure, e.g. grep -c on the finding headings), p0_count, p1_count, appended_orders.`,
   { label: 'register', phase: 'Register', ...modelFor('register'), schema: {
     type: 'object', required: ['files_read', 'report_path', 'report_bytes', 'findings_written', 'p0_count', 'p1_count'],
     properties: {
@@ -283,10 +298,22 @@ const report = await agent(
       findings_written: { type: 'number' },
       p0_count: { type: 'number' }, p1_count: { type: 'number' },
       appended_orders: { type: 'number' },
+      index: { type: 'array', maxItems: 60, items: { type: 'object', required: ['key', 'exit'],
+        properties: { key: { type: 'string' }, exit: { type: 'string' } } } },
     },
   } },
 )
 if (!report) throw new Error('Register agent failed')
+// Every verified finding leaves with exactly ONE exit, like the brain-scan's (audit-audit 2026-11-02, macOS instance:
+// the coherence scan had no index, no exits, P2 findings only in the register, and its head said "NOTHING implemented").
+{
+  const idx = report.index || []
+  const bad = idx.filter(i => !COH_EXITS.includes(String(i.exit)))
+  if (bad.length) throw new Error(`coherence-scan exits: ${bad.length} finding(s) without a valid exit (${bad.map(i => `${i.key}=${i.exit}`).join(', ')}) — one of: ${COH_EXITS.join(', ')}.`)
+  const keys = idx.map(i => i.key)
+  if (new Set(keys).size !== keys.length) throw new Error('coherence-scan exits: a key is used twice — one key, one exit.')
+  assertCount(surviving.length, idx.length, 'coherence-scan findings with an exit in the index')
+}
 assertFiles([MERGED, ...verifyFiles], report.files_read, 'register: data files read from disk')
 assertCount(surviving.length, report.findings_written, 'coherence-scan register findings')
 assertCount(p0Machine, report.p0_count, 'coherence-scan P0')

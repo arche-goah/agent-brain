@@ -126,15 +126,21 @@ def logs(repo: Path) -> list[Path]:
     return sorted(p for p in repo.glob(f"*/{LOG_NAME}") if ".git" not in p.parts)
 
 
-def over_cap(p: dict, me: set[str]) -> list[str]:
+def over_cap(p: dict, me: set[str], today: str) -> list[str]:
     # Without SHARED_MEMORY_SELF no entry can be told to be OWN; reporting all of them would
     # name other instances' entries as "own", which this side cannot shorten.
     if not me:
         return []
     hits = []
-    for b in p["blocks"]:
+    dates = [(re.match(r"^## (\d{4}-\d{2}-\d{2})", b) or [None, None])[1] for b in p["blocks"]]
+    for i, b in enumerate(p["blocks"]):
         m = re.match(r"^## (\d{4}-\d{2}-\d{2})", b)
-        if not m or m.group(1) < ENTRY_CAP_SINCE:
+        # Only an entry that can still be shortened: today's, and the last of its day.
+        # shared-memory-lint refuses a heading edited above the end of its day (the ids of that
+        # day's later entries would shift) - measured 2026-11-03 on the Windows instance, the
+        # pre-commit refused exactly the fix this hint asked for, and one entry's heading alone
+        # was over the cap. A hint that names what cannot be fixed is noise every session.
+        if not m or m.group(1) < ENTRY_CAP_SINCE or m.group(1) != today or m.group(1) in dates[i + 1:]:
             continue
         size = len(b.rstrip("\n").encode("utf-8"))
         if size <= ENTRY_CAP:
@@ -185,7 +191,7 @@ def main() -> int:
         # blocks twice and meet in a merge conflict on LOG.md.
         print(f"shared-memory: LOG rotation due before {current} - {', '.join(due)} - pull, run "
               f"core/scripts/shared-memory-log-rotate.py --write, commit, push")
-    long_ = [h for p in plans for h in over_cap(p, me)]
+    long_ = [h for p in plans for h in over_cap(p, me, args.today[:10])]
     if long_:
         print(f"shared-memory: {len(long_)} own LOG entr{'y' if len(long_) == 1 else 'ies'} over "
               f"{ENTRY_CAP} B (heading + one line, substance in a fact file) - {'; '.join(long_[:5])}")

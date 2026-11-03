@@ -38,6 +38,16 @@ printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "$T/gh"
 stale run-c; wd check >/dev/null
 grep -q "issue NOT opened in owner/private-brain: gh failed" "$P/.claude-state/loop-watchdog.log" && ok "a failed issue is logged, never silent" || bad "failed issue not logged"
 
+# A run ending BLOCKED keeps the away-channel (coherence register 2026-11-02 P1-13): disarm --blocked opens the issue
+# with the reason, a plain disarm opens none.
+printf '%s\n' '#!/usr/bin/env bash' "printf '%s\n' \"\$*\" >> \"$T/gh-calls\"" > "$T/gh"; chmod +x "$T/gh"
+: > "$T/gh-calls"
+wd arm run-d 30 >/dev/null; wd disarm --blocked "Windows check of PR 9 needs the workstation" >/dev/null
+case "$(cat "$T/gh-calls")" in *"--title loop-watchdog: BLOCKED: run-d"*"needs the workstation"*) ok "disarm --blocked opens an issue with the reason";; *) bad "blocked gh: '$(cat "$T/gh-calls")'";; esac
+[ ! -f "$P/.claude-state/loop-watchdog.state" ] && ok "disarm --blocked still ends the run" || bad "state left after disarm --blocked"
+: > "$T/gh-calls"; wd arm run-e 30 >/dev/null; wd disarm >/dev/null
+[ ! -s "$T/gh-calls" ] && ok "negative control: a plain disarm opens no issue" || bad "plain disarm opened: $(cat "$T/gh-calls")"
+
 echo
 [ "$fail" -eq 0 ] && echo "loop-watchdog-alarm: all cases pass" || echo "loop-watchdog-alarm: FAILURES"
 exit "$fail"

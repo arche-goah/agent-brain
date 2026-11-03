@@ -84,7 +84,7 @@ case "$BUDGET" in ''|*[!0-9]*) BUDGET=45 ;; esac
 
 TMPF=$(mktemp 2>/dev/null) || TMPF="${TMPDIR:-/tmp}/session-pull.$$"
 trap 'rm -f "$TMPF"' EXIT
-export GIT_TERMINAL_PROMPT=0 GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME="$STALL"
+export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true SSH_ASKPASS=true GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME="$STALL"
 
 # <seconds> <outfile> cmd... — runs cmd with a stall limit; 124 when it had to be killed.
 run_limited() {

@@ -12,9 +12,12 @@ DATA lives in the shared-memory repo, not here (this repo is public; the list of
 machines is not): `parties.json` at the repo root, one file every party reads.
   {"people": {"<person>": {"github": "<login>",
                            "devices": {"<device-id>": {"os": "macos" | "windows" | "linux" | null}},
-                           "legacy_ids": ["<old id>", ...]}}}
+                           "legacy_ids": ["<old id>", ...],
+                           "private_repos_without_access": ["<owner>/<repo>", ...]}}}
 `os: null` = not known; such a device is reached by its id and its person, never by an
-`os:` category (an unknown OS is not guessed into one).
+`os:` category (an unknown OS is not guessed into one). `private_repos_without_access` (optional):
+repos that person's account cannot open; a category address whose text names one of them
+(`owner/repo#N`) leaves that person's devices out of `next:`.
 
 AUDIENCE SYNTAX (comma-separated, any mix):
   <device-id>          exactly that device (as before)
@@ -73,6 +76,19 @@ def devices(parties: dict) -> dict[str, tuple[str, str | None]]:
         for dev in p.get("legacy_ids") or []:
             out.setdefault(str(dev).lower(), (person.lower(), None))
     return out
+
+
+REPO_REF = re.compile(r"\b([\w.-]+/[\w.-]+)#\d+")
+
+
+def without_access(device: str, text: str, parties: dict) -> bool:
+    """True when `text` names a repo (`owner/repo#N`) that the device's person cannot see
+    (`people.<p>.private_repos_without_access`, a list of `owner/repo`). Visibility hangs on the
+    account, not the device (2026-11-02: one account, three devices)."""
+    person = devices(parties).get(device.lower(), (None, None))[0]
+    p = (parties.get("people") or {}).get(person) or {} if person else {}
+    hidden = {str(r).lower() for r in (p.get("private_repos_without_access") or [])}
+    return bool(hidden) and any(r.lower() in hidden for r in REPO_REF.findall(text or ""))
 
 
 def categories(device: str, parties: dict) -> set[str]:
