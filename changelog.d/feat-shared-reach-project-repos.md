@@ -1,4 +1,4 @@
-- **shared-reach-check reads project repos shared with a collaborator** (test: T1) (level: reader; higher: none — the
+- **shared-reach-check reads project repos shared with a collaborator** (test: T1) (level: reader; higher: design — the
   essence rule stays, its check now sees where project results are written; debt: raw data and the ledger stay out, the
   write-up is the unit). Measured on the macOS instance 2026-11-03 (operator: "are our test results … in the shared memory
   for the collaborator, or only with us?"): a week of bench results lived in the project repo, the shared topic carried none of
