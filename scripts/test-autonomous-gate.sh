@@ -68,6 +68,14 @@ GONE="$T/gone.jsonl"; { user "work through the open points autonomously"; tend; 
 probe "operator answered in this turn: held hooks edit goes to the dialog" Write '{"file_path":"hooks/hooks.json"}' "$APPR" allow
 probe "operator answered mid-turn: the ask rule goes to the dialog" Edit "{\"file_path\":$SET}" "$APPQ" allow
 probe "the answer's turn has ended, a notification woke the run: held again" Write '{"file_path":"hooks/hooks.json"}' "$GONE" block
+# The turn's prompt asked what is open, the last answer switched the run on again (macOS 2026-11-03):
+# the operator left the dialog, so the ask rule is held, not shown.
+answer() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t9","name":"AskUserQuestion","input":{"questions":[]}}]}}\n'
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t9","content":%s}]}}\n' "$(js "Your questions have been answered: $1. You can now continue")"; }
+BACK="$T/back.jsonl"; { user "work through the open points autonomously"; tend; user "anything open for me?"; answer '"Continue autonomously?"="Yes, continue (Recommended)"'; } > "$BACK"
+probe "last answer switched the run back on: the ask rule is held again" Edit "{\"file_path\":$SET}" "$BACK" block
+STAY="$T/stay.jsonl"; { user "work through the open points autonomously"; tend; user "anything open for me?"; answer '"Continue autonomously?"="No, interactive"'; } > "$STAY"
+probe "last answer chose interactive: the ask rule goes to the dialog (control)" Edit "{\"file_path\":$SET}" "$STAY" allow
 probe "operator in this turn, but the question tool stays collected" AskUserQuestion '{"questions":[]}' "$APPR" block
 probe "a bare tool rule from the user settings" WebFetch '{"url":"https://example.com"}' "$AUTO" block
 probe "a tool no rule names" Read '{"file_path":"README.md"}' "$AUTO" allow

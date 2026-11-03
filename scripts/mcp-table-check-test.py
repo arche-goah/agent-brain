@@ -89,5 +89,19 @@ rc, out = run(root)
 check("the same row with the plugin switched off is named", rc == 1 and "row without server: grandma3" in out
       and "grandma3-next" not in out.split("row without server:")[1], out)
 
+# a plugin may declare its server inline in .claude-plugin/plugin.json (macOS finding 2026-11-03)
+INLINE_ROW = PLUGIN_ROW.replace("`grandma3` (Plugin `grandma3-next`", "`touchosc` (Plugin `touchosc-next`")
+(cache / "mkt" / "touchosc-next" / "1.0.0" / ".claude-plugin").mkdir(parents=True)
+pj = cache / "mkt" / "touchosc-next" / "1.0.0" / ".claude-plugin" / "plugin.json"
+pj.write_text(json.dumps({"name": "touchosc-next", "mcpServers": {"touchosc": {"command": "node"}}}), encoding="utf-8")
+root = brain(["alpha"], INLINE_ROW)
+(root / ".claude" / "settings.json").write_text(json.dumps({"enabledPlugins": {"touchosc-next@mkt": True}}), encoding="utf-8")
+rc, out = run(root)
+check("a server declared inline in plugin.json is a plugin server", rc == 0 and out == "", out)
+pj.write_text(json.dumps({"name": "touchosc-next", "mcpServers": "./servers.json"}), encoding="utf-8")
+rc, out = run(root)
+check("negative control: plugin.json naming a file path declares no server here", rc == 1
+      and "row without server: touchosc" in out, out)
+
 print("mcp-table-check-test: " + ("all checks passed" if not fails else f"{fails} FAILED"))
 sys.exit(1 if fails else 0)
