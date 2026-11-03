@@ -29,6 +29,15 @@ o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"change-level"* && "$o" == *"higher: non
 printf '%s\n' '- **x** (test: T1) (level: reader; higher: writer — not needed here; debt: none). Body.' > "$R/changelog.d/bad.md"; gq -C "$R" add -A
 o=$(hook "$R"); [ $? -eq 0 ] && ok "a valid fragment passes" || bad "valid fragment" "$o"
 
+# The English-only ratchet in the same hook (2026-11-03): a staged German line is refused at commit time.
+mkdir -p "$R/scripts"; cp "$HERE/english-only.py" "$R/scripts/english-only.py"
+: > "$R/scripts/english-legacy.txt"   # the sandbox has no legacy files; the real list would name files that are not here
+gq -C "$R" add -A; gq -C "$R" commit -qm tool --no-verify
+printf '%s\n' '- **x** (test: T1) (level: reader; higher: writer — not needed; debt: none). Die Pruefung laeuft ueber den Kern und meldet die Woerter.' > "$R/changelog.d/de.md"; gq -C "$R" add -A
+o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"english-only"* ]] && ok "a staged German line is refused by the English-only ratchet" || bad "German line" "$o"
+rm "$R/changelog.d/de.md"; gq -C "$R" add -A
+o=$(hook "$R"); [ $? -eq 0 ] && ok "  ... and passes once it is gone" || bad "after removal" "$o"
+
 echo ""
 [ "$fails" -eq 0 ] && echo "pre-commit change-level: all $checks checks pass" || echo "pre-commit change-level: $fails of $checks FAILED"
 exit "$fails"

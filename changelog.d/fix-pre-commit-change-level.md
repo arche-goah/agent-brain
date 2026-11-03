@@ -6,3 +6,5 @@
   `scripts/test-pre-commit-change-level.sh` (3 cases; the refused case passed the old hook).
   OS traps register: `test-pre-commit-change-level.sh` joins the OS-3 baseline — it hands no temp path to a native process;
   the hook passes `--root` from `git rev-parse`, which Git Bash already prints in the native form.
+  - The English-only ratchet runs in the same hook where the repo ships it (~0.3 s): a German quote in a fragment reached
+    the push lint the same day. Fixture +2.

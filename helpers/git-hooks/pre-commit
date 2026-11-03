@@ -160,6 +160,12 @@ if [ -f "$root/helpers/change-level.cjs" ] && command -v node >/dev/null 2>&1 \
   run_check "change-level (changelog.d)" node "$root/helpers/change-level.cjs" check --root "$root"
 fi
 
+# The English-only ratchet, where the repo ships it (2026-11-03, same class as the level field: a German quote in a
+# fragment reached the push lint before anything said so). Runs in ~0.3 s over the repo.
+if [ -f "$root/scripts/english-only.py" ]; then
+  run_check "english-only" "$py" "$root/scripts/english-only.py"
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo ""
   echo "Nothing was committed. Fix it — or, with a reason: git commit --no-verify"
