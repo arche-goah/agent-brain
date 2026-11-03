@@ -99,7 +99,7 @@ HARD rule: the rank is the operator's explicit word, then core HARD, then the in
 files, then the rest (operator decision 2026-10-15); HARD itself is reserved for a gate or
 safety rule WITH a mechanical check, never a weight word.
 1. Explicit user instructions · 2. **HARD core rules that name their carrier** (mechanism
-discipline, one system, order fidelity #3 and #7 — `working-rules.md`; evidence chain, the
+discipline, one system, order fidelity #3 and the conditional part of #7 — `working-rules.md`; evidence chain, the
 items naming a carrier — above); a HARD item whose section names no carrier for it ranks with
 item 3 (operator decision 2026-11-03) · 3.
 `.claude/rules/feedback.md` · 4. project conventions · 5. best practices · 6. the AI's own

@@ -297,9 +297,10 @@ History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operat
 
 **Carriers** (operator decision 2026-11-03, HARD needs a mechanical check): #3
 `core/helpers/autonomous-idle-gate.cjs` (an idle end of an autonomous run needs BLOCKED or POOL
-EMPTY, measured), #7 `core/helpers/conditional-order-gate.cjs` (a condition word holds the first
-expensive call). The other items carry none and rank with the instance's rule files
-(`thinking-protocol.md`, Priority Hierarchy).
+EMPTY, measured), #7 in its conditional part only — `core/helpers/conditional-order-gate.cjs` (a
+condition word holds the first expensive call). The rest of #7 ("own notes are not orders",
+"settle WHICH machine first") and the other items carry none and rank with the instance's rule
+files (`thinking-protocol.md`, Priority Hierarchy).
 
 History: core/docs/rule-history.md, "Order Fidelity (Auftragstreue) (HARD)".
 
