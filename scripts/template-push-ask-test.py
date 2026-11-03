@@ -19,9 +19,12 @@ ask = json.loads((ROOT / "templates" / "settings.json").read_text(encoding="utf-
 pats = [m.group(1) for r in ask if (m := re.fullmatch(r"Bash\((.*)\)", r)) and "push" in r and "main" in r]
 
 CASES = [
-    ("git -C /r push origin main", True),
-    ("git -C /r push origin main # note", True),
-    ("git -C /r push origin HEAD:main", True),
+    # Since 2026-11-02 the `git -C <repo> push` forms have no text rule: a glob over the whole command also
+    # matched commit messages; the pre-push hook judges their real target (scripts/test-pre-push.sh).
+    ("git -C /r push origin main", False),
+    ("git -C /r commit -m 'a push to main needs a stamp'", False),
+    ("git push origin main", True),
+    ("git push origin HEAD:main", True),
     ("git push origin feat/x:main", True),
     ("git -C /r push origin maintenance-fix", False),
     ("git -C /r push -u origin fix/main-loop", False),

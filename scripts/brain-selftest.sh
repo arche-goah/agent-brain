@@ -222,11 +222,30 @@ for t in scripts/test-*.sh core/scripts/test-*.sh \
     echo "  ok  $name"
   else
     echo "  !!  $name FAILED"
-    echo "$out" | tail -5 | sed 's/^/        /'
+    # The FAIL lines first, the tail only when there are none (audit-audit 2026-11-02, macOS
+    # instance: four FAIL lines of a red fixture stood above its last five lines and were never shown).
+    { echo "$out" | grep -aE 'FAIL' | head -8; echo "$out" | grep -aqE 'FAIL' || echo "$out" | tail -5; } | sed 's/^/        /'
     fail=1
   fi
 done
-for t in scripts/*-test.py core/scripts/*-test.py; do
+# Node fixtures: a `.cjs` fixture was found by no loop, so a gate proven only by one counted as proven while
+# its proof never ran (audit-audit 2026-11-02: six instance `.cjs` fixtures). A live probe that calls a model
+# is declared in manual-tools.json like any hand tool.
+for t in scripts/test-*.cjs scripts/*-test.cjs scripts/hooks/test-*.cjs core/scripts/test-*.cjs core/scripts/*-test.cjs; do
+  name=$(basename "$t")
+  if is_manual "$t"; then
+    echo "  --  $name — declared a hand tool, not executed (manual-tools.json)"
+    continue
+  fi
+  if out=$(node "$t" 2>&1); then
+    echo "  ok  $name"
+  else
+    echo "  !!  $name FAILED"
+    { echo "$out" | grep -aE 'FAIL' | head -8; echo "$out" | grep -aqE 'FAIL' || echo "$out" | tail -5; } | sed 's/^/        /'
+    fail=1
+  fi
+done
+for t in scripts/*-test.py core/scripts/*-test.py scripts/test-*.py core/scripts/test-*.py; do
   name=$(basename "$t")
   # Same guard as the shell loop: the python naming shape can just as easily match a
   # hand tool, and a rule that covers one of two loops is the defect it is fixing.

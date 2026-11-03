@@ -45,7 +45,7 @@ do, and the deadline lives in the watchdog state. None of them replaces the othe
 | Core done **exactly** at expiry | end |
 | **No reserve pool agreed**, core done early | report and stop — invent nothing (order fidelity #3, `core/rules/working-rules.md`) |
 | **No duration named**, only tasks ("push R3-R6 through") | **not an autonomous run** — normal mode: do the order, then check in (hard gate 1). No pool, no wakeup loop |
-| **List run** — a task LIST plus the operator's explicit word that the agent continues without them ("I'm away", "work the list alone", "autonomous" / the instance language's word for it — that word IS the explicit word, ask no duration); without that word the row above applies and hard gate 1 stands. A skill with its own list loop needs the same word | wakeup yes (a forced turn end arms `ScheduleWakeup`), pool **no**, end of the WORK = list empty or BLOCKED (hard gate 6, with its reconnect watcher): a prose report, the wakeup loop stops, armed watches stay armed — the MODE ends only when the operator ends it, asks interactively themselves, or closes the session (hard gate 7); watchdog armed with a silence limit, no deadline; a skill with its own list loop points here instead of defining its own continuation |
+| **List run** — a task LIST plus the operator's explicit word that the agent continues without them ("I'm away", "work the list alone", "autonomous" / the instance language's word for it — that word IS the explicit word, ask no duration); without that word the row above applies and hard gate 1 stands. A skill with its own list loop needs the same word | wakeup yes (a forced turn end arms `ScheduleWakeup`), pool **no**, end of the WORK = list empty or BLOCKED (hard gate 6, with its reconnect watcher): a prose report whose end line is `LIST EMPTY: <the order, how measured>` or `BLOCKED: …` (the idle gate's tokens; the pool is the ordered list, never the rest of the ledger — Order Fidelity #3), the wakeup loop stops, armed watches stay armed — the MODE ends only when the operator ends it, asks interactively themselves, or closes the session (hard gate 7); watchdog armed with a silence limit, no deadline; a skill with its own list loop points here instead of defining its own continuation |
 
 ⚠ **Never stop just because the minimum time is reached.** The number says "autonomous
 for at least this long", not "stop then".
@@ -114,8 +114,9 @@ The `disarm` output is the evidence that belongs in the report:
    green; building a substitute path is gated (working-rules, Mechanism Discipline). So:
    report `BLOCKED: <path> — <what restores it, who>` with the remaining items, arm a
    watcher on the path itself (the instance's reconnect or link waiter) so the run can
-   resume when it comes back, then `disarm` and `ScheduleWakeup(stop: true)`. The report
-   goes through the instance's channel for an absent operator.
+   resume when it comes back, then `disarm --blocked "<path> — <what restores it, who>"` and
+   `ScheduleWakeup(stop: true)`. A plain `disarm` would switch the only away-channel off;
+   `--blocked` sends the reason through it (the instance's `issue_repo`) and then ends the run.
    **Resume after BLOCKED** (the watcher fires, or the next session or wake reads the
    report): first re-measure the blocker itself — is the path really back? Still down:
    stay blocked, say so, nothing else. Back: re-read the plan document, `arm` again with
