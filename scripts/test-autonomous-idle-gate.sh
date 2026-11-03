@@ -100,6 +100,21 @@ check "a closing text without the pre-commit call is no close (control)" "$f" bl
 rm "$C/.claude-state/session-close.stamp"
 f="$T/close3.jsonl"; { user "work through the open points autonomously"; tsuser "2000-01-01T00:00:00Z" "close the session"; precommit; asst "Session closed."; } > "$f"
 check "the pre-commit call without a stamp file is no close (control)" "$f" block "$C"
+# The loop watchdog follows the mode (2026-11-03: a list run worked over an hour unarmed). No turn is held for it.
+W="$T/wd"; mkdir -p "$W/.claude"
+wdst() { sed -n 1p "$W/.claude-state/loop-watchdog.state" 2>/dev/null; }
+f="$T/wd1.jsonl"; { user "work through the open points autonomously"; asst "Done with A."; tool ScheduleWakeup; } > "$f"
+check "autonomous turn end (watchdog case)" "$f" block "$W" >/dev/null
+[ "$(wdst)" = "auto-autonomous-run" ] && ok "an autonomous turn end arms the watchdog when nothing is armed" || bad "not armed: '$(wdst)'"
+f="$T/wd2.jsonl"; { user "hello, what is the state?"; asst "Here is the state."; } > "$f"
+check "interactive turn end (watchdog case)" "$f" allow "$W" >/dev/null
+[ -z "$(wdst)" ] && ok "back in interactive mode the self-armed watchdog is disarmed" || bad "still armed: '$(wdst)'"
+mkdir -p "$W/.claude-state"; printf '%s\n' "night-run" 30 0 0 0 0 > "$W/.claude-state/loop-watchdog.state"
+check "interactive turn end, hand-armed run" "$f" allow "$W" >/dev/null
+[ "$(wdst)" = "night-run" ] && ok "a watchdog armed by hand is left alone (control)" || bad "hand-armed changed: '$(wdst)'"
+rm -rf "$W/.claude-state"
+LOOP_WATCHDOG_AUTO=0 check "switch off" "$T/wd1.jsonl" block "$W" >/dev/null
+[ -z "$(wdst)" ] && ok "LOOP_WATCHDOG_AUTO=0 arms nothing (control)" || bad "armed although switched off"
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-idle-gate: all cases pass" || echo "autonomous-idle-gate: FAILURES"
 exit "$fail"

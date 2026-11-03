@@ -129,6 +129,28 @@ function exemptWords(root) {
   return new RegExp(list.join('|'), 'i');
 }
 
+// The loop watchdog follows the mode, not the agent's memory (coherence register 2026-11-02 P1-12: "watchdog arming
+// in prose only"; measured 2026-11-03 on the macOS instance: a list run ordered autonomous worked for over an hour with
+// no watchdog armed). Every turn end of an autonomous run is a life sign: armed when nothing is armed, a beat otherwise.
+// Back in interactive mode a watchdog this gate armed itself (name `auto-…`) is disarmed; one the agent armed by hand
+// (a time-boxed run with its deadline) is left alone. No turn is held for it. LOOP_WATCHDOG_AUTO=0 switches it off.
+const AUTO_PREFIX = 'auto-';
+function keepWatchdog(root, autonomous) {
+  if (process.env.LOOP_WATCHDOG_AUTO === '0') return;
+  const script = require('path').join(__dirname, '..', 'scripts', 'loop-watchdog.sh');
+  const state = require('path').join(root, '.claude-state', 'loop-watchdog.state');
+  if (!fs.existsSync(script)) return;
+  let name = '';
+  try { name = fs.readFileSync(state, 'utf8').split('\n')[0].trim(); } catch (_) {}
+  const run = (...args) => require('child_process').spawnSync('bash', [script, ...args],
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root }, stdio: 'ignore', timeout: 5000 });
+  try {
+    if (autonomous && !name) run('arm', AUTO_PREFIX + 'autonomous-run', process.env.LOOP_WATCHDOG_AUTO_MINUTES || '45');
+    else if (autonomous) run('beat');
+    else if (name.startsWith(AUTO_PREFIX)) run('disarm');
+  } catch (_) { /* fail open: the watchdog never holds a turn */ }
+}
+
 function judge(input, now) {
   // The retry after a block is judged too (measured on an instance, 2026-10-29): the second attempt ended on a
   // BLOCKED line over a sliced list and passed unread, because stop_hook_active skipped the whole judgement.
@@ -137,7 +159,9 @@ function judge(input, now) {
   // (2026-10-30: a 15-min wakeup after two other blocks passed with 67 own items open).
   if (!input.transcript_path) return null;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-  if (!autonomousMode(input.transcript_path, root)) return null;
+  const autonomous = autonomousMode(input.transcript_path, root);
+  keepWatchdog(root, autonomous);
+  if (!autonomous) return null;
   const t = turnOf(input.transcript_path);
   if (!t || !t.text) return null;
   // The session close ends the run (measured 2026-10-31 and again 2026-11-01 on the macOS instance: after a
