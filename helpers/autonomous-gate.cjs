@@ -179,7 +179,15 @@ function operatorInTurn(transcriptPath, root) {
     if (text.trim() && !tk.isNotification(text)) lastHuman = i;
   });
   if (lastHuman <= lastEnd) return false;
-  const said = promptModes(transcriptPath, root).filter((p) => !p.answer);
+  const all = promptModes(transcriptPath, root);
+  // The operator's LATEST word decides, an answer through the question tool included: "continue
+  // autonomously" answered after the prompt that opened the turn switches the run on again, and the
+  // operator is no longer waiting at a dialog. Measured 2026-11-03 on the macOS instance: a turn opened by
+  // "anything open for me?", the questions answered, the last answer "continue autonomously"; the turn ran
+  // on through a compaction, and 13 minutes later an edit of .claude/settings.json raised a dialog.
+  const latest = all[all.length - 1];
+  if (latest && latest.answer && latest.autonomous) return false;
+  const said = all.filter((p) => !p.answer);
   const last = said[said.length - 1];
   const prev = said[said.length - 2];
   return !(last && last.autonomous && !(prev && prev.autonomous));
