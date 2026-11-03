@@ -83,12 +83,14 @@ def slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:50].rstrip("-") or "message"
 
 
-def resolve_next(to: list[str], parties: dict) -> list[str]:
-    """The devices an addressee list reaches — what `next:` names."""
+def resolve_next(to: list[str], parties: dict, text: str = "") -> list[str]:
+    """The devices an addressee list reaches — what `next:` names. A category address leaves out the
+    devices of a person who cannot see a repo the text names; a device named by itself stays."""
     devs = _parties.devices(parties)
     out = []
     for t in to:
-        hit = sorted(d for d in devs if t in _parties.EVERYONE or t in _parties.categories(d, parties))
+        hit = sorted(d for d in devs if (t in _parties.EVERYONE or t in _parties.categories(d, parties))
+                     and not _parties.without_access(d, text, parties))
         out += [d for d in (hit or [t]) if d not in out]
     return out
 
@@ -116,8 +118,42 @@ def check_words():
     return [re.compile(w, re.I) for w in words]
 
 
+# A --one-machine reason that only names the OS ("the Windows instance is the machine that does it", "a Windows
+# check at the PR head; ...") is the os:<os> case in other words, not a reason. Measured 2026-11-03 on the macOS
+# instance: five requests in the shared memory carried such a reason, the last two went to a Windows device that
+# was not running while the other Windows machines never saw them.
+HOLLOW_ONE_MACHINE = re.compile(
+    r"\b(?:the|a|an)\s+(?:windows|macos|mac|linux)\s+(?:instance|machine|device|computer|box)\b"
+    r"|^\s*an?\s+(?:windows|macos|mac|linux)\s+check\b", re.I)
+
+
+def one_machine_unproven(one_machine, evidence, repo):
+    """The refusal text when a --one-machine request carries no evidence a reader can open. The operator (2026-11-03,
+    translated): "an explicit request to one instance must be clearly reasoned and evidenced, otherwise it must not go
+    through". Evidence is a URL, a file that exists (path[:line], relative to the shared memory or the working
+    directory), or the operator's quoted words with their date."""
+    if not one_machine:
+        return ""
+    e = (evidence or "").strip()
+    if not e:
+        return ("--one-machine needs --one-machine-evidence: a URL, a file path[:line] that exists, or the operator's "
+                "quoted words with their date - a reason without evidence does not address one machine")
+    if re.match(r"https?://\S+$", e):
+        return ""
+    p = re.sub(r":\d+$", "", e)
+    if (Path(repo) / p).is_file() or Path(p).is_file():
+        return ""
+    if re.search(r"[\"„“'«].{3,}[\"“”'»]", e) and re.search(r"\b20\d\d-\d\d-\d\d\b", e):
+        return ""
+    return (f"--one-machine-evidence \"{e}\" is no evidence a reader can open: give a URL, an existing file "
+            "path[:line], or the operator's quoted words with their date")
+
+
 def os_check_misaddressed(text, to, one_machine):
     """The refusal text when `text` asks for a check on an OS whose `os:` category is not addressed."""
+    if one_machine and HOLLOW_ONE_MACHINE.search(one_machine):
+        return (f"--one-machine \"{one_machine}\" names only the OS - any machine of that OS fits it, so the request "
+                "goes to os:<os>; a one-machine reason names what only that machine has (a desk, a device, a file)")
     if one_machine or not any(w.search(text) for w in check_words()):
         return ""
     wanted = [o for o, rx in OS_NAMES.items() if re.search(rx, text, re.I)]
@@ -210,6 +246,8 @@ def main() -> int:
     ap.add_argument("--repo", type=Path, default=_lint.REPO_DEFAULT)
     ap.add_argument("--date", default=dt.date.today().isoformat())
     ap.add_argument("--one-machine", default="", help="a check that needs exactly this machine: the reason")
+    ap.add_argument("--one-machine-evidence", default="",
+                    help="evidence for --one-machine: URL, existing file path[:line], or the operator's quoted words with date")
     ap.add_argument("--ci-not-green-ok", default="", help="an OS check request although the PR's CI is not green: why")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
@@ -245,7 +283,8 @@ def main() -> int:
     if status not in _lint.VALID_STATUS:
         return refuse(f"status '{status}' is not in {sorted(_lint.VALID_STATUS)}")
     body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else a.body
-    miss = os_check_misaddressed(a.title + "\n" + body, to, a.one_machine)
+    miss = os_check_misaddressed(a.title + "\n" + body, to, a.one_machine) \
+        or (a.kind == "request" and one_machine_unproven(a.one_machine, a.one_machine_evidence, a.repo))
     if miss:
         return refuse(miss)
     if a.kind == "request" and not a.ci_not_green_ok:
@@ -276,12 +315,14 @@ def main() -> int:
     meta = ["  type: project", f"  von: {von}", f"  audience: {', '.join(to)}", f"  topic: {a.area}",
             f"  date: {a.date}", f"  os: {os_name}", f"  core: {core}", f"  status: {status}"]
     if status == "open":
-        nxt = [d for d in (resolve_next(to, parties) if parties else to) if d != von.lower() and d not in handed]
+        nxt = [d for d in (resolve_next(to, parties, a.title + "\n" + body) if parties else to)
+               if d != von.lower() and d not in handed]
         meta.append(f"  next: {', '.join(nxt)}")
     if answers:
         meta.append(f"  {'claims' if a.kind == 'claim' else 'answers'}: {', '.join(answers)}")
     if a.one_machine:
         meta.append(f"  one-machine: {a.one_machine}")
+        meta.append(f"  one-machine-evidence: {a.one_machine_evidence}")
     if a.ci_not_green_ok:
         meta.append(f"  ci-not-green-ok: {a.ci_not_green_ok}")
     text = "---\n" + f"name: {stem}\ndescription: {q}\nmetadata:\n" + "\n".join(meta) + "\n---\n\n" + body.strip() + "\n"

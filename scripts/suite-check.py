@@ -47,6 +47,13 @@ def git_out(repo: Path, *args: str) -> str:
         return ""
 
 
+def single_branch(repo: Path) -> bool:
+    """True for a `git clone --single-branch` checkout: its fetch refspec names one branch, not
+    refs/heads/*. Offline on purpose - asking origin cost ~45 s of fixture time per run."""
+    specs = git_out(repo, "config", "--get-all", "remote.origin.fetch").splitlines()
+    return bool(specs) and not any("refs/heads/*" in s for s in specs)
+
+
 def repo_slug(text: str) -> str:
     """owner/name out of a GitHub slug or a git URL, lowercase; '' if none."""
     m = re.search(r"([^/:\s]+/[^/:\s]+?)(?:\.git)?/?$", str(text or "").strip())
@@ -111,6 +118,12 @@ def marketplace_findings(repo: Path):
                 if git_out(repo, "rev-parse", "--is-shallow-repository").strip() == "true":
                     out.append(("WARN", f"{where}: ref {ref} not among the tags of this shallow "
                                         "checkout - unchecked"))
+                # A single-branch clone carries only the tags its branch reaches (measured 2026-11-03:
+                # `git clone --single-branch` of main, v2.0.0 on the cut-off history missing, "is no
+                # tag of this repo" while origin has it). Unchecked, like a shallow checkout.
+                elif single_branch(repo):
+                    out.append(("WARN", f"{where}: ref {ref} not among the tags of this single-branch "
+                                        "clone - unchecked (git fetch --tags)"))
                 else:
                     out.append(("ERROR", f"{where}: ref {ref} is no tag of this repo"))
     return out

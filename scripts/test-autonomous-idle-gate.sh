@@ -63,6 +63,10 @@ check "an exempt word from instance data lets the line stand" "$f" allow "$IX"
 check "the same line without the instance data is no build blocker (control)" "$f" block
 f="$T/4.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "POOL EMPTY: open-items lists 0 agent items (run 18:20)"; } > "$f"
 check "a POOL EMPTY line after measuring the list ends the turn" "$f" allow
+f="$T/4l.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "LIST EMPTY: the three ordered items are merged (open-items 18:20)"; } > "$f"
+check "a LIST EMPTY line after measuring the list ends the turn" "$f" allow
+f="$T/4m.jsonl"; { user "work through the open points autonomously"; asst "LIST EMPTY: all done"; } > "$f"
+check "a LIST EMPTY line without a measurement in the turn is held" "$f" block
 # 2026-10-28 (macOS instance): "BLOCKED: waiting on the watchers, the peer, the operator" while the session
 # start listed 16 own items — a recollection, never read against the list.
 f="$T/4b.jsonl"; { user "work through the open points autonomously"; asst "BLOCKED: waiting on the CI watchers and the operator"; } > "$f"
@@ -145,6 +149,21 @@ f="$T/i12.jsonl"; { user "go ahead with the plan"; asst "Next: package A."; } > 
 check "interactive: a released clause under another exit is no release" "$f" allow "$R"
 f="$T/i13.jsonl"; { user "go ahead with the plan"; asst "Next: package A."; } > "$f"
 check "interactive: no ledger registry, no released entry" "$f" allow
+# The loop watchdog follows the mode (2026-11-03: a list run worked over an hour unarmed). No turn is held for it.
+W="$T/wd"; mkdir -p "$W/.claude"
+wdst() { sed -n 1p "$W/.claude-state/loop-watchdog.state" 2>/dev/null; }
+f="$T/wd1.jsonl"; { user "work through the open points autonomously"; asst "Done with A."; tool ScheduleWakeup; } > "$f"
+check "autonomous turn end (watchdog case)" "$f" block "$W" >/dev/null
+[ "$(wdst)" = "auto-autonomous-run" ] && ok "an autonomous turn end arms the watchdog when nothing is armed" || bad "not armed: '$(wdst)'"
+f="$T/wd2.jsonl"; { user "hello, what is the state?"; asst "Here is the state."; } > "$f"
+check "interactive turn end (watchdog case)" "$f" allow "$W" >/dev/null
+[ -z "$(wdst)" ] && ok "back in interactive mode the self-armed watchdog is disarmed" || bad "still armed: '$(wdst)'"
+mkdir -p "$W/.claude-state"; printf '%s\n' "night-run" 30 0 0 0 0 > "$W/.claude-state/loop-watchdog.state"
+check "interactive turn end, hand-armed run" "$f" allow "$W" >/dev/null
+[ "$(wdst)" = "night-run" ] && ok "a watchdog armed by hand is left alone (control)" || bad "hand-armed changed: '$(wdst)'"
+rm -rf "$W/.claude-state"
+LOOP_WATCHDOG_AUTO=0 check "switch off" "$T/wd1.jsonl" block "$W" >/dev/null
+[ -z "$(wdst)" ] && ok "LOOP_WATCHDOG_AUTO=0 arms nothing (control)" || bad "armed although switched off"
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-idle-gate: all cases pass" || echo "autonomous-idle-gate: FAILURES"
 exit "$fail"

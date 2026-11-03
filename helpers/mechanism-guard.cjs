@@ -95,6 +95,32 @@ function stripMessages(cmd) {
 const path = require('path');
 const os = require('os');
 
+// A `|` the shell never runs as a pipe is no command separator for the rules: an escaped `\|`, and a `|`
+// inside single quotes or inside double quotes outside `$( … )` (measured 2026-11-03 on the macOS instance:
+// `grep -n "Monitor\|collab-watch.sh" SKILL.md` and `sed … ci-watch.sh | grep "usage\|ci-watch.sh"` were held as a
+// waiting script started in the foreground — the rule saw `|collab-watch.sh` as a pipe into the script).
+// Such a `|` becomes `¦` in the text the rules read; a real pipe stays.
+function literalPipes(cmd) {
+  if (!cmd) return cmd;
+  let out = '', q = '', sub = 0;
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (c === '\\' && q !== "'" && i + 1 < cmd.length) {
+      out += c + (cmd[i + 1] === '|' ? '¦' : cmd[i + 1]); i++; continue;
+    }
+    if (q === "'") { if (c === "'") q = ''; out += c === '|' ? '¦' : c; continue; }
+    if (q === '"') {
+      if (c === '$' && cmd[i + 1] === '(') sub++;
+      else if (c === ')' && sub) sub--;
+      else if (c === '"' && !sub) q = '';
+      out += c === '|' && !sub ? '¦' : c; continue;
+    }
+    if (c === "'" || c === '"') q = c;
+    out += c;
+  }
+  return out;
+}
+
 function readJson(p) {
   try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (_) { return null; }
 }
@@ -257,7 +283,7 @@ process.stdin.on('end', () => {
   // The published text of gh/git (messages, titles, bodies, fields) is data, not a command: the
   // shared extraction blanks exactly those values and leaves every other byte for the rules
   // (published-text.cjs). A line it cannot read to the end keeps the two older cuts.
-  const stripped = (cmd && withoutPublished(cmd, false)) || stripMessages(stripHeredocs(cmd));
+  const stripped = literalPipes((cmd && withoutPublished(cmd, false)) || stripMessages(stripHeredocs(cmd)));
   for (const r of rules) {
     const hit = r.target === 'path' ? (filePath && r.re.test(filePath))
       : r.target === 'raw' ? (cmd && r.re.test(cmd)) : (cmd && r.re.test(stripped));

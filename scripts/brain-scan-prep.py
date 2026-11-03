@@ -149,7 +149,12 @@ def return_channel(reports, orders, markers):
             hits = by_id.get(key, [])
             text = "\n".join(e["text"] for e in hits)
             if f["exit"] == "done-already" or any(e["checked"] or re.match(r"(Done|Erledigt)\b", e["section"]) for e in hits):
-                state = "done"
+                # "done" without a check line is a claim (audit-audit 2026-11-02, macOS instance: on 10-30 seven keys the
+                # return channel called done came back; the six that returned after a tick all had no check:). It keeps
+                # counting toward a decision; only a done entry with a check stops the count.
+                # An index exit done-already is the scan's own reading at that run and stays done.
+                proven = f["exit"] == "done-already" or any(re.search(r"^\s*check:\s*(?!none\b)\S", e["text"], re.M) for e in hits)
+                state = "done" if proven else "done-unproven"
             elif f["exit"] == "drop" or any(re.search(r, text, re.I) for r in markers["dropped"]):
                 state = "dropped"
             elif hits and any(re.search(r, text, re.I) for r in markers["decided"]):
@@ -160,7 +165,7 @@ def return_channel(reports, orders, markers):
                 state = "vanished"
             rows.append({"key": key, "title": f["title"], "severity": f["severity"], "exit": f["exit"],
                          "state": state, "seen": seen.get(key, 1)})
-    decision_due = [r["key"] for r in rows if r["seen"] >= 2 and r["state"] in ("still-open", "vanished")]
+    decision_due = [r["key"] for r in rows if r["seen"] >= 2 and r["state"] in ("still-open", "vanished", "done-unproven")]
     return {
         "previous_report": str(latest) if latest else None,
         "previous_has_index": latest_index is not None,
@@ -207,8 +212,23 @@ def deep_checks(repo, rc, orders, mem_dir):
     ahead = [e for e in orders if not e["checked"] and "rebuild-ahead" in e["text"]]
     if ahead:
         say("full-audit", f"the order list announces a structural rebuild ({title_of(ahead[0])})")
-    return [f"deep check suggested: {c} — {'; '.join(r)} — measured price on the proving brain: "
-            f"~{PRICE[c]}M tokens per run (brain-scan ~{PRICE['brain-scan']}M)" for c, r in why.items()]
+    # Under the 14-day cadence a coherence trigger suggests the PARTIAL run (operator decision 2026-11-02, macOS
+    # instance: four full runs in 24 days, ~6.7 M tokens over the cadence) — args partial: {since: <last register>}.
+    lines = []
+    for c, r in why.items():
+        if c == "coherence-scan" and last_reg:
+            try:
+                age = (datetime.date.today() - datetime.date.fromisoformat(last_reg)).days
+            except ValueError:
+                age = None
+            if age is not None and age < 14:
+                lines.append(f"deep check suggested: coherence-scan PARTIAL (args partial: {{since: \"{last_reg}\"}}) — "
+                             f"{'; '.join(r)} — the last full register is {age} day(s) old, a full run waits for day 14; "
+                             f"a partial run audits only the rule files changed since, three lenses")
+                continue
+        lines.append(f"deep check suggested: {c} — {'; '.join(r)} — measured price on the proving brain: "
+                     f"~{PRICE[c]}M tokens per run (brain-scan ~{PRICE['brain-scan']}M)")
+    return lines
 
 
 # ── machine checks ─────────────────────────────────────────────────────────

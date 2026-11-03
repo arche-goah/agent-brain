@@ -114,6 +114,12 @@ process.stdin.on('end', () => {
     try { script = fs.readFileSync(ti.scriptPath, 'utf8'); } catch (_) { /* name may still resolve */ }
   }
   if (/FRESHNESS-OK:/.test(script)) return allow();
+  // A coherence-scan PARTIAL run is the decided way under the cadence (operator decision 2026-11-02, macOS
+  // instance: "Teil-Lauf bei Bedarf") — it audits only the rule files changed since a date, three lenses.
+  let wfArgs = ti.args;
+  if (typeof wfArgs === 'string') { try { wfArgs = JSON.parse(wfArgs); } catch (_) { wfArgs = null; } }
+  if (wfArgs && typeof wfArgs === 'object' && wfArgs.partial && typeof wfArgs.partial === 'object'
+      && /^\d{4}-\d{2}-\d{2}$/.test(String(wfArgs.partial.since || ''))) return allow();
 
   const name = ti.name || metaName(script);
   if (!name) return allow();
