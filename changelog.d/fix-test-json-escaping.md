@@ -9,3 +9,6 @@
   built by `JSON.stringify` from argv; the call signatures stay, and the probes that write `\n` / `\"` as JSON escapes
   keep working (`unesc()`). One new probe per helper carries a bare double quote and must block; on a file system that
   refuses `"` in a name (Windows) the path-based ones print SKIP.
+  - Windows CI 2026-11-03 (merge train): Git Bash rewrote a probe value that starts with `/` (an absolute gh path)
+    into a Windows path once it travelled as argv, and the guard rule missed it. `test-guards.sh` sets
+    `MSYS2_ARG_CONV_EXCL=*` on both input builders and passes the cwd through cygpath itself.
