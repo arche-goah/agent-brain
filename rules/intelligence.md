@@ -41,6 +41,11 @@ Across Parties #6). Reasons: five or more new dated rules since the last coheren
 index near its limit or contradictions found; a restructuring ahead; a brain-scan finding back for
 the third time. Price per run on one brain (2026-08/10): brain-scan ~1.5M tokens, memory-dream ~0.6M,
 coherence-scan ~2.6M, full audit ~6M — said in plain words ("about four times a brain-scan").
+**Above them, the audit-audit** (operator decision 2026-11-02, skill `audit-audit`): it checks the checks
+— function, cost, effect, findability — and ends with an action plan in which every finding has an exit
+(`core/scripts/audit-audit-plan-check.py`); same rule, proposed with reason and price (~1.4M), never started
+alone. Reasons: three or more new analyses or check levels since its last run, or a question "which
+checks exist / what is above the full audit" the rules cannot answer.
 
 **The summary is written for the operator, not relayed from the machine** (operator correction
 2026-08-13): hook output is input, never chat vocabulary — no `!!` markers, return codes, tags or hook
@@ -145,7 +150,7 @@ ORDERED; content, structures, UI artifacts and features stay propose-not-build.
 ## Presenting to the Operator
 
 What reaches the operator is sorted first (operator decision 2026-09-18). **Run modes** (INTERACTIVE asks at once,
-AUTONOMOUS collects questions and keeps working — no extra rights; how to switch): `docs/run-modes.md` — the answer when
+AUTONOMOUS collects questions and keeps working — no extra rights; how to switch): `core/docs/run-modes.md` — the answer when
 an operator asks what the modes mean (operator order 2026-10-29).
 
 - **Only real operator decisions** (the instance's operator-only list, `working-rules.md` ASK OR ACT)

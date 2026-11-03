@@ -29,7 +29,8 @@ PEER="$T/peer.jsonl"; { user "work through the open points autonomously"; queued
 
 probe() { # $1 label, $2 tool, $3 tool_input JSON, $4 transcript, $5 block|allow
   local out
-  out=$(printf '{"tool_name":"%s","tool_input":%s,"transcript_path":"%s","cwd":"%s"}' "$2" "$3" "$(native "$4")" "$(native "$B")" \
+  # JSON built by node from argv (escaping; a printf-built input broke on a double quote, 2026-11-02)
+  out=$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:JSON.parse(a[2]),transcript_path:a[3],cwd:a[4]}))' "$2" "$3" "$(native "$4")" "$(native "$B")" \
         | CLAUDE_PROJECT_DIR="$(native "$B")" CLAUDE_CONFIG_DIR="$(native "$T/userdir")" node "$(native "$G")" 2>&1)
   case "$out" in
     *'"permissionDecision":"deny"'*) [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:160}";;
@@ -40,6 +41,12 @@ SET="$(js "$(native "$B")/.claude/settings.json")"
 
 probe "the incident: settings edit in an autonomous run" Edit "{\"file_path\":$SET}" "$AUTO" block
 probe "same edit, relative path" Edit '{"file_path":".claude/settings.json"}' "$AUTO" block
+# a double quote in the transcript path (escaping of the hook input); Windows refuses " in a file name
+if cp "$AUTO" "$T/q\"auto.jsonl" 2>/dev/null; then
+  probe "same edit, a double quote in the transcript path (escaping)" Edit '{"file_path":".claude/settings.json"}' "$T/q\"auto.jsonl" block
+else
+  echo "  SKIP a double quote in the transcript path: this file system refuses the name"
+fi
 probe "same edit, not autonomous (the operator is there)" Edit "{\"file_path\":$SET}" "$INTER" allow
 probe "question tool in an autonomous run" AskUserQuestion '{"questions":[]}' "$AUTO" block
 probe "question tool, not autonomous" AskUserQuestion '{"questions":[]}' "$INTER" allow

@@ -480,11 +480,18 @@ def auto_class(it, repo, human_rx):
 
 # Standing approvals (full-audit 2026-10-15, Windows instance): a class of items the operator
 # approved once for good. Instance data `.claude/rules/open-items-standing.json`, "classes":
-#   {"name", "kind": "request"|"PR", "scope": regex on topic folder / repo, "audience": [tokens,
-#    one of which the request's audience must name], "title": regex on the item text,
-#    "excludes": [regexes on the item text that keep an item out], "granted": "\"<words>\" <date>"}
+#   {"name", "kind": "request"|"PR"|"ledger", "scope": regex on topic folder / repo / ledger path,
+#    "audience": [tokens, one of which the request's audience must name], "title": regex on the
+#    item text, "excludes": [regexes on the item text that keep an item out],
+#    "granted": "\"<words>\" <date>"}
 # `granted` must quote the operator and carry the date — the shapes mechanism-guard.cjs accepts
 # for needs_operator_word. Without them the entry is refused, never silently applied.
+# `ledger` (measured 2026-11-02, macOS instance): an operator approval of ALL own items (2026-10-26)
+# reached requests and PRs only; the brain's own ledger entries were asked "shall I?" at every start,
+# the go never named them, and 13 entries whose work had shipped in the pin stayed open for up to 17
+# sessions. Only `ai`/unclassified ledger items can become standing; an operator-decision exit stays
+# `human`, exactly as for the other kinds.
+STANDING_KINDS = ("request", "PR", "ledger")
 QUOTE = re.compile(r'"[^"\n]{3,}"|„[^“”"\n]{3,}[“”"]|“[^”\n]{3,}”')
 DAY = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
 AUDIENCE = re.compile(r"^\s+audience:\s*(.+?)\s*$", re.M)
@@ -504,8 +511,8 @@ def standing_classes(root):
             refused.append(f"standing approval '{name}' refused — \"granted\" must quote the operator's "
                            "words and the date they were said (\"...\" YYYY-MM-DD); its items are asked as before")
             continue
-        if e.get("kind") not in ("request", "PR"):
-            refused.append(f"standing approval '{name}' refused — \"kind\" must be request or PR")
+        if e.get("kind") not in STANDING_KINDS:
+            refused.append(f"standing approval '{name}' refused — \"kind\" must be one of {', '.join(STANDING_KINDS)}")
             continue
         try:
             scope, title = (re.compile(e[k], re.I) if e.get(k) else None for k in ("scope", "title"))

@@ -28,6 +28,10 @@
  *     question-gate register (.claude-state/open-questions.json), status deferred or unanswered.
  *   - when the autonomous mode was on before this prompt, the LAST question of the turn's last
  *     AskUserQuestion carries an on-word ("continue autonomously?") - with or without open decisions.
+ * The close turn (measured 2026-11-02 on the macOS instance, the operator: the question is needless and
+ * wrong there): a session that closes continues nothing, so "continue autonomously?" is not demanded
+ * when a close stamp covers the running turn (close-stamp.cjs, the same carrier the watch, question and
+ * autonomous-idle gates accept). Open hand steps and decisions are still demanded through the tool.
  * This hook demands the tool and that last question, never the other wording, and does NOT check
  * that a question was re-measured before it is put - that is not carried here.
  * Output: {"decision":"block","reason":"..."}. Fails open on unreadable input.
@@ -38,6 +42,7 @@ const path = require('path');
 const { promptModes, words } = require('./autonomous-mode.cjs');
 const ITEM_CLASS = /\bclass:\s*`?(decision|hand-step)\b/i;
 const { queuedHumanPrompt } = require('./turn-kind.cjs');
+const { closeOpenEnds } = require('./close-stamp.cjs');
 
 // Decision circles that need the operator (open-items.py CIRCLE_WORDS: B, E, F = human).
 const OPERATOR_CIRCLES = new Set(['B', 'E', 'F']);
@@ -87,11 +92,14 @@ function registerDecisions(root) {
     .map((q) => String(q.q || '').slice(0, 80));
 }
 
-/** The question lists of every AskUserQuestion the running turn (after the newest prompt) called, in order. */
-function questionsThisTurn(transcriptPath, lastPrompt) {
+/**
+ * The running turn (after the newest prompt): the question lists of every AskUserQuestion it called, in
+ * order, its shell commands ({cmd}, for the close stamp) and the prompt's timestamp.
+ */
+function turnSince(transcriptPath, lastPrompt) {
   let lines;
-  try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return []; }
-  const calls = [];
+  const calls = []; const cmds = []; let since = '';
+  try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return { calls, cmds, since }; }
   const key = (lastPrompt || '').trim().slice(0, 60);
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i];
@@ -99,23 +107,25 @@ function questionsThisTurn(transcriptPath, lastPrompt) {
     let d;
     try { d = JSON.parse(l); } catch (e) { continue; }
     const queued = queuedHumanPrompt(d); // the newest prompt may have been typed mid-turn
-    if (queued && key && queued.includes(key)) break;
+    if (queued && key && queued.includes(key)) { since = d.timestamp || ''; break; }
     const msg = d.message;
     if (!msg) continue;
     if (msg.role === 'user' && key) {
       const c = msg.content;
       const t = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text).join('\n') : '';
-      if (t && t.includes(key)) break;
+      if (t && t.includes(key)) { since = d.timestamp || ''; break; }
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
-        if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
+        if (!b || b.type !== 'tool_use') continue;
+        if (b.input && typeof b.input.command === 'string') cmds.unshift({ cmd: b.input.command });
+        if (b.name !== 'AskUserQuestion') continue;
         const qs = (b.input && Array.isArray(b.input.questions)) ? b.input.questions : [];
         calls.unshift(qs.map((q) => String((q && q.question) || '')));
       }
     }
   }
-  return calls;
+  return { calls, cmds, since };
 }
 
 function judge(input) {
@@ -129,14 +139,14 @@ function judge(input) {
   const wasOn = n > 0 && modes[n - 1].autonomous;
   if (!now.asks && !wasOn) return null;
   const open = [...ledgerDecisions(root), ...registerDecisions(root)];
-  const calls = questionsThisTurn(input.transcript_path, now.text);
+  const { calls, cmds, since } = turnSince(input.transcript_path, now.text);
   const missing = [];
   if (open.length && !calls.length) {
     missing.push(`${open.length} operator hand step(s) and decision(s) through the question tool (one question each, recommended option first; ` +
       `an entry marked (no circle) gets its circle: in the ledger if it is not the operator's) - ` +
       `${open.slice(0, 4).join(' | ')}${open.length > 4 ? ` (+${open.length - 4} more)` : ''}`);
   }
-  if (wasOn) {
+  if (wasOn && closeOpenEnds(root, { sessionId: input.session_id, since, calls: cmds }) === null) {
     const on = words(root).on;
     const last = calls.length ? calls[calls.length - 1] : [];
     if (!last.length || !on.test(last[last.length - 1])) missing.push('the last question "continue autonomously?"');

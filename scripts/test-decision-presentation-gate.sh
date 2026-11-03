@@ -112,4 +112,29 @@ f="$T/h1.jsonl"; { user "anything open for me?"; asst "One thing: update the rou
 check "an open hand step answered in prose" "$f" "$H" block
 f="$T/h2.jsonl"; { user "anything open for me?"; asst "One hand step:"; ask; } > "$f"
 check "the same hand step through the question tool" "$f" "$H" allow
+# The close turn (measured 2026-11-02, macOS instance, the operator: the mode question is needless there):
+# a close stamp of this session and turn drops "continue autonomously?"; hand steps stay demanded.
+C="$T/close"; mkdir -p "$C/.claude/rules" "$C/docs/maintenance" "$C/.claude-state"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$C/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Write the docs' '  - class: todo' > "$C/docs/questions.md"
+printf '%s\n' '# Session log' '- 2026-11-02 17:27:36 | main | close | x' '  open end: something - awaited' > "$C/docs/maintenance/session-log.md"
+printf '%s\n' 's1' '- 2026-11-02 17:27:36 | main | close | x' > "$C/.claude-state/session-close.stamp"
+tsuser() { printf '{"type":"user","timestamp":"2020-01-01T00:00:00Z","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
+pre() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"bash core/helpers/session-closing.sh --pre-commit"}}]}}\n'; }
+checks() { # $1 label, $2 transcript, $3 brain, $4 block|allow, $5 session id
+  local out
+  out=$(printf '{"transcript_path":"%s","cwd":"%s","session_id":"%s"}' "$(native "$2")" "$(native "$3")" "$5" | CLAUDE_PROJECT_DIR="$(native "$3")" node "$(native "$G")" 2>&1)
+  case "$out" in
+    *'"decision":"block"'*) [ "$4" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:160}";;
+    *) [ "$4" = allow ] && ok "$1 allows" || bad "$1 did NOT block: '${out:0:160}'";;
+  esac
+}
+f="$T/c1.jsonl"; { user "work through everything autonomously"; asst "on it"; tsuser "normal mode again, close the session"; pre; asst "Closed. You can shut down."; } > "$f"
+checks "the close turn after an autonomous run: no mode question" "$f" "$C" allow s1
+checks "the same close, the stamp names another session" "$f" "$C" block s2
+f="$T/c2.jsonl"; { user "work through everything autonomously"; asst "on it"; tsuser "normal mode again, close the session"; asst "Closed. You can shut down."; } > "$f"
+checks "the same reply without the close in this turn" "$f" "$C" block s1
+cp "$H/docs/questions.md" "$C/docs/questions.md"
+checks "a close does not pass an open hand step" "$T/c1.jsonl" "$C" block s1
+
 [ "$fail" = 0 ] && echo "decision-presentation-gate: all cases pass" || { echo "decision-presentation-gate: FAILURES"; exit 1; }
