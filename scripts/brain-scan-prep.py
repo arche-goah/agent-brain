@@ -359,7 +359,9 @@ def machine(repo, core, last_date, today):
         "commitments.py": ([py, str(S / "commitments.py"), "--repo", str(repo), "--days", str(days)], 120),
         # Operator corrections without a carrier line (2026-10-25): every entry of the feedback
         # protocol since the last scan names its Traeger/Carrier, or it is a finding.
-        "lesson-carriers.py": ([py, str(S / "lesson-carriers.py"), "--repo", str(repo), "--since", str(last_date or "0000-00-00")], 60),
+        # One entry point for both strengths of the carrier question (2026-11-02): --presence is lesson-carriers.
+        "carrier-audit.py": ([py, str(S / "carrier-audit.py"), "--presence", "--repo", str(repo),
+                              "--since", str(last_date or "0000-00-00")], 60),
         # A dated state in rule prose ("alpha until <date>") that expired or disagrees with its record.
         "state-prose-lint.py": ([py, str(S / "state-prose-lint.py"), "--repo", str(repo), "--today", today], 30),
         # A carrier the rules name but that does not exist (operator order 2026-10-28, KS-82).
@@ -399,8 +401,8 @@ def machine(repo, core, last_date, today):
                          for l in out_lm.splitlines() if l.strip().startswith("review: ")]
     if "commitments.py" in out:
         findings += map_lines("commitments", *out["commitments.py"], "loose commitment", "commitments summary:", "P2")
-    if "lesson-carriers.py" in out:
-        findings += map_lines("lesson-carriers", *out["lesson-carriers.py"], "lesson without carrier", "lesson-carriers summary:", "P2")
+    if "carrier-audit.py" in out:
+        findings += map_lines("lesson-carriers", *out["carrier-audit.py"], "lesson without carrier", "lesson-carriers summary:", "P2")
     if "state-prose-lint.py" in out:
         findings += map_lines("state-prose", *out["state-prose-lint.py"], "state in prose:", "state-prose summary:", "P2")
     if "dead-carriers.py" in out:
