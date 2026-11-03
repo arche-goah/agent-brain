@@ -152,6 +152,14 @@ except Exception as e: print(e)' 2>&1 | head -1)"
 }
 json_check
 
+# A changelog fragment declares its level in the form helpers/change-level.cjs reads (2026-11-03, measured on the macOS
+# instance: six fragments with "higher: none" on reader/writer went in, the lint caught them minutes later, twice).
+# Runs only in a repo that ships the checker and only when a fragment is staged.
+if [ -f "$root/helpers/change-level.cjs" ] && command -v node >/dev/null 2>&1 \
+   && [ -n "$(git diff --cached --name-only --diff-filter=ACMR -- 'changelog.d/*.md')" ]; then
+  run_check "change-level (changelog.d)" node "$root/helpers/change-level.cjs" check --root "$root"
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo ""
   echo "Nothing was committed. Fix it — or, with a reason: git commit --no-verify"
