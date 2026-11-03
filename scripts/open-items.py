@@ -1058,7 +1058,7 @@ def main():
         why = f" ({i['why']})" if i["why"] else ""
         print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{why}")
     if skip:
-        print(f"- [more] {len(hidden['ai'])} more own and {len(hidden['human'])} more for the operator (newer than the ones above) — "
+        print(f"- [more] {len(hidden['ai'])} more own and {len(hidden['human'])} more for the operator (newer than the ones above) - "
               f"full list: core/scripts/open-items.py --owner {owner}")
     if fold:
         rep = [i["n"] for i in fold if i["n"] > 1]
