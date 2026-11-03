@@ -90,7 +90,9 @@ then an explicit release follows.
      read-only check is NOT a "new live action" — the ban below targets rebuilds,
      not measuring. **If no verify path exists for the touched system, that is a
      REPORTING EVENT** (mechanism discipline) — no improvised substitute path, no
-     silent omission (why: Evidence, 2026-08-01).
+     silent omission (why: Evidence, 2026-08-01). In the close report and the session log it
+     stands as one line of its own: `open end: <system> changed, no verify path — the operator
+     checks it by hand`, so the release "you can shut down" never covers an unmeasured system.
    - **CROSS-INSTANCE GATE — if this setup shares memory with other instances or people
      (operator order 2026-08-17):** ask, per finding of this session, whether its REACH
      goes past this machine — a measurement someone else's work depends on, a correction
