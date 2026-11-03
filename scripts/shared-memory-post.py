@@ -306,6 +306,18 @@ def main() -> int:
     path = area_dir / f"{stem}.md"
     if path.exists():
         return refuse(f"{path.relative_to(a.repo).as_posix()} exists - change the title")
+    rel = path.relative_to(a.repo).as_posix()
+    # The lint reads the LOG line too: without the reason there it refused the commit of an entry whose file
+    # carried --one-machine (measured three times on 2026-10-31, each LOG line fixed by hand).
+    reason = f" · one-machine: {a.one_machine}" if a.one_machine else ""
+    line = f"## {a.date} · {von} — AN {', '.join(to)} (status: {status}): {a.title}\n{rel}{reason}\n"
+    # This tool writes the LOG line, so this tool keeps it under the entry cap the lint judges (6c, from
+    # LOG_CAP_SINCE). Measured 2026-11-03: 17 entries over the cap since 2026-10-31, every one written here -
+    # title, recipients, path and reason added up, and nothing ran the lint before the commit.
+    over = len(line.rstrip("\n").encode("utf-8")) - _lint._rotate.ENTRY_CAP
+    if over > 0 and a.date >= _lint.LOG_CAP_SINCE:
+        return refuse(f"the LOG line is {over} B over the entry cap of {_lint._rotate.ENTRY_CAP} B - shorten "
+                      "--title (the file name follows it) or --one-machine; the substance belongs in the body")
 
     q = '"' + a.title.replace("\\", "\\\\").replace('"', '\\"') + '"'
     # The writer's system and core version, written by the producer at write time (operator order
@@ -326,13 +338,8 @@ def main() -> int:
     if a.ci_not_green_ok:
         meta.append(f"  ci-not-green-ok: {a.ci_not_green_ok}")
     text = "---\n" + f"name: {stem}\ndescription: {q}\nmetadata:\n" + "\n".join(meta) + "\n---\n\n" + body.strip() + "\n"
-    rel = path.relative_to(a.repo).as_posix()
     log = area_dir / "LOG.md"
     old = log.read_text(encoding="utf-8")
-    # The lint reads the LOG line too: without the reason there it refused the commit of an entry whose file
-    # carried --one-machine (measured three times on 2026-10-31, each LOG line fixed by hand).
-    reason = f" · one-machine: {a.one_machine}" if a.one_machine else ""
-    line = f"## {a.date} · {von} — AN {', '.join(to)} (status: {status}): {a.title}\n{rel}{reason}\n"
     with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(text)
     with open(log, "w", encoding="utf-8", newline="\n") as fh:

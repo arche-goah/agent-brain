@@ -620,13 +620,17 @@ def sessions(root, hook_input):
 # ledgers — a list that calls itself THE list had read two of its three sources.
 LEDGER_FIELD = re.compile(r"\b(id|class|origin):\s*`?([\w.:/-]+)")
 LEDGER_EXIT = re.compile(r"\bexit:\s*(other-side|parked|later-at-system)\s+(\d{4}-\d{2}-\d{2})")
+# A field line may stand as its own list item under the entry (`  - exit: ...`), the form the
+# project ledgers write. Measured 2026-11-03 on the Windows instance: ten entries with `  - exit:
+# other-side|parked ...` were listed as untouched agent work in three sessions, their exit unread.
+FIELD_LINE = r"^\s*(?:[-*]\s+)?"
 # Every exit line of the skill's table; the LAST one in an entry is its current state.
-ANY_EXIT = re.compile(r"^\s*exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re.M)
+ANY_EXIT = re.compile(FIELD_LINE + r"exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re.M)
 # `ask-when: <date>` or `ask-when: thema|topic <regex>` (operator decision 2026-10-29 on the macOS
 # instance, "questions at the right time"; decision-presentation-gate reads it the same way): a date
 # still ahead or a topic is not due at the session start. Measured 2026-10-30: nine entries with a
 # topic trigger printed every session, seven of them as "needs you".
-ASK_WHEN = re.compile(r"^\s*ask-when:\s*(.+?)\s*$", re.M)
+ASK_WHEN = re.compile(FIELD_LINE + r"ask-when:\s*(.+?)\s*$", re.M)
 # The exits of skill backlog-catch-up, step 3.
 EXITS ={"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
 
@@ -761,8 +765,8 @@ def carried_by_pr(ledger_items, pr_items):
             continue
         # The last exit WITH its continuation lines (measured 2026-11-03: an exit naming its PR on the
         # second line read as "no open PR"), plus the check line, which often names the PR's branch.
-        blocks = re.findall(r"^\s*exit:.*(?:\n(?![\s>*-]*(?:[\w-]+:\s|- \[)).*)*", it.get("body", ""), re.M)
-        text = (blocks[-1] if blocks else "") + "\n" + "\n".join(re.findall(r"^\s*check:.*$", it.get("body", ""), re.M))
+        blocks = re.findall(FIELD_LINE + r"exit:.*(?:\n(?![\s>*-]*(?:[\w-]+:\s|- \[)).*)*", it.get("body", ""), re.M)
+        text = (blocks[-1] if blocks else "") + "\n" + "\n".join(re.findall(FIELD_LINE + r"check:.*$", it.get("body", ""), re.M))
         hits, named = set(), bool(PR_MENTION.search(blocks[-1] if blocks else ""))
         for repo, n in PR_MENTION.findall(text):
             refs = [r for r in by_num.get(n, []) if not repo or r == f"{repo}#{n}"]

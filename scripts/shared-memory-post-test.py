@@ -178,6 +178,10 @@ def main() -> int:
             ("a core request to a party that handed core mechanics over",
              post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "t")),
             ("the same by person", post(repo, "request", "--area", "core", "--to", "person:sam", "--title", "s")),
+            # 2026-11-03: 17 LOG lines over the entry cap since 2026-10-31, every one written by this tool
+            ("a LOG line over the entry cap",
+             post(repo, "note", "--area", "core", "--to", "kim-pc", "--title", "long title " * 30,
+                  date=sml.LOG_CAP_SINCE)),
         ]
         for name, r in cases:
             check(f"refused: {name}", r.returncode == 2 and "REFUSED" in r.stdout, r.stdout + r.stderr)
