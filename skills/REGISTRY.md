@@ -11,6 +11,7 @@ Claude Code discovers skills automatically from a project's `.claude/skills/*/SK
 
 | Skill | Short description |
 |-------|--------------------|
+| audit-audit | Audit of the audits — the level ABOVE the deep checks |
 | autonomous-run | Time-boxed autonomous work run ("arbeite die naechsten 2 h selbstaendig durch" / "work through the … |
 | backlog-catch-up | Sort a large backlog of old open points (derived proposals, open requests, local deviations from … |
 | caveman | Level switching for caveman mode (lite \| full \| ultra \| wenyan-*) |
