@@ -240,7 +240,10 @@ log(`${merged.findings.length} consolidated findings in ${MERGED}`)
 
 // ── Phase 4: Adversarial verify (batches) ─────────────────────────────────
 phase('Verify')
-const BATCH = 6
+// 12, not 6 (audit-audit 2026-11-02, macOS instance): the merge cap is 24, so 6 meant four skeptics, each paying ~100k
+// of start context to read the same merged file; two runs in a row confirmed 24/24 (0.68 + 0.80 M verify tokens).
+// Two skeptics of twelve read the same file once more each — the cut is start ballast, not scrutiny per finding.
+const BATCH = 12
 const batches = []
 for (let i = 0; i < merged.findings.length; i += BATCH) batches.push(merged.findings.slice(i, i + BATCH))
 const verifyFile = (i) => `${FINDINGS_DIR}/verify-batch${i + 1}.json`
