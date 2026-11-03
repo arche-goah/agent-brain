@@ -27,7 +27,11 @@ def isolate() -> str:
     fd, path = tempfile.mkstemp(prefix="git-sandbox-", suffix=".gitconfig")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write("[user]\n\tname = sandbox\n\temail = sandbox@example.invalid\n")
-    os.environ.update(GIT_CONFIG_GLOBAL=path, GIT_CONFIG_NOSYSTEM="1", GIT_SANDBOX="1")
+    # No prompt of any kind: an editor's terminal hands git its own GIT_ASKPASS (measured 2026-11-03 on
+    # the macOS instance: Cursor's askpass.sh opened a GitHub sign-in window for a fixture's
+    # `ls-remote` against a made-up remote; GIT_TERMINAL_PROMPT=0 alone does not stop an askpass program).
+    os.environ.update(GIT_CONFIG_GLOBAL=path, GIT_CONFIG_NOSYSTEM="1", GIT_SANDBOX="1",
+                      GIT_TERMINAL_PROMPT="0", GIT_ASKPASS="true", SSH_ASKPASS="true")
     atexit.register(lambda: os.path.exists(path) and os.remove(path))
     return path
 

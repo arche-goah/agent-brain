@@ -9,6 +9,7 @@
 #   Loop on:    scripts/loop-watchdog.sh arm "<name>" <max-silence-minutes>
 #   Heartbeat:  scripts/loop-watchdog.sh beat      (on every loop step)
 #   Loop off:   scripts/loop-watchdog.sh disarm
+#   BLOCKED:    scripts/loop-watchdog.sh disarm --blocked "<reason>"   (the reason goes out on the alarm channel)
 #   Check:      scripts/loop-watchdog.sh check     (launchd, every 5 min)
 #   Start:      scripts/loop-watchdog.sh status --brief   (session-bootup: one line + exit 1
 #               when an armed state is stale, silent otherwise)
@@ -34,8 +35,8 @@ notify() {  # macOS notification + log; Telegram deliberately NOT wired (rig cha
 # .claude/rules/loop-watchdog.json {"issue_repo": "<owner>/<repo>"}; without it nothing is
 # opened. launchd starts this script without the shell's PATH, so gh is also looked for at the
 # usual install places. Every outcome is a log line — a failed issue is never silent.
-issue_alarm() {
-  local cfg repo gh="" c
+issue_alarm() {  # $1 title, $2 optional body
+  local cfg repo gh="" c body="${2:-Raised by core/scripts/loop-watchdog.sh check at $(date '+%Y-%m-%d %H:%M'): the session that armed the loop stopped writing its heartbeat. The next session start reports it as well; clear it there with core/scripts/loop-watchdog.sh disarm.}"
   cfg="$(dirname "$STATE_DIR")/.claude/rules/loop-watchdog.json"
   [ -f "$cfg" ] || return 0
   repo=$(sed -n 's/.*"issue_repo"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -1)
@@ -50,7 +51,7 @@ issue_alarm() {
     return 0
   fi
   if "$gh" issue create -R "$repo" --title "loop-watchdog: $1" \
-      --body "Raised by core/scripts/loop-watchdog.sh check at $(date '+%Y-%m-%d %H:%M'): the session that armed the loop stopped writing its heartbeat. The next session start reports it as well; clear it there with core/scripts/loop-watchdog.sh disarm." \
+      --body "$body" \
       >> "$STATE_DIR/loop-watchdog.log" 2>&1; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') issue opened in $repo" >> "$STATE_DIR/loop-watchdog.log"
   else
@@ -121,6 +122,14 @@ case "${1:-check}" in
     { [ "$rem" -eq 0 ] && [ "$cd_flag" != "1" ] \
         && echo "-> minimum time reached, but CORE STILL OPEN: KEEP WORKING (duration is a floor, not a ceiling)"; } || true ;;
   disarm)
+    # `disarm --blocked "<reason>"`: a run that ends BLOCKED while nobody watches switched its only away-channel
+    # off with a plain disarm (coherence register 2026-11-02 P1-13, fifth round after KS-110). The reason goes out
+    # on the alarm channel first, then the run ends as usual.
+    if [ "${2:-}" = "--blocked" ] && [ -f "$STATE" ]; then
+      reason="${3:-no reason given}"
+      echo "$(date '+%Y-%m-%d %H:%M:%S') loop '$(sed -n 1p "$STATE")' ended BLOCKED: $reason" >> "$STATE_DIR/loop-watchdog.log"
+      issue_alarm "BLOCKED: $(sed -n 1p "$STATE")" "The autonomous run '$(sed -n 1p "$STATE")' ended BLOCKED at $(date '+%Y-%m-%d %H:%M'): $reason. It needs a hand step or a decision; the next session start lists the open items."
+    fi
     if [ -f "$STATE" ]; then
       start=$(sed -n 4p "$STATE" 2>/dev/null || echo 0); start=${start:-0}
       name=$(sed -n 1p "$STATE")
@@ -186,5 +195,5 @@ case "${1:-check}" in
       echo "armed: $(sed -n 1p "$STATE"), last beat $(( ( $(date +%s) - $(sed -n 3p "$STATE") ) / 60 )) min ago"
       "$0" remaining
     else echo "no loop armed"; fi ;;
-  *) echo "usage: $0 {arm <name> <max-silence-min> [runtime-min]|beat|remaining|disarm|check|status [--brief]}"; exit 2 ;;
+  *) echo "usage: $0 {arm <name> <max-silence-min> [runtime-min]|beat|remaining|disarm [--blocked <reason>]|check|status [--brief]}"; exit 2 ;;
 esac

@@ -29,7 +29,6 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { autonomousMode, promptModes } = require('./autonomous-mode.cjs');
-const tk = require('./turn-kind.cjs');
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 // Hook and permission data: the auto-mode classifier holds an edit of these for the operator even
@@ -154,36 +153,15 @@ function hitRule(rules, tool, input, root) {
   return null;
 }
 
-// Rights are the same in both modes; the run differs only in that a question is collected instead of
-// asked (the operator, 2026-11-02, translated: "rights should be the same in interactive and autonomous;
-// the only difference is that questions are collected instead of asked"). Measured the same day on the
-// macOS instance: after the operator answered a collected point ("hooks yes"), this gate refused the very
-// edit again, so an approved change stuck until the mode ended - interactively the harness would simply
-// have asked. So: when the operator spoke in THIS turn (a prompt or a mid-turn message after the last
-// turn end) and that prompt was not the order that switched the run on, an ask rule or a held edit goes
-// to the harness's own dialog - the operator is there to answer it. The question tool stays collected.
-function operatorInTurn(transcriptPath, root) {
-  let lines;
-  try { lines = fs.readFileSync(transcriptPath, 'utf8').split('\n'); } catch (e) { return false; }
-  let lastEnd = -1; let lastHuman = -1;
-  lines.forEach((line, i) => {
-    if (!line) return;
-    let d; try { d = JSON.parse(line); } catch (e) { return; }
-    if (tk.isTurnEnd(d)) { lastEnd = i; return; }
-    if (tk.queuedHumanPrompt(d)) { lastHuman = i; return; }
-    if (!tk.isTranscriptRecord(d) || tk.isSkillExpansion(d) || tk.isAgentOrigin(d) || tk.isScheduledPrompt(d)) return;
-    const m = d.message;
-    if (!m || m.role !== 'user') return;
-    const text = typeof m.content === 'string' ? m.content
-      : (Array.isArray(m.content) ? m.content.filter((b) => b && b.type === 'text').map((b) => b.text).join('\n') : '');
-    if (text.trim() && !tk.isNotification(text)) lastHuman = i;
-  });
-  if (lastHuman <= lastEnd) return false;
-  const said = promptModes(transcriptPath, root).filter((p) => !p.answer);
-  const last = said[said.length - 1];
-  const prev = said[said.length - 2];
-  return !(last && last.autonomous && !(prev && prev.autonomous));
-}
+// No dialog in an autonomous run - an operator message in the turn does not mean the operator is there
+// (the operator, 2026-11-03, translated: "I am not automatically always there. Today I get this on my phone
+// [...] Asking interactively is not auto mode - then we could abolish the modes right away. Some time I write
+// something and 20 min later you think 'the operator is there anyway'. That need not be true."). This replaces the
+// exception of 2026-11-02 (a held call went to the harness dialog when the operator had spoken in the turn).
+// Measured the same day on the macOS instance: two dialogs in one autonomous run, both through that exception
+// - a settings edit 13 minutes after the operator's last answer, and a feedback.md edit after a mid-turn
+// remark sent from a phone. An ask-rule call or a held edit is collected until the mode ends (the operator
+// asks what is open, or says an off-word); then the harness asks as usual.
 
 function judge(input) {
   const tool = input.tool_name || '';
@@ -194,7 +172,6 @@ function judge(input) {
   const own = isQuestion ? null : hitRule(OWN_WORDS, tool, input.tool_input || {}, root);
   if (!isQuestion && !rule && !held && !own) return null;
   if (!autonomousMode(input.transcript_path || '', root)) return null;
-  if ((rule || held) && operatorInTurn(input.transcript_path || '', root)) return null;
   if (own && wayOut(tool, input.tool_input || {}, root, input.transcript_path || '')) return null;
   if (own) {
     return `AUTONOMOUS-GATE: \`${own}\` holds the words this gate decides by, and the run is autonomous - a run does not change ` +

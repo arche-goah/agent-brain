@@ -24,7 +24,8 @@
  * leaves the id empty; (1) then carries the attribution).
  *
  * Readers: watch-gate.cjs, question-gate.cjs and open-items-gate.cjs (an own open item listed as
- * an open end is named in the close report).
+ * an open end is named in the close report). autonomous-idle-gate.cjs and decision-presentation-gate.cjs
+ * read only whether a valid stamp exists (a closed session continues nothing, and asks no mode question).
  * Fixtures: scripts/test-watch-gate.sh, scripts/test-question-gate.sh, scripts/test-open-items-gate.sh.
  */
 const fs = require('fs');

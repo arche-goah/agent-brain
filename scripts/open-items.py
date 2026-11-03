@@ -87,7 +87,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from instance_key import is_self, key_in, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
-from shared_answers import checked_head, default_repo, own_shared_shas, sibling_keys_same_os  # noqa: E402
+from shared_answers import checked_head, default_repo, own_open_requests, own_shared_shas, sibling_keys_same_os  # noqa: E402
 import shared_channels  # noqa: E402
 OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*"
@@ -175,9 +175,13 @@ def requests(repo, label=""):
 
 # One GraphQL search instead of `gh search prs`: the list needs to know whose move it is,
 # and only reviews, review requests, comments and the last commit date say that.
-PR_QUERY = """query($q: String!) { viewer { login }
-  search(query: $q, type: ISSUE, first: 50) { issueCount nodes { ... on PullRequest {
-    number title isDraft createdAt body author { login } repository { name }
+# Paged: measured 2026-11-03 on the macOS instance, 59 open PRs against `first: 50` - the nine
+# beyond the page fell off silently, and two ledger entries carried by an open suite PR printed
+# as "its in-pr exit names no open PR any more" in 17 and 21 sessions.
+PR_QUERY = """query($q: String!, $after: String) { viewer { login }
+  search(query: $q, type: ISSUE, first: 50, after: $after) { issueCount
+  pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
+    number title isDraft createdAt body headRefName author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
     latestReviews(first: 20) { nodes { author { login } submittedAt body } }
     commits(last: 1) { nodes { commit { oid committedDate } } }
@@ -270,33 +274,61 @@ def prs(owner, owners, repos=(None,), extra=()):
     q = pr_search(owner, extra)
     if os.environ.get("OPEN_ITEMS_SHOW_PR_SEARCH"):  # fixture hook: which search was asked
         print(f"pr-search: {q}", file=sys.stderr)
-    fixture = os.environ.get("OPEN_ITEMS_PR_FIXTURE")  # fixture hook: a saved GraphQL answer
-    if fixture:
-        rc, out = (0, Path(fixture).read_text(encoding="utf-8")) if Path(fixture).is_file() else (1, "")
-    else:
-        rc, out = run(["gh", "api", "graphql", "-f", f"query={PR_QUERY}", "-F", f"q={q}"])
-    if rc != 0:
-        return None
-    try:
-        data = json.loads(out or "{}")["data"]
-        me, rows = (data.get("viewer") or {}).get("login", ""), data["search"]["nodes"]
-    except (ValueError, KeyError, TypeError):
+    # fixture hook: saved GraphQL answers, one file per page, joined by os.pathsep
+    fixtures = [f for f in os.environ.get("OPEN_ITEMS_PR_FIXTURE", "").split(os.pathsep) if f]
+    me, rows, after, total = "", [], None, 0
+    for page in range(20):  # 20 x 50 PRs; a search beyond that is no start report any more
+        if fixtures:
+            f = fixtures[page] if page < len(fixtures) else ""
+            rc, out = (0, Path(f).read_text(encoding="utf-8")) if f and Path(f).is_file() else (1, "")
+        else:
+            cmd = ["gh", "api", "graphql", "-f", f"query={PR_QUERY}", "-F", f"q={q}"]
+            rc, out = run(cmd + (["-f", f"after={after}"] if after else []))
+        if rc != 0:
+            return None
+        try:
+            data = json.loads(out or "{}")["data"]
+            me = (data.get("viewer") or {}).get("login", "")
+            rows += data["search"]["nodes"]
+            total = data["search"].get("issueCount", 0)
+            info = data["search"].get("pageInfo") or {}
+        except (ValueError, KeyError, TypeError):
+            return None
+        if not info.get("hasNextPage"):
+            break
+        after = info.get("endCursor")
+    # A cut list is no list: fewer rows than the search counted = the source was not read whole.
+    if len(rows) < total:
         return None
     items = []
     # A check answered in any channel we read counts (a device channel carries such answers too).
     shas = set().union(*(own_shared_shas(r) for r in repos))
     same_os = set().union(*(sibling_keys_same_os(repo=r) for r in repos))
+    asked = {}
+    for r in repos:
+        asked.update(own_open_requests(r))
+    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
     for p in rows:
         if not p.get("number"):
             continue
         ref = f"{p['repository']['name']}#{p['number']}"
         m = WAIT_MARK.search(p.get("body") or "")
         author = (p.get("author") or {}).get("login", "?")
+        waiting, note = ball(p, me, owners, shas, same_os), ""
+        if waiting is None and ref in asked:
+            # Our own open request names this PR: its addressee moves - for one day. After that the
+            # PR is ours again with the reminder (operator rule 2026-10-21: no answer within a day =
+            # a request by name to the machine, or a hand step for the operator).
+            who, when = asked[ref]
+            if when >= yesterday:
+                waiting = (who, f"our check request of {when} is open")
+            else:
+                note = f"our check request of {when} to {who} has no answer - ask that machine by name"
         # The shown date is when the PR was OPENED — last activity would reset its age.
-        items.append({"id": ref, "kind": "PR", "date": p["createdAt"][:10], "who": author,
+        items.append({"id": ref, "kind": "PR", "date": p["createdAt"][:10], "who": author, "branch": p.get("headRefName", ""),
                       "text": p["title"][:100] + (" (draft)" if p.get("isDraft") else ""),
                       "scope": p["repository"]["name"], "ref": ref,
-                      "waiting_on": ball(p, me, owners, shas, same_os),
+                      "waiting_on": waiting, "pr_note": note,
                       "until": (m.group(1), m.group(2).strip()) if m else None,
                       "events": pr_events(p),
                       # Our own last move (commit, comment, review) — "nothing done yet" is a claim
@@ -410,7 +442,7 @@ def front(it, repo):
 def auto_class(it, repo, human_rx):
     """(class, why) from the data alone, or (None, '') when the data does not say."""
     if it["kind"] == "PR":
-        return "ai", "pull request: review or merge is agent work"
+        return "ai", it.get("pr_note") or "pull request: review or merge is agent work"
     if it["kind"] == "session":
         return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it["kind"] == "ledger":
@@ -419,9 +451,9 @@ def auto_class(it, repo, human_rx):
         if it.get("exit") == "operator-decision":
             return "human", "an operator decision (ledger exit)"
         if it.get("exit") == "ai-does-it":
-            return "ai", "the agent's own work (ledger exit)"
+            return "ai", it.get("pr_note") or "the agent's own work (ledger exit)"
         if it.get("exit") == "in-pr":  # carried_by_pr found no open PR in the exit line
-            return "ai", "its in-pr exit names no open PR any more — tick it or name what is left"
+            return "ai", it.get("pr_note") or "its in-pr exit names no open PR any more — tick it or name what is left"
         # An exit outside the skill's vocabulary read as untouched agent work: measured 2026-10-28,
         # `waits-on-others`, `deferred`, `ask-operator` on open entries of one brain.
         if it.get("exit") in ("done-already", "drop"):
@@ -430,6 +462,11 @@ def auto_class(it, repo, human_rx):
             return "ai", f"unknown exit '{it['exit']}' — write one of {', '.join(sorted(EXITS))} (skill backlog-catch-up)"
         if it.get("lclass") == "decision":
             return "human", "a decision in the ledger"
+        # No exit = never sorted: who moves next is unknown, not "ours". Measured 2026-11-03: three
+        # entries whose rest was the operator's hand at a bench printed as plain agent work for 8-11
+        # sessions. Sorting is the agent's move, and the line says that, not more.
+        if not it.get("exit"):
+            return "ai", "no exit line yet — sort it: who moves next (skill backlog-catch-up)"
         return "ai", "ledger work item"
     if it.get("file"):
         m = CIRCLE.search(front(it, repo))
@@ -443,11 +480,18 @@ def auto_class(it, repo, human_rx):
 
 # Standing approvals (full-audit 2026-10-15, Windows instance): a class of items the operator
 # approved once for good. Instance data `.claude/rules/open-items-standing.json`, "classes":
-#   {"name", "kind": "request"|"PR", "scope": regex on topic folder / repo, "audience": [tokens,
-#    one of which the request's audience must name], "title": regex on the item text,
-#    "excludes": [regexes on the item text that keep an item out], "granted": "\"<words>\" <date>"}
+#   {"name", "kind": "request"|"PR"|"ledger", "scope": regex on topic folder / repo / ledger path,
+#    "audience": [tokens, one of which the request's audience must name], "title": regex on the
+#    item text, "excludes": [regexes on the item text that keep an item out],
+#    "granted": "\"<words>\" <date>"}
 # `granted` must quote the operator and carry the date — the shapes mechanism-guard.cjs accepts
 # for needs_operator_word. Without them the entry is refused, never silently applied.
+# `ledger` (measured 2026-11-02, macOS instance): an operator approval of ALL own items (2026-10-26)
+# reached requests and PRs only; the brain's own ledger entries were asked "shall I?" at every start,
+# the go never named them, and 13 entries whose work had shipped in the pin stayed open for up to 17
+# sessions. Only `ai`/unclassified ledger items can become standing; an operator-decision exit stays
+# `human`, exactly as for the other kinds.
+STANDING_KINDS = ("request", "PR", "ledger")
 QUOTE = re.compile(r'"[^"\n]{3,}"|„[^“”"\n]{3,}[“”"]|“[^”\n]{3,}”')
 DAY = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
 AUDIENCE = re.compile(r"^\s+audience:\s*(.+?)\s*$", re.M)
@@ -467,8 +511,8 @@ def standing_classes(root):
             refused.append(f"standing approval '{name}' refused — \"granted\" must quote the operator's "
                            "words and the date they were said (\"...\" YYYY-MM-DD); its items are asked as before")
             continue
-        if e.get("kind") not in ("request", "PR"):
-            refused.append(f"standing approval '{name}' refused — \"kind\" must be request or PR")
+        if e.get("kind") not in STANDING_KINDS:
+            refused.append(f"standing approval '{name}' refused — \"kind\" must be one of {', '.join(STANDING_KINDS)}")
             continue
         try:
             scope, title = (re.compile(e[k], re.I) if e.get(k) else None for k in ("scope", "title"))
@@ -707,21 +751,36 @@ def carried_by_pr(ledger_items, pr_items):
     beyond their PR, so the writer says it (skill backlog-catch-up), the reader only measures
     whether that PR is still open. A bare `#N` counts only when exactly one open PR has that
     number; with none open the entry is the agent's again — tick it or name what is left."""
-    by_num = {}
+    by_num, by_branch = {}, {}
     for p in pr_items:
         by_num.setdefault(p["ref"].rsplit("#", 1)[1], []).append(p["ref"])
+        if p.get("branch"):
+            by_branch[p["branch"]] = p["ref"]
     for it in ledger_items:
-        if it.get("exit") != "in-pr":
+        if it.get("exit") not in ("in-pr", "ai-does-it"):
             continue
-        line = (re.findall(r"^\s*exit:\s*in-pr\b.*$", it.get("body", ""), re.M) or [""])[-1]
-        hits = set()
-        for repo, n in PR_MENTION.findall(line):
+        # The last exit WITH its continuation lines (measured 2026-11-03: an exit naming its PR on the
+        # second line read as "no open PR"), plus the check line, which often names the PR's branch.
+        blocks = re.findall(r"^\s*exit:.*(?:\n(?![\s>*-]*(?:[\w-]+:\s|- \[)).*)*", it.get("body", ""), re.M)
+        text = (blocks[-1] if blocks else "") + "\n" + "\n".join(re.findall(r"^\s*check:.*$", it.get("body", ""), re.M))
+        hits, named = set(), bool(PR_MENTION.search(blocks[-1] if blocks else ""))
+        for repo, n in PR_MENTION.findall(text):
             refs = [r for r in by_num.get(n, []) if not repo or r == f"{repo}#{n}"]
             if len(refs) == 1:
                 hits.add(refs[0])
-        if hits:
+        hits.update(ref for branch, ref in by_branch.items() if re.search(rf"(?<![\w/.-]){re.escape(branch)}(?![\w/.-])", text))
+        named = named or bool(hits)
+        if it["exit"] == "in-pr" and hits:
             it["waiting_on"] = ("the open PR " + ", ".join(sorted(hits)),
                                 "the PR carries this entry; it is listed again once the PR closes")
+        elif it["exit"] == "in-pr" and not named:
+            # Measured 2026-11-03: "in-pr" with no PR reference read as "no open PR any more".
+            it["pr_note"] = "its in-pr exit names no PR at all — add the PR reference (owner/repo#N)"
+        elif it["exit"] == "ai-does-it" and hits:
+            # Measured 2026-11-03: seven entries carried by open PRs printed as the agent's open work
+            # because the exit was never moved when the PR opened. The writer decides; the reader says it.
+            it["pr_note"] = (f"its exit says ai-does-it, but {', '.join(sorted(hits))} is open — "
+                             "write in-pr if the PR carries the rest")
 
 
 def lookup(store, it):
@@ -792,7 +851,14 @@ def main():
     ap.add_argument("--root", default=resolve_project_dir(HERE))
     # extend: the hint prints one --classify per item; with the default action only the last one counted.
     ap.add_argument("--classify", nargs="+", action="extend", metavar="ID=ai|human[:why]")
+    ap.add_argument("--top", type=int, default=0, help="show only the N oldest items per side (own / operator); 0 = all")
     a = ap.parse_args()
+    # --owner is a GitHub account, not the item side the output prints as [..|ai] / [..|human]. Measured 2026-11-03
+    # on the macOS instance: a hand run with `--owner ai` searched the foreign account "ai", listed 26 of its PRs as
+    # ours and called 30 in-pr exits stale - read as a list of false reports before the call was found.
+    if (a.owner or "").lower() in ("ai", "human", "operator", "standing"):
+        ap.error(f"--owner {a.owner}: this is a GitHub account (default: the ecosystem's owner), not the item side; "
+                 "leave it out for this brain")
     # OS-9: the bootup and the Stop gate parse this output, and the item texts carry the
     # authors' umlauts and dashes. Unpinned, Windows writes the ANSI codepage.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
@@ -987,8 +1053,20 @@ def main():
     fold = [i for i in active if i["cls"] == "standing" and i["kind"] == "PR" and not i["overdue"]]
     if len(fold) <= collapse:
         fold = []
+    # --top N (operator 2026-11-03, question tool: "counts + top 5"): the session start shows the N oldest items per side
+    # (own / for the operator); the counts stay in the head line and the rest is one command away. Measured the same
+    # day: the start output was 17.9 KB with the list at 10.3 KB, and Claude Code cuts hook output past 10 000 characters
+    # without a sign. Unclassified items always print — they must be classified.
+    hidden = {"ai": [], "human": []}
+    if a.top:
+        for side in hidden:
+            mine = sorted((i for i in active if i["cls"] == side), key=lambda i: (i["first"] or i["date"] or ""))
+            hidden[side] = mine[a.top:]
+    skip = {id(i) for side in hidden.values() for i in side}
     group = False
     for i in active:
+        if id(i) in skip:
+            continue
         if i["cls"] == "standing" and not group:
             group = True
             print("- standing approval — handle these, then report what was done (no question needed):")
@@ -1012,6 +1090,9 @@ def main():
                    "undone, then move or drop the waiting-until line; " + age)
         why = f" ({i['why']})" if i["why"] else ""
         print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{why}")
+    if skip:
+        print(f"- [more] {len(hidden['ai'])} more own and {len(hidden['human'])} more for the operator (newer than the ones above) - "
+              f"full list: core/scripts/open-items.py --owner {owner}")
     if fold:
         rep = [i["n"] for i in fold if i["n"] > 1]
         print(f"- [PR-standing] {len(fold)} PRs: " + ", ".join(i["ref"] for i in fold)

@@ -313,11 +313,32 @@ for p in $(enabled_plugins); do
         echo "     cached plugin.json says $have_ver = $pin_ref; recorded commit ${have_sha:0:12} is older"
         echo "     harmless — the record is refreshed by a reinstall, not by an update"
       else
-        echo "FAIL plugin $p ($scope) cache provenance mismatch — content is NOT the pinned release:"
-        echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
-        echo "     cached version '${have_ver:-unreadable}' vs pinned '$want_ver'"
-        echo "     fix: claude plugin uninstall $p --scope $scope  &&  claude plugin install $p  — then restart Claude Code"
-        failed=1
+        # provenance auto-heal (decided by the macOS and the Windows instance 2026-08-20, built 2026-11-02): the
+        # hand fix was the same every time (uninstall + install, nine times on two machines in one day), so the
+        # run takes it itself — and checks the provenance AGAIN afterwards. Only a mismatch that survives the
+        # reinstall stays FAIL: real foreign content must never be overwritten silently, the re-check is the line
+        # between healing and covering up.
+        healed=0
+        if command -v claude >/dev/null 2>&1 \
+           && claude plugin uninstall "$p" --scope "$scope" >/dev/null 2>&1 \
+           && claude plugin install "$p" --scope "$scope" >/dev/null 2>&1; then
+          re_sha=$(recorded_sha "$p" | awk -v s="$scope" '$1 == s { print $2 }')
+          re_ver=$(cached_version "$p" | awk -v s="$scope" '$1 == s { print $2 }')
+          if [ "$re_sha" = "$want_sha" ] || { [ -n "$re_ver" ] && [ "$re_ver" = "$want_ver" ]; }; then
+            healed=1
+            plugin_moved=1; changed=1
+            echo "OK   plugin $p ($scope) provenance auto-heal: was ${have_ver:-unreadable} at ${have_sha:0:12},"
+            echo "     reinstalled and re-checked — now the pinned release $pin_ref ($pin_repo)"
+          fi
+        fi
+        if [ "$healed" -eq 0 ]; then
+          echo "FAIL plugin $p ($scope) cache provenance mismatch — content is NOT the pinned release:"
+          echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
+          echo "     cached version '${have_ver:-unreadable}' vs pinned '$want_ver'"
+          echo "     provenance auto-heal tried a reinstall and the mismatch stayed (or the reinstall failed) —"
+          echo "     check the cache by hand: claude plugin uninstall $p --scope $scope  &&  claude plugin install $p --scope $scope"
+          failed=1
+        fi
       fi
     fi
   done <<< "$recs"
