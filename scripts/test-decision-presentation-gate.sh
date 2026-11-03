@@ -56,6 +56,9 @@ f="$T/1.jsonl"; { user "fix the parser"; asst "done"; user "anything open for me
 check "the incident: asked what is open, decisions answered in prose" "$f" "$B" block
 f="$T/2.jsonl"; { user "anything open for me?"; asst "Two decisions:"; ask; } > "$f"
 check "same question, answered through the question tool" "$f" "$B" allow
+# An api-request-blob after the prompt repeats its text; it is no prompt (class sweep 2026-11-03).
+f="$T/2b.jsonl"; { user "anything open for me?"; ask; printf '%s\n' '{"type":"api-request-blob","message":{"role":"user","content":"anything open for me?"}}'; asst "Two decisions:"; } > "$f"
+check "a blob repeating the prompt does not hide the turn's question" "$f" "$B" allow
 # Typed mid-turn (queued_command, turn-kind #139): the operator's word, and an AskUserQuestion of an
 # EARLIER turn does not count for it.
 f="$T/2q.jsonl"; { user "anything open for me?"; ask; user "now fix the parser"; asst "working"; qcmd "anything open for me?"; asst "Four points, recommendation yes each."; } > "$f"

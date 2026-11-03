@@ -19,6 +19,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { operatorPrompt } = require('./turn-kind.cjs');
 
 const EXISTING_MIN = 5;
 const NOT_A_PROMPT = /^\s*(<task-notification|<system-reminder|<cross-session-message|<local-command|Stop hook feedback|\[Request interrupted)/;
@@ -48,17 +49,15 @@ function transcript(tp) {
   try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return { prompts: [], tools: '' }; }
   const prompts = []; const tools = [];
   for (const l of lines) {
-    if (!l.includes('"user"') && !l.includes('tool_use')) continue;
+    if (!l.includes('"user"') && !l.includes('tool_use') && !l.includes('queued_command')) continue;
     let d; try { d = JSON.parse(l); } catch (e) { continue; }
     const m = d && d.message;
     if (m && m.role === 'assistant' && Array.isArray(m.content)) {
       for (const b of m.content) if (b && b.type === 'tool_use') tools.push(JSON.stringify(b.input || {}));
       continue;
     }
-    if (!m || m.role !== 'user' || d.isMeta) continue;
-    const c = m.content;
-    const t = typeof c === 'string' ? c
-      : Array.isArray(c) && !c.some((b) => b && b.type === 'tool_result') ? c.map((b) => (b && b.text) || '').join('\n') : '';
+    // A prompt typed while the agent works is a queued command, not a user record (turn-kind.cjs operatorPrompt).
+    const t = operatorPrompt(d);
     if (t && !NOT_A_PROMPT.test(t)) prompts.push(t);
   }
   return { prompts, tools: tools.join('\n') };

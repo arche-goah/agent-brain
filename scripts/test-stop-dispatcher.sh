@@ -161,6 +161,18 @@ case "$(feed2 "$TM")" in *'kind=operator'*) ok "frame + operator words = operato
 TF="$T/feedback.jsonl"
 { cat "$TN"; printf '%s\n' '{"message":{"role":"user","content":"Stop hook feedback:\nx"}}' '{"message":{"role":"assistant","content":[{"type":"text","text":"re"}]}}'; } > "$TF"
 case "$(feed2 "$TF")" in *'kind=notification'*) ok "hook feedback keeps the notification kind";; *) bad "hook feedback flipped the kind";; esac
+# A prompt the operator typed while the agent worked arrives as a queued command, never a user record
+# (2026-11-03): after a notification it makes the turn the operator's; a peer's queued message does not.
+TQ="$T/queued.jsonl"
+{ cat "$TN"; printf '%s\n' '{"type":"attachment","attachment":{"type":"queued_command","prompt":"stop, do X first","origin":{"kind":"human"}}}' \
+  '{"message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}'; } > "$TQ"
+case "$(feed2 "$TQ")" in *'kind=operator'*) ok "a typed-ahead prompt after a notification = operator";; *) bad "queued human prompt read as notification";; esac
+TP="$T/queued-peer.jsonl"
+{ cat "$TN"; printf '%s\n' '{"type":"attachment","attachment":{"type":"queued_command","prompt":"from a peer","origin":{"kind":"peer"}}}'; } > "$TP"
+case "$(feed2 "$TP")" in *'kind=notification'*) ok "a peer's queued message keeps the notification kind";; *) bad "peer queued message flipped the kind";; esac
+TB="$T/blob.jsonl"
+{ cat "$TN"; printf '%s\n' '{"type":"api-request-blob","message":{"role":"user","content":"# CLAUDE.md instructions dump"}}'; } > "$TB"
+case "$(feed2 "$TB")" in *'kind=notification'*) ok "an api-request-blob is no operator turn";; *) bad "blob record read as the operator";; esac
 
 # --- recorder logs rotate by size, one generation (both ways) -----------------
 # A probe recorder that always records one row. Limit 200 bytes: a log above it is

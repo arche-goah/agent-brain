@@ -41,7 +41,7 @@ const fs = require('fs');
 const path = require('path');
 const { promptModes, words } = require('./autonomous-mode.cjs');
 const ITEM_CLASS = /\bclass:\s*`?(decision|hand-step)\b/i;
-const { queuedHumanPrompt } = require('./turn-kind.cjs');
+const { queuedHumanPrompt, isTranscriptRecord } = require('./turn-kind.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
 
 // Decision circles that need the operator (open-items.py CIRCLE_WORDS: B, E, F = human).
@@ -110,7 +110,9 @@ function turnSince(transcriptPath, lastPrompt) {
     const queued = queuedHumanPrompt(d); // the newest prompt may have been typed mid-turn
     if (queued && key && queued.includes(key)) { since = d.timestamp || ''; break; }
     const msg = d.message;
-    if (!msg) continue;
+    // An `api-request-blob` written after the prompt carries the prompt's text again: matched as the
+    // prompt, it moved `since` past the questions of the turn (class sweep 2026-11-03).
+    if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user' && key) {
       const c = msg.content;
       const t = typeof c === 'string' ? c : Array.isArray(c) ? c.filter((b) => b && b.type === 'text').map((b) => b.text).join('\n') : '';
