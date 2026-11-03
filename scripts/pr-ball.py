@@ -138,6 +138,12 @@ def main():
         # The bootup reports a failed gh call itself; here no JSON stays silence.
         return 0
     found = moves(data, now, self_key(), own_shared_shas())
+    # A cut search is said, never read as the whole list (measured 2026-11-03: 59 open PRs
+    # against a page of 40 — the rest fell off silently).
+    search = (data.get("data") or {}).get("search") or {}
+    total, read = search.get("issueCount") or 0, len(search.get("nodes") or [])
+    if total > read:
+        print(f"!! PR search cut: {read} of {total} open PRs read - the PR line below covers only those")
     if found:
         # ASCII only: Python prints through the console code page on Windows, and a dash
         # or middle dot arrived there as a replacement character (Windows runner, 2026-09-15).
