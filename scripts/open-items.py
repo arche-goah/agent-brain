@@ -175,8 +175,12 @@ def requests(repo, label=""):
 
 # One GraphQL search instead of `gh search prs`: the list needs to know whose move it is,
 # and only reviews, review requests, comments and the last commit date say that.
-PR_QUERY = """query($q: String!) { viewer { login }
-  search(query: $q, type: ISSUE, first: 50) { issueCount nodes { ... on PullRequest {
+# Paged: measured 2026-11-03 on the macOS instance, 59 open PRs against `first: 50` - the nine
+# beyond the page fell off silently, and two ledger entries carried by an open suite PR printed
+# as "its in-pr exit names no open PR any more" in 17 and 21 sessions.
+PR_QUERY = """query($q: String!, $after: String) { viewer { login }
+  search(query: $q, type: ISSUE, first: 50, after: $after) { issueCount
+  pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
     number title isDraft createdAt body author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
     latestReviews(first: 20) { nodes { author { login } submittedAt body } }
@@ -270,17 +274,31 @@ def prs(owner, owners, repos=(None,), extra=()):
     q = pr_search(owner, extra)
     if os.environ.get("OPEN_ITEMS_SHOW_PR_SEARCH"):  # fixture hook: which search was asked
         print(f"pr-search: {q}", file=sys.stderr)
-    fixture = os.environ.get("OPEN_ITEMS_PR_FIXTURE")  # fixture hook: a saved GraphQL answer
-    if fixture:
-        rc, out = (0, Path(fixture).read_text(encoding="utf-8")) if Path(fixture).is_file() else (1, "")
-    else:
-        rc, out = run(["gh", "api", "graphql", "-f", f"query={PR_QUERY}", "-F", f"q={q}"])
-    if rc != 0:
-        return None
-    try:
-        data = json.loads(out or "{}")["data"]
-        me, rows = (data.get("viewer") or {}).get("login", ""), data["search"]["nodes"]
-    except (ValueError, KeyError, TypeError):
+    # fixture hook: saved GraphQL answers, one file per page, joined by os.pathsep
+    fixtures = [f for f in os.environ.get("OPEN_ITEMS_PR_FIXTURE", "").split(os.pathsep) if f]
+    me, rows, after, total = "", [], None, 0
+    for page in range(20):  # 20 x 50 PRs; a search beyond that is no start report any more
+        if fixtures:
+            f = fixtures[page] if page < len(fixtures) else ""
+            rc, out = (0, Path(f).read_text(encoding="utf-8")) if f and Path(f).is_file() else (1, "")
+        else:
+            cmd = ["gh", "api", "graphql", "-f", f"query={PR_QUERY}", "-F", f"q={q}"]
+            rc, out = run(cmd + (["-f", f"after={after}"] if after else []))
+        if rc != 0:
+            return None
+        try:
+            data = json.loads(out or "{}")["data"]
+            me = (data.get("viewer") or {}).get("login", "")
+            rows += data["search"]["nodes"]
+            total = data["search"].get("issueCount", 0)
+            info = data["search"].get("pageInfo") or {}
+        except (ValueError, KeyError, TypeError):
+            return None
+        if not info.get("hasNextPage"):
+            break
+        after = info.get("endCursor")
+    # A cut list is no list: fewer rows than the search counted = the source was not read whole.
+    if len(rows) < total:
         return None
     items = []
     # A check answered in any channel we read counts (a device channel carries such answers too).

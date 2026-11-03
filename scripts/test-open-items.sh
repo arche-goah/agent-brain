@@ -518,4 +518,17 @@ q2=$(OPEN_ITEMS_SHOW_PR_SEARCH=1 OWNER=me run "" "$T/root-po" | sed -n 's/^pr-se
 [ "$q2" = "user:me user:Personal is:pr is:open archived:false" ] && ok "pr_owners: one search over both owners, --owner not doubled" \
   || bad "several-owner search: '$q2'"
 
+# Paged PR search (measured 2026-11-03: 59 open PRs against a page of 50, nine fell off silently).
+# Page 2 is read; a list shorter than the search's count is a failed read, never a short list.
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[%s]}}}\n' \
+  "$(pr pager 21 peer 2026-10-06 '' 2026-10-06T11:00:00Z '[]' '[{"requestedReviewer":{"login":"me"}}]')" > "$T/page1.json"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"pageInfo":{"hasNextPage":false,"endCursor":"c2"},"nodes":[%s]}}}\n' \
+  "$(pr pager 22 peer 2026-10-06 '' 2026-10-06T11:00:00Z '[]' '[{"requestedReviewer":{"login":"me"}}]')" > "$T/page2.json"
+PATHSEP=:; command -v cygpath >/dev/null 2>&1 && PATHSEP=';'  # python's os.pathsep (OS-3)
+pg=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/page1.json")$PATHSEP$(native "$T/page2.json")" OWNER=me run "")
+has "pager#22" "$pg" && ok "a PR on the second page of the search is listed" || bad "page 2: $pg"
+cut=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/page1.json")" OWNER=me run "")
+has "PR search" "$cut" && ! has "pager#21" "$cut" && ok "negative control: a missing page = PR search unread, no short list" \
+  || bad "missing page: $cut"
+
 [ "$fail" = 0 ] && echo "open-items: all cases pass" || { echo "open-items: FAILURES"; exit 1; }
