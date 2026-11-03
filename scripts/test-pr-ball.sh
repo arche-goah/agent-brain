@@ -186,6 +186,18 @@ else bad "line empty or not pure ASCII (breaks on a Windows code page): ${out:-<
 fi
 
 # 11. the bootup actually calls it (a carrier without a trigger is no carrier)
+# A cut search is said (2026-11-03: 59 open PRs, page of 40); a whole one stays silent.
+expect_line "search cut: fewer nodes than issueCount is named" \
+  '{"data":{"viewer":{"login":"me"},"search":{"issueCount":3,"nodes":[]}}}' "PR search cut: 0 of 3"
+expect_silent "negative control: issueCount equal to the nodes read is silent" \
+  '{"data":{"viewer":{"login":"me"},"search":{"issueCount":0,"nodes":[]}}}'
+grep -q 'issueCount nodes' "$ROOT/helpers/session-bootup.sh" && ok "the bootup query asks the search's count" \
+  || bad "the bootup query asks no issueCount - a cut would stay silent"
+# Class guard (2026-11-03, four sites): an open-PR list read without a limit stops at gh's default
+# of 30. Every `gh pr list` in helpers/ and scripts/ names its --limit.
+unlimited="$(grep -rnE 'gh pr list' "$ROOT/helpers" "$ROOT/scripts" --include='*.sh' --include='*.py' --include='*.cjs' \
+  | grep -av -- '--limit' | grep -avE '^[^:]+:[0-9]+:\s*#|test-|pr-list\b|\| \.\.\.' || true)"
+[ -z "$unlimited" ] && ok "every gh pr list names its --limit" || bad "gh pr list without --limit (default 30 cuts silently): $unlimited"
 if grep -q 'scripts/pr-ball.py' "$ROOT/helpers/session-bootup.sh"; then
   ok "session-bootup.sh calls pr-ball.py"
 else

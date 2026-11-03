@@ -54,6 +54,10 @@ Exit 0 always (a report, not a gate). Stdlib only; runs under `python3` or `pyth
 """
 import argparse, hashlib, json, os, re, sys, time
 from pathlib import Path
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # noqa: E402
+from transcript_kind import sessions as sessions_only  # noqa: E402  (headless calls are no session)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
@@ -347,7 +351,7 @@ def main(argv):
     total = {"needed": 0, "unneeded": 0, "referral": 0, "overreach": 0, "unclear": 0, "self": 0,
              "prompts": 0, "corrections": 0}
     cands, sessions, nbytes = [], 0, 0
-    files = sorted(d.glob("*.jsonl")) if d.is_dir() else []
+    files = sessions_only(sorted(d.glob("*.jsonl"))) if d.is_dir() else []
     for f in files:
         st = f.stat()
         if st.st_mtime < cutoff:

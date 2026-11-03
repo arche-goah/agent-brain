@@ -18,7 +18,8 @@ js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 # brace-expanded into two words (bash), which split the call.
 wr() { node -e 'process.stdout.write(JSON.stringify({file_path: process.argv[1], content: process.argv[2]}))' "$1" "$2"; }
 call() { # $1 tool name, $2 tool_input JSON, [$3 project dir]
-  printf '{"tool_name":"%s","tool_input":%s,"cwd":"%s"}' "$1" "$2" "$(native "${3:-$T}")" \
+  # JSON built by node from argv (escaping; a printf-built input broke on a double quote, 2026-11-02)
+  node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:JSON.parse(a[2]),cwd:a[3]}))' "$1" "$2" "$(native "${3:-$T}")" \
     | CLAUDE_PROJECT_DIR="$(native "${3:-$T}")" node "$G" 2>&1
 }
 expect() { # $1 label, $2 deny|allow, $3 output
@@ -32,6 +33,7 @@ expect() { # $1 label, $2 deny|allow, $3 output
 
 # --- the six cases of the alpha measurement (2026-10-26), both directions
 expect "computer-use tool" deny "$(call "mcp__computer-use__left_click" '{"coordinate":[1,2]}')"
+expect "computer-use tool, a double quote in the project path (escaping)" deny "$(call "mcp__computer-use__left_click" '{"coordinate":[1,2]}' "$T/q\"x")"
 SE="$(w 'System ' 'Events')"; KS="$(w 'key' 'stroke')"
 expect "command that sends keys" deny "$(call Bash "{\"command\":$(js "osascript -e 'tell application \"$SE\" to $KS \"a\"'")}")"
 expect "file content with an input library" deny "$(call Write "$(wr "$(native "$T/x.py")" "import $(w py auto gui)")")"

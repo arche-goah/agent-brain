@@ -149,7 +149,12 @@ def return_channel(reports, orders, markers):
             hits = by_id.get(key, [])
             text = "\n".join(e["text"] for e in hits)
             if f["exit"] == "done-already" or any(e["checked"] or re.match(r"(Done|Erledigt)\b", e["section"]) for e in hits):
-                state = "done"
+                # "done" without a check line is a claim (audit-audit 2026-11-02, macOS instance: on 10-30 seven keys the
+                # return channel called done came back; the six that returned after a tick all had no check:). It keeps
+                # counting toward a decision; only a done entry with a check stops the count.
+                # An index exit done-already is the scan's own reading at that run and stays done.
+                proven = f["exit"] == "done-already" or any(re.search(r"^\s*(?:[-*]\s+)?check:\s*(?!none\b)\S", e["text"], re.M) for e in hits)
+                state = "done" if proven else "done-unproven"
             elif f["exit"] == "drop" or any(re.search(r, text, re.I) for r in markers["dropped"]):
                 state = "dropped"
             elif hits and any(re.search(r, text, re.I) for r in markers["decided"]):
@@ -160,7 +165,7 @@ def return_channel(reports, orders, markers):
                 state = "vanished"
             rows.append({"key": key, "title": f["title"], "severity": f["severity"], "exit": f["exit"],
                          "state": state, "seen": seen.get(key, 1)})
-    decision_due = [r["key"] for r in rows if r["seen"] >= 2 and r["state"] in ("still-open", "vanished")]
+    decision_due = [r["key"] for r in rows if r["seen"] >= 2 and r["state"] in ("still-open", "vanished", "done-unproven")]
     return {
         "previous_report": str(latest) if latest else None,
         "previous_has_index": latest_index is not None,
@@ -207,8 +212,23 @@ def deep_checks(repo, rc, orders, mem_dir):
     ahead = [e for e in orders if not e["checked"] and "rebuild-ahead" in e["text"]]
     if ahead:
         say("full-audit", f"the order list announces a structural rebuild ({title_of(ahead[0])})")
-    return [f"deep check suggested: {c} — {'; '.join(r)} — measured price on the proving brain: "
-            f"~{PRICE[c]}M tokens per run (brain-scan ~{PRICE['brain-scan']}M)" for c, r in why.items()]
+    # Under the 14-day cadence a coherence trigger suggests the PARTIAL run (operator decision 2026-11-02, macOS
+    # instance: four full runs in 24 days, ~6.7 M tokens over the cadence) — args partial: {since: <last register>}.
+    lines = []
+    for c, r in why.items():
+        if c == "coherence-scan" and last_reg:
+            try:
+                age = (datetime.date.today() - datetime.date.fromisoformat(last_reg)).days
+            except ValueError:
+                age = None
+            if age is not None and age < 14:
+                lines.append(f"deep check suggested: coherence-scan PARTIAL (args partial: {{since: \"{last_reg}\"}}) — "
+                             f"{'; '.join(r)} — the last full register is {age} day(s) old, a full run waits for day 14; "
+                             f"a partial run audits only the rule files changed since, three lenses")
+                continue
+        lines.append(f"deep check suggested: {c} — {'; '.join(r)} — measured price on the proving brain: "
+                     f"~{PRICE[c]}M tokens per run (brain-scan ~{PRICE['brain-scan']}M)")
+    return lines
 
 
 # ── machine checks ─────────────────────────────────────────────────────────
@@ -313,6 +333,58 @@ def map_decision_review(rc, out):
     return res
 
 
+RC_SUMMARY = re.compile(r"corrections (\d+) · reply named a cause (\d+).*?without a mechanism write in the same turn (\d+)")
+
+
+def map_root_cause(rc, out, *_):
+    """The cause-review count: due when a correction stayed without a cause, or a cause without a mechanism."""
+    m = RC_SUMMARY.search(out or "")
+    if rc != 0 or not m:
+        return [crash("root-cause-gate --review", rc, out)]
+    corr, named, bare = (int(x) for x in m.groups())
+    if corr - named > 0 or bare > 0:
+        return [F("P2", f"root-cause review due: {corr} correction(s) since the last scan, {corr - named} without a "
+                        f"cause in the reply, {bare} turn(s) named a cause without a mechanism — run skill "
+                        "root-cause-review (report only) and decide the classes it groups")]
+    return []
+
+
+def unread_logs(repo, core):
+    """A log in .claude-state/ that no file but its writer names has no reader (audit-audit 2026-11-02, macOS instance:
+    claim-gate, mdm-hint and three guard logs were written for weeks and read by nothing). A reader is any second file
+    under the brain's or the core's scripts/helpers/skills, or a stop-checks row whose recorder recorder-report reads."""
+    state = repo / ".claude-state"
+    if not state.is_dir():
+        return []
+    texts = []
+    for base in (repo / "scripts", repo / ".claude", core / "scripts", core / "helpers", core / "skills"):
+        if base.is_dir():
+            for p in base.rglob("*"):
+                if p.is_file() and p.suffix in (".py", ".sh", ".cjs", ".js", ".json", ".md") and p.stat().st_size < 2_000_000:
+                    try:
+                        texts.append(p.read_text(encoding="utf-8", errors="ignore"))
+                    except OSError:
+                        pass
+    # The dispatcher names a recorder's log after its marker (<marker>.jsonl); recorder-report reads every one.
+    read_by_report = set()
+    try:
+        for c in json.loads((repo / ".claude/rules/stop-checks.json").read_text(encoding="utf-8")).get("checks", []):
+            if c.get("mode") == "record" and c.get("marker"):
+                read_by_report.add(c["marker"].lower() + ".jsonl")
+    except (OSError, ValueError):
+        pass
+    out = []
+    for log in sorted(state.glob("*.jsonl")) + sorted(state.glob("*.log")):
+        if log.stat().st_size == 0 or re.search(r"\.\d+\.jsonl$", log.name) or log.name in read_by_report:
+            continue
+        stem = log.name.rsplit(".", 1)[0]
+        named = sum(1 for t in texts if log.name in t or f"'{stem}'" in t or f'"{stem}"' in t)
+        if named < 2:
+            out.append(F("P2", f"log without a reader: .claude-state/{log.name} ({log.stat().st_size // 1024} KB) — "
+                               "named by at most its writer; give it a reader (a scan job, recorder-report) or stop writing it"))
+    return out
+
+
 def machine(repo, core, last_date, today):
     py = sys.executable or "python3"
     bash = shutil.which("bash") or "bash"
@@ -339,7 +411,9 @@ def machine(repo, core, last_date, today):
         "commitments.py": ([py, str(S / "commitments.py"), "--repo", str(repo), "--days", str(days)], 120),
         # Operator corrections without a carrier line (2026-10-25): every entry of the feedback
         # protocol since the last scan names its Traeger/Carrier, or it is a finding.
-        "lesson-carriers.py": ([py, str(S / "lesson-carriers.py"), "--repo", str(repo), "--since", str(last_date or "0000-00-00")], 60),
+        # One entry point for both strengths of the carrier question (2026-11-02): --presence is lesson-carriers.
+        "carrier-audit.py": ([py, str(S / "carrier-audit.py"), "--presence", "--repo", str(repo),
+                              "--since", str(last_date or "0000-00-00")], 60),
         # A dated state in rule prose ("alpha until <date>") that expired or disagrees with its record.
         "state-prose-lint.py": ([py, str(S / "state-prose-lint.py"), "--repo", str(repo), "--today", today], 30),
         # A carrier the rules name but that does not exist (operator order 2026-10-28, KS-82).
@@ -352,8 +426,13 @@ def machine(repo, core, last_date, today):
                                 "--today", today], 60),
         # Network (GitHub): here and not at the session start, whose budget is seconds.
         "fork-drift.py": ([py, str(S / "fork-drift.py"), "--brain", str(repo)], 300),
+        # The count behind skill root-cause-review (audit-audit 2026-11-02, macOS instance: its cadence "every
+        # two weeks with the brain-scan" stood only in prose, nothing here ran it, the review never ran).
+        "root-cause-gate.cjs": (["node", str(core / "helpers" / "root-cause-gate.cjs"), "--review",
+                                 "--since", str(last_date or "0000-00-00")], 180, {"CLAUDE_PROJECT_DIR": str(repo)}),
     }
-    missing = [n for n in jobs if not (S / n).is_file()]
+    where = {"root-cause-gate.cjs": core / "helpers"}
+    missing = [n for n in jobs if not (where.get(n, S) / n).is_file()]
     findings = []
     if not register.is_file() and "invariant-check.py" not in missing:
         findings.append(F("INFO", "no invariant register at docs/maintenance/invariants.md — section not executed"))
@@ -379,8 +458,8 @@ def machine(repo, core, last_date, today):
                          for l in out_lm.splitlines() if l.strip().startswith("review: ")]
     if "commitments.py" in out:
         findings += map_lines("commitments", *out["commitments.py"], "loose commitment", "commitments summary:", "P2")
-    if "lesson-carriers.py" in out:
-        findings += map_lines("lesson-carriers", *out["lesson-carriers.py"], "lesson without carrier", "lesson-carriers summary:", "P2")
+    if "carrier-audit.py" in out:
+        findings += map_lines("lesson-carriers", *out["carrier-audit.py"], "lesson without carrier", "lesson-carriers summary:", "P2")
     if "state-prose-lint.py" in out:
         findings += map_lines("state-prose", *out["state-prose-lint.py"], "state in prose:", "state-prose summary:", "P2")
     if "dead-carriers.py" in out:
@@ -391,6 +470,9 @@ def machine(repo, core, last_date, today):
         findings += map_fork_drift(*out["fork-drift.py"])
     if "decision-review.py" in out:
         findings += map_decision_review(*out["decision-review.py"])
+    if "root-cause-gate.cjs" in out:
+        findings += map_root_cause(*out["root-cause-gate.cjs"])
+    findings += unread_logs(repo, core)
     if missing:
         findings.append(F("INFO", f"not available in this core checkout: {', '.join(missing)}"))
     return findings, sorted(run_jobs)

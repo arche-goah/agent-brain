@@ -36,8 +36,10 @@ Instance data: `.claude/rules/lesson-carriers.json`
      "entry_heading": "^## (\\d{4}-\\d{2}-\\d{2})",
      "memory_dir": "<optional override>", "memory_types": ["feedback"]}
      optional for --resolve/--prs: "carrier_roots", "pr_repos", "pr_aliases" (see DEFAULTS)
-Usage: lesson-carriers.py [--repo DIR] [--protocol FILE] [--memory DIR] [--since YYYY-MM-DD] [--json]
+Usage: carrier-audit.py --presence [--repo DIR] [--protocol FILE] [--memory DIR] [--since YYYY-MM-DD] [--json]
                           [--resolve [--prs]]
+(the entry point since 2026-11-02 — one script for both strengths of the carrier question; this file stays the
+implementation its fixture imports, and `lesson-carriers.py …` still runs it directly)
 Output: one line per entry without a carrier, then
 `lesson-carriers summary: entries=N carried=N loose=N`; with a memory folder also one line per
 loose memory and `lesson-carriers memory: memories=N carried=N loose=N`. Exit 0 always (report).

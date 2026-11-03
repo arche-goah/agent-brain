@@ -152,7 +152,7 @@ case "${1:-status}" in
     # armed, green-looking, blind. Initialize loudly instead, and say what the
     # baseline became, so "older commits are not reported" is a stated fact.
     if ! read_sha >/dev/null 2>&1 || [[ -z "$(read_sha)" ]]; then
-      git -C "$REPO" fetch -q origin main 2>/dev/null
+      git -C "$REPO" fetch -q --no-write-fetch-head origin main 2>/dev/null
       INIT=$(git -C "$REPO" rev-parse origin/main 2>/dev/null)
       if [[ -z "$INIT" ]]; then
         echo "ERROR: no cursor in $STATE_FILE and origin/main unreadable — refusing to watch blind"
@@ -172,7 +172,7 @@ case "${1:-status}" in
     foreign_cursor() { # $1 = sha -> 0 if it is no commit of $REPO
       [[ -n "$1" ]] || return 1
       git -C "$REPO" cat-file -e "$1^{commit}" 2>/dev/null && return 1
-      git -C "$REPO" fetch -q origin 2>/dev/null
+      git -C "$REPO" fetch -q --no-write-fetch-head origin 2>/dev/null
       ! git -C "$REPO" cat-file -e "$1^{commit}" 2>/dev/null
     }
     refuse_foreign() { # $1 = sha
@@ -184,7 +184,7 @@ case "${1:-status}" in
 
     while true; do
       orphaned && exit 0
-      git -C "$REPO" fetch -q origin main 2>/dev/null
+      git -C "$REPO" fetch -q --no-write-fetch-head origin main 2>/dev/null
       REMOTE_HEAD=$(git -C "$REPO" rev-parse origin/main 2>/dev/null)
       LAST_SEEN=$(read_sha)
       foreign_cursor "$LAST_SEEN" && refuse_foreign "$LAST_SEEN"

@@ -113,9 +113,15 @@ function isAgentOrigin(d) {
  * only what is matched changes.
  */
 const PASTED = /<pasted_content\b[^>]*?\bid="([^"]*)"[^>]*>[\s\S]*?<\/pasted_content\b[^>]*?\bid="\1"[^>]*>/g;
+// A hook's message the operator copied into the prompt, unwrapped: a paragraph that starts like the
+// harness prints a hook refusal ("Error: PreToolUse:AskUserQuestion hook error: QUESTION-GATE: ...",
+// "Stop hook feedback: ...") up to the next blank line. Measured 2026-11-02 on the Windows instance:
+// the operator pasted a QUESTION-GATE refusal and asked about it below a blank line; the gate's own
+// "only then ask" read as the operator's condition and held two pushes.
+const HOOK_PASTE = /^[ \t]*(?:Error:\s*)?(?:(?:PreToolUse|PostToolUse|UserPromptSubmit|SessionStart|SessionEnd|Stop|SubagentStop)(?::[^\s:]+)?\s+hook\s+(?:error|feedback)\b|Stop hook feedback:)[\s\S]*?(?=\n[ \t]*\n|(?![\s\S]))/gm;
 
 function operatorWords(text) {
-  return String(text || '').replace(PASTED, '\n');
+  return String(text || '').replace(PASTED, '\n').replace(HOOK_PASTE, '\n');
 }
 
 /** A tracker for one pass over a transcript: returns true for the record that carries the operator's answer

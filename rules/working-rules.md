@@ -135,6 +135,9 @@ History: core/docs/rule-history.md, "Session Traceability (3 layers)".
    Entries are `- [ ]` / `- [x]` lines, the file is registered in
    `.claude/rules/ledgers.json` (2026-10-25): the session start lists every open entry with
    the PRs and requests — an unregistered ledger is invisible there (`core/scripts/open-items.py`).
+   Work the operator released in the session carries `released: "<their words>"` on its
+   `exit: ai-does-it` line (2026-11-02); the idle check then holds interactively too
+   (`core/helpers/autonomous-idle-gate.cjs`).
 2. **Every overview above the detail lists is GENERATED, never hand-maintained.**
 3. **`reach: shared`** = exported to the org's shared-memory repo once a second brain
    works the project, one-file-one-fact with the source `id`, deliberately at session
