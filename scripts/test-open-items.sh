@@ -208,6 +208,15 @@ has "[PR|ai]" "$(line 'core#16 ' "$iw")" && ok "peer's PR in a sibling-merged re
 printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
   "$(pr core 17 me 2026-10-06 "fix <!-- instance-key: $KMAC -->" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-inst.json"
 has "[PR|ai]" "$(line 'core#17 ' "$(instrun i2 mac)")" && ok "negative control: the merger instance's own PR is its own move" || bad "merger's own PR: $(line 'core#17 ' "$(instrun i2 mac)")"
+# The owner written once in the shared memory (repo-owners.json), not in the instance's map.
+printf '%s\n' '{"parked":["grandma"],"owners":{"owned":"peer"}}' > "$T/root/.claude/rules/open-items.json"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 15 me 2026-10-06 "fix <!-- instance-key: $KWS -->" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-inst.json"
+printf '%s\n' '{"repos":{"core":{"owner":"mac","source":"fixture 2026-11-03"}}}' > "$T/repo/repo-owners.json"
+has "waiting on mac: core is mac's to merge" "$(line 'core#15 ' "$(instrun i3 ws)")" && ok "owner from the shared memory's repo-owners.json = waiting on it" || bad "shared owner: $(line 'core#15 ' "$(instrun i3 ws)")"
+printf '%s\n' '{"repos":{"core":{"owner":"mac"}}}' > "$T/repo/repo-owners.json"
+has "[PR|ai]" "$(line 'core#15 ' "$(instrun i4 ws)")" && ok "negative control: a shared owner entry without its source is not read" || bad "shared owner without source: $(line 'core#15 ' "$(instrun i4 ws)")"
+rm -f "$T/repo/repo-owners.json"
 cp "$T/oi-saved.json" "$T/root/.claude/rules/open-items.json"
 rm -f "$T/repo/parties.json"
 # The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
