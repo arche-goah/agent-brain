@@ -779,6 +779,13 @@ def judge(items, decl, C, today):
             elif not evs:
                 it["class"] = "noevidence"
                 found["noevidence"].append(it["id"])
+            elif ident and not any(ident.search(e) for e in evs):
+                # Evidence is what makes an item THIS brain's: a token of its identity, not any word the
+                # item contains. Measured 2026-11-02 on the macOS instance: 33 of 122 instance declarations
+                # leaned on words like a suite name ("grandma3"), a file name or a protocol ("DMX"), and a
+                # private release-chain plugin stayed declared "not a core candidate" for a week.
+                it["class"] = "badevidence"
+                found["badevidence"].append(f"{it['id']} ({'|'.join(evs)} is no identity token of this brain)")
             elif not any(e.lower() in it["content"].lower() for e in evs):
                 it["class"] = "badevidence"
                 found["badevidence"].append(f"{it['id']} ({'|'.join(evs)})")
@@ -837,6 +844,24 @@ def tool_sources_off_main(C, tops=None):
     `(<checkout>, <branch>)` for every source checkout not on main/master."""
     tops = tool_source_tops(C) if tops is None else tops
     return [(t, b) for t, b in tops.items() if b and b not in ("main", "master")]
+
+
+def shared_tokens(decl, C):
+    """Identity tokens that are the name of a published plugin or suite repo: every brain that uses that
+    suite contains them, so they mark nothing as this brain's (measured 2026-11-02: grandma3, mikrotik,
+    touchosc in one brain's list made a release-chain plugin read as instance machinery)."""
+    toks = decl.get("identity_tokens") or []
+    if isinstance(toks, dict):
+        toks = [t for v in toks.values() for t in (v if isinstance(v, list) else [v])]
+    names = set()
+    for repo, ids in published_repos(C).items():
+        names.add(repo.split("/")[-1].lower())
+        names.add(re.sub(r"-suite$", "", repo.split("/")[-1].lower()))
+        for pid in ids:
+            n = pid.split("@", 1)[0].lower()
+            names.update({n, re.sub(r"-next$", "", n)})
+    return [f"identity_tokens: {t} (the name of a published plugin or suite, not this brain's)"
+            for t in toks if str(t).strip().lower() in names]
 
 
 def published_repos(C):
@@ -905,7 +930,7 @@ MESSAGES = {
     "outside": "!! local machinery: {n} item(s) run from outside this brain and outside the core, undeclared: {x} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR",
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
     "noevidence": "!! local machinery: {n} instance declaration(s) give a reason without evidence: {x} — add \"evidence\": the instance-specific token the item relies on",
-    "badevidence": "!! local machinery: {n} item(s) do not contain the evidence their declaration names: {x} — the declaration is wrong or stale; reclassify",
+    "badevidence": "!! local machinery: {n} item(s) whose evidence does not hold (not in the item, or no identity token of this brain, or an identity token that every user of a suite carries): {x} — reclassify: core (or suite) PR, real identity evidence (add the token to identity_tokens only if it names this brain alone), or a reach analysis",
     "channels": "!! local machinery: {n} suite(s) with the stable AND the beta plugin enabled at once: {x} — both ship the same skills and server, which one answers is undefined; disable one (the beta on a machine that checks the beta, else the beta) and start a new session",
     "duplicate": "local machinery: {n} item(s) look like a near-duplicate of a core item: {x} — for the AI: same purpose = use the core one; different = declare \"distinct_from\"",
     "undeclared": "local machinery: {n} item(s) without a declaration{c}: {x} — for the AI: classify each; general = core PR, instance-only = declare why + evidence",
@@ -933,6 +958,7 @@ def main(argv):
 
     items = inventory(C)
     found = judge(items, decl, C, a.today)
+    found["badevidence"] += shared_tokens(decl, C)
     found["edited"] = edited_core(C)
     found["missing"] = C.missing
     found["channels"] = both_channels(C)
