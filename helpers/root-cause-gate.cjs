@@ -214,6 +214,22 @@ function causeIn(texts, rx) {
   return texts.some((t) => rx.test(stripQuoted(t)));
 }
 
+// "Carrier: none" is an escape the agent can always write, so on its own it releases nothing (operator decision
+// 2026-11-02 on the macOS instance, translated: "a cause does not only belong in the register, the fix at the root
+// is built and secured mechanically ... that in itself should be secured mechanically" - measured the same day: 41
+// register entries "carrier: none", three written in one session to pass this very check). It counts only with the
+// operator's agreement quoted on the same line, `operator-ok: "<words>"`, and those words must stand in one of the
+// operator's own messages of the transcript - an invented quote releases nothing.
+const OK_QUOTE = /operator-ok:\s*["„“]([^"„“”\n]{4,})["“”]/iu;
+function noCarrierAgreed(texts, rxNone, turns) {
+  const said = turns.map((t) => operatorWords(t.prompt || '')).join('\n').toLowerCase();
+  return texts.some((t) => t.split('\n').some((line) => {
+    if (!rxNone.test(stripQuoted(line))) return false;
+    const q = OK_QUOTE.exec(line);
+    return !!q && said.includes(q[1].trim().toLowerCase());
+  }));
+}
+
 function gate(input) {
   OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active || !input.transcript_path) return;
@@ -235,7 +251,7 @@ function gate(input) {
   if (cause) {
     const reg = registerPath(cwd);
     const mech = turn.writes.some(isMechanismWrite)
-      || causeIn(turn.texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'));
+      || noCarrierAgreed(turn.texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'), turns);
     const registered = writesTo(turn.writes, reg);
     if (mech && registered) return;
     const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`].filter(Boolean).join(', ');
@@ -244,7 +260,8 @@ function gate(input) {
       reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}. Fixing the instance (a re-post, a manual merge, a `
         + 'ledger or memory note) leaves the tool that let it happen as it was. Before this turn ends: change the '
         + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
-        + 'lives) with a fixture, or say Carrier: none - <why no mechanism can carry it>; AND write the entry in '
+        + 'lives) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
+        + 'operator-ok: "<their words>", found in their own messages - never on the agent\'s say-so; AND write the entry in '
         + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits, `
         + 'found-by (operator | work | ci | <the check that found it>; when not a check: should-have: <the check that should have>).',
     }, input)));

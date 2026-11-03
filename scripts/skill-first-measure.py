@@ -45,7 +45,23 @@ DIR_DEFAULT = Path.home() / ".claude/projects" / re.sub(r"[^A-Za-z0-9]", "-", st
 
 # helpers/turn-kind.cjs, verbatim in meaning: keep both in step.
 FRAMES = re.compile(r"<system-reminder>[\s\S]*?</system-reminder>|<task-notification>[\s\S]*?</task-notification>")
-GATE_TAG = re.compile(r"\[([A-Z][A-Z0-9-]*(?:GATE|VERIFIER))\]")
+# A gate is attributed by its marker: any `[CODE]` the block carries (the dispatcher's codes are not all
+# `…-GATE`: `[AUTONOMOUS-IDLE]`), else by the dispatcher's label at the start of a line (`· LABEL …`,
+# `LABEL — …`), which the instance writes in its own language. Measured 2026-11-02 on the macOS instance:
+# the old `…GATE|VERIFIER` pattern left 523 of 729 blocks since 2026-10-20 "untagged" (the audit of the audits
+# had counted 430 of 566); with marker + label 2 of 729 stay untagged. Label text has no fixed vocabulary, so
+# an all-caps word counts only at the start of a line (a stray capital word there can read as a label — rare,
+# e.g. a line starting "EMPTY", and visible as its own row).
+GATE_TAG = re.compile(r"\[([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+|[A-Z][A-Z0-9]*(?:GATE|VERIFIER))\]")
+GATE_LABEL = re.compile(r"^(?:·\s*)?([^\s\d·][^\s]{2,})(?:\s|$)", re.M)
+
+
+def gate_names(block: str) -> list:
+    tags = set(GATE_TAG.findall(block))
+    # a label is an all-capital word in any language (str.isupper covers letters beyond ASCII)
+    labels = {w for w in GATE_LABEL.findall(block.split("\n", 1)[1] if "\n" in block else "")
+              if w.replace("-", "").isalpha() and w.isupper()}
+    return sorted(tags or labels) or ["untagged"]
 STOP_FEEDBACK = "Stop hook feedback"
 
 
@@ -82,7 +98,7 @@ def measure(directory: Path, since: str, until: str) -> dict:
                 fires += 1
                 notif = prev_user is not None and is_notification(prev_user)
                 on_notif += notif
-                for g in sorted(set(GATE_TAG.findall(c))) or ["untagged"]:
+                for g in gate_names(c):
                     per_gate[g] += 1
                     per_gate_notif[g] += notif
             else:
