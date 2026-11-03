@@ -304,6 +304,7 @@ known:     scripts/test-merge-train.sh=1
 known:     scripts/test-mode-log.sh=1
 known:     scripts/test-monitor-arm-shape.sh=1
 known:     scripts/test-no-input-control.sh=1
+known:     scripts/test-notify.sh=1
 known:     scripts/test-onboarding-leak-check.sh=1
 known:     scripts/test-open-items-gate.sh=1
 known:     scripts/test-open-items-wake.sh=1
@@ -324,6 +325,7 @@ known:     scripts/test-python-probe.sh=1
 known:     scripts/test-question-gate.sh=1
 known:     scripts/test-recall-gate.sh=1
 known:     scripts/test-repo-activity-watch.sh=1
+known:     scripts/test-review-claim-gate.sh=1
 known:     scripts/test-root-cause-gate.sh=1
 known:     scripts/test-session-closing.sh=1
 known:     scripts/test-session-helpers.sh=1
@@ -1067,6 +1069,7 @@ paths:     --include=*.cjs helpers
 known:     helpers/instance-key-gate.cjs=1
 known:     helpers/public-text-guard.cjs=1
 known:     helpers/published-text.cjs=3
+known:     helpers/review-claim-gate.cjs=1
 instances: 2
 repeat:    yes
 status:    closed

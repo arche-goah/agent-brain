@@ -11,6 +11,13 @@ then an explicit release follows.
 
 ## Procedure (in this order)
 
+0. **End the autonomous mode first** (operator decision 2026-11-03): closing is a change of
+   state, not one more autonomous step. A close step that needs the operator's word (a gated
+   push, a prune, a release) is asked through the question tool, which an autonomous run
+   forbids; with the mode still on, those steps were collected as prose and the release could
+   not be given. The close prompt itself ends the mode where the instance's off-patterns carry
+   the close words; otherwise say in the first close line that the run ends here.
+
 1. **Secure open work (semantic — no script can do this):**
    - Unfinished orders and intermediate STATES go into the list that owns them — the
      domain ledger or order list (Project Work Ledgers rule) — not into memory. Memory
@@ -198,12 +205,13 @@ then an explicit release follows.
      `git commit <paths>`), never `git add -A`, never amend, and leave a rebase or merge
      this session did not start untouched. The paths every session writes by construction
      (the memory snapshot under `docs/memory-snapshot/`, the session log, the handoff) are
-     the exception working rule #12 names: while another session is still listed, this close
-     commits only its OWN session-log line and leaves the snapshot to the session that closes
-     last — with one `open end:` line in its session-log entry saying so (step 3); the
-     no-diff check of the second export above then counts the other session's memories as
-     that reason, not as a failure. Listed alone, this close is the last one and commits all
-     three by path. A core branch of this session lives in a
+     committed by EVERY closing session, by path, whether another session is listed or not
+     (operator decision 2026-11-03): "the session that closes last" cannot be measured — a
+     second session listed in another repo never closes in this one, and both paths stayed
+     uncommitted until some later session. The export is idempotent, so a second close
+     commits only what changed since. After a `git rm --cached`, never name that path in
+     `git commit <paths>` (it stages it again from the working tree); check with
+     `git ls-files <path>`. A core branch of this session lives in a
      worktree under the scratchpad, never checked out in `core/` (measured 2026-10-11 on a
      Windows instance: a core branch checked out in the submodule changed the hooks of
      BOTH sessions, and every Bash call of both was refused until it was moved back).

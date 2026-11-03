@@ -372,6 +372,15 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: run list --workflow= (control)" Bash command "gh run list --workflow=ci.yml --branch main" allow
   tr_probe "mechanism-guard/core rule: run list named in a commit message (control)" Bash command 'git -C /r commit -m \"guard: gh run list without a workflow filter\"' allow
   tr_probe "mechanism-guard/core rule: gh run view (control)" Bash command "gh run view 123 -R o/r --log-failed" allow
+  # An inline script in double quotes: a backtick or $( in its text runs as a command first (measured 2026-11-03,
+  # Windows instance: two backtick paths in a protocol entry ran as scripts; ported from a macOS instance rule).
+  tr_probe "mechanism-guard/core rule: python -c with a backtick" Bash command 'python3 -c \"print(`date`)\"' block
+  tr_probe "mechanism-guard/core rule: node -e with \$(" Bash command 'node -e \"console.log($(cat f))\"' block
+  tr_probe "mechanism-guard/core rule: bash -c with a backtick" Bash command 'bash -c \"echo `id`\"' block
+  tr_probe "mechanism-guard/core rule: inline script in single quotes (control)" Bash command "python3 -c 'print(\`date\`)'" allow
+  tr_probe "mechanism-guard/core rule: inline script without substitution (control)" Bash command 'python3 -c \"print(1)\"' allow
+  tr_probe "mechanism-guard/core rule: escaped backtick (control)" Bash command 'python3 -c \"a = \\`x\\`\"' allow
+  tr_probe "mechanism-guard/core rule: a plain \$VAR (control)" Bash command 'bash -c \"echo $HOME\"' allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
