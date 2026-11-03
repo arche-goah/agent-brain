@@ -156,5 +156,16 @@ printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rc","mode":"hook","mode
 check "classifier reads no correction: allows" "$T/sess-rc.jsonl" allow "$IC"
 unset WHEN
 
+# --- a correction typed mid-turn (queued_command attachment, 2026-10-29 / 2026-11-02, macOS instance)
+qcmd() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
+qpeer() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"peer"}}}\n' "$(js "$1")"; }
+{ user "work through the list"; asst "on it"; qcmd "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/q1.jsonl"
+check "a correction typed mid-turn, answered without a cause" "$T/q1.jsonl" block "$CWD"
+{ user "work through the list"; asst "on it"; qcmd "that is already active! something went wrong"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
+Carrier: none — the cause is unknown, nothing to build until it is measured"; write "$CWD/$REG"; } > "$T/q2.jsonl"
+check "a mid-turn correction answered with a cause line" "$T/q2.jsonl" allow "$CWD"
+{ user "work through the list"; asst "on it"; qpeer "that is already active! something went wrong"; asst "noted"; } > "$T/q3.jsonl"
+check "negative control: the same words from a peer session are no operator correction" "$T/q3.jsonl" allow "$CWD"
+
 [ "$fail" = 0 ] && echo "root-cause-gate: all checks passed" || echo "root-cause-gate: FAILURES"
 exit "$fail"
