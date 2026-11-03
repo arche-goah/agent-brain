@@ -211,13 +211,25 @@ with tempfile.TemporaryDirectory() as d:
           "print('!! PREMISE: 3 entries in 14 days, 2 session(s), 3 would have blocked - decide: block, keep recording, or unwire')\n"
           "print('recorder report summary: 1 recorder(s), 1 with a decision due')\n")
     write(stub / "scripts/brain-selftest.sh", "echo '  !!  fixture x failed'\necho 'SELF-TEST: FAILURE'\nexit 1\n")
+    # 2026-11-02 (audit-audit): the root-cause review count runs in the scan and names the review as due.
+    write(stub / "helpers/root-cause-gate.cjs",
+          "console.log('transcripts 9 · operator turns 90 · corrections 3 · reply named a cause 1 (33 %) · a mechanism "
+          "file written within 5 turns 1 (33 %) · turns naming a cause 20, without a mechanism write in the same turn 4 (20 %)')\n")
     write(stub / "scripts/effect-check.sh", "echo 'ROT  E3  Hook Targets — 1 missing'\necho 'OK   E1  Style — ok'\n"
                                             "echo 'WARN E6  Loose Commitments — 1'\nexit 1\n")
     write(stub / "scripts/invariant-check.py", "import sys\nprint('  !!  C-1\\n      NEW site: a.sh (2 hits)')\n"
                                                "print('      -> MECHANISM due (>=3 sites or repeat after a fix)')\nsys.exit(1)\n")
     write(b / "docs/maintenance/invariants.md", "root: .\n")
+    # 2026-11-02 (audit-audit): a log no second file names is a finding; one a reader names, or a recorder's, is not.
+    write(b / ".claude-state/orphan-gate.jsonl", '{"at": "x"}\n')
+    write(b / ".claude-state/read-gate.jsonl", '{"at": "x"}\n')
+    write(b / "scripts/read-gate-writer.cjs", "// writes read-gate.jsonl\n")
+    write(b / "scripts/read-gate-reader.py", "# reads read-gate.jsonl\n")
     _, summ, _, mach, _ = run(b, core=stub)
     T = {f["title"]: f["severity"] for f in mach["findings"]}
+    check(any(t.startswith("log without a reader: .claude-state/orphan-gate.jsonl") for t in T),
+          "a log nobody but its writer names is a finding")
+    check(not any("read-gate.jsonl" in t for t in T), "a log with a second file naming it is read")
     has = lambda sev, part: any(s == sev and part in t for t, s in T.items())
     check(has("P1", "local-machinery: !! shadow"), "a loud local-machinery line is a P1 finding")
     check(has("P2", "commitments: loose commitment"), "a loose commitment is a P2 finding")
@@ -232,6 +244,8 @@ with tempfile.TemporaryDirectory() as d:
     check(has("P2", "decision-review: add a line for 'git push'"), "decision-review: a proposal is a P2 finding")
     check(has("P2", "recorder-report: !! PREMISE"), "a recorder with would-block entries is a P2 decision")
     check(has("P2", "dead-carriers: dead carrier: CLAUDE.md:4 names scripts/gone.sh"), "a dead carrier is a P2 finding")
+    check(has("P2", "root-cause review due: 3 correction(s) since the last scan, 2 without a cause in the reply, 4 turn(s)"),
+          "the root-cause review is named due with its counts")
     check(not any(t.startswith("not available") for t in T), "a complete core reports nothing as unavailable")
     check(summ.get("machine_p1") == sum(1 for s in T.values() if s == "P1"), "summary P1 count = file P1 count")
 
