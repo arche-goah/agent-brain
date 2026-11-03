@@ -52,7 +52,7 @@ decl '{"instance":{"scripts/hooks/x.cjs":"renders only for this printer"}}'
 out=$(run); grep -q '^!! local machinery: 1 instance declaration(s) give a reason without evidence: scripts/hooks/x.cjs' <<< "$out" \
   && ok "string-declaration-reported-without-evidence" || bad "string-declaration-reported-without-evidence: $out"
 decl '{"instance":{"scripts/hooks/x.cjs":{"why":"renders only for this printer","evidence":"venue-hall-b"}}}'
-out=$(run); grep -q '^!! local machinery: 1 item(s) do not contain the evidence.*x.cjs (venue-hall-b)' <<< "$out" \
+out=$(run); grep -q '^!! local machinery: 1 item(s) whose evidence does not hold.*x.cjs (venue-hall-b)' <<< "$out" \
   && ok "evidence-not-in-content-loud" || bad "evidence-not-in-content-loud: $out"
 
 # Outside hooks: a dev checkout that EXISTS (its path travels as data inside the hook command).
@@ -144,6 +144,21 @@ out=$(run); grep -q '^!! local machinery: 1 undeclared item(s) contain none of t
   && grep -q 'general=1' <<< "$out" && ok "item-without-identity-token-general-loud" || bad "item-without-identity-token-general-loud: $out"
 printf 'ping 203.0.113.70\n' > "$T/b/scripts/rig-check.sh"   # a longer IP is not the token
 out=$(run); grep -q 'presumably general' <<< "$out" && ok "identity-token-word-boundary" || bad "identity-token-word-boundary: $out"
+# evidence must be an identity token (2026-11-02): a word the item contains is not enough
+printf 'ping rig-switch-a over DMX\n' > "$T/b/scripts/rig-check.sh"
+decl '{"identity_tokens":["rig-switch-a"],"instance":{"scripts/rig-check.sh":{"reviewed":"2026-10-01","why":"x","evidence":"DMX"}}}'
+out=$(run); grep -q 'DMX is no identity token of this brain' <<< "$out" && grep -q 'badevidence=1' <<< "$out" \
+  && ok "evidence-not-an-identity-token-loud" || bad "evidence-not-an-identity-token-loud: $out"
+decl '{"identity_tokens":["rig-switch-a"],"instance":{"scripts/rig-check.sh":{"reviewed":"2026-10-01","why":"x","evidence":"rig-switch-a"}}}'
+out=$(run); [[ -z "$out" ]] && ok "evidence-an-identity-token-silent" || bad "evidence-an-identity-token-silent: $out"
+# an identity token that is a published suite's name marks every user of that suite
+mkdir -p "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin"
+printf '{"plugins":[{"name":"widget-next","source":{"source":"github","repo":"o/widget-suite"}}]}' \
+  > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
+decl '{"identity_tokens":["rig-switch-a","widget"],"instance":{"scripts/rig-check.sh":{"reviewed":"2026-10-01","why":"x","evidence":"rig-switch-a"}}}'
+out=$(run); grep -q 'identity_tokens: widget (the name of a published plugin or suite' <<< "$out" \
+  && ok "identity-token-naming-a-suite-loud" || bad "identity-token-naming-a-suite-loud: $out"
+rm -rf "$T/fakehome/.claude/plugins/marketplaces"
 # --- external (third-party, used as is) and reach analysis as evidence --------------------
 T_ID='"identity_tokens":["rig-switch-a"]'
 decl "{$T_ID,\"external\":{\"scripts/rig-check.sh\":{\"reviewed\":\"2026-10-01\",\"source\":\"vendor pack 1.2\"}}}"
