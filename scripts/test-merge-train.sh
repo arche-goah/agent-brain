@@ -43,4 +43,11 @@ git -C "$T/work" merge-base --is-ancestor "$TWO_HEAD" train/test && ok "the trai
 out="$(MERGE_TRAIN_GH="$stub" bash "$S" --repo "$T/work" --name train/none 9 2>&1)"; rc=$?
 [ $rc -eq 1 ] && ok "a train no PR could join exits 1 (negative control)" || bad "rc=$rc for an empty train"
 
+# MERGE_TRAIN_PRECHECK: a PR the instance's check refuses stays out, named with the check's first line (2026-11-03).
+pre="$T/precheck"
+printf '%s\n' '#!/bin/sh' 'case "$2" in 2) echo "needs pin-review"; exit 1 ;; *) exit 0 ;; esac' > "$pre"; chmod +x "$pre"
+out="$(MERGE_TRAIN_GH="$stub" MERGE_TRAIN_PRECHECK="$pre" bash "$S" --repo "$T/work" --name train/pre 1 2 2>&1)"; rc=$?
+printf '%s' "$out" | grep -aq -- "#2 (precheck: needs pin-review)" && ok "a PR the precheck refuses is left out with its reason" || bad "precheck refusal not named: $out"
+printf '%s' "$out" | grep -aq -- "- #1 feat/one" && ok "  ... and a PR it passes joins (control)" || bad "PR 1 missing with precheck: $out"
+
 [ $fail -eq 0 ] && echo "merge-train: all cases pass" || { echo "merge-train: FAILURE"; exit 1; }
