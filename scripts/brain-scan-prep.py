@@ -153,7 +153,7 @@ def return_channel(reports, orders, markers):
                 # return channel called done came back; the six that returned after a tick all had no check:). It keeps
                 # counting toward a decision; only a done entry with a check stops the count.
                 # An index exit done-already is the scan's own reading at that run and stays done.
-                proven = f["exit"] == "done-already" or any(re.search(r"^\s*check:\s*(?!none\b)\S", e["text"], re.M) for e in hits)
+                proven = f["exit"] == "done-already" or any(re.search(r"^\s*(?:[-*]\s+)?check:\s*(?!none\b)\S", e["text"], re.M) for e in hits)
                 state = "done" if proven else "done-unproven"
             elif f["exit"] == "drop" or any(re.search(r, text, re.I) for r in markers["dropped"]):
                 state = "dropped"

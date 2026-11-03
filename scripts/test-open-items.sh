@@ -459,6 +459,13 @@ out=$(run "" "$L")
 has "[ledger|wait] 2026-10-25 other-thing" "$out" && has "waiting on the ledger exit other-side: since 2026-10-25" "$out" \
   && ok "exit other-side waits quietly" || bad "exit other-side: $out"
 has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ok "exit ai-does-it stays open work" || bad "exit ai-does-it: $out"
+# The fields as list items under the entry, the project ledgers' form (measured 2026-11-03: ten
+# such entries with `  - exit: other-side|parked` were listed as untouched agent work).
+printf '%s\n' '' '- [ ] Parked in a project ledger' '  - id: `bullet-thing`' '  - class: todo' '  - exit: parked 2026-10-25 — operator said later' '' \
+  '- [ ] Due in a project ledger' '  - id: `bullet-due`' '  - class: decision' '  - ask-when: 2099-01-01' >> "$L/docs/x/open.md"
+out=$(run "" "$L")
+has "[ledger|wait]" "$(line ' bullet-thing ' "$out")" && has "parked" "$(line ' bullet-thing ' "$out")" && ok "exit as a list item waits quietly" || bad "bullet exit: $(line ' bullet-thing ' "$out")"
+has "[ledger|wait]" "$(line ' bullet-due ' "$out")" && ok "ask-when as a list item waits for its date" || bad "bullet ask-when: $(line ' bullet-due ' "$out")"
 cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" --repo "$(native "$T/repo")" --classify 'ledger:pick-name=ai:mine' 2>&1)
 out=$(run "" "$L")
 has "[ledger|ai]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"

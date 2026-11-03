@@ -37,7 +37,8 @@ printf '%s\n' '- [ ] Write the docs' '  - class: todo' '- [x] Old decision' '  -
 # The entry's last exit says who moves (2026-10-28: 22 counted, none an operator decision by its exit).
 X="$T/exit"; mkdir -p "$X/.claude/rules" "$X/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$X/.claude/rules/ledgers.json"
-printf '%s\n' '- [ ] Parked choice' '  - class: decision' '  exit: parked 2026-10-20' '- [ ] Release now' '  - class: decision' '  exit: operator-decision 2026-10-28' '  ask-when: 2026-01-01' > "$X/docs/questions.md"   # a date reached: due (counter-case to ask-when in $N)
+# "Parked choice" writes its exit as a list item, the project ledgers' form (2026-11-03: such exits went unread).
+printf '%s\n' '- [ ] Parked choice' '  - class: decision' '  - exit: parked 2026-10-20' '- [ ] Release now' '  - class: decision' '  exit: operator-decision 2026-10-28' '  ask-when: 2026-01-01' > "$X/docs/questions.md"   # a date reached: due (counter-case to ask-when in $N)
 O="$T/circle"; mkdir -p "$O/.claude/rules" "$O/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$O/.claude/rules/ledgers.json"
 printf '%s\n' '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Release now' '  - class: decision' '  - circle: B' > "$O/docs/questions.md"
