@@ -287,6 +287,11 @@ printf '{"plugins":[{"name":"suite","source":{"source":"github","repo":"o/suite"
   > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
 out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" && grep -q 'clone=1' <<< "$out" \
   && ok "clone-of-published-suite-loud-even-on-main" || bad "clone-of-published-suite-loud-even-on-main: $out"
+# The same entry in the "url" form (HTTPS clone URL, 2026-11-02) names the same repo.
+printf '{"plugins":[{"name":"suite","source":{"source":"url","url":"https://github.com/o/suite.git","ref":"v1"}}]}' \
+  > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
+out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" \
+  && ok "url-source-names-the-same-repo" || bad "url-source-names-the-same-repo: $out"
 decl "$(printf '{"alpha":{"%s":{"until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
 out=$(run); [[ -z "$out" ]] && ok "clone-declared-alpha-silent" || bad "clone-declared-alpha-silent: $out"
 out=$(TODAY=2026-10-21 run); grep -q 'past their date' <<< "$out" \

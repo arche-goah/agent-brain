@@ -227,7 +227,7 @@ done
 norm_url() { printf '%s' "$1" | sed -e 's#^git@github\.com:#https://github.com/#' -e 's#\.git$##'; }
 marketplace_pin() { # $1 = marketplace name, $2 = plugin name -> "repo ref" or ""
   "$PY" -c '
-import json, os, sys
+import json, os, re, sys
 p = os.path.join(sys.argv[1], "plugins", "marketplaces", sys.argv[2],
                  ".claude-plugin", "marketplace.json")
 try:
@@ -236,8 +236,12 @@ try:
     for e in d.get("plugins") or []:
         if e.get("name") == sys.argv[3]:
             s = e.get("source") or {}
-            if s.get("source") == "github" and s.get("repo"):
-                print(s.get("repo") + " " + s.get("ref", ""))
+            repo = s.get("repo") if s.get("source") == "github" else ""
+            if s.get("source") == "url":  # HTTPS clone URL form (2026-11-02)
+                m = re.search(r"github\.com[:/]+(.+?)(?:\.git)?/?$", s.get("url") or "")
+                repo = m.group(1) if m else ""
+            if repo:
+                print(repo + " " + s.get("ref", ""))
             break
 except Exception:
     pass
