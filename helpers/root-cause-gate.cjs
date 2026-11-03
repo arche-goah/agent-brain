@@ -49,7 +49,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
 
@@ -173,6 +173,15 @@ function readTurns(tp, tail) {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    // A message the operator types while the agent works lands as a queued_command attachment, not a user
+    // record; it opens its own segment (measured on the macOS instance 2026-10-29: in one long turn every
+    // correction arrived this way and none was judged; the instance copy carried this until the pin removed it).
+    const queued = queuedHumanPrompt(d);
+    if (queued) {
+      cur = { prompt: queued, when: d.timestamp || '', texts: [], writes: [], fired: false };
+      turns.push(cur);
+      continue;
+    }
     const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       if (!cur) continue;

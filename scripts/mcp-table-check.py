@@ -67,11 +67,17 @@ def plugin_servers(root):
     names = set()
     for key in enabled:
         plugin, _, market = key.partition("@")
-        for f in (cache / market / plugin).glob("*/.mcp.json"):
+        # A plugin declares its servers in .mcp.json or inline under `mcpServers` in its plugin.json
+        # (measured on the macOS instance 2026-11-03: chataigne-next and touchosc-next do the latter,
+        # and their rows were reported as "row without server").
+        for f in [*(cache / market / plugin).glob("*/.mcp.json"),
+                  *(cache / market / plugin).glob("*/.claude-plugin/plugin.json")]:
             try:
-                names.update((json.loads(f.read_text(encoding="utf-8")).get("mcpServers") or {}))
+                servers = json.loads(f.read_text(encoding="utf-8")).get("mcpServers") or {}
             except (ValueError, AttributeError):
                 continue
+            if isinstance(servers, dict):  # plugin.json may name a file path instead
+                names.update(servers)
     return names
 
 
