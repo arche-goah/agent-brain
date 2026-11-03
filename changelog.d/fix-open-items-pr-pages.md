@@ -27,3 +27,7 @@
   - `suite-check.py`: a pin on a tag missing from a single-branch clone (fetch refspec names one branch) is WARN
     "unchecked (git fetch --tags)", not "is no tag of this repo" — the push lint of a fresh `--single-branch` clone went red
     on v2.0.0, which origin has. Offline on purpose: an `ls-remote` variant cost ~45 s of fixture time. Fixture +2.
+  - `--top N` (operator 2026-11-03, question tool: counts + top 5): the session start shows the N oldest own items and the
+    N oldest for the operator, one `[more]` line with the rest and the full-list command; the head line keeps every count.
+    Measured the same day: start output 17.9 KB, the list 10.3 KB, cut by Claude Code past 10 000 characters without a sign;
+    with `--top 5` the list is 4.6 KB. `session-bootup.sh` passes `--top ${OPEN_ITEMS_TOP:-5}`. Fixture +2.

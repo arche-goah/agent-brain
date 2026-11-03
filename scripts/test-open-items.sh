@@ -545,6 +545,12 @@ printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
 has "repeat counter NOT saved" "$out" && ok "lost counter is loud" || bad "lost counter silent: $out"
 
+# --top (2026-11-03, operator: counts + top 5): the oldest N own items print, the rest is one [more] line, counts stay.
+tp=$(OPEN_ITEMS_WAIT_COLLAPSE=50 run "" "$G" | head -1)
+tt=$("$PY" "$(native "$T/core/scripts/open-items.py")" --owner me --repo "$(native "$T/repo")" --root "$(native "$G")" --hook-input "{}" --top 1 2>&1)
+[ "$(head -1 <<<"$tt")" = "$tp" ] && ok "--top keeps the head line's counts" || bad "top head: '$(head -1 <<<"$tt")' vs '$tp'"
+[ "$(grep -c '|ai\]' <<<"$tt")" -le 1 ] && has "[more]" "$tt" && ok "--top 1 prints one own item and a [more] line" || bad "top items: $tt"
+
 # PR search over several owners (instance data `pr_owners`): one search, every owner a
 # `user:` qualifier (GitHub ORs them), the --owner itself not doubled. Control: no
 # pr_owners = the search is the single owner, as before.

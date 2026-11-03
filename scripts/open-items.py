@@ -834,6 +834,7 @@ def main():
     ap.add_argument("--root", default=resolve_project_dir(HERE))
     # extend: the hint prints one --classify per item; with the default action only the last one counted.
     ap.add_argument("--classify", nargs="+", action="extend", metavar="ID=ai|human[:why]")
+    ap.add_argument("--top", type=int, default=0, help="show only the N oldest items per side (own / operator); 0 = all")
     a = ap.parse_args()
     # OS-9: the bootup and the Stop gate parse this output, and the item texts carry the
     # authors' umlauts and dashes. Unpinned, Windows writes the ANSI codepage.
@@ -1019,8 +1020,20 @@ def main():
     fold = [i for i in active if i["cls"] == "standing" and i["kind"] == "PR" and not i["overdue"]]
     if len(fold) <= collapse:
         fold = []
+    # --top N (operator 2026-11-03, question tool: "counts + top 5"): the session start shows the N oldest items per side
+    # (own / for the operator); the counts stay in the head line and the rest is one command away. Measured the same
+    # day: the start output was 17.9 KB with the list at 10.3 KB, and Claude Code cuts hook output past 10 000 characters
+    # without a sign. Unclassified items always print — they must be classified.
+    hidden = {"ai": [], "human": []}
+    if a.top:
+        for side in hidden:
+            mine = sorted((i for i in active if i["cls"] == side), key=lambda i: (i["first"] or i["date"] or ""))
+            hidden[side] = mine[a.top:]
+    skip = {id(i) for side in hidden.values() for i in side}
     group = False
     for i in active:
+        if id(i) in skip:
+            continue
         if i["cls"] == "standing" and not group:
             group = True
             print("- standing approval — handle these, then report what was done (no question needed):")
@@ -1044,6 +1057,9 @@ def main():
                    "undone, then move or drop the waiting-until line; " + age)
         why = f" ({i['why']})" if i["why"] else ""
         print(f"- [{i['kind']}|{i['cls']}] {i['date']} {i['ref']} — {i['who']}: {i['text']} — {age}{why}")
+    if skip:
+        print(f"- [more] {len(hidden['ai'])} more own and {len(hidden['human'])} more for the operator (newer than the ones above) — "
+              f"full list: core/scripts/open-items.py --owner {owner}")
     if fold:
         rep = [i["n"] for i in fold if i["n"] > 1]
         print(f"- [PR-standing] {len(fold)} PRs: " + ", ".join(i["ref"] for i in fold)
