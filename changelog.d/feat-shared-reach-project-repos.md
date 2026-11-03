@@ -8,3 +8,6 @@
     A first variant compared dates and was measured wrong the same day: an unrelated newer reply in the topic hid the gap.
   - Summary line gains `projects_behind=N`. Fixture +3 (missing write-up named; control: a fact naming it is silent;
     control: changes before the window are not asked for).
+  - A broken instance file (`shared-reach.json` not JSON) is a FAIL line "instance data unreadable — NOT checked", not
+    a run on defaults: measured the same day, a straight quote inside a string turned the check silently green
+    (`projects_behind=0`, `pointed=0`). Fixture +1.

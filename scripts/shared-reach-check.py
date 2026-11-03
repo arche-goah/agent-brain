@@ -78,8 +78,12 @@ def load_config(repo: str) -> dict:
         for k in DEFAULTS:
             if k in data:
                 cfg[k] = data[k]
-    except (OSError, ValueError):
+    except OSError:
         pass
+    except ValueError as e:
+        # A broken instance file read as defaults reported "projects_behind=0" over real gaps (measured 2026-11-03:
+        # a straight quote inside a JSON string). Unreadable is said, never read as "nothing configured".
+        cfg["_unreadable"] = f"{path}: {e}"
     return cfg
 
 
@@ -220,6 +224,9 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
     cfg = load_config(a.repo)
+    if cfg.get("_unreadable"):
+        print(f"FAIL shared-reach: instance data unreadable ({cfg['_unreadable']}) — NOT checked; fix the file")
+        return 0
     shared = os.path.expanduser(a.shared or cfg["shared_repo"])
     since = a.since or dt.date.today().isoformat()
     result = {"changed": 0, "pointed": 0, "stale": [], "unpointed": [], "shared_entries": 0, "unexported": [],

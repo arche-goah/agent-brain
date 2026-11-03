@@ -147,6 +147,12 @@ with tempfile.TemporaryDirectory() as tmp:
     check("projects_behind=0" in out, "control: results before the window are not asked for")
     (rules / "shared-reach.json").unlink()
 
+    print("broken instance data (2026-11-03)")
+    (rules / "shared-reach.json").write_text('{"markers": ["a „x") b"]}', encoding="utf-8")
+    rc, out = run(brain, shared, "--since", "2026-10-30")
+    check(rc == 0 and "instance data unreadable" in out and "summary" not in out, "a broken instance file is said, never read as defaults")
+    (rules / "shared-reach.json").unlink()
+
     print("missing shared repo")
     rc, out = run(brain, Path(tmp) / "nowhere", "--since", "2026-10-24")
     check(rc == 0 and "NOT checked" in out, "a missing shared repo is said, exit 0")
