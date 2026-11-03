@@ -1,4 +1,4 @@
-- **A run that ends BLOCKED keeps its away-channel** (test: T1) (level: writer; higher: none — the run itself knows it is
+- **A run that ends BLOCKED keeps its away-channel** (test: T1) (level: writer; higher: design — the run itself knows it is
   blocked and says it; debt: none). Coherence register 2026-11-02 P1-13 (fifth round after KS-110, PLAUSIBLE): the BLOCKED
   end of an autonomous run said "report through the instance's channel for an absent operator, then disarm" — but `disarm`
   removed the state the watchdog's issue alarm (operator decision 2026-10-15: GitHub mail) would have fired on, and nothing
