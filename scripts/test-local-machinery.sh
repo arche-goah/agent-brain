@@ -125,6 +125,14 @@ printf 'x\n' > "$T/b/scripts/invariant-check.py"
 out=$(run); grep -q 'shadow a core item of the same name: scripts/invariant-check.py' <<< "$out" \
   && ok "alpha-copy-equal-to-pin-is-shadow" || bad "alpha-copy-equal-to-pin-is-shadow: $out"
 decl '{}'
+# 2026-11-03: same file name, another tool (under half of the core file's lines) is no shadow;
+# a drifted copy that kept most lines still is.
+printf 'a\nb\nc\nd\n' > "$T/b/core/scripts/invariant-check.py"; printf 'other\ntool\nc\n' > "$T/b/scripts/invariant-check.py"
+out=$(run); ! grep -q 'shadow a core item' <<< "$out" && ok "same-name-other-tool-not-shadow" || bad "same-name-other-tool-not-shadow: $out"
+printf 'a\nb\nc\nlocal\n' > "$T/b/scripts/invariant-check.py"
+out=$(run); grep -q 'shadow a core item of the same name: scripts/invariant-check.py' <<< "$out" \
+  && ok "drifted-copy-is-shadow" || bad "drifted-copy-is-shadow: $out"
+printf 'x\n' > "$T/b/core/scripts/invariant-check.py"
 rm -f "$T/b/scripts/invariant-check.py"
 printf 'ssh rig-switch-a\n' > "$T/b/scripts/rig-check.sh"; printf 'x\n' > "$T/b/scripts/test-rig-check.sh"
 out=$(run); grep -q 'without a declaration (script 1).*: scripts/rig-check.sh' <<< "$out" && ! grep -q 'test-rig-check' <<< "$out" \
