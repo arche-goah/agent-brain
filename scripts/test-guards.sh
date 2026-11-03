@@ -92,7 +92,9 @@ mg_probe() { # $1 name, $2 command, $3 block|allow
   # JSON built by node from argv: a printf-built input broke on a bare double quote in the command, the guard exited 0
   # on the bad JSON and the probe read as "allow" (2026-11-02). The probes keep writing \n and \" as JSON escapes;
   # unesc() turns those into the characters, a bare " stays a quote.
-  out=$(node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:{command:unesc(a[2])},cwd:a[3]}))' "${4:-Bash}" "$2" "$MG" \
+  # MSYS2_ARG_CONV_EXCL: Git Bash rewrites an argv value that starts with / into a Windows path ("/opt/bin/gh run"
+  # became "C:/Program Files/Git/opt/bin/gh run", the rule missed it - Windows CI 2026-11-03); the cwd goes native.
+  out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:{command:unesc(a[2])},cwd:a[3]}))' "${4:-Bash}" "$2" "$(if command -v cygpath >/dev/null 2>&1; then cygpath -m "$MG"; else printf '%s' "$MG"; fi)" \
         | HOME="$MG" USERPROFILE="$(if command -v cygpath >/dev/null 2>&1; then cygpath -m "$MG"; else printf '%s' "$MG"; fi)" \
           CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1)
   rc=$?
@@ -226,7 +228,7 @@ printf '%s' '{"enabledPlugins":{"on@fx":true,"off@fx":false}}' > "$TR/fakeuser/.
 tr_probe() { # $1 name, $2 tool_name, $3 field (command|file_path), $4 value, $5 block|allow
   local out helper
   helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
-  out=$(node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:{[a[2]]:unesc(a[3])}}))' "$2" "$3" "$4" \
+  out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:{[a[2]]:unesc(a[3])}}))' "$2" "$3" "$4" \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$helper" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
     [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked what it should allow"
