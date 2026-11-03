@@ -24,6 +24,7 @@
  *        metadata:
  *          load-before-tools: "^mcp__touchdesigner(-\\d+)?__"   # regex on the tool name
  *          load-before-paths: "\\.(py|js)$"                      # optional: regex on the file path
+ *          load-before-commands: "osc-router|artnet"             # optional: regex on a Bash/Monitor command
  *  (b) the instance, for skills it does not own (core or third-party plugins):
  *        <project>/.claude/rules/skill-gate.json
  *        { "rules": [ { "skills": ["brain-core:ponytail"], "tools": "^(Edit|Write|MultiEdit)$",
@@ -78,14 +79,22 @@ function declared(text) {
   for (const line of text.slice(3, end).split(/\r?\n/)) {
     if (/^\S/.test(line)) { inMeta = /^metadata:\s*$/.test(line); continue; }
     if (!inMeta) continue;
-    const m = line.match(/^\s+(load-before-tools|load-before-paths):\s*(.+?)\s*$/);
+    const m = line.match(/^\s+(load-before-tools|load-before-paths|load-before-commands):\s*(.+?)\s*$/);
     if (!m) continue;
     let v = m[2];
     if (/^".*"$/.test(v)) { try { v = JSON.parse(v); } catch (_) { v = v.slice(1, -1); } }
     else if (/^'.*'$/.test(v)) v = v.slice(1, -1).replace(/''/g, "'");
     out[m[1]] = v;
   }
-  return out['load-before-tools'] ? out : null;
+  return out['load-before-tools'] || out['load-before-commands'] ? out : null;
+}
+
+// A Bash or Monitor command can reach the same systems an MCP tool does (osc probes, nc, an Art-Net sender): the skill
+// that governs those systems names the commands too (coherence register 2026-11-02 P1-15, measured: the multi-device
+// skill held MCP calls only, the Bash probes of the same measurement never loaded it).
+function matches(r, tool, target, command) {
+  if (r.tools && r.tools.test(tool) && (!r.paths || (target && r.paths.test(target)))) return true;
+  return !!(r.commands && command && (tool === 'Bash' || tool === 'Monitor') && r.commands.test(command));
 }
 
 function enabledPlugins() {
@@ -129,7 +138,8 @@ function rules() {
     try { d = declared(fs.readFileSync(s.file, 'utf8')); } catch (_) { continue; }
     if (!d) continue;
     const tools = rx(d['load-before-tools']);
-    if (tools) out.push({ skills: [s.name], files: [s.file], tools, paths: rx(d['load-before-paths']), source: 'frontmatter' });
+    const commands = rx(d['load-before-commands']);
+    if (tools || commands) out.push({ skills: [s.name], files: [s.file], tools, paths: rx(d['load-before-paths']), commands, source: 'frontmatter' });
   }
   const cfgPath = path.join(ROOT, '.claude', 'rules', 'skill-gate.json');
   if (fs.existsSync(cfgPath)) {
@@ -137,8 +147,9 @@ function rules() {
     if (!cfg) log(`BAD-CONFIG ${cfgPath}`);
     for (const r of (cfg && Array.isArray(cfg.rules) ? cfg.rules : [])) {
       const tools = rx(r && r.tools);
-      if (tools && Array.isArray(r.skills) && r.skills.length) {
-        out.push({ skills: r.skills.map(String), files: [], tools, paths: rx(r.paths), source: 'skill-gate.json' });
+      const commands = rx(r && r.commands);
+      if ((tools || commands) && Array.isArray(r.skills) && r.skills.length) {
+        out.push({ skills: r.skills.map(String), files: [], tools, paths: rx(r.paths), commands, source: 'skill-gate.json' });
       }
     }
   }
@@ -204,7 +215,8 @@ process.stdin.on('end', () => {
 
   let hits;
   try {
-    hits = rules().filter((r) => r.tools.test(tool) && (!r.paths || (target && r.paths.test(target))));
+    const command = String((hook.tool_input || {}).command || '');
+    hits = rules().filter((r) => matches(r, tool, target, command));
   } catch (e) { log(`ERR rules ${e.message}`); process.exit(0); }
   if (!hits.length) process.exit(0);
   if (!hook.transcript_path || !fs.existsSync(hook.transcript_path)) {
