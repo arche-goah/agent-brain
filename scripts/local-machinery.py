@@ -554,7 +554,11 @@ def scan_scripts(C):
     """Every script in the brain outside the core and the other carriers. Fixtures (test-*,
     *-test.*, test_*.py, *_test.py) belong to the script they test."""
     out = []
-    prune = {C.root / "core", C.root / ".claude" / "skills", C.root / ".claude" / "workflows"}
+    # docs/research holds measurement scripts of a report — evidence beside its report, not running machinery
+    # (audit-audit 2026-11-02, macOS instance: 28 of 32 "general/undeclared" items of one day were such scripts).
+    # A research script that a hook or a scheduled job runs is still found: those carriers name it.
+    prune = {C.root / "core", C.root / ".claude" / "skills", C.root / ".claude" / "workflows",
+             C.root / "docs" / "research"}
     for dirpath, dirnames, filenames in os.walk(C.root):
         dp = pathlib.Path(dirpath)
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and dp / d not in prune

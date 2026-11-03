@@ -349,6 +349,11 @@ for c in $(LM --carriers); do
   neg=$("$PY" "$T/neg.py" --home "$T/fakehome" --repo "$T/b" --today 2026-10-08 --list)
   has "$neg" "$c" "$id" && bad "negative-control-$c: still reported without its carrier" || ok "negative-control-$c-red"
 done
+# 2026-11-02 (audit-audit): a measurement script beside its report under docs/research is evidence, not machinery.
+mkdir -p "$T/b/docs/research/run-x/scripts"; printf 'planted\n' > "$T/b/docs/research/run-x/scripts/measure.py"
+case "$(run --list)" in *"docs/research/run-x/scripts/measure.py"*) bad "a research measurement script was listed as machinery";;
+  *) ok "research-scripts-are-no-machinery";; esac
+rm -rf "$T/b/docs"
 carriers=$(LM --carriers)
 for c in $(printf '%s\n' "$PLANTED" | cut -d= -f1); do   # the other direction: no planted case orphaned
   grep -qx -- "$c" <<< "$carriers" || bad "coverage: planted carrier '$c' is not in the scanner"
