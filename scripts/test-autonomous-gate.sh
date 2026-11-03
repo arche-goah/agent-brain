@@ -58,15 +58,15 @@ probe "stop-checks.json, no ask rule, autonomous" Edit '{"file_path":".claude/ru
 probe "plugin hooks.json, autonomous" Write '{"file_path":"hooks/hooks.json"}' "$AUTO" block
 probe "stop-checks.json outside the mode" Edit '{"file_path":".claude/rules/stop-checks.json"}' "$INTER" allow
 probe "local-machinery.json is not held (control)" Edit '{"file_path":".claude/rules/local-machinery.json"}' "$AUTO" allow
-# Rights are the same in both modes, only questions are collected (operator 2026-11-02). The operator
-# answered a collected point in this turn ("hooks yes"): the held edit goes to the harness's dialog.
+# No dialog in an autonomous run (operator 2026-11-03, replaces the 2026-11-02 exception): a message from the
+# operator in the turn ("hooks yes", typed or queued) does not mean the operator is there - the call stays held.
 tend() { printf '%s\n' '{"type":"system","subtype":"turn_duration","durationMs":1000}'; }
 note() { user "<task-notification><task-id>x</task-id><status>completed</status></task-notification>"; }
 APPR="$T/appr.jsonl"; { user "work through the open points autonomously"; tend; user "hooks yes, coordinate with the collaborator"; } > "$APPR"
 APPQ="$T/appq.jsonl"; { user "work through the open points autonomously"; tend; queued "hooks yes"; } > "$APPQ"
 GONE="$T/gone.jsonl"; { user "work through the open points autonomously"; tend; user "hooks yes"; tend; note; } > "$GONE"
-probe "operator answered in this turn: held hooks edit goes to the dialog" Write '{"file_path":"hooks/hooks.json"}' "$APPR" allow
-probe "operator answered mid-turn: the ask rule goes to the dialog" Edit "{\"file_path\":$SET}" "$APPQ" allow
+probe "operator wrote in this turn: the held hooks edit stays held" Write '{"file_path":"hooks/hooks.json"}' "$APPR" block
+probe "operator wrote mid-turn (phone): the ask rule stays held" Edit "{\"file_path\":$SET}" "$APPQ" block
 probe "the answer's turn has ended, a notification woke the run: held again" Write '{"file_path":"hooks/hooks.json"}' "$GONE" block
 # The turn's prompt asked what is open, the last answer switched the run on again (macOS 2026-11-03):
 # the operator left the dialog, so the ask rule is held, not shown.
