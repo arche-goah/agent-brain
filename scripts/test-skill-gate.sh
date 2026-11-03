@@ -88,9 +88,10 @@ skillcall "tdp:td-core" > "$T/sess-empty/subagents/agent-a1loaded.jsonl"
 readcall "$NT/somewhere/skills/lazy/SKILL.md" > "$T/sess-empty/subagents/agent-a3readlazy.jsonl"
 
 run() { # engine tool transcript [file_path] [agent_id]
-  local inp agent=""
-  [ -n "${5:-}" ] && agent=",\"agent_id\":\"$5\""
-  inp=$(printf '{"tool_name":"%s","tool_input":{"file_path":"%s"},"transcript_path":"%s"%s}' "$2" "${4:-}" "$(native "$T/$3")" "$agent")
+  local inp
+  # JSON built by node from argv (escaping; a printf-built input broke on a double quote, 2026-11-02)
+  inp=$(node -e 'const a=process.argv;const o={tool_name:a[1],tool_input:{file_path:a[2]},transcript_path:a[3]};if(a[4])o.agent_id=a[4];process.stdout.write(JSON.stringify(o))' \
+    "$2" "${4:-}" "$(native "$T/$3")" "${5:-}")
   printf '%s' "$inp" | CLAUDE_PROJECT_DIR="$NT/proj" SKILL_GATE_HOME="$NT/fakehome" node "$1" 2>/dev/null \
     | grep -aq '"permissionDecision":"deny"' && echo block || echo allow
 }
@@ -115,6 +116,7 @@ expect allow mcp__other__x          empty.jsonl            "" "undeclared tool s
 expect allow Bash                   empty.jsonl            "" "plugin disabled in a higher settings layer is not read"
 expect block Edit                   empty.jsonl "$NT/proj/a.py" "project skill with a path filter: .py edit blocks"
 expect allow Edit                   empty.jsonl "$NT/proj/a.md" "path filter: .md edit stays silent"
+expect block Edit                   empty.jsonl "$NT/proj/a \"b\".py" "a double quote in the path still blocks (escaping)"
 expect allow Edit                   loaded-local.jsonl "$NT/proj/a.py" "project skill loaded"
 expect block NotebookEdit           empty.jsonl            "" "instance rule from skill-gate.json"
 expect allow Skill                  empty.jsonl            "" "the Skill tool itself is never gated"
@@ -127,6 +129,22 @@ expect allow mcp__td__create_node   sess-loaded.jsonl "" "parent loaded it: allo
 expect allow NotebookEdit           sess-empty.jsonl  "" "subagent read the SKILL.md of a skill-gate.json rule" a3readlazy
 expect block mcp__td__create_node   sess-empty.jsonl  "" "subagent transcript missing: parent alone decides, as before" a9missing
 expect allow mcp__td__create_node   sess-loaded.jsonl "" "subagent transcript missing, parent loaded: allow" a9missing
+# load-before-commands (2026-11-03, register P1-15): a Bash/Monitor command reaching the same systems loads the skill too
+mkdir -p "$P/.claude/skills/probe-skill"
+printf -- '---\nname: probe-skill\ndescription: x\nmetadata:\n  load-before-tools: "^mcp__rig__"\n  load-before-commands: "osc-router|artnet"\n---\n' > "$P/.claude/skills/probe-skill/SKILL.md"
+skillcall "probe-skill" > "$T/loaded-probe.jsonl"
+cmdrun() { # tool command transcript
+  printf '{"tool_name":"%s","tool_input":{"command":"%s"},"transcript_path":"%s"}' "$1" "$2" "$(native "$T/$3")" \
+    | CLAUDE_PROJECT_DIR="$NT/proj" SKILL_GATE_HOME="$NT/fakehome" node "$GATE" 2>/dev/null \
+    | grep -aq '"permissionDecision":"deny"' && echo block || echo allow
+}
+[ "$(cmdrun Bash 'python3 osc-router.py --listen 9000' empty.jsonl)" = block ] && ok "a Bash command matching load-before-commands needs the skill" || bad "Bash command not gated"
+[ "$(cmdrun Monitor 'bash artnet-probe.sh' empty.jsonl)" = block ] && ok "a Monitor command is gated the same way" || bad "Monitor command not gated"
+[ "$(cmdrun Bash 'python3 osc-router.py --listen 9000' loaded-probe.jsonl)" = allow ] && ok "with the skill loaded the command passes" || bad "loaded skill still blocks"
+[ "$(cmdrun Bash 'ls -la' empty.jsonl)" = allow ] && ok "negative control: an unrelated command passes" || bad "unrelated command blocked"
+[ "$(run "$GATE" mcp__rig__read empty.jsonl)" = block ] && ok "the same skill still gates its MCP tools" || bad "tools rule lost"
+rm -rf "$P/.claude/skills/probe-skill"
+
 # fail-open: no transcript on disk
 got=$(printf '{"tool_name":"mcp__td__x","tool_input":{},"transcript_path":"%s"}' "$NT/missing.jsonl" \
   | CLAUDE_PROJECT_DIR="$NT/proj" SKILL_GATE_HOME="$NT/fakehome" node "$GATE" | grep -ac deny)

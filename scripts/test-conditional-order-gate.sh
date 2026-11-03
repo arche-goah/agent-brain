@@ -59,7 +59,8 @@ mk() {
 run_case() {
   local name="$1" want="$2" tool="$3" ti="$4" cwd="${5:-$T}"
   local out
-  out="$(printf '{"tool_name":"%s","tool_input":%s,"transcript_path":"%s","cwd":"%s"}' \
+  # JSON built by node from argv (escaping; a printf-built input broke on a double quote, 2026-11-02)
+  out="$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:JSON.parse(a[2]),transcript_path:a[3],cwd:a[4]}))' \
     "$tool" "$ti" "$(native "$T/$name.jsonl")" "$(native "$cwd")" | node "$G" 2>&1)"
   if [ "$want" = block ]; then
     case "$out" in *CONDITIONAL-ORDER-GATE*) ok "$name blocks";; *) bad "$name did not block: '$out'";; esac
@@ -71,6 +72,13 @@ run_case() {
 # --- the incident (2026-10-16): "dann coherence scan", nine agents; the third one trips it
 mk "$T/incident-de.jsonl" '"dann coherence scan"' 2 ''
 run_case incident-de block Agent '{"prompt":"lens 3"}'
+# a double quote in the cwd (escaping of the hook input); Windows refuses " in a directory name
+if mkdir -p "$T/q\"x" 2>/dev/null && cp -R "$T/.claude" "$T/q\"x/" 2>/dev/null; then
+  mk "$T/incident-quote.jsonl" '"dann coherence scan"' 2 ''
+  run_case incident-quote block Agent '{"prompt":"lens 3"}' "$T/q\"x"
+else
+  echo "  SKIP a double quote in the cwd: this file system refuses the name"
+fi
 mk "$T/below-threshold.jsonl" '"dann coherence scan"' 1 ''
 run_case below-threshold allow Agent '{"prompt":"lens 2"}'
 mk "$T/workflow-de.jsonl" '"dann coherence scan"' 0 ''
@@ -107,6 +115,11 @@ mk "$T/in-call-short.jsonl" '"after the mac answers, push it"' 0 ''
 run_case in-call-short block Bash '{"command":"git push origin feat/x  # CONDITION-NONE: no"}'
 mk "$T/in-prompt.jsonl" '"dann coherence scan"' 2 ''
 run_case in-prompt allow Agent '{"prompt":"lens 3\nCONDITION-MET: dann coherence scan — the answer came 12:40 in core/LOG.md"}'
+# a saved workflow is called by name with an args OBJECT (2026-11-02): the line inside args releases it
+mk "$T/in-args.jsonl" '"dann coherence scan"' 0 ''
+run_case in-args allow Workflow '{"name":"coherence-scan","args":{"date":"2026-11-02","note":"CONDITION-MET: dann coherence scan — the answer came 12:40 in core/LOG.md"}}'
+mk "$T/in-args-none.jsonl" '"dann coherence scan"' 0 ''
+run_case in-args-none block Workflow '{"name":"coherence-scan","args":{"date":"2026-11-02"}}'
 
 # --- negative controls: each leg alone stays silent
 mk "$T/no-condition.jsonl" '"run the coherence scan now"' 5 ''

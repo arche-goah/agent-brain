@@ -114,6 +114,15 @@ with tempfile.TemporaryDirectory() as tmp:
     res = run({"script": "phase('a')"}, st, root)
     cases.append(("nameless script allows", res is None))
 
+    # 12b coherence-scan partial run (operator decision 2026-11-02) passes under the cadence; a full run does not
+    st = make_state(tmp, "coherence-scan", age_days=6)
+    res = run({"name": "coherence-scan", "args": {"date": "2026-11-08", "scratch": "/x", "partial": {"since": "2026-11-02"}}}, st, root)
+    cases.append(("coherence-scan partial run under 14 days allows", res is None))
+    res = run({"name": "coherence-scan", "args": {"date": "2026-11-08", "scratch": "/x"}}, st, root)
+    cases.append(("coherence-scan full run under 14 days denies (control)", res is not None))
+    res = run({"name": "coherence-scan", "args": {"date": "2026-11-08", "partial": {"since": "last week"}}}, st, root)
+    cases.append(("a partial without a date is no partial run", res is not None))
+
     # 13 brain-scan: the core floor is 7 days, not the 14-day default -> day 8 ALLOWS
     scan = "export const meta = { name: 'brain-scan', description: 'x' }\nphase('a')"
     st = make_state(tmp, "brain-scan", age_days=8)

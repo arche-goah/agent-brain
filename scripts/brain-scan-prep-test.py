@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as d:
     report(r, "2026-10-01", [("gone", "ai-does-it"), ("tracked", "ai-does-it"), ("fixed", "ai-does-it"),
                              ("dropme", "drop"), ("settled", "operator-decision"), ("already", "done-already")])
     report(r, "2026-10-09", [("gone", "ai-does-it")])  # today's own report: never "previous"
-    orders(r, "- [ ] **tracked**\n  id: tracked\n\n- [x] **fixed**\n  id: fixed\n\n"
+    orders(r, "- [ ] **tracked**\n  id: tracked\n\n- [x] **fixed**\n  id: fixed\n  check: test -f x\n\n"
               "- [ ] **settled**\n  id: settled\n  decided 2026-10-05: accepted as is\n")
     code, summ, rc, mach, head = run(r, "--skip-machine")
     check(code == 0, "exit 0")
@@ -114,9 +114,14 @@ with tempfile.TemporaryDirectory() as d:
     _, summ, _, _, _ = run(t, "--skip-machine")
     check(any("came back a third time" in l for l in deep(summ, "coherence-scan")),
           "three appearances without a fix suggest a coherence-scan")
+    # 2026-11-02 (audit-audit): a tick without a check line is a claim — the recurrer stays a decision
     orders(t, "- [x] **again**\n  id: again\n")
+    _, summ, rc2, _, _ = run(t, "--skip-machine")
+    check("again" in summ.get("decision_due", []) and state(rc2, "again") == "done-unproven",
+          "a recurrer ticked without a check stays decision-due (done-unproven)")
+    orders(t, "- [x] **again**\n  id: again\n  check: test -f fixed-file\n")
     _, summ, _, _, _ = run(t, "--skip-machine")
-    check("again" not in summ.get("decision_due", []), "a fixed recurrer is no decision")
+    check("again" not in summ.get("decision_due", []), "a fixed recurrer with its check is no decision")
 
     # ── deep check: new dated rules, 5 fires, 4 stays silent ────────────────
     for n, expect in ((5, True), (4, False)):
@@ -131,6 +136,17 @@ with tempfile.TemporaryDirectory() as d:
         if expect:
             check("~2.6M tokens per run" in got[0] and "(2026-09-18)" in got[0], "the line names why and the measured price")
             check(got[0] in head, "the line reaches the report head verbatim")
+
+    # 2026-11-02 (operator decision): under 14 days the trigger suggests the PARTIAL run, never a full one
+    import datetime as _dt
+    recent = (_dt.date.today() - _dt.timedelta(days=3)).isoformat()
+    p = Path(d) / "partial"
+    write(p / f"docs/research/coherence-scan/register-{recent}.md", "# register\n")
+    write(p / ".claude/rules/feedback.md", "".join(f"- rule {i} (operator {_dt.date.today().isoformat()})\n" for i in range(6)))
+    _, summ, _, _, _ = run(p, "--skip-machine")
+    lines = [l for l in summ.get("deep_check", []) if "coherence-scan" in l]
+    check(len(lines) == 1 and "coherence-scan PARTIAL" in lines[0] and f'since: "{recent}"' in lines[0],
+          "a coherence trigger 3 days after the last register suggests the partial run")
 
     # a register in the pre-rename folder kohaerenz-scan/ counts as the last register
     k = Path(d) / "legacy-register"

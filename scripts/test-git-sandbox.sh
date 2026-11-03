@@ -74,5 +74,22 @@ for t in shared-memory-audience-test shared-memory-index-test shared-memory-lint
   fi
 done
 
+# --- no sign-in window (2026-11-03): an editor's GIT_ASKPASS never reaches a fixture ---------
+got="$(GIT_ASKPASS=/editor/askpass.sh "$PY" -c "import sys; sys.path.insert(0, sys.argv[1]); import git_sandbox, os
+print(os.environ.get('GIT_ASKPASS'), os.environ.get('GIT_TERMINAL_PROMPT'))" "$HERE")"
+[ "$got" = "true 0" ] && ok "helper: an inherited GIT_ASKPASS is replaced, no prompt" || bad "helper: askpass/prompt left as '$got'"
+# Class guard: every non-interactive git call that turns the terminal prompt off also turns askpass
+# off (GIT_TERMINAL_PROMPT=0 alone still runs an askpass program — Cursor opened a GitHub sign-in).
+lone="$(grep -rnE 'GIT_TERMINAL_PROMPT=0' "$HERE/../helpers" "$HERE/../scripts" --include='*.sh' --include=pre-commit \
+  | grep -av 'GIT_ASKPASS' | grep -avE '^[^:]+:[0-9]+:\s*#|test-git-sandbox\.sh' || true)"
+[ -z "$lone" ] && ok "every GIT_TERMINAL_PROMPT=0 call also sets GIT_ASKPASS" || bad "prompt off but askpass on: $lone"
+
+# Class guard (2026-11-03): a fetch that runs unattended (watchers, the bootup check, the pre-commit background fetch) leaves
+# FETCH_HEAD alone — measured: FETCH_HEAD held the main line twice and the operator-side `git pull --ff-only` failed with
+# "Cannot fast-forward to multiple branches" while the shared-memory watch fetched the same repo every 30 s.
+bg="$(grep -anE 'git[^|;]* fetch' "$HERE/collab-watch.sh" "$HERE/shared-memory-watch.sh" "$HERE/../helpers/shared-memory-check.sh" \
+  "$HERE/../helpers/git-hooks/pre-commit" | grep -av -- '--no-write-fetch-head' | grep -avE '^[^:]+:[0-9]+:\s*#' || true)"
+[ -z "$bg" ] && ok "every unattended fetch leaves FETCH_HEAD alone" || bad "unattended fetch writes FETCH_HEAD: $bg"
+
 if [ "$fail" -eq 0 ]; then echo "test-git-sandbox: all green"; else echo "test-git-sandbox: FAILED"; fi
 exit "$fail"

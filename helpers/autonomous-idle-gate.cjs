@@ -35,7 +35,9 @@ const { autonomousMode } = require('./autonomous-mode.cjs');
 const { isTranscriptRecord } = require('./turn-kind.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
 
-const END_LINE = /^[ \t>*_-]*(BLOCKED|POOL EMPTY):\s*\S/m;
+// LIST EMPTY (2026-11-02, coherence register P0-1): a list run ends when the ORDERED list is done -
+// Order Fidelity #3, an empty list is a success, not a reason to take the rest of the ledger as the pool.
+const END_LINE = /^[ \t>*_-]*(BLOCKED|POOL EMPTY|LIST EMPTY):\s*\S/m;
 const HOOK_ECHO = /^Stop hook feedback:/;
 
 /** The running turn: its final assistant text and whether it called ScheduleWakeup. */
@@ -129,6 +131,28 @@ function exemptWords(root) {
   return new RegExp(list.join('|'), 'i');
 }
 
+// The loop watchdog follows the mode, not the agent's memory (coherence register 2026-11-02 P1-12: "watchdog arming
+// in prose only"; measured 2026-11-03 on the macOS instance: a list run ordered autonomous worked for over an hour with
+// no watchdog armed). Every turn end of an autonomous run is a life sign: armed when nothing is armed, a beat otherwise.
+// Back in interactive mode a watchdog this gate armed itself (name `auto-…`) is disarmed; one the agent armed by hand
+// (a time-boxed run with its deadline) is left alone. No turn is held for it. LOOP_WATCHDOG_AUTO=0 switches it off.
+const AUTO_PREFIX = 'auto-';
+function keepWatchdog(root, autonomous) {
+  if (process.env.LOOP_WATCHDOG_AUTO === '0') return;
+  const script = require('path').join(__dirname, '..', 'scripts', 'loop-watchdog.sh');
+  const state = require('path').join(root, '.claude-state', 'loop-watchdog.state');
+  if (!fs.existsSync(script)) return;
+  let name = '';
+  try { name = fs.readFileSync(state, 'utf8').split('\n')[0].trim(); } catch (_) {}
+  const run = (...args) => require('child_process').spawnSync('bash', [script, ...args],
+    { env: { ...process.env, CLAUDE_PROJECT_DIR: root }, stdio: 'ignore', timeout: 5000 });
+  try {
+    if (autonomous && !name) run('arm', AUTO_PREFIX + 'autonomous-run', process.env.LOOP_WATCHDOG_AUTO_MINUTES || '45');
+    else if (autonomous) run('beat');
+    else if (name.startsWith(AUTO_PREFIX)) run('disarm');
+  } catch (_) { /* fail open: the watchdog never holds a turn */ }
+}
+
 function judge(input, now) {
   // The retry after a block is judged too (measured on an instance, 2026-10-29): the second attempt ended on a
   // BLOCKED line over a sliced list and passed unread, because stop_hook_active skipped the whole judgement.
@@ -137,7 +161,9 @@ function judge(input, now) {
   // (2026-10-30: a 15-min wakeup after two other blocks passed with 67 own items open).
   if (!input.transcript_path) return null;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
-  if (!autonomousMode(input.transcript_path, root)) return null;
+  const autonomous = autonomousMode(input.transcript_path, root);
+  keepWatchdog(root, autonomous);
+  if (!autonomous) return null;
   const t = turnOf(input.transcript_path);
   if (!t || !t.text) return null;
   // The session close ends the run (measured 2026-10-31 and again 2026-11-01 on the macOS instance: after a
@@ -170,7 +196,7 @@ function judge(input, now) {
       // specific reason into the generic idle sentence, and the real cause (a Windows word in the BLOCKED line)
       // stayed hidden through four retries.
     }
-    return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY line, but the list behind it was not measured ' +
+    return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY / LIST EMPTY line, but the list behind it was not measured ' +
       'in this turn — the line is a recollection, not a reading. Run the brain\'s own-items measurement now ' +
       '(core/scripts/open-items.py, or the instance command in .claude/rules/autonomous-patterns.json ' +
       '`own_items_commands`), do what it lists as yours, and end only when every item left is named as blocked. ' +
@@ -178,8 +204,9 @@ function judge(input, now) {
   }
   return 'AUTONOMOUS-IDLE: the run is autonomous and this turn ends without its continuation. ' +
     'Do the next item now (tool calls in this turn), or end the turn in one of the run\'s end forms: ' +
-    'a line `BLOCKED: <item> — <what restores it, who>` or a line ' +
-    '`POOL EMPTY: <how measured>`, both after measuring the list in this turn. A wakeup alone is no continuation, and a running watcher (CI, a peer) continues only its own event, not your items. ' +
+    'a line `BLOCKED: <item> — <what restores it, who>`, a line `POOL EMPTY: <how measured>`, or for a run over an ' +
+    'ordered list `LIST EMPTY: <the order, how measured>` — the pool is what the operator ordered plus an agreed ' +
+    'reserve, not the whole ledger (Order Fidelity #3). All after measuring the list in this turn. A wakeup alone is no continuation, and a running watcher (CI, a peer) continues only its own event, not your items. ' +
     'Missing: continuation';
 }
 
