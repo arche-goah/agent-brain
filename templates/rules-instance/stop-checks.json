@@ -80,6 +80,7 @@
       "marker": "MODE-LOG",
       "cmd": "core/helpers/mode-log.cjs",
       "mode": "record",
+      "counts_blocks": false,
       "onReissue": "run"
     },
     {

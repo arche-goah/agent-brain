@@ -202,6 +202,14 @@ Every shared repo runs on pull request, blocking:
 Prose standards drift between two people within weeks. The CI is the actual contract;
 this document only explains it.
 
+**Every instrument a check trusts has a case that must fail.** A check, a report or a gate
+ships with a fixture whose positive case goes red against the state before the fix (the
+negative control: the old code, or the fix removed, fails it) — and a report has no quiet
+zero: a field it cannot read is said as "not countable", never as 0. Measured on the macOS
+instance 2026-11-02 (audit-audit): three recorders reported 0 blocks over 31 real ones and two
+unreadable logs, seven fixtures were run by no loop, and a missing stop-check file was skipped
+without a word — each passed every existing fixture, because no fixture provoked the case.
+
 ## 8. How changes flow between two brains
 
 Sort every change before writing it:

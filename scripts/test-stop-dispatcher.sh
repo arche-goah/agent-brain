@@ -140,6 +140,17 @@ OUT5="$(feed2 "$TO")"
 case "$OUT5" in *'SKIP-PROBE'*'PLAIN-PROBE'*|*'PLAIN-PROBE'*'SKIP-PROBE'*) ok "both run on an operator turn";; *) bad "operator turn lost a check: $OUT5";; esac
 case "$OUT5" in *'kind=operator'*) ok "checks are told turn_kind=operator";; *) bad "operator kind missing: $OUT5";; esac
 
+# A wired row whose file is gone says so (audit-audit 2026-11-02: the dispatcher skipped it without a word).
+CFG3="$T/ghost-cfg"
+mkdir -p "$CFG3/.claude/rules"
+printf '{"checks":[{"label":"GHOST","marker":"GHOST-GATE","cmd":"helpers/gone-gate.cjs","mode":"block"}]}' \
+  > "$CFG3/.claude/rules/stop-checks.json"
+OUT6="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TO")" "$(native "$CFG3")" \
+  | CLAUDE_PROJECT_DIR="$(native "$CFG3")" node "$D" 2>/dev/null)"
+rm -rf "$CFG3"
+case "$OUT6" in *'GHOST'*'file is missing'*) ok "a wired check with a missing file is named";;
+  *) bad "missing check file passed silently: '$OUT6'";; esac
+
 # A frame plus the operator's own words is the operator — and hook feedback after a
 # notification does not turn it into an operator turn.
 TM="$T/mixed.jsonl"
