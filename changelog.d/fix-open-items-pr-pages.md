@@ -31,3 +31,6 @@
     N oldest for the operator, one `[more]` line with the rest and the full-list command; the head line keeps every count.
     Measured the same day: start output 17.9 KB, the list 10.3 KB, cut by Claude Code past 10 000 characters without a sign;
     with `--top 5` the list is 4.6 KB. `session-bootup.sh` passes `--top ${OPEN_ITEMS_TOP:-5}`. Fixture +2.
+  - `--owner ai|human|operator|standing` is refused: the flag names a GitHub account, and a hand run with `--owner ai`
+    searched a foreign account of that name, listed 26 of its PRs as ours and made 30 in-pr exits look stale (macOS
+    instance 2026-11-03). Fixture +1.

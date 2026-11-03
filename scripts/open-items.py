@@ -836,6 +836,12 @@ def main():
     ap.add_argument("--classify", nargs="+", action="extend", metavar="ID=ai|human[:why]")
     ap.add_argument("--top", type=int, default=0, help="show only the N oldest items per side (own / operator); 0 = all")
     a = ap.parse_args()
+    # --owner is a GitHub account, not the item side the output prints as [..|ai] / [..|human]. Measured 2026-11-03
+    # on the macOS instance: a hand run with `--owner ai` searched the foreign account "ai", listed 26 of its PRs as
+    # ours and called 30 in-pr exits stale - read as a list of false reports before the call was found.
+    if (a.owner or "").lower() in ("ai", "human", "operator", "standing"):
+        ap.error(f"--owner {a.owner}: this is a GitHub account (default: the ecosystem's owner), not the item side; "
+                 "leave it out for this brain")
     # OS-9: the bootup and the Stop gate parse this output, and the item texts carry the
     # authors' umlauts and dashes. Unpinned, Windows writes the ANSI codepage.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")

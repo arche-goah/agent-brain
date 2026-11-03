@@ -575,4 +575,8 @@ cut=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/page1.json")" OWNER=me run "")
 has "PR search" "$cut" && ! has "pager#21" "$cut" && ok "negative control: a missing page = PR search unread, no short list" \
   || bad "missing page: $cut"
 
+side=$("$PY" "$(native "$T/core/scripts/open-items.py")" --owner ai --repo "$(native "$T/repo")" 2>&1); rc=$?
+[ "$rc" -ne 0 ] && has "not the item side" "$side" && ok "--owner ai (the item side, not an account) is refused" \
+  || bad "--owner ai: rc=$rc $side"
+
 [ "$fail" = 0 ] && echo "open-items: all cases pass" || { echo "open-items: FAILURES"; exit 1; }
