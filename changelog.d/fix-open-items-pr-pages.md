@@ -1,4 +1,4 @@
-- **Open items: the PR search reads every page; a cut list is a failed read** (test: T1) (level: reader; higher: none —
+- **Open items: the PR search reads every page; a cut list is a failed read** (test: T1) (level: reader; higher: design —
   the search is the source, the reader cut it; debt: none). Measured on the macOS instance 2026-11-03: 59 open PRs
   against a search page of 50; the nine beyond it fell off silently, and two ledger entries carried by an open suite PR
   printed as "its in-pr exit names no open PR any more" for 17 and 21 sessions.
