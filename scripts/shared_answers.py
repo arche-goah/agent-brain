@@ -55,6 +55,22 @@ def own_shared_shas(repo=None):
     return found
 
 
+def answers(stem, path, text, me):
+    """True when another party's text names the request: a LOG section under a heading that is
+    not ours, or a fact file whose `von:` is not us. Our own mentions (a LOG line "asked X")
+    answer nothing."""
+    if stem not in text:
+        return False
+    if path.name == "LOG.md":
+        for sec in re.split(r"(?m)^(?=## )", text):
+            m = re.match(r"## \S+ · (\S+)", sec)
+            if m and m.group(1) != me and stem in sec:
+                return True
+        return False
+    von = re.search(r"^\s*von:\s*(\S+)", text.split("\n---", 2)[0] if text.startswith("---") else "", re.M)
+    return bool(von) and von.group(1) != me
+
+
 REQ_PR = re.compile(r"([A-Za-z][\w.-]*)\s?#(\d+)((?:,?\s#\d+)*)")
 
 
@@ -67,17 +83,25 @@ def own_open_requests(repo=None):
     root = Path(repo or default_repo())
     if not me or not (root / ".git").is_dir():
         return {}
-    out = {}
+    texts = {}
     for f in root.glob("*/*.md"):
         try:
-            text = f.read_text(encoding="utf-8", errors="replace")
+            texts[f] = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+    out = {}
+    for f, text in texts.items():
         if not text.startswith("---"):
             continue
         front = text.split("\n---", 2)[0]
         field = lambda k: (re.search(rf"^\s*{k}:\s*(.*?)\s*$", front, re.M) or [None, ""])[1].strip("\"'")
         if field("von") != me or field("status") != "open":
+            continue
+        # Answered the way the addressee's inbox reads it (shared-memory-inbox.py open_items): any
+        # other file naming the request. A status left on `open` after the answer is common
+        # (measured 2026-11-03: ~180 own requests on `open`, most answered or merged long ago).
+        # Wrong only in the safe direction: a mention that is no answer hands the PR back to us.
+        if any(answers(f.stem, g, t, me) for g, t in texts.items() if g != f and g.name != "INDEX.md"):
             continue
         for name, first, more in REQ_PR.findall(field("description")):
             for n in [first] + re.findall(r"\d+", more):

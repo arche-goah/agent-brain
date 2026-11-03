@@ -227,6 +227,12 @@ has "has no answer - ask that machine by name" "$(line 'core#40 ' "$(rqrun q2)")
   || bad "old request: $(line 'core#40 ' "$(rqrun q2)")"
 reqfile "$("$PY" -c 'import datetime; print(datetime.date.today())')" answered
 has "[PR|ai]" "$(line 'core#40 ' "$(rqrun q3)")" && ok "negative control: an answered request no longer holds the PR" || bad "answered: $(line 'core#40 ' "$(rqrun q3)")"
+reqfile "$("$PY" -c 'import datetime; print(datetime.date.today())')" open
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: ws' '---' 'Re request-x: Windows OK.' > "$T/repo/core/reply.md"
+has "[PR|ai]" "$(line 'core#40 ' "$(rqrun q4)")" && ok "a reply naming the request answers it although its status stayed open" || bad "reply: $(line 'core#40 ' "$(rqrun q4)")"
+printf '%s\n' '# LOG' '' '## 2026-10-11 · mac — asked ws: see request-x' 'x' > "$T/repo/core/LOG.md"
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: mac' '---' 'posted request-x' > "$T/repo/core/reply.md"
+has "waiting on ws" "$(line 'core#40 ' "$(rqrun q5)")" && ok "negative control: our own mentions of the request answer nothing" || bad "own mention: $(line 'core#40 ' "$(rqrun q5)")"
 rm -rf "$T/repo/core"
 has "waiting until $NOW: alpha measurement" "$(line 'core#5 ' "$out")" && ok "dated wait is quiet" || bad "dated wait: $(line 'core#5 ' "$out")"
 has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder" || bad "past wait: $(line 'core#6 ' "$out")"
