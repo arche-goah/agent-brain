@@ -10,3 +10,10 @@
   notification turn, so checks with `onNotification: skip` sat it out). Agreed with the operator on 2026-11-03
   (question tool). Fixtures: `test-turn-kind.sh` +2, `test-stop-dispatcher.sh` +2, `test-basics-hint.sh` +1; the
   dispatcher and basics-hint cases FAIL against main.
+  - Class sweep, same strand: 10 helpers read `transcript_path` without `isTranscriptRecord` (an `api-request-blob`
+    repeats earlier records and carries the instruction dump as a user message). Two more read user text from it:
+    `stop-dispatcher.cjs` `turnKind` (a blob read as the operator's turn) and `decision-presentation-gate.cjs`
+    `turnSince` (a blob after the prompt repeats its text and moved the turn start past the turn's questions); both
+    skip blobs now, one fixture case each, the latter FAILS against main. `basics-hint` gets it through
+    `operatorPrompt`. The other six read only tool calls (a blob repeats real ones), only the path, or go through
+    `autonomous-mode.cjs`, which filters already.
