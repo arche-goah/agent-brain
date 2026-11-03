@@ -52,7 +52,7 @@ decl '{"instance":{"scripts/hooks/x.cjs":"renders only for this printer"}}'
 out=$(run); grep -q '^!! local machinery: 1 instance declaration(s) give a reason without evidence: scripts/hooks/x.cjs' <<< "$out" \
   && ok "string-declaration-reported-without-evidence" || bad "string-declaration-reported-without-evidence: $out"
 decl '{"instance":{"scripts/hooks/x.cjs":{"why":"renders only for this printer","evidence":"venue-hall-b"}}}'
-out=$(run); grep -q '^!! local machinery: 1 item(s) do not contain the evidence.*x.cjs (venue-hall-b)' <<< "$out" \
+out=$(run); grep -q '^!! local machinery: 1 item(s) whose evidence does not hold.*x.cjs (venue-hall-b)' <<< "$out" \
   && ok "evidence-not-in-content-loud" || bad "evidence-not-in-content-loud: $out"
 
 # Outside hooks: a dev checkout that EXISTS (its path travels as data inside the hook command).
@@ -144,6 +144,21 @@ out=$(run); grep -q '^!! local machinery: 1 undeclared item(s) contain none of t
   && grep -q 'general=1' <<< "$out" && ok "item-without-identity-token-general-loud" || bad "item-without-identity-token-general-loud: $out"
 printf 'ping 203.0.113.70\n' > "$T/b/scripts/rig-check.sh"   # a longer IP is not the token
 out=$(run); grep -q 'presumably general' <<< "$out" && ok "identity-token-word-boundary" || bad "identity-token-word-boundary: $out"
+# evidence must be an identity token (2026-11-02): a word the item contains is not enough
+printf 'ping rig-switch-a over DMX\n' > "$T/b/scripts/rig-check.sh"
+decl '{"identity_tokens":["rig-switch-a"],"instance":{"scripts/rig-check.sh":{"reviewed":"2026-10-01","why":"x","evidence":"DMX"}}}'
+out=$(run); grep -q 'DMX is no identity token of this brain' <<< "$out" && grep -q 'badevidence=1' <<< "$out" \
+  && ok "evidence-not-an-identity-token-loud" || bad "evidence-not-an-identity-token-loud: $out"
+decl '{"identity_tokens":["rig-switch-a"],"instance":{"scripts/rig-check.sh":{"reviewed":"2026-10-01","why":"x","evidence":"rig-switch-a"}}}'
+out=$(run); [[ -z "$out" ]] && ok "evidence-an-identity-token-silent" || bad "evidence-an-identity-token-silent: $out"
+# an identity token that is a published suite's name marks every user of that suite
+mkdir -p "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin"
+printf '{"plugins":[{"name":"widget-next","source":{"source":"github","repo":"o/widget-suite"}}]}' \
+  > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
+decl '{"identity_tokens":["rig-switch-a","widget"],"instance":{"scripts/rig-check.sh":{"reviewed":"2026-10-01","why":"x","evidence":"rig-switch-a"}}}'
+out=$(run); grep -q 'identity_tokens: widget (the name of a published plugin or suite' <<< "$out" \
+  && ok "identity-token-naming-a-suite-loud" || bad "identity-token-naming-a-suite-loud: $out"
+rm -rf "$T/fakehome/.claude/plugins/marketplaces"
 # --- external (third-party, used as is) and reach analysis as evidence --------------------
 T_ID='"identity_tokens":["rig-switch-a"]'
 decl "{$T_ID,\"external\":{\"scripts/rig-check.sh\":{\"reviewed\":\"2026-10-01\",\"source\":\"vendor pack 1.2\"}}}"
@@ -272,6 +287,11 @@ printf '{"plugins":[{"name":"suite","source":{"source":"github","repo":"o/suite"
   > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
 out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" && grep -q 'clone=1' <<< "$out" \
   && ok "clone-of-published-suite-loud-even-on-main" || bad "clone-of-published-suite-loud-even-on-main: $out"
+# The same entry in the "url" form (HTTPS clone URL, 2026-11-02) names the same repo.
+printf '{"plugins":[{"name":"suite","source":{"source":"url","url":"https://github.com/o/suite.git","ref":"v1"}}]}' \
+  > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
+out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" \
+  && ok "url-source-names-the-same-repo" || bad "url-source-names-the-same-repo: $out"
 decl "$(printf '{"alpha":{"%s":{"until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
 out=$(run); [[ -z "$out" ]] && ok "clone-declared-alpha-silent" || bad "clone-declared-alpha-silent: $out"
 out=$(TODAY=2026-10-21 run); grep -q 'past their date' <<< "$out" \
@@ -334,6 +354,11 @@ for c in $(LM --carriers); do
   neg=$("$PY" "$T/neg.py" --home "$T/fakehome" --repo "$T/b" --today 2026-10-08 --list)
   has "$neg" "$c" "$id" && bad "negative-control-$c: still reported without its carrier" || ok "negative-control-$c-red"
 done
+# 2026-11-02 (audit-audit): a measurement script beside its report under docs/research is evidence, not machinery.
+mkdir -p "$T/b/docs/research/run-x/scripts"; printf 'planted\n' > "$T/b/docs/research/run-x/scripts/measure.py"
+case "$(run --list)" in *"docs/research/run-x/scripts/measure.py"*) bad "a research measurement script was listed as machinery";;
+  *) ok "research-scripts-are-no-machinery";; esac
+rm -rf "$T/b/docs"
 carriers=$(LM --carriers)
 for c in $(printf '%s\n' "$PLANTED" | cut -d= -f1); do   # the other direction: no planted case orphaned
   grep -qx -- "$c" <<< "$carriers" || bad "coverage: planted carrier '$c' is not in the scanner"
@@ -433,6 +458,21 @@ decl "{\"alpha\":{\"scripts/hooks/x.cjs\":{\"until\":\"2026-12-01\",\"why\":\"al
 out=$(run); grep -q "core carries ${SHA:0:7}" <<< "$out" && ok "alpha-caught-up-by-commit-loud" || bad "alpha-caught-up-by-commit-loud: $out"
 decl '{"alpha":{"scripts/hooks/x.cjs":{"until":"2026-12-01","why":"alpha","core_commit":"0123456789abcdef0123456789abcdef01234567"}}}'
 out=$(run); ! grep -q 'caught up' <<< "$out" && ok "alpha-commit-not-in-core-silent" || bad "alpha-commit-not-in-core-silent: $out"
+rm -rf "$T/b"
+
+# A `#` key names ONE rule, never a prefix (measured 2026-10-30 on the macOS instance: the declaration of
+# mechanism-rules.json#merge covered #mergelint, a rule nobody had declared).
+mk '{}' '' '' >/dev/null
+printf '[{"id":"merge","pattern":"\\\\bmerge-x\\\\b","was":"x"},{"id":"mergelint","pattern":"\\\\bmergelint-x\\\\b","was":"y"}]' > "$T/b/.claude/rules/mechanism-rules.json"
+decl '{"instance":{".claude/rules/mechanism-rules.json#merge":{"reviewed":"2026-10-01","why":"our merge matrix","evidence":"merge-x"}}}'
+out=$(run); grep -q '^local machinery summary: items=2 .*badevidence=0 .*undeclared=1' <<< "$out" && grep -q 'without a declaration.*#mergelint' <<< "$out" \
+  && ok "hash-key-declares-one-rule-not-a-prefix" || bad "hash-key-declares-one-rule-not-a-prefix: $out"
+# A prefix cut at a word boundary still covers on purpose (Windows instance 2026-11-02: `#2026-` for every dated
+# section): `#merge-` covers `#merge-x` and `#merge-y`.
+printf '[{"id":"merge-x","pattern":"\\\\bmx\\\\b","was":"x"},{"id":"merge-y","pattern":"\\\\bmy\\\\b","was":"y"}]' > "$T/b/.claude/rules/mechanism-rules.json"
+decl '{"instance":{".claude/rules/mechanism-rules.json#merge-":{"reviewed":"2026-10-01","why":"our merge rules","evidence":"was"}}}'
+out=$(run); [[ -z "$out" ]] \
+  && ok "hash-key-prefix-at-word-boundary-covers" || bad "hash-key-prefix-at-word-boundary-covers: $out"
 rm -rf "$T/b"
 
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }

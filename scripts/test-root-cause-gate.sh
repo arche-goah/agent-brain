@@ -51,9 +51,9 @@ REG="docs/maintenance/carrier-register.md"
 check "correction answered with a cause line, a mechanism and the register" "$T/t4.jsonl" allow "$CWD"
 { user "go"; asst "ok"; user "why did you ask that again?"; asst "Reading the record."; tres; asst "The cause was a stale record (asked 2026-10-16, never re-measured)."; write "scripts/recheck.py"; write "$CWD/$REG"; } > "$T/t5.jsonl"
 check "the cause named in a later text of the same turn" "$T/t5.jsonl" allow "$CWD"
-{ user "go"; asst "ok"; user "something went wrong"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
-Carrier: none — the cause is unknown, nothing to build until it is measured"; write "$CWD/$REG"; } > "$T/t6.jsonl"
-check "cause unknown, carrier none with a reason, registered" "$T/t6.jsonl" allow "$CWD"
+{ user "go"; asst "ok"; user "something went wrong, leave it, nothing to build there"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
+Carrier: none — the cause is unknown, operator-ok: \"leave it, nothing to build there\""; write "$CWD/$REG"; } > "$T/t6.jsonl"
+check "cause unknown, carrier none with the operator's own words, registered" "$T/t6.jsonl" allow "$CWD"
 # --- must block: the instance fixed, the tool left as it was
 { user "go"; asst "Re-posted the request to the right group."; asst "Cause: the post tool does not check the audience."; } > "$T/t20.jsonl"
 check "a self-found cause, no correction, no mechanism (the 2026-10-28 class)" "$T/t20.jsonl" block "$CWD"
@@ -65,7 +65,13 @@ check "cause and register, but neither mechanism nor a carrier-none line" "$T/t2
 check "a rule written as prose (.md) is no mechanism" "$T/t23.jsonl" block "$CWD"
 { user "go"; asst "Cause: the post tool does not check the audience.
 Carrier: none — the harness owns that path and offers no hook"; write "$CWD/$REG"; } > "$T/t24.jsonl"
-check "carrier none with a reason, registered" "$T/t24.jsonl" allow "$CWD"
+check "carrier none with a reason but no operator words (the 2026-11-02 class)" "$T/t24.jsonl" block "$CWD"
+{ user "go"; asst "Cause: the post tool does not check the audience.
+Carrier: none — harness path, operator-ok: \"fine, just do it\""; write "$CWD/$REG"; } > "$T/t25.jsonl"
+check "carrier none with an operator quote the operator never wrote" "$T/t25.jsonl" block "$CWD"
+{ user "the harness owns that path, no hook there"; asst "Cause: the post tool does not check the audience.
+Carrier: none — harness path, operator-ok: \"the harness owns that path\""; write "$CWD/$REG"; } > "$T/t26.jsonl"
+check "carrier none with the operator's real words" "$T/t26.jsonl" allow "$CWD"
 # --- must allow: no correction
 { user "go"; asst "ok"; user "and the show?"; asst "Fixed."; } > "$T/t7.jsonl"
 check "no correction in the prompt" "$T/t7.jsonl" allow "$CWD"
@@ -126,6 +132,16 @@ case "$out" in *'| 2026-09 | 1 | 0 | 0 |'*'| 2026-10 | 2 | 1 | 1 |'*) ok "review
 case "$out" in *'(no mechanism within 5 turns): "that is wrong"'*'(mechanism written later): "something went wrong"'*) ok "review lists the corrections without a cause, oldest first";; *) bad "review list: $out";; esac
 out="$(cd "$CWD" && node "$G" --review 10 --since 2026-10-02 --dir "$(native "$RD")" 2>&1)"
 case "$out" in *'corrections 1 ·'*) ok "review --since cuts older turns";; *) bad "review since: $out";; esac
+# 2026-11-02: a headless classifier call's transcript (entrypoint sdk-cli) is no session and adds no correction.
+printf '{"type":"user","entrypoint":"sdk-cli","timestamp":"2026-10-03T10:00:00.000Z","message":{"role":"user","content":"something went wrong"}}\n' > "$RD/headless.jsonl"
+out="$(cd "$CWD" && node "$G" --review 10 --dir "$(native "$RD")" 2>&1)"
+case "$out" in *'transcripts 3 · operator turns 6 · corrections 3 ·'*) ok "a headless classifier transcript is left out";; *) bad "headless counted: $out";; esac
+rm -f "$RD/headless.jsonl"
+# 2026-11-02 (audit-audit): the register says who found each mishap; the review counts it.
+mkdir -p "$CWD/docs/maintenance"
+printf '%s\n' '# reg' '## a' 'found-by: operator' 'should-have: brain-scan' 'replay: 1' '## b' 'found-by: recorder-report' 'replay: 1' '## c' 'replay: 1' > "$CWD/$REG"
+out="$(cd "$CWD" && node "$G" --review 10 --dir "$(native "$RD")" 2>&1)"
+case "$out" in *'found-by named 2, of them by a check 1'*) ok "review counts who found the register entries";; *) bad "found-by: $out";; esac
 # without --dir the transcripts are found where Claude Code keeps them: every non-alphanumeric
 # character of the project path becomes '-' (a dot here; the drive colon on Windows)
 PROJ="$T/my.brain"; mkdir -p "$PROJ"
@@ -155,6 +171,17 @@ check "a record of another session does not count" "$T/sess-rc.jsonl" allow "$IC
 printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rc","mode":"hook","model":{"correction":false}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
 check "classifier reads no correction: allows" "$T/sess-rc.jsonl" allow "$IC"
 unset WHEN
+
+# --- a correction typed mid-turn (queued_command attachment, 2026-10-29 / 2026-11-02, macOS instance)
+qcmd() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"human"}}}\n' "$(js "$1")"; }
+qpeer() { printf '{"type":"attachment","attachment":{"type":"queued_command","prompt":%s,"origin":{"kind":"peer"}}}\n' "$(js "$1")"; }
+{ user "work through the list"; asst "on it"; qcmd "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/q1.jsonl"
+check "a correction typed mid-turn, answered without a cause" "$T/q1.jsonl" block "$CWD"
+{ user "work through the list"; asst "on it"; qcmd "that is already active! something went wrong"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
+Carrier: none — the cause is unknown, nothing to build until it is measured, operator-ok: \"that is already active! something went wrong\""; write "$CWD/$REG"; } > "$T/q2.jsonl"
+check "a mid-turn correction answered with a cause line" "$T/q2.jsonl" allow "$CWD"
+{ user "work through the list"; asst "on it"; qpeer "that is already active! something went wrong"; asst "noted"; } > "$T/q3.jsonl"
+check "negative control: the same words from a peer session are no operator correction" "$T/q3.jsonl" allow "$CWD"
 
 [ "$fail" = 0 ] && echo "root-cause-gate: all checks passed" || echo "root-cause-gate: FAILURES"
 exit "$fail"
