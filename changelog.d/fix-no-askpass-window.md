@@ -8,3 +8,7 @@
   - `scripts/git_sandbox.py`: every fixture process runs with no prompt and no askpass.
   - Class guard in `test-git-sandbox.sh`: every `GIT_TERMINAL_PROMPT=0` line in helpers/ and scripts/ also sets
     `GIT_ASKPASS` (three hits on the old main). Fixture +2.
+  - Unattended fetches (collab-watch, shared-memory-watch, the bootup shared-memory check, the pre-commit background fetch)
+    run with `--no-write-fetch-head`: measured the same day, FETCH_HEAD held the main line twice and a `git pull --ff-only` in
+    the shared-memory repo failed with "Cannot fast-forward to multiple branches" while the watch fetched it every 30 s (the
+    overlap itself derived, not observed). Class guard in `test-git-sandbox.sh` (six hits on the old main).

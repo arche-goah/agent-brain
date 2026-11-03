@@ -84,5 +84,12 @@ lone="$(grep -rnE 'GIT_TERMINAL_PROMPT=0' "$HERE/../helpers" "$HERE/../scripts" 
   | grep -av 'GIT_ASKPASS' | grep -avE '^[^:]+:[0-9]+:\s*#|test-git-sandbox\.sh' || true)"
 [ -z "$lone" ] && ok "every GIT_TERMINAL_PROMPT=0 call also sets GIT_ASKPASS" || bad "prompt off but askpass on: $lone"
 
+# Class guard (2026-11-03): a fetch that runs unattended (watchers, the bootup check, the pre-commit background fetch) leaves
+# FETCH_HEAD alone — measured: FETCH_HEAD held the main line twice and the operator-side `git pull --ff-only` failed with
+# "Cannot fast-forward to multiple branches" while the shared-memory watch fetched the same repo every 30 s.
+bg="$(grep -anE 'git[^|;]* fetch' "$HERE/collab-watch.sh" "$HERE/shared-memory-watch.sh" "$HERE/../helpers/shared-memory-check.sh" \
+  "$HERE/../helpers/git-hooks/pre-commit" | grep -av -- '--no-write-fetch-head' | grep -avE '^[^:]+:[0-9]+:\s*#' || true)"
+[ -z "$bg" ] && ok "every unattended fetch leaves FETCH_HEAD alone" || bad "unattended fetch writes FETCH_HEAD: $bg"
+
 if [ "$fail" -eq 0 ]; then echo "test-git-sandbox: all green"; else echo "test-git-sandbox: FAILED"; fi
 exit "$fail"
