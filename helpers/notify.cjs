@@ -29,11 +29,14 @@ function tryRun(cmd, args) {
 
 const platform = os.platform();
 
-if (platform === 'darwin') {
+// The fixture seam comes before the platform: on macOS the darwin branch ran first and the
+// seam was never reached (measured 2026-11-03 by the macOS instance, test-notify.sh red there).
+if (process.env.NOTIFY_WIN_CMD) {
+  runAndWait(process.execPath, ['-e', process.env.NOTIFY_WIN_CMD]);
+} else if (platform === 'darwin') {
   tryRun('afplay', ['/System/Library/Sounds/Ping.aiff']);
-} else if (platform === 'win32' || process.env.NOTIFY_WIN_CMD) {
-  if (process.env.NOTIFY_WIN_CMD) runAndWait(process.execPath, ['-e', process.env.NOTIFY_WIN_CMD]);
-  else runAndWait('powershell', ['-NoProfile', '-c', '[console]::beep(800,150); [console]::beep(1000,150)']);
+} else if (platform === 'win32') {
+  runAndWait('powershell', ['-NoProfile', '-c', '[console]::beep(800,150); [console]::beep(1000,150)']);
 } else {
   // Linux / other: try common players, all best-effort.
   const sound = '/usr/share/sounds/freedesktop/stereo/complete.oga';
