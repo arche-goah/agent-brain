@@ -36,13 +36,13 @@ New to Claude Code, plugins and hooks? `docs/onboarding-explained.md` is the pic
 these steps: the three layers (core, your brain, suites), the four carriers of behaviour,
 the Windows traps in depth, and a glossary. Nothing in it has to be executed.
 
-**SSH is recommended; HTTPS is enough to start, with one step.** Clones and fetches work
-over HTTPS, and `claude plugin marketplace add` falls back to HTTPS by itself ("SSH not
-configured, cloning via HTTPS"). `claude plugin install` does not: without SSH it stops
-with `Permission denied (publickey)` (measured on Windows, Claude Code 2.1.310). Before the
-install, either set up SSH or let git take HTTPS for GitHub:
-`git config --global url."https://github.com/".insteadOf git@github.com:`. The same
-applies to the background marketplace refresh. The preflight measures both: it is green once
+**SSH is recommended; HTTPS is enough.** Clones and fetches work over HTTPS, `claude plugin
+marketplace add` falls back to HTTPS by itself ("SSH not configured, cloning via HTTPS"), and
+the core plugin's entries name an HTTPS URL, so `claude plugin install` works without SSH too
+(an entry of the form `"source": "github"` cloned over SSH only and stopped with
+`Permission denied (publickey)` — measured on Windows, Claude Code 2.1.310). If a background
+marketplace refresh still asks for SSH, let git take HTTPS for GitHub:
+`git config --global url."https://github.com/".insteadOf git@github.com:`. The preflight measures both: it is green once
 `ssh -T git@github.com` greets you by name, and it reports missing SSH only as a warning
 when an HTTPS `git ls-remote` to GitHub succeeds; it fails only when neither works.
 
