@@ -85,9 +85,29 @@ function checkoutOf(dir) {
 
 // Every change declares its level (helpers/change-level.cjs): checked here BEFORE the PR exists,
 // not first in CI - a red check found after the post is a PR that already asked for review.
+// The PR's checkout is the session folder, or the one an `env -C <dir>` prefix runs gh in. A
+// `--repo <owner/name>` that this checkout's origin is not leaves the fragments out of sight:
+// measured 2026-11-03 (Windows instance), `gh pr create -R <core> --head <branch>` ran from the
+// brain folder, whose checkout has no changelog.d - nothing was found, the PR opened, and the
+// CI lint went red on the undeclared level a minute later. Such a create is held, not passed.
 function levelFindings(cmd, cwd, ps) {
   if (!creates(cmd, ps)) return [];
-  const repo = checkoutOf(cwd);
+  const seg = (invocations(cmd, ps) || []).find((t) => t.join(' ').includes('gh pr create')) || [];
+  const at = seg[0] === 'env' ? seg.indexOf('-C') : -1;
+  const repo = checkoutOf(at >= 0 && seg[at + 1] ? require('./public-text-guard.cjs').nativePath(seg[at + 1]) : cwd);
+  const r = seg.findIndex((t) => t === '-R' || t === '--repo' || /^--repo=/.test(t));
+  const slug = r < 0 ? '' : (seg[r].startsWith('--repo=') ? seg[r].slice(7) : seg[r + 1] || '');
+  if (slug) {
+    let origin = '';
+    try {
+      origin = require('child_process').execFileSync('git', ['-C', repo || cwd, 'remote', 'get-url', 'origin'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch (e) { /* no checkout, no origin */ }
+    if (!origin.toLowerCase().replace(/\.git\s*$/, '').trim().endsWith(slug.toLowerCase())) {
+      return [`gh pr create names --repo ${slug}, but the checkout it runs in (${repo || cwd}) is not that repo - ` +
+        `its changelog fragments are out of sight. Run it in the PR's checkout: env -C <that checkout> gh pr create ...`];
+    }
+  }
   if (!repo) return [];
   return require('./change-level.cjs').check(repo).findings;
 }

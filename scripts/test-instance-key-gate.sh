@@ -100,6 +100,15 @@ lvprobe "pr create, fragment with level" "$CO" "gh pr create --title t --body \"
 lvprobe "pr create, level fine but no key" "$CO" "gh pr create --title t --body b" block
 NOCL="$T/nocl"; mkdir -p "$NOCL"; git init -q "$NOCL"
 lvprobe "pr create in a repo without changelog.d" "$NOCL" "gh pr create --title t --body \"b <!-- instance-key: $KEY -->\"" allow
+# --repo names another repo than the checkout the create runs in (measured 2026-11-03: a create
+# from the brain folder for the core's branch saw no fragment and passed; CI went red after).
+git -C "$CO" remote add origin https://github.com/o/core.git
+printf '%s\n' '- **x.** (test: T0)' > "$CO/changelog.d/x.md"
+lvprobe "pr create --repo for a repo this checkout is not" "$NOCL" "gh pr create -R o/core --head b --title t --body \"b <!-- instance-key: $KEY -->\"" block
+lvprobe "pr create via env -C in the PR's checkout sees its fragment" "$NOCL" "env -C $(native "$CO") gh pr create -R o/core --head b --title t --body \"b <!-- instance-key: $KEY -->\"" block
+printf '%s\n' '- **x.** (test: T0) (level: writer; higher: design — not needed yet; debt: none)' > "$CO/changelog.d/x.md"
+lvprobe "negative control: env -C in the PR's checkout, fragment fine" "$NOCL" "env -C $(native "$CO") gh pr create --repo o/core --head b --title t --body \"b <!-- instance-key: $KEY -->\"" allow
+lvprobe "negative control: --repo matching the checkout's origin" "$CO" "gh pr create --repo=o/core --title t --body \"b <!-- instance-key: $KEY -->\"" allow
 
 [ "$fail" -eq 0 ] && echo "test-instance-key-gate: all checks passed"
 exit "$fail"
