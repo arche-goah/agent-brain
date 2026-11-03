@@ -11,3 +11,5 @@
   - A broken instance file (`shared-reach.json` not JSON) is a FAIL line "instance data unreadable — NOT checked", not
     a run on defaults: measured the same day, a straight quote inside a string turned the check silently green
     (`projects_behind=0`, `pointed=0`). Fixture +1.
+  - OS traps register: `shared-reach-check.py` baselines OS-1 8 -> 11 (the new joins open files; the compared name comes
+    from git output, forward-slashed) and OS-9 4 -> 6 (the new FAIL lines; stdout is pinned to UTF-8 at the top).

@@ -111,7 +111,7 @@ known:     scripts/orphan-check.py=1
 known:     scripts/plugin-records-test.py=1
 known:     scripts/recorder-report.py=3
 known:     scripts/shared-memory-lint.py=1
-known:     scripts/shared-reach-check.py=8
+known:     scripts/shared-reach-check.py=11
 known:     scripts/test-open-items.sh=1
 known:     scripts/test-suite-plugin-linkage.sh=2
 known:     scripts/transcript-recall-test.py=5
@@ -741,7 +741,7 @@ known:     scripts/regen-skill-registry.py=1
 known:     scripts/session-audit.py=3
 known:     scripts/shared-memory-index.py=4
 known:     scripts/shared-memory-lint.py=1
-known:     scripts/shared-reach-check.py=4
+known:     scripts/shared-reach-check.py=6
 known:     scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
