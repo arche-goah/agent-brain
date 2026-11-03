@@ -1,4 +1,4 @@
-- **No sign-in window from a background git call** (test: T1) (level: writer; higher: none — each call sets its own
+- **No sign-in window from a background git call** (test: T1) (level: writer; higher: design — each call sets its own
   environment, the guard keeps the class closed; debt: `scripts/preflight.ps1` keeps GIT_TERMINAL_PROMPT only, Windows
   prompts through the credential manager, not askpass). Measured on the macOS instance 2026-11-03: the session ran in an
   editor's terminal whose `GIT_ASKPASS` points at the editor's askpass script; a fixture's `git ls-remote` against a
