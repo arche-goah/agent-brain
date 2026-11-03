@@ -14,6 +14,10 @@ cat > "$TMP/gh" <<'STUB'
 case "${CI_WATCH_STUB:?}" in
   pr_green)   echo '[{"bucket":"pass"},{"bucket":"skipping"}]' ;;
   pr_red)     echo '[{"bucket":"pass"},{"bucket":"fail"}]' ;;
+  # 2026-11-03: a cancelled job that never got a runner (no steps) — infrastructure, not code.
+  pr_never_started) [[ "$*" == *actions/jobs/77* ]] && { echo 0; exit 0; }
+              [[ "$*" == *actions/jobs/88* ]] && { echo 5; exit 0; }
+              echo '[{"bucket":"pass","name":"lint"},{"bucket":"cancel","name":"portability (macos-latest)","link":"https://github.com/o/r/actions/runs/1/job/77"},{"bucket":"fail","name":"portability (ubuntu-latest)","link":"https://github.com/o/r/actions/runs/1/job/88"}]' ;;
   # 2026-10-21: lint failed while one job kept running for 18 more minutes — the red must not wait.
   pr_fail_pending)   echo '[{"bucket":"fail","name":"lint"},{"bucket":"pending","name":"portability"}]' ;;
   # ...but a cancel can be a superseded run: it still waits for the running job.
@@ -382,6 +386,10 @@ check() { # label scenario expected_rc mode target timeout
 echo "=== ci-watch fixtures ==="
 check "pr all green"                    pr_green   0 pr 12
 check "pr one failing check"            pr_red     1 pr 12
+check "pr: a cancelled job without steps is RED and named as never started" pr_never_started 1 pr 12
+grep -q "never started.*portability (macos-latest)" "$TMP/out" && ! grep -q "never started.*ubuntu" "$TMP/out" \
+  && echo "  OK   the red names the job that never got a runner, not the one that ran" \
+  || { echo "  FAIL never-started job not named (or the real failure was): $(cat "$TMP/out")"; fails=$((fails+1)); }
 check "pr failed check while another runs = RED at once" pr_fail_pending 1 pr 12 30
 grep -q "still running" "$TMP/out" && echo "  OK   early red names the running checks" \
   || { echo "  FAIL early red does not name the running checks"; fails=$((fails+1)); }
