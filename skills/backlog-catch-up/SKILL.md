@@ -53,7 +53,10 @@ the brain.
    two more; shall I list them?").
 4. **Write the exit INTO each ledger entry**, as a field line with the date it was assigned:
    `exit: <field value> <YYYY-MM-DD>` (e.g. `exit: ai-does-it 2026-10-08`). `done-already`
-   and `drop` also tick the box — with the evidence or the reason. A sorting file in the
+   and `drop` also tick the box — with the evidence or the reason. When the operator released
+   the item in the session, the line quotes their words: `exit: ai-does-it 2026-11-02 —
+   released: "<their words>"` — only words found in their own messages count, and while such
+   an entry is open the idle check holds in interactive mode too (`helpers/autonomous-idle-gate.cjs`). A sorting file in the
    maintenance folder (counts per exit, one table per exit) may summarise the pass, but it is
    no carrier: nothing reads it again. Measured on a proving brain: a sort gave 28 points
    the exit "the AI does it" only in a separate file; two days later the entries still read
