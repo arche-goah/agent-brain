@@ -846,8 +846,14 @@ def published_repos(C):
         mkt = mf.parent.parent.name
         for p in (load(mf) or {}).get("plugins") or []:
             src = p.get("source") if isinstance(p, dict) else None
-            if isinstance(src, dict) and src.get("repo") and p.get("name"):
-                out.setdefault(src["repo"].lower(), []).append(f"{p['name']}@{mkt}")
+            if not (isinstance(src, dict) and p.get("name")):
+                continue
+            repo = src.get("repo") or ""
+            if not repo:  # "url" entries (HTTPS form since 2026-11-02)
+                m = re.search(r"github\.com[:/]+(.+?)(?:\.git)?/?$", src.get("url") or "")
+                repo = m.group(1) if m else ""
+            if repo:
+                out.setdefault(repo.lower(), []).append(f"{p['name']}@{mkt}")
     return out
 
 
