@@ -273,6 +273,31 @@ def main() -> int:
               any("core" in (i.get("fields") or []) for i in new_hits), json.dumps(new_hits))
         check("NEGATIVE: an entry dated before the rule is not judged", not origin_hits("note-hand-old.md"),
               json.dumps(origin_hits("note-hand-old.md")))
+    # A person whose account cannot see a private repo is left out of `next` for a category address that names
+    # that repo (measured 2026-11-02: a Windows check for a private suite PR went to three devices of a person
+    # whose account cannot open the repo). An explicitly named device stays.
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], capture_output=True)
+        (repo / "core").mkdir()
+        (repo / "core" / "LOG.md").write_text("# Log\n", encoding="utf-8")
+        (repo / "INDEX.md").write_text("# Index\n", encoding="utf-8")
+        (repo / "parties.json").write_text(json.dumps({"people": {
+            "kim": {"github": "k", "devices": {"kim-mac": {"os": "macos"}, "kim-win": {"os": "windows"}}},
+            "lee": {"github": "l", "devices": {"lee-win": {"os": "windows"}},
+                    "private_repos_without_access": ["o/secret-suite"]}}}), encoding="utf-8")
+        r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Check o/secret-suite#4 on Windows",
+                 "--body", "Run the fixture at the head.", me="kim-mac")
+        req = repo / "core" / f"request-check-o-secret-suite-4-on-windows-{STATE}.md"
+        t = req.read_text(encoding="utf-8") if req.is_file() else ""
+        check("os:windows naming a repo a person cannot see leaves that person's devices out of next",
+              "  next: kim-win\n" in t, r.stdout + r.stderr + t)
+        r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Check o/open-suite#5 on Windows",
+                 "--body", "Run the fixture at the head.", me="kim-mac")
+        req = repo / "core" / f"request-check-o-open-suite-5-on-windows-{STATE}.md"
+        t = req.read_text(encoding="utf-8") if req.is_file() else ""
+        check("NEGATIVE: a repo not on the list reaches every Windows device",
+              "  next: kim-win, lee-win\n" in t, r.stdout + r.stderr + t)
     print("shared-memory-post: all cases pass" if not fails else f"shared-memory-post: {fails} FAILURES")
     return 1 if fails else 0
 
