@@ -72,7 +72,8 @@
     is taken over (state, log lines, export) without deriving a close of one's own — the
     work, not its claims: a state it reports counts once its artifact is read. Paths
     every session writes by construction (memory snapshot, session log, handoff) are
-    committed by the session that closes last, by path, with a note (coherence finding
+    committed by every closing session, by path (operator decision 2026-11-03; "the session
+    that closes last" could not be measured), with a note (coherence finding
     2026-10-19).
 
 13. **Whatever holds the session longer than about half a minute runs detached**
