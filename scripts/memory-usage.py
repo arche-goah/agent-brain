@@ -27,7 +27,7 @@ against the sessions that worked on the topic). Topic indexes are counted and ha
 
 Usage:
   memory-usage.py [--dir TRANSCRIPTS] [--memory MEMDIR] [--state STATEFILE]
-                  [--never] [--precision] [--json]
+                  [--never] [--precision] [--usage] [--since YYYY-MM-DD] [--json]
 
 Read-only, stdlib only, OS-agnostic: directories are minted the way memory-lint.py and
 transcript-recall.py mint them (instance root -> `[^A-Za-z0-9]` -> `-`), never
@@ -161,6 +161,94 @@ def precision_report(per_session: dict[str, Counter], state: Path) -> dict:
             "recall": None if rec is None else round(rec, 3)}
 
 
+LINK = re.compile(r"\(([A-Za-z0-9._-]+\.md)\)")
+
+
+def _reads_in(transcript: Path) -> list[tuple[str, str]]:
+    """(timestamp, text) of every Read call and reader-Bash call in one transcript."""
+    out: list[tuple[str, str]] = []
+    try:
+        fh = transcript.open(encoding="utf-8", errors="ignore")
+    except OSError:
+        return out
+    with fh:
+        for line in fh:
+            if "memory" not in line:
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            msg = obj.get("message") if isinstance(obj, dict) else None
+            content = msg.get("content") if isinstance(msg, dict) else None
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not (isinstance(block, dict) and block.get("type") == "tool_use"):
+                    continue
+                inp = block.get("input") or {}
+                if block.get("name") == "Read":
+                    out.append((str(obj.get("timestamp", "")), str(inp.get("file_path", ""))))
+                elif block.get("name") == "Bash":
+                    cmd = str(inp.get("command", ""))
+                    if READERS.match(cmd):
+                        out.append((str(obj.get("timestamp", "")), cmd))
+    return out
+
+
+def usage_count(state: Path, tdir: Path, memdir: Path, since: str = "") -> dict:
+    """Was a SHOWN pointer followed? Per injected topic index (and shared topic): a Read or reader-Bash call on the
+    index itself or on a file it links, in the same session, with a transcript timestamp >= the injection's `ts`;
+    the triggering command itself never counts (its text starts with the recorded trigger prefix). An upper bound:
+    whether the read happened BECAUSE of the pointer is not measurable (fourth measurement 2026-11-04: index-rig.md
+    24 shown, 4 followed, in all 4 the index was read anyway)."""
+    shown: list[tuple[str, str, str, str, str]] = []     # session, ts, kind, target, trigger prefix
+    if state.exists():
+        with state.open(encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if rec.get("record_only"):
+                    continue
+                ts = str(rec.get("ts", ""))
+                if since and ts[:10] < since:
+                    continue
+                trig = str(rec.get("trigger", ""))
+                prefix = trig.split(":", 1)[1][:60] if ":" in trig else ""
+                sid = str(rec.get("session", ""))
+                for it in rec.get("topics") or []:
+                    shown.append((sid, ts, "topic", str(it.get("file", "")), prefix))
+                for it in rec.get("shared") or []:
+                    if int(it.get("n", 0) or 0) > 0:
+                        shown.append((sid, ts, "shared", str(it.get("topic", "")), prefix))
+    reads: dict[str, list[tuple[str, str]]] = {}
+    rows = []
+    for sid, ts, kind, target, prefix in shown:
+        if sid not in reads:
+            reads[sid] = _reads_in(tdir / f"{sid}.jsonl")
+        after = [txt for (cts, txt) in reads[sid] if cts >= ts and not (prefix and txt.startswith(prefix))]
+        if kind == "topic":
+            try:
+                links = set(LINK.findall((memdir / target).read_text(encoding="utf-8", errors="ignore")))
+            except OSError:
+                links = set()
+            used = any(f"memory/{target}" in txt or f"memory\\{target}" in txt for txt in after) or \
+                any(f in links for txt in after for f in MEM_PATH.findall(txt))
+        else:
+            used = any(f"brain-shared-memory/{target}/" in txt for txt in after)
+        rows.append({"session": sid, "ts": ts, "kind": kind, "target": target, "used": bool(used)})
+    per: dict[str, dict] = {}
+    for r in rows:
+        key = f"{r['kind']}:{r['target']}"
+        d = per.setdefault(key, {"kind": r["kind"], "target": r["target"], "shown": 0, "used": 0})
+        d["shown"] += 1
+        d["used"] += int(r["used"])
+    return {"since": since or None, "shown": len(rows), "used": sum(int(r["used"]) for r in rows),
+            "per_target": sorted(per.values(), key=lambda d: (d["kind"], d["target"]))}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dir", type=Path, default=DIR_DEFAULT, help="transcript directory")
@@ -168,6 +256,8 @@ def main(argv=None) -> int:
     ap.add_argument("--state", type=Path, default=STATE_DEFAULT, help="memory-recall.jsonl")
     ap.add_argument("--never", action="store_true", help="list only files never opened")
     ap.add_argument("--precision", action="store_true", help="judge the recall hook's log")
+    ap.add_argument("--usage", action="store_true", help="was a shown pointer followed (read in the same session)?")
+    ap.add_argument("--since", default="", help="with --usage: only records dated YYYY-MM-DD or later")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     if not a.dir.is_dir():
@@ -177,6 +267,8 @@ def main(argv=None) -> int:
     report = usage_report(per_session, a.dir, a.memory)
     if a.precision:
         report["precision"] = precision_report(per_session, a.state)
+    if a.usage:
+        report["usage"] = usage_count(a.state, a.dir, a.memory, a.since)
     if a.json:
         print(json.dumps(report, ensure_ascii=False, indent=1))
         return 0
@@ -197,6 +289,12 @@ def main(argv=None) -> int:
         if p["topics_named"]:
             print(f"  {p['topics_named']} topic-index namings not judged here — an injected index is never "
                   f"opened; judge them with memory-recall-replay.cjs --truth <index>=<regex>")
+    if a.usage:
+        u = report["usage"]
+        print(f"pointer usage{(' since ' + u['since']) if u['since'] else ''}: shown {u['shown']} · followed {u['used']} "
+              f"(a Read or reader-Bash on the index or a linked file after the showing, same session; upper bound)")
+        for d in u["per_target"]:
+            print(f"  {d['kind']:6s} {d['target']:24s} shown {d['shown']:3d} · followed {d['used']:3d}")
     return 0
 
 

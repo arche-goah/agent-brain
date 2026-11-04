@@ -98,6 +98,10 @@ function main(data) {
   const cfg = loadConfig(root);
   const memDir = liveDir(root);
   if (!fs.existsSync(memDir)) return;
+  // A sub-agent's call (its transcript lives under <session>/subagents/) gets nothing and marks nothing: it would
+  // spend the parent session's once-per-session showing while the parent never sees the block (measured
+  // 2026-11-04, fourth measurement: 4 of 24 rig showings went to sub-agents, 0 of them used).
+  if (/[\\/]subagents[\\/]/.test(String(input.transcript_path || ''))) return;
   if (TOOL_MODE) return toolMode(input, root, cfg, memDir);
   const prompt = String(input.prompt || '');
   if (!prompt.trim()) return;

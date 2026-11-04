@@ -7,6 +7,8 @@
   4. precision joins the hook log with the transcripts: named+opened / named-only /
      opened-only; a record whose session has no transcript is not judged
   5. a transcript directory that does not exist -> exit 2, no traceback
+  6. --usage: a shown topic index counts as followed only when the index or a linked file is read AFTER
+     the showing in the same session; a read before it, or the triggering command itself, does not
 Paths are built with pathlib and compared as posix text (OS-1).
 """
 from __future__ import annotations
@@ -111,6 +113,35 @@ with tempfile.TemporaryDirectory() as tmp:
         ok("4 precision/recall over pointers only, topic counted apart, ghost session skipped")
     else:
         bad(f"4 precision: {p}")
+    # 6 --usage (fourth measurement 2026-11-04)
+    def ts_line(stamp, name, **inp):
+        return json.dumps({"type": "assistant", "timestamp": stamp, "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "x", "name": name, "input": inp}]}})
+    (mem / "index-x.md").write_text("---\nname: index-x\ndescription: y\n---\n- [a](read-me.md)\n", encoding="utf-8")
+    (tdir / "u1.jsonl").write_text("\n".join([
+        ts_line("2026-11-04T10:00:00.000Z", "Bash", command=f"cat docs/event-network/offene-punkte.md"),   # the trigger
+        ts_line("2026-11-04T10:05:00.000Z", "Read", file_path=f"{memp}/index-x.md"),                        # after: used
+    ]) + "\n", encoding="utf-8")
+    (tdir / "u2.jsonl").write_text("\n".join([
+        ts_line("2026-11-04T09:00:00.000Z", "Read", file_path=f"{memp}/read-me.md"),                        # before: not
+        ts_line("2026-11-04T10:00:00.000Z", "Bash", command=f"cat docs/event-network/offene-punkte.md"),
+    ]) + "\n", encoding="utf-8")
+    (tdir / "u3.jsonl").write_text("\n".join([
+        ts_line("2026-11-04T10:00:00.000Z", "Bash", command=f"cat docs/event-network/offene-punkte.md"),
+        ts_line("2026-11-04T10:02:00.000Z", "Bash", command=f"sed -n 1,5p {memp}/read-me.md"),              # linked: used
+    ]) + "\n", encoding="utf-8")
+    ustate = root / "usage.jsonl"
+    rec = lambda sid: json.dumps({"ts": "2026-11-04T10:00:00.000Z", "session": sid, "trigger": "bash:cat docs/event-network/offene-punkte.md",
+                                  "topics": [{"file": "index-x.md"}], "files": [], "shared": []})
+    ustate.write_text("\n".join([rec("u1"), rec("u2"), rec("u3"),
+                                  json.dumps({"ts": "2026-10-01T00:00:00.000Z", "session": "u1", "trigger": "bash:x",
+                                              "topics": [{"file": "index-x.md"}], "files": [], "record_only": True})]) + "\n",
+                      encoding="utf-8")
+    u = mu.usage_count(ustate, tdir, mem, since="2026-11-01")
+    if u["shown"] == 3 and u["used"] == 2 and u["per_target"][0]["used"] == 2:
+        ok("6 --usage: read after the showing (index or linked file) counts, read before or the trigger does not, record-only/old skipped")
+    else:
+        bad(f"6 usage: {u}")
     # 5
     rc = mu.main(["--dir", (root / "nope").as_posix()])
     if rc == 2:

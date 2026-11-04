@@ -146,6 +146,14 @@ run_tool t4 Skill '{"skill":"rig-health-check"}' --record
 # the prompt path shares the once-per-session state with the tool path
 run_hook c13 "MikroTik VLAN multicast" t3
 case "$OUT" in *'topic index'*) bad "13 topic re-injected by prompt after tool";; *) ok "13 prompt path sees the tool path's state";; esac
+# 13b. a sub-agent's call (transcript under <session>/subagents/) is ignored: silent, and the parent session's
+# once-per-session showing is NOT spent (measured 2026-11-04: 4 of 24 showings went to sub-agents, parent saw none)
+OUT=$(printf '{"session_id":"t5","tool_name":"mcp__mikrotik__mikrotik_health","tool_input":{},"cwd":"%s","transcript_path":"%s/t5/subagents/agent-1.jsonl","hook_event_name":"PreToolUse"}' \
+      "$(native "$BRAIN")" "$(native "$T")" \
+    | CLAUDE_MEMORY_DIR="$(native "$MEM")" CLAUDE_PROJECT_DIR="$(native "$BRAIN")" node "$HOOK" --tool 2>"$T/err")
+[ -z "$OUT" ] && ok "13b sub-agent call stays silent" || bad "13b sub-agent call injected: ${OUT:0:120}"
+run_tool t5 mcp__mikrotik__mikrotik_health '{"device":"router"}'
+case "$OUT" in *index-rig.md*) ok "13b parent session still gets the index after the sub-agent call";; *) bad "13b parent's showing was spent by the sub-agent";; esac
 rm "$BRAIN/.claude/rules/memory-recall.json"
 
 # 14-18. SHARED memory at tool time (2026-09-13): the same trigger injects the shared
