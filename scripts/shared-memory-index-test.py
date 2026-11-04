@@ -235,9 +235,17 @@ with tempfile.TemporaryDirectory() as td:
     ok("21 OPEN.md lists the open entry with next and age; a closed area gets none",
        set(opens) == {"ops", "show"} and "- next: kim-pc, sam-laptop · 4 d — [opened](../ops/opened.md)" in opens["ops"]
        and "filed from ops" in opens["show"], str(opens))
-    ok("22 the root pointer line carries the open count and nothing else new",
-       "- [ops](ops/INDEX.md) — 2 entries · newest 2026-10-10 · 1 open" in root
-       and "- [show](show/INDEX.md) — 2 entries · newest 2026-10-10 · 1 open" in root, root)
+    ok("22 the root pointer line carries the open count as a link to the area's OPEN page",
+       "- [ops](ops/INDEX.md) — 2 entries · newest 2026-10-10 · [1 open](ops/OPEN.md)" in root
+       and "- [show](show/INDEX.md) — 2 entries · newest 2026-10-10 · [1 open](show/OPEN.md)" in root, root)
+    # 27-28. 2026-11-04: the root says whose move it is, per party, with a link per area; the
+    #        topic index head links its OPEN page with the count
+    ok("27 the root carries an 'Open now' block by the party named in next, linking the OPEN pages",
+       "## Open now" in root and "- next: kim-pc — [ops: 1](ops/OPEN.md)" in root
+       and "- next: sam-laptop — [ops: 1](ops/OPEN.md)" in root, root)
+    ok("28 the topic index head links its OPEN page with the count; an area without open says so",
+       "2 entries · [1 open](OPEN.md)." in ops_ix and "## Open (1)" in ops_ix
+       and "[opened](../ops/opened.md)" in ops_ix.split("## Durable")[0], ops_ix)
     # 23. a stale OPEN.md is rewritten as "nothing open", a never-written one is not created,
     #     and the page is not re-ingested as an entry
     run_main(repo, write=True)
@@ -272,6 +280,29 @@ with tempfile.TemporaryDirectory() as td:
        "your move: 2 open entries" in out, out.strip()[:160])
     out = run_main_args(repo, ["--mine", "nobody-here"])
     ok("26 --mine is silent when no entry names the id", out.strip() == "", out.strip()[:160])
+
+    # 29-30. 2026-11-04: the index line shows the COMPUTED state (what settled it, by whom), not
+    #        the raw field; messages sit under "Settled messages" by month, open ones under "Open",
+    #        durable entries under "Durable" - each entry exactly once
+    put("ops", "request-x", "  status: open\n  next: kim-pc\n")
+    put("ops", "reply-x", "  answers: ops/request-x\n")
+    put("ops", "request-y", "  status: open\n  next: kim-pc\n")
+    _, topics4, _, _ = smi.build(repo)
+    ix = topics4["ops"]
+    line = next(ln for ln in ix.splitlines() if "(../ops/request-x.md)" in ln)
+    ok("29 an answered request's line reads 'answered → <reply>' instead of 'open', without next:",
+       "answered → [reply x](../ops/reply-x.md)" in line and " · open" not in line and "next:" not in line, line)
+    line_b = next(ln for ln in ix.splitlines() if "(../ops/req-b.md)" in ln)
+    line_c = next(ln for ln in ix.splitlines() if "(../ops/req-c.md)" in ln)
+    ok("29b a LOG-settled request says 'answered in LOG'; a closed one says 'closed → <closer>'",
+       "answered in LOG" in line_b and "closed → [close c](../ops/close-c.md)" in line_c, line_b + "\n" + line_c)
+    head, rest = ix.split("## Durable", 1)
+    durable, msgs = rest.split("## Settled messages", 1)
+    ok("30 sections: the open request under Open, 'plain' under Durable, the answered pair under Settled messages by month",
+       "## Open (" in head and "(../ops/request-y.md)" in head
+       and "(../ops/plain.md)" in durable and "### 2026-10 (" in msgs
+       and "(../ops/request-x.md)" in msgs and "(../ops/reply-x.md)" in msgs
+       and ix.count("(../ops/request-x.md)") == 1 and ix.count("(../ops/plain.md)") == 1, ix)
 
 print()
 if fails:
