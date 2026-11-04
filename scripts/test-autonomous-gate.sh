@@ -17,6 +17,8 @@ js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 user() { printf '{"type":"user","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
 
 B="$T/brain"; mkdir -p "$B/.claude" "$T/userdir"
+# one open operator question: "what is open?" leaves the run only when something is (autonomous-mode.cjs, 2026-11-03)
+mkdir -p "$B/.claude-state"; printf '%s\n' '{"q1": {"q": "Release now?", "status": "unanswered"}}' > "$B/.claude-state/open-questions.json"
 printf '%s\n' '{"permissions":{"ask":["Edit(.claude/settings.json)","Bash(git -C * push * main*)","Bash(gh pr close*)"]}}' > "$B/.claude/settings.json"
 printf '%s\n' '{"permissions":{"ask":["WebFetch"]}}' > "$T/userdir/settings.json"
 AUTO="$T/auto.jsonl"; user "work through the open points autonomously" > "$AUTO"

@@ -68,7 +68,7 @@ check "asked mid-run: through the tool, last question continue autonomously" "$f
 f="$T/2s.jsonl"; { user "work through everything autonomously"; asst "on it"; user "anything open for me?"; asst "Two decisions:"; ask; } > "$f"
 check "asked mid-run: through the tool, but no continue question" "$f" "$B" block
 f="$T/2t.jsonl"; { user "work through everything autonomously"; asst "on it"; user "anything open for me?"; asst "Nothing open."; } > "$f"
-check "asked mid-run, nothing open, prose: the continue question is still due" "$f" "$N" block
+check "asked mid-run, nothing open: the run goes on, no dialog owed (2026-11-03)" "$f" "$N" allow
 f="$T/2u.jsonl"; { user "work through everything autonomously"; user "anything open for me?"; askc; answer '"Remove the worktrees?"="Yes", "Continue autonomously?"="Yes, continue"'; asst "continuing"; } > "$f"
 check "after yes to continue: back in the run" "$f" "$B" allow
 f="$T/2v.jsonl"; { user "work through everything autonomously"; user "anything open for me?"; askc; answer '"Remove the worktrees?"="Yes", "Continue autonomously?"="No, interactive"'; asst "ok, interactive"; } > "$f"

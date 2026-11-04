@@ -183,5 +183,28 @@ check "a mid-turn correction answered with a cause line" "$T/q2.jsonl" allow "$C
 { user "work through the list"; asst "on it"; qpeer "that is already active! something went wrong"; asst "noted"; } > "$T/q3.jsonl"
 check "negative control: the same words from a peer session are no operator correction" "$T/q3.jsonl" allow "$CWD"
 
+# --- --pre (PreToolUse): in a correction turn the class comes before the instance (operator 2026-11-03: "or once again
+# only the instance fixed afterwards instead of the class?"). The day's case: the first edit went to the model script.
+pre() { # $1 name, $2 transcript, $3 target file, $4 deny|allow
+  local out
+  out="$(printf '{"transcript_path":"%s","cwd":"%s","tool_name":"Edit","tool_input":{"file_path":%s}}' "$(native "$2")" "$(native "$CWD")" \
+    "$(js "$3")" | CLAUDE_PROJECT_DIR="$(native "$CWD")" node "$G" --pre 2>&1)"
+  if [ "$4" = deny ]; then
+    case "$out" in *'"permissionDecision":"deny"'*) ok "$1 denies";; *) bad "$1 did not deny: '$out'";; esac
+  else
+    [ -z "$out" ] && ok "$1 allows" || bad "$1 denied wrongly: '$out'"
+  fi
+}
+{ user "go"; asst "ok"; user "why did you build it like that? the card falls out, something went wrong"; asst "Cause: the lip was measured at one ray."; } > "$T/p1.jsonl"
+pre "correction turn, first edit to the model (the 2026-11-03 case)" "$T/p1.jsonl" "models/card-holder/card_holder.py" deny
+pre "the carrier itself (tools/) passes" "$T/p1.jsonl" "tools/print_gates.py" allow
+pre "a ledger or register (.md) passes" "$T/p1.jsonl" "docs/maintenance/carrier-register.md" allow
+{ user "go"; asst "ok"; user "why did you build it like that? something went wrong"; write "tools/print_gates.py"; } > "$T/p2.jsonl"
+pre "a carrier already written this turn frees the instance edit" "$T/p2.jsonl" "models/card-holder/card_holder.py" allow
+{ user "go"; asst "ok"; user "why did you build it like that? something went wrong"; asst "Carrier: none - a one-off typo in a label, no tool produced it"; } > "$T/p3.jsonl"
+pre "Carrier: none with a reason frees it" "$T/p3.jsonl" "models/card-holder/card_holder.py" allow
+{ user "make the tab narrower"; asst "ok"; } > "$T/p4.jsonl"
+pre "negative control: an order, no correction" "$T/p4.jsonl" "models/card-holder/card_holder.py" allow
+
 [ "$fail" = 0 ] && echo "root-cause-gate: all checks passed" || echo "root-cause-gate: FAILURES"
 exit "$fail"

@@ -56,7 +56,8 @@ const { intents, intentFor } = require('./autonomous-mode.cjs');
 let OWN_ECHO = /ROOT-CAUSE-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
-const MECHANISM_PATH = /(^|[\\/])(helpers|scripts|hooks|rules|skills|workflows)[\\/]|[\\/]\.claude[\\/]rules[\\/]|[\\/]\.claude[\\/]settings/;
+// `tools/` is a mechanism folder too (2026-11-03, macOS instance: a 3D-print repo keeps its build kit and print gates there).
+const MECHANISM_PATH = /(^|[\\/])(helpers|scripts|hooks|rules|skills|workflows|tools)[\\/]|[\\/]\.claude[\\/]rules[\\/]|[\\/]\.claude[\\/]settings/;
 const CARRIER_TURNS = 5;
 
 // ENGINE built-ins — English only (language-agnostic contract, operator order 2026-08-19).
@@ -230,6 +231,49 @@ function noCarrierAgreed(texts, rxNone, turns) {
   }));
 }
 
+/**
+ * PreToolUse (`--pre`): in a correction turn the CLASS comes before the instance.
+ * The class (operator 2026-11-03, translated): "cause only found, or fixed at the root? or once again only the
+ * instance fixed afterwards instead of the class?" and "why do you do all this only after being asked several
+ * times?". Measured the same evening on the macOS instance: after a correction the first edits went into the one
+ * model script (the instance); the build kit, the print gates and the rule data followed only after two more
+ * corrections. The Stop check above asks for a cause and a carrier at the END of the turn - by then the instance fix
+ * is written and the carrier reads as an afterthought. This check holds the first instance edit of a correction turn
+ * until the turn has touched a mechanism file (helpers/, scripts/, hooks/, rules/, skills/, workflows/, tools/,
+ * .claude/rules) or says `Carrier: none - <why>`. Free: every mechanism write itself, documentation (.md) - ledgers
+ * and the carrier register are written in the same turn.
+ */
+function preGate(input) {
+  const tool = input.tool_name || '';
+  if (!/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) || !input.transcript_path) return;
+  const target = String((input.tool_input || {}).file_path || (input.tool_input || {}).notebook_path || '');
+  if (!target || isMechanismWrite(target) || /\.(md|markdown|txt)$/i.test(target)) return;
+  const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  let turns;
+  try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
+  const turn = turns[turns.length - 1];
+  if (!turn) return;
+  let hit = correctionIn(turn.prompt, loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'));
+  if (!hit) {
+    const intent = intentFor(intents(input.transcript_path, cwd), turn.when);
+    if (intent && intent.correction) hit = sentenceAt(stripQuoted(turn.prompt), 0);
+  }
+  if (!hit) return;
+  if (turn.writes.some(isMechanismWrite)) return;
+  if (causeIn(turn.texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'))) return;
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: `CLASS-FIRST: this turn answers a correction ("${hit.slice(0, 120)}") and its first edit `
+        + `goes to an instance file (${path.basename(target)}) before any carrier. Class before instance: first change the `
+        + 'tool, gate or rule data that let it happen (helpers/, scripts/, hooks/, rules/, skills/, tools/ - a core or suite '
+        + 'PR where it lives) with its negative control, or write one line Carrier: none - <why no mechanism can carry it>. '
+        + 'Then the instance edit passes.',
+    },
+  }));
+}
+
 function gate(input) {
   OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active || !input.transcript_path) return;
@@ -392,11 +436,12 @@ function review(args) {
 if (process.argv[2] === '--review') {
   process.exit(review(process.argv.slice(3)));
 } else {
+  const pre = process.argv[2] === '--pre';
   let data = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => { data += c; });
   process.stdin.on('end', () => {
-    try { gate(JSON.parse(data || '{}')); } catch (e) { /* fail open */ }
+    try { (pre ? preGate : gate)(JSON.parse(data || '{}')); } catch (e) { /* fail open */ }
     process.exit(0);
   });
 }
