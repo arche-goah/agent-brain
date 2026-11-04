@@ -24,6 +24,9 @@ smi = import_module("shared-memory-index")
 sml = import_module("shared-memory-lint")
 SCRIPT = HERE / "shared-memory-archive.py"
 fails = 0
+# details quote index lines with characters cp1252 cannot encode (the Windows console, the smoke's cp1252 run)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 
 
 def ok(name: str, cond: bool, detail: str = "") -> None:
