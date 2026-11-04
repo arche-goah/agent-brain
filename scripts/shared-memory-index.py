@@ -556,6 +556,10 @@ def main() -> int:
                     help="print ONE line: how many open entries name one of these ids in `next` "
                          "(the session start's 'your move' line) and exit — writes nothing")
     a = ap.parse_args()
+    # Index lines carry characters cp1252 cannot encode (the arrow of "answered → …", entry text);
+    # the Windows console and the portability smoke's cp1252 run would crash a print (2026-11-04).
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     if a.mine is not None:
         return mine(a.repo, [x.strip() for x in a.mine.split(",") if x.strip()], a.ref)
     if a.ref and a.write:
