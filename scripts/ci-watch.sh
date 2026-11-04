@@ -439,6 +439,27 @@ print(pending, bad, stale)
 # failed, or when a listed failing check has no check-run there at all (a commit status).
 # None yet, or the listed failing ones still running/green on the head = the old run's red,
 # wait. Unreadable = the behaviour before this check; the deadline still bounds the wait.
+# A cancelled job with no step never got a runner: infrastructure, not the code under test.
+# Measured 2026-11-03 on a train PR: portability (macos-latest) was cancelled after 15 min with
+# zero steps while every other job passed; the red read like a code failure until the job's
+# steps were read by hand. The verdict stays RED (nothing was tested on that OS); the note
+# names those jobs and the rerun. Unreadable job = no note.
+never_started_note() {
+  local cid run="" unstarted=() cname clink
+  while IFS=$'\t' read -r cname clink; do
+    [[ "$clink" =~ /runs/([0-9]+)/job/([0-9]+) ]] || continue
+    run=${run:-${BASH_REMATCH[1]}}; cid=${BASH_REMATCH[2]}
+    ghq api "repos/$REPO/actions/jobs/$cid" --jq '.steps | length' || continue
+    [[ "$gh_out" == 0 ]] && unstarted+=("$cname")
+  done < <("$PY" -c 'import json,sys
+for c in json.load(sys.stdin):
+    if c.get("bucket") == "cancel" and c.get("link"):
+        print(c.get("name","?") + "\t" + c["link"])' <<<"$json" 2>/dev/null)
+  (( ${#unstarted[@]} )) || return 0
+  echo "ci-watch: never started (no runner, zero steps): $(IFS=,; echo "${unstarted[*]}") — infrastructure, not the code;" \
+       "rerun when the run is done: gh run rerun ${run:-<run>} -R $REPO --failed"
+}
+
 warned_oldred=0
 pr_red_not_of_head() {   # exit 0 = the listed red belongs to an older commit than the head
   local sha cr verdict
@@ -510,7 +531,7 @@ while :; do
     if pr_head_not_yet_expected; then sleep "$POLL"; continue; fi
     # Buckets are machine-readable: pass|fail|pending|skipping|cancel. The name is
     # carried along so a pending entry can be matched to its check-run (below).
-    ghq pr checks "$TARGET" -R "$REPO" --json bucket,name
+    ghq pr checks "$TARGET" -R "$REPO" --json bucket,name,link
     rc=$gh_rc; json=$gh_out
     if (( rc != 0 )); then
       json="$gh_out$gh_err"
@@ -585,7 +606,9 @@ print(len(b), sum(x == "pending" for x in b), sum(x in ("fail", "cancel") for x 
     if (( bad > 0 )) && pr_red_not_of_head; then sleep "$POLL"; continue; fi
     if (( bad > 0 )); then
       names=$("$PY" -c 'import json,sys; print(", ".join(sorted({c.get("name","?") for c in json.load(sys.stdin) if c.get("bucket") in ("fail","cancel")})))' <<<"$json" 2>/dev/null)
-      echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)${names:+: $names}"; exit 1
+      echo "CI-WATCH RED: $REPO PR #$TARGET — $bad failing/cancelled check(s)${names:+: $names}"
+      never_started_note
+      exit 1
     fi
     # Green checks are NOT sufficient: a PR can carry all-green checks AND a conflict —
     # the checks then predate the base change and are never recomputed (measured
