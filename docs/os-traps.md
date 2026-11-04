@@ -546,7 +546,7 @@ known:     scripts/onboarding-verify.sh=4
 known:     scripts/parallel-sessions.sh=1
 known:     scripts/portability-smoke.sh=2
 known:     scripts/preflight.sh=1
-known:     scripts/release-preflight.sh=3
+known:     scripts/release-preflight.sh=2
 known:     scripts/shared-memory-watch.sh=1
 known:     scripts/test-decision-review.sh=2
 known:     scripts/test-guards.sh=2
@@ -809,7 +809,6 @@ pattern:   for [A-Za-z_]+ in \$[A-Za-z_]+;|disable=SC2086
 paths:     --include=*.sh scripts helpers
 known:     scripts/brain-update.sh=2
 known:     scripts/handover-gate.sh=2
-known:     scripts/release-preflight.sh=1
 known:     scripts/suite-install.sh=1
 instances: 2
 repeat:    yes
