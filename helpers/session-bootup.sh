@@ -764,29 +764,66 @@ fi
 # are parsed and the NEAREST upcoming one is reported with its distance; <7 days or
 # overdue escalates to !! (the proactive rule's threshold). No parseable heading
 # falls back to the old line — an empty computation must not silence the pointer.
+# An entry may carry `check: <reading command>` under its heading (the ledgers' convention, run with
+# ledger-reconcile.py's allowlist and runner): exit 0 = the event happened, the entry is reported DONE
+# and named for deletion, never as overdue. Measured 2026-11-04 (macOS instance): a coherence scan run
+# on the operator's word two days earlier left its deadline entry as it was; the bootup said OVERDUE
+# and the operator was offered a second scan. Replayed over that brain's bootups: 20 sessions
+# reported an overdue entry, 6 of the 9 entries had a measurable completion (a report file, a pin,
+# a ledger tick). Checks run only for entries due within 7 days or overdue (budget).
 if [[ -f "$R/docs/business/deadlines.md" ]]; then
-  dl=$(DEADLINE_FILE="$R/docs/business/deadlines.md" "$PY" - <<'PY' 2>/dev/null
-import datetime, os, re
+  dl=$(DEADLINE_FILE="$R/docs/business/deadlines.md" DEADLINE_ROOT="$R" LEDGER_RECONCILE="$HERE/../scripts/ledger-reconcile.py" "$PY" - <<'PY' 2>/dev/null
+import datetime, importlib.util, os, re, shutil
 today = datetime.date.today()
-best = None
+root = os.environ.get("DEADLINE_ROOT") or "."
+lr = None
+try:
+    spec = importlib.util.spec_from_file_location("lr", os.environ["LEDGER_RECONCILE"])
+    lr = importlib.util.module_from_spec(spec); spec.loader.exec_module(lr)
+except Exception:
+    lr = None
+entries, cur = [], None
 for line in open(os.environ["DEADLINE_FILE"], encoding="utf-8"):
     m = re.match(r"^## (\d{4})-(\d{2})-(\d{2})(?:\s*[—-]\s*(.*))?", line)
-    if not m: continue
-    try:
-        d = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    except ValueError:
+    if m:
+        try:
+            cur = {"date": datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3))),
+                   "title": (m.group(4) or "").strip(), "check": None}
+            entries.append(cur)
+        except ValueError:
+            cur = None
         continue
-    if best is None or d < best[0]:
-        best = (d, (m.group(4) or "").strip())
+    if line.startswith("## "):
+        cur = None
+        continue
+    c = re.match(r"^\s*check:\s*(.+?)\s*$", line)
+    if cur is not None and cur["check"] is None and c:
+        cur["check"] = c.group(1)
+shell = shutil.which("bash")
+done = []
+for e in entries:
+    if not e["check"] or lr is None or (e["date"] - today).days >= 7:
+        continue
+    if lr.permitted(e["check"], lr.ALLOWED) and lr.run_check(e["check"], root, 5, shell) == "pass":
+        done.append(e)
+for e in done:
+    title = f" ({e['title'][:60]})" if e["title"] else ""
+    print(f"deadline {e['date']}{title}: DONE by its check — delete the entry (docs/business/deadlines.md)")
+best = None
+for e in entries:
+    if e in done:
+        continue
+    if best is None or e["date"] < best["date"]:
+        best = e
 if best:
-    days = (best[0] - today).days
-    title = f" ({best[1][:60]})" if best[1] else ""
+    days = (best["date"] - today).days
+    title = f" ({best['title'][:60]})" if best["title"] else ""
     if days < 0:
-        print(f"!! deadline OVERDUE by {-days} d: {best[0]}{title} — docs/business/deadlines.md")
+        print(f"!! deadline OVERDUE by {-days} d: {best['date']}{title} — docs/business/deadlines.md")
     elif days < 7:
-        print(f"!! deadline {best[0]} in {days} d{title} — docs/business/deadlines.md")
+        print(f"!! deadline {best['date']} in {days} d{title} — docs/business/deadlines.md")
     else:
-        print(f"deadlines: next {best[0]} in {days} d{title} — docs/business/deadlines.md")
+        print(f"deadlines: next {best['date']} in {days} d{title} — docs/business/deadlines.md")
 PY
 )
   echo "${dl:-deadlines: docs/business/deadlines.md present — check it}"

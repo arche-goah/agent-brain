@@ -263,6 +263,7 @@ known:     scripts/test-autonomy-diagnose-run.sh=1
 known:     scripts/test-autonomy-diagnose.sh=1
 known:     scripts/test-basics-hint.sh=1
 known:     scripts/test-bootstrap-brain.sh=1
+known:     scripts/test-bootup-deadlines.sh=1
 known:     scripts/test-bootup-declared-alpha.sh=1
 known:     scripts/test-bootup-git-login.sh=1
 known:     scripts/test-bootup-time-budget.sh=1
