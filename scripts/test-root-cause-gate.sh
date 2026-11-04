@@ -182,6 +182,13 @@ Carrier: none — the cause is unknown, nothing to build until it is measured, o
 check "a mid-turn correction answered with a cause line" "$T/q2.jsonl" allow "$CWD"
 { user "work through the list"; asst "on it"; qpeer "that is already active! something went wrong"; asst "noted"; } > "$T/q3.jsonl"
 check "negative control: the same words from a peer session are no operator correction" "$T/q3.jsonl" allow "$CWD"
+# --- a correction typed mid-turn and FOLLOWED by another typed message (2026-11-04, macOS instance: 18 of 33 correction
+# segments in 80 transcripts were not the last of their turn and the gate judged the last only; 4 got no cause at all)
+{ user "work through the list"; asst "on it"; qcmd "that is already active! something went wrong"; asst "On it."; qcmd "and note the log path for later"; asst "Noted."; } > "$T/q4.jsonl"
+check "a mid-turn correction followed by another message, answered without a cause" "$T/q4.jsonl" block "$CWD"
+{ user "work through the list"; asst "on it"; qcmd "that is already active! something went wrong"; asst "On it."; qcmd "and note the log path for later"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
+Carrier: none — the cause is unknown, nothing to build until it is measured, operator-ok: \"that is already active! something went wrong\""; write "$CWD/$REG"; } > "$T/q5.jsonl"
+check "the cause named after the later message answers the earlier correction" "$T/q5.jsonl" allow "$CWD"
 
 # --- --pre (PreToolUse): in a correction turn the class comes before the instance (operator 2026-11-03: "or once again
 # only the instance fixed afterwards instead of the class?"). The day's case: the first edit went to the model script.
