@@ -7,7 +7,8 @@
 # Usage: bash scripts/test-python-probe.sh   (exit 0 = no site without a probe)
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CHOICE='^[[:space:]]*[A-Za-z_]+=["'"'"']?(\$\()?(command -v )?python3'
+# a choice at the line start, or an env prefix in front of a command further inside the line
+CHOICE='(^|[[:space:]])[A-Za-z_]+=["'"'"']?(\$\()?(command -v )?python3'
 PROBE="-c ['\"]import sys['\"]"
 fail=0
 
@@ -36,8 +37,10 @@ trap 'rm -rf "$T"' EXIT
 printf '#!/usr/bin/env bash\npy=python3; command -v "$py" >/dev/null 2>&1 || py=python\n' > "$T/bad-hook"
 printf '#!/usr/bin/env bash\nPY="$(command -v python3 || command -v python)"\n' > "$T/bad.sh"
 printf '#!/usr/bin/env bash\nPY=python3\n"$PY" -c '"'"'import sys'"'"' >/dev/null 2>&1 || PY=python\n' > "$T/good.sh"
+printf '#!/usr/bin/env bash\nout="$(cd x && PY=python%s bash -c "$B")"\n' 3 > "$T/bad-inline.sh"
 printf 'PY=python3 in prose\n' > "$T/notes.md"
 got="$(scan "$T")"
+case "$got" in *bad-inline.sh*) echo "  OK  control: an env prefix inside a command without probe is flagged";; *) echo "  FAIL control: bad-inline.sh not flagged"; fail=1;; esac
 case "$got" in *bad-hook*) echo "  OK  control: an extension-less hook without probe is flagged";; *) echo "  FAIL control: bad-hook not flagged"; fail=1;; esac
 case "$got" in *bad.sh*) echo "  OK  control: a .sh without probe is flagged";; *) echo "  FAIL control: bad.sh not flagged"; fail=1;; esac
 case "$got" in *good.sh*|*notes.md*) echo "  FAIL control: a good file or prose was flagged: $got"; fail=1;; *) echo "  OK  control: probed file and prose pass";; esac
