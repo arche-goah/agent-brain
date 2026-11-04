@@ -422,7 +422,9 @@ def resolve_target(target: str, repo: Path, stems: dict[str, str] | None = None)
         return t
     if stems is not None:
         return stems.get(t.split("/")[-1].removesuffix(".md"))
-    hits = [p.relative_to(repo).as_posix() for p in repo.glob(f"*/{t.split('/')[-1].removesuffix('.md')}.md")]
+    stem = t.split("/")[-1].removesuffix(".md")
+    # a settled message moved to `<area>/archive/<yyyy-mm>/` keeps its stem and is still the target
+    hits = [p.relative_to(repo).as_posix() for p in list(repo.glob(f"*/{stem}.md")) + list(repo.glob(f"*/archive/*/{stem}.md"))]
     return hits[0] if len(hits) == 1 else None
 
 
