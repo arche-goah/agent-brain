@@ -20,11 +20,14 @@ native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else pri
 mkdir -p "$T/brain/docs/business" "$T/brain/core/helpers" "$T/brain/core/scripts"
 cp "$HERE/ledger-reconcile.py" "$T/brain/core/scripts/ledger-reconcile.py"
 fail=0
+# OS-17: the bootup probes its interpreter before the block runs; the block alone does not.
+PY=python3
+"$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 yday="$(date -u -v-1d +%F 2>/dev/null || date -u -d '-1 day' +%F)"
 later="$(date -u -v+30d +%F 2>/dev/null || date -u -d '+30 day' +%F)"
 run() { # name, deadlines text, expect-substring, forbid-substring
   printf '%b' "$2" > "$T/brain/docs/business/deadlines.md"
-  local out; out="$(cd "$T/brain" && R="$(native "$T/brain")" HERE="$(native "$T/brain/core/helpers")" PY=python3 bash -c "$BLOCK" 2>&1)"
+  local out; out="$(cd "$T/brain" && R="$(native "$T/brain")" HERE="$(native "$T/brain/core/helpers")" PY="$PY" bash -c "$BLOCK" 2>&1)"
   if [[ "$out" == *"$3"* ]] && { [ -z "$4" ] || [[ "$out" != *"$4"* ]]; }; then echo "  OK  $1"; else echo "  FAIL $1 (got: ${out:0:160})"; fail=1; fi
 }
 : > "$T/brain/exists.txt"
