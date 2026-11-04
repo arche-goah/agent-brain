@@ -179,7 +179,7 @@ function readTurns(tp, tail) {
     // correction arrived this way and none was judged; the instance copy carried this until the pin removed it).
     const queued = queuedHumanPrompt(d);
     if (queued) {
-      cur = { prompt: queued, when: d.timestamp || '', texts: [], writes: [], fired: false };
+      cur = { prompt: queued, when: d.timestamp || '', texts: [], writes: [], fired: false, queued: true };
       turns.push(cur);
       continue;
     }
@@ -197,10 +197,42 @@ function readTurns(tp, tail) {
     if (t === null) continue;
     if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t) && cur) cur.fired = true; continue; }
     if (isNotification(t) || isAgentOrigin(d) || isSkillExpansion(d) || HARNESS_NOTICE.test(t)) continue;
-    cur = { prompt: t, when: d.timestamp || '', texts: [], writes: [], fired: false };
+    cur = { prompt: t, when: d.timestamp || '', texts: [], writes: [], fired: false, queued: false };
     turns.push(cur);
   }
   return turns;
+}
+
+// The turn the Stop sees as a whole: the last message the operator SENT (a user record) and every message typed
+// while the agent worked (queued segments). Measured 2026-11-04 on the macOS instance (80 transcripts): 33 correction
+// segments, 18 of them NOT the last segment of their assistant turn - the gate judged turns[last] only, so a
+// correction followed by another typed message was never judged; 4 of the 18 got no cause line at all, two of them
+// that day, with the operator asking the third time in a week why no cause followed.
+function currentTurn(turns) {
+  let k = turns.length - 1;
+  while (k > 0 && turns[k].queued) k -= 1;
+  const group = turns.slice(Math.max(0, k));
+  return { group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes), fired: group.some((t) => t.fired) };
+}
+
+// The first correction in the turn (word list, else the prompt classifier's record) that no later text answers with
+// a cause line; with causeRx null, the first correction regardless (the --pre check wants the class before the
+// instance even when a cause is already named).
+function firstCorrection(group, cwd, transcriptPath, rx, causeRx) {
+  let known = null;
+  for (let i = 0; i < group.length; i += 1) {
+    const seg = group[i];
+    let hit = correctionIn(seg.prompt, rx);
+    if (!hit) {
+      if (!known) known = intents(transcriptPath, cwd);
+      const intent = intentFor(known, seg.when);
+      if (intent && intent.correction) hit = sentenceAt(stripQuoted(seg.prompt), 0);
+    }
+    if (!hit) continue;
+    if (causeRx && causeIn(group.slice(i).flatMap((t) => t.texts), causeRx)) continue;
+    return hit;
+  }
+  return null;
 }
 
 // The gate and `--review` both judge here: a pasted e-mail or log is not the operator's correction
@@ -251,16 +283,13 @@ function preGate(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let turns;
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
-  const turn = turns[turns.length - 1];
-  if (!turn) return;
-  let hit = correctionIn(turn.prompt, loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'));
-  if (!hit) {
-    const intent = intentFor(intents(input.transcript_path, cwd), turn.when);
-    if (intent && intent.correction) hit = sentenceAt(stripQuoted(turn.prompt), 0);
-  }
+  const { group, texts, writes } = currentTurn(turns);
+  if (!group.length) return;
+  const hit = firstCorrection(group, cwd, input.transcript_path,
+    loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'), null);
   if (!hit) return;
-  if (turn.writes.some(isMechanismWrite)) return;
-  if (causeIn(turn.texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'))) return;
+  if (writes.some(isMechanismWrite)) return;
+  if (causeIn(texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'))) return;
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
@@ -281,22 +310,21 @@ function gate(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let turns;
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
-  const turn = turns[turns.length - 1];
-  if (!turn || turn.fired) return;
+  const { group, texts, writes, fired } = currentTurn(turns);
+  if (!group.length || fired) return;
   // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
   // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
-  // cause line owed), never close one the words opened.
-  let hit = correctionIn(turn.prompt, loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'));
-  if (!hit) {
-    const intent = intentFor(intents(input.transcript_path, cwd), turn.when);
-    if (intent && intent.correction) hit = sentenceAt(stripQuoted(turn.prompt), 0);
-  }
-  const cause = causeIn(turn.texts, loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu'));
+  // cause line owed), never close one the words opened. Every message of the turn is judged (currentTurn), a
+  // cause line from that message on answers it.
+  const causeRx = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
+  const hit = firstCorrection(group, cwd, input.transcript_path,
+    loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'), causeRx);
+  const cause = causeIn(texts, causeRx);
   if (cause) {
     const reg = registerPath(cwd);
-    const mech = turn.writes.some(isMechanismWrite)
-      || noCarrierAgreed(turn.texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'), turns);
-    const registered = writesTo(turn.writes, reg);
+    const mech = writes.some(isMechanismWrite)
+      || noCarrierAgreed(texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'), turns);
+    const registered = writesTo(writes, reg);
     if (mech && registered) return;
     const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`].filter(Boolean).join(', ');
     process.stdout.write(JSON.stringify(declare({
@@ -314,7 +342,7 @@ function gate(input) {
   if (!hit) return;
   process.stdout.write(JSON.stringify(declare({
     decision: 'block',
-    reason: `ROOT-CAUSE-GATE: the operator's message that opened this turn reads as a correction or a mishap: "${hit.slice(0, 160)}". `
+    reason: `ROOT-CAUSE-GATE: an operator message in this turn reads as a correction or a mishap: "${hit.slice(0, 160)}". `
       + 'The reply names no cause. Before this turn ends, measure what produced it and write ONE line — '
       + 'Cause: <what was read, where> — <A produced B>, or Cause: unknown — <what is missing to tell>. '
       + 'Then the class (search: where else does the same sit?) and the carrier (where it is fixed for good: gate, script, rule, core PR). '
