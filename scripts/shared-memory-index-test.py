@@ -35,6 +35,12 @@ spec.loader.exec_module(smi)
 fails = []
 
 
+# The index lines carry an arrow (answered → …) that cp1252 cannot encode; the Windows console and the
+# smoke's cp1252 run would crash the print of a case name (measured 2026-11-04, PR 408 portability).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+
+
 def ok(n, cond, detail=""):
     print(f"  {'ok  ' if cond else 'FAIL'}  {n}{'' if cond else ': ' + detail}")
     if not cond:
