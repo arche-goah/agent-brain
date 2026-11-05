@@ -16,7 +16,7 @@
 set -u
 T="$(mktemp -d)"
 SLEEPERS=()
-trap 'for p in "${SLEEPERS[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$T"' EXIT
+trap 'for p in ${SLEEPERS[@]+"${SLEEPERS[@]}"}; do kill "$p" 2>/dev/null; done; rm -rf "$T"' EXIT  # OS-22
 G="$(cd "$(dirname "$0")" && pwd)/../helpers/watch-gate.cjs"
 # Offline: a fake gh answers "does the named repo have workflows?" — o/plain has none (404),
 # o/down cannot be measured (network error), every other repo has one.

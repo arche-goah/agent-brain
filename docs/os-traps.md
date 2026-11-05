@@ -1105,3 +1105,33 @@ that suites run inside `portability-smoke.sh` wrote); with each exporting its ow
 HOME moved, Python and node still returned the real profile. Same canary, not this class: `test-guards.sh`
 (a secret-guard hook log) and `test-onboarding-leak-check.sh` (the claude CLI's `~/.claude.json`) write
 the home without the session start.
+
+## OS-22 — an empty array under `set -u` is "unbound" on stock macOS bash 3.2
+
+shape: B
+
+invariant: A shell script under `set -u` expands an array that CAN be empty only in the guarded form
+`${a[@]+"${a[@]}"}`. Bash before 4.4 — `/bin/bash` 3.2 on stock macOS — treats `"${a[@]}"` of an empty
+array as an unbound variable and aborts; bash 5 (Linux, Git Bash) expands it to nothing, so the defect
+is invisible on every other platform and in a CI that runs ubuntu only. An array that is never empty
+(filled before use, or guarded by a length test right above) is no site — it stands in `known` after it
+was read.
+pattern:   ^[^#]*[^+#]"\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}"
+paths:     --include=*.sh scripts helpers
+known:     scripts/ci-lint-local.sh=1
+known:     scripts/lint-placeholders.sh=1
+known:     scripts/merge-train.sh=1
+known:     scripts/repo-activity-watch.sh=1
+known:     scripts/shared-memory-watch-lock-test.sh=3
+known:     scripts/test-eco-owner.sh=1
+known:     scripts/test-python-probe.sh=1
+instances: 3
+repeat:    no
+status:    closed
+note:      Measured 2026-11-05 on the macOS instance (bash 3.2.57, agent-brain #330 at 34deb49):
+`SMOKE_SUITES_RUN_BY_CI=1 bash scripts/portability-smoke.sh` died with `_suites[@]: unbound variable`
+after the CI branch emptied both suite arrays. The search found two more sites that can be empty, both
+in an exit trap: `collab-watch.sh` (`pids` before the first watcher is armed) and `test-watch-gate.sh`
+(`SLEEPERS` before the first sleeper; the trap's `rm -rf` of the temp dir never ran). All three use the
+guarded form now. The nine `known` lines were read one by one: each array is filled before use or sits
+behind a length test.
