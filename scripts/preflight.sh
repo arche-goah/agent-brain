@@ -101,7 +101,7 @@ else
   # prompt, and the low-speed limit ends a stalled transfer after 10 s.
   ssh_fix="Create a key: ssh-keygen -t ed25519 -C \"$(whoami)\" · show the public key: cat ~/.ssh/id_ed25519.pub · add it at https://github.com/settings/ssh/new · then run this script again"
   https_url="${PREFLIGHT_HTTPS_URL:-https://github.com/arche-goah/agent-brain.git}"
-  if GIT_TERMINAL_PROMPT=0 GIT_HTTP_LOW_SPEED_LIMIT=1 GIT_HTTP_LOW_SPEED_TIME=10 \
+  if GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=true SSH_ASKPASS=true GIT_HTTP_LOW_SPEED_LIMIT=1 GIT_HTTP_LOW_SPEED_TIME=10 \
       git ls-remote "$https_url" HEAD >/dev/null 2>&1; then
     warn "SSH to GitHub not proven, but HTTPS works (ls-remote $https_url)" \
       "Clones and fetches over HTTPS are fine. Set up SSH if a plugin install or marketplace refresh fails: $ssh_fix"

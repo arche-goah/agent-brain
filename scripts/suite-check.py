@@ -47,6 +47,36 @@ def git_out(repo: Path, *args: str) -> str:
         return ""
 
 
+def single_branch(repo: Path) -> bool:
+    """True for a `git clone --single-branch` checkout: its fetch refspec names one branch, not
+    refs/heads/*. Offline on purpose - asking origin cost ~45 s of fixture time per run."""
+    specs = git_out(repo, "config", "--get-all", "remote.origin.fetch").splitlines()
+    return bool(specs) and not any("refs/heads/*" in s for s in specs)
+
+
+# Shipped hook templates (templates/suite/hooks/, 2026-11-04): a suite with an npm MCP server copies
+# ensure-deps.cjs + hooks.json unchanged; the plugin's name comes from its manifest. Measured
+# 2026-11-03 on the macOS instance: two suites carried the same 105 lines, differing only in the
+# five lines naming the suite, and a fix in one copy reached no other. A copy that differs from
+# this core's template is a WARN, not an ERROR: a suite may deviate with a reason it writes down.
+HOOK_TEMPLATES = ("hooks/ensure-deps.cjs", "hooks/hooks.json")
+
+
+def hook_template_findings(repo: Path, core: Path = CORE) -> list:
+    out = []
+    for rel in HOOK_TEMPLATES:
+        own, tpl = repo / rel, core / "templates" / "suite" / rel
+        if not own.is_file() or not tpl.is_file():
+            continue
+        norm = lambda p: p.read_bytes().replace(b"\r\n", b"\n")
+        if norm(own) == norm(tpl):
+            out.append(("INFO", f"{rel}: equals the core template"))
+        else:
+            out.append(("WARN", f"{rel}: differs from the core template templates/suite/{rel} - take the "
+                                "template unchanged (the plugin name is read from plugin.json), or say why not"))
+    return out
+
+
 def repo_slug(text: str) -> str:
     """owner/name out of a GitHub slug or a git URL, lowercase; '' if none."""
     m = re.search(r"([^/:\s]+/[^/:\s]+?)(?:\.git)?/?$", str(text or "").strip())
@@ -111,6 +141,12 @@ def marketplace_findings(repo: Path):
                 if git_out(repo, "rev-parse", "--is-shallow-repository").strip() == "true":
                     out.append(("WARN", f"{where}: ref {ref} not among the tags of this shallow "
                                         "checkout - unchecked"))
+                # A single-branch clone carries only the tags its branch reaches (measured 2026-11-03:
+                # `git clone --single-branch` of main, v2.0.0 on the cut-off history missing, "is no
+                # tag of this repo" while origin has it). Unchecked, like a shallow checkout.
+                elif single_branch(repo):
+                    out.append(("WARN", f"{where}: ref {ref} not among the tags of this single-branch "
+                                        "clone - unchecked (git fetch --tags)"))
                 else:
                     out.append(("ERROR", f"{where}: ref {ref} is no tag of this repo"))
     return out
@@ -220,6 +256,7 @@ def check(repo: Path, contract: dict):
         except json.JSONDecodeError as e:
             add("ERROR", f".claude-plugin/plugin.json does not parse: {e}")
     out.extend(marketplace_findings(repo))
+    out.extend(hook_template_findings(repo))
 
     # dependency manifest + the core declaration
     dj = repo / "dependencies.json"

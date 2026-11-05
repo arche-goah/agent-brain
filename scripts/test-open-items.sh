@@ -191,6 +191,33 @@ peerrun() { # $1 session, $2 key of the commenter
 }
 has "we reviewed or commented after the last commit" "$(line 'core#14 ' "$(peerrun o3 "$KMAC")")" && ok "another login's PR: same-OS sibling looked at the head = waiting" || bad "peer same-OS look: $(line 'core#14 ' "$(peerrun o3 "$KMAC")")"
 has "[PR|ai]" "$(line 'core#14 ' "$(peerrun o4 "$KWS")")" && ok "negative control: another login's PR, another OS's look = our move" || bad "peer other-OS look: $(line 'core#14 ' "$(peerrun o4 "$KWS")")"
+# The merger is another INSTANCE behind our login (measured 2026-11-02: every own core PR with
+# both OS checks and green CI stood as "still ours"; a login-only owner could not say so).
+# `owners` names a device of parties.json: our own PR waits on it, the merger itself keeps it,
+# and a peer's PR nobody asked us about stays ours to check (our login is the merger's too).
+printf '%s\n' '{"people":{"x":{"github":"me","devices":{"mac":{"os":"macos"},"ws":{"os":"windows"}}}}}' > "$T/repo/parties.json"
+cp "$T/root/.claude/rules/open-items.json" "$T/oi-saved.json"
+printf '%s\n' '{"parked":["grandma"],"owners":{"owned":"peer","core":"mac"}}' > "$T/root/.claude/rules/open-items.json"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"nodes":[%s,%s]}}}\n' \
+  "$(pr core 15 me 2026-10-06 "fix <!-- instance-key: $KWS -->" 2026-10-06T11:00:00Z '[]' '[]')" \
+  "$(pr core 16 peer 2026-10-06 "fix" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-inst.json"
+instrun() { OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-inst.json")" SHARED_MEMORY_SELF="$2" OWNER=me run "$1"; }
+iw=$(instrun i1 ws)
+has "waiting on mac: core is mac's to merge" "$(line 'core#15 ' "$iw")" && ok "own PR, merger is a sibling instance = waiting on it" || bad "instance owner: $(line 'core#15 ' "$iw")"
+has "[PR|ai]" "$(line 'core#16 ' "$iw")" && ok "peer's PR in a sibling-merged repo, no review asked = still ours to check" || bad "instance owner, peer PR: $(line 'core#16 ' "$iw")"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 17 me 2026-10-06 "fix <!-- instance-key: $KMAC -->" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-inst.json"
+has "[PR|ai]" "$(line 'core#17 ' "$(instrun i2 mac)")" && ok "negative control: the merger instance's own PR is its own move" || bad "merger's own PR: $(line 'core#17 ' "$(instrun i2 mac)")"
+# The owner written once in the shared memory (repo-owners.json), not in the instance's map.
+printf '%s\n' '{"parked":["grandma"],"owners":{"owned":"peer"}}' > "$T/root/.claude/rules/open-items.json"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[%s]}}}\n' \
+  "$(pr core 15 me 2026-10-06 "fix <!-- instance-key: $KWS -->" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-inst.json"
+printf '%s\n' '{"repos":{"core":{"owner":"mac","source":"fixture 2026-11-03"}}}' > "$T/repo/repo-owners.json"
+has "waiting on mac: core is mac's to merge" "$(line 'core#15 ' "$(instrun i3 ws)")" && ok "owner from the shared memory's repo-owners.json = waiting on it" || bad "shared owner: $(line 'core#15 ' "$(instrun i3 ws)")"
+printf '%s\n' '{"repos":{"core":{"owner":"mac"}}}' > "$T/repo/repo-owners.json"
+has "[PR|ai]" "$(line 'core#15 ' "$(instrun i4 ws)")" && ok "negative control: a shared owner entry without its source is not read" || bad "shared owner without source: $(line 'core#15 ' "$(instrun i4 ws)")"
+rm -f "$T/repo/repo-owners.json"
+cp "$T/oi-saved.json" "$T/root/.claude/rules/open-items.json"
 rm -f "$T/repo/parties.json"
 # The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
 # sibling PRs checked at their heads stayed "our move"). Our text naming THIS head = waiting;
@@ -210,6 +237,29 @@ has "our check of this head is in the shared memory" "$(line 'core#12 ' "$(smrun
 # The real setting is a comma list "<device>,<alias>,…" (macOS check of #286): the device token counts.
 sml=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-sm.json")" SHARED_MEMORY_SELF="mac,person:x,os:macos" OWNER=me run m4)
 has "our check of this head is in the shared memory" "$(line 'core#12 ' "$sml")" && ok "self as a comma list: the device token counts" || bad "comma-list self: $(line 'core#12 ' "$sml")"
+rm -rf "$T/repo/core"
+# Our own open check request naming the PR (2026-11-03: own PRs waiting on a Windows check we had
+# asked for printed as our move): its addressee moves for one day, then it is ours with a reminder.
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"nodes":[%s,%s]}}}\n' \
+  "$(pr core 40 me 2026-10-06 "fix" 2026-10-06T11:00:00Z '[]' '[]')" "$(pr core 42 me 2026-10-06 "fix" 2026-10-06T11:00:00Z '[]' '[]')" > "$T/prs-req.json"
+mkdir -p "$T/repo/core"
+reqfile() { printf '%s\n' '---' 'name: r' "description: \"Windows check core #40 #41\"" 'metadata:' '  von: mac' "  date: $1" "  status: $2" '  next: ws' '---' 'please' > "$T/repo/core/request-x.md"; }
+rqrun() { OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-req.json")" SHARED_MEMORY_SELF=mac OWNER=me run "$1"; }
+reqfile "$("$PY" -c 'import datetime; print(datetime.date.today())')" open
+rq=$(rqrun q1)
+has "waiting on ws" "$(line 'core#40 ' "$rq")" && ok "own open check request names the PR = waiting on its addressee" || bad "request wait: $(line 'core#40 ' "$rq")"
+has "[PR|ai]" "$(line 'core#42 ' "$rq")" && ok "negative control: a PR the request does not name stays ours" || bad "unnamed PR: $(line 'core#42 ' "$rq")"
+reqfile 2026-01-01 open
+has "has no answer - ask that machine by name" "$(line 'core#40 ' "$(rqrun q2)")" && ok "a request older than a day hands the PR back with the reminder" \
+  || bad "old request: $(line 'core#40 ' "$(rqrun q2)")"
+reqfile "$("$PY" -c 'import datetime; print(datetime.date.today())')" answered
+has "[PR|ai]" "$(line 'core#40 ' "$(rqrun q3)")" && ok "negative control: an answered request no longer holds the PR" || bad "answered: $(line 'core#40 ' "$(rqrun q3)")"
+reqfile "$("$PY" -c 'import datetime; print(datetime.date.today())')" open
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: ws' '---' 'Re request-x: Windows OK.' > "$T/repo/core/reply.md"
+has "[PR|ai]" "$(line 'core#40 ' "$(rqrun q4)")" && ok "a reply naming the request answers it although its status stayed open" || bad "reply: $(line 'core#40 ' "$(rqrun q4)")"
+printf '%s\n' '# LOG' '' '## 2026-10-11 · mac — asked ws: see request-x' 'x' > "$T/repo/core/LOG.md"
+printf '%s\n' '---' 'name: a' 'metadata:' '  von: mac' '---' 'posted request-x' > "$T/repo/core/reply.md"
+has "waiting on ws" "$(line 'core#40 ' "$(rqrun q5)")" && ok "negative control: our own mentions of the request answer nothing" || bad "own mention: $(line 'core#40 ' "$(rqrun q5)")"
 rm -rf "$T/repo/core"
 has "waiting until $NOW: alpha measurement" "$(line 'core#5 ' "$out")" && ok "dated wait is quiet" || bad "dated wait: $(line 'core#5 ' "$out")"
 has "that date has passed" "$(line 'core#6 ' "$out")" && ok "past wait is louder" || bad "past wait: $(line 'core#6 ' "$out")"
@@ -436,9 +486,32 @@ out=$(run "" "$L")
 has "[ledger|wait] 2026-10-25 other-thing" "$out" && has "waiting on the ledger exit other-side: since 2026-10-25" "$out" \
   && ok "exit other-side waits quietly" || bad "exit other-side: $out"
 has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ok "exit ai-does-it stays open work" || bad "exit ai-does-it: $out"
+# The fields as list items under the entry, the project ledgers' form (measured 2026-11-03: ten
+# such entries with `  - exit: other-side|parked` were listed as untouched agent work).
+printf '%s\n' '' '- [ ] Parked in a project ledger' '  - id: `bullet-thing`' '  - class: todo' '  - exit: parked 2026-10-25 — operator said later' '' \
+  '- [ ] Due in a project ledger' '  - id: `bullet-due`' '  - class: decision' '  - ask-when: 2099-01-01' >> "$L/docs/x/open.md"
+out=$(run "" "$L")
+has "[ledger|wait]" "$(line ' bullet-thing ' "$out")" && has "parked" "$(line ' bullet-thing ' "$out")" && ok "exit as a list item waits quietly" || bad "bullet exit: $(line ' bullet-thing ' "$out")"
+has "[ledger|wait]" "$(line ' bullet-due ' "$out")" && ok "ask-when as a list item waits for its date" || bad "bullet ask-when: $(line ' bullet-due ' "$out")"
 cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" --repo "$(native "$T/repo")" --classify 'ledger:pick-name=ai:mine' 2>&1)
 out=$(run "" "$L")
 has "[ledger|ai]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"
+# audit-audit 2026-11-02, package D: an entry whose check ledger-reconcile found green (DONE-OPEN) stayed listed as
+# open own work for up to 17 sessions. A result fresher than the ledger lists it once as "tick it", never as work;
+# a ledger changed after the result (negative control) lists it as work again.
+ln=$(grep -n 'Mine to build' "$L/docs/x/open.md" | cut -d: -f1)
+mkdir -p "$L/.claude-state"
+"$PY" -c 'import json,sys,time; json.dump({"at": time.time() + 5, "done_open": [{"ledger": "docs/x/open.md", "line": int(sys.argv[2]), "id": "mine-thing"}]}, open(sys.argv[1], "w", encoding="utf-8"))' \
+  "$(native "$L/.claude-state/ledger-reconcile.json")" "$ln"
+out=$(run "" "$L")
+has "check green — tick it: 1 ledger entr(y/ies)" "$out" && has "mine-thing" "$out" \
+  && ok "a fresh green check lists the entry as tick-it" || bad "tick-it line missing: $out"
+has "[ledger|ai] 2026-10-25 mine-thing" "$out" && bad "green entry still listed as open work: $out" || ok "a green entry is no open work"
+"$PY" -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p, encoding="utf-8")); d["at"]=0; json.dump(d, open(p, "w", encoding="utf-8"))' "$(native "$L/.claude-state/ledger-reconcile.json")"
+out=$(run "" "$L")
+has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ! has "tick it" "$out" \
+  && ok "a result older than the ledger counts nothing (negative control)" || bad "stale result still ticks: $out"
+rm -f "$L/.claude-state/ledger-reconcile.json"
 
 # 2026-10-28 (macOS instance, 95 ledger rows): the shown date was the first date anywhere in the
 # text, "nothing done yet" was printed unmeasured, a `class: decision` read as the operator's
@@ -461,6 +534,17 @@ git -C "$G" -c user.email=t@t -c user.name=t commit -qm late
 out=$(run "" "$G")
 has "[ledger|human]" "$out" && has " late " "$out" && ok "exit operator-decision lists for the operator" || bad "operator-decision: $out"
 has "docs/x/open.md#no-id-here" "$out" && ok "title key survives a line inserted elsewhere" || bad "title key moved: $out"
+# A standing approval of own ledger items (2026-11-02, macOS instance: "all own items" reached requests
+# and PRs only; ledger entries were asked at every start). An excluded text and an operator-decision
+# exit stay out of the class.
+printf '%s\n' '{"classes":[{"name":"own ledger items","kind":"ledger","excludes":["\\bcolour\\b"],"granted":"\"handle all own items\" 2026-10-26"}]}' \
+  > "$G/.claude/rules/open-items-standing.json"
+out=$(run "" "$G")
+has "[ledger|standing] 2026-09-21 harden-box" "$out" && ok "an own ledger item of a standing class = standing" || bad "ledger standing missed: $out"
+has "[ledger|ai] 2026-09-21 pick-colour" "$out" && ok "negative control: an excluded ledger text stays ai" || bad "excluded ledger: $out"
+has "[ledger|human]" "$(line ' late ' "$out")" && ok "negative control: an operator-decision exit stays human" || bad "operator ledger became standing: $out"
+! has "refused" "$out" && ok "kind ledger is accepted" || bad "ledger kind refused: $out"
+rm "$G/.claude/rules/open-items-standing.json"
 # A ledger key with '#' is no PR key: when the PR source is unread, a done ledger entry's counter
 # is dropped, not kept as if it were a PR (found 2026-10-28 by the parallel session reading #164).
 mkdir -p "$T/tx"; : > "$T/tx/sk1.jsonl"; : > "$T/tx/sk2.jsonl"
@@ -484,12 +568,17 @@ printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2
   '- [ ] Text mention only' '  id: issue-only' '  STAND: Kern-PR #31 offen, plus own work' '  exit: ai-does-it 2026-10-28' '' \
   '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' '' \
   '- [ ] Odd exit' '  id: odd-exit' '  exit: waits-on-others 2026-10-28' '' \
-  '- [ ] Done but open' '  id: done-open' '  exit: done-already 2026-10-28 — built' >> "$G/docs/x/open.md"
+  '- [ ] Done but open' '  id: done-open' '  exit: done-already 2026-10-28 — built' '' \
+  '- [ ] Exit never moved' '  id: stale-exit' '  check: gh pr list --head fix/thing --state merged' '  exit: ai-does-it 2026-10-28 — build it' '' \
+  '- [ ] In-pr without a ref' '  id: inpr-noref' '  exit: in-pr 2026-10-28 — the follow-up branch' '' \
+  '- [ ] In-pr ref on the next line' '  id: inpr-cont' '  exit: in-pr 2026-10-28 — skill text as the' '  follow-up core#31' '' \
+  '- [ ] Never sorted' '  id: unsorted' '  check: none — needs a hand at the bench' >> "$G/docs/x/open.md"
 git -C "$G" add -A
 git -C "$G" -c user.email=t@t -c user.name=t commit -qm carried
-printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":4,"nodes":[%s,%s,%s,%s]}}}\n' \
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":5,"nodes":[%s,%s,%s,%s,%s]}}}\n' \
   "$(pr core 31 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr core 32 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" \
-  "$(pr core 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr suite-x 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" > "$T/prs-carried.json"
+  "$(pr core 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" "$(pr suite-x 33 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]')" \
+  "$(pr core 34 me 2026-10-28 '' 2026-10-28T11:00:00Z '[]' '[]' | sed 's#"isDraft"#"headRefName":"fix/thing","isDraft"#')" > "$T/prs-carried.json"
 out=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-carried.json")" OPEN_ITEMS_WAIT_COLLAPSE=50 run "" "$G")
 has "waiting on the open PR core#31" "$(line ' carried ' "$out")" && ok "entry naming an open PR waits on it" || bad "carried: $(line ' carried ' "$out")"
 has "waiting on the open PR core#32" "$(line ' carried-ref ' "$out")" && ok "repo#N names the PR" || bad "carried-ref: $(line ' carried-ref ' "$out")"
@@ -502,10 +591,26 @@ has "[ledger|ai]" "$(line ' issue-only ' "$out")" && ok "a PR named in the text 
 has "names no open PR any more" "$(line ' closed-pr ' "$out")" && ok "a PR no longer open hands the entry back, saying so" || bad "closed: $(line ' closed-pr ' "$out")"
 has "unknown exit 'waits-on-others'" "$(line ' odd-exit ' "$out")" && ok "an exit outside the vocabulary is named" || bad "odd exit: $(line ' odd-exit ' "$out")"
 has "but the box is open" "$(line ' done-open ' "$out")" && ok "exit done-already on an open box asks for the tick" || bad "done-open: $(line ' done-open ' "$out")"
+# 2026-11-03 (macOS instance): seven entries carried by open PRs stood as the agent's own work - the
+# exit was never moved; one in-pr exit named no PR and read as "no open PR any more".
+has "says ai-does-it, but core#34 is open" "$(line ' stale-exit ' "$out")" && ok "ai-does-it whose check names an open PR's branch is named as a stale exit" \
+  || bad "stale exit: $(line ' stale-exit ' "$out")"
+has "[ledger|ai]" "$(line ' stale-exit ' "$out")" && ok "the stale exit stays ours (the writer decides)" || bad "stale exit class: $(line ' stale-exit ' "$out")"
+has "names no PR at all" "$(line ' inpr-noref ' "$out")" && ok "in-pr without any PR reference says so" || bad "in-pr no ref: $(line ' inpr-noref ' "$out")"
+has "waiting on the open PR core#31" "$(line ' inpr-cont ' "$out")" && ok "an in-pr exit naming its PR on the next line waits on it" \
+  || bad "in-pr continuation: $(line ' inpr-cont ' "$out")"
+has "no exit line yet — sort it" "$(line ' unsorted ' "$out")" && ok "an entry without exit asks to be sorted, not read as plain own work" \
+  || bad "unsorted: $(line ' unsorted ' "$out")"
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).
 printf x > "$T/rootfile"
 out=$(run g "$T/rootfile")
 has "repeat counter NOT saved" "$out" && ok "lost counter is loud" || bad "lost counter silent: $out"
+
+# --top (2026-11-03, operator: counts + top 5): the oldest N own items print, the rest is one [more] line, counts stay.
+tp=$(OPEN_ITEMS_WAIT_COLLAPSE=50 run "" "$G" | head -1)
+tt=$("$PY" "$(native "$T/core/scripts/open-items.py")" --owner me --repo "$(native "$T/repo")" --root "$(native "$G")" --hook-input "{}" --top 1 2>&1)
+[ "$(head -1 <<<"$tt")" = "$tp" ] && ok "--top keeps the head line's counts" || bad "top head: '$(head -1 <<<"$tt")' vs '$tp'"
+[ "$(grep -c '|ai\]' <<<"$tt")" -le 1 ] && has "[more]" "$tt" && ok "--top 1 prints one own item and a [more] line" || bad "top items: $tt"
 
 # PR search over several owners (instance data `pr_owners`): one search, every owner a
 # `user:` qualifier (GitHub ORs them), the --owner itself not doubled. Control: no
@@ -517,5 +622,22 @@ printf '%s\n' '{"pr_owners": ["Personal", "ME"]}' > "$T/root-po/.claude/rules/op
 q2=$(OPEN_ITEMS_SHOW_PR_SEARCH=1 OWNER=me run "" "$T/root-po" | sed -n 's/^pr-search: //p')
 [ "$q2" = "user:me user:Personal is:pr is:open archived:false" ] && ok "pr_owners: one search over both owners, --owner not doubled" \
   || bad "several-owner search: '$q2'"
+
+# Paged PR search (measured 2026-11-03: 59 open PRs against a page of 50, nine fell off silently).
+# Page 2 is read; a list shorter than the search's count is a failed read, never a short list.
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[%s]}}}\n' \
+  "$(pr pager 21 peer 2026-10-06 '' 2026-10-06T11:00:00Z '[]' '[{"requestedReviewer":{"login":"me"}}]')" > "$T/page1.json"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"pageInfo":{"hasNextPage":false,"endCursor":"c2"},"nodes":[%s]}}}\n' \
+  "$(pr pager 22 peer 2026-10-06 '' 2026-10-06T11:00:00Z '[]' '[{"requestedReviewer":{"login":"me"}}]')" > "$T/page2.json"
+PATHSEP=:; command -v cygpath >/dev/null 2>&1 && PATHSEP=';'  # python's os.pathsep (OS-3)
+pg=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/page1.json")$PATHSEP$(native "$T/page2.json")" OWNER=me run "")
+has "pager#22" "$pg" && ok "a PR on the second page of the search is listed" || bad "page 2: $pg"
+cut=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/page1.json")" OWNER=me run "")
+has "PR search" "$cut" && ! has "pager#21" "$cut" && ok "negative control: a missing page = PR search unread, no short list" \
+  || bad "missing page: $cut"
+
+side=$("$PY" "$(native "$T/core/scripts/open-items.py")" --owner ai --repo "$(native "$T/repo")" 2>&1); rc=$?
+[ "$rc" -ne 0 ] && has "not the item side" "$side" && ok "--owner ai (the item side, not an account) is refused" \
+  || bad "--owner ai: rc=$rc $side"
 
 [ "$fail" = 0 ] && echo "open-items: all cases pass" || { echo "open-items: FAILURES"; exit 1; }

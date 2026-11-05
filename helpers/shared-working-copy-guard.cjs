@@ -307,6 +307,19 @@ process.stdin.on('end', () => {
     }
 
     const verdict = judge(call);
+    // One session, but the copy holds uncommitted work that is not ours to move (measured 2026-11-03 on the macOS
+    // instance: `git switch -c` in the operator's project checkout over their uncommitted settings and profiles —
+    // core rule #12 puts branch work into a scratchpad worktree always, the guard only held with a second session).
+    // Calls that move HEAD or clear the tree are held while `git status` shows any change.
+    if (verdict && !shared && !isPrivate && !marker && /moves HEAD|removes|throws away|discards/i.test(verdict.was)) {
+      const st = spawnSync('git', ['-C', top, 'status', '--porcelain'], { encoding: 'utf8' });
+      const changes = st.status === 0 ? st.stdout.split('\n').filter(Boolean) : [];
+      if (changes.length) {
+        deny(`UNCOMMITTED WORK IN THIS CHECKOUT (${top}): ${changes.length} changed or new file(s), e.g. ${changes[0].trim()} —\n` +
+          `work this session did not commit, most often the operator's.\n\n  ${verdict.was}\n\nThe form that passes:\n  ${verdict.instead}\n\n` +
+          `If the changes are this session's own: commit them by path first, or repeat with "# MECHANISM-OK: <why>".`, project, cmd);
+      }
+    }
     if (verdict && shared && !marker) {
       deny(`SHARED WORKING COPY (${top}): another claude session works on this machine, and this checkout is not private to\n` +
         `this session (one index, one HEAD for both).\n\n  ${verdict.was}\n\nThe form that passes:\n  ${verdict.instead}\n\n` +

@@ -171,7 +171,11 @@ priority (each: question, options, recommendation if available); (4) "Next steps
 EVERY implementation needs the operator (promotion to the list's own operator marker — origin: operator, or the legacy von: Operator / documented-name form — or an explicit blanket OK).
 THEN append the P0/P1 measures to ${AUFTRAEGE} under the existing proposed-items structure
 as 1-line items, origin "abgeleitet (full-audit ${DATE})" (abgeleitet = derived), with a
-pointer to ${OUT} — implement NOTHING, change no existing entries.
+pointer to ${OUT} — implement NOTHING, change no existing entry's text. A measure an OPEN ([ ])
+entry already carries (the stage scans of this audit file theirs first) gets NO new entry: append
+one line "  seen again ${DATE} (full-audit) -> <pointer>" under that entry and keep its id
+(measured 2026-11-02: the full audit of 2026-10-15 had filed all five of its open entries a
+second time next to the same-day coherence entries). "appended" counts only NEW entries.
 After writing, MEASURE the report: run \`wc -c < ${OUT}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.
 Return via StructuredOutput: files_read (every data file you actually read, from your ls), report_path, report_bytes, mech_count, decision_count, appended.`,
   { label: 'report', phase: 'Report', ...modelFor('report'), schema: {

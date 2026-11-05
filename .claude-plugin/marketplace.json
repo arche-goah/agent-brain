@@ -10,8 +10,8 @@
     {
       "name": "brain-core",
       "source": {
-        "source": "github",
-        "repo": "arche-goah/agent-brain",
+        "source": "url",
+        "url": "https://github.com/arche-goah/agent-brain.git",
         "ref": "v2.0.0"
       },
       "description": "Stable channel of the agent-brain core: the general-purpose skills listed in skills/REGISTRY.md, the caveman output style and the audit workflows. From tag v2.0.4 on the plugin also ships the core's hooks (hooks/hooks.json); they run the helpers of a brain's core/ submodule (ONBOARDING.md, step 3). This pin moves to a tag only after it ran as a beta without regression."
@@ -19,8 +19,8 @@
     {
       "name": "brain-core-next",
       "source": {
-        "source": "github",
-        "repo": "arche-goah/agent-brain",
+        "source": "url",
+        "url": "https://github.com/arche-goah/agent-brain.git",
         "ref": "v2.1.2"
       },
       "description": "Beta channel of the same plugin, pinned at or ahead of brain-core: for a machine that checks a release before it goes stable. Enable this OR brain-core, never both - they ship the same skills and hooks. Which systems a beta was checked on stands in CHANGELOG.md and in the release notes of its tag."

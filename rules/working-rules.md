@@ -72,7 +72,8 @@
     is taken over (state, log lines, export) without deriving a close of one's own — the
     work, not its claims: a state it reports counts once its artifact is read. Paths
     every session writes by construction (memory snapshot, session log, handoff) are
-    committed by the session that closes last, by path, with a note (coherence finding
+    committed by every closing session, by path (operator decision 2026-11-03; "the session
+    that closes last" could not be measured), with a note (coherence finding
     2026-10-19).
 
 13. **Whatever holds the session longer than about half a minute runs detached**
@@ -135,6 +136,9 @@ History: core/docs/rule-history.md, "Session Traceability (3 layers)".
    Entries are `- [ ]` / `- [x]` lines, the file is registered in
    `.claude/rules/ledgers.json` (2026-10-25): the session start lists every open entry with
    the PRs and requests — an unregistered ledger is invisible there (`core/scripts/open-items.py`).
+   Work the operator released in the session carries `released: "<their words>"` on its
+   `exit: ai-does-it` line (2026-11-02); the idle check then holds interactively too
+   (`core/helpers/autonomous-idle-gate.cjs`).
 2. **Every overview above the detail lists is GENERATED, never hand-maintained.**
 3. **`reach: shared`** = exported to the org's shared-memory repo once a second brain
    works the project, one-file-one-fact with the source `id`, deliberately at session
@@ -291,6 +295,13 @@ History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operat
    no live system, no shared carrier) = do it; against a documented operator decision =
    proposal.
 10. **What the operator just criticised is not re-released unseen** (2026-08-19).
+
+**Carriers** (operator decision 2026-11-03, HARD needs a mechanical check): #3
+`core/helpers/autonomous-idle-gate.cjs` (an idle end of an autonomous run needs BLOCKED or POOL
+EMPTY, measured), #7 in its conditional part only — `core/helpers/conditional-order-gate.cjs` (a
+condition word holds the first expensive call). The rest of #7 ("own notes are not orders",
+"settle WHICH machine first") and the other items carry none and rank with the instance's rule
+files (`thinking-protocol.md`, Priority Hierarchy).
 
 History: core/docs/rule-history.md, "Order Fidelity (Auftragstreue) (HARD)".
 

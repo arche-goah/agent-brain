@@ -169,6 +169,13 @@ with tempfile.TemporaryDirectory() as d:
     check(cls("Instance keys end a carrier b") == "PROSE", "an instance key from other_keys ends the carrier block")
     check(cls("Shops for shopping lists") == "OPERATOR-OK", "prose with the operator's quoted ok is an accepted decision")
 
+    # --presence: the same lines asked the weaker question (does an entry NAME a carrier at all) — one entry point
+    # for both strengths (2026-11-02). The entry without any carrier line is named; the strength summary is not printed.
+    pres = subprocess.run([sys.executable, SCRIPT, "--presence", "--repo", d], capture_output=True, text=True, encoding="utf-8", env=ENV)
+    check(pres.returncode == 0 and "lesson-carriers summary:" in pres.stdout and "carrier-audit summary" not in pres.stdout,
+          "--presence runs the presence check (lesson-carriers) through carrier-audit.py")
+    check("Clock times in the operator" in pres.stdout, "--presence names the entry without a carrier line")
+
     g_bad = subprocess.run([sys.executable, SCRIPT, "--repo", d, "--gate", "--since", "2026-10-26"], capture_output=True, text=True, encoding="utf-8", env=ENV)
     check(g_bad.returncode == 1, "--gate exits 1 when a lesson since the date is prose")
     with open(os.path.join(d, "docs", "protocol.md"), "w", encoding="utf-8") as f:

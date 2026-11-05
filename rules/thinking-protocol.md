@@ -7,7 +7,11 @@ plan change (why did the approach fail?) · 3. before reporting done (ALL requir
 · 4. after an error (cause before fix) · 5. after a user correction (is the user right?).
 A remark the operator REPEATS about how an artifact looks or behaves is an unresolved
 misunderstanding (operator decision 2026-10-05): stop, mirror the current function and the
-presumed expectation in one sentence, get the yes, then continue.
+presumed expectation in one sentence, get the yes, then continue. In an autonomous run (no
+question, no blocking turn end — `intelligence.md`, run modes) the same remark is mirrored in
+prose, the artifact is parked (not touched or re-released until the yes), the question goes to
+the instance's question ledger, and the run goes on with other items (operator decision
+2026-11-03).
 **A mishap, a surprise or an operator correction opens the root-cause inquiry by itself**
 (operator order 2026-10-26: "find the cause and fix it generically at the root … always, up to
 a core PR when needed — that is the standing order"): the cause is measured and named in the
@@ -94,8 +98,10 @@ A HARD marker in an instance file (feedback rules, memory) does not lift that ru
 HARD rule: the rank is the operator's explicit word, then core HARD, then the instance's rule
 files, then the rest (operator decision 2026-10-15); HARD itself is reserved for a gate or
 safety rule WITH a mechanical check, never a weight word.
-1. Explicit user instructions · 2. **HARD core rules** (order fidelity, mechanism
-discipline, one system — `working-rules.md`; evidence chain — above) · 3.
+1. Explicit user instructions · 2. **HARD core rules that name their carrier** (mechanism
+discipline, one system, order fidelity #3 and the conditional part of #7 — `working-rules.md`; evidence chain, the
+items naming a carrier — above); a HARD item whose section names no carrier for it ranks with
+item 3 (operator decision 2026-11-03) · 3.
 `.claude/rules/feedback.md` · 4. project conventions · 5. best practices · 6. the AI's own
 knowledge. ⚠ A tiebreak ONLY for harmonizable cases; a non-harmonizable contradiction goes
 to the operator (rule-conflict step 3).

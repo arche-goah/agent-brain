@@ -23,9 +23,12 @@ Call it with `args:{date:"<YYYY-MM-DD>", scratch:"<session scratchpad>/memory-dr
 the analysis agents write their findings into that folder and the report agent reads them
 from there, so no findings travel inside a prompt ("only the producer writes",
 `rules/intelligence.md`).
-Fixes (steps 3-7 below) run ONLY after operator OK, or when the operator explicitly
-triggers "aufraeumen" (clean up) / "dream" — and even then: never edit the snapshot
-directly, changes go via auto-memory + memory-sync export.
+Fixes (steps 3-7 below) follow order fidelity #9 (`rules/working-rules.md`, "an ordered audit
+orders its clear fixes"): memory-dream starts only on the operator's word, so every run is
+ordered. Clear and safe fixes (reversible, no live system, no shared carrier — a duplicate
+merged, a stale path corrected, an index line compressed) are done and reported; structural
+or uncertain ones, and anything against a documented operator decision, are proposed. In
+both cases: never edit the snapshot directly, changes go via auto-memory + memory-sync export.
 
 ## When to use
 On the operator's word ("aufraeumen", "dream", "memory cleanup"). The states below are
@@ -68,10 +71,10 @@ If files contradict each other:
 3. Keep accurate version, update or remove the other
 ⚠ **Limit (coherence-scan principle, 2026-08-01):** Applies only to FACT
 contradictions (IPs, paths, statuses). If RULES contradict each other (type:feedback,
-HARD rules): the memory pass does not pick a winner — it reports the pair. Which rule
-wins follows the rule-conflict protocol (`rules/thinking-protocol.md`): a clear
-recommendation inside the instance's own rules is applied in the session afterwards,
-everything else goes to the operator.
+HARD rules): the memory pass does not pick a winner by recency — it follows the
+rule-conflict protocol (`rules/thinking-protocol.md`, step 3 and its boundary): inside the
+instance's OWN rules with a clear recommendation, apply it, mark the old place superseded and
+report; an uncertain case or another party's rule goes to the operator.
 
 ### Step 5: Update Stale Info
 - Convert relative dates to absolute dates
@@ -120,6 +123,9 @@ Check CLAUDE.md:
   2026-10-28 against the same rule: a deep check runs on a reason, never on a calendar.
 - **Before a repeat run:** `core/rules/intelligence.md` → "Repeat Runs"
   (repeat runs: read the artifacts of the last run → 14-day freshness → only then start).
-- **Fixes NEVER run automatically** — even on a casual "aufraeumen", first show the
-  report, then wait for operator OK (order fidelity; rule contradictions are in any
-  case operator-only, see step 4).
+- **Fixes follow the order, never a state:** nothing is fixed without the operator's word
+  that started the run; once it runs, its clear and safe fixes are done and reported, the
+  rest is proposed (order fidelity #9, see the top of this skill). Rule contradictions
+  follow step 4. Until 2026-11-02 this line said "fixes NEVER run automatically … rule
+  contradictions are in any case operator-only, see step 4" — against #9 and against step 4
+  itself (coherence scan of the macOS instance, 2026-11-02).

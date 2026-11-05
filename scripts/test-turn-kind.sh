@@ -56,6 +56,12 @@ TWO=$'<pasted_content id="a1f0">\nplan one, then sell\n</pasted_content id="a1f0
 [ "$(words $'<pasted_content id="a1f0">\nwait for the CI\n</pasted_content id="ffff">')" = '<pasted_content id="a1f0"> wait for the CI </pasted_content id="ffff">' ] && ok "a closer with another id closes nothing (text kept)" || bad "mismatched ids stripped"
 [ "$(words 'push it, then merge')" = "push it, then merge" ] && ok "a prompt without a pasted block is unchanged" || bad "plain prompt changed"
 [ "$(node -e 'const {operatorWords}=require(process.argv[1]);process.stdout.write(JSON.stringify([operatorWords(null),operatorWords(undefined)]))' "$(native "$D/turn-kind.cjs")")" = '["",""]' ] && ok "no text gives no words" || bad "null/undefined not handled"
+# A hook refusal copied into the prompt without a paste wrapper (measured 2026-11-02: its "only then
+# ask" held two pushes as the operator's condition). The paragraph goes; the words below it stay.
+HK=$'Error: PreToolUse:AskUserQuestion hook error: QUESTION-GATE: the mode question is asked together with 3 others. Ask the decisions first, and only then ask the mode question ALONE.\n\nwhy does this gate fire in interactive mode?'
+[ "$(words "$HK")" = "why does this gate fire in interactive mode?" ] && ok "a pasted hook refusal is not the operator's words, the question below stays" || bad "hook paste: '$(words "$HK")'"
+[ -z "$(words $'Stop hook feedback:\nSTOP-CHECKS (1)\n- then do X')" ] && ok "a pasted Stop hook feedback alone leaves no words" || bad "stop feedback paste kept"
+[ "$(words 'the hook error said then wait')" = "the hook error said then wait" ] && ok "negative control: words that only mention a hook error stay" || bad "mention stripped"
 [ "$(probe "$P1")" = false ] && ok "a paste-only record is still a prompt (it opens a turn)" || bad "paste-only record read as notification"
 
 # Another agent's message (subagent hand-back, peer session): origin.kind "peer"; the operator's words: "human".
@@ -97,5 +103,19 @@ res() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool
 [ "$(qa "[$BASH,$(res b1 false)]")" = 00 ] && ok "another tool's answer-like result is no boundary" || bad "answer-like tool output taken as an answer"
 [ "$(qa "[$ASK,$(res q1 true)]")" = 00 ] && ok "a refused question is no boundary" || bad "refused question taken as an answer"
 [ "$(qa "[$(res q1 false)]")" = 0 ] && ok "a result without its question in the pass is no boundary" || bad "orphan result taken as an answer"
+
+# --- operatorPrompt(): one reader for both forms of a typed prompt (2026-11-03) ------------------------
+op() { node -e '
+const { operatorPrompt } = require(process.argv[1]);
+console.log(JSON.parse(process.argv[2]).map((r) => { const t = operatorPrompt(r); return t === null ? "-" : t; }).join("|"));' "$D/turn-kind.cjs" "$1"; }
+QH='{"type":"attachment","attachment":{"type":"queued_command","prompt":"typed","origin":{"kind":"human"}}}'
+QP='{"type":"attachment","attachment":{"type":"queued_command","prompt":"peer","origin":{"kind":"peer"}}}'
+UR='{"type":"user","message":{"role":"user","content":"said"}}'
+UB='{"type":"user","message":{"role":"user","content":[{"type":"text","text":"block"}]}}'
+TR='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"out"}]}}'
+ME='{"type":"user","isMeta":true,"message":{"role":"user","content":"meta"}}'
+BL='{"type":"api-request-blob","message":{"role":"user","content":"blob"}}'
+[ "$(op "[$QH,$UR,$UB]")" = "typed|said|block" ] && ok "typed, said and text-block prompts are the operator's" || bad "operatorPrompt missed a form: $(op "[$QH,$UR,$UB]")"
+[ "$(op "[$QP,$TR,$ME,$BL]")" = "-|-|-|-" ] && ok "peer queue, tool result, meta and blob are no prompt" || bad "operatorPrompt took a non-prompt: $(op "[$QP,$TR,$ME,$BL]")"
 
 [ "$fail" = 0 ] && echo "turn-kind: all cases pass" || { echo "turn-kind: FAILURES"; exit 1; }

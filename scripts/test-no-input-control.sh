@@ -18,7 +18,8 @@ js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 # brace-expanded into two words (bash), which split the call.
 wr() { node -e 'process.stdout.write(JSON.stringify({file_path: process.argv[1], content: process.argv[2]}))' "$1" "$2"; }
 call() { # $1 tool name, $2 tool_input JSON, [$3 project dir]
-  printf '{"tool_name":"%s","tool_input":%s,"cwd":"%s"}' "$1" "$2" "$(native "${3:-$T}")" \
+  # JSON built by node from argv (escaping; a printf-built input broke on a double quote, 2026-11-02)
+  node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:JSON.parse(a[2]),cwd:a[3]}))' "$1" "$2" "$(native "${3:-$T}")" \
     | CLAUDE_PROJECT_DIR="$(native "${3:-$T}")" node "$G" 2>&1
 }
 expect() { # $1 label, $2 deny|allow, $3 output
@@ -32,6 +33,7 @@ expect() { # $1 label, $2 deny|allow, $3 output
 
 # --- the six cases of the alpha measurement (2026-10-26), both directions
 expect "computer-use tool" deny "$(call "mcp__computer-use__left_click" '{"coordinate":[1,2]}')"
+expect "computer-use tool, a double quote in the project path (escaping)" deny "$(call "mcp__computer-use__left_click" '{"coordinate":[1,2]}' "$T/q\"x")"
 SE="$(w 'System ' 'Events')"; KS="$(w 'key' 'stroke')"
 expect "command that sends keys" deny "$(call Bash "{\"command\":$(js "osascript -e 'tell application \"$SE\" to $KS \"a\"'")}")"
 expect "file content with an input library" deny "$(call Write "$(wr "$(native "$T/x.py")" "import $(w py auto gui)")")"
@@ -48,6 +50,27 @@ expect "a batch file the command runs uses the NirSoft tool" deny "$(call Bash "
 expect "a call that switches the focused window" deny "$(call PowerShell "{\"command\":$(js "[W]::$(w SetForeground Window)(\$h)")}")"
 expect "a NirSoft call in a command" deny "$(call Bash "{\"command\":$(js "$(w nir cmd) setcursor 10 10")}")"
 expect "a hotkey script run directly" deny "$(call Bash "{\"command\":$(js "start C:/x/clicker$(w .a hk)")}")"
+# --- documentation names the API, it calls nothing (operator 2026-11-02: check only what can run)
+SK="$(w Send Keys)"
+expect "a skill doc line naming the input API" allow "$(call Write "$(wr /x/skills/a/SKILL.md "the primitive uses Win32 Send Input / $SK")")"
+expect "the same text into a script file" deny "$(call Write "$(wr /x/a.ps1 "[W]::$(w SetForeground Window)(\$h); $SK")")"
+expect "the same text in a command (running stays checked)" deny "$(call Bash "{\"command\":$(js "echo x | $(w nir cmd) sendkeypress enter")}")"
+# --- the two-step path (a collaborator's Windows check on #302): code written into a doc file, then run
+printf 'import %s\n' "$(w py auto gui)" > "$T/notes.txt"
+expect "an interpreter runs a doc file holding input code" deny "$(call Bash "{\"command\":$(js "python3 $(native "$T/notes.txt")")}")"
+expect "an eval of a doc file holding input code" deny "$(call PowerShell "{\"command\":$(js "iex (Get-Content $(native "$T/notes.txt") -Raw)")}")"
+expect "reading a doc file is no run (control)" allow "$(call Bash "{\"command\":$(js "cat $(native "$T/notes.txt")")}")"
+N="$(native "$T/notes.txt")"
+expect "a path before python.exe runs a doc file" deny "$(call PowerShell "{\"command\":$(js "C:/Python312/python.exe $N")}")"
+expect "a backslash path before python.exe runs a doc file" deny "$(call PowerShell "{\"command\":$(js "C:\\Python312\\python.exe $N")}")"
+expect "pythonw runs a doc file" deny "$(call PowerShell "{\"command\":$(js "pythonw $N")}")"
+expect "py -3 runs a doc file" deny "$(call PowerShell "{\"command\":$(js "py -3 $N")}")"
+P3="python""3"  # test data, never run; split so the bare-interpreter lint does not read it as a call
+expect "a doc file piped into python3 - runs" deny "$(call Bash "{\"command\":$(js "cat $N | $P3 -")}")"
+expect "cmd /c python runs a doc file" deny "$(call PowerShell "{\"command\":$(js "cmd /c python $N")}")"
+expect "the call operator & python runs a doc file" deny "$(call PowerShell "{\"command\":$(js "& python $N")}")"
+expect "Get-Content piped into Invoke-Expression runs a doc file" deny "$(call PowerShell "{\"command\":$(js "Get-Content $N -Raw | Invoke-Expression")}")"
+expect "grep of a doc file is no run (control)" allow "$(call Bash "{\"command\":$(js "grep import $N")}")"
 printf '@echo off\necho build done\n' > "$T/drive2.bat"
 expect "a batch file without input calls" allow "$(call Bash "{\"command\":$(js "cmd /c $(native "$T/drive2.bat")")}")"
 

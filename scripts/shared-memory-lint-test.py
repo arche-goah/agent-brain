@@ -570,6 +570,26 @@ def main() -> int:
         res = handover("## 2026-10-18 · lee-win — AN sam-mac: question\nShould I wait on your human's word?\n")
         ok("54 NEGATIVE: the other direction is not judged") if not res else bad(f"54 wrong direction: {res}")
 
+        # 54a-54d. 9b: a request to one machine names more than its OS and carries evidence (operator 2026-11-03).
+        def one_machine(reason: str, evidence: str, date: str = "2026-11-04") -> list:
+            stem = "request-one-box-check-2026-11-04"
+            extra = f"  one-machine: {reason}\n" + (f"  one-machine-evidence: {evidence}\n" if evidence else "")
+            text = fm(stem, date=date, von="sam-mac", audience="lee-win").replace("---\n\n", extra + "---\n\n", 1)
+            (repo / "ops" / f"{stem}.md").write_text(text, encoding="utf-8")
+            res = [i for i in sml.lint(repo, bl)["findings"]["audience"] if "one-machine" in i["issue"]
+                   or "one machine without evidence" in i["issue"]]
+            (repo / "ops" / f"{stem}.md").unlink()
+            return res
+
+        res = one_machine("the Windows instance is the machine that does it", "https://example.org/x")
+        ok("54a an OS-only one-machine reason is named") if len(res) == 1 else bad(f"54a hollow reason: {res}")
+        res = one_machine("the USB device sits at this box", "")
+        ok("54b a request to one machine without evidence is named") if len(res) == 1 else bad(f"54b no evidence: {res}")
+        res = one_machine("the USB device sits at this box", "devices/usb-box.md:3")
+        ok("54c NEGATIVE: reason plus evidence is silent") if not res else bad(f"54c false positive: {res}")
+        res = one_machine("the Windows instance is the machine that does it", "", date="2026-11-03")
+        ok("54d NEGATIVE: entries before the cut-off are not re-judged") if not res else bad(f"54d old entry: {res}")
+
         # 55-62. RELATIONS (check 11, written request state). A relation value names a file stem
         #     or a LOG id; from STATE_SINCE on a request to a party is a file, not a bare heading.
         repo = build(tmp / "relations")

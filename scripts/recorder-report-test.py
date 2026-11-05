@@ -54,8 +54,24 @@ with tempfile.TemporaryDirectory() as td:
     (st / "calm-gate.jsonl").write_text(jl([
         {"at": "2026-09-01T10:00:00Z", "session": "a", "would_block": True},
         {"at": "2026-10-21T10:00:00Z", "session": "a", "would_block": False}]), encoding="utf-8")
-    (st / "own-log.1.jsonl").write_text(jl([{"ts": "2026-10-19T10:00:00Z"}]), encoding="utf-8")
-    (st / "own-log.jsonl").write_text(jl([{"ts": "2026-10-22T10:00:00Z"}]), encoding="utf-8")
+    (st / "own-log.1.jsonl").write_text(jl([{"ts": "2026-10-19T10:00:00Z", "would_block": False}]), encoding="utf-8")
+    (st / "own-log.jsonl").write_text(jl([{"ts": "2026-10-22T10:00:00Z", "would_block": False}]), encoding="utf-8")
+    # 2026-11-02 (promise shape): the gate's own log AND the dispatcher's marker log both exist; the blocks
+    # stand only in the marker log — read both, never one instead of the other.
+    (st / "own-gate.jsonl").write_text(jl([{"at": "2026-10-22T11:00:00Z", "session": "c", "would_block": True}]),
+                                       encoding="utf-8")
+    # 2026-11-02 (time-gate shape): entries without a would_block field — no countable zero.
+    (root / ".claude/rules/stop-checks.json").write_text(json.dumps({"checks": json.loads(
+        (root / ".claude/rules/stop-checks.json").read_text(encoding="utf-8"))["checks"] + [
+        {"label": "NOFIELD", "marker": "NOFIELD-GATE", "cmd": "core/helpers/nofield.cjs", "mode": "record"},
+        {"label": "PURELOG", "marker": "PURELOG", "cmd": "core/helpers/purelog.cjs", "mode": "record",
+         "counts_blocks": False}]}),
+        encoding="utf-8")
+    (st / "nofield-gate.jsonl").write_text(jl([{"at": "2026-10-22T10:00:00Z", "session": "a", "anchored": False}]),
+                                           encoding="utf-8")
+    # a pure log (mode-log shape) declares counts_blocks:false — a plain line, no decision due
+    (st / "purelog.jsonl").write_text(jl([{"at": "2026-10-22T10:00:00Z", "session": "a", "mode": "interactive"}]),
+                                      encoding="utf-8")
     res = subprocess.run([sys.executable, str(REPORT), "--root", str(root), "--days", "14",
                           "--today", "2026-10-23"], capture_output=True, text=True, encoding="utf-8")
     out = res.stdout
@@ -67,14 +83,20 @@ with tempfile.TemporaryDirectory() as td:
     ok("an entry outside the window is not counted, nothing due",
        not line("CALM:").startswith("!!") and "1 entry" in line("CALM:") and "0 would have blocked" in line("CALM:"),
        line("CALM:"))
-    ok("a gate's own log is read, rotated half included",
-       "own log own-log.jsonl" in line("OWN") and "2 entries" in line("OWN"), line("OWN"))
+    ok("a gate's own log AND the marker log are read, rotated half included",
+       "own-log.jsonl" in line("OWN") and "own-gate.jsonl" in line("OWN") and "3 entries" in line("OWN")
+       and "1 would have blocked" in line("OWN") and line("OWN").startswith("!! "), line("OWN"))
+    ok("a log without a would_block field is not a zero",
+       line("NOFIELD").startswith("!! ") and "NOT countable" in line("NOFIELD")
+       and "would have blocked" not in line("NOFIELD"), line("NOFIELD"))
+    ok("a pure log with counts_blocks:false is no decision",
+       not line("PURELOG").startswith("!!") and "blocks nothing by design" in line("PURELOG"), line("PURELOG"))
     ok("a log that never came into being says so", "no log yet" in line("NEVER:"), line("NEVER:"))
     ok("a blocking check is no recorder", "BLOCKER" not in out, out)
     ok("summary counts recorders and due ones",
-       "recorder report summary: 4 recorder(s), 1 with a decision due" in out, out.splitlines()[-1:])
+       "recorder report summary: 6 recorder(s), 3 with a decision due" in out, str(out.splitlines()[-1:]))
 
 if fails:
     print(f"recorder-report-test: {len(fails)} FAILURE(S)")
     sys.exit(1)
-print("recorder-report-test: all 7 fixtures passed")
+print("recorder-report-test: all 9 fixtures passed")

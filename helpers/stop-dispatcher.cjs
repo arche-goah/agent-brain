@@ -91,7 +91,7 @@ const DEFAULT_HEADER = 'STOP-CHECKS ({n})';
 const TAIL_BYTES = 4 * 1024 * 1024;
 const HOOK_ECHO = /^\s*Stop hook feedback/;
 // One definition of "notification record", shared with every gate's cooldown count.
-const { isNotification } = require('./turn-kind.cjs');
+const { isNotification, queuedHumanPrompt, isTranscriptRecord } = require('./turn-kind.cjs');
 
 function recordText(msg) {
   if (typeof msg.content === 'string') return msg.content;
@@ -113,6 +113,12 @@ function turnKind(transcriptPath) {
       if (!line.trim()) continue;
       let d;
       try { d = JSON.parse(line); } catch (e) { continue; }
+      // A prompt the operator typed while the agent worked is a queued command, never a user record
+      // (turn-kind.cjs operatorPrompt; read from the code 2026-11-03: a turn opened by a notification
+      // in which the operator then typed a prompt still read as 'notification'; fixture case added).
+      if (queuedHumanPrompt(d)) { kind = 'operator'; continue; }
+      // An `api-request-blob` carries the instruction dump as a user message - no turn opener.
+      if (!isTranscriptRecord(d)) continue;
       if (!d.message || d.message.role !== 'user') continue;
       const t = recordText(d.message);
       if (t === null || HOOK_ECHO.test(t)) continue;
@@ -184,7 +190,8 @@ function requiredFromTemplate(instanceChecks, disabled) {
   const have = new Set(instanceChecks.map((c) => c.marker));
   return (Array.isArray(tpl.checks) ? tpl.checks : [])
     .filter((c) => c.required === true && c.marker && !have.has(c.marker)
-      && !(disabled && typeof disabled[c.marker] === 'string' && disabled[c.marker].trim()));
+      && !(disabled && typeof disabled[c.marker] === 'string' && disabled[c.marker].trim()))
+    .map((c) => ({ ...c, fromTemplate: true }));
 }
 
 function loadConfig() {
@@ -264,7 +271,16 @@ function run(check, base) {
   const payload = JSON.stringify({ ...base, stop_check: { label: check.label, marker: check.marker } });
   return new Promise((resolve) => {
     const cmd = path.isAbsolute(check.cmd) ? check.cmd : path.join(ROOT, check.cmd);
-    if (!fs.existsSync(cmd)) return resolve(null);
+    // A wired check whose file is gone is a silent hole, not "nothing to say" (audit-audit 2026-11-02,
+    // macOS instance: five places checked hook targets and none saw a stop-check row whose script was
+    // missing — the dispatcher skipped it without a word). Say it, every turn, until the row is fixed.
+    if (!fs.existsSync(cmd)) {
+      // A required core row names `core/helpers/...`; outside a brain (the core repo itself, a fixture's
+      // project root) there is no core/ folder and nothing is missing.
+      if (check.fromTemplate && !fs.existsSync(path.join(ROOT, 'core'))) return resolve(null);
+      return resolve({ check, message: `STOP-CHECK ${check.label || check.marker}: wired in stop-checks.json, `
+        + `but its file is missing (${check.cmd}) — this check does not run. Fix the row or restore the file.` });
+    }
     const child = execFile('node', [cmd, ...(check.args || [])], { timeout: 10000 },
       (err, stdout) => {
         let parsed = {};

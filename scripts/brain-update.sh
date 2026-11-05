@@ -227,7 +227,7 @@ done
 norm_url() { printf '%s' "$1" | sed -e 's#^git@github\.com:#https://github.com/#' -e 's#\.git$##'; }
 marketplace_pin() { # $1 = marketplace name, $2 = plugin name -> "repo ref" or ""
   "$PY" -c '
-import json, os, sys
+import json, os, re, sys
 p = os.path.join(sys.argv[1], "plugins", "marketplaces", sys.argv[2],
                  ".claude-plugin", "marketplace.json")
 try:
@@ -236,8 +236,12 @@ try:
     for e in d.get("plugins") or []:
         if e.get("name") == sys.argv[3]:
             s = e.get("source") or {}
-            if s.get("source") == "github" and s.get("repo"):
-                print(s.get("repo") + " " + s.get("ref", ""))
+            repo = s.get("repo") if s.get("source") == "github" else ""
+            if s.get("source") == "url":  # HTTPS clone URL form (2026-11-02)
+                m = re.search(r"github\.com[:/]+(.+?)(?:\.git)?/?$", s.get("url") or "")
+                repo = m.group(1) if m else ""
+            if repo:
+                print(repo + " " + s.get("ref", ""))
             break
 except Exception:
     pass
@@ -313,11 +317,32 @@ for p in $(enabled_plugins); do
         echo "     cached plugin.json says $have_ver = $pin_ref; recorded commit ${have_sha:0:12} is older"
         echo "     harmless — the record is refreshed by a reinstall, not by an update"
       else
-        echo "FAIL plugin $p ($scope) cache provenance mismatch — content is NOT the pinned release:"
-        echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
-        echo "     cached version '${have_ver:-unreadable}' vs pinned '$want_ver'"
-        echo "     fix: claude plugin uninstall $p --scope $scope  &&  claude plugin install $p  — then restart Claude Code"
-        failed=1
+        # provenance auto-heal (decided by the macOS and the Windows instance 2026-08-20, built 2026-11-02): the
+        # hand fix was the same every time (uninstall + install, nine times on two machines in one day), so the
+        # run takes it itself — and checks the provenance AGAIN afterwards. Only a mismatch that survives the
+        # reinstall stays FAIL: real foreign content must never be overwritten silently, the re-check is the line
+        # between healing and covering up.
+        healed=0
+        if command -v claude >/dev/null 2>&1 \
+           && claude plugin uninstall "$p" --scope "$scope" >/dev/null 2>&1 \
+           && claude plugin install "$p" --scope "$scope" >/dev/null 2>&1; then
+          re_sha=$(recorded_sha "$p" | awk -v s="$scope" '$1 == s { print $2 }')
+          re_ver=$(cached_version "$p" | awk -v s="$scope" '$1 == s { print $2 }')
+          if [ "$re_sha" = "$want_sha" ] || { [ -n "$re_ver" ] && [ "$re_ver" = "$want_ver" ]; }; then
+            healed=1
+            plugin_moved=1; changed=1
+            echo "OK   plugin $p ($scope) provenance auto-heal: was ${have_ver:-unreadable} at ${have_sha:0:12},"
+            echo "     reinstalled and re-checked — now the pinned release $pin_ref ($pin_repo)"
+          fi
+        fi
+        if [ "$healed" -eq 0 ]; then
+          echo "FAIL plugin $p ($scope) cache provenance mismatch — content is NOT the pinned release:"
+          echo "     installed commit ${have_sha:0:12} != pinned ${want_sha:0:12} ($pin_repo@$pin_ref)"
+          echo "     cached version '${have_ver:-unreadable}' vs pinned '$want_ver'"
+          echo "     provenance auto-heal tried a reinstall and the mismatch stayed (or the reinstall failed) —"
+          echo "     check the cache by hand: claude plugin uninstall $p --scope $scope  &&  claude plugin install $p --scope $scope"
+          failed=1
+        fi
       fi
     fi
   done <<< "$recs"
@@ -487,6 +512,25 @@ if [ -f core/scripts/pending-clauses.py ]; then
   if [ -n "$pc" ]; then
     echo "NOTE rule text still waits for a core state — check it against the new pin:"
     printf '%s\n' "$pc" | sed 's/^/     /'
+  fi
+fi
+
+# 4e) ledger reconcile after the pin move — work that shipped in the new pin turns ledger checks green, and the
+# session start shows only the PREVIOUS background result (measured, audit-audit 2026-11-02 package D: entries stayed
+# listed as open own work for up to 17 sessions). A fresh registered run writes .claude-state/ledger-reconcile.json,
+# which open-items.py reads as "check green - tick it". Bounded by the brain's own budget_s (ledgers.json).
+if [ "$changed" -eq 1 ] && [ -f core/scripts/ledger-reconcile.py ] && [ -f .claude/rules/ledgers.json ]; then
+  mkdir -p .claude-state
+  if "$PY" core/scripts/ledger-reconcile.py --root . --brief --out .claude-state/ledger-reconcile.brief >/dev/null 2>&1; then
+    n=$("$PY" -c 'import json,sys; print(len(json.load(open(sys.argv[1], encoding="utf-8")).get("done_open", [])))' \
+      .claude-state/ledger-reconcile.json 2>/dev/null)
+    case "$n" in
+      ''|*[!0-9]*) echo "WARN ledger reconcile ran, but its result file is unreadable" ;;
+      0) echo "OK   ledger reconcile after the pin move: no open entry whose check passes" ;;
+      *) echo "NOTE ledger reconcile after the pin move: $n open entr(y/ies) whose check passes — tick them (core/scripts/open-items.py lists them)" ;;
+    esac
+  else
+    echo "WARN ledger reconcile after the pin move did not run (core/scripts/ledger-reconcile.py)"
   fi
 fi
 

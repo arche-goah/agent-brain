@@ -60,7 +60,8 @@ printf '%s\n' "${CFG//MEMO/$NT/memo.md}" > "$T/.claude/rules/live-read.json"
 line() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"%s","input":%s}]}}\n' "$1" "$2"; }
 res()  { printf '{"message":{"role":"user","content":[{"type":"tool_result","content":"x"}]},"toolUseResult":{"type":"text","file":{"filePath":"%s","startLine":%s,"numLines":%s,"totalLines":%s}}}\n' "$NT/$1" "$2" "$3" "$4"; }
 raw() { # $1 engine, $2 transcript, $3 tool name, $4 tool_input json → the hook's stdout
-  printf '{"tool_name":"%s","tool_input":%s,"transcript_path":"%s","cwd":"%s"}' "$3" "$4" "$(native "$2")" "$NT" \
+  # JSON built by node from argv (escaping; a printf-built input broke on a double quote, 2026-11-02)
+  node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:JSON.parse(a[2]),transcript_path:a[3],cwd:a[4]}))' "$3" "$4" "$(native "$2")" "$NT" \
     | CLAUDE_PROJECT_DIR="$NT" node "$1"
 }
 verdict() { if printf '%s' "$(raw "$@")" | grep -q '"permissionDecision":"deny"'; then echo deny; else echo allow; fi; }
@@ -79,6 +80,12 @@ echo "live-read-gate:"
 # 1. nothing read → MCP live tool denied
 : > "$T/t1.jsonl"
 check "1 MCP live tool, nothing read" deny "$T/t1.jsonl" mcp__nettool__health '{}'
+# a double quote in the transcript path (escaping of the hook input); Windows refuses " in a file name
+if cp "$T/t1.jsonl" "$T/q\"x.jsonl" 2>/dev/null; then
+  check "1q a double quote in the transcript path (escaping)" deny "$T/q\"x.jsonl" mcp__nettool__health '{}'
+else
+  echo "  SKIP a double quote in the transcript path: this file system refuses the name"
+fi
 
 # 2. both required read completely (delivered Read + cat of a small file) → allowed
 { line Read "{\"file_path\":\"$NT/docs/net/ledger.md\"}"; res docs/net/ledger.md 1 1 1; line Bash "{\"command\":\"cat $NT/memo.md\"}"; } > "$T/t2.jsonl"
