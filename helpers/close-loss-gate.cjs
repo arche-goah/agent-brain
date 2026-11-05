@@ -23,6 +23,11 @@
  * Instance data: .claude/rules/close-loss.json {"release_patterns", "hand_patterns"} - regexes;
  * "repos" - more repo paths to measure (a leading ~ is the home directory).
  * Output: {"decision":"block","reason":"CLOSE-LOSS: ... Open: <items>"}. Fails open on unreadable input.
+ *
+ * Frequency design: no cooldown on purpose. The trigger is a release phrase, which a session says once,
+ * at its close - not a pattern of ordinary turns - and every block names a loss that is measured, not
+ * guessed (an unpushed commit, a hand step, a scratchpad path). Clearing the item or holding the release
+ * back ends it; a quiet period would let exactly the fatal case (release with a loss open) through.
  */
 'use strict';
 const fs = require('fs');
