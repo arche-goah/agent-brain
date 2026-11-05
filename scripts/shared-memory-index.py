@@ -147,16 +147,29 @@ def blobs_at(repo: Path, ref: str) -> dict[str, str]:
     return out
 
 
+# A settled message moved out of the way (shared-memory-archive.py, agreed 2026-11-04): it keeps its
+# stem, so every `answers:`/`related` that names it still resolves, and the index lists its month
+# as one line. LOG archives (`<area>/archive/LOG-<month>.md`) are no entries and stay out.
+ARCHIVED = re.compile(r"^\d{4}-\d{2}$")
+
+
+def archived_month(rel: Path) -> str:
+    """`yyyy-mm` for `<area>/archive/<yyyy-mm>/<slug>.md`, "" for every other path."""
+    return rel.parts[2] if len(rel.parts) == 4 and rel.parts[1] == "archive" and ARCHIVED.match(rel.parts[2]) else ""
+
+
 def fact_files(repo: Path, rels: list[str] | None = None) -> list[Path]:
     out = []
     for p in sorted(repo / r for r in rels) if rels is not None else sorted(repo.rglob("*.md")):
         rel = p.relative_to(repo)
-        if ".git" in rel.parts or "archive" in rel.parts:
+        if ".git" in rel.parts:
+            continue
+        if "archive" in rel.parts and not archived_month(rel):
             continue
         # A per-topic INDEX.md is an index, not an entry — the lint already knows that,
         # the generator did not: it listed its own output as a dated fact ("INDEX —
         # ~2026-09-13") the first time dates made the line visible.
-        if len(rel.parts) != 2 or rel.name in (LOG_NAME, INDEX_NAME, OPEN_NAME):
+        if (len(rel.parts) != 2 and not archived_month(rel)) or rel.name in (LOG_NAME, INDEX_NAME, OPEN_NAME):
             continue
         out.append(p)
     return out
@@ -218,6 +231,8 @@ def read_entry(p: Path, repo: Path, gitdates: dict[str, str] | None = None,
         "settles": _lint.listify(fields.get("answers")) + _lint.listify(fields.get("closes")),
         "answers": _lint.listify(fields.get("answers")),
         "closes": _lint.listify(fields.get("closes")),
+        # `yyyy-mm` when the file sits in `<area>/archive/<yyyy-mm>/` (a settled message moved aside)
+        "archived": archived_month(p.relative_to(repo)),
     }
 
 
@@ -387,7 +402,7 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
         es = by_topic.get(topic, [])
         more = filed.get(topic, [])
         opens = sorted((x for x in es + more if x["status"] == OPEN_STATUS
-                        and Path(x["path"]).stem not in settled),
+                        and Path(x["path"]).stem not in settled and not x["archived"]),
                        key=lambda x: (x["date"] or "9999", x["name"]))
         open_count[topic] = len(opens)
         open_entries[topic] = opens
@@ -396,11 +411,18 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
         # lasts (decisions, references, conventions - everything that is not a request, reply,
         # note or claim), and the settled messages by month, newest month first.
         home_open = [e for e in opens if e["topic"] == topic]
-        durable = [e for e in es if e not in home_open and not is_message(e)]
-        settled_msgs = [e for e in es if e not in home_open and is_message(e)]
+        durable = [e for e in es if e not in home_open and not is_message(e) and not e["archived"]]
+        settled_msgs = [e for e in es if e not in home_open and is_message(e) and not e["archived"]]
+        # moved messages: counted in their month, one line per month instead of one per entry
+        archived_by_month: dict[str, int] = {}
+        for e in es:
+            if e["archived"]:
+                archived_by_month[e["archived"]] = archived_by_month.get(e["archived"], 0) + 1
         by_month: dict[str, list[dict]] = {}
         for e in settled_msgs:
             by_month.setdefault((e["date"] or "undated")[:7], []).append(e)
+        for month in archived_by_month:
+            by_month.setdefault(month, [])
         open_link = (f"[{len(opens)} open]({OPEN_NAME})" if opens else "nothing open")
         lines = [f"# {topic} — index", "",
                  f"{len(es)} entries · {open_link}. Routing only: title, path, and enough of the entry's "
@@ -412,11 +434,16 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
             lines.append("")
         lines += [f"## Durable ({len(durable)})", ""]
         lines += [row(e) for e in sorted(durable, key=lambda x: x["name"])]
-        if settled_msgs:
-            lines += ["", f"## Settled messages ({len(settled_msgs)})", ""]
+        if settled_msgs or archived_by_month:
+            total = len(settled_msgs) + sum(archived_by_month.values())
+            lines += ["", f"## Settled messages ({total})", ""]
             for month in sorted(by_month, reverse=True):
-                lines += [f"### {month} ({len(by_month[month])})", ""]
+                moved = archived_by_month.get(month, 0)
+                lines += [f"### {month} ({len(by_month[month]) + moved})", ""]
                 lines += [row(e) for e in sorted(by_month[month], key=lambda x: x["name"])]
+                if moved:
+                    lines.append(f"- {moved} archived in [archive/{month}/](archive/{month}/) — moved aside as settled, "
+                                 f"same file names, every `answers:`/`related` still resolves")
                 lines.append("")
             lines.pop()
         if more:

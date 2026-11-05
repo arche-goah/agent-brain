@@ -38,7 +38,7 @@ def own_shared_shas(repo=None):
     von = re.compile(r"^\s*von:\s*" + re.escape(me) + r"\s*$", re.M)
     head = re.compile(r"^## \S+ · " + re.escape(me) + r"\b")
     found = set()
-    for f in root.glob("*/*.md"):
+    for f in list(root.glob("*/*.md")) + list(root.glob("*/archive/*/*.md")):  # moved messages included
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -84,7 +84,7 @@ def own_open_requests(repo=None):
     if not me or not (root / ".git").is_dir():
         return {}
     texts = {}
-    for f in root.glob("*/*.md"):
+    for f in list(root.glob("*/*.md")) + list(root.glob("*/archive/*/*.md")):  # moved messages included
         try:
             texts[f] = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
