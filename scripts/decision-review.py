@@ -321,8 +321,35 @@ def register_for(root):
     return by
 
 
+def headers_of(path):
+    """Questions put through the question tool in one transcript, counted by their `header` (the tool's own
+    category chip). Operator decision 2026-11-05 (question tool, translated: "yes, a small core PR"): the header is
+    the category the AI already writes, so counting by it needs no self-report per decision (see PRINCIPLE)."""
+    out = {}
+    try:
+        fh = open(path, encoding="utf-8", errors="replace")
+    except OSError:
+        return out
+    with fh:
+        for line in fh:
+            if '"AskUserQuestion"' not in line:
+                continue
+            try:
+                content = (json.loads(line).get("message") or {}).get("content")
+            except ValueError:
+                continue
+            for b in content if isinstance(content, list) else []:
+                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "AskUserQuestion":
+                    for q in (b.get("input") or {}).get("questions") or []:
+                        h = str((q or {}).get("header") or "(none)").strip()
+                        out[h] = out.get(h, 0) + 1
+    return out
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
+    ap.add_argument("--headers", action="store_true",
+                    help="count the question tool's questions by header (category) in the window, then exit")
     ap.add_argument("--root", default=os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
     ap.add_argument("--dir")
     ap.add_argument("--days", type=float, default=7)
@@ -342,6 +369,23 @@ def main(argv):
         print("recorded %d verdict(s)" % len((a.confirm or []) + (a.reject or [])))
         return 0
     d = Path(a.dir) if a.dir else transcript_dir(a.root)
+    if a.headers:
+        cutoff = time.time() - a.days * 86400
+        tally = {}
+        for f in (sessions_only(sorted(d.glob("*.jsonl"))) if d.is_dir() else []):
+            if f.stat().st_mtime < cutoff:
+                continue
+            for h, n in headers_of(f).items():
+                tally[h] = tally.get(h, 0) + n
+        rows = sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))
+        if a.json:
+            print(json.dumps(dict(rows), ensure_ascii=False))
+            return 0
+        print("decision-review --headers: %d question(s) through the question tool in %g day(s)" % (
+            sum(tally.values()), a.days))
+        for h, n in rows:
+            print("  %4d  %s" % (n, h))
+        return 0
     rx = compile_patterns(a.root)
     psig = "\n".join("%s=%s" % (k, rx[k].pattern) for k in sorted(rx)) + "\n" + "\n".join(
         "%s=%s" % (g, r.pattern) for g, r in BASH_RX) + "\n" + MCP_WRITE.pattern

@@ -125,6 +125,19 @@ P2="$("$PY" "$S" --root "$NR" --dir "$NTX" --json | "$PY" -c "import json,sys; p
 [ "$P2" = "git push" ] && echo "  OK   two confirmed of one group make a proposal" || { echo "  FAIL proposal: '$P2'"; fail=1; }
 
 # empty window and a missing directory: a report, exit 0
+# --headers: questions of the question tool counted by their header (operator decision 2026-11-05)
+TH="$T/txh"; mkdir -p "$TH"
+"$PY" -c '
+import json, sys
+q = lambda *hs: {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "AskUserQuestion",
+     "input": {"questions": [{"header": h, "question": "?", "options": []} for h in hs]}}]}}
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    for r in (q("Mode", "Release"), q("Mode"), {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "AskUserQuestion is named, not called"}]}}):
+        f.write(json.dumps(r) + "\n")
+' "$(native "$TH/s-h.jsonl")"
+HD="$("$PY" "$S" --root "$NR" --dir "$(native "$TH")" --headers --json)"
+[ "$HD" = '{"Mode": 2, "Release": 1}' ] && echo "  OK   --headers counts per header, a mention is no question" || { echo "  FAIL --headers: $HD"; fail=1; }
+
 "$PY" "$S" --root "$NR" --dir "$(native "$EMPTY")" | grep -q "no transcripts" && echo "  OK   empty directory reported" || { echo "  FAIL empty directory"; fail=1; }
 "$PY" "$S" --root "$NR" --dir "$(native "$T/missing")" >/dev/null; [ $? -eq 0 ] && echo "  OK   missing directory exits 0" || { echo "  FAIL missing directory"; fail=1; }
 
