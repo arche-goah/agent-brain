@@ -134,6 +134,27 @@ with tempfile.TemporaryDirectory() as td:
     ok(levels(rel, [entry("a-next", "v1.0.0")]) == [],
        "the shipped version whose tag exists already: an ordinary pin, no finding (control)")
 
+    # Hook templates (2026-11-04): a suite's copy of ensure-deps.cjs / hooks.json is judged against the
+    # core's templates/suite/hooks - unchanged = INFO, edited = WARN (never ERROR), absent = nothing.
+    tpl_dir = HERE.parent / "templates" / "suite" / "hooks"
+    hooked = make_repo(base, "hooked")
+    (hooked / "hooks").mkdir()
+    for f in ("ensure-deps.cjs", "hooks.json"):
+        (hooked / "hooks" / f).write_bytes((tpl_dir / f).read_bytes())
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["INFO", "INFO"],
+       "hook copies equal to the core templates: INFO only")
+    (hooked / "hooks" / "ensure-deps.cjs").write_text(
+        (tpl_dir / "ensure-deps.cjs").read_text(encoding="utf-8").replace("${name}:", "my-suite:", 1), encoding="utf-8")
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["WARN", "INFO"],
+       "an edited hook copy (the suite name written in): WARN, hooks.json still INFO")
+    (hooked / "hooks" / "hooks.json").write_bytes((tpl_dir / "hooks.json").read_bytes().replace(b"\n", b"\r\n"))
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)][1] == "INFO",
+       "a CRLF copy of hooks.json (Windows checkout) still equals the template")
+    ok(any(lvl == "WARN" and "ensure-deps.cjs" in msg for lvl, msg in sc.check(hooked, contract)),
+       "check() carries the hook-template finding (wired, not only defined)")
+    ok(sc.hook_template_findings(make_repo(base, "nohooks")) == [],
+       "a suite without hooks/: no finding (control)")
+
 core_levels = [lvl for lvl, _ in sc.marketplace_findings(HERE.parent)]
 ok((HERE.parent / ".claude-plugin" / "marketplace.json").exists() and "ERROR" not in core_levels,
    "the core's own marketplace.json: no ERROR")
