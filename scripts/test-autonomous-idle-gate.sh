@@ -164,6 +164,22 @@ check "interactive turn end, hand-armed run" "$f" allow "$W" >/dev/null
 rm -rf "$W/.claude-state"
 LOOP_WATCHDOG_AUTO=0 check "switch off" "$T/wd1.jsonl" block "$W" >/dev/null
 [ -z "$(wdst)" ] && ok "LOOP_WATCHDOG_AUTO=0 arms nothing (control)" || bad "armed although switched off"
+# A watcher event that reports only this instance's own doing ends the turn without a continuation (operator decision
+# 2026-11-05 after measuring the holds by kind of turn); a peer's event still needs one.
+K="$(node -e 'console.log(require(process.argv[1]).keyFor("mac"))' "$(native "$_D/../helpers/instance-key-gate.cjs")")"
+ev() { user "<task-notification><task-id>m1</task-id><event>$1</event></task-notification>"; }
+f="$T/own1.jsonl"; { user "work through the open points autonomously"; ev "MERGED o/r #15: release (merged by me) — branch is LOCAL in this machine's clone: made on this machine"; asst "Merged, as planned."; } > "$f"
+SHARED_MEMORY_SELF=mac check "own merge event, short acknowledgement" "$f" allow
+f="$T/own2.jsonl"; { user "work through the open points autonomously"; ev "COMMENT o/r https://x/pull/8#c [me] :: <!-- instance-key: $K --> macOS OK at abc"; asst "My own comment."; } > "$f"
+SHARED_MEMORY_SELF=mac check "own comment (own instance key)" "$f" allow
+f="$T/own3.jsonl"; { user "work through the open points autonomously"; ev "[Monitor expired after 30m with 7 events delivered. Re-arm it if you still need the watch.]"; asst "Watch expired."; } > "$f"
+SHARED_MEMORY_SELF=mac check "watcher state line" "$f" allow
+f="$T/peer1.jsonl"; { user "work through the open points autonomously"; ev "COMMENT o/r https://x/pull/8#c [peer] :: <!-- instance-key: 0123456789 --> please change X"; asst "Noted."; } > "$f"
+SHARED_MEMORY_SELF=mac check "a peer's comment still needs its continuation" "$f" block
+f="$T/peer2.jsonl"; { user "work through the open points autonomously"; ev "SESSIONS: changed
+PR o/r #20: fix (peer) — opened on another machine"; asst "Noted."; } > "$f"
+SHARED_MEMORY_SELF=mac check "own state line plus a peer's PR still blocks" "$f" block
+
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-idle-gate: all cases pass" || echo "autonomous-idle-gate: FAILURES"
 exit "$fail"

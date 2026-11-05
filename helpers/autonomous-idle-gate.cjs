@@ -60,6 +60,7 @@ function turnOf(tp) {
   let lines;
   try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return null; }
   let text = ''; let wake = false; let asked = false; let ans = ''; let cmds = []; let prev = null; let lastUserIsNotification = false; let since = '';
+  let opener = '';   // the user record that opened the turn (see ownEventsOnly)
   const askIds = new Set();
   // Every command of the session in order, with its time: an earlier measurement can still stand (see judge).
   const all = [];
@@ -85,8 +86,8 @@ function turnOf(tp) {
       // and the measurement away) starts a turn with nothing in it yet - the turn being judged is the one before.
       if (t !== null && !HOOK_ECHO.test(t)) {
         lastUserIsNotification = /<task-notification>|<cross-session-message\b/.test(t);
-        if (text) prev = { text, wake, asked, answers: ans, cmds, since };
-        text = ''; wake = false; asked = false; ans = ''; cmds = []; since = d.timestamp || '';
+        if (text) prev = { text, wake, asked, answers: ans, cmds, since, opener };
+        text = ''; wake = false; asked = false; ans = ''; cmds = []; since = d.timestamp || ''; opener = t;
       } else if (t === null) {
         for (const [, a] of answers(msg, askIds)) ans += '\n' + squash(a); // the operator's answers in this turn
       }
@@ -106,7 +107,26 @@ function turnOf(tp) {
   }
   const waiting = [...armed].some((id) => !ended.has(id));
   if (!text && prev && lastUserIsNotification) return { ...prev, waiting, all };
-  return { text, wake, asked, answers: ans, cmds, since, waiting, all };
+  return { text, wake, asked, answers: ans, cmds, since, waiting, all, opener };
+}
+
+/** A watcher event that reports only this instance's own doing, or the watcher's own state - nothing to act on.
+ *  Operator decision 2026-11-05 (question tool, "Beides"), after measuring this gate's holds by the kind of turn
+ *  (one brain, 150 transcripts since 2026-10-27): notification turns were held 277 times, 160 of them as idle, while
+ *  the long hold chains came after the operator's own prompts. A turn opened by such an event acknowledges and ends;
+ *  every other event (a peer's PR, a red CI, a comment without this instance's key) still needs its continuation.
+ *  Own = a line naming a branch made on this machine, a comment carrying this instance's key, or the watcher's own
+ *  state lines (armed, already armed, skipped, expired). Every <event> line must be one of these. */
+const OWN_STATE = /^(NOTE: collaboration watch armed|already armed\b|WATCHER-SKIPPED:|SESSIONS:|\[Monitor expired after\b)/;
+function ownEventsOnly(opener, key) {
+  const m = String(opener || '').match(/<event>([\s\S]*?)<\/event>/);
+  if (!/<task-notification>/.test(opener || '') || !m) return false;
+  const lines = m[1].split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return false;
+  const keyRx = key ? new RegExp(`instance-key:\\s*${key}\\b`) : null;
+  return lines.every((l) => OWN_STATE.test(l)
+    || /branch is LOCAL in this machine's clone/.test(l)
+    || (keyRx && /^COMMENT\b/.test(l) && keyRx.test(l)));
 }
 
 /** Everything the operator wrote in this transcript, squashed: prompts, messages typed mid-turn and question-tool
@@ -281,6 +301,10 @@ function judge(input, now) {
   // session continues nothing, and its open ends stand in the session log). The same checkable carrier the
   // watch and question gates accept: a close stamp written in THIS turn by `session-closing.sh --pre-commit`.
   if (closeOpenEnds(root, { sessionId: input.session_id, since: t.since, calls: t.cmds.map((cmd) => ({ cmd })) }) !== null) return null;
+  {
+    const { keyFor, selfId } = require('./instance-key-gate.cjs');
+    if (ownEventsOnly(t.opener, keyFor(selfId(root)))) return null;
+  }
   // A wakeup alone is no continuation (measured on an instance, 2026-10-29, the operator asking why it stopped
   // again): a 15-min wakeup while own work was doable now was the same idle stop under another name — and a
   // waiter was running too, so "wakeup + waiter" would have let it pass as well. Only the end lines below end
