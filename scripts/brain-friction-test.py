@@ -165,6 +165,16 @@ with tempfile.TemporaryDirectory() as td:
        "comment-only.cjs" not in out,
        "a comment mention was reported as a blind check")
 
+# 8. a fixture with the blind shape is no live checker (the false hit of 2026-11-05);
+#    the same body under a non-fixture name next to it stays reported (negative control)
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    build_dispatcher_brain(root, {"test-blind-check.sh": BLIND, "blind-live.py": BLIND})
+    out = scan(root)
+    ok("a fixture is not reported blind, its live twin is",
+       "test-blind-check.sh" not in out and "blind-live.py" in out,
+       f"output was: {out.strip()[:300]}")
+
 print("brain-friction: write-only recorders and frequency design")
 
 REC_CHECKS = {"checks": [
