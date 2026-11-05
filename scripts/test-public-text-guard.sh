@@ -223,5 +223,18 @@ rc=$(printf '%s' '{"tool_name":"PowerShell","tool_input":{"command":"gh pr comme
 # the visibility answer is cached for the next call
 grep -q '"o/pub"' "$B/.claude-state/repo-visibility.json" 2>/dev/null && ok "visibility cached" || bad "visibility cached"
 
+# Leak-scan patterns on the published text (2026-11-02; measured 2026-10-25: a home-path placeholder went into a
+# public PR body and only the repo's CI saw it). Values built at run time - literal ones would trip the core's own
+# leak-scan on this file.
+HP="/$U/someperson/notes"; IP="192.168.""77.20"; ML="someone@""mailbox.de"
+expect "home path in a public body blocks"                  block "$T" "gh pr comment 1 -R o/pub --body \"see $HP\""
+expect "private IP in a public body blocks"                 block "$T" "gh pr comment 1 -R o/pub --body \"device at $IP\""
+expect "mail address in a public body blocks"               block "$T" "gh pr comment 1 -R o/pub --body \"ask $ML\""
+expect "the same home path to a private repo passes"        allow "$T" "gh pr comment 1 -R o/priv --body \"see $HP\""
+printf 'see %s\n' "$HP" > "$T/leaky.md"
+expect "home path only inside --body-file blocks"           block "$T" "gh pr create -R o/pub --title fix --body-file $NT/leaky.md"
+expect "the <home> placeholder passes"                      allow "$T" 'gh pr comment 1 -R o/pub --body "see <home>/notes"'
+expect "a home path only in the --body-file PATH passes"    allow "$T" "gh pr create -R o/pub --title fix --body-file $(native "$HOME_MAC")/clean.md"
+
 [ "$fail" -eq 0 ] && echo "public-text-guard: all checks passed" || echo "public-text-guard: FAILURE"
 exit "$fail"
