@@ -389,6 +389,11 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: run list --workflow= (control)" Bash command "gh run list --workflow=ci.yml --branch main" allow
   tr_probe "mechanism-guard/core rule: run list named in a commit message (control)" Bash command 'git -C /r commit -m \"guard: gh run list without a workflow filter\"' allow
   tr_probe "mechanism-guard/core rule: gh run view (control)" Bash command "gh run view 123 -R o/r --log-failed" allow
+  # A second output-style source (ported from the Windows instance, 2026-11-02): the core ships the style.
+  tr_probe "mechanism-guard/core rule: copy a style into .claude/output-styles" Bash command "cp caveman.md .claude/output-styles/" block
+  tr_probe "mechanism-guard/core rule: write a style file" Write file_path ".claude/output-styles/mine.md" block
+  tr_probe "mechanism-guard/core rule: read the style dir (control)" Bash command "cat .claude/output-styles/caveman.md" allow
+  tr_probe "mechanism-guard/core rule: core's own style file (control)" Write file_path "output-styles/caveman.md" allow
   # An inline script in double quotes: a backtick or $( in its text runs as a command first (measured 2026-11-03,
   # Windows instance: two backtick paths in a protocol entry ran as scripts; ported from a macOS instance rule).
   tr_probe "mechanism-guard/core rule: python -c with a backtick" Bash command 'python3 -c \"print(`date`)\"' block
