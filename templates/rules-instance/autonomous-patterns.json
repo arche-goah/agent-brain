@@ -31,6 +31,7 @@
     {"steps": ["work through the list autonomously"], "expect": "autonomous"},
     {"steps": ["work through the list autonomously", "anything open for me?",
                {"q": "Continue autonomously?", "a": "Yes, continue"}], "expect": "autonomous"},
-    {"steps": ["work through the list autonomously", "anything open for me?"], "expect": "interactive"}
+    {"steps": ["work through the list autonomously", "anything open for me?"], "expect": "interactive"},
+    {"steps": ["work through the list autonomously", "anything open for me?"], "open": 0, "expect": "autonomous"}
   ]
 }

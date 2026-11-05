@@ -82,7 +82,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { isNotification, isTranscriptRecord, operatorWords } = require('./turn-kind.cjs');
+const { isNotification, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { closeOpenEnds, listed } = require('./close-stamp.cjs');
 
 // Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
@@ -165,6 +165,13 @@ function scan(tp) {
   for (const line of lines) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    // A message typed while the agent works is a queued_command attachment, not a user record: an operator
+    // prompt all the same (measured 2026-10-29 on the macOS instance: every word of one long turn came this way).
+    if (queuedHumanPrompt(d)) {
+      if (last !== null) { replies.push({ text: last, prompt: operator }); last = null; }
+      operator++; fired = false; calls = []; since = d.timestamp || '';
+      continue;
+    }
     const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {

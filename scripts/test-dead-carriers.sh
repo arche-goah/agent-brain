@@ -29,6 +29,15 @@ printf '%s\n' 'Folder `docs/private/` - sentinel-absent-word.' >> "$B/.claude/ru
 case "$("$PY" "$(native "$S")" --repo "$(native "$B")" 2>&1)" in *"docs/private/"*) ok "without instance data the line is checked";; *) bad "line skipped without data";; esac
 printf '%s\n' '{"absence_patterns": ["sentinel-absent-word"]}' > "$B/.claude/rules/dead-carriers.json"
 case "$("$PY" "$(native "$S")" --repo "$(native "$B")" 2>&1)" in *"docs/private/"*) bad "instance absence word ignored";; *) ok "an instance absence word skips the line";; esac
+# 2026-11-02 (audit-audit): a bare script name in backticks names a carrier too; a workflow offered as
+# brain-core:<name> and a skill's own script are present.
+B2="$T/brain2"; mkdir -p "$B2/.claude/rules" "$B2/scripts/hooks" "$B2/core/workflows" "$B2/.claude/skills/suite-skill/scripts"
+touch "$B2/scripts/hooks/found-gate.cjs" "$B2/core/workflows/a-scan.js" "$B2/.claude/skills/suite-skill/scripts/tool.py"
+printf '%s\n' 'Measure with `gone-measure.py --precision`, gate `found-gate.cjs`, tool `tool.py`, workflow brain-core:a-scan.' > "$B2/CLAUDE.md"
+out2=$("$PY" "$(native "$S")" --repo "$(native "$B2")" 2>&1)
+case "$out2" in *"names gone-measure.py"*) ok "a bare script name that exists nowhere is named";; *) bad "bare missing script: $out2";; esac
+case "$out2" in *"found-gate.cjs"*|*"tool.py"*|*"a-scan"*) bad "a present bare script / workflow was reported: $out2";;
+  *) ok "bare scripts in the script folders, a skill's own script and a workflow are present";; esac
 echo
 [ "$fail" -eq 0 ] && echo "dead-carriers: all cases pass" || echo "dead-carriers: FAILURES"
 exit "$fail"

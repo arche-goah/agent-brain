@@ -23,6 +23,8 @@ Classes per entry (strongest carrier named on its `Carrier:` lines wins):
 An entry carrying `operator-ok: "<quote>"` on its carrier lines counts as an accepted prose decision.
 
 Usage: carrier-audit.py [--repo DIR] [--protocol FILE] [--since YYYY-MM-DD] [--gate] [--json]
+       carrier-audit.py --presence [lesson-carriers.py options]  — does an entry/memory NAME a carrier at all
+  (the presence question, implemented in lesson-carriers.py; one entry point for both strengths since 2026-11-02).
   report mode (default): every entry with its class, then a summary; exit 0.
   --gate: exit 1 when an entry dated on/after --since is not GATE/PENDING and has no operator-ok —
           the blocking form for a hook or CI.
@@ -257,7 +259,22 @@ def classify(ctext, ctx):
     return "PROSE", []
 
 
+def presence(argv):
+    """`--presence`: the weaker question of the same `Carrier:` lines — does an entry or a lesson memory NAME a
+    carrier at all (lesson-carriers.py, kept as the implementation module its fixture imports). One entry point
+    for both strengths (audit of the audits 2026-11-02: two scripts asked the same question of the same lines)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "lesson_carriers", os.path.join(os.path.dirname(os.path.abspath(__file__)), "lesson-carriers.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    sys.argv = ["carrier-audit.py --presence", *[a for a in argv if a != "--presence"]]
+    return mod.main()
+
+
 def main():
+    if "--presence" in sys.argv[1:]:
+        return presence(sys.argv[1:])
     ap = argparse.ArgumentParser(description="does each lesson bind, or is it prose?")
     ap.add_argument("--repo", default=".")
     ap.add_argument("--core", help="core root (default <repo>/core, else the repo itself)")

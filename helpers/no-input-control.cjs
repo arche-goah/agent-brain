@@ -51,6 +51,9 @@ const HOTKEY_SCRIPT = /(?:^|[\s;&|("'`])[^\s;&|()"'`]*\.ahk\b/i;
 const TOOL_NAME = /(?:^|__)computer[-_]?use(?:__|$)|(?:^|__)computer_(?:click|type|key|move|drag|scroll|mouse)|remote-devices__computer/i;
 const OWN_FILES = /(?:^|[\\/])(?:no-input-control\.cjs|test-no-input-control\.sh|no-input-control\.json)$/;
 const SCRIPT_EXT = /\.(?:py|js|cjs|mjs|sh|ps1|ahk|applescript|scpt|vbs|bat|cmd)$/i;
+const DOC_EXT = /\.(?:md|mdx|markdown|txt|rst)$/i;
+// A path in front (C:/Python312/python.exe, /usr/bin/python3) and an .exe ending are the same runner.
+const RUNNER = /(?:^|[\s;&|(`"'\/\\])(?:python[\d.]*w?|pyw?|node|deno|bun|bash|sh|zsh|pwsh|powershell|cscript|wscript|osascript|ruby|perl|source|\.|iex|invoke-expression)(?:\.exe)?(?=[\s;&|)`"']|$)/i;
 
 function loadInstance(projectDir) {
   const fp = projectDir && path.join(projectDir, '.claude', 'rules', 'no-input-control.json');
@@ -77,6 +80,11 @@ function texts(toolName, ti, cwd) {
   if (!ti || typeof ti !== 'object') return out;
   const target = ti.file_path || ti.notebook_path || '';
   if (target && OWN_FILES.test(target)) return out;
+  // Text written into a documentation file names an API, it calls nothing; running anything stays
+  // checked (the command path below). Measured 2026-11-02 on the macOS instance: translating two skill
+  // files of a suite was refused because one doc line names the input API (the operator chose this cut:
+  // check only what can run). A file without one of these endings is still checked.
+  if (target && DOC_EXT.test(target)) return out;
   // Not an agent's prompt: a brief that NAMES an API is text about it, not a call (the alpha checked
   // command, content, new_string and script).
   for (const k of ['command', 'content', 'new_string', 'new_source', 'script']) {
@@ -85,8 +93,12 @@ function texts(toolName, ti, cwd) {
   for (const e of Array.isArray(ti.edits) ? ti.edits : []) if (e && typeof e.new_string === 'string') out.push(e.new_string);
   // A command that runs a script file: the file's content counts as if it were typed here.
   if (typeof ti.command === 'string') {
+    // A documentation file a command hands to an interpreter or an eval is a script for that command
+    // (a collaborator's Windows check on #302, 2026-11-02: write the code into notes.txt, then
+    // `python3 notes.txt` or `iex (Get-Content notes.txt -Raw)` - both steps passed). `cat`/`grep` stay unread.
+    const runs = RUNNER.test(ti.command);
     for (const tok of ti.command.split(/[\s;&|()<>"'`]+/)) {
-      if (!SCRIPT_EXT.test(tok) || OWN_FILES.test(tok)) continue;
+      if (!(SCRIPT_EXT.test(tok) || (runs && DOC_EXT.test(tok))) || OWN_FILES.test(tok)) continue;
       const fp = path.isAbsolute(tok) ? tok : path.join(cwd || process.cwd(), tok);
       try { if (fs.statSync(fp).size < 2_000_000) out.push(fs.readFileSync(fp, 'utf8')); } catch (e) { /* not a file */ }
     }

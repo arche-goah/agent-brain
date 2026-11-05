@@ -172,8 +172,11 @@ def run_case(reader, kind, case, brain, work, n, env):
     script = str(HELPERS / reader)
     try:
         if kind == "mode":
+            # A case tests the WORDS, not the brain's ledger: whether an ask leaves the run depends on whether something
+            # is open for the operator (2026-11-03), so the case says it - default one open item, `"open": 0` for none.
+            menv = dict(env or os.environ, AUTONOMOUS_OPEN_FOR_OPERATOR=str(case.get("open", 1)))
             p = subprocess.run(["node", script, str(tp), str(brain)], capture_output=True,
-                               text=True, encoding="utf-8", timeout=30, env=env)
+                               text=True, encoding="utf-8", timeout=30, env=menv)
             got = p.stdout.strip()
             return got if got in VERDICTS["mode"] else ("error", (p.stdout + p.stderr).strip()[:200])
         payload = dict(payload, transcript_path=str(tp), cwd=str(brain))

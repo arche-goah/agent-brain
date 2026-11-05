@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# pre-push — judges a push by the refs it SENDS, not by the words of the command.
+#
+# WHY (measured 2026-11-02 on two brains): the permission rules against a force push, a branch
+# deletion and a push to main are globs over the whole command text. They missed what they were
+# for — a bare `git -C <repo> push` from a checkout on main names no branch and went out without
+# the operator's OK — and hit what they were not for: a COMMIT whose message read "a push is
+# judged ..." and later "Fixture +3" matched `git -C * push * +*` and was refused twice. Git hands
+# this hook the resolved refs on stdin, so the decision is made on what actually moves:
+#   <local ref> <local sha> <remote ref> <remote sha>   (one line per ref)
+#
+# Blocks, unless PUSH_GUARD_OK="<reason>" is set for this one push (the reason is printed):
+#   1. deleting a remote ref            (local sha is all zeros)
+#   2. a force push / history rewrite   (remote sha exists and is not an ancestor of local sha)
+#   3. a push to main or master of any repo but the brain itself and the shared memory (the repo
+#      with parties.json at its top, as prepare-commit-msg tells it) — both are pushed to main by
+#      design. More repos: .claude/rules/push-targets.json  {"main_ok": ["owner/repo", ...]}
+# Tags are judged like branches for 1 and 2 (moving a published tag is a rewrite); a new tag passes.
+# GLOBAL via core.hooksPath like pre-commit: what is not listed is still guarded for 1 and 2.
+# Bypass `git push --no-verify` stays possible on purpose (see pre-commit); the core's mechanism
+# rules refuse it for an agent.
+set -u
+remote_name=${1:-}
+remote_url=${2:-}
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+brain=$(cd "$here/../../.." && pwd)
+targets="${PUSH_TARGETS_JSON:-$brain/.claude/rules/push-targets.json}"
+
+# owner/repo from the remote URL (https://github.com/o/r(.git), git@github.com:o/r(.git), local paths: last two parts)
+slug=$(printf '%s' "$remote_url" | sed -E 's#\.git/?$##; s#/+$##; s#^.*[:/]([^/:]+/[^/:]+)$#\1#')
+
+top=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+main_ok=no
+if [ "$(cd "$top" && pwd -P)" = "$(cd "$brain" && pwd -P)" ] || [ -f "$top/parties.json" ]; then
+  main_ok=yes
+elif [ -f "$targets" ]; then
+  py=python3; "$py" -c 'import sys' >/dev/null 2>&1 || py=python   # Windows: python3 can be the Store stub
+  # -c, not `python -` + heredoc: that form runs the file argument instead of stdin (os-traps OS-6)
+  if "$py" -c 'import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+sys.exit(0 if sys.argv[2].lower() in {s.lower() for s in d.get("main_ok", [])} else 1)' "$targets" "$slug" >/dev/null 2>&1
+  then main_ok=yes; else main_ok=no; fi
+fi
+
+problems=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -n "${remote_ref:-}" ] || continue
+  # all zeros = no object (40 for SHA-1, 64 for SHA-256)
+  if [ -z "${local_sha//0/}" ]; then
+    problems="$problems\n  delete $remote_ref on $slug"
+    continue
+  fi
+  if [ -n "${remote_sha//0/}" ]; then
+    if ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null || ! git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
+      problems="$problems\n  rewrite $remote_ref on $slug (${remote_sha:0:7} is not in ${local_sha:0:7}'s history)"
+    fi
+  fi
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/master)
+      [ "$main_ok" = no ] && problems="$problems\n  push to ${remote_ref#refs/heads/} of $slug (not in main_ok of $targets)" ;;
+  esac
+done
+
+[ -z "$problems" ] && exit 0
+if [ -n "${PUSH_GUARD_OK:-}" ]; then
+  printf 'pre-push: allowed by PUSH_GUARD_OK (%s):%b\n' "$PUSH_GUARD_OK" "$problems" >&2
+  exit 0
+fi
+printf 'pre-push: BLOCKED (%s):%b\n' "${remote_name:-remote}" "$problems" >&2
+printf '  A push to main goes through a PR; a rewrite or delete is the operator'"'"'s call.\n' >&2
+printf '  For this one push: PUSH_GUARD_OK="<reason>" git push ...\n' >&2
+exit 1

@@ -163,7 +163,9 @@ def gather(brain, cfg, core=None):
         repo = ""
         for e in mp.get("plugins") or []:
             if e.get("name") == name and isinstance(e.get("source"), dict):
-                repo = str(e["source"].get("repo") or "").rsplit("/", 1)[-1]
+                # "github" entries name `repo`, "url" entries a clone URL (HTTPS form since 2026-11-02).
+                src = e["source"].get("repo") or e["source"].get("url") or ""
+                repo = re.sub(r"\.git$", "", str(src).rstrip("/")).rsplit("/", 1)[-1]
         # The core's own plugin is not a suite: the core has its block above (measured on the
         # Windows run: the core channel showed up under "suites").
         if repo and installed_v and repo != core_repo:

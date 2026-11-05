@@ -100,6 +100,11 @@ and its person, never by an `os:` token). A new machine is one line in its perso
   `audience` token resolves; a Windows check (fact file or LOG heading) goes to `os:windows`
   unless the entry says why one machine is needed (`one-machine: <why>`). Older entries are
   not re-judged.
+- `scripts/shared-memory-post.py request --one-machine <why>` (operator 2026-11-03: a request to one
+  instance must be clearly reasoned and evidenced, otherwise it does not go through): the reason must
+  name more than the OS ("the Windows instance is the machine that does it" is `os:windows` in other
+  words), and `--one-machine-evidence` must give a URL, an existing file `path[:line]`, or the
+  operator's quoted words with their date. Written as `one-machine-evidence:` beside the reason.
 - `shared-memory-lint.py --staged` — the same checks as a commit gate: only the staged fact
   files and the LOG headings the commit ADDS are judged (entry checks only, no repo-wide
   debts). Wire it into the git pre-commit hook of every machine that writes to the shared

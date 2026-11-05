@@ -44,6 +44,13 @@ for pr in "$@"; do
   branch="$("$GH" pr view "$pr" -R "$slug" --json headRefName,isCrossRepository,state \
             -q 'select(.state=="OPEN" and (.isCrossRepository|not)) | .headRefName' 2>/dev/null)"
   if [ -z "$branch" ]; then left+=("#$pr (not an open same-repo PR)"); continue; fi
+  # MERGE_TRAIN_PRECHECK (2026-11-03, macOS instance): a train ran ~57 min and was held at the merge because one PR
+  # needed a by-hand pin review the train cannot give. The instance names a command that judges one PR
+  # (`<cmd> <owner/repo> <n>`); a non-zero exit leaves the PR out, its first output line is the reason.
+  if [ -n "${MERGE_TRAIN_PRECHECK:-}" ]; then
+    why="$($MERGE_TRAIN_PRECHECK "$slug" "$pr" 2>&1)"
+    if [ $? -ne 0 ]; then left+=("#$pr (precheck: $(printf '%s' "$why" | head -n1))"); continue; fi
+  fi
   if ! git -C "$DIR" fetch --quiet origin "+refs/heads/$branch:refs/remotes/origin/train-src-$pr"; then
     left+=("#$pr (branch $branch not fetched)"); continue
   fi

@@ -17,6 +17,8 @@ js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 user() { printf '{"type":"user","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
 
 B="$T/brain"; mkdir -p "$B/.claude" "$T/userdir"
+# one open operator question: "what is open?" leaves the run only when something is (autonomous-mode.cjs, 2026-11-03)
+mkdir -p "$B/.claude-state"; printf '%s\n' '{"q1": {"q": "Release now?", "status": "unanswered"}}' > "$B/.claude-state/open-questions.json"
 printf '%s\n' '{"permissions":{"ask":["Edit(.claude/settings.json)","Bash(git -C * push * main*)","Bash(gh pr close*)"]}}' > "$B/.claude/settings.json"
 printf '%s\n' '{"permissions":{"ask":["WebFetch"]}}' > "$T/userdir/settings.json"
 AUTO="$T/auto.jsonl"; user "work through the open points autonomously" > "$AUTO"
@@ -29,7 +31,8 @@ PEER="$T/peer.jsonl"; { user "work through the open points autonomously"; queued
 
 probe() { # $1 label, $2 tool, $3 tool_input JSON, $4 transcript, $5 block|allow
   local out
-  out=$(printf '{"tool_name":"%s","tool_input":%s,"transcript_path":"%s","cwd":"%s"}' "$2" "$3" "$(native "$4")" "$(native "$B")" \
+  # JSON built by node from argv (escaping; a printf-built input broke on a double quote, 2026-11-02)
+  out=$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:JSON.parse(a[2]),transcript_path:a[3],cwd:a[4]}))' "$2" "$3" "$(native "$4")" "$(native "$B")" \
         | CLAUDE_PROJECT_DIR="$(native "$B")" CLAUDE_CONFIG_DIR="$(native "$T/userdir")" node "$(native "$G")" 2>&1)
   case "$out" in
     *'"permissionDecision":"deny"'*) [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:160}";;
@@ -40,6 +43,12 @@ SET="$(js "$(native "$B")/.claude/settings.json")"
 
 probe "the incident: settings edit in an autonomous run" Edit "{\"file_path\":$SET}" "$AUTO" block
 probe "same edit, relative path" Edit '{"file_path":".claude/settings.json"}' "$AUTO" block
+# a double quote in the transcript path (escaping of the hook input); Windows refuses " in a file name
+if cp "$AUTO" "$T/q\"auto.jsonl" 2>/dev/null; then
+  probe "same edit, a double quote in the transcript path (escaping)" Edit '{"file_path":".claude/settings.json"}' "$T/q\"auto.jsonl" block
+else
+  echo "  SKIP a double quote in the transcript path: this file system refuses the name"
+fi
 probe "same edit, not autonomous (the operator is there)" Edit "{\"file_path\":$SET}" "$INTER" allow
 probe "question tool in an autonomous run" AskUserQuestion '{"questions":[]}' "$AUTO" block
 probe "question tool, not autonomous" AskUserQuestion '{"questions":[]}' "$INTER" allow
@@ -58,16 +67,24 @@ probe "stop-checks.json, no ask rule, autonomous" Edit '{"file_path":".claude/ru
 probe "plugin hooks.json, autonomous" Write '{"file_path":"hooks/hooks.json"}' "$AUTO" block
 probe "stop-checks.json outside the mode" Edit '{"file_path":".claude/rules/stop-checks.json"}' "$INTER" allow
 probe "local-machinery.json is not held (control)" Edit '{"file_path":".claude/rules/local-machinery.json"}' "$AUTO" allow
-# Rights are the same in both modes, only questions are collected (operator 2026-11-02). The operator
-# answered a collected point in this turn ("hooks yes"): the held edit goes to the harness's dialog.
+# No dialog in an autonomous run (operator 2026-11-03, replaces the 2026-11-02 exception): a message from the
+# operator in the turn ("hooks yes", typed or queued) does not mean the operator is there - the call stays held.
 tend() { printf '%s\n' '{"type":"system","subtype":"turn_duration","durationMs":1000}'; }
 note() { user "<task-notification><task-id>x</task-id><status>completed</status></task-notification>"; }
 APPR="$T/appr.jsonl"; { user "work through the open points autonomously"; tend; user "hooks yes, coordinate with the collaborator"; } > "$APPR"
 APPQ="$T/appq.jsonl"; { user "work through the open points autonomously"; tend; queued "hooks yes"; } > "$APPQ"
 GONE="$T/gone.jsonl"; { user "work through the open points autonomously"; tend; user "hooks yes"; tend; note; } > "$GONE"
-probe "operator answered in this turn: held hooks edit goes to the dialog" Write '{"file_path":"hooks/hooks.json"}' "$APPR" allow
-probe "operator answered mid-turn: the ask rule goes to the dialog" Edit "{\"file_path\":$SET}" "$APPQ" allow
+probe "operator wrote in this turn: the held hooks edit stays held" Write '{"file_path":"hooks/hooks.json"}' "$APPR" block
+probe "operator wrote mid-turn (phone): the ask rule stays held" Edit "{\"file_path\":$SET}" "$APPQ" block
 probe "the answer's turn has ended, a notification woke the run: held again" Write '{"file_path":"hooks/hooks.json"}' "$GONE" block
+# The turn's prompt asked what is open, the last answer switched the run on again (macOS 2026-11-03):
+# the operator left the dialog, so the ask rule is held, not shown.
+answer() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t9","name":"AskUserQuestion","input":{"questions":[]}}]}}\n'
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t9","content":%s}]}}\n' "$(js "Your questions have been answered: $1. You can now continue")"; }
+BACK="$T/back.jsonl"; { user "work through the open points autonomously"; tend; user "anything open for me?"; answer '"Continue autonomously?"="Yes, continue (Recommended)"'; } > "$BACK"
+probe "last answer switched the run back on: the ask rule is held again" Edit "{\"file_path\":$SET}" "$BACK" block
+STAY="$T/stay.jsonl"; { user "work through the open points autonomously"; tend; user "anything open for me?"; answer '"Continue autonomously?"="No, interactive"'; } > "$STAY"
+probe "last answer chose interactive: the ask rule goes to the dialog (control)" Edit "{\"file_path\":$SET}" "$STAY" allow
 probe "operator in this turn, but the question tool stays collected" AskUserQuestion '{"questions":[]}' "$APPR" block
 probe "a bare tool rule from the user settings" WebFetch '{"url":"https://example.com"}' "$AUTO" block
 probe "a tool no rule names" Read '{"file_path":"README.md"}' "$AUTO" allow

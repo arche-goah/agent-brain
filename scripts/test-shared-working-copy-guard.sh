@@ -56,7 +56,9 @@ PRIVW_N=$(native "$PRIVW"); LOOK_N=$(native "$LOOK")
 # $1 name, $2 sessions fixture ("cwd1;cwd2" or ""), $3 command, $4 block|allow, [$5 session id]
 probe() {
   local out rc sid="${5:-sess-A}"
-  out=$(printf '{"tool_name":"Bash","session_id":"%s","cwd":"%s","tool_input":{"command":"%s"}}' "$sid" "$REPO_N" "$3" \
+  # JSON built by node from argv (a printf-built input broke on a bare double quote, 2026-11-02); the probes keep
+  # writing \" and \n as JSON escapes, unesc() turns them into the characters.
+  out=$(node -e 'const a=process.argv;const unesc=(s)=>s.replace(/\\(["\\\/nt])/g,(m,c)=>c==="n"?"\n":c==="t"?"\t":c);process.stdout.write(JSON.stringify({tool_name:"Bash",session_id:a[1],cwd:a[2],tool_input:{command:unesc(a[3])}}))' "$sid" "$REPO_N" "$3" \
         | SHARED_COPY_FIXTURE_SESSIONS="$2" CLAUDE_PROJECT_DIR="$TMP_N" node "$HELPER" 2>&1)
   rc=$?
   if printf '%s' "$out" | grep -q '"permissionDecision": *"deny"'; then
@@ -71,6 +73,7 @@ ONE="$REPO_N"
 
 echo "shared working copy, two sessions:"
 probe "commit without pathspec"      "$TWO" "git -C $REPO_N commit -m \\\"x\\\""                    block
+probe "commit without pathspec, bare quotes (escaping)" "$TWO" "git -C $REPO_N commit -m \"x\""     block
 probe "commit -a"                    "$TWO" "git -C $REPO_N commit -a -m x"                         block
 probe "commit --amend"               "$TWO" "git -C $REPO_N commit --amend --no-edit"              block
 probe "commit by path"               "$TWO" "git -C $REPO_N commit a.txt -m x"                     allow
@@ -143,6 +146,20 @@ probe "no operation: write passes"   "$TWO" "git -C $REPO_N add a.txt"          
 probe "marker pull --rebase; status"  "$TWO" "git -C $REPO_N pull --rebase; git -C $REPO_N status --short  # MECHANISM-OK: fixture" allow sess-A
 [ "$(cat "$GD/claude-op-owner" 2>/dev/null)" = "sess-A" ] && ok "owner kept when a later call in the same command reads" || bad "owner dropped by a later call in the same command"
 rm -f "$GD/claude-op-owner"
+
+echo "one session, uncommitted work in the checkout (2026-11-03):"
+# measured: `git switch -c` ran in the operator's project checkout over their uncommitted settings — the guard held only
+# with a second session. A HEAD move or a tree clear over changes this session did not commit is held either way.
+probe "switch, clean checkout"         "$ONE" "git -C $REPO_N switch -c clean-branch"                  allow
+printf 'theirs\n' > "$REPO/a.txt"; printf 'new\n' > "$REPO/untracked.txt"
+probe "switch over uncommitted work"   "$ONE" "git -C $REPO_N switch -c over-work"                     block
+probe "checkout -b over uncommitted"   "$ONE" "git -C $REPO_N checkout -b over-work"                   block
+probe "stash over uncommitted"         "$ONE" "git -C $REPO_N stash"                                   block
+probe "commit by path still passes"    "$ONE" "git -C $REPO_N commit a.txt -m x"                       allow
+probe "marker opens it"                "$ONE" "git -C $REPO_N switch -c over-work  # MECHANISM-OK: fixture" allow
+printf 'x\n' > "$PRIV/scratch.txt"
+probe "own scratchpad worktree, dirty" "$ONE" "git -C $PRIV_N switch -c in-scratch"                    allow
+git -C "$REPO" checkout -q -- a.txt; rm -f "$REPO/untracked.txt" "$PRIV/scratch.txt"
 
 echo "fail-open:"
 probe "not a git repo"               "$TWO" "git -C $TMP_N/nowhere commit -m x"                     allow
