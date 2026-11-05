@@ -204,6 +204,23 @@ mg_probe "mechanism-guard/operator word: unflagged rule without marker (control)
 mg_probe "mechanism-guard/operator word: plain command (control)" "git status --short" allow
 rm -rf "$MG"
 
+# --- mechanism-guard: the TEMPLATE's release-tag rule, read from the template itself ---------
+# Measured 2026-10-26: `\bv\d+.\d+.\d+\b` caught a feature branch `data/v1.1.31-windows-package-check`
+# (`\b` matches after `/`) as a release tag; the push went through by renaming the branch. The
+# version token now counts only as an argument of its own.
+MG="$(native "$(mktemp -d)")"
+mkdir -p "$MG/.claude/rules"
+cp "$ROOT/templates/rules-instance/mechanism-rules.json" "$MG/.claude/rules/mechanism-rules.json"
+mg_probe "mechanism-guard/template tag rule: push a version tag" "git push origin v1.2.3" block
+mg_probe "mechanism-guard/template tag rule: push a pre-release tag" "git -C /x push origin v1.2.3-beta.1" block
+mg_probe "mechanism-guard/template tag rule: tag via refspec" "git push origin v1.2.3:refs/tags/v1.2.3" block
+mg_probe "mechanism-guard/template tag rule: --tags" "git push --tags" block
+mg_probe "mechanism-guard/template tag rule: branch named with a version" \
+  "git -C /x push -u origin data/v1.1.31-windows-package-check" allow
+mg_probe "mechanism-guard/template tag rule: branch with a version in the middle" \
+  "git push origin fix/bump-to-v2.1.2-notes" allow
+rm -rf "$MG"
+
 # --- mechanism-guard: TOOL rules — a tool declares its own internals ------------------
 # Incident 2026-10-11: a session on a second machine could not take the defined path and
 # built its own client, wrote probes into the tool's IPC file and drove the GUI. The guard
@@ -372,6 +389,11 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: run list --workflow= (control)" Bash command "gh run list --workflow=ci.yml --branch main" allow
   tr_probe "mechanism-guard/core rule: run list named in a commit message (control)" Bash command 'git -C /r commit -m \"guard: gh run list without a workflow filter\"' allow
   tr_probe "mechanism-guard/core rule: gh run view (control)" Bash command "gh run view 123 -R o/r --log-failed" allow
+  # A second output-style source (ported from the Windows instance, 2026-11-02): the core ships the style.
+  tr_probe "mechanism-guard/core rule: copy a style into .claude/output-styles" Bash command "cp caveman.md .claude/output-styles/" block
+  tr_probe "mechanism-guard/core rule: write a style file" Write file_path ".claude/output-styles/mine.md" block
+  tr_probe "mechanism-guard/core rule: read the style dir (control)" Bash command "cat .claude/output-styles/caveman.md" allow
+  tr_probe "mechanism-guard/core rule: core's own style file (control)" Write file_path "output-styles/caveman.md" allow
   # An inline script in double quotes: a backtick or $( in its text runs as a command first (measured 2026-11-03,
   # Windows instance: two backtick paths in a protocol entry ran as scripts; ported from a macOS instance rule).
   tr_probe "mechanism-guard/core rule: python -c with a backtick" Bash command 'python3 -c \"print(`date`)\"' block

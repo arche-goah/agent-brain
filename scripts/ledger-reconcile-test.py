@@ -327,6 +327,59 @@ def main():
         rc, out = run(root, "--brief", "--ledger", "docs/l.md")
         ok("negative control missing" not in out, "a hand run with --ledger keeps no memory and judges nothing new", out)
 
+    # PIN-MET (operator 2026-11-02): an open `check: none` entry waiting for "the pin that carries
+    # #N" is named once every named PR is in the pinned core — measured that day, four such PRs were
+    # in the pin and none of five entries moved. Both directions: a PR outside the pin, another
+    # repo's #N, no pin word, a ticked entry and an unreadable PR keep the entry silent.
+    with tempfile.TemporaryDirectory() as root:
+        R = pathlib.Path(root)
+        P = R / "core"
+        P.mkdir()
+        g = ["git", "-C", str(P), "-c", "user.email=t@t", "-c", "user.name=t"]
+        subprocess.run(g[:3] + ["init", "-q", "-b", "main"], check=True)
+        (P / "a").write_text("a")
+        subprocess.run(g[:3] + ["add", "a"], check=True)
+        subprocess.run(g + ["commit", "-qm", "in pin"], check=True)
+        inside = subprocess.run(g[:3] + ["rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        subprocess.run(g[:3] + ["checkout", "-qb", "side"], check=True)
+        (P / "b").write_text("b")
+        subprocess.run(g[:3] + ["add", "b"], check=True)
+        subprocess.run(g + ["commit", "-qm", "outside"], check=True)
+        outside = subprocess.run(g[:3] + ["rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        subprocess.run(g[:3] + ["checkout", "-q", "main"], check=True)
+        shas = R / "shas.json"
+        shas.write_text(json.dumps({"1": ["0" * 40, inside], "2": [outside]}), encoding="utf-8")
+        (R / "docs").mkdir()
+        (R / ".claude" / "rules").mkdir(parents=True)
+        json.dump({"ledgers": ["docs/l.md"], "allowed": ["test"]},
+                  open(R / ".claude" / "rules" / "ledgers.json", "w", encoding="utf-8"))
+        (R / "docs" / "l.md").write_text(
+            "- [ ] **waits** — derived (2026-11-02)\n  id: waits-met\n  check: none — waits for the pin that carries #1\n\n"
+            "- [ ] **two** — derived (2026-11-02)\n  id: one-outside\n  check: none — after the Pin with agent-brain#1 and #2\n\n"
+            "- [ ] **other repo** — derived (2026-11-02)\n  id: other-repo\n  check: none — pin carries grandma3-suite#1\n\n"
+            "- [ ] **no anchor word** — derived (2026-11-02)\n  id: no-pin-word\n  check: none — see #1\n\n"
+            "- [ ] **unreadable** — derived (2026-11-02)\n  id: unreadable\n  check: none — the pin with #9\n\n"
+            "- [x] **ticked** — derived (2026-11-02)\n  id: ticked-pin\n  check: none — the pin with #1\n\n"
+            "- [ ] **looked at** — derived (2026-11-02)\n  id: looked-at\n  check: none — the pin with #1\n"
+            "  exit: other-side 2099-01-01 — set to its real state after the pin moved\n",
+            encoding="utf-8")
+        env = dict(os.environ, LEDGER_RECONCILE_PR_SHAS=str(shas))
+        r = subprocess.run([sys.executable, SCRIPT, "--root", root, "--brief"], env=env,
+                           capture_output=True, text=True, encoding="utf-8")
+        out = r.stdout + r.stderr
+        pm = next((l for l in out.splitlines() if "waiting for a pin" in l), "")
+        ok("waits-met" in pm, "PIN-MET: every named PR is in the pin (head or merge commit an ancestor)", out)
+        for i, why in (("one-outside", "one PR outside the pin"), ("other-repo", "another repo's #N"),
+                       ("no-pin-word", "no word pin"), ("unreadable", "an unreadable PR"),
+                       ("ticked-pin", "a ticked entry"),
+                       ("looked-at", "an exit dated on or after the pin's commit")):
+            ok(i not in out, f"PIN-MET negative: {why} keeps the entry silent", out)
+        (R / ".claude" / "rules" / "ledgers.json").write_text(
+            json.dumps({"ledgers": ["docs/l.md"], "allowed": ["test"], "pin_repo": "nowhere"}), encoding="utf-8")
+        r = subprocess.run([sys.executable, SCRIPT, "--root", root, "--brief"], env=env,
+                           capture_output=True, text=True, encoding="utf-8")
+        ok("waiting for a pin" not in r.stdout, "PIN-MET: no pin checkout, nothing measured", r.stdout)
+
     print()
     if fails:
         print(f"ledger-reconcile-test: {fails} FAILURE(S)")

@@ -93,6 +93,17 @@
       "instead": "For a verdict on a commit: `scripts/ci-watch.sh` (reads `actions/runs?head_sha=`, detached as Working Rule #9 says). To look: `gh run list --workflow <name> ...` with the workflow you mean (e.g. `--workflow CI`)."
     },
     {
+      "pattern": "(?:^|[\\s;&|(])(?:>>?|cp|mv|touch|tee)\\s+[^\\n;&|]*\\.claude[/\\\\]output-styles[/\\\\]",
+      "was": "a second output-style source under .claude/output-styles/ - the core ships its style through the plugin (output-styles/, force-for-plugin: true); a brain's own copy is a second source that drifts from the core's text (measured on the Windows instance: the instance carried this rule since 2026-08-04, after a copied style had diverged)",
+      "instead": "The style comes from the enabled core plugin. If it does not take effect: update the marketplace and the plugin (`bash core/scripts/brain-update.sh`), then start a new session - do not copy the file. A brain that really wants its own style names it in .claude/rules/local-machinery.json."
+    },
+    {
+      "pattern": "(?:^|/)\\.claude/output-styles/",
+      "target": "path",
+      "was": "a second output-style source under .claude/output-styles/ (written through Write/Edit)",
+      "instead": "The style comes from the enabled core plugin. If it does not take effect: update the marketplace and the plugin (`bash core/scripts/brain-update.sh`), then start a new session - do not copy the file. A brain that really wants its own style names it in .claude/rules/local-machinery.json."
+    },
+    {
       "pattern": "(?:^|[\\n;&|(])\\s*(?:\\S*/)?(?:python3?|node|bash|sh)\\s+(?:-\\S+\\s+)*-[ce]\\s+\\\"(?:[^\\\"\\\\`$]|\\\\[\\s\\S]|\\$(?!\\())*(?:`|\\$\\()",
       "was": "an inline script in double quotes (`python3 -c \"...\"`, `node -e \"...\"`, `bash -c \"...\"`) whose text holds a backtick or `$(` - the shell runs that part as a command before the interpreter sees the text. Measured 2026-11-03 on the Windows instance: two backtick paths in a protocol entry ran as shell scripts (no file changed, the written text lost both paths); replay over that brain's transcripts: 4 such calls in 2 sessions. The macOS instance carried the same rule as instance data since 2026-10-29 (a PR text lost three names).",
       "instead": "Multi-line or quoted text goes into a file (Working Rule #8): write the script with the Write tool and run the file, or quote the argument in single quotes. An escaped backtick (\\`) is no hit."

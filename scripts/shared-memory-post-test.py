@@ -231,6 +231,9 @@ def main() -> int:
         stub.write_text(
             "import json, sys\n"
             "n = sys.argv[3]\n"
+            "repo = sys.argv[5] if len(sys.argv) > 5 else ''\n"
+            "if repo == 'o/other':\n"
+            "    print(json.dumps({'statusCheckRollup': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}]})); sys.exit(0)\n"
             "rows = {'1': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
             "        '2': [{'name': 'python-floor', 'status': 'COMPLETED', 'conclusion': 'FAILURE'},\n"
             "              {'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
@@ -265,6 +268,26 @@ def main() -> int:
             r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "PR #2 is red",
                      "--body", "FYI #2 is red on Windows.", me="alex-mac", brain=cib)
             check("control: a note naming a red PR (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)
+            # 2026-11-04: the check word rules its sentence, not the whole text (four correct requests refused in a day).
+            for title, body, want, label in (
+                ("Fixtures on Windows at main", "Please run the fixtures on Windows at the head of #1.\n"
+                 "We checked on macOS: 7/7 pass, the macOS side is done.", 0,
+                 "an OS in the evidence sentence is a report, not a request"),
+                ("Fixtures on Windows at main two", "Please run the fixtures on Windows at main.\n"
+                 "#2 fixes the red CI for the others.", 0,
+                 "a PR number outside the check sentence binds no CI check"),
+                ("Other repo by URL", "Please check on Windows at the head of #2 (https://github.com/o/other/pull/2).", 0,
+                 "a bare number next to another repo's PR URL belongs to that repo"),
+                ("Other repo by name", "Please check on Windows at the head of o/other#2.", 0,
+                 "owner/repo#n binds the number to that repo"),
+                ("Default repo bare number", "Please check on Windows at the head of #2.", 2,
+                 "control: a bare number in the check sentence is the default repo, red is refused"),
+                ("Report only", "Checked on Windows at the head of #2: red, python-floor.", 0,
+                 "control: 'checked' is a report, no check word"),
+            ):
+                r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
+                         me="alex-mac", brain=cib)
+                check(f"check sentence: {label}", r.returncode == want, r.stdout + r.stderr)
         finally:
             os.environ.pop("SHARED_MEMORY_POST_GH", None)
             shutil.rmtree(ghb, True)

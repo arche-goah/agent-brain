@@ -18,6 +18,13 @@
  * session deliberately does not act on (e.g. an entry to someone else). One block per turn.
  *
  * Exit 0 always; a block is `{decision: "block"}` on stdout. Fails open on unreadable input.
+ *
+ * Frequency design: no cooldown on purpose. The trigger is not an ordinary turn but a delivery -
+ * an inbox line of a fact file in this turn's records - and every block names the files that
+ * were shown and not opened. It blocks at most once per turn (its own echo or `stop_hook_active`
+ * lets the next stop through), one Read or `unread-ok: <why>` ends it, and a delivery from an
+ * earlier turn never counts again. A quiet period would let exactly the case it exists for
+ * through: acting on a description in a later turn while the file says otherwise.
  */
 const fs = require('fs');
 const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');

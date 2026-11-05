@@ -102,8 +102,41 @@ def resolve_next(to: list[str], parties: dict, text: str = "") -> list[str]:
 # English here; an instance adds its language in .claude/rules/shared-memory-post.json
 # {"check_words": [regex, ...]}.
 OS_NAMES = {"windows": r"\bwindows\b|\bwin(?:10|11)?\b", "macos": r"\bmac\s?os\b", "linux": r"\blinux\b"}
-CHECK_WORDS = [r"\bcounter-?check", r"\bcheck(?:s|ed)? (?:it |them )?(?:on|at)\b", r"\bplease (?:run|check|verify|test)\b",
+CHECK_WORDS = [r"\bcounter-?check", r"\bchecks? (?:it |them )?(?:on|at)\b", r"\bplease (?:run|check|verify|test)\b",
                r"\bverify (?:on|at)\b"]
+
+# The unit a check word rules is its SENTENCE, not the whole text (2026-11-04, four refusals of correct requests
+# on the macOS instance in one day): "checked on macOS: 7/7" in the evidence was read as a macOS request, "#402
+# fixes the red CI" bound the CI check to a PR nobody asked for, and "#233, #234" next to a grandma3-suite URL
+# were read as core PRs. Now an OS counts as asked only in the sentence with the check word, a PR number binds the
+# CI check only there, a bare #n in a sentence that names ONE repo (owner/repo#n or a PR URL) belongs to that
+# repo, and "checked" (a report) is no check word.
+SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
+PR_URL = re.compile(r"https?://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)\b")
+
+
+def check_sentences(text):
+    """The sentences of `text` that carry a check word."""
+    words = check_words()
+    return [s for s in SENTENCE.split(text) if s and any(w.search(s) for w in words)]
+
+
+def asked_os(sentences):
+    """The OS names the check sentences mention."""
+    return [o for o, rx in OS_NAMES.items() if any(re.search(rx, s, re.I) for s in sentences)]
+
+
+def asked_prs(sentences, default):
+    """(repo, number) pairs the check sentences name: owner/repo#n, a PR URL, or a bare #n bound to the one repo
+    the sentence names, else to `default`."""
+    out = []
+    for s in sentences:
+        urls = PR_URL.findall(s)
+        refs = PR_REF.findall(s)
+        named = {r for r, _ in urls} | {r for r, _ in refs if r}
+        bind = next(iter(named)) if len(named) == 1 else default
+        out += urls + [(r or bind, n) for r, n in refs]
+    return [p for p in dict.fromkeys(out) if p[0]]
 
 
 def check_words():
@@ -154,9 +187,9 @@ def os_check_misaddressed(text, to, one_machine):
     if one_machine and HOLLOW_ONE_MACHINE.search(one_machine):
         return (f"--one-machine \"{one_machine}\" names only the OS - any machine of that OS fits it, so the request "
                 "goes to os:<os>; a one-machine reason names what only that machine has (a desk, a device, a file)")
-    if one_machine or not any(w.search(text) for w in check_words()):
+    if one_machine:
         return ""
-    wanted = [o for o, rx in OS_NAMES.items() if re.search(rx, text, re.I)]
+    wanted = asked_os(check_sentences(text))
     missing = [o for o in wanted if f"os:{o}" not in to and not any(t.startswith("all") for t in to)]
     if not missing:
         return ""
@@ -215,14 +248,11 @@ def ci_state(repo: str, n: str) -> str:
 
 def os_check_not_ready(text: str) -> str:
     """The refusal text when `text` asks an OS check of a PR whose CI at the head is not green."""
-    if not any(w.search(text) for w in check_words()) or not any(re.search(rx, text, re.I) for rx in OS_NAMES.values()):
+    asked = check_sentences(text)
+    if not asked or not asked_os(asked):
         return ""
-    default = pr_repo_default()
     bad = []
-    for repo, n in dict.fromkeys(PR_REF.findall(text)):
-        repo = repo or default
-        if not repo:
-            continue
+    for repo, n in asked_prs(asked, pr_repo_default()):
         st = ci_state(repo, n)
         if st != "green":
             bad.append(f"{repo}#{n} ({st})")

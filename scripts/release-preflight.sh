@@ -185,7 +185,12 @@ if [ "$MODE" = "local" ]; then
 
   # 7. nothing announced in the shared memory for this repo's topic
   SHARED="${SHARED_MEMORY_REPO:-$HOME/Projects/brain-shared-memory}"
-  base="$(basename "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$ROOT")")"
+  # the repo's name comes from its origin URL, the folder name only as a fallback: a worktree under
+  # a scratchpad carries any name (measured 2026-11-02: a worktree named `train-212` looked for
+  # `<shared>/train-212/`, found no folder and skipped the check with a note)
+  url="$(git -C "$ROOT" config --get remote.origin.url 2>/dev/null || true)"
+  base="${url%/}"; base="${base##*/}"; base="${base##*:}"; base="${base%.git}"
+  [ -n "$base" ] || base="$(basename "$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null || echo "$ROOT")")"
   case "$base" in agent-brain) dtopic=core ;; *-suite) dtopic="${base%-suite}" ;; *) dtopic="$base" ;; esac
   TOPIC="${RELEASE_TOPIC:-$dtopic}"
   if [ -d "$SHARED/$TOPIC" ]; then
