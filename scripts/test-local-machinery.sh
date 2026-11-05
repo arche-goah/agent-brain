@@ -234,6 +234,7 @@ rm -rf "$T/fakehome/.claude/plugins/marketplaces"
 # 2026-10-28 (operator word): the stable AND the beta channel of one suite enabled at once is loud;
 # one channel, or the other plugin disabled, is silent.
 mk '{"enabledPlugins":{"brain-core-next@m":true,"td@m":true,"td-next@m":true}}' '' '' >/dev/null
+mkdir -p "$T/b/config"  # mk rebuilds $T/b without config/ (2026-11-05: the write below failed silently)
 printf '{"repos":{"td-suite":{"kind":"suite","consumer_plugin":"td-next@m"}}}' > "$T/b/config/ecosystem.json"
 out=$(run); grep -q '^!! local machinery: 1 suite(s) with the stable AND the beta plugin enabled at once: td + td-next (m)' <<< "$out" \
   && ok "both-channels-loud" || bad "both-channels-loud: $out"
@@ -241,7 +242,6 @@ mk '{"enabledPlugins":{"brain-core-next@m":true,"td@m":false,"td-next@m":true}}'
 out=$(run); ! grep -q 'stable AND the beta' <<< "$out" && ok "one-channel-silent" || bad "one-channel-silent: $out"
 mk '{"enabledPlugins":{"brain-core@m":true,"brain-core-next@m":true}}' '' '' >/dev/null
 out=$(run); grep -q 'brain-core + brain-core-next (m)' <<< "$out" && ok "both-core-channels-loud" || bad "both-core-channels-loud: $out"
-printf '{"repos":{}}' > "$T/b/config/ecosystem.json"
 
 # --- git hooks: global hooksPath outside the brain ----------------------------------------
 mk "$CORE_HOOK" '' '' >/dev/null; git -C "$T/b" init -q
