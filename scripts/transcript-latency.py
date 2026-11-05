@@ -38,6 +38,8 @@ import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # noqa: E402
+from transcript_kind import sessions as sessions_only  # noqa: E402  (headless calls are no session)
 
 _INSTANCE = Path(os.environ.get("BRAIN_DIR", Path.cwd())).resolve()
 DIR_DEFAULT = Path.home() / ".claude/projects" / re.sub(r"[^A-Za-z0-9]", "-", str(_INSTANCE))
@@ -69,7 +71,7 @@ def measure(directory: Path):
     turns = defaultdict(list)      # day -> [(duration, tool_time, n_tools)]
     tool_lat = defaultdict(list)   # (day, family) -> [seconds]
     out_chars = Counter()          # day -> chars of assistant text + thinking
-    for f in sorted(directory.glob("*.jsonl")):
+    for f in sessions_only(sorted(directory.glob("*.jsonl"))):
         events = []
         with open(f, encoding="utf-8", errors="replace") as fh:
             for line in fh:

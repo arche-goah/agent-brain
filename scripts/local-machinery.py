@@ -51,6 +51,7 @@ thin wrappers of core items, carriers declared in two contradicting places) and 
 import argparse
 import csv
 import datetime
+import difflib
 import io
 import json
 import os
@@ -114,6 +115,12 @@ def read(path, cap=262144):
             return f.read(cap)
     except OSError:
         return ""
+
+
+def copy_of(mine, core):
+    """A same-named file is a copy of the core one when it kept at least half of its lines -
+    the reading hook-coverage.py's duplicate check uses."""
+    return difflib.SequenceMatcher(None, mine.splitlines(), core.splitlines(), autojunk=False).ratio() >= 0.5
 
 
 def read_tree(d, cap=1 << 20):
@@ -554,7 +561,11 @@ def scan_scripts(C):
     """Every script in the brain outside the core and the other carriers. Fixtures (test-*,
     *-test.*, test_*.py, *_test.py) belong to the script they test."""
     out = []
-    prune = {C.root / "core", C.root / ".claude" / "skills", C.root / ".claude" / "workflows"}
+    # docs/research holds measurement scripts of a report — evidence beside its report, not running machinery
+    # (audit-audit 2026-11-02, macOS instance: 28 of 32 "general/undeclared" items of one day were such scripts).
+    # A research script that a hook or a scheduled job runs is still found: those carriers name it.
+    prune = {C.root / "core", C.root / ".claude" / "skills", C.root / ".claude" / "workflows",
+             C.root / "docs" / "research"}
     for dirpath, dirnames, filenames in os.walk(C.root):
         dp = pathlib.Path(dirpath)
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and dp / d not in prune
@@ -655,8 +666,20 @@ def near_duplicate(name, core):
 
 # ---------------------------------------------------------------- judging
 
+def covers(k, ident):
+    """A path key covers what lies under it. A `#` key covers its item, or a prefix cut at a word boundary
+    (measured 2026-10-30: the declaration of mechanism-rules.json#merge covered #mergelint, a rule nobody had
+    declared; measured 2026-11-02 on the Windows instance: `feedback.md#2026-` deliberately covers every dated
+    section, exact-only matching left 57 items undeclared there)."""
+    if "#" not in k:
+        return ident.startswith(k)
+    if ident == k:
+        return True
+    return ident.startswith(k) and (not re.match(r"\w", k[-1]) or not re.match(r"\w", ident[len(k)]))
+
+
 def match(decl, it):
-    keys = [k for k in decl if it["id"].startswith(k) or (it["cmd"] and k in it["cmd"])]
+    keys = [k for k in decl if covers(k, it["id"]) or (it["cmd"] and k in it["cmd"])]
     return max(keys, key=len) if keys else None
 
 
@@ -719,12 +742,18 @@ def judge(items, decl, C, today):
             # of the pin were told "remove the copy" — removing them would drop the behaviour.
             # Once the pinned core file equals the copy, the pin carries it: then it IS a shadow.
             pinned = C.root / "core" / core[name]
+            calls_core = ("core/" + core[name]) in it["content"].replace("\\", "/")
             if ka and pinned.is_file() and it["content"] and read(pinned) != it["content"]:
+                pass
+            elif pinned.is_file() and it["content"] and not calls_core and not copy_of(it["content"], read(pinned)):
+                # Same name, another tool: measured 2026-11-02/03 on two Windows brains, the
+                # messaging hook scripts/telegram-notify/notify.cjs (13 % of its lines shared with
+                # the core's sound helpers/notify.cjs) was told at every start to "remove the copy".
                 pass
             else:
                 # Same name: a thin wrapper that only calls the core one looks like a copy from
                 # outside (measured 2026-10-09) — say which, the fix differs.
-                cls = "wrapper" if ("core/" + core[name]) in it["content"].replace("\\", "/") else "shadow"
+                cls = "wrapper" if calls_core else "shadow"
                 it["class"] = cls
                 found[cls].append(it["id"])
                 continue
@@ -767,6 +796,13 @@ def judge(items, decl, C, today):
             elif not evs:
                 it["class"] = "noevidence"
                 found["noevidence"].append(it["id"])
+            elif ident and not any(ident.search(e) for e in evs):
+                # Evidence is what makes an item THIS brain's: a token of its identity, not any word the
+                # item contains. Measured 2026-11-02 on the macOS instance: 33 of 122 instance declarations
+                # leaned on words like a suite name ("grandma3"), a file name or a protocol ("DMX"), and a
+                # private release-chain plugin stayed declared "not a core candidate" for a week.
+                it["class"] = "badevidence"
+                found["badevidence"].append(f"{it['id']} ({'|'.join(evs)} is no identity token of this brain)")
             elif not any(e.lower() in it["content"].lower() for e in evs):
                 it["class"] = "badevidence"
                 found["badevidence"].append(f"{it['id']} ({'|'.join(evs)})")
@@ -827,6 +863,24 @@ def tool_sources_off_main(C, tops=None):
     return [(t, b) for t, b in tops.items() if b and b not in ("main", "master")]
 
 
+def shared_tokens(decl, C):
+    """Identity tokens that are the name of a published plugin or suite repo: every brain that uses that
+    suite contains them, so they mark nothing as this brain's (measured 2026-11-02: grandma3, mikrotik,
+    touchosc in one brain's list made a release-chain plugin read as instance machinery)."""
+    toks = decl.get("identity_tokens") or []
+    if isinstance(toks, dict):
+        toks = [t for v in toks.values() for t in (v if isinstance(v, list) else [v])]
+    names = set()
+    for repo, ids in published_repos(C).items():
+        names.add(repo.split("/")[-1].lower())
+        names.add(re.sub(r"-suite$", "", repo.split("/")[-1].lower()))
+        for pid in ids:
+            n = pid.split("@", 1)[0].lower()
+            names.update({n, re.sub(r"-next$", "", n)})
+    return [f"identity_tokens: {t} (the name of a published plugin or suite, not this brain's)"
+            for t in toks if str(t).strip().lower() in names]
+
+
 def published_repos(C):
     """{'owner/repo': ['plugin@marketplace', ...]} from every marketplace this machine has added."""
     out = {}
@@ -834,8 +888,14 @@ def published_repos(C):
         mkt = mf.parent.parent.name
         for p in (load(mf) or {}).get("plugins") or []:
             src = p.get("source") if isinstance(p, dict) else None
-            if isinstance(src, dict) and src.get("repo") and p.get("name"):
-                out.setdefault(src["repo"].lower(), []).append(f"{p['name']}@{mkt}")
+            if not (isinstance(src, dict) and p.get("name")):
+                continue
+            repo = src.get("repo") or ""
+            if not repo:  # "url" entries (HTTPS form since 2026-11-02)
+                m = re.search(r"github\.com[:/]+(.+?)(?:\.git)?/?$", src.get("url") or "")
+                repo = m.group(1) if m else ""
+            if repo:
+                out.setdefault(repo.lower(), []).append(f"{p['name']}@{mkt}")
     return out
 
 
@@ -893,7 +953,7 @@ MESSAGES = {
     "outside": "!! local machinery: {n} item(s) run from outside this brain and outside the core, undeclared: {x} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR",
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
     "noevidence": "!! local machinery: {n} instance declaration(s) give a reason without evidence: {x} — add \"evidence\": the instance-specific token the item relies on",
-    "badevidence": "!! local machinery: {n} item(s) do not contain the evidence their declaration names: {x} — the declaration is wrong or stale; reclassify",
+    "badevidence": "!! local machinery: {n} item(s) whose evidence does not hold (not in the item, or no identity token of this brain, or an identity token that every user of a suite carries): {x} — reclassify: core (or suite) PR, real identity evidence (add the token to identity_tokens only if it names this brain alone), or a reach analysis",
     "channels": "!! local machinery: {n} suite(s) with the stable AND the beta plugin enabled at once: {x} — both ship the same skills and server, which one answers is undefined; disable one (the beta on a machine that checks the beta, else the beta) and start a new session",
     "duplicate": "local machinery: {n} item(s) look like a near-duplicate of a core item: {x} — for the AI: same purpose = use the core one; different = declare \"distinct_from\"",
     "undeclared": "local machinery: {n} item(s) without a declaration{c}: {x} — for the AI: classify each; general = core PR, instance-only = declare why + evidence",
@@ -921,6 +981,7 @@ def main(argv):
 
     items = inventory(C)
     found = judge(items, decl, C, a.today)
+    found["badevidence"] += shared_tokens(decl, C)
     found["edited"] = edited_core(C)
     found["missing"] = C.missing
     found["channels"] = both_channels(C)

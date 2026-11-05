@@ -49,6 +49,10 @@ B8="$T/typed-no"; P8="$T/p-typed-no"; mkdir -p "$B8" "$P8"
 f8="$P8/s1.jsonl"; { user "<command-message>loop</command-message>
 <command-name>/loop</command-name>"; } > "$f8"
 out=$(run "$B8" "$f8" s2 "ok done for today"); says "another typed command is no proof of the close (control)" "$out" session-close
+# The same close typed while the agent worked lands as a queued command, not a user record (2026-11-03).
+BQ="$T/typed-queued"; PQ="$T/p-typed-queued"; mkdir -p "$BQ" "$PQ"
+fq="$PQ/s1.jsonl"; { user "fix it"; printf '%s\n' '{"type":"attachment","attachment":{"type":"queued_command","prompt":"<command-message>brain-core:session-close</command-message>\n<command-name>/brain-core:session-close</command-name>","origin":{"kind":"human"}}}'; } > "$fq"
+out=$(run "$BQ" "$fq" s2 "ok done for today"); quiet "a close typed ahead as a queued command is learned too" "$out"
 B9="$T/said"; P9="$T/p-said"; mkdir -p "$B9" "$P9"
 f9="$P9/s1.jsonl"; user "how does session-close work?" > "$f9"
 out=$(run "$B9" "$f9" s2 "done for today"); says "the word session-close in a question is no proof (control)" "$out" session-close

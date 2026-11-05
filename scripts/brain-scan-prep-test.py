@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as d:
     report(r, "2026-10-01", [("gone", "ai-does-it"), ("tracked", "ai-does-it"), ("fixed", "ai-does-it"),
                              ("dropme", "drop"), ("settled", "operator-decision"), ("already", "done-already")])
     report(r, "2026-10-09", [("gone", "ai-does-it")])  # today's own report: never "previous"
-    orders(r, "- [ ] **tracked**\n  id: tracked\n\n- [x] **fixed**\n  id: fixed\n\n"
+    orders(r, "- [ ] **tracked**\n  id: tracked\n\n- [x] **fixed**\n  id: fixed\n  check: test -f x\n\n"
               "- [ ] **settled**\n  id: settled\n  decided 2026-10-05: accepted as is\n")
     code, summ, rc, mach, head = run(r, "--skip-machine")
     check(code == 0, "exit 0")
@@ -114,9 +114,14 @@ with tempfile.TemporaryDirectory() as d:
     _, summ, _, _, _ = run(t, "--skip-machine")
     check(any("came back a third time" in l for l in deep(summ, "coherence-scan")),
           "three appearances without a fix suggest a coherence-scan")
+    # 2026-11-02 (audit-audit): a tick without a check line is a claim — the recurrer stays a decision
     orders(t, "- [x] **again**\n  id: again\n")
+    _, summ, rc2, _, _ = run(t, "--skip-machine")
+    check("again" in summ.get("decision_due", []) and state(rc2, "again") == "done-unproven",
+          "a recurrer ticked without a check stays decision-due (done-unproven)")
+    orders(t, "- [x] **again**\n  id: again\n  check: test -f fixed-file\n")
     _, summ, _, _, _ = run(t, "--skip-machine")
-    check("again" not in summ.get("decision_due", []), "a fixed recurrer is no decision")
+    check("again" not in summ.get("decision_due", []), "a fixed recurrer with its check is no decision")
 
     # ── deep check: new dated rules, 5 fires, 4 stays silent ────────────────
     for n, expect in ((5, True), (4, False)):
@@ -131,6 +136,17 @@ with tempfile.TemporaryDirectory() as d:
         if expect:
             check("~2.6M tokens per run" in got[0] and "(2026-09-18)" in got[0], "the line names why and the measured price")
             check(got[0] in head, "the line reaches the report head verbatim")
+
+    # 2026-11-02 (operator decision): under 14 days the trigger suggests the PARTIAL run, never a full one
+    import datetime as _dt
+    recent = (_dt.date.today() - _dt.timedelta(days=3)).isoformat()
+    p = Path(d) / "partial"
+    write(p / f"docs/research/coherence-scan/register-{recent}.md", "# register\n")
+    write(p / ".claude/rules/feedback.md", "".join(f"- rule {i} (operator {_dt.date.today().isoformat()})\n" for i in range(6)))
+    _, summ, _, _, _ = run(p, "--skip-machine")
+    lines = [l for l in summ.get("deep_check", []) if "coherence-scan" in l]
+    check(len(lines) == 1 and "coherence-scan PARTIAL" in lines[0] and f'since: "{recent}"' in lines[0],
+          "a coherence trigger 3 days after the last register suggests the partial run")
 
     # a register in the pre-rename folder kohaerenz-scan/ counts as the last register
     k = Path(d) / "legacy-register"
@@ -165,7 +181,7 @@ with tempfile.TemporaryDirectory() as d:
     (old / "scripts").mkdir(parents=True)
     _, summ, _, mach, _ = run(b, core=old)
     na = [f for f in mach["findings"] if f["title"].startswith("not available in this core checkout")]
-    check(len(na) == 1 and all(n in na[0]["title"] for n in ("local-machinery.py", "commitments.py", "lesson-carriers.py", "brain-selftest.sh")),
+    check(len(na) == 1 and all(n in na[0]["title"] for n in ("local-machinery.py", "commitments.py", "carrier-audit.py", "brain-selftest.sh")),
           "an old core: ONE 'not available' line naming the missing scripts")
 
     stub = Path(d) / "stubcore"
@@ -173,7 +189,7 @@ with tempfile.TemporaryDirectory() as d:
           "print('!! shadow: scripts/x.py has the name of a core script')\nprint('local machinery summary: shadow=1')\n")
     write(stub / "scripts/commitments.py",
           "print('loose commitment: from now on I do X')\nprint('commitments summary: found=1 carried=0 loose=1')\n")
-    write(stub / "scripts/lesson-carriers.py",
+    write(stub / "scripts/carrier-audit.py",
           "print('lesson without carrier: 2026-10-25 - a correction without a mechanism')\n"
           "print('lesson-carriers summary: entries=1 carried=0 loose=1')\n")
     write(stub / "scripts/state-prose-lint.py",
@@ -195,13 +211,25 @@ with tempfile.TemporaryDirectory() as d:
           "print('!! PREMISE: 3 entries in 14 days, 2 session(s), 3 would have blocked - decide: block, keep recording, or unwire')\n"
           "print('recorder report summary: 1 recorder(s), 1 with a decision due')\n")
     write(stub / "scripts/brain-selftest.sh", "echo '  !!  fixture x failed'\necho 'SELF-TEST: FAILURE'\nexit 1\n")
+    # 2026-11-02 (audit-audit): the root-cause review count runs in the scan and names the review as due.
+    write(stub / "helpers/root-cause-gate.cjs",
+          "console.log('transcripts 9 · operator turns 90 · corrections 3 · reply named a cause 1 (33 %) · a mechanism "
+          "file written within 5 turns 1 (33 %) · turns naming a cause 20, without a mechanism write in the same turn 4 (20 %)')\n")
     write(stub / "scripts/effect-check.sh", "echo 'ROT  E3  Hook Targets — 1 missing'\necho 'OK   E1  Style — ok'\n"
                                             "echo 'WARN E6  Loose Commitments — 1'\nexit 1\n")
     write(stub / "scripts/invariant-check.py", "import sys\nprint('  !!  C-1\\n      NEW site: a.sh (2 hits)')\n"
                                                "print('      -> MECHANISM due (>=3 sites or repeat after a fix)')\nsys.exit(1)\n")
     write(b / "docs/maintenance/invariants.md", "root: .\n")
+    # 2026-11-02 (audit-audit): a log no second file names is a finding; one a reader names, or a recorder's, is not.
+    write(b / ".claude-state/orphan-gate.jsonl", '{"at": "x"}\n')
+    write(b / ".claude-state/read-gate.jsonl", '{"at": "x"}\n')
+    write(b / "scripts/read-gate-writer.cjs", "// writes read-gate.jsonl\n")
+    write(b / "scripts/read-gate-reader.py", "# reads read-gate.jsonl\n")
     _, summ, _, mach, _ = run(b, core=stub)
     T = {f["title"]: f["severity"] for f in mach["findings"]}
+    check(any(t.startswith("log without a reader: .claude-state/orphan-gate.jsonl") for t in T),
+          "a log nobody but its writer names is a finding")
+    check(not any("read-gate.jsonl" in t for t in T), "a log with a second file naming it is read")
     has = lambda sev, part: any(s == sev and part in t for t, s in T.items())
     check(has("P1", "local-machinery: !! shadow"), "a loud local-machinery line is a P1 finding")
     check(has("P2", "commitments: loose commitment"), "a loose commitment is a P2 finding")
@@ -216,6 +244,8 @@ with tempfile.TemporaryDirectory() as d:
     check(has("P2", "decision-review: add a line for 'git push'"), "decision-review: a proposal is a P2 finding")
     check(has("P2", "recorder-report: !! PREMISE"), "a recorder with would-block entries is a P2 decision")
     check(has("P2", "dead-carriers: dead carrier: CLAUDE.md:4 names scripts/gone.sh"), "a dead carrier is a P2 finding")
+    check(has("P2", "root-cause review due: 3 correction(s) since the last scan, 2 without a cause in the reply, 4 turn(s)"),
+          "the root-cause review is named due with its counts")
     check(not any(t.startswith("not available") for t in T), "a complete core reports nothing as unavailable")
     check(summ.get("machine_p1") == sum(1 for s in T.values() if s == "P1"), "summary P1 count = file P1 count")
 

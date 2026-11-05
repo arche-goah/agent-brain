@@ -30,7 +30,7 @@ case "$*" in
   *beta-candidate*) [ -e "$d/gh-down" ] && exit 1
     case "$*" in *"label list"*) cat "$d/gh-label";; *) cat "$d/gh-cand";; esac ;;
   *isDraft*) cat "$d/gh-open" ;;
-  *"pr view"*) cat "$d/proof.txt" ;;
+  *"pr view"*) n="${*#*pr view }"; n="${n%% *}"; if [ -f "$d/proof-$n.txt" ]; then cat "$d/proof-$n.txt"; else cat "$d/proof.txt"; fi ;;
   *) echo 0 ;;
 esac
 ' "$TMP" > "$GHDEF/gh"
@@ -237,6 +237,30 @@ check "OS words without an instance key do not count" 1 $?
 { b64 'instance-key: abc — macOS: OK at abc1234. Windows check still open.'; } > "$TMP/proof.txt"
 PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
 check "Windows named only as open is no Windows proof" 1 $?
+# 2026-11-04 (macOS instance): a merge train's thread carries the merger's own OK only - its MEMBERS carry the
+# proofs; a text whose first line names the CI job is no proof; both proofs from one instance are one review.
+{ b64 '<!-- instance-key: abc -->
+## Merge train train/x
+
+Contains (each PR branch head, merged unchanged):
+- #8 fix/y abc1234
+
+Left out:
+- #9 (conflicts with the train so far)'; b64 'instance-key: abc — macOS OK at the train head'; b64 'instance-key: def — Windows OK'; } > "$TMP/proof-7.txt"
+{ b64 'instance-key: abc — macOS OK'; } > "$TMP/proof-8.txt"
+PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "a train is judged by its members: the member without a Windows proof fails" 1 $?
+rm -f "$TMP/proof-7.txt" "$TMP/proof-8.txt"
+{ b64 'instance-key: abc — macOS OK'; b64 'instance-key: def — CI at this head: 16 checks OK including portability on macOS and Windows'; } > "$TMP/proof.txt"
+PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "a comment naming the Windows CI job is no Windows proof" 1 $?
+{ b64 'instance-key: abc — macOS OK at head 627d2db (measured once): CI 16 checks none failing including portability on macOS and Windows'; } > "$TMP/proof.txt"
+PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "one instance naming both systems is one review, not two (#399, 2026-11-04)" 1 $?
+# the author's own test line with a negative control in brackets is a Windows proof (#376, 2026-11-04)
+{ b64 'instance-key: abc — **Test (Windows, Git Bash):** `scripts/test-x.sh` all cases pass (two new — both FAIL against `origin/main`); done.'; b64 'instance-key: def — macOS OK at head'; } > "$TMP/proof.txt"
+PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "a negative-control clause in the author test line does not cancel its Windows proof" 0 $?
 
 echo
 echo "$pass/$((pass+fail)) passed"

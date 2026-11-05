@@ -74,6 +74,8 @@ Example — destructive op:
 
 Code/commits/PRs: write normal. Same for mandatory artifacts — logs, reports, claim blocks, handoffs: reporting duty beats style, caveman never shortens them. "stop caveman" or "normal mode": revert. Level persist until changed or session end.
 
+Evidence labels are substance, never hedging: "measured", "derived", "assumed", "cause unknown", "unmeasured" (and the instance's words for them) stay in every reply at every level. Drop "probably" only when the claim is measured; a derived or assumed claim keeps its label, so a guess never reads as a measurement (`rules/thinking-protocol.md`, rule 0: report measured / derived / assumed apart).
+
 The language rule of the INSTANCE stays: caveman compresses that language, it never switches it. Where the split runs between conversation and code/commits is instance knowledge (`.claude/rules/working-rules-instance.md`) — this file is shared by every brain and states no language of its own.
 
 <!-- Canonical source of the caveman rules. Mechanism since 2026-08-04: `force-for-plugin: true`

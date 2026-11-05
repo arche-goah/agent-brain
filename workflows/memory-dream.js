@@ -160,7 +160,8 @@ STEP 1: ls ${FINDINGS_DIR} — if any of these files is missing, STOP: return fi
 STEP 2: read ALL of them completely, never from memory of an earlier stage. finding_count = the summed length of their findings arrays, MEASURED (node -e or jq), never estimated.
 STEP 3: write the report from what you read.
 Structure: header (file/line counts, limits), findings by severity with proposal, section
-"Merge/delete candidates" as a table, closing section "Implementation ONLY after operator OK —
+"Merge/delete candidates" as a table, closing section "Implementation: the run was ordered, so the
+session applies the clear and safe fixes and proposes the structural or uncertain ones (order fidelity #9) —
 respect the snapshot rule: memory changes via auto-memory + memory-sync export, never
 docs/memory-snapshot/ directly". NO change to memory files.
 After writing, MEASURE the report: run \`wc -c < ${REPORT}\` and return that number as report_bytes. If the write was refused or failed, return report_path "" and report_bytes 0 — never a path you did not write.

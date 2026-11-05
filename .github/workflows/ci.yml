@@ -312,9 +312,14 @@ jobs:
           for s in scripts/test-*.sh scripts/*-test.sh; do
             echo "::group::$s"; bash "$s"; echo "::endgroup::"; n=$((n+1))
           done
-          for s in scripts/*-test.py; do
+          for s in scripts/*-test.py scripts/test-*.py; do
             # cp1252 on every OS, as the smoke loop did: a print cp1252 cannot encode crashed on windows-latest only (2026-10-28)
             echo "::group::$s"; PYTHONIOENCODING=cp1252 "$PY" "$s"; echo "::endgroup::"; n=$((n+1))
+          done
+          # Node fixtures too (2026-11-02, audit-audit: the self-test and this step found no .cjs fixture; the only
+          # one ran because a shell wrapper calls it - the next one would have run nowhere).
+          for s in scripts/test-*.cjs scripts/*-test.cjs; do
+            echo "::group::$s"; node "$s"; echo "::endgroup::"; n=$((n+1))
           done
           [ "$n" -gt 0 ] || { echo "no fixture suite discovered — the glob is broken"; exit 1; }
           echo "$n fixture suite(s) run on ${{ matrix.os }}"

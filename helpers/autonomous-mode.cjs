@@ -281,18 +281,35 @@ function promptModes(transcriptPath, cwd) {
     // The model's asks_open yields to its own mode_on in the SAME prompt (2026-10-31: "work through all open
     // points, handle them autonomously" carried both; the run the operator had just ordered must start).
     let asks;
+    let off;
     if (intent && typeof intent.asks_open === 'boolean') {
       asks = intent.asks_open && !intent.mode_on;
-      if (intent.mode_off || asks) state = false;
-      else if (intent.mode_on) state = true;
+      off = intent.mode_off;
+      if (!off && !asks && intent.mode_on) state = true;
     } else {
       asks = w.ask.test(own);
-      if (w.off.test(own) || asks) state = false;
-      else if (ordersOn(w.on, own)) state = true;
+      off = w.off.test(own);
+      if (!off && !asks && ordersOn(w.on, own)) state = true;
     }
+    // "What is open for me?" leaves the run only when something IS open for the operator (operator 2026-11-03,
+    // translated: "why did you just switch to interactive? no questions came. either the questions, or stay
+    // autonomous"). Nothing open: the run goes on and the reply says so in one line. Read lazily - the presentation
+    // gate requires this file.
+    if (off) state = false;
+    else if (asks) state = state && openForOperator(cwd) === 0 ? true : false;
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words' });
   }
   return out;
+}
+
+/** Count of operator decisions and hand steps the presentation gate would put (its own readers); unreadable = 1, the safe side. */
+function openForOperator(cwd) {
+  // scripts/pattern-cases.py sets it: a pattern case tests the words, it names its own open count
+  if (/^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '')) return Number(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR);
+  try {
+    const { ledgerDecisions, registerDecisions } = require('./decision-presentation-gate.cjs');
+    return ledgerDecisions(cwd).length + registerDecisions(cwd).length;
+  } catch (e) { return 1; }
 }
 
 /** true when the operator's autonomous order is in force at the end of the transcript. */
@@ -301,7 +318,7 @@ function autonomousMode(transcriptPath, cwd) {
   return modes.length ? modes[modes.length - 1].autonomous : words(cwd).initial;
 }
 
-module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor };
+module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, answers, promptText, HOOK_ECHO };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);

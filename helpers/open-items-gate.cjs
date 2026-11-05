@@ -344,10 +344,13 @@ const hasNumber = (n, text) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(text);
  * operator's "is anything still open?", the reply put it under "open (with others) — waits on
  * the collaborator's read", following a superseded line of that repo's own rules. The operator
  * closed on that answer each time. The list was right; the prose overrode it with nothing on
- * record. A wait counts only as data: the PR's `waiting-until:` line, the instance's `waiting`
- * map in open-items.json, or a fresh open-items.py run that now prints the item as waiting
- * (its record in .claude-state/open-items-seen.json). A bullet under a heading that says
- * "with others" says it too.
+ * record. A wait counts only as data this gate reads: the instance's `waiting` map in
+ * open-items.json, or the record of an open-items.py run that prints the item as waiting
+ * (.claude-state/open-items-seen.json). A PR's `waiting-until:` line or a ledger exit to another
+ * party reaches that record only through a run WITH the session id — a hand run writes no state
+ * (open-items.py, "Only the bootup writes the counter"; measured 2026-11-03 on the Windows
+ * instance: the PR lines stood, a hand run printed the items as waiting, the gate still blocked).
+ * A bullet under a heading that says "with others" says it too.
  */
 function relabelled(t, cwd, sessionId) {
   if (!t.boot || t.boot.kind !== 'ok' || !t.last) return null;
@@ -384,7 +387,7 @@ function relabelled(t, cwd, sessionId) {
     for (const it of movable) if (!bad.includes(it) && strict(it, l)) bad.push(it);
   }
   if (bad.length) {
-    return `This reply puts ${bad.map((it) => it.ref).join(', ')} with someone else, but the session start lists it as ours and no wait is on record. Say it as ours (do it, or ask), or record the wait as data first: a \`waiting-until: <date>: <why>\` line in the PR body, the \`waiting\` map in .claude/rules/open-items.json, or a rerun of open-items.py when the other side's move is on record. Missing: wait record for ${bad.map((it) => it.ref).join(', ')}`;
+    return `This reply puts ${bad.map((it) => it.ref).join(', ')} with someone else, but the session start lists it as ours and no wait is on record. Say it as ours (do it, or ask), or record the wait as data first: a \`waiting-until: <date>: <why>\` line in the PR body, the \`waiting\` map in .claude/rules/open-items.json, or (with a \`waiting-until:\` line or a ledger exit to the other side in place) a run of \`python3 core/scripts/open-items.py --hook-input '{"session_id": "<this session>"}'\` — a hand run without the session id records nothing. Missing: wait record for ${bad.map((it) => it.ref).join(', ')}`;
   }
   // The close report, the answer to "is anything still open?", and every "nothing open" name
   // what is still ours — the operator shuts down on that answer (measured 2026-10-25: asked

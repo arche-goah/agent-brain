@@ -49,6 +49,11 @@ def make_repo(root: Path, name: str, tags=("v1.0.0", "v1.0.1")) -> Path:
     return repo
 
 
+def git_out_branch(repo: Path) -> str:
+    return subprocess.run(["git", "-C", str(repo), "branch", "--show-current"],
+                          check=True, capture_output=True, text=True).stdout.strip()
+
+
 def entry(name: str, ref=None, repo="o/r") -> dict:
     src = {"source": "github", "repo": repo}
     if ref is not None:
@@ -97,6 +102,26 @@ with tempfile.TemporaryDirectory() as td:
        "a shallow tag checkout holding only the pushed tag: the other pin WARNs, not ERROR")
     ok(levels(repo, [entry("a", "v9.9.9")]) == ["ERROR"],
        "the same missing tag in a full checkout stays an ERROR (control)")
+    # A single-branch clone (2026-11-03): complete, but only the tags its branch reaches; the
+    # pinned tag sits on another line of history: unchecked = WARN. A full clone missing it = ERROR.
+    orig = make_repo(base, "orig", tags=())
+    git(orig, "checkout", "-q", "-b", "old")
+    git(orig, "commit", "-q", "--allow-empty", "-m", "old line")
+    git(orig, "tag", "v0.9.0")
+    git(orig, "checkout", "-q", "-")
+    git(orig, "commit", "-q", "--allow-empty", "-m", "main line")
+    git(orig, "tag", "v1.0.0")
+    sb = base / "single"
+    subprocess.run(["git", "clone", "-q", "--single-branch", "--branch", git_out_branch(orig),
+                    orig.resolve().as_uri(), str(sb)], check=True, capture_output=True)
+    (sb / ".claude-plugin").mkdir(exist_ok=True)
+    ok(levels(sb, [entry("a", "v0.9.0", repo=sc.repo_slug(orig.resolve().as_uri()))]) == ["WARN"],
+       "a single-branch clone missing a tag origin has: WARN (git fetch --tags), not ERROR")
+    full = base / "full"
+    subprocess.run(["git", "clone", "-q", orig.resolve().as_uri(), str(full)], check=True, capture_output=True)
+    (full / ".claude-plugin").mkdir(exist_ok=True)
+    ok(levels(full, [entry("a", "v9.9.9", repo=sc.repo_slug(orig.resolve().as_uri()))]) == ["ERROR"],
+       "a full clone missing the tag stays an ERROR (control)")
     # One train carries fixes + version bump + pin (2026-11-02): a pin on the version this checkout
     # ships is the tag the release cuts at its merge.
     rel = make_repo(base, "release", tags=("v1.0.0",))

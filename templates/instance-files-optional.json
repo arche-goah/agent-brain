@@ -8,7 +8,6 @@
     "dead-carriers.json": "dead-carriers.py: absence_patterns in the instance's language; missing file = English built-ins",
     "freshness-gate.json": "freshness-gate.cjs: per-brain thresholds; missing file = built-in defaults (14 days)",
     "friction-accepted.json": "brain-friction.py: accepted frictions with reasons; missing file = nothing accepted, every friction reported",
-    "gate-answer-markers.json": "gate-precision.py: extra answer markers; missing file = built-in markers",
     "leak-names.json": "leak-scan.py, public-text-guard.cjs and others: the template lives at templates/leak-names.json, copied by bootstrap-brain.sh",
     "loop-watchdog.json": "loop-watchdog.sh: the repo an alarm outside a session opens its issue in; missing file = no issue opened, the alarm still reaches the next start report",
     "manual-tools.json": "brain-friction.py, brain-selftest.sh, local-machinery.py: hand tools a brain runs on purpose; missing file = none declared",
