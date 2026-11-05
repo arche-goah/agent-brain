@@ -41,6 +41,7 @@
       "Bash(gh pr create*)",
       "Bash(gh pr edit*)",
       "Bash(gh pr ready*)",
+      "Bash(gh pr close*)",
       "Bash(gh issue *)",
       "Bash(gh run list*)",
       "Bash(gh run view*)",
@@ -81,6 +82,7 @@
       "PowerShell(gh pr create*)",
       "PowerShell(gh pr edit*)",
       "PowerShell(gh pr ready*)",
+      "PowerShell(gh pr close*)",
       "PowerShell(gh issue *)",
       "PowerShell(gh run list*)",
       "PowerShell(gh run view*)",
@@ -107,9 +109,7 @@
       "PowerShell(git push * main)",
       "PowerShell(git push * main *)",
       "PowerShell(git push *:main)",
-      "PowerShell(git push *:main *)",
-      "Bash(gh pr close*)",
-      "PowerShell(gh pr close*)"
+      "PowerShell(git push *:main *)"
     ],
     "deny": [
       "Bash(git push --force*)",
