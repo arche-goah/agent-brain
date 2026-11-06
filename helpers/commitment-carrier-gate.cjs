@@ -177,6 +177,12 @@ function proseRules(events, inst, root) {
     const word = ruleWords.find((p) => p.test(added));
     if (!word || carrierNamed(added, root, inst)) continue;
     const line = added.split('\n').find((l) => word.test(l)) || '';
+    // A line the turn wrote and then reworded is no rule any more: it counts only while the file still holds it (the
+    // second read stop-verifier does; measured 2026-11-06 on the macOS instance in the instance's prose-carrier alpha,
+    // the same per-write reading held a reply for a state word already rewritten). An unreadable file keeps the hit.
+    let now = null;
+    try { now = fs.readFileSync(w.file, 'utf8'); } catch (e) { now = null; }
+    if (now !== null && line.trim() && !now.includes(line.trim())) continue;
     out.push(path.basename(w.file) + ': ' + line.trim().slice(0, 120));
   }
   return out;

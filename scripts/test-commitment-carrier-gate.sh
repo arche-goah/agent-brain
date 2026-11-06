@@ -70,6 +70,12 @@ turn "$tmp/l.jsonl" "x" "$(wr "$mem/MEMORY.md" '- [Bench flash](bench-flash.md) 
 expect "the memory index (one pointer line) is exempt" pass "$(run "$tmp/l.jsonl")"
 turn "$tmp/m.jsonl" "x" "$(ed "$mem/bench-flash.md" 'Never hand over the flash command.' $'Never hand over the flash command.\nMeasured on the bench, 2026-10-28.')"
 expect "an Edit that only repeats an old rule line as context passes" pass "$(run "$tmp/m.jsonl")"
+# 2026-11-06: a rule line the turn wrote and then reworded counts only while the file still holds it.
+mkdir -p "$mem"; printf 'Who flashes: the AI.\n' > "$mem/reworded.md"; printf 'Who flashes: the AI, never a command block.\n' > "$mem/kept.md"
+turn "$tmp/m2.jsonl" "x" "$(wr "$mem/reworded.md" 'Who flashes: the AI, never a command block.')"
+expect "a rule line written and then reworded (gone from the file) passes" pass "$(run "$tmp/m2.jsonl")"
+turn "$tmp/m3.jsonl" "x" "$(wr "$mem/kept.md" 'Who flashes: the AI, never a command block.')"
+expect "negative control: the same line still in the file blocks" block "$(run "$tmp/m3.jsonl")"
 turn "$tmp/n.jsonl" "x" "$(wr "$tmp/AGENTS.md" 'Flashing by hand is forbidden for the operator.')"
 expect "instance rule word (data) in a prose file blocks" block "$(run "$tmp/n.jsonl")"
 turn "$tmp/o.jsonl" "x" "$(wr "$tmp/AGENTS.md" 'Flashing by hand is forbidden. Held by: core/helpers/flash-gate.cjs')"
