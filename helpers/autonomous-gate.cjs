@@ -28,7 +28,18 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { autonomousMode, promptModes } = require('./autonomous-mode.cjs');
+const { autonomousMode, promptModes, asksMode, words } = require('./autonomous-mode.cjs');
+
+/** A question call that asks ONLY the mode question ("Continue autonomously?") ends the run's question round; it is
+ *  no stop (2026-11-06, Windows instance: once every operator item was answered and done, the "what is open for me"
+ *  latch read zero open items and counted the run as autonomous again, so the closing mode question that the
+ *  question-gate demands alone and last was refused). Any other question next to it keeps the call held. */
+function onlyModeQuestion(toolInput, root) {
+  const qs = (toolInput && toolInput.questions) || [];
+  if (!qs.length) return false;
+  const on = words(root).on;
+  return qs.every((q) => asksMode(on, String((q && q.question) || '')));
+}
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 // Hook and permission data: the auto-mode classifier holds an edit of these for the operator even
@@ -189,6 +200,7 @@ function judge(input) {
   const notice = defaultModeNotice(input, root);
   if (notice) return notice;
   const isQuestion = tool === 'AskUserQuestion';
+  if (isQuestion && onlyModeQuestion(input.tool_input, root)) return null;
   const rule = isQuestion ? null : hitRule(askRules(root), tool, input.tool_input || {}, root);
   const held = isQuestion || rule ? null : hitRule(CLASSIFIER_HELD, tool, input.tool_input || {}, root);
   const own = isQuestion ? null : hitRule(OWN_WORDS, tool, input.tool_input || {}, root);
