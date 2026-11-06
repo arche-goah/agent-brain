@@ -48,7 +48,10 @@ const CI_NOTE = /from ci|windows-latest|macos-latest|portability \(|ci job|windo
 // a dash (not a hyphen) or a bracket starts the evidence; "OK - the fixture is red" stays one clause
 const CLAUSE_END = /\s[—–]\s|\(|;/;
 
-function osRx(os) { return NAME_RX[os] || new RegExp(`\\b${os}\\b`, 'i'); }
+// Only the known systems: a pattern is never built from the caller's text (code scanning js/regex-injection,
+// 2026-11-06 on this PR — the CLI's OS argument reached `new RegExp`). An unknown OS matches nothing.
+const NEVER = /(?!)/;
+function osRx(os) { return Object.prototype.hasOwnProperty.call(NAME_RX, os) ? NAME_RX[os] : NEVER; }
 
 /** The OS name at the start of `rest`, then (optionally a version, "check"/"review") the verdict. */
 function statementAt(rest, os) {
@@ -106,6 +109,10 @@ function handReview(text, os, opts = {}) {
 if (require.main === module) {
   const args = process.argv.slice(2);
   const os = args[0];
+  if (!Object.prototype.hasOwnProperty.call(NAME_RX, os || '')) {
+    process.stderr.write(`os-review: unknown OS '${os || ''}' - one of ${Object.keys(NAME_RX).join(', ')}\n`);
+    process.exit(2);
+  }
   const h = args.indexOf('--head');
   const head = h >= 0 ? args[h + 1] : '';
   let data = '';
