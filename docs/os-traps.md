@@ -207,6 +207,7 @@ known:     scripts/eco_owner.py=1
 known:     scripts/ecosystem-sync.py=1
 known:     scripts/english-only.py=1
 known:     scripts/invariant-index.py=1
+known:     scripts/ledger-one-exit.py=1
 known:     scripts/ledger-reconcile.py=5
 known:     scripts/open-items.py=1
 known:     scripts/os-traps-export.py=1
