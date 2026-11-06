@@ -32,6 +32,8 @@ import re
 import sys
 import time
 from pathlib import Path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # noqa: E402
+from transcript_kind import sessions as sessions_only  # noqa: E402  (headless calls are no session)
 
 _INSTANCE = Path(os.environ.get("BRAIN_DIR", Path.cwd())).resolve()
 DIR_DEFAULT = Path.home() / ".claude/projects" / re.sub(r"[^A-Za-z0-9]", "-", str(_INSTANCE))
@@ -91,7 +93,7 @@ def main() -> int:
     pats = [re.compile(re.escape(k), re.I) for k in a.keywords]
     any_pat = re.compile("|".join(re.escape(k) for k in a.keywords), re.I)
     cutoff = time.time() - a.days * 86400
-    files = sorted((p for p in tdir.glob("*.jsonl")
+    files = sorted((p for p in sessions_only(tdir.glob("*.jsonl"))
                     if p.stat().st_mtime >= cutoff and (not a.session or p.stem == a.session)),
                    key=lambda p: p.stat().st_mtime, reverse=True)
 

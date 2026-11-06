@@ -11,6 +11,13 @@ then an explicit release follows.
 
 ## Procedure (in this order)
 
+0. **End the autonomous mode first** (operator decision 2026-11-03): closing is a change of
+   state, not one more autonomous step. A close step that needs the operator's word (a gated
+   push, a prune, a release) is asked through the question tool, which an autonomous run
+   forbids; with the mode still on, those steps were collected as prose and the release could
+   not be given. The close prompt itself ends the mode where the instance's off-patterns carry
+   the close words; otherwise say in the first close line that the run ends here.
+
 1. **Secure open work (semantic — no script can do this):**
    - Unfinished orders and intermediate STATES go into the list that owns them — the
      domain ledger or order list (Project Work Ledgers rule) — not into memory. Memory
@@ -36,10 +43,14 @@ then an explicit release follows.
    - **LOOSE COMMITMENTS — none leaves the session (2026-10-09):** run
      `python3 core/scripts/commitments.py --session <this session id>` (interpreter per
      instance rule). Every line `loose commitment: …` is a promise about future behaviour
-     made only in chat. Per line: write it where rules live (instance rule if it concerns
-     this brain only, a core PR if it holds for every brain) or say in the close report that
-     it is dropped and why. The close is complete when the summary says `loose=0` or every
-     remaining line is named as dropped. The brain-scan (effect-check E6) catches what a
+     made only in chat. Per line, the same three exits as the step below (working rule #10:
+     rule text does not carry a promise): build the mechanism that enforces it (a gate, gate
+     data, a mechanism-rules row, a CI step; a new gate goes in as a declared alpha with an
+     expiry, a follow-up in the sense of working rule #11) and name it; or file it as
+     `PENDING` in the instance's ledger with its builder and date; or say in the close report
+     that it is dropped and why. Prose alone (an instance rule line, a feedback entry) only
+     with the operator's quoted word. The close is complete when the summary says `loose=0`
+     or every remaining line has one of these exits. The brain-scan (effect-check E6) catches what a
      session without a clean close left behind.
    - **LESSONS THAT DO NOT BIND — none leaves the session (2026-10-25, sharpened 2026-10-26):** run
      `python3 core/scripts/carrier-audit.py --since <today>` (interpreter per instance rule; protocol
@@ -86,7 +97,9 @@ then an explicit release follows.
      read-only check is NOT a "new live action" — the ban below targets rebuilds,
      not measuring. **If no verify path exists for the touched system, that is a
      REPORTING EVENT** (mechanism discipline) — no improvised substitute path, no
-     silent omission (why: Evidence, 2026-08-01).
+     silent omission (why: Evidence, 2026-08-01). In the close report and the session log it
+     stands as one line of its own: `open end: <system> changed, no verify path — the operator
+     checks it by hand`, so the release "you can shut down" never covers an unmeasured system.
    - **CROSS-INSTANCE GATE — if this setup shares memory with other instances or people
      (operator order 2026-08-17):** ask, per finding of this session, whether its REACH
      goes past this machine — a measurement someone else's work depends on, a correction
@@ -190,7 +203,15 @@ then an explicit release follows.
      Run `bash core/scripts/parallel-sessions.sh` first; while a second session is on this
      machine, stage and commit only this session's paths (`git add <paths>`,
      `git commit <paths>`), never `git add -A`, never amend, and leave a rebase or merge
-     this session did not start untouched. A core branch of this session lives in a
+     this session did not start untouched. The paths every session writes by construction
+     (the memory snapshot under `docs/memory-snapshot/`, the session log, the handoff) are
+     committed by EVERY closing session, by path, whether another session is listed or not
+     (operator decision 2026-11-03): "the session that closes last" cannot be measured — a
+     second session listed in another repo never closes in this one, and both paths stayed
+     uncommitted until some later session. The export is idempotent, so a second close
+     commits only what changed since. After a `git rm --cached`, never name that path in
+     `git commit <paths>` (it stages it again from the working tree); check with
+     `git ls-files <path>`. A core branch of this session lives in a
      worktree under the scratchpad, never checked out in `core/` (measured 2026-10-11 on a
      Windows instance: a core branch checked out in the submodule changed the hooks of
      BOTH sessions, and every Bash call of both was refused until it was moved back).

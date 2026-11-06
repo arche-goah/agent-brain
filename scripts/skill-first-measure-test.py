@@ -10,6 +10,7 @@ Parity with helpers/turn-kind.cjs is checked by running the helper on the same s
 when node and the helper are present; otherwise the case says SKIP, never "ok".
 """
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -92,6 +93,18 @@ if __name__ == "__main__":
         res.append(check(m.is_notification(text) is want, f"turn kind: {name} -> "
                          + ("notification" if want else "operator")))
     res.append(parity())
+    # Today's dispatcher blocks (2026-11-02): a code that is no `…-GATE`, and label lines without any code.
+    # Negative control: the old pattern `[…GATE|…VERIFIER]` reads both as "untagged".
+    one = "Stop hook feedback:\nIDLE — idle – missing: continuation   [AUTONOMOUS-IDLE]"
+    many = "Stop hook feedback:\nTurn end (2):\n· CLASS   a.cjs: same defect elsewhere?\n· WATCHER watcher missing: CI started"
+    res.append(check(m.gate_names(one) == ["AUTONOMOUS-IDLE"], "a dispatcher code that is no -GATE is attributed",
+                     m.gate_names(one)))
+    res.append(check(m.gate_names(many) == ["CLASS", "WATCHER"], "label lines without a code are attributed",
+                     m.gate_names(many)))
+    res.append(check(m.gate_names("Stop hook feedback:\nTurn end (1):\n· Plain words only") == ["untagged"],
+                     "a line start that is no all-capital word is no label", m.gate_names("x\nPlain")))
+    old = re.compile(r"\[([A-Z][A-Z0-9-]*(?:GATE|VERIFIER))\]")
+    res.append(check(not old.findall(one) and not old.findall(many), "negative control: the old pattern found neither"))
     with tempfile.TemporaryDirectory() as d:
         for name, recs in (("a.jsonl", IN_RANGE), ("b.jsonl", OUT_OF_RANGE)):
             with open(Path(d) / name, "w", encoding="utf-8", newline="\n") as fh:

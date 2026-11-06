@@ -49,14 +49,15 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
 
 let OWN_ECHO = /ROOT-CAUSE-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
-const MECHANISM_PATH = /(^|[\\/])(helpers|scripts|hooks|rules|skills|workflows)[\\/]|[\\/]\.claude[\\/]rules[\\/]|[\\/]\.claude[\\/]settings/;
+// `tools/` is a mechanism folder too (2026-11-03, macOS instance: a 3D-print repo keeps its build kit and print gates there).
+const MECHANISM_PATH = /(^|[\\/])(helpers|scripts|hooks|rules|skills|workflows|tools)[\\/]|[\\/]\.claude[\\/]rules[\\/]|[\\/]\.claude[\\/]settings/;
 const CARRIER_TURNS = 5;
 
 // ENGINE built-ins — English only (language-agnostic contract, operator order 2026-08-19).
@@ -173,6 +174,15 @@ function readTurns(tp, tail) {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    // A message the operator types while the agent works lands as a queued_command attachment, not a user
+    // record; it opens its own segment (measured on the macOS instance 2026-10-29: in one long turn every
+    // correction arrived this way and none was judged; the instance copy carried this until the pin removed it).
+    const queued = queuedHumanPrompt(d);
+    if (queued) {
+      cur = { prompt: queued, when: d.timestamp || '', texts: [], writes: [], fired: false, queued: true };
+      turns.push(cur);
+      continue;
+    }
     const msg = d.message; if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       if (!cur) continue;
@@ -187,10 +197,42 @@ function readTurns(tp, tail) {
     if (t === null) continue;
     if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t) && cur) cur.fired = true; continue; }
     if (isNotification(t) || isAgentOrigin(d) || isSkillExpansion(d) || HARNESS_NOTICE.test(t)) continue;
-    cur = { prompt: t, when: d.timestamp || '', texts: [], writes: [], fired: false };
+    cur = { prompt: t, when: d.timestamp || '', texts: [], writes: [], fired: false, queued: false };
     turns.push(cur);
   }
   return turns;
+}
+
+// The turn the Stop sees as a whole: the last message the operator SENT (a user record) and every message typed
+// while the agent worked (queued segments). Measured 2026-11-04 on the macOS instance (80 transcripts): 33 correction
+// segments, 18 of them NOT the last segment of their assistant turn - the gate judged turns[last] only, so a
+// correction followed by another typed message was never judged; 4 of the 18 got no cause line at all, two of them
+// that day, with the operator asking the third time in a week why no cause followed.
+function currentTurn(turns) {
+  let k = turns.length - 1;
+  while (k > 0 && turns[k].queued) k -= 1;
+  const group = turns.slice(Math.max(0, k));
+  return { group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes), fired: group.some((t) => t.fired) };
+}
+
+// The first correction in the turn (word list, else the prompt classifier's record) that no later text answers with
+// a cause line; with causeRx null, the first correction regardless (the --pre check wants the class before the
+// instance even when a cause is already named).
+function firstCorrection(group, cwd, transcriptPath, rx, causeRx) {
+  let known = null;
+  for (let i = 0; i < group.length; i += 1) {
+    const seg = group[i];
+    let hit = correctionIn(seg.prompt, rx);
+    if (!hit) {
+      if (!known) known = intents(transcriptPath, cwd);
+      const intent = intentFor(known, seg.when);
+      if (intent && intent.correction) hit = sentenceAt(stripQuoted(seg.prompt), 0);
+    }
+    if (!hit) continue;
+    if (causeRx && causeIn(group.slice(i).flatMap((t) => t.texts), causeRx)) continue;
+    return hit;
+  }
+  return null;
 }
 
 // The gate and `--review` both judge here: a pasted e-mail or log is not the operator's correction
@@ -205,6 +247,62 @@ function causeIn(texts, rx) {
   return texts.some((t) => rx.test(stripQuoted(t)));
 }
 
+// "Carrier: none" is an escape the agent can always write, so on its own it releases nothing (operator decision
+// 2026-11-02 on the macOS instance, translated: "a cause does not only belong in the register, the fix at the root
+// is built and secured mechanically ... that in itself should be secured mechanically" - measured the same day: 41
+// register entries "carrier: none", three written in one session to pass this very check). It counts only with the
+// operator's agreement quoted on the same line, `operator-ok: "<words>"`, and those words must stand in one of the
+// operator's own messages of the transcript - an invented quote releases nothing.
+const OK_QUOTE = /operator-ok:\s*["„“]([^"„“”\n]{4,})["“”]/iu;
+function noCarrierAgreed(texts, rxNone, turns) {
+  const said = turns.map((t) => operatorWords(t.prompt || '')).join('\n').toLowerCase();
+  return texts.some((t) => t.split('\n').some((line) => {
+    if (!rxNone.test(stripQuoted(line))) return false;
+    const q = OK_QUOTE.exec(line);
+    return !!q && said.includes(q[1].trim().toLowerCase());
+  }));
+}
+
+/**
+ * PreToolUse (`--pre`): in a correction turn the CLASS comes before the instance.
+ * The class (operator 2026-11-03, translated): "cause only found, or fixed at the root? or once again only the
+ * instance fixed afterwards instead of the class?" and "why do you do all this only after being asked several
+ * times?". Measured the same evening on the macOS instance: after a correction the first edits went into the one
+ * model script (the instance); the build kit, the print gates and the rule data followed only after two more
+ * corrections. The Stop check above asks for a cause and a carrier at the END of the turn - by then the instance fix
+ * is written and the carrier reads as an afterthought. This check holds the first instance edit of a correction turn
+ * until the turn has touched a mechanism file (helpers/, scripts/, hooks/, rules/, skills/, workflows/, tools/,
+ * .claude/rules) or says `Carrier: none - <why>`. Free: every mechanism write itself, documentation (.md) - ledgers
+ * and the carrier register are written in the same turn.
+ */
+function preGate(input) {
+  const tool = input.tool_name || '';
+  if (!/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool) || !input.transcript_path) return;
+  const target = String((input.tool_input || {}).file_path || (input.tool_input || {}).notebook_path || '');
+  if (!target || isMechanismWrite(target) || /\.(md|markdown|txt)$/i.test(target)) return;
+  const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  let turns;
+  try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
+  const { group, texts, writes } = currentTurn(turns);
+  if (!group.length) return;
+  const hit = firstCorrection(group, cwd, input.transcript_path,
+    loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'), null);
+  if (!hit) return;
+  if (writes.some(isMechanismWrite)) return;
+  if (causeIn(texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'))) return;
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: `CLASS-FIRST: this turn answers a correction ("${hit.slice(0, 120)}") and its first edit `
+        + `goes to an instance file (${path.basename(target)}) before any carrier. Class before instance: first change the `
+        + 'tool, gate or rule data that let it happen (helpers/, scripts/, hooks/, rules/, skills/, tools/ - a core or suite '
+        + 'PR where it lives) with its negative control, or write one line Carrier: none - <why no mechanism can carry it>. '
+        + 'Then the instance edit passes.',
+    },
+  }));
+}
+
 function gate(input) {
   OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active || !input.transcript_path) return;
@@ -212,22 +310,21 @@ function gate(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let turns;
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
-  const turn = turns[turns.length - 1];
-  if (!turn || turn.fired) return;
+  const { group, texts, writes, fired } = currentTurn(turns);
+  if (!group.length || fired) return;
   // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
   // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
-  // cause line owed), never close one the words opened.
-  let hit = correctionIn(turn.prompt, loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'));
-  if (!hit) {
-    const intent = intentFor(intents(input.transcript_path, cwd), turn.when);
-    if (intent && intent.correction) hit = sentenceAt(stripQuoted(turn.prompt), 0);
-  }
-  const cause = causeIn(turn.texts, loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu'));
+  // cause line owed), never close one the words opened. Every message of the turn is judged (currentTurn), a
+  // cause line from that message on answers it.
+  const causeRx = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
+  const hit = firstCorrection(group, cwd, input.transcript_path,
+    loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'), causeRx);
+  const cause = causeIn(texts, causeRx);
   if (cause) {
     const reg = registerPath(cwd);
-    const mech = turn.writes.some(isMechanismWrite)
-      || causeIn(turn.texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'));
-    const registered = writesTo(turn.writes, reg);
+    const mech = writes.some(isMechanismWrite)
+      || noCarrierAgreed(texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'), turns);
+    const registered = writesTo(writes, reg);
     if (mech && registered) return;
     const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`].filter(Boolean).join(', ');
     process.stdout.write(JSON.stringify(declare({
@@ -235,15 +332,17 @@ function gate(input) {
       reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}. Fixing the instance (a re-post, a manual merge, a `
         + 'ledger or memory note) leaves the tool that let it happen as it was. Before this turn ends: change the '
         + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
-        + 'lives) with a fixture, or say Carrier: none - <why no mechanism can carry it>; AND write the entry in '
-        + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits.`,
+        + 'lives) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
+        + 'operator-ok: "<their words>", found in their own messages - never on the agent\'s say-so; AND write the entry in '
+        + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits, `
+        + 'found-by (operator | work | ci | <the check that found it>; when not a check: should-have: <the check that should have>).',
     }, input)));
     return;
   }
   if (!hit) return;
   process.stdout.write(JSON.stringify(declare({
     decision: 'block',
-    reason: `ROOT-CAUSE-GATE: the operator's message that opened this turn reads as a correction or a mishap: "${hit.slice(0, 160)}". `
+    reason: `ROOT-CAUSE-GATE: an operator message in this turn reads as a correction or a mishap: "${hit.slice(0, 160)}". `
       + 'The reply names no cause. Before this turn ends, measure what produced it and write ONE line — '
       + 'Cause: <what was read, where> — <A produced B>, or Cause: unknown — <what is missing to tell>. '
       + 'Then the class (search: where else does the same sit?) and the carrier (where it is fixed for good: gate, script, rule, core PR). '
@@ -271,7 +370,22 @@ function review(args) {
   const rxZ = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
   let files;
   try {
+    // A headless model call (the prompt classifier, `claude -p`) leaves a transcript of its own whose records carry
+    // `entrypoint: "sdk-cli"`; its prompt quotes the operator and matches the correction words. Measured 2026-11-02 on
+    // the macOS instance: 116 such transcripts in a week, 63 "corrections" instead of 16, and as the newest files they
+    // pushed the real sessions out of the newest-N window. They are no session — left out before the window is cut.
+    const headless = (p) => {
+      try {
+        // 256 KB: the first record of such a call is its whole prompt, the field can stand after it (measured: not
+        // within the first 4 KB). The FIRST entrypoint value decides, so a quoted field later in a session does not.
+        const fd = fs.openSync(p, 'r'); const buf = Buffer.alloc(256 * 1024);
+        const len = fs.readSync(fd, buf, 0, buf.length, 0); fs.closeSync(fd);
+        const m = /"entrypoint"\s*:\s*"([^"]+)"/.exec(buf.toString('utf8', 0, len));
+        return !!m && m[1] === 'sdk-cli';
+      } catch (e) { return false; }
+    };
     files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(dir, f))
+      .filter((f) => !headless(f))
       .map((f) => ({ f, m: fs.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m).slice(0, n).map((x) => x.f);
   } catch (e) { console.log(`root-cause review: no transcripts under ${dir}`); return 1; }
   const rxN = loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu');
@@ -329,8 +443,13 @@ function review(args) {
   const due = entries.filter((e) => /^\s*carrier:\s*none\b/im.test(e)
     && (/^\s*recheck:\s*(\d{4}-\d{2}-\d{2})/im.exec(e) || [])[1] <= today);
   const noReplay = entries.filter((e) => !/^\s*replay:\s*\S/im.test(e));
+  // Who found it (audit-audit 2026-11-02, macOS instance: of 144 register entries the operator found 54 %, a check
+  // 6 % — counted by keyword, because no entry said it). The field makes the checks' hit rate a reading, not a guess.
+  const finder = (e) => ((/^\s*found-by:\s*([^\n]+)/im.exec(e) || [])[1] || '').trim().toLowerCase();
+  const withFinder = entries.filter((e) => finder(e));
+  const byCheck = withFinder.filter((e) => !/^(operator|work|ci)\b/.test(finder(e)));
   console.log(`\n## Carrier register (${registerPath(cwd)}): ${entries.length} entries · "none" due for recheck ${due.length}`
-    + ` · without a replay ${noReplay.length}\n`);
+    + ` · without a replay ${noReplay.length} · found-by named ${withFinder.length}, of them by a check ${byCheck.length}\n`);
   for (const e of due) console.log(`- recheck due: ${e.split('\n')[0].trim()}`);
   for (const e of noReplay) console.log(`- no replay yet: ${e.split('\n')[0].trim()}`);
   console.log('\n## Turns that named a cause and wrote no mechanism (newest 40)\n');
@@ -345,11 +464,12 @@ function review(args) {
 if (process.argv[2] === '--review') {
   process.exit(review(process.argv.slice(3)));
 } else {
+  const pre = process.argv[2] === '--pre';
   let data = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => { data += c; });
   process.stdin.on('end', () => {
-    try { gate(JSON.parse(data || '{}')); } catch (e) { /* fail open */ }
+    try { (pre ? preGate : gate)(JSON.parse(data || '{}')); } catch (e) { /* fail open */ }
     process.exit(0);
   });
 }

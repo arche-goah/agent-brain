@@ -49,6 +49,11 @@ def make_repo(root: Path, name: str, tags=("v1.0.0", "v1.0.1")) -> Path:
     return repo
 
 
+def git_out_branch(repo: Path) -> str:
+    return subprocess.run(["git", "-C", str(repo), "branch", "--show-current"],
+                          check=True, capture_output=True, text=True).stdout.strip()
+
+
 def entry(name: str, ref=None, repo="o/r") -> dict:
     src = {"source": "github", "repo": repo}
     if ref is not None:
@@ -97,6 +102,26 @@ with tempfile.TemporaryDirectory() as td:
        "a shallow tag checkout holding only the pushed tag: the other pin WARNs, not ERROR")
     ok(levels(repo, [entry("a", "v9.9.9")]) == ["ERROR"],
        "the same missing tag in a full checkout stays an ERROR (control)")
+    # A single-branch clone (2026-11-03): complete, but only the tags its branch reaches; the
+    # pinned tag sits on another line of history: unchecked = WARN. A full clone missing it = ERROR.
+    orig = make_repo(base, "orig", tags=())
+    git(orig, "checkout", "-q", "-b", "old")
+    git(orig, "commit", "-q", "--allow-empty", "-m", "old line")
+    git(orig, "tag", "v0.9.0")
+    git(orig, "checkout", "-q", "-")
+    git(orig, "commit", "-q", "--allow-empty", "-m", "main line")
+    git(orig, "tag", "v1.0.0")
+    sb = base / "single"
+    subprocess.run(["git", "clone", "-q", "--single-branch", "--branch", git_out_branch(orig),
+                    orig.resolve().as_uri(), str(sb)], check=True, capture_output=True)
+    (sb / ".claude-plugin").mkdir(exist_ok=True)
+    ok(levels(sb, [entry("a", "v0.9.0", repo=sc.repo_slug(orig.resolve().as_uri()))]) == ["WARN"],
+       "a single-branch clone missing a tag origin has: WARN (git fetch --tags), not ERROR")
+    full = base / "full"
+    subprocess.run(["git", "clone", "-q", orig.resolve().as_uri(), str(full)], check=True, capture_output=True)
+    (full / ".claude-plugin").mkdir(exist_ok=True)
+    ok(levels(full, [entry("a", "v9.9.9", repo=sc.repo_slug(orig.resolve().as_uri()))]) == ["ERROR"],
+       "a full clone missing the tag stays an ERROR (control)")
     # One train carries fixes + version bump + pin (2026-11-02): a pin on the version this checkout
     # ships is the tag the release cuts at its merge.
     rel = make_repo(base, "release", tags=("v1.0.0",))
@@ -108,6 +133,27 @@ with tempfile.TemporaryDirectory() as td:
     (rel / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "p", "version": "1.0.0"}), encoding="utf-8")
     ok(levels(rel, [entry("a-next", "v1.0.0")]) == [],
        "the shipped version whose tag exists already: an ordinary pin, no finding (control)")
+
+    # Hook templates (2026-11-04): a suite's copy of ensure-deps.cjs / hooks.json is judged against the
+    # core's templates/suite/hooks - unchanged = INFO, edited = WARN (never ERROR), absent = nothing.
+    tpl_dir = HERE.parent / "templates" / "suite" / "hooks"
+    hooked = make_repo(base, "hooked")
+    (hooked / "hooks").mkdir()
+    for f in ("ensure-deps.cjs", "hooks.json"):
+        (hooked / "hooks" / f).write_bytes((tpl_dir / f).read_bytes())
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["INFO", "INFO"],
+       "hook copies equal to the core templates: INFO only")
+    (hooked / "hooks" / "ensure-deps.cjs").write_text(
+        (tpl_dir / "ensure-deps.cjs").read_text(encoding="utf-8").replace("${name}:", "my-suite:", 1), encoding="utf-8")
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["WARN", "INFO"],
+       "an edited hook copy (the suite name written in): WARN, hooks.json still INFO")
+    (hooked / "hooks" / "hooks.json").write_bytes((tpl_dir / "hooks.json").read_bytes().replace(b"\n", b"\r\n"))
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)][1] == "INFO",
+       "a CRLF copy of hooks.json (Windows checkout) still equals the template")
+    ok(any(lvl == "WARN" and "ensure-deps.cjs" in msg for lvl, msg in sc.check(hooked, contract)),
+       "check() carries the hook-template finding (wired, not only defined)")
+    ok(sc.hook_template_findings(make_repo(base, "nohooks")) == [],
+       "a suite without hooks/: no finding (control)")
 
 core_levels = [lvl for lvl, _ in sc.marketplace_findings(HERE.parent)]
 ok((HERE.parent / ".claude-plugin" / "marketplace.json").exists() and "ERROR" not in core_levels,

@@ -81,6 +81,14 @@ spr 'feat: x' '["**macOS OK at head `abc1234`**: `test-open-items.sh` all cases 
 sprobe "a code span naming a file with a negation word" "$M" allow "$D"
 spr 'feat: x' '["**macOS OK at head `abc1234`**: test-open-items.sh red", "Windows OK at head `abc1234`"]'
 sprobe "the same word outside a code span (control)" "$M" block "$D"
+# 2026-11-02 (mikrotik-suite #44): a file name without backticks and the fixture phrase "red against the old code" are no
+# verdict either; a real "red against main" still is.
+spr 'feat: x' '["macOS: OK at `abc1234` (scripts/test-fail-fast.py, 7/7).", "Windows OK at head `abc1234`"]'
+sprobe "a bare file name with a negation word" "$M" allow "$D"
+spr 'feat: x' '["macOS OK at `abc1234`: all 7 cases pass (the new case red against the old code)", "Windows OK at head `abc1234`"]'
+sprobe "the fixture phrase red against the old code" "$M" allow "$D"
+spr 'feat: x' '["macOS OK at `abc1234`, but lint red against main", "Windows OK at head `abc1234`"]'
+sprobe "red against main stays a negation (control)" "$M" block "$D"
 
 # 2026-10-28 (#157): an earlier head separated only by "update branch" merges still counts.
 cpr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "fff0000aaa", body: "feat: x", commits: JSON.parse(process.argv[2]), comments: JSON.parse(process.argv[1]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }
@@ -91,6 +99,30 @@ cpr "$OKS" '[{"oid":"abc1234def","messageHeadline":"fix: x"},{"oid":"fff0000aaa"
 sprobe "OKs at an older head before a real commit" "$M" block "$D"
 cpr "$OKS" '[{"oid":"abc1234def","messageHeadline":"fix: x"},{"oid":"eee1111bbb","messageHeadline":"fix: y"},{"oid":"fff0000aaa","messageHeadline":"Merge branch '"'"'main'"'"' into fix/x"}]'
 sprobe "update-branch merge after a real commit past the OK" "$M" block "$D"
+
+# Third + fourth check (2026-10-26, merge table conditions "CI green" and "open own findings"):
+# gh merges on red CI where no branch protection asks, and nothing read an open own finding.
+rpr() { node -e 'process.stdout.write(JSON.stringify({body: "feat: x", statusCheckRollup: JSON.parse(process.argv[1]), comments: JSON.parse(process.argv[2]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }
+rpr '[{"name":"lint","status":"COMPLETED","conclusion":"SUCCESS"},{"name":"tag","status":"COMPLETED","conclusion":"SKIPPED"}]' '[]'
+probe "CI green, skipped check (control)" "$M" allow
+rpr '[]' '[]'
+probe "no CI at all (control)" "$M" allow
+rpr '[{"name":"lint","status":"COMPLETED","conclusion":"FAILURE"}]' '[]'
+probe "CI red" "$M" block
+probe "CI red, marker says why" "$M # CI-RED-OK: flaky runner, rerun green on main" allow
+rpr '[{"name":"lint","status":"IN_PROGRESS","conclusion":""}]' '[]'
+probe "CI still running" "$M" block
+rpr '[{"context":"ci/legacy","state":"FAILURE"}]' '[]'
+probe "a failed commit status" "$M" block
+rpr '[]' "[\"**Finding:** the guard misses \`x\` <!-- instance-key: $KEY -->\"]"
+probe "own finding open" "$M" block
+probe "own finding, marker names where it closed" "$M # FINDING-CLOSED: follow-up PR #9" allow
+rpr '[]' "[\"Finding: x <!-- instance-key: $KEY -->\", \"Fixed at head, OK <!-- instance-key: $KEY -->\"]"
+probe "own finding, later own OK" "$M" allow
+rpr '[]' '["Finding: x <!-- instance-key: 0123456789 -->"]'
+probe "another instance's finding (not this gate's)" "$M" allow
+rpr '[]' "[\"Windows OK; leak-scan 0 findings, the old pattern fails both cases <!-- instance-key: $KEY -->\"]"
+probe "an OK that mentions findings and fails in prose (control)" "$M" allow
 
 echo
 [ "$fail" -eq 0 ] && echo "test-merge-request-gate: all checks passed" || echo "test-merge-request-gate: FAILURES"

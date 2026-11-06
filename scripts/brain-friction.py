@@ -89,6 +89,11 @@ for event, groups in hooks.items():
              "a dispatcher runs its checks itself — anything also wired directly "
              "fires twice per turn")
 
+def is_fixture(basename):
+    return (basename.startswith("test-")
+            or basename.endswith(("-test.sh", "-test.py")))
+
+
 # --- 2. a check that reads settings.json cannot see indirection ---------------
 # This is the exact class that was measured: the subject moved behind a dispatcher and
 # the check kept matching on the old shape.
@@ -96,6 +101,12 @@ if checks:
     registered = {os.path.basename(c.get("cmd", "")) for c in checks}
     for path, text in sources.items():
         if not path.endswith((".py", ".cjs", ".sh")) or "dispatcher" in path:
+            continue
+        # A fixture builds its own settings.json in a temp dir; it checks nothing live.
+        # Measured 2026-11-05 on a macOS instance: test-hook-coverage.sh names question-gate.cjs
+        # in a negative case and was reported blind every session start (checks 3 and 4 already
+        # skip fixtures with the same predicate).
+        if is_fixture(os.path.basename(path)):
             continue
         # A file that DELEGATES to hook-coverage inherits its blindness, it does not
         # add a second one — reporting it separately turns one finding into four.
@@ -123,11 +134,6 @@ if checks:
                      "it will report them as missing unless it knows stop-checks.json")
 
 # --- 3. a recorder nobody reads ----------------------------------------------
-def is_fixture(basename):
-    return (basename.startswith("test-")
-            or basename.endswith(("-test.sh", "-test.py")))
-
-
 # The dispatcher's logs (<marker>.jsonl) have ONE reader by construction:
 # recorder-report.py, which the brain-scan runs. It counts only while a real script
 # starts it. Before it existed, a log counted as read when any file named it — a
@@ -200,7 +206,7 @@ for name in manual:
         # spot — three naming shapes, all of them the fixture layer, not a mechanism.
         # Kept as a literal copy rather than a shared import: the two runners have no
         # common module today, and inventing one for four lines is the bigger change.
-        # (`is_fixture` is defined above check 3, which needs the same predicate.)
+        # (`is_fixture` is defined above check 2, which needs the same predicate.)
         callers = [p for p, t in sources.items()
                    if p.endswith((".sh", ".py", ".cjs")) and invoke.search(t)
                    and os.path.basename(p) != name

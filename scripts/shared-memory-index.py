@@ -147,16 +147,29 @@ def blobs_at(repo: Path, ref: str) -> dict[str, str]:
     return out
 
 
+# A settled message moved out of the way (shared-memory-archive.py, agreed 2026-11-04): it keeps its
+# stem, so every `answers:`/`related` that names it still resolves, and the index lists its month
+# as one line. LOG archives (`<area>/archive/LOG-<month>.md`) are no entries and stay out.
+ARCHIVED = re.compile(r"^\d{4}-\d{2}$")
+
+
+def archived_month(rel: Path) -> str:
+    """`yyyy-mm` for `<area>/archive/<yyyy-mm>/<slug>.md`, "" for every other path."""
+    return rel.parts[2] if len(rel.parts) == 4 and rel.parts[1] == "archive" and ARCHIVED.match(rel.parts[2]) else ""
+
+
 def fact_files(repo: Path, rels: list[str] | None = None) -> list[Path]:
     out = []
     for p in sorted(repo / r for r in rels) if rels is not None else sorted(repo.rglob("*.md")):
         rel = p.relative_to(repo)
-        if ".git" in rel.parts or "archive" in rel.parts:
+        if ".git" in rel.parts:
+            continue
+        if "archive" in rel.parts and not archived_month(rel):
             continue
         # A per-topic INDEX.md is an index, not an entry — the lint already knows that,
         # the generator did not: it listed its own output as a dated fact ("INDEX —
         # ~2026-09-13") the first time dates made the line visible.
-        if len(rel.parts) != 2 or rel.name in (LOG_NAME, INDEX_NAME, OPEN_NAME):
+        if (len(rel.parts) != 2 and not archived_month(rel)) or rel.name in (LOG_NAME, INDEX_NAME, OPEN_NAME):
             continue
         out.append(p)
     return out
@@ -216,23 +229,51 @@ def read_entry(p: Path, repo: Path, gitdates: dict[str, str] | None = None,
         "supersedes": (_lint.listify(fields.get("supersedes")) or [""])[0],
         # what this entry settles (docs/shared-memory-audience.md, "Settling a request")
         "settles": _lint.listify(fields.get("answers")) + _lint.listify(fields.get("closes")),
+        "answers": _lint.listify(fields.get("answers")),
+        "closes": _lint.listify(fields.get("closes")),
+        # `yyyy-mm` when the file sits in `<area>/archive/<yyyy-mm>/` (a settled message moved aside)
+        "archived": archived_month(p.relative_to(repo)),
     }
 
 
 # `answers: <id>` / `closes: <id>` in a LOG entry settles a request like the field in a file.
-LOG_SETTLES = re.compile(r"\b(?:answers|closes):\s*([^\s,;)]+(?:\s*,\s*[^\s,;)]+)*)")
+LOG_SETTLES = re.compile(r"\b(answers|closes):\s*([^\s,;)]+(?:\s*,\s*[^\s,;)]+)*)")
+# A message is a request, reply, note or claim (the post tool's kinds); everything else is durable
+# knowledge (a decision, a reference, a convention) and stays listed as such.
+MESSAGE_KINDS = ("request-", "reply-", "note-", "claim-")
+
+
+def settlers(entries: list[dict], log_texts: list[str]) -> dict[str, tuple[str, dict | None]]:
+    """Stem of a settled request -> ("answered" | "closed", the settling entry or None for a LOG
+    line). The first settler wins; a file beats a LOG line. Measured 2026-11-02 on the shared repo:
+    ~215 of 629 index lines printed the raw `open` of their frontmatter while OPEN.md, which reads
+    `answers:`/`closes:`, listed 4 - the index showed the field, not the state."""
+    out: dict[str, tuple[str, dict | None]] = {}
+    def stem(t: str) -> str:
+        return t.rsplit("/", 1)[-1].removesuffix(".md")
+    for e in entries:
+        for kind, targets in (("answered", e["answers"]), ("closed", e["closes"])):
+            for t in targets:
+                if "@" not in t:  # a LOG id settles a LOG-only request, never a file
+                    out.setdefault(stem(t), (kind, e))
+    for text in log_texts:
+        for word, m in LOG_SETTLES.findall(text):
+            for t in m.split(","):
+                t = t.strip()
+                if "@" not in t:
+                    out.setdefault(stem(t), ("answered" if word == "answers" else "closed", None))
+    return out
 
 
 def settled_stems(entries: list[dict], log_texts: list[str]) -> set[str]:
     """Stems of requests something settled. Without it OPEN.md listed every answered request as
     open - measured 2026-10-21: 25 lines naming the Windows machine in core/OPEN.md, most of them
     answered days before, while the inbox (which follows `answers:`) showed 3."""
-    out = set()
-    for t in [x for e in entries for x in e["settles"]] + [
-            x.strip() for text in log_texts for m in LOG_SETTLES.findall(text) for x in m.split(",")]:
-        if "@" not in t:  # a LOG id settles a LOG-only request, never a file
-            out.add(t.rsplit("/", 1)[-1].removesuffix(".md"))
-    return out
+    return set(settlers(entries, log_texts))
+
+
+def is_message(e: dict) -> bool:
+    return e["name"].startswith(MESSAGE_KINDS)
 
 
 def age_days(e: dict, today: str | None = None) -> str:
@@ -285,7 +326,8 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
         entries = [read_entry(p, repo, gitdates) for p in fact_files(repo)]
     logs = ([t for n, t in blobs.items() if n.endswith("/" + LOG_NAME)] if ref else
             [p.read_text(encoding="utf-8", errors="replace") for p in repo.glob(f"*/{LOG_NAME}")])
-    settled = settled_stems(entries, logs)
+    who_settled = settlers(entries, logs)
+    settled = set(who_settled)
     by_path = {e["path"]: e for e in entries}
     by_topic: dict[str, list[dict]] = {}
     for e in entries:
@@ -320,11 +362,17 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
         """What the routing fields add to an entry's index line — nothing for an entry that
         uses none of them, so the lines of 2026-08-30 are unchanged."""
         parts = []
+        stem = Path(e["path"]).stem
         if e["path"] in successor:
             parts.append(f"superseded by {link(successor[e['path']])}")
+        elif e["status"] == OPEN_STATUS and stem in who_settled:
+            # the COMPUTED state, the same reading OPEN.md and the inbox use (2026-11-04): the
+            # field says open, something settled it - the line says what, and by whom
+            kind, by = who_settled[stem]
+            parts.append(f"{kind} → {link(by)}" if by else f"{kind} in LOG")
         elif e["status"] != "info":
             parts.append(e["status"])
-        if e["next"] and e["status"] == OPEN_STATUS:
+        if e["next"] and e["status"] == OPEN_STATUS and stem not in who_settled:
             parts.append("next: " + ", ".join(e["next"]))
         rel = [link(by_path[r]) for r in e["related"] if r in by_path and r != e["path"]]
         if rel:
@@ -340,20 +388,64 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
     topic_files = {}
     open_files: dict[str, str] = {}
     open_count: dict[str, int] = {}
+    open_entries: dict[str, list[dict]] = {}
     areas = sorted(set(by_topic) | set(filed))
+
+    def row(e: dict) -> str:
+        disc = first_sentence(e["desc"], DISCRIMINATOR_CHARS)
+        addr = f" · for: {e['audience']}" if e["audience"] else ""
+        dm = date_mark(e)
+        when = f" · {dm}" if dm else ""
+        return f"- {link(e)} — {disc}{addr}{when}{tail_of(e)}"
+
     for topic in areas:
         es = by_topic.get(topic, [])
         more = filed.get(topic, [])
+        opens = sorted((x for x in es + more if x["status"] == OPEN_STATUS
+                        and Path(x["path"]).stem not in settled and not x["archived"]),
+                       key=lambda x: (x["date"] or "9999", x["name"]))
+        open_count[topic] = len(opens)
+        open_entries[topic] = opens
+        # Three sections, not one flat list (2026-11-04, the shared repo: core/INDEX.md was 625
+        # lines, ~195 KB, and the messages buried the durable facts): what is still open, what
+        # lasts (decisions, references, conventions - everything that is not a request, reply,
+        # note or claim), and the settled messages by month, newest month first.
+        home_open = [e for e in opens if e["topic"] == topic]
+        durable = [e for e in es if e not in home_open and not is_message(e) and not e["archived"]]
+        settled_msgs = [e for e in es if e not in home_open and is_message(e) and not e["archived"]]
+        # moved messages: counted in their month, one line per month instead of one per entry
+        archived_by_month: dict[str, int] = {}
+        for e in es:
+            if e["archived"]:
+                archived_by_month[e["archived"]] = archived_by_month.get(e["archived"], 0) + 1
+        by_month: dict[str, list[dict]] = {}
+        for e in settled_msgs:
+            by_month.setdefault((e["date"] or "undated")[:7], []).append(e)
+        for month in archived_by_month:
+            by_month.setdefault(month, [])
+        open_link = (f"[{len(opens)} open]({OPEN_NAME})" if opens else "nothing open")
         lines = [f"# {topic} — index", "",
-                 f"{len(es)} entries. Routing only: title, path, and enough of the entry's "
+                 f"{len(es)} entries · {open_link}. Routing only: title, path, and enough of the entry's "
                  f"own description to rule it out. The full text is in the file; this list "
                  f"is GENERATED (scripts/shared-memory-index.py), do not hand-edit.", ""]
-        for e in sorted(es, key=lambda x: x["name"]):
-            disc = first_sentence(e["desc"], DISCRIMINATOR_CHARS)
-            addr = f" · for: {e['audience']}" if e["audience"] else ""
-            dm = date_mark(e)
-            when = f" · {dm}" if dm else ""
-            lines.append(f"- {link(e)} — {disc}{addr}{when}{tail_of(e)}")
+        if home_open:
+            lines += [f"## Open ({len(home_open)})", ""]
+            lines += [row(e) for e in home_open]
+            lines.append("")
+        lines += [f"## Durable ({len(durable)})", ""]
+        lines += [row(e) for e in sorted(durable, key=lambda x: x["name"])]
+        if settled_msgs or archived_by_month:
+            total = len(settled_msgs) + sum(archived_by_month.values())
+            lines += ["", f"## Settled messages ({total})", ""]
+            for month in sorted(by_month, reverse=True):
+                moved = archived_by_month.get(month, 0)
+                lines += [f"### {month} ({len(by_month[month]) + moved})", ""]
+                lines += [row(e) for e in sorted(by_month[month], key=lambda x: x["name"])]
+                if moved:
+                    lines.append(f"- {moved} archived in [archive/{month}/](archive/{month}/) — moved aside as settled, "
+                                 f"same file names, every `answers:`/`related` still resolves")
+                lines.append("")
+            lines.pop()
         if more:
             lines += ["", f"## Filed here from other areas ({len(more)})", "",
                       "Entries that name this area in `topics`. They live in their home "
@@ -365,10 +457,6 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
                 lines.append(f"- {link(e)} — {disc}{when}{tail_of(e)} · filed from {e['topic']}")
         topic_files[topic] = "\n".join(lines) + "\n"
         # ── OPEN.md: the area's open entries, generated, so the list cannot drift ──
-        opens = sorted((x for x in es + more if x["status"] == OPEN_STATUS
-                        and Path(x["path"]).stem not in settled),
-                       key=lambda x: (x["date"] or "9999", x["name"]))
-        open_count[topic] = len(opens)
         if opens or (repo / topic / OPEN_NAME).is_file():
             page = [f"# {topic} — open", "",
                     f"{len(opens)} open entr{'y' if len(opens) == 1 else 'ies'}: every file "
@@ -420,14 +508,31 @@ def build(repo: Path, ref: str | None = None, today: str | None = None
             "with proper frontmatter and regenerate. Three levels on purpose: this page "
             "routes by TOPIC, the topic index routes by ENTRY, the file holds the text. "
             "What is still OPEN is listed per area in `<area>/OPEN.md`, generated from "
-            "the entries' `status: open`; this page carries only the count.",
-            "", "## Topics", ""]
+            "the entries' `status: open`; this page carries the count as a link and, by "
+            "party, who is on the move.", ""]
+    # ── open now, by the party named in `next` (2026-11-04): the counter was no link, and a
+    # reader had to open every area to learn whose move anything was ──
+    by_party: dict[str, dict[str, int]] = {}
+    for topic, opens in open_entries.items():
+        for e in opens:
+            if e["topic"] != topic:
+                continue  # counted once, at home
+            for who in e["next"] or ["nobody named"]:
+                by_party.setdefault(who, {}).setdefault(topic, 0)
+                by_party[who][topic] += 1
+    if by_party:
+        root += ["## Open now", ""]
+        for who in sorted(by_party):
+            spots = ", ".join(f"[{t}: {n}]({t}/{OPEN_NAME})" for t, n in sorted(by_party[who].items()))
+            root.append(f"- next: {who} — {spots}")
+        root.append("")
+    root += ["## Topics", ""]
     for topic in areas:
         es = by_topic.get(topic, [])
         newest = max((e["date"] for e in es if e.get("date")), default="")
         tail = f" · newest {newest}" if newest else ""
         n_open = open_count.get(topic, 0)
-        tail += f" · {n_open} open" if n_open else ""
+        tail += f" · [{n_open} open]({topic}/{OPEN_NAME})" if n_open else ""
         root.append(f"- [{topic}]({topic}/INDEX.md) — {len(es)} entries{tail}")
     if carried:
         root += ["", "## Not one-fact entries", "",
@@ -478,6 +583,10 @@ def main() -> int:
                     help="print ONE line: how many open entries name one of these ids in `next` "
                          "(the session start's 'your move' line) and exit — writes nothing")
     a = ap.parse_args()
+    # Index lines carry characters cp1252 cannot encode (the arrow of "answered → …", entry text);
+    # the Windows console and the portability smoke's cp1252 run would crash a print (2026-11-04).
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     if a.mine is not None:
         return mine(a.repo, [x.strip() for x in a.mine.split(",") if x.strip()], a.ref)
     if a.ref and a.write:

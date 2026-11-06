@@ -39,9 +39,15 @@
       "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A help call passes, and so do the `status`/`disarm` subcommands of the two scripts that have them (repo-activity-watch.sh, shared-memory-watch.sh) - collab-watch.sh has none: `collab-watch.sh status` ARMS the watch (measured 2026-10-26)."
     },
     {
-      "pattern": "(?:\\bgit\\b[^|;&\\n]*?\\spush\\b[^|;&\\n]*\\s:[^\\s:]|\\bgit\\s+(?:-c\\s+\\S+\\s+)+(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?push\\b[^|;&\\n]*\\s(?:--force|-f\\b|--mirror\\b|\\+))",
-      "was": "a destructive push in a form no permission pattern can catch: a branch delete by colon refspec (`git push origin :feat`), or a force/mirror push behind `git -c k=v` - a deny pattern ending in `:*` is read as a trailing wildcard (docs permissions: `Bash(ls:*)` equals `Bash(ls *)`), so `git push * :*` would deny every push with two arguments, and `-c` moves `push` out of every prefix pattern (found 2026-10-26 by the macOS instance's review of the settings template)",
+      "pattern": "(?:\\bgit\\b[^|;&\\n]*?\\spush\\b[^|;&\\n]*\\s:[^\\s:]|\\bgit\\s+(?:-c\\s+\\S+\\s+)*(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?(?:-c\\s+\\S+\\s+)*push\\b[^|;&\\n]*\\s(?:--force(?:-with-lease)?\\b|-f\\b|--mirror\\b|--delete\\b|-d\\b|--no-verify\\b|\\+))",
+      "was": "a destructive push in a form no permission pattern can catch: a branch delete by colon refspec (`git push origin :feat`), or a force/mirror push behind `git -c k=v` - a deny pattern ending in `:*` is read as a trailing wildcard (docs permissions: `Bash(ls:*)` equals `Bash(ls *)`), so `git push * :*` would deny every push with two arguments, and `-c` moves `push` out of every prefix pattern (found 2026-10-26 by the macOS instance's review of the settings template); since 2026-11-02 every `git [-C <repo>] push` form, plus --delete/-d and --no-verify (skips the pre-push hook): the settings template dropped its `git -C * push …` text rules because they matched commit messages too",
       "instead": "Deleting a remote branch or rewriting remote history is the operator's word (destructive). A merged PR's branch goes with `gh pr merge --delete-branch`; anything else: report it and wait for the word.",
+      "needs_operator_word": true
+    },
+    {
+      "pattern": "\\bPUSH_GUARD_OK=",
+      "was": "a push past the core's pre-push hook with its marker PUSH_GUARD_OK (a delete, a rewrite, or main of a repo not in .claude/rules/push-targets.json) - the hook replaced the permission dialog, so its marker carries the operator's word like the dialog did (2026-11-02)",
+      "instead": "Main of a repo outside the list goes through a PR; a rewrite or delete is the operator's word. With that word: PUSH_GUARD_OK=\"<reason>\" git -C <repo> push ... # MECHANISM-OK: \"<operator words>\" YYYY-MM-DD",
       "needs_operator_word": true
     },
     {
@@ -85,6 +91,22 @@
       "pattern": "(?:^|[\\n;&|(])\\s*(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?:\\S*/)?gh\\s+run\\s+list\\b(?![^\\n;&|]*(?:--workflow\\b|\\s-w\\s))",
       "was": "CI runs read without a workflow filter (`gh run list` without --workflow/-w) - a repo has several workflows (CI, a text-leak check on every comment, CodeQL); the newest N runs mix them and push the CI runs out. Measured 2026-10-28 on the macOS instance: four green runs of the comment-triggered workflow were taken for CI runs on the same commit and a red main was called green, twice in one evening; a readiness reader with the same query reported no red CI while two CI runs on main were red. ci-watch.sh had learned this earlier, the lesson stayed in that one tool",
       "instead": "For a verdict on a commit: `scripts/ci-watch.sh` (reads `actions/runs?head_sha=`, detached as Working Rule #9 says). To look: `gh run list --workflow <name> ...` with the workflow you mean (e.g. `--workflow CI`)."
+    },
+    {
+      "pattern": "(?:^|[\\s;&|(])(?:>>?|cp|mv|touch|tee)\\s+[^\\n;&|]*\\.claude[/\\\\]output-styles[/\\\\]",
+      "was": "a second output-style source under .claude/output-styles/ - the core ships its style through the plugin (output-styles/, force-for-plugin: true); a brain's own copy is a second source that drifts from the core's text (measured on the Windows instance: the instance carried this rule since 2026-08-04, after a copied style had diverged)",
+      "instead": "The style comes from the enabled core plugin. If it does not take effect: update the marketplace and the plugin (`bash core/scripts/brain-update.sh`), then start a new session - do not copy the file. A brain that really wants its own style names it in .claude/rules/local-machinery.json."
+    },
+    {
+      "pattern": "(?:^|/)\\.claude/output-styles/",
+      "target": "path",
+      "was": "a second output-style source under .claude/output-styles/ (written through Write/Edit)",
+      "instead": "The style comes from the enabled core plugin. If it does not take effect: update the marketplace and the plugin (`bash core/scripts/brain-update.sh`), then start a new session - do not copy the file. A brain that really wants its own style names it in .claude/rules/local-machinery.json."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:\\S*/)?(?:python3?|node|bash|sh)\\s+(?:-\\S+\\s+)*-[ce]\\s+\\\"(?:[^\\\"\\\\`$]|\\\\[\\s\\S]|\\$(?!\\())*(?:`|\\$\\()",
+      "was": "an inline script in double quotes (`python3 -c \"...\"`, `node -e \"...\"`, `bash -c \"...\"`) whose text holds a backtick or `$(` - the shell runs that part as a command before the interpreter sees the text. Measured 2026-11-03 on the Windows instance: two backtick paths in a protocol entry ran as shell scripts (no file changed, the written text lost both paths); replay over that brain's transcripts: 4 such calls in 2 sessions. The macOS instance carried the same rule as instance data since 2026-10-29 (a PR text lost three names).",
+      "instead": "Multi-line or quoted text goes into a file (Working Rule #8): write the script with the Write tool and run the file, or quote the argument in single quotes. An escaped backtick (\\`) is no hit."
     }
   ]
 }
