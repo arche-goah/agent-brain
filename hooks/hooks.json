@@ -121,6 +121,16 @@
         ]
       },
       {
+        "matcher": "mcp__.*playwright__.*|mcp__.*chrome-devtools__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/headless-browser-gate.cjs\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": ".*",
         "hooks": [
           {
