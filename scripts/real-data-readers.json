@@ -1,0 +1,23 @@
+{
+  "_doc": "Readers that real-data-replay.py runs once at the base ref and once at HEAD over the same real brain, then diffs. argv placeholders: {core} = the core checkout of that side, {brain} = a fresh copy of the brain for that run. A leading python3/python is replaced by the running interpreter (OS-17). normalise: regexes removed from every output line before the diff (volatile parts only - never a classification).",
+  "normalise": [
+    "\\s*\\(?reported in \\d+ sessions?[^)\\n]*\\)?",
+    "\\s*\\(?first report[^)\\n]*\\)?",
+    "\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2})?(\\.\\d+)?Z?",
+    "\\b\\d+(\\.\\d+)?\\s?(ms|s)\\b"
+  ],
+  "brain_copy_ignore": [".git", "core", ".env", "cookies.txt", "*.pem", "*.key", "node_modules", "__pycache__"],
+  "readers": [
+    {
+      "name": "open-items",
+      "why": "the session start's list of open items, split by who moves; --owner \"\" skips the PR search (network), so PR items are not part of this replay",
+      "argv": ["python3", "{core}/scripts/open-items.py", "--root", "{brain}", "--top", "0", "--owner", ""]
+    },
+    {
+      "name": "ledger-reconcile",
+      "why": "ledger checkboxes against their read-only checks; writes only its state file inside the brain copy",
+      "argv": ["python3", "{core}/scripts/ledger-reconcile.py", "--root", "{brain}"],
+      "normalise": ["not reached within the \\d+(\\.\\d+)? s budget.*$"]
+    }
+  ]
+}
