@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# covers: merge-request-gate
+# covers: merge-request-gate os-review
 # test-merge-request-gate.sh — `gh pr merge` waits while the PR body asks THIS machine for a check
 # that no comment of this instance answered. Both directions, no network: a fake gh answers.
 #
@@ -89,6 +89,15 @@ spr 'feat: x' '["macOS OK at `abc1234`: all 7 cases pass (the new case red again
 sprobe "the fixture phrase red against the old code" "$M" allow "$D"
 spr 'feat: x' '["macOS OK at `abc1234`, but lint red against main", "Windows OK at head `abc1234`"]'
 sprobe "red against main stays a negation (control)" "$M" block "$D"
+
+# 2026-11-06 (agent-brain #414, #332; the reader is helpers/os-review.cjs, shared with release-preflight check 8): a
+# compound word is no fail word, and a word in the evidence after "<OS> OK at head" does not cancel the verdict.
+spr 'feat: x' '["**macOS OK at head `abc1234`** (the macOS instance): fixture 14/14 (new case 8 red-free both directions in one tree)", "Windows OK at head `abc1234`"]'
+sprobe "a compound word (red-free) after the OK" "$M" allow "$D"
+spr 'feat: x' '["macOS OK at head abc1234 — read the diff: prompt text only — read the open entries first, a matching one gets a seen-again line", "Windows OK at head `abc1234`"]'
+sprobe "a word in the evidence after the verdict" "$M" allow "$D"
+spr 'feat: x' '["**macOS OK at head `abc1234`** - the fixture is red", "Windows OK at head `abc1234`"]'
+sprobe "a whole fail word in the verdict clause still cancels it (control)" "$M" block "$D"
 
 # 2026-10-28 (#157): an earlier head separated only by "update branch" merges still counts.
 cpr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "fff0000aaa", body: "feat: x", commits: JSON.parse(process.argv[2]), comments: JSON.parse(process.argv[1]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }

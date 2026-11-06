@@ -43,7 +43,8 @@
 #      entries are named, not counted (gh unreadable = all count)
 #   8. every PR merged since the previous tag carries BOTH OS proofs in its thread: a body
 #      or comment with an instance key that says macOS, and one that says Windows - from two
-#      different instances, by hand (a CI note is no proof); a merge train is judged by its members
+#      different instances, by hand (a CI note is no proof); a merge train is judged by its members,
+#      and a hand review on the train thread that names the train head counts for each (helpers/os-review.cjs)
 #   9. the consumer is named: RELEASE_CONSUMER="<who gets this tag and why now>"
 # Earlier than the strand allows ONLY on the operator's word: RELEASE_EARLY_OK="<quote> <YYYY-MM-DD>"
 # (a quotation in quote marks plus the date it was said) lets an open candidate (6) and open
@@ -77,15 +78,13 @@ checks=0; failed=0
 ok()  { checks=$((checks+1)); echo "OK   $1"; }
 bad() { checks=$((checks+1)); failed=$((failed+1)); echo "FAIL $1"; }
 note(){ echo "     $1"; }
-# stdin text has a line saying OK for system $1 (the reader of helpers/merge-request-gate.cjs)
-GATE_JS="$(cd "$(dirname "$0")/.." && pwd)/helpers/merge-request-gate.cjs"
-command -v cygpath >/dev/null 2>&1 && GATE_JS="$(cygpath -m "$GATE_JS")"
-# Judged per sentence, and a bracket that says "against main" is a negative control, not a verdict: the author's
-# test line "all cases pass (the new case FAILs against `origin/main`)" read as "no Windows" and four Windows-instance
-# PRs (#376 #377 #379 #385) fell out of the pin review (measured 2026-11-04, macOS instance).
-os_ok() { node -e 'const {saysOk}=require(process.argv[1]); const t=require("fs").readFileSync(0,"utf8");
-  const segs=t.split(/\r?\n/).flatMap((l)=>l.replace(/\([^()]*\bagainst\b[^()]*\)/gi,"``").split(/[;.]\s+/));
-  process.exit(segs.some((l)=>saysOk(l,process.argv[2]))?0:1)' "$GATE_JS" "$1"; }
+# stdin text is a hand review for system $1 (optionally at head $2): prints the instance key, rc 0.
+# The ONE reader is helpers/os-review.cjs (merge-request-gate reads its line level): key comment marker,
+# OS word + pass word, a first line that reads as a CI note only when it holds no "<OS> OK" statement,
+# fail words as whole words, judged per sentence (measured 2026-11-06: #414 #332 #382 rejected, see there).
+OSR_JS="$(cd "$(dirname "$0")/.." && pwd)/helpers/os-review.cjs"
+command -v cygpath >/dev/null 2>&1 && OSR_JS="$(cygpath -m "$OSR_JS")"
+os_review() { if [ -n "${2:-}" ]; then node "$OSR_JS" "$1" --head "$2"; else node "$OSR_JS" "$1"; fi; }
 
 # 1. manifest version == tag — the v1.2.0 class: same version string, different content
 MANIFEST="$ROOT/.claude-plugin/plugin.json"
@@ -249,42 +248,61 @@ EOF
     ok "no PR merged since ${PREV:-the first commit} — nothing to prove"
   elif command -v gh >/dev/null 2>&1; then
     missing=""
-    # A merge train's thread carries the merger's own OK only; the proofs live in the MEMBER PRs its manifest
-    # names ("- #n <branch> <sha>"). Measured 2026-11-04 on the macOS instance: this check said OK for eleven
-    # train PRs while 62 of 83 member PRs since the tag carried no Windows hand review - and the one text it
-    # took as the Windows proof was that instance's own macOS comment naming the Windows CI job. A CI job is
-    # no review (operator 2026-11-02, 2026-11-04): a text whose first line reads as a CI note is skipped, and
-    # the macOS and Windows proofs must come from two different instance keys.
-    CI_NOTE='from ci|windows-latest|macos-latest|portability \(|ci job|windows job|ci at|checks? none failing'
-    queue="$PRS"; seen=" "
+    # A merge train's manifest names its MEMBER PRs ("- #n <branch> <sha>" under "Contains"); each member is
+    # judged. Measured 2026-11-04 on the macOS instance: this check said OK for eleven train PRs while 62 of 83
+    # member PRs since the tag carried no Windows hand review - and the one text it took as the Windows proof
+    # was that instance's own macOS comment naming the Windows CI job. A CI job is no review (operator
+    # 2026-11-02, 2026-11-04), and the macOS and Windows proofs must come from two different instance keys.
+    # A hand review on the TRAIN thread that names the train head ("train head: <sha>" in the manifest)
+    # covers every member: the train merges each member's head unchanged, so its head holds them byte for
+    # byte plus their combination (merge-train.sh: the OS checks by hand are asked once, for the train head).
+    # Measured 2026-11-06 on the macOS instance: without it every member needed its own Windows request.
+    # Phase 1 reads every thread and records "<pr> <os> <key>"; phase 2 judges, so a member read before
+    # its train still gets the train's reviews.
+    queue="$PRS"; seen=" "; judged=(); rec=""
     while :; do
       set -- $queue; [ $# -gt 0 ] || break
       n="$1"; shift; queue="$*"
       case "$seen" in *" $n "*) continue;; esac; seen="$seen$n "
-      # one base64 line per text (body, each comment): the key test and the OS words are read
-      # HERE, per text, so a comment that says "Windows" without a key never counts
+      # one base64 line per text (body, each comment): the key and the OS verdict are read per text,
+      # so a comment that says "Windows" without a key never counts
       B64="$(cd "$ROOT" && gh pr view "$n" --json body,comments --jq '([.body] + [.comments[].body]) | .[] | @base64' 2>/dev/null || echo "?")"
       if [ "$B64" = "?" ]; then missing="$missing #$n(unreadable)"; continue; fi
-      mac_keys=" "; win_keys=" "; is_train=0
+      is_train=0; head=""; members=(); texts=()
       while IFS= read -r line; do
         [ -n "$line" ] || continue
         txt="$(printf '%s' "$line" | base64 -d 2>/dev/null || true)"
         if [ "${txt#*## Merge train}" != "$txt" ]; then  # the manifest; its key comment may stand above the heading
           is_train=1
+          head="$(printf '%s\n' "$txt" | sed -n 's/.*train head: *\([0-9a-f]\{7,\}\).*/\1/p' | sed -n 1p)"
           # members stand under "Contains"; a PR under "Left out" (conflicts) was not merged by this train
-          for m in $(printf '%s\n' "$txt" | awk '/^Left out:/{exit} /^- #[0-9]+/{print $2}' | tr -d '#'); do queue="$queue $m"; done
+          for m in $(printf '%s\n' "$txt" | awk '/^Left out:/{exit} /^- #[0-9]+/{print $2}' | tr -d '#'); do
+            queue="$queue $m"; members+=("$m")
+          done
           continue
         fi
-        key=""; [[ "$txt" =~ instance-key:\ *([0-9a-f]+) ]] && key="${BASH_REMATCH[1]}"
-        [ -n "$key" ] || continue
-        first="$(printf '%s\n' "$txt" | sed -n 1p | tr '[:upper:]' '[:lower:]')"
-        [[ "$first" =~ $CI_NOTE ]] && continue
-        # a proof is a line that says OK for that system (merge-request-gate's reader): a line
-        # that names Windows only as still open counted as a Windows proof (measured 2026-10-28)
-        printf '%s' "$txt" | os_ok macOS && case "$mac_keys" in *" $key "*) ;; *) mac_keys="$mac_keys$key ";; esac
-        printf '%s' "$txt" | os_ok Windows && case "$win_keys" in *" $key "*) ;; *) win_keys="$win_keys$key ";; esac
+        texts+=("$txt")
       done <<< "$B64"
-      [ "$is_train" = 1 ] && continue
+      if [ "$is_train" = 1 ]; then
+        [ -n "$head" ] || continue  # a manifest without its head line names no state a review could be at
+        for txt in ${texts[@]+"${texts[@]}"}; do
+          for os in macOS Windows; do
+            k="$(printf '%s' "$txt" | os_review "$os" "$head")" || continue
+            for m in ${members[@]+"${members[@]}"}; do rec="$rec$m $os $k"$'\n'; done
+          done
+        done
+      else
+        judged+=("$n")
+        for txt in ${texts[@]+"${texts[@]}"}; do
+          for os in macOS Windows; do
+            k="$(printf '%s' "$txt" | os_review "$os")" && rec="$rec$n $os $k"$'\n'
+          done
+        done
+      fi
+    done
+    for n in ${judged[@]+"${judged[@]}"}; do
+      mac_keys="$(printf '%s' "$rec" | awk -v n="$n" '$1==n && $2=="macOS" {print $3}' | sort -u | tr '\n' ' ')"
+      win_keys="$(printf '%s' "$rec" | awk -v n="$n" '$1==n && $2=="Windows" {print $3}' | sort -u | tr '\n' ' ')"
       has_mac=0; has_win=0; [ "${mac_keys// /}" ] && has_mac=1; [ "${win_keys// /}" ] && has_win=1
       distinct="$(printf '%s\n' $mac_keys $win_keys | sort -u | wc -l | tr -d ' ')"
       if [ "$has_mac" = 1 ] && [ "$has_win" = 1 ] && [ "$distinct" -ge 2 ]; then :; else

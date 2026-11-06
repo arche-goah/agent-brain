@@ -63,9 +63,9 @@ function readPr(t) {
   return JSON.parse(out);
 }
 
-const NAME_RX = { macOS: /\bmac\s?os\b/i, Windows: /\bwindows\b/i, Linux: /\blinux\b/i };
-const OK_RX = /\b(ok|pass(?:es|ed)?|green|rc 0|all \d+ step\(s\) passed)\b/i;
-const NOT_RX = /\b(unchecked|not checked|NOT checked|wanted|open|fail(?:s|ed)?|red|missing|pending)\b/i;
+// The OS verdict of a line is read by the ONE reader of OS reviews, shared with release-preflight check 8
+// (two readers disagreed on the same threads, measured 2026-11-06 - see helpers/os-review.cjs).
+const { saysOk, OK_RX } = require('./os-review.cjs');
 
 /** The repo's `dependencies.json` as an object, null when it has none (not a suite). */
 function readDeps(t) {
@@ -95,27 +95,6 @@ function headShas(pr) {
     out.push(String(commits[i - 1].oid || '').slice(0, 7));
   }
   return out.filter(Boolean);
-}
-
-/**
- * Does this line say OK for `os`? The OK may stand anywhere in the line; a negation counts only
- * in the part that belongs to `os` — from its name up to the next OS name. Measured 2026-10-28:
- * "macOS: OK at `edc95ba` ... Windows check still open." blocked the macOS OK on the Windows
- * clause's "open" (agent-brain #156-#159).
- */
-function saysOk(line, os) {
-  const rx = NAME_RX[os] || new RegExp(`\\b${os}\\b`, 'i');
-  const at = line.search(rx);
-  if (at < 0 || !OK_RX.test(line)) return false;
-  const others = Object.entries(NAME_RX).filter(([k]) => k !== os).map(([, r]) => r.source).join('|');
-  // A code span names a file, a command or a sha, never a verdict: `test-open-items.sh` in an OK
-  // line read as "open" and held a merge (2026-10-28, #164). The OK itself stays outside.
-  // A bare file name (`test-fail-fast.py`) and the fixture phrase "red against the old code" are no verdict either
-  // (2026-11-02, mikrotik-suite #44: two macOS OKs held); "red against main" still is.
-  const rest = line.slice(at).replace(/`[^`]*`/g, '``').replace(/[\w./-]+\.[a-z]{1,4}\b/gi, '``')
-    .replace(/\bred (?:against|with) the old (?:code|state)\b/gi, '``');
-  const end = others ? rest.slice(1).search(new RegExp(others, 'i')) : -1;
-  return !NOT_RX.test(end < 0 ? rest : rest.slice(0, end + 1));
 }
 
 /** Required systems without an OK line at the head: [] when covered or not a suite. */
