@@ -52,6 +52,13 @@ fi
 probe "same edit, not autonomous (the operator is there)" Edit "{\"file_path\":$SET}" "$INTER" allow
 probe "question tool in an autonomous run" AskUserQuestion '{"questions":[]}' "$AUTO" block
 probe "question tool, not autonomous" AskUserQuestion '{"questions":[]}' "$INTER" allow
+# 2026-11-06 (Windows instance): after "questions for me now" every operator item got answered and done, the
+# "asks" latch re-read "open for operator = 0" and the run counted as autonomous again - the mandatory closing mode
+# question (question-gate: alone, last) was refused. A call that asks ONLY the mode question is the run's end, no stop.
+MODEQ='{"questions":[{"question":"Continue autonomously?","header":"Mode","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]}]}'
+probe "the mode question alone in an autonomous run passes" AskUserQuestion "$MODEQ" "$AUTO" allow
+MIXQ='{"questions":[{"question":"Delete the branch?","header":"X","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]},{"question":"Continue autonomously?","header":"Mode","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]}]}'
+probe "the mode question next to another question stays held (control)" AskUserQuestion "$MIXQ" "$AUTO" block
 # The gate's own words are locked inside the run (2026-10-28: a refused question was made to pass by widening them).
 probe "edit of the ask patterns in an autonomous run" Edit '{"file_path":".claude/rules/open-items.json"}' "$AUTO" block
 probe "write of the on/off words in an autonomous run" Write '{"file_path":".claude/rules/autonomous-patterns.json"}' "$AUTO" block
