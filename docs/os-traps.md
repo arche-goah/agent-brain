@@ -99,7 +99,7 @@ known:     scripts/caveman-armed.py=6
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
-known:     scripts/hook-coverage.py=20
+known:     scripts/hook-coverage.py=25
 known:     scripts/lesson-carriers.py=5
 known:     scripts/live-doc-lint-test.py=2
 known:     scripts/live-doc-lint.py=3
@@ -180,6 +180,10 @@ shared file); every path it REPORTS comes from git porcelain (forward-slashed) o
 inside a document, never from a join.
 2026-10-31: the ecosystem-owner snippet moved out of session-bootup.sh into scripts/eco_owner.py
 (bootup 5 -> 4); the new file builds its paths with pathlib and prints only the owner's name.
+2026-11-02, hook-coverage.py 20 -> 25 after that review (`runs_file()`): the five new joins build the
+path of the core helper and of the wired command's file, which are only tested with `os.path.isfile`
+or opened for the line comparison; the path inside the command is matched against `core/<sub>/<name>`
+AFTER backslashes became `/`, and every line it prints still names the helper's FILE NAME only.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 

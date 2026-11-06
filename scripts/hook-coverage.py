@@ -20,8 +20,9 @@ with a plugin cache from before 2.0.4, is told what to wire exactly as before.
 WHAT COUNTS AS MISSING: a demanded hook command that points at core/helpers/<file>,
 where <file> exists in the consumed core state, and no hook command under the SAME
 event runs in this brain (plugin-shipped, or in the project, project-local or user
-settings). Matching is by helper filename, so path notation (slashes,
-$CLAUDE_PROJECT_DIR vs absolute) never causes a false alarm.
+settings). Matching is by the whole helper file name, so path notation (slashes,
+$CLAUDE_PROJECT_DIR vs absolute) never causes a false alarm; a file of that name that
+resolves to ANOTHER script (under half of its lines shared) is another hook, see runs_file().
 
 ALSO REPORTED: a gate the template sets to `"onFailure": "block"` (fail closed when the
 hook cannot start, crashes or times out; Claude Code >= 2.1.295) that this brain wires
@@ -63,6 +64,7 @@ and one for the enabled brain-core plugin that ships it. Exit 0 when it runs, 1 
 Caller: scripts/onboarding-verify.sh check 5 (its grep of settings.json failed every brain whose
 hooks come from the plugin - fresh-brain trial 2026-10-31).
 """
+import difflib
 import json
 import os
 import re
@@ -122,10 +124,54 @@ def timeouts(settings):
 def matcher_tools(matcher):
     """The tool names a matcher covers. An empty matcher means every tool, which can
     never be narrower than the template — so it is returned as None, not as an empty
-    set, to keep \"matches everything\" apart from \"matches nothing\"."""
-    if not matcher or matcher == "*":
+    set, to keep \"matches everything\" apart from \"matches nothing\". A matcher is a regex,
+    so a `.*` alternative matches every tool too."""
+    tools = {tok.strip() for tok in (matcher or "").split("|") if tok.strip()}
+    if not tools or "*" in tools or ".*" in tools:
         return None
-    return {tok.strip() for tok in matcher.split("|") if tok.strip()}
+    return tools
+
+
+def same_script(path, core_file):
+    """A file at another path is the core file when it is a copy of it: the same text, or a
+    stale copy that kept at least half of its lines. Unreadable counts as a copy."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as a, \
+                open(core_file, encoding="utf-8", errors="replace") as b:
+            mine, core = a.read().splitlines(), b.read().splitlines()
+    except OSError:
+        return True
+    return difflib.SequenceMatcher(None, mine, core, autojunk=False).ratio() >= 0.5
+
+
+def runs_file(cmd, core_file, root, missing=True):
+    """True when a wired command runs `core_file` (core/<helpers|scripts>/<name>) or a copy of it.
+    The whole file name must match (`autonomous-question-gate.cjs` is no `question-gate.cjs`),
+    in any path notation. A file of the same name that resolves to ANOTHER script is another
+    hook: measured 2026-11-02 on a Windows brain, an instance's messaging hook
+    `scripts/telegram-notify/notify.cjs` (13 % of lines shared with the core's sound
+    `notify.cjs`) and the operator's own input guard, older than the core's and sharing 9 %,
+    were both reported as copies that run twice.
+    `missing`: what a same-named path outside core/ that does not exist counts as. The duplicate
+    check keeps the careful side (a copy); the demand check passes False, so a broken path that
+    merely ends in the core's file name does not stand in for the core hook (review on the macOS
+    instance, 2026-11-02)."""
+    name = os.path.basename(core_file)
+    sub = os.path.basename(os.path.dirname(core_file))
+    for dq, sq, bare in re.findall(r'"([^"]+)"|\'([^\']+)\'|(\S+)', cmd):
+        path = (dq or sq or bare).replace("\\", "/")
+        if path.rsplit("/", 1)[-1] != name:
+            continue
+        if re.search(r"(?<![\w.-])core/%s/%s$" % (sub, re.escape(name)), path):
+            return True
+        path = path.replace("${CLAUDE_PROJECT_DIR}", root).replace("$CLAUDE_PROJECT_DIR", root)
+        path = os.path.expanduser(os.path.expandvars(path))
+        if not os.path.isabs(path):
+            path = os.path.join(root, path)
+        if not os.path.isfile(path):
+            return missing
+        return same_script(path, core_file)
+    return False
 
 
 def registered_via_dispatcher(root, wired):
@@ -141,8 +187,9 @@ def registered_via_dispatcher(root, wired):
     out = set()
     for check in cfg.get("checks") or []:
         cmd = check.get("cmd") if isinstance(check, dict) else None
-        if cmd:
-            out.add(os.path.basename(cmd))
+        m = re.match(r"core/helpers/([\w.-]+)$", cmd or "")
+        if m:  # an instance check that shares a core helper's file name is not that helper
+            out.add(m.group(1))
     return out
 
 
@@ -252,10 +299,12 @@ def config_dir():
 def runs_where(root, cfg, event, helper):
     """Where `helper` runs on `event` in this brain: the settings scopes that wire it, and the
     enabled brain-core plugin whose install ships it. An empty list = it runs nowhere."""
+    core_file = next((p for p in (os.path.join(root, "core", s, helper) for s in ("helpers", "scripts"))
+                      if os.path.isfile(p)), os.path.join(root, "core", "helpers", helper))
     where = [label for p, label in settings_scopes(root, cfg)
-             if any(helper in c for _m, c, _f in commands_by_event(load(p)).get(event, []))]
+             if any(runs_file(c, core_file, root, missing=False) for _m, c, _f in commands_by_event(load(p)).get(event, []))]
     plugin_id, shipped = plugin_shipped_hooks(root, cfg)
-    if any(helper in c for _m, c, _f in commands_by_event(shipped).get(event, [])):
+    if any(runs_file(c, core_file, root, missing=False) for _m, c, _f in commands_by_event(shipped).get(event, [])):
         where.append("the plugin %s (hooks/hooks.json)" % plugin_id)
     return where
 
@@ -301,11 +350,9 @@ def main():
             m = re.search(r"core/(helpers|scripts)/([\w.-]+)", cmd)
             if not m:
                 continue
-            # Whole file name only: a bare substring took `autonomous-question-gate.cjs`
-            # for a copy of `question-gate.cjs`.
-            name_rx = re.compile(r"(?<![\w.-])%s(?![\w.-])" % re.escape(m.group(2)))
+            core_file = os.path.join(root, "core", m.group(1), m.group(2))
             for _wm, wc, _wf in wired.get(event, []):
-                if name_rx.search(wc):
+                if runs_file(wc, core_file, root):
                     duplicate.append("%s: %s runs twice - the plugin %s ships it (hooks/hooks.json) and %s wires a "
                                      "copy; drop the copy from %s" % (event, m.group(2), plugin_id,
                                                                       scopes.get((event, wc), "a settings scope"),
@@ -356,13 +403,14 @@ def main():
             sub, helper = m.group(1), m.group(2)
             if not os.path.isfile(os.path.join(root, "core", sub, helper)):
                 continue  # not in the consumed core yet: nothing to wire
-            hits = [(m, c) for m, c, _f in wired.get(event, []) if helper in c]
+            core_file = os.path.join(root, "core", sub, helper)
+            runs = [(m, c, f) for m, c, f in wired.get(event, []) if runs_file(c, core_file, root, missing=False)]
+            hits = [(m, c) for m, c, _f in runs]
             # A gate the template makes fail CLOSED (onFailure: block, Claude Code >= 2.1.295)
             # but this brain wires with the default "continue": a crash, a timeout or a
             # missing script then lets every action through. Field only reaches a brain at
             # bootstrap, like the hooks themselves, so it is checked the same way.
-            if on_failure == "block" and hits and not any(
-                    f == "block" for _m, c, f in wired.get(event, []) if helper in c):
+            if on_failure == "block" and hits and not any(f == "block" for _m, _c, f in runs):
                 fail_open.append("%s: %s fails open - the template sets \"onFailure\": \"block\"" % (event, helper))
             if hits:
                 # Wired — but a matcher that names fewer tools than the template means
