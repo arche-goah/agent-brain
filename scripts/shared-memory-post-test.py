@@ -298,10 +298,22 @@ def main() -> int:
                  "control: a bare number in the check sentence is the default repo, red is refused"),
                 ("Report only", "Checked on Windows at the head of #2: red, python-floor.", 0,
                  "control: 'checked' is a report, no check word"),
+                # 2026-11-06: an OS with a report word ("macOS OK is posted") in a check sentence was read as asked.
+                ("Two suite PRs", "Windows check at head, please, for two suite PRs of ours (macOS OK is posted on "
+                 "both, CI green on both):", 0, "an OS in a report clause of the check sentence is not asked"),
+                ("macOS asked of Windows", "macOS check at head, please", 2,
+                 "control: an OS in the check clause is still asked"),
             ):
                 r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                          me="alex-mac", brain=cib)
                 check(f"check sentence: {label}", r.returncode == want, r.stdout + r.stderr)
+            check("check sentence: the incident request is written",
+                  (repo / "core" / f"request-two-suite-prs-{STATE}.md").is_file())
+            r = post(repo, "request", "--area", "core", "--to", "os:macos", "--title", "macOS check at main",
+                     "--body", "Please check on macOS at main; the Windows OK is in the thread.", me="alex-win", brain=cib)
+            check("check sentence: 'the Windows OK is in the thread' is a report, the macOS request passes",
+                  r.returncode == 0 and (repo / "core" / f"request-macos-check-at-main-{STATE}.md").is_file(),
+                  r.stdout + r.stderr)
             # 2026-11-06: in a repo whose merge takes the CI as OS proof, a hand check of a SINGLE PR is refused; the
             # train head may be asked; a reason lets it go.
             cip = Path(tempfile.mkdtemp())

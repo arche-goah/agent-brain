@@ -121,9 +121,19 @@ def check_sentences(text):
     return [s for s in SENTENCE.split(text) if s and any(w.search(s) for w in words)]
 
 
+# Inside a check sentence, a clause that reports a state already reached and carries no check word is a report:
+# its OS is not asked (2026-11-06 on the macOS instance: "Windows check at head, please, ... (macOS OK is posted on
+# both, CI green on both):" to os:windows was refused as a macOS request).
+CLAUSE = re.compile(r"[,;:()]")
+REPORT_WORDS = re.compile(r"\b(?:ok|okay|posted|done|passed|green|checked)\b|\bin the thread\b", re.I)
+
+
 def asked_os(sentences):
-    """The OS names the check sentences mention."""
-    return [o for o, rx in OS_NAMES.items() if any(re.search(rx, s, re.I) for s in sentences)]
+    """The OS names the check sentences mention, outside report clauses."""
+    words = check_words()
+    clauses = [c for s in sentences for c in CLAUSE.split(s)
+               if not (REPORT_WORDS.search(c) and not any(w.search(c) for w in words))]
+    return [o for o, rx in OS_NAMES.items() if any(re.search(rx, c, re.I) for c in clauses)]
 
 
 def asked_prs(sentences, default):
