@@ -26,7 +26,7 @@ Every subcommand takes --root DIR (the brain; default: the working directory).
 `check` is the close gate: exit 1 when anything of THIS instance is open but neither in the scope nor excluded -
   (a) an open PR of the core repo whose body carries this instance's key (scripts/instance_key.py; the key comes
       from SHARED_MEMORY_SELF, else from the brain's .claude/settings(.local).json env, as instance-key-gate reads it),
-      read with `gh pr list` inside the core clone (RELEASE_SCOPE_PR_FIXTURE = a JSON file in that output form);
+      read with `gh pr list --limit 500` inside the core clone (RELEASE_SCOPE_PR_FIXTURE = a JSON file in that output form);
   (b) a local branch of the core clone with commits not on origin/main;
   (c) an open entry of the brain's registered ledgers (.claude/rules/ledgers.json, read by open-items.py's reader)
       whose newest exit is `ai-does-it` or `in-pr` and whose `reach:` is shared or core.
@@ -104,7 +104,7 @@ def instance_key(root):
 
 
 def open_prs(clone):
-    """Rows of `gh pr list` (number, headRefName, body, title), or None when they cannot be read."""
+    """Rows of `gh pr list --limit 500` (number, headRefName, body, title), or None when they cannot be read."""
     fixture = os.environ.get("RELEASE_SCOPE_PR_FIXTURE")
     if fixture:
         try:
