@@ -94,6 +94,8 @@ FIELD = re.compile(r"^\s{2,}(?:[-*]\s+)?`?([a-z_-]+):\s?(.*)$")
 INLINE_FIELD = re.compile(r"(?:^|\s)(id|check):\s*(`[^`]*`|.+?)\s*(?=\s[|·;]\s[^\s|·;]+:|$)")
 DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 NONE = re.compile(r"^none\b", re.I)
+# A current exit line: a field line `exit:` (also as a list item or in backticks); `was-exit:` is history, not counted.
+MULTI_EXIT = re.compile(r"^[\s>*-]*`?exit:", re.M)
 # A command parked as text behind `none` (see PARKED above): a backtick span whose first word is a
 # command. A path or a name in backticks (`core/x.md`, `#315`) is no command and stays a reason.
 PARKED_CMD = re.compile(r"`\s*(?:test|\[|grep|ls|wc|head|tail|cat|diff|git|gh|python3?|node|bash|sh|find|jq)\s[^`]+`")
@@ -283,7 +285,7 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
     None = no memory (hand runs with --ledger); an empty dict on a brain's first run = baseline.
     `pin`: the pinned core checkout; open `check: none` entries waiting for its PRs are measured."""
     out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": [],
-           "refused": [], "not_run": [], "unproven": [], "pin_met": [], "parked": []}
+           "refused": [], "not_run": [], "unproven": [], "pin_met": [], "parked": [], "multi_exit": []}
     pin_since = pin_date(pin, timeout) if pin else ""
     baseline = seen is not None and not seen
     deadline = time.monotonic() + budget
@@ -295,6 +297,11 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
             out["missing"].append(rel)
             continue
         for e in entries(text):
+            # ONE current exit per open entry (operator decision 2026-11-06, "Ja, Konvention + Lint + Migration"):
+            # a new exit replaces the current one, the old line becomes `was-exit:`. Measured the same day: 84 of
+            # 282 open entries carried 2-10 `exit:` lines and the readers disagreed on which one counts.
+            if not e["done"] and len(MULTI_EXIT.findall(e["text"])) > 1:
+                out["multi_exit"].append(label(e, rel))
             chk = e["fields"].get("check", "")
             if not chk:
                 d = DATE.search(e["text"])
@@ -446,6 +453,8 @@ def main():
     say("not_run", f"check(s) not reached within the {budget:g} s budget",
         "not run this time (never counted as done) - make the checks faster, or raise `budget_s`")
     say("missing", "registered ledger file(s) not found", "fix .claude/rules/ledgers.json")
+    say("multi_exit", "open entr(y/ies) with more than one current `exit:` line",
+        "keep the newest as `exit:`, rename the older ones to `was-exit:` (skill backlog-catch-up, one exit per entry)")
     say("no_check", f"open entr(y/ies) since {since} without a `check:` line",
         "name the command that measures done, or `check: none — <why not machine-checkable>`")
     if not a.brief and not any(r.values()):
