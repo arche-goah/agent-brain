@@ -238,7 +238,7 @@ R="$(mkrepo 2.0.0)"
 mkdir -p "$TMP/named-$$"; git init --quiet --bare "$TMP/named-$$/agent-brain.git"
 git -C "$R" remote set-url origin "$TMP/named-$$/agent-brain.git"
 git -C "$R" push --quiet -u origin main
-printf -- '---\nname: y\nmetadata:\n  status: open\n---\nPR follows\n' > "$SHM/core/request-y.md"
+printf -- '---\nname: y\nmetadata:\n  status: open\n---\nPR follows for v2.0.0\n' > "$SHM/core/request-y.md"
 RELEASE_TOPIC= RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1; rc=$?
 grep -q "under core/" "$LAST" || rc=99
 check "a worktree with another folder name still reads the topic from its origin URL" 1 $rc

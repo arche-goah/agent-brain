@@ -211,7 +211,7 @@ if [ "$MODE" = "local" ]; then
     # names an OPEN PR of this repo (`#N`, `<repo>#N`) or the version being cut. The others are
     # named, never counted. gh unreadable = every entry counts, as before.
     OPEN_NRS="?"
-    command -v gh >/dev/null 2>&1 && OPEN_NRS="$(cd "$ROOT" && gh pr list --state open --json number,isDraft --jq '[.[].number] | join(" ")' 2>/dev/null || echo "?")"
+    command -v gh >/dev/null 2>&1 && OPEN_NRS="$(cd "$ROOT" && gh pr list --state open --limit 200 --json number,isDraft --jq '[.[].number] | join(" ")' 2>/dev/null || echo "?")"
     awaited=""; other=""
     while IFS= read -r f; do
       [ -n "$f" ] || continue
