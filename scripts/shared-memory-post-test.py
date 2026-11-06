@@ -232,9 +232,12 @@ def main() -> int:
             "import json, sys\n"
             "n = sys.argv[3]\n"
             "repo = sys.argv[5] if len(sys.argv) > 5 else ''\n"
+            "if 'headRefName' in sys.argv:\n"
+            "    print(json.dumps({'headRefName': 'train/2026-11-06-1432' if n == '7' else 'feat/x'})); sys.exit(0)\n"
             "if repo == 'o/other':\n"
             "    print(json.dumps({'statusCheckRollup': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}]})); sys.exit(0)\n"
             "rows = {'1': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
+            "        '7': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
             "        '2': [{'name': 'python-floor', 'status': 'COMPLETED', 'conclusion': 'FAILURE'},\n"
             "              {'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
             "        '3': [{'name': 'lint', 'status': 'IN_PROGRESS', 'conclusion': ''}]}\n"
@@ -288,6 +291,27 @@ def main() -> int:
                 r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                          me="alex-mac", brain=cib)
                 check(f"check sentence: {label}", r.returncode == want, r.stdout + r.stderr)
+            # 2026-11-06: in a repo whose merge takes the CI as OS proof, a hand check of a SINGLE PR is refused; the
+            # train head may be asked; a reason lets it go.
+            cip = Path(tempfile.mkdtemp())
+            (cip / ".claude" / "rules").mkdir(parents=True)
+            (cip / ".claude" / "rules" / "shared-memory-post.json").write_text(
+                json.dumps({"pr_repo": "o/core", "ci_counts_as_os_check": ["o/core"]}), encoding="utf-8")
+            try:
+                for title, body, extra, want, label in (
+                    ("Single PR hand check", "Please run the fixtures on Windows at the head of #1.", [], 2,
+                     "a hand check of a single PR in a CI-proof repo is refused"),
+                    ("Train head hand check", "Please run the fixtures on Windows at the head of #7.", [], 0,
+                     "the merge train's PR may be asked"),
+                    ("Single PR with a reason", "Please run the fixtures on Windows at the head of #1.",
+                     ["--hand-check-ok", "touches the Windows hook path only a machine shows"], 0,
+                     "a stated reason lets a single-PR hand check go"),
+                ):
+                    r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
+                             *extra, me="alex-mac", brain=cip)
+                    check(f"hand check: {label}", r.returncode == want, r.stdout + r.stderr)
+            finally:
+                shutil.rmtree(cip, True)
         finally:
             os.environ.pop("SHARED_MEMORY_POST_GH", None)
             shutil.rmtree(ghb, True)
