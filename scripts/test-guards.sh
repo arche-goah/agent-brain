@@ -366,6 +366,17 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: pin read by awk (control)" Bash command "awk '/name/' m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by diff (control)" Bash command "diff m/.claude-plugin/marketplace.json /tmp/x" allow
   tr_probe "mechanism-guard/core rule: pin read by jq (control)" Bash command "jq .plugins m/.claude-plugin/marketplace.json" allow
+  # 2026-11-02: a GET of the remote file through gh api is a read; the same endpoint with a method or field is a write
+  tr_probe "mechanism-guard/core rule: pin read by gh api GET (control)" Bash command "gh api repos/o/m/contents/.claude-plugin/marketplace.json --jq .content | base64 -d" allow
+  tr_probe "mechanism-guard/core rule: pin edit by gh api PUT" Bash command "gh api -X PUT repos/o/m/contents/.claude-plugin/marketplace.json -f content=x" block
+  tr_probe "mechanism-guard/core rule: pin edit by gh api field" Bash command "gh api repos/o/m/contents/.claude-plugin/marketplace.json --field sha=abc" block
+  # found in review on the macOS instance: a short flag with its value attached is the same write
+  tr_probe "mechanism-guard/core rule: pin edit by gh api -XPUT (value attached)" Bash command "gh api -XPUT repos/o/m/contents/.claude-plugin/marketplace.json -fcontent=x" block
+  tr_probe "mechanism-guard/core rule: pin edit by gh api -fsha= (value attached)" Bash command "gh api repos/o/m/contents/.claude-plugin/marketplace.json -fsha=abc" block
+  tr_probe "mechanism-guard/core rule: pin edit by gh api --method=PUT" Bash command "gh api --method=PUT repos/o/m/contents/.claude-plugin/marketplace.json" block
+  # 2026-11-02: a reader after `; ` - the engine gave the space back and the read list missed the command word
+  tr_probe "mechanism-guard/core rule: pin read after a semicolon (control)" Bash command "echo x; grep -n ref m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin edit after a semicolon" Bash command "echo x; sed -i 's/v1/v2/' m/.claude-plugin/marketplace.json" block
   # 2026-10-29, ported from the macOS instance: five rules that carry a core rule or harness mechanics.
   # Detached (Monitor) on purpose where a foreground rule would block anyway - these hold in both modes.
   tr_probe "mechanism-guard/core rule: hand-built CI poll loop, detached" Monitor command "while true; do gh pr checks 5 -R o/r; sleep 30; done" block
