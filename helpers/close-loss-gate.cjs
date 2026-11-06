@@ -50,6 +50,25 @@ function rx(builtins, extra) {
   return new RegExp(list.join('|'), 'iu');
 }
 
+// A hand word right after a negation names no hand step - in ANY pattern, built-in or instance (2026-11-06,
+// Windows instance: the German instance pattern "handgriff" had no lookbehind, and "kein Handgriff" held a clean
+// release twice). The guard lives here once instead of in every pattern; an instance adds its language's words
+// as `negation_words` (template: templates/rules-instance/close-loss.json).
+const BUILTIN_NEGATION = ['no', 'not', 'without', 'none'];
+
+function handNamed(text, patterns, negations) {
+  const neg = new Set([...BUILTIN_NEGATION, ...(negations || [])].map((w) => String(w).toLowerCase()));
+  for (const s of patterns) {
+    let re;
+    try { re = new RegExp(s, 'giu'); } catch (e) { continue; } // skip a broken regex
+    for (const m of text.matchAll(re)) {
+      const before = text.slice(Math.max(0, m.index - 40), m.index).toLowerCase().match(/[\p{L}']+/gu) || [];
+      if (!before.slice(-2).some((w) => neg.has(w))) return true;
+    }
+  }
+  return false;
+}
+
 function readTail(file) {
   const size = fs.statSync(file).size;
   const start = Math.max(0, size - TAIL_BYTES);
@@ -113,7 +132,7 @@ function judge(input) {
     const n = unpushed(r);
     if (n) open.push(`${n} commit(s) not pushed in ${path.basename(key)}`);
   }
-  if (rx(BUILTIN_HAND, inst.hand_patterns).test(text)) open.push('a hand step for the operator in the reply');
+  if (handNamed(text, [...BUILTIN_HAND, ...(inst.hand_patterns || [])], inst.negation_words)) open.push('a hand step for the operator in the reply');
   const sp = SCRATCH.exec(text);
   if (sp) open.push(`a path inside the session scratchpad (${sp[0].slice(0, 80)})`);
   if (!open.length) return null;
