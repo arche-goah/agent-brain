@@ -264,7 +264,8 @@ function gate(input) {
     console.error('public-text-guard: no watch list (.claude/rules/leak-names.json, parties.json of the shared memory) - nothing checked');
     return 0;
   }
-  const rx = new RegExp('\\b(' + names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'gi');
+  // `s?`: the German genitive (a file slug `reply-<name>s-...`) is the name too (2026-11-02).
+  const rx = new RegExp('\\b(' + names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')s?\\b', 'gi');
   const cwd = input.cwd || process.cwd();
   const found = new Map(); // word -> where
   const published = []; // the texts that reach GitHub, for the leak-scan patterns below

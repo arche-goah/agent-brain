@@ -69,6 +69,12 @@ LEDGER = """# Orders
 Prose after the list.
 - [ ] **entry without an id field** — derived (2026-10-21)
   check: test -f marker-present
+
+- [ ] **inline fields, check passes** — derived (2026-10-21). id: inline-done | class: todo | check: test -f marker-present | origin: derived
+- [ ] **inline none** — derived (2026-10-21). id: inline-none | class: todo | check: none - needs the operator's eye
+- [ ] **inline prose, field line wins** — derived (2026-10-21). id: inline-overridden | check: `test -f x` = 1 and more prose
+  check: none - the field line of its own decides
+- [ ] **dot form** — derived (2026-10-21) — id: `dot-done` · class: todo · check: `test -f marker-present` · reach: project ·
 """
 
 
@@ -123,6 +129,11 @@ def main():
         ok("list-form-done" in done_line, "`  - check:` in list form is read and run", out)
         ok("span-form-open" not in out, "a code-span field and a code-span check are read (check fails, not reported)", out)
         ok("list-form-no-check" in nc, "a list-form entry without a check is named by its id", out)
+        # inline fields on the entry line (measured 2026-11-02: 23 entries in that form read as "without a check")
+        ok("inline-done" in done_line, "an inline `| check: ... |` is read and run, ending before the next field", out)
+        ok("inline-none" not in out, "an inline `check: none - <why>` is a declaration", out)
+        ok("inline-overridden" not in out, "a check field line of its own outranks an inline check", out)
+        ok("dot-done" in done_line and "dot-done`" not in out, "the middle-dot form: id and check end at ` · ` and their backtick", out)
         br = next((l for l in out.splitlines() if "could not give an answer" in l), "")
         ok("hangs (timeout)" in br, "a check that times out is reported as such", out)
         ok("hangs" not in done_line, "a timed-out check is never counted as done", out)
@@ -379,6 +390,30 @@ def main():
         r = subprocess.run([sys.executable, SCRIPT, "--root", root, "--brief"], env=env,
                            capture_output=True, text=True, encoding="utf-8")
         ok("waiting for a pin" not in r.stdout, "PIN-MET: no pin checkout, nothing measured", r.stdout)
+
+    # PARKED (2026-11-02, agreed between the instances): an open `check: none` entry that holds a
+    # command in backticks is named; a reason with a path or a name in backticks, a ticked entry and
+    # a plain reason stay silent.
+    with tempfile.TemporaryDirectory() as root:
+        R = pathlib.Path(root)
+        (R / "docs").mkdir()
+        (R / ".claude" / "rules").mkdir(parents=True)
+        json.dump({"ledgers": ["docs/l.md"], "allowed": ["test"]},
+                  open(R / ".claude" / "rules" / "ledgers.json", "w", encoding="utf-8"))
+        (R / "docs" / "l.md").write_text(
+            "- [ ] **parked** - derived (2026-11-02)\n  id: parked-grep\n  check: none - `grep -c Monitor core/x.cjs` > 0\n\n"
+            "- [ ] **parked test** - derived (2026-11-02)\n  id: parked-test\n  check: none - `test -s core/y.md` once merged\n\n"
+            "- [ ] **path only** - derived (2026-11-02)\n  id: path-reason\n  check: none - the text in `core/x.md` needs a reader, see `#315`\n\n"
+            "- [ ] **plain reason** - derived (2026-11-02)\n  id: plain-reason\n  check: none - the operator decides\n\n"
+            "- [x] **ticked** - derived (2026-11-02)\n  id: ticked-parked\n  check: none - `grep -c x core/z.md` = 1\n",
+            encoding="utf-8")
+        rc, out = run(root, "--ledger", "docs/l.md")
+        pk = next((l for l in out.splitlines() if "park a command" in l), "")
+        ok("parked-grep" in pk and "parked-test" in pk and pk.startswith("!! ledger: 2 "),
+           "PARKED: two open entries with a command behind none are named", out)
+        for i, why in (("path-reason", "a path and a PR number in backticks"), ("plain-reason", "a plain reason"),
+                       ("ticked-parked", "a ticked entry")):
+            ok(i not in pk, f"PARKED negative: {why} stays silent", out)
 
     print()
     if fails:

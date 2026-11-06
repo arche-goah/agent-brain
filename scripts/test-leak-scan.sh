@@ -61,6 +61,9 @@ grep -q "${PRIV%%@*}" <<<"$OUT" && fail "CI log repeats the private address" || 
 printf 'Title: tidy\n\nThanks Zorbanek for the review.\n' > "$TMP/pr.txt"
 OUT=$(run LEAK_NAMES_JSON='{"names":["zorbanek"]}' "$PY" "$SCAN" --root "$R" --no-tree --text "$TMP/pr.txt" 2>&1); rc=$?
 [[ $rc -eq 1 ]] && grep -q 'text:pr.txt' <<<"$OUT" && pass "a name in PR text is found" || fail "PR text missed: $OUT"
+printf 'Agreed in reply-zorbaneks-wort-2026.md\n' > "$TMP/gen.txt"
+OUT=$(run LEAK_NAMES_JSON='{"names":["zorbanek"]}' "$PY" "$SCAN" --root "$R" --no-tree --text "$TMP/gen.txt" 2>&1); rc=$?
+[[ $rc -eq 1 ]] && pass "the German genitive of a name is found" || fail "genitive missed: $OUT"
 
 # A login that contains the name is the public account, not the name (noreply address, author
 # field); the bare name in the same text still counts.

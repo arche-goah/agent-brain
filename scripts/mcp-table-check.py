@@ -12,10 +12,11 @@ Default = the core template's place: `.claude/rules/intelligence-instance.md`, s
 "## MCP Servers". A row names its servers in its first cell, up to its first "(": every backticked name there
 (`a` / `b`), else one bare name - a note in parentheses names no server; the header row "MCP" / "Server"
 and separator rows are skipped; the section ends at the next heading of the same or a higher level.
-A row may also name a server of an ENABLED plugin (enabledPlugins in .claude/settings.json or
-settings.local.json, the server read from the plugin's .mcp.json in the plugin cache,
+A row may also name a server of an ENABLED plugin (enabledPlugins in ~/.claude/settings.json,
+.claude/settings.json or settings.local.json, the later layer winning; the server read from the plugin's .mcp.json in the plugin cache,
 ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/, or $MCP_TABLE_PLUGIN_CACHE): such a row is no finding;
-a plugin server needs no row.
+a plugin server needs no row. A row may name a server the harness brings itself when the instance file
+lists it in "builtin_servers" (e.g. claude-in-chrome): no .mcp.json and no plugin names those.
 
   python3 scripts/mcp-table-check.py [--repo <brain root>]
 """
@@ -53,16 +54,24 @@ def table_rows(text, heading):
     return rows
 
 
+def user_settings():
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (pathlib.Path(cfg) if cfg else pathlib.Path.home() / ".claude") / "settings.json"
+
+
 def plugin_servers(root):
-    """Server names of the plugins this brain enables (any cached version), from their .mcp.json."""
-    enabled = set()
-    for name in ("settings.json", "settings.local.json"):
-        f = root / ".claude" / name
+    """Server names of the plugins this brain enables (any cached version), from their .mcp.json.
+    enabledPlugins is read on every layer that carries it, user first, then project and local - a later
+    layer's value wins, as in Claude Code. Measured 2026-11-05 on the Windows instance: grandma3-next is
+    enabled in ~/.claude/settings.json only, and its row was reported as "row without server"."""
+    state = {}
+    for f in (user_settings(), root / ".claude" / "settings.json", root / ".claude" / "settings.local.json"):
         try:
             data = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
-        except ValueError:
+        except (ValueError, OSError):
             continue
-        enabled.update(k for k, v in (data.get("enabledPlugins") or {}).items() if v)
+        state.update((data.get("enabledPlugins") or {}) if isinstance(data, dict) else {})
+    enabled = {k for k, v in state.items() if v}
     cache = pathlib.Path(os.environ.get("MCP_TABLE_PLUGIN_CACHE") or pathlib.Path.home() / ".claude" / "plugins" / "cache")
     names = set()
     for key in enabled:
@@ -96,12 +105,17 @@ def main():
     if not servers:
         return 0
     cfg = dict(DEFAULT)
+    builtin = set()
     inst = root / ".claude" / "rules" / "mcp-table.json"
     if inst.is_file():
         try:
-            cfg.update({k: v for k, v in json.loads(inst.read_text(encoding="utf-8")).items()
+            data = json.loads(inst.read_text(encoding="utf-8"))
+            cfg.update({k: v for k, v in data.items()
                         if k in DEFAULT and isinstance(v, str) and v.strip()})
-        except ValueError as e:
+            # Servers the harness brings itself (claude-in-chrome on the Windows instance, 2026-11-05):
+            # no .mcp.json and no plugin names them, the table documents them on purpose.
+            builtin = {s for s in data.get("builtin_servers") or [] if isinstance(s, str) and s.strip()}
+        except (ValueError, AttributeError) as e:
             print(f"!! mcp-table: {inst.relative_to(root).as_posix()} unreadable ({e})")
             return 1
     table = root / cfg["table"]
@@ -110,7 +124,7 @@ def main():
         print(f"!! mcp-table: no table '{cfg['heading']}' in {cfg['table']} for the {len(servers)} "
               f"server(s) of .mcp.json - write it, or point .claude/rules/mcp-table.json at it")
         return 1
-    missing, stale = sorted(servers - rows), sorted(rows - servers - plugin_servers(root))
+    missing, stale = sorted(servers - rows), sorted(rows - servers - plugin_servers(root) - builtin)
     if missing or stale:
         print(f"!! mcp-table: .mcp.json and the MCP table in {cfg['table']} differ - "
               f"no row: {', '.join(missing) or '-'}; row without server: {', '.join(stale) or '-'}")

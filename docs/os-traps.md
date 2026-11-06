@@ -99,7 +99,7 @@ known:     scripts/caveman-armed.py=6
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
-known:     scripts/hook-coverage.py=20
+known:     scripts/hook-coverage.py=25
 known:     scripts/lesson-carriers.py=5
 known:     scripts/live-doc-lint-test.py=2
 known:     scripts/live-doc-lint.py=3
@@ -180,6 +180,10 @@ shared file); every path it REPORTS comes from git porcelain (forward-slashed) o
 inside a document, never from a join.
 2026-10-31: the ecosystem-owner snippet moved out of session-bootup.sh into scripts/eco_owner.py
 (bootup 5 -> 4); the new file builds its paths with pathlib and prints only the owner's name.
+2026-11-02, hook-coverage.py 20 -> 25 after that review (`runs_file()`): the five new joins build the
+path of the core helper and of the wired command's file, which are only tested with `os.path.isfile`
+or opened for the line comparison; the path inside the command is matched against `core/<sub>/<name>`
+AFTER backslashes became `/`, and every line it prints still names the helper's FILE NAME only.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -1106,3 +1110,33 @@ that suites run inside `portability-smoke.sh` wrote); with each exporting its ow
 HOME moved, Python and node still returned the real profile. Same canary, not this class: `test-guards.sh`
 (a secret-guard hook log) and `test-onboarding-leak-check.sh` (the claude CLI's `~/.claude.json`) write
 the home without the session start.
+
+## OS-22 — an empty array under `set -u` is "unbound" on stock macOS bash 3.2
+
+shape: B
+
+invariant: A shell script under `set -u` expands an array that CAN be empty only in the guarded form
+`${a[@]+"${a[@]}"}`. Bash before 4.4 — `/bin/bash` 3.2 on stock macOS — treats `"${a[@]}"` of an empty
+array as an unbound variable and aborts; bash 5 (Linux, Git Bash) expands it to nothing, so the defect
+is invisible on every other platform and in a CI that runs ubuntu only. An array that is never empty
+(filled before use, or guarded by a length test right above) is no site — it stands in `known` after it
+was read.
+pattern:   ^[^#]*[^+#]"\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}"
+paths:     --include=*.sh scripts helpers
+known:     scripts/ci-lint-local.sh=1
+known:     scripts/lint-placeholders.sh=1
+known:     scripts/merge-train.sh=1
+known:     scripts/repo-activity-watch.sh=1
+known:     scripts/shared-memory-watch-lock-test.sh=3
+known:     scripts/test-eco-owner.sh=1
+known:     scripts/test-python-probe.sh=1
+instances: 3
+repeat:    no
+status:    closed
+note:      Measured 2026-11-05 on the macOS instance (bash 3.2.57, agent-brain #330 at 34deb49):
+`SMOKE_SUITES_RUN_BY_CI=1 bash scripts/portability-smoke.sh` died with `_suites[@]: unbound variable`
+after the CI branch emptied both suite arrays. The search found two more sites that can be empty, both
+in an exit trap: `collab-watch.sh` (`pids` before the first watcher is armed) and `test-watch-gate.sh`
+(`SLEEPERS` before the first sleeper; the trap's `rm -rf` of the temp dir never ran). All three use the
+guarded form now. The nine `known` lines were read one by one: each array is filled before use or sits
+behind a length test.

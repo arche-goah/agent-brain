@@ -115,7 +115,8 @@ def has_carrier(body: list[str], keys: list[str]) -> bool:
 
 def carrier_text(body: list[str], keys: list[str]):
     """The carrier line and its continuation lines (up to the next blank or `Key:` line), or None."""
-    rx = re.compile(r"^\s*\**(?:%s)\**\s*:" % "|".join(re.escape(k) for k in keys), re.I)
+    # A list bullet in front is the same line (2026-11-02: a protocol written as "- Carrier: ..." read 37 of 38 loose).
+    rx = re.compile(r"^\s*(?:[-*+]\s+)?\**(?:%s)\**\s*:" % "|".join(re.escape(k) for k in keys), re.I)
     out = None
     for ln in body:
         if out is None:

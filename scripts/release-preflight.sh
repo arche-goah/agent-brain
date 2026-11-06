@@ -38,7 +38,9 @@
 #   7. nothing announced in the shared memory for this repo's topic: no entry with
 #      `status: open` under <shared repo>/<topic>/ (RELEASE_TOPIC, default from the repo
 #      name: agent-brain -> core, <x>-suite -> <x>; SHARED_MEMORY_REPO, default
-#      ~/Projects/brain-shared-memory; no clone = said, not green)
+#      ~/Projects/brain-shared-memory; no clone = said, not green). Only an entry this release
+#      waits for counts: it names an open PR of this repo or the version being cut; other open
+#      entries are named, not counted (gh unreadable = all count)
 #   8. every PR merged since the previous tag carries BOTH OS proofs in its thread: a body
 #      or comment with an instance key that says macOS, and one that says Windows - from two
 #      different instances, by hand (a CI note is no proof); a merge train is judged by its members
@@ -198,18 +200,42 @@ if [ "$MODE" = "local" ]; then
     # it, the raw status fields of the files decide
     if [ -f "$SHARED/$TOPIC/OPEN.md" ]; then
       ANN_N="$(grep -aoE '^[0-9]+ open entr' "$SHARED/$TOPIC/OPEN.md" | grep -aoE '^[0-9]+' | head -1)"
-      ANN="$(grep -aoE '\[[^]]+\]' "$SHARED/$TOPIC/OPEN.md" | head -5 | tr '\n' ' ')"
+      FILES="$(grep -aoE '\]\(\.\./[^)]+\.md\)' "$SHARED/$TOPIC/OPEN.md" | sed -E "s|^\]\(\.\./||; s|\)$||; s|^|$SHARED/|")"
     else
-      ANN="$(grep -alE '^  status: open$' "$SHARED/$TOPIC"/*.md 2>/dev/null | sed 's|.*/||' | head -5 | tr '\n' ' ')"
-      ANN_N="$(grep -lE '^  status: open$' "$SHARED/$TOPIC"/*.md 2>/dev/null | wc -l | tr -d ' ')"
+      FILES="$(grep -alE '^  status: open$' "$SHARED/$TOPIC"/*.md 2>/dev/null)"
+      ANN_N="$(printf '%s' "$FILES" | grep -ac . | tr -d ' ')"
     fi
     ANN_N="${ANN_N:-0}"
+    # Only an entry THIS release waits for blocks (agreed between the instances 2026-11-02, after two
+    # 14- and 17-day-old requests to an instance that builds no release held a core tag): one that
+    # names an OPEN PR of this repo (`#N`, `<repo>#N`) or the version being cut. The others are
+    # named, never counted. gh unreadable = every entry counts, as before.
+    OPEN_NRS="?"
+    command -v gh >/dev/null 2>&1 && OPEN_NRS="$(cd "$ROOT" && gh pr list --state open --limit 200 --json number,isDraft --jq '[.[].number] | join(" ")' 2>/dev/null || echo "?")"
+    awaited=""; other=""
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      n="$(basename "$f" .md)"
+      if [ "$OPEN_NRS" = "?" ] || [ ! -f "$f" ] || grep -aqE "(^|[^0-9.])v?${VER//./\\.}([^0-9]|$)" "$f" \
+         || { [ -n "$OPEN_NRS" ] && grep -aqE "(^|[^A-Za-z0-9_-])(${base})?#($(printf '%s' "$OPEN_NRS" | tr ' ' '|'))([^0-9]|$)" "$f"; }; then
+        awaited="$awaited $n"
+      else
+        other="$other $n"
+      fi
+    done <<EOF
+$FILES
+EOF
+    AW_N="$(printf '%s' "$awaited" | wc -w | tr -d ' ')"
+    [ "$OPEN_NRS" = "?" ] && [ "$ANN_N" != 0 ] && note "open PRs of this repo could not be read (gh) — every open entry under $TOPIC/ counts as awaited"
     if [ "$ANN_N" = 0 ]; then
       ok "nothing open in the shared memory under $TOPIC/"
     elif [ "$early_ok" = 1 ]; then
       ok "$ANN_N open entr(y|ies) under $TOPIC/ — waived by the operator's word"
+    elif [ "$AW_N" = 0 ]; then
+      ok "$ANN_N open entr(y|ies) under $TOPIC/, none awaited by this release (no open PR of this repo, no $VER named):$other"
     else
-      bad "$ANN_N open entr(y|ies) in the shared memory under $TOPIC/ (announced or awaited contributions): ${ANN}— answer or close them, then collect"
+      bad "$AW_N of $ANN_N open entr(y|ies) in the shared memory under $TOPIC/ awaited by this release (an open PR or $VER named):$awaited — answer or close them, then collect"
+      [ -n "$other" ] && note "open under $TOPIC/ but not awaited by this release (named only):$other"
     fi
   else
     note "no shared-memory clone at $SHARED/$TOPIC — announced-contributions check NOT run (counts as unchecked, not as green)"

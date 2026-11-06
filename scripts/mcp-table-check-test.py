@@ -10,6 +10,9 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 SCRIPT = os.environ.get("MCP_TABLE_CHECK_SCRIPT") or str(HERE / "mcp-table-check.py")
 fails = 0
+# The check reads the user layer too; every case gets an empty user dir, never the real ~/.claude.
+USER = pathlib.Path(tempfile.mkdtemp())
+os.environ["CLAUDE_CONFIG_DIR"] = str(USER)
 
 
 def check(name, cond, out):
@@ -102,6 +105,25 @@ pj.write_text(json.dumps({"name": "touchosc-next", "mcpServers": "./servers.json
 rc, out = run(root)
 check("negative control: plugin.json naming a file path declares no server here", rc == 1
       and "row without server: touchosc" in out, out)
+
+# enabledPlugins lives on the user layer too (Windows instance 2026-11-05: grandma3-next enabled only in
+# ~/.claude/settings.json, its row reported as "row without server"); a project false overrides it.
+root = brain(["alpha"], PLUGIN_ROW)
+(USER / "settings.json").write_text(json.dumps({"enabledPlugins": {"grandma3-next@mkt": True}}), encoding="utf-8")
+rc, out = run(root)
+check("a plugin enabled in the user settings only is a plugin server", rc == 0 and out == "", out)
+(root / ".claude").mkdir(parents=True, exist_ok=True)
+(root / ".claude" / "settings.json").write_text(json.dumps({"enabledPlugins": {"grandma3-next@mkt": False}}), encoding="utf-8")
+rc, out = run(root)
+check("the project switching it off wins over the user layer", rc == 1 and "row without server: grandma3" in out, out)
+(USER / "settings.json").unlink()
+
+# a server the harness brings itself is documented on purpose: declared in builtin_servers, no finding
+BUILTIN = "## MCP Servers\n\n| MCP | Use |\n|---|---|\n| alpha | a |\n| `claude-in-chrome` | built into Claude Code |\n"
+rc, out = run(brain(["alpha"], BUILTIN, cfg={"builtin_servers": ["claude-in-chrome"]}))
+check("a row for a declared built-in server is no finding", rc == 0 and out == "", out)
+rc, out = run(brain(["alpha"], BUILTIN))
+check("the same row without the declaration is named", rc == 1 and "row without server: claude-in-chrome" in out, out)
 
 print("mcp-table-check-test: " + ("all checks passed" if not fails else f"{fails} FAILED"))
 sys.exit(1 if fails else 0)

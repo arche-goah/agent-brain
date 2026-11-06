@@ -73,9 +73,10 @@ expect "name only inside --body-file blocks"                block "$T" "gh pr cr
 expect "clean --body-file passes"                           allow "$T" "gh pr create -R o/pub --title fix --body-file $NT/clean.md"
 expect "name inside \$(cat file) blocks"                    block "$T" "gh issue comment 3 -R o/pub --body \"\$(cat $NT/named.md)\""
 expect "gh api field to a public repo blocks"               block "$T" 'gh api repos/o/pub/issues/1/comments -f body="hi Zorbalina"'
+expect "genitive form in a file slug blocks"                block "$T" 'gh pr comment 1 -R o/pub --body "see reply-zorbalinas-wort-2026.md"'
 expect "instance name (with a dash) blocks"                 block "$T" 'gh pr edit 2 -R o/pub --body "measured on zorba-rig"'
 expect "a read command naming someone passes"               allow "$T" 'gh pr view 1 -R o/pub --jq ".body | test(\"zorbalina\")"'
-expect "part of a longer word is no hit"                    allow "$T" 'gh pr comment 1 -R o/pub --body "zorbalinas"'
+expect "part of a longer word is no hit"                    allow "$T" 'gh pr comment 1 -R o/pub --body "zorbalinax"'
 expect "unknown visibility counts as public"                block "$T" 'gh pr comment 1 -R o/gone --body "zorbalina"'
 expect "commit message in a public clone blocks"            block "$T/pubclone" 'git commit -m "fix for zorbalina"'
 expect "git -C into a public clone blocks"                  block "$T" "git -C $NT/pubclone commit -am \"zorbalina asked\""
