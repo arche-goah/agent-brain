@@ -122,8 +122,11 @@ def check_sentences(text):
 
 
 def asked_os(sentences):
-    """The OS names the check sentences mention."""
-    return [o for o, rx in OS_NAMES.items() if any(re.search(rx, s, re.I) for s in sentences)]
+    """The OS names the check sentences mention, outside report clauses (`_parties.non_report_clauses`)."""
+    words = check_words()
+    is_check = lambda c: any(w.search(c) for w in words)  # noqa: E731
+    clauses = [c for s in sentences for c in _parties.non_report_clauses(s, is_check)]
+    return [o for o, rx in OS_NAMES.items() if any(re.search(rx, c, re.I) for c in clauses)]
 
 
 def asked_prs(sentences, default):
