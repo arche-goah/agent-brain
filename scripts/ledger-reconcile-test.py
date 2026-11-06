@@ -415,6 +415,26 @@ def main():
                        ("ticked-parked", "a ticked entry")):
             ok(i not in pk, f"PARKED negative: {why} stays silent", out)
 
+    # 2026-11-06 (operator, "Ja, Konvention + Lint + Migration"): one current exit per open entry.
+    with tempfile.TemporaryDirectory() as root:
+        R = pathlib.Path(root)
+        (R / "docs").mkdir()
+        (R / ".claude" / "rules").mkdir(parents=True)
+        (R / "docs" / "x.md").write_text(
+            "# x\n\n- [ ] **two exits** — derived (2026-11-06)\n  id: two-exits\n  check: none - x\n"
+            "  exit: ai-does-it 2026-11-05 — old\n  exit: other-side 2026-11-06 — new\n\n"
+            "- [ ] **one exit, history kept** — derived (2026-11-06)\n  id: one-exit\n  check: none - x\n"
+            "  was-exit: ai-does-it 2026-11-05 — old\n  exit: other-side 2026-11-06 — new\n\n"
+            "- [x] **done with two exits** — derived (2026-11-06)\n  id: done-two\n  check: none - x\n"
+            "  exit: ai-does-it 2026-11-05\n  exit: done-already 2026-11-06\n", encoding="utf-8")
+        json.dump({"ledgers": ["docs/x.md"], "allowed": ["test"]},
+                  open(R / ".claude" / "rules" / "ledgers.json", "w", encoding="utf-8"))
+        rc, out = run(root, "--brief")
+        me = next((l for l in out.splitlines() if "more than one current `exit:`" in l), "")
+        ok("two-exits" in me, "an open entry with two exit lines is named", out)
+        ok("one-exit" not in me, "negative control: one exit plus was-exit history stays silent", out)
+        ok("done-two" not in me, "negative control: a ticked entry is not named", out)
+
     print()
     if fails:
         print(f"ledger-reconcile-test: {fails} FAILURE(S)")
