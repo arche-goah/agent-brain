@@ -275,6 +275,13 @@ entry — not with a shell error deep inside a workflow.
   never red; `suite-check` warns when the key is declared but no CI step runs the lint. The
   key is listed in `core-contract.json` under `dependencies_optional_fields`.
 
+- **A Python suite declares its floor and runs it** (2026-11-06, contract 1.4.0): a suite
+  with tracked `.py` files whose CI pins a `python-version` names the lowest version it
+  supports as `"python_floor": "3.N"` in `dependencies.json`, and one CI workflow pins
+  exactly that version. A CI pinned above what the code needs stays green while a machine
+  on the older version fails (measured 2026-11-06: an MCP server did not import on 3.11).
+  `suite-check` warns on a missing floor, a malformed one, or a floor no workflow runs.
+
 ## 10. The one rule an agent must follow without being told
 
 New tool domain (a new MCP server, a new device family, a new application):
