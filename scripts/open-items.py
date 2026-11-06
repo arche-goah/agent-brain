@@ -511,8 +511,13 @@ def auto_class(it, repo, human_rx):
             return "ai", f"its exit says {it['exit']} but the box is open — tick it with the evidence"
         if it.get("exit") and it["exit"] not in EXITS:
             return "ai", f"unknown exit '{it['exit']}' — write one of {', '.join(sorted(EXITS))} (skill backlog-catch-up)"
-        if it.get("lclass") == "decision":
-            return "human", "a decision in the ledger"
+        # `class: decision` without an exit is unsorted like any other entry: the field names the
+        # kind of item, never who moves (the comment above). Measured 2026-11-06 on the macOS
+        # instance: both remaining "a decision in the ledger" rows were already decided by the
+        # operator (a dated decision in the entry's text, a deferral in the operator's words) and printed
+        # as "needs you" in every start report. Sorting is the agent's move.
+        if it.get("lclass") == "decision" and not it.get("exit"):
+            return "ai", "a decision without an exit line — sort it: decided (tick it, or ai-does-it) or the operator's (operator-decision)"
         # No exit = never sorted: who moves next is unknown, not "ours". Measured 2026-11-03: three
         # entries whose rest was the operator's hand at a bench printed as plain agent work for 8-11
         # sessions. Sorting is the agent's move, and the line says that, not more.
@@ -686,6 +691,12 @@ ASK_WHEN = re.compile(FIELD_LINE + r"ask-when:\s*(.+?)\s*$", re.M)
 EXITS ={"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
 
 
+def newest_exit(exits):
+    """The exit that says who moves now, from (kind, date[, ...]) tuples in text order: the newest
+    date wins, on the same date the later one in the text. None for no exits."""
+    return max(enumerate(exits), key=lambda ie: (ie[1][1], ie[0]))[1] if exits else None
+
+
 def blame_times(root, rel):
     """{line number: (author time, committer time, line text)} of a tracked file, {} when git
     cannot say. Measured 2026-10-28 on the macOS instance: a ledger entry's shown date was the
@@ -758,9 +769,13 @@ def ledgers(root):
             ident = f.get("id") or f"{rel}#{slug}"
             d, m = mod.DATE.search(e["text"]), WAIT_MARK.search(e["text"])
             # The backlog-catch-up exits that put the move elsewhere (skill backlog-catch-up, step 4):
-            # listed quietly as waiting, never as the agent's open work. The LAST exit line counts.
+            # listed quietly as waiting, never as the agent's open work. The NEWEST exit counts (by its
+            # date; same date: the later one in the text), never the last one in the text — writers put
+            # a new exit at the top as often as at the bottom. Measured 2026-11-06 on the macOS instance:
+            # an entry with nine exits printed "an operator decision" (2026-11-04, last in the text) in
+            # 34 sessions while its newest exit (2026-11-05) put the move on another side.
             exits = ANY_EXIT.findall(e["text"])
-            last = exits[-1] if exits else None
+            last = newest_exit(exits)
             x = last if last and LEDGER_EXIT.search(f"exit: {last[0]} {last[1]}") else None
             until = (m.group(1), m.group(2).strip()) if m else None
             topic = None
@@ -814,11 +829,13 @@ def carried_by_pr(ledger_items, pr_items):
     for it in ledger_items:
         if it.get("exit") not in ("in-pr", "ai-does-it"):
             continue
-        # The last exit WITH its continuation lines (measured 2026-11-03: an exit naming its PR on the
+        # The newest exit WITH its continuation lines (measured 2026-11-03: an exit naming its PR on the
         # second line read as "no open PR"), plus the check line, which often names the PR's branch.
         blocks = re.findall(FIELD_LINE + r"exit:.*(?:\n(?![\s>*-]*(?:[\w-]+:\s|- \[)).*)*", it.get("body", ""), re.M)
-        text = (blocks[-1] if blocks else "") + "\n" + "\n".join(re.findall(FIELD_LINE + r"check:.*$", it.get("body", ""), re.M))
-        hits, named = set(), bool(PR_MENTION.search(blocks[-1] if blocks else ""))
+        dated = [(b, (re.search(r"\d{4}-\d{2}-\d{2}", b) or [""])[0]) for b in blocks]
+        block = newest_exit(dated)[0] if dated else ""
+        text = block + "\n" + "\n".join(re.findall(FIELD_LINE + r"check:.*$", it.get("body", ""), re.M))
+        hits, named = set(), bool(PR_MENTION.search(block))
         for repo, n in PR_MENTION.findall(text):
             refs = [r for r in by_num.get(n, []) if not repo or r == f"{repo}#{n}"]
             if len(refs) == 1:

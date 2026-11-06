@@ -52,6 +52,7 @@ const path = require('path');
 const { autonomousMode, answers, promptText, HOOK_ECHO: PROMPT_ECHO } = require('./autonomous-mode.cjs');
 const { isTranscriptRecord, isNotification, isSkillExpansion, isAgentOrigin, queuedHumanPrompt, operatorWords, FRAMES, LOCAL } = require('./turn-kind.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
+const { newestExitKind } = require('./ledger-exit.cjs');
 
 // LIST EMPTY (2026-11-02, coherence register P0-1): a list run ends when the ORDERED list is done -
 // Order Fidelity #3, an empty list is a success, not a reason to take the rest of the ledger as the pool.
@@ -180,8 +181,8 @@ function releasedOpen(root, tp) {
       for (let j = i + 1; j < lines.length && lines[j].startsWith(' '); j++) block.push(lines[j]);
       const body = block.join('\n');
       if (!body.includes('released:')) continue;
-      const exits = [...body.matchAll(/^[\s-]*`?exit:\s*`?([\w-]+)/gm)];
-      if (exits.length && exits[exits.length - 1][1] !== 'ai-does-it') continue;
+      const exit = newestExitKind(body);
+      if (exit && exit !== 'ai-does-it') continue;
       const quotes = [...body.matchAll(RELEASED)].map((q) => squash(q[1]));
       if (!quotes.length) continue;
       if (said === null) said = operatorSaid(tp);
