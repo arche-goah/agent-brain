@@ -50,6 +50,9 @@
 #      the brain RELEASE_REPLAY_BRAIN names, plus every `symptom:` line of this version's entries. No
 #      brain = FAIL ("NOT run"); a difference = FAIL unless RELEASE_REPLAY_OK="<what was reviewed>";
 #      could not run = FAIL. RELEASE_REPLAY_READERS overrides the reader list (tests).
+#  11. the release scope (scripts/release-scope.py check, over the brain RELEASE_SCOPE_BRAIN names, this clone and
+#      $VER): every own open PR, unshipped local branch and active shared ledger entry is in the scope or excluded.
+#      No brain = FAIL ("NOT run"); never waived by RELEASE_EARLY_OK.
 # Earlier than the strand allows ONLY on the operator's word: RELEASE_EARLY_OK="<quote> <YYYY-MM-DD>"
 # (a quotation in quote marks plus the date it was said) lets an open candidate (6) and open
 # shared-memory entries (7) pass and prints the quote; an unreadable gh, 8 and 9 are never waived.
@@ -354,6 +357,26 @@ EOF
       bad "real-data replay: the readers' output on real data differs from ${REPLAY_PREV:-the previous state}, or a symptom fails — read the diff; intended = RELEASE_REPLAY_OK=\"<what was reviewed>\""
     else
       bad "real-data replay could not run (rc=$rrc) — a check that did not run is red"
+    fi
+  fi
+
+  # 11. the release scope holds everything of this instance (operator 2026-11-06: a train was closed and the Windows
+  # check requested while the same instance still had two own branches in work and two released items unbuilt).
+  # scripts/release-scope.py check: every own open PR, every local branch of this clone with commits not on
+  # origin/main, every active shared ledger entry of the brain is in the scope or excluded with a reason.
+  SCOPE_PY="$(cd "$(dirname "$0")" && pwd)/release-scope.py"
+  native_s() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }  # OS-3
+  if [ -z "${RELEASE_SCOPE_BRAIN:-}" ]; then
+    bad "release scope NOT run: no brain (set RELEASE_SCOPE_BRAIN to the root of the brain that cuts this release) — a check that did not run is red"
+  else
+    SCOPE_OUT="$("$PY" "$(native_s "$SCOPE_PY")" check --root "$(native_s "$RELEASE_SCOPE_BRAIN")" --core-clone "$(native_s "$ROOT")" --version "$VER" 2>&1)"; src=$?
+    printf '%s\n' "$SCOPE_OUT" | sed 's/^/     | /' | head -60
+    if [ "$src" = 0 ]; then
+      ok "release scope $VER: every open item of this instance is in the scope or excluded"
+    elif [ "$src" = 1 ]; then
+      bad "release scope $VER: items of this instance are open but neither in the scope nor excluded (above) — release-scope.py add or exclude, then collect"
+    else
+      bad "release scope check could not run (rc=$src) — a check that did not run is red"
     fi
   fi
 fi

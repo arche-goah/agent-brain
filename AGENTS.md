@@ -42,7 +42,9 @@ session start.
    (the race guard: an existing tag or open release PR means the release happened
    elsewhere — comment there, never re-cut), and HEAD==origin/main; check 10 replays the
    readers on a REAL brain against the previous tag (`RELEASE_REPLAY_BRAIN=<brain root>`,
-   `scripts/real-data-replay.py`) — fixtures alone let fixes ship that did not hold. CI re-checks
+   `scripts/real-data-replay.py`) — fixtures alone let fixes ship that did not hold; check 11 demands
+   that every own open PR, unshipped branch and active shared ledger entry stands in the release scope or
+   is excluded with a reason (`RELEASE_SCOPE_BRAIN=<brain root>`, `scripts/release-scope.py`). CI re-checks
    manifest+CHANGELOG on every pushed `v*` tag, so a broken tag turns red on the
    repo page instead of failing silently on the next consumer update (the v1.2.0
    incident: tagged with the manifest still on 1.1.2).

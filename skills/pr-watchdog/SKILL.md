@@ -31,6 +31,15 @@ at the tag and says so.
 
 ## Release chain
 
+0. **Scope first, the moment release prep is ordered** (why: Evidence, 2026-11-06).
+   `python3 core/scripts/release-scope.py open X.Y.Z` in the brain, then `add` every PR,
+   branch and ledger id this release carries and `exclude <item> "<reason>"` what it
+   deliberately leaves out. While the scope is open, `helpers/release-freeze-gate.cjs`
+   holds new core branches outside it. Run `release-scope.py check --core-clone <clone>
+   --version X.Y.Z` BEFORE the OS hand-check request goes out and again before the tag
+   (release preflight check 11 runs it with `RELEASE_SCOPE_BRAIN=<brain root>`); exit 1
+   names each open item of this instance that is neither in nor out. `close` after the
+   pin (step 3) ends the freeze.
 1. **Race guard before the cut** (why: Evidence, 2026-08-10). `git fetch --tags` and
    `git tag -l vX.Y.Z` in the plugin repo — when the tag exists, the release happened.
    When a release PR (`chore: release` / a `release/*` branch) is already open, comment
@@ -55,5 +64,9 @@ at the tag and says so.
 - 2026-08-14: a suite was tagged v1.1.9 while its marketplace pin stayed at v1.1.7; a
   parallel Windows session pulled the old state live. Since then the pin is step 3 and
   `pin-check.sh` its proof.
+- 2026-11-06: for beta 2.1.4 sixteen PRs each got their own lint and CI, the train was
+  rebuilt three times, and it was closed (Windows hand check requested) while the same
+  instance still had two own branches in work and two operator-released items unbuilt;
+  the operator found them afterwards. Since then step 0 writes the scope down first.
 - 2026-11-02: this skill lived in an instance-only plugin (as a local deviation from the
   one-system rule); the operator moved it into the core ("these should be core skills").
