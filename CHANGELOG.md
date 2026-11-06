@@ -5,6 +5,681 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 2.1.3 — 2026-11-06
+
+- **Beta pin `brain-core-next` -> v2.1.3, in the same commit as the release** (test: T1) (level: writer; higher: design — a release script that cuts version, changelog, pin and tag in one step; debt: the tag is still pushed by hand right after the merge) — v2.1.3 carries the two trains of 2026-11-05 (#416, 16 PRs) and 2026-11-06 (#419, 16 PRs incl. a collaborator's ten) plus the PRs merged singly since v2.1.2. Checked by hand on Windows and macOS by two instances for every PR since v2.1.2 (`pin-review-report.py`: 97 of 97); train #419 was checked once at its head on both systems. The operator's word 2026-11-06 (question tool): cut and pin. Stable `brain-core` stays v2.0.0. <!-- fragment: pin-beta-v2-1-3 -->
+
+- **Overlaps from the audit of the audits (package G): one tool per question, a trigger for the report that had
+  none** (test: T1) (level: writer; higher: design - one registry of "which tool answers which question" that a
+  lint holds against new scripts, not built here because the audit of the audits itself is that registry for now;
+  debt: the label lines of the stop dispatcher are the instance's words, so `skill-first-measure.py` attributes
+  them by position, and a line starting with a stray capital word can read as a label). Measured on the macOS
+  instance 2026-11-02 (audit of the audits, rows AA-23, AA-24, AA-27, AA-29, AA-45):
+  (a) `scripts/gate-precision.py` removed: 12 of 13 gates "not measurable by text diff", no fixture, the same
+  question as `skill-first-measure.py`; its os-traps baseline row and the optional instance file
+  `gate-answer-markers.json` go with it.
+  (b) `skill-first-measure.py` keeps its gate part and attributes by marker: any `[CODE]` of the block (the
+  dispatcher's codes are not all `-GATE`, e.g. `[AUTONOMOUS-IDLE]`), else the dispatcher's label at a line start.
+  Over 729 stop blocks since 2026-10-20 the untagged share fell from 523 to 2. Kept rather than dropped: the
+  per-turn-kind split (notification turn or operator turn) is answered nowhere else.
+  (c) `carrier-audit.py --presence` is the one entry point for the presence question (`lesson-carriers.py` stays
+  the implementation its fixture imports); `brain-scan-prep.py` calls it, the session close and the pre-commit
+  already call `carrier-audit.py`. Both fixtures pass; `carrier-audit-test.py` gains the `--presence` cases.
+  (d) `backprop-report.py` gets its trigger: the pre-commit prints its report when a rule file is staged
+  (`rules/*.md`, `.claude/rules/*.md`, `templates/feedback.md`, `templates/rules-instance/*.md`) and never
+  blocks; fixture `scripts/test-pre-commit-backprop.sh` (no rule file: silent; a new dated rule: commit passes,
+  the older place is named).
+  (e) `plugin-scope-check.py` stays: it has a caller, `scripts/onboarding-verify.sh` step 2 (the core installed
+  exactly once) — the audit's "no caller" was a search miss; a duplicate scope that appears after onboarding is
+  left to that check.
+  os-traps OS-3 baseline: `scripts/test-pre-commit-backprop.sh=1` after review — its temp dir reaches the hook only
+  as the working directory, and the hook passes git's own `--show-toplevel` (native on every platform) to python. <!-- fragment: chore-aa-overlaps -->
+
+- **The brain-scan reads what was only written** (test: T1) (level: reader; higher: writer — a stage that reads the mode
+  log, the pause register and decision-review against the operator's corrections needs a judging agent and is the
+  audit-audit's effectiveness part for now; debt: that behaviour stage). Measured on the macOS instance 2026-11-02
+  (audit-audit): the skill root-cause-review promised "every two weeks with the brain-scan" and never ran; five logs in
+  `.claude-state/` were written for weeks and read by nothing; of 144 register entries no one said who found the mishap,
+  so the checks' hit rate (6 %) could only be counted by keyword.
+  - `scripts/brain-scan-prep.py` runs `helpers/root-cause-gate.cjs --review --since <last scan>` and names the review due
+    when a correction stayed without a cause or a cause without a mechanism.
+  - `brain-scan-prep.py` reports every `.claude-state/` log that no second file names (a recorder's log, read by
+    recorder-report, counts as read).
+  - The carrier-register entry gains `found-by:` (operator | work | ci | the check) and `should-have:`; the cause gate
+    asks for it and `--review` counts how many entries a check found.
+  - `root-cause-gate.cjs --review` leaves out headless model calls (first `entrypoint` = `sdk-cli`): 24 of the 40 newest
+    transcripts were prompt-classifier calls, whose prompt quotes the operator and matched the correction words; with
+    them out the same window reads 499 operator turns instead of 224.
+  - Class of the last point: `scripts/transcript_kind.py` (`is_headless`, `sessions`) — decision-review, transcript-latency,
+    skill-first-measure and transcript-recall read the history through it; only session-audit already knew the field.
+  Fixtures: brain-scan-prep-test +3 cases, test-root-cause-gate +2, new transcript-kind-test.py (4); the four readers'
+  fixtures unchanged green. <!-- fragment: feat-aa-readers -->
+
+- **New skill `audit-audit`: the audit of the audits, one level above the deep checks** (test: T1) (level: design;
+  higher: none; debt: the findability probe is a step of the skill, not yet a scheduled check). Checks every check a
+  brain has — function, cost, effect, findability — in five parts (inventory, function + return channel, efficiency,
+  effectiveness, findability probe) and ends with an action plan by priority in which every finding has an exit.
+  Measured on the macOS instance: run 2026-10-09 had no name, no trigger and no carrier, so the operator's question
+  for "the level above the full audit" went unanswered twice and a coherence register answered "the corpus names
+  none"; the second run 2026-11-02 counted 141 checks, of which the core's level rule named 4. New gate
+  `scripts/audit-audit-plan-check.py` (red while a heading of a part report is covered by no plan row, or a row lacks
+  stage, exit, a resolving source or its check); fixture `scripts/audit-audit-plan-check-test.py` 9 cases, both
+  directions; on the real 2026-11-02 run 47 rows, 0 misses, one row removed: red. `rules/intelligence.md` names the
+  level and its reasons. <!-- fragment: feat-audit-audit -->
+
+- **feat(autonomous-gate): an autonomous run in permission mode `default` says once that dialogs will stop it** (test: T0) (level: reader; higher: writer — rebuilding the allow list in the hook would let the gate collect each call itself, but it is the error-prone half (globs, MCP names, three settings layers) and a wrong denial costs more than a dialog; debt: in `default` mode the run still stops at a dialog if nobody switches to auto) A call no allow rule covers opens the harness's own permission dialog before any hook can collect it; in mode `default` an autonomous run therefore stops on the operator, while in `auto` the classifier decides. Read in the code 2026-11-02 on the Windows instance and confirmed by the macOS instance the same day (`autonomous-gate` sees the question tool, ask rules and held edits, not calls without an allow rule); the operator's model of the modes: "auto mode collects everything, interactive asks directly". The gate now reads `permission_mode` from the hook input: in an autonomous run under `default` it refuses the first call of the session once with the hand step "switch to auto (Shift+Tab) or stay at the machine", marks the session in `.claude-state/`, and lets the repeated call through. Fixture `scripts/test-autonomous-gate.sh` +5 cases (first call, same session passes, new session again, auto-mode and non-autonomous controls); negative control: the gate from `origin/main` lets both block cases through. <!-- fragment: feat-autonomous-default-mode-hint -->
+
+- **root-cause-gate `--pre`: in a correction turn the class comes before the instance; "what is open?" leaves an autonomous run only when something is open** (test: T1) (level: writer; higher: design - the correction itself is the trigger, nothing earlier knows one is coming; the check holds the first instance edit instead of asking at the turn end; debt: the PreToolUse wiring in `hooks/hooks.json` comes as a follow-up — the autonomous gate held that edit for the operator, the patch is ready) — measured 2026-11-03 on the macOS instance. (1) After an operator correction the first edits went into one model script; the build kit, the print gates and the rule data followed only after two more corrections (operator, translated: "cause only found, or fixed at the root? or once again only the instance fixed afterwards instead of the class?", "why do you do all this only after being asked several times?"). The Stop check asked for a cause and a carrier at the END of the turn, after the instance fix was written. `--pre` (PreToolUse on Write/Edit/MultiEdit/NotebookEdit) denies an edit of a non-mechanism, non-documentation file in a correction turn until the turn has written a mechanism file or says `Carrier: none - <why>`. `tools/` joins the mechanism folders (a print repo keeps its kit and gates there). (2) The prompt classifier read the operator's challenge "why do you still need my word?" as asks_open; the run went interactive with nothing to ask (operator, translated: "why did you just switch to interactive? no questions came … either the questions, or stay autonomous"). `autonomous-mode.cjs` now leaves the run on an ask only when the presentation gate's own readers count an open decision. Fixtures: `scripts/test-root-cause-gate.sh` +6 `--pre` cases (deny on the day's case, a tools/ write, a .md, a prior carrier write, `Carrier: none`, an order as negative control); `scripts/test-autonomous-mode.sh` seeds one open question in its fixture dirs and adds the nothing-open case — red against `origin/main`. <!-- fragment: feat-class-first-after-correction -->
+
+- **decision-review `--headers`: the question tool's questions counted by their header** (test: T1) (level: reader; higher: writer — the header is already written by the AI at every question, no new field is needed; debt: an answer is not split by header yet) — the operator decided on 2026-11-05 (question tool, translated: "yes, a small core PR"). A self-report per decision stays rejected (PRINCIPLE in the script); the header is the category chip the question tool already carries, so `--headers [--days N] [--json]` reads it from the transcripts and lists the count per category. Measured on the macOS instance the same day: 447 questions in 7 days, 67 of them the mode question. Fixture `scripts/test-decision-review.sh`: two headers counted, a text that only names the tool is no question. <!-- fragment: feat-decision-review-headers -->
+
+- **mechanism-guard: an inline script in double quotes with a backtick or `$(` in its text is held** (test: T1) (level: writer; higher: design — the shell parser in `published-text.cjs` could judge every substitution inside any quoted argument; not built, the measured class is the inline interpreter call; debt: a substitution inside other double-quoted arguments still runs) — measured 2026-11-03 on the Windows instance: `python3 -c "…"` writing a protocol entry carried two paths in backticks; Bash ran both as shell scripts before Python saw the text (no file changed, the entry lost both paths). Replay over that brain's transcripts: 4 such calls in 2 sessions. The macOS instance carried the same rule as instance data since 2026-10-29 (id `pycbacktick`, a PR text lost three names) — this is the port into the core (working rule #11: porting running instance machinery), widened on that instance's review to `$(`, `node -e` and `bash -c`/`sh -c`. Fixture `scripts/test-guards.sh`: three block cases (python backtick, node `$(`, bash backtick) and four controls (single quotes, no substitution, an escaped backtick, a plain `$VAR`); without the rule the three block cases fail. <!-- fragment: feat-guard-inline-script-substitution -->
+
+- **feat(mechanism-rules): the core refuses a second output-style source under `.claude/output-styles/`** (test: T0) (level: writer; higher: design — the harness could load only the plugin's style, but which style wins is the harness's choice; debt: a copy made outside Bash/Write/Edit, e.g. by hand, is not seen) The core ships its output style through the plugin (`output-styles/`, `force-for-plugin: true`); a brain's own copy under `.claude/output-styles/` is a second source that drifts from the core's text. The Windows instance carried this as an instance guard rule since 2026-08-04 (after a copied style had diverged; coherence scan P1-1); its local-machinery check now named it "presumably general" (no instance token in it) — so it moves into the core, where every brain gets it. Two rules: the shell command (`cp`/`mv`/`tee`/`touch`/redirect into the folder) and the file a Write/Edit touches (`target: path`). Fixture `scripts/test-guards.sh` +4 (copy and write block; reading the folder and the core's own `output-styles/caveman.md` pass); negative control: the core's rules from `origin/main` let both block cases through. Port of running instance machinery (Working Rule #11). <!-- fragment: feat-guard-second-output-style -->
+
+- **autonomous-idle-gate: the state check holds in interactive mode too, for work the operator released in the session** (test: T1) (level: reader; higher: writer — a released entry written by the question tool's answer itself, so no agent has to copy the words into the ledger; not built: the ledger is the instance's file and the quote check already refuses invented words; debt: entries released before this change carry no `released:` clause and stay outside the check until their exit line is rewritten) — Measured 2026-11-02 on the macOS instance: an interactive turn closed on "Next: package A …" while the operator had released that plan in the same session; the word-pattern stop gates missed the sentence, and the operator decided against more word lists (question tool, 2026-11-02). Now, outside the autonomous mode, an OPEN entry of a registered ledger whose last exit is `ai-does-it` and which carries `released: "<words>"` counts as released when those words stand in one of the operator's own messages of the transcript (a prompt, a message typed mid-turn, a question-tool answer; pasted blocks, notifications, peer and skill text excluded). With such an entry open the turn may end only on a question-tool call (unless that question's own answer released the work), a `HAND STEP:` line, or every released entry named by id in a `BLOCKED:` line after measuring the list. A running waiter is no end even with its condition named (operator, 2026-11-02): it covers its own item, which then stands in its BLOCKED line. Holds once per turn (the re-issue passes); the autonomous branch is unchanged. `released:` documented in `rules/working-rules.md` "Project Work Ledgers" and skill backlog-catch-up step 4. Fixture `scripts/test-autonomous-idle-gate.sh`: 13 new cases in both directions, 38/38 green; the main-branch gate fails 5 of them (negative control via `IDLE_GATE=<old build>`). <!-- fragment: feat-idle-gate-interactive-released -->
+
+- **The loop watchdog follows the autonomous mode** (test: T1) (level: writer; higher: design — the mode itself as a state
+  file with its own lifecycle (on, off, close) that the watchdog reads; not built, the mode is read from the transcript on
+  every call and has no switch moment; debt: a turn that runs longer than the silence limit without a turn end raises the
+  alarm, as intended). Coherence register 2026-11-02 P1-12 ("watchdog arming in prose only", CONFIRMED); measured on the
+  macOS instance 2026-11-03: a list run ordered autonomous worked for over an hour with no watchdog armed. At every turn end
+  `autonomous-idle-gate.cjs` arms `auto-autonomous-run` (45 min, `LOOP_WATCHDOG_AUTO_MINUTES`) when nothing is armed and
+  beats otherwise; in interactive mode it disarms a watchdog it armed itself and leaves a hand-armed one alone. No turn is
+  held for it; `LOOP_WATCHDOG_AUTO=0` switches it off. Fixture +4. <!-- fragment: feat-idle-gate-keeps-watchdog -->
+
+- **autonomous-idle-gate: a turn opened by a watcher event that reports only this instance's own doing ends without a continuation** (test: T1) (level: reader; higher: writer — collab-watch could stop reporting own events, but the event is also the proof that the own act arrived; debt: own events of other watcher scripts with other wording still count as foreign) — the operator decided on 2026-11-05 (question tool, "both") after a measurement on the macOS instance (150 transcripts since 2026-10-27): notification turns were held 277 times, 160 of them as idle, while the long hold chains (40 of 47, longest 34) came after the operator's own prompts. Own = every `<event>` line names a branch made on this machine, a comment carrying this instance's key, or the watcher's own state (armed, already armed, skipped, expired, sessions). A peer's PR or comment in the same event still needs its continuation. Fixture `scripts/test-autonomous-idle-gate.sh` +5 (three own, two peer); against `origin/main` the three own cases block. <!-- fragment: feat-idle-own-event-turn -->
+
+- **feat(merge-request-gate): a merge waits for green CI and for the merger's own open findings** (test: T0) (level: writer; higher: design — branch protection per repo would hold the CI part for every client, but it is a repo setting the operator owns and it cannot see findings; debt: a finding written without a leading "Finding"/"FAIL" line is not seen) Two conditions of the merge table stood in prose only (class search 2026-10-26, after #137 had carried the third of five): (3) CI green — in a repo without branch protection `gh pr merge` goes through on red CI; (4) open own findings hold the merge. The gate now reads `statusCheckRollup` at the head (a failed/cancelled/timed-out check run, a failed status, or a run still going blocks; no checks at all = no CI, allowed; `# CI-RED-OK: <why>` overrides) and this instance's own comments (a line starting "Finding"/"FAIL" stays open until a later own comment says OK; `# FINDING-CLOSED: <where>` overrides). Agreed with the operator 2026-11-02 (question tool: "Kern-PR ins Merge-Gate"). Fixture: `scripts/test-merge-request-gate.sh` +12 cases; negative control: the gate from `origin/main` lets the four block cases through. Replay over the last 60 merged core PRs: one finding-block (#257, a finding the posting instance never closed in the thread), no false alarm. <!-- fragment: feat-merge-gate-ci-and-findings -->
+
+- **merge-train.sh: an instance precheck keeps a PR the train cannot carry out of it** (test: T1) (level: writer; higher:
+  design — the train could read the repo's PR-class map itself; not built, the map is instance alpha data today; debt: an
+  instance without a precheck command builds trains as before). Measured 2026-11-03 on the macOS instance: train #368 ran
+  ~57 min on all three systems and was then held at the merge, because one of its PRs changed the marketplace pin file and
+  needs a by-hand review on two instances that no CI job gives. `MERGE_TRAIN_PRECHECK="<cmd>"` is called as
+  `<cmd> <owner/repo> <n>` per PR before it joins; a non-zero exit leaves the PR out, named with the command's first output
+  line. Fixture `scripts/test-merge-train.sh` +2 (refused PR named with its reason; a passed PR joins). <!-- fragment: feat-merge-train-precheck -->
+
+- **open-items: who merges a repo is read from the shared memory's `repo-owners.json`, the instance's `owners` stays an override** (test: T1) (level: writer; higher: design — a merge rule the forge itself enforces is out of reach while every instance posts under one shared login; debt: the instances' own `owners` maps still exist and can shadow a newer shared entry until they are thinned) — agreed 2026-11-02 between the operator's two instances in the shared memory (request from the Windows instance; the macOS instance agreed to an own file `repo-owners.json`, built by the Windows instance). Before: the owner of a repo stood as prose in the shared memory and every brain copied it into its own `owners`; measured 2026-10-10, one brain missed a suite's owner change and listed that owner's PRs as its own work. The file maps repo -> device id (read through parties.json, as since the previous change) or login, each with a `source` (quote with date, or path); an entry without its source is skipped. Fixture `scripts/test-open-items.sh`: an owner only in `repo-owners.json` makes an own PR wait on it; the same entry without `source` leaves it ours (negative control). Stacked on #331. <!-- fragment: feat-open-items-repo-owners -->
+
+- **shared-memory-post: a category address leaves out the devices of a person who cannot see the named repo** (test: T1) (level: writer; higher: design — visibility could be read live per account with `gh repo view`, not built because one machine cannot ask GitHub on behalf of another account; debt: the list is kept by hand, measured by the person's own instance) — measured 2026-11-02: a Windows check for a private suite PR (`os:windows`) put five devices into `next`, three of them on an account that cannot open the repo ("Could not resolve to a Repository"). `parties.json` gains an optional per-person `private_repos_without_access`; when an `os:` or everyone address names such a repo as `owner/repo#N`, that person's devices are left out of `next`. A device named by itself stays. The field sits on the person, not the device: visibility hangs on the account (agreed with the Windows instance that reported it). `shared-memory-post-test.py` +2 (one red against the old code, one negative). <!-- fragment: feat-post-next-repo-access -->
+
+- **`gh pr close` runs without a dialog on a PR this instance opened; another party's PR is held** (test: T1) (level: design; higher: none; debt: `gh api` closes and the web UI are not seen) — the operator decided on 2026-11-04 (question tool, translated: "allow it only for own PRs"): a merge train closed its member PRs, and each close asked a dialog while the merge itself did not. The template moves `gh pr close` from ask to allow; the new `helpers/pr-close-gate.cjs` reads the PR body (`gh pr view --json body`) and lets the close pass only when it carries this instance's key (the line `instance-key-gate.cjs` writes into every PR this instance opens). Another key, no key, an unreadable body or a brain without an instance id = held, with the way out `# PR-CLOSE-OK: "<operator's words>" <date>` or the merged train PR. Fixture `scripts/test-pr-close-gate.sh`, 9 cases with a gh stub (own PR, flag order, another instance's PR, unkeyed PR, unreadable body, no instance id, the marker, and two reads that are no close). <!-- fragment: feat-pr-close-own-only -->
+
+- **Skill `pr-watchdog` moves into the core: the release chain after a merge** (test: T0) (level: writer; higher:
+  design - a release tool that runs the chain itself (race guard, bump, tag, pin PR, pin-check) instead of a skill
+  that instructs it, not built because the chain crosses two repos with their own merge rules; debt: the instance-only
+  plugin that carried the skill is unwired by each brain after the pin, outside this repo). The skill lived in an
+  instance-only plugin as a local deviation from the one-system rule; the operator decided on 2026-11-02 that it
+  belongs in the core. Ported generic and in English: no repo names - the marketplace is the brain's first marketplace
+  (the resolution of `scripts/eco_owner.py`), the plugin's source repo comes from its `marketplace.json`,
+  `pin-check.sh` runs in the brain's copy of the marketplace repo. Steps instruct; the two dated incidents (release
+  race, a pin left behind its tag) stand under `## Evidence`. `skills/REGISTRY.md` regenerated (28 skills);
+  `skill-lint.py` 0 findings. <!-- fragment: feat-pr-watchdog-core-skill -->
+
+- **A push is judged by the refs it sends: new `pre-push` hook; the template drops the `git -C * push …` text rules** (test: T1) (level: design; higher: none; debt: the bare `git push …` text rules stay as a second layer and still read the whole command; a repo whose main the AI pushes on purpose (a project repo, a website) needs its line in `.claude/rules/push-targets.json`) — measured 2026-11-02 on two brains: the permission rules against a force push, a delete and a push to main are globs over the whole command text. They missed a bare `git -C <repo> push` from a checkout on main (no branch named, no dialog — the Windows instance's report) and hit a COMMIT whose message read "a push is judged …" and later "Fixture +3" (`git -C * push * +*`, refused twice on the macOS instance; fnmatch replay: the same text without "+" passes, a real `push origin +main` matches). `helpers/git-hooks/pre-push` (global through `core.hooksPath` like pre-commit) reads `<local ref> <local sha> <remote ref> <remote sha>` from git and blocks a delete (zero sha), a rewrite (remote sha not an ancestor of the local one; a moved tag included) and a push to main/master of any repo but the brain itself, the shared memory (`parties.json` at its top) and the repos in `.claude/rules/push-targets.json`; `PUSH_GUARD_OK="<reason>"` lets one push through. The template drops the 16 deny and 8 ask rules of the `git -C * push …` shape; mechanism-guard (which blanks quoted messages) now refuses force, `+ref`, mirror, `--delete`/`-d`, `--force-with-lease` and `--no-verify` in every `git [-c k=v] [-C <repo>] push` form, and a new rule makes `PUSH_GUARD_OK` need the operator's quoted word, as the dialog did. Fixtures: `scripts/test-pre-push.sh` (16 cases with real bare remotes, negative control without the hook), `scripts/test-guards.sh` +9 (controls without double quotes: `tr_probe` writes its value into JSON unescaped, so a `"` made a broken JSON read as allow), `scripts/template-push-ask-test.py` cases moved. <!-- fragment: feat-pre-push-reads-refs -->
+
+- **release-preflight check 7: only an entry this release waits for holds the tag** (test: T0) (level: reader; higher: writer — an entry could carry a field `awaits: <tag or PR>` instead of being read for `#N` and the version, not built because the open entries exist in prose today; debt: the second half of the agreed rule, an entry whose `next:` names an instance that builds this repo, needs a field nobody writes yet (`parties.json` has no role) and is left out — such an entry blocks only when it names an open PR or the version) — Agreed between the instances 2026-11-02 (proposal B of the release-chain request; the Windows instance builds it). Measured that day on the core topic: two requests addressed to an instance that builds no release, 14 and 17 days old, held the v2.1.0 tag although nothing in them was a release contribution. Check 7 now reads each open entry (from the generated `OPEN.md`, or the `status: open` files): it counts when it names an open PR of this repo (`#N` or `<repo>#N`, open per `gh pr list`) or the version being cut; every other open entry is printed as "named only". gh unreadable = every entry counts, as before; the operator's early word still waives all. `release-preflight-test.sh` +5 (open PR named fails; PR closed: named, not counted; no PR and no version passes; version named fails; another repo's `#7` and `12.0.0` pass) plus a control; three of the passing cases are red against the old script. <!-- fragment: feat-preflight-check7-awaited -->
+
+- **feat(public-text-guard): the published text also passes the leak-scan patterns, not only the watch list** (test: T0) (level: writer; higher: design — one shared pattern file read by both python and node would spare the python call, but it would be a second home for the patterns until leak-scan moves to it; debt: a machine with no python that runs the script skips the patterns here, said on stderr — the repo CI still scans) Measured 2026-10-25 on the Windows instance: a home-path placeholder went into a public PR body; the guard checks names only, and only the repo's CI leak scan saw the path — after it was public. The guard now hands the text that reaches GitHub (titles, bodies, fields, handed-over files; not paths, not the commit author) to `scripts/leak-scan.py --no-tree --text --json` and blocks on `home_path`, `private_ip`, `mac` or `email` for a public repo — the same patterns and allow-lists, read through the one script. Fixture `scripts/test-public-text-guard.sh` +7 (home path, private IP, mail address in a body; home path inside a --body-file; controls: private repo, the `<home>` placeholder, a home path only in the file PATH); negative control: the guard from `origin/main` lets the four block cases through. Replay over the 14 texts this instance posted on 2026-11-02: no hit. <!-- fragment: feat-public-text-guard-leak-patterns -->
+
+- **ledger-reconcile: an open `check: none` entry that parks a command as text is named** (test: T1) (level: reader; higher: writer — the ledger template could forbid backticks behind `none` at writing time, not built because the entries exist today and the reader catches them as they stand; debt: a command whose first word is not in the list (`PARKED_CMD`) stays unseen, and a check that can never turn green because it looks for a word the work never writes is not caught here) — Agreed between the instances 2026-11-02, built on #315 at the macOS instance's request. Measured that day on a Windows brain: 16 entries of one ledger carried their real measurement as `` check: none - `grep -c Monitor core/helpers/secret-guard.cjs` > 0 ``; `none` is never run, and 5 of the open ones were done (work in the pin or on main) and still open until they were ticked by hand. The cause: comparisons (`= 1`, `> 0`, "empty") do not fit the exit-code form, so the writer parks the command. New group PARKED: an open `none` entry whose text holds a backtick span starting with a command word (`grep`, `test`, `ls`, `git`, `gh`, `python`, `node`, ...) is named once per run, with the way out (`grep -q` instead of `grep -c ... = 1`, `test -s` for "not empty", or `none` with a reason and no command). A path or a PR number in backticks stays a reason. `ledger-reconcile-test.py` +4 (two parked entries named; a path and `#315` in backticks, a plain reason and a ticked entry silent); the positive case is red against #315's head. Live on the Windows brain: 3 open entries named; rewritten there the same day, the run is clean again. <!-- fragment: feat-reconcile-parked-check -->
+
+- **ledger-reconcile: an open `check: none` entry waiting for the pin is named once its PRs are in it** (test: T1) (level: reader; higher: writer — a ledger could write the condition as a field (`waits: pin agent-brain#N`) instead of prose, not built because 69 open `none` entries exist in prose today and the reader catches them as they stand; debt: a bare `#N` that means another repo's PR reads as a core PR) — measured 2026-11-02 on the macOS instance: four PRs (#161, #166, #195, #217) were in the brain's pin, and none of the five entries that waited for "the pin that carries #N" moved; `check: none` was never looked at again, so the start report kept listing them as open work. Now `ledger-reconcile.py` reads the `#N` / `agent-brain#N` written within 80 characters of the word pin in an open `check: none` entry, asks `gh pr view` for the PR's head and merge commit (a PR in a merge train is closed, its head is in the pin; numbers before a repo cut are reused, so a subject line is no proof), and checks `git merge-base --is-ancestor` against the pinned checkout (`pin_repo` in `ledgers.json`, default `core`). All in: one `!!` line "condition met - measure the exit now". A PR that cannot be read, one outside the pin, another repo's `#N`, no pin word, a ticked entry or no pin checkout keep the entry silent. Live on the macOS instance: 13 entries named, the five expected among them, one false (a suite PR written as bare `#34`). `ledger-reconcile-test.py`: +7 checks, all passed. <!-- fragment: feat-reconcile-pin-condition -->
+
+- **review-claim-gate: a review comment that says it read the diff is posted only after this PR's diff was read**
+  (test: T1) (level: writer; higher: design - a review record the merge gate reads, not built because the comment
+  is the record the merging side reads today; debt: a diff read outside the transcript, e.g. in a subagent or on
+  the web, needs the `# DIFF-READ: <where>` marker). New PreToolUse gate on `gh pr comment|review` and
+  `gh issue comment`: when the text says "read the diff", "read its diff", "reviewed the diff" or "reviewed the
+  code", the transcript must show, before the post, a `gh pr diff <n>` / `git diff|show` naming the PR
+  (`pr-<n>`, `pull/<n>`) or the head the comment names, or - after the previous post - a diff of a file the
+  comment names in backticks. Agreed with the operator on 2026-11-03 (question tool). Measured on the macOS
+  instance the same day: a comment claimed "read the diff of `scripts/open-items.py`" while the diff read before
+  it was another PR's, on the same file. Replay over this brain's transcripts: 8 posts with such a claim, the gate
+  holds exactly that one; `api-request-blob` records are skipped (read as calls they made four false holds in the
+  first replay). Fixture `scripts/test-review-claim-gate.sh`, 14 cases. <!-- fragment: feat-review-claim-gate -->
+
+- **shared-memory: settled messages move to `<area>/archive/<yyyy-mm>/` with a resolver every reader follows; one index line per month** (test: T1; settles-debt: feat-shared-memory-index-state)
+  (level: design; higher: none - the convention, its mover and the readers that follow a moved file are one
+  mechanism; debt: the move itself in the shared repo is a step each side runs (`shared-memory-archive.py --write`),
+  not yet scheduled, and the `--days` floor (14) is the agreed figure, not a measured one).
+  Agreed by both sides 2026-11-04 (shared memory core/reply-shared-memory-tidy-up… point 3b: "yes, on one condition:
+  the tools still find a moved file by its file name - 66 ledger pointers in this brain name shared-memory entry paths,
+  a move without a resolver breaks each of them; the archive step runs only after the resolver is in"). Resolver:
+  `shared-memory-index.py` reads `<area>/archive/<yyyy-mm>/<slug>.md` as entries (`archived: yyyy-mm`), so their
+  `answers:`/`closes:` keep settling, `related`/`supersedes` to a moved file keep resolving, and the topic index lists
+  the month's archived messages as one line (`n archived in archive/yyyy-mm/`) instead of one per entry;
+  `shared-memory-lint.py resolve_target` and `shared_answers.py` look under `archive/*/` as well; `known_targets` did
+  already. Mover: `scripts/shared-memory-archive.py` (dry run by default; `--write` = `git mv` + index regeneration)
+  moves only MESSAGES (request/reply/note/claim) that are settled and older than `--days`, never a durable entry,
+  never an open one. Fixtures: `shared-memory-archive-test.py` (dry run moves nothing; write moves the settled old
+  message and leaves the open, the young and the durable; a rerun moves nothing; the moved reply still settles its
+  request; the index names the month as one line; a `related` to the moved file resolves to its new path; the lint's
+  `resolve_target` finds the moved stem), `shared-memory-index-test.py` unchanged and green. <!-- fragment: feat-shared-memory-archive-resolver -->
+
+- **shared-memory-index: the index line shows the computed state, the root links the OPEN pages by party, the topic index has sections** (test: T1)
+  (level: writer; higher: design - the archive convention (settled messages older than ~14 days move to
+  `<area>/archive/<yyyy-mm>/`, one index line per month) with a resolver every reader follows; not built here, the
+  two sides agreed the move runs only after the resolver exists (shared memory core/reply-shared-memory-tidy-up…
+  2026-11-04) - it is the next PR; debt: that resolver and the move).
+  Measured 2026-11-02 on the shared repo (both sides, 2026-11-04 recount by the collaborator's AI: 652 entries, 240
+  lines "open", 202 KB in core/INDEX.md, core/OPEN.md 4): every index line printed the raw `status:` of its
+  frontmatter, while OPEN.md and the inbox read `answers:`/`closes:` - the index showed the field, not the state;
+  the root's "11 open" was no link, and a reader opened every area to learn whose move anything was; one flat list
+  of ~625 lines buried the durable facts under the messages. Now: (1) an open request something settled reads
+  `answered → <reply>` / `closed → <closer>` / `answered in LOG` on its line (`settlers()`, the same reading OPEN.md
+  uses; `settled_stems()` stays for `--mine`), with no `next:`; (2) the root carries `## Open now` - one line per
+  party named in `next`, linking `<area>/OPEN.md` with the count - and the topic pointer's count is that link;
+  (3) each topic index has `## Open`, `## Durable` (everything that is not a request, reply, note or claim) and
+  `## Settled messages` by month, newest first, each entry once; its head links OPEN.md. Agreed point by point with
+  the collaborator's AI 2026-11-04, ordered by the operator the same day. Fixture `shared-memory-index-test.py`:
+  cases 22 (changed), 27-30 (new). <!-- fragment: feat-shared-memory-index-state -->
+
+- **shared-reach-check reads project repos shared with a collaborator** (test: T1) (level: reader; higher: design — the
+  essence rule stays, its check now sees where project results are written; debt: raw data and the ledger stay out, the
+  write-up is the unit). Measured on the macOS instance 2026-11-03 (operator: "are our test results … in the shared memory
+  for the collaborator, or only with us?"): a week of bench results lived in the project repo, the shared topic carried none of
+  them, and the close check said nothing — it read the brain's `docs/` only, with the ledger excluded.
+  - Instance data `project_repos: [{repo, topic, roots, exclude}]`: every `.md` changed under `roots` inside the window must
+    be NAMED in a fact file of `<topic>/` (INDEX/OPEN excluded), else `FAIL shared-reach: project …` listing the files.
+    A first variant compared dates and was measured wrong the same day: an unrelated newer reply in the topic hid the gap.
+  - Summary line gains `projects_behind=N`. Fixture +3 (missing write-up named; control: a fact naming it is silent;
+    control: changes before the window are not asked for).
+  - A broken instance file (`shared-reach.json` not JSON) is a FAIL line "instance data unreadable — NOT checked", not
+    a run on defaults: measured the same day, a straight quote inside a string turned the check silently green
+    (`projects_behind=0`, `pointed=0`). Fixture +1.
+  - OS traps register: `shared-reach-check.py` baselines OS-1 8 -> 11 (the new joins open files; the compared name comes
+    from git output, forward-slashed) and OS-9 4 -> 6 (the new FAIL lines; stdout is pinned to UTF-8 at the top). <!-- fragment: feat-shared-reach-project-repos -->
+
+- **skill-gate: a skill can name the Bash/Monitor commands that need it (`load-before-commands`)** (test: T1) (level: reader;
+  higher: design — a registry of which command reaches which system; not needed, the skill that governs the system names
+  its commands; debt: a command spelled another way, an alias or a script name not in the pattern, passes). Coherence
+  register 2026-11-02 P1-15 (CONFIRMED trigger gap): a multi-system measurement skill held MCP calls only; the Bash probes of
+  the same measurement (an OSC router, an Art-Net sender, `nc`) never loaded it. Frontmatter `load-before-commands` and
+  `skill-gate.json` `commands` are a regex on `tool_input.command` of Bash and Monitor; a skill may declare tools, commands
+  or both. Fixture +5 (two red on the old gate). <!-- fragment: feat-skill-gate-commands -->
+
+- **templates/suite/hooks: the npm-dependency hook of a plugin server ships as a core template; suite-check warns on a copy that drifted** (test: T1)
+  (level: design; higher: none - the hook has one home, every suite consumes it unchanged and the check reads the
+  drift; debt: the two suites that carry a copy today (grandma3-suite, chataigne-suite) still take the template in a
+  small PR each, and a suite that deviates on purpose has no field yet to write its reason into - suite-check's WARN is
+  the reminder until then).
+  Measured 2026-11-03 on the macOS instance (plugin cache grandma3-next 1.1.31, chataigne-next 1.0.4):
+  `hooks/ensure-deps.cjs` lay in both suites with the same logic, 105 lines, differing only in the five lines that name
+  the suite; `hooks/hooks.json` byte-identical. Every further suite with an npm server (touchosc, content-toolsuite,
+  resolume) would copy it again, and a fix in one copy reaches no other. Agreed with the collaborator's AI 2026-11-04
+  (shared memory core/reply-ensure-deps-as-a-core-template… — none of their suites ships a plugin server today) and
+  ordered by the operator the same day. The template reads the plugin's name from `.claude-plugin/plugin.json` (no
+  per-suite edit); `scripts/suite-check.py` compares a suite's `hooks/ensure-deps.cjs` and `hooks/hooks.json` with the
+  pinned core's template (CRLF-insensitive): equal = INFO, different = WARN (a suite may deviate with a reason), absent =
+  nothing. Fixture `scripts/suite-check-test.py`: five cases. <!-- fragment: feat-suite-ensure-deps-template -->
+
+- **template-drift: a note for a template stop check the brain's stop-checks.json lacks** (test: T1)
+  (level: reader; higher: design - the dispatcher merging every template check by itself, as it already does
+  for `required` ones; not built because an optional check is the brain's choice, the operator agreed on a note
+  (2026-11-05, macOS session, "Ja, als Hinweis"); debt: none new). Measured 2026-11-05 on the Windows instance:
+  MODE-LOG stood in `templates/rules-instance/stop-checks.json` and not in the brain's file, and no session start
+  said so - the gap was found by hand. `template-drift.py` (run at every session start) now names each template
+  marker that is not `required` (those run from the template anyway, `requiredFromTemplate` in
+  `stop-dispatcher.cjs`), is missing from the brain's file and is not switched off in `"disabled"` with a reason.
+  A `note:` line, not a `!!`. A brain without its own `stop-checks.json` stays silent. Fixture: five new cases in
+  `scripts/test-template-drift.sh` (named / required left out / a note / disabled with a reason silent / blank
+  reason named / no file silent); against main's script two of them fail. Against the Windows brain's file before
+  the wiring it names exactly MODE-LOG, after it nothing. <!-- fragment: feat-template-drift-stop-checks -->
+
+- **Three checks stop costing attention or tokens for nothing** (test: T1) (level: reader; higher: writer — the
+  brain-scan stage that re-reads machine checks and the start ballast per agent need a measured A/B first; debt: those two).
+  - `workflows/coherence-scan.js` verifies in batches of 12 instead of 6: with the merge cap of 24 that is two skeptics
+    instead of four, each ~100k start context; two runs in a row confirmed 24/24 (0.68 + 0.80 M verify tokens). Measured on the macOS instance 2026-11-02 (audit-audit):
+  - `scripts/local-machinery.py` listed measurement scripts beside a report under `docs/research/` as undeclared
+    machinery — 28 of 32 "general/undeclared" items of one day. That folder is evidence, not machinery; a research
+    script a hook or a schedule runs is still found by that carrier. Fixture case `research-scripts-are-no-machinery`.
+  - `helpers/session-bootup.sh` measured its time budget against 30 s because no settings file names the hook since
+    the core hooks ride the plugin; it now reads the plugin's own `hooks/hooks.json` (120 s) after the settings. <!-- fragment: fix-aa-costs -->
+
+- **Four checks no longer report green where they cannot see** (test: T1) (level: reader; higher: design — a general
+  "every instrument has a must-fail case" lint over all checks is a larger build, written as a convention in
+  CONVENTIONS.md §7 first; debt: the convention has no lint yet). Measured on the macOS instance 2026-11-02 (audit-audit):
+  - `scripts/recorder-report.py` read only a gate's own log and dropped the dispatcher's (promise-gate.jsonl: 31
+    would_block in 14 days, reported 0), and printed "0 would have blocked" for logs that carry no `would_block` field
+    (time-gate 506, closing classifier 603 entries). Now both logs count, a log without the field says "NOT countable",
+    and a pure log declares `counts_blocks: false` (mode-log in the template). Fixture 9 cases; the old report fails two.
+  - `scripts/brain-selftest.sh` ran no `.cjs` fixture and no `test-*.py`, and printed the last five lines of a failing
+    shell fixture although its FAIL lines stood above them. Now node fixtures (`scripts/test-*.cjs`, `scripts/hooks/test-*.cjs`,
+    `core/scripts/…`) and `test-*.py` run, a live probe is declared in `manual-tools.json`, and the FAIL lines are shown first.
+  - `helpers/stop-dispatcher.cjs` skipped a wired check whose file is missing without a word; now it names it every turn
+    (outside a brain, a required core row without a `core/` folder stays silent). Fixture case `GHOST`.
+  - `scripts/dead-carriers.py` checked only names that start with a folder, so `memory-usage.py --precision` (a running
+    alpha's measurement tool, in no folder of the brain or its pin) passed as "0 missing". Now bare script names are
+    searched in the script folders and a skill's own folder, and a workflow offered as `brain-core:<name>` counts as
+    present. Fixture +2 cases. <!-- fragment: fix-aa-false-green -->
+
+- **Coherence scan: a partial run under the cadence; findings get the brain-scan's outflow** (test: T1) (level: writer;
+  higher: design — one shared exit checker every audit report runs through is the class fix, built after this; debt:
+  that checker). Measured on the macOS instance 2026-11-02 (audit-audit): four full coherence runs in 24 days, ~6.7 M
+  tokens over the 14-day cadence, because the trigger "five new dated rules" is met at almost any rule pace; operator
+  decision the same day: "Teil-Lauf bei Bedarf".
+  - `workflows/coherence-scan.js`: `args.partial = {since: "YYYY-MM-DD"}` audits only the rule sources changed since
+    that date against CLAUDE.md and every core and instance rule file, with three lenses and no scenario traces.
+  - `helpers/freshness-gate.cjs` lets a partial run through under the cadence; a full run, or a partial without a date,
+    is held as before. Fixture +3 (19/19).
+  - `scripts/brain-scan-prep.py` suggests the partial run, with its `since`, when the last register is under 14 days old.
+    Fixture +1.
+  - The return channel's recurrence count no longer stops at a bare tick: a ledger entry ticked without a `check:` line is
+    `done-unproven` and keeps counting toward the third-time decision (on 2026-10-30 seven keys the channel called done
+    came back; the six that returned after a tick had no check). An index exit `done-already` stays done. Fixture +2.
+  - `workflows/brain-scan.js`: a gate that fails after the report was written names in its error the report path, the
+    findings folder, the decisions and the top findings (the 10-15 run lost its return that way). The gate still fails.
+  - The coherence register writes a "Finding index" with ONE exit per finding of every severity (backlog-catch-up
+    vocabulary), appends every finding — P2 included — to the order list with `id:`, `exit:` and a red-today `check:`,
+    and the workflow aborts when a verified finding has no valid exit. "Next steps" follows order fidelity #9 instead of
+    "every fix needs the operator's decision".
+  - The coherence corpus takes the first 40 lines of every instance script and of every synthesis/register/report under
+    `docs/research/` (a 10-25 register said no level above the full audit exists; the audit-audit reports stood there). <!-- fragment: fix-aa-outflow -->
+
+- **A ledger entry whose check turned green is listed as "tick it", not as open work, and the pin move re-measures**
+  (test: T1) (level: reader; higher: writer - ticking the box itself at the pin move would write into the instance's
+  ledger, which stays the instance's own move; debt: the instance still ticks by hand, the start report names how
+  many). Measured in an audit of the audits on one brain (2026-11-02): entries whose work shipped in a new pin stayed
+  listed as the agent's open work for up to 17 sessions. `ledger-reconcile.py` already classified them DONE-OPEN, but
+  only in its prose brief. Now (a) a registered run also writes `.claude-state/ledger-reconcile.json` (`at` + the
+  DONE-OPEN rows with ledger, entry line and id); (b) `open-items.py` lists such an entry once as "check green - tick
+  it" with its own count, only while that result is newer than the ledger file; (c) `brain-update.sh` runs a fresh
+  reconcile after the pin moved (step 4e, bounded by the brain's `budget_s`) and prints the count. Fixtures:
+  `ledger-reconcile-test.py` (result file, UNPROVEN not written), `test-open-items.sh` (fresh result ticks, an older
+  one counts nothing; the old `open-items.py` fails the tick case), `brain-update-test.sh` (pin move names the count,
+  no line without registered ledgers). <!-- fragment: fix-aa-tick-at-pin -->
+
+- **coherence-scan, full-audit-synthesis: a finding an open order-list entry already carries is marked "seen again", not filed twice** (test: T0) (level: writer; higher: design — a lint that names two open entries for one defect, new functionality to agree first; debt: the rule lives in a prompt, nothing mechanical catches a run that ignores it) — measured 2026-11-02 on the Windows instance's order list: all five open entries of the full audit of 2026-10-15 duplicated the coherence entries filed the same day, and three coherence runs had filed the always-loaded rule volume as three entries; every copy stood as one more open point at every session start. Both append steps now read the open entries first and add a "seen again <date>" line under a matching one instead of a new entry — the rule brain-scan's TASK 3 already follows. Checks: `scripts/workflow-parse-check.sh`, `scripts/test-workflow-relays.sh`. <!-- fragment: fix-audit-append-reuses-open-entry -->
+
+- **autonomous-gate: no dialog in an autonomous run - an operator message in the turn does not mean the operator is
+  there** (test: T1) (level: reader; higher: design — a third mode "reachable on the phone" was named by the operator
+  as a possible later mode; not built; debt: an approved held edit waits until the mode ends). The operator,
+  2026-11-03 (translated): "I am not automatically always there. Today I get this on my phone [...] Asking
+  interactively is not auto mode - then we could abolish the modes right away" and "only when I write 'questions to me
+  now' etc. shall the mode change. In auto mode no interactive prompts". This removes the exception of 2026-11-02
+  (`operatorInTurn`: a held call went to the harness dialog when the operator had spoken in the turn). Measured the
+  same day on the macOS instance: two dialogs in one autonomous run through that exception - an edit of
+  `.claude/settings.json` 13 minutes after the operator's last answer ("continue autonomously"), and a `feedback.md`
+  edit after a mid-turn remark sent from a phone. The mode still ends on the operator's ask for what is open or an
+  off-word (unchanged). Fixture `scripts/test-autonomous-gate.sh`: two cases flipped to "held", +2 (a switch-on answer
+  holds; an "interactive" answer ends the mode). <!-- fragment: fix-autonomous-gate-latest-word -->
+
+- **brain-update: provenance auto-heal - a cache that is not the pinned release is reinstalled and checked again**
+  (test: T1) (level: writer; higher: design - the harness's plugin cache could key by source commit instead of
+  name and version, outside this repo; debt: a reinstall changes what loads, so the run asks for a restart, and a
+  reinstall that fails offline leaves the old FAIL line with its hand command). Decided by the macOS and the
+  Windows instance on 2026-08-20 (nine occurrences on two machines in one day, the same hand fix every time:
+  uninstall + install), then parked and never built. On a provenance mismatch whose cached version is not the
+  pinned one, `scripts/brain-update.sh` now runs `claude plugin uninstall <p> --scope <s>` and
+  `claude plugin install <p> --scope <s>` itself, reads record and cached version again, and prints
+  `provenance auto-heal: … reinstalled and re-checked` when they now match the pin (a restart is required). Only a
+  mismatch that survives the reinstall stays FAIL — real foreign content is never overwritten silently, the
+  re-check is the line between healing and covering up. A stale record over the right content stays a NOTE as
+  before. Fixture `scripts/brain-update-test.sh` case 7 with a `claude` stub: a reinstall that fixes the cache
+  heals and leaves no FAIL line; one that changes nothing stays FAIL (negative control: the old code prints no
+  auto-heal line). <!-- fragment: fix-brain-update-provenance-autoheal -->
+
+- **caveman: evidence labels are substance, never hedging** (test: T0) (level: writer; higher: design — a stop check that flags an unlabelled cause claim in a reply; not built, the style text is the writer of every reply; debt: none) — coherence register 2026-11-02 P1-6 on the Windows instance, operator decision 2026-11-03 (question tool: "evidence labels stay"): the always-on style drops hedges like "probably", so a derived cause ("the IPC folder probably differs") read as a measurement ("IPC folder differs. Fix:") and could be approved as one, against thinking-protocol rule 0 (report measured / derived / assumed apart). The Boundaries section now keeps "measured / derived / assumed / cause unknown / unmeasured" at every level; "probably" goes only where the claim is measured. Search: the hedge-dropping rule stands in `output-styles/caveman.md` (Rules and the intensity table) and once more in the level table of `skills/caveman/SKILL.md` (lite: "No filler/hedging"); the new Boundaries line holds for every level, so both read under it. <!-- fragment: fix-caveman-evidence-labels -->
+
+- **fix(ci): the portability job runs the fixture suites once, not twice** (test: T0) (level: writer; higher: design — one place that owns "run every suite" for both CI and local use; the smoke loop stays for a local run, the CI step keeps its per-suite log groups; debt: the two loops are still two texts of the same discovery) Asked by the operator 2026-10-12 ("why does CI take so long? hidden timeouts?"). Measured 2026-11-02 on the CI run of agent-brain #314 (portability, ubuntu, 18.8 min): `portability-smoke.sh` section 12 ran every discovered suite (10.7 min for the whole smoke step), and the next step "fixture suites" ran the same ~170 suites again, one log group each (about 8 min). The CI now sets `SMOKE_SUITES_RUN_BY_CI=1` for the smoke step, which skips its suite loop and says so; a local run of the smoke still runs everything. The CI step takes over the one thing only the smoke loop did: python suites run with `PYTHONIOENCODING=cp1252` on every OS (the 2026-10-28 windows-latest crash). Largest single costs, for a next step: ci-watch-test 90 s, test-verification-gate 75 s, the three shared-memory-watch tests about 30 s each. Follow-up after the macOS counter-check (2026-11-05, bash 3.2.57): the skip path emptied both suite arrays and `"${_suites[@]}"` died under `set -u` as unbound; both loops now use `${a[@]+"${a[@]}"}`. New register entry OS-22 (empty array under `set -u` on bash < 4.4); its search found two more sites that can be empty, both exit traps (`collab-watch.sh`, `test-watch-gate.sh`), fixed the same way. <!-- fragment: fix-ci-suites-run-once -->
+
+- **ci-watch: a cancelled job that never got a runner is named in the RED verdict, with the rerun** (test: T1)
+  (level: reader; higher: writer - an automatic rerun of such a job, not built because a rerun starts CI time
+  without anyone deciding it; debt: ref mode reads a run's overall conclusion only and does not name such jobs).
+  Measured on the macOS instance 2026-11-03 on a merge-train PR: `portability (macos-latest)` was cancelled after
+  15 minutes with zero steps while every other job passed; the watch said `RED - 1 failing/cancelled check(s)`,
+  which reads like a code failure, and only reading the job's steps by hand showed no step had run. The verdict
+  stays RED (nothing was tested on that OS); a following line names each cancelled job whose `steps` list is
+  empty as "never started (no runner)" and gives `gh run rerun <run> --failed`. `pr checks` now also returns
+  `link` (the job URL the note reads). Fixture `scripts/ci-watch-test.sh` +1 case (a never-started macOS job
+  named, a failed Ubuntu job not); FAILS against main. <!-- fragment: fix-ci-watch-never-started-job -->
+
+- **memory-dream follows order fidelity #9; the run-modes pointer names its path from a brain** (test: T0)
+  (level: writer; higher: design - one shared "ordered audit" paragraph that every audit skill points to, not built
+  here because the other audit skills already state #9 each; debt: memory-dream's own fixture does not exist, the
+  change is text). Follow-up of an ordered coherence audit on the macOS instance (2026-11-02, register sections P1-8
+  and P1-10; working rule #11 follow-up). `skills/memory-dream/SKILL.md` said "fixes NEVER run automatically … rule
+  contradictions are in any case operator-only, see step 4", against working-rules Order Fidelity #9 (an ordered
+  audit orders its clear fixes) and against its own step 4. memory-dream starts only on the operator's word, so every
+  run is ordered: clear and safe fixes are done and reported, structural or uncertain ones proposed; rule
+  contradictions follow the rule-conflict protocol step 3 boundary. The workflow's report section says the same.
+  `rules/intelligence.md` "Presenting to the Operator" named `docs/run-modes.md`; read from a brain the file is
+  `core/docs/run-modes.md`, as the other core rules prefix it. <!-- fragment: fix-coherence-memory-dream-run-modes -->
+
+- **conditional-order-gate reads the line inside nested call arguments** (test: T1) (level: reader; higher: writer — the
+  harness decides whether a text written in the same response as a call reaches the transcript, no core lever; debt:
+  none). A saved workflow is called by `name` with an `args` OBJECT; the gate read only top-level strings, so a named
+  Workflow call had no field for `CONDITION-MET`/`CONDITION-NONE`, and the line written in the answer reached the
+  transcript as no text block. Measured on the macOS instance 2026-11-02: four refusals of one ordered
+  `shared-memory-dream` run with the condition met. Now every string anywhere in the call input counts. Fixture
+  `scripts/test-conditional-order-gate.sh`: `in-args` (the line in `args` releases) and `in-args-none` (args without it
+  still block); against the old gate `in-args` fails. <!-- fragment: fix-conditional-gate-reads-args -->
+
+- **A deadline entry may carry `check:`; a passing check reports it DONE, never OVERDUE** (test: T1) (level: writer; higher: design — the scans themselves close their deadline entry at run end (coherence-scan, brain-scan, memory-dream workflows); not built, the reader side alone makes the state measurable and the instance's own prose rule ("delete done entries") stays; debt: an entry without a `check:` still depends on a hand edit) — measured 2026-11-04 on the macOS instance: a coherence scan run two days earlier on the operator's word left its `## 2026-11-03` entry in `docs/business/deadlines.md` untouched; the bootup's deadline reporter knows date headings only, said OVERDUE, and the first reply offered the operator a second 2.6M-token scan ("are you quite sure? when was the last scan?"). Replayed over that brain's transcripts: 20 sessions reported an overdue entry, 6 of the 9 entries had a measurable completion (a report file, a pin, a ledger tick). The reporter now reads a `check: <reading command>` under a date heading (the ledgers' convention, `ledger-reconcile.py`'s allowlist and runner, entries due within 7 days or overdue only), prints `DONE by its check — delete the entry` and names the next entry that is not done. Fixture `scripts/test-bootup-deadlines.sh` (7 cases, two red against the old block; a writing check is refused and writes nothing). <!-- fragment: fix-deadline-check-line -->
+
+- **decision-presentation: the close turn asks no "continue autonomously?"** (test: T0) (level: reader; higher: writer — session-close could end the autonomous latch itself, but every gate already reads the close stamp as the one carrier of "this turn closes", so a second carrier would split it; debt: none) — Measured 2026-11-02 on the macOS instance: after a session close that followed an autonomous run, the Stop check DECISIONS still demanded the mode question as the last question of the turn; the operator called that question needless and wrong for a session that is ending. The watch, question and autonomous-idle gates already pass a close turn through the close stamp (`close-stamp.cjs`: `session-closing.sh --pre-commit` called in this turn, stamp written in this turn, naming this session); decision-presentation now reads the same stamp and drops only the mode question. Open hand steps and operator decisions are still demanded through the question tool. `test-decision-presentation-gate.sh` +4 (close with stamp allows; stamp of another session, no close call in the turn, and an open hand step still block); the allowing case is red against the previous gate. <!-- fragment: fix-decision-presentation-close-stamp -->
+
+- **delivered-read-gate states its frequency design** (test: T1)
+  (level: reader; higher: design - a frequency field every gate declares in data, not built here because the gate's
+  behaviour is right and only the statement the no-cooldown check reads was missing; debt: none new). `brain-friction.py` reported `delivered-read-gate.cjs` as `no-cooldown` on every brain the
+  core template wires it into (measured 2026-11-05 on the Windows instance, scanner at #414's head: the only remaining
+  candidate). The gate gets the `Frequency design:` paragraph: its trigger is a delivery in this turn, it blocks at
+  most once per turn (own echo, `stop_hook_active`), one Read or `unread-ok:` ends it, and a quiet period would pass
+  the acting-on-a-description case it exists for. Comment only, no code change. <!-- fragment: fix-delivered-read-gate-frequency-design -->
+
+- **brain-friction: the indirection check skips fixtures; close-loss-gate states its frequency design** (test: T1)
+  (level: reader; higher: design - one fixture predicate shared by every scanner, not built here because the
+  scanners have no common module (the note at check 4 says why); debt: none new). Check 2 (`blind-to-indirection`)
+  read every script that names `settings.json` and a dispatched helper as a live checker, fixtures included:
+  `test-hook-coverage.sh` names `question-gate.cjs` in a negative case and was reported blind at every session start
+  (measured on the macOS instance 2026-11-05). Checks 3 and 4 already skipped fixtures with `is_fixture`; the
+  predicate now stands above check 2 and check 2 uses it too. New fixture: the same blind body as a fixture stays
+  silent while its non-fixture twin is reported. `close-loss-gate.cjs` gets the `Frequency design:` paragraph the
+  no-cooldown check reads: its trigger is the release phrase of a close, said once, and a quiet period would pass
+  the release-with-a-loss case it exists for. <!-- fragment: fix-friction-indirection-skips-fixtures -->
+
+- **shared-working-copy-guard: no HEAD move over uncommitted work, also with one session** (test: T1) (level: writer;
+  higher: design — a per-session record of which changes are whose would tell the operator's from the session's own;
+  not needed, any uncommitted change outside the scratchpad is someone's work; debt: the session's own uncommitted
+  edits are held too, commit them by path first). Measured on the macOS instance 2026-11-03: `git switch -c` ran in the
+  operator's project checkout over their uncommitted settings and profiles; core rule #12 puts branch work into a
+  scratchpad worktree always, the guard held only while a second session ran. Outside the scratchpad a call that moves
+  HEAD or clears the tree (switch, checkout of a branch, stash, reset --hard) is held while `git status --porcelain`
+  shows any change; the marker opens it. Fixture +7 (three red on the old guard). <!-- fragment: fix-guard-dirty-copy -->
+
+- **mechanism-guard: a `|` the shell never runs as a pipe separates nothing** (test: T1) (level: reader; higher: design —
+  one cut before every rule instead of ten separator patterns; debt: a `|` inside `$( … )` in double quotes stays a pipe,
+  as the shell runs it). Measured on the macOS instance 2026-11-03: `grep -n "Monitor\|collab-watch.sh" …` and
+  `sed … ci-watch.sh | grep "usage\|ci-watch.sh"` were held as "a waiting script in the foreground" — the rule read
+  `|collab-watch.sh` as a pipe into the script. `literalPipes()` turns an escaped `\|` and a `|` inside quotes into `¦`
+  in the text the rules read; real pipes stay. Fixture +3 in `test-guards.sh` (single-quoted case red on the old guard). <!-- fragment: fix-guard-literal-pipes -->
+
+- **mechanism-guard: reading a marketplace file through `gh api` is no pin move** (test: T0) (level: reader; higher: writer — a pin rule keyed on write forms instead of a list of read commands would end the class (the 2026-11-01 watch-script fix was the same shape: a path rule with a hand list of readers refuses every reader it does not list), but a script handed the path can still write, so the list stays the safe default; debt: inline interpreters (`python -c "json.load(open(...))"`) stay refused - use `jq` or `cat`) — Measured 2026-11-02 on Windows: two read-only commands in one turn were refused as "moving a marketplace pin" while measuring which suite version a marketplace pins - `gh api repos/<org>/<marketplace>/contents/.claude-plugin/marketplace.json --jq .content | base64 -d` (a GET of the remote file) and an inline `python -c` that only loaded the JSON. The rule's read list knew `cat`, `jq`, `sed -n` and git readers, not `gh api`. Now `gh api` without `-X`/`--method`/`-f`/`-F`/`--field`/`--raw-field`/`--input` passes; with any of them (a PUT of the contents endpoint is a remote pin move) it still blocks. `test-guards.sh` +3 (GET allows; `-X PUT` and `--field` block); the allowing case is red against the old rule. Second fix in the same pattern, found the same day: a reader after `; ` was still refused, because the engine gave the space after the separator back and the read list then looked at that space instead of the command word; `(?=\S)` after the separator and after the prefixes pins the lookahead to the command word. `test-guards.sh` +2 (a read after `; ` allows, an edit after `; ` blocks); the read case is red against the previous pattern. Third, found in review on the macOS instance: a short flag with its value attached (`-XPUT`, `-fsha=abc`) passed as a read, because `\b` after `-X`/`-f`/`-F` needs a non-word character next; the short flags now match without it (`-[XfF]`), the long ones keep their boundary. `test-guards.sh` +3 (`-XPUT`, `-fsha=`, `--method=PUT` block). <!-- fragment: fix-guard-marketplace-gh-api-read -->
+
+- **fix(templates): the release-tag guard rule no longer takes a branch named with a version for a tag** (test: T0) (level: reader; higher: writer — the template rule is what an instance copies, the copies follow only when each brain takes the template over; debt: every brain that copied rule 3 keeps the old pattern until it does) Measured 2026-10-26: `\bv\d+\.\d+\.\d+\b` in rule 3 of `templates/rules-instance/mechanism-rules.json` matched `git -C … push -u origin data/v1.1.31-windows-package-check` (`\b` matches after `/`) and blocked it as "pushing a release tag"; the push went through by renaming the branch. The version token now counts only as an argument of its own (after a space, optionally quoted, optional pre-release suffix, ending at a space, a colon or the end); `--tags` and `refs/tags/` unchanged. Fixture: `scripts/test-guards.sh` reads the template file itself — four tag pushes block, two branch names with a version pass; against the old pattern both branch cases go red (negative control). <!-- fragment: fix-guard-tag-branch-name -->
+
+- **A hand step has one form** (test: T0) (level: writer; higher: design — one table of reply forms (question, hand step,
+  status) that every rule points to; not built, two rule lines suffice; debt: none). Coherence register 2026-11-02 P1-6
+  (CONFIRMED): the operator's hand step stood in three forms — a command block that ends the reply (`working-rules.md`,
+  "Named turn ends"), "the first line, alone" (`intelligence.md`, "Presenting to the Operator") and the question tool only.
+  Operator decision 2026-11-03 (question tool, option "question tool first"): a step that needs only the operator's word is a
+  question in the question tool; a step their hand alone can take is the command block that ends the reply, one block per
+  device. `rules/intelligence.md` names that form and points to "Named turn ends". <!-- fragment: fix-hand-step-one-form -->
+
+- **A HARD rule ranks over the instance's rules only with a named carrier; a repeated remark in an autonomous run is mirrored, parked and filed** (test: T0) (level: writer; higher: design — a check that every HARD section lists its carriers and that each named carrier file exists; not built, two sections changed by hand; debt: the evidence-chain section names carriers for two of its items only, the others now rank with the instance rules) — two operator decisions of 2026-11-03 on the Windows instance (coherence register 2026-11-02): (1) P1-4, "name the carrier per item": `thinking-protocol.md` reserves HARD for a gate or safety rule with a mechanical check, yet "Order Fidelity (HARD)" named none and ranked over the binding operator feedback. The priority list now ranks only HARD items that name their carrier; Order Fidelity names #3 (`autonomous-idle-gate.cjs`) and the conditional part of #7 (`conditional-order-gate.cjs`; "own notes are not orders" and "settle WHICH machine first" have no carrier — macOS review), measured by search over `helpers/` and `scripts/` for the section's name — the other items rank with the instance's rule files. Mechanism discipline and one system already name theirs. (2) P1-2, "mirror, park, go on": thinking-protocol #5 (a repeated remark: stop, mirror, get the yes) collided with the autonomous run, which forbids the question and the blocking turn end; in an autonomous run the remark is now mirrored in prose, the artifact parked until the yes, the question filed, and the run goes on. <!-- fragment: fix-hard-carriers-and-repeat-in-autonomous -->
+
+- **hook-coverage: a hook is the core's when it runs the core's file or a copy of it, not when it shares the file name** (test: T0) (level: reader; higher: writer — a hook wiring that carries its own identity (an id next to the command) would end the name reading, but settings are operator territory and the copies this check exists to find predate any id; debt: a copy edited past half of its lines no longer counts as a copy, and a path that does not resolve keeps the name-only reading in the duplicate check) — Measured 2026-11-02 on a Windows brain: every session start carried three false lines. (1) `Notification: notify.cjs runs twice ... drop the copy` — the instance's messaging hook `scripts/telegram-notify/notify.cjs` shares the file name with the core's sound hook and 13 % of its lines; dropping it would have cut the operator's phone notifications. (2) `PreToolUse: no-input-control.cjs runs twice` — the operator's own input guard in the user scope, older than the core's and sharing 9 % of its lines. (3) `no-input-control.cjs runs only on .* — the template also wires Bash|Edit|...` — a matcher is a regex, `.*` covers every tool, but only `*` and the empty matcher were read as "everything". New `runs_file()`: the whole file name must match in any path notation; a path into `core/<helpers|scripts>/` is the core file; a file of the same name elsewhere is a copy when it shares at least half of its lines (`difflib`), another hook otherwise. One function for every site that asked "does this command run that helper?" — the duplicate check, the demand check (it took any command whose text CONTAINED the name, so a same-named instance script silenced a missing core hook), `--runs`, and the dispatcher registry (an instance check sharing a core helper's file name). `matcher_tools()` reads a `.*` alternative as every tool. `test-hook-coverage.sh` +5: a same-named instance script is no duplicate, a stale copy at another path still is, `.*` is not narrower, `Bash` is (negative control), a same-named instance script does not stand in for a missing core hook; the three new silent cases are red against the old code. Follow-up from the review on the macOS instance: a same-named path outside core/ that does not exist counted as the core hook in the demand check, so a broken path ending in the core file name kept a missing hook silent; the demand check and `--runs` now count it as not this hook, the duplicate check keeps the careful side, and `$VARS` in a wired path are expanded before the file test. `test-hook-coverage.sh` +2 (broken path: still missing; next to the plugin: still a duplicate); the first is red against the previous head. <!-- fragment: fix-hook-coverage-file-identity -->
+
+- **autonomous-idle-gate: the header no longer names a wakeup as an end form** (test: T0) (level: symptom; higher: reader — a lint that holds a helper's documented end forms against its code would catch the next drift, not built for one comment; debt: `rules/working-rules.md` "a status message in a long run — only with the continuation armed (`ScheduleWakeup` or a watcher)" reads the same way for an autonomous run and stays as it is, a rule text goes through the rule-conflict protocol) — Measured 2026-11-02 on the Windows instance: an autonomous turn ended on a ScheduleWakeup alone and was blocked "missing: continuation"; the header listed "a ScheduleWakeup called in this turn" as the first allowed end form, while `judge()` ignores the wakeup on purpose since 2026-10-29 (CHANGELOG: "a wakeup alone is no continuation"). The header now names only `BLOCKED:` and `POOL EMPTY:`, says why the wakeup does not count, and that the skill still sets it to keep the run alive. Comment only; `scripts/test-autonomous-idle-gate.sh` unchanged and green. <!-- fragment: fix-idle-gate-header-wakeup -->
+
+- **autonomous-idle-gate: a list run ends on `LIST EMPTY:`; the pool is the order, not the ledger** (test: T1) (level: reader; higher: writer — the run's pool could be recorded when it is armed and the gate could check the end against that record, not built here because it needs an agreed record format (coherence register option A); debt: the gate still cannot tell whether the measured list was the order or the whole ledger) — follow-up of the ordered coherence audit of 2026-11-02 on the macOS instance (§P0-1). The skill's list run ends when the ordered list is done (Order Fidelity #3: an empty list is a success), but the gate knew only `BLOCKED:` and `POOL EMPTY:`, and its block text sent the agent to "do what it lists as yours" — the whole ledger. `LIST EMPTY: <the order, how measured>` is now an end token with the same measurement rule, the block text names the order plus an agreed reserve as the pool, and the skill's list-run row names the token. `scripts/test-autonomous-idle-gate.sh` +2 (measured LIST EMPTY passes, unmeasured is held), 27 passed. <!-- fragment: fix-idle-gate-list-empty -->
+
+- **no-input-control: text written into a documentation file is no input call** (test: T0) (level: reader; higher: writer — the pattern list could carry per pattern whether it means a call or a name; debt: a doc file named without one of the endings `.md .mdx .markdown .txt .rst` is still checked, and a read-only search command naming the API is still refused) — Measured 2026-11-02 on the macOS instance: translating two skill files of a suite was refused because one documentation line in each names the Windows input API the suite's tools use; a faithful translation has to keep that fact. The operator chose the cut the same day (question tool, translated): "check only executable files". Now a Write or Edit whose target ends in a documentation ending is not searched; every command, every script a command runs and every other file is checked as before. The two-step path this opened (a collaborator's Windows check, same day: write the code into `notes.txt`, then `python3 notes.txt` or `iex (Get-Content notes.txt -Raw)`) is closed: a documentation file a command hands to an interpreter or an eval (`python`, `node`, `bash`, `pwsh`, `iex`, `source`, …) is read like a script; `cat` and `grep` of it stay unread; a path in front of the interpreter (`C:/Python312/python.exe`, `C:\Python312\python.exe`), an `.exe` ending and `pythonw`/`pyw` count as the same runner (the collaborator's second Windows look named these forms). `test-no-input-control.sh` +15 (eight Windows command forms of running a doc file deny, `grep` of it passes; a doc line naming the API passes; the same text into a `.ps1` and in a command still deny; an interpreter and an eval of a doc file holding input code deny; reading it with `cat` passes) — the passing case is red against the old helper. <!-- fragment: fix-input-guard-skips-docs -->
+
+- **instance-key-gate: a `gh pr create --repo` for a repo the checkout is not is held, and an `env -C <dir>` prefix names the checkout** (test: T1) (level: reader; higher: writer — the harness hands the hook only the session folder, not the folder gh runs in, so the gate reads the command; debt: a create through `cd <dir> && gh ...` still reads the session folder) — measured 2026-11-03 on the Windows instance: `gh pr create -R <core> --head <branch>` ran from the brain folder, whose checkout has no `changelog.d`; the level check found nothing, the PR (#374) opened, and the CI lint went red on the undeclared level a minute later. Now the gate reads the checkout from an `env -C` prefix, and a `--repo` the checkout's origin does not end in blocks with the way to run it in the PR's checkout. Search: of the five helpers that see `gh pr create`, only this one reads files of the checkout. Fixture `scripts/test-instance-key-gate.sh`, four new cases; against `origin/main` the two block cases pass through (rc=0). <!-- fragment: fix-instance-key-gate-pr-checkout -->
+
+- **ledger-reconcile reads `id:` and `check:` kept inline on the entry line** (test: T0) (level: reader; higher: writer — one entry format written by a template or a helper would end the variants; not built, `open-items.py` already reads `id:` inline, so the two readers now agree; debt: a check value cannot contain ` | <word>:` inline, by construction) — Measured 2026-11-02 on the Windows instance: 23 open entries kept `| check: ...` on the entry line, the way `open-items.py` reads `id:` there, and the ratchet named all of them "without a check" — the reconcile read fields only as lines of their own. Now `id:` and `check:` on the entry line count too; fields are separated by ` | `, ` · ` or ` ; ` (the middle dot is another instance's form, found in review), a value ends before the next `<sep> <word>:` field, at its closing backtick or at the line end, and a field line of its own outranks the inline one. Inline prose around a command is now reported as a refused check (the honest reading) instead of a missing one. `ledger-reconcile-test.py` +4 (inline check runs, inline `none` is a declaration, a field line outranks inline, the middle-dot form). <!-- fragment: fix-ledger-reconcile-inline-check -->
+
+- **lesson-carriers reads a carrier line written as a list item** (test: T0) (level: reader; higher: writer — a protocol template that fixes one carrier-line form would end the variants; not built, the reader accepting the common Markdown bullet is the smaller change; debt: a carrier named inside a running sentence ("... ; carrier: X") still reads as none, by design) — Measured 2026-11-02 on the Windows instance: its protocol writes each carrier as `- <key word>: ...` (a bullet, the key word in its own language), and `lesson-carriers.py` read 37 of 38 entries as loose, because the line pattern allowed spaces and bold stars before the key word but not a list marker. Now `-`, `*` or `+` plus a space may stand in front; on that protocol 15 of 38 entries read as carried (the other 23 name their carrier inside a sentence or not at all). `lesson-carriers-test.py`: a sixth synthetic entry with `- Carrier:` counts; the four count checks follow (entries 6). <!-- fragment: fix-lesson-carriers-bullet-line -->
+
+- **local-machinery: instance evidence must be an identity token of the brain; an identity token that names a published suite is reported** (test: T1) (level: reader; higher: writer — the declaration could name its token by kind (host, person, device) and the brain's identity list could be generated from its own config, not built because the list is hand data in every brain today; debt: a brain whose identity list is incomplete sees honest instance items turn loud until the list names them) — measured 2026-11-02 on the macOS instance: a private release-chain plugin stayed declared "instance, not a core candidate" for a week (reviewed once) with the evidence "grandma3" — a suite name every grandMA3 user carries — and the operator had to spot it himself. Replay over that brain: 33 of 122 instance declarations leaned on a word the item merely contains (a file name, a protocol like "DMX", a tool name), not on anything only that brain has. The evidence check now also requires the evidence to match `identity_tokens` (when the brain declares them), and every identity token that equals the name of a published plugin or suite repo of an added marketplace is reported as `badevidence`. On that brain the run turns 44 lines loud (the 33 plus the declarations resting on suite names, plus the suite names in its list). `test-local-machinery.sh` +3 cases (non-identity evidence loud, identity evidence silent, suite name as identity token loud), 118 passed. <!-- fragment: fix-local-machinery-evidence-is-identity -->
+
+- **test-local-machinery: the both-channels case gets the ecosystem entry it sets up** (test: T1) (level: symptom; higher: reader — `mk` could create `config/` for every case; not done, an empty `config/` in every case would change what the other cases measure; debt: none known) — measured 2026-11-05 on the Windows instance during the hand review of #390: `mk` rebuilds `$T/b` without `config/`, so the write of `ecosystem.json` with `consumer_plugin` failed (`No such file or directory` on stderr, twice) and `both-channels-loud` ran without it; the trailing reset write was dead for the same reason and is removed. Platform-independent. After the fix: all checks pass, no stderr. <!-- fragment: fix-local-machinery-fixture-config-dir -->
+
+- **local-machinery: a `#` key covers its item or a prefix cut at a word boundary, never a longer word** (test: T1) (level: reader; higher: writer — declarations could carry an explicit `prefix: true`, not built because a key ending at a word boundary already says it; debt: none) — measured 2026-10-30 on the macOS instance: the declaration of `mechanism-rules.json#merge` also covered `#mergelint`, a guard rule nobody had declared; `match()` compared every key as a prefix. Exact-only matching, the first cut of this PR, left 57 items undeclared on the Windows instance, which declares dated sections with `feedback.md#2026-` on purpose (review of this PR). Now a `#` key covers its own item, or a prefix that ends at a word boundary (`#2026-`, `#merge-`); `#merge` no longer covers `#mergelint`. Path keys keep the prefix match. Replay: macOS instance silent; Windows instance silent again (measured by its reviewer with this function). Fixture `test-local-machinery.sh` +2 (the `#mergelint` case red against the old code; a word-boundary prefix case red against exact-only). <!-- fragment: fix-local-machinery-hash-key-exact -->
+
+- **local-machinery: a same-named file is a shadow only when it is a copy of the core file** (test: T1) (level: reader;
+  higher: writer - a declaration could name `distinct_from` for a core file too; not built, the file text already
+  says it; debt: a copy that drifted below half of the core file's lines is read as another tool - it still surfaces
+  as an undeclared or declared instance item, never silently). Measured 2026-11-02 and 2026-11-03 on two Windows
+  instances: the session start said at every boot "1 instance item(s) shadow a core item of the same name:
+  scripts/telegram-notify/notify.cjs - use the core one and remove the copy"; that file is the operator's messaging
+  hook and shares 13 % of its lines with the core's sound `helpers/notify.cjs`. Same finding class as the duplicate
+  check of `hook-coverage.py` (agent-brain#316, same reading: a copy keeps at least half of the lines). `judge()` now
+  calls a same-named script, skill or workflow a shadow only when it calls the core one (wrapper) or `copy_of()` holds.
+  Replay on the reporting brain: `shadow=1` before, `shadow=0` after. Fixture `test-local-machinery.sh` +2 (the
+  other-tool case red against main, a drifted copy keeping 3 of 4 lines still a shadow). <!-- fragment: fix-local-machinery-shadow-by-content -->
+
+- **shared-memory-log-rotate: the session-start hint names only own long LOG entries that can still be shortened — today's, and the last of its day** (test: T1) (level: reader; higher: writer — `shared-memory-post.py` refusing a line over the cap before it writes, which the macOS instance builds as its own PR; debt: entries already over the cap from earlier days stay, unnamed) — measured 2026-11-03 on the Windows instance: the hint named two own entries of 2026-11-02; shortening their headings was refused by the shared-memory pre-commit ("a LOG heading was inserted, edited or removed above the end of its day"), and one heading alone was over the cap. A hint that names what cannot be fixed is noise every session. Builder agreed between the operator's two instances on 2026-11-03. On the real shared memory the old hint names 2 entries, the new one none (the only own long entry of today has later entries of its day). Fixture `scripts/shared-memory-log-rotate-test.py`: an own long entry followed by later entries of its day and own long entries of earlier days are not named (both FAIL against `origin/main`); the last own long entry of today is. <!-- fragment: fix-log-cap-hint-fixable-only -->
+
+- **A run that ends BLOCKED keeps its away-channel** (test: T1) (level: writer; higher: design — the run itself knows it is
+  blocked and says it; debt: none). Coherence register 2026-11-02 P1-13 (fifth round after KS-110, PLAUSIBLE): the BLOCKED
+  end of an autonomous run said "report through the instance's channel for an absent operator, then disarm" — but `disarm`
+  removed the state the watchdog's issue alarm (operator decision 2026-10-15: GitHub mail) would have fired on, and nothing
+  sent the report. `scripts/loop-watchdog.sh disarm --blocked "<reason>"` logs the reason and opens the issue with it, then
+  ends the run; a plain `disarm` opens none. `skills/autonomous-run/SKILL.md` hard gate 6 names the call. Fixture +3. <!-- fragment: fix-loop-watchdog-blocked -->
+
+- **Public marketplace: both core channels name an HTTPS clone URL, so a plugin install needs no SSH** (test: T1) (level: writer; higher: design — Claude Code could fall back to HTTPS for `"source": "github"` entries itself, as `marketplace add` already does; not ours to build; debt: a team marketplace that still writes `"source": "github"` keeps the SSH dependency for its own entries) — measured on a Windows brain (Claude Code 2.1.310): `claude plugin marketplace add` fell back to HTTPS by itself ("SSH not configured, cloning via HTTPS"), but `claude plugin install` of a `"source": "github"` entry cloned over SSH only and stopped with `Permission denied (publickey)`. Both entries of `.claude-plugin/marketplace.json` now read `{"source": "url", "url": "https://github.com/arche-goah/agent-brain.git", "ref": <tag>}` — same repo, same tag, only the transport changes. The readers that took the repo only from `source.repo` read the `url` form too: `brain-update.sh` (`marketplace_pin`), `device-status.py` (suite name per plugin) and `local-machinery.py` (`published_repos`, the clone-of-a-published-suite check); `suite-check.py` and `ecosystem-sync.py` read both forms already. `ONBOARDING.md` says SSH is recommended and HTTPS is enough. `test-local-machinery.sh`: +1 case (`url-source-names-the-same-repo`), 116 passed; `marketplace_pin` checked by hand on both entry forms. <!-- fragment: fix-marketplace-https-source -->
+
+- **MCP table check: a plugin server declared inline in plugin.json counts** (test: T1) (level: reader; higher: design — the
+  plugin format allows both places, the reader knew one; debt: none). Measured on the macOS instance 2026-11-03: two
+  suites moved to `-next` plugins declare their server under `mcpServers` in `.claude-plugin/plugin.json`, and the session
+  start reported their table rows as "row without server".
+  - `scripts/mcp-table-check.py` reads `mcpServers` from the cached plugin's `.claude-plugin/plugin.json` too (an object
+    only; a path string declares nothing here). Fixture +2. <!-- fragment: fix-mcp-table-inline-plugin-servers -->
+
+- **mcp-table-check reads the user layer's enabledPlugins and declared built-in servers** (test: T1)
+  (level: reader; higher: design - one reader of "which plugins are on" shared by every core script; not built here,
+  the scripts that read enabledPlugins have no common module; debt: none new). Measured 2026-11-05 on the Windows
+  instance: the check reported "row without server: claude-in-chrome, grandma3" at every session start.
+  `grandma3-next` is enabled in `~/.claude/settings.json` only, and `plugin_servers()` read the project's
+  `settings.json` and `settings.local.json`; `claude-in-chrome` is brought by Claude Code itself, no `.mcp.json` and
+  no plugin names it. The check now reads enabledPlugins user first, then project and local (a later layer wins, so
+  a project `false` still switches a user-enabled plugin off), and takes `"builtin_servers": [...]` from the
+  instance's `.claude/rules/mcp-table.json`. The fixture runs on an empty user dir (`CLAUDE_CONFIG_DIR`) so the real
+  `~/.claude` never leaks in; four new cases, both directions; against main's script two of them fail. <!-- fragment: fix-mcp-table-user-plugins -->
+
+- **memory-sync carries a deletion made on another machine instead of undoing it** (test: T0) (level: writer; higher: design — a deletion written as a tombstone into the snapshot would carry intent explicitly instead of inferring it from base and snapshot; not built, the base already proves the case and both sides agreed on this cut; debt: a machine that never synced a file (no base entry) still cannot tell "deleted elsewhere" from "new here", by design; settles-debt: fix-memory-import-deleted-here) — Measured on the Windows instance: six lessons deleted 2026-10-14 (7ea5c18) came back with a laptop's close export 2026-10-23 (f88b71e) and stayed live on both Windows machines. `doExport()` wrote every live file missing in the snapshot (`snapHash == null`) without asking the base. Now a live file this machine's base holds with exactly the live hash (synced here, unchanged since) that the snapshot no longer has is held by export, and import moves it to `<live>/../memory-deleted-elsewhere/<date>/` - outside the folder Claude Code loads, moved, never deleted - and prints one stdout line for the start report. A file edited here since still goes back to the snapshot. A snapshot that lost more than half of what this machine synced (or all of it) is not read as deletions: nothing moved, nothing written back, one loud line. `test-session-helpers.sh` +6 (export holds; import moves and names it; control: a file still in the snapshot stays; control: an edit here goes back; guard). The holding case is red against the main helper (checked: main writes it back). Agreed with the other side in the shared memory 2026-11-02 (they check on macOS). <!-- fragment: fix-memory-sync-deleted-elsewhere -->
+
+- **merge-request-gate: a bare file name and the fixture phrase "red against the old code" no longer cancel an OS OK** (test: T1) (level: reader; higher: writer — an OK comment could follow one fixed form, not built because the OKs are written by several instances in free text; debt: none) — measured 2026-11-02 on a suite PR: two macOS OK lines were held, one for `scripts/test-fail-fast.py` written without backticks (`fail`), one for "the new case red against the old code". #164 had taken code spans out; now path-like words (`name.ext`) and that fixture phrase are taken out the same way, while "red against main" and "file.sh red" stay negations. Fixture `test-merge-request-gate.sh` +3 (two red against the old code, one control). Stacked on #317 (same file). <!-- fragment: fix-merge-gate-path-words -->
+
+- **Name checks see the German genitive: `<name>s` is the name** (test: T0) (level: writer; higher: design — one shared name matcher for the JS guard and the two Python scanners would keep the three from drifting apart again; not built here, the three patterns are one character each; debt: plural and other inflections (`-n`, `-en`) stay unmatched, no measured case) — Measured 2026-11-02 on Windows: all 302 issues/PRs and 650 comments of the public core read against a brain's watch list; 0 whole-word hits, but 3 merged PR bodies named a party in genitive form inside a shared-memory file slug (`reply-<name>s-...`). `public-text-guard.cjs`, `staged-names.py` and `leak-scan.py` all matched `\b<name>\b`, so `<name>s` passed all three. Now each matches `\b<name>s?\b`; a longer word (`<name>x`) still passes. The fixture case that asserted `zorbalinas` passes as "a longer word" now uses `zorbalinax` - the genitive was the gap. Fixtures: `test-public-text-guard.sh` +1, `staged-names-test.py` +1, `test-leak-scan.sh` +1; the old pattern misses the genitive (checked). <!-- fragment: fix-name-match-genitive -->
+
+- **No sign-in window from a background git call** (test: T1) (level: writer; higher: design — each call sets its own
+  environment, the guard keeps the class closed; debt: `scripts/preflight.ps1` keeps GIT_TERMINAL_PROMPT only, Windows
+  prompts through the credential manager, not askpass). Measured on the macOS instance 2026-11-03: the session ran in an
+  editor's terminal whose `GIT_ASKPASS` points at the editor's askpass script; a fixture's `git ls-remote` against a
+  made-up remote opened the editor's GitHub sign-in window in front of the operator. `GIT_TERMINAL_PROMPT=0` does not
+  stop an askpass program; `brain-update.sh` and the session start already set `GIT_ASKPASS=true SSH_ASKPASS=true`.
+  - `scripts/preflight.sh`, `helpers/session-pull.sh`, `helpers/git-hooks/pre-commit`: the same three variables.
+  - `scripts/git_sandbox.py`: every fixture process runs with no prompt and no askpass.
+  - Class guard in `test-git-sandbox.sh`: every `GIT_TERMINAL_PROMPT=0` line in helpers/ and scripts/ also sets
+    `GIT_ASKPASS` (three hits on the old main). Fixture +2.
+  - Unattended fetches (collab-watch, shared-memory-watch, the bootup shared-memory check, the pre-commit background fetch)
+    run with `--no-write-fetch-head`: measured the same day, FETCH_HEAD held the main line twice and a `git pull --ff-only` in
+    the shared-memory repo failed with "Cannot fast-forward to multiple branches" while the watch fetched it every 30 s (the
+    overlap itself derived, not observed). Class guard in `test-git-sandbox.sh` (six hits on the old main). <!-- fragment: fix-no-askpass-window -->
+
+- **fix(notify): on Windows the hook waits for its beep** (test: T0) (level: writer; higher: design — a sound that outlives its hook would need a process the environment does not end with the parent, which no hook can count on; debt: the hook now takes the beep's time, about 0.3 s plus PowerShell's start, bounded at 5 s) Measured 2026-11-02 on the Windows instance: `notify.cjs` spawned the PowerShell beep and exited at once; a probe child of the same form wrote nothing (0/3 with `detached`, 0/3 without), while the same child with the parent waiting wrote its file. The environment ends the children with the parent, so the notification sound most likely never played on Windows (first seen 2026-10-21 in the tool shell, ledger `notify-detached-powershell-silent`). The Windows branch now runs the beep with `spawnSync` and a 5 s timeout. New fixture `scripts/test-notify.sh`: the Windows branch with a stand-in command (`NOTIFY_WIN_CMD`) that writes a file after 300 ms — the file must exist when notify has exited; negative control: the old spawn-and-unref form leaves the file missing. The seam is tested before the platform: on macOS the `darwin` branch came first and the fixture never reached it (red there, measured 2026-11-03 by the macOS instance). <!-- fragment: fix-notify-windows-waits-for-beep -->
+
+- **ollama-fallback names the Windows install** (test: T0) (level: symptom; higher: reader — a check that every install hint in a skill names all three systems would catch the next one; not built, one line is the finding; debt: other skills' install hints are not swept by a check) — The setup step named only `brew install ollama`; on Windows the reader had no command. Added `winget install --id Ollama.Ollama --exact` (package id checked 2026-11-02 with `winget show --id Ollama.Ollama --exact` on Windows 11: found, publisher Ollama). Found by a brain scan of 2026-10-31 on the Windows instance. <!-- fragment: fix-ollama-fallback-windows-install -->
+
+- **shared-memory-post: a request to one machine needs a real reason and evidence** (test: T1) (level: writer; higher:
+  design — the device list could say which machine owns which asset, so the tool picks the one machine itself; not
+  built, no such inventory exists; debt: whether the named device is running is still not measured). The operator,
+  2026-11-03 (translated): "an explicit request to one instance must be clearly reasoned and evidenced, otherwise it
+  must not go through". Measured the same day on the macOS instance: five requests in the shared memory carried
+  `--one-machine "the Windows instance is the machine that does it"` or "a Windows check at the PR head; ..." - the
+  OS-category gate was passed with the OS itself as the reason, and the last two requests went to a Windows device
+  that was not running while every other Windows machine never saw them. `request --one-machine` now refuses a reason
+  that names only the OS and requires `--one-machine-evidence` (URL, existing file `path[:line]`, or the operator's
+  quoted words with their date), written beside the reason. Replies and notes are unchanged. Fixture
+  `scripts/shared-memory-post-test.py` +4 refusals; the passing case now carries evidence.
+  - The same rule binds at the shared memory's commit gate: `shared-memory-lint.py` check 9b names a request dated
+    2026-11-04 or later whose `one-machine:` reason names only the OS or that carries no `one-machine-evidence:` (a
+    hand-written file passes no tool). Fixture `shared-memory-lint-test.py` +4 (54a-54d). <!-- fragment: fix-one-machine-reason-evidence -->
+
+- **open-items, decision-presentation-gate, brain-scan-prep: a ledger field written as a list item (`  - exit: ...`, `  - ask-when: ...`, `  - check: ...`) is read** (test: T1) (level: reader; higher: writer — the project ledgers' list-item form is an established way to write the fields and ledger-reconcile.py already reads it, so the readers follow the form instead of rewriting every ledger; debt: none known) — measured 2026-11-03 on the Windows instance: ten entries of two project ledgers carried `  - exit: other-side|parked <date>` and were listed as untouched agent work ("nothing done yet") in three session starts, because the readers anchored `exit:` at the line start after whitespace only. On the same brain state the old reader counts 44 open (ai 31), the new one 34 (ai 21, ten more waiting) — exactly those ten entries. Search: four readers anchor these fields; ledger-reconcile.py already allowed the list-item form, the other three now do. Fixtures: `scripts/test-open-items.sh` (exit and ask-when as list items; against `origin/main` both fail), `scripts/test-decision-presentation-gate.sh` (the parked case written as a list item; against `origin/main` it is counted as a due decision). brain-scan-prep.py's `check:` site has no own case. <!-- fragment: fix-open-items-bullet-exits -->
+
+- **open-items-gate: the relabel refusal names the run that records a wait** (test: T0) (level: reader; higher: writer — the gate could read a PR's `waiting-until:` line and a ledger exit itself, as open-items.py does; not built here, it reads two files today and a third source is a design change for the AIs to agree; debt: in an autonomous run the `waiting` map is refused by autonomous-gate, so the session-id run is the only way) — measured 2026-11-03 on the Windows instance: a reply put four own items with another party; the refusal offered "a rerun of open-items.py when the other side's move is on record". The PR lines and ledger exits were in place and a hand run printed the four as waiting, yet the gate kept refusing: open-items.py writes its state only with a session id ("Only the bootup writes the counter"), and the gate reads that state. A run with `--hook-input '{"session_id": …}'` recorded the waits and the refusal cleared. The message and the header comment now say so. Fixture `scripts/test-open-items-gate.sh` stays green (text only). <!-- fragment: fix-open-items-gate-rerun-hint -->
+
+- **open-items: `owners` can name the merging INSTANCE, not only a login** (test: T1) (level: reader; higher: writer — a repo's merge rule written once in the shared memory and read by every brain, which is the open ledger topic "repo owners from the shared memory", not built here; debt: instances still keep their own `owners` map) — measured 2026-11-02 on the Windows instance: the core is merged by the operator's macOS instance, which posts under the same login. A login-only `owners` value could not say that, so every own core PR with both OS checks and green CI was listed as "still ours" at session start (#314, #317, #330 that day), and the instance had patched it with 11 hand-written `waiting` entries ("core merge is <the macOS instance>'s") over time. An `owners` value that is a device id of the shared memory's `parties.json` now resolves to that person's login plus the device's instance key: an own PR waits on that instance, the merging instance keeps its own PRs, and a peer's PR nobody asked us about stays ours to check (a review asked of the login is asked of every instance behind it). A plain login keeps the old reading. Fixture: `scripts/test-open-items.sh`, three cases; against `origin/main` two of them fail (the merger's own PR and the peer's PR were filed as waiting). <!-- fragment: fix-open-items-owner-instance -->
+
+- **Open items: the PR search reads every page; a cut list is a failed read** (test: T1) (level: reader; higher: design —
+  the search is the source, the reader cut it; debt: none). Measured on the macOS instance 2026-11-03: 59 open PRs
+  against a search page of 50; the nine beyond it fell off silently, and two ledger entries carried by an open suite PR
+  printed as "its in-pr exit names no open PR any more" for 17 and 21 sessions.
+  - `scripts/open-items.py`: the GraphQL search pages with `after` (up to 20 pages of 50); fewer rows than the search's
+    `issueCount` makes the PR search an unread source instead of a short list. The fixture hook takes one file per page,
+    joined by `os.pathsep`. Fixture +2 (second page listed; a missing page = unread).
+  - The same class at three more sites: the bootup's PR search for `pr-ball.py` read 40 (now 100 and its `issueCount`;
+    `pr-ball.py` names a cut search: "PR search cut: n of m"); `release-preflight.sh` read gh's default of 30 open PRs
+    for the competing-release and beta-candidate checks (now `--limit 1000`); `repo-activity-watch.sh` read 50 open PRs
+    per repo with 49 open in the core (now 1000). Class guard in `test-pr-ball.sh`: every `gh pr list` in helpers/ and
+    scripts/ names its `--limit` (red on the old preflight, two hits). Fixture +4.
+  - Exit and PR list disagreeing is said, not read as plain own work (measured the same day: seven entries carried by open
+    PRs stood as `ai-does-it` because the exit was never moved when the PR opened; one `in-pr` exit named no PR and read as
+    "no open PR any more"; one named its PR on the continuation line and was missed). The reader takes the last exit
+    WITH its continuation lines plus the `check:` line, matches PR numbers and the open PRs' head branches
+    (`headRefName` joins the query): `in-pr` + open PR = waiting as before; `in-pr` with no reference says "names no PR
+    at all"; `ai-does-it` naming an open PR says "its exit says ai-does-it, but <PR> is open — write in-pr if the PR
+    carries the rest" and stays the agent's (the writer decides). Fixture +4, all four red on the old reader.
+  - Our own open check request names the PR: the PR waits on the request's `next` for one day, then it is ours again
+    with "our check request of <date> to <next> has no answer - ask that machine by name" (operator rule 2026-10-21).
+    `shared_answers.own_open_requests()` reads frontmatter `von` = this device, `status: open`, PRs as `<repo>#N [#M …]`
+    in `description`. Measured the same day: three own PRs waiting on a Windows check were printed as our move. Fixture +4.
+  - An own request counts as open only while no OTHER party named it (the addressee inbox's rule): ~180 own requests stood
+    on `status: open` long after their answer. A ledger entry without any exit line says "no exit line yet — sort it"
+    instead of "ledger work item" (three bench entries needing the operator's hand read as plain agent work). Fixture +3.
+  - `suite-check.py`: a pin on a tag missing from a single-branch clone (fetch refspec names one branch) is WARN
+    "unchecked (git fetch --tags)", not "is no tag of this repo" — the push lint of a fresh `--single-branch` clone went red
+    on v2.0.0, which origin has. Offline on purpose: an `ls-remote` variant cost ~45 s of fixture time. Fixture +2.
+  - `--top N` (operator 2026-11-03, question tool: counts + top 5): the session start shows the N oldest own items and the
+    N oldest for the operator, one `[more]` line with the rest and the full-list command; the head line keeps every count.
+    Measured the same day: start output 17.9 KB, the list 10.3 KB, cut by Claude Code past 10 000 characters without a sign;
+    with `--top 5` the list is 4.6 KB. `session-bootup.sh` passes `--top ${OPEN_ITEMS_TOP:-5}`. Fixture +2.
+  - `--owner ai|human|operator|standing` is refused: the flag names a GitHub account, and a hand run with `--owner ai`
+    searched a foreign account of that name, listed 26 of its PRs as ours and made 30 in-pr exits look stale (macOS
+    instance 2026-11-03). Fixture +1. <!-- fragment: fix-open-items-pr-pages -->
+
+- **turn-kind: one reader for a prompt the operator typed, `operatorPrompt()`; basics-hint and the stop dispatcher's
+  turn kind use it** (test: T1) (level: reader; higher: design - a lint that flags every `role === 'user'` outside
+  turn-kind, not built because the measurement found 12 of the 14 such readers use user records only as a turn
+  boundary, where a lint would be noise; debt: none). A prompt typed while the agent works lands as a queued command
+  (`attachment.queued_command`, origin human), never as a user record. Measured on the macOS instance 2026-11-03 over
+  the 14 helpers that read user records without `queuedHumanPrompt`: 12 use them only as a turn boundary (a missed
+  queued prompt widens the window, no operator word is lost); two read the operator's text and missed every
+  typed-ahead prompt: `basics-hint.cjs` (a close typed ahead was not learned, so the hint came back) and
+  `stop-dispatcher.cjs` `turnKind` (a turn opened by a notification and then answered by the operator stayed a
+  notification turn, so checks with `onNotification: skip` sat it out). Agreed with the operator on 2026-11-03
+  (question tool). Fixtures: `test-turn-kind.sh` +2, `test-stop-dispatcher.sh` +2, `test-basics-hint.sh` +1; the
+  dispatcher and basics-hint cases FAIL against main.
+  - Class sweep, same strand: 10 helpers read `transcript_path` without `isTranscriptRecord` (an `api-request-blob`
+    repeats earlier records and carries the instruction dump as a user message). Two more read user text from it:
+    `stop-dispatcher.cjs` `turnKind` (a blob read as the operator's turn) and `decision-presentation-gate.cjs`
+    `turnSince` (a blob after the prompt repeats its text and moved the turn start past the turn's questions); both
+    skip blobs now, one fixture case each, the latter FAILS against main. `basics-hint` gets it through
+    `operatorPrompt`. The other six read only tool calls (a blob repeats real ones), only the path, or go through
+    `autonomous-mode.cjs`, which filters already. <!-- fragment: fix-operator-prompt-reader -->
+
+- **`shared-memory-post.py` refuses a LOG line over the entry cap before it writes** (test: T1) (level: writer;
+  higher: design - a pre-commit lint run in the shared-memory repo, not built here because that repo has no hook or CI
+  and every entry is written by this tool; debt: lines written by hand stay judged only by the lint at session start).
+  Lint check 6c judges new LOG entries against the rotate tool's `ENTRY_CAP` (300 B) since 2026-10-31, and its fix
+  text points at this tool - yet this tool built the line from title, recipients, path and one-machine reason with no
+  size check, and nothing ran the lint before the commit. Measured on the macOS instance 2026-11-03: 17 entries over
+  the cap since 2026-10-31 (two writers), every one written by this tool. The line is now built before anything is
+  written; over the cap the call is refused with the byte count and what to shorten. One fixture case, red without
+  the fix. <!-- fragment: fix-post-log-line-entry-cap -->
+
+- **shared-memory-post: a check word rules its sentence, not the whole text; a bare PR number follows the repo its sentence names** (test: T1)
+  (level: writer; higher: design - a parsed request grammar (verb, OS, PR) instead of regexes over sentences; not built, the
+  four measured misreads are all sentence-scope errors; debt: a check sentence that names two repos still binds a bare
+  number to the default repo).
+  Measured 2026-11-04 on the macOS instance: four correct requests refused in one day. "checked on macOS: 7/7" in the
+  evidence was read as a macOS request to a Windows audience; "#402 fixes the red CI" bound the CI check to a PR nobody
+  asked a check for; "#233, #234" next to a grandma3-suite PR URL were read as core PRs and judged by the core's CI; the
+  pin rule quoted in a request ("on Windows and on macOS") counted as a macOS request. Each check was right in intent
+  (lint 9b, green CI before a check) and read words instead of references. Now `os_check_misaddressed` and
+  `os_check_not_ready` look only at the sentences that carry a check word: an OS counts as asked only there, a PR number
+  binds the CI check only there, a bare `#n` in a sentence that names one repo (`owner/repo#n` or a PR URL) belongs to
+  that repo, and "checked" (a report) is no check word. Fixture `scripts/shared-memory-post-test.py`: six new cases, the
+  stub `gh` answers per repo. <!-- fragment: fix-post-tool-check-sentence -->
+
+- **pre-commit checks a staged changelog fragment's level field** (test: T1) (level: writer; higher: design — one place that
+  writes the field for the author would remove the form error; not built, the field is the author's judgement; debt: the
+  working-copy fragment is checked, not the staged bytes). Measured on the macOS instance 2026-11-03: six fragments with
+  "higher: none" on reader/writer went in and the push lint caught them minutes later, twice. `helpers/git-hooks/pre-commit`
+  runs `helpers/change-level.cjs check` when a `changelog.d/*.md` is staged and the repo ships the checker. Fixture
+  `scripts/test-pre-commit-change-level.sh` (3 cases; the refused case passed the old hook).
+  OS traps register: `test-pre-commit-change-level.sh` joins the OS-3 baseline — it hands no temp path to a native process;
+  the hook passes `--root` from `git rev-parse`, which Git Bash already prints in the native form.
+  - The English-only ratchet runs in the same hook where the repo ships it (~0.3 s): a German quote in a fragment reached
+    the push lint the same day. Fixture +2. <!-- fragment: fix-pre-commit-change-level -->
+
+- **The pin review reads the members of a merge train: two instances, by hand** (test: T1) (level: writer; higher:
+  design - one shared reader for the merge-request gate and the preflight, not built here because the gate judges one
+  head sha while the preflight judges a whole thread; debt: the OK/NOT word lists stay in `saysOk`, the preflight adds
+  its sentence split on top). Check 8 of `release-preflight.sh` took the train PRs as the PRs to judge and read any
+  keyed line with an OK word and the word Windows as the Windows proof. On the macOS instance 2026-11-04 it said OK for
+  eleven trains while 62 of 83 member PRs merged since v2.1.2 carried no Windows hand review, and the one text it took
+  was that instance's own macOS comment naming the Windows CI job (a CI job is no review, operator 2026-11-02 and
+  2026-11-04). Now a train's manifest is expanded to its members (the `- #n` lines above "Left out"), a text whose
+  first line reads as a CI note is skipped, the macOS and Windows proofs must come from two different instance keys,
+  and a line is judged per sentence with a bracket that says "against main" read as a negative control - four
+  Windows-instance PRs (#376 #377 #379 #385) had read as "no Windows" on their own test line. Fixture: four new cases,
+  each red against the old script; live at v2.1.3 the check now names 42 PRs without a second-instance hand review. <!-- fragment: fix-preflight-pin-review -->
+
+- **release-preflight reads the shared-memory topic from the origin URL, not the folder name** (test: T0) (level: reader; higher: writer — the repo could declare its shared-memory topic in a file of its own, but its origin URL already carries the name, so a second record would only drift; debt: a checkout without an `origin` remote still falls back to the folder name) — Measured 2026-11-02 on the macOS instance: a release run from a worktree named `train-212` looked for `<shared>/train-212/`, found no folder and noted check 7 as not run — the open entries under `core/` were never read; with `RELEASE_TOPIC=core` set by hand the same run named them. The repo name now comes from `remote.origin.url` (`…/agent-brain.git` gives `core`), the top-level folder only when there is no origin. `release-preflight-test.sh` +1: a fixture repo in a folder `repo-XXXX` with an origin `…/agent-brain.git` and no `RELEASE_TOPIC` finds the open entry under `core/` (red against the old script: the case passed silently). <!-- fragment: fix-preflight-topic-from-remote -->
+
+- **The python3 run-probe check sees an env prefix inside a command; the deadline fixture probes its interpreter** (test: T1)
+  (level: writer; higher: design - one shared interpreter resolver every shell file sources; not built, the probe line
+  is one line per file today; debt: a choice spelled another way, such as `exec python3`, is still not counted).
+  Measured 2026-11-04 on the Windows instance during the hand review of the merged PRs: `scripts/test-bootup-deadlines.sh`
+  (from #397) failed 6 of 7 cases on Windows, every output "deadlines: docs/business/deadlines.md present - check it".
+  Cause: the fixture runs the bootup's deadline block with `PY=python3` as an env prefix; on Windows `python3` is the
+  Microsoft Store stub, and the bootup's own probe (`helpers/session-bootup.sh` line 20) is not part of the block.
+  A/B: the same fixture with `python` passes 7/7. `scripts/test-python-probe.sh` (OS-17) did not flag it, because
+  its pattern only counted a choice at the start of a line. Now it also counts an env prefix after whitespace, with a
+  new negative control (`bad-inline.sh`); the old fixture is flagged, the fixed tree passes. <!-- fragment: fix-python-probe-inline-env -->
+
+- **question-gate: a message typed while the agent works counts as an operator prompt** (test: T1) (level: reader; higher: writer — the harness could write mid-turn messages as user records, not ours to change; debt: none) — the second site of the class #313 closed in root-cause-gate. A message the operator types mid-turn lands as a `queued_command` attachment with `origin.kind: "human"`, not as a user record; `scan()` counted only user records, so a question asked before such a message was never "past the operator's next prompt" and could scroll away unsettled. Replay over the macOS instance's transcripts: 1891 human-typed mid-turn messages, none counted. Now `queuedHumanPrompt()` (turn-kind.cjs) opens a new operator prompt in `scan()`. Fixture `test-question-gate.sh` +2: the incident shape with the prompt queued blocks (red against the old code), a queued command without human origin stays no prompt. <!-- fragment: fix-question-gate-mid-turn-messages -->
+
+- **root-cause-gate judges every operator message of the turn, not only the last segment** (test: T1) (level: writer; higher: design — one turn model shared by every Stop check that splits turns at queued messages (autonomous-gate, decision-presentation, stop-dispatcher); not built, this gate alone was measured; debt: the other Stop checks still read `turns[last]`) — the operator asked the third time in a week why no cause followed a correction (2026-11-04, macOS instance: "why do you not do root-cause research on your own … a failure class one level up with many cases and many fixes that do not hold"). Measured on that instance over 80 transcripts: 33 correction segments, 18 of them not the last segment of their assistant turn — a correction typed mid-turn and followed by another typed message opened its own segment (#313) but `gate()` and `--pre` judged `turns[turns.length - 1]` only, so the later message hid the correction; 4 of the 18 got no cause line at all (two that day). Now `currentTurn()` takes the last user record plus every queued segment after it, `firstCorrection()` walks them in order (word list, else the classifier's record) and a cause line from that message on answers it; the cause-and-carrier half and `--pre` read the whole turn. Fixture: a mid-turn correction followed by another message blocks (red against the old gate), the cause named after the later message allows. <!-- fragment: fix-root-cause-gate-every-segment -->
+
+- **root-cause-gate: "Carrier: none" releases only with the operator's own words** (test: T1) (level: reader;
+  higher: writer — a check that a register "none" entry carries the quote too, not built: the Stop check is where the
+  escape was taken; debt: register entries written before this change keep their bare "none" until re-checked) — the
+  check accepted a reply line "Carrier: none - <reason>" as equal to a mechanism written, so the agent could always
+  leave a named cause unfixed on its own say-so. Measured on the macOS instance 2026-11-02: 41 register entries
+  "carrier: none", three written in one session to pass this check; the operator: a cause's fix at the root is built
+  and secured mechanically, and that itself must be secured. Now the line counts only with `operator-ok: "<words>"`
+  and those words must stand in one of the operator's messages of the transcript. Fixture
+  `scripts/test-root-cause-gate.sh`: none without words blocks, an invented quote blocks, the real words allow. <!-- fragment: fix-root-cause-none-needs-operator -->
+
+- **root-cause-gate: a correction typed mid-turn opens its own segment** (test: T0) (level: reader; higher: writer — the harness could deliver a mid-turn message as a user record, but the gate does not own that; debt: none) — Measured 2026-10-29 on the macOS instance: in one long turn every correction the operator typed while the agent worked arrived as a `queued_command` attachment, and the gate, which only splits turns at user records, judged none of them. The instance carried the fix in an alpha copy; when pin v2.1.2 (with #175/#235) replaced the copy on 2026-11-02, the mid-turn reading was lost, and the same evening a mid-turn order passed unjudged. The gate now opens a segment at a human `queued_command` (turn-kind.cjs `queuedHumanPrompt`, the predicate the other gates use since #166); a peer's queued message stays out. `test-root-cause-gate.sh` +3 (mid-turn correction without cause blocks; with a registered cause line allows; the same words from a peer allow) — the first case is red against the previous gate. <!-- fragment: fix-root-cause-reads-mid-turn-messages -->
+
+- **session-close: a loose commitment leaves with a mechanism, PENDING or "dropped"; the snapshot waits for the last closer** (test: T0) (level: reader; higher: writer — `commitments.py` and `session-closing.sh` could print the three exits and the last-closer decision themselves, not built because both are text decisions the skill already measures with `parallel-sessions.sh`; debt: none) — follow-up of the ordered coherence audit of 2026-11-02 on the macOS instance (§P1-7, §P1-14). The LOOSE COMMITMENTS step still let a promise leave as an instance rule line, while working rule #10 says rule text does not carry it and the next step (carrier-audit) already demands a mechanism or `PENDING`; it now names the same three exits, prose only with the operator's quoted word, and calls a new gate for a promise a declared alpha (a #11 follow-up). The two-sessions paragraph of step 4 quoted #12 but not its exception: snapshot, session log and handoff are committed by the session that closes last; while another session is listed, this close commits only its own log line and leaves an `open end:` for the snapshot. <!-- fragment: fix-session-close-commitments-and-last-closer -->
+
+- **session-close: step 0 ends the autonomous mode; every closing session commits the by-construction paths** (test: T0) (level: writer; higher: design — `session-closing.sh` could switch the mode off itself and commit the three paths; not built, both are one line of the skill the closing turn already follows; debt: an instance whose off-patterns lack its close words still relies on the first close line) — two operator decisions of 2026-11-03 on the Windows instance (coherence register 2026-11-02): (1) P1-1, "instance sentence + core PR": closing is a change of state; with the mode still on, every close step that needs the operator's word was collected as prose and the release could not be given, so step 0 ends the mode before anything else. (2) P1-10, "every session commits": "the session that closes last" cannot be measured — a second session listed in another repo never closes in this one, and the session log and memory snapshot stayed uncommitted until a later session. Every closing session now commits them by path (the export is idempotent); the `rm --cached` trap is named. This replaces the last-closer wording of `fix-session-close-commitments-and-last-closer` (2026-11-02, macOS instance's audit) with the operator's newer decision; working rule #12 says the same. Search: "closes last" stood in the skill step 4 and in working rule #12 — both changed; no script carries it. <!-- fragment: fix-session-close-mode-off-and-every-closer-commits -->
+
+- **session-close: a changed live system without a verify path stands as its own `open end:` line** (test: T0) (level: writer; higher: design — a close gate that refuses the release while such a system is open; not built, the release already waits on every open `open end:` line; debt: none) — coherence register 2026-10-12 P1-9 on the Windows instance, builder agreed between the operator's two instances on 2026-11-03: the live gate called a missing verify path a reporting event but gave the close report no form for it, so "you can shut down" could stand next to a system nobody measured. The line is `open end: <system> changed, no verify path — the operator checks it by hand`, in the close report and the session log. Search: the only place that names the missing verify path at close is this step; the instance rule files name it for the live write, not for the close. <!-- fragment: fix-session-close-no-verify-path-line -->
+
+- **open-items: a standing approval can cover the brain's own ledger entries (`kind: ledger`)** (test: T0) (level: reader; higher: writer — the ledger could tick entries itself when their check turns green with the pin, but a tick needs the reason the ledger missed it, which only a session can name; debt: none) — Measured 2026-11-02 on the macOS instance: the operator approved ALL own open items once (2026-10-26), but `open-items-standing.json` accepted only `request` and `PR`, so the brain's own ledger entries were put as "n I can handle — shall I?" at every session start. The go never named them; 13 entries whose work had shipped in the pinned core (check green, PR merged) stayed open for up to 17 sessions and were counted as open work each time. `kind: ledger` is now accepted; as for the other kinds only `ai` or unclassified items become `standing`, an `operator-decision` exit stays `human`, and `excludes` keeps a text out. `test-open-items.sh` +4 (a ledger class makes an own entry standing; an excluded text stays ai; an operator-decision exit stays human; the kind is not refused) — the first case is red against the previous script, which refused the kind. <!-- fragment: fix-standing-approval-ledger-kind -->
+
+- **fix(turn-kind): a Stop hook's feedback record is the harness, not the operator** (test: T0) (level: reader; higher: writer — the harness writes the record as a user message with isMeta, the shape of an operator's mid-turn message; only the harness could mark it, so the core reads its text; debt: a harness that changes the "Stop hook feedback:" wording slips past again) Measured 2026-11-02 on the Windows instance: after a Stop hook blocked a turn, the harness wrote "Stop hook feedback:\n…" as a user record (isMeta, no sourceToolUseID). `isNotification` did not know the form, so every reader of "did the operator speak" counted it as the operator: `autonomous-gate`'s operatorInTurn handed an ask-rule edit of `.claude/settings.json` to the harness dialog in an autonomous run, and the operator got the dialog (the operator: "you are in auto mode and still send interactive requests"). `isNotification` now reads a record starting with "Stop hook feedback:" as a notification; the 19 helpers that ask it follow. Replay over this instance's transcripts: 310 such records in 54 transcripts, each counted as an operator prompt before. Fixture `scripts/test-turn-kind.sh` +2 (the feedback record; the operator naming the words stays the operator); negative control: the old `turn-kind.cjs` fails the first; autonomous-gate / -mode / -idle fixtures green. <!-- fragment: fix-stop-hook-feedback-is-no-prompt -->
+
+- **Templates say where the core hooks are wired: the plugin, not `settings.json`** (test: T0) (level: symptom; higher: reader — a check that template prose naming a wiring place matches `hooks/hooks.json` would catch the next drift; not built, two sentences are the finding; debt: none known beyond these two lines - grep over `templates/` for "wired up in", "carries the dispatcher" and "Hooks point at" finds no third) — Since 2.0.4 the brain-core plugin's `hooks/hooks.json` wires every core hook, and the settings template already says so, but `templates/CLAUDE.md` still read "wired up in `.claude/settings.json`" and `templates/brain-scan-checklist.md` expected `settings.json` to carry the stop dispatcher. A brain following either sentence wires the core hooks a second time - measured on a Windows instance before 2026-10-26: every core hook fired twice and two session-pull runs collided. Found by that instance's coherence scan of 2026-10-31; its own copies of both sentences are fixed the same way. <!-- fragment: fix-templates-hook-wiring-text -->
+
+- **Fixture helpers build their hook input with node, not printf** (test: T1) (level: writer; higher: design - one shared
+  hook-input builder for every fixture, not built here because each fixture sets its own fields and env; debt: three printf builders that interpolate only the fixture's own temp
+  paths stay, `test-conditional-order-gate.sh` (the no-tool-input case), `test-skill-gate.sh` (missing transcript),
+  `test-session-helpers.sh`). Eight helpers in seven fixtures (`test-guards.sh` mg_probe + tr_probe,
+  `test-autonomous-gate.sh`, `test-conditional-order-gate.sh`, `test-live-read-gate.sh`, `test-no-input-control.sh`,
+  `test-skill-gate.sh`, `test-shared-working-copy-guard.sh`) wrote their values into a `printf` JSON template unescaped:
+  a bare double quote in a probe broke the JSON, the guard exited 0 on bad input, and the probe read as "allow" although
+  the guard never parsed it (measured on the macOS instance 2026-11-02 with a `commit -m "x"` probe). The input is now
+  built by `JSON.stringify` from argv; the call signatures stay, and the probes that write `\n` / `\"` as JSON escapes
+  keep working (`unesc()`). One new probe per helper carries a bare double quote and must block; on a file system that
+  refuses `"` in a name (Windows) the path-based ones print SKIP.
+  - Windows CI 2026-11-03 (merge train): Git Bash rewrote a probe value that starts with `/` (an absolute gh path)
+    into a Windows path once it travelled as argv, and the guard rule missed it. `test-guards.sh` sets
+    `MSYS2_ARG_CONV_EXCL=*` on both input builders and passes the cwd through cygpath itself. <!-- fragment: fix-test-json-escaping -->
+
+- **turn-kind: a hook refusal the operator copied into the prompt is not the operator's words** (test: T1) (level: reader; higher: writer — the harness writes the copy into the prompt unwrapped and no tool of ours writes that record; debt: a hook message pasted in a form that does not start like the harness prints it stays in the words) — measured 2026-11-02 on the Windows instance: the operator pasted a QUESTION-GATE refusal ("Error: PreToolUse:AskUserQuestion hook error: QUESTION-GATE: … and only then ask the mode question ALONE …") and asked about it below a blank line; `conditional-order-gate` read the gate's own "only then ask" as the operator's condition and held two pushes until a `CONDITION-NONE` line. `operatorWords` now drops a paragraph that starts like a harness hook message (`Error: <Event>:<Tool> hook error:`, `<Event> hook feedback`, `Stop hook feedback:`) up to the next blank line; the operator's question below stays. Fixed in the shared function, so every gate that matches the operator's words (conditional-order, open-items, question, root-cause, autonomous-mode, autonomous-idle) gets it. Replay over the instance's transcripts: one such prompt, the measured one. Fixture `scripts/test-turn-kind.sh`, three cases (paste with a question below, a Stop-feedback paste alone, a sentence that only mentions a hook error as negative control); against `origin/main` the first two fail. The callers' fixtures stay green. <!-- fragment: fix-turn-kind-pasted-hook-message -->
+
 ## 2.1.2 — 2026-11-02
 
 - **CI: the big runs run once per content** (test: T1) (level: writer; higher: design — single PRs could skip the big runs too, but a skipped job reports success to a required check, so that needs the draft-PR path measured first; debt: a single PR still runs the Ubuntu portability suite before its train) — The operator's order of 2026-11-02: CI must not run the same content twice. A push to main or a tag on the merge commit of a train whose tree equals the train head brings no new content; a new `proven` job detects that (`HEAD^2` from `arche-goah/train/…`, identical tree) and `portability` + `python-floor` skip there. Measured the same day: release train head a1fc703 and main 7e6dd1f carry the same tree 4288ab7, and main ran the same 54 minutes again; the replay over today's merges gives true for #279, #286, #288 and false for an ordinary commit. Only push events are affected — every PR and every train keeps its full run, and no merge is gated on a push run. <!-- fragment: ci-skip-proven-tree-on-main -->
