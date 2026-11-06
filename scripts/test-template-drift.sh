@@ -157,4 +157,26 @@ grep -q '"mine"' "$T/d2/.claude/rules/autonomous-patterns.json" && ok "--copy-da
 out="$(crun)"
 case "$out" in *"data file(s) of core/templates"*) bad "after --copy-data the report still names data files: '$out'";; *) ok "after --copy-data the data report is silent";; esac
 
+# Stop checks of the template the brain's stop-checks.json lacks (Windows instance 2026-11-05: MODE-LOG
+# was missing and nothing said so). Required ones run from the template anyway; "disabled" with a reason is
+# a choice. Both directions.
+SC="$T/sc-tpl"; mkdir -p "$SC"
+printf '%s\n' '{"checks":[{"marker":"REQ-GATE","required":true},{"marker":"OPT-ONE"},{"marker":"OPT-TWO"}]}' > "$SC/stop-checks.json"
+sbrain() { brain "$1" '{"permissions":{"allow":["Bash(gh pr ready*)","Bash(gh pr create*)","Bash(git status*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"]}}'
+           mkdir -p "$T/$1/.claude/rules"; printf '%s\n' "$2" > "$T/$1/.claude/rules/stop-checks.json"; }
+scrun() { "$PY" "$S" --repo "$(native "$T/$1")" --template "$(native "$TPL")" --rules-template "$(native "$SC")" --helpers "$(native "$T/no-helpers")" 2>&1; }
+sbrain c1 '{"checks":[{"marker":"OPT-ONE"}]}'
+out="$(scrun c1)"
+case "$out" in *'note: stop checks: 1 check(s)'*'OPT-TWO'*) case "$out" in *REQ-GATE*) bad "a required check was named: '$out'";; *) ok "a missing optional stop check is named, a required one is not";; esac;; *) bad "missing stop check not named: '$out'";; esac
+case "$out" in *'!!'*) bad "the stop-check line is loud: '$out'";; *) ok "the stop-check line is a note, not a !!";; esac
+sbrain c2 '{"checks":[{"marker":"OPT-ONE"}],"disabled":{"OPT-TWO":"switched off on purpose"}}'
+out="$(scrun c2)"
+[ -z "$out" ] && ok "a check switched off with a reason is silent" || bad "disabled check reported: '$out'"
+sbrain c3 '{"checks":[{"marker":"OPT-ONE"}],"disabled":{"OPT-TWO":"  "}}'
+out="$(scrun c3)"
+case "$out" in *OPT-TWO*) ok "a blank reason does not switch a check off";; *) bad "blank reason silenced the check: '$out'";; esac
+brain c4 '{"permissions":{"allow":["Bash(gh pr ready*)","Bash(gh pr create*)","Bash(git status*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"]}}'
+out="$(scrun c4)"
+[ -z "$out" ] && ok "a brain without its own stop-checks.json is silent (the dispatcher runs the template)" || bad "no-file brain reported: '$out'"
+
 [ "$fail" = 0 ] && echo "template-drift: all cases pass" || { echo "template-drift: FAILURES"; exit 1; }

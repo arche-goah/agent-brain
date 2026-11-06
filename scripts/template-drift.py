@@ -26,7 +26,10 @@ The invariants:
      `~/.claude/settings.json`, with `<org>` filled from the marketplace repo the settings name;
   3. every data file of `core/templates/rules-instance/` whose name a core helper reads is in the
      brain's `.claude/rules/` (macOS finding on #142, 2026-10-26: `autonomous-patterns.json` never
-     reached an older brain, so a German order never switched the autonomous mode on there).
+     reached an older brain, so a German order never switched the autonomous mode on there);
+  4. every stop check of `core/templates/rules-instance/stop-checks.json` that is not `required` is in
+     the brain's `.claude/rules/stop-checks.json`, or switched off there in `"disabled"` with a reason
+     (Windows instance 2026-11-05: MODE-LOG was missing and nothing said so) - a note, not a `!!`.
 Anything else is named at every session start, loudly, as long as it stands.
 
 Usage:
@@ -231,6 +234,29 @@ def data_drift(repo, rules_tpl, helpers):
             f"brain's values (the template's own defaults are a valid start)")
 
 
+def stop_check_drift(repo, rules_tpl):
+    """A note for every stop check of the template's stop-checks.json the brain's file lacks (invariant 4).
+    Measured 2026-11-05 on the Windows instance: MODE-LOG stood in the template and not in the brain's file,
+    and no session start said so. A `required` check is left out - stop-dispatcher.cjs runs it from the
+    template anyway (requiredFromTemplate) - and so is a marker the brain switched off on purpose in
+    `"disabled": {"<MARKER>": "<why>"}`. A note, not a `!!`: a missing optional check is a choice to look at."""
+    tpl = load(pathlib.Path(rules_tpl) / "stop-checks.json")
+    here = load(pathlib.Path(repo) / ".claude" / "rules" / "stop-checks.json")
+    if not isinstance(tpl, dict) or not isinstance(here, dict):
+        return None  # no template, or no instance file (the dispatcher then runs the template as is)
+    have = {c.get("marker") for c in here.get("checks") or [] if isinstance(c, dict)}
+    off = here.get("disabled") or {}
+    gone = [c["marker"] for c in tpl.get("checks") or []
+            if isinstance(c, dict) and c.get("marker") and not c.get("required")
+            and c["marker"] not in have and not str(off.get(c["marker"], "")).strip()]
+    if not gone:
+        return None
+    return (f"note: stop checks: {len(gone)} check(s) of core/templates/rules-instance/stop-checks.json are not in "
+            f"this brain's .claude/rules/stop-checks.json - {', '.join(gone[:SHOWN])}"
+            f"{f' (+{len(gone) - SHOWN} more)' if len(gone) > SHOWN else ''}. Take each over from the template, "
+            f"or switch it off on purpose with \"disabled\": {{\"<MARKER>\": \"<why>\"}}")
+
+
 def main():
     a = argparse.ArgumentParser()
     a.add_argument("--repo", default=".")
@@ -247,7 +273,8 @@ def main():
     if args.copy_data:
         return copy_data(args.repo, args.rules_template, args.helpers)
     for line in (project_drift(args.repo, args.template),
-                 data_drift(args.repo, args.rules_template, args.helpers)):
+                 data_drift(args.repo, args.rules_template, args.helpers),
+                 stop_check_drift(args.repo, args.rules_template)):
         if line:
             print(line)
     user = load(user_settings_path())
