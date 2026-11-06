@@ -18,20 +18,28 @@
 # the train PR; the OS checks by hand (macOS, Windows) are asked once, for the train head, which holds
 # every contained head byte for byte plus their combination.
 #
-# Usage: merge-train.sh [--repo DIR] [--name NAME] <pr> [<pr>...]   (DIR: a clone of the repo; default cwd)
+# SAME HEAD (--same-head, exactly one PR; measured 2026-11-06 on the macOS instance): a single finished PR (a release
+# PR) needed the OS CI that runs only on train/* branches. The head was pushed to a train branch by hand and the PR text
+# written by hand - without the "## Merge train" manifest, release-preflight check 8 read it as a single PR. With
+# --same-head the train branch IS the PR's head (no merge commit, so the contained head and the train head are one sha)
+# and the same manifest is printed. Refused when the head is not a descendant of origin/main (rebase it first).
+#
+# Usage: merge-train.sh [--repo DIR] [--name NAME] [--same-head] <pr> [<pr>...]   (DIR: a clone of the repo; default cwd)
 # Exit 0 = train built (at least one PR in), 1 = no PR could join, 2 = could not run.
 set -u
-DIR="."; NAME=""
+DIR="."; NAME=""; SAME=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) DIR="$2"; shift 2 ;;
     --name) NAME="$2"; shift 2 ;;
+    --same-head) SAME=1; shift ;;
     --) shift; break ;;
     -*) echo "merge-train: unknown option $1" >&2; exit 2 ;;
     *) break ;;
   esac
 done
-[ $# -gt 0 ] || { echo "usage: merge-train.sh [--repo DIR] [--name NAME] <pr>..." >&2; exit 2; }
+[ $# -gt 0 ] || { echo "usage: merge-train.sh [--repo DIR] [--name NAME] [--same-head] <pr>..." >&2; exit 2; }
+[ "$SAME" -eq 0 ] || [ $# -eq 1 ] || { echo "merge-train: --same-head takes exactly one PR" >&2; exit 2; }
 GH="${MERGE_TRAIN_GH:-gh}"
 slug="$(git -C "$DIR" remote get-url origin 2>/dev/null | sed -E 's#(\.git)?$##; s#^.*github\.com[:/]##')"
 [ -n "$slug" ] || { echo "merge-train: $DIR has no github origin" >&2; exit 2; }
@@ -55,6 +63,15 @@ for pr in "$@"; do
     left+=("#$pr (branch $branch not fetched)"); continue
   fi
   head="$(git -C "$DIR" rev-parse "refs/remotes/origin/train-src-$pr")"
+  if [ "$SAME" -eq 1 ]; then
+    if git -C "$DIR" merge-base --is-ancestor origin/main "$head"; then
+      git -C "$DIR" checkout --quiet -B "$NAME" "$head" || exit 2
+      joined+=("#$pr $branch ${head}")
+    else
+      left+=("#$pr (--same-head: its head is not a descendant of main - rebase it first)")
+    fi
+    continue
+  fi
   if git -C "$DIR" -c user.email=train@local -c user.name=merge-train merge --quiet --no-ff \
        -m "train: #$pr $branch @ ${head:0:7}" "$head" >/dev/null 2>&1; then
     joined+=("#$pr $branch ${head}")

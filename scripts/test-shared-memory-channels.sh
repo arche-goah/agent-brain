@@ -22,6 +22,7 @@ T="$(mktemp -d)"
 ARM=""
 cleanup() { [[ -n "$ARM" ]] && kill "$ARM" 2>/dev/null; rm -rf "$T"; }
 trap cleanup EXIT
+. "$HERE/git-sandbox.sh"   # the host's git hooks must not decide the fixture's pushes (2026-11-06)
 fails=0; checks=0
 ok()  { checks=$((checks + 1)); echo "  ok   $1"; }
 bad() { checks=$((checks + 1)); fails=$((fails + 1)); echo "  FAIL $1 — $2"; }
