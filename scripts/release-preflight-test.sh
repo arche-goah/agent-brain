@@ -15,11 +15,11 @@ OLD="$(date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "2 days ago" 
 SHM="$TMP/shared"; mkdir -p "$SHM/core"
 export RELEASE_CONSUMER="fixture consumer" SHARED_MEMORY_REPO="$SHM" RELEASE_TOPIC=core
 # The fixture repos commit and push: no git config or hook of the host machine may reach them
-# (a global core.hooksPath ran a brain's pre-commit inside fixtures, git_sandbox.py). Paths that
+# (git-sandbox.sh: temp global config, no system config, no prompt, no askpass). Paths that
 # cross into a native program as DATA are stated natively (OS-3).
+. "$(dirname "$0")/git-sandbox.sh"
+git config --global init.defaultBranch main
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
-printf '[user]\n\tname = t\n\temail = t@example.invalid\n[init]\n\tdefaultBranch = main\n' > "$TMP/gitconfig"
-export GIT_CONFIG_GLOBAL="$(native "$TMP/gitconfig")" GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
 # check 10 (real-data replay, 2026-11-06): every case gets a fake brain and a reader whose output
 # never changes, so only the case that breaks check 10 sees it red
 mkdir -p "$TMP/replay-brain"
