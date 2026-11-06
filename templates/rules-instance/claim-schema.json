@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "Instance data for core/scripts/claim-lint.py (run by core/scripts/brain-selftest.sh): where this brain keeps",
+    "its human-readable claim schema and in which words its claim blocks name the evidence method.",
+    "schema = path of the schema document, relative to the brain root (named in the report, skipped as a source",
+    "of blocks; a declared path that does not exist is a finding). Leave it empty when the brain has no own",
+    "document - the form in the lint's header and the core rule (rules/thinking-protocol.md rule 0) apply.",
+    "paths = where blocks are searched when the lint gets no path (default [\"docs\"]).",
+    "method_aliases = the brain's own words for the three methods measured | derived | assumed, e.g. for a Spanish",
+    "brain {\"medido\": \"measured\", \"derivado\": \"derived\", \"supuesto\": \"assumed\"}.",
+    "none_words = words that mean 'none' in the independence field, besides 'none'."
+  ],
+  "schema": "",
+  "paths": ["docs"],
+  "method_aliases": {},
+  "none_words": []
+}

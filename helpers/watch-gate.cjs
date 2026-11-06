@@ -101,6 +101,9 @@ const CLOSED = new Set(['answered', 'done', 'decided', 'info', 'closed']);
 const PR_WATCH = /\b(watch-pr|ci-watch|collab-watch)\.sh\b/;
 // A reload the HUMAN has to do (operator order 2026-08-06, sharpened 2026-10-11): the reply names the slash command or says
 // reconnect. The waiter is core/scripts/wait-mcp-reconnect.sh, armed in the same turn BEFORE the request.
+// Further wording (the operator's language, a brain's own reload words) EXTENDS this in
+// `.claude/rules/watch-gate.json` as `reload_ask_patterns` — the instance reconnect-gate this case
+// absorbed carried its language in code (ported 2026-11-06).
 const RELOAD_ASK = /(?:^|[\s`'"(])\/(?:mcp|reload-plugins)\b|\breconnect\b|\bre-?connecten\b|\bwieder verbinden\b/i;
 const RELOAD_WATCH = /\bwait-mcp-reconnect\.sh\b/;
 // (a), (d) a push: `push` as git's SUBCOMMAND (git-push.cjs) — "git … push" anywhere in the line
@@ -145,7 +148,7 @@ function loadPatterns(root) {
     return new RegExp(out.join('|'), 'iu');
   };
   return { handStep: merge(HAND_STEP_BUILTIN, cfg.hand_step_patterns), noWatcher: merge(NO_WATCHER_BUILTIN, cfg.no_watcher_markers),
-    doneClaim: doneClaimRegex(root) };
+    reloadAsk: merge([RELOAD_ASK.source], cfg.reload_ask_patterns), doneClaim: doneClaimRegex(root) };
 }
 
 /**
@@ -619,8 +622,10 @@ function main(input) {
     missing.push({ text: 'PR created — arm Monitor on core/scripts/watch-pr.sh <owner>/<repo> <nr> (or collab-watch)',
       covered: ghListed(prCreates, root) });
   }
-  // (c) the reply ends by asking the human for a reload, and nothing waits for it to arrive
-  if (RELOAD_ASK.test(lastText) && !calls.some((c) => RELOAD_WATCH.test(c.cmd))) {
+  const pats = loadPatterns(root);
+  // (c) the reply ends by asking the human for a reload, and nothing waits for it to arrive. Raw text,
+  // not quote-stripped: the ask itself is usually written as code (`/mcp`).
+  if (pats.reloadAsk.test(lastText) && !calls.some((c) => RELOAD_WATCH.test(c.cmd))) {
     missing.push({ text: 'reload requested from the human — arm core/scripts/wait-mcp-reconnect.sh <boot-stamp-file> [timeout_s] '
       + '(Monitor or run_in_background) BEFORE asking, then say which reload you need', covered: null });
   }
@@ -632,7 +637,6 @@ function main(input) {
     covered: (ends) => listed(ends, [nameOf(slug)]) });
   }
   // (e) the reply asks the human for a hand step, and nothing in this turn waits for its effect
-  const pats = loadPatterns(root);
   const waiter = calls.some((c) => c.name === 'Monitor' || c.name === 'ScheduleWakeup' || c.bg);
   if (!waiter && !pats.noWatcher.test(lastText)) {
     const m = pats.handStep.exec(stripQuoted(lastText));
