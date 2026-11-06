@@ -254,6 +254,49 @@ def ci_state(repo: str, n: str) -> str:
     return "green"
 
 
+def ci_proof_repos() -> set:
+    """Repos whose single PRs need no OS hand check: a green CI job is the OS proof for their merge, and a hand check
+    happens at most once per OS at a merge train's head. Instance data `ci_counts_as_os_check` in
+    .claude/rules/os-proof.json ({"<owner/repo>": [<OS>, ...]}) — the same file merge-request-gate reads, one place."""
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    try:
+        import json
+        d = json.loads((Path(root) / ".claude" / "rules" / "os-proof.json").read_text(encoding="utf-8"))
+        m = d.get("ci_counts_as_os_check") or {}
+        return {str(r).lower() for r, oses in m.items() if oses} if isinstance(m, dict) else set()
+    except (OSError, ValueError, AttributeError):
+        return set()
+
+
+def is_train(repo: str, n: str) -> bool:
+    """True when the PR's head branch is a merge train (train/...); False when not or unreadable."""
+    import json
+    gh = os.environ.get("SHARED_MEMORY_POST_GH", "gh")
+    try:
+        r = subprocess.run([gh, "pr", "view", n, "-R", repo, "--json", "headRefName"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        return r.returncode == 0 and str(json.loads(r.stdout).get("headRefName") or "").startswith("train/")
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return False
+
+
+def os_check_not_needed(text: str) -> str:
+    """The refusal text when `text` asks an OS hand check of a single PR in a repo whose merge takes the CI as OS proof.
+    Measured 2026-11-06 on the macOS instance: three per-PR Windows checks went out for core PRs that a merge train
+    covers by its CI; the operator's rule (one check per OS at the train head, nothing twice) lived in prose only."""
+    repos = ci_proof_repos()
+    asked = check_sentences(text)
+    if not repos or not asked or not asked_os(asked):
+        return ""
+    single = [f"{repo}#{n}" for repo, n in asked_prs(asked, pr_repo_default())
+              if repo.lower() in repos and not is_train(repo, n)]
+    if not single:
+        return ""
+    return ("an OS hand check is asked for single PR(s) " + ", ".join(single) + " - in this repo a green CI job is the OS "
+            "proof for a merge, and a hand check happens at most once per OS at a merge train's head (build the train, ask "
+            "for its PR), or say why this single PR needs a hand check: --hand-check-ok <reason>")
+
+
 def os_check_not_ready(text: str) -> str:
     """The refusal text when `text` asks an OS check of a PR whose CI at the head is not green."""
     asked = check_sentences(text)
@@ -287,6 +330,8 @@ def main() -> int:
     ap.add_argument("--one-machine-evidence", default="",
                     help="evidence for --one-machine: URL, existing file path[:line], or the operator's quoted words with date")
     ap.add_argument("--ci-not-green-ok", default="", help="an OS check request although the PR's CI is not green: why")
+    ap.add_argument("--hand-check-ok", default="",
+                    help="an OS hand check for a single PR in a repo whose merge takes the CI as OS proof: why")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 
@@ -325,6 +370,10 @@ def main() -> int:
         or (a.kind == "request" and one_machine_unproven(a.one_machine, a.one_machine_evidence, a.repo))
     if miss:
         return refuse(miss)
+    if a.kind == "request" and not a.hand_check_ok:
+        needless = os_check_not_needed(a.title + "\n" + body)
+        if needless:
+            return refuse(needless)
     if a.kind == "request" and not a.ci_not_green_ok:
         early = os_check_not_ready(a.title + "\n" + body)
         if early:
@@ -375,6 +424,8 @@ def main() -> int:
         meta.append(f"  one-machine-evidence: {a.one_machine_evidence}")
     if a.ci_not_green_ok:
         meta.append(f"  ci-not-green-ok: {a.ci_not_green_ok}")
+    if a.hand_check_ok:
+        meta.append(f"  hand-check-ok: {a.hand_check_ok}")
     text = "---\n" + f"name: {stem}\ndescription: {q}\nmetadata:\n" + "\n".join(meta) + "\n---\n\n" + body.strip() + "\n"
     log = area_dir / "LOG.md"
     old = log.read_text(encoding="utf-8")
