@@ -144,7 +144,8 @@ def add_instance_checks(root):
     names, instances = _instance_list(root)
     if names:
         CHECKS.append(("person",
-                       re.compile("|".join(rf"\b{re.escape(n)}\b" for n in names), re.I)))
+                       # s?: the German genitive is the name too (2026-11-02, same as public-text-guard.cjs)
+                       re.compile("|".join(rf"\b{re.escape(n)}s?\b" for n in names), re.I)))
     if instances:
         CHECKS.append(("instance",
                        re.compile("|".join(re.escape(i) for i in instances), re.I)))
