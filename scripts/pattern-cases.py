@@ -35,6 +35,11 @@ reader must reach on it:
   promise-patterns.json (promise-gate.cjs): text = the reply. "block" = a bounded promise.
   stop-patterns.json (stoppen-gate.cjs): text = the final reply. "block" = a closing question,
       a handoff or an announcement.
+  time-patterns.json (time-gate.cjs, blocking mode): text = the reply. "block" = an un-anchored
+      relative time reference or an estimated duration.
+  diagnose-patterns.json (diagnose-gate.cjs): text = a tool result in the turn, "command" (default
+      "probe-device") = the shell call that produced it, "log_read" (optional) = an earlier call of
+      the same turn. "block" = a reported failure and no log read.
   secret-patterns.json (secret-guard.cjs): text = a shell command, or a path with "tool": "Read"
       (or "Edit"/"Write"). "block" = denied (or asked).
   commitments.json (commitment-carrier-gate.cjs): text = a reply; "then" (optional) = a later
@@ -80,6 +85,8 @@ READERS = {
     "premise-patterns.json": ("premise-gate.cjs", "premise"),
     "promise-patterns.json": ("promise-gate.cjs", "reply"),
     "stop-patterns.json": ("stoppen-gate.cjs", "reply"),
+    "time-patterns.json": ("time-gate.cjs", "reply"),
+    "diagnose-patterns.json": ("diagnose-gate.cjs", "failure"),
     "secret-patterns.json": ("secret-guard.cjs", "tool"),
     "commitments.json": ("commitment-carrier-gate.cjs", "promise"),
 }
@@ -156,6 +163,17 @@ def scenario(kind, case):
         recs = [user(case.get("prompt", "go on")), asst(text)]
         if case.get("then"):
             recs.append(asst(case["then"]))
+        return recs, {"stop_hook_active": False}
+    if kind == "failure":
+        recs = [user(case.get("prompt", "go on"))]
+        calls = ([("toolu_pc3", case["log_read"])] if case.get("log_read") else []) \
+            + [("toolu_pc4", case.get("command", "probe-device"))]
+        for tid, cmd in calls:
+            recs.append({"type": "assistant", "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": cmd}}]}})
+            recs.append({"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": tid, "content": text if tid == "toolu_pc4" else "ok"}]}})
+        recs.append(asst(case.get("reply", "Done.")))
         return recs, {"stop_hook_active": False}
     if kind == "tool":
         tool = case.get("tool", "Bash")

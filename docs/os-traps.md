@@ -113,6 +113,7 @@ known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-reach-check.py=11
 known:     scripts/test-open-items.sh=1
 known:     scripts/test-suite-plugin-linkage.sh=2
+known:     scripts/time-references.py=2
 known:     scripts/transcript-recall-test.py=5
 instances: 5
 repeat:    yes
@@ -287,6 +288,7 @@ known:     scripts/test-decision-presentation-gate.sh=1
 known:     scripts/test-decision-readiness.sh=1
 known:     scripts/test-decision-review.sh=1
 known:     scripts/test-delivered-read-gate.sh=1
+known:     scripts/test-diagnose-gate.sh=1
 known:     scripts/test-eco-owner.sh=1
 known:     scripts/test-ecosystem-sync.sh=1
 known:     scripts/test-fixture-own-home.sh=1
@@ -347,6 +349,7 @@ known:     scripts/test-stoppen-gate.sh=1
 known:     scripts/test-suite-plugin-linkage.sh=3
 known:     scripts/test-template-drift.sh=1
 known:     scripts/test-text-leaks-notice.sh=1
+known:     scripts/test-time-gate.sh=1
 known:     scripts/test-transcript-archive.sh=1
 known:     scripts/test-turn-kind.sh=1
 known:     scripts/test-verification-gate.sh=1
