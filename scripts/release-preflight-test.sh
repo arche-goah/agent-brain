@@ -310,7 +310,11 @@ check "a negative-control clause in the author test line does not cancel its Win
 
 # 18. check 10, real-data replay (operator decision 2026-11-06): no brain = red and said "NOT run";
 #     a reader whose output differs between the previous tag and HEAD = red; RELEASE_REPLAY_OK names
-#     what was reviewed and passes with a note; a failing symptom line of this version's entry = red
+#     what was reviewed and passes with a note; a failing symptom line of this version's entry = red.
+#     Runs on its own repo and gives $R back at the end: a later section builds on the repo before it
+#     (measured 2026-11-06 in a merge train - the failing symptom left behind here turned two OS-review
+#     cases of the next section red at check 10, not at their own subject).
+R_BEFORE_REPLAY="$R"
 R="$(mkrepo 2.0.0)"
 OUT="$(RELEASE_PREFLIGHT_ROOT="$R" RELEASE_REPLAY_BRAIN= bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
 case "$OUT" in *"FAIL real-data replay NOT run: no real data"*) said=0;; *) said=1;; esac
@@ -330,6 +334,7 @@ git -C "$R" commit --quiet -am "symptom"; git -C "$R" push --quiet origin main
 OUT="$(RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
 case "$OUT" in *"FAILS    symptom"*"rc=4"*) said=0;; *) said=1;; esac
 check "a failing symptom line of this version's entry is red" 1 $(( rc * (1 - said) ))
+R="$R_BEFORE_REPLAY"
 
 echo
 echo "$pass/$((pass+fail)) passed"
