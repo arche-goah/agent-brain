@@ -113,7 +113,10 @@ function saysOk(line, os) {
   // A bare file name (`test-fail-fast.py`) and the fixture phrase "red against the old code" are no verdict either
   // (2026-11-02, mikrotik-suite #44: two macOS OKs held); "red against main" still is.
   const rest = line.slice(at).replace(/`[^`]*`/g, '``').replace(/[\w./-]+\.[a-z]{1,4}\b/gi, '``')
-    .replace(/\bred (?:against|with) the old (?:code|state)\b/gi, '``');
+    .replace(/\bred (?:against|with) the old (?:code|state)\b/gi, '``')
+    // "the old server.py failed it" (2026-11-06, mikrotik-suite #49) names the state BEFORE the fix, not the head.
+    // File names are already `` here, so the phrase reads "the old `` failed".
+    .replace(/\bthe old (?:``|code|state|version|head)\s+(?:failed|was red)\b/gi, '``');
   const end = others ? rest.slice(1).search(new RegExp(others, 'i')) : -1;
   return !NOT_RX.test(end < 0 ? rest : rest.slice(0, end + 1));
 }

@@ -89,6 +89,12 @@ spr 'feat: x' '["macOS OK at `abc1234`: all 7 cases pass (the new case red again
 sprobe "the fixture phrase red against the old code" "$M" allow "$D"
 spr 'feat: x' '["macOS OK at `abc1234`, but lint red against main", "Windows OK at head `abc1234`"]'
 sprobe "red against main stays a negation (control)" "$M" block "$D"
+# 2026-11-06 (mikrotik-suite #49): "the old server.py failed it" describes the state BEFORE the fix, no verdict on the head;
+# "it failed" about the head still is.
+spr 'feat: x' '["macOS OK at head `abc1234`: compileall 0 (the old server.py failed it at line 5054), fixtures green", "Windows OK at head `abc1234`"]'
+sprobe "the old file failed (state before the fix)" "$M" allow "$D"
+spr 'feat: x' '["macOS OK at head `abc1234`, but compileall failed", "Windows OK at head `abc1234`"]'
+sprobe "failed about the head stays a negation (control)" "$M" block "$D"
 
 # 2026-10-28 (#157): an earlier head separated only by "update branch" merges still counts.
 cpr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "fff0000aaa", body: "feat: x", commits: JSON.parse(process.argv[2]), comments: JSON.parse(process.argv[1]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }
