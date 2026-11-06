@@ -366,7 +366,10 @@ def main() -> int:
     if status not in _lint.VALID_STATUS:
         return refuse(f"status '{status}' is not in {sorted(_lint.VALID_STATUS)}")
     body = Path(a.body_file).read_text(encoding="utf-8") if a.body_file else a.body
-    miss = os_check_misaddressed(a.title + "\n" + body, to, a.one_machine) \
+    # A reply or claim reports on a check (its own, or the one it takes) and goes back to its sender; only a
+    # request or note can ASK one (2026-11-06, Windows instance: a reply "I run the Windows hand check at the
+    # train head" to the macOS sender was refused as a misaddressed Windows request).
+    miss = (a.kind in ("request", "note") and os_check_misaddressed(a.title + "\n" + body, to, a.one_machine)) \
         or (a.kind == "request" and one_machine_unproven(a.one_machine, a.one_machine_evidence, a.repo))
     if miss:
         return refuse(miss)

@@ -215,6 +215,12 @@ def main() -> int:
         r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Windows box moved",
                  "--body", "The Windows box now stands in room 2.", me="alex-mac")
         check("control: a note that only names Windows (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)
+        # 2026-11-06: a reply reporting the sender's own check was read as a misaddressed request
+        r = post(repo, "reply", "--area", "core", "--to", "alex-mac", "--title", "Windows OK, train check follows",
+                 "--answers", req.stem, "--body", "OK on Windows. I run the Windows hand check at the train head.",
+                 me="alex-win")
+        check("control: a reply that reports a Windows check to the macOS sender passes", r.returncode == 0,
+              r.stdout + r.stderr)
         r = post(repo, "note", "--area", "core", "--to", "sam-win", "--title", "Core 2.1 is out")
         check("control: a note to the handing-over party passes", r.returncode == 0, r.stdout + r.stderr)
         r = post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "Confirm the USB prompt",
