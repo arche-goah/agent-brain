@@ -31,6 +31,17 @@
  *                 (an import is pending), it is held, exactly like export's own "held".
  *                 An empty live dir prunes nothing (blind, as prune's own abort).
  *
+ * Deleted ELSEWHERE (2026-11-02, the mirror of the guarded prune): a live file this machine's base
+ * holds with exactly the live hash (synced here, unchanged here since) that the snapshot no longer
+ * has was deleted on another machine. Export used to write it straight back (`snapHash == null`
+ * wrote without asking the base; measured on a Windows instance: six lessons deleted 2026-10-14
+ * came back with a laptop's close export 2026-10-23). Now export holds it, and import moves the
+ * live copy to <live>/../memory-deleted-elsewhere/<date>/ (outside the folder Claude Code loads;
+ * moved, never deleted) and says so on stdout. A live file edited here since still goes back to
+ * the snapshot (an edit beats a deletion). A snapshot that lost more than half of what this machine
+ * synced (or all of it) is not read as deletions: the missing files are neither moved nor written
+ * back, one loud line.
+ *
  * Conflict model (per file): 3-way against the base THIS MACHINE last synced to.
  *   - only snapshot changed  -> snapshot wins (copy into live)
  *   - only live changed       -> live wins (write to snapshot)
@@ -46,7 +57,8 @@
  * (measured 2026-10-10: 458 lines of the other machine's memory gone from the working
  * tree, caught before the commit). The tracked manifest now only says what the snapshot
  * holds (memory-lint reads it); who is ahead is a question each machine answers for itself.
- * Hook-safe: writes progress to stderr, nothing to stdout, always exits 0.
+ * Hook-safe: writes progress to stderr, always exits 0; stdout carries one line only, from import
+ * (a SessionStart hook) when it moved files deleted elsewhere - export (Stop/SessionEnd) never writes it.
  */
 const fs = require('fs');
 const path = require('path');
@@ -136,6 +148,8 @@ function doExport() {
   fs.mkdirSync(snapshotDir, { recursive: true });
   const m = loadManifest();
   const b = loadBase();
+  const suspect = snapshotSuspect(b);
+  if (suspect) log(`[memory-sync] !! the snapshot looks incomplete (${suspect}) - files missing there are held, neither written back nor moved`);
   let changed = 0, held = 0, pending = 0;
   for (const name of listMd(live)) {
     const content = readFileSafe(path.join(live, name));
@@ -146,6 +160,13 @@ function doExport() {
     const snapHash = snapContent == null ? null : sha(snapContent);
     const base = b.files[name];
 
+    if (snapHash == null && base && base.hash === h) {
+      // Deleted ELSEWHERE (header): synced here, unchanged here since, gone from the snapshot - writing it back
+      // would undo another machine's deletion (measured 2026-10-14/23: six lessons came back this way).
+      pending++;
+      if (!suspect) log(`[memory-sync] deleted elsewhere, the next import moves it aside here: ${name}`);
+      continue;
+    }
     if (snapHash === h) { // both sides agree: that IS the base, whatever it was before
       b.files[name] = { hash: h };
       m.files[name] = { hash: h, updated: (m.files[name] && m.files[name].updated) || nowISO() };
@@ -172,6 +193,43 @@ function doExport() {
   saveManifest(m);
   log(`[memory-sync] export done (${changed} file(s) updated, ${pending} pending import, ${held} held, `
     + `${pruned} pruned, ${kept} snapshot-only kept)`);
+}
+
+// A snapshot that lost more than half of what this machine synced (or all of it: a folder deleted or not
+// checked out) is not read as deletions - nothing is moved or held back on its word (2026-11-02).
+function snapshotSuspect(b) {
+  const known = Object.keys(b.files);
+  const gone = known.filter((n) => !fs.existsSync(path.join(snapshotDir, n))).length;
+  return known.length && gone * 2 > known.length
+    ? `${gone} of ${known.length} files this machine synced are missing there` : null;
+}
+
+// Deleted ELSEWHERE, import side: the live copy goes to a folder NEXT TO the live memory (Claude Code loads only
+// the memory folder itself), never deleted - a wrong call is undone by moving it back.
+function moveDeletedElsewhere(live, m, b) {
+  const names = listMd(live).filter((name) => {
+    if (fs.existsSync(path.join(snapshotDir, name))) return false;
+    const c = readFileSafe(path.join(live, name));
+    const base = b.files[name];
+    return c != null && base && base.hash === sha(c);
+  });
+  if (!names.length) return null;
+  const suspect = snapshotSuspect(b);
+  if (suspect) {
+    log(`[memory-sync] !! ${names.length} file(s) look deleted elsewhere, NOT moved: the snapshot looks incomplete (${suspect})`);
+    return null;
+  }
+  const dest = path.join(path.dirname(live), 'memory-deleted-elsewhere', nowISO().slice(0, 10));
+  fs.mkdirSync(dest, { recursive: true });
+  for (const name of names) {
+    let target = path.join(dest, name);
+    if (fs.existsSync(target)) target = path.join(dest, name.replace(/\.md$/, `.${Date.now()}.md`));
+    fs.renameSync(path.join(live, name), target);
+    delete b.files[name];
+    delete m.files[name];
+    log(`[memory-sync] deleted elsewhere, moved aside: ${name}`);
+  }
+  return { count: names.length, dest };
 }
 
 // The guarded prune export runs (header): drop a snapshot copy only when this machine's base
@@ -246,9 +304,15 @@ function doImport() {
       conflicts++; log(`[memory-sync] CONFLICT: ${name} -> kept local + wrote ${path.basename(inc)} (reconcile manually)`);
     }
   }
+  const moved = moveDeletedElsewhere(live, m, b);
   saveBase(b);
   saveManifest(m);
-  log(`[memory-sync] import done (${copied} copied, ${kept} kept-local, ${conflicts} conflict(s))`);
+  log(`[memory-sync] import done (${copied} copied, ${kept} kept-local, ${conflicts} conflict(s)`
+    + `, ${moved ? moved.count : 0} moved aside)`);
+  // The one stdout line of this helper: import runs as a SessionStart hook, whose stdout reaches the session as
+  // context, so the start report can name the move (the other machine's answer, 2026-11-02, asked for that line).
+  if (moved) process.stdout.write(`memory-sync: ${moved.count} memory file(s) deleted on another machine were moved `
+    + `out of the live memory to ${moved.dest} (to undo: move them back)\n`);
   if (conflicts) log(`[memory-sync] ${conflicts} conflict(s): review *.incoming.md in ${live}`);
 }
 

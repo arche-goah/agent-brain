@@ -205,6 +205,38 @@ ms_run import
 [ -f "$T/plive/old.md" ] && ok "memory-sync import brings in a snapshot that moved since this machine synced it (control)" \
   || bad "memory-sync import dropped a file another machine changed"
 rm -f "$T/plive/old.md" "$T/p/docs/memory-snapshot/old.md"
+# deleted ELSEWHERE (2026-11-02): synced here, unchanged here, gone from the snapshot after a pull
+printf 'stale lesson\n' > "$T/plive/lesson.md"; printf 'kept\n' > "$T/plive/keep.md"; ms_run export
+rm -f "$T/p/docs/memory-snapshot/lesson.md"
+ms_run export
+[ ! -f "$T/p/docs/memory-snapshot/lesson.md" ] && ok "memory-sync export does not write back a memory deleted elsewhere" \
+  || bad "memory-sync export wrote back a memory another machine deleted (the 2026-10-23 return)"
+out=$(cd "$T/p" && CLAUDE_PROJECT_DIR="$T/p" CLAUDE_MEMORY_DIR="$T/plive" node "$MS" import 2>/dev/null)
+moved=$(ls "$T"/memory-deleted-elsewhere/*/lesson.md 2>/dev/null | head -1)
+[ ! -f "$T/plive/lesson.md" ] && [ -n "$moved" ] && [ "$(cat "$moved")" = "stale lesson" ] \
+  && ok "memory-sync import moves a memory deleted elsewhere next to the live memory, not deleted" \
+  || bad "memory-sync import left or lost a memory deleted elsewhere"
+case "$out" in *"1 memory file(s) deleted on another machine"*) ok "memory-sync import names the move on stdout (start report)" ;;
+  *) bad "memory-sync import printed no move line: ${out:0:120}" ;; esac
+[ -f "$T/plive/keep.md" ] && ok "memory-sync import keeps a memory the snapshot still has (control)" \
+  || bad "memory-sync import moved a memory that is still in the snapshot"
+# control: edited here after the sync, deleted elsewhere - the edit goes back
+printf 'v1\n' > "$T/plive/edited.md"; ms_run export
+rm -f "$T/p/docs/memory-snapshot/edited.md"; printf 'v2 edited here\n' > "$T/plive/edited.md"
+ms_run export
+[ "$(cat "$T/p/docs/memory-snapshot/edited.md" 2>/dev/null)" = "v2 edited here" ] \
+  && ok "memory-sync export writes back a memory edited here although deleted elsewhere (control)" \
+  || bad "memory-sync export dropped an edit made here"
+# guard: a snapshot that lost more than half of what this machine synced is no list of deletions
+mkdir -p "$T/g/docs/memory-snapshot" "$T/glive"
+for f in a b c d; do printf '%s\n' "$f" > "$T/glive/$f.md"; done
+(cd "$T/g" && CLAUDE_PROJECT_DIR="$T/g" CLAUDE_MEMORY_DIR="$T/glive" node "$MS" export >/dev/null 2>&1)
+rm -f "$T/g/docs/memory-snapshot/"[abc].md
+(cd "$T/g" && CLAUDE_PROJECT_DIR="$T/g" CLAUDE_MEMORY_DIR="$T/glive" node "$MS" import >/dev/null 2>&1)
+[ -f "$T/glive/a.md" ] && [ -f "$T/glive/b.md" ] && [ -f "$T/glive/c.md" ] \
+  && ! ls "$T"/memory-deleted-elsewhere/*/a.md >/dev/null 2>&1 \
+  && ok "memory-sync import moves nothing when the snapshot lost more than half (guard)" \
+  || bad "memory-sync import moved files on an incomplete snapshot"
 # both sides move
 printf 'mine v3\n' > "$T/plive/note.md"
 printf 'theirs v3\n' > "$T/p/docs/memory-snapshot/note.md"; set_manifest_hash "$pman" note.md "$T/p/docs/memory-snapshot/note.md"
