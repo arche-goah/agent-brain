@@ -7,6 +7,7 @@ set -u
 S="$(cd "$(dirname "$0")" && pwd)/release-preflight.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+. "$(cd "$(dirname "$0")" && pwd)/git-sandbox.sh"   # the host's git hooks must not decide the fixture's pushes (2026-11-06)
 pass=0; fail=0
 OLD="$(date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "2 days ago" +%Y-%m-%dT%H:%M:%SZ)"
 # readiness checks 6-9 (2026-10-25, check 6 reworked 2026-10-28): every case below names a
