@@ -14,11 +14,14 @@
  * any running waiter count as continuation, although a CI watch continues nothing but its PR.
  *
  * So this gate judges STATE, not wording. In autonomous mode (autonomous-mode.cjs) the turn may end only:
- *   - with a ScheduleWakeup called in this turn (the run continues itself), or
  *   - with a line `BLOCKED: <item> — <what restores it, who>` (every item left is blocked), or
  *   - with a line `POOL EMPTY: <how it was measured>` (nothing left to do).
  * The tokens are fixed and language-neutral; the text around them is the instance's language.
- * A running waiter does not count: it wakes the session for its own event only.
+ * Neither a ScheduleWakeup nor a running waiter counts (since 2026-10-29, see judge()): a wakeup while own
+ * work is doable now is the same idle stop under another name, and a waiter wakes the session for its own
+ * event only. The skill still sets the wakeup before every turn end - it keeps the run alive, it does not
+ * end the turn. (This list named the wakeup as a third end form until 2026-11-02; measured that day on the
+ * Windows instance: a turn ended on a wakeup alone, trusting this header, and was blocked.)
  * A BLOCKED or POOL EMPTY line is a claim about the list, so the same turn must have MEASURED the list:
  * a call of `core/scripts/open-items.py`, or of an instance command named as data
  * (`own_items_commands`, regexes, in .claude/rules/autonomous-patterns.json). Measured 2026-10-28 on the
