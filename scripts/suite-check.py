@@ -64,6 +64,11 @@ HOOK_TEMPLATES = ("hooks/ensure-deps.cjs", "hooks/hooks.json")
 
 def hook_template_findings(repo: Path, core: Path = CORE) -> list:
     out = []
+    # The core itself carries the templates and wires its own gates in hooks/hooks.json: no suite copy
+    # to judge (measured 2026-11-06 on the Windows instance: suite-check on the core warned on its own
+    # hooks.json).
+    if (repo / "templates" / "suite" / "hooks").is_dir():
+        return out
     for rel in HOOK_TEMPLATES:
         own, tpl = repo / rel, core / "templates" / "suite" / rel
         if not own.is_file() or not tpl.is_file():
