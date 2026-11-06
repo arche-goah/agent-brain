@@ -248,14 +248,15 @@ def ci_state(repo: str, n: str) -> str:
 
 def ci_proof_repos() -> set:
     """Repos whose single PRs need no OS hand check: a green CI job is the OS proof for their merge, and a hand check
-    happens at most once per OS at a merge train's head (instance data `ci_counts_as_os_check` in
-    .claude/rules/shared-memory-post.json)."""
+    happens at most once per OS at a merge train's head. Instance data `ci_counts_as_os_check` in
+    .claude/rules/os-proof.json ({"<owner/repo>": [<OS>, ...]}) — the same file merge-request-gate reads, one place."""
     root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     try:
         import json
-        d = json.loads((Path(root) / ".claude" / "rules" / "shared-memory-post.json").read_text(encoding="utf-8"))
-        return {str(r).lower() for r in (d.get("ci_counts_as_os_check") or [])}
-    except (OSError, ValueError):
+        d = json.loads((Path(root) / ".claude" / "rules" / "os-proof.json").read_text(encoding="utf-8"))
+        m = d.get("ci_counts_as_os_check") or {}
+        return {str(r).lower() for r, oses in m.items() if oses} if isinstance(m, dict) else set()
+    except (OSError, ValueError, AttributeError):
         return set()
 
 

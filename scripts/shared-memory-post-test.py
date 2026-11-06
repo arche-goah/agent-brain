@@ -296,7 +296,9 @@ def main() -> int:
             cip = Path(tempfile.mkdtemp())
             (cip / ".claude" / "rules").mkdir(parents=True)
             (cip / ".claude" / "rules" / "shared-memory-post.json").write_text(
-                json.dumps({"pr_repo": "o/core", "ci_counts_as_os_check": ["o/core"]}), encoding="utf-8")
+                json.dumps({"pr_repo": "o/core"}), encoding="utf-8")
+            (cip / ".claude" / "rules" / "os-proof.json").write_text(
+                json.dumps({"ci_counts_as_os_check": {"o/core": ["Windows"]}}), encoding="utf-8")
             try:
                 for title, body, extra, want, label in (
                     ("Single PR hand check", "Please run the fixtures on Windows at the head of #1.", [], 2,
