@@ -105,7 +105,7 @@ pids=()
 # TERM/INT must EXIT, not only clean up: a bash trap that does not exit swallows the signal,
 # and the script went on polling its parent with every supervisor already gone (measured in
 # the live smoke of this script: TaskStop-style TERM left the arm process running).
-cleanup() { for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; }
+cleanup() { for p in ${pids[@]+"${pids[@]}"}; do kill "$p" 2>/dev/null; done; }  # empty before the first arm: OS-22
 trap cleanup EXIT
 trap 'exit 0' INT TERM
 

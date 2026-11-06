@@ -667,10 +667,19 @@ shopt -s nullglob
 _suites=("$CORE"/scripts/test-*.sh "$CORE"/scripts/*-test.sh)
 _pysuites=("$CORE"/scripts/*-test.py)
 shopt -u nullglob
-if [ ${#_suites[@]} -eq 0 ] && [ ${#_pysuites[@]} -eq 0 ]; then
+# In CI the next step ("fixture suites") runs every suite on its own, with a log group each. Measured
+# 2026-11-02 (CI run of agent-brain #314, ubuntu): this loop and that step ran all ~170 suites twice in one
+# job - 10.7 min smoke + 8 min suites. SMOKE_SUITES_RUN_BY_CI=1 (set by that job) skips the loop here; a
+# local run of this script still runs everything.
+if [ "${SMOKE_SUITES_RUN_BY_CI:-}" = 1 ]; then
+  ok "fixture suites: run by the CI step after this one (SMOKE_SUITES_RUN_BY_CI=1)"
+  _suites=(); _pysuites=()
+elif [ ${#_suites[@]} -eq 0 ] && [ ${#_pysuites[@]} -eq 0 ]; then
   bad "fixture discovery found no suite at all — the glob, not the fixtures, is broken"
 fi
-for _s in "${_suites[@]}"; do
+# ${a[@]+"${a[@]}"}: under set -u, bash before 4.4 (stock macOS 3.2) takes an EMPTY array as unbound and
+# dies here once the CI branch above empties both (measured 2026-11-05 on macOS, agent-brain #330).
+for _s in ${_suites[@]+"${_suites[@]}"}; do
   suite="$(basename "$_s" .sh)"
   if _out="$(cd "$CORE" && bash "scripts/$suite.sh" 2>&1)"; then
     ok "$suite"
@@ -685,7 +694,7 @@ done
 # a warning sign in a label), and the macOS and Linux runs plus the local mirror stayed
 # green. Measured: all 42 suites pass under cp1252 once that fixture pins its stdout, and
 # the unpinned version reproduces the Windows crash here.
-for _s in "${_pysuites[@]}"; do
+for _s in ${_pysuites[@]+"${_pysuites[@]}"}; do
   suite="$(basename "$_s")"
   if _out="$(cd "$CORE" && PYTHONIOENCODING=cp1252 "$PY" "scripts/$suite" 2>&1)"; then
     ok "$suite"
