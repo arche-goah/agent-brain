@@ -45,7 +45,7 @@ import tempfile
 HERE = pathlib.Path(__file__).resolve().parent
 SYMPTOM = re.compile(r"^\s*(?:[-*]\s+)?symptom:\s*(.+?)\s*$", re.M)
 # changelog-assemble.py appends `<!-- fragment: <slug> -->` to a fragment's last line: never part of the command
-MARKER = re.compile(r"\s*<!--.*?-->\s*$")
+MARKER = re.compile(r"\s*<!-- fragment: [\w.-]+ -->\s*$")  # exactly the marker, no general comment filter
 
 
 def run_git(core, *args):
