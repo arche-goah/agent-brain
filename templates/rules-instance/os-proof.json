@@ -1,0 +1,14 @@
+{
+  "_comment": [
+    "Which repos count a green CI job as the OS proof for a MERGE, read by scripts/shared-memory-post.py",
+    "(it refuses a single-PR OS hand-check request there) and by helpers/merge-request-gate.cjs.",
+    "Copy to .claude/rules/os-proof.json in the brain. Map: \"<owner/repo>\": [<OS>, ...] - the systems whose",
+    "green CI job stands in for a hand check. A hand check then happens at most once per OS at a merge",
+    "train's head. Leave a repo out when its behaviour needs a device, a desk or live hardware: there the",
+    "hand check per PR stays. An empty map means every OS check is by hand.",
+    "Keys starting with _ are ignored."
+  ],
+  "ci_counts_as_os_check": {
+    "example-owner/example-repo": ["Windows"]
+  }
+}
