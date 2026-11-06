@@ -135,6 +135,14 @@ def asked_prs(sentences, default):
         refs = PR_REF.findall(s)
         named = {r for r, _ in urls} | {r for r, _ in refs if r}
         bind = next(iter(named)) if len(named) == 1 else default
+        # `<repo> #n` - the repo's short name, a space, the number - binds to THAT repo when the name is one of
+        # the repos in play (a named slug, or the default). Measured 2026-11-06 on the macOS instance: "agent-brain
+        # #407" next to a chataigne-suite PR URL was read as chataigne-suite#407 and the request refused.
+        short = {slug.rsplit("/", 1)[-1].lower(): slug for slug in named | ({default} if default else set())}
+        for m in re.finditer(r"(?<![\w/.-])([\w.-]+)\s+#(\d+)\b", s):
+            if m.group(1).lower() in short:
+                out.append((short[m.group(1).lower()], m.group(2)))
+                refs = [(r, n) for r, n in refs if r or n != m.group(2)]
         out += urls + [(r or bind, n) for r, n in refs]
     return [p for p in dict.fromkeys(out) if p[0]]
 
