@@ -48,18 +48,18 @@ with tempfile.TemporaryDirectory() as tmp:
     brain, clone, bare = t / "brain", t / "clone", t / "origin.git"
     (brain / ".claude" / "rules").mkdir(parents=True)
     (brain / "docs").mkdir()
-    (brain / ".claude" / "rules" / "ledgers.json").write_text(json.dumps({"ledgers": ["docs/orders.md"]}))
+    (brain / ".claude" / "rules" / "ledgers.json").write_text(json.dumps({"ledgers": ["docs/orders.md"]}), encoding="utf-8")
     (brain / "docs" / "orders.md").write_text(
         "# Orders\n\n"
         "- [ ] Shared work id: `shared-work`\n  - reach: shared\n  - exit: ai-does-it 2026-11-06\n\n"
         "- [ ] Core work in a PR id: `core-pr`\n  - reach: core\n  - exit: in-pr 2026-11-06 agent-brain#5\n\n"
         "- [ ] Brain only id: `brain-only` · reach: brain\n  - exit: ai-does-it 2026-11-06\n\n"
         "- [ ] Waits elsewhere id: `waits` · reach: shared\n  - exit: other-side 2026-11-06\n\n"
-        "- [x] Done id: `done-one`\n  - reach: shared\n  - exit: ai-does-it 2026-11-06\n")
+        "- [x] Done id: `done-one`\n  - reach: shared\n  - exit: ai-does-it 2026-11-06\n", encoding="utf-8")
     git(t, "init", "-q", "--bare", "-b", "main", bare)
     git(t, "clone", "-q", bare, clone)
     git(clone, "symbolic-ref", "HEAD", "refs/heads/main")  # an empty clone's branch name is the host's default
-    (clone / "README").write_text("x\n")
+    (clone / "README").write_text("x\n", encoding="utf-8")
     git(clone, "add", "README")
     git(clone, "commit", "-q", "-m", "init")
     git(clone, "push", "-q", "origin", "HEAD:main")
@@ -73,7 +73,7 @@ with tempfile.TemporaryDirectory() as tmp:
     prs.write_text(json.dumps([
         {"number": 7, "headRefName": "feat/own-pr", "title": "own", "body": f"x\n<!-- instance-key: {key} -->"},
         {"number": 8, "headRefName": "feat/foreign", "title": "foreign", "body": "<!-- instance-key: 0123456789 -->"},
-        {"number": 9, "headRefName": "feat/nokey", "title": "no key", "body": "written by hand"}]))
+        {"number": 9, "headRefName": "feat/nokey", "title": "no key", "body": "written by hand"}]), encoding="utf-8")
     env = {k: v for k, v in os.environ.items() if k != "SHARED_MEMORY_SELF"}
     env.update(SHARED_MEMORY_SELF="fixture-self", RELEASE_SCOPE_PR_FIXTURE=str(prs))
 
@@ -122,7 +122,7 @@ with tempfile.TemporaryDirectory() as tmp:
     r = gate(e=nokey)
     check("no instance key is red (own PRs cannot be told apart)", r.returncode == 1
           and "SHARED_MEMORY_SELF unset" in r.stdout, r.stdout)
-    (brain / ".claude" / "settings.json").write_text(json.dumps({"env": {"SHARED_MEMORY_SELF": "fixture-self"}}))
+    (brain / ".claude" / "settings.json").write_text(json.dumps({"env": {"SHARED_MEMORY_SELF": "fixture-self"}}), encoding="utf-8")
     r = gate(e=nokey)
     check("the key from the brain's settings env counts", "SHARED_MEMORY_SELF unset" not in r.stdout
           and "agent-brain#7" in r.stdout, r.stdout)

@@ -1153,3 +1153,25 @@ in an exit trap: `collab-watch.sh` (`pids` before the first watcher is armed) an
 (`SLEEPERS` before the first sleeper; the trap's `rm -rf` of the temp dir never ran). All three use the
 guarded form now. The nine `known` lines were read one by one: each array is filled before use or sits
 behind a length test.
+
+## OS-23 — a text file is read or written without an encoding, and Windows uses cp1252
+
+shape: A
+
+invariant: Every `Path.read_text` / `Path.write_text` in the core's Python names its encoding
+(`encoding="utf-8"`, keyword or positional). Without it Python takes the locale codec: UTF-8 on macOS
+and Linux, cp1252 on Windows. A fixture that writes `·` or an em dash then hands a correct UTF-8
+reader the byte 0xB7 or 0x97, and the reader fails only on Windows.
+check:     scripts/text-encoding-test.py — AST scan of every git-tracked .py file (a call split over
+lines counts), with a negative control; runs in the CI fixture step like every scripts/*-test.py.
+mechanizable: tool — "names its encoding" is a property of one call, which may span lines; a line grep
+cannot state it.
+instances: 15
+repeat:    yes — the stdout half is OS-9; the cp1252 finding of 2026-08-04 was the first of the shape
+status:    closed
+note:      Measured 2026-11-06 on the Windows instance (Windows 11, Python 3.14, Git Bash) at train head
+d04fc46: `scripts/release-scope-test.py` 23/27 — its ledger fixture held `·`, written without an
+encoding as cp1252 0xB7; `open-items.py` read it as UTF-8 and raised UnicodeDecodeError. The tool was
+right, the fixture was not. The scan found 14 more unencoded calls (ledger-reconcile-test.py 7,
+repo-check-test.py 4, sync-after-merge-test.py 3); all pinned in the same commit, so the check starts
+with no baseline.

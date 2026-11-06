@@ -41,7 +41,7 @@ def setup(root):
     bare, wt, wc = root / "origin.git", root / "wt", root / "wc"
     git(root, "init", "-q", "--bare", "-b", "main", bare)
     git(root, "clone", "-q", bare, wt)
-    (wt / "README").write_text("x\n")
+    (wt / "README").write_text("x\n", encoding="utf-8")
     git(wt, "add", "README")
     git(wt, "commit", "-q", "-m", "init")
     git(wt, "push", "-q", "origin", "HEAD:main")
@@ -52,7 +52,7 @@ def setup(root):
 def write(base, rel, text):
     p = base / rel
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text)
+    p.write_text(text, encoding="utf-8")
 
 
 def merge_data(wt, files):
@@ -77,7 +77,7 @@ with tempfile.TemporaryDirectory() as tmp:
           and "run 2.json" not in out and not (wc / "assets" / "a.json").exists(), out + r.stderr)
     check("a differing copy blocks the pull, and the tool says so", "pull FAILED" in out, out)
     check("differing copy kept and listed", "KEPT assets/c.json: differs from origin/main" in out
-          and (wc / "assets" / "c.json").read_text() == "local\n", out)
+          and (wc / "assets" / "c.json").read_text(encoding="utf-8") == "local\n", out)
     check("file the ref lacks kept and listed", "KEPT assets/new.json: not on origin/main" in out
           and (wc / "assets" / "new.json").exists(), out)
     check("anything kept means exit 1", r.returncode == 1, f"rc={r.returncode}")
