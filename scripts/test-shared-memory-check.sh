@@ -19,6 +19,7 @@ hasnt() { case "$3" in *"$2"*) bad "$1" "unexpected [$2]" ;; *) ok "$1" ;; esac;
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+. "$HERE/git-sandbox.sh"   # the host's git hooks must not decide the fixture's pushes (2026-11-06)
 git_q() { git -c user.email=t@t -c user.name=t "$@" >/dev/null 2>&1; }
 
 entry() { # entry <topic> <slug> <date>

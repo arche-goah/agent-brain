@@ -29,5 +29,11 @@
     "was": "pushing a release tag (a release act the operator reserves)",
     "stattdessen": "The operator's word for this release, quoted with its date, or the decision file it is recorded in - record here where the instance keeps it.",
     "needs_operator_word": true
+  },
+  {
+    "_comment": "Example rule 4 (generic, fine to keep while the settings template asks on 'git push ... main'): a push that names main or master as an argument. The settings template lists the push-to-main forms under ask, and ask beats allow, so such a push stops the session at a permission prompt - measured 2026-11-06 on a Windows instance: 'git push -q origin main' into the shared-memory repo held an autonomous run until the operator came by. The upstream push without a branch name reaches the same ref and matches no ask form. A branch that merely contains the word (feat/main-fix) and reads like 'git pull origin main' pass.",
+    "pattern": "\\bgit\\b[^\\n;&|]*\\spush\\b[^\\n;&|]*\\s(?:\\S+\\s+)?(?:HEAD:)?(main|master)\\b(?![-/.\\w])",
+    "was": "git push that names main/master - it hits the ask rule of the settings template and stops the session at a prompt",
+    "stattdessen": "The upstream push without a branch name: 'git -C <abs-path-to-repo> push', on a checkout whose upstream is the intended branch. A push to main of a SHARED repo still needs the operator's OK in the chat (the instance's push policy)."
   }
 ]

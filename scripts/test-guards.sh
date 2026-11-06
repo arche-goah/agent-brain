@@ -219,6 +219,18 @@ mg_probe "mechanism-guard/template tag rule: branch named with a version" \
   "git -C /x push -u origin data/v1.1.31-windows-package-check" allow
 mg_probe "mechanism-guard/template tag rule: branch with a version in the middle" \
   "git push origin fix/bump-to-v2.1.2-notes" allow
+# Example rule 4: a push that names main/master meets the settings template's ask rule
+# (measured 2026-11-06: an autonomous run stood at the prompt). Four blocks, six passes.
+mg_probe "mechanism-guard/template push-names-main: push -q origin main" "git push -q origin main" block
+mg_probe "mechanism-guard/template push-names-main: -C path push origin main" "git -C /x/repo push origin main" block
+mg_probe "mechanism-guard/template push-names-main: HEAD:main refspec" "git push origin HEAD:main" block
+mg_probe "mechanism-guard/template push-names-main: master" "git push origin master" block
+mg_probe "mechanism-guard/template push-names-main: upstream push with -C" "git -C /x/repo push" allow
+mg_probe "mechanism-guard/template push-names-main: upstream push -q" "git push -q" allow
+mg_probe "mechanism-guard/template push-names-main: branch containing main" "git push origin feat/main-fix" allow
+mg_probe "mechanism-guard/template push-names-main: new feature branch" "git push -u origin fix/x" allow
+mg_probe "mechanism-guard/template push-names-main: log origin/main" "git log origin/main" allow
+mg_probe "mechanism-guard/template push-names-main: pull origin main" "git pull --ff-only origin main" allow
 rm -rf "$MG"
 
 # --- mechanism-guard: TOOL rules — a tool declares its own internals ------------------

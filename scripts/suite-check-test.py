@@ -154,6 +154,9 @@ with tempfile.TemporaryDirectory() as td:
        "check() carries the hook-template finding (wired, not only defined)")
     ok(sc.hook_template_findings(make_repo(base, "nohooks")) == [],
        "a suite without hooks/: no finding (control)")
+    (hooked / "templates" / "suite" / "hooks").mkdir(parents=True)
+    ok(sc.hook_template_findings(hooked) == [],
+       "the core itself (it carries templates/suite/hooks): its own hooks.json is not judged")
 
 core_levels = [lvl for lvl, _ in sc.marketplace_findings(HERE.parent)]
 ok((HERE.parent / ".claude-plugin" / "marketplace.json").exists() and "ERROR" not in core_levels,

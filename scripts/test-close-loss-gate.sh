@@ -8,6 +8,7 @@ set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 gate="$here/../helpers/close-loss-gate.cjs"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+. "$here/git-sandbox.sh"   # the host's git hooks must not decide the fixture's pushes (2026-11-06)
 fail=0
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }   # OS-3
 js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }

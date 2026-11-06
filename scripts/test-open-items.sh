@@ -472,13 +472,13 @@ printf '%s\n' '# x' '' '- [ ] Remeasure the ipc folders 2026-10-11' '  - `id: ip
 printf '%s\n' '# y' '' '## Heading entry' '' '- id: `heading-entry`' '- class: todo' > "$L/docs/x/heads.md"
 out=$(run "" "$L")
 has "[ledger|ai] 2026-10-11 ipc-remeasure — derived: Remeasure the ipc folders" "$out" && ok "open ledger todo listed as ai" || bad "ledger todo missing: $out"
-has "[ledger|human]  pick-name" "$out" && ok "ledger decision listed as human" || bad "ledger decision: $out"
+has "[ledger|ai]  pick-name" "$out" && has "a decision without an exit line" "$out" && ok "ledger decision without an exit asks to be sorted (2026-11-06)" || bad "ledger decision: $out"
 has "done-thing" "$out" && bad "done entry listed: $out" || ok "done entry not listed"
 has "minimise-lesson" "$out" && bad "lesson listed: $out" || ok "lesson not listed"
 has "ledger docs/x/heads.md (id: fields but no '- [ ]' entries" "$out" && ok "unreadable ledger format = NOT checked" || bad "heading-format ledger silent: $out"
 printf '%s\n' '{"ledgers": ["docs/x/open.md"]}' > "$L/.claude/rules/ledgers.json"
 out=$(run "" "$L")
-has "open for us: 2 — ai 1 · human 1" "$out" && ok "ledger items counted" || bad "ledger count: $out"
+has "open for us: 2 — ai 2 · human 0" "$out" && ok "ledger items counted" || bad "ledger count: $out"
 # A backlog-catch-up exit that puts the move elsewhere waits quietly; ai-does-it stays the agent's.
 printf '%s\n' '' '- [ ] Ask the other side' '  id: other-thing' '  exit: other-side 2026-10-25 — peer is on it' '' \
   '- [ ] Mine to build' '  id: mine-thing' '  exit: ai-does-it 2026-10-25 — clear' >> "$L/docs/x/open.md"
@@ -493,9 +493,9 @@ printf '%s\n' '' '- [ ] Parked in a project ledger' '  - id: `bullet-thing`' '  
 out=$(run "" "$L")
 has "[ledger|wait]" "$(line ' bullet-thing ' "$out")" && has "parked" "$(line ' bullet-thing ' "$out")" && ok "exit as a list item waits quietly" || bad "bullet exit: $(line ' bullet-thing ' "$out")"
 has "[ledger|wait]" "$(line ' bullet-due ' "$out")" && ok "ask-when as a list item waits for its date" || bad "bullet ask-when: $(line ' bullet-due ' "$out")"
-cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" --repo "$(native "$T/repo")" --classify 'ledger:pick-name=ai:mine' 2>&1)
+cl=$("$PY" "$(native "$T/core/scripts/open-items.py")" --root "$(native "$L")" --repo "$(native "$T/repo")" --classify 'ledger:pick-name=human:theirs' 2>&1)
 out=$(run "" "$L")
-has "[ledger|ai]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"
+has "[ledger|human]  pick-name" "$out" && ok "ledger item classified by its id" || bad "ledger classify: $cl / $out"
 # audit-audit 2026-11-02, package D: an entry whose check ledger-reconcile found green (DONE-OPEN) stayed listed as
 # open own work for up to 17 sessions. A result fresher than the ledger lists it once as "tick it", never as work;
 # a ledger changed after the result (negative control) lists it as work again.
@@ -534,6 +534,22 @@ git -C "$G" -c user.email=t@t -c user.name=t commit -qm late
 out=$(run "" "$G")
 has "[ledger|human]" "$out" && has " late " "$out" && ok "exit operator-decision lists for the operator" || bad "operator-decision: $out"
 has "docs/x/open.md#no-id-here" "$out" && ok "title key survives a line inserted elsewhere" || bad "title key moved: $out"
+# 2026-11-06 (macOS instance): the newest exit counts, not the last one in the text — a new exit
+# written at the TOP left an older operator-decision at the bottom as "needs you" for 34 sessions;
+# and a decided `class: decision` without an exit is unsorted agent work, not the operator's.
+printf '%s\n' '' '- [ ] Newest on top' '  id: newest-top' '  exit: other-side 2026-11-05 — peer answers' \
+  '  exit: operator-decision 2026-11-04 — older' '' \
+  '- [ ] Newest at the bottom' '  id: newest-bottom' '  exit: other-side 2026-11-04 — older' \
+  '  exit: operator-decision 2026-11-05 — only the operator' '' \
+  '- [ ] Same day two exits' '  id: same-day' '  exit: ai-does-it 2026-11-05' '  exit: other-side 2026-11-05 — later in the text' '' \
+  '- [ ] Decided long ago' '  id: decided-noexit' '  class: decision' '  DECIDED 2026-11-06' >> "$G/docs/x/open.md"
+git -C "$G" add -A
+git -C "$G" -c user.email=t@t -c user.name=t commit -qm exits
+out=$(run "" "$G")
+has "[ledger|wait]" "$(line ' newest-top ' "$out")" && ok "a newer exit on top outranks an older one below" || bad "newest on top: $(line ' newest-top ' "$out")"
+has "[ledger|human]" "$(line ' newest-bottom ' "$out")" && ok "negative control: a newer operator-decision at the bottom stays human" || bad "newest bottom: $(line ' newest-bottom ' "$out")"
+has "[ledger|wait]" "$(line ' same-day ' "$out")" && ok "same date: the later exit in the text counts" || bad "same day: $(line ' same-day ' "$out")"
+has "[ledger|ai]" "$(line ' decided-noexit ' "$out")" && has "sort it" "$(line ' decided-noexit ' "$out")" && ok "class: decision without an exit is sorted by the agent" || bad "decision no exit: $(line ' decided-noexit ' "$out")"
 # A standing approval of own ledger items (2026-11-02, macOS instance: "all own items" reached requests
 # and PRs only; ledger entries were asked at every start). An excluded text and an operator-decision
 # exit stay out of the class.
@@ -563,7 +579,7 @@ printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2
   '- [ ] Carried by owner ref' '  id: carried-own' '  exit: in-pr 2026-10-28 me/core#32 — full form' '' \
   '- [ ] Ask at the stand' '  id: ask-topic' '  class: decision' '  ask-when: topic stand' '' \
   '- [ ] Ask next year' '  id: ask-later' '  exit: ai-does-it 2026-10-28' '  ask-when: 2099-01-01' '' \
-  '- [ ] Ask since long' '  id: ask-due' '  class: decision' '  ask-when: 2026-01-01' '' \
+  '- [ ] Ask since long' '  id: ask-due' '  class: decision' '  exit: operator-decision 2025-12-01' '  ask-when: 2026-01-01' '' \
   '- [ ] Ambiguous number' '  id: ambiguous' '  exit: in-pr 2026-10-28 #33' '' \
   '- [ ] Text mention only' '  id: issue-only' '  STAND: Kern-PR #31 offen, plus own work' '  exit: ai-does-it 2026-10-28' '' \
   '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' '' \

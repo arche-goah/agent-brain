@@ -109,7 +109,13 @@ function levelFindings(cmd, cwd, ps) {
     }
   }
   if (!repo) return [];
-  return require('./change-level.cjs').check(repo).findings;
+  // The PR's own fragments only (changedFragments, change-level.cjs); a repo whose base cannot be
+  // named keeps the whole-folder check. `--base <branch>` names the base when the PR gives one.
+  const lv = require('./change-level.cjs');
+  const b = seg.findIndex((t) => t === '-B' || t === '--base' || /^--base=/.test(t));
+  const base = b < 0 ? '' : `origin/${seg[b].startsWith('--base=') ? seg[b].slice(7) : seg[b + 1] || ''}`;
+  const only = lv.changedFragments(repo, base === 'origin/' ? '' : base);
+  return lv.check(repo, only === null ? undefined : only).findings;
 }
 
 function gate(input) {

@@ -43,6 +43,7 @@ const { promptModes, words } = require('./autonomous-mode.cjs');
 const ITEM_CLASS = /\bclass:\s*`?(decision|hand-step)\b/i;
 const { queuedHumanPrompt, isTranscriptRecord } = require('./turn-kind.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
+const { newestExitKind } = require('./ledger-exit.cjs');
 
 // Decision circles that need the operator (open-items.py CIRCLE_WORDS: B, E, F = human).
 const OPERATOR_CIRCLES = new Set(['B', 'E', 'F']);
@@ -67,13 +68,13 @@ function ledgerDecisions(root) {
       if (!ITEM_CLASS.test(body)) continue;
       const circle = /^\s+(?:-\s*)?circle:\s*`?([A-Fa-f])\b/m.exec(body);
       if (circle && !OPERATOR_CIRCLES.has(circle[1].toUpperCase())) continue;
-      // The entry's LAST exit line (skill backlog-catch-up) says who moves now; only
+      // The entry's NEWEST exit line (helpers/ledger-exit.cjs) says who moves now; only
       // `operator-decision` (or no exit yet) is the operator's. Measured 2026-10-28 on the macOS
       // instance: 22 entries counted, by their exits 12 later-at-system, 5 parked, 4 other-side,
       // 1 ai-does-it — none an operator decision.
       // A field may stand as its own list item (`  - exit: ...`), as the project ledgers write it.
-      const exits = [...body.matchAll(/^\s*(?:[-*]\s+)?exit:\s*([\w-]+)/gm)];
-      if (exits.length && exits[exits.length - 1][1] !== 'operator-decision') continue;
+      const exit = newestExitKind(body);
+      if (exit && exit !== 'operator-decision') continue;
       // `ask-when:` (operator decision 2026-10-29 on the macOS instance: "questions at the right time"): a date
       // still ahead, or a topic (`ask-when: thema|topic <regex>`, put when the operator's work touches it) - not due here.
       const when = /^\s*(?:[-*]\s+)?ask-when:\s*(.+)$/m.exec(body);

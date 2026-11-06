@@ -280,6 +280,11 @@ def main() -> int:
                  "a bare number next to another repo's PR URL belongs to that repo"),
                 ("Other repo by name", "Please check on Windows at the head of o/other#2.", 0,
                  "owner/repo#n binds the number to that repo"),
+                # 2026-11-06: "<repo> #n" (short name, space, number) binds to that repo, not to the URL's repo.
+                ("Repo name with a space", "Please check on Windows at the head of core #2 (https://github.com/o/other/pull/2).", 2,
+                 "'<repo> #n' binds to the named repo (o/core#2 is red), not to the URL's repo"),
+                ("Plain word before a number", "Please check on Windows at the head of PR #2 (https://github.com/o/other/pull/2).", 0,
+                 "control: 'PR #n' names no repo, the URL's repo still binds"),
                 ("Default repo bare number", "Please check on Windows at the head of #2.", 2,
                  "control: a bare number in the check sentence is the default repo, red is refused"),
                 ("Report only", "Checked on Windows at the head of #2: red, python-floor.", 0,

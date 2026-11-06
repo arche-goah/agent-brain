@@ -6,6 +6,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 S="$ROOT/scripts/merge-train.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
+# after the trap: the sandbox chains its own clean-up onto it
+. "$ROOT/scripts/git-sandbox.sh"
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
 fail=0
 ok()  { echo "  OK   $1"; }
@@ -49,5 +51,15 @@ printf '%s\n' '#!/bin/sh' 'case "$2" in 2) echo "needs pin-review"; exit 1 ;; *)
 out="$(MERGE_TRAIN_GH="$stub" MERGE_TRAIN_PRECHECK="$pre" bash "$S" --repo "$T/work" --name train/pre 1 2 2>&1)"; rc=$?
 printf '%s' "$out" | grep -aq -- "#2 (precheck: needs pin-review)" && ok "a PR the precheck refuses is left out with its reason" || bad "precheck refusal not named: $out"
 printf '%s' "$out" | grep -aq -- "- #1 feat/one" && ok "  ... and a PR it passes joins (control)" || bad "PR 1 missing with precheck: $out"
+
+# --same-head (2026-11-06): one finished PR, the train branch IS its head, the manifest is printed.
+out="$(MERGE_TRAIN_GH="$stub" bash "$S" --repo "$T/work" --name train/same --same-head 2 2>&1)"; rc=$?
+[ $rc -eq 0 ] && [ "$(git -C "$T/work" rev-parse train/same)" = "$TWO_HEAD" ] && ok "--same-head: the train branch is the PR's head, no merge commit" || bad "same-head rc=$rc: $out"
+printf '%s' "$out" | grep -aq -- "## Merge train train/same" && printf '%s' "$out" | grep -aq -- "- #2 feat/two $TWO_HEAD" && ok "--same-head prints the manifest" || bad "same-head manifest: $out"
+out="$(MERGE_TRAIN_GH="$stub" bash "$S" --repo "$T/work" --name train/same2 --same-head 1 2 2>&1)"; rc=$?
+[ $rc -eq 2 ] && ok "--same-head with two PRs is refused (negative control)" || bad "same-head two PRs rc=$rc: $out"
+g -C "$T/seed" checkout main; printf 'b\n' > "$T/seed/f.txt"; g -C "$T/seed" commit -am main2; g -C "$T/seed" push origin HEAD:main
+out="$(MERGE_TRAIN_GH="$stub" bash "$S" --repo "$T/work" --name train/same3 --same-head 2 2>&1)"; rc=$?
+[ $rc -eq 1 ] && printf '%s' "$out" | grep -aq -- "not a descendant of main" && ok "--same-head on a head behind main is left out (negative control)" || bad "same-head behind rc=$rc: $out"
 
 [ $fail -eq 0 ] && echo "merge-train: all cases pass" || { echo "merge-train: FAILURE"; exit 1; }
