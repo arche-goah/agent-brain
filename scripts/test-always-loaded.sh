@@ -40,5 +40,40 @@ out=$(run --limit 4000 --accept); grep -q 'OVER the harness limit' <<< "$out" &&
 mkdir -p "$T/memdir"; out=$("$PY" "$HERE/always-loaded.py" --repo "$T/b" --memory "$T/memdir")
 grep -q 'must be the MEMORY.md file, not a directory' <<< "$out" && ok "directory-as-memory-refused" || bad "directory-as-memory-refused: $out"
 
+# --diet: quote clauses (25+ chars, in a dated bullet) and carrier clauses in the preference file
+F="$T/b/.claude/rules/feedback.md"
+printf '%s\n' \
+  '# Feedback' \
+  '> Header: every entry names its `Traeger:` line in the protocol (2026-10-25).' \
+  '' \
+  '- **Rule one** (2026-10-26, the operator: "the last question should be keep going autonomously"): do X.' \
+  '- **Rule two** (2026-10-27): the start report never disappears.' \
+  '  Traeger: helpers/x.cjs.' \
+  '- **Pointer line** (2026-10-26): holds through the core (`working-rules.md` "Order Fidelity"), date only.' \
+  '- **Short term** (2026-09-18): say „Event-Netz", never the bare word.' \
+  '- **Wrapped quote** (2026-11-03, the operator: „only when I write questions for me now,' \
+  '  shall the mode switch“): wrapped over two lines.' \
+  '- **Undated quote**: "a long quote of more than twenty-five characters" stays, no date.' \
+  '- **Colon at line end** (2026-10-26, the operator:' \
+  '  „a quote that starts on the continuation line"): reported on line 13.' \
+  '- **Rule three** (2026-10-28): do Y. Carrier: helpers/y.cjs.' \
+  > "$F"
+out=$("$PY" "$HERE/always-loaded.py" --repo "$T/b" --diet); rc=$?
+grep -q 'feedback.md: 3 quote clause(s) at lines 4, 9, 13 ' <<< "$out" && ok "diet-dated-quotes-reported-incl-wrapped" || bad "diet-dated-quotes-reported-incl-wrapped: $out"
+grep -q 'feedback.md: 1 carrier clause(s) at lines 14 ' <<< "$out" && ok "diet-builtin-carrier-key-only-without-data" || bad "diet-builtin-carrier-key-only-without-data: $out"
+printf '%s\n' '{"carrier_keys": ["Traeger"]}' > "$T/b/.claude/rules/lesson-carriers.json"
+out=$("$PY" "$HERE/always-loaded.py" --repo "$T/b" --diet); rc=$?
+grep -q 'feedback.md: 2 carrier clause(s) at lines 6, 14 ' <<< "$out" && ok "diet-instance-carrier-key-code-span-skipped" || bad "diet-instance-carrier-key-code-span-skipped: $out"
+(( rc == 0 )) && ok "diet-report-only-exit-0" || bad "diet-report-only-exit-0: rc=$rc"
+"$PY" "$HERE/always-loaded.py" --repo "$T/b" --diet --strict >/dev/null; rc=$?
+(( rc == 1 )) && ok "diet-strict-exit-1" || bad "diet-strict-exit-1: rc=$rc"
+printf '%s\n' '- **Pointer** (2026-10-26): holds through the core (`working-rules.md` „Order Fidelity"), date only.' \
+  '- **Term** (2026-09-18): „Event-Netz", never the bare word.' \
+  '- **Section name** (2026-10-09): see the core section „Presenting to the Operator, comparative test".' > "$T/clean.md"
+out=$("$PY" "$HERE/always-loaded.py" --diet "$T/clean.md" --strict); rc=$?
+grep -q 'clean.md: clean' <<< "$out" && (( rc == 0 )) && ok "diet-controls-pointer-and-short-term-silent" || bad "diet-controls-pointer-and-short-term-silent: rc=$rc $out"
+out=$("$PY" "$HERE/always-loaded.py" --diet "$T/none.md" --strict); rc=$?
+grep -q 'no preference file at' <<< "$out" && (( rc == 0 )) && ok "diet-missing-file-named" || bad "diet-missing-file-named: rc=$rc $out"
+
 (( fail )) && { echo "test-always-loaded: FAILED"; exit 1; }
 echo "test-always-loaded: all checks passed"

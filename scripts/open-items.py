@@ -853,6 +853,15 @@ def carried_by_pr(ledger_items, pr_items):
             # because the exit was never moved when the PR opened. The writer decides; the reader says it.
             it["pr_note"] = (f"its exit says ai-does-it, but {', '.join(sorted(hits))} is open — "
                              "write in-pr if the PR carries the rest")
+        elif it["exit"] == "ai-does-it" and blocks:
+            # Measured 2026-11-06 on the macOS instance (operator decision the same day): an entry whose
+            # exit named its PR stood as "ours, nothing done" for 18 sessions after that PR was merged and
+            # pinned; a replay over all ledgers found four such entries, two really stale. A repo-qualified
+            # reference in the exit block that is not among the open PRs is closed or merged: say it.
+            gone = sorted({f"{repo}#{n}" for repo, n in PR_MENTION.findall(blocks[-1]) if repo})
+            if gone:
+                it["pr_note"] = (f"its exit names {', '.join(gone)}, none of them open any more — "
+                                 "tick it or name what is left")
 
 
 def lookup(store, it):

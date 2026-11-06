@@ -338,7 +338,7 @@ fi
 # are tools by design stay in .claude/rules/manual-tools.json instead.
 for lint in "core/scripts/lint-placeholders.sh:placeholders in skills/rules" \
             "core/scripts/memory-lint.py:memory index, links, limits, snapshot" \
-            "scripts/claim-lint.py:claim blocks against the schema" \
+            "core/scripts/claim-lint.py:claim blocks against the schema" \
             "scripts/hardcode-lint.py:show-network parameters in code"; do
   f="${lint%%:*}"; what="${lint#*:}"
   [ -f "$f" ] || continue

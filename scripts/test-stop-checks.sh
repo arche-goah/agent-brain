@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# covers: class-gate stop-verifier diagnose-gate stoppen-gate reconnect-gate umlaut-gate
+# covers: class-gate stop-verifier diagnose-gate stoppen-gate umlaut-gate
 #
 # Effect proof for the Stop checks that had none. They run bundled behind the
 # dispatcher, and a bundled check that stopped firing is invisible: the turn simply
@@ -132,10 +132,11 @@ run_hook "stop-verifier/marker in a file that no longer exists" core/helpers/sto
 mk "$T/fail.jsonl" \
   '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","id":"b1","input":{"command":"ping x"}}]}}' \
   '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"b1","content":"ERROR: connection timeout"}]}}' \
-  '{"message":{"role":"assistant","content":[{"type":"text","text":"Das Geraet antwortet nicht, weil der Port down ist."}]}}'
-run_hook "diagnose-gate/tool failure" scripts/hooks/diagnose-gate.cjs "$T/fail.jsonl" block "DIAGNOSE-GATE"
-mk "$T/nofail.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"Alles gruen, Messwert im Log."}]}}'
-run_hook "diagnose-gate/no failure" scripts/hooks/diagnose-gate.cjs "$T/nofail.jsonl" allow
+  '{"message":{"role":"assistant","content":[{"type":"text","text":"The device does not answer because the port is down."}]}}'
+run_hook "diagnose-gate/tool failure" core/helpers/diagnose-gate.cjs "$T/fail.jsonl" block "DIAGNOSE-GATE"
+mk "$T/nofail.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"All green, value from the log."}]}}'
+run_hook "diagnose-gate/no failure" core/helpers/diagnose-gate.cjs "$T/nofail.jsonl" allow
+# (more cases, the instance data and the cooldown: scripts/test-diagnose-gate.sh)
 
 # --- stoppen-gate: a closing permission question is a disguised stop ---------
 mk "$T/ask.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"Aufbau steht. Soll ich jetzt weitermachen?"}]}}'
@@ -143,13 +144,10 @@ run_hook "stoppen-gate/closing question" scripts/hooks/stoppen-gate.cjs "$T/ask.
 mk "$T/report.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"Aufbau steht, gemessen und berichtet."}]}}'
 run_hook "stoppen-gate/plain report" scripts/hooks/stoppen-gate.cjs "$T/report.jsonl" allow
 
-# --- reconnect-gate: asking for a reconnect without arming the watcher -------
-mk "$T/reconnect.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"Das Tool greift erst nach einem /mcp-Reconnect — sag Bescheid, wenn du neu verbunden hast."}]}}'
-run_hook "reconnect-gate/unarmed request" scripts/hooks/reconnect-gate.cjs "$T/reconnect.jsonl" block "RECONNECT-GATE"
-mk "$T/narration.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"Nach dem Reconnect war der Boot-Stamp frisch, damit ist der neue Prozess bewiesen."}]}}'
-run_hook "reconnect-gate/narration" scripts/hooks/reconnect-gate.cjs "$T/narration.jsonl" allow
-mk "$T/noreconnect.jsonl" '{"message":{"role":"assistant","content":[{"type":"text","text":"Tool gebaut, Fixtures gruen."}]}}'
-run_hook "reconnect-gate/no request" scripts/hooks/reconnect-gate.cjs "$T/noreconnect.jsonl" allow
+# --- reconnect: a reload asked of the human without a waiter -----------------
+# The instance's reconnect-gate is absorbed by watch-gate case (c) in the core (instance
+# wording: `reload_ask_patterns` in .claude/rules/watch-gate.json); its cases stand in
+# scripts/test-watch-gate.sh.
 
 # --- umlaut-gate: unwired since 2026-08-20, still has to detect --------------
 # It runs as a report now, so its detection must keep working even though nothing

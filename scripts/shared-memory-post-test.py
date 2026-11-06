@@ -215,6 +215,12 @@ def main() -> int:
         r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "Windows box moved",
                  "--body", "The Windows box now stands in room 2.", me="alex-mac")
         check("control: a note that only names Windows (no check asked) passes", r.returncode == 0, r.stdout + r.stderr)
+        # 2026-11-06: a reply reporting the sender's own check was read as a misaddressed request
+        r = post(repo, "reply", "--area", "core", "--to", "alex-mac", "--title", "Windows OK, train check follows",
+                 "--answers", req.stem, "--body", "OK on Windows. I run the Windows hand check at the train head.",
+                 me="alex-win")
+        check("control: a reply that reports a Windows check to the macOS sender passes", r.returncode == 0,
+              r.stdout + r.stderr)
         r = post(repo, "note", "--area", "core", "--to", "sam-win", "--title", "Core 2.1 is out")
         check("control: a note to the handing-over party passes", r.returncode == 0, r.stdout + r.stderr)
         r = post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "Confirm the USB prompt",
@@ -232,9 +238,12 @@ def main() -> int:
             "import json, sys\n"
             "n = sys.argv[3]\n"
             "repo = sys.argv[5] if len(sys.argv) > 5 else ''\n"
+            "if 'headRefName' in sys.argv:\n"
+            "    print(json.dumps({'headRefName': 'train/2026-11-06-1432' if n == '7' else 'feat/x'})); sys.exit(0)\n"
             "if repo == 'o/other':\n"
             "    print(json.dumps({'statusCheckRollup': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}]})); sys.exit(0)\n"
             "rows = {'1': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
+            "        '7': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
             "        '2': [{'name': 'python-floor', 'status': 'COMPLETED', 'conclusion': 'FAILURE'},\n"
             "              {'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
             "        '3': [{'name': 'lint', 'status': 'IN_PROGRESS', 'conclusion': ''}]}\n"
@@ -289,10 +298,45 @@ def main() -> int:
                  "control: a bare number in the check sentence is the default repo, red is refused"),
                 ("Report only", "Checked on Windows at the head of #2: red, python-floor.", 0,
                  "control: 'checked' is a report, no check word"),
+                # 2026-11-06: an OS with a report word ("macOS OK is posted") in a check sentence was read as asked.
+                ("Two suite PRs", "Windows check at head, please, for two suite PRs of ours (macOS OK is posted on "
+                 "both, CI green on both):", 0, "an OS in a report clause of the check sentence is not asked"),
+                ("macOS asked of Windows", "macOS check at head, please", 2,
+                 "control: an OS in the check clause is still asked"),
             ):
                 r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                          me="alex-mac", brain=cib)
                 check(f"check sentence: {label}", r.returncode == want, r.stdout + r.stderr)
+            check("check sentence: the incident request is written",
+                  (repo / "core" / f"request-two-suite-prs-{STATE}.md").is_file())
+            r = post(repo, "request", "--area", "core", "--to", "os:macos", "--title", "macOS check at main",
+                     "--body", "Please check on macOS at main; the Windows OK is in the thread.", me="alex-win", brain=cib)
+            check("check sentence: 'the Windows OK is in the thread' is a report, the macOS request passes",
+                  r.returncode == 0 and (repo / "core" / f"request-macos-check-at-main-{STATE}.md").is_file(),
+                  r.stdout + r.stderr)
+            # 2026-11-06: in a repo whose merge takes the CI as OS proof, a hand check of a SINGLE PR is refused; the
+            # train head may be asked; a reason lets it go.
+            cip = Path(tempfile.mkdtemp())
+            (cip / ".claude" / "rules").mkdir(parents=True)
+            (cip / ".claude" / "rules" / "shared-memory-post.json").write_text(
+                json.dumps({"pr_repo": "o/core"}), encoding="utf-8")
+            (cip / ".claude" / "rules" / "os-proof.json").write_text(
+                json.dumps({"ci_counts_as_os_check": {"o/core": ["Windows"]}}), encoding="utf-8")
+            try:
+                for title, body, extra, want, label in (
+                    ("Single PR hand check", "Please run the fixtures on Windows at the head of #1.", [], 2,
+                     "a hand check of a single PR in a CI-proof repo is refused"),
+                    ("Train head hand check", "Please run the fixtures on Windows at the head of #7.", [], 0,
+                     "the merge train's PR may be asked"),
+                    ("Single PR with a reason", "Please run the fixtures on Windows at the head of #1.",
+                     ["--hand-check-ok", "touches the Windows hook path only a machine shows"], 0,
+                     "a stated reason lets a single-PR hand check go"),
+                ):
+                    r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
+                             *extra, me="alex-mac", brain=cip)
+                    check(f"hand check: {label}", r.returncode == want, r.stdout + r.stderr)
+            finally:
+                shutil.rmtree(cip, True)
         finally:
             os.environ.pop("SHARED_MEMORY_POST_GH", None)
             shutil.rmtree(ghb, True)

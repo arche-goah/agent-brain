@@ -108,6 +108,11 @@ lvprobe "pr create --repo for a repo this checkout is not" "$NOCL" "gh pr create
 lvprobe "pr create via env -C in the PR's checkout sees its fragment" "$NOCL" "env -C $(native "$CO") gh pr create -R o/core --head b --title t --body \"b <!-- instance-key: $KEY -->\"" block
 printf '%s\n' '- **x.** (test: T0) (level: writer; higher: design — not needed yet; debt: none)' > "$CO/changelog.d/x.md"
 lvprobe "negative control: env -C in the PR's checkout, fragment fine" "$NOCL" "env -C $(native "$CO") gh pr create --repo o/core --head b --title t --body \"b <!-- instance-key: $KEY -->\"" allow
+# A shell variable in the -C path reaches the hook unexpanded (2026-11-06, Windows instance):
+# the gate names that case instead of judging the session folder's checkout.
+out=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$NOCL")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' 'env -C "$W/core-post" gh pr create --repo o/core --head b --title t --body "b <!-- instance-key: '"$KEY"' -->"')}}" \
+      | CLAUDE_PROJECT_DIR="$(native "$T/brain")" SHARED_MEMORY_SELF=mac node "$(native "$GATE")" 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"is a shell variable"* ]] && ok "env -C with a shell variable is named as such" || bad "env -C \$W: rc=$rc ${out:0:160}"
 lvprobe "negative control: --repo matching the checkout's origin" "$CO" "gh pr create --repo=o/core --title t --body \"b <!-- instance-key: $KEY -->\"" allow
 # The PR's own fragments, not the base's (2026-11-06, macOS instance, pin v2.1.3: a one-file suite PR
 # was held for eleven fragments already on the suite's main). Base = origin/HEAD, else origin/main.

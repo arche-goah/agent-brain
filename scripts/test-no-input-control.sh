@@ -71,6 +71,10 @@ expect "cmd /c python runs a doc file" deny "$(call PowerShell "{\"command\":$(j
 expect "the call operator & python runs a doc file" deny "$(call PowerShell "{\"command\":$(js "& python $N")}")"
 expect "Get-Content piped into Invoke-Expression runs a doc file" deny "$(call PowerShell "{\"command\":$(js "Get-Content $N -Raw | Invoke-Expression")}")"
 expect "grep of a doc file is no run (control)" allow "$(call Bash "{\"command\":$(js "grep import $N")}")"
+# 2026-11-06: a doc path inside a quoted -c string is read, not run; a redirect target is written, not run.
+expect "a doc file opened for reading inside -c is no run" allow "$(call Bash "{\"command\":$(js "$P3 -c \"print(open('$N').read()[:10])\"")}")"
+expect "a doc file as a redirect target, the runner named only in quoted text, is no run" allow "$(call Bash "{\"command\":$(js "printf '%s\\n' 'use $P3 here' >> $N")}")"
+expect "negative control: the same doc handed to the interpreter still runs" deny "$(call Bash "{\"command\":$(js "$P3 $N")}")"
 printf '@echo off\necho build done\n' > "$T/drive2.bat"
 expect "a batch file without input calls" allow "$(call Bash "{\"command\":$(js "cmd /c $(native "$T/drive2.bat")")}")"
 

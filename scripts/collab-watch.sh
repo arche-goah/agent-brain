@@ -88,9 +88,40 @@ logins_for_tag() {
 # Fixture seam: run only the shared-memory filter over stdin, arm nothing.
 if [[ "${1:-}" == "--filter-stdin" ]]; then sm_scope_filter; exit 0; fi
 if [[ "${1:-}" == "--logins-for" ]]; then logins_for_tag "${2:-}"; exit 0; fi
-exec > >(sm_scope_filter)
 
 mkdir -p "$STATE"
+# One watch per state dir and machine; every further session FOLLOWS it instead of being
+# skipped. WHY (measured 2026-11-06): a second session armed this script, every channel
+# answered "already armed by another session" and left, and the comment with a Windows
+# finding on that session's own PR reached only the first session. The holder appends every
+# line it reports to $EVENTS; a follower prints that file's new lines and takes over the
+# watch when the holder ends. The pid file names the holder; a dead pid is a stale file.
+EVENTS="$STATE/events.log"
+HOLDER="$STATE/collab-watch.pid"
+PARENT=$PPID
+holder_alive() { local p; p=$(cat "$HOLDER" 2>/dev/null) && [[ -n "$p" && "$p" != "$$" ]] && kill -0 "$p" 2>/dev/null; }
+if holder_alive; then
+  echo "NOTE: collaboration watch already held by pid $(cat "$HOLDER") — following its events ($EVENTS); taking over if it ends"
+  touch "$EVENTS"
+  tail -n 0 -F "$EVENTS" 2>/dev/null &
+  TAIL=$!
+  trap 'kill "$TAIL" 2>/dev/null' EXIT
+  trap 'exit 0' INT TERM
+  while kill -0 "$PARENT" 2>/dev/null; do
+    if ! holder_alive; then
+      kill "$TAIL" 2>/dev/null
+      echo "NOTE: the holder ended — this session takes over the collaboration watch"
+      exec bash "${BASH_SOURCE[0]}" "$@"
+    fi
+    sleep "${COLLAB_WATCH_FOLLOW_POLL:-5}" & wait $!
+  done
+  exit 0
+fi
+echo "$$" > "$HOLDER"
+# A log above 1 MB starts over: followers read only new lines, so nothing they need is lost.
+[[ -f "$EVENTS" && $(wc -c < "$EVENTS") -gt 1048576 ]] && : > "$EVENTS"
+exec > >(sm_scope_filter | tee -a "$EVENTS")
+
 # A non-default state dir is invisible to helpers/watch-gate.cjs (the variable lives on the
 # Monitor command, not in the hook's environment), so name it where the gate looks. Node
 # reads it, so on Git Bash the path goes in Windows form (`/c/...` is no path to Node).
@@ -105,7 +136,10 @@ pids=()
 # TERM/INT must EXIT, not only clean up: a bash trap that does not exit swallows the signal,
 # and the script went on polling its parent with every supervisor already gone (measured in
 # the live smoke of this script: TaskStop-style TERM left the arm process running).
-cleanup() { for p in ${pids[@]+"${pids[@]}"}; do kill "$p" 2>/dev/null; done; }  # empty before the first arm: OS-22
+cleanup() {
+  for p in ${pids[@]+"${pids[@]}"}; do kill "$p" 2>/dev/null; done  # empty before the first arm: OS-22
+  [[ "$(cat "$HOLDER" 2>/dev/null)" == "$$" ]] && rm -f "$HOLDER"
+}
 trap cleanup EXIT
 trap 'exit 0' INT TERM
 

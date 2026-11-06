@@ -387,7 +387,15 @@ function relabelled(t, cwd, sessionId) {
     for (const it of movable) if (!bad.includes(it) && strict(it, l)) bad.push(it);
   }
   if (bad.length) {
-    return `This reply puts ${bad.map((it) => it.ref).join(', ')} with someone else, but the session start lists it as ours and no wait is on record. Say it as ours (do it, or ask), or record the wait as data first: a \`waiting-until: <date>: <why>\` line in the PR body, the \`waiting\` map in .claude/rules/open-items.json, or (with a \`waiting-until:\` line or a ledger exit to the other side in place) a run of \`python3 core/scripts/open-items.py --hook-input '{"session_id": "<this session>"}'\` — a hand run without the session id records nothing. Missing: wait record for ${bad.map((it) => it.ref).join(', ')}`;
+    // Self-diagnosis (2026-11-06, the Windows instance: six identical blocks in an autonomous run while open-items.py printed
+    // the items as waiting, and the file the gate read could not be opened there): the block names the files it read and, per
+    // item, which keys it looked up and what each source said — the next occurrence carries its own cause.
+    const seenPath = path.join(cwd, '.claude-state', 'open-items-seen.json');
+    const waitsPath = path.join(cwd, '.claude', 'rules', 'open-items.json');
+    const state = (it) => keys(it).map((k) => `${k}: waiting-map ${waits[k] ? 'yes' : 'no'}, seen-file ${
+      seen[k] ? (seen[k].wait ? 'wait' : 'listed, no wait') : 'not listed'}`).join('; ');
+    const read = `read: seen-file ${seenPath} (${Object.keys(seen).length} items), waiting map ${waitsPath} (${Object.keys(waits).length})`;
+    return `This reply puts ${bad.map((it) => it.ref).join(', ')} with someone else, but the session start lists it as ours and no wait is on record. Say it as ours (do it, or ask), or record the wait as data first: a \`waiting-until: <date>: <why>\` line in the PR body, the \`waiting\` map in .claude/rules/open-items.json, or (with a \`waiting-until:\` line or a ledger exit to the other side in place) a run of \`python3 core/scripts/open-items.py --hook-input '{"session_id": "<this session>"}'\` — a hand run without the session id records nothing. (${read}; ${bad.map((it) => `${it.ref} -> ${state(it)}`).join(' | ')}) Missing: wait record for ${bad.map((it) => it.ref).join(', ')}`;
   }
   // The close report, the answer to "is anything still open?", and every "nothing open" name
   // what is still ours — the operator shuts down on that answer (measured 2026-10-25: asked
