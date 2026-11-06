@@ -76,6 +76,43 @@
       "mode": "record"
     },
     {
+      "label": "TIME",
+      "marker": "TIME-GATE",
+      "cmd": "core/helpers/time-gate.cjs",
+      "mode": "record",
+      "args": [
+        "--record"
+      ],
+      "required": true,
+      "_note": "Carrier of the core rule 'time words are measurement claims' (rules/thinking-protocol.md rule 0). Records every relative time word with its sentence and would_block; read back by scripts/time-references.py and scripts/recorder-report.py. Blocking (no args) is the operator's decision per brain."
+    },
+    {
+      "label": "CLOCK",
+      "marker": "TIME-CLOCK",
+      "cmd": "core/helpers/time-gate.cjs",
+      "mode": "record",
+      "args": [
+        "--clock"
+      ],
+      "required": true,
+      "extract": "the clock says ([0-9:]+): \"([^\"]+)\"",
+      "template": "Clock {1}: \"{2}\" is a time of day not reached yet - change the word or drop it",
+      "maxLength": 40,
+      "short": "A time-of-day word does not match the clock",
+      "_note": "Ported in record mode: the proving brain runs it as block (a daytime slot the clock has not reached, claimed in the past tense for today, is provably false). Switching to block is the operator's decision per brain: copy this row into the instance file with mode block."
+    },
+    {
+      "label": "DIAGNOSE",
+      "marker": "DIAGNOSE-GATE",
+      "cmd": "core/helpers/diagnose-gate.cjs",
+      "mode": "record",
+      "required": true,
+      "extract": "Reported:\\s*(.+)",
+      "template": "A tool reported {1} - is that the cause, or only observed?",
+      "maxLength": 60,
+      "_note": "Carrier of 'evidence chain or silence' (rules/thinking-protocol.md rule 0): a tool reported a failure in the turn and no log was read. Recorded (would_block) until the operator decides to block."
+    },
+    {
       "label": "MODE LOG",
       "marker": "MODE-LOG",
       "cmd": "core/helpers/mode-log.cjs",
