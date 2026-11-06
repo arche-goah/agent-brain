@@ -11,8 +11,13 @@
     "Every bump gets a line in the history below with WHY. A bump without a reason cannot",
     "be judged by the other person."
   ],
-  "contract_version": "1.3.0",
+  "contract_version": "1.4.0",
   "history": [
+    {
+      "version": "1.4.0",
+      "date": "2026-11-06",
+      "why": "New optional field `python_floor` in dependencies.json and a warning check: a suite with tracked Python files whose CI pins a python-version declares the lowest version it supports, and runs a CI leg on it. Measured 2026-11-06 on the Windows instance (whose `python` is 3.11): show-tools#28 (argparse, 41/42 on 3.11) and mikrotik-suite main (a backslash in an f-string expression, the MCP server did not import on 3.11) - both CIs pinned 3.12 and stayed green. Agreed with the macOS instance the same day (declared minimum + a CI leg, checked by suite-check). Minor by the rule above: optional field, WARN only."
+    },
     {
       "version": "1.3.0",
       "date": "2026-10-31",
@@ -51,7 +56,8 @@
   "plugin_required_fields": ["name", "description", "author"],
   "dependencies_required_fields": ["manifest_version", "requires_core", "dependencies"],
   "dependencies_optional_fields": {
-    "live_docs": "list of repo-relative paths or globs whose table rows document observed live-tool behaviour; added or changed rows there carry a measurement state in the evidence column (scripts/live-doc-lint.py --changed <base-ref>, CONVENTIONS section 9); declaring it without a CI step that runs the lint is a WARN"
+    "live_docs": "list of repo-relative paths or globs whose table rows document observed live-tool behaviour; added or changed rows there carry a measurement state in the evidence column (scripts/live-doc-lint.py --changed <base-ref>, CONVENTIONS section 9); declaring it without a CI step that runs the lint is a WARN",
+    "python_floor": "lowest Python version the suite supports, as \"3.N\"; a suite with tracked .py files whose CI pins a python-version declares it, and a CI workflow names that version (CONVENTIONS section 9); missing either is a WARN"
   },
   "forbidden_in_tracked_files": {
     "absolute_home_path": "/(Users|home)/<name> — a path from one machine never works on another"
