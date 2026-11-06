@@ -212,6 +212,7 @@ known:     scripts/ledger-reconcile.py=5
 known:     scripts/open-items.py=1
 known:     scripts/os-traps-export.py=1
 known:     scripts/regen-skill-registry.py=1
+known:     scripts/release-scope.py=1
 known:     scripts/repo-activity-filter.py=1
 known:     scripts/session-audit.py=1
 known:     scripts/shared-memory-index.py=3
@@ -248,6 +249,8 @@ TextIOWrapper.
 `newline="\n"`; the report is not git-tracked anyway (it goes to the person who asked).
 2026-10-31, scripts/eco_owner.py baselined: its one write (the per-machine answer cache under
 `.claude-state/`, not git-tracked) opens with `newline="\n"`.
+2026-11-06, scripts/release-scope.py baselined: its one write (the release scope under `.claude-state/`, not
+git-tracked, read by node in release-freeze-gate.cjs) opens with `newline="\n"`; its fixture asserts no CR byte.
 
 ## OS-3 — a fixture hands a shell path to a native process
 
@@ -334,6 +337,7 @@ known:     scripts/test-public-text-guard.sh=1
 known:     scripts/test-python-probe.sh=1
 known:     scripts/test-question-gate.sh=1
 known:     scripts/test-recall-gate.sh=1
+known:     scripts/test-release-freeze-gate.sh=1
 known:     scripts/test-repo-activity-watch.sh=1
 known:     scripts/test-review-claim-gate.sh=1
 known:     scripts/test-root-cause-gate.sh=1
@@ -535,6 +539,10 @@ Green on Windows (Git Bash) the same day.
 as data — the brain dir (`CLAUDE_PROJECT_DIR`), the cwd, the fake gh (`MERGE_REQUEST_GATE_GH`) and the
 PR fixture (`PR_JSON`, read by the fake) — all through `native()`. An unresolvable fake gh makes the
 gate fail OPEN (PR unreadable = allow), so every must-block case would pass silently.
+2026-11-06, test-release-freeze-gate.sh baselined after the same review: three paths cross into node as data — the
+brain dir (`CLAUDE_PROJECT_DIR`), the cwd field and the `git -C <dir>` inside the command — all through `native()`.
+It matters in the blocking direction: an unresolvable brain reads no scope and an unresolvable core names no repo,
+and the gate fails OPEN on both, so every must-block case would pass silently.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 

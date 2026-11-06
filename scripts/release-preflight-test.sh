@@ -26,6 +26,21 @@ native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else pri
 mkdir -p "$TMP/replay-brain"
 printf '{"readers": [{"name": "constant", "argv": ["python3", "-c", "print(1)"]}]}\n' > "$TMP/readers-const.json"
 export RELEASE_REPLAY_BRAIN="$TMP/replay-brain" RELEASE_REPLAY_READERS="$TMP/readers-const.json"
+# check 11 (release scope, 2026-11-06): every case gets a brain with an open scope for 2.0.0, an instance id in its
+# settings env, no ledgers and no open PR, so only the case that breaks check 11 sees it red. The PR list is a file
+# python opens as DATA (OS-3: native path).
+mkscope() { # mkscope <brain dir> <version> <items JSON list>
+  mkdir -p "$1/.claude-state" "$1/.claude"
+  printf '{"env": {"SHARED_MEMORY_SELF": "fixture-self"}}\n' > "$1/.claude/settings.json"
+  printf '{"version": "%s", "repo": "agent-brain", "status": "open", "items": %s, "excluded": {}}\n' "$2" "$3" \
+    > "$1/.claude-state/release-scope.json"
+}
+mkscope "$TMP/scope-brain" 2.0.0 '[]'
+printf '[]\n' > "$TMP/prs-none.json"
+export RELEASE_SCOPE_BRAIN="$TMP/scope-brain" RELEASE_SCOPE_PR_FIXTURE="$(native "$TMP/prs-none.json")"
+# the instance id comes from the fixture brain's settings, never from the session that runs this fixture (measured
+# 2026-11-06: an exported SHARED_MEMORY_SELF of the running session gave another key, and the own-PR case read green)
+unset SHARED_MEMORY_SELF
 # Each preflight run writes here, and a failing check prints it: on 2026-10-28 two cases failed
 # once on ubuntu-latest (rc=1 for 0) and the log held only the summary line, so the cause could
 # not be read.
@@ -408,6 +423,39 @@ train_case "a train review naming another OS does not cover the missing one" 1 "
 train_case "a train review that names no head covers nobody" 1 "#9(neither)" \
   '<!-- instance-key: abc --> macOS OK at the train head' '<!-- instance-key: def --> Windows OK at the train head'
 rm -f "$TMP/proof-7.txt" "$TMP/proof-8.txt" "$TMP/proof-9.txt"
+
+# 20. check 11, the release scope (operator 2026-11-06): no brain = red and said "NOT run"; an own open PR outside the
+#     scope = red and named, in the scope = green; an own branch with commits not on origin/main = red and named; a
+#     scope for another version = red. Runs on its own repo and brain and gives $R back as it found it (a section that
+#     leaks its repo turns the next one red, measured 2026-11-06).
+R_BEFORE_SCOPE="$R"
+R="$(mkrepo 2.0.0)"
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" RELEASE_SCOPE_BRAIN= bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"FAIL release scope NOT run: no brain"*) said=0;; *) said=1;; esac
+check "no scope brain: check 11 is red and says NOT run" 1 $(( rc * (1 - said) ))
+SKEY="$("$PY" -c 'import sys; sys.path.insert(0, sys.argv[1]); import instance_key; print(instance_key.key_for("fixture-self"))' "$(native "$(dirname "$S")")")"
+printf '[{"number": 5, "headRefName": "feat/own", "title": "own", "body": "<!-- instance-key: %s -->"}]\n' "$SKEY" > "$TMP/prs-own.json"
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" RELEASE_SCOPE_PR_FIXTURE="$(native "$TMP/prs-own.json")" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"OPEN PR agent-brain#5"*"FAIL release scope 2.0.0"*) said=0;; *) said=1;; esac
+check "an own open PR outside the scope is red and named" 1 $(( rc * (1 - said) ))
+mkscope "$TMP/scope-brain-pr" 2.0.0 '["agent-brain#5"]'
+RELEASE_PREFLIGHT_ROOT="$R" RELEASE_SCOPE_BRAIN="$TMP/scope-brain-pr" RELEASE_SCOPE_PR_FIXTURE="$(native "$TMP/prs-own.json")" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "the same PR in the scope passes" 0 $?
+git -C "$R" branch feat/unshipped
+git -C "$R" -c user.email=t@t -c user.name=t commit --quiet --allow-empty -m wip
+git -C "$R" branch -f feat/unshipped HEAD
+git -C "$R" reset --quiet --hard origin/main
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"OPEN branch feat/unshipped"*) said=0;; *) said=1;; esac
+check "an own branch with commits not on origin/main is red and named" 1 $(( rc * (1 - said) ))
+git -C "$R" branch -q -D feat/unshipped
+mkscope "$TMP/scope-brain-old" 1.9.9 '[]'
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" RELEASE_SCOPE_BRAIN="$TMP/scope-brain-old" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"the scope is for 1.9.9, this release is 2.0.0"*) said=0;; *) said=1;; esac
+check "a scope for another version is red" 1 $(( rc * (1 - said) ))
+RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "control: the same repo, branch gone, clean scope passes" 0 $?
+R="$R_BEFORE_SCOPE"
 
 echo
 echo "$pass/$((pass+fail)) passed"
