@@ -10,6 +10,10 @@ Every PR writes its CHANGELOG entry as its OWN file here, never into `CHANGELOG.
   debt: <what stays open on this level> | none)`, optionally `; settles-debt: <slug>` when this
   change builds the level an earlier one named as its debt. `none` as `higher` only on design.
   Checked by `node helpers/change-level.cjs check` — in CI and before `gh pr create`.
+- symptom (optional, since 2026-11-06): a line `symptom: <command>` — a command that reproduced
+  the bug on real data and must exit 0 once it is fixed; `{brain}` and `{core}` are substituted.
+  `scripts/real-data-replay.py` runs it, and release preflight check 10 runs it over the brain
+  `RELEASE_REPLAY_BRAIN` names (the fragment's text stands in the version section by then).
 
 Why: every parallel PR used to write into one `## Unreleased` section, so every second PR
 collided on the same line. A file of its own has no shared anchor, so the collision cannot

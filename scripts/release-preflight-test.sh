@@ -14,6 +14,17 @@ OLD="$(date -u -v-2d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "2 days ago" 
 # check sees it red
 SHM="$TMP/shared"; mkdir -p "$SHM/core"
 export RELEASE_CONSUMER="fixture consumer" SHARED_MEMORY_REPO="$SHM" RELEASE_TOPIC=core
+# The fixture repos commit and push: no git config or hook of the host machine may reach them
+# (git-sandbox.sh: temp global config, no system config, no prompt, no askpass). Paths that
+# cross into a native program as DATA are stated natively (OS-3).
+. "$(dirname "$0")/git-sandbox.sh"
+git config --global init.defaultBranch main
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
+# check 10 (real-data replay, 2026-11-06): every case gets a fake brain and a reader whose output
+# never changes, so only the case that breaks check 10 sees it red
+mkdir -p "$TMP/replay-brain"
+printf '{"readers": [{"name": "constant", "argv": ["python3", "-c", "print(1)"]}]}\n' > "$TMP/readers-const.json"
+export RELEASE_REPLAY_BRAIN="$TMP/replay-brain" RELEASE_REPLAY_READERS="$TMP/readers-const.json"
 # Each preflight run writes here, and a failing check prints it: on 2026-10-28 two cases failed
 # once on ubuntu-latest (rc=1 for 0) and the log held only the summary line, so the cause could
 # not be read.
@@ -156,7 +167,6 @@ PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 R="$(mkrepo 2.1.0)"
 printf '# Changelog\n\n## 2.0.0 — 2026-01-01\n\n- entry\n' > "$R/CHANGELOG.md"
 mkdir -p "$R/changelog.d"; printf -- '- **new.** (test: T0)\n' > "$R/changelog.d/new.md"
-native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }  # OS-3
 "$PY" "$(native "$(dirname "$S")/changelog-assemble.py")" 2.1.0 --root "$(native "$R")" >/dev/null 2>&1
 RELEASE_PREFLIGHT_ROOT="$R" bash "$S" --ci-tag v2.1.0 >"$LAST" 2>&1
 check "preflight green after a real changelog-assemble cut" 0 $?
@@ -296,6 +306,35 @@ check "one instance naming both systems is one review, not two (#399, 2026-11-04
 { b64 'instance-key: abc — **Test (Windows, Git Bash):** `scripts/test-x.sh` all cases pass (two new — both FAIL against `origin/main`); done.'; b64 'instance-key: def — macOS OK at head'; } > "$TMP/proof.txt"
 PATH="$GHSTUB:$PATH" RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
 check "a negative-control clause in the author test line does not cancel its Windows proof" 0 $?
+: > "$TMP/proof.txt"
+
+# 18. check 10, real-data replay (operator decision 2026-11-06): no brain = red and said "NOT run";
+#     a reader whose output differs between the previous tag and HEAD = red; RELEASE_REPLAY_OK names
+#     what was reviewed and passes with a note; a failing symptom line of this version's entry = red.
+#     Runs on its own repo and gives $R back at the end: a later section builds on the repo before it
+#     (measured 2026-11-06 in a merge train - the failing symptom left behind here turned two OS-review
+#     cases of the next section red at check 10, not at their own subject).
+R_BEFORE_REPLAY="$R"
+R="$(mkrepo 2.0.0)"
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" RELEASE_REPLAY_BRAIN= bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"FAIL real-data replay NOT run: no real data"*) said=0;; *) said=1;; esac
+check "no real brain: check 10 is red and says NOT run" 1 $(( rc * (1 - said) ))
+printf 'old\n' > "$R/reader.txt"; git -C "$R" add -A; git -C "$R" commit --quiet -m reader; git -C "$R" tag v1.9.0
+printf 'new\n' > "$R/reader.txt"; git -C "$R" commit --quiet -am "reader changed"
+git -C "$R" push --quiet origin main v1.9.0
+printf '{"readers": [{"name": "fixture", "argv": ["python3", "-c", "import sys; print(open(sys.argv[1]).read())", "{core}/reader.txt"]}]}\n' > "$TMP/readers-diff.json"
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" RELEASE_REPLAY_READERS="$TMP/readers-diff.json" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"FAIL real-data replay: the readers"*"+new"*|*"+new"*"FAIL real-data replay: the readers"*) said=0;; *) said=1;; esac
+check "a reader differing from the previous tag on real data is red, with the diff" 1 $(( rc * (1 - said) ))
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" RELEASE_REPLAY_READERS="$TMP/readers-diff.json" RELEASE_REPLAY_OK="fixture diff read" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"reviewed: fixture diff read"*) said=0;; *) said=1;; esac
+check "RELEASE_REPLAY_OK passes the difference and names what was reviewed" 0 $(( rc + said ))
+printf '# Changelog\n\n## 2.0.0 — 2026-01-01\n\n- **fix.** (test: T1)\n  symptom: python3 -c "import sys; sys.exit(4)" <!-- fragment: fix -->\n' > "$R/CHANGELOG.md"
+git -C "$R" commit --quiet -am "symptom"; git -C "$R" push --quiet origin main
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"FAILS    symptom"*"rc=4"*) said=0;; *) said=1;; esac
+check "a failing symptom line of this version's entry is red" 1 $(( rc * (1 - said) ))
+R="$R_BEFORE_REPLAY"
 
 echo
 echo "$pass/$((pass+fail)) passed"

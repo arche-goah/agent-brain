@@ -45,6 +45,10 @@
 #      or comment with an instance key that says macOS, and one that says Windows - from two
 #      different instances, by hand (a CI note is no proof); a merge train is judged by its members
 #   9. the consumer is named: RELEASE_CONSUMER="<who gets this tag and why now>"
+#  10. the readers replayed on real data (scripts/real-data-replay.py): previous tag vs this state over
+#      the brain RELEASE_REPLAY_BRAIN names, plus every `symptom:` line of this version's entries. No
+#      brain = FAIL ("NOT run"); a difference = FAIL unless RELEASE_REPLAY_OK="<what was reviewed>";
+#      could not run = FAIL. RELEASE_REPLAY_READERS overrides the reader list (tests).
 # Earlier than the strand allows ONLY on the operator's word: RELEASE_EARLY_OK="<quote> <YYYY-MM-DD>"
 # (a quotation in quote marks plus the date it was said) lets an open candidate (6) and open
 # shared-memory entries (7) pass and prints the quote; an unreadable gh, 8 and 9 are never waived.
@@ -305,6 +309,34 @@ EOF
     ok "consumer named: ${RELEASE_CONSUMER}"
   else
     bad "no consumer named — set RELEASE_CONSUMER=\"<who gets this tag and why now>\"; a tag nobody pulls is noise"
+  fi
+
+  # 10. the readers replayed on REAL data, previous tag against this state (operator decision 2026-11-06:
+  # fixes kept not holding after a release because readers met synthetic fixtures only; open-items.py took
+  # an entry's last exit line and 4 of 7 "needs you" items on a real brain were false - a replay showed it
+  # in seconds). Plus every `symptom:` line of this version's changelog entries must now exit 0.
+  REPLAY_PREV="$(git -C "$ROOT" describe --tags --abbrev=0 HEAD 2>/dev/null || true)"
+  [ "$REPLAY_PREV" = "$TAG" ] && REPLAY_PREV="$(git -C "$ROOT" describe --tags --abbrev=0 "HEAD^" 2>/dev/null || true)"
+  REPLAY_PY="$(cd "$(dirname "$0")" && pwd)/real-data-replay.py"
+  if [ -z "${RELEASE_REPLAY_BRAIN:-}" ]; then
+    bad "real-data replay NOT run: no real data (set RELEASE_REPLAY_BRAIN to a brain's root) — a check that did not run is red"
+  else
+    native_p() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }  # OS-3
+    set -- --brain "$(native_p "$RELEASE_REPLAY_BRAIN")" --core "$(native_p "$ROOT")" --changelog-section "$VER"
+    [ -n "$REPLAY_PREV" ] && set -- "$@" --base "$REPLAY_PREV"
+    [ -n "${RELEASE_REPLAY_READERS:-}" ] && set -- "$@" --readers "$(native_p "$RELEASE_REPLAY_READERS")"
+    REPLAY_OUT="$("$PY" "$(native_p "$REPLAY_PY")" "$@" 2>&1)"; rrc=$?
+    printf '%s\n' "$REPLAY_OUT" | sed 's/^/     | /' | head -60
+    if [ "$rrc" = 0 ]; then
+      ok "real-data replay: ${REPLAY_PREV:-no previous tag} vs this state, no difference, every symptom holds"
+    elif [ "$rrc" = 1 ] && [ -n "${RELEASE_REPLAY_OK:-}" ]; then
+      ok "real-data replay differs from ${REPLAY_PREV:-the previous state} — reviewed: ${RELEASE_REPLAY_OK}"
+      note "RELEASE_REPLAY_OK names what was reviewed; the differences above ship as intended"
+    elif [ "$rrc" = 1 ]; then
+      bad "real-data replay: the readers' output on real data differs from ${REPLAY_PREV:-the previous state}, or a symptom fails — read the diff; intended = RELEASE_REPLAY_OK=\"<what was reviewed>\""
+    else
+      bad "real-data replay could not run (rc=$rrc) — a check that did not run is red"
+    fi
   fi
 fi
 
