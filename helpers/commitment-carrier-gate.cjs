@@ -112,6 +112,9 @@ function looseCommitments(events, inst) {
   const stop = new Set([...STOP, ...(inst.stopwords || []).map((s) => s.toLowerCase())]);
   const mech = events.filter((e) => e.kind === 'write' && MECH.test(e.file))
     .map((e) => words(e.text + ' ' + path.basename(e.file).replace(/[^A-Za-z]+/g, ' '), stop));
+  // The mechanism files' names without extension ("open-items-gate"), long enough not to match by chance.
+  const stems = events.filter((e) => e.kind === 'write' && MECH.test(e.file))
+    .map((e) => path.basename(e.file).replace(/\.[^.]+$/, '').toLowerCase()).filter((s) => s.length >= 8);
   // A later text of the same turn that takes the promise back clears what came before it — the
   // way out the block message names. Measured 2026-10-28: the retraction was written, and the gate
   // read the earlier sentence again on every stop, a loop.
@@ -123,7 +126,13 @@ function looseCommitments(events, inst) {
       const bare = sent.replace(/„[^“”]*[“”]|"[^"]*"|`[^`]*`|'[^']{3,}'/g, ' ');
       if (!patterns.some((p) => p.test(bare)) || !first.some((p) => p.test(bare))) continue;
       const need = words(sent, stop);
-      const carried = need.size && mech.some((w) => [...need].filter((x) => w.has(x)).length >= Math.min(2, need.size));
+      // A sentence that NAMES the mechanism file written this turn is carried by it, whatever language the prose is in
+      // (measured 2026-11-06 on the macOS instance: a sentence in the operator's language naming "open-items-Gate" was held
+      // three times although helpers/open-items-gate.cjs was edited in the same turn - prose in another language and
+      // English code share no word of five letters).
+      const lower = sent.toLowerCase();
+      const named = stems.some((s) => lower.includes(s));
+      const carried = named || (need.size && mech.some((w) => [...need].filter((x) => w.has(x)).length >= Math.min(2, need.size)));
       if (!carried) out.push(sent.trim().slice(0, 160));
     }
   }

@@ -97,5 +97,14 @@ expect "a refused question (error result) is no boundary" block "$(run "$tmp/t.j
 turn "$tmp/u.jsonl" "x" "$(ask q3 AskUserQuestion)"; res q3 false >> "$tmp/u.jsonl"; asst "$promise" >> "$tmp/u.jsonl"
 expect "a promise AFTER a question-tool answer still blocks" block "$(run "$tmp/u.jsonl")"
 
+# 2026-11-06 (macOS instance, held three times): the sentence names the mechanism file written this turn, but prose and
+# code share no word (another language) - the file name carries it; a write to another mechanism file does not.
+turn "$tmp/n1.jsonl" "x" "$(txt 'Henceforth I build quorvlast into the open-items-gate, so its blenvor names the plimfiles.')" \
+  "$(wr "$tmp/core/helpers/open-items-gate.cjs" '// seen-file, per key: waiting-map yes|no')"
+expect "a sentence naming the mechanism file written this turn passes" pass "$(run "$tmp/n1.jsonl")"
+turn "$tmp/n2.jsonl" "x" "$(txt 'Henceforth I build quorvlast into the open-items-gate, so its blenvor names the plimfiles.')" \
+  "$(wr "$tmp/core/helpers/unrelated-thing-gate.cjs" '// seen-file, per key: waiting-map yes|no')"
+expect "negative control: another mechanism file does not carry it" block "$(run "$tmp/n2.jsonl")"
+
 [ $fail -eq 0 ] && echo "test-commitment-carrier-gate: all passed" || echo "test-commitment-carrier-gate: FAILED"
 exit $fail
