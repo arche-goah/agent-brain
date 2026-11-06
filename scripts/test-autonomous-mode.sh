@@ -57,6 +57,20 @@ mode "an off word ends it" "$f" "$EN" interactive
 f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
 mode "asking what is open ends it" "$f" "$EN" interactive
 mode "asking what is open with NOTHING open keeps the run (2026-11-03)" "$f" "$NONE" autonomous
+# 2026-11-06 (operator: closing the session IS a mode change; the end-of-session loop had come back several times):
+# a close stamp of THIS session written after the order ends the run; another session's stamp does not; a new order
+# after the close switches it on again.
+userAt() { printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":%s}}\n' "$1" "$(js "$2")"; }
+CL="$T/close"; mkdir -p "$CL/.claude-state"
+f="$T/sess-a.jsonl"; { userAt "2026-01-01T10:00:00Z" "work through the list autonomously"; asst "x"; } > "$f"
+mode "precondition: the order holds without a close stamp" "$f" "$CL" autonomous
+printf 'sess-a\n- 2026-01-01 10:30:00 | main | close\n' > "$CL/.claude-state/session-close.stamp"
+mode "a close stamp of this session after the order ends the run" "$f" "$CL" interactive
+printf 'sess-other\n- x\n' > "$CL/.claude-state/session-close.stamp"
+mode "another session's close stamp changes nothing (control)" "$f" "$CL" autonomous
+printf 'sess-b\n- x\n' > "$CL/.claude-state/session-close.stamp"
+f="$T/sess-b.jsonl"; { userAt "2026-01-01T10:00:00Z" "autonomous, please"; asst "x"; userAt "2099-01-01T10:00:00Z" "work through the list autonomously"; } > "$f"
+mode "a new order after the close switches it on again" "$f" "$CL" autonomous
 f="$T/3e.jsonl"; { user "autonomous, please"; asst "x"; qcmd "anything open for me?"; } > "$f"
 mode "asking mid-turn ends it" "$f" "$EN" interactive
 # The answer to "continue autonomously?" arrives as a tool result.

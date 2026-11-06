@@ -262,7 +262,8 @@ function promptModes(transcriptPath, cwd) {
         else if (w.off.test(a)) state = false;
         else if (ordersOn(w.on, a)) state = true;
         else continue;
-        out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true });
+        out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true, ordered: state,
+          at: Date.parse(d.timestamp) || null });
       }
     }
     const t = queued || promptText(d.message);
@@ -282,14 +283,15 @@ function promptModes(transcriptPath, cwd) {
     // points, handle them autonomously" carried both; the run the operator had just ordered must start).
     let asks;
     let off;
+    let ordered = false; // this prompt itself ordered the run (the close stamp is compared against the newest order)
     if (intent && typeof intent.asks_open === 'boolean') {
       asks = intent.asks_open && !intent.mode_on;
       off = intent.mode_off;
-      if (!off && !asks && intent.mode_on) state = true;
+      if (!off && !asks && intent.mode_on) state = ordered = true;
     } else {
       asks = w.ask.test(own);
       off = w.off.test(own);
-      if (!off && !asks && ordersOn(w.on, own)) state = true;
+      if (!off && !asks && ordersOn(w.on, own)) state = ordered = true;
     }
     // "What is open for me?" leaves the run only when something IS open for the operator (operator 2026-11-03,
     // translated: "why did you just switch to interactive? no questions came. either the questions, or stay
@@ -297,7 +299,8 @@ function promptModes(transcriptPath, cwd) {
     // gate requires this file.
     if (off) state = false;
     else if (asks) state = state && openForOperator(cwd) === 0 ? true : false;
-    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words' });
+    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words',
+      ordered, at: Date.parse(d.timestamp) || null });
   }
   return out;
 }
@@ -312,10 +315,36 @@ function openForOperator(cwd) {
   } catch (e) { return 1; }
 }
 
-/** true when the operator's autonomous order is in force at the end of the transcript. */
+/** true when the operator's autonomous order is in force at the end of the transcript. A session close of THIS
+ *  session after the order ends it (2026-11-06, operator: "session beenden ist sehr wohl modus wechsel auch, das
+ *  thema mit der endlos loop am ende hatten wir schon mehrfach"): with the mode still on after `session-close`, the
+ *  autonomous gate refused the question tool while the stoppen gate demanded it, and the idle and close gates held
+ *  the release - the close looped. The carrier is the close stamp `session-closing.sh --pre-commit` writes (line 1:
+ *  the session id), language-independent; a new autonomous order after the close switches the mode on again. */
 function autonomousMode(transcriptPath, cwd) {
   const modes = promptModes(transcriptPath, cwd);
-  return modes.length ? modes[modes.length - 1].autonomous : words(cwd).initial;
+  if (!modes.length) return words(cwd).initial && !closedAfter(transcriptPath, cwd, null);
+  if (!modes[modes.length - 1].autonomous) return false;
+  // when the run in force was ordered: the newest entry of the trailing autonomous stretch that ordered it itself
+  // (a re-order after a close counts from then), else the stretch's first entry
+  let onAt = null;
+  for (let i = modes.length - 1; i >= 0 && modes[i].autonomous; i--) {
+    onAt = modes[i].at;
+    if (modes[i].ordered) break;
+  }
+  return !closedAfter(transcriptPath, cwd, onAt);
+}
+
+/** A close stamp of this session written after `since` (ms; null = any time). */
+function closedAfter(transcriptPath, cwd, since) {
+  const dir = cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const stamp = path.join(dir, '.claude-state', 'session-close.stamp');
+  let st;
+  let sid;
+  try { st = fs.statSync(stamp); sid = (fs.readFileSync(stamp, 'utf8').split(/\r?\n/)[0] || '').trim(); } catch (e) { return false; }
+  const session = path.basename(String(transcriptPath || ''), '.jsonl');
+  if (sid && session && sid !== session) return false; // another session's close
+  return since == null || st.mtimeMs >= since;
 }
 
 module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, answers, promptText, HOOK_ECHO };
