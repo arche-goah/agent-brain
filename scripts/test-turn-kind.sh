@@ -29,6 +29,9 @@ probe() { node -e 'const {isNotification}=require(process.argv[1]);process.stdou
 [ "$(probe "$NOTE")" = true ] && ok "frames only = notification" || bad "frames only not recognised"
 [ "$(probe "$NOTE please go on")" = false ] && ok "frames + operator words = operator" || bad "operator words ignored"
 [ "$(probe "go on")" = false ] && ok "plain text = operator" || bad "plain text read as notification"
+# 2026-11-02: a Stop hook's block is written back as a user record; it is the harness, not the operator.
+[ "$(probe $'Stop hook feedback:\nIDLE — Autonomous run ends idle - missing: continuation')" = true ] && ok "stop-hook feedback = not the operator" || bad "stop-hook feedback read as an operator prompt"
+[ "$(probe 'why did the stop hook feedback say that?')" = false ] && ok "the operator naming stop hook feedback stays the operator" || bad "operator words about the stop hook read as notification"
 [ "$(probe "<system-reminder>x</system-reminder>")" = false ] && ok "a reminder without a task notification is not one" || bad "bare reminder read as notification"
 # A local command (/mcp, /model) runs without the model: its three records are not a prompt.
 [ "$(probe '<local-command-caveat>The command below was run directly in Claude Code.</local-command-caveat>')" = true ] && ok "local-command caveat = not a prompt" || bad "local caveat read as prompt"
