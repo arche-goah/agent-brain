@@ -71,6 +71,20 @@ sprobe "suite, macOS OK only at an OLDER head" "$M" block "$D"
 spr 'feat: x' '["Windows OK at head `abc1234`; macOS check wanted, macOS unchecked"]'
 sprobe "suite, macOS named only as open" "$M" block "$D"
 
+# 2026-11-06 (operator, question tool: "Ja, auf solche Suiten ausweiten"): for a repo the instance lists in
+# .claude/rules/os-proof.json, a green CI job named for the OS counts as that OS's check at the head.
+cipr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "abc1234def5678", body: "feat: x", comments: [{body: "macOS OK at head `abc1234`"}], statusCheckRollup: [{name: "check (ubuntu-latest)", conclusion: "SUCCESS"}, {name: "check (windows-latest)", conclusion: process.argv[1]}]}))' "$1" > "$T/pr.json"; }
+cipr SUCCESS
+sprobe "suite, macOS OK + green windows-latest, repo NOT listed (control: old rule)" "$M" block "$D"
+printf '{"ci_counts_as_os_check": {"o/r": ["Windows"]}}\n' > "$T/brain/.claude/rules/os-proof.json" 2>/dev/null || { mkdir -p "$T/brain/.claude/rules"; printf '{"ci_counts_as_os_check": {"o/r": ["Windows"]}}\n' > "$T/brain/.claude/rules/os-proof.json"; }
+sprobe "suite listed, macOS OK + green windows-latest job covers Windows" "$M" allow "$D"
+cipr FAILURE
+sprobe "negative control: the same listed suite with a red windows job blocks" "$M" block "$D"
+printf '{"ci_counts_as_os_check": {"o/r": ["Linux"]}}\n' > "$T/brain/.claude/rules/os-proof.json"
+cipr SUCCESS
+sprobe "negative control: the listed OS is not Windows, Windows still needs its check" "$M" block "$D"
+rm -f "$T/brain/.claude/rules/os-proof.json"
+
 # 2026-10-28 (#156-#159): the negation of ANOTHER system's clause does not cancel this one's OK.
 spr 'feat: x' '["macOS: OK at `abc1234` - lint rc 0 (the macOS instance). Windows check still open.", "Windows OK at head `abc1234`"]'
 sprobe "macOS OK, Windows named open in the same line" "$M" allow "$D"
