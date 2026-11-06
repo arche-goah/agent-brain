@@ -57,6 +57,16 @@ mode "an off word ends it" "$f" "$EN" interactive
 f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
 mode "asking what is open ends it" "$f" "$EN" interactive
 mode "asking what is open with NOTHING open keeps the run (2026-11-03)" "$f" "$NONE" autonomous
+# 2026-11-06 (Windows instance): the open count was re-read at every hook, so once the agent had answered and done
+# every operator item the same "what is open" prompt read 0 and the run counted as autonomous again - the closing
+# mode question was refused, the idle gate asked for a continuation. The count at the FIRST reading of that prompt holds.
+LATER="$T/later"; mkdir -p "$LATER"; open_q "$LATER"
+f="$T/3h.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
+mode "asking what is open with an item open ends it (first reading)" "$f" "$LATER" interactive
+rm -f "$LATER/.claude-state/open-questions.json"
+mode "the same prompt after the item is done stays interactive (count of the first reading)" "$f" "$LATER" interactive
+f="$T/3i.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; asst "y"; user "anything open for me now?"; } > "$f"
+mode "a NEW ask with nothing open keeps the run (control: the memo is per prompt)" "$f" "$LATER" autonomous
 f="$T/3e.jsonl"; { user "autonomous, please"; asst "x"; qcmd "anything open for me?"; } > "$f"
 mode "asking mid-turn ends it" "$f" "$EN" interactive
 # The answer to "continue autonomously?" arrives as a tool result.

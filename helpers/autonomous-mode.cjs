@@ -234,7 +234,10 @@ function promptModes(transcriptPath, cwd) {
   let state = w.initial;
   const askIds = new Set();
   const known = intents(transcriptPath, cwd);
+  const memo = openCountMemo(cwd);
+  let n = -1;
   for (const line of lines) {
+    n += 1;
     if (line.includes('"AskUserQuestion"')) {
       try {
         const c = (JSON.parse(line).message || {}).content;
@@ -296,10 +299,34 @@ function promptModes(transcriptPath, cwd) {
     // autonomous"). Nothing open: the run goes on and the reply says so in one line. Read lazily - the presentation
     // gate requires this file.
     if (off) state = false;
-    else if (asks) state = state && openForOperator(cwd) === 0 ? true : false;
+    else if (asks) state = state && memo.count(`${path.resolve(transcriptPath)}#${n}`) === 0 ? true : false;
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words' });
   }
+  memo.save();
   return out;
+}
+
+/** The open-for-operator count of an asking prompt, read ONCE - at the first hook that sees the prompt - and kept per
+ *  transcript line (2026-11-06, Windows instance: re-read at every hook, the count fell to 0 once the agent had done
+ *  the operator's items, and the same "what is open" prompt flipped the run back to autonomous - the closing mode
+ *  question was refused, the idle gate asked for a continuation). Unwritable state = the live count, as before. */
+function openCountMemo(cwd) {
+  const file = path.join(cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude-state', 'asks-open-count.json');
+  let data = {};
+  try { data = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch (e) { data = {}; }
+  let dirty = false;
+  return {
+    count(key) {
+      // a pattern case names its own count (scripts/pattern-cases.py): no memo, or one run's count leaks into the next
+      if (/^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '')) return openForOperator(cwd);
+      if (!(key in data)) { data[key] = openForOperator(cwd); dirty = true; }
+      return data[key];
+    },
+    save() {
+      if (!dirty) return;
+      try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); } catch (e) { /* live count next time */ }
+    },
+  };
 }
 
 /** Count of operator decisions and hand steps the presentation gate would put (its own readers); unreadable = 1, the safe side. */
