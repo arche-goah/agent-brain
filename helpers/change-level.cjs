@@ -119,10 +119,38 @@ function released(root) {
   return out;
 }
 
-function check(root) {
-  const files = fragmentFiles(root);
-  if (files === null) return { skipped: true, findings: [] };
-  const known = new Set(files.map((p) => path.basename(p, '.md')));
+// The fragments a branch adds or changes against its base (the PR gate's scope), or null when the
+// base cannot be named (no remote, detached fixture repo) — then the caller checks every fragment.
+// Measured 2026-11-06 on the macOS instance, pin v2.1.3: `gh pr create` for a one-file hook PR in a
+// suite was held for eleven fragments ALREADY ON THAT SUITE'S MAIN, written before the field's form
+// was enforced there; the gate said "a changelog fragment of this PR" and named none of the PR's.
+// CI keeps checking the whole folder (`check` without a list): the repo's own debt stays visible.
+function changedFragments(root, base) {
+  const git = (args) => require('child_process').execFileSync('git', ['-C', root, ...args],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  let ref = base || '';
+  if (!ref) {
+    try { ref = git(['symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD']).trim(); } catch (e) { ref = ''; }
+  }
+  for (const r of ref ? [ref] : ['origin/main', 'origin/master']) {
+    try { git(['rev-parse', '--verify', '-q', r]); } catch (e) { continue; }
+    try {
+      const names = new Set(git(['diff', '--name-only', `${r}...HEAD`, '--', 'changelog.d']).split('\n'));
+      for (const l of git(['status', '--porcelain', '--untracked-files=all', '--', 'changelog.d']).split('\n')) {
+        if (l.length > 3) names.add(l.slice(3).trim());
+      }
+      return [...names].filter((n) => n.endsWith('.md') && !/readme\.md$/i.test(n))
+        .map((n) => path.join(root, n)).filter((p) => fs.existsSync(p));
+    } catch (e) { return null; }
+  }
+  return null;
+}
+
+function check(root, only) {
+  const all = fragmentFiles(root);
+  if (all === null) return { skipped: true, findings: [] };
+  const files = Array.isArray(only) ? all.filter((p) => only.some((o) => path.resolve(o) === path.resolve(p))) : all;
+  const known = new Set(all.map((p) => path.basename(p, '.md')));
   for (const e of released(root)) if (e.slug) known.add(e.slug);
   const findings = [];
   for (const p of files) {
@@ -205,4 +233,4 @@ function main(argv) {
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { check, debts, parse, problems, groups, LEVELS };
+module.exports = { check, changedFragments, debts, parse, problems, groups, LEVELS };

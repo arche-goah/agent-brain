@@ -109,6 +109,23 @@ lvprobe "pr create via env -C in the PR's checkout sees its fragment" "$NOCL" "e
 printf '%s\n' '- **x.** (test: T0) (level: writer; higher: design — not needed yet; debt: none)' > "$CO/changelog.d/x.md"
 lvprobe "negative control: env -C in the PR's checkout, fragment fine" "$NOCL" "env -C $(native "$CO") gh pr create --repo o/core --head b --title t --body \"b <!-- instance-key: $KEY -->\"" allow
 lvprobe "negative control: --repo matching the checkout's origin" "$CO" "gh pr create --repo=o/core --title t --body \"b <!-- instance-key: $KEY -->\"" allow
+# The PR's own fragments, not the base's (2026-11-06, macOS instance, pin v2.1.3: a one-file suite PR
+# was held for eleven fragments already on the suite's main). Base = origin/HEAD, else origin/main.
+SU="$T/suite"; git init -q -b main "$SU"; mkdir -p "$SU/changelog.d"
+printf '%s\n' '- **old.** (test: T0) (level: reader — the text the reader gets)' > "$SU/changelog.d/old.md"
+git -C "$SU" add -A; git -C "$SU" -c user.email=t@t -c user.name=t commit -qm base
+# The base as a remote-tracking ref, no push (a machine's own pre-push hook must not decide a fixture).
+git -C "$SU" remote add origin https://github.com/o/suite.git; git -C "$SU" update-ref refs/remotes/origin/main HEAD
+git -C "$SU" checkout -q -b feat
+printf '%s\n' '- **new.** (test: T0) (level: writer; higher: design — not needed yet; debt: none)' > "$SU/changelog.d/new.md"
+git -C "$SU" add -A; git -C "$SU" -c user.email=t@t -c user.name=t commit -qm new
+lvprobe "a malformed fragment already on the base does not hold the PR" "$SU" "gh pr create --title t --body \"b <!-- instance-key: $KEY -->\"" allow
+printf '%s\n' '- **bad.** (test: T0)' > "$SU/changelog.d/bad.md"
+lvprobe "negative control: an untracked malformed fragment of the PR blocks" "$SU" "gh pr create --title t --body \"b <!-- instance-key: $KEY -->\"" block
+rm "$SU/changelog.d/bad.md"
+printf '%s\n' '- **new.** (test: T0)' > "$SU/changelog.d/new.md"
+git -C "$SU" -c user.email=t@t -c user.name=t commit -qam bad
+lvprobe "negative control: a committed malformed fragment of the PR blocks" "$SU" "gh pr create --title t --body \"b <!-- instance-key: $KEY -->\"" block
 
 [ "$fail" -eq 0 ] && echo "test-instance-key-gate: all checks passed"
 exit "$fail"
