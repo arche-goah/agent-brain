@@ -279,6 +279,7 @@ known:     scripts/test-ci-lint-local.sh=1
 known:     scripts/test-close-loss-gate.sh=1
 known:     scripts/test-code-scanning-alerts.sh=1
 known:     scripts/test-coherence-scan-files.sh=1
+known:     scripts/test-collab-watch-follow.sh=1
 known:     scripts/test-collab-watch-plan.sh=1
 known:     scripts/test-commitment-carrier-gate.sh=1
 known:     scripts/test-conditional-order-gate.sh=1
@@ -530,6 +531,10 @@ Green on Windows (Git Bash) the same day.
 as data — the brain dir (`CLAUDE_PROJECT_DIR`), the cwd, the fake gh (`MERGE_REQUEST_GATE_GH`) and the
 PR fixture (`PR_JSON`, read by the fake) — all through `native()`. An unresolvable fake gh makes the
 gate fail OPEN (PR unreadable = allow), so every must-block case would pass silently.
+2026-11-06, test-collab-watch-follow.sh baselined after the same review: the config reaches python
+(`collab-watch-plan.py`) only as an ARGUMENT, which Git Bash converts; the state dir, the pid file and
+the events log are read and written by bash alone (`tail -F`, `cat`, `>>`). No temp path crosses into
+node or python as data.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
