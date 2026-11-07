@@ -107,6 +107,16 @@
       "pattern": "(?:^|[\\n;&|(])\\s*(?:\\S*/)?(?:python3?|node|bash|sh)\\s+(?:-\\S+\\s+)*-[ce]\\s+\\\"(?:[^\\\"\\\\`$]|\\\\[\\s\\S]|\\$(?!\\())*(?:`|\\$\\()",
       "was": "an inline script in double quotes (`python3 -c \"...\"`, `node -e \"...\"`, `bash -c \"...\"`) whose text holds a backtick or `$(` - the shell runs that part as a command before the interpreter sees the text. Measured 2026-11-03 on the Windows instance: two backtick paths in a protocol entry ran as shell scripts (no file changed, the written text lost both paths); replay over that brain's transcripts: 4 such calls in 2 sessions. The macOS instance carried the same rule as instance data since 2026-10-29 (a PR text lost three names).",
       "instead": "Multi-line or quoted text goes into a file (Working Rule #8): write the script with the Write tool and run the file, or quote the argument in single quotes. An escaped backtick (\\`) is no hit."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+-C\\s+\\S+)?\\s+(?:add|commit|rm|restore|checkout)\\b[^\\n;&|]*\\s\\$\\{?[A-Za-z_]\\w*\\}?(?=\\s|$)",
+      "was": "a path list passed to git as an unquoted shell variable (`git add $F`): zsh does not split it into words, so it arrives as ONE path with spaces; bash splits it, PowerShell does neither - the same command means three things. Measured 2026-11-02 on the macOS instance, twice in one project (\"pathspec ... did not match any files\").",
+      "instead": "Write the paths out (one call, by path - Working Rule #12). In a script of your own use an array (\"${ARR[@]}\" in bash, ${=VAR} only in zsh)."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+-C\\s+\\S+)?\\s+stash\\b(?!\\s+(?:list|show)\\b)",
+      "was": "git stash - also in a worktree of your own: the stash lives in the repository that every worktree of it shares, so it is visible and poppable from each of them. Measured 2026-11-02 on the macOS instance: a stash for a negative control emptied the worktree's changes, and the control ran against the wrong test. shared-working-copy-guard covers stash only while a second session shares the same checkout.",
+      "instead": "Run a negative control against the old state in a folder of its own: `git show origin/main:<path> > <scratch>/negctl/<file>` and the test there. Commit your own paths instead of stashing (Working Rule #12). `git stash list` / `git stash show` only read and pass."
     }
   ]
 }

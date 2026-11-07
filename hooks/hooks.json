@@ -95,6 +95,12 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/merge-request-gate.cjs\"",
             "timeout": 15,
             "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/release-freeze-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
@@ -117,6 +123,16 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-watchdog.cjs\"",
             "timeout": 120,
             "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*playwright__.*|mcp__.*chrome-devtools__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/headless-browser-gate.cjs\"",
+            "timeout": 5
           }
         ]
       },

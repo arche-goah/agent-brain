@@ -590,6 +590,18 @@ def main() -> int:
         res = one_machine("the Windows instance is the machine that does it", "", date="2026-11-03")
         ok("54d NEGATIVE: entries before the cut-off are not re-judged") if not res else bad(f"54d old entry: {res}")
 
+        # 54e-54f. 9: a Windows name in a report clause is no Windows check (2026-11-06, "macOS OK is posted on both").
+        def win_to_one(title: str) -> list:
+            (repo / "ops" / "LOG.md").write_text(f"# Log\n\n## 2026-11-06 · sam-mac — AN lee-win: {title}\nx\n",
+                                                 encoding="utf-8")
+            return [i for i in sml.lint(repo, bl)["findings"]["audience"]
+                    if i["issue"] == "a Windows check goes to one machine"]
+
+        res = win_to_one("macOS check at head, please (Windows OK is posted on both, CI green on both)")
+        ok("54e a Windows name in a report clause is not a Windows check") if not res else bad(f"54e report read: {res}")
+        res = win_to_one("Windows check at head, please")
+        ok("54f control: a Windows check to one device is still named") if len(res) == 1 else bad(f"54f missed: {res}")
+
         # 55-62. RELATIONS (check 11, written request state). A relation value names a file stem
         #     or a LOG id; from STATE_SINCE on a request to a party is a file, not a bare heading.
         repo = build(tmp / "relations")

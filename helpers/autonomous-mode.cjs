@@ -234,7 +234,10 @@ function promptModes(transcriptPath, cwd) {
   let state = w.initial;
   const askIds = new Set();
   const known = intents(transcriptPath, cwd);
+  const memo = openCountMemo(cwd);
+  let n = -1;
   for (const line of lines) {
+    n += 1;
     if (line.includes('"AskUserQuestion"')) {
       try {
         const c = (JSON.parse(line).message || {}).content;
@@ -262,7 +265,8 @@ function promptModes(transcriptPath, cwd) {
         else if (w.off.test(a)) state = false;
         else if (ordersOn(w.on, a)) state = true;
         else continue;
-        out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true });
+        out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true, ordered: state,
+          at: Date.parse(d.timestamp) || null });
       }
     }
     const t = queued || promptText(d.message);
@@ -282,24 +286,50 @@ function promptModes(transcriptPath, cwd) {
     // points, handle them autonomously" carried both; the run the operator had just ordered must start).
     let asks;
     let off;
+    let ordered = false; // this prompt itself ordered the run (the close stamp is compared against the newest order)
     if (intent && typeof intent.asks_open === 'boolean') {
       asks = intent.asks_open && !intent.mode_on;
       off = intent.mode_off;
-      if (!off && !asks && intent.mode_on) state = true;
+      if (!off && !asks && intent.mode_on) state = ordered = true;
     } else {
       asks = w.ask.test(own);
       off = w.off.test(own);
-      if (!off && !asks && ordersOn(w.on, own)) state = true;
+      if (!off && !asks && ordersOn(w.on, own)) state = ordered = true;
     }
     // "What is open for me?" leaves the run only when something IS open for the operator (operator 2026-11-03,
     // translated: "why did you just switch to interactive? no questions came. either the questions, or stay
     // autonomous"). Nothing open: the run goes on and the reply says so in one line. Read lazily - the presentation
     // gate requires this file.
     if (off) state = false;
-    else if (asks) state = state && openForOperator(cwd) === 0 ? true : false;
-    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words' });
+    else if (asks) state = state && memo.count(`${path.resolve(transcriptPath)}#${n}`) === 0 ? true : false;
+    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words',
+      ordered, at: Date.parse(d.timestamp) || null });
   }
+  memo.save();
   return out;
+}
+
+/** The open-for-operator count of an asking prompt, read ONCE - at the first hook that sees the prompt - and kept per
+ *  transcript line (2026-11-06, Windows instance: re-read at every hook, the count fell to 0 once the agent had done
+ *  the operator's items, and the same "what is open" prompt flipped the run back to autonomous - the closing mode
+ *  question was refused, the idle gate asked for a continuation). Unwritable state = the live count, as before. */
+function openCountMemo(cwd) {
+  const file = path.join(cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude-state', 'asks-open-count.json');
+  let data = {};
+  try { data = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch (e) { data = {}; }
+  let dirty = false;
+  return {
+    count(key) {
+      // a pattern case names its own count (scripts/pattern-cases.py): no memo, or one run's count leaks into the next
+      if (/^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '')) return openForOperator(cwd);
+      if (!(key in data)) { data[key] = openForOperator(cwd); dirty = true; }
+      return data[key];
+    },
+    save() {
+      if (!dirty) return;
+      try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); } catch (e) { /* live count next time */ }
+    },
+  };
 }
 
 /** Count of operator decisions and hand steps the presentation gate would put (its own readers); unreadable = 1, the safe side. */
@@ -312,10 +342,36 @@ function openForOperator(cwd) {
   } catch (e) { return 1; }
 }
 
-/** true when the operator's autonomous order is in force at the end of the transcript. */
+/** true when the operator's autonomous order is in force at the end of the transcript. A session close of THIS
+ *  session after the order ends it (2026-11-06, operator: "session beenden ist sehr wohl modus wechsel auch, das
+ *  thema mit der endlos loop am ende hatten wir schon mehrfach"): with the mode still on after `session-close`, the
+ *  autonomous gate refused the question tool while the stoppen gate demanded it, and the idle and close gates held
+ *  the release - the close looped. The carrier is the close stamp `session-closing.sh --pre-commit` writes (line 1:
+ *  the session id), language-independent; a new autonomous order after the close switches the mode on again. */
 function autonomousMode(transcriptPath, cwd) {
   const modes = promptModes(transcriptPath, cwd);
-  return modes.length ? modes[modes.length - 1].autonomous : words(cwd).initial;
+  if (!modes.length) return words(cwd).initial && !closedAfter(transcriptPath, cwd, null);
+  if (!modes[modes.length - 1].autonomous) return false;
+  // when the run in force was ordered: the newest entry of the trailing autonomous stretch that ordered it itself
+  // (a re-order after a close counts from then), else the stretch's first entry
+  let onAt = null;
+  for (let i = modes.length - 1; i >= 0 && modes[i].autonomous; i--) {
+    onAt = modes[i].at;
+    if (modes[i].ordered) break;
+  }
+  return !closedAfter(transcriptPath, cwd, onAt);
+}
+
+/** A close stamp of this session written after `since` (ms; null = any time). */
+function closedAfter(transcriptPath, cwd, since) {
+  const dir = cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const stamp = path.join(dir, '.claude-state', 'session-close.stamp');
+  let st;
+  let sid;
+  try { st = fs.statSync(stamp); sid = (fs.readFileSync(stamp, 'utf8').split(/\r?\n/)[0] || '').trim(); } catch (e) { return false; }
+  const session = path.basename(String(transcriptPath || ''), '.jsonl');
+  if (sid && session && sid !== session) return false; // another session's close
+  return since == null || st.mtimeMs >= since;
 }
 
 module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, answers, promptText, HOOK_ECHO };

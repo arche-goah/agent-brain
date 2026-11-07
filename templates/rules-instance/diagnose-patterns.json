@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "Instance data for core/helpers/diagnose-gate.cjs: regex strings that EXTEND the built-ins.",
+    "failure_patterns = a tool result that reports a STATE failure of a device or service (built-ins: packet loss",
+    "above 0 %, 'unreachable', 'timed out', 'link down', 'not responding', 'connection refused'); add the wording",
+    "your own tools print. not_failure_patterns = text near a hit that makes it a guard doing its job, not a defect",
+    "(built-ins: REFUSED, PREVIEW, permission denied). log_read_patterns = a tool call that reads a log or journal",
+    "(built-ins: journalctl, 'log show', Get-WinEvent, *.log, '<tool>_logs', '/log print'); add the log tools of",
+    "your own systems - an MCP log tool, a device's log command - or the gate asks for a counter-check you ran.",
+    "Results of file and text tools (Read, Grep, a cat/grep/sed in the shell) never count: they show text, they",
+    "report no state.",
+    "_cases: text = a tool result in the turn; optional command (default 'probe-device') = the call that produced",
+    "it, log_read = an earlier call of the same turn; expect block = a failure without a log read;",
+    "run by core/scripts/pattern-cases.py at every self-test."
+  ],
+  "failure_patterns": [],
+  "not_failure_patterns": [],
+  "log_read_patterns": [],
+  "_cases": [
+    {"text": "ERROR: connection timed out after 8 s", "expect": "block"},
+    {"text": "ERROR: connection timed out after 8 s", "log_read": "journalctl -u probe --since -10min", "expect": "allow"},
+    {"text": "REFUSED: preview only, nothing written (timed out waiting for confirm)", "expect": "allow"},
+    {"text": "3 packets transmitted, 3 received, 0.0% packet loss", "expect": "allow"}
+  ]
+}

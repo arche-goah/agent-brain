@@ -70,6 +70,12 @@ turn "$tmp/l.jsonl" "x" "$(wr "$mem/MEMORY.md" '- [Bench flash](bench-flash.md) 
 expect "the memory index (one pointer line) is exempt" pass "$(run "$tmp/l.jsonl")"
 turn "$tmp/m.jsonl" "x" "$(ed "$mem/bench-flash.md" 'Never hand over the flash command.' $'Never hand over the flash command.\nMeasured on the bench, 2026-10-28.')"
 expect "an Edit that only repeats an old rule line as context passes" pass "$(run "$tmp/m.jsonl")"
+# 2026-11-06: a rule line the turn wrote and then reworded counts only while the file still holds it.
+mkdir -p "$mem"; printf 'Who flashes: the AI.\n' > "$mem/reworded.md"; printf 'Who flashes: the AI, never a command block.\n' > "$mem/kept.md"
+turn "$tmp/m2.jsonl" "x" "$(wr "$mem/reworded.md" 'Who flashes: the AI, never a command block.')"
+expect "a rule line written and then reworded (gone from the file) passes" pass "$(run "$tmp/m2.jsonl")"
+turn "$tmp/m3.jsonl" "x" "$(wr "$mem/kept.md" 'Who flashes: the AI, never a command block.')"
+expect "negative control: the same line still in the file blocks" block "$(run "$tmp/m3.jsonl")"
 turn "$tmp/n.jsonl" "x" "$(wr "$tmp/AGENTS.md" 'Flashing by hand is forbidden for the operator.')"
 expect "instance rule word (data) in a prose file blocks" block "$(run "$tmp/n.jsonl")"
 turn "$tmp/o.jsonl" "x" "$(wr "$tmp/AGENTS.md" 'Flashing by hand is forbidden. Held by: core/helpers/flash-gate.cjs')"
@@ -96,6 +102,15 @@ turn "$tmp/t.jsonl" "x" "$promise" "$(ask q2 AskUserQuestion)"; res q2 true >> "
 expect "a refused question (error result) is no boundary" block "$(run "$tmp/t.jsonl")"
 turn "$tmp/u.jsonl" "x" "$(ask q3 AskUserQuestion)"; res q3 false >> "$tmp/u.jsonl"; asst "$promise" >> "$tmp/u.jsonl"
 expect "a promise AFTER a question-tool answer still blocks" block "$(run "$tmp/u.jsonl")"
+
+# 2026-11-06 (macOS instance, held three times): the sentence names the mechanism file written this turn, but prose and
+# code share no word (another language) - the file name carries it; a write to another mechanism file does not.
+turn "$tmp/n1.jsonl" "x" "$(txt 'Henceforth I build quorvlast into the open-items-gate, so its blenvor names the plimfiles.')" \
+  "$(wr "$tmp/core/helpers/open-items-gate.cjs" '// seen-file, per key: waiting-map yes|no')"
+expect "a sentence naming the mechanism file written this turn passes" pass "$(run "$tmp/n1.jsonl")"
+turn "$tmp/n2.jsonl" "x" "$(txt 'Henceforth I build quorvlast into the open-items-gate, so its blenvor names the plimfiles.')" \
+  "$(wr "$tmp/core/helpers/unrelated-thing-gate.cjs" '// seen-file, per key: waiting-map yes|no')"
+expect "negative control: another mechanism file does not carry it" block "$(run "$tmp/n2.jsonl")"
 
 [ $fail -eq 0 ] && echo "test-commitment-carrier-gate: all passed" || echo "test-commitment-carrier-gate: FAILED"
 exit $fail

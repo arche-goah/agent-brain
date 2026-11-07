@@ -237,6 +237,27 @@ def workflow_trigger_findings(text):
     return out
 
 
+PY_VERSION_PIN = re.compile(r"python-version:\s*[\"']?(3\.\d+)")
+
+
+def python_floor_findings(has_py: bool, floor, ci_text: str):
+    """WARNs for the declared Python floor (contract 1.4.0). Measured 2026-11-06: two suites pinned CI to 3.12
+    while their code silently needed it; the Windows instance's `python` was 3.11 and the MCP server of one of
+    them did not import. Nothing to say when the suite has no Python or its CI pins no version."""
+    pins = set(PY_VERSION_PIN.findall(ci_text))
+    if not has_py or not pins:
+        return []
+    if floor is None:
+        return [("WARN", f"CI pins python-version {', '.join(sorted(pins))} but dependencies.json declares no "
+                         "python_floor - declare the lowest version the suite supports and run a CI leg on it")]
+    if not isinstance(floor, str) or not re.fullmatch(r"3\.\d+", floor):
+        return [("WARN", "dependencies.json: python_floor must be a string like \"3.11\"")]
+    if floor not in pins:
+        return [("WARN", f"python_floor {floor} is declared but no CI workflow pins python-version {floor} - "
+                         "the floor is not run")]
+    return []
+
+
 def check(repo: Path, contract: dict):
     """Return a list of (level, message)."""
     out = []
@@ -266,9 +287,11 @@ def check(repo: Path, contract: dict):
     # dependency manifest + the core declaration
     dj = repo / "dependencies.json"
     live_docs_declared = False
+    py_floor = None
     if dj.exists():
         try:
             data = json.loads(dj.read_text(encoding="utf-8"))
+            py_floor = data.get("python_floor")
             for field in contract["dependencies_required_fields"]:
                 if field not in data:
                     lvl = "ERROR" if field == "requires_core" else "WARN"
@@ -306,9 +329,12 @@ def check(repo: Path, contract: dict):
             for lvl, msg in workflow_trigger_findings(
                     f.read_text(encoding="utf-8", errors="replace")):
                 add(lvl, f"{f.relative_to(repo)}: {msg}")
+    files = tracked_files(repo)
+    if ci.is_dir():
+        out.extend(python_floor_findings(any(f.suffix == ".py" for f in files), py_floor, text))
     # absolute home paths in anything tracked
     hits = 0
-    for f in tracked_files(repo):
+    for f in files:
         if f.suffix.lower() in SKIP_SUFFIX or not f.is_file():
             continue
         try:

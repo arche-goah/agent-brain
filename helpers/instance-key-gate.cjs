@@ -94,6 +94,14 @@ function levelFindings(cmd, cwd, ps) {
   if (!creates(cmd, ps)) return [];
   const seg = (invocations(cmd, ps) || []).find((t) => t.join(' ').includes('gh pr create')) || [];
   const at = seg[0] === 'env' ? seg.indexOf('-C') : -1;
+  // A hook reads the command TEXT, never the shell's expansion (measured 2026-11-06, Windows
+  // instance): `env -C "$W/core-post" gh pr create` handed this gate the literal `$W/core-post`,
+  // which resolved under the session folder, found the brain's origin and blocked with a level
+  // finding although the fragment was fine. Say so instead of judging the wrong checkout.
+  if (at >= 0 && /[$%]/.test(seg[at + 1] || '')) {
+    return [`the env -C path "${seg[at + 1]}" is a shell variable - a hook reads the command text, ` +
+      `not its expansion, so the PR's checkout cannot be found. Write the path literally: env -C <absolute path> gh pr create ...`];
+  }
   const repo = checkoutOf(at >= 0 && seg[at + 1] ? require('./public-text-guard.cjs').nativePath(seg[at + 1]) : cwd);
   const r = seg.findIndex((t) => t === '-R' || t === '--repo' || /^--repo=/.test(t));
   const slug = r < 0 ? '' : (seg[r].startsWith('--repo=') ? seg[r].slice(7) : seg[r + 1] || '');

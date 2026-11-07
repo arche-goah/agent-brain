@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Instance data for core/helpers/time-gate.cjs: regex strings in the operator's own language, merged into the",
+    "English built-ins (the built-ins already know 'yesterday', 'last week', 'n days ago', 'recently', 'this morning',",
+    "'earlier today', estimated durations such as 'will take about 5 minutes', and the clock slots 'this afternoon',",
+    "'this evening', 'tonight'). A brain whose operator writes in another language and leaves these lists empty has a",
+    "gate that records nothing in that language.",
+    "patterns = past-relative time references (a claim about a timestamp); duration_patterns = an ESTIMATED duration",
+    "(future or present tense; a measured 'took 34 s' must not match); dayparts = [{pattern, start}] a slot of today",
+    "that starts at hour <start> - the clock mode blocks it while the clock is before <start>, the sentence carries a",
+    "past_markers hit and neither a future_markers nor an other_day hit.",
+    "local_time_only = true makes the clock mode also hold a clock time tagged UTC/Z in prose (the operator wants",
+    "local time); default false.",
+    "Example for a German operator: patterns \"\\\\bgestern\\\\b\", \"\\\\bvor\\\\s+\\\\d+\\\\s+(tagen|stunden)\\\\b\"; dayparts",
+    "{\"pattern\": \"\\\\bheute\\\\s+nachmittag\\\\b\", \"start\": 12}; past_markers \"\\\\b(war|lief|gefunden)\\\\b\".",
+    "_cases: the operator's real wording with the verdict the blocking mode must reach (text = the reply);",
+    "run by core/scripts/pattern-cases.py at every self-test."
+  ],
+  "patterns": [],
+  "duration_patterns": [],
+  "dayparts": [],
+  "past_markers": [],
+  "future_markers": [],
+  "other_day": [],
+  "local_time_only": false,
+  "_cases": [
+    {"text": "That was already the case yesterday.", "expect": "block"},
+    {"text": "Ahead since yesterday - the tag of 2026-01-02 carries it.", "expect": "allow"},
+    {"text": "This will take about 5 minutes to finish.", "expect": "block"},
+    {"text": "The run took 34 s.", "expect": "allow"}
+  ]
+}

@@ -61,7 +61,7 @@ with tempfile.TemporaryDirectory() as td:
             .replace("    timeout-minutes: 10\n", ""), encoding="utf-8"),
         "pre_push": lambda r: (r / ".githooks" / "pre-push").unlink(),
         "pr_template": lambda r: (r / ".github" / "pull_request_template.md").unlink(),
-        "gitattributes": lambda r: (r / ".gitattributes").write_text("* text=auto\n"),
+        "gitattributes": lambda r: (r / ".gitattributes").write_text("* text=auto\n", encoding="utf-8"),
         "hooks_path": lambda r: git(r, "config", "--unset", "core.hooksPath"),
     }
     for item, plant in planted.items():
@@ -82,16 +82,16 @@ with tempfile.TemporaryDirectory() as td:
     bm = base / "brain"
     (bm / "core").mkdir(parents=True)
     (bm / ".claude").mkdir()
-    (bm / ".gitattributes").write_text("* text=auto eol=lf\n")
+    (bm / ".gitattributes").write_text("* text=auto eol=lf\n", encoding="utf-8")
     git(bm, "init", "-q")
     ok(rc.detect_kind(bm) == "brain", "brain detected (core/ + .claude/)")
     ok(missing(bm) == set(), "brain: no pre-push or PR template demanded")
 
     sm = base / "shm"
     sm.mkdir()
-    (sm / "INDEX.md").write_text("x\n")
+    (sm / "INDEX.md").write_text("x\n", encoding="utf-8")
     (sm / "ops").mkdir()
-    (sm / "ops" / "LOG.md").write_text("x\n")
+    (sm / "ops" / "LOG.md").write_text("x\n", encoding="utf-8")
     git(sm, "init", "-q")
     ok(rc.detect_kind(sm) == "shared-memory", "shared memory detected (INDEX.md + an area LOG.md)")
     ok(missing(sm) == {"gitattributes"}, "shared memory without .gitattributes: only that is named")

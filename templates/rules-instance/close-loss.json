@@ -2,8 +2,11 @@
   "_comment": [
     "Instance data for core/helpers/close-loss-gate.cjs: regexes in the operator's own language.",
     "release_patterns: a phrase that releases the operator ('you can shut down'); hand_patterns: a word that marks",
-    "a step only the operator's hand can take. English built-ins stay in force; these lists extend them."
+    "a step only the operator's hand can take. English built-ins stay in force; these lists extend them.",
+    "negation_words: words of the operator's language that negate a hand word right after them ('no hand step');",
+    "the gate skips such a match for every pattern, so a hand pattern needs no lookbehind of its own."
   ],
   "release_patterns": [],
-  "hand_patterns": []
+  "hand_patterns": [],
+  "negation_words": []
 }

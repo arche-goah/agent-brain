@@ -323,9 +323,21 @@ function judge(input, now) {
       // could be built stacked). Another party's merge may block (a peer's work comes first) and stays free.
       // It passes when it cites the operator's order for that sequence, or when the work is already merged;
       // other languages' words for both come from autonomous-patterns.json `blocked_exempt_patterns`.
+      // The operator's order is also named when the line QUOTES it and the quote stands in what the operator said
+      // in this transcript (2026-11-06, operator: "the core should deliver this end to end, without extra tinkering"):
+      // a line in the operator's language that cited the order by the operator's exact words was held twice, because
+      // the instance's name pattern missed a genitive. A checked quote needs no word list, no name and no language.
+      let said = null;
+      const quotesOperator = (l) => {
+        for (const m of l.matchAll(/["„“”«»]([^"„“”«»\n]{12,})["“”«»]/gu)) {
+          if (said === null) said = operatorSaid(input.transcript_path);
+          if (said.includes(squash(m[1]))) return true;
+        }
+        return false;
+      };
       const mergeOnly = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:/.test(l)
         && /(beta-tag|beta tag|\bpin\b|windows)/i.test(l)
-        && !exempt.test(l));
+        && !exempt.test(l) && !quotesOperator(l));
       if (!mergeOnly.length) return null;
       return 'AUTONOMOUS-IDLE: a BLOCKED line waits on a merge, pin, beta tag or Windows check — that blocks the merge, '
         + `not the building: "${mergeOnly[0].trim().slice(0, 140)}". Build it now (stacked on the open PR if needed), `

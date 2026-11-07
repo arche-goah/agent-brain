@@ -99,7 +99,7 @@ def main():
 
     with tempfile.TemporaryDirectory() as root:
         R = pathlib.Path(root)
-        (R / "marker-present").write_text("")
+        (R / "marker-present").write_text("", encoding="utf-8")
         (R / "docs").mkdir()
         (R / "docs" / "orders.md").write_text(LEDGER, encoding="utf-8")
         (R / ".claude" / "rules").mkdir(parents=True)
@@ -236,7 +236,7 @@ def main():
             st.write_text("2026-10-28 12:00\n", encoding="utf-8")
             os.utime(st, (time.time() - 100, time.time() - 100))
             subprocess.run(["git", "-C", gd, "init", "-q"], check=True)
-            (G / "f").write_text("x")
+            (G / "f").write_text("x", encoding="utf-8")
             subprocess.run(["git", "-C", gd, "add", "f"], check=True)
             subprocess.run(["git", "-C", gd, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "tick"], check=True)
             rc, out = run(gd, "--cached")
@@ -255,7 +255,7 @@ def main():
             "- [ ] **single amp** — derived (2026-10-15)\n  check: test -f victim & rm -f victim\n  id: bypass-amp\n\n"
             "- [ ] **process substitution** — derived (2026-10-15)\n  check: diff <(rm -f victim) marker-present\n  id: bypass-procsub\n",
             encoding="utf-8")
-        (R / "victim").write_text("keep me")
+        (R / "victim").write_text("keep me", encoding="utf-8")
         json.dump({"ledgers": ["docs/orders.md"]}, open(cfg, "w", encoding="utf-8"))
         rc, out = run(root, "--brief")
         # it ran and passed; new in a root that already has a memory, so it is reported as unproven
@@ -294,7 +294,7 @@ def main():
     # baseline (old checks are not judged); a check seen red once and green later is DONE-OPEN.
     with tempfile.TemporaryDirectory() as root:
         R = pathlib.Path(root)
-        (R / "here").write_text("")
+        (R / "here").write_text("", encoding="utf-8")
         (R / "docs").mkdir()
         (R / ".claude" / "rules").mkdir(parents=True)
         json.dump({"ledgers": ["docs/l.md"], "allowed": ["test"]},
@@ -315,7 +315,7 @@ def main():
         ok("weak-check" in un and "weak-check" not in do, "a new check green at once = UNPROVEN, not done", out)
         ok("old-green" in do and "old-green" not in un, "the baseline entry is not re-judged on later runs", out)
         ok("real-work" not in out, "a new check that is red is not reported", out)
-        (R / "built").write_text("")
+        (R / "built").write_text("", encoding="utf-8")
         rc, out = run(root, "--brief")
         do = next((l for l in out.splitlines() if "done but still open" in l), "")
         ok("real-work" in do, "seen red once, green now = DONE-OPEN (the work happened)", out)
@@ -348,12 +348,12 @@ def main():
         P.mkdir()
         g = ["git", "-C", str(P), "-c", "user.email=t@t", "-c", "user.name=t"]
         subprocess.run(g[:3] + ["init", "-q", "-b", "main"], check=True)
-        (P / "a").write_text("a")
+        (P / "a").write_text("a", encoding="utf-8")
         subprocess.run(g[:3] + ["add", "a"], check=True)
         subprocess.run(g + ["commit", "-qm", "in pin"], check=True)
         inside = subprocess.run(g[:3] + ["rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         subprocess.run(g[:3] + ["checkout", "-qb", "side"], check=True)
-        (P / "b").write_text("b")
+        (P / "b").write_text("b", encoding="utf-8")
         subprocess.run(g[:3] + ["add", "b"], check=True)
         subprocess.run(g + ["commit", "-qm", "outside"], check=True)
         outside = subprocess.run(g[:3] + ["rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
@@ -414,6 +414,26 @@ def main():
         for i, why in (("path-reason", "a path and a PR number in backticks"), ("plain-reason", "a plain reason"),
                        ("ticked-parked", "a ticked entry")):
             ok(i not in pk, f"PARKED negative: {why} stays silent", out)
+
+    # 2026-11-06 (operator, "Ja, Konvention + Lint + Migration"): one current exit per open entry.
+    with tempfile.TemporaryDirectory() as root:
+        R = pathlib.Path(root)
+        (R / "docs").mkdir()
+        (R / ".claude" / "rules").mkdir(parents=True)
+        (R / "docs" / "x.md").write_text(
+            "# x\n\n- [ ] **two exits** — derived (2026-11-06)\n  id: two-exits\n  check: none - x\n"
+            "  exit: ai-does-it 2026-11-05 — old\n  exit: other-side 2026-11-06 — new\n\n"
+            "- [ ] **one exit, history kept** — derived (2026-11-06)\n  id: one-exit\n  check: none - x\n"
+            "  was-exit: ai-does-it 2026-11-05 — old\n  exit: other-side 2026-11-06 — new\n\n"
+            "- [x] **done with two exits** — derived (2026-11-06)\n  id: done-two\n  check: none - x\n"
+            "  exit: ai-does-it 2026-11-05\n  exit: done-already 2026-11-06\n", encoding="utf-8")
+        json.dump({"ledgers": ["docs/x.md"], "allowed": ["test"]},
+                  open(R / ".claude" / "rules" / "ledgers.json", "w", encoding="utf-8"))
+        rc, out = run(root, "--brief")
+        me = next((l for l in out.splitlines() if "more than one current `exit:`" in l), "")
+        ok("two-exits" in me, "an open entry with two exit lines is named", out)
+        ok("one-exit" not in me, "negative control: one exit plus was-exit history stays silent", out)
+        ok("done-two" not in me, "negative control: a ticked entry is not named", out)
 
     print()
     if fails:

@@ -361,6 +361,10 @@ You can shut down."
 CLOSE_OURS="Persisted. Still ours: example-market #61 — I merge it next session. You can shut down."
 f="$T/23a.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_BAD"; } > "$f"
 check "later turn: an ours item put under a with-others heading" "$f" block "$EN"
+# 2026-11-06 (Windows instance: six identical blocks, cause unmeasurable there): the block names what it read, per item.
+out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$f")" "$(native "$EN")" | node "$G" 2>&1)"
+case "$out" in *"open-items-seen.json (0 items)"*"example-market#61"*"seen-file not listed"*) ok "the relabel block names the seen-file, its size and each item's lookup";;
+  *) bad "relabel block lacks the self-diagnosis: '$out'";; esac
 f="$T/23b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Only #61, it is waiting on the owner."; } > "$f"
 check "later turn: an ours item said to wait, same line" "$f" block "$EN"
 f="$T/23c.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_OURS"; } > "$f"

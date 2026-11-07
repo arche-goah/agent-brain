@@ -36,11 +36,23 @@
  * A deliberately narrower search is legitimate — it just has to be visible. A line
  * `⚙ scope: <what was searched, and why only that>` in the reply lets the claim pass.
  *
+ * The third shape (operator decision 2026-11-06): "nothing found" is not "could not look".
+ * Incident on the macOS instance: `ls -d ~/.Trash/<name>*` answered zsh's `no matches found`
+ * because macOS privacy protection does not let the process read ~/.Trash (find there prints
+ * `Operation not permitted`), and the folder was reported gone — it sat in the Trash. Each Bash
+ * listing or search (the search commands plus ls, stat, test -e/-d/-f) is paired with its
+ * tool_result; output with `Operation not permitted`, `Permission denied` or `no matches found:`
+ * marks the path it names (else the command's own paths) UNREADABLE. Any absence claim in the
+ * same turn — the patterns above, or a local one like "the folder is gone" — then blocks with the
+ * path named, whether the roots are covered or not, with or without a scope line, and in a brain
+ * without a roots file too (this half needs no instance data). Instance data may add
+ * `unreadable_markers` and `gone_patterns` (regexes, extending the built-ins).
+ *
  * Source roots are INSTANCE DATA: `.claude/rules/absence-sources.json`
  *   {"roots": ["docs/", "~/some/other/repo"], "claim_patterns": [...],
  *    "scope_markers": [...]}
  * Roots are relative to the project root, absolute, or start with `~`. A brain without
- * that file (or with an empty list) has nothing to check against and this gate stays
+ * that file (or with an empty list) has nothing to check against and the roots half stays
  * silent — the template under `templates/rules-instance/` ships empty on purpose.
  * INERT-WITHOUT: .claude/rules/absence-sources.json roots
  *   (read by scripts/hook-coverage.py: registered with no file or no roots = reported, unless
@@ -109,20 +121,34 @@ const BUILTIN_CLAIM = [
 const BUILTIN_SCOPE_MARKER = ['⚙\\s*scope\\s*:'];
 
 const SEARCH_BASH = /(^|[\s;&|(])(grep|egrep|fgrep|rg|find|ag|ack|fd|git\s+grep)\b/;
+// Commands whose output can say "I could not look" (2026-11-06): the searches plus plain listings.
+const LIST_BASH = /(^|[\s;&|(])(grep|egrep|fgrep|rg|find|ag|ack|fd|git\s+grep|ls|stat|test\s+-[edf]|\[\s+-[edf])\b/;
+// The instrument could not read the place — no evidence either way. zsh's "no matches found:" is
+// in the set because it is what a glob prints when the directory itself is unreadable (macOS
+// privacy protection on ~/.Trash, ~/Downloads); it prints the same for a readable empty match.
+const BUILTIN_UNREADABLE = ['Operation not permitted', 'Permission denied', 'no matches found:'];
+// "The folder is gone" — a claim about one place, not about the record. It only counts against an
+// unreadable path; the roots check below stays on the record-wide claim patterns.
+const BUILTIN_GONE = [
+  '\\b(is|are|was|were)\\s+(gone|deleted|removed|missing)\\b',
+  '\\b(no\\s+longer|not)\\s+(exists?|there|present)\\b',
+  '\\b(does\\s+not|doesn\'t|do\\s+not|don\'t|did\\s+not)\\s+exist\\b',
+  '\\bnothing\\s+(found|there|left)\\b',
+];
 
 function loadConfig(cwd) {
   let cfg = {};
   try {
     cfg = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'rules', 'absence-sources.json'), 'utf8'));
   } catch (e) { /* no instance file — nothing to check against */ }
-  const merge = (builtins, extra) => {
+  const merge = (builtins, extra, flags = 'giu') => {
     const out = [...builtins];
     if (Array.isArray(extra)) {
       for (const s of extra) {
         try { new RegExp(s); out.push(s); } catch (e) { /* skip broken regex */ }
       }
     }
-    return new RegExp(out.join('|'), 'giu');
+    return new RegExp(out.join('|'), flags);
   };
   const roots = (Array.isArray(cfg.roots) ? cfg.roots : [])
     .filter((r) => typeof r === 'string' && r.trim())
@@ -131,7 +157,26 @@ function loadConfig(cwd) {
     roots,
     claim: merge(BUILTIN_CLAIM, cfg.claim_patterns),
     scope: merge(BUILTIN_SCOPE_MARKER, cfg.scope_markers),
+    gone: merge(BUILTIN_GONE, cfg.gone_patterns),
+    unreadable: merge(BUILTIN_UNREADABLE, cfg.unreadable_markers, 'iu'),
   };
+}
+
+/** The text of a tool_result block: a string, or text parts. */
+function resultText(b) {
+  if (typeof b.content === 'string') return b.content;
+  if (Array.isArray(b.content)) return b.content.map((p) => (p && p.text) || '').join('\n');
+  return '';
+}
+
+/** Paths a "could not read" result names; the command's own paths when it names none. */
+function unreadablePaths(text, cmd, cwd) {
+  const out = [];
+  const add = (p) => { if (p && /[\\/~]/.test(p) && !out.includes(p)) out.push(p); };
+  for (const m of text.matchAll(/no matches found:\s*(\S+)/gi)) add(m[1]);
+  for (const m of text.matchAll(/['"‘]?((?:[A-Za-z]:)?[^\s'"‘’:]+)['"’]?:\s*(?:Operation not permitted|Permission denied)/gi)) add(m[1]);
+  if (out.length === 0) for (const p of bashPaths(cmd, cwd, LIST_BASH)) add(p);
+  return out;
 }
 
 /** One comparable form: forward slashes, no trailing slash, Git Bash drive mapped. */
@@ -160,14 +205,14 @@ function covers(a, b) {
 }
 
 /** Paths a Bash search command looks at. Rough by design — record mode measures it. */
-function bashPaths(cmd, cwd) {
+function bashPaths(cmd, cwd, which = SEARCH_BASH) {
   let base = cwd;
   const cd = /(?:^|[;&|]\s*)cd\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd);
   if (cd) base = resolveFrom(cwd, cd[1]);
   const out = [];
   // Only the segments that actually search; `cd x && grep -r foo .` -> the grep part.
   for (const seg of segments(cmd)) {   // outside quotes only: `grep -E "a|b" dir` is one segment
-    if (!SEARCH_BASH.test(seg)) continue;
+    if (!which.test(seg)) continue;
     const toks = seg.match(/"[^"]*"|'[^']*'|\S+/g) || [];
     let pathish = 0;
     for (const t0 of toks) {
@@ -216,8 +261,10 @@ function readTail(file) {
 }
 
 /** Texts and searched paths of the running turn, plus cooldown state. */
-function analyze(transcriptPath, cwd) {
+function analyze(transcriptPath, cwd, unreadableRx) {
   const events = [];
+  const listing = new Map();   // tool_use_id -> command of a Bash listing/search, until its result
+
   const questionAnswered = questionAnswers();   // the operator's question-tool answer ends the window too
   for (const line of readTail(transcriptPath)) {
     if (!line.trim()) continue;
@@ -234,11 +281,25 @@ function analyze(transcriptPath, cwd) {
       if (!isNotification(msg.content) && !isAgentOrigin(d)) events.push({ boundary: true });
       continue;
     }
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      for (const b of msg.content) {
+        if (!b || b.type !== 'tool_result' || !listing.has(b.tool_use_id)) continue;
+        const text = resultText(b);
+        if (unreadableRx && unreadableRx.test(text)) {
+          events.push({ unreadable: unreadablePaths(text, listing.get(b.tool_use_id), cwd) });
+        }
+        listing.delete(b.tool_use_id);
+      }
+      continue;
+    }
     if (msg.role !== 'assistant' || !Array.isArray(msg.content)) continue;
     for (const b of msg.content) {
       if (b.type === 'text' && b.text) { events.push({ text: b.text }); continue; }
       if (b.type !== 'tool_use' || !b.name) continue;
       const inp = b.input || {};
+      if (b.name === 'Bash' && typeof inp.command === 'string' && LIST_BASH.test(inp.command)) {
+        listing.set(b.id, inp.command);
+      }
       if (b.name === 'Grep' || b.name === 'Glob') {
         events.push({ searched: [inp.path ? resolveFrom(cwd, inp.path) : norm(cwd)] });
       } else if (b.name === 'Read' && inp.file_path) {
@@ -257,10 +318,12 @@ function analyze(transcriptPath, cwd) {
   }
   const texts = [];
   const searched = [];
+  const unreadable = [];
   let delegated = 0;
   for (let i = last; i < events.length; i++) {
     if (events[i].text) texts.push(events[i].text);
     if (events[i].searched) searched.push(...events[i].searched);
+    for (const p of events[i].unreadable || []) if (!unreadable.includes(p)) unreadable.push(p);
     if (events[i].delegated) delegated += 1;
   }
 
@@ -273,7 +336,7 @@ function analyze(transcriptPath, cwd) {
     turnsSinceGate = 0;
     for (let i = lastGate + 1; i < events.length; i++) if (events[i].boundary) turnsSinceGate++;
   }
-  return { texts, searched, delegated, quiet: turnsSinceGate < COOLDOWN_TURNS };
+  return { texts, searched, unreadable, delegated, quiet: turnsSinceGate < COOLDOWN_TURNS };
 }
 
 process.stdin.on('end', () => {
@@ -289,44 +352,67 @@ process.stdin.on('end', () => {
   let scoped = false;
   let seen;
   let cfg;
+  let gone = [];
+  let blind = [];
   try {
     cfg = loadConfig(cwd);
-    if (cfg.roots.length === 0) return allow(); // nothing registered, nothing to hold against
-    seen = analyze(input.transcript_path, cwd);
+    seen = analyze(input.transcript_path, cwd, cfg.unreadable);
+    // The roots half needs instance data; the unreadable half needs none (2026-11-06).
+    if (cfg.roots.length === 0 && seen.unreadable.length === 0) return allow();
     const raw = seen.texts.join('\n');
     const clean = stripQuoted(raw);
-    for (const h of clean.match(cfg.claim) || []) {
-      const n = h.toLowerCase().replace(/\s+/g, ' ').trim();
-      if (!claims.includes(n)) claims.push(n);
+    const found = (rx) => [...new Set((clean.match(rx) || [])
+      .map((h) => h.toLowerCase().replace(/\s+/g, ' ').trim()))];
+    claims = found(cfg.claim);
+    // A path the instrument could not read backs no absence claim at all — not even "it is gone".
+    if (seen.unreadable.length > 0) {
+      gone = found(cfg.gone).filter((g) => !claims.includes(g));
+      if (claims.length > 0 || gone.length > 0) blind = seen.unreadable;
     }
-    if (claims.length === 0) return allow();
+    if (claims.length === 0 && blind.length === 0) return allow();
     scoped = cfg.scope.test(raw); // the marker may sit in code formatting — read raw
-    missing = cfg.roots
-      // on the root, on a parent of it, or inside it — a look into the root counts
-      .filter((r) => !seen.searched.some((s) => covers(s, r.abs) || covers(r.abs, s)))
-      .map((r) => r.label);
+    if (claims.length > 0) {
+      missing = cfg.roots
+        // on the root, on a parent of it, or inside it — a look into the root counts
+        .filter((r) => !seen.searched.some((s) => covers(s, r.abs) || covers(r.abs, s)))
+        .map((r) => r.label);
+    }
   } catch (e) {
     return allow(); // transcript unreadable — never block because of that
   }
 
-  const due = missing.length > 0 && !scoped;
+  // A visible scope marker narrows a search; it does not make an unreadable path readable.
+  const rootsDue = missing.length > 0 && !scoped;
+  const due = rootsDue || blind.length > 0;
   if (RECORD) {
     console.log(JSON.stringify({ record: [{
-      claims: claims.slice(0, 4), roots: cfg.roots.length, unsearched: missing,
-      searches: seen.searched.length, delegated: seen.delegated, scoped,
+      claims: [...claims, ...gone].slice(0, 4), roots: cfg.roots.length, unsearched: missing,
+      unreadable: blind, searches: seen.searched.length, delegated: seen.delegated, scoped,
       would_block: due && !seen.quiet,
     }] }));
     return allow();
   }
   if (!due || seen.quiet) return allow();
 
-  const reason = 'ABSENCE-GATE — an absence claim (documented nowhere / no way to do it) ' +
-    'covers every source, but this turn searched only some of them.\n' +
-    `Absence wording: ${claims.slice(0, 3).join(' · ')}\n` +
-    `Unsearched roots: ${missing.join(', ')}\n` +
-    'Search those before saying it exists nowhere. A narrower search on purpose is ' +
-    'fine when it is visible: add a line "⚙ scope: <what was searched, and why only ' +
-    'that>" and re-issue.';
+  const parts = [];
+  if (blind.length > 0) {
+    parts.push('ABSENCE-GATE — an absence claim rests on a path this turn could not read.',
+      `Absence wording: ${[...claims, ...gone].slice(0, 3).join(' · ')}`,
+      `Path not readable: ${blind.slice(0, 5).join(', ')}`,
+      'The instrument could not read it (permission, privacy protection, or a shell glob that ' +
+      'printed "no matches found") — that is no evidence of absence. Ask the operator, or use ' +
+      'another source (the transcript, a log, a listing the operator runs), before saying it is gone.');
+  }
+  if (rootsDue) {
+    parts.push('ABSENCE-GATE — an absence claim (documented nowhere / no way to do it) ' +
+      'covers every source, but this turn searched only some of them.',
+      `Absence wording: ${claims.slice(0, 3).join(' · ')}`,
+      `Unsearched roots: ${missing.join(', ')}`,
+      'Search those before saying it exists nowhere. A narrower search on purpose is ' +
+      'fine when it is visible: add a line "⚙ scope: <what was searched, and why only ' +
+      'that>" and re-issue.');
+  }
+  const reason = parts.join('\n');
   console.log(JSON.stringify(declare({ decision: 'block', reason }, input)));
   process.exit(0);
 });
