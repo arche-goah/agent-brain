@@ -161,7 +161,12 @@ def find_shell(explicit=None):
 # `find` is NOT here: -delete/-exec make it a writer, and a check rarely needs it (`ls`, `test`).
 ALLOWED = ["test", "[", "grep", "ls", "wc", "head", "tail", "cat", "diff",
            "git log", "git show", "git grep", "git rev-parse", "git ls-files", "git cat-file",
-           "git merge-base", "git diff", "git status"]
+           "git merge-base", "git diff", "git status", "gh pr view"]
+# `gh pr view` reads a PR's state - the natural check of an entry whose exit waits on a merge (measured
+# 2026-11-07 on the Windows instance: 10 such checks in one brain's ledgers, every one refused). Its one
+# acting option opens a browser; that is refused below. `git -C <dir>` is read as the same git command:
+# every brain checks its core submodule as `git -C core ...`; `-c` (a config override) stays refused.
+GH_OPENS = {"--web", "-w"}
 # The shell grammar a check may use is closed, not filtered: parts joined by `&&`, `||` or `|`
 # (a pipe), each part a plain command with words. After those separators are taken out, ANY
 # other shell control character refuses the check — `;`, a single `&`, `<`, `>`, `(`, `)`,
@@ -181,6 +186,10 @@ def permitted(cmd, allowed):
     for part in parts:
         words = part.strip().lstrip("!").split()
         if not words:
+            return False
+        if len(words) > 3 and words[0] == "git" and words[1] == "-C":
+            words = ["git"] + words[3:]
+        if words[0] == "gh" and GH_OPENS & set(words):
             return False
         if not any(words[:len(p.split())] == p.split() for p in allowed):
             return False
