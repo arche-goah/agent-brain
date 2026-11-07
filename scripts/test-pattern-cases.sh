@@ -90,7 +90,8 @@ rc "all readers" 0
 brain tpl >/dev/null
 for f in "$HERE"/../templates/rules-instance/*-patterns.json; do cp "$f" "$T/tpl/.claude/rules/"; done
 run tpl
-has "template cases pass (all three templates carry cases)" "in 3 file(s), 0 failed; 0 known file(s) without _cases"
+ntpl=$(ls "$HERE"/../templates/rules-instance/*-patterns.json | wc -l | tr -d ' ')
+has "template cases pass (all $ntpl templates carry cases)" "in $ntpl file(s), 0 failed; 0 known file(s) without _cases"
 rc "templates" 0
 
 # --- the 2026-10-28 regression: the answer path of the autonomous latch

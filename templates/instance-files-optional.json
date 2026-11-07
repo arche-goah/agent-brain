@@ -20,7 +20,7 @@
     "shared-memory-post.json": "shared-memory-post.py: check_words in the instance's language; missing file = English built-ins",
     "skill-placement.json": "skill-lint.py: opt-in placement ratchet; missing file = placement check off, provenance only for drafts (by design)",
     "stop-patterns.json": "stoppen-gate.cjs: stop patterns in the instance's language; missing file = English built-ins",
-    "watch-gate.json": "watch-gate.cjs, done-claim.cjs, verification-gate.cjs: hand-step/done-claim words in the instance's language; missing file = English built-ins"
+    "watch-gate.json": "watch-gate.cjs, done-claim.cjs, verification-gate.cjs: hand-step/done-claim/reload-ask words in the instance's language; missing file = English built-ins"
   },
   "unclassified": []
 }

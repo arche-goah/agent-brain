@@ -19,6 +19,12 @@
 #  13. same capability claim after a search over every root         -> allow
 #  14. epistemic "no way to know yet" is not a capability claim     -> allow
 #  15. the capability claim only quoted                             -> allow
+#  16. incident: zsh "no matches found" + "the folder is gone"      -> block, names the path
+#  17. find "Operation not permitted" + "does not exist"           -> block, names the path
+#  18. the same without any roots file                              -> block (needs no data)
+#  19. a visible scope line does not lift the unreadable block       -> block
+#  20. control: readable search, empty output, same claim           -> allow
+#  21. control: unreadable result, no absence claim                 -> allow
 # Usage: bash scripts/test-absence-gate.sh   (exit 0 = all fixtures pass)
 set -u
 
@@ -54,6 +60,9 @@ U='{"message":{"role":"user","content":"question"}}'
 ECHO='{"message":{"role":"user","content":"Stop hook feedback:\nABSENCE-GATE — ... [ABSENCE-GATE]"}}'
 say()  { printf '{"message":{"role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$1"; }
 tool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"%s","id":"t","input":%s}]}}\n' "$1" "$2"; }
+# A Bash call and its result, paired by id ($1 id, $2 command / result text).
+bash_use() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","id":"%s","input":{"command":"%s"}}]}}\n' "$1" "$2"; }
+bash_res() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":"%s"}]}}\n' "$1" "$2"; }
 
 CLAIM='The send rate of the desk is documented nowhere, so it has to be measured.'
 NARROW=$(tool Grep "{\"pattern\":\"send rate\",\"path\":\"$NM\"}")
@@ -67,6 +76,9 @@ run_hook() {
   case "$want" in
     block)  case "$out" in *ABSENCE-GATE*'Unsearched roots: docs/'*) ok "$name blocks";;
               *) bad "$name did not block: ${out:0:160}";; esac ;;
+    blind)  case "$out" in *ABSENCE-GATE*"Path not readable: $WANT"*'no evidence of absence'*) ok "$name blocks";;
+              *) bad "$name did not block on the unreadable path: ${out:0:200}";; esac
+            case "$out" in *'Unsearched roots'*) bad "$name also named unsearched roots";; esac ;;
     record) case "$out" in *'"record"'*'"would_block":true'*) ok "$name records";;
               *) bad "$name no record: ${out:0:160}";; esac
             case "$out" in *'"decision"'*) bad "$name blocked in record mode";; esac ;;
@@ -124,6 +136,34 @@ run_hook "14 epistemic no-way-to-know" "$T/c14.jsonl" allow "$P"
 
 { echo "$U"; echo "$NARROW"; say 'The ledger quotes the old verdict \"GUI-only, no way from the engine\" as the origin of the fallacy.'; } > "$T/c15.jsonl"
 run_hook "15 capability claim only quoted" "$T/c15.jsonl" allow "$P"
+
+# Unreadable paths (2026-11-06). The listed path is only TEXT in the transcript — the gate never
+# opens it — so it is a fixed string, not a temp dir. EVERY root is covered (a Grep on their
+# parent), so a block here can only come from the unreadable half.
+TR=/var/absence-fixture/Trash
+ALL=$(tool Grep "{\"pattern\":\"x\",\"path\":\"$(native "$T")\"}")
+GONE='The folder is gone, nothing left to restore.'
+{ echo "$U"; echo "$ALL"; bash_use u1 "ls -d $TR/x*"; bash_res u1 "(eval):1: no matches found: $TR/x*"
+  say "$GONE"; } > "$T/c16.jsonl"
+WANT="$TR/x*"; run_hook "16 incident: zsh no matches found, claim gone, roots covered" "$T/c16.jsonl" blind "$P"
+
+{ echo "$U"; echo "$ALL"; bash_use u2 "find $TR -name 'x*'"; bash_res u2 "find: $TR: Operation not permitted"
+  say 'The folder does not exist any more.'; } > "$T/c17.jsonl"
+WANT="$TR"; run_hook "17 find: Operation not permitted" "$T/c17.jsonl" blind "$P"
+
+run_hook "18 unreadable half needs no roots file" "$T/c17.jsonl" blind "$T/bare"
+
+{ echo "$U"; echo "$ALL"; bash_use u1 "ls -d $TR/x*"; bash_res u1 "(eval):1: no matches found: $TR/x*"
+  say "$GONE"; say '⚙ scope: only the Trash.'; } > "$T/c19.jsonl"
+WANT="$TR/x*"; run_hook "19 scope line does not make it readable" "$T/c19.jsonl" blind "$P"
+
+{ echo "$U"; echo "$ALL"; bash_use u3 "find $TR -name 'x*'"; bash_res u3 ""
+  say "$GONE"; } > "$T/c20.jsonl"
+run_hook "20 control: readable search, empty output, same claim" "$T/c20.jsonl" allow "$P"
+
+{ echo "$U"; echo "$ALL"; bash_use u1 "ls -d $TR/x*"; bash_res u1 "(eval):1: no matches found: $TR/x*"
+  say 'zsh could not read the Trash here, so I am asking the operator to look.'; } > "$T/c21.jsonl"
+run_hook "21 control: unreadable result, no absence claim" "$T/c21.jsonl" allow "$P"
 
 echo
 [ "$fail" -eq 0 ] && echo "absence-gate fixtures: ALL passed" || echo "FAILURE"

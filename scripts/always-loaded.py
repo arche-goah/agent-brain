@@ -16,10 +16,24 @@ always-loaded set above about 150 000 characters, and nothing says so when it ha
 stood only in a harness message nobody reads). So a second line names the distance to that
 limit, independent of the baseline, from 90 % on, and says "OVER" above it.
 
+The size is the total; `--diet` looks INTO the one file that drifts most. An instance's
+preference file (`.claude/rules/feedback.md`) declares its own diet in its header: the rule
+and its date stand there, the operator's quote, the incident and the "carrier:" clause go to
+the append-only protocol. Applied by hand on 2026-11-06 on the macOS instance (32 edits,
+33088 to 28274 bytes) after weeks of drift nothing reported. `--diet` names the two kinds
+that are mechanically recognisable: a QUOTE CLAUSE (an attributed quote, `<who>: „…"`, of
+25+ characters inside a bullet that also carries a date YYYY-MM-DD; replayed on that file's
+pre-diet version: 13 hits, all operator quotes) and a CARRIER CLAUSE (`Carrier:`, plus the
+instance's own words for the key: `carrier_keys` in `.claude/rules/lesson-carriers.json`, the
+data carrier-audit.py and lesson-carriers.py already read). Inline code (`...`) is skipped, so
+a header that NAMES the field is no finding.
+
 Usage: always-loaded.py [--repo DIR] [--memory FILE] [--accept] [--slack BYTES] [--limit BYTES]
+       always-loaded.py --diet [FILE] [--repo DIR] [--strict]
 Output: nothing while within the slack (default 2048 bytes) of the baseline, below 90 % of the
 limit (default 150000), or when no baseline exists yet (it is created silently); otherwise one
-line per finding. Exit 0 always.
+line per finding. Exit 0 always. `--diet` prints one line per kind found (or "clean") and
+exits 0; with `--strict` it exits 1 when anything is found.
 State: <repo>/.claude-state/always-loaded.json
 """
 import argparse
@@ -27,7 +41,9 @@ import datetime
 import glob
 import json
 import os
+import re
 import sys
+from pathlib import Path
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
@@ -50,6 +66,77 @@ def measure(repo, memory):
     return total
 
 
+DIET_DEFAULT = Path(".claude") / "rules" / "feedback.md"
+BULLET = re.compile(r"^\s*(?:[-*+]|\d+\.)\s")
+CONTINUATION = re.compile(r"^\s+\S")
+DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+# Attributed only (`<who>: „…"`): on the macOS instance's file after its diet every one of 12
+# unattributed dated quotes was a pointer naming a core section („Presenting to the Operator"),
+# none an operator quote (measured 2026-11-06).
+QUOTE = re.compile(":\\s*[„“\"]([^„“”\"]{25,600})[“”\"]")
+CARRIER_KEYS = ["Carrier"]
+CODE = re.compile(r"`[^`\n]*`")
+
+
+def _blank_code(line):
+    # inline code is a name, not a clause; blanked with spaces so offsets stay put
+    return CODE.sub(lambda m: " " * len(m.group(0)), line)
+
+
+def carrier_keys(repo):
+    # the instance's words for the carrier key; the engine carries English only (english-only.py)
+    keys = list(CARRIER_KEYS)
+    try:
+        data = json.loads((Path(repo) / ".claude" / "rules" / "lesson-carriers.json").read_text(encoding="utf-8"))
+        keys += [k for k in data.get("carrier_keys", []) if isinstance(k, str) and k]
+    except (OSError, ValueError, AttributeError):
+        pass
+    return keys
+
+
+def diet(path, keys):
+    """(quote_lines, carrier_lines) of the preference file, 1-based line numbers."""
+    carrier = re.compile(r"\b(?:" + "|".join(re.escape(k) for k in keys) + r")\s*:", re.I)
+    lines = [_blank_code(l) for l in path.read_text(encoding="utf-8").splitlines()]
+    carriers = [i + 1 for i, l in enumerate(lines) if carrier.search(l)]
+    quotes = []
+    i = 0
+    while i < len(lines):
+        if not BULLET.match(lines[i]):
+            i += 1
+            continue
+        j = i + 1
+        while j < len(lines) and CONTINUATION.match(lines[j]) and not BULLET.match(lines[j]):
+            j += 1
+        text = " ".join(lines[i:j])  # a quote may wrap; offsets map back through starts
+        if DATE.search(text):
+            starts, pos = [], 0
+            for l in lines[i:j]:
+                starts.append(pos)
+                pos += len(l) + 1
+            for m in QUOTE.finditer(text):
+                k = sum(1 for s in starts if s <= m.start(1)) - 1
+                if i + k + 1 not in quotes:
+                    quotes.append(i + k + 1)
+        i = j
+    return quotes, carriers
+
+
+def diet_report(path, repo, strict):
+    if not path.is_file():
+        print(f"always-loaded diet: no preference file at {path.as_posix()}")
+        return 0
+    quotes, carriers = diet(path, carrier_keys(repo))
+    if not quotes and not carriers:
+        print(f"always-loaded diet: {path.as_posix()}: clean")
+        return 0
+    for name, found in (("quote clause", quotes), ("carrier clause", carriers)):
+        if found:
+            print(f"always-loaded diet: {path.as_posix()}: {len(found)} {name}(s) at lines "
+                  f"{', '.join(map(str, found))} -- rule and date stay, the rest goes to the protocol")
+    return 1 if strict else 0
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default=".")
@@ -57,7 +144,11 @@ def main(argv):
     ap.add_argument("--accept", action="store_true")
     ap.add_argument("--slack", type=int, default=2048)
     ap.add_argument("--limit", type=int, default=150000)
+    ap.add_argument("--diet", nargs="?", const="", default=None, metavar="FILE")
+    ap.add_argument("--strict", action="store_true")
     a = ap.parse_args(argv)
+    if a.diet is not None:
+        return diet_report(Path(a.diet) if a.diet else Path(a.repo) / DIET_DEFAULT, a.repo, a.strict)
     if a.memory and os.path.isdir(a.memory):
         # a directory sizes as 0 or as its entry table, never the index (Windows check
         # 2026-10-09: a folder passed by hand "grew" 6 KB seconds after the baseline)

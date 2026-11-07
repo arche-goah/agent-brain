@@ -52,7 +52,11 @@ the brain.
    another exit. If more than three still remain, the rest is offered as a list ("there are
    two more; shall I list them?").
 4. **Write the exit INTO each ledger entry**, as a field line with the date it was assigned:
-   `exit: <field value> <YYYY-MM-DD>` (e.g. `exit: ai-does-it 2026-10-08`). `done-already`
+   `exit: <field value> <YYYY-MM-DD>` (e.g. `exit: ai-does-it 2026-10-08`). **An open entry carries
+   exactly ONE `exit:` line:** a new exit REPLACES the current one, and the old line stays as history
+   renamed to `was-exit:` (operator decision 2026-11-06; measured: 84 of 282 open entries on one brain
+   carried 2-10 exit lines, and the readers disagreed on which one counts). `ledger-reconcile.py` names
+   every open entry with more than one. `done-already`
    and `drop` also tick the box — with the evidence or the reason. When the operator released
    the item in the session, the line quotes their words: `exit: ai-does-it 2026-11-02 —
    released: "<their words>"` — only words found in their own messages count, and while such

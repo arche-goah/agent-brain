@@ -158,6 +158,24 @@ with tempfile.TemporaryDirectory() as td:
     ok(sc.hook_template_findings(hooked) == [],
        "the core itself (it carries templates/suite/hooks): its own hooks.json is not judged")
 
+    # Python floor (contract 1.4.0, 2026-11-06): two suites pinned CI to 3.12 while their code silently needed it.
+    ci312 = 'steps:\n  - uses: actions/setup-python@v5\n    with:\n      python-version: "3.12"\n'
+    ci311 = ci312 + '  - uses: actions/setup-python@v5\n    with:\n      python-version: "3.11"\n'
+    pf = sc.python_floor_findings
+    ok([l for l, _ in pf(True, None, ci312)] == ["WARN"], "Python suite, CI pins 3.12, no floor declared: WARN")
+    ok([l for l, _ in pf(True, "3.11", ci312)] == ["WARN"], "floor 3.11 declared but no CI leg on it: WARN")
+    ok(pf(True, "3.11", ci311) == [], "floor declared and run in CI: no finding")
+    ok([l for l, _ in pf(True, 3.11, ci311)] == ["WARN"], "a floor that is not a \"3.N\" string: WARN")
+    ok(pf(False, None, ci312) == [], "no tracked .py files: no finding (control)")
+    ok(pf(True, None, "steps:\n  - run: npm test\n") == [], "CI pins no python-version: no finding (control)")
+    pyrepo = make_repo(base, "pyfloor")
+    (pyrepo / "tool.py").write_text("print(1)\n", encoding="utf-8")
+    (pyrepo / ".github" / "workflows").mkdir(parents=True)
+    (pyrepo / ".github" / "workflows" / "ci.yml").write_text(ci312, encoding="utf-8")
+    git(pyrepo, "add", "-A")
+    ok(any(l == "WARN" and "python_floor" in m for l, m in sc.check(pyrepo, contract)),
+       "check() carries the python-floor finding (wired, not only defined)")
+
 core_levels = [lvl for lvl, _ in sc.marketplace_findings(HERE.parent)]
 ok((HERE.parent / ".claude-plugin" / "marketplace.json").exists() and "ERROR" not in core_levels,
    "the core's own marketplace.json: no ERROR")

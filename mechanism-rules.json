@@ -109,6 +109,16 @@
       "instead": "Multi-line or quoted text goes into a file (Working Rule #8): write the script with the Write tool and run the file, or quote the argument in single quotes. An escaped backtick (\\`) is no hit."
     },
     {
+      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+-C\\s+\\S+)?\\s+(?:add|commit|rm|restore|checkout)\\b[^\\n;&|]*\\s\\$\\{?[A-Za-z_]\\w*\\}?(?=\\s|$)",
+      "was": "a path list passed to git as an unquoted shell variable (`git add $F`): zsh does not split it into words, so it arrives as ONE path with spaces; bash splits it, PowerShell does neither - the same command means three things. Measured 2026-11-02 on the macOS instance, twice in one project (\"pathspec ... did not match any files\").",
+      "instead": "Write the paths out (one call, by path - Working Rule #12). In a script of your own use an array (\"${ARR[@]}\" in bash, ${=VAR} only in zsh)."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+-C\\s+\\S+)?\\s+stash\\b(?!\\s+(?:list|show)\\b)",
+      "was": "git stash - also in a worktree of your own: the stash lives in the repository that every worktree of it shares, so it is visible and poppable from each of them. Measured 2026-11-02 on the macOS instance: a stash for a negative control emptied the worktree's changes, and the control ran against the wrong test. shared-working-copy-guard covers stash only while a second session shares the same checkout.",
+      "instead": "Run a negative control against the old state in a folder of its own: `git show origin/main:<path> > <scratch>/negctl/<file>` and the test there. Commit your own paths instead of stashing (Working Rule #12). `git stash list` / `git stash show` only read and pass."
+    },
+    {
       "pattern": "(?:^|[;&|]\\s*)(?:(?:bash|sh|python3|python)\\s+)?[^\\s;&|]*(handover-gate|effect-check|leak-scan|suite-check|skill-lint|dep-lint|memory-lint|ecosystem-sync|workflow-parse-check|parallel-sessions|brain-scan\\.sh)[^|;&]*\\|\\s*(tail|head|grep|tee|cut|sed|awk)\\b",
       "was": "a core gate or check run through a pipe (`leak-scan.py | tail`) - the pipeline's exit code is the LAST command's, so a red gate reads green. Measured 2026-08-04 on the Windows instance: a red gate slipped through into a commit and a push; ported 2026-11-07 from that instance's rule data (in use since 2026-08-04, command position anchored 2026-08-08 so reading a script with `git show ... | sed` passes)",
       "instead": "Run the gate without a pipe and read its exit code on its own (`python3 core/scripts/leak-scan.py; echo \"exit=$?\"`), or write the output to a file first and filter that."

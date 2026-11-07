@@ -96,9 +96,17 @@ function texts(toolName, ti, cwd) {
     // A documentation file a command hands to an interpreter or an eval is a script for that command
     // (a collaborator's Windows check on #302, 2026-11-02: write the code into notes.txt, then
     // `python3 notes.txt` or `iex (Get-Content notes.txt -Raw)` - both steps passed). `cat`/`grep` stay unread.
-    const runs = RUNNER.test(ti.command);
+    // A documentation file counts as a script only where the shell itself hands it over: quoted text is an
+    // argument (a path opened for READING inside `python3 -c "…open('x.md')…"`, a runner's name inside a
+    // printf text) and a redirect target is written, not run. Measured 2026-11-06 on the macOS instance: a
+    // read of a ledger inside `-c`, and twice an append of a ledger entry whose text named the interpreter,
+    // were refused because the ledger's own content describes the OS input path. Script files keep the
+    // full reading (quoted or not).
+    const bare = ti.command.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, ' ').replace(/>{1,2}\s*\S+/g, ' ');
+    const runs = RUNNER.test(bare);
+    const docToks = new Set(bare.split(/[\s;&|()<>"'`]+/));
     for (const tok of ti.command.split(/[\s;&|()<>"'`]+/)) {
-      if (!(SCRIPT_EXT.test(tok) || (runs && DOC_EXT.test(tok))) || OWN_FILES.test(tok)) continue;
+      if (!(SCRIPT_EXT.test(tok) || (runs && DOC_EXT.test(tok) && docToks.has(tok))) || OWN_FILES.test(tok)) continue;
       const fp = path.isAbsolute(tok) ? tok : path.join(cwd || process.cwd(), tok);
       try { if (fs.statSync(fp).size < 2_000_000) out.push(fs.readFileSync(fp, 'utf8')); } catch (e) { /* not a file */ }
     }

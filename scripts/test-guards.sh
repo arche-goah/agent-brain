@@ -435,6 +435,16 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: inline script in single quotes (control)" Bash command "python3 -c 'print(\`date\`)'" allow
   tr_probe "mechanism-guard/core rule: inline script without substitution (control)" Bash command 'python3 -c \"print(1)\"' allow
   tr_probe "mechanism-guard/core rule: escaped backtick (control)" Bash command 'python3 -c \"a = \\`x\\`\"' allow
+  # A path list as an unquoted variable means three things in three shells (measured 2026-11-02, macOS instance,
+  # zsh: "pathspec ... did not match"); and a stash lives in the repository every worktree shares.
+  tr_probe "mechanism-guard/core rule: git add with a variable path list" Bash command 'git add $F' block
+  tr_probe "mechanism-guard/core rule: git -C commit with \${VAR}" Bash command 'git -C /r commit -m x -- ${FILES}' block
+  tr_probe "mechanism-guard/core rule: git add with written-out paths (control)" Bash command "git add a.txt b.txt" allow
+  tr_probe "mechanism-guard/core rule: variable only in the message text (control)" Bash command "git commit -m 'costs \$5 now' -- a.txt" allow
+  tr_probe "mechanism-guard/core rule: git stash" Bash command "git stash" block
+  tr_probe "mechanism-guard/core rule: git -C stash push" Bash command "git -C /r stash push -m x" block
+  tr_probe "mechanism-guard/core rule: git stash list (control)" Bash command "git stash list" allow
+  tr_probe "mechanism-guard/core rule: git stash show (control)" Bash command "git -C /r stash show -p" allow
   tr_probe "mechanism-guard/core rule: a plain \$VAR (control)" Bash command 'bash -c \"echo $HOME\"' allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)

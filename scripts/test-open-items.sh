@@ -588,6 +588,8 @@ printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2
   '- [ ] Exit never moved' '  id: stale-exit' '  check: gh pr list --head fix/thing --state merged' '  exit: ai-does-it 2026-10-28 — build it' '' \
   '- [ ] In-pr without a ref' '  id: inpr-noref' '  exit: in-pr 2026-10-28 — the follow-up branch' '' \
   '- [ ] In-pr ref on the next line' '  id: inpr-cont' '  exit: in-pr 2026-10-28 — skill text as the' '  follow-up core#31' '' \
+  '- [ ] Exit names a merged PR' '  id: merged-named' '  exit: ai-does-it 2026-10-28 — built in core#77, next train' '' \
+  '- [ ] Exit names an open and a closed PR' '  id: mixed-named' '  exit: ai-does-it 2026-10-28 — core#31 carries part, core#78 merged' '' \
   '- [ ] Never sorted' '  id: unsorted' '  check: none — needs a hand at the bench' >> "$G/docs/x/open.md"
 git -C "$G" add -A
 git -C "$G" -c user.email=t@t -c user.name=t commit -qm carried
@@ -615,6 +617,14 @@ has "[ledger|ai]" "$(line ' stale-exit ' "$out")" && ok "the stale exit stays ou
 has "names no PR at all" "$(line ' inpr-noref ' "$out")" && ok "in-pr without any PR reference says so" || bad "in-pr no ref: $(line ' inpr-noref ' "$out")"
 has "waiting on the open PR core#31" "$(line ' inpr-cont ' "$out")" && ok "an in-pr exit naming its PR on the next line waits on it" \
   || bad "in-pr continuation: $(line ' inpr-cont ' "$out")"
+# 2026-11-06 (macOS instance): an ai-does-it exit naming only PRs that are no longer open stood 18 sessions
+# as "nothing done" after its PR was merged; a mixed exit (one still open) keeps the open-PR note.
+has "names core#77, none of them open any more" "$(line ' merged-named ' "$out")" && ok "ai-does-it naming only closed PRs is named as stale" \
+  || bad "merged-named: $(line ' merged-named ' "$out")"
+has "but core#31 is open" "$(line ' mixed-named ' "$out")" && ok "an exit with one open PR keeps the open-PR note (control)" \
+  || bad "mixed-named: $(line ' mixed-named ' "$out")"
+[ -n "$(line ' issue-only ' "$out")" ] && ! has "none of them open" "$(line ' issue-only ' "$out")" \
+  && ok "an exit naming no PR gets no closed-PR note (control)" || bad "issue-only: $(line ' issue-only ' "$out")"
 has "no exit line yet — sort it" "$(line ' unsorted ' "$out")" && ok "an entry without exit asks to be sorted, not read as plain own work" \
   || bad "unsorted: $(line ' unsorted ' "$out")"
 # A counter that cannot be saved says so (root is a FILE, so .claude-state cannot exist).

@@ -62,6 +62,14 @@ turn "$T/6.jsonl" "Gespeichert, du kannst runterfahren. Offen: ein Handgriff am 
 expect "instance release and hand-step words (operator's language as data)" block "$(run "$T/6.jsonl" "$C")"
 turn "$T/7.jsonl" "Gespeichert, du kannst runterfahren."
 expect "instance release, nothing open (control)" allow "$(run "$T/7.jsonl" "$C")"
+# A negated hand word names no hand step, in an instance pattern too (2026-11-06, Windows instance: a negated German
+# hand word held a clean release twice). The guard is the gate's; the instance names its language's negation words
+# (a stand-in word here, the fixture's language is data).
+turn "$T/7n.jsonl" "Gespeichert, nope Handgriff, du kannst runterfahren."
+expect "negated instance hand word without negation_words still blocks (the data is needed)" block "$(run "$T/7n.jsonl" "$C")"
+printf '%s\n' '{"release_patterns":["\\bdu kannst runterfahren\\b"],"hand_patterns":["\\bhandgriff\\b"],"negation_words":["nope"]}' > "$C/.claude/rules/close-loss.json"
+expect "negated instance hand word with negation_words passes" allow "$(run "$T/7n.jsonl" "$C")"
+expect "an un-negated instance hand word still blocks (control)" block "$(run "$T/6.jsonl" "$C")"
 
 # A corrected close report replaces the one before it (2026-10-28, macOS instance: the first report released and named a
 # hand step, the corrected one did not, and the check read the first one on every stop - a loop until the operator wrote).

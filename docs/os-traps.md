@@ -113,6 +113,7 @@ known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-reach-check.py=11
 known:     scripts/test-open-items.sh=1
 known:     scripts/test-suite-plugin-linkage.sh=2
+known:     scripts/time-references.py=2
 known:     scripts/transcript-recall-test.py=5
 instances: 5
 repeat:    yes
@@ -206,10 +207,12 @@ known:     scripts/eco_owner.py=1
 known:     scripts/ecosystem-sync.py=1
 known:     scripts/english-only.py=1
 known:     scripts/invariant-index.py=1
+known:     scripts/ledger-one-exit.py=1
 known:     scripts/ledger-reconcile.py=5
 known:     scripts/open-items.py=1
 known:     scripts/os-traps-export.py=1
 known:     scripts/regen-skill-registry.py=1
+known:     scripts/release-scope.py=1
 known:     scripts/repo-activity-filter.py=1
 known:     scripts/session-audit.py=1
 known:     scripts/shared-memory-index.py=3
@@ -246,6 +249,8 @@ TextIOWrapper.
 `newline="\n"`; the report is not git-tracked anyway (it goes to the person who asked).
 2026-10-31, scripts/eco_owner.py baselined: its one write (the per-machine answer cache under
 `.claude-state/`, not git-tracked) opens with `newline="\n"`.
+2026-11-06, scripts/release-scope.py baselined: its one write (the release scope under `.claude-state/`, not
+git-tracked, read by node in release-freeze-gate.cjs) opens with `newline="\n"`; its fixture asserts no CR byte.
 
 ## OS-3 — a fixture hands a shell path to a native process
 
@@ -279,6 +284,7 @@ known:     scripts/test-ci-lint-local.sh=1
 known:     scripts/test-close-loss-gate.sh=1
 known:     scripts/test-code-scanning-alerts.sh=1
 known:     scripts/test-coherence-scan-files.sh=1
+known:     scripts/test-collab-watch-follow.sh=1
 known:     scripts/test-collab-watch-plan.sh=1
 known:     scripts/test-commitment-carrier-gate.sh=1
 known:     scripts/test-conditional-order-gate.sh=1
@@ -287,6 +293,7 @@ known:     scripts/test-decision-presentation-gate.sh=1
 known:     scripts/test-decision-readiness.sh=1
 known:     scripts/test-decision-review.sh=1
 known:     scripts/test-delivered-read-gate.sh=1
+known:     scripts/test-diagnose-gate.sh=1
 known:     scripts/test-eco-owner.sh=1
 known:     scripts/test-ecosystem-sync.sh=1
 known:     scripts/test-fixture-own-home.sh=1
@@ -294,6 +301,7 @@ known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
 known:     scripts/test-guards.sh=5
+known:     scripts/test-headless-browser-gate.sh=1
 known:     scripts/test-hook-coverage.sh=1
 known:     scripts/test-install-git-hooks.sh=1
 known:     scripts/test-instance-key-gate.sh=1
@@ -330,6 +338,7 @@ known:     scripts/test-public-text-guard.sh=1
 known:     scripts/test-python-probe.sh=1
 known:     scripts/test-question-gate.sh=1
 known:     scripts/test-recall-gate.sh=1
+known:     scripts/test-release-freeze-gate.sh=1
 known:     scripts/test-repo-activity-watch.sh=1
 known:     scripts/test-review-claim-gate.sh=1
 known:     scripts/test-root-cause-gate.sh=1
@@ -347,6 +356,7 @@ known:     scripts/test-stoppen-gate.sh=1
 known:     scripts/test-suite-plugin-linkage.sh=3
 known:     scripts/test-template-drift.sh=1
 known:     scripts/test-text-leaks-notice.sh=1
+known:     scripts/test-time-gate.sh=1
 known:     scripts/test-transcript-archive.sh=1
 known:     scripts/test-turn-kind.sh=1
 known:     scripts/test-verification-gate.sh=1
@@ -530,6 +540,14 @@ Green on Windows (Git Bash) the same day.
 as data — the brain dir (`CLAUDE_PROJECT_DIR`), the cwd, the fake gh (`MERGE_REQUEST_GATE_GH`) and the
 PR fixture (`PR_JSON`, read by the fake) — all through `native()`. An unresolvable fake gh makes the
 gate fail OPEN (PR unreadable = allow), so every must-block case would pass silently.
+2026-11-06, test-release-freeze-gate.sh baselined after the same review: three paths cross into node as data — the
+brain dir (`CLAUDE_PROJECT_DIR`), the cwd field and the `git -C <dir>` inside the command — all through `native()`.
+It matters in the blocking direction: an unresolvable brain reads no scope and an unresolvable core names no repo,
+and the gate fails OPEN on both, so every must-block case would pass silently.
+2026-11-06, test-collab-watch-follow.sh baselined after the same review: the config reaches python
+(`collab-watch-plan.py`) only as an ARGUMENT, which Git Bash converts; the state dir, the pid file and
+the events log are read and written by bash alone (`tail -F`, `cat`, `>>`). No temp path crosses into
+node or python as data.
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
@@ -1140,3 +1158,25 @@ in an exit trap: `collab-watch.sh` (`pids` before the first watcher is armed) an
 (`SLEEPERS` before the first sleeper; the trap's `rm -rf` of the temp dir never ran). All three use the
 guarded form now. The nine `known` lines were read one by one: each array is filled before use or sits
 behind a length test.
+
+## OS-23 — a text file is read or written without an encoding, and Windows uses cp1252
+
+shape: A
+
+invariant: Every `Path.read_text` / `Path.write_text` in the core's Python names its encoding
+(`encoding="utf-8"`, keyword or positional). Without it Python takes the locale codec: UTF-8 on macOS
+and Linux, cp1252 on Windows. A fixture that writes `·` or an em dash then hands a correct UTF-8
+reader the byte 0xB7 or 0x97, and the reader fails only on Windows.
+check:     scripts/text-encoding-test.py — AST scan of every git-tracked .py file (a call split over
+lines counts), with a negative control; runs in the CI fixture step like every scripts/*-test.py.
+mechanizable: tool — "names its encoding" is a property of one call, which may span lines; a line grep
+cannot state it.
+instances: 15
+repeat:    yes — the stdout half is OS-9; the cp1252 finding of 2026-08-04 was the first of the shape
+status:    closed
+note:      Measured 2026-11-06 on the Windows instance (Windows 11, Python 3.14, Git Bash) at train head
+d04fc46: `scripts/release-scope-test.py` 23/27 — its ledger fixture held `·`, written without an
+encoding as cp1252 0xB7; `open-items.py` read it as UTF-8 and raised UnicodeDecodeError. The tool was
+right, the fixture was not. The scan found 14 more unencoded calls (ledger-reconcile-test.py 7,
+repo-check-test.py 4, sync-after-merge-test.py 3); all pinned in the same commit, so the check starts
+with no baseline.

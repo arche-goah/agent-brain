@@ -267,6 +267,14 @@ check "waiter, then the operator's /mcp echo, then the reply" "$T/r5.jsonl" allo
 { user "update the plugin"; tool Bash "claude plugin install x"; asst "Please run /mcp to reconnect."
   user "$CAVEAT"; user "$CMD"; user "$OUT"; asst "Please run /mcp to reconnect again."; } > "$T/r6.jsonl"
 check "negative control: /mcp echo, reload asked, no waiter" "$T/r6.jsonl" block "$R"
+# instance reload wording extends the built-ins (reload_ask_patterns; the absorbed reconnect-gate kept it in code)
+{ user "fix the tool"; tool Bash "git status"; asst "Fixed. zzreloadzz the server, then tell me."; } > "$T/r7.jsonl"
+check "instance reload word, no data: silent" "$T/r7.jsonl" allow "$R"
+mkdir -p "$R/.claude/rules"; printf '{"reload_ask_patterns":["zzreload[z]{2}"]}\n' > "$R/.claude/rules/watch-gate.json"
+check "instance reload word with its data, no waiter: blocks" "$T/r7.jsonl" block "$R"
+{ user "fix the tool"; tool Bash "bash core/scripts/wait-mcp-reconnect.sh ~/.x/mcp-boot.json 900" bg; asst "Fixed. zzreloadzz the server, then tell me."; } > "$T/r8.jsonl"
+check "instance reload word with its data, waiter armed: allows" "$T/r8.jsonl" allow "$R"
+rm -f "$R/.claude/rules/watch-gate.json"
 
 # --- a hand step asked of the human (class 2026-10-11: "onPC must be running" asked, no watcher, the operator reported the start)
 { user "check the desk"; tool Bash "git status"; asst "Please start onPC and load the show; I check the engine afterwards."; } > "$T/h1.jsonl"

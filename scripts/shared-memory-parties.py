@@ -265,8 +265,21 @@ def addressees(title: str) -> str | None:
 # A message that asks for a check on Windows: names Windows AND a check word, in either
 # language the repo is written in. Constant on purpose — the lint has no instance-data hook,
 # and a request phrased otherwise is a miss in the safe direction (no finding).
-WINDOWS_CHECK = re.compile(r"(?=.*\bwin(?:dows)?\b)(?=.*(?:check|run|test|verif|lauf|pr(?:\xfc|ue)f|pruef))",
-                           re.I | re.S)
+CHECK_PART = r"(?:check|run|test|verif|lauf|pr(?:\xfc|ue)f|pruef)"
+WINDOWS_CHECK = re.compile(r"(?=.*\bwin(?:dows)?\b)(?=.*" + CHECK_PART + ")", re.I | re.S)
+
+# A clause that reports a state already reached and carries no check word is a report: an OS named in it is
+# not asked (2026-11-06 on the macOS instance: "Windows check at head, please, ... (macOS OK is posted on both,
+# CI green on both):" to os:windows was refused as a macOS request). Shared by shared-memory-post.py.
+CLAUSE = re.compile(r"[,;:()]")
+REPORT_WORDS = re.compile(r"\b(?:ok|okay|posted|done|passed|green|checked)\b|\bin the thread\b", re.I)
+
+
+def non_report_clauses(text: str, is_check) -> list[str]:
+    """The clauses of `text` that are no report; `is_check(clause)` says whether a clause carries a check word
+    (report words are taken out first, so "checked" never counts as "check")."""
+    return [c for c in CLAUSE.split(text or "")
+            if not (REPORT_WORDS.search(c) and not is_check(REPORT_WORDS.sub(" ", c)))]
 # The writer's way to say one machine IS needed (the finding then stays silent).
 ONE_MACHINE = re.compile(r"\bone[- ]machine:|\bnur diese maschine\b", re.I)
 
@@ -281,7 +294,10 @@ def windows_check_to_one_device(text: str, audience: str, parties: dict) -> str 
     plain = text or ""
     for dev in sorted(devs, key=len, reverse=True):
         plain = re.sub(r"(?<![\w-])" + re.escape(dev) + r"(?![\w-])", " ", plain, flags=re.I)
-    if not parties or not WINDOWS_CHECK.search(plain) or ONE_MACHINE.search(plain):
+    if ONE_MACHINE.search(plain):
+        return None
+    plain = " ".join(non_report_clauses(plain, lambda c: re.search(CHECK_PART, c, re.I)))
+    if not parties or not WINDOWS_CHECK.search(plain):
         return None
     aud = tokens(audience)
     if any(is_category(t) for t in aud):

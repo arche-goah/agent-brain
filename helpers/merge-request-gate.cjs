@@ -63,9 +63,9 @@ function readPr(t) {
   return JSON.parse(out);
 }
 
-const NAME_RX = { macOS: /\bmac\s?os\b/i, Windows: /\bwindows\b/i, Linux: /\blinux\b/i };
-const OK_RX = /\b(ok|pass(?:es|ed)?|green|rc 0|all \d+ step\(s\) passed)\b/i;
-const NOT_RX = /\b(unchecked|not checked|NOT checked|wanted|open|fail(?:s|ed)?|red|missing|pending)\b/i;
+// The OS verdict of a line is read by the ONE reader of OS reviews, shared with release-preflight check 8
+// (two readers disagreed on the same threads, measured 2026-11-06 - see helpers/os-review.cjs).
+const { saysOk, OK_RX, NAME_RX } = require('./os-review.cjs');
 
 /** The repo's `dependencies.json` as an object, null when it has none (not a suite). */
 function readDeps(t) {
@@ -97,36 +97,43 @@ function headShas(pr) {
   return out.filter(Boolean);
 }
 
+/** Required systems without an OK line at the head: [] when covered or not a suite. */
 /**
- * Does this line say OK for `os`? The OK may stand anywhere in the line; a negation counts only
- * in the part that belongs to `os` — from its name up to the next OS name. Measured 2026-10-28:
- * "macOS: OK at `edc95ba` ... Windows check still open." blocked the macOS OK on the Windows
- * clause's "open" (agent-brain #156-#159).
+ * The OS proof a green CI job gives, per repo (instance data `.claude/rules/os-proof.json`,
+ * `ci_counts_as_os_check`: {"<owner/repo>": ["Windows", ...]}). Operator decision 2026-11-06 (question tool,
+ * "Ja, auf solche Suiten ausweiten"): for a suite without devices, desk or live behaviour the green Windows CI job
+ * counts as the Windows check, as it already does for a core merge; suites that keep a hand check are simply not
+ * listed. Measured the same day: three suite PRs with a green windows-latest job waited for a Windows instance.
  */
-function saysOk(line, os) {
-  const rx = NAME_RX[os] || new RegExp(`\\b${os}\\b`, 'i');
-  const at = line.search(rx);
-  if (at < 0 || !OK_RX.test(line)) return false;
-  const others = Object.entries(NAME_RX).filter(([k]) => k !== os).map(([, r]) => r.source).join('|');
-  // A code span names a file, a command or a sha, never a verdict: `test-open-items.sh` in an OK
-  // line read as "open" and held a merge (2026-10-28, #164). The OK itself stays outside.
-  // A bare file name (`test-fail-fast.py`) and the fixture phrase "red against the old code" are no verdict either
-  // (2026-11-02, mikrotik-suite #44: two macOS OKs held); "red against main" still is.
-  const rest = line.slice(at).replace(/`[^`]*`/g, '``').replace(/[\w./-]+\.[a-z]{1,4}\b/gi, '``')
-    .replace(/\bred (?:against|with) the old (?:code|state)\b/gi, '``');
-  const end = others ? rest.slice(1).search(new RegExp(others, 'i')) : -1;
-  return !NOT_RX.test(end < 0 ? rest : rest.slice(0, end + 1));
+function ciProof(repo) {
+  const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  try {
+    const d = JSON.parse(require('fs').readFileSync(require('path').join(root, '.claude', 'rules', 'os-proof.json'), 'utf8'));
+    const m = (d && d.ci_counts_as_os_check) || {};
+    const hit = Object.keys(m).find((k) => k.toLowerCase() === String(repo || '').toLowerCase());
+    return hit && Array.isArray(m[hit]) ? m[hit] : [];
+  } catch (e) { return []; }
 }
 
-/** Required systems without an OK line at the head: [] when covered or not a suite. */
-function uncovered(pr, deps) {
+/** A green CI check at the head whose name names the OS (`windows-latest`, `portability (windows-latest)`). */
+function ciGreenFor(pr, os) {
+  const rx = NAME_RX[os];
+  if (!rx) return false;
+  const checks = Array.isArray(pr.statusCheckRollup) ? pr.statusCheckRollup : [];
+  return checks.some((c) => rx.test(String(c.name || c.context || ''))
+    && String(c.conclusion || c.state || '').toUpperCase() === 'SUCCESS');
+}
+
+function uncovered(pr, deps, repo) {
   if (!deps) return [];
   const want = Array.isArray(deps.required_os) && deps.required_os.length ? deps.required_os : ['macOS', 'Windows'];
   const shas = headShas(pr);
   if (!shas.length) return [];
   const texts = [String(pr.body || ''), ...(pr.comments || []).map((c) => String(c.body || ''))]
     .filter((x) => shas.some((s) => x.includes(s)));
-  return want.filter((os) => !texts.some((x) => x.split(/\r?\n/).some((l) => saysOk(l, os))));
+  const byCi = ciProof(repo);
+  return want.filter((os) => !(byCi.includes(os) && ciGreenFor(pr, os))
+    && !texts.some((x) => x.split(/\r?\n/).some((l) => saysOk(l, os))));
 }
 
 function gate(input) {
@@ -147,7 +154,7 @@ function gate(input) {
     return 0;
   }
   let gone;
-  try { gone = uncovered(pr, readDeps(t)); } catch (e) { console.error('merge-request-gate: dependencies.json unreadable, OS coverage not checked'); return 0; }
+  try { gone = uncovered(pr, readDeps(t), t.repo); } catch (e) { console.error('merge-request-gate: dependencies.json unreadable, OS coverage not checked'); return 0; }
   if (!gone.length) return 0;
   console.error(
     `BLOCKED (merge-request-gate): ${t.repo}#${t.nr} is a suite or core PR, and no comment says OK at the head ` +
