@@ -54,7 +54,7 @@ echo '{"ok": false}' > "$R/.claude/rules/demo-rules.json"; gq -C "$R" add .claud
 o=$(hook "$R"); rc=$?
 [[ $rc -ne 0 && "$o" == *"fixture scripts/test-demo-rules.sh BLOCKS"* && "$o" == *"demo-rules: FAIL"* ]] \
   && ok "covered data staged, fixture red: commit blocked, output shown" || bad "red fixture did not block" "rc=$rc out: $o"
-gq -C "$R" reset -q; git -C "$R" checkout -q -- .claude/rules/demo-rules.json
+gq -C "$R" reset -q; g -C "$R" checkout -q -- .claude/rules/demo-rules.json
 
 echo 'y' > "$R/.claude/rules/other-data.txt"; gq -C "$R" add .claude/rules/other-data.txt
 o=$(hook "$R"); rc=$?
@@ -65,7 +65,7 @@ printf '%s\n' '#!/usr/bin/env bash' '# covers: demo-rules' '# pre-commit: covers
 gq -C "$R" add scripts/test-demo-rules.sh
 o=$(hook "$R"); rc=$?
 [[ $rc -ne 0 && "$o" == *"test-demo-rules.sh BLOCKS"* ]] && ok "a staged fixture runs itself" || bad "staged fixture not run" "rc=$rc out: $o"
-gq -C "$R" reset -q; git -C "$R" checkout -q -- scripts/test-demo-rules.sh
+gq -C "$R" reset -q; g -C "$R" checkout -q -- scripts/test-demo-rules.sh
 
 gq -C "$R" rm -q .claude/rules/demo-rules.json
 o=$(hook "$R"); rc=$?
