@@ -20,6 +20,12 @@
  * Way out: build the mechanism in this turn, or take the promise back (say what is NOT guaranteed).
  * Wired in .claude/rules/stop-checks.json with "onReissue": "run", so a re-issue that repeats the
  * promise without a mechanism blocks again.
+ *
+ * Frequency design: no cooldown on purpose. The trigger is not an ordinary turn but a first-person
+ * promise about future conduct in THIS turn's reply; a turn without one never meets the check, and
+ * the operator's next message opens a new window. It blocks again on a re-issue only while the
+ * promise still stands uncarried - one mechanism write or one retraction ends it. A quiet period
+ * would let exactly the case it exists for through: the second empty promise of the same hour.
  */
 const fs = require('fs');
 const path = require('path');

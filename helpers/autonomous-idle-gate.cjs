@@ -45,6 +45,13 @@
  *     item waits, and that item then stands in its own BLOCKED line.
  * It holds once per turn: the re-issue after its block (stop_hook_active) passes. Autonomous behaviour unchanged.
  * Fixture: scripts/test-autonomous-idle-gate.sh.
+ *
+ * Frequency design: no cooldown on purpose. The trigger is a state, not a turn: the autonomous mode is on
+ * (an operator order in words), or released work stands open interactively. Outside both it never
+ * blocks. In the autonomous mode every stop is judged, the re-issue included, because the demand is
+ * one line plus one reading command; interactively it holds once per turn (stop_hook_active). A
+ * quiet period would bring back the measured case it was built for: idle stops minutes apart while
+ * own work stays doable.
  */
 'use strict';
 const fs = require('fs');
