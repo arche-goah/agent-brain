@@ -102,7 +102,41 @@ const BUILTIN_CAUSE = [
 const BUILTIN_NOCARRIER = [
   '^[ \\t>*_-]*(carrier|mechanism)\\b[^\\n]{0,24}:\\s*(none|not possible|n/a)\\b[^\\n]{8,}',
 ];
-const isMechanismWrite = (p) => MECHANISM_PATH.test(p) && !/\.md$/i.test(p);
+const isFolderMechanism = (p) => MECHANISM_PATH.test(p) && !/\.md$/i.test(p);
+// A project repo names its own carriers (operator 2026-11-08, question tool: "Ja, als Kern-PR bauen"; measured that day:
+// a project kept its gates and generators in docs/bench/layout/*.py and its rules in .claude/skills/*/SKILL.md, none of
+// which the folder list above knew). Data: <repo>/.claude/rules/carrier-paths.json {"carrier_paths": ["glob", ...]},
+// globs relative to the repo's git top, `**` any depth, `*` within one folder. A listed file counts even as .md.
+const carrierCache = new Map();
+function repoCarriers(p) {
+  let dir = path.dirname(path.resolve(String(p)));
+  for (let i = 0; i < 40; i++) {
+    if (carrierCache.has(dir)) return carrierCache.get(dir);
+    if (fs.existsSync(path.join(dir, '.git'))) {
+      let res = null;
+      try {
+        const d = JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'rules', 'carrier-paths.json'), 'utf8'));
+        const globs = Array.isArray(d.carrier_paths) ? d.carrier_paths.filter((g) => typeof g === 'string' && g) : [];
+        const rx = globs.map((g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+          .replace(/\*\*\/?/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/\u0000/g, '(?:.*/)?') + '$'));
+        res = { top: dir, rx };
+      } catch (e) { res = { top: dir, rx: [] }; }
+      carrierCache.set(dir, res);
+      return res;
+    }
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return { top: '', rx: [] };
+}
+function isMechanismWrite(p) {
+  if (isFolderMechanism(p)) return true;
+  const { top, rx } = repoCarriers(p);
+  if (!top || !rx.length) return false;
+  const rel = path.relative(top, path.resolve(String(p))).split(path.sep).join('/');
+  return rx.some((r) => r.test(rel));
+}
 // Every cause with its carrier — or the reason none can carry it — goes into ONE register the review
 // re-reads (operator 2026-10-28, translated: "if none is possible, that reason belongs in a clean register
 // of its own, so we can check again and again whether it really is impossible; the mechanisms found too,
@@ -353,7 +387,7 @@ function gate(input) {
       reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}. Fixing the instance (a re-post, a manual merge, a `
         + 'ledger or memory note) leaves the tool that let it happen as it was. Before this turn ends: change the '
         + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
-        + 'lives) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
+        + 'lives, or a path the repo lists in .claude/rules/carrier-paths.json) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
         + 'operator-ok: "<their words>", found in their own messages - never on the agent\'s say-so; AND write the entry in '
         + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits, `
         + 'found-by (operator | work | ci | <the check that found it>; when not a check: should-have: <the check that should have>).',

@@ -66,6 +66,19 @@ check "the same files named but unchanged since the turn began (negative control
 { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; } > "$T/t9.jsonl"
 check "shell-written carrier, no register entry" "$T/t9.jsonl" block "$SHW"
 
+# --- 2026-11-08 (operator, question tool): a project repo names its own carriers in .claude/rules/carrier-paths.json
+PRJ="$T/prj"; mkdir -p "$PRJ/.git" "$PRJ/.claude/rules" "$PRJ/docs/bench/layout" "$PRJ/.claude/skills/bench-run"
+printf '%s\n' '{"carrier_paths": ["docs/bench/layout/*.py", ".claude/skills/*/SKILL.md"]}' > "$PRJ/.claude/rules/carrier-paths.json"
+{ user "go"; asst "Cause: the generator took the pad positions from the photo."; write "$PRJ/docs/bench/layout/gen.py"; write "$CWD/$REG"; } > "$T/t10.jsonl"
+check "a generator the project lists as a carrier counts" "$T/t10.jsonl" allow "$CWD"
+{ user "go"; asst "Cause: the bench run read only the state file."; write "$PRJ/.claude/skills/bench-run/SKILL.md"; write "$CWD/$REG"; } > "$T/t11.jsonl"
+check "a listed SKILL.md counts although it is .md" "$T/t11.jsonl" allow "$CWD"
+{ user "go"; asst "Cause: the generator took the pad positions from the photo."; write "$PRJ/docs/notes.py"; write "$CWD/$REG"; } > "$T/t12.jsonl"
+check "a project file outside the listed globs is no carrier (control)" "$T/t12.jsonl" block "$CWD"
+NOP="$T/nop"; mkdir -p "$NOP/.git" "$NOP/docs/bench/layout"
+{ user "go"; asst "Cause: the generator took the pad positions from the photo."; write "$NOP/docs/bench/layout/gen.py"; write "$CWD/$REG"; } > "$T/t13.jsonl"
+check "the same path in a repo without carrier-paths.json is no carrier (control)" "$T/t13.jsonl" block "$CWD"
+
 # --- must block: the instance fixed, the tool left as it was
 { user "go"; asst "Re-posted the request to the right group."; asst "Cause: the post tool does not check the audience."; } > "$T/t20.jsonl"
 check "a self-found cause, no correction, no mechanism (the 2026-10-28 class)" "$T/t20.jsonl" block "$CWD"
