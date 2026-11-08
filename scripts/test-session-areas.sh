@@ -75,6 +75,11 @@ out=$(ask s-b "check what the other session is doing")
 has "the operator's prompt about other sessions injects the map" "$out" "<session-map>"
 has "the injected map names the peer" "$out" "brain-aa"
 out=$(ask s-b "fix the readme"); [ -z "$out" ] && ok "a prompt about something else stays silent" || bad "silent prompt: '${out:0:120}'"
+# The alpha finding 2026-11-08: a watch event arrives as a prompt and names "sessions" — no operator word.
+out=$(ask s-b "<task-notification><event>SESSIONS: changed — 2 sessions in /x — own-account commits may come from any of them; other sessions</event></task-notification>")
+[ -z "$out" ] && ok "a watch task-notification naming sessions stays silent" || bad "task-notification fired: '${out:0:120}'"
+out=$(ask s-b "<cross-session-message from=\"brain-aa\">the other session takes the firmware</cross-session-message>")
+[ -z "$out" ] && ok "a peer's message naming the other session stays silent" || bad "peer message fired: '${out:0:120}'"
 mkdir -p "$T/brain/.claude/rules"
 printf '{"triggers":["andere session"]}' > "$T/brain/.claude/rules/session-areas.json"
 out=$(ask s-b "was macht die andere session?"); has "the instance adds its own language" "$out" "<session-map>"

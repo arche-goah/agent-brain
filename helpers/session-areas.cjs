@@ -36,6 +36,8 @@ const AREA_DEPTH = 3;          // levels below the repo root an area keeps
 const AREA_TTL_H = 8;          // a write older than this is no longer "recent"
 const MAX_AREAS = 12;          // per session, newest kept
 const NO_PID_TTL_H = 12;       // a record without a known pid expires after this
+// System text that arrives as a prompt (same list as basics-hint.cjs).
+const NOT_A_PROMPT = /^\s*(<task-notification|<system-reminder|<cross-session-message|<local-command|Stop hook feedback|\[Request interrupted)/;
 
 function readJson(p, d) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return d; } }
 const norm = (p) => path.resolve(String(p)).replace(/\\/g, '/').replace(/\/+$/, '');
@@ -255,7 +257,9 @@ function triggers(root) {
 function prompt(input, now) {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const text = String(input.prompt || '');
-  if (!triggers(root).some((r) => r.test(text))) return null;
+  // A watch event, a peer's message or a hook's feedback arrives as a prompt too — it is no operator word
+  // (measured 2026-11-08 in the alpha: a SESSIONS task-notification "… 2 sessions in …" fired the map).
+  if (NOT_A_PROMPT.test(text) || !triggers(root).some((r) => r.test(text))) return null;
   const lines = map(root, input.session_id, now, {});
   return `<session-map>\nThe operator speaks of other sessions. Coordinate NOW, before further writes: for every peer below, `
     + 'SendMessage it (ListAgents name) what you work on and which area you take; settle each OVERLAP line by agreeing who '
