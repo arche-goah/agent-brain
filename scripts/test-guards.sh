@@ -218,7 +218,9 @@ pr_probe() { # $1 name, $2 command, $3 block|allow, $4 cwd
   local out helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
   out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:unesc(a[1])},cwd:a[2]}))' "$2" "$4" \
         | HOME="$MG" CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1)
-  if [ $? -eq 2 ] || printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then got=block; else got=allow; fi
+  local rc=$?
+  # a bash pattern match, no grep on a pipe (docs/os-traps.md OS-5)
+  if [ "$rc" -eq 2 ] || [[ "$out" == *'"permissionDecision"'*'"deny"'* ]]; then got=block; else got=allow; fi
   [ "$got" = "$3" ] && ok "$1 ($got)" || bad "$1: expected $3, got $got: ${out:0:200}"
 }
 pr_probe "mechanism-guard/pr_repos: --repo names the listed repo" "gh pr create -R o/lab --fill" block "$MG"
