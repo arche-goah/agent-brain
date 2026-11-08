@@ -344,6 +344,7 @@ known:     scripts/test-review-claim-gate.sh=1
 known:     scripts/test-root-cause-gate.sh=1
 known:     scripts/test-session-closing.sh=1
 known:     scripts/test-session-helpers.sh=1
+known:     scripts/test-session-order.sh=1
 known:     scripts/test-session-pull.sh=1
 known:     scripts/test-setup-shell-start.sh=1
 known:     scripts/test-shared-memory-channels.sh=1
