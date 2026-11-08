@@ -257,6 +257,12 @@ CIC="$T/cls"; mkdir -p "$CIC/.claude-state"
 run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
 printf '{"at":"2026-10-30T19:00:04.000Z","session":"cls-cond","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
 run_case cls-cond block Workflow '{"name":"x"}' "$CIC"
+# 2026-11-08: a classifier hit names no sentence of its own - the message must not present the first sentence as the condition
+msg="$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:"Workflow",tool_input:{name:"x"},transcript_path:a[1],cwd:a[2]}))' \
+  "$(native "$T/cls-cond.jsonl")" "$(native "$CIC")" | node "$G" 2>&1)"
+case "$msg" in *"prompt classifier read a condition in that message"*) ok "classifier hit says where the reading came from";;
+  *) bad "classifier hit message: '${msg:0:200}'";; esac
+case "$msg" in *'Sentence: "'*) bad "classifier hit still shows a sentence as the condition";; *) ok "classifier hit shows no sentence as the condition";; esac
 printf '{"at":"2026-10-30T19:00:04.000Z","session":"cls-cond","mode":"hook","model":{"condition":false}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
 run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
 printf '{"at":"2026-10-30T19:00:04.000Z","session":"other","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
