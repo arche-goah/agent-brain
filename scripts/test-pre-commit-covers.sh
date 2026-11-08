@@ -70,6 +70,20 @@ gq -C "$R" reset -q; g -C "$R" checkout -q -- scripts/test-demo-rules.sh
 gq -C "$R" rm -q .claude/rules/demo-rules.json
 o=$(hook "$R"); rc=$?
 [[ $rc -ne 0 && "$o" == *"test-demo-rules.sh BLOCKS"* ]] && ok "a removed covered file still runs its fixture" || bad "removal not checked" "rc=$rc out: $o"
+gq -C "$R" reset -q; g -C "$R" checkout -q -- .claude/rules/demo-rules.json
+
+# a JS fixture (// comments, run with node) takes part the same way (reach finding at #453)
+echo '{"on": false}' > "$R/.claude/rules/js-rules.json"
+printf '%s\n' '// covers: js-rules' '// pre-commit: covers' \
+  'const ok = require("fs").readFileSync(".claude/rules/js-rules.json", "utf8").includes("\"on\": true");' \
+  'console.log(ok ? "js-rules: pass" : "js-rules: FAIL"); process.exit(ok ? 0 : 1);' > "$R/scripts/test-js-rules.cjs"
+gq -C "$R" add scripts/test-js-rules.cjs .claude/rules/js-rules.json
+o=$(hook "$R"); rc=$?
+[[ $rc -ne 0 && "$o" == *"test-js-rules.cjs BLOCKS"* && "$o" == *"js-rules: FAIL"* ]] \
+  && ok "a JS fixture runs with node and blocks when red" || bad "JS fixture not run" "rc=$rc out: $o"
+echo '{"on": true}' > "$R/.claude/rules/js-rules.json"; gq -C "$R" add .claude/rules/js-rules.json
+o=$(hook "$R"); rc=$?
+[[ $rc -eq 0 ]] && ok "a green JS fixture lets the commit pass" || bad "green JS fixture blocked" "rc=$rc out: $o"
 
 echo ""
 [ "$fails" -eq 0 ] && echo "pre-commit covers: all $checks checks pass" || echo "pre-commit covers: $fails of $checks FAILED"

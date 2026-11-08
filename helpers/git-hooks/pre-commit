@@ -200,14 +200,17 @@ covers_check() {
   [ -n "$staged" ] || return 0
   stems=" "
   while IFS= read -r f; do s=${f##*/}; stems="$stems${s%.*} "; done <<< "$staged"
-  for f in "$root"/scripts/test-*.sh "$root"/scripts/*-test.py; do
-    [ -f "$f" ] && grep -q '^# pre-commit: covers' "$f" || continue
+  # JS fixtures (test-*.cjs / test-*.js) take part the same way with `//` comments (reach finding at #453, 2026-11-07:
+  # the gate fixtures are .cjs and stayed out of reach).
+  for f in "$root"/scripts/test-*.sh "$root"/scripts/*-test.py "$root"/scripts/test-*.cjs "$root"/scripts/test-*.js; do
+    [ -f "$f" ] && grep -qE '^(#|//) pre-commit: covers' "$f" || continue
     run=0
     case "$stems" in *" $(basename "${f%.*}") "*) run=1 ;; esac
-    tokens=$(sed -n 's/^# covers:[[:space:]]*//p' "$f" | head -1 | sed 's/(.*//')
+    tokens=$(sed -nE 's,^(#|//) covers:[[:space:]]*,,p' "$f" | head -1 | sed 's/(.*//')
     for t in $tokens; do case "$stems" in *" $t "*) run=1 ;; esac; done
     [ "$run" -eq 1 ] || continue
     case "$f" in
+      *.cjs|*.js) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && node "$2"' _ "$root" "$f" ;;
       *.py) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && "$2" "$3"' _ "$root" "$py" "$f" ;;
       *)    run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && bash "$2"' _ "$root" "$f" ;;
     esac
