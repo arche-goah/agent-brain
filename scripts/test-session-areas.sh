@@ -80,6 +80,18 @@ out=$(ask s-b "<task-notification><event>SESSIONS: changed — 2 sessions in /x 
 [ -z "$out" ] && ok "a watch task-notification naming sessions stays silent" || bad "task-notification fired: '${out:0:120}'"
 out=$(ask s-b "<cross-session-message from=\"brain-aa\">the other session takes the firmware</cross-session-message>")
 [ -z "$out" ] && ok "a peer's message naming the other session stays silent" || bad "peer message fired: '${out:0:120}'"
+# Third alpha finding 2026-11-08: a subagent hand-back arrives as a queued peer command (raw start measured in the
+# transcript) and names "parallel sessions".
+HB='<agent-message from="a97fbc5c3aee96f13">
+[Subagent hand-back] The text below is the final report of a subagent ... the prompt hook injects the session map when the operator names parallel sessions'
+out=$(ask s-b "$HB"); [ -z "$out" ] && ok "a subagent hand-back naming parallel sessions stays silent" || bad "hand-back fired: '${out:0:120}'"
+out=$(ask s-b "  note first, then [Subagent hand-back] about the other session"); [ -z "$out" ] && ok "the hand-back marker anywhere in the prompt is peer text" || bad "marker inside fired: '${out:0:120}'"
+# Negative control: the operator's own words with the same content still bring the map.
+out=$(ask s-b "the report says parallel sessions overlap — coordinate with the other session"); has "control: the operator naming parallel sessions still gets the map" "$out" "<session-map>"
+mkdir -p "$T/mut/helpers"; cp "$_D/../session-areas.json" "$T/mut/"   # the mutant reads the core's word list beside it
+sed -e 's/ || PEER_TEXT\.test(text)//' -e 's/|<agent-message|/|/' "$_D/../helpers/session-areas.cjs" > "$T/mut/helpers/session-areas.cjs"
+out=$(node -e 'process.stdout.write(JSON.stringify({session_id:"s-b",cwd:process.argv[1],prompt:process.argv[2]}))' "$B" "$HB" | node "$(native "$T/mut/helpers/session-areas.cjs")" prompt 2>&1)
+has "control: without the peer filter the hand-back fires the map (the finding)" "$out" "<session-map>"
 mkdir -p "$T/brain/.claude/rules"
 printf '{"triggers":["andere session"]}' > "$T/brain/.claude/rules/session-areas.json"
 out=$(ask s-b "was macht die andere session?"); has "the instance adds its own language" "$out" "<session-map>"
