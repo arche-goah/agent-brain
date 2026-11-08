@@ -85,8 +85,11 @@ read_meta() { # sets M_KEY M_AT M_RC; returns 1 if unreadable
 
 emit_cached() { # <reason>
   local age; age=$(( $(now) - M_AT ))
-  [ -f "$OUT" ] && cat "$OUT"
+  # The note goes FIRST (measured 2026-11-07: printed after the stored report it stood ~200 lines
+  # below the FAIL lines it qualified, and a stored red verdict was read as a fresh one). Every
+  # reader finds the line by its text, not its position (brain-check.sh, effect-check.sh).
   echo "   (reused: $1, measured $(human_age "$age") ago, key ${M_KEY:0:12})"
+  [ -f "$OUT" ] && cat "$OUT"
   return "${M_RC:-0}"
 }
 
