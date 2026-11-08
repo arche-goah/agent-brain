@@ -84,6 +84,33 @@ mkdir -p "$T/brain/.claude/rules"
 printf '{"triggers":["andere session"]}' > "$T/brain/.claude/rules/session-areas.json"
 out=$(ask s-b "was macht die andere session?"); has "the instance adds its own language" "$out" "<session-map>"
 
+# The second alpha finding 2026-11-08: a commit without a pathspec was recorded as the whole repo and reported
+# as a write into a claimed sub-folder. Now: the files of the commit the call made (sha from its own output),
+# and a write known only as the repo root is no evidence against a claim.
+. "$_D/git-sandbox.sh"
+R="$(native "$T/real")"; mkdir -p "$T/real/docs/business" "$T/real/firmware"
+git -C "$T/real" init -q; echo a > "$T/real/firmware/x.c"; git -C "$T/real" add firmware/x.c
+git -C "$T/real" commit -qm fw; FW=$(git -C "$T/real" rev-parse --short HEAD)
+echo b > "$T/real/docs/business/list.md"; git -C "$T/real" add docs/business/list.md
+git -C "$T/real" commit -qm biz; BIZ=$(git -C "$T/real" rev-parse --short HEAD)
+commit() { # $1 session, $2 tool stdout of the commit call
+  node -e 'process.stdout.write(JSON.stringify({session_id:process.argv[1],cwd:process.argv[2],tool_name:"Bash",tool_input:{command:"git -C "+process.argv[2]+" commit -m x"},tool_response:{stdout:process.argv[3]}}))' "$1" "$R" "$2" | node "$G" record 2>&1
+}
+node "$G" claim "$R/docs/business" --note "shopping" --session s-a >/dev/null
+out=$(commit s-b "nothing to commit"); lacks "the incident: a commit known only as the repo root is no write into a claim" "$out" "claimed by"
+out=$(commit s-b "[main $FW] fw"); lacks "a commit whose files lie outside the claim is no overlap" "$out" "claimed by"
+out=$(node "$G" show --session s-b); has "the commit's files are recorded, not the repo root" "$out" "real/firmware ("
+out=$(commit s-b "[main $BIZ] biz"); has "a commit whose files lie inside the claim is named" "$out" "claimed by brain-aa (shopping)"
+node "$G" release --session s-a >/dev/null
+# Negative control: the helper without the repo-root guard (a mutated copy) reports the incident again.
+sed -e 's/va\.root !== a && //' -e 's/vb\.root !== b && //' "$_D/../helpers/session-areas.cjs" > "$T/mutant.cjs"
+grep -q 'va.root !== a &&' "$T/mutant.cjs" && bad "control: the mutation did not apply" || ok "control: the mutation removed the guard"
+node "$G" claim "$R/docs/business" --note "shopping" --session s-a >/dev/null
+rm -f "$T/brain/.claude-state/session-areas/s-b.json"
+out=$(node -e 'process.stdout.write(JSON.stringify({session_id:"s-b",cwd:process.argv[1],tool_name:"Bash",tool_input:{command:"git -C "+process.argv[1]+" commit -m x"},tool_response:{stdout:"nothing to commit"}}))' "$R" | node "$(native "$T/mutant.cjs")" record 2>&1)
+has "control: without the guard the repo-root commit is reported as a write into the claim" "$out" "claimed by brain-aa"
+node "$G" release --session s-a >/dev/null
+
 SESSION_AREAS_ALIVE="102" node "$G" show --session s-b >/dev/null
 [ ! -f "$T/brain/.claude-state/session-areas/s-a.json" ] && ok "a dead peer's record is deleted" || bad "dead record kept"
 out=$(SESSION_AREAS_ALIVE="102" node "$G" show --session s-b --peers-only); [ -z "$out" ] && ok "no live peer: --peers-only is silent" || bad "peers-only: '$out'"

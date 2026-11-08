@@ -84,6 +84,17 @@ function areaOf(p, isDir) {
   return { area: rel.length ? `${root}/${rel.join('/')}` : root, root };
 }
 
+/** The files of the commit a Bash call made, read from its own output `[<branch> <sha>] …`. */
+function committedFiles(root, resp) {
+  const text = typeof resp === 'string' ? resp : resp ? String(resp.stdout || '') : '';
+  const m = text.match(/^\[[^\]\n]*?\s([0-9a-f]{7,40})\]/m);
+  if (!m) return [];
+  try {
+    return require('child_process').execFileSync('git', ['-C', root, 'show', '--name-only', '--format=', m[1]],
+      { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
+  } catch (e) { return []; }
+}
+
 /** The areas one tool call writes to. */
 function areasFromCall(input) {
   const ti = input.tool_input || {};
@@ -100,7 +111,16 @@ function areasFromCall(input) {
     const base = path.resolve(cwd, c ? c[1].replace(/^["']|["']$/g, '') : '.');
     const dd = m[2].indexOf(' -- ');
     const specs = dd >= 0 ? m[2].slice(dd + 4).trim().split(/\s+/).filter((s) => s && !/^[#|>]/.test(s)) : [];
-    if (!specs.length) { const r = repoRoot(norm(base)); if (r) out.push({ area: r, root: r }); continue; }
+    if (!specs.length) {
+      // No pathspec: the files of the commit this call made (its sha from the tool's own output); else the
+      // repo root, which is an unknown area — shown, never an overlap.
+      const r = repoRoot(norm(base));
+      if (!r) continue;
+      const files = committedFiles(r, input.tool_response);
+      if (files.length) for (const f of files) out.push(areaOf(path.join(r, f), false));
+      else out.push({ area: r, root: r });
+      continue;
+    }
     for (const s of specs) {
       const abs = path.resolve(repoRoot(norm(base)) || base, s.replace(/^["']|["']$/g, ''));
       let isDir = false; try { isDir = fs.statSync(abs).isDirectory(); } catch (e) { isDir = false; }
@@ -154,11 +174,12 @@ function overlaps(me, peers, now) {
         out.push({ key: `${p.id}|w|${at}`, peer: p, path: at, why: 'both write' });
       }
     }
+    // A write known only as a repo root (a commit whose files are unknown) is no evidence against a claim.
     for (const c of p.claims || []) {
-      for (const [a] of mine) if (inside(a, c.path) || inside(c.path, a)) out.push({ key: `${p.id}|c|${a}`, peer: p, path: a, why: `claimed by ${p.name}${c.note ? ` (${c.note})` : ''}` });
+      for (const [a, va] of mine) if (va.root !== a && (inside(a, c.path) || inside(c.path, a))) out.push({ key: `${p.id}|c|${a}`, peer: p, path: a, why: `claimed by ${p.name}${c.note ? ` (${c.note})` : ''}` });
     }
     for (const c of me.claims || []) {
-      for (const [b] of theirs) if (inside(b, c.path) || inside(c.path, b)) out.push({ key: `${p.id}|m|${b}`, peer: p, path: b, why: `claimed by ${me.name}${c.note ? ` (${c.note})` : ''}, written by ${p.name}` });
+      for (const [b, vb] of theirs) if (vb.root !== b && (inside(b, c.path) || inside(c.path, b))) out.push({ key: `${p.id}|m|${b}`, peer: p, path: b, why: `claimed by ${me.name}${c.note ? ` (${c.note})` : ''}, written by ${p.name}` });
     }
   }
   const seen = new Set();
