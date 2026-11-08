@@ -216,7 +216,8 @@ mgt_probe() { # $1 name, $2 command, $3 block|allow, $4 transcript path (empty =
   local out rc helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
   out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:unesc(a[1])},cwd:a[2],transcript_path:a[3]}))' "$2" "$MG" "$(native "${4:-}")" \
         | HOME="$MG" CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1); rc=$?
-  if [ "$rc" -eq 2 ] || printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then got=block; else got=allow; fi
+  # a bash pattern match, no grep on a pipe (docs/os-traps.md OS-5)
+  if [ "$rc" -eq 2 ] || [[ "$out" == *'"permissionDecision"'*'"deny"'* ]]; then got=block; else got=allow; fi
   [ "$got" = "$3" ] && ok "$1 ($got)" || bad "$1: expected $3, got $got: ${out:0:200}"
 }
 mgt_probe "mechanism-guard/quote said: typed prompt" \
