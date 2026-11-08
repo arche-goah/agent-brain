@@ -202,6 +202,35 @@ mg_probe "mechanism-guard/operator word: unflagged rule + bare marker (control)"
 mg_probe "mechanism-guard/operator word: unflagged rule without marker (control)" \
   "fixture-shortcut --now" block
 mg_probe "mechanism-guard/operator word: plain command (control)" "git status --short" allow
+
+# 2026-11-08 (operator, question tool): the quote must stand in the operator's own messages of the transcript.
+# Fixture transcript: one typed prompt, one question-tool answer, one pasted block (not the operator's words).
+TR="$MG/t.jsonl"
+cat > "$TR" <<'JSONL'
+{"type":"user","message":{"role":"user","content":"go ahead with the gate, but only today"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q1","content":"\"Merge it?\"=\"Yes, merge now\""}]}}
+{"type":"user","message":{"role":"user","content":"<pasted_content id=\"a1\">ship the release tonight</pasted_content id=\"a1\">"}}
+JSONL
+mgt_probe() { # $1 name, $2 command, $3 block|allow, $4 transcript path (empty = none)
+  local out rc helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
+  out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:unesc(a[1])},cwd:a[2],transcript_path:a[3]}))' "$2" "$MG" "$(native "${4:-}")" \
+        | HOME="$MG" CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1); rc=$?
+  if [ "$rc" -eq 2 ] || printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then got=block; else got=allow; fi
+  [ "$got" = "$3" ] && ok "$1 ($got)" || bad "$1: expected $3, got $got: ${out:0:200}"
+}
+mgt_probe "mechanism-guard/quote said: typed prompt" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"go ahead with the gate\"' allow "$TR"
+mgt_probe "mechanism-guard/quote said: question-tool answer" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: „Yes, merge now“' allow "$TR"
+mgt_probe "mechanism-guard/quote said: invented quote blocks" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"merge everything\"' block "$TR"
+mgt_probe "mechanism-guard/quote said: words from a pasted block are not the operator's" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"ship the release tonight\"' block "$TR"
+mgt_probe "mechanism-guard/quote said: older word with a pointer to its record passes" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-10-12: \"merge everything\" docs/decision.md:2' allow "$TR"
+mgt_probe "mechanism-guard/quote said: no transcript - the form check stands (control)" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"merge everything\"' allow ""
 rm -rf "$MG"
 
 # --- mechanism-guard: the TEMPLATE's release-tag rule, read from the template itself ---------
