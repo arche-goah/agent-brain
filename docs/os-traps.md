@@ -343,6 +343,7 @@ known:     scripts/test-repo-activity-watch.sh=1
 known:     scripts/test-review-claim-gate.sh=1
 known:     scripts/test-root-cause-gate.sh=1
 known:     scripts/test-session-closing.sh=1
+known:     scripts/test-core-branch.sh=1
 known:     scripts/test-session-helpers.sh=1
 known:     scripts/test-session-pull.sh=1
 known:     scripts/test-setup-shell-start.sh=1
