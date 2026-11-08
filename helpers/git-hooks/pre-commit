@@ -65,6 +65,13 @@ if [ -f "$root/.claude/rules/lesson-carriers.json" ] && [ -f "$core/scripts/carr
   run_check "carrier-audit" "$py" "$core/scripts/carrier-audit.py" --repo "$root" --core "$core" --staged
 fi
 
+# 4d. One current exit: line per open ledger entry (convention 2026-11-06): only ledger-reconcile.py at session start knew
+#     it, so two exits per entry went through three path commits on one brain (measured 2026-11-08). Judges only the
+#     registered ledgers this commit stages, by their staged content; ~0.1 s.
+if [ -f "$root/.claude/rules/ledgers.json" ] && [ -f "$core/scripts/ledger-one-exit.py" ]; then
+  run_check "ledger-one-exit" "$py" "$core/scripts/ledger-one-exit.py" --root "$root" --staged
+fi
+
 # 4c. A new dated rule: which OLD places say something about the same thing? (rule-conflict protocol step 2,
 #     `rules/thinking-protocol.md`). REPORT ONLY, never blocks: judging an old place takes a look, not a gate.
 #     Until 2026-11-02 backprop-report.py had no caller but a prose pointer (audit of the audits, package G);

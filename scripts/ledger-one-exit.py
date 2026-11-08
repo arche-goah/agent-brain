@@ -10,13 +10,19 @@ The newest exit by date stays `exit:` (same date: the later line in the text); e
 renamed to `was-exit:` - text, order and indentation unchanged, so the history stays readable and no reader counts it.
 Ticked entries are left as they are. Ledgers come from the brain's `.claude/rules/ledgers.json`.
 
-    python3 core/scripts/ledger-one-exit.py [--root <brain>] [--write]
+    python3 core/scripts/ledger-one-exit.py [--root <brain>] [--write | --staged]
+
+`--staged` is the pre-commit step (helpers/git-hooks/pre-commit): it judges only the registered ledgers the commit
+stages, by their STAGED content, and never writes. Measured 2026-11-08 on the macOS instance: three entries with two
+`exit:` lines went through three path commits on one ledger, because only ledger-reconcile.py (session start) knew the
+convention; the operator the same day, translated: "exit vs was-exit apparently needs a mechanical safeguard".
 
 Default is a preview. Exit 0 = nothing to change (or written), 1 = the preview found entries to change, 2 = no registry.
 """
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -58,7 +64,11 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".", help="the brain's root (default: the current directory)")
     ap.add_argument("--write", action="store_true", help="rewrite the ledgers (default: preview)")
+    ap.add_argument("--staged", action="store_true",
+                    help="pre-commit mode: judge only the registered ledgers this commit stages, by their staged content")
     a = ap.parse_args(argv)
+    if a.staged and a.write:
+        ap.error("--staged judges the index; it never writes")
     root = Path(a.root).resolve()
     reg = root / ".claude" / "rules" / "ledgers.json"
     try:
@@ -66,12 +76,25 @@ def main(argv=None):
     except (OSError, ValueError) as e:
         print(f"ledger-one-exit: cannot read {reg.as_posix()}: {e}", file=sys.stderr)
         return 2
+    staged = None
+    if a.staged:
+        r = subprocess.run(["git", "-C", str(root), "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+                           capture_output=True, text=True, encoding="utf-8")
+        staged = set(r.stdout.splitlines()) if r.returncode == 0 else set()
     total_entries = total_lines = 0
     for rel in ledgers:
         p = root / rel
-        if not p.is_file():
+        if staged is not None:
+            if rel not in staged:
+                continue
+            r = subprocess.run(["git", "-C", str(root), "show", f":{rel}"], capture_output=True, text=True, encoding="utf-8")
+            if r.returncode != 0:
+                continue
+            lines = r.stdout.split("\n")
+        elif not p.is_file():
             continue
-        lines = p.read_text(encoding="utf-8").split("\n")
+        else:
+            lines = p.read_text(encoding="utf-8").split("\n")
         n_entries, n_lines = migrate(lines)
         if n_lines:
             total_entries += n_entries
@@ -83,6 +106,9 @@ def main(argv=None):
                 with open(p, "w", encoding="utf-8", newline="\n") as f:
                     f.write("\n".join(lines))
     print(f"ledger-one-exit: {total_entries} entr(y/ies), {total_lines} line(s) {'rewritten' if a.write else 'to rewrite'}")
+    if a.staged and total_lines:
+        print("An open entry carries ONE current exit: line; older ones are was-exit: (convention 2026-11-06). Fix and stage again:\n"
+              f"  python3 {Path(__file__).resolve().as_posix()} --root {root.as_posix()} --write")
     return 0 if (a.write or not total_lines) else 1
 
 

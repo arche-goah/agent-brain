@@ -84,5 +84,47 @@ with tempfile.TemporaryDirectory() as tmp:
     r = subprocess.run([sys.executable, str(TOOL), "--root", tmp], capture_output=True, text=True)
     check("no registry: exit 2", r.returncode == 2, f"rc={r.returncode}")
 
+# --staged (the pre-commit step): judges the index, not the working copy, and only registered ledgers
+sys.path.insert(0, str(HERE))
+import git_sandbox  # noqa: F401,E402  - the host's hooksPath must not run inside the fixture repo
+CLEAN = "# Ledger\n- [ ] **one exit**\n  id: e\n  exit: ai-does-it 2026-11-08\n"
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    g = lambda *a: subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)  # noqa: E731
+    g("init", "-q")
+    (root / ".claude" / "rules").mkdir(parents=True)
+    (root / ".claude" / "rules" / "ledgers.json").write_text(json.dumps({"ledgers": ["docs/l.md"]}), encoding="utf-8")
+    (root / "docs").mkdir()
+    led = root / "docs" / "l.md"
+    staged = lambda: subprocess.run([sys.executable, str(TOOL), "--root", str(root), "--staged"],  # noqa: E731
+                                    capture_output=True, text=True)
+
+    led.write_text(LEDGER, encoding="utf-8")
+    r = staged()
+    check("staged: an unstaged ledger with two exits does not block", r.returncode == 0, r.stdout + r.stderr)
+
+    g("add", "docs/l.md")
+    r = staged()
+    check("staged: a staged ledger with two exits blocks and names --write", r.returncode == 1 and "--write" in r.stdout
+          and led.read_text(encoding="utf-8") == LEDGER, r.stdout + r.stderr)
+
+    led.write_text(CLEAN, encoding="utf-8")
+    r = staged()
+    check("staged: the STAGED content counts, not a clean working copy", r.returncode == 1, r.stdout + r.stderr)
+
+    g("add", "docs/l.md")
+    led.write_text(LEDGER, encoding="utf-8")
+    r = staged()
+    check("staged: a clean staged ledger passes although the working copy has two exits", r.returncode == 0,
+          r.stdout + r.stderr)
+
+    (root / "docs" / "other.md").write_text(LEDGER, encoding="utf-8")
+    g("add", "docs/other.md")
+    r = staged()
+    check("staged: an unregistered file is not a ledger", r.returncode == 0, r.stdout + r.stderr)
+
+    r = subprocess.run([sys.executable, str(TOOL), "--root", str(root), "--staged", "--write"], capture_output=True, text=True)
+    check("staged + write is refused", r.returncode == 2, f"rc={r.returncode}")
+
 print("ledger-one-exit fixtures:", "ALL passed" if not fails else f"{fails} FAILED")
 sys.exit(1 if fails else 0)
