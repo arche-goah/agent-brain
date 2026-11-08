@@ -30,6 +30,7 @@ nodes). Output: nothing, or ONE line. Exit 0 always — a bootup line never bloc
 """
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +38,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from instance_key import is_self, key_in, self_key  # noqa: E402
 from shared_answers import checked_head, own_shared_shas, sibling_keys_same_os  # noqa: E402
+
+
+# The PR body's own wait mark, the same form open-items.py reads (WAIT_MARK there):
+# `waiting-until: YYYY-MM-DD: <why>`. Before that date the PR waits on its condition, not on us;
+# on the date it is a move again. WHY (measured 2026-11-08, marketplace #90): the PR carried
+# "waiting-until: 2026-11-12: merge once every device runs core v2.1.x" and open-items listed it
+# under "waiting", while this line said "!! review - asked, not looked at yet, 133 h" — two
+# readers of one PR, only one knew the mark, and the operator was told of a review nobody owed.
+WAIT_MARK = re.compile(r"^\s*waiting-until:\s*(\d{4}-\d{2}-\d{2})\b", re.M | re.I)
+
+
+def waiting(body, now):
+    m = WAIT_MARK.search(body or "")
+    return bool(m) and m.group(1) > now.strftime("%Y-%m-%d")
 
 
 def ts(s):
@@ -72,7 +87,7 @@ def moves(data, now, my_key="", shared_shas=frozenset()):
 
     out = []
     for pr in nodes((data.get("data") or {}), "search"):
-        if not pr or pr.get("isDraft"):
+        if not pr or pr.get("isDraft") or waiting(pr.get("body"), now):
             continue
         name = f'{(pr.get("repository") or {}).get("name", "?")}#{pr.get("number")}'
         commits = nodes(pr, "commits")
