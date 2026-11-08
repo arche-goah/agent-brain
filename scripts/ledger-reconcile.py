@@ -96,6 +96,11 @@ DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 NONE = re.compile(r"^none\b", re.I)
 # A current exit line: a field line `exit:` (also as a list item or in backticks); `was-exit:` is history, not counted.
 MULTI_EXIT = re.compile(r"^[\s>*-]*`?exit:", re.M)
+# The kind of the current exit (`exit: ai-does-it 2026-11-08 ...` -> ai-does-it).
+EXIT_KIND = re.compile(r"^[\s>*-]*`?exit:\s*`?([\w-]+)", re.M)
+# Exits that say the remaining work is the AI's own or rides on a PR: their delivery is code or a merge, which a
+# reading command can see. With `check: none` nothing ever sees it, and the entry is reported open after it shipped.
+OWN_WORK = {"ai-does-it", "in-pr"}
 # A command parked as text behind `none` (see PARKED above): a backtick span whose first word is a
 # command. A path or a name in backticks (`core/x.md`, `#315`) is no command and stays a reason.
 PARKED_CMD = re.compile(r"`\s*(?:test|\[|grep|ls|wc|head|tail|cat|diff|git|gh|python3?|node|bash|sh|find|jq)\s[^`]+`")
@@ -285,7 +290,8 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
     None = no memory (hand runs with --ledger); an empty dict on a brain's first run = baseline.
     `pin`: the pinned core checkout; open `check: none` entries waiting for its PRs are measured."""
     out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": [],
-           "refused": [], "not_run": [], "unproven": [], "pin_met": [], "parked": [], "multi_exit": []}
+           "refused": [], "not_run": [], "unproven": [], "pin_met": [], "parked": [], "multi_exit": [],
+           "own_unchecked": []}
     pin_since = pin_date(pin, timeout) if pin else ""
     baseline = seen is not None and not seen
     deadline = time.monotonic() + budget
@@ -311,6 +317,11 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
             if NONE.match(chk):
                 if not e["done"] and PARKED_CMD.search(chk):
                     out["parked"].append(label(e, rel))
+                # Measured 2026-11-08 on the macOS instance: three open entries (own work or waiting on a core PR)
+                # were shipped in the pin and still reported "open" for 8 sessions - their `check: none` could not see it.
+                kinds = EXIT_KIND.findall(e["text"])
+                if not e["done"] and kinds and kinds[-1] in OWN_WORK:
+                    out["own_unchecked"].append(label(e, rel))
                 if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout, pin_since):
                     out["pin_met"].append(label(e, rel))
                 continue
@@ -443,6 +454,9 @@ def main():
     say("parked", "open `check: none` entr(y/ies) that park a command as text - never run",
         "write it as the check, a command that exits 0 when done (`grep -q` instead of `grep -c ... = 1`,"
         " `test -s` for \"not empty\"), or keep `none` with a reason and no command")
+    say("own_unchecked", "open entr(y/ies) whose exit is the AI's own work or a PR, with `check: none`",
+        "its delivery is code or a merge a reading command can see - write that command (`grep -q <feature> <file>`,"
+        " `git -C core merge-base --is-ancestor <sha> HEAD`), or the entry stays reported open after it shipped")
     say("regressed", "ticked entr(y/ies) whose check fails",
         "reopen it, or the check no longer measures the thing")
     say("broken", "check(s) that could not give an answer",
