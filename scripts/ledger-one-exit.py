@@ -27,6 +27,14 @@ import sys
 from pathlib import Path
 
 EXIT = re.compile(r"^([\s>*-]*`?)exit:(\s*`?[\w-]+(?:\s+(\d{4}-\d{2}-\d{2}))?)")
+# A prose line wrapped so that it starts with the field name in a code span ("  `exit: ask-operator` went through ...") is no
+# field: in the field's code-span form the span runs to the end of the line. Measured 2026-11-08 on the macOS instance:
+# two such prose lines were read as exits (one counted as a second exit, one as an unknown exit kind).
+PROSE_SPAN = re.compile(r"^[\s>*-]*`exit:[^`\n]*`\s*\S")
+
+
+def exit_match(line):
+    return None if PROSE_SPAN.match(line) else EXIT.match(line)
 ENTRY = re.compile(r"^- \[[ xX]\] ")
 
 
@@ -48,7 +56,7 @@ def migrate(lines):
     """Rewrite in place; return (entries changed, lines renamed)."""
     n_entries = n_lines = 0
     for a, b in entries(lines):
-        ex = [(k, m.group(3) or "") for k in range(a, b) for m in [EXIT.match(lines[k])] if m]
+        ex = [(k, m.group(3) or "") for k in range(a, b) for m in [exit_match(lines[k])] if m]
         if len(ex) < 2:
             continue
         keep = max(enumerate(ex), key=lambda ie: (ie[1][1], ie[0]))[1][0]
@@ -58,6 +66,31 @@ def migrate(lines):
                 n_lines += 1
         n_entries += 1
     return n_entries, n_lines
+
+
+def known_exits():
+    """The exit kinds the aggregator reads - its own set (open-items.py EXITS), never a second list here. None if unreadable."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("open_items", Path(__file__).resolve().parent / "open-items.py")
+    try:
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return set(mod.EXITS)
+    except Exception:  # noqa: BLE001 - a broken aggregator must not block every commit; the exit-kind check then stays off
+        return None
+
+
+def unknown_kinds(lines, kinds):
+    """[(line number, kind)] of open entries whose current exit kind the aggregator does not know."""
+    out = []
+    for a, b in entries(lines):
+        for k in range(a, b):
+            m = exit_match(lines[k])
+            if m:
+                kind = m.group(2).strip().strip("`").split()[0]
+                if kind not in kinds:
+                    out.append((k + 1, kind))
+    return out
 
 
 def main(argv=None):
@@ -82,6 +115,8 @@ def main(argv=None):
                            capture_output=True, text=True, encoding="utf-8")
         staged = set(r.stdout.splitlines()) if r.returncode == 0 else set()
     total_entries = total_lines = 0
+    kinds = known_exits() if a.staged else None
+    bad_kinds = []
     for rel in ledgers:
         p = root / rel
         if staged is not None:
@@ -95,6 +130,10 @@ def main(argv=None):
             continue
         else:
             lines = p.read_text(encoding="utf-8").split("\n")
+        if kinds:
+            # Measured 2026-11-08 (macOS instance): `exit: ask-operator` went through a commit; only the session-start
+            # aggregator said "unknown exit" a session later.
+            bad_kinds += [(rel, n, k) for n, k in unknown_kinds(lines, kinds)]
         n_entries, n_lines = migrate(lines)
         if n_lines:
             total_entries += n_entries
@@ -109,6 +148,10 @@ def main(argv=None):
     if a.staged and total_lines:
         print("An open entry carries ONE current exit: line; older ones are was-exit: (convention 2026-11-06). Fix and stage again:\n"
               f"  python3 {Path(__file__).resolve().as_posix()} --root {root.as_posix()} --write")
+    for rel, n, k in bad_kinds:
+        print(f"{rel}:{n}: unknown exit kind '{k}' - write one of {', '.join(sorted(kinds))} (skill backlog-catch-up)")
+    if bad_kinds:
+        return 1
     return 0 if (a.write or not total_lines) else 1
 
 

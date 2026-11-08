@@ -126,5 +126,32 @@ with tempfile.TemporaryDirectory() as tmp:
     r = subprocess.run([sys.executable, str(TOOL), "--root", str(root), "--staged", "--write"], capture_output=True, text=True)
     check("staged + write is refused", r.returncode == 2, f"rc={r.returncode}")
 
+    # 2026-11-08: an exit kind the aggregator does not know (open-items.py EXITS) is refused at commit time, open entries only
+    led.write_text("# Ledger\n- [ ] **free text**\n  id: f\n  exit: ask-operator 2026-11-08\n"
+                   "- [x] **ticked, old form**\n  id: g\n  exit: done 2026-11-08\n", encoding="utf-8")
+    g("add", "docs/l.md")
+    r = staged()
+    check("staged: an unknown exit kind on an open entry blocks and names the kinds",
+          r.returncode == 1 and "unknown exit kind 'ask-operator'" in r.stdout and "operator-decision" in r.stdout, r.stdout + r.stderr)
+    check("staged: a ticked entry's exit kind is not judged", "'done'" not in r.stdout, r.stdout)
+    led.write_text("# Ledger\n- [ ] **valid**\n  id: f\n  exit: operator-decision 2026-11-08\n", encoding="utf-8")
+    g("add", "docs/l.md")
+    r = staged()
+    check("staged: a known exit kind passes", r.returncode == 0, r.stdout + r.stderr)
+
+    # a prose line that starts with the field name in a code span is no exit (measured 2026-11-08, two such lines)
+    led.write_text("# Ledger\n- [ ] **prose wrap**\n  id: p\n  text before the wrap, then the next line starts with\n"
+                   "  `exit: ask-operator` and goes on as prose\n  exit: operator-decision 2026-11-08\n"
+                   "- [ ] **span field (control)**\n  id: q\n  `exit: in-pr 2026-11-08 o/r#1`\n", encoding="utf-8")
+    g("add", "docs/l.md")
+    r = staged()
+    check("staged: a prose line starting with `exit: …` is neither an unknown kind nor a second exit",
+          r.returncode == 0, r.stdout + r.stderr)
+    lint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lint)
+    body = led.read_text(encoding="utf-8")
+    check("reconcile MULTI_EXIT counts one exit for the prose-wrapped entry and one for the span field",
+          [len(lint.MULTI_EXIT.findall(t)) for t in body.split("\n- [")[1:]] == [1, 1], body)
+
 print("ledger-one-exit fixtures:", "ALL passed" if not fails else f"{fails} FAILED")
 sys.exit(1 if fails else 0)
