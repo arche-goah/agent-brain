@@ -189,6 +189,9 @@ function readTurns(tp, tail) {
       for (const b of msg.content) {
         if (b.type === 'text' && b.text) cur.texts.push(b.text);
         if (b.type === 'tool_use' && b.input && typeof b.input.file_path === 'string') cur.writes.push(b.input.file_path);
+        // A file written by a shell command (`cat x >> register.md`, a script) carries no file_path: keep the command, the
+        // judge reads the paths it names and checks they changed in this turn (shellWrites below).
+        if (b.type === 'tool_use' && b.input && typeof b.input.command === 'string') (cur.shell = cur.shell || []).push(b.input.command);
       }
       continue;
     }
@@ -212,7 +215,24 @@ function currentTurn(turns) {
   let k = turns.length - 1;
   while (k > 0 && turns[k].queued) k -= 1;
   const group = turns.slice(Math.max(0, k));
-  return { group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes), fired: group.some((t) => t.fired) };
+  return { group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes), fired: group.some((t) => t.fired),
+    shell: group.flatMap((t) => t.shell || []), since: Date.parse((group[0] && group[0].when) || '') || 0 };
+}
+
+// Files a shell command of the turn names that exist and changed since the turn began. Measured 2026-11-08 on the macOS
+// instance: a register entry appended with `cat … >> docs/maintenance/carrier-register.md` and a generator rewritten by a
+// python script were both invisible - the gate read only Write/Edit file paths and reported "no entry" three times.
+function shellWrites(shell, cwd, since) {
+  if (!since) return [];
+  const out = [];
+  for (const cmd of shell) {
+    for (const m of String(cmd).matchAll(/(?:^|[\s"'=<>|;&(])((?:~|\/|\.{0,2}\/)?[\w.~@+-]+(?:\/[\w.@+-]+)+)/g)) {
+      const p = m[1].replace(/^~(?=\/)/, process.env.HOME || process.env.USERPROFILE || '~');
+      const abs = path.isAbsolute(p) ? p : path.join(cwd, p);
+      try { if (fs.statSync(abs).mtimeMs >= since - 1000) out.push(abs); } catch (e) { /* not a file */ }
+    }
+  }
+  return out;
 }
 
 // The first correction in the turn (word list, else the prompt classifier's record) that no later text answers with
@@ -310,8 +330,9 @@ function gate(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let turns;
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
-  const { group, texts, writes, fired } = currentTurn(turns);
+  const { group, texts, writes: direct, fired, shell, since } = currentTurn(turns);
   if (!group.length || fired) return;
+  const writes = direct.concat(shellWrites(shell, cwd, since));
   // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
   // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
   // cause line owed), never close one the words opened. Every message of the turn is judged (currentTurn), a

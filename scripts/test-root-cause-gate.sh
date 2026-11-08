@@ -54,6 +54,18 @@ check "the cause named in a later text of the same turn" "$T/t5.jsonl" allow "$C
 { user "go"; asst "ok"; user "something went wrong, leave it, nothing to build there"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
 Carrier: none — the cause is unknown, operator-ok: \"leave it, nothing to build there\""; write "$CWD/$REG"; } > "$T/t6.jsonl"
 check "cause unknown, carrier none with the operator's own words, registered" "$T/t6.jsonl" allow "$CWD"
+# --- 2026-11-08 (macOS instance): register and carrier written by a SHELL command count when the file changed in this turn
+sh() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":%s}}]}}\n' "$(js "$1")"; }
+SHW="$T/shw"; mkdir -p "$SHW/docs/maintenance" "$SHW/scripts"
+NOW="$(node -e 'process.stdout.write(new Date(Date.now()-5000).toISOString())')"
+touch "$SHW/$REG" "$SHW/scripts/gen.py"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t7.jsonl"
+check "register and carrier written by shell commands, changed in this turn" "$T/t7.jsonl" allow "$SHW"
+{ WHEN="2099-01-01T00:00:00.000Z" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t8.jsonl"
+check "the same files named but unchanged since the turn began (negative control)" "$T/t8.jsonl" block "$SHW"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; } > "$T/t9.jsonl"
+check "shell-written carrier, no register entry" "$T/t9.jsonl" block "$SHW"
+
 # --- must block: the instance fixed, the tool left as it was
 { user "go"; asst "Re-posted the request to the right group."; asst "Cause: the post tool does not check the audience."; } > "$T/t20.jsonl"
 check "a self-found cause, no correction, no mechanism (the 2026-10-28 class)" "$T/t20.jsonl" block "$CWD"
