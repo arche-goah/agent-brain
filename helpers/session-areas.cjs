@@ -340,4 +340,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { areasFromCall, overlaps, record, prompt, map };
+module.exports = { areasFromCall, overlaps, record, prompt, map, sessions };
