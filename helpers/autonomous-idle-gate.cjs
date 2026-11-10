@@ -372,4 +372,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { judge };
+module.exports = { judge, END_LINE };
