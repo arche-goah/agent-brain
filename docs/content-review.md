@@ -61,7 +61,9 @@ raise the risk in the review. `pr-risk.json` `minimum` sets per risk the least m
 the review. The model is MEASURED from the session transcript, never taken from a claim: at the first
 `git commit` in the core, at `gh pr create`, and at the approval, whose `Model:` line must name the model
 the review ran on. Models are matched by family (`tiers`: haiku < sonnet < opus < fable), never by version,
-so a newer version of a family counts at once; a new family is one entry in `tiers`.
+so a newer version of a family counts at once; a new family is one entry in `tiers` — until it is there, that
+model counts as not measured (said on stderr, nothing checked), never as the smallest. Synthetic transcript
+entries (`"model":"<synthetic>"`) are skipped; the last model of a known family counts.
 
 **When the session's model is below the minimum,** the session says so and hands the work on — it does not
 ask the operator which way, it decides by the work:

@@ -8,4 +8,4 @@
   below the floor of the changed files), `gh pr review --approve` without `Fit:` / `Design:` / `Cost:` /
   `Model:` (the model measured from the transcript), and `gh pr merge` without such a review by an instance
   other than the author (merge trains per member). Data `pr-risk.json`, questions `docs/content-review.md`,
-  rule `rules/intelligence.md` § Model Routing. Fixture: `scripts/test-content-review-gate.sh` (26 cases).
+  rule `rules/intelligence.md` § Model Routing. Fixture: `scripts/test-content-review-gate.sh` (30 cases; the synthetic-entry, unknown-family and lazy-read cases from the Windows review).

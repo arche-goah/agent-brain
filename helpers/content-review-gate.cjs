@@ -15,7 +15,8 @@
  *
  * RISK: the higher of the body's `Risk: low|medium|high — <why>` line and the FLOOR the changed files
  * give (`pr-risk.json` at the core root, `floors`). The author cannot declare below the floor.
- * MODEL: measured, never claimed — the last `"model"` of the session transcript (`transcript_path`).
+ * MODEL: measured, never claimed — the last `"model"` of a known family (`pr-risk.json` tiers) in the session
+ * transcript (`transcript_path`), read only when a check needs it; `<synthetic>` or an unknown family = not measured.
  *
  * CHECK 1 — `gh pr create`: the body carries a `Risk:` line at or above the floor of the branch's files
  *   (`git diff --name-only origin/main...HEAD` in the call's directory), and the session's model is at
@@ -121,9 +122,19 @@ function sessionModel(p) {
     const buf = Buffer.alloc(n);
     fs.readSync(fd, buf, 0, n, st.size - n);
     fs.closeSync(fd);
-    const all = [...buf.toString('utf8').matchAll(/"model":"([^"]+)"/g)];
-    return all.length ? all[all.length - 1][1] : null;
+    // the last model of a KNOWN family: Claude Code writes `"model":"<synthetic>"` for synthetic assistant
+    // entries (measured on the Windows instance 2026-11-10, a resumed session), and a new family is not yet in
+    // `tiers` - neither is the smallest model, both are "not measured" (review of #478)
+    const all = [...buf.toString('utf8').matchAll(/"model":"([^"]+)"/g)].map((m) => m[1]).filter((m) => tier(m) >= 0);
+    if (!all.length) { console.error('content-review-gate: no model of a known family in the transcript (pr-risk.json tiers), model not checked'); return null; }
+    return all[all.length - 1];
   } catch (e) { return null; }
+}
+
+/** The model read once, only when a check needs it (review of #478: `git status` should cost no transcript read). */
+function lazyModel(p) {
+  let done = false, value = null;
+  return () => { if (!done) { done = true; value = p ? sessionModel(p) : null; } return value; };
 }
 
 function gh(args) {
@@ -157,10 +168,11 @@ function postedText(cmd, ps, cwd) {
 function branchFiles(cwd) {
   const seam = process.env.CONTENT_REVIEW_GATE_FILES;
   if (seam !== undefined) return seam.split('\n').filter(Boolean);
-  try {
-    return execFileSync('git', ['-C', cwd, 'diff', '--name-only', 'origin/main...HEAD'],
-      { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] }).split('\n').filter(Boolean);
-  } catch (e) { return null; }
+  const git = (args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
+  // the remote's default branch, not a fixed `main` (review of #478)
+  let base = 'origin/main';
+  try { base = git(['rev-parse', '--abbrev-ref', 'origin/HEAD']).trim() || base; } catch (e) { /* no origin/HEAD set: main */ }
+  try { return git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean); } catch (e) { return null; }
 }
 
 const QUESTIONS =
@@ -183,11 +195,11 @@ const HANDOFF =
 /** CHECK 0 — `git commit` in the core repo (its root carries pr-risk.json): the staged files' floor against the
  * session's model, at the first build step instead of after the build (operator 2026-11-10: the session must
  * report a risky build its model is too small for and hand it to a session or an agent on the right one). */
-function checkCommit(cmd, ps, cwd, model) {
+function checkCommit(cmd, ps, cwd, getModel) {
   const sub = (w) => { let i = 1; while (['-C', '-c'].includes(w[i])) i += 2; return w[i]; };
   const hits = invocations(cmd, ps, 'git', null, null);
   const commits = hits === null ? /\bgit\b[^\n;&|]*\scommit\b/.test(cmd) : hits.some((w) => sub(w) === 'commit');
-  if (!commits || model === null) return 0;
+  if (!commits) return 0;
   const dir = (/\bgit\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd) || [])[1];
   const repo = dir ? path.resolve(cwd, dir.replace(/^["']|["']$/g, '')) : cwd;
   let root;
@@ -201,12 +213,13 @@ function checkCommit(cmd, ps, cwd, model) {
   }
   const fl = floor(String(files).split('\n').filter(Boolean));
   const least = need(RISKS[fl.risk], 'build');
-  if (tier(model) >= least) return 0;
+  const model = getModel();
+  if (model === null || tier(model) >= least) return 0;
   return block(`this commit carries ${fl.why} - risk ${RISKS[fl.risk]}, built with at least ${CFG.tiers[least]}; this session runs on ${model}.\n` +
     HANDOFF.replace('<tier>', CFG.tiers[least]));
 }
 
-function checkCreate(cmd, ps, cwd, model) {
+function checkCreate(cmd, ps, cwd, getModel) {
   const hits = invocations(cmd, ps, 'gh', ['pr'], ['create']);
   if (hits === null ? !/\bgh\s+pr\s+create\b/.test(cmd) : !hits.length) return 0;
   const body = postedText(cmd, ps, cwd);
@@ -217,17 +230,19 @@ function checkCreate(cmd, ps, cwd, model) {
   if (d < 0) return block('a PR body needs a line `Risk: low|medium|high — <why: reach, complexity, what breaks if it is wrong>`.\n' +
     `The changed files give at least: ${RISKS[fl.risk]}${fl.why ? ` (${fl.why})` : ''}. Criteria: ${DOC}.`);
   if (d < fl.risk) return block(`the body declares risk ${RISKS[d]}, but ${fl.why} sets the floor at ${RISKS[fl.risk]} (pr-risk.json). Declare ${RISKS[fl.risk]} or higher.`);
-  if (model === null) { console.error('content-review-gate: transcript unreadable, build model not checked'); return 0; }
+  const model = getModel();
+  if (model === null) { console.error('content-review-gate: build model not measured, not checked'); return 0; }
   const least = need(RISKS[d], 'build');
   if (tier(model) < least) return block(`risk ${RISKS[d]} is built with at least ${CFG.tiers[least]}; this session runs on ${model}.\n` +
     HANDOFF.replace('<tier>', CFG.tiers[least]) + '\nWhy: operator order 2026-11-10 - nothing critical is built with a smaller model.');
   return 0;
 }
 
-function checkReviewPost(cmd, ps, cwd, model) {
+function checkReviewPost(cmd, ps, cwd, getModel) {
   const hits = invocations(cmd, ps, 'gh', ['pr'], ['review', 'comment']);
   const isPost = hits === null ? /\bgh\s+pr\s+(?:review|comment)\b/.test(cmd) : hits.length > 0;
   if (!isPost) return 0;
+  const model = getModel();
   const text = postedText(cmd, ps, cwd);
   const claimed = modelLine(text);
   if (claimed && model !== null && tier(claimed) !== tier(model)) {
@@ -281,7 +296,7 @@ function gate(input) {
   if (ESCAPE.test(cmd) || !/\b(?:gh|git)\b/.test(cmd)) return 0;
   const ps = input.tool_name === 'PowerShell';
   const cwd = input.cwd || process.cwd();
-  const model = input.transcript_path ? sessionModel(input.transcript_path) : null;
+  const model = lazyModel(input.transcript_path);
   return checkCommit(cmd, ps, cwd, model) || checkCreate(cmd, ps, cwd, model)
     || checkReviewPost(cmd, ps, cwd, model) || checkMerge(cmd, ps);
 }

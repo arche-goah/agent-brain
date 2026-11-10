@@ -56,6 +56,14 @@ probe "create with high risk on opus" "gh pr create -R o/r --body-file $N/body-h
 transcript claude-sonnet-5-5
 probe "create with high risk on sonnet" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"
 probe "create low risk on sonnet" "gh pr create -R o/r --body-file $N/body-low.md" allow "docs/a.md"
+# review of #478 (Windows instance): a trailing synthetic entry or an unknown family is no model at all
+printf '{"type":"assistant","message":{"model":"claude-sonnet-5-5"}}\n{"type":"assistant","message":{"model":"<synthetic>"}}\n' > "$T/t.jsonl"
+probe "a trailing <synthetic> entry: the last real model counts (sonnet, high)" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"
+probe "a trailing <synthetic> entry does not block a low PR" "gh pr create -R o/r --body-file $N/body-low.md" allow "docs/a.md"
+transcript "<synthetic>"
+probe "only <synthetic>: model not measured, not checked" "gh pr create -R o/r --body-file $N/body-high.md" allow "helpers/x-gate.cjs"
+transcript claude-zeta-1
+probe "an unknown family is not measured, not the smallest" "git commit -m x" allow "hooks/hooks.json"
 
 # CHECK 2/3 - approval and Model line
 printf '%s\nModel: claude-opus-5-5\n' "$GOOD" > "$T/rev-opus.md"
