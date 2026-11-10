@@ -323,6 +323,7 @@ known:     scripts/test-open-items-gate.sh=1
 known:     scripts/test-open-items-wake.sh=1
 known:     scripts/test-open-items.sh=1
 known:     scripts/test-order-list-reader.sh=1
+known:     scripts/test-own-open-gate.sh=1
 known:     scripts/test-parallel-sessions.sh=1
 known:     scripts/test-pattern-cases.sh=1
 known:     scripts/test-pr-ball.sh=1
@@ -540,6 +541,9 @@ Green on Windows (Git Bash) the same day.
 as data — the brain dir (`CLAUDE_PROJECT_DIR`), the cwd, the fake gh (`MERGE_REQUEST_GATE_GH`) and the
 PR fixture (`PR_JSON`, read by the fake) — all through `native()`. An unresolvable fake gh makes the
 gate fail OPEN (PR unreadable = allow), so every must-block case would pass silently.
+2026-11-10, test-own-open-gate.sh baselined after review: the transcript, the brain dir (`cwd`) and the gate path
+cross into node through `native()`; an unreadable transcript makes the gate allow, so every must-block case
+would pass silently without it.
 2026-11-06, test-release-freeze-gate.sh baselined after the same review: three paths cross into node as data — the
 brain dir (`CLAUDE_PROJECT_DIR`), the cwd field and the `git -C <dir>` inside the command — all through `native()`.
 It matters in the blocking direction: an unresolvable brain reads no scope and an unresolvable core names no repo,
