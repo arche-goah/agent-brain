@@ -220,6 +220,21 @@ check "push, ci-watch armed with a quoted script path" "$T/c6.jsonl" allow "$R"
 check "negative control: quoted path, another repo" "$T/c7.jsonl" block "$R"
 { user "fix"; tool Bash "git -C $PLAINN push -q origin x"; } > "$T/c6.jsonl"
 check "push into a repo without workflows" "$T/c6.jsonl" allow "$R"
+# A push that never ran or moved no ref starts no run (measured 2026-11-09, macOS: a PreToolUse gate refused the push,
+# the branch was not on the remote, the Stop check still demanded a watcher). The result is matched by tool_use_id.
+idtool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+result() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":%s,"content":%s}]}}\n' "$1" "$2" "$(js "$3")"; }
+{ user "fix"; idtool p1 "git -C $CIN push -u origin x"; result p1 true "PreToolUse:Bash hook error: CORE-PUSH-LINT: no green stamp"; asst "held"; } > "$T/c8.jsonl"
+check "push refused by a hook before it ran" "$T/c8.jsonl" allow "$R"
+{ user "fix"; idtool p2 "git -C $CIN push origin x"; result p2 true "pre-push: BLOCKED (origin)
+error: failed to push some refs to 'https://github.com/o/r.git'"; asst "held"; } > "$T/c9.jsonl"
+check "push rejected without a ref update" "$T/c9.jsonl" allow "$R"
+{ user "fix"; idtool p3 "git -C $CIN push origin x"; result p3 false "To https://github.com/o/r.git
+   1234567..89abcde  x -> x"; asst "pushed"; } > "$T/c10.jsonl"
+check "negative control: a push that moved a ref, no ci-watch" "$T/c10.jsonl" block "$R"
+{ user "fix"; idtool p4 "git -C $CIN push origin x y"; result p4 true " * [new branch]      x -> x
+ ! [rejected]        y -> y (non-fast-forward)"; asst "half"; } > "$T/c11.jsonl"
+check "negative control: a failed push that still moved one ref" "$T/c11.jsonl" block "$R"
 { user "fix"; tool Bash "cd $CIN && git push -q"; } > "$T/c7.jsonl"
 check "cd-form push into a repo with CI" "$T/c7.jsonl" block "$R"
 live_lock "$R/.claude-state/collab-watch/repo-activity-o.pid"

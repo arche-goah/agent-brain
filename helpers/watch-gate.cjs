@@ -256,6 +256,7 @@ function turn(tp) {
           const c = calls.find((x) => x.id && x.id === b.tool_use_id);
           if (c) c.out = typeof b.content === 'string' ? b.content
             : (Array.isArray(b.content) ? b.content.map((x) => x.text || '').join('\n') : '');
+          if (c) c.failed = !!b.is_error;
         }
       }
       // A loaded skill's text is no new turn: the watcher armed before it stays in the turn.
@@ -457,6 +458,11 @@ function ciStarted(shell, root) {
   for (const c of shell) {
     const named = /\bgh\s+pr\s+(?:create|merge)\b/.test(c.cmd);
     if (!named && !isGitPush(c.cmd)) continue;
+    // A call that failed and moved no ref started nothing: a hook refused it before it ran, or git / the
+    // remote rejected it. Measured 2026-11-09 on the macOS instance: a push refused by a PreToolUse gate was
+    // counted, the Stop check demanded a watcher for a run that did not exist (the branch was not on the remote).
+    // A push that updated a ref prints "old..new  a -> b" and still counts even when another ref failed.
+    if (c.failed && !/\s->\s/.test(c.out || '')) continue;
     const flag = named && REPO_FLAG.exec(c.cmd);
     if (flag) {
       const slug = flag[1].toLowerCase();
