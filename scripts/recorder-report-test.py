@@ -29,6 +29,10 @@ def ok(n, cond, detail=""):
         fails.append(n)
 
 
+def line_in(out, label):
+    return next((l for l in out.splitlines() if label in l), "")
+
+
 def jl(rows):
     return "".join(json.dumps(r) + "\n" for r in rows)
 
@@ -96,7 +100,25 @@ with tempfile.TemporaryDirectory() as td:
     ok("summary counts recorders and due ones",
        "recorder report summary: 6 recorder(s), 3 with a decision due" in out, str(out.splitlines()[-1:]))
 
+    # 2026-11-10 (Windows instance): the template's required recorders run without a line in the instance
+    # file — the report counts them too; one the instance switches off with a reason stays out.
+    (root / "core/templates/rules-instance").mkdir(parents=True)
+    (root / "core/templates/rules-instance/stop-checks.json").write_text(json.dumps({"checks": [
+        {"label": "REQ", "marker": "REQ-GATE", "cmd": "core/helpers/req.cjs", "mode": "record", "required": True},
+        {"label": "OFF", "marker": "OFF-GATE", "cmd": "core/helpers/off.cjs", "mode": "record", "required": True},
+        {"label": "OPT", "marker": "OPT-GATE", "cmd": "core/helpers/opt.cjs", "mode": "record"}]}), encoding="utf-8")
+    cfg = json.loads((root / ".claude/rules/stop-checks.json").read_text(encoding="utf-8"))
+    cfg["disabled"] = {"OFF-GATE": "switched off on purpose"}
+    (root / ".claude/rules/stop-checks.json").write_text(json.dumps(cfg), encoding="utf-8")
+    (st / "req-gate.jsonl").write_text(jl([{"at": "2026-10-22T10:00:00Z", "session": "a", "would_block": True}]),
+                                       encoding="utf-8")
+    out = subprocess.run([sys.executable, str(REPORT), "--root", str(root), "--days", "14",
+                          "--today", "2026-10-23"], capture_output=True, text=True, encoding="utf-8").stdout
+    ok("a required template recorder is counted", line_in(out, "REQ:").startswith("!! "), line_in(out, "REQ:"))
+    ok("a required recorder disabled with a reason and an optional one stay out",
+       "OFF" not in out and "OPT" not in out, out)
+
 if fails:
     print(f"recorder-report-test: {len(fails)} FAILURE(S)")
     sys.exit(1)
-print("recorder-report-test: all 9 fixtures passed")
+print("recorder-report-test: all 11 fixtures passed")
