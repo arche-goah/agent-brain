@@ -350,6 +350,7 @@ known:     scripts/test-shared-memory-channels.sh=1
 known:     scripts/test-shared-memory-check.sh=1
 known:     scripts/test-shared-working-copy-guard.sh=1
 known:     scripts/test-skill-gate.sh=1
+known:     scripts/test-start-report-gate.sh=1
 known:     scripts/test-stop-checks.sh=1
 known:     scripts/test-stop-dispatcher.sh=5
 known:     scripts/test-stoppen-gate.sh=1
