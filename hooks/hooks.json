@@ -98,6 +98,12 @@
           },
           {
             "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/content-review-gate.cjs\"",
+            "timeout": 30,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/release-freeze-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"

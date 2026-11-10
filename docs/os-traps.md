@@ -288,6 +288,7 @@ known:     scripts/test-collab-watch-follow.sh=1
 known:     scripts/test-collab-watch-plan.sh=1
 known:     scripts/test-commitment-carrier-gate.sh=1
 known:     scripts/test-conditional-order-gate.sh=1
+known:     scripts/test-content-review-gate.sh=1
 known:     scripts/test-dead-carriers.sh=1
 known:     scripts/test-decision-presentation-gate.sh=1
 known:     scripts/test-decision-readiness.sh=1
@@ -540,6 +541,11 @@ Green on Windows (Git Bash) the same day.
 as data — the brain dir (`CLAUDE_PROJECT_DIR`), the cwd, the fake gh (`MERGE_REQUEST_GATE_GH`) and the
 PR fixture (`PR_JSON`, read by the fake) — all through `native()`. An unresolvable fake gh makes the
 gate fail OPEN (PR unreadable = allow), so every must-block case would pass silently.
+2026-11-10, test-content-review-gate.sh baselined after review: the paths that cross into node as data —
+the cwd (the core-like repo), the transcript (`transcript_path`), the fake gh (`CONTENT_REVIEW_GATE_GH`),
+the PR fixture (`PR_JSON`) and every `--body-file` inside a probed command (`$N`, the native temp dir) —
+all go through `native()`. A body file the gate cannot read is an empty text, so a must-allow approval
+would block and a must-block create would block for the wrong reason; first run green on macOS.
 2026-11-06, test-release-freeze-gate.sh baselined after the same review: three paths cross into node as data — the
 brain dir (`CLAUDE_PROJECT_DIR`), the cwd field and the `git -C <dir>` inside the command — all through `native()`.
 It matters in the blocking direction: an unresolvable brain reads no scope and an unresolvable core names no repo,
@@ -1089,6 +1095,7 @@ path on the current drive's root and fails; the hook swallows the read error and
 without the file — on macOS and Linux the same path is the native one, so the defect is invisible there.
 pattern:   publishedText\(
 paths:     --include=*.cjs helpers
+known:     helpers/content-review-gate.cjs=1
 known:     helpers/instance-key-gate.cjs=1
 known:     helpers/public-text-guard.cjs=1
 known:     helpers/published-text.cjs=3
@@ -1101,6 +1108,8 @@ note:      Measured twice on Windows: 2026-10-14 `instance-key-gate.cjs` blocked
 2026-10-25 `public-text-guard.cjs` let a `--body-file /c/...` holding a person's name through (unreadable =
 skipped). Both now translate with `nativePath`. The search lists the consumers of the handed-file list: a
 new consumer appears as a new site and is read for the translation.
+2026-11-10, content-review-gate.cjs read: its `postedText()` translates each handed file with
+`public-text-guard.cjs` `nativePath` before `readFileSync`, the same form as review-claim-gate.
 
 ## OS-21 — a fixture runs the session start in the home of the machine running it
 

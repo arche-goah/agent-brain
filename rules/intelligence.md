@@ -208,6 +208,13 @@ and `core/scripts/test-workflow-relays.sh`; mechanism: `core/docs/multi-agent-re
 harness refuses the agent its file** (2026-10-26), it returns TEXT and names the refusal — never works
 around it (another tool, a script, a rename); the spawning brief asks for exactly that.
 
+**A PR's risk sets the model that builds and reviews it, and a review judges content, not only
+function** (operator orders 2026-11-10): the body names `Risk:`; build and review run at least on the
+family `pr-risk.json` names for it, measured from the transcript — below it, the session hands the work
+to an agent or a session on that family; an approval or merge needs a review by another instance with
+`Fit:` / `Design:` / `Cost:` / `Model:`. Carrier `core/helpers/content-review-gate.cjs`; questions and
+criteria `core/docs/content-review.md`.
+
 History: core/docs/rule-history.md, "Model Routing".
 
 ## Repeat Runs (CANONICAL place — skills point here)
