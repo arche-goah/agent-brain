@@ -100,6 +100,8 @@ known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
 known:     scripts/hook-coverage.py=25
+known:     scripts/ledger-fields-test.py=2
+known:     scripts/ledger_fields.py=1
 known:     scripts/lesson-carriers.py=5
 known:     scripts/live-doc-lint-test.py=2
 known:     scripts/live-doc-lint.py=3
@@ -150,6 +152,8 @@ of a file the script opens (settings, stop-checks, declarations, the core checko
 2026-10-09: the caveman check moved out of session-bootup.sh into caveman-armed.py
 (bootup 8 -> 4, new file 6). Same review: every join builds a path the script opens;
 it prints only plugin id, version and style name.
+2026-11-10, ledger_fields.py and its fixture baselined after review: the joins build the path of
+ledger-fields.json and of the JavaScript twin, which are only opened or handed to node; nothing prints a path.
 2026-10-09, always-loaded.py baselined after that review: the four joins build paths it
 only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
 2026-10-09, commitments.py baselined after that review: the five joins build the transcript

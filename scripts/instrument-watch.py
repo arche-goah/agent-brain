@@ -25,6 +25,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ledger_fields import first_value  # noqa: E402  the one id grammar (ledger-fields.json)
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
 except (AttributeError, ValueError):
@@ -53,15 +56,18 @@ def cause_states(repo):
             m = BOX.match(line)
             if m:
                 state = m.group(1) == " "
+                v = first_value(line, "id")  # the field form on the entry line itself (`... | id: x`)
+                if v:
+                    out[v] = state
                 continue
             if state is None:
                 continue
             if not line.startswith(" "):
                 state = None
                 continue
-            i = re.match(r"^\s+id:\s*(\S+)", line)
-            if i:
-                out[i.group(1)] = state
+            v = first_value(line, "id")
+            if v:
+                out[v] = state
     return out
 
 
