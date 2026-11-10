@@ -98,10 +98,10 @@ def pushes(items: list, repo: str, self_login: str, only_set: set) -> None:
 
 
 def superseded(run: dict, runs: list) -> bool:
-    """A cancelled run is noise when a NEWER run of the same workflow on the same branch
-    exists: GitHub's concurrency cancels the older push's run on purpose (two merges a
-    minute apart). A cancelled run that is still the newest on its branch is the real
-    thing — nobody re-ran it, the branch sits red."""
+    """A red run is noise when a NEWER run of the same workflow on the same branch exists:
+    GitHub's concurrency cancels the older push's run on purpose (two merges a minute apart),
+    and a failure of an older head is answered by the run of the newer one. A red run that is
+    still the newest on its branch is the real thing — nobody re-ran it, the branch sits red."""
     return any(o is not run
                and o.get("workflowName") == run.get("workflowName")
                and o.get("headBranch") == run.get("headBranch")
@@ -116,7 +116,11 @@ def red_runs(items: list, repo: str, since: str) -> None:
         if (it.get("updatedAt") or "") <= since or it.get("status") != "completed":
             continue
         concl = it.get("conclusion") or ""
-        if concl not in RED or (concl == "cancelled" and superseded(it, items)):
+        # Any red run, not only a cancelled one, is old news once a newer run of the same workflow stands on its
+        # branch: that newer run speaks for the head and reports itself if red. Measured 2026-11-10 (heavy-metal
+        # #124): the failed run of the OLD head 076f1e8 was reported after the push to 08239f8, whose run passed,
+        # in two sessions at once.
+        if concl not in RED or superseded(it, items):
             continue
         br = it.get("headBranch") or ""
         print(f"{br}\tCI-RED {repo} {it.get('workflowName', '?')} on {br} "
