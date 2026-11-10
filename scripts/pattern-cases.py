@@ -42,6 +42,8 @@ reader must reach on it:
       the same turn. "block" = a reported failure and no log read.
   secret-patterns.json (secret-guard.cjs): text = a shell command, or a path with "tool": "Read"
       (or "Edit"/"Write"). "block" = denied (or asked).
+  start-report-patterns.json (start-report-gate.cjs): text = the operator's FIRST message, "command" (default
+      "gh pr merge 1 -R o/r") = the call in the first turn. "block" = denied before the start report.
   commitments.json (commitment-carrier-gate.cjs): text = a reply; "then" (optional) = a later
       reply of the same turn, the place a take-back stands. "block" = a promise without a mechanism
       is left standing; "allow" = none, or it was taken back.
@@ -89,6 +91,7 @@ READERS = {
     "diagnose-patterns.json": ("diagnose-gate.cjs", "failure"),
     "secret-patterns.json": ("secret-guard.cjs", "tool"),
     "commitments.json": ("commitment-carrier-gate.cjs", "promise"),
+    "start-report-patterns.json": ("start-report-gate.cjs", "first-turn"),
 }
 VERDICTS = {"mode": ("autonomous", "interactive")}
 GATE_VERDICTS = ("block", "allow")
@@ -175,6 +178,8 @@ def scenario(kind, case):
                 {"type": "tool_result", "tool_use_id": tid, "content": text if tid == "toolu_pc4" else "ok"}]}})
         recs.append(asst(case.get("reply", "Done.")))
         return recs, {"stop_hook_active": False}
+    if kind == "first-turn":
+        return [user(text)], {"tool_name": "Bash", "tool_input": {"command": case.get("command", "gh pr merge 1 -R o/r")}}
     if kind == "tool":
         tool = case.get("tool", "Bash")
         ti = {"command": text} if tool in ("Bash", "PowerShell") else {"file_path": text}

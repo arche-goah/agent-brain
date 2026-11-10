@@ -11,5 +11,24 @@
     "\\bgh\\s+api\\b.*\\s-X\\s*(POST|PATCH|PUT|DELETE)\\b",
     "\\bgit\\s+(-C\\s+\\S+\\s+)?push\\b",
     "shared-memory-post|brain-update\\.sh|claude\\s+plugin\\s+(install|update|enable|disable)"
+  ],
+  "_cases": [
+    {
+      "text": "status?",
+      "expect": "block"
+    },
+    {
+      "text": "please merge PR 54",
+      "expect": "allow"
+    },
+    {
+      "text": "status?",
+      "command": "gh pr view 54",
+      "expect": "allow"
+    },
+    {
+      "text": "work through the list autonomously",
+      "expect": "allow"
+    }
   ]
 }
