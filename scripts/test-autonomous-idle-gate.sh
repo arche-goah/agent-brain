@@ -150,6 +150,16 @@ check "interactive: a waiter with its condition covers its item only, another re
 f="$T/i11.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — CI watcher, PR 12 green
 BLOCKED: pkg-b — the operator's word on the deploy"; } > "$f"
 check "interactive: both released items named BLOCKED" "$f" allow "$R"
+# A release the operator left for a new topic is superseded (evaluation 2026-11-10: 28 of 36 interactive blocks in
+# one session, all on a release given hours before the operator moved on).
+f="$T/i11b.jsonl"; { user "go ahead with the plan"; asst "On it."; user "the capacitive sensor stays on a new rest value, look at that"; asst "Next: package A."; } > "$f"
+check "interactive: a later message on another topic supersedes the release" "$f" allow "$R"
+f="$T/i11c.jsonl"; { user "go ahead with the plan"; asst "On it."; user "ok"; asst "Next: package A."; } > "$f"
+check "interactive: a short reply does not supersede it" "$f" block "$R"
+f="$T/i11d.jsonl"; { user "go ahead with the plan"; asst "On it."; user "pkg-a first, then the rest please"; asst "Next: package A."; } > "$f"
+check "interactive: a later message naming the entry keeps it released" "$f" block "$R"
+f="$T/i11e.jsonl"; { user "look at the sensor first"; user "now go ahead with the plan"; asst "Next: package A."; } > "$f"
+check "interactive: an earlier other topic does not supersede a later release" "$f" block "$R"
 cat_ledger "exit: other-side 2026-11-02 — released: \"go ahead with the plan\"" "exit: parked 2026-11-02"
 f="$T/i12.jsonl"; { user "go ahead with the plan"; asst "Next: package A."; } > "$f"
 check "interactive: a released clause under another exit is no release" "$f" allow "$R"
