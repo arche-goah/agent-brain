@@ -140,12 +140,26 @@ function newestEntry(all) {
   const blocks = all.trim().split(/\n[ \t]*\n/);
   return blocks[blocks.length - 1] || '';
 }
+/** The `## ` entry on disk that holds an edit's text, or '' (no heading above it, or the text is not on disk). */
+function entryAround(file, piece) {
+  const all = '\n' + file; // a heading on the first line counts
+  const t = String(piece || '').trim();
+  const i = t ? all.indexOf(t) : -1;
+  const start = i < 0 ? -1 : all.lastIndexOf('\n## ', i);
+  if (start < 0) return '';
+  const end = all.indexOf('\n## ', i + t.length);
+  return all.slice(start + 1, end < 0 ? undefined : end);
+}
 function entryGaps(writeTexts, rel, forbidden, cwd) {
-  let text = writeTexts.filter((w) => writesTo([w.p], rel)).map((w) => w.t).join('\n');
+  const mine = writeTexts.filter((w) => writesTo([w.p], rel));
+  let text = mine.map((w) => w.t).join('\n');
+  let disk = null;
+  try { disk = fs.readFileSync(path.join(cwd, rel), 'utf8'); } catch (e) { /* unreadable: the edit text alone */ }
   // Written without a text in the transcript (a shell append): judge the newest entry on disk.
-  if (!text.trim()) {
-    try { text = newestEntry(fs.readFileSync(path.join(cwd, rel), 'utf8')); } catch (e) { /* unreadable: gaps below */ }
-  }
+  if (!text.trim()) text = disk ? newestEntry(disk) : '';
+  // An edit that completes an entry of an earlier turn (only its `replay:` line, say) is judged with the entry it
+  // lands in (Windows review of #491, finding 4).
+  else if (disk) text += '\n' + mine.map((w) => entryAround(disk, w.t)).join('\n');
   const inv = INVARIANT.exec(text);
   const gaps = [];
   if (!inv) gaps.push('the register entry names no invariant:');

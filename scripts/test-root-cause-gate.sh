@@ -161,6 +161,12 @@ check "entry on disk: the newest one is complete" "$T/t36.jsonl" allow "$T/disk"
 # a register without `## ` headings: the last block is judged, not the whole file (Windows review of #491, finding 3)
 mkdir -p "$T/disk2/docs/maintenance"; printf 'invariant: an older rule said once\nreplay: 2 hits\n\ncause: x\n' > "$T/disk2/$REG"
 check "entry on disk without headings: the last block lacks the invariant" "$T/t36.jsonl" block "$T/disk2"
+# an edit that completes an entry of an earlier turn is judged with the entry it lands in (same review, finding 4)
+mkdir -p "$T/disk3/docs/maintenance"; printf '## e1\ninvariant: a summary reads every source before it counts\nreplay: 7 turns in 40 transcripts\n\n## e2\ncause: y\n' > "$T/disk3/$REG"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$T/disk3/$REG" "replay: 7 turns in 40 transcripts"; } > "$T/t37.jsonl"
+check "edit adds the replay line to an entry whose invariant stands" "$T/t37.jsonl" allow "$T/disk3"
+printf '## e1\ncause: z\nreplay: 7 turns in 40 transcripts\n' > "$T/disk3/$REG"
+check "edit adds the replay line to an entry without invariant" "$T/t37.jsonl" block "$T/disk3"
 
 # --- other languages only as instance data (the German lines here are DATA an instance carries)
 DE="$T/cwd-de"; mkdir -p "$DE/.claude/rules"

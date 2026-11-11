@@ -15,3 +15,5 @@
   a core rule number ("Working Rule #10") is no instance name (only a PR/issue number or a bare 3-digit `#nnn` is), and a
   register without `## ` headings is judged by its last blank-line block, not the whole file. Three more fixture cases;
   the date and rule-number ones were red against the previous head.
+  Finding 4 of the same review: an edit that completes an entry of an earlier turn (only its `replay:` line) is judged
+  with the `## ` entry on disk it lands in, not on its own text (fixture +2, the allow case red on the old head).
