@@ -5,3 +5,8 @@
   workflows, the check skills and the self-tests (278 entries on today's main; one file without a header shows
   as such). Printed, never committed — a stored copy would collide in every merge train. `rules/intelligence.md`
   names the command next to the three self-check levels. Fixture: `scripts/check-catalog-test.py` (18 checks).
+  Windows review: commit and push are a moment of their own (the scripts the git hooks run, the CI lint steps); the
+  session start lists only lines that run something (no comment, no echo/printf advice); the deep-check skills are
+  the ones `rules/intelligence.md` names ("(3) deep check" and the audit-audit paragraph), not a keyword in the
+  description; checks and self-tests are counted apart, the Notification hook stands under "other hooks (no check)".
+  Fixture +11 (29), all eleven red on the old head.
