@@ -1099,6 +1099,24 @@ while the array was cut)
 
 Moved verbatim to `docs/multi-agent-relay.md` (rule now: `rules/intelligence.md` § Model Routing).
 
+#### 2026-11-10 — risk sets the model, review judges content
+
+Four operator messages in one session (the macOS instance), translated: "from now on it really matters to
+review PRs for content too, not only OS compatibility — for our side and for a collaborator's. Not just test
+everything for function and take it over, but reflect critically on how things are built and how they fit
+the big picture. That should cut the workload of coherence scans, the full audit etc. ... it belongs anchored
+in a mechanism" · "judge PRs by reach / complexity / risk and set whether a review must run on sonnet, opus or
+fable ... build nothing critical with sonnet ... towards the critical side it must be judged at the build (and
+kept) and at the review" · "if an opus session runs and a complex, risky build is due, the session must report
+it and ask for it to be built in a fable session (or call a fable agent) ... I cannot judge whether an agent
+on the right level or a session of its own is better" · "it should adapt on its own when newer models are
+available".
+Measured before the build: review-claim-gate asked whether the diff was read, merge-request-gate whether each
+OS said OK — nothing asked for a design verdict; three collaborator PRs were approved that day on green
+fixtures and an OS run, one of them carrying a second copy of a dispatcher rule in another language.
+Built: `helpers/content-review-gate.cjs`, data `pr-risk.json` (families, not versions), `docs/content-review.md`
+(the questions, the risk criteria, agent vs. session decided by the work, not asked of the operator).
+
 #### A refused file is returned as text (2026-10-26)
 
 Measured 2026-10-18 on the Windows workstation instance: the harness refused subagents (Agent tool,
