@@ -4,8 +4,10 @@
 WHY (audit-audit run on the Windows instance, 2026-11-10; released by the operator the same day): an inventory
 found 173 checks (154 core, 19 instance) while the rules name six, and a fresh AI could not find, from its loaded
 context, any level above the full audit. A hand-kept list drifts the day a hook is added; this one is read from the
-places that wire the checks: hooks/hooks.json, the stop-check template, the session start script, the workflows,
-the check skills and the self-tests. It is printed, never committed: a stored copy would need regenerating in every
+places that wire the checks: hooks/hooks.json, the stop-check template, the session start script, the git hooks
+and the CI workflow, the workflows, the deep-check skills the rule names and the self-tests. Windows review of #479:
+the commit/push moment was missing, comments and advice texts in the session start script counted as sections, a
+keyword picked the skills (code-audit in, memory-dream out), and checks and self-tests were added into one number. It is printed, never committed: a stored copy would need regenerating in every
 PR that adds a hook, skill or test, and those PRs would collide in that one file at every merge train.
 `rules/intelligence.md` points here instead of listing the checks.
 
@@ -24,12 +26,13 @@ LEVELS = [
     ("tool", "Every tool call", "PreToolUse / PostToolUse hook", "blocks the call (exit 2, reason on stderr) or a note"),
     ("prompt", "Every prompt", "UserPromptSubmit hook", "context added to the prompt"),
     ("turn", "Every turn end", "Stop hook through stop-dispatcher.cjs (template rows)", "holds the turn end (block) or a log (record)"),
+    ("commit", "Every commit and push", "git hooks (helpers/git-hooks, wired by scripts/install-git-hooks.sh) and the CI lint job", "the commit or push refused, a red CI step"),
     ("start", "Session start", "SessionStart hook, sections of session-bootup.sh", "the session start report"),
     ("end", "Session end / compaction", "SessionEnd / PreCompact hook", "memory export, closing report"),
     ("demand", "On the operator's OK (deep checks)", "workflow or skill, proposed by the AI with its price, never started alone", "a report file named by the skill"),
+    ("other", "Other hooks (no check)", "Notification hook", "a notice to the operator"),
     ("selftest", "Self-tests", "CI (all fixture suites, three OS) and scripts/brain-check.sh", "CI verdict, brain-check line in the session start"),
 ]
-CHECK_SKILL_RX = re.compile(r"\b(audit|scan|review|verif\w*|lint|tidy|dream)\b", re.I)
 
 
 def first_sentence(path):
@@ -62,9 +65,9 @@ def first_sentence(path):
 
 def rows_hooks(root):
     data = json.load(open(os.path.join(root, "hooks", "hooks.json"), encoding="utf-8"))
-    out = {"tool": [], "prompt": [], "start": [], "end": [], "turn": []}
+    out = {"tool": [], "prompt": [], "start": [], "end": [], "turn": [], "other": []}
     lvl = {"PreToolUse": "tool", "PostToolUse": "tool", "UserPromptSubmit": "prompt", "SessionStart": "start",
-           "SessionEnd": "end", "PreCompact": "end", "Notification": "end", "Stop": "turn"}
+           "SessionEnd": "end", "PreCompact": "end", "Notification": "other", "Stop": "turn"}
     seen = set()
     for event, groups in data.get("hooks", {}).items():
         for g in groups:
@@ -94,9 +97,41 @@ def rows_stop(root):
 
 def rows_bootup(root):
     p = os.path.join(root, "helpers", "session-bootup.sh")
-    text = open(p, encoding="utf-8").read()
-    names = sorted(set(re.findall(r"(?:core/)?((?:scripts|helpers)/[a-z0-9_.-]+\.(?:py|sh|cjs))", text)) - {"helpers/session-bootup.sh"})
+    # only lines that RUN something: a comment or an advice text (echo/printf) naming a script is no section
+    run = [l for l in open(p, encoding="utf-8").read().splitlines()
+           if not l.lstrip().startswith("#") and not re.match(r"\s*(?:echo|printf)\b", l)]
+    names = sorted(set(re.findall(r"(?:core/)?((?:scripts|helpers)/[a-z0-9_.-]+\.(?:py|sh|cjs))", "\n".join(run))) - {"helpers/session-bootup.sh"})
     return [(n, "section of session-bootup.sh", first_sentence(os.path.join(root, n))) for n in names]
+
+
+def rows_commit(root):
+    """The git hooks' checks (each `run_check "<name>" ... <script>` or a script they call) and the CI lint steps."""
+    out = []
+    gh = os.path.join(root, "helpers", "git-hooks")
+    for hook in sorted(os.listdir(gh)) if os.path.isdir(gh) else []:
+        text = open(os.path.join(gh, hook), encoding="utf-8").read()
+        run = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith("#"))
+        for n in sorted(set(re.findall(r"\$(?:root|core)/((?:scripts|helpers)/[a-z0-9_.-]+\.(?:py|sh|cjs))", run))):
+            out.append((n, f"git {hook}", first_sentence(os.path.join(root, n))))
+    ci = os.path.join(root, ".github", "workflows", "ci.yml")
+    if os.path.isfile(ci):
+        for m in re.finditer(r"^\s*-\s*name:\s*(.+)$", open(ci, encoding="utf-8").read(), re.M):
+            out.append((f"CI step: {m.group(1).strip()}", "CI (push, PR)", "see the step in .github/workflows/ci.yml"))
+    return out
+
+
+def deep_skills(root):
+    """The skills the rule names as deep checks (rules/intelligence.md, "(3) deep check" and the audit-audit paragraph)."""
+    try:
+        text = open(os.path.join(root, "rules", "intelligence.md"), encoding="utf-8").read()
+    except OSError:
+        return set()
+    names = set()
+    m = re.search(r"\*\*deep check\*\*(.*?)\.\s", text, re.S)
+    if m:
+        names |= set(re.findall(r"`([\w-]+)`", m.group(1)))
+    names |= set(re.findall(r"\*\*Above them, the [\w-]+\*\*[^`]*?skill `([\w-]+)`", text))
+    return names
 
 
 def rows_demand(root):
@@ -107,13 +142,14 @@ def rows_demand(root):
             m = re.search(r"description:\s*'((?:[^'\\]|\\.)*)'", open(os.path.join(wf, f), encoding="utf-8").read())
             out.append((f"workflow {f[:-3]}", "Workflow tool", (m.group(1) if m else "(no description)")[:180]))
     sk = os.path.join(root, "skills")
+    deep = deep_skills(root)
     for d in sorted(os.listdir(sk)) if os.path.isdir(sk) else []:
         p = os.path.join(sk, d, "SKILL.md")
         if not os.path.isfile(p):
             continue
         m = re.search(r"^description:\s*(.+)$", open(p, encoding="utf-8").read(), re.M)
         desc = m.group(1).strip() if m else ""
-        if CHECK_SKILL_RX.search(desc.split(".")[0]):
+        if d in deep:
             s = re.split(r"(?<=[.!?])\s", desc, maxsplit=1)[0]
             out.append((f"skill {d}", "Skill tool", (s[:177] + "...") if len(s) > 180 else s))
     return out
@@ -128,12 +164,13 @@ def rows_selftests(root):
 def render(root):
     h = rows_hooks(root)
     rows = {"tool": h["tool"], "prompt": h["prompt"], "turn": h["turn"] + rows_stop(root),
-            "start": h["start"] + rows_bootup(root), "end": h["end"], "demand": rows_demand(root)}
+            "commit": rows_commit(root), "start": h["start"] + rows_bootup(root), "end": h["end"],
+            "demand": rows_demand(root), "other": h["other"]}
     tests = rows_selftests(root)
-    total = sum(len(v) for v in rows.values()) + len(tests)
+    total = sum(len(v) for k, v in rows.items() if k != "other")
     out = ["# Check catalog", "",
            "Generated now by `scripts/check-catalog.py` from the files that wire the checks.", "",
-           f"Every check the core ships, by the moment it runs: {total} in all. A brain adds its own in its instance "
+           f"Every check the core ships, by the moment it runs: {total} checks, and {len(tests)} self-tests that test them. A brain adds its own in its instance "
            "files (`.claude/settings.json`, `.claude/rules/stop-checks.json`); those are not listed here.", ""]
     for key, title, trigger, result in LEVELS:
         if key == "selftest":

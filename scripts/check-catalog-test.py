@@ -26,21 +26,33 @@ def run(root):
 
 rc, out = run(ROOT)
 check("real core: exit 0", rc == 0)
-for title in ("## Every tool call", "## Every turn end", "## Session start", "## On the operator's OK", "## Self-tests"):
+for title in ("## Every tool call", "## Every turn end", "## Every commit and push", "## Session start", "## On the operator's OK", "## Self-tests"):
     check(f"real core: section {title[3:]}", title in out)
 check("real core: a wired gate is listed with its trigger", "`helpers/merge-request-gate.cjs` | PreToolUse" in out)
 check("real core: a stop-check row is listed with its mode", "CLASS-GATE (helpers/class-gate.cjs)` | block" in out)
 check("real core: the audit-audit skill is a deep check", "`skill audit-audit`" in out)
 check("real core: this fixture is a self-test", "`check-catalog-test.py`" in out)
+# Windows review of #479
+check("real core: a pre-commit check is listed", "`scripts/leak-scan.py` | git pre-commit" in out)
+check("real core: a CI lint step is listed", "CI step: english-only ratchet" in out)
+check("real core: memory-dream is a deep check", "`skill memory-dream`" in out)
+check("real core: code-audit is no deep check", "`skill code-audit`" not in out)
+check("real core: verification-before-completion is no deep check", "skill verification-before-completion" not in out)
+check("real core: a gate named only in a bootup comment is no session-start section", "`helpers/open-items-gate.cjs` | section of session-bootup.sh" not in out)
+check("real core: checks and self-tests are counted apart", "self-tests that test them" in out)
 
 with tempfile.TemporaryDirectory() as t:
-    for d in ("hooks", "helpers", "scripts", "workflows", "skills/fake-audit", "skills/fake-writer", "templates/rules-instance"):
+    for d in ("hooks", "helpers", "helpers/git-hooks", "rules", ".github/workflows", "scripts", "workflows", "skills/fake-audit", "skills/fake-writer", "templates/rules-instance"):
         os.makedirs(os.path.join(t, d))
     json.dump({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": 'node "$CLAUDE_PROJECT_DIR/core/helpers/new-gate.cjs"'}]}]}},
               open(os.path.join(t, "hooks", "hooks.json"), "w"))
     open(os.path.join(t, "helpers", "new-gate.cjs"), "w").write("#!/usr/bin/env node\n/**\n * PreToolUse Hook (Bash): holds a fake call. More text.\n */\n")
     open(os.path.join(t, "helpers", "bare.cjs"), "w").write("#!/usr/bin/env node\nconst x = 1;\n")
-    open(os.path.join(t, "helpers", "session-bootup.sh"), "w").write("#!/usr/bin/env bash\nnode core/helpers/bare.cjs\n")
+    open(os.path.join(t, "helpers", "session-bootup.sh"), "w").write("#!/usr/bin/env bash\nnode core/helpers/bare.cjs\n# see helpers/commented.cjs\necho \"run scripts/advice.sh\"\n")
+    open(os.path.join(t, "helpers", "git-hooks", "pre-push"), "w").write('#!/bin/sh\n# scripts/not-run.py\npython3 "$root/scripts/push-check.py"\n')
+    open(os.path.join(t, "scripts", "push-check.py"), "w").write('"""Checks a push."""\n')
+    open(os.path.join(t, ".github", "workflows", "ci.yml"), "w").write("jobs:\n  lint:\n    steps:\n      - name: fake lint\n        run: true\n")
+    open(os.path.join(t, "rules", "intelligence.md"), "w").write("(3) **deep check** — only on a reason: `fake-audit`. The AI tells.\n")
     json.dump({"checks": [{"marker": "FAKE-GATE", "cmd": "core/helpers/new-gate.cjs", "mode": "record", "required": True}]},
               open(os.path.join(t, "templates", "rules-instance", "stop-checks.json"), "w"))
     open(os.path.join(t, "workflows", "fake-scan.js"), "w").write("export const meta = {\n  name: 'fake-scan',\n  description: 'Fake scan of nothing',\n}\n")
@@ -55,6 +67,10 @@ with tempfile.TemporaryDirectory() as t:
     check("fake core: the workflow is a deep check", "`workflow fake-scan` | Workflow tool | Fake scan of nothing |" in out)
     check("fake core: an audit skill is a deep check", "`skill fake-audit`" in out)
     check("fake core: a non-check skill stays out", "fake-writer" not in out)
+    check("fake core: a pre-push script is listed", "`scripts/push-check.py` | git pre-push | Checks a push." in out)
+    check("fake core: a commented script in a git hook stays out", "not-run.py" not in out)
+    check("fake core: a CI step is listed", "CI step: fake lint" in out)
+    check("fake core: bootup comments and advice texts are no sections", "commented.cjs" not in out and "advice.sh" not in out)
     check("fake core: the self-test is counted", "## Self-tests (1)" in out and "`test-fake.sh`" in out)
 
 print("check-catalog-test: " + ("all checks passed" if not fails else f"{fails} FAILED"))
