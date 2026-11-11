@@ -1,0 +1,34 @@
+{
+  "_comment": "Data for core helpers/start-report-gate.cjs. order_patterns: the operator's FIRST message counts as an explicit order for work when one of these matches - then the work may start at once (the start report still comes with the first closing reply, open-items-gate). effect_patterns: a Bash command that acts OUTSIDE this machine or cannot be undone (merge, push, post, comment, release, delete) - denied in the first turn without an order; local edits pass. Case-insensitive JavaScript regex. Add the instance's language to order_patterns; measure with node core/helpers/start-report-gate.cjs --replay <transcripts>.",
+  "order_patterns": [
+    "\\b(do|build|start|merge|push|fix|run|implement|create|write|update|install|test|check|go ahead|clean up|delete|please|work)\\b",
+    "\\bautonomous(ly)?\\b",
+    "\\b(i want|i would like|new task|new project)\\b"
+  ],
+  "effect_patterns": [
+    "\\bgh\\s+pr\\s+(merge|create|comment|close|review|edit|ready)\\b",
+    "\\bgh\\s+(issue\\s+(create|comment|close|edit)|release\\s+(create|edit|delete))\\b",
+    "\\bgh\\s+api\\b.*\\s-X\\s*(POST|PATCH|PUT|DELETE)\\b",
+    "\\bgit\\s+(-C\\s+\\S+\\s+)?push\\b",
+    "shared-memory-post|brain-update\\.sh|claude\\s+plugin\\s+(install|update|enable|disable)"
+  ],
+  "_cases": [
+    {
+      "text": "status?",
+      "expect": "block"
+    },
+    {
+      "text": "please merge PR 54",
+      "expect": "allow"
+    },
+    {
+      "text": "status?",
+      "command": "gh pr view 54",
+      "expect": "allow"
+    },
+    {
+      "text": "work through the list autonomously",
+      "expect": "allow"
+    }
+  ]
+}
