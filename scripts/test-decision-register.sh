@@ -43,26 +43,41 @@ grep -q 'Unanswered thing' "$P/reg.jsonl" && bad "an unanswered question was wri
 pre() { printf '{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","session_id":"%s","tool_input":{"questions":[{"question":"%s"}]}}' "$1" "$2" | run; }
 NEWQ='Tools for the field nodes: which of these do you have already? (Selected = present, drops from the order.)'
 # 4. same matter (model says 1) -> deny once
-out="$(STUB_OUT='{"same":[1]}' pre s-new "$NEWQ")"
+out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' pre s-new "$NEWQ")"
 case "$out" in *'"permissionDecision":"deny"'*"Step drill"*) ok "re-ask denied with the earlier answer";; *) bad "re-ask not denied: $out";; esac
 # 5. the same question re-issued passes
-out="$(STUB_OUT='{"same":[1]}' pre s-new "$NEWQ")"
+out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' pre s-new "$NEWQ")"
 case "$out" in *'"deny"'*) bad "re-issue denied again";; *) ok "re-issue passes";; esac
 # 6. model rejects -> allow with context
 out="$(STUB_OUT='{"same":[]}' pre s-other "$NEWQ")"
 case "$out" in *'"deny"'*) bad "rejected candidate denied";; *additionalContext*"Step drill"*) ok "rejected candidate allowed with context";; *) bad "no context: $out";; esac
 # 7. fresh question, no candidate -> silent
-out="$(STUB_OUT='{"same":[1]}' pre s-new2 'DMX termination at the end of the chain: standard terminator or self-built?')"
+out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' pre s-new2 'DMX termination at the end of the chain: standard terminator or self-built?')"
 [ -z "$out" ] && ok "fresh question passes silently" || bad "fresh question touched: $out"
 # 8. model unreadable -> fail open (no deny)
 out="$(STUB_OUT='garbage' pre s-new3 "$NEWQ")"
 case "$out" in *'"deny"'*) bad "unreadable model denied";; *) ok "unreadable model fails open";; esac
 # 9. own session's answer of today does not deny (the operator just answered it here)
-out="$(STUB_OUT='{"same":[1]}' pre s-old "$NEWQ")"
+out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' pre s-old "$NEWQ")"
 case "$out" in *'"deny"'*) bad "own fresh answer denied";; *) ok "own session today not matched";; esac
 # 10. other tool -> ignored
 out="$(printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","session_id":"x","tool_input":{}}' | run)"
 [ -z "$out" ] && ok "other tool ignored" || bad "other tool touched: $out"
+
+# 10b. a recurring check-in is never matched (asked every session by design)
+out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' pre s-new4 'Tools done. I can handle 5 open items myself — shall I go ahead?')"
+case "$out" in *'"deny"'*) bad "recurring check-in denied";; *) ok "recurring check-in passes";; esac
+# 10c. instance recurring_patterns (operator's language) count too
+printf '{"register":"reg.jsonl","recurring_patterns":["\\\\bcarry on alone\\\\b"]}' > "$P/.claude/rules/decision-register.json"
+out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' pre s-new5 'Tools for the field nodes: carry on alone?')"
+case "$out" in *'"deny"'*) bad "instance recurring pattern ignored";; *) ok "instance recurring pattern passes";; esac
+printf '{"register":"reg.jsonl"}' > "$P/.claude/rules/decision-register.json"
+# 10d. the model names an object that does not stand in both questions -> no deny
+out="$(STUB_OUT='{"same":[{"n":1,"object":"budget"}]}' pre s-new6 "$NEWQ")"
+case "$out" in *'"deny"'*) bad "unanchored object denied";; *) ok "unanchored object passes";; esac
+# 10e. a bare number (old answer form) has no object -> no deny
+out="$(STUB_OUT='{"same":[1]}' pre s-new7 "$NEWQ")"
+case "$out" in *'"deny"'*) bad "objectless verdict denied";; *) ok "objectless verdict passes";; esac
 
 # 11. backfill from a transcript, dedupe on the second run
 D="$T/proj"; mkdir -p "$D"

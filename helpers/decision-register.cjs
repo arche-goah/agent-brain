@@ -29,7 +29,7 @@
  *                OTHER sessions before it); `--check "<question>"` matches one question.
  *
  * Instance data `.claude/rules/decision-register.json` (all optional):
- *   {"register": "docs/maintenance/decision-register.jsonl", "model": "sonnet", "min_score": 0.22,
+ *   {"register": "docs/maintenance/decision-register.jsonl", "model": "opus", "min_score": 0.22,
  *    "enabled": true}
  * Env for fixtures: DECISION_REGISTER_BIN (model binary, default `claude`), DECISION_REGISTER_MODEL.
  * Fixture: scripts/test-decision-register.sh.
@@ -48,13 +48,26 @@ function config() {
   try { d = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude', 'rules', 'decision-register.json'), 'utf8')); } catch (e) { /* defaults */ }
   return {
     register: path.resolve(ROOT, d.register || 'docs/maintenance/decision-register.jsonl'),
-    model: process.env.DECISION_REGISTER_MODEL || d.model || 'sonnet',
+    // opus, not sonnet (replay 2026-11-11, last 100 answers): sonnet held 13 questions, 7 of them rightly (54 %); with
+    // object anchor, options and the main-choice test it still held 11 at 64 %; opus held 5, all rightly
+    model: process.env.DECISION_REGISTER_MODEL || d.model || 'opus',
     bin: process.env.DECISION_REGISTER_BIN || d.bin || 'claude',
     minScore: typeof d.min_score === 'number' ? d.min_score : 0.22,
     enabled: d.enabled !== false,
     state: path.join(ROOT, '.claude-state', 'decision-register-denied.json'),
+    recurring: [...RECURRING, ...(d.recurring_patterns || [])].map((p) => { try { return new RegExp(p, 'iu'); } catch (e) { return null; } }).filter(Boolean),
   };
 }
+
+// Recurring check-ins are asked every session BY DESIGN — their answer holds for that moment only, so they are
+// neither matched nor matchable (replay 2026-11-11: 4 of 6 false hits were such shapes). English built in; the
+// operator's language as instance data `recurring_patterns`.
+const RECURRING = [
+  '\\bcontinue autonomous|\\bstay (in )?autonomous|\\bkeep working (on my own|autonomously)|\\bback to interactive\\b',
+  '\\b\\d+\\s+(open\\s+)?(items?|points?|tasks?)\\b[^?]*\\b(shall|should|may) i\\b|\\b(shall|should|may) i\\b[^?]*\\b\\d+\\s+(open\\s+)?(items?|points?|tasks?)\\b',
+  '^\\s*what (comes )?next\\??\\s*$|\\bwhere do (we|i) (go|start) (from here|next)\\b',
+];
+const recurring = (q, cfg) => cfg.recurring.some((r) => r.test(q));
 
 // ---- register -------------------------------------------------------------------------------
 function load(file) {
@@ -71,7 +84,11 @@ function append(file, entries) {
 
 // Answers come as an object {question: answer} (tool input/response) or as the result text
 // `"<question>"="<answer>"` — both read here. Only a real answer is a decision.
-function answerPairs(questions, response) {
+// The options travel with the answer: "Step drill" alone means nothing without the list it was picked from
+// (replay 2026-11-11: without them the judge could not tell that a tool question was settled).
+const optionsOf = (qobjs) => Object.fromEntries((qobjs || []).filter((q) => q && q.question)
+  .map((q) => [q.question, (q.options || []).map((o) => o.label).filter(Boolean)]));
+function answerPairs(questions, response, opts = {}) {
   const out = [];
   const obj = response && typeof response === 'object' && !Array.isArray(response) ? (response.answers || null) : null;
   const notes = response && typeof response === 'object' ? (response.annotations || {}) : {};
@@ -86,7 +103,7 @@ function answerPairs(questions, response) {
         a = rest.slice(0, end < 0 ? undefined : end);
       }
     }
-    if (a && a.trim()) out.push({ question: q, answer: a.trim(), notes: (notes[q] && notes[q].notes) || '' });
+    if (a && a.trim()) out.push({ question: q, options: opts[q] || [], answer: a.trim(), notes: (notes[q] && notes[q].notes) || '' });
   }
   return out;
 }
@@ -129,29 +146,56 @@ an earlier answer that POSTPONED the decision ("later", "remind me", "keep remin
 is the follow-up the operator asked for;
 a recurring check-in whose answer holds only for that moment ("continue autonomously?", "shall I go ahead with the n open
 items?", "what next?", "commit this?" for a NEW piece of work) - the same wording is no decided matter;
-another item of the same kind (a different fix, PR, part, file) - same only if it is the very same item.
-Answer with ONE line of JSON and nothing else: {"same": [numbers of the earlier questions that are the same matter]}
+another item of the same kind (a different fix, PR, part, file) - same only if it is the very same item;
+an earlier ANSWER that is no decision (a counter-question, "what do you want to know?", "you decide", a complaint).
+An answer picked from OPTIONS also decides the options NOT picked (in a "which do you have / which apply?" question, an
+unpicked option is a no). A free-text answer that rejects an option ("too big", "not that") decides against it.
+SAME requires all three: (1) the same OBJECT - the very thing the choice is about (a named part, product, file, rule, test);
+(2) the earlier answer is a DECISION on that object (a choice, a yes/no, a stated fact about it); (3) THE TEST: the earlier
+answer already settles the MAIN choice the NEW question puts to the operator - it picks, rules out or states the option the
+NEW question offers again (an option the operator already rejected counts). If the NEW question asks for a further step, an
+amount, a variant, a purchase or a timing the earlier answer did not settle, it is NOT the same, however close the topic.
+Answer with ONE line of JSON and nothing else: {"same": [{"n": <number>, "object": "<the shared object in 1-4 words, as written in the NEW question>", "choice": "<what the earlier answer decided>", "answers_new": "<the answer to the NEW question that follows from it>"}]}
 `;
-function judge(question, cands, cfg) {
-  const body = `${INSTRUCTION}\nNEW: ${question.slice(0, 1200)}\n\n` +
-    cands.map((c, k) => `EARLIER ${k + 1} (${c.date}): ${String(c.question).slice(0, 700)}\nANSWER ${k + 1}: ${String(c.answer).slice(0, 400)}`).join('\n\n');
+function ask(body, cfg, model = cfg.model) {
   // a .cjs/.js bin runs under this node (fixtures on every OS; a shell script would not start on Windows)
   const js = /\.c?js$/.test(cfg.bin);
-  const r = spawnSync(js ? process.execPath : cfg.bin, [...(js ? [cfg.bin] : []), '-p', '--model', cfg.model, '--settings', '{"disableAllHooks": true}'], {
+  const r = spawnSync(js ? process.execPath : cfg.bin, [...(js ? [cfg.bin] : []), '-p', '--model', model, '--settings', '{"disableAllHooks": true}'], {
     input: body, encoding: 'utf8', timeout: 45000, cwd: os.tmpdir(),
     env: { ...process.env, DECISION_REGISTER_CHILD: '1' },
   });
-  if (r.status !== 0) return null;
-  const m = /\{[^{}]*\}/.exec(r.stdout || '');
+  if (process.env.DECISION_REGISTER_TRACE) process.stderr.write(`[model] ${String(r.stdout || '').trim().slice(0, 400)}\n`);
+  return r.status === 0 ? r.stdout || '' : null;
+}
+
+const optText = (o) => (o && o.length ? `\nOPTIONS: ${o.join(' | ')}` : '');
+function judge(question, cands, cfg) {
+  const body = `${INSTRUCTION}\nNEW: ${question.slice(0, 1200)}\n\n` +
+    cands.map((c, k) => `EARLIER ${k + 1} (${c.date}): ${String(c.question).slice(0, 700)}${optText(c.options)}\nANSWER ${k + 1}: ${String(c.answer).slice(0, 400)}`).join('\n\n');
+  const stdout = ask(body, cfg);
+  if (stdout === null) return null;
+  const m = /\{[\s\S]*\}/.exec(stdout);
   if (!m) return null;
-  try {
-    const same = JSON.parse(m[0]).same;
-    return Array.isArray(same) ? same.map(Number).filter((k) => k >= 1 && k <= cands.length).map((k) => cands[k - 1]) : null;
-  } catch (e) { return null; }
+  let same;
+  try { same = JSON.parse(m[0]).same; } catch (e) { return null; }
+  if (!Array.isArray(same)) return null;
+  // the model names the object; it counts only when a word of it stands in BOTH questions (a checkable
+  // anchor — an object the model invents for a vague match fails here)
+  const out = [];
+  for (const s of same) {
+    const k = Number(typeof s === 'object' && s ? s.n : s);
+    if (!(k >= 1 && k <= cands.length)) continue;
+    const obj = words(typeof s === 'object' && s ? s.object || '' : '');
+    const c = cands[k - 1];
+    const inNew = new Set(words(question)), inOld = new Set(words(c.question + ' ' + c.answer));
+    if (obj.some((w) => inNew.has(w) && inOld.has(w))) out.push({ ...c, object: s.object, choice: s.choice || '' });
+  }
+  return out;
 }
 
 function match(question, entries, cfg, useModel = true) {
-  const cands = candidates(question, entries, cfg.minScore);
+  if (recurring(question, cfg)) return { cands: [], same: [], recurring: true };
+  const cands = candidates(question, entries.filter((e) => !recurring(e.question, cfg)), cfg.minScore);
   if (!cands.length) return { cands: [], same: [] };
   if (!useModel) return { cands, same: [] };
   const same = judge(question, cands, cfg);
@@ -164,7 +208,7 @@ function denied(cfg) { try { return JSON.parse(fs.readFileSync(cfg.state, 'utf8'
 
 function post(input, cfg) {
   const qs = (((input.tool_input || {}).questions) || []).map((q) => q.question).filter(Boolean);
-  const pairs = answerPairs(qs, input.tool_response);
+  const pairs = answerPairs(qs, input.tool_response, optionsOf((input.tool_input || {}).questions));
   append(cfg.register, pairs.map((p) => ({
     date: new Date().toISOString().slice(0, 10), session: input.session_id || '', cwd: input.cwd || '', ...p,
   })));
@@ -172,7 +216,8 @@ function post(input, cfg) {
 
 function pre(input, cfg) {
   if (process.env.DECISION_REGISTER_CHILD) return null;
-  const qs = (((input.tool_input || {}).questions) || []).map((q) => q.question).filter(Boolean);
+  const qs = (((input.tool_input || {}).questions) || []).filter((q) => q && q.question)
+    .map((q) => q.question + optText((q.options || []).map((o) => o.label).filter(Boolean)));
   const entries = load(cfg.register).filter((e) => e.session !== input.session_id || e.date < new Date().toISOString().slice(0, 10));
   if (!qs.length || !entries.length) return null;
   const seen = denied(cfg);
@@ -206,11 +251,12 @@ function transcriptAnswers(file) {
     const c = r && r.message && Array.isArray(r.message.content) ? r.message.content : [];
     for (const b of c) {
       if (b.type === 'tool_use' && b.name === 'AskUserQuestion') {
-        pend.set(b.id, { ts: r.timestamp || '', cwd: r.cwd || '', qs: (((b.input || {}).questions) || []).map((q) => q.question).filter(Boolean) });
+        const qo = ((b.input || {}).questions) || [];
+        pend.set(b.id, { ts: r.timestamp || '', cwd: r.cwd || '', qs: qo.map((q) => q.question).filter(Boolean), opts: optionsOf(qo) });
       } else if (b.type === 'tool_result' && pend.has(b.tool_use_id)) {
         const p = pend.get(b.tool_use_id); pend.delete(b.tool_use_id);
         const txt = typeof b.content === 'string' ? b.content : JSON.stringify(b.content || '');
-        for (const a of answerPairs(p.qs, txt)) out.push({ date: p.ts.slice(0, 10), ts: p.ts, session: sid, cwd: p.cwd, ...a });
+        for (const a of answerPairs(p.qs, txt, p.opts)) out.push({ date: p.ts.slice(0, 10), ts: p.ts, session: sid, cwd: p.cwd, ...a });
       }
     }
   }
@@ -251,7 +297,7 @@ function cli(argv) {
     all.forEach((q, i) => {
       if (i < all.length - last) return;
       const earlier = all.slice(0, i).filter((e) => e.session !== q.session);
-      const r = match(q.question, earlier, cfg, !argv.includes('--no-model'));
+      const r = match(q.question + optText(q.options), earlier, cfg, !argv.includes('--no-model'));
       if (r.cands.length) cand++;
       if (r.cands.length && !argv.includes('--no-model')) judged++;
       if (r.same.length) {

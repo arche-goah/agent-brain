@@ -1,7 +1,8 @@
 {
-  "_comment": "Instance data of helpers/decision-register.cjs (PostToolUse + PreToolUse on AskUserQuestion). register = the ONE versioned file every answer the operator gives through the question tool is appended to (relative to the brain root; commit it like any ledger). model = the small model that judges whether a new question asks a matter an earlier answer already decided. min_score = word prefilter threshold (share of rare words). enabled false switches both hooks off. First fill from history: node core/helpers/decision-register.cjs --backfill.",
+  "_comment": "Instance data of helpers/decision-register.cjs (PostToolUse + PreToolUse on AskUserQuestion). register = the ONE versioned file every answer the operator gives through the question tool is appended to (relative to the brain root; commit it like any ledger). model = the small model that judges whether a new question asks a matter an earlier answer already decided. min_score = word prefilter threshold (share of rare words). enabled false switches both hooks off. First fill from history: node core/helpers/decision-register.cjs --backfill. recurring_patterns = regexes (case-insensitive) for check-ins asked every session by design in the operator's language (English shapes are built in); a question matching one is never checked and never a match.",
   "register": "docs/maintenance/decision-register.jsonl",
-  "model": "sonnet",
+  "model": "opus",
   "min_score": 0.22,
-  "enabled": true
+  "enabled": true,
+  "recurring_patterns": []
 }
