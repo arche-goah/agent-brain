@@ -128,9 +128,17 @@ with tempfile.TemporaryDirectory() as tmp:
           and "agent-brain#7" in r.stdout, r.stdout)
 
     scope("add", "agent-brain#7", "shared-work")
+    # Leaving an item out is the operator's call (2026-11-11: 21 PRs excluded by a script with a borrowed quote).
     r = scope("exclude", "feat/open-work", "experiment,", "not for this release")
-    check("exclude records its reason", r.returncode == 0 and "not for this release" in r.stdout, r.stdout)
-    check("an exclusion without a reason is refused", scope("exclude", "core-pr", " ").returncode == 2)
+    check("an exclusion without the operator's word is refused", r.returncode == 3
+          and "operator's call" in r.stdout and "feat/open-work" not in scope("show").stdout, r.stdout)
+    nodate = {**env, "RELEASE_SCOPE_EXCLUDE_OK": '"leave the experiment out"'}
+    check("negative control: a quote without its date is refused", scope("exclude", "feat/open-work", "x", e=nodate).returncode == 3)
+    ok = {**env, "RELEASE_SCOPE_EXCLUDE_OK": '"leave the experiment out" 2026-11-11'}
+    r = scope("exclude", "feat/open-work", "experiment,", "not for this release", e=ok)
+    check("exclude records its reason and the operator's word", r.returncode == 0 and "not for this release" in r.stdout
+          and "leave the experiment out" in r.stdout, r.stdout)
+    check("an exclusion without a reason is refused", scope("exclude", "core-pr", " ", e=ok).returncode == 2)
     r = gate()
     check("only the one item left is named", r.returncode == 1 and "core-pr" in r.stdout
           and "agent-brain#7" not in r.stdout and "feat/open-work" not in r.stdout
