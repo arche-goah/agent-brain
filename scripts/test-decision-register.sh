@@ -48,6 +48,9 @@ case "$out" in *'"permissionDecision":"deny"'*"Step drill"*) ok "re-ask denied w
 # 5. the same question re-issued passes
 out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' pre s-new "$NEWQ")"
 case "$out" in *'"deny"'*) bad "re-issue denied again";; *) ok "re-issue passes";; esac
+# 5b. re-asked in other words, saying what changed: the same earlier answer is not denied twice (Windows review of #490)
+out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' pre s-new "$NEWQ What changed: a third node joined.")"
+case "$out" in *'"deny"'*) bad "reworded re-ask denied a second time";; *) ok "reworded re-ask passes (once per earlier answer)";; esac
 # 6. model rejects -> allow with context
 out="$(STUB_OUT='{"same":[]}' pre s-other "$NEWQ")"
 case "$out" in *'"deny"'*) bad "rejected candidate denied";; *additionalContext*"Step drill"*) ok "rejected candidate allowed with context";; *) bad "no context: $out";; esac
@@ -86,6 +89,15 @@ printf '%s\n' '{"timestamp":"2026-11-01T10:00:00Z","message":{"role":"assistant"
 o1="$(node "$H" --backfill "$(native "$D")")"; o2="$(node "$H" --backfill "$(native "$D")")"
 case "$o1$o2" in *"1 answers added"*"0 answers added"*) ok "backfill adds once";; *) bad "backfill: $o1 / $o2";; esac
 grep -q '"answer":"small, into the desk"' "$P/reg.jsonl" && ok "backfill reads the answer" || bad "backfill answer missing"
+
+# 12. default transcript dir for a project path with a space (Windows review of #490): Claude Code turns EVERY
+#     non-alphanumeric character into '-'; the old slug kept the space and --backfill died on ENOENT
+SP="$T/My Brain"; mkdir -p "$SP/.claude/rules"; printf '{"register":"reg2.jsonl"}' > "$SP/.claude/rules/decision-register.json"
+FH="$T/home"; SLUG="$(native "$SP" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$FH/.claude/projects/$SLUG"; cp "$D/abc.jsonl" "$FH/.claude/projects/$SLUG/"
+o3="$(HOME="$(native "$FH")" USERPROFILE="$(native "$FH")" CLAUDE_PROJECT_DIR="$(native "$SP")" node "$H" --backfill 2>&1)"; rc3=$?
+case "$rc3 $o3" in "0 "*"1 answers added"*) ok "default dir found for a path with a space";; *) bad "default dir with a space: rc=$rc3 $o3";; esac
+o4="$(HOME="$(native "$T/nohome")" USERPROFILE="$(native "$T/nohome")" CLAUDE_PROJECT_DIR="$(native "$SP")" node "$H" --backfill 2>&1)"; rc4=$?
+case "$rc4" in 0) ok "missing transcript dir is no crash";; *) bad "missing transcript dir crashed: rc=$rc4 $o4";; esac
 
 [ "$fail" = 0 ] && echo "test-decision-register: all passed" || echo "test-decision-register: FAILURES"
 exit "$fail"

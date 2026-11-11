@@ -222,14 +222,17 @@ function pre(input, cfg) {
   if (!qs.length || !entries.length) return null;
   const seen = denied(cfg);
   const hard = [], soft = [];
+  // The once-state is keyed on the EARLIER ANSWER, not the new wording (Windows review of #490): the deny asks to say
+  // what changed, and a reworded question must not be denied a second time for the same earlier answer.
+  const ekey = (h) => qhash(input.session_id, 'entry\n' + h.session + '\n' + h.question);
   for (const q of qs) {
     const r = match(q, entries, cfg);
-    if (r.same.length && !seen[qhash(input.session_id, q)]) hard.push({ q, hits: r.same });
+    if (r.same.length && !r.same.some((h) => seen[ekey(h)])) hard.push({ q, hits: r.same });
     else if (r.cands.length) soft.push({ q, hits: r.cands });
   }
   const line = (h) => `  - earlier (${h.date}, session ${String(h.session).slice(0, 8)}): "${String(h.question).slice(0, 160)}"\n    answer: "${String(h.answer).slice(0, 200)}"`;
   if (hard.length) {
-    for (const h of hard) seen[qhash(input.session_id, h.q)] = new Date().toISOString();
+    for (const h of hard) for (const e of h.hits) seen[ekey(e)] = new Date().toISOString();
     try { fs.mkdirSync(path.dirname(cfg.state), { recursive: true }); fs.writeFileSync(cfg.state, JSON.stringify(seen)); } catch (e) { /* state never blocks */ }
     const why = hard.map((h) => `"${h.q.slice(0, 140)}"\n${h.hits.map(line).join('\n')}`).join('\n');
     return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
@@ -263,8 +266,12 @@ function transcriptAnswers(file) {
   return out;
 }
 function transcripts(dir) {
-  const d = dir || path.join(os.homedir(), '.claude', 'projects', ROOT.replace(/[\\/:.]/g, '-'));
-  return fs.readdirSync(d).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(d, f));
+  // the shared slug rule (Windows review of #490: the old one kept spaces, --backfill died on ENOENT)
+  const d = dir || require('./turn-kind.cjs').projectTranscriptDir(ROOT);
+  try { return fs.readdirSync(d).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(d, f)); } catch (e) {
+    console.error(`decision-register: no transcript folder at ${d} - nothing read`);
+    return [];
+  }
 }
 
 function cli(argv) {
