@@ -376,8 +376,12 @@ function relabelled(t, cwd, sessionId) {
   const oursRx = patterns(cwd, 'ours');
   // Blocking direction: named only by `#n`, a date or the exact file — the lenient first-reply
   // matcher read "2D" in "the worlds 2D, 3D" as a request two days old (same measurement).
+  // A date alone names nothing: measured 2026-11-11 on the Windows instance, a BLOCKED line carrying a ledger id
+  // `…-2026-11-11` was read as a mention of an unrelated request of that day. The date counts together with one of
+  // the item's own topic words (generic ones left out) in the same line.
+  const topical = (it, l) => { const low = l.toLowerCase(); return (it.words || []).some((w) => !generic.has(w) && low.includes(w)); };
   const strict = (it, l) => (it.num ? new RegExp(`#${it.num}(?!\\d)`).test(l)
-    : (it.date && l.includes(it.date.join('-'))) || (it.base && l.includes(it.base)));
+    : (it.date && l.includes(it.date.join('-')) && topical(it, l)) || (it.base && l.includes(it.base)));
   const bad = [];
   let head = false;
   for (const l of t.last.split('\n')) {

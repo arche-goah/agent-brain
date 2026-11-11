@@ -371,6 +371,11 @@ f="$T/23c.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; us
 check "later turn: the same item said as ours" "$f" allow "$EN"
 f="$T/23d.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "#112 is waiting on its owner."; } > "$f"
 check "later turn: a parked item said to wait (not ours, control)" "$f" allow "$EN"
+# 2026-11-11 (Windows instance): a ledger id carrying the date of an open request is no mention of that request.
+f="$T/23e.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "BLOCKED: wait-records-2026-09-13 — waits on the operator's word in the conversation"; } > "$f"
+check "later turn: only the date of an ours request in another id (no mention)" "$f" allow "$EN"
+f="$T/23f.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "The fixtures request of 2026-09-13 waits on peer-d."; } > "$f"
+check "later turn: date plus the request's topic word is a mention (control)" "$f" block "$EN"
 WS="$T/cwd-seen"; mkdir -p "$WS/.claude-state"
 printf '%s\n' '{"items":{"example-market#61":{"first":"2026-10-07","sessions":[],"wait":"waiting on someone: our review is in"}}}' > "$WS/.claude-state/open-items-seen.json"
 f="$T/23e.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_BAD"; } > "$f"
