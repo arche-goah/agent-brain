@@ -218,6 +218,11 @@ check "negative control: a foreground ci-watch call is not a watch" "$T/c5.jsonl
 check "push, ci-watch armed with a quoted script path" "$T/c6.jsonl" allow "$R"
 { user "fix"; tool Bash "git -C $CIN push -q origin x"; tool Bash "bash 'C:/x/ci-watch.sh' pr o/other 7" bg; } > "$T/c7.jsonl"
 check "negative control: quoted path, another repo" "$T/c7.jsonl" block "$R"
+# the swapped form `pr <n> <owner/repo>` ci-watch.sh takes since #492 (Windows review: the gate reported no watch)
+{ user "fix"; tool Bash "git -C $CIN push -q origin x"; tool Bash "bash core/scripts/ci-watch.sh pr 7 o/r" bg; } > "$T/c8.jsonl"
+check "push, ci-watch armed in the swapped form" "$T/c8.jsonl" allow "$R"
+{ user "fix"; tool Bash "git -C $CIN push -q origin x"; tool Bash "bash core/scripts/ci-watch.sh pr 7 o/other" bg; } > "$T/c9.jsonl"
+check "negative control: swapped form, another repo" "$T/c9.jsonl" block "$R"
 { user "fix"; tool Bash "git -C $PLAINN push -q origin x"; } > "$T/c6.jsonl"
 check "push into a repo without workflows" "$T/c6.jsonl" allow "$R"
 # A push that never ran or moved no ref starts no run (measured 2026-11-09, macOS: a PreToolUse gate refused the push,
@@ -437,6 +442,10 @@ check "(h) a newer watch on the same target after the old verdict" "$T/dc6.jsonl
 check "(h) a verdict of another target does not count" "$T/dc7.jsonl" block "$R"
 { user "build"; tool Monitor "bash core/scripts/ci-watch.sh pr o/r 8 1800"; user "<task-notification>CI-WATCH GREEN: o/r PR #8 — 11 checks, none failing</task-notification>"; user "anything open?"; asst "Nothing open, all done."; } > "$T/dc8.jsonl"
 check "(h) PR watch with its verdict read" "$T/dc8.jsonl" allow "$R"
+{ user "build"; tool Monitor "bash core/scripts/ci-watch.sh pr 8 o/r 1800"; user "anything open?"; asst "Nothing open, all done."; } > "$T/dc8s.jsonl"
+check "(h) swapped-form PR watch without its verdict" "$T/dc8s.jsonl" block "$R"
+{ user "build"; tool Monitor "bash core/scripts/ci-watch.sh pr 8 o/r 1800"; user "<task-notification>CI-WATCH GREEN: o/r PR #8 — 11 checks, none failing</task-notification>"; user "anything open?"; asst "Nothing open, all done."; } > "$T/dc8t.jsonl"
+check "(h) swapped-form PR watch with its verdict read" "$T/dc8t.jsonl" allow "$R"
 { user "merge it"; tool Bash "$WATCH_MAIN" bg; user "anything open?"; asst 'You asked whether "nothing open" holds — the CI run on main is still awaited.'; } > "$T/dc9.jsonl"
 check "(h) a quoted claim is talk about it" "$T/dc9.jsonl" allow "$R"
 DC="$T/dc-brain"; mkdir -p "$DC/.claude/rules"

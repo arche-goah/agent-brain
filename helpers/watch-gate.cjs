@@ -114,7 +114,6 @@ const { isGitPush } = require('./git-push.cjs');
 // The script path may be quoted (`bash "C:/…/ci-watch.sh" pr …`): the closing quote sits between `.sh`
 // and the blank. Without `["']?` there, a live watch read as none — measured 2026-10-16 on the Windows
 // instance, four WATCH-GATE blocks in one day with every watcher alive.
-const CI_WATCH = /\bci-watch\.sh["']?\s+(?:pr|ref)\s+["']?([\w.-]+\/[\w.-]+)/i;
 const REPO_FLAG = /(?:--repo|-R)[=\s]+["']?([\w.-]+\/[\w.-]+)/;
 // (e) a hand step asked of the human. The FORM: an imperative or a necessity aimed at a person
 // or a device the AI cannot operate. English built-ins; other languages are instance data.
@@ -133,7 +132,19 @@ const COMMENT = /\bgh\s+(?:issue|pr)\s+comment\b/;
 // verification-gate). Quoted text is stripped first, as for (e).
 const { doneClaimRegex } = require('./done-claim.cjs');
 // A CI watch as started, with its target: `ci-watch.sh pr <owner/repo> <nr>` or `ref <owner/repo> <ref>`.
-const CI_WATCH_TARGET = /\bci-watch\.sh["']?\s+(pr|ref)\s+["']?([\w.-]+\/[\w.-]+)["']?\s+["']?([\w./#-]+)/i;
+// (f) a CI watch call: `ci-watch.sh pr|ref <owner/repo> <target>`, or the swapped `pr <n> <owner/repo>` the script
+// takes too (#492; Windows review: the gate read only the first order and reported "no CI watch" on a running one).
+// Returns {kind, repo, target} or null; the repo is the argument with a slash.
+const CI_WATCH_CALL = /\bci-watch\.sh["']?\s+(pr|ref)\s+["']?([\w./#-]+)["']?(?:\s+["']?([\w./#-]+))?/i;
+function ciWatchCall(cmd) {
+  const m = CI_WATCH_CALL.exec(String(cmd || ''));
+  if (!m) return null;
+  const a = m[2], b = m[3];
+  const slash = (x) => /^[\w.-]+\/[\w.-]+$/.test(x || '');
+  if (slash(a)) return { kind: m[1].toLowerCase(), repo: a, target: b };
+  if (m[1].toLowerCase() === 'pr' && slash(b) && /^#?\d+$/.test(a)) return { kind: 'pr', repo: b, target: a };
+  return null;
+}
 // Its verdict lines (scripts/ci-watch.sh): GREEN and RED are verdicts; UNKNOWN is not. NO-CI (the
 // repo has no Actions workflow, exit 3) is a terminal answer for every target in that repo.
 const CI_VERDICT = /CI-WATCH (?:GREEN|RED): ([\w.-]+\/[\w.-]+) (PR #\d+|[\w./-]+)/g;
@@ -189,10 +200,10 @@ function pendingCi(tp) {
       if (b.type !== 'tool_use') continue;
       const inp = b.input || {};
       if (!(b.name === 'Monitor' || inp.run_in_background)) continue;
-      const m = CI_WATCH_TARGET.exec(String(inp.command || ''));
-      if (!m) continue;
-      const target = m[1].toLowerCase() === 'pr' ? `PR #${m[3].replace(/^#/, '')}` : m[3];
-      started.set(`${m[2].toLowerCase()} ${target}`, i);
+      const w = ciWatchCall(inp.command);
+      if (!w || !w.target) continue;
+      const target = w.kind === 'pr' ? `PR #${w.target.replace(/^#/, '')}` : w.target;
+      started.set(`${w.repo.toLowerCase()} ${target}`, i);
     }
   }
   return [...started].filter(([k, at]) => !(read.get(k) > at) && !(noCi.get(k.split(' ')[0]) > at)).map(([k]) => k);
@@ -479,8 +490,8 @@ function ciStarted(shell, root) {
 function ciWatched(calls, slug) {
   return calls.some((c) => {
     if (!(c.name === 'Monitor' || c.bg)) return false;
-    const m = CI_WATCH.exec(c.cmd);
-    return !!m && m[1].toLowerCase() === slug;
+    const w = ciWatchCall(c.cmd);
+    return !!w && w.repo.toLowerCase() === slug;
   });
 }
 
