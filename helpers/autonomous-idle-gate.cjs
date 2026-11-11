@@ -362,7 +362,7 @@ function judge(input, now) {
     'a line `BLOCKED: <item> — <what restores it, who>`, a line `POOL EMPTY: <how measured>`, or for a run over an ' +
     'ordered list `LIST EMPTY: <the order, how measured>` — the pool is what the operator ordered plus an agreed ' +
     'reserve, not the whole ledger (Order Fidelity #3). All after measuring the list in this turn. A wakeup alone is no continuation, and a running watcher (CI, a peer) continues only its own event, not your items. ' +
-    'Missing: continuation';
+    'Missing: continuation (the next item now, or a BLOCKED / POOL EMPTY / LIST EMPTY line after measuring the list)';
 }
 
 if (require.main === module) {

@@ -365,6 +365,9 @@ check "later turn: an ours item put under a with-others heading" "$f" block "$EN
 out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$f")" "$(native "$EN")" | node "$G" 2>&1)"
 case "$out" in *"open-items-seen.json (0 items)"*"example-market#61"*"seen-file not listed"*) ok "the relabel block names the seen-file, its size and each item's lookup";;
   *) bad "relabel block lacks the self-diagnosis: '$out'";; esac
+# 2026-11-11 (Windows instance): the stop dispatcher shows only the `Missing:` value — it names the two ways out itself.
+case "$out" in *"Missing: wait record for example-market#61 (say it as ours, or first a \`waiting-until:\` line"*) ok "the relabel Missing value names the ways out";;
+  *) bad "the relabel Missing value names no way out: '${out: -220}'";; esac
 f="$T/23b.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "Only #61, it is waiting on the owner."; } > "$f"
 check "later turn: an ours item said to wait, same line" "$f" block "$EN"
 f="$T/23c.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_OURS"; } > "$f"
