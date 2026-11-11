@@ -600,6 +600,10 @@ form "repo not owner/name names the form"  2 "is not <owner/repo>"   pr 33 --rep
 form "pr target not a number names it"     2 "is not a PR number"     pr owner/repo --repo
 form "timeout not a number names it"       2 "is not a number of seconds" pr owner/repo 12 soon
 form "valid form still watches (control)"  0 "CI-WATCH GREEN"          pr owner/repo 12 5
+# 2026-11-11 (macOS instance, three times in two weeks: 10-27, twice on 11-11): `pr <number> <owner/repo>` is
+# unambiguous - a number and an owner/name - so it is read in that order instead of dying on the usage
+form "swapped pr form is read (number first)" 0 "CI-WATCH GREEN"          pr 12 owner/repo 5
+form "swapped form names the order it read"   0 "read as: pr owner/repo 12" pr 12 owner/repo 5
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi
