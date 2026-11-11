@@ -136,6 +136,16 @@ check "register entry with replay pending" "$T/t31.jsonl" block "$CWD"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
 replay: 2026-11-11, not run yet"; } > "$T/t31b.jsonl"
 check "register entry whose replay is only a date" "$T/t31b.jsonl" block "$CWD"
+# second Windows review: a digit that counts nothing is no count either
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: not run, waits for the v2.1.5 pin"; } > "$T/t31d.jsonl"
+check "register entry whose replay names only a version" "$T/t31d.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: after 3 sessions"; } > "$T/t31e.jsonl"
+check "register entry whose replay names a time span" "$T/t31e.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: 12 of 40 transcripts"; } > "$T/t31f.jsonl"
+check "register entry whose replay is n of m" "$T/t31f.jsonl" allow "$CWD"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a promise binds only with a mechanism (Working Rule #10)
 replay: 6 turns"; } > "$T/t31c.jsonl"
 check "invariant citing a core rule number" "$T/t31c.jsonl" allow "$CWD"

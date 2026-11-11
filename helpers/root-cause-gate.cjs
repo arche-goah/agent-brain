@@ -130,7 +130,10 @@ const INVARIANT = /^[ \t>*_-]*invariant:[ \t]*(\S[^\n]{11,})/imu;
 const REPLAY_LINE = /^[ \t>*_-]*replay:[ \t]*(?!pending)([^\n]*)/imu;
 // A count, not a date (Windows review of #491: "replay: 2026-11-11, not run yet" passed): dates and clock times are
 // removed before the digit test.
-const hasCount = (line) => /\d/.test(line.replace(/\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2}:\d{2}\b/g, ''));
+// Second Windows review: any other digit passed too ("waits for the v2.1.5 pin", "after 3 sessions"), so a count is a
+// number with what it counts (hits, cases, turns, sites, flips) or "<n> of <m>".
+const COUNT = /\b\d+\s*(?:hits?|cases?|turns?|sites?|flips?|of\s+\d+)\b/i;
+const hasCount = (line) => COUNT.test(line.replace(/\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2}:\d{2}\b/g, ''));
 // A PR or issue number names the instance; a core rule number ("Working Rule #10") is the rule itself (same review).
 const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|\b(?:PR|issue|pull)s?\s*#?\d+\b|\b[\w.-]+#\d+\b|(?:^|[\s(])#\d{3,}\b|\b\w+\.(cjs|js|py|sh|json|md)\b/iu;
 function newestEntry(all) {
