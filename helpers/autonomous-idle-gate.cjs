@@ -37,7 +37,9 @@
  * Released = an OPEN entry of a registered ledger (.claude/rules/ledgers.json) whose last exit is `ai-does-it`
  * and which carries `released: "<the operator's words>"` — and those words stand in one of the operator's own
  * messages of THIS transcript (a prompt, a message typed mid-turn, a question-tool answer). A quote the agent
- * invents releases nothing. With such an entry open, the turn may end only:
+ * invents releases nothing. A release is superseded once the operator writes, after it, a message of their own
+ * that names neither the id nor the release words (operator decision 2026-11-10 after the alpha evaluation; see
+ * superseded()). With such an entry open, the turn may end only:
  *   - with an AskUserQuestion call in this turn, or a line `HAND STEP: <what the operator does>`, or
  *   - when every released entry is named by its id in a `BLOCKED: <id> — <what restores it>` line, after
  *     measuring the list (as above). A running waiter is no end, even with its condition named (operator,
@@ -137,9 +139,11 @@ function ownEventsOnly(opener, key) {
  *  answers — never a notification, a hook echo, a loaded skill, a peer's or the harness's text, frames or pasted
  *  blocks. The same filters as autonomous-mode.cjs promptModes. */
 const squash = (s) => String(s || '').toLowerCase().replace(/[\s ]+/g, ' ').trim();
-function operatorSaid(tp) {
+const operatorSaid = (tp) => operatorMessages(tp).join('\n');
+/** The same, one squashed entry per operator message, in transcript order. */
+function operatorMessages(tp) {
   let lines;
-  try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return ''; }
+  try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return []; }
   const out = []; const askIds = new Set();
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -158,7 +162,7 @@ function operatorSaid(tp) {
     if (!t || PROMPT_ECHO.test(t) || isNotification(t)) continue;
     out.push(operatorWords(t.replace(FRAMES, ' ').replace(LOCAL, ' ')));
   }
-  return squash(out.join('\n'));
+  return out.map(squash).filter(Boolean);
 }
 
 /** Open entries of the registered ledgers that the operator released in this session (see the header):
@@ -166,6 +170,19 @@ function operatorSaid(tp) {
  *  Returns their ids; [] on any unreadable part (fail open). The entry shape is the one open-items.py and
  *  decision-presentation-gate.cjs read: a `- [ ]` line and its indented lines. */
 const RELEASED = /\breleased:\s*["„“”]([^"„“”\n]{4,})["“”]/gu;
+
+/** A release is SUPERSEDED once the operator, after the message that released it, writes a message of their own
+ *  that names neither the entry's id nor the release words — a new topic. Measured 2026-11-10 (evaluation of the
+ *  interactive alpha on the macOS instance): 28 of 36 interactive blocks fell in ONE session, every one on a
+ *  release the operator had given at 18:01 and then left for other topics for five hours; the check kept holding
+ *  each turn on the old item. A short reply (`ja`, `ok`, under SHORT characters) is no new topic. */
+const SHORT = 12;
+function superseded(msgs, quotes, id) {
+  let last = -1;
+  msgs.forEach((s, i) => { if (quotes.some((q) => s.includes(q))) last = i; });
+  const idl = String(id || '').toLowerCase();
+  return msgs.slice(last + 1).some((s) => s.length >= SHORT && !(idl && s.includes(idl)) && !quotes.some((q) => s.includes(q)));
+}
 function releasedOpen(root, tp) {
   let cfg;
   try { cfg = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'ledgers.json'), 'utf8')); } catch (e) { return []; }
@@ -185,11 +202,13 @@ function releasedOpen(root, tp) {
       if (exit && exit !== 'ai-does-it') continue;
       const quotes = [...body.matchAll(RELEASED)].map((q) => squash(q[1]));
       if (!quotes.length) continue;
-      if (said === null) said = operatorSaid(tp);
-      const found = quotes.filter((q) => said.includes(q));
+      if (said === null) said = operatorMessages(tp);
+      const found = quotes.filter((q) => said.some((s) => s.includes(q)));
       if (!found.length) continue;
-      const id = /\bid:\s*`?([\w.:/-]+)/.exec(body);
-      out.push({ id: id ? id[1].replace(/[.:]+$/, '') : m[1].replace(/[*`]/g, '').slice(0, 60), quotes: found });
+      const idm = /\bid:\s*`?([\w.:/-]+)/.exec(body);
+      const id = idm ? idm[1].replace(/[.:]+$/, '') : m[1].replace(/[*`]/g, '').slice(0, 60);
+      if (superseded(said, found, id)) continue;
+      out.push({ id, quotes: found });
     }
   }
   return out;
