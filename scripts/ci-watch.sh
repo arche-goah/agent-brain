@@ -368,7 +368,9 @@ pr_run_still_open() {   # exit 0 = a run of the head commit is still open
 # named UNKNOWN.
 REQUIRE_WF="${CI_WATCH_REQUIRE_WORKFLOW-CI}"
 REQUIRE_MAX="${CI_WATCH_REQUIRE_MAX:-3}"
+REQUIRE_GRACE="${CI_WATCH_REQUIRE_GRACE:-600}"   # seconds a MERGEABLE PR may wait for its run (late start)
 require_missing=0
+require_first=0
 pr_required_run_missing() {   # exit 0 = the named workflow exists but has no run on the head
   local sha have runs
   [[ -n "$REQUIRE_WF" ]] || return 1
@@ -384,9 +386,20 @@ pr_required_run_missing() {   # exit 0 = the named workflow exists but has no ru
   runs=$gh_out
   [[ "$runs" =~ ^[0-9]+$ ]] || return 1
   if (( runs > 0 )); then require_missing=0; return 1; fi
+  # A MERGEABLE PR whose run is merely late is a wait, not a verdict. Measured 2026-11-10 on agent-brain #478: the
+  # PR was opened 15:24:37, `CI` and `text-leaks` started 15:28:48; three reads had already said UNKNOWN and blamed a
+  # conflict while `mergeable` read MERGEABLE. A real conflict is read by the two-read check above, not here.
+  local mergeable now
+  if ghq pr view "$TARGET" -R "$REPO" --json mergeable --jq .mergeable; then mergeable=$gh_out; else mergeable=UNKNOWN; fi
+  now=$(date +%s)
+  (( require_first > 0 )) || require_first=$now
+  if [[ "$mergeable" == MERGEABLE ]] && (( now - require_first < REQUIRE_GRACE )); then
+    echo "ci-watch: PR #$TARGET is mergeable, workflow '$REQUIRE_WF' has no run on head ${sha:0:7} yet ($(( now - require_first )) s of ${REQUIRE_GRACE} s grace) — GitHub can start it minutes late, waiting" >&2
+    return 0
+  fi
   require_missing=$((require_missing + 1))
   if (( require_missing >= REQUIRE_MAX )); then
-    fail_unknown "$REPO PR #$TARGET — the listed checks are green, but workflow '$REQUIRE_WF' has no run on head ${sha:0:7} ($require_missing reads). GitHub starts none for a PR that conflicts with its base: rebase or merge main into the branch, then re-arm. Not green."
+    fail_unknown "$REPO PR #$TARGET — the listed checks are green, but workflow '$REQUIRE_WF' has no run on head ${sha:0:7} ($require_missing reads, mergeable: $mergeable). GitHub may still start it late, or starts none for a branch that conflicts with its base or a workflow it skipped: look at the PR's checks, then re-arm. Not green."
   fi
   echo "ci-watch: PR #$TARGET has no run of workflow '$REQUIRE_WF' on head ${sha:0:7} yet (read $require_missing of $REQUIRE_MAX) — waiting" >&2
   return 0
