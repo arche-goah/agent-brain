@@ -448,6 +448,14 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: soffice converts to pptx" Bash command "soffice --headless --convert-to pptx a.odp" block
   tr_probe "mechanism-guard/core rule: textutil reads a docx to txt (control)" Bash command "textutil -convert txt a.docx" allow
   tr_probe "mechanism-guard/core rule: pandoc reads a docx to md (control)" Bash command "pandoc a.docx -o a.md" allow
+  # 2026-11-11 (macOS instance): 81 order tabs, most of them shop search pages, opened past the order-list check
+  tr_probe "mechanism-guard/core rule: a search page opened in Safari" Bash command "open -a Safari 'https://shop.example/search?q=clip'" block
+  tr_probe "mechanism-guard/core rule: a search page in the default browser" Bash command "open 'https://shop.example/s?k=clip'" block
+  tr_probe "mechanism-guard/core rule: a product page opened (control)" Bash command "open https://shop.example/product/clip-1234" allow
+  tr_probe "mechanism-guard/core rule: tabs from an AppleScript file" Bash command "osascript /tmp/tabs.applescript /tmp/urls.txt" block
+  tr_probe "mechanism-guard/core rule: osascript makes a new tab" Bash command "osascript -e 'tell application \"Safari\" to make new tab'" block
+  tr_probe "mechanism-guard/core rule: osascript reads the URL (control)" Bash command "osascript -e 'tell application \"Safari\" to get URL of current tab of window 1'" allow
+  tr_probe "mechanism-guard/core rule: tabs through product-sources (control)" Bash command "python3 core/scripts/product-sources.py open list.csv" allow
   tr_probe "mechanism-guard/core rule: a plain \$VAR (control)" Bash command 'bash -c \"echo $HOME\"' allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)

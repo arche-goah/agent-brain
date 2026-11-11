@@ -1,0 +1,8 @@
+{
+  "_comment": "Instance data for scripts/product-sources.py (plan / order / open). Shapes of a product page per shop host, extra search-page and not-available patterns in the shops' languages. The built-ins hold without this file.",
+  "product_shapes": {
+    "example-shop.com": "/product/[a-z0-9-]+-\\d+$"
+  },
+  "search_patterns": [],
+  "unavailable_patterns": []
+}
