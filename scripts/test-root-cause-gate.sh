@@ -21,7 +21,13 @@ native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else pri
 js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 user() { printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":%s}}\n' "${WHEN:-2026-10-26T10:00:00.000Z}" "$(js "$1")"; }
 asst() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
-write() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":%s}}]}}\n' "$(js "$1")"; }
+# write <path> [text]: a register path carries a complete class entry unless the text is given (2026-11-11: invariant + replay)
+GOOD_ENTRY='invariant: a summary over a set of sources reads every source before it counts
+replay: 28 turns in 401 transcripts'
+write() {
+  local t="${2-}"; case "$1" in *carrier-register.md) [ $# -lt 2 ] && t="$GOOD_ENTRY";; esac
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":%s,"new_string":%s}}]}}\n' "$(js "$1")" "$(js "$t")"
+}
 tres() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"x"}]}}\n'; }
 
 check() { # $1 name, $2 transcript, $3 block|allow, $4 cwd, [$5 stop_hook_active], [$6 turn_kind]
@@ -118,6 +124,27 @@ check "second block already given in the turn (at most two)" "$T/t15.jsonl" allo
 check "cause after the cause block, with mechanism and register" "$T/t16.jsonl" allow "$CWD"
 { user "go"; asst "Cause: the post tool does not check the audience."; user "Stop hook feedback: ROOT-CAUSE-GATE: names a cause - no mechanism written"; asst "ok"; } > "$T/t17.jsonl"
 check "the first block was already the carrier block (cause before it): re-issue passes" "$T/t17.jsonl" allow "$CWD"
+# --- 2026-11-11: the register entry is a CLASS entry - invariant without the instance's names, replay with a count
+C="Cause: the summary read a subset of the source folder."
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "cause: subset read
+replay: 3 hits"; } > "$T/t30.jsonl"
+check "register entry without invariant" "$T/t30.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: pending - later"; } > "$T/t31.jsonl"
+check "register entry with replay pending" "$T/t31.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: the shopping overview must list docs/business/list.md
+replay: 4 hits"; } > "$T/t32.jsonl"
+check "invariant names a path (the instance, not the rule)" "$T/t32.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: PR #472 must not repeat the missing-carrier slip
+replay: 4 hits"; } > "$T/t33.jsonl"
+check "invariant names a PR number" "$T/t33.jsonl" block "$CWD"
+mkdir -p "$T/cwdf/.claude/rules"; printf '{"invariant_forbidden":["\\\\bwaveshare\\\\b"]}' > "$T/cwdf/.claude/rules/root-cause-patterns.json"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$T/cwdf/$REG" "invariant: a waveshare splitter decision reaches the purchase list
+replay: 4 hits"; } > "$T/t34.jsonl"
+check "invariant uses an instance proper noun (instance data)" "$T/t34.jsonl" block "$T/cwdf"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$T/cwdf/$REG" "invariant: a decision taken in a question reaches its single home in the same session
+replay: 18 hits in 13 sessions"; } > "$T/t35.jsonl"
+check "domain-free invariant with a replay count" "$T/t35.jsonl" allow "$T/cwdf"
 
 # --- other languages only as instance data (the German lines here are DATA an instance carries)
 DE="$T/cwd-de"; mkdir -p "$DE/.claude/rules"

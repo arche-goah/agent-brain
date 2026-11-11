@@ -120,6 +120,25 @@ function registerPath(cwd) {
 }
 const writesTo = (writes, rel) => writes.some((w) => String(w).replace(/\\/g, '/').endsWith('/' + rel.replace(/\\/g, '/')));
 
+// A register entry is a CLASS entry, not a note on the instance (2026-11-11, macOS instance: the gate took any
+// mechanism write - an instance-tailored gate passed, and the entry was never written; the operator had to ask why the
+// cause found was not fixed at the root). The text written to the register this turn carries
+//   invariant: <the rule that was broken, said without the instance's names - no path, no PR/issue number>
+//   replay:    <the detector over the history with its count> (a digit; "pending" is no replay)
+// Instance data `invariant_forbidden` (root-cause-patterns.json) adds its own proper nouns the invariant must not use.
+const INVARIANT = /^[ \t>*_-]*invariant:[ \t]*(\S[^\n]{11,})/imu;
+const REPLAY = /^[ \t>*_-]*replay:[ \t]*(?!pending)[^\n]*\d/imu;
+const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|#\d+\b|\b\w+\.(cjs|js|py|sh|json|md)\b/u;
+function entryGaps(writeTexts, rel, forbidden) {
+  const text = writeTexts.filter((w) => writesTo([w.p], rel)).map((w) => w.t).join('\n');
+  const inv = INVARIANT.exec(text);
+  const gaps = [];
+  if (!inv) gaps.push('the register entry names no invariant:');
+  else if (INSTANCE_WORD.test(inv[1]) || forbidden.test(inv[1])) gaps.push('the invariant: names the instance (a path, a number, a proper noun) - say the rule, not the case');
+  if (!REPLAY.test(text)) gaps.push('the register entry has no replay: count');
+  return gaps;
+}
+
 function loadPatterns(cwd, key, builtins, flags) {
   const patterns = [...builtins];
   try {
@@ -190,7 +209,10 @@ function readTurns(tp, tail) {
       if (!cur) continue;
       for (const b of msg.content) {
         if (b.type === 'text' && b.text) cur.texts.push(b.text);
-        if (b.type === 'tool_use' && b.input && typeof b.input.file_path === 'string') cur.writes.push(b.input.file_path);
+        if (b.type === 'tool_use' && b.input && typeof b.input.file_path === 'string') {
+          cur.writes.push(b.input.file_path);
+          (cur.writeTexts = cur.writeTexts || []).push({ p: b.input.file_path, t: String(b.input.new_string || b.input.content || '') });
+        }
       }
       continue;
     }
@@ -230,6 +252,7 @@ function currentTurn(turns) {
   return {
     group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes),
     fired: group.some((t) => t.fired), fires: group.reduce((n, t) => n + (t.fires || 0), 0), preEcho,
+    writeTexts: group.flatMap((t) => t.writeTexts || []),
   };
 }
 
@@ -328,7 +351,7 @@ function gate(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let turns;
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
-  const { group, texts, writes, fired, fires, preEcho } = currentTurn(turns);
+  const { group, texts, writes, fired, fires, preEcho, writeTexts } = currentTurn(turns);
   if (!group.length) return;
   // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
   // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
@@ -349,8 +372,9 @@ function gate(input) {
     const mech = writes.some(isMechanismWrite)
       || noCarrierAgreed(texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'), turns);
     const registered = writesTo(writes, reg);
-    if (mech && registered) return;
-    const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`].filter(Boolean).join(', ');
+    const gaps = registered ? entryGaps(writeTexts, reg, loadPatterns(cwd, 'invariant_forbidden', ['(?!)'], 'iu')) : [];
+    if (mech && registered && !gaps.length) return;
+    const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`, ...gaps].filter(Boolean).join(', ');
     process.stdout.write(JSON.stringify(declare({
       decision: 'block',
       reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}${fired ? ' (the cause came after the first block; naming it does not release the carrier)' : ''}. Fixing the instance (a re-post, a manual merge, a `
@@ -358,7 +382,8 @@ function gate(input) {
         + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
         + 'lives) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
         + 'operator-ok: "<their words>", found in their own messages - never on the agent\'s say-so; AND write the entry in '
-        + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits, `
+        + `${reg}: incident, cause, invariant (the broken rule without the instance's names), effect, carrier (or none + `
+        + 'reason + recheck date), related cases, replay (the invariant run over the history, with its count), '
         + 'found-by (operator | work | ci | <the check that found it>; when not a check: should-have: <the check that should have>).',
     }, input)));
     return;

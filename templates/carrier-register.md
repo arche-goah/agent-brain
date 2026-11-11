@@ -13,8 +13,10 @@ Copy this file to the path the instance names as `carrier_register` in
 id: <stable slug>
 incident: <what happened, where (session, PR, file:line)>
 cause: <what was read, where — A produced B>
+invariant: <the rule that was broken, without the instance's names: no path, no PR number, no proper noun — checked>
 effect: <what it cost or would have cost>
 carrier: <path of the gate/script/data, or the PR> | none — <why no mechanism can carry it>
 recheck: <YYYY-MM-DD, only with carrier: none — when to look again whether it is still impossible>
 related: <ids of earlier entries, ledger ids, PRs of the same class>
-replay: <the detector run over the history: command, count, newest examples> | pending — <why>
+replay: <the invariant run over the history: command, count, newest examples> — a count is required in the turn
+  that names the cause (the gate refuses "pending"; a fix that was not replayed has not found its class)
