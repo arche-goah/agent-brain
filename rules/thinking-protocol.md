@@ -45,6 +45,9 @@ History: core/docs/rule-history.md, "Think-Before-Act".
    - **Another instance's report is a claim, not a measurement** (2026-10-18): "created",
      "fixed", "green" from another AI counts once the artifact itself is read; a check
      that a file exists is no check of what it says (carrier `decision-readiness.py`).
+     The same holds for a plan an earlier session of the SAME brain wrote (2026-11-11): its own
+     uncertainty marks ("search hit", "not read", "open") are read before anything is done on
+     it (carrier `plan-label-gate.cjs`).
    - **Checkable form** (2026-08-02): load-bearing claims as a `claim` block — `assessment`
      × `risk` × `evidence[]` × freshness (`retrieved_at` <= `reviewed_at`) × independence.
    - **A documented live-behaviour row carries its measurement state** (2026-10-24): a row
