@@ -435,6 +435,12 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: git -C stash push" Bash command "git -C /r stash push -m x" block
   tr_probe "mechanism-guard/core rule: git stash list (control)" Bash command "git stash list" allow
   tr_probe "mechanism-guard/core rule: git stash show (control)" Bash command "git -C /r stash show -p" allow
+  # 2026-11-11 (macOS instance): an office file built by a generic converter lost its sizes and page setup
+  tr_probe "mechanism-guard/core rule: textutil builds a docx" Bash command "textutil -convert docx -output a.docx a.html" block
+  tr_probe "mechanism-guard/core rule: pandoc builds a docx" Bash command "pandoc a.md -o out.docx" block
+  tr_probe "mechanism-guard/core rule: soffice converts to pptx" Bash command "soffice --headless --convert-to pptx a.odp" block
+  tr_probe "mechanism-guard/core rule: textutil reads a docx to txt (control)" Bash command "textutil -convert txt a.docx" allow
+  tr_probe "mechanism-guard/core rule: pandoc reads a docx to md (control)" Bash command "pandoc a.docx -o a.md" allow
   tr_probe "mechanism-guard/core rule: a plain \$VAR (control)" Bash command 'bash -c \"echo $HOME\"' allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
