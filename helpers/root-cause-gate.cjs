@@ -129,8 +129,12 @@ const writesTo = (writes, rel) => writes.some((w) => String(w).replace(/\\/g, '/
 const INVARIANT = /^[ \t>*_-]*invariant:[ \t]*(\S[^\n]{11,})/imu;
 const REPLAY = /^[ \t>*_-]*replay:[ \t]*(?!pending)[^\n]*\d/imu;
 const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|#\d+\b|\b\w+\.(cjs|js|py|sh|json|md)\b/u;
-function entryGaps(writeTexts, rel, forbidden) {
-  const text = writeTexts.filter((w) => writesTo([w.p], rel)).map((w) => w.t).join('\n');
+function entryGaps(writeTexts, rel, forbidden, cwd) {
+  let text = writeTexts.filter((w) => writesTo([w.p], rel)).map((w) => w.t).join('\n');
+  // Written without a text in the transcript (a shell append): judge the newest entry on disk.
+  if (!text.trim()) {
+    try { const all = fs.readFileSync(path.join(cwd, rel), 'utf8'); text = all.slice(all.lastIndexOf('\n## ') + 1); } catch (e) { /* unreadable: gaps below */ }
+  }
   const inv = INVARIANT.exec(text);
   const gaps = [];
   if (!inv) gaps.push('the register entry names no invariant:');
@@ -372,7 +376,7 @@ function gate(input) {
     const mech = writes.some(isMechanismWrite)
       || noCarrierAgreed(texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'), turns);
     const registered = writesTo(writes, reg);
-    const gaps = registered ? entryGaps(writeTexts, reg, loadPatterns(cwd, 'invariant_forbidden', ['(?!)'], 'iu')) : [];
+    const gaps = registered ? entryGaps(writeTexts, reg, loadPatterns(cwd, 'invariant_forbidden', ['(?!)'], 'iu'), cwd) : [];
     if (mech && registered && !gaps.length) return;
     const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`, ...gaps].filter(Boolean).join(', ');
     process.stdout.write(JSON.stringify(declare({

@@ -145,6 +145,12 @@ check "invariant uses an instance proper noun (instance data)" "$T/t34.jsonl" bl
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$T/cwdf/$REG" "invariant: a decision taken in a question reaches its single home in the same session
 replay: 18 hits in 13 sessions"; } > "$T/t35.jsonl"
 check "domain-free invariant with a replay count" "$T/t35.jsonl" allow "$T/cwdf"
+# written without text in the transcript (shell append): the newest entry on disk is judged
+mkdir -p "$T/disk/docs/maintenance"; printf '## old\ninvariant: an older rule said once\nreplay: 2\n\n## new\ncause: x\n' > "$T/disk/$REG"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$T/disk/$REG" ""; } > "$T/t36.jsonl"
+check "entry on disk: the newest one lacks the invariant (an older one has it)" "$T/t36.jsonl" block "$T/disk"
+printf '## new\ninvariant: a summary reads every source before it counts\nreplay: 5 turns\n' >> "$T/disk/$REG"
+check "entry on disk: the newest one is complete" "$T/t36.jsonl" allow "$T/disk"
 
 # --- other languages only as instance data (the German lines here are DATA an instance carries)
 DE="$T/cwd-de"; mkdir -p "$DE/.claude/rules"
