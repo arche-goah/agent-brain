@@ -32,17 +32,6 @@
       "onReissue": "run"
     },
     {
-      "label": "OWN ITEMS",
-      "marker": "OWN-OPEN-GATE",
-      "cmd": "core/helpers/own-open-gate.cjs",
-      "mode": "block",
-      "_note": "Interactive mode only; the fourth shape next to stoppen-gate (a bare list of own open items). Ported from an instance alpha after 44 measured blocks (2026-11-10).",
-      "extract": "Own items named:\\s*([^\\n]+)",
-      "template": "\"{1}\" - own open items end no turn: do them now, arm the waiter, or name the blocker",
-      "maxLength": 120,
-      "onReissue": "run"
-    },
-    {
       "label": "OPEN ITEMS",
       "marker": "OPEN-ITEMS-GATE",
       "cmd": "core/helpers/open-items-gate.cjs",

@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# covers: own-open-gate
-# test-own-open-gate.sh — a reply that ends on the AI's own open items holds the INTERACTIVE turn once; the
+# covers: stoppen-gate
+# test-own-open-gate.sh — shape 4 of stoppen-gate (own open items, the former own-open-gate): a reply that ends on the AI's own open items holds the INTERACTIVE turn once; the
 # named ends (question tool, BLOCKED / POOL EMPTY / LIST EMPTY / HAND STEP lines, a hand step, a waiter for the
 # item's own sentence) and a negated hit pass, and the autonomous mode is left to autonomous-idle-gate.
 # Both directions, English only (other languages are instance data, `own_open_patterns`).
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
-G="$ROOT/helpers/own-open-gate.cjs"
+G="${GATE:-$ROOT/helpers/stoppen-gate.cjs}"
+MARK="Own items named"
+BOOT_CMD='/bin/zsh \"$CLAUDE_PROJECT_DIR/core/helpers/session-bootup.sh\"'
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 CWD="$T/brain"; mkdir -p "$CWD/.claude/rules"
 printf '%s\n' '{"own_open_patterns": ["\\bqqq open here\\b"], "own_open_negation_patterns": ["^\\W{0,4}zilch\\b"]}' > "$CWD/.claude/rules/stop-patterns.json"
@@ -20,7 +22,12 @@ js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 # · $6 "after" = the extra blocks follow the text (a question that ENDS the turn comes after it)
 run_case() {
   local tr="$T/$1.jsonl"
-  printf '{"type":"user","message":{"role":"user","content":%s}}\n' "$(js "${5:-what is the state?}")" > "$tr"
+  : > "$tr"
+  if [ -n "${BOOT:-}" ]; then # a session-start record (open-items-gate reads it for the first-turn exemption)
+    printf '{"attachment":{"type":"hook_success","hookName":"SessionStart:startup","hookEvent":"SessionStart","command":"%s","content":%s},"type":"attachment"}\n' \
+      "$BOOT_CMD" "$(js "$BOOT")" >> "$tr"
+  fi
+  printf '{"type":"user","message":{"role":"user","content":%s}}\n' "$(js "${5:-what is the state?}")" >> "$tr"
   if [ -n "${4:-}" ]; then
     if [ "${6:-}" = after ]; then
       printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s},%s]}}\n' "$(js "$2")" "$4" >> "$tr"
@@ -33,9 +40,9 @@ run_case() {
   local out
   out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$tr")" "$(native "$CWD")" | node "$(native "$G")" 2>&1)"
   if [ "$3" = block ]; then
-    case "$out" in *OWN-OPEN-GATE*) ok "$1 blocks";; *) bad "$1 did not block: '${out:0:160}'";; esac
+    case "$out" in *"$MARK"*) ok "$1 blocks";; *) bad "$1 did not block: '${out:0:160}'";; esac
   else
-    case "$out" in *OWN-OPEN-GATE*) bad "$1 blocked wrongly: '${out:0:160}'";; *) ok "$1 allows";; esac
+    case "$out" in *"$MARK"*) bad "$1 blocked wrongly: '${out:0:160}'";; *) ok "$1 allows";; esac
   fi
 }
 
@@ -58,5 +65,13 @@ run_case autonomous-mode "$INCIDENT" allow "" 'work on autonomously for the next
 run_case waiter-for-its-item 'Still open on my side: the merge, once CI is green.' allow '{"type":"tool_use","id":"toolu_b1","name":"Bash","input":{"command":"sleep 1","run_in_background":true}}'
 run_case waiter-does-not-excuse-other "$INCIDENT" block '{"type":"tool_use","id":"toolu_b2","name":"Bash","input":{"command":"sleep 1","run_in_background":true}}'
 run_case question-tool "$INCIDENT" allow '{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{"questions":[{"question":"Go?"}]}}' "" after
+# Windows review of #481: the prescribed start report passes; a negation before the hit and ordinary prose are no hit
+BOOT=$'=== BRAIN BOOTUP CHECK ===\nopen for us: 4 — ai 4 · human 0 · unclassified 0\n- [PR|ai] 2026-11-10 example-core#61 — someone: fix — first report\n=== END BOOTUP ===' \
+  run_case start-report 'Session start clean. Open for me: 4 items I can handle - shall I?' allow "" hi
+run_case outside-first-turn 'Session start clean. Open for me: 4 items, not started.' block "" hi
+run_case negated-before 'Nothing open on my side.' allow
+run_case negated-before-left 'All merged. Nothing is left for me to do here.' allow
+run_case owe-prose 'Thanks, I owe the fixture idea to your note. Built and merged.' allow
+run_case still-have-to-say 'I still have to say: the CI was red because of the base. Fixed and merged.' allow
 
 [ "$fail" -eq 0 ] && echo "own-open-gate fixtures: ALL passed" || { echo "own-open-gate fixtures: FAILURES"; exit 1; }
