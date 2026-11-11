@@ -219,7 +219,7 @@ function judgeInteractive(input, root, now) {
     + 'working on it. Do the next step now (tool calls in this turn), or end in one of the allowed forms: a question '
     + 'through the question tool, a line `HAND STEP: <what the operator does>`, or every released entry named in a '
     + 'line `BLOCKED: <id> — <what restores it, who>` after measuring the list in this turn '
-    + '(core/scripts/open-items.py or the instance command). A running waiter is no end, even with its condition: '
+    + '(core/scripts/open-items.py or the instance command, without a pipe after it). A running waiter is no end, even with its condition: '
     + 'it explains why one item waits — name that one as BLOCKED and work on the others. This check holds once per turn. '
     + `Missing: ${!measured && !unnamed.length ? 'own-items measurement' : 'continuation on released work'}`;
 }
@@ -349,7 +349,8 @@ function judge(input, now) {
     return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY / LIST EMPTY line, but the list behind it was not measured ' +
       'in this turn — the line is a recollection, not a reading. Run the brain\'s own-items measurement now ' +
       '(core/scripts/open-items.py, or the instance command in .claude/rules/autonomous-patterns.json ' +
-      '`own_items_commands`), do what it lists as yours, and end only when every item left is named as blocked. ' +
+      '`own_items_commands`) as a command of its own, without a pipe or a filter after it (`| head` keeps the counts and drops ' +
+      'the items, so it does not count), do what it lists as yours, and end only when every item left is named as blocked. ' +
       'Missing: own-items measurement';
   }
   return 'AUTONOMOUS-IDLE: the run is autonomous and this turn ends without its continuation. ' +
