@@ -60,6 +60,10 @@ probe "create low risk on sonnet" "gh pr create -R o/r --body-file $N/body-low.m
 printf '{"type":"assistant","message":{"model":"claude-sonnet-5-5"}}\n{"type":"assistant","message":{"model":"<synthetic>"}}\n' > "$T/t.jsonl"
 probe "a trailing <synthetic> entry: the last real model counts (sonnet, high)" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"
 probe "a trailing <synthetic> entry does not block a low PR" "gh pr create -R o/r --body-file $N/body-low.md" allow "docs/a.md"
+# counter-check of #478 (macOS instance): a "model" key outside an assistant record is no session model -
+# an Agent call with a model override, a tool result that prints JSON with a model field
+printf '{"type":"assistant","message":{"model":"claude-opus-5-5"}}\n{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"model":"haiku"}}],"model":"claude-opus-5-5"},"x":1}\n{"type":"user","message":{"content":[{"type":"tool_result","content":"{\\"model\\":\\"haiku\\"}"}]}}\n{"type":"user","toolUseResult":{"model":"sonnet"}}\n' > "$T/t.jsonl"
+probe "a sub-agent override or a printed model field is not the session model (opus, high)" "gh pr create -R o/r --body-file $N/body-high.md" allow "helpers/x-gate.cjs"
 transcript "<synthetic>"
 probe "only <synthetic>: model not measured, not checked" "gh pr create -R o/r --body-file $N/body-high.md" allow "helpers/x-gate.cjs"
 transcript claude-zeta-1

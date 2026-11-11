@@ -124,8 +124,15 @@ function sessionModel(p) {
     fs.closeSync(fd);
     // the last model of a KNOWN family: Claude Code writes `"model":"<synthetic>"` for synthetic assistant
     // entries (measured on the Windows instance 2026-11-10, a resumed session), and a new family is not yet in
-    // `tiers` - neither is the smallest model, both are "not measured" (review of #478)
-    const all = [...buf.toString('utf8').matchAll(/"model":"([^"]+)"/g)].map((m) => m[1]).filter((m) => tier(m) >= 0);
+    // `tiers` - neither is the smallest model, both are "not measured" (review of #478). Only the model of an
+    // ASSISTANT record counts: the same key stands in an Agent call's override and in printed JSON (counter-check
+    // of #478, macOS instance); the first line of the tail may be cut and is skipped by the parse.
+    const all = [];
+    for (const line of buf.toString('utf8').split('\n')) {
+      let r; try { r = JSON.parse(line); } catch (e) { continue; }
+      const m = r && r.type === 'assistant' && r.message && r.message.model;
+      if (m && tier(m) >= 0) all.push(m);
+    }
     if (!all.length) { console.error('content-review-gate: no model of a known family in the transcript (pr-risk.json tiers), model not checked'); return null; }
     return all[all.length - 1];
   } catch (e) { return null; }
