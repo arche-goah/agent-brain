@@ -5,6 +5,194 @@ patch is the default (unproven capability included), minor = a proven-feature
 re-release with clear notes, major = a big, thoroughly tested step.
 The marketplace pins tags, never `main`.
 
+## 2.1.5 — 2026-11-11
+
+- **Decision register: every question-tool answer is kept in one file, and a new question is checked against it before it reaches the operator** (test: T1) (level: writer; higher: design — a decision record the ledgers point at instead of carrying copies, not built: the register first has to prove it is read; debt: the topic list of `topic-sources.json` is hand-kept per brain; recall of the judge is below the controls — 3 of the day's 4 re-asks caught) — new `helpers/decision-register.cjs` (PostToolUse + PreToolUse on AskUserQuestion, plugin hooks) and `helpers/topic-sources.cjs` (UserPromptSubmit). Measured 2026-11-11 on the macOS instance: two questions the operator had answered one and two days earlier (a tool set, an industrial PoE splitter) were put to them again in other words, and a rejected 19-inch case was proposed again; the answers lived only in transcripts and in one project ledger the asking session did not read. A word-overlap replay over 1316 question-tool calls found 44 near-verbatim re-asks and NOT the day's two reworded ones — so the matcher is a word prefilter (rare shared words, crude stem) plus a model judgement that must name the shared object (anchored to a word of both questions) and an earlier answer that settles the new question's main choice, read with the options it was picked from; recurring check-ins ("continue autonomously?", "n open items, shall I?") are never matched (built-ins + instance `recurring_patterns`); deny once, fail open. Judge model opus: on the last 100 answered questions sonnet held 13 (7 rightly, 54 %), opus held 5 (5 rightly). The register is written by the hook (the producer), `--backfill` fills it from transcripts. A shopping total built from one project's files (the folder's overview unread) gave the second part: a prompt that hits a topic gets every source file of it listed. Templates `templates/rules-instance/decision-register.json`, `topic-sources.json`; fixtures `scripts/test-decision-register.sh` (16), `scripts/test-topic-sources.sh` (12, peer messages, notifications and Stop echoes stay silent).
+  After the Windows content review: the default transcript folder uses the shared slug rule (`turn-kind.cjs`
+  `projectTranscriptDir`, every non-alphanumeric character to `-`; the old rule kept spaces and `--backfill` died on
+  ENOENT), a missing folder is "nothing read", not a crash; the deny-once state is keyed on the earlier answer, not the new
+  wording (a reworded re-ask saying what changed is not denied twice); the template says the register stays in a private
+  repo. Fixture +3; the two transcript-folder cases were red against the previous head. Also from that review: one time
+  budget (40 s) under the 60 s hook timeout, past it the remaining questions pass unjudged and say so; topic-sources reads
+  the register path from `decision-register.json` (its template copy is gone). Debt: question-gate's prose re-ask check and
+  this register are two stores for one invariant ("the operator already spoke"); merging them is a design step of its own. <!-- fragment: decision-register -->
+
+- **check-catalog.py: every check the core ships, by the moment it runs, with trigger and what it checks — generated, never kept by hand** (test: T1) (level: design; higher: none; debt: the price per deep check is still the reference number in `rules/intelligence.md` until the local-run price from the same audit lands; instance checks are not listed)
+  From the audit-audit run on the Windows instance (2026-11-10, released by the operator the same day): an
+  inventory found 173 checks while the rules name six, and a fresh AI found no level above the full audit from
+  its loaded context. The catalog reads hooks/hooks.json, the stop-check template, session-bootup.sh, the
+  workflows, the check skills and the self-tests (278 entries on today's main; one file without a header shows
+  as such). Printed, never committed — a stored copy would collide in every merge train. `rules/intelligence.md`
+  names the command next to the three self-check levels. Fixture: `scripts/check-catalog-test.py` (18 checks).
+  Windows review: commit and push are a moment of their own (the scripts the git hooks run, the CI lint steps); the
+  session start lists only lines that run something (no comment, no echo/printf advice); the deep-check skills are
+  the ones `rules/intelligence.md` names ("(3) deep check" and the audit-audit paragraph), not a keyword in the
+  description; checks and self-tests are counted apart, the Notification hook stands under "other hooks (no check)".
+  Fixture +11 (29), all eleven red on the old head. <!-- fragment: feat-check-catalog -->
+
+- **content-review-gate: a PR's risk sets the model family that builds and reviews it, and an approval or merge needs a content review by another instance** (test: T1) (level: design; higher: none; debt: the sub-agent transcript path rule is a second copy of skill-gate.cjs transcripts(), not yet one shared helper; `floors` is a second file classifier next to the PR-class alpha of the macOS instance (data / docs / behaviour / code / wiring / release from the diff) — when that comes to the core, the floors map from its classes instead of own globs)
+  Operator orders 2026-11-10: review how a change is built and how it fits the whole, not only function and OS;
+  judge reach, complexity and risk, and build and review at the matching model — nothing critical with a
+  smaller one; below the minimum, hand the work to an agent or a session on that family; models matched by
+  family so newer versions count at once. Measured before: no gate asked for a design verdict, and three PRs
+  were approved that day on green fixtures, one carrying a second copy of a dispatcher rule. The gate holds
+  `git commit` in the core and `gh pr create` below the build minimum (risk = the body's `Risk:` line, never
+  below the floor of the changed files), `gh pr review --approve` without `Fit:` / `Design:` / `Cost:` /
+  `Model:` (the model measured from the transcript), and `gh pr merge` without such a review by an instance
+  other than the author (merge trains per member). Data `pr-risk.json`, questions `docs/content-review.md`,
+  rule `rules/intelligence.md` § Model Routing. Fixture: `scripts/test-content-review-gate.sh` (35 cases; the synthetic-entry, unknown-family and lazy-read cases from the Windows review). Second Windows review: a sub-agent call (agent_id) is judged by its own subagents/agent-<id>.jsonl, a missing file = not measured, never the parent's model; a prose `Model: reviewed by Opus` line names opus. <!-- fragment: feat-content-review-gate -->
+
+- **mechanism-rules: an office file is built through the office skill, not by a generic converter** (test: T1) (level: writer; higher: design — a check of the finished file (page size, sizes) would also catch a skill that writes it wrong, not built: the skill sets them explicitly and no such case is measured; debt: other converters (e.g. a script library writing docx directly) are not covered)
+  Measured 2026-11-11 on the macOS instance: a one-page Word document built with `textutil -convert docx` turned 10.5 pt
+  into 12 pt and wrote no page size or margins; in Word it ran over to a second page. The same shape exists for pandoc
+  and `soffice --convert-to` on every OS, so the row is a core row (an instance had added a textutil-only row the same
+  day). Reading an office file into text or Markdown stays free. Fixture `scripts/test-guards.sh` +5 (3 red against
+  main, 2 controls). <!-- fragment: feat-guard-office-doc-via-converter -->
+
+- **ledger-fields.json: one grammar for ledger fields, read by one Python and one JavaScript reader; instrument-watch and shared-reach-check moved onto it** (test: T1) (level: design; higher: none; debt: brain-scan-prep (#475 changes the same line) and autonomous-idle-gate (#480 changes the same function) move after the next train; `exit:` and `check:` still have their own readers)
+  Content review of agent-brain #475 (2026-11-10, the macOS instance): four readers of `id:` used four patterns
+  (line start only · `\S+` · `[\w-]` · `[\w.:/-]`); instrument-watch still read only line starts and never the
+  entry line itself, so a cause written in the field form (`- [ ] … | id: x | class: todo`) read as "stands in no
+  registered ledger". The grammar lives in `ledger-fields.json` (lead, value, end; ASCII classes, because `\w` is
+  Unicode in Python and ASCII in JavaScript); `scripts/ledger_fields.py` and `helpers/ledger-fields.cjs` build their
+  patterns from it. On the porting machine's order list: 331 ids before, 336 after, none lost. Fixtures:
+  `scripts/ledger-fields-test.py` (the JSON's cases in both languages), `scripts/test-instrument-watch.sh` (field form). <!-- fragment: feat-ledger-fields -->
+
+- **open-items.py: an open issue whose last word is another instance asking us is our move** (test: T1) (level: reader; higher: writer — the asking instance could also post a shared-memory request, but an issue thread is where collaborators ask, so the reader has to read it; debt: the ask phrases are English words, `ISSUE_ASK`)
+  Measured 2026-11-09 on the macOS instance: content-toolsuite#58 — a collaborator's AI wrote "this … waits for an OK
+  from your side" on 2026-10-26; no session start named it for two weeks (the reader read PRs, ledgers and the shared
+  memory, no issue threads). Now a second search `is:issue is:open` over the same owners: an issue whose last comment
+  (or body, without comments) carries another instance's word (login and key, `is_self`) with an ask phrase becomes
+  `[issue|ai]`; our own last word or a note without an ask is none. Paged like the PR search; a cut list reads as
+  "issue search" unread (measured on the porting machine: 52 open issues, one page holds 50). Fixture:
+  `scripts/test-open-items.sh` (ask, own word, note, sibling instance, cut list). The Stop check reads the new line too (Windows review): `open-items-gate.cjs` `parseBlock` takes `[issue|<class>] <date> <repo>#<n>` like a PR line; fixture `scripts/test-open-items-gate.sh` case 25 (unnamed blocks, named passes; red on the old head). <!-- fragment: feat-open-items-issues -->
+
+- **stoppen-gate shape 4: a reply that ends on the AI's own open items holds the interactive turn once — ported from an instance alpha (own-open-gate), changed by its evaluation, folded into stoppen-gate on review** (test: T1) (level: writer; higher: design — a state check over the own ledger like autonomous-idle-gate's would not need word lists, but interactive turns have no ordered list to measure against; debt: the phrases are words, English built-ins plus instance packs; the precision 17 of 27 is derived from the alpha's 44 blocks, not replayed on the new rules)
+  Incident 2026-10-25 (the macOS instance): a closing message listed three own reversible items and the turn ended;
+  stoppen-gate knew the closing question, the handoff and the announcement, not a bare list. Evaluated 2026-11-10 over
+  44 real blocks in 28 sessions: 17 right, 25 noise, 2 unclear; operator decision the same day to port it with the
+  three changes the noise asked for — interactive only (15 noise blocks were the BLOCKED form autonomous-idle-gate
+  demands), a named end line passes (BLOCKED / POOL EMPTY / LIST EMPTY / HAND STEP), a negated hit is none. The
+  alpha's own measurement log is dropped.
+  Windows review: a separate file had already drifted from stoppen-gate (hand-step built-ins, sentence cut, turn
+  boundary, no first-turn exemption — the prescribed "n I can handle — shall I?" start report was held). It is now
+  shape 4 inside stoppen-gate: one reader, one cooldown, one echo, one hand-step list (the union, without the broad
+  "you need to"), the first-turn exemption of open-items-gate. Negations count before the hit too ("nothing open on
+  my side"); "I owe" narrowed to "I still owe", "I still have to" not before say/admit/note/mention. No new template
+  row (the STOPPEN-GATE row carries it). Fixture: `scripts/test-own-open-gate.sh` (22; the five review cases red on
+  the alpha's code). <!-- fragment: feat-own-open-gate -->
+
+- **pause-audit.cjs: every pause between two turns read back from the transcripts, sorted by the mode written at the turn end — ported from an instance alpha, changed by its evaluation** (test: T1) (level: reader; higher: writer — mode-log already writes the mode at every stop, so the reader only reads it; debt: the stated reason of a "suspect" pause is judged by hand, and the run is not yet part of the brain-scan)
+  Operator order 2026-10-29 (the macOS instance): every pause found with its length and reason, checkable afterwards.
+  Evaluated 2026-11-10 (operator decision the same day): since the written mode exists, 296 autonomous pauses, 45
+  "suspect" — 28 of them carried a BLOCKED line the alpha's line-start pattern missed (`- BLOCKED:`, `**BLOCKED:**`), and
+  its recomputed mode for older stops changed with every word-list change. The port reads only the written mode
+  (`unknown` without one), takes `END_LINE` from autonomous-idle-gate.cjs (now exported) and reads only this brain's
+  own transcripts by default. Fixture: `scripts/test-pause-audit.cjs` (11). <!-- fragment: feat-pause-audit -->
+
+- **start-report-gate: no outward call in a session's first turn before the start report, unless the first message orders work — ported from an instance alpha** (test: T1) (level: writer; higher: design — open-items-gate checks the CONTENT of the first reply after the fact, this holds the effect before it; one carrier for both would need the Stop and the PreToolUse event in one file; debt: the order words are data, English in the template, other languages per instance)
+  Incident 2026-10-27 (the macOS instance): the operator asked "status?", the session start listed a PR under a
+  standing approval, the AI merged it before any reply. Evaluated 2026-11-10 over 168 sessions: 1 real catch, 5
+  false alarms in 2 sessions (both causes fixed in the alpha: a question-tool answer opens a turn, a message typed
+  mid-turn is an order), no operator turn spent; ported on the operator's decision the same day. `--replay` now
+  ends the first turn on a question-tool answer too (8 of 10 replay hits of the evaluation were such turns).
+  Data `templates/rules-instance/start-report-patterns.json`. Fixture: `scripts/test-start-report-gate.sh` (20).
+  Windows review: the first turn ends where the harness closed it (`system/turn_duration`), not at the second prompt -
+  a session opened on one prompt and then driven by notifications stayed in its first turn for hours (18 outward calls
+  over 2 h 24 min in one replayed session). PowerShell is judged like Bash; the escape's quote must stand in the
+  operator's own words; `please` alone is no order word in the template; `--replay` without a pattern file says so
+  and exits 0. Fixture +10, the five findings red on the old head. <!-- fragment: feat-start-report-gate -->
+
+- **Session start: every overdue deadline gets its own line, then the next upcoming one** (test: T1) (level: reader; higher: writer — the writer of `docs/business/deadlines.md` could move a deadline when it passes, but a passed date is exactly the fact the operator must see, so the reader carries it; debt: none) — measured 2026-11-11 on the macOS instance: the deadline block of `helpers/session-bootup.sh` printed only the single EARLIEST open entry, so with one entry four days overdue two further entries three days overdue (a maintenance window and the log read that must come before it) were never reported, and the session start named only the first. The block now sorts the open entries by date, prints one `!! deadline OVERDUE by N d` line for each overdue one, and after them the next entry that is not overdue yet (in 0-6 days `!!`, else `deadlines: next`), as before. Entries a passing `check:` marks DONE stay out of both. Fixture `scripts/test-bootup-deadlines.sh` 7 -> 10 cases: two overdue entries, both named (the later one and the earlier one), and an overdue entry followed by a future one; against the previous block 2 of the 3 new cases fail (the negative control).
+  After the Windows content review: every entry due within 7 days gets its own `!!` line too (a second one in the band
+  stayed silent, same "earliest only" shape), the loud lines are capped at 8 with one "N more" line, `deadlines: next` is
+  printed only when nothing is due within 7 days, and the fixture builds LOCAL dates (UTC dates failed 00:00-01:00 local).
+  Fixture 10 -> 12 cases; the band case was red against the previous head; also green under `TZ=XYZ-13`. <!-- fragment: fix-bootup-all-overdue-deadlines -->
+
+- **CI: node and shellcheck come from the runner image, apt only when missing** (test: the CI run of this PR, `node --version` and `shellcheck --version` print the image's tools) (level: writer; higher: design — pinning both tools through a setup action would add a version to keep current while the image already ships them; debt: none)
+  Measured 2026-11-11: the `helpers parse` step went red twice on one day (runs 43033807933 and 43036724559) from
+  "Temporary failure resolving 'security.ubuntu.com'" while apt fetched a nodejs the runner already has. The same
+  apt line stood in the shellcheck job. <!-- fragment: fix-ci-tools-without-apt -->
+
+- **ci-watch: a mergeable PR whose CI run starts late is a wait, and the missing-run verdict no longer blames a conflict it did not read** (test: T1) (level: reader; higher: writer — the writer of the run is GitHub, outside the repo, so only the reader can tell late from never; debt: the grace is a fixed 600 s, `CI_WATCH_REQUIRE_GRACE`)
+  Measured 2026-11-10 on agent-brain #478: the PR was opened 15:24:37 UTC, `CI` and `text-leaks` started 15:28:48
+  (actions/runs). The watch gave up after three reads with `CI-WATCH UNKNOWN … GitHub starts none for a PR that
+  conflicts with its base`, while `mergeable` read MERGEABLE — a real conflict is caught by the two-read check before
+  this branch. Now the branch reads `mergeable`: MERGEABLE waits up to the grace before counting reads; the verdict
+  names the mergeable state and the possible causes. Fixture: `scripts/ci-watch-test.sh` (late start within the grace
+  = GREEN; never = UNKNOWN naming `mergeable: MERGEABLE`). <!-- fragment: fix-ci-watch-late-run -->
+
+- **ci-watch: the swapped pr form `pr <number> <owner/repo>` is read, not refused** (test: T1) (level: reader; higher: writer - named flags (`--repo`, `--pr`) would make the order irrelevant, not done: every caller in skills and docs uses positional args, a flag form would be a second grammar; debt: none; the second reader of the call, watch-gate.cjs, now shares one parser `ciWatchCall` for both orders)
+  Measured on the macOS instance: three dead watches in two weeks from the same wrong order (2026-10-27; twice on
+  2026-11-11, once by a background agent), each needing a restart before the PR had a watch. A number and an
+  owner/name cannot be confused, so the script swaps them and says so on stderr (`read as: pr <repo> <n>`).
+  Fixture `scripts/ci-watch-test.sh` +2 (red against main, green now); the `pr 33 --repo x` refusal stays.
+  Windows review: watch-gate read only `pr <repo> <n>`, so a running swapped-form watch was reported as "no CI watch";
+  one parser `ciWatchCall` replaces its two regexes, `scripts/test-watch-gate.sh` +4 (two red on the old gate). <!-- fragment: fix-ci-watch-swapped-args -->
+
+- **Stop gates: a `Missing:` value names the way out itself — the stop dispatcher shows nothing else** (test: `scripts/test-autonomous-idle-gate.sh` +3, `scripts/test-open-items-gate.sh` +1; the idle cases red against the v2.1.4 gate) (level: writer; higher: design - the dispatcher could show a second line of the long text, not done: a line per check is its contract and the gate knows best which words teach the form; debt: the other `Missing:` values (bootup, open-items block, class for …, decision-presentation) were read and name their object plainly, no way out needed — not changed)
+  Measured on the Windows instance: 2026-11-07 four idle blocks in a row answered with `open-items.py … | head`
+  (the refusal named only "own-items measurement", the matcher counts no command with anything after the view);
+  2026-11-11 the lines that reached the session read `… fehlt: continuation` (three times) and `missing: wait record
+  for agent-brain#454` (twice): the stop dispatcher's rows extract only `Missing: (…)`, so the sentences that say
+  HOW stood in the long text nobody sees (the detail file it points to was refused to the session by the
+  permission layer that day). Four sites now carry the form in the value:
+  `own-items measurement (open-items.py as a command of its own, no pipe after it)` (two refusals),
+  `continuation (the next item now, or a BLOCKED / POOL EMPTY / LIST EMPTY line after measuring the list)`,
+  `wait record for <ref> (say it as ours, or first a waiting-until: line in the PR body / the waiting map)`.
+  Found by the macOS review of this PR (same class hit three times there on 2026-11-11). <!-- fragment: fix-idle-gate-message-no-pipe -->
+
+- **autonomous-idle-gate: a release the operator left for a new topic no longer holds the interactive turn** (test: T1) (level: reader; higher: writer — the release could carry an end the operator states, but nobody states one, so the reader has to see the topic change; debt: "a new topic" is any typed own message of 12+ characters (the ` (recommended)` suffix cut) that names neither the entry id nor the release words and is no bare continuation — a side question ends the release too, on the allow side, decided so)
+  Measured 2026-11-10 (evaluation of the interactive alpha on the macOS instance, operator decision the same day:
+  keep it, with this fix): 36 interactive blocks in 1643 interactive turns, 28 of them in ONE session, every one on
+  a release given at 18:01 that the operator then left for other topics for five hours. A release now ends with
+  the operator's next own message that names neither the id nor the release words; a short reply does not end it.
+  Fixture: `scripts/test-autonomous-idle-gate.sh` (four new cases: new topic, short reply, message naming the
+  entry, earlier topic before the release).
+  Windows review (79 of 80 operator messages on one machine were 12+ characters, 36 of them question-tool answers
+  carrying ` (recommended)`): a question-tool answer never ends a release, the suffix is cut before the length, and a
+  bare continuation ("please continue"; other languages as `continue_patterns`, template documented) is no new topic.
+  Fixture +4, three red on the old head; a typed new topic after an answer still ends it. <!-- fragment: fix-idle-release-ends-with-new-topic -->
+
+- **open-items-gate: the relabel check judges the newest reply only, and a date alone is no mention** (test: `scripts/test-open-items-gate.sh` +4, both allow cases red against the v2.1.4 gate) (level: reader; higher: writer - give every item an id the reply must quote, not done: replies name requests by date and topic in prose, an id would be a second vocabulary; debt: the other checks of this gate still read `last` (every reply since the newest operator prompt) — right for the first-reply and close checks, not re-measured for the "nothing open" branch)
+  Measured on the Windows instance 2026-11-11, an autonomous run, five blocks in a row the agent could not end:
+  1. The relabel check read `last` — every reply since the newest OPERATOR prompt. In the run that prompt was hours
+     old (watcher events, ticks and hook echoes are no prompts), so one early line ("#453 and #454 … with the macOS
+     side") held every later reply, however it was worded. Now the check reads `newest`: the text since the newest
+     user record of any kind (prompt, event, echo). Live A/B on that transcript: v2.1.4 blocks, this head allows.
+  2. `strict()` took any line holding an open item's date as a mention: a BLOCKED line with the ledger id
+     `…-2026-11-11` was read as a request of that day. The date now counts only with one of the item's own topic
+     words (`topicWords`, generic words left out) in the same line; `#n` and the exact file stem are unchanged. <!-- fragment: fix-open-items-gate-date-needs-topic -->
+
+- **The marketplace pin rule lets `ls`, `stat`, `gh api -X GET` and `gh api --method GET` read the pin** (test: T1) (level: reader; higher: design — a guard that judges the action (does the call write?) instead of the words of the command, the class `guard-wort-statt-handlung`, not built: new functionality, to agree first; debt: another read form the list does not name is still held). Measured 2026-11-08 on the macOS instance: a read-only `gh api repos/<o>/claude-marketplace/contents/.claude-plugin/marketplace.json --method GET` was held as a pin edit (any `--method` counted as a write), and `ls` of the pin file was held since the rule was ported (named in the instance's ledger 2026-11-04). `test-guards.sh` +6 cases: four reads allow, `--method PATCH` and `-X GET` with a field still block; against main the four allow cases fail. <!-- fragment: fix-pin-rule-readers-ls-get -->
+
+- **release-freeze-gate reads a scope whose version tag already stands as closed** (test: T1) (level: reader; higher: writer — the tag step of the release chain closing the scope itself, not built: the reader alone ends the false hold and the tag is the release act; debt: `release-scope.json` keeps saying `open` until someone runs `release-scope.py close`, the gate no longer acts on it). Measured 2026-11-08 on the macOS instance: scope 2.1.4 stood `status: open` after tag v2.1.4 (commit "chore: release 2.1.4 (beta)") and the gate held every new core branch (`fix/pr-ball-waiting-until`). The gate now checks `refs/tags/v<version>` in the directory the command works in. `test-release-freeze-gate.sh` +2 cases (tag stands: allow; tag removed: block); the new allow case fails against the gate on main (negative control). <!-- fragment: fix-release-gate-tagged-scope-closed -->
+
+- **root-cause-gate: the carrier is a CLASS carrier - invariant without the instance's names, replay with a count, and
+  no release by the cause block's re-issue** (test: T1) (level: writer; higher: design — whether the mechanism written
+  actually enforces the invariant is not machine-checkable here (an instance-tailored gate still counts as a mechanism
+  write), a review stage would judge it; debt: a cause phrased without a cause word ("why X was wrong: …") is still not
+  read as a cause, and a correction worded outside the pattern lists opens no inquiry) — measured on the macOS instance
+  2026-11-11: (1) the Stop tier passed every re-issue after one block; a turn held for a MISSING cause whose re-issued
+  reply named the cause ended without the carrier check — replay over 401 transcripts: 103 turns held for a missing
+  cause, 34 named it afterwards, 28 of those wrote no mechanism in the turn. Now at most two blocks per turn, the second
+  only for the carrier of a cause named after the first. (2) the register check took any write to the register file;
+  of the instance's 330 register entries none names an invariant and 76 carry no replay count. Now the text written to
+  the register in that turn needs `invariant:` (no path, no PR number, no instance proper noun from the new instance
+  data `invariant_forbidden`) and `replay:` with a count (`pending` refused). Template `templates/carrier-register.md`
+  gains the field. Fixture `scripts/test-root-cause-gate.sh`: ten new cases; the six blocking ones are red against main.
+  After the Windows content review: a date or clock time is no replay count (`replay: 2026-11-11, not run yet` passed),
+  a core rule number ("Working Rule #10") is no instance name (only a PR/issue number or a bare 3-digit `#nnn` is), and a
+  register without `## ` headings is judged by its last blank-line block, not the whole file. Three more fixture cases;
+  the date and rule-number ones were red against the previous head.
+  Finding 4 of the same review: an edit that completes an entry of an earlier turn (only its `replay:` line) is judged
+  with the `## ` entry on disk it lands in, not on its own text (fixture +2, the allow case red on the old head).
+  Second Windows review: a `replay:` count is a number with what it counts (hits, cases, turns, sites, flips) or
+  "<n> of <m>" - "waits for the v2.1.5 pin" and "after 3 sessions" no longer pass (fixture +3, two red on the old head).
+  Debt: `\b\w+\.(js|...)\b` in INSTANCE_WORD still reads a product name like "Node.js" as an instance word. <!-- fragment: fix-root-cause-carrier-after-cause-block -->
+
+- **watch-gate counts only a push that ran and moved a ref** (test: `scripts/test-watch-gate.sh`, four cases: two allow, two negative controls block) (level: reader; higher: writer — the refusing gate could record its refusal for the other gates, not built: the tool_result already carries it; debt: a `gh pr create`/`merge` refused by a hook is read the same way only through its error flag, which holds since no ref line is printed there either). Measured 2026-11-09 on the macOS instance: a `git push` refused by a PreToolUse gate was counted as a started CI run and the Stop check demanded a watcher - `git ls-remote` showed the branch was not on the remote. `ciStarted` now skips a call whose tool_result is an error AND shows no `a -> b` ref update; a failed push that still moved one ref counts. Against main the two allow cases block. <!-- fragment: fix-watch-gate-refused-push -->
+
 ## 2.1.4 — 2026-11-07
 
 - **absence-gate: "nothing found" is told apart from "could not look" — an absence claim after a listing that could not read its path blocks and names the path** (test: T1) (level: reader; higher: writer — the Bash tool could return "unreadable" as a field of its own instead of text the gate has to parse, but the harness is not ours to change; debt: only Bash results are paired — a Read or Grep that fails on a protected path is not read yet, and zsh's "no matches found:" is ambiguous by nature, so a genuinely empty glob in a readable folder blocks as well; the header's `INERT-WITHOUT` still names the roots file, so in a brain without it `hook-coverage.py` reports the gate as checking nothing although the unreadable half runs) — operator decision 2026-11-06. Measured that day on the macOS instance: `ls -d ~/.Trash/<name>*` answered zsh's `no matches found` because macOS privacy protection does not let the process read the Trash (`find` there prints `Operation not permitted`; the same holds for Downloads), and the folder was reported gone — it sat in the Trash. `helpers/absence-gate.cjs` now pairs every Bash listing or search (the search commands plus `ls`, `stat`, `test -e/-d/-f`) with its tool_result by id; `Operation not permitted`, `Permission denied` or `no matches found:` marks the path the output names (else the command's own paths) unreadable. Any absence claim of the turn — the record-wide patterns, or a local one like "the folder is gone" / "does not exist" — then blocks with the path named and the advice to ask the operator or use another source (the transcript). It holds when every root is covered, with a scope line, and in a brain without a roots file (this half needs no instance data); `unreadable_markers` and `gone_patterns` in `.claude/rules/absence-sources.json` may extend the built-ins; the `--record` row gains `unreadable`. Fixture `scripts/test-absence-gate.sh` 15 -> 21 cases: the incident, `Operation not permitted` from find, the same without a roots file, the scope line not lifting it, and two controls (a readable empty search with the same claim; an unreadable result without a claim). <!-- fragment: feat-absence-gate-unreadable -->
