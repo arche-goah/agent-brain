@@ -22,7 +22,7 @@ transcript() { printf '{"type":"assistant","message":{"model":"%s"}}\n' "$1" > "
 pr() { node -e 'const fs=require("fs"); const rd=(l)=>(l||"").split(",").filter(Boolean).map((f)=>({body: fs.readFileSync(f,"utf8")})); process.stdout.write(JSON.stringify({body: process.argv[1], files: process.argv[2].split(",").filter(Boolean).map((p) => ({path: p})), comments: rd(process.argv[3]), reviews: rd(process.argv[4])}))' "$@" > "$T/pr.json"; }
 probe() { # $1 label, $2 command, $3 block|allow, [$4 staged/branch files, newline list]
   local out rc
-  out=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$T/core")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$2")}}" \
+  out=$(printf '%s' "{\"tool_name\":\"Bash\",${AGENT:+\"agent_id\":\"$AGENT\",}\"cwd\":\"$(native "$T/core")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$2")}}" \
         | PR_JSON="$(native "$T/pr.json")" CONTENT_REVIEW_GATE_GH="$(native "$T/gh.js")" CONTENT_REVIEW_GATE_FILES="${4-}" \
           node "$(native "$GATE")" 2>&1); rc=$?
   if [ "$rc" -eq 2 ]; then [ "$3" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:200}"
@@ -69,6 +69,17 @@ probe "only <synthetic>: model not measured, not checked" "gh pr create -R o/r -
 transcript claude-zeta-1
 probe "an unknown family is not measured, not the smallest" "git commit -m x" allow "hooks/hooks.json"
 
+# Windows review of #478: a sub-agent's call (agent_id) is judged by the sub-agent's own transcript, both directions
+mkdir -p "$T/t/subagents"
+transcript claude-opus-5-5
+printf '{"type":"assistant","message":{"model":"claude-haiku-5-5"}}\n' > "$T/t/subagents/agent-a1.jsonl"
+AGENT=a1 probe "a haiku sub-agent under an opus parent commits high risk" "git commit -m x" block "hooks/hooks.json"
+transcript claude-sonnet-5-5
+printf '{"type":"assistant","message":{"model":"claude-opus-5-5"}}\n' > "$T/t/subagents/agent-a2.jsonl"
+AGENT=a2 probe "an opus sub-agent under a sonnet parent commits high risk" "git commit -m x" allow "hooks/hooks.json"
+AGENT=a9 probe "a sub-agent without its transcript is not measured, never the parent's model" "git commit -m x" allow "hooks/hooks.json"
+probe "the sonnet parent itself still commits no high risk" "git commit -m x" block "hooks/hooks.json"
+
 # CHECK 2/3 - approval and Model line
 printf '%s\nModel: claude-opus-5-5\n' "$GOOD" > "$T/rev-opus.md"
 printf 'Tests green on macOS.\n' > "$T/rev-thin.md"
@@ -85,6 +96,13 @@ printf '%s\nModel: claude-sonnet-5-5\n' "$GOOD" > "$T/rev-sonnet.md"
 probe "sonnet approves a high-risk PR" "gh pr review 5 -R o/r --approve --body-file $N/rev-sonnet.md" block
 pr "Risk: low - docs <!-- instance-key: $A -->" "docs/a.md" ""
 probe "sonnet approves a low-risk PR" "gh pr review 5 -R o/r --approve --body-file $N/rev-sonnet.md" allow
+# Windows review of #478: "Model: reviewed by Opus" names opus, not the word "reviewed"
+printf '%s\nModel: reviewed by Opus 5.5\n' "$GOOD" > "$T/rev-prose.md"
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
+transcript claude-opus-5-5
+probe "approve with a prose Model line naming opus" "gh pr review 5 -R o/r --approve --body-file $N/rev-prose.md" allow
+transcript claude-sonnet-5-5
+probe "a prose Model line claiming opus on a sonnet session" "gh pr comment 5 -R o/r --body-file $N/rev-prose.md" block
 
 # CHECK 4 - merge
 M="gh pr merge 5 -R o/r --merge"

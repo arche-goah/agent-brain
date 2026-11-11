@@ -15,8 +15,9 @@
  *
  * RISK: the higher of the body's `Risk: low|medium|high — <why>` line and the FLOOR the changed files
  * give (`pr-risk.json` at the core root, `floors`). The author cannot declare below the floor.
- * MODEL: measured, never claimed — the last `"model"` of a known family (`pr-risk.json` tiers) in the session
- * transcript (`transcript_path`), read only when a check needs it; `<synthetic>` or an unknown family = not measured.
+ * MODEL: measured, never claimed — the last assistant record's `message.model` of a known family (`pr-risk.json`
+ * tiers) in the caller's transcript (`transcript_path`, a sub-agent's own file when `agent_id` is set), read only
+ * when a check needs it; `<synthetic>` or an unknown family = not measured.
  *
  * CHECK 1 — `gh pr create`: the body carries a `Risk:` line at or above the floor of the branch's files
  *   (`git diff --name-only origin/main...HEAD` in the call's directory), and the session's model is at
@@ -93,7 +94,14 @@ function missing(text) {
   }
   return LABELS.filter((l) => !got[l]);
 }
-const modelLine = (text) => (/^\s*(?:[-*>]\s*)*(?:\*\*)?model(?:\*\*)?\s*:\s*(?:\*\*)?\s*(\S+)/im.exec(String(text || '')) || [])[1];
+/** The model a `Model:` line names: the first word of a known family on the line ("Model: reviewed by Opus 5.5" names
+ * opus - Windows review of #478 read "reviewed"), else its first word (an unknown name stays unknown, tier -1). */
+function modelLine(text) {
+  const rest = (/^\s*(?:[-*>]\s*)*(?:\*\*)?model(?:\*\*)?\s*:\s*(?:\*\*)?([^\n]*)/im.exec(String(text || '')) || [])[1];
+  if (rest === undefined) return undefined;
+  const words = rest.replace(/<!--[\s\S]*?-->/g, ' ').replace(/[*`]/g, ' ').split(/\s+/).filter(Boolean);
+  return words.find((w) => tier(w) >= 0) || words[0];
+}
 
 /** Risk index of a PR: its declaration and its files' floor, the higher. */
 function prRisk(pr) {
@@ -113,7 +121,7 @@ function reviewed(pr) {
   });
 }
 
-/** The session's model, measured: the last `"model"` in the transcript. null when unreadable. */
+/** The caller's model, measured: the last assistant record's `message.model` of a known family. null when unreadable. */
 function sessionModel(p) {
   try {
     const st = fs.statSync(p);
@@ -138,10 +146,26 @@ function sessionModel(p) {
   } catch (e) { return null; }
 }
 
+/** The transcript of the CALLER: a sub-agent's call carries `agent_id`, and its model is the one in
+ * `<session>/subagents/agent-<id>.jsonl` (same path rule as skill-gate.cjs `transcripts()`; a shared helper is
+ * the open debt), never the parent's - Windows review of #478: a Haiku agent built high risk under an Opus
+ * parent, an Opus agent under a Sonnet parent was refused. No such file = not measured, never the parent's. */
+function callerTranscript(input) {
+  const tp = input && input.transcript_path;
+  if (!tp) return null;
+  const id = String(input.agent_id || '');
+  if (!id) return String(tp);
+  if (!/^[\w-]+$/.test(id)) return null;
+  const sub = path.join(path.dirname(String(tp)), path.basename(String(tp), '.jsonl'), 'subagents', `agent-${id}.jsonl`);
+  if (fs.existsSync(sub)) return sub;
+  console.error(`content-review-gate: no transcript for sub-agent ${id}, model not checked`);
+  return null;
+}
+
 /** The model read once, only when a check needs it (review of #478: `git status` should cost no transcript read). */
-function lazyModel(p) {
+function lazyModel(input) {
   let done = false, value = null;
-  return () => { if (!done) { done = true; value = p ? sessionModel(p) : null; } return value; };
+  return () => { if (!done) { done = true; const p = callerTranscript(input); value = p ? sessionModel(p) : null; } return value; };
 }
 
 function gh(args) {
@@ -303,7 +327,7 @@ function gate(input) {
   if (ESCAPE.test(cmd) || !/\b(?:gh|git)\b/.test(cmd)) return 0;
   const ps = input.tool_name === 'PowerShell';
   const cwd = input.cwd || process.cwd();
-  const model = lazyModel(input.transcript_path);
+  const model = lazyModel(input);
   return checkCommit(cmd, ps, cwd, model) || checkCreate(cmd, ps, cwd, model)
     || checkReviewPost(cmd, ps, cwd, model) || checkMerge(cmd, ps);
 }
