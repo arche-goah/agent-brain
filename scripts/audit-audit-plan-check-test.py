@@ -52,7 +52,7 @@ CASES = [
     ("source matching no heading", lambda: run([ROWS[0].replace("No trigger", "Nothing like it")] + ROWS[1:]), True),
     ("no plan rows at all", lambda: run([]), True),
     ("method section not listed as no finding", lambda: run(ROWS, none=""), True),
-    ("a pre-run note is no part report", lambda: run(ROWS, extra=lambda d: open(Path(d) / "pre-run.md", "w").write("## Anything\n")), False),
+    ("a pre-run note is no part report", lambda: run(ROWS, extra=lambda d: open(Path(d) / "pre-run.md", "w", encoding="utf-8").write("## Anything\n")), False),
 ]
 
 

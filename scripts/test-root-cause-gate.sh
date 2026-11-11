@@ -146,6 +146,16 @@ check "register entry whose replay names a time span" "$T/t31e.jsonl" block "$CW
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
 replay: 12 of 40 transcripts"; } > "$T/t31f.jsonl"
 check "register entry whose replay is n of m" "$T/t31f.jsonl" allow "$CWD"
+# 2026-11-11 train-head review: real register lines count anything as "<n> <noun>", not only a fixed word list.
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: 4 own drafts, 3 with the id"; } > "$T/t31g.jsonl"
+check "register entry whose replay counts its own nouns" "$T/t31g.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: 60 echoes, 47 blocks, 0 changed"; } > "$T/t31h.jsonl"
+check "register entry whose replay lists several counts" "$T/t31h.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: 1 (this case)"; } > "$T/t31i.jsonl"
+check "register entry whose replay is a bare number (control)" "$T/t31i.jsonl" block "$CWD"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a promise binds only with a mechanism (Working Rule #10)
 replay: 6 turns"; } > "$T/t31c.jsonl"
 check "invariant citing a core rule number" "$T/t31c.jsonl" allow "$CWD"

@@ -1194,15 +1194,15 @@ behind a length test.
 
 shape: A
 
-invariant: Every `Path.read_text` / `Path.write_text` in the core's Python names its encoding
-(`encoding="utf-8"`, keyword or positional). Without it Python takes the locale codec: UTF-8 on macOS
+invariant: Every `Path.read_text` / `Path.write_text` and every text-mode builtin `open()` in the core's
+Python names its encoding (`encoding="utf-8"`, keyword or positional). Without it Python takes the locale codec: UTF-8 on macOS
 and Linux, cp1252 on Windows. A fixture that writes `·` or an em dash then hands a correct UTF-8
 reader the byte 0xB7 or 0x97, and the reader fails only on Windows.
 check:     scripts/text-encoding-test.py — AST scan of every git-tracked .py file (a call split over
 lines counts), with a negative control; runs in the CI fixture step like every scripts/*-test.py.
 mechanizable: tool — "names its encoding" is a property of one call, which may span lines; a line grep
 cannot state it.
-instances: 15
+instances: 38
 repeat:    yes — the stdout half is OS-9; the cp1252 finding of 2026-08-04 was the first of the shape
 status:    closed
 note:      Measured 2026-11-06 on the Windows instance (Windows 11, Python 3.14, Git Bash) at train head
@@ -1211,3 +1211,8 @@ encoding as cp1252 0xB7; `open-items.py` read it as UTF-8 and raised UnicodeDeco
 right, the fixture was not. The scan found 14 more unencoded calls (ledger-reconcile-test.py 7,
 repo-check-test.py 4, sync-after-merge-test.py 3); all pinned in the same commit, so the check starts
 with no baseline.
+2026-11-11, the Windows instance at the 2.1.5 train head cab57f4: `scripts/check-catalog-test.py` 9/18 — its
+fake core was written with `open(path, "w")`, which the scan did not cover (it read only `read_text`/`write_text`),
+so the lint passed. The scan now covers text-mode `open()` (binary mode and a computed mode pass); 23 calls in
+5 files pinned in the same commit (check-catalog-test.py 13, freshness-gate-test.py 4, transcript-recall-test.py 3,
+skills/firecrawl-web/fc.py 2, audit-audit-plan-check-test.py 1), no baseline.

@@ -25,10 +25,10 @@ def make_state(tmp, name, age_days, status="completed", tokens=500000, broken=Fa
     iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(ts / 1000))
     p = os.path.join(wf, "wf_test-123.json")
     if broken:
-        open(p, "w").write("{not json")
+        open(p, "w", encoding="utf-8").write("{not json")
     else:
         json.dump({"workflowName": name, "status": status, "timestamp": iso,
-                   "totalTokens": tokens}, open(p, "w"))
+                   "totalTokens": tokens}, open(p, "w", encoding="utf-8"))
     return os.path.join(tmp, "state")
 
 
@@ -94,7 +94,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     # 9 per-workflow override: threshold below age -> ALLOW
     cfgp = os.path.join(root, ".claude", "rules", "freshness-gate.json")
-    json.dump({"workflows": {"big-audit": {"thresholdDays": 0.5}}}, open(cfgp, "w"))
+    json.dump({"workflows": {"big-audit": {"thresholdDays": 0.5}}}, open(cfgp, "w", encoding="utf-8"))
     st = make_state(tmp, "big-audit", age_days=1)
     res = run({"script": SCRIPT}, st, root)
     cases.append(("instance override allows", res is None))
@@ -139,7 +139,7 @@ with tempfile.TemporaryDirectory() as tmp:
     cases.append(("brain-scan under the floor passes with the marker", res is None))
 
     # 15 an instance entry replaces the core cadence
-    json.dump({"workflows": {"brain-scan": {"thresholdDays": 10}}}, open(cfgp, "w"))
+    json.dump({"workflows": {"brain-scan": {"thresholdDays": 10}}}, open(cfgp, "w", encoding="utf-8"))
     st = make_state(tmp, "brain-scan", age_days=8)
     res = run({"script": scan}, st, root)
     cases.append(("instance entry replaces the brain-scan default", res is not None))

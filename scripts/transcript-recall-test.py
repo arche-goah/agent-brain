@@ -29,12 +29,12 @@ def main():
     with tempfile.TemporaryDirectory() as d:
         a = os.path.join(d, "aaaa-1111.jsonl")
         b = os.path.join(d, "bbbb-2222.jsonl")
-        open(a, "w").write("\n".join([line("user", "please clarify the phaser mechanism"),
+        open(a, "w", encoding="utf-8").write("\n".join([line("user", "please clarify the phaser mechanism"),
                                       tool_line("mcp__grandma3__gma3_object_children", {"path": "Phaser 1"}),
                                       line("assistant", "Finding: phaser runs via proxy executors")]) + "\n")
-        open(b, "w").write("\n".join([line("user", "rig check please"), line("assistant", "all green")]) + "\n")
+        open(b, "w", encoding="utf-8").write("\n".join([line("user", "rig check please"), line("assistant", "all green")]) + "\n")
         old = os.path.join(d, "cccc-3333.jsonl")
-        open(old, "w").write(line("assistant", "phaser ancient") + "\n")
+        open(old, "w", encoding="utf-8").write(line("assistant", "phaser ancient") + "\n")
         os.utime(old, (time.time() - 40 * 86400,) * 2)
 
         rc, out = run(d, "phaser")
