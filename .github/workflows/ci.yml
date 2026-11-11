@@ -163,7 +163,9 @@ jobs:
           fi
       - name: helpers parse (node syntax check)
         run: |
-          sudo apt-get update && sudo apt-get install -y nodejs
+          # The runner image ships node; apt only when it is missing (apt's mirrors failed DNS twice on 2026-11-11).
+          command -v node >/dev/null || { sudo apt-get update && sudo apt-get install -y nodejs; }
+          node --version
           for f in helpers/*.cjs; do node --check "$f"; done
       # Detector discipline: gates are tested in BOTH directions (must-deny and
       # must-stay-silent, fail-open included), not just parsed.
@@ -225,7 +227,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: shellcheck (severity error) over helpers/ and scripts/
         run: |
-          sudo apt-get update && sudo apt-get install -y shellcheck
+          command -v shellcheck >/dev/null || { sudo apt-get update && sudo apt-get install -y shellcheck; }
           shellcheck --version | head -2
           shellcheck --severity=error --shell=bash helpers/*.sh scripts/*.sh
 
