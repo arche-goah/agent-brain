@@ -139,8 +139,8 @@ function ownEventsOnly(opener, key) {
  *  answers — never a notification, a hook echo, a loaded skill, a peer's or the harness's text, frames or pasted
  *  blocks. The same filters as autonomous-mode.cjs promptModes. */
 const squash = (s) => String(s || '').toLowerCase().replace(/[\s ]+/g, ' ').trim();
-const operatorSaid = (tp) => operatorMessages(tp).join('\n');
-/** The same, one squashed entry per operator message, in transcript order. */
+const operatorSaid = (tp) => operatorMessages(tp).map((m) => m.s).join('\n');
+/** The same, one squashed entry per operator message, in transcript order: {s, ans} - ans marks a question-tool answer. */
 function operatorMessages(tp) {
   let lines;
   try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return []; }
@@ -149,7 +149,7 @@ function operatorMessages(tp) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
     const queued = queuedHumanPrompt(d);
-    if (queued) { out.push(operatorWords(queued.replace(FRAMES, ' ').replace(LOCAL, ' '))); continue; }
+    if (queued) { out.push({ s: operatorWords(queued.replace(FRAMES, ' ').replace(LOCAL, ' ')) }); continue; }
     if (!isTranscriptRecord(d) || isSkillExpansion(d) || isAgentOrigin(d) || !d.message) continue;
     const msg = d.message;
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -157,12 +157,12 @@ function operatorMessages(tp) {
       continue;
     }
     if (msg.role !== 'user') continue;
-    for (const [, a] of answers(msg, askIds)) out.push(a);
+    for (const [, a] of answers(msg, askIds)) out.push({ s: a, ans: true });
     const t = promptText(msg);
     if (!t || PROMPT_ECHO.test(t) || isNotification(t)) continue;
-    out.push(operatorWords(t.replace(FRAMES, ' ').replace(LOCAL, ' ')));
+    out.push({ s: operatorWords(t.replace(FRAMES, ' ').replace(LOCAL, ' ')) });
   }
-  return out.map(squash).filter(Boolean);
+  return out.map((m) => ({ s: squash(m.s), ans: !!m.ans })).filter((m) => m.s);
 }
 
 /** Open entries of the registered ledgers that the operator released in this session (see the header):
@@ -176,17 +176,36 @@ const RELEASED = /\breleased:\s*["„“”]([^"„“”\n]{4,})["“”]/gu;
  *  interactive alpha on the macOS instance): 28 of 36 interactive blocks fell in ONE session, every one on a
  *  release the operator had given at 18:01 and then left for other topics for five hours; the check kept holding
  *  each turn on the old item. A short reply (`ja`, `ok`, under SHORT characters) is no new topic. */
+// Windows review of #480: 79 of 80 operator messages on one machine were 12 characters or longer, 36 of them
+// question-tool answers carrying " (recommended)" (14 characters alone), so a release lasted about one message. Now a
+// question-tool answer never supersedes (it answers the agent's own question, mostly on the work in hand), the
+// suffix is cut before the length is measured, and a bare continuation ("please continue") is no new topic either:
+// English built in, other languages as data (`continue_patterns` in autonomous-patterns.json).
 const SHORT = 12;
-function superseded(msgs, quotes, id) {
+const RECOMMENDED = /\s*\(recommended\)/gi;
+const CONTINUE_BUILTIN = ['^(?:please\\s+|ok,?\\s+|yes,?\\s+)?(?:continue|go on|go ahead|keep going|carry on|proceed|next)\\b[\\s.!,]*(?:please)?[\\s.!]*$'];
+function continuation(root) {
+  const list = [...CONTINUE_BUILTIN];
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'autonomous-patterns.json'), 'utf8'));
+    for (const x of (d && d.continue_patterns) || []) { try { new RegExp(x); list.push(x); } catch (e) { /* skip */ } }
+  } catch (e) { /* no data: English only */ }
+  return new RegExp(list.join('|'), 'i');
+}
+function superseded(msgs, quotes, id, cont) {
   let last = -1;
-  msgs.forEach((s, i) => { if (quotes.some((q) => s.includes(q))) last = i; });
+  msgs.forEach((m, i) => { if (quotes.some((q) => m.s.includes(q))) last = i; });
   const idl = String(id || '').toLowerCase();
-  return msgs.slice(last + 1).some((s) => s.length >= SHORT && !(idl && s.includes(idl)) && !quotes.some((q) => s.includes(q)));
+  return msgs.slice(last + 1).some((m) => {
+    if (m.ans) return false;
+    const s = m.s.replace(RECOMMENDED, '').trim();
+    return s.length >= SHORT && !(cont && cont.test(s)) && !(idl && s.includes(idl)) && !quotes.some((q) => s.includes(q));
+  });
 }
 function releasedOpen(root, tp) {
   let cfg;
   try { cfg = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'ledgers.json'), 'utf8')); } catch (e) { return []; }
-  const out = []; let said = null;
+  const out = []; let said = null; let cont = null;
   for (const rel of (cfg && cfg.ledgers) || []) {
     let text;
     try { text = fs.readFileSync(path.join(root, rel), 'utf8'); } catch (e) { continue; }
@@ -203,11 +222,11 @@ function releasedOpen(root, tp) {
       const quotes = [...body.matchAll(RELEASED)].map((q) => squash(q[1]));
       if (!quotes.length) continue;
       if (said === null) said = operatorMessages(tp);
-      const found = quotes.filter((q) => said.some((s) => s.includes(q)));
+      const found = quotes.filter((q) => said.some((m) => m.s.includes(q)));
       if (!found.length) continue;
       const idm = /\bid:\s*`?([\w.:/-]+)/.exec(body);
       const id = idm ? idm[1].replace(/[.:]+$/, '') : m[1].replace(/[*`]/g, '').slice(0, 60);
-      if (superseded(said, found, id)) continue;
+      if (superseded(said, found, id, cont || (cont = continuation(root)))) continue;
       out.push({ id, quotes: found });
     }
   }
