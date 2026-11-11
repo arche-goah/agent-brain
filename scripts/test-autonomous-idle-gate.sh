@@ -186,6 +186,13 @@ f="$T/peer2.jsonl"; { user "work through the open points autonomously"; ev "SESS
 PR o/r #20: fix (peer) — opened on another machine"; asst "Noted."; } > "$f"
 SHARED_MEMORY_SELF=mac check "own state line plus a peer's PR still blocks" "$f" block
 
+# The piped view is no measurement, and the refusal's `Missing:` value - the only part the stop dispatcher
+# shows - names the form (measured 2026-11-07 on the Windows instance: four blocks in a row on `| head`).
+f="$T/pipe.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS | head -40"; asst "BLOCKED: item C — needs the operator's word on the deploy"; } > "$f"
+check "a BLOCKED line after a piped view still blocks" "$f" block
+out=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$f")" "$(native "$B")" | CLAUDE_PROJECT_DIR="$(native "$B")" node "$(native "$G")" 2>&1)
+case "$out" in *'Missing: own-items measurement (open-items.py as a command of its own, no pipe after it)'*) ok "the Missing value names the form without a pipe";; *) bad "the Missing value does not name the form: ${out: -200}";; esac
+
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-idle-gate: all cases pass" || echo "autonomous-idle-gate: FAILURES"
 exit "$fail"

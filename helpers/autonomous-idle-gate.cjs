@@ -221,7 +221,7 @@ function judgeInteractive(input, root, now) {
     + 'line `BLOCKED: <id> — <what restores it, who>` after measuring the list in this turn '
     + '(core/scripts/open-items.py or the instance command, without a pipe after it). A running waiter is no end, even with its condition: '
     + 'it explains why one item waits — name that one as BLOCKED and work on the others. This check holds once per turn. '
-    + `Missing: ${!measured && !unnamed.length ? 'own-items measurement' : 'continuation on released work'}`;
+    + `Missing: ${!measured && !unnamed.length ? MEASURE_MISSING : 'continuation on released work'}`;
 }
 
 /** A measurement from an EARLIER turn still stands when nothing was done since and it is fresh.
@@ -241,6 +241,10 @@ function standingMeasurement(all, measurers, now) {
   if (!ts || (now || Date.now()) - ts > STANDING_MIN * 60000) return false;
   return !all.slice(at + 1).some((c) => CHANGE_TOOLS.has(c.name) || (c.cmd && CHANGES.test(c.cmd)));
 }
+
+// The stop dispatcher shows only the text after `Missing:` (stop-checks.json `extract`), so the form the
+// measurement must take stands IN that value (measured on the macOS instance 2026-11-11, review of #494).
+const MEASURE_MISSING = 'own-items measurement (open-items.py as a command of its own, no pipe after it)';
 
 /** The commands that measure the brain's own open items: the core's, plus the instance's (data). */
 function measurers(root) {
@@ -351,7 +355,7 @@ function judge(input, now) {
       '(core/scripts/open-items.py, or the instance command in .claude/rules/autonomous-patterns.json ' +
       '`own_items_commands`) as a command of its own, without a pipe or a filter after it (`| head` keeps the counts and drops ' +
       'the items, so it does not count), do what it lists as yours, and end only when every item left is named as blocked. ' +
-      'Missing: own-items measurement';
+      `Missing: ${MEASURE_MISSING}`;
   }
   return 'AUTONOMOUS-IDLE: the run is autonomous and this turn ends without its continuation. ' +
     'Do the next item now (tool calls in this turn), or end the turn in one of the run\'s end forms: ' +
