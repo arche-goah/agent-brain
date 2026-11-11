@@ -130,7 +130,10 @@ const INVARIANT = /^[ \t>*_-]*invariant:[ \t]*(\S[^\n]{11,})/imu;
 const REPLAY_LINE = /^[ \t>*_-]*replay:[ \t]*(?!pending)([^\n]*)/imu;
 // A count, not a date (Windows review of #491: "replay: 2026-11-11, not run yet" passed): dates and clock times are
 // removed before the digit test.
-const hasCount = (line) => /\d/.test(line.replace(/\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2}:\d{2}\b/g, ''));
+// Second Windows review: any other digit passed too ("waits for the v2.1.5 pin", "after 3 sessions"), so a count is a
+// number with what it counts (hits, cases, turns, sites, flips) or "<n> of <m>".
+const COUNT = /\b\d+\s*(?:hits?|cases?|turns?|sites?|flips?|of\s+\d+)\b/i;
+const hasCount = (line) => COUNT.test(line.replace(/\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2}:\d{2}\b/g, ''));
 // A PR or issue number names the instance; a core rule number ("Working Rule #10") is the rule itself (same review).
 const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|\b(?:PR|issue|pull)s?\s*#?\d+\b|\b[\w.-]+#\d+\b|(?:^|[\s(])#\d{3,}\b|\b\w+\.(cjs|js|py|sh|json|md)\b/iu;
 function newestEntry(all) {
@@ -140,12 +143,26 @@ function newestEntry(all) {
   const blocks = all.trim().split(/\n[ \t]*\n/);
   return blocks[blocks.length - 1] || '';
 }
+/** The `## ` entry on disk that holds an edit's text, or '' (no heading above it, or the text is not on disk). */
+function entryAround(file, piece) {
+  const all = '\n' + file; // a heading on the first line counts
+  const t = String(piece || '').trim();
+  const i = t ? all.indexOf(t) : -1;
+  const start = i < 0 ? -1 : all.lastIndexOf('\n## ', i);
+  if (start < 0) return '';
+  const end = all.indexOf('\n## ', i + t.length);
+  return all.slice(start + 1, end < 0 ? undefined : end);
+}
 function entryGaps(writeTexts, rel, forbidden, cwd) {
-  let text = writeTexts.filter((w) => writesTo([w.p], rel)).map((w) => w.t).join('\n');
+  const mine = writeTexts.filter((w) => writesTo([w.p], rel));
+  let text = mine.map((w) => w.t).join('\n');
+  let disk = null;
+  try { disk = fs.readFileSync(path.join(cwd, rel), 'utf8'); } catch (e) { /* unreadable: the edit text alone */ }
   // Written without a text in the transcript (a shell append): judge the newest entry on disk.
-  if (!text.trim()) {
-    try { text = newestEntry(fs.readFileSync(path.join(cwd, rel), 'utf8')); } catch (e) { /* unreadable: gaps below */ }
-  }
+  if (!text.trim()) text = disk ? newestEntry(disk) : '';
+  // An edit that completes an entry of an earlier turn (only its `replay:` line, say) is judged with the entry it
+  // lands in (Windows review of #491, finding 4).
+  else if (disk) text += '\n' + mine.map((w) => entryAround(disk, w.t)).join('\n');
   const inv = INVARIANT.exec(text);
   const gaps = [];
   if (!inv) gaps.push('the register entry names no invariant:');
