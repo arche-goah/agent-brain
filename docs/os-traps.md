@@ -96,8 +96,8 @@ known:     scripts/brain-update.sh=7
 known:     scripts/carrier-audit-test.py=22
 known:     scripts/carrier-audit.py=13
 known:     scripts/caveman-armed.py=6
-known:     scripts/check-catalog-test.py=11
-known:     scripts/check-catalog.py=11
+known:     scripts/check-catalog-test.py=15
+known:     scripts/check-catalog.py=16
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
@@ -155,6 +155,9 @@ it prints only plugin id, version and style name.
 2026-11-10, check-catalog.py and its fixture baselined after review: every join builds a path that is only
 opened, listed or written in a temp dir; the names the catalog prints come from regexes over hooks.json and
 session-bootup.sh (always `/`) or from `os.listdir` (a bare file name), never from a joined path.
+2026-11-11, the same two files after the review fix (commit/push section, deep skills read from the rule): the new
+joins open the hook scripts, ci.yml and rules/intelligence.md, or write the fake core in a temp dir; the names
+printed come from regexes over those files (always `/`), never from a joined path.
 2026-10-09, always-loaded.py baselined after that review: the four joins build paths it
 only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
 2026-10-09, commitments.py baselined after that review: the five joins build the transcript
