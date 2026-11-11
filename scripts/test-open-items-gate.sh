@@ -481,4 +481,12 @@ case "$line24" in
 esac
 case "$line24" in *[Ff]"irst reply"*) bad "the close-report line says first reply: '$line24'" ;; *) ok "the close-report line does not say first reply" ;; esac
 
+# 25 — an issue item (open-items.py kind issue, Windows review of #485) is read like a PR: unnamed blocks, named passes.
+HI="- [issue|human] 2026-11-11 suite-y#12 — peer: question on the schema — first report"
+PI="open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${HI}"
+f="$T/25a.jsonl"; { boot_ok startup "$PI"; user "stand?"; asst "Brain clean."; } > "$f"
+check "an unnamed issue item blocks" "$f" block "$EN"
+f="$T/25b.jsonl"; { boot_ok startup "$PI"; user "stand?"; asst "1 needs you: issue #12, a question on the schema."; } > "$f"
+check "a named issue item passes" "$f" allow "$EN"
+
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

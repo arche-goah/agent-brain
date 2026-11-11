@@ -253,6 +253,9 @@ function parseBlock(text) {
     let m;
     if ((m = /^- \[PR\|(\w+|\?)\] \S+ (\S+?)#(\d+) /.exec(l))) {
       items.push({ cls: m[1], ref: `${m[2]}#${m[3]}`, key: `${m[2]}#${m[3]}`, num: m[3], repeat });
+    } else if ((m = /^- \[issue\|(\w+|\?)\] \S+ (\S+?)#(\d+) /.exec(l))) {
+      // An issue another instance asks us in (open-items.py kind issue, Windows review of #485): shaped like a PR.
+      items.push({ cls: m[1], ref: `${m[2]}#${m[3]}`, key: `${m[2]}#${m[3]}`, num: m[3], kind: 'issue', repeat });
     } else if (/^- \[PR-standing\] \d+ PRs: /.test(l)) {
       // Standing PRs folded into one line (open-items.py): one item per number, as before.
       const list = l.replace(/^- \[PR-standing\] \d+ PRs: /, '').split(' — ')[0];

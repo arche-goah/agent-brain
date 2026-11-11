@@ -5,4 +5,4 @@
   (or body, without comments) carries another instance's word (login and key, `is_self`) with an ask phrase becomes
   `[issue|ai]`; our own last word or a note without an ask is none. Paged like the PR search; a cut list reads as
   "issue search" unread (measured on the porting machine: 52 open issues, one page holds 50). Fixture:
-  `scripts/test-open-items.sh` (ask, own word, note, sibling instance, cut list).
+  `scripts/test-open-items.sh` (ask, own word, note, sibling instance, cut list). The Stop check reads the new line too (Windows review): `open-items-gate.cjs` `parseBlock` takes `[issue|<class>] <date> <repo>#<n>` like a PR line; fixture `scripts/test-open-items-gate.sh` case 25 (unnamed blocks, named passes; red on the old head).
