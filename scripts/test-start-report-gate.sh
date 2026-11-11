@@ -14,7 +14,7 @@ fail=0
 rec() { printf '{"type":"user","message":{"role":"user","content":%s}}\n' "$1"; }
 run() { # name transcript command expect(deny|allow)
   # hook input built by node from argv (2026-11-02, same class as core #337: a printf template broke on a double quote)
-  out=$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:JSON.parse(a[1])},transcript_path:a[2],session_id:"t"}))' "$3" "$(native "$2")" | node helpers/start-report-gate.cjs)
+  out=$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:a[3]||"Bash",tool_input:{command:JSON.parse(a[1])},transcript_path:a[2],session_id:"t"}))' "$3" "$(native "$2")" "${5:-Bash}" | node helpers/start-report-gate.cjs)
   got=allow; [[ "$out" == *'"deny"'* ]] && got=deny
   if [ "$got" = "$4" ]; then echo "ok   $1"; else echo "FAIL $1 (got $got)"; fail=1; fi
 }
@@ -36,7 +36,23 @@ ask='{"type":"assistant","message":{"content":[{"type":"tool_use","id":"q1","nam
 { rec '"status?"'; printf '%s\n' "$ask"; rec '[{"type":"tool_result","tool_use_id":"q1","content":"rejected","is_error":true}]'; } > "$T/qx.jsonl"
 run "question-tool answer opens a turn" "$T/qa.jsonl"  '"gh pr merge 54 --squash"' allow
 run "rejected question is no answer"    "$T/qx.jsonl"  '"gh pr merge 54 --squash"' deny
-run "escape with quoted order"         "$T/q.jsonl"   '"gh pr merge 54 # START-REPORT-OK: \"merge 54\""' allow
+# Windows review of #482: the escape's quote must stand in the operator's words
+rec '"status? and pr 54 now"' > "$T/qe.jsonl"
+run "escape quoting the operator's words" "$T/qe.jsonl" '"gh pr merge 54 # START-REPORT-OK: \"pr 54 now\""' allow
+run "escape quoting words never written" "$T/q.jsonl"   '"gh pr merge 54 # START-REPORT-OK: \"merge 54\""' deny
+# the first turn ends where the harness closed it (system/turn_duration), not at the second prompt
+note='{"type":"user","message":{"role":"user","content":"<task-notification>CI-WATCH GREEN: o/r PR #54</task-notification>"}}'
+{ rec '"status?"'; printf '{"type":"assistant","message":{"content":[{"type":"text","text":"Status: ..."}]}}\n'; printf '{"type":"system","subtype":"turn_duration","durationMs":900}\n'; printf '%s\n' "$note"; } > "$T/te.jsonl"
+{ rec '"status?"'; printf '%s\n' "$note"; } > "$T/tn.jsonl"
+run "after the first turn ended, a notification-driven merge allowed" "$T/te.jsonl" '"gh pr merge 54 --squash"' allow
+run "a notification inside the first turn still denies" "$T/tn.jsonl" '"gh pr merge 54 --squash"' deny
+# PowerShell is judged like Bash (the hook is wired on both)
+run "PowerShell merge denied"          "$T/q.jsonl"   '"gh pr merge 54 --squash"' deny PowerShell
+run "PowerShell push denied"           "$T/q.jsonl"   '"git -C C:/x push"' deny PowerShell
+run "PowerShell read allowed"          "$T/q.jsonl"   '"gh pr view 54"' allow PowerShell
+# 'please' alone is no order word
+rec '"status please?"' > "$T/qp.jsonl"
+run "please alone orders nothing"      "$T/qp.jsonl"  '"git -C /x push"' deny
 # 2026-11-06: the effect word only inside a search pattern is data, not a command
 run "grep for the effect words allowed" "$T/q.jsonl"  '"grep -n \"gh pr close\" settings.json"' allow
 run "git log -S effect words allowed"  "$T/q.jsonl"   '"git -C /x log --oneline -S\"gh pr close\" -- t.json"' allow
@@ -54,4 +70,7 @@ run "queued question still denies"     "$T/qn.jsonl"  '"gh pr merge 54 --squash"
 rp=$(node helpers/start-report-gate.cjs --replay "$(native "$T/rq.jsonl")" "$(native "$T/rd.jsonl")")
 case "$rp" in *rq.jsonl*) echo "FAIL replay counts a merge after a question-tool answer"; fail=1;; *) echo "ok   replay: a question-tool answer ends the first turn";; esac
 case "$rp" in *rd.jsonl*) echo "ok   replay: a first-turn merge is named";; *) echo "FAIL replay misses a first-turn merge"; fail=1;; esac
+# --replay without a pattern file says so and exits 0 (same review, finding 5)
+rpn=$(CLAUDE_PROJECT_DIR="$(native "$T/nobrain")" node helpers/start-report-gate.cjs --replay "$(native "$T/rd.jsonl")" 2>&1); rcn=$?
+case "$rcn $rpn" in "0 "*"no pattern file"*) echo "ok   replay without a pattern file";; *) echo "FAIL replay without a pattern file: rc=$rcn $rpn"; fail=1;; esac
 exit $fail

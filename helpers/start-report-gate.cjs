@@ -13,7 +13,11 @@
  * spent; ported on the operator's decision of 2026-11-10.
  *
  * First turn = exactly one operator prompt in the transcript (user record, not a notification, skill text, peer
- * message or tool result) or question-tool answer; a message typed mid-turn opens no turn but its words count.
+ * message or tool result) or question-tool answer, and the harness has not yet closed a turn (`system/turn_duration`,
+ * written only after every Stop hook let the reply through); a message typed mid-turn opens no turn but its words
+ * count. Windows review of #482: without the turn end, a session opened on one prompt and then driven by watcher
+ * notifications stayed in its "first turn" for hours (18 outward calls over 2 h 24 min in one replayed session).
+ * Bash and PowerShell are judged alike (the hook is wired on both).
  * Words: .claude/rules/start-report-patterns.json (template in templates/rules-instance/). Escape: a Bash command
  * carrying `# START-REPORT-OK: <quoted order>`. Every deny and every escape is logged to
  * .claude-state/start-report-gate.jsonl. Fails open on unreadable input or a missing pattern file.
@@ -24,7 +28,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt } =
+const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, isTurnEnd } =
   require('./turn-kind.cjs');
 const { segments } = require('./shell-segments.cjs');
 
@@ -80,12 +84,14 @@ function queuedPrompts(transcript) {
 
 function prompts(transcript) {
   const out = [];
+  out.ended = false;
   const askIds = new Set();
   let lines = [];
   try { lines = fs.readFileSync(transcript, 'utf8').split('\n'); } catch (e) { return null; }
   for (const l of lines) {
     if (!l) continue;
     let d; try { d = JSON.parse(l); } catch (e) { continue; }
+    if (isTurnEnd(d)) { out.ended = true; continue; }
     if (d.type === 'assistant') {
       for (const c of ((d.message && d.message.content) || [])) {
         if (c && c.type === 'tool_use' && c.name === 'AskUserQuestion') askIds.add(c.id);
@@ -112,7 +118,7 @@ function runnable(seg) {
 
 /** What the call changes, or null when it only reads. */
 function effect(tool, input, pat) {
-  if (tool === 'Bash') {
+  if (tool === 'Bash' || tool === 'PowerShell') {
     const cmd = String(input.command || '');
     if (/\s--help\b/.test(cmd) && !/[;&|\n]/.test(cmd)) return null;
     const hit = segments(cmd).some((seg) => pat.effect.some((r) => r.test(runnable(seg))));
@@ -133,20 +139,28 @@ function judge(input) {
   const what = effect(input.tool_name || '', input.tool_input || {}, pat);
   if (!what) return null;
   const ps = prompts(input.transcript_path || '');
-  if (!ps || ps.length !== 1) return null;
+  if (!ps || ps.length !== 1 || ps.ended) return null;
   const first = ps[0];
-  if ([first, ...queuedPrompts(input.transcript_path || '')].some((t) => pat.order.some((r) => r.test(t)))) return null;
+  const said = [first, ...queuedPrompts(input.transcript_path || '')];
+  if (said.some((t) => pat.order.some((r) => r.test(t)))) return null;
   const esc = /#\s*START-REPORT-OK:\s*(.+)/.exec(String((input.tool_input || {}).command || ''));
-  if (esc) { log({ kind: 'escape', session: input.session_id, call: what, reason: esc[1], first }); return null; }
+  // the escape names a quoted order, and the quote has to stand in the operator's own words (Windows review of #482)
+  const squash = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const quote = esc && squash(esc[1].replace(/^\s*["'„“”]|["'“”]\s*$/g, ''));
+  if (esc && quote && said.some((t) => squash(t).includes(quote))) {
+    log({ kind: 'escape', session: input.session_id, call: what, reason: esc[1], first }); return null;
+  }
   log({ kind: 'deny', session: input.session_id, call: what, first });
   return `START-REPORT-GATE: first turn of the session, and the operator's first message ("${first.slice(0, 80)}") orders no ` +
     `work - this call changes something (${what}). Give the start report first (the operator's request answered, ` +
     'reporting duties, open items), then do the work in the next turn. Reading is free. If the first message does order this ' +
-    'work, repeat with `# START-REPORT-OK: <the quoted order>`.';
+    'work, repeat with `# START-REPORT-OK: <the quoted order>` - the quote must stand in the operator\'s own words.' +
+    (esc ? ` The quote "${esc[1].trim().slice(0, 60)}" is not in the operator's messages.` : '');
 }
 
 function replay(files) {
   const pat = patterns();
+  if (!pat) { process.stdout.write('start-report-gate: no pattern file (.claude/rules/start-report-patterns.json) - nothing to replay\n'); return; }
   for (const f of files) {
     let lines = [];
     try { lines = fs.readFileSync(f, 'utf8').split('\n'); } catch (e) { continue; }
@@ -154,6 +168,7 @@ function replay(files) {
     for (const l of lines) {
       if (!l) continue;
       let d; try { d = JSON.parse(l); } catch (e) { continue; }
+      if (isTurnEnd(d)) break; // the first turn ended (same rule as judge)
       if (d.type === 'assistant') {
         for (const c of ((d.message && d.message.content) || [])) if (c && c.type === 'tool_use' && c.name === 'AskUserQuestion') askIds.add(c.id);
       }

@@ -5,3 +5,8 @@
   mid-turn is an order), no operator turn spent; ported on the operator's decision the same day. `--replay` now
   ends the first turn on a question-tool answer too (8 of 10 replay hits of the evaluation were such turns).
   Data `templates/rules-instance/start-report-patterns.json`. Fixture: `scripts/test-start-report-gate.sh` (20).
+  Windows review: the first turn ends where the harness closed it (`system/turn_duration`), not at the second prompt -
+  a session opened on one prompt and then driven by notifications stayed in its first turn for hours (18 outward calls
+  over 2 h 24 min in one replayed session). PowerShell is judged like Bash; the escape's quote must stand in the
+  operator's own words; `please` alone is no order word in the template; `--replay` without a pattern file says so
+  and exits 0. Fixture +10, the five findings red on the old head.
