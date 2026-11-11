@@ -189,6 +189,13 @@ PR_QUERY = """query($q: String!, $after: String) { viewer { login }
     latestReviews(first: 20) { nodes { author { login } submittedAt body } }
     commits(last: 1) { nodes { commit { oid committedDate } } }
     comments(last: 20) { nodes { author { login } createdAt body } } } } } }"""
+ISSUE_QUERY = """query($q: String!, $after: String) { viewer { login }
+  search(query: $q, type: ISSUE, first: 50, after: $after) { issueCount pageInfo { hasNextPage endCursor } nodes { ... on Issue {
+    number title createdAt body author { login } repository { name }
+    comments(last: 1) { nodes { author { login } createdAt body } } } } } }"""
+# What makes a last word an ask of us (English built-in; the issue thread is a repo text, English by rule).
+ISSUE_ASK = re.compile(r"\b(?:waits? for (?:an? )?(?:ok|review|answer)|from your side|please (?:check|review|confirm|answer)"
+                       r"|your (?:ok|review|word)|can you|could you)\b", re.I)
 WAIT_MARK = re.compile(r"^\s*waiting-until:\s*(\d{4}-\d{2}-\d{2})\s*:?\s*(.*)$", re.M | re.I)
 
 def owner_party(value, repo=None):
@@ -314,6 +321,62 @@ def pr_search(owner, extra=()):
     (measured 2026-10-24: 10 open PRs, one in an archive; with the qualifier 9)."""
     names = [owner] + [o for o in extra if o and o.lower() != owner.lower()]
     return " ".join(f"user:{o}" for o in names) + " is:pr is:open archived:false"
+
+
+def issues(owner, extra=()):
+    """Open issues of the watched owners whose LAST word comes from another instance and asks us.
+
+    Measured 2026-11-09: content-toolsuite#58 - a collaborator's AI wrote "this ... waits for an OK from your side" on
+    2026-10-26, and for two weeks no session start named it: this reader read PRs, ledgers and the shared memory, no
+    issue threads; only the collaboration watch saw it when a new comment came. A last word by this instance (login
+    AND key) is no ask; a word without an ask phrase is a note. Unreadable search = None (said like a failed read)."""
+    if not owner:
+        return None
+    q = pr_search(owner, extra).replace(" is:pr ", " is:issue ")
+    # fixture hook: saved GraphQL answers, one file per page, joined by os.pathsep (same as the PR search)
+    fixtures = [f for f in os.environ.get("OPEN_ITEMS_ISSUE_FIXTURE", "").split(os.pathsep) if f]
+    if not fixtures and os.environ.get("OPEN_ITEMS_PR_FIXTURE"):
+        return []  # a fixture run that gives no issue answer asks no network: no issues
+    me, rows, after, total = "", [], None, 0
+    for page in range(20):
+        if fixtures:
+            f = fixtures[page] if page < len(fixtures) else ""
+            rc, out = (0, Path(f).read_text(encoding="utf-8")) if f and Path(f).is_file() else (1, "")
+        else:
+            cmd = ["gh", "api", "graphql", "-f", f"query={ISSUE_QUERY}", "-F", f"q={q}"]
+            rc, out = run(cmd + (["-f", f"after={after}"] if after else []))
+        if rc != 0:
+            return None
+        try:
+            data = json.loads(out or "{}")["data"]
+            me = (data.get("viewer") or {}).get("login", "")
+            rows += data["search"]["nodes"]
+            total = data["search"].get("issueCount", 0)
+            info = data["search"].get("pageInfo") or {}
+        except (ValueError, KeyError, TypeError):
+            return None
+        if not info.get("hasNextPage"):
+            break
+        after = info.get("endCursor")
+    # A cut list is no list (measured on the porting machine: 52 open issues, one page holds 50).
+    if len(rows) < total:
+        return None
+    mine = self_key()
+    items = []
+    for i in rows:
+        if not i.get("number"):
+            continue
+        last = ((i.get("comments") or {}).get("nodes") or [None])[-1] or {
+            "author": i.get("author"), "body": i.get("body"), "createdAt": i.get("createdAt")}
+        who = (last.get("author") or {}).get("login", "?")
+        body = last.get("body") or ""
+        if is_self(who, me, body, mine) or not ISSUE_ASK.search(body):
+            continue
+        ref = f"{i['repository']['name']}#{i['number']}"
+        items.append({"id": ref, "kind": "issue", "date": (last.get("createdAt") or i["createdAt"])[:10], "who": who,
+                      "text": i["title"][:100], "scope": i["repository"]["name"], "ref": ref,
+                      "waiting_on": None, "until": None, "events": [], "ours": ""})
+    return items
 
 
 def prs(owner, owners, repos=(None,), extra=()):
@@ -494,6 +557,8 @@ def auto_class(it, repo, human_rx):
     """(class, why) from the data alone, or (None, '') when the data does not say."""
     if it["kind"] == "PR":
         return "ai", it.get("pr_note") or "pull request: review or merge is agent work"
+    if it["kind"] == "issue":
+        return "ai", "issue: another instance asks us in its last word - answering is agent work"
     if it["kind"] == "session":
         return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it["kind"] == "ledger":
@@ -1002,6 +1067,7 @@ def main():
     # Owners written once in the shared memory, the instance's own map on top (an override).
     owners = {**shared_owners(chans[0]["repo"] if chans else None), **(cfg.get("owners") or {})}
     pr = prs(owner, owners, [c["repo"] for c in chans], cfg.get("pr_owners") or [])
+    iss = issues(owner, cfg.get("pr_owners") or [])
     ses = sessions(root, a.hook_input)
     led, led_unread = ledgers(root)
     carried_by_pr(led or [], pr or [])
@@ -1009,13 +1075,13 @@ def main():
     # pr stays None, so the PR counters are kept as for an unread source.
     failed = [name for name, v in ([("shared-memory requests" + ("" if c["default"] else f" [{c['label']}]"), r)
                                     for c, r in reads]
-                                   + ([("PR search", pr)] if owner else [])
+                                   + ([("PR search", pr), ("issue search", iss)] if owner else [])
                                    + [("session audit", ses),
                                       ("work ledgers (no readable .claude/rules/ledgers.json)", led)]) if v is None]
     if chan_error:
         failed.append(f"shared-memory channels ({chan_error})")
     failed += [f"ledger {u}" for u in led_unread]
-    items = ([i for _, r in reads for i in r or []] + (pr or []) + (ses or []) + (led or [])
+    items = ([i for _, r in reads for i in r or []] + (pr or []) + (iss or []) + (ses or []) + (led or [])
              + wake_items(rules, pr, a.repo))
 
     today = now.date().isoformat()
