@@ -662,6 +662,27 @@ cut=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/page1.json")" OWNER=me run "")
 has "PR search" "$cut" && ! has "pager#21" "$cut" && ok "negative control: a missing page = PR search unread, no short list" \
   || bad "missing page: $cut"
 
+# Issues whose last word asks us (2026-11-09: content-toolsuite#58 waited two weeks on "an OK from your side",
+# no session start named it). A foreign instance asking = ours; our own last word, or a note without an ask = none.
+iss() { # repo nr title last-author last-body
+  printf '{"number":%s,"title":"%s","createdAt":"2026-11-01T10:00:00Z","body":"x","author":{"login":"peer"},"repository":{"name":"%s"},"comments":{"nodes":[{"author":{"login":"%s"},"createdAt":"2026-11-02T10:00:00Z","body":"%s"}]}}' \
+    "$2" "$3" "$1" "$4" "$5"
+}
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":4,"pageInfo":{"hasNextPage":false},"nodes":[%s,%s,%s,%s]}}}\n' \
+  "$(iss tool 58 'needs an ok' peer 'this waits for an OK from your side')" \
+  "$(iss tool 59 'we answered' me 'done, merged')" \
+  "$(iss tool 60 'a note' peer 'measured again on Windows, same signature')" \
+  "$(iss tool 61 'sibling asks' me "could you check this on macOS <!-- instance-key: $KWS -->")" > "$T/issues.json"
+io=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")" OPEN_ITEMS_ISSUE_FIXTURE="$(native "$T/issues.json")" SHARED_MEMORY_SELF=mac OWNER=me run is1)
+has "[issue|ai]" "$(line 'tool#58 ' "$io")" && ok "an issue whose last word asks us = our move" || bad "issue ask: $(line 'tool#58 ' "$io")"
+! has "tool#59" "$io" && ok "our own last word = no item" || bad "own last word listed: $io"
+! has "tool#60" "$io" && ok "a note without an ask = no item" || bad "note listed: $io"
+has "[issue|ai]" "$(line 'tool#61 ' "$io")" && ok "a sibling instance (same login, other key) asking = our move" || bad "sibling issue: $(line 'tool#61 ' "$io")"
+printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":2,"pageInfo":{"hasNextPage":false},"nodes":[%s]}}}\n' \
+  "$(iss tool 58 'needs an ok' peer 'this waits for an OK from your side')" > "$T/issues-cut.json"
+ic=$(OPEN_ITEMS_PR_FIXTURE="$(native "$T/noprs.json")" OPEN_ITEMS_ISSUE_FIXTURE="$(native "$T/issues-cut.json")" OWNER=me run is2)
+has "issue search" "$ic" && ok "a cut issue list = issue search unread, no short list" || bad "cut issues: $ic"
+
 side=$("$PY" "$(native "$T/core/scripts/open-items.py")" --owner ai --repo "$(native "$T/repo")" 2>&1); rc=$?
 [ "$rc" -ne 0 ] && has "not the item side" "$side" && ok "--owner ai (the item side, not an account) is refused" \
   || bad "--owner ai: rc=$rc $side"

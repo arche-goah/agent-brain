@@ -1,0 +1,13 @@
+{
+  "_comment": "Read by helpers/content-review-gate.cjs. A PR's risk is the higher of the `Risk:` line in its body and the floor its changed files give; the risk sets the least model that may BUILD it (measured from the session transcript at `gh pr create`) and the least model that may REVIEW it (measured at the approval, written as the review's `Model:` line, read at the merge). Operator order 2026-11-10: nothing critical is built with a smaller model; towards the critical side it is judged, and kept, at the build and at the review. Criteria per risk: docs/content-review.md.",
+  "tiers": ["haiku", "sonnet", "opus", "fable"],
+  "floors": [
+    {"risk": "high", "paths": ["hooks/*", "helpers/*gate*", "helpers/*guard*", "rules/*", "mechanism-rules.json", "core-contract.json", "pr-risk.json", "templates/settings*", "scripts/release-*", "scripts/merge-train.sh", "scripts/brain-update.sh", ".github/*"]},
+    {"risk": "medium", "paths": ["helpers/*", "scripts/*", "workflows/*", "skills/*", "templates/*"]}
+  ],
+  "minimum": {
+    "low":    {"build": "sonnet", "review": "sonnet"},
+    "medium": {"build": "sonnet", "review": "opus"},
+    "high":   {"build": "opus",   "review": "opus"}
+  }
+}

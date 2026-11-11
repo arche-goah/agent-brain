@@ -1,0 +1,19 @@
+{
+  "_comment": "Instance data of helpers/topic-sources.cjs (UserPromptSubmit). A prompt that matches a topic's prompt_patterns (regex, case-insensitive) gets every source file of the topic listed; a source is a file or a folder (recursive, text files). 'also' names sources a path cannot point at (a grep over ledgers). Add one entry per topic the operator asks summaries about. The decision register named with every hit is the one in decision-register.json (its `register`).",
+  "topics": [
+    {
+      "name": "shopping",
+      "prompt_patterns": [
+        "\\bshopping\\b",
+        "\\border list\\b",
+        "\\bpurchase",
+        "\\bnet total\\b"
+      ],
+      "sources": [
+        "docs/business/shopping-list.md",
+        "docs/business/shopping"
+      ],
+      "also": "purchase decisions in the project ledgers"
+    }
+  ]
+}

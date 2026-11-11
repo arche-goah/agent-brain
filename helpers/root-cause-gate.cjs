@@ -31,7 +31,9 @@
  * Two tiers (operator 2026-10-26: "a lighter variant that runs along, and a heavy workload
  * that runs regularly and targeted, like the coherence scan"):
  *   - Stop (this file through stop-dispatcher.cjs): once per turn, re-issue passes, a
- *     notification turn is not an operator turn, quotes and code stripped.
+ *     notification turn is not an operator turn, quotes and code stripped. One exception
+ *     (2026-11-11): a turn held for a MISSING cause whose re-issued reply names the cause is
+ *     held once more for that cause's carrier - at most two blocks per turn.
  *   - `--review [N] [--since YYYY-MM-DD]`: the same detector replayed over this project's
  *     transcripts (newest N, default 40) — every correction turn, whether its reply named a
  *     cause, whether a mechanism file (helpers/, scripts/, hooks/, rules/, skills/,
@@ -118,6 +120,62 @@ function registerPath(cwd) {
 }
 const writesTo = (writes, rel) => writes.some((w) => String(w).replace(/\\/g, '/').endsWith('/' + rel.replace(/\\/g, '/')));
 
+// A register entry is a CLASS entry, not a note on the instance (2026-11-11, macOS instance: the gate took any
+// mechanism write - an instance-tailored gate passed, and the entry was never written; the operator had to ask why the
+// cause found was not fixed at the root). The text written to the register this turn carries
+//   invariant: <the rule that was broken, said without the instance's names - no path, no PR/issue number>
+//   replay:    <the detector over the history with its count> (a digit; "pending" is no replay)
+// Instance data `invariant_forbidden` (root-cause-patterns.json) adds its own proper nouns the invariant must not use.
+const INVARIANT = /^[ \t>*_-]*invariant:[ \t]*(\S[^\n]{11,})/imu;
+const REPLAY_LINE = /^[ \t>*_-]*replay:[ \t]*(?!pending)([^\n]*)/imu;
+// A count, not a date (Windows review of #491: "replay: 2026-11-11, not run yet" passed): dates and clock times are
+// removed before the digit test.
+// Second Windows review: any other digit passed too ("waits for the v2.1.5 pin", "after 3 sessions"), so a count is a
+// number with what it counts (hits, cases, turns, sites, flips) or "<n> of <m>".
+// Third read, the train-head review (2026-11-11): that list refused real replay lines of a brain's register
+// ("4 own drafts, 3 with the id", "12 transcripts read, 4 blocks", "60 echoes, 47 blocks"). The false passes were a
+// version ("v2.1.5") and a span ("after 3 sessions"), so those shapes are removed and any other "<n> <word>" counts.
+const COUNT = /\b\d+\s*(?:of\s+\d+|[a-zÀ-ɏ]{2,})/i;
+const NOT_A_COUNT = /\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2}:\d{2}\b|\bv?\d+(?:\.\d+)+\b|\b(?:after|in|for|since|within|every)\s+\d+\s+\w+/gi;
+const hasCount = (line) => COUNT.test(line.replace(NOT_A_COUNT, ''));
+// A PR or issue number names the instance; a core rule number ("Working Rule #10") is the rule itself (same review).
+const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|\b(?:PR|issue|pull)s?\s*#?\d+\b|\b[\w.-]+#\d+\b|(?:^|[\s(])#\d{3,}\b|\b\w+\.(cjs|js|py|sh|json|md)\b/iu;
+function newestEntry(all) {
+  const h = all.lastIndexOf('\n## ');
+  if (h >= 0) return all.slice(h + 1);
+  // no `## ` headings (same review, finding 3): the last blank-line-separated block, never the whole file
+  const blocks = all.trim().split(/\n[ \t]*\n/);
+  return blocks[blocks.length - 1] || '';
+}
+/** The `## ` entry on disk that holds an edit's text, or '' (no heading above it, or the text is not on disk). */
+function entryAround(file, piece) {
+  const all = '\n' + file; // a heading on the first line counts
+  const t = String(piece || '').trim();
+  const i = t ? all.indexOf(t) : -1;
+  const start = i < 0 ? -1 : all.lastIndexOf('\n## ', i);
+  if (start < 0) return '';
+  const end = all.indexOf('\n## ', i + t.length);
+  return all.slice(start + 1, end < 0 ? undefined : end);
+}
+function entryGaps(writeTexts, rel, forbidden, cwd) {
+  const mine = writeTexts.filter((w) => writesTo([w.p], rel));
+  let text = mine.map((w) => w.t).join('\n');
+  let disk = null;
+  try { disk = fs.readFileSync(path.join(cwd, rel), 'utf8'); } catch (e) { /* unreadable: the edit text alone */ }
+  // Written without a text in the transcript (a shell append): judge the newest entry on disk.
+  if (!text.trim()) text = disk ? newestEntry(disk) : '';
+  // An edit that completes an entry of an earlier turn (only its `replay:` line, say) is judged with the entry it
+  // lands in (Windows review of #491, finding 4).
+  else if (disk) text += '\n' + mine.map((w) => entryAround(disk, w.t)).join('\n');
+  const inv = INVARIANT.exec(text);
+  const gaps = [];
+  if (!inv) gaps.push('the register entry names no invariant:');
+  else if (INSTANCE_WORD.test(inv[1]) || forbidden.test(inv[1])) gaps.push('the invariant: names the instance (a path, a number, a proper noun) - say the rule, not the case');
+  const rep = REPLAY_LINE.exec(text);
+  if (!rep || !hasCount(rep[1])) gaps.push('the register entry has no replay: count (a date is no count)');
+  return gaps;
+}
+
 function loadPatterns(cwd, key, builtins, flags) {
   const patterns = [...builtins];
   try {
@@ -188,14 +246,24 @@ function readTurns(tp, tail) {
       if (!cur) continue;
       for (const b of msg.content) {
         if (b.type === 'text' && b.text) cur.texts.push(b.text);
-        if (b.type === 'tool_use' && b.input && typeof b.input.file_path === 'string') cur.writes.push(b.input.file_path);
+        if (b.type === 'tool_use' && b.input && typeof b.input.file_path === 'string') {
+          cur.writes.push(b.input.file_path);
+          (cur.writeTexts = cur.writeTexts || []).push({ p: b.input.file_path, t: String(b.input.new_string || b.input.content || '') });
+        }
       }
       continue;
     }
     if (msg.role !== 'user') continue;
     const t = promptText(msg);
     if (t === null) continue;
-    if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t) && cur) cur.fired = true; continue; }
+    if (HOOK_ECHO.test(t)) {
+      if (OWN_ECHO.test(t) && cur) {
+        cur.fired = true;
+        cur.fires = (cur.fires || 0) + 1;
+        if (cur.echoAt === undefined) cur.echoAt = cur.texts.length;   // texts written before the first own block
+      }
+      continue;
+    }
     if (isNotification(t) || isAgentOrigin(d) || isSkillExpansion(d) || HARNESS_NOTICE.test(t)) continue;
     cur = { prompt: t, when: d.timestamp || '', texts: [], writes: [], fired: false, queued: false };
     turns.push(cur);
@@ -212,7 +280,17 @@ function currentTurn(turns) {
   let k = turns.length - 1;
   while (k > 0 && turns[k].queued) k -= 1;
   const group = turns.slice(Math.max(0, k));
-  return { group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes), fired: group.some((t) => t.fired) };
+  // The texts written before the first own block of the turn: did that block ask for the cause, or for the carrier?
+  const preEcho = [];
+  for (const t of group) {
+    if (t.echoAt !== undefined) { preEcho.push(...t.texts.slice(0, t.echoAt)); break; }
+    preEcho.push(...t.texts);
+  }
+  return {
+    group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes),
+    fired: group.some((t) => t.fired), fires: group.reduce((n, t) => n + (t.fires || 0), 0), preEcho,
+    writeTexts: group.flatMap((t) => t.writeTexts || []),
+  };
 }
 
 // The first correction in the turn (word list, else the prompt classifier's record) that no later text answers with
@@ -310,31 +388,39 @@ function gate(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let turns;
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
-  const { group, texts, writes, fired } = currentTurn(turns);
-  if (!group.length || fired) return;
+  const { group, texts, writes, fired, fires, preEcho, writeTexts } = currentTurn(turns);
+  if (!group.length) return;
   // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
   // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
   // cause line owed), never close one the words opened. Every message of the turn is judged (currentTurn), a
   // cause line from that message on answers it.
   const causeRx = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
-  const hit = firstCorrection(group, cwd, input.transcript_path,
-    loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'), causeRx);
   const cause = causeIn(texts, causeRx);
+  // A block passes on its re-issue (frequency design) - but a block for a MISSING cause is no release of the carrier
+  // owed once the cause is named after it (2026-11-11, macOS instance: a correction turn was held for its cause, the
+  // re-issued reply named the cause, the turn ended without a mechanism; the operator had to ask a second time why the
+  // cause found was neither researched further nor fixed). So: at most two blocks per turn, the second only for the
+  // carrier of a cause that came after the first block.
+  if (fired && (fires >= 2 || causeIn(preEcho, causeRx) || !cause)) return;
+  const hit = fired ? null : firstCorrection(group, cwd, input.transcript_path,
+    loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'), causeRx);
   if (cause) {
     const reg = registerPath(cwd);
     const mech = writes.some(isMechanismWrite)
       || noCarrierAgreed(texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'), turns);
     const registered = writesTo(writes, reg);
-    if (mech && registered) return;
-    const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`].filter(Boolean).join(', ');
+    const gaps = registered ? entryGaps(writeTexts, reg, loadPatterns(cwd, 'invariant_forbidden', ['(?!)'], 'iu'), cwd) : [];
+    if (mech && registered && !gaps.length) return;
+    const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`, ...gaps].filter(Boolean).join(', ');
     process.stdout.write(JSON.stringify(declare({
       decision: 'block',
-      reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}. Fixing the instance (a re-post, a manual merge, a `
+      reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}${fired ? ' (the cause came after the first block; naming it does not release the carrier)' : ''}. Fixing the instance (a re-post, a manual merge, a `
         + 'ledger or memory note) leaves the tool that let it happen as it was. Before this turn ends: change the '
         + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
         + 'lives) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
         + 'operator-ok: "<their words>", found in their own messages - never on the agent\'s say-so; AND write the entry in '
-        + `${reg}: incident, cause, effect, carrier (or none + reason + recheck date), related cases, replay hits, `
+        + `${reg}: incident, cause, invariant (the broken rule without the instance's names), effect, carrier (or none + `
+        + 'reason + recheck date), related cases, replay (the invariant run over the history, with its count), '
         + 'found-by (operator | work | ci | <the check that found it>; when not a check: should-have: <the check that should have>).',
     }, input)));
     return;

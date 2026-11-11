@@ -57,7 +57,7 @@
       "monitor_only": true
     },
     {
-      "pattern": "(?:^|[\\n;&|(])\\s*(?=\\S)(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?=\\S)(?:\\S*/)?(?!(?:cat|less|head|tail|grep|rg|jq|wc|echo|printf|sed\\s+-n|awk|diff|cmp|git\\s+(?:-C\\s+\\S+\\s+)?(?:diff|log|show|status|blame|commit)|gh\\s+api(?![^\\n;&|]*\\s(?:-[XfF]|--(?:method|field|raw-field|input)\\b)))\\b)[^\\n;&|]*\\.claude-plugin/marketplace\\.json|>\\s*\\S*\\.claude-plugin/marketplace\\.json",
+      "pattern": "(?:^|[\\n;&|(])\\s*(?=\\S)(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?=\\S)(?:\\S*/)?(?!(?:cat|less|head|tail|grep|rg|jq|wc|ls|stat|echo|printf|sed\\s+-n|awk|diff|cmp|git\\s+(?:-C\\s+\\S+\\s+)?(?:diff|log|show|status|blame|commit)|gh\\s+api(?![^\\n;&|]*\\s(?:-X(?!\\s*GET\\b)|-[fF]|--method(?![\\s=]*GET\\b)|--(?:field|raw-field|input)\\b)))\\b)[^\\n;&|]*\\.claude-plugin/marketplace\\.json|>\\s*\\S*\\.claude-plugin/marketplace\\.json",
       "was": "moving a marketplace pin (any write to a `.claude-plugin/marketplace.json`: editor script, sed -i, cp, redirect) - a pin pulls a plugin update onto EVERY consumer of the marketplace, other parties included; ported 2026-10-28 from an instance rule that only one brain carried. Read-only access (cat, head, grep, jq, sed -n, awk, diff, cmp, git diff/log/show, `gh api` without a method or field flag - a GET of the remote file) passes",
       "instead": "A pin moves on its owner's word: the core channel on the operator's word, a suite's pin on the word of that suite's owner (the owner's own pin PR is that word). A green CI run, a measurement on both systems or a hold field that reads its own condition as met is no substitute - those are artefacts the AI wrote. After every move run the marketplace's own pin check and read its verdict.",
       "needs_operator_word": true
@@ -117,6 +117,11 @@
       "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+-C\\s+\\S+)?\\s+stash\\b(?!\\s+(?:list|show)\\b)",
       "was": "git stash - also in a worktree of your own: the stash lives in the repository that every worktree of it shares, so it is visible and poppable from each of them. Measured 2026-11-02 on the macOS instance: a stash for a negative control emptied the worktree's changes, and the control ran against the wrong test. shared-working-copy-guard covers stash only while a second session shares the same checkout.",
       "instead": "Run a negative control against the old state in a folder of its own: `git show origin/main:<path> > <scratch>/negctl/<file>` and the test there. Commit your own paths instead of stashing (Working Rule #12). `git stash list` / `git stash show` only read and pass."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:\\S*/)?(?:textutil\\b[^\\n]*-convert\\s+(?:docx|doc|rtf|odt)\\b|pandoc\\b[^\\n]*(?:-o|--output)[ =]\\S+\\.(?:docx|pptx|odt)\\b|(?:soffice|libreoffice)\\b[^\\n]*--convert-to\\s+(?:docx|xlsx|pptx|doc|xls|ppt)\\b)",
+      "was": "an office file (Word, Excel, PowerPoint) built by a generic converter (textutil, pandoc, soffice --convert-to). Measured 2026-11-11 on the macOS instance: textutil turned 10.5 pt into 12 pt and wrote no page size or margins, so a page that fit in the preview ran over in Word.",
+      "instead": "Build office files through the office skill of the harness (docx, xlsx, pptx — page size, margins and sizes set explicitly). Reading an office file into text or Markdown (`-convert txt`, `pandoc a.docx -o a.md`) stays free."
     }
   ]
 }

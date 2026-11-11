@@ -60,6 +60,11 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/question-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
+            "timeout": 60
           }
         ]
       },
@@ -98,7 +103,19 @@
           },
           {
             "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/content-review-gate.cjs\"",
+            "timeout": 30,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/release-freeze-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/start-report-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -205,6 +222,16 @@
             "async": true
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -272,6 +299,11 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/basics-hint.cjs\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/topic-sources.cjs\"",
             "timeout": 5
           }
         ]

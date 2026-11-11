@@ -253,6 +253,19 @@ case "${CI_WATCH_STUB:?}" in
   # conflicted, GitHub created no pull_request run). pr_noci_run: never appears = named UNKNOWN;
   # pr_noci_late: the run appears on the second read = green; pr_noci_nowf: the repo has no
   # active `CI` workflow = the old verdict (green).
+  # 2026-11-10 (agent-brain #478): a MERGEABLE PR whose CI run started four minutes late. pr_noci_mlate: the run
+  # appears on the fifth read (beyond REQUIRE_MAX) = GREEN within the grace; pr_noci_mstuck: never = UNKNOWN after it.
+  pr_noci_mlate|pr_noci_mstuck)
+                    f="${CI_WATCH_STATE:?}"
+                    if [[ "$*" == *actions/workflows* ]]; then echo 1
+                    elif [[ "$*" == *actions/runs*select*CI* ]]; then
+                      n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$f"
+                      if [[ "$CI_WATCH_STUB" == pr_noci_mlate && "$n" -ge 5 ]]; then echo 1; else echo 0; fi
+                    elif [[ "$*" == *actions/runs* ]]; then echo 0
+                    elif [[ "$*" == *headRefOid* ]]; then echo 3429ad2e44c66a393de8354938717ffafaf6d26b
+                    elif [[ "${1:-}" == pr && "${2:-}" == view ]]; then echo MERGEABLE
+                    elif [[ "${1:-}" == api ]]; then echo '[]'
+                    else echo '[{"bucket":"pass","name":"Analyze (python)"}]'; fi ;;
   pr_noci_run|pr_noci_late|pr_noci_nowf)
                     f="${CI_WATCH_STATE:?}"
                     if [[ "$*" == *actions/workflows* ]]; then
@@ -438,6 +451,12 @@ check "green checks, CI workflow never ran on the head = named unknown(2)" pr_no
 grep -q "has no run on head" "$TMP/out" && echo "  OK   missing-run verdict names the workflow and the head" \
   || { echo "  FAIL missing-run verdict unnamed"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
 check "CI workflow run appears on the second read = GREEN"            pr_noci_late 0 pr 12 30
+CI_WATCH_POLL=10 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-ml" \
+  check "mergeable PR, CI run starts after the fourth read = GREEN (grace)" pr_noci_mlate 0 pr 12 120
+CI_WATCH_POLL=10 CI_WATCH_REQUIRE_GRACE=20 CI_WATCH_FAKE_CLOCK="$TMP/fakeclock-ms" \
+  check "mergeable PR, CI run never starts = named unknown(2) after the grace" pr_noci_mstuck 2 pr 12 120
+grep -q "mergeable: MERGEABLE" "$TMP/out" && echo "  OK   the late-run verdict names the mergeable state, no conflict claim" \
+  || { echo "  FAIL late-run verdict"; sed 's/^/       /' "$TMP/out"; fails=$((fails+1)); }
 check "repo without an active CI workflow = old verdict, GREEN"       pr_noci_nowf 0 pr 12 30
 CI_WATCH_REQUIRE_WORKFLOW='' check "required workflow switched off = GREEN" pr_noci_run 0 pr 12 30
 check "ref (tag) success"               ref_green  0 ref v9.9.9
@@ -600,6 +619,10 @@ form "repo not owner/name names the form"  2 "is not <owner/repo>"   pr 33 --rep
 form "pr target not a number names it"     2 "is not a PR number"     pr owner/repo --repo
 form "timeout not a number names it"       2 "is not a number of seconds" pr owner/repo 12 soon
 form "valid form still watches (control)"  0 "CI-WATCH GREEN"          pr owner/repo 12 5
+# 2026-11-11 (macOS instance, three times in two weeks: 10-27, twice on 11-11): `pr <number> <owner/repo>` is
+# unambiguous - a number and an owner/name - so it is read in that order instead of dying on the usage
+form "swapped pr form is read (number first)" 0 "CI-WATCH GREEN"          pr 12 owner/repo 5
+form "swapped form names the order it read"   0 "read as: pr owner/repo 12" pr 12 owner/repo 5
 
 echo
 if (( fails )); then echo "ci-watch-test: $fails FAILURE(S)"; exit 1; fi

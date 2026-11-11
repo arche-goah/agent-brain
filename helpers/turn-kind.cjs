@@ -181,4 +181,12 @@ function isTurnEnd(d) {
   return Boolean(d && d.type === 'system' && d.subtype === 'turn_duration');
 }
 
-module.exports = { isTurnEnd, isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };
+/** The folder Claude Code keeps a project's transcripts in: the project path with EVERY non-alphanumeric character
+ * turned into '-' (measured on Windows 2026-08-03, memory-sync.cjs; again 2026-11-11, a path with a space). The one
+ * shared form - freshness-gate, memory-sync and root-cause-gate still carry their own copy of this rule. */
+function projectTranscriptDir(root) {
+  const os = require('os'), path = require('path');
+  return path.join(os.homedir(), '.claude', 'projects', path.resolve(root).replace(/[^A-Za-z0-9]/g, '-'));
+}
+
+module.exports = { projectTranscriptDir, isTurnEnd, isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };

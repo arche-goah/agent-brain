@@ -96,10 +96,14 @@ known:     scripts/brain-update.sh=7
 known:     scripts/carrier-audit-test.py=22
 known:     scripts/carrier-audit.py=13
 known:     scripts/caveman-armed.py=6
+known:     scripts/check-catalog-test.py=15
+known:     scripts/check-catalog.py=16
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
 known:     scripts/hook-coverage.py=25
+known:     scripts/ledger-fields-test.py=2
+known:     scripts/ledger_fields.py=1
 known:     scripts/lesson-carriers.py=5
 known:     scripts/live-doc-lint-test.py=2
 known:     scripts/live-doc-lint.py=3
@@ -150,6 +154,14 @@ of a file the script opens (settings, stop-checks, declarations, the core checko
 2026-10-09: the caveman check moved out of session-bootup.sh into caveman-armed.py
 (bootup 8 -> 4, new file 6). Same review: every join builds a path the script opens;
 it prints only plugin id, version and style name.
+2026-11-10, check-catalog.py and its fixture baselined after review: every join builds a path that is only
+opened, listed or written in a temp dir; the names the catalog prints come from regexes over hooks.json and
+session-bootup.sh (always `/`) or from `os.listdir` (a bare file name), never from a joined path.
+2026-11-11, the same two files after the review fix (commit/push section, deep skills read from the rule): the new
+joins open the hook scripts, ci.yml and rules/intelligence.md, or write the fake core in a temp dir; the names
+printed come from regexes over those files (always `/`), never from a joined path.
+2026-11-10, ledger_fields.py and its fixture baselined after review: the joins build the path of
+ledger-fields.json and of the JavaScript twin, which are only opened or handed to node; nothing prints a path.
 2026-10-09, always-loaded.py baselined after that review: the four joins build paths it
 only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
 2026-10-09, commitments.py baselined after that review: the five joins build the transcript
@@ -288,9 +300,11 @@ known:     scripts/test-collab-watch-follow.sh=1
 known:     scripts/test-collab-watch-plan.sh=1
 known:     scripts/test-commitment-carrier-gate.sh=1
 known:     scripts/test-conditional-order-gate.sh=1
+known:     scripts/test-content-review-gate.sh=1
 known:     scripts/test-dead-carriers.sh=1
 known:     scripts/test-decision-presentation-gate.sh=1
 known:     scripts/test-decision-readiness.sh=1
+known:     scripts/test-decision-register.sh=1
 known:     scripts/test-decision-review.sh=1
 known:     scripts/test-delivered-read-gate.sh=1
 known:     scripts/test-diagnose-gate.sh=1
@@ -323,6 +337,7 @@ known:     scripts/test-open-items-gate.sh=1
 known:     scripts/test-open-items-wake.sh=1
 known:     scripts/test-open-items.sh=1
 known:     scripts/test-order-list-reader.sh=1
+known:     scripts/test-own-open-gate.sh=1
 known:     scripts/test-parallel-sessions.sh=1
 known:     scripts/test-pattern-cases.sh=1
 known:     scripts/test-pr-ball.sh=1
@@ -350,6 +365,7 @@ known:     scripts/test-shared-memory-channels.sh=1
 known:     scripts/test-shared-memory-check.sh=1
 known:     scripts/test-shared-working-copy-guard.sh=1
 known:     scripts/test-skill-gate.sh=1
+known:     scripts/test-start-report-gate.sh=1
 known:     scripts/test-stop-checks.sh=1
 known:     scripts/test-stop-dispatcher.sh=5
 known:     scripts/test-stoppen-gate.sh=1
@@ -357,6 +373,7 @@ known:     scripts/test-suite-plugin-linkage.sh=3
 known:     scripts/test-template-drift.sh=1
 known:     scripts/test-text-leaks-notice.sh=1
 known:     scripts/test-time-gate.sh=1
+known:     scripts/test-topic-sources.sh=1
 known:     scripts/test-transcript-archive.sh=1
 known:     scripts/test-turn-kind.sh=1
 known:     scripts/test-verification-gate.sh=1
@@ -540,6 +557,14 @@ Green on Windows (Git Bash) the same day.
 as data — the brain dir (`CLAUDE_PROJECT_DIR`), the cwd, the fake gh (`MERGE_REQUEST_GATE_GH`) and the
 PR fixture (`PR_JSON`, read by the fake) — all through `native()`. An unresolvable fake gh makes the
 gate fail OPEN (PR unreadable = allow), so every must-block case would pass silently.
+2026-11-10, test-content-review-gate.sh baselined after review: the paths that cross into node as data —
+the cwd (the core-like repo), the transcript (`transcript_path`), the fake gh (`CONTENT_REVIEW_GATE_GH`),
+the PR fixture (`PR_JSON`) and every `--body-file` inside a probed command (`$N`, the native temp dir) —
+all go through `native()`. A body file the gate cannot read is an empty text, so a must-allow approval
+would block and a must-block create would block for the wrong reason; first run green on macOS.
+2026-11-10, test-own-open-gate.sh baselined after review: the transcript, the brain dir (`cwd`) and the gate path
+cross into node through `native()`; an unreadable transcript makes the gate allow, so every must-block case
+would pass silently without it.
 2026-11-06, test-release-freeze-gate.sh baselined after the same review: three paths cross into node as data — the
 brain dir (`CLAUDE_PROJECT_DIR`), the cwd field and the `git -C <dir>` inside the command — all through `native()`.
 It matters in the blocking direction: an unresolvable brain reads no scope and an unresolvable core names no repo,
@@ -548,6 +573,9 @@ and the gate fails OPEN on both, so every must-block case would pass silently.
 (`collab-watch-plan.py`) only as an ARGUMENT, which Git Bash converts; the state dir, the pid file and
 the events log are read and written by bash alone (`tail -F`, `cat`, `>>`). No temp path crosses into
 node or python as data.
+2026-11-11, test-decision-register.sh and test-topic-sources.sh baselined after the same review: the brain
+dir (`CLAUDE_PROJECT_DIR`), the model stub (`DECISION_REGISTER_BIN`) and the backfill transcript dir cross
+into node only through `native()`; the register and the source files are read back by bash (`grep`).
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
@@ -1089,6 +1117,7 @@ path on the current drive's root and fails; the hook swallows the read error and
 without the file — on macOS and Linux the same path is the native one, so the defect is invisible there.
 pattern:   publishedText\(
 paths:     --include=*.cjs helpers
+known:     helpers/content-review-gate.cjs=1
 known:     helpers/instance-key-gate.cjs=1
 known:     helpers/public-text-guard.cjs=1
 known:     helpers/published-text.cjs=3
@@ -1101,6 +1130,8 @@ note:      Measured twice on Windows: 2026-10-14 `instance-key-gate.cjs` blocked
 2026-10-25 `public-text-guard.cjs` let a `--body-file /c/...` holding a person's name through (unreadable =
 skipped). Both now translate with `nativePath`. The search lists the consumers of the handed-file list: a
 new consumer appears as a new site and is read for the translation.
+2026-11-10, content-review-gate.cjs read: its `postedText()` translates each handed file with
+`public-text-guard.cjs` `nativePath` before `readFileSync`, the same form as review-claim-gate.
 
 ## OS-21 — a fixture runs the session start in the home of the machine running it
 
@@ -1163,15 +1194,15 @@ behind a length test.
 
 shape: A
 
-invariant: Every `Path.read_text` / `Path.write_text` in the core's Python names its encoding
-(`encoding="utf-8"`, keyword or positional). Without it Python takes the locale codec: UTF-8 on macOS
+invariant: Every `Path.read_text` / `Path.write_text` and every text-mode builtin `open()` in the core's
+Python names its encoding (`encoding="utf-8"`, keyword or positional). Without it Python takes the locale codec: UTF-8 on macOS
 and Linux, cp1252 on Windows. A fixture that writes `·` or an em dash then hands a correct UTF-8
 reader the byte 0xB7 or 0x97, and the reader fails only on Windows.
 check:     scripts/text-encoding-test.py — AST scan of every git-tracked .py file (a call split over
 lines counts), with a negative control; runs in the CI fixture step like every scripts/*-test.py.
 mechanizable: tool — "names its encoding" is a property of one call, which may span lines; a line grep
 cannot state it.
-instances: 15
+instances: 38
 repeat:    yes — the stdout half is OS-9; the cp1252 finding of 2026-08-04 was the first of the shape
 status:    closed
 note:      Measured 2026-11-06 on the Windows instance (Windows 11, Python 3.14, Git Bash) at train head
@@ -1180,3 +1211,8 @@ encoding as cp1252 0xB7; `open-items.py` read it as UTF-8 and raised UnicodeDeco
 right, the fixture was not. The scan found 14 more unencoded calls (ledger-reconcile-test.py 7,
 repo-check-test.py 4, sync-after-merge-test.py 3); all pinned in the same commit, so the check starts
 with no baseline.
+2026-11-11, the Windows instance at the 2.1.5 train head cab57f4: `scripts/check-catalog-test.py` 9/18 — its
+fake core was written with `open(path, "w")`, which the scan did not cover (it read only `read_text`/`write_text`),
+so the lint passed. The scan now covers text-mode `open()` (binary mode and a computed mode pass); 23 calls in
+5 files pinned in the same commit (check-catalog-test.py 13, freshness-gate-test.py 4, transcript-recall-test.py 3,
+skills/firecrawl-web/fc.py 2, audit-audit-plan-check-test.py 1), no baseline.

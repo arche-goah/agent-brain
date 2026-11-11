@@ -21,7 +21,9 @@
     "INTERACTIVE. `help` (a project path or a URL) makes the word a Cmd/Ctrl+click link to a page explaining the mode.",
     "initial_mode (optional): the mode a session has before the operator's first word, \"interactive\" (default) or",
     "\"autonomous\" - set it only on the operator's standing word that every session runs autonomously until they ask",
-    "what is open; the words above still switch it."
+    "what is open; the words above still switch it.",
+    "continue_patterns (optional, read by autonomous-idle-gate): a bare continuation prompt in the operator's language",
+    "(\"please continue\" is built in) that does not end a release the way a new topic does, e.g. \"^\\\\s*mach weiter\\\\b\"."
   ],
   "initial_mode": "interactive",
   "on_patterns": [],

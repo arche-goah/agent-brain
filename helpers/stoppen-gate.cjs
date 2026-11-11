@@ -48,6 +48,15 @@
  * scripts/test-stoppen-gate.sh writes it as an instance file and is the reference
  * copy. scripts/english-only.py holds the layering: this file is no longer exempt,
  * so German that creeps back into the engine fails CI.
+ *
+ * Shape 4, OWN OPEN ITEMS (ported 2026-11-11 from an instance alpha, folded in here on the Windows review of
+ * #481 so the shapes share one reader, one cooldown and one first-turn exemption): a reply that ends on a bare
+ * list of the AI's own open items ("still open on my side: …") in the INTERACTIVE mode. Evaluated 2026-11-10
+ * over 44 real alpha blocks (17 right, 25 noise, 2 unclear); the port carries what the noise asked for: the
+ * autonomous mode is left to autonomous-idle-gate, a named end line (`BLOCKED:` / `POOL EMPTY:` / `LIST EMPTY:` /
+ * `HAND STEP:`) or a hand step passes, a hit negated before or after ("nothing open on my side", "my open
+ * items: none") is none, a waiter excuses only the item whose own sentence names its condition. Data keys
+ * `own_open_patterns`, `own_open_negation_patterns`; fixture scripts/test-own-open-gate.sh.
  */
 const fs = require('fs');
 const path = require('path');
@@ -76,6 +85,7 @@ const NO_TOOL_LINE = /^[ \t>*_-]*⚙️?\s*no question tool:/imu;
 // The reply says so in one line; autonomous-mode.cjs tells the gate which way to demand.
 const AUTONOMOUS_LINE = /^[ \t>*_-]*⚙️?\s*autonomous:/imu;
 const { autonomousMode } = require('./autonomous-mode.cjs');
+const { closeOpenEnds } = require('./close-stamp.cjs');
 const MAX_TOOL_BLOCKS = 2; // blocks per turn before a prose decision question is let through
 
 // Permission-handback questions. Deliberately NOT matched: bare "GO?" (release
@@ -134,7 +144,31 @@ const BUILTIN_HAND_STEP = [
   "\\b(your|operator'?s) hand\\b",
   '\\bhand step\\b',
   '\\bon your side:',
+  '\\b(for|with) you:',
+  '\\bnext step for you\\b',
+  '\\bneeded from you\\b',
 ];
+// Shape 4: OWN OPEN ITEMS (header). Narrowed on the Windows review of #481: "I owe" and "I still have to" matched
+// ordinary prose ("I owe the idea to your note", "I still have to say: …").
+const BUILTIN_OWN_OPEN = [
+  '\\b(still |yet )?open (on|from) my (side|end)\\b',
+  '\\bmy (own )?open (items|points|ends|list)\\b',
+  '\\b(on|from) my side,? (still )?(open|to do|pending)\\b',
+  '\\bi still need to\\b',
+  '\\bi still have to (?!say|admit|note|mention)\\b',
+  '\\bleft (for|with) me\\b',
+  '\\bnext (up )?for me\\b',
+  '\\bi still owe\\b',
+  '\\bopen for me\\b',
+  // self-deferral of an own item to the next train/pin (operator 2026-11-05: "nothing comes too late")
+  '\\b(is|comes|would be) too late for (the|this) (train|release|pin|tag|beta)\\b',
+  '\\b(goes|ships|lands) (only )?(with|in) the next (pin|train|release|tag|beta)\\b',
+];
+// A hit negated right after it ("my open items: none") or right before it ("nothing open on my side").
+const BUILTIN_OWN_NEGATION = ['^\\W{0,4}(none|nothing|no more|no open)\\b'];
+const NEGATION_BEFORE = /\b(nothing|no|none|not)\b[^.\n]{0,12}$/i;
+// The named turn ends autonomous-idle-gate reads.
+const NAMED_END = /^[ \t>*_-]*(?:\*\*)?(BLOCKED|POOL EMPTY|LIST EMPTY|HAND STEP)(?:\*\*)?:\s*\S/m;
 const BUILTIN_CONDITION = [
   '\\b(once|when|after|as soon as|until|if)\\b',
 ];
@@ -246,12 +280,13 @@ function analyze(transcriptPath) {
         if (OWN_ECHO.test(msg.content)) events.push({ gate: true });
         continue;
       }
-      if (!isNotification(msg.content) && !isAgentOrigin(d)) events.push({ boundary: true });
+      if (!isNotification(msg.content) && !isAgentOrigin(d)) events.push({ boundary: true, ts: d.timestamp || '' });
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
         if (b.type === 'text' && b.text) events.push({ text: b.text });
+        if (b.type === 'tool_use' && b.input && typeof b.input.command === 'string') events.push({ cmd: b.input.command });
       }
     }
   }
@@ -281,7 +316,8 @@ function analyze(transcriptPath) {
   // over one brain's transcripts: 232 turns asked early and closed in prose, 14 verdicts change.
   const asked = turn.findLastIndex((e) => e.ask) > turn.findLastIndex((e) => e.said);
   const gatesThisTurn = turn.filter((e) => e.gate).length;
-  return { finalText, quiet: turnsSinceGate < COOLDOWN_TURNS, waiting, asked, gatesThisTurn };
+  return { finalText, quiet: turnsSinceGate < COOLDOWN_TURNS, waiting, asked, gatesThisTurn,
+    since: (turn[0] && turn[0].ts) || '', calls: turn.filter((e) => e.cmd).map((e) => ({ cmd: e.cmd })) };
 }
 
 process.stdin.on('end', () => {
@@ -294,6 +330,7 @@ process.stdin.on('end', () => {
 
   let hits = [];
   let announced = [];
+  let own = [];
   let seen;
   const uniq = (found, into) => {
     for (const h of found || []) {
@@ -324,7 +361,7 @@ process.stdin.on('end', () => {
       // the command block"): a reply that carries one (a hand-step line or a command block) may hand
       // over ("let me know when it is plugged in"). A closing QUESTION still blocks — only hits without
       // a '?' (the handoff shape) fall away. Replayed 2026-10-29: ~7 of 14 changed verdicts were such
-      // hand-step closings. Data key `hand_step_patterns` (the same one own-open-gate reads).
+      // hand-step closings. Data key `hand_step_patterns` (the same list shape 4 reads).
       const handStep = loadPatterns(cwd, 'hand_step_patterns', BUILTIN_HAND_STEP);
       if (handStep.test(stripQuoted(seen.finalText)) || /```/.test(seen.finalText)) {
         const kept = hits.filter((h) => h.includes('?'));
@@ -349,6 +386,7 @@ process.stdin.on('end', () => {
         uniq([m[0]], announced);
       }
     }
+    if (!hits.length && !announced.length && !ownBlocked) own = ownOpen(seen, input, cwd);
   } catch (e) {
     return allow(); // transcript unreadable — never block because of that
   }
@@ -366,6 +404,19 @@ process.stdin.on('end', () => {
     }, input)));
     process.exit(0);
   }
+  if (own.length && !firstTurn(input)) {
+    console.log(JSON.stringify(declare({
+      decision: 'block',
+      reason:
+        'STOPPEN-GATE (own open items: the reply ends on your own open items while nothing is asked, handed over or armed).\n' +
+        `Own items named: ${own.slice(0, 3).join(' · ')}\n` +
+        'Reversible own work does not wait for a turn end: DO the items now (tool calls in this turn), or arm the ' +
+        'waiter they depend on, or name the blocker (`BLOCKED: <item> — <whose word, which resource>`). If a hand ' +
+        'step for the operator or a question through the question tool is what ends this turn, say so and re-issue — ' +
+        'the re-issue passes.',
+    }, input)));
+    process.exit(0);
+  }
   if (hits.length === 0) return allow();
   // The first reply after a session start ASKS on purpose (operator order 2026-10-07):
   // "n items I can handle — shall I?" is the one OK the agent must get before it starts on
@@ -374,7 +425,7 @@ process.stdin.on('end', () => {
   // rule being followed. Measured 2026-10-09: this gate blocked exactly that question.
   try {
     const oi = require('./open-items-gate.cjs');
-    if (oi.firstTurnOwnsQuestion(input.transcript_path)) return allow();
+    if (firstTurn(input)) return allow();
     const norm = (s) => s.toLowerCase().replace(/[-_]+/g, ' ');
     const tailText = norm(stripQuoted(analyze(input.transcript_path).finalText).slice(-TAIL_CHARS));
     if (oi.mandatedTopics(input.transcript_path).some((t) => tailText.includes(norm(t)))) return allow();
@@ -426,5 +477,35 @@ process.stdin.on('end', () => {
   }, input)));
   process.exit(0);
 });
+
+/** The first reply after a session start owns its "n items I can handle — shall I?" (open-items-gate). */
+function firstTurn(input) {
+  try { return require('./open-items-gate.cjs').firstTurnOwnsQuestion(input.transcript_path); } catch (e) { return false; }
+}
+
+/** Shape 4 (header): the own-open phrases of the final text that end the turn, [] when a named end covers them. */
+function ownOpen(seen, input, cwd) {
+  if (seen.asked || NO_TOOL_LINE.test(seen.finalText) || NAMED_END.test(seen.finalText)) return [];
+  // a session close ends the turn: its open items stand as open ends in the session log (close stamp of THIS turn)
+  if (closeOpenEnds(cwd, { sessionId: input.session_id, since: seen.since, calls: seen.calls }) !== null) return [];
+  try { if (autonomousMode(input.transcript_path, cwd)) return []; } catch (e) { /* unreadable: judge */ }
+  const plain = stripQuoted(seen.finalText);
+  if (loadPatterns(cwd, 'hand_step_patterns', BUILTIN_HAND_STEP).test(plain) || /```/.test(seen.finalText)) return [];
+  const rx = loadPatterns(cwd, 'own_open_patterns', BUILTIN_OWN_OPEN);
+  const cond = loadPatterns(cwd, 'announce_condition_patterns', BUILTIN_CONDITION);
+  const neg = loadPatterns(cwd, 'own_open_negation_patterns', BUILTIN_OWN_NEGATION);
+  const out = [];
+  // the WHOLE reply, not its tail: an own item in point 1 of a long status stood ~1000 characters before the end
+  for (const m of plain.matchAll(rx)) {
+    cond.lastIndex = 0;
+    if (seen.waiting && cond.test(sentenceAt(plain, m.index))) continue;
+    neg.lastIndex = 0;
+    if (neg.test(plain.slice(m.index + m[0].length, m.index + m[0].length + 24))) continue;
+    if (NEGATION_BEFORE.test(plain.slice(Math.max(0, m.index - 16), m.index))) continue;
+    const norm = m[0].trim().replace(/\s+/g, ' ');
+    if (!out.includes(norm)) out.push(norm);
+  }
+  return out;
+}
 
 process.stdin.resume();
