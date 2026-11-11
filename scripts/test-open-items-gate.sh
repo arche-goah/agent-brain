@@ -376,6 +376,12 @@ f="$T/23e.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; us
 check "later turn: only the date of an ours request in another id (no mention)" "$f" allow "$EN"
 f="$T/23f.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "The fixtures request of 2026-09-13 waits on peer-d."; } > "$f"
 check "later turn: date plus the request's topic word is a mention (control)" "$f" block "$EN"
+# 2026-11-11 (Windows instance, autonomous run): the operator's last prompt was hours old; an earlier reply's line
+# kept every later reply blocked. Only the reply since the newest user record (event, echo, prompt) is judged.
+f="$T/23g.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "work through it on your own"; asst "Only #61, it is waiting on the owner."; user "<task-notification>CI green</task-notification>"; asst "$CLOSE_OURS"; } > "$f"
+check "an old reply's line no longer holds a newer reply after a watcher event" "$f" allow "$EN"
+f="$T/23h.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "work through it on your own"; asst "Done with the rest."; user "<task-notification>CI green</task-notification>"; asst "Only #61, it is waiting on the owner."; } > "$f"
+check "the newest reply putting an ours item with others still blocks (control)" "$f" block "$EN"
 WS="$T/cwd-seen"; mkdir -p "$WS/.claude-state"
 printf '%s\n' '{"items":{"example-market#61":{"first":"2026-10-07","sessions":[],"wait":"waiting on someone: our review is in"}}}' > "$WS/.claude-state/open-items-seen.json"
 f="$T/23e.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_BAD"; } > "$f"
