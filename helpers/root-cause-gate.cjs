@@ -127,19 +127,31 @@ const writesTo = (writes, rel) => writes.some((w) => String(w).replace(/\\/g, '/
 //   replay:    <the detector over the history with its count> (a digit; "pending" is no replay)
 // Instance data `invariant_forbidden` (root-cause-patterns.json) adds its own proper nouns the invariant must not use.
 const INVARIANT = /^[ \t>*_-]*invariant:[ \t]*(\S[^\n]{11,})/imu;
-const REPLAY = /^[ \t>*_-]*replay:[ \t]*(?!pending)[^\n]*\d/imu;
-const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|#\d+\b|\b\w+\.(cjs|js|py|sh|json|md)\b/u;
+const REPLAY_LINE = /^[ \t>*_-]*replay:[ \t]*(?!pending)([^\n]*)/imu;
+// A count, not a date (Windows review of #491: "replay: 2026-11-11, not run yet" passed): dates and clock times are
+// removed before the digit test.
+const hasCount = (line) => /\d/.test(line.replace(/\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2}:\d{2}\b/g, ''));
+// A PR or issue number names the instance; a core rule number ("Working Rule #10") is the rule itself (same review).
+const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|\b(?:PR|issue|pull)s?\s*#?\d+\b|\b[\w.-]+#\d+\b|(?:^|[\s(])#\d{3,}\b|\b\w+\.(cjs|js|py|sh|json|md)\b/iu;
+function newestEntry(all) {
+  const h = all.lastIndexOf('\n## ');
+  if (h >= 0) return all.slice(h + 1);
+  // no `## ` headings (same review, finding 3): the last blank-line-separated block, never the whole file
+  const blocks = all.trim().split(/\n[ \t]*\n/);
+  return blocks[blocks.length - 1] || '';
+}
 function entryGaps(writeTexts, rel, forbidden, cwd) {
   let text = writeTexts.filter((w) => writesTo([w.p], rel)).map((w) => w.t).join('\n');
   // Written without a text in the transcript (a shell append): judge the newest entry on disk.
   if (!text.trim()) {
-    try { const all = fs.readFileSync(path.join(cwd, rel), 'utf8'); text = all.slice(all.lastIndexOf('\n## ') + 1); } catch (e) { /* unreadable: gaps below */ }
+    try { text = newestEntry(fs.readFileSync(path.join(cwd, rel), 'utf8')); } catch (e) { /* unreadable: gaps below */ }
   }
   const inv = INVARIANT.exec(text);
   const gaps = [];
   if (!inv) gaps.push('the register entry names no invariant:');
   else if (INSTANCE_WORD.test(inv[1]) || forbidden.test(inv[1])) gaps.push('the invariant: names the instance (a path, a number, a proper noun) - say the rule, not the case');
-  if (!REPLAY.test(text)) gaps.push('the register entry has no replay: count');
+  const rep = REPLAY_LINE.exec(text);
+  if (!rep || !hasCount(rep[1])) gaps.push('the register entry has no replay: count (a date is no count)');
   return gaps;
 }
 

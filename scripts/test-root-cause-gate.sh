@@ -132,6 +132,13 @@ check "register entry without invariant" "$T/t30.jsonl" block "$CWD"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
 replay: pending - later"; } > "$T/t31.jsonl"
 check "register entry with replay pending" "$T/t31.jsonl" block "$CWD"
+# Windows review of #491: a date is no count; a core rule number is no instance name
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: 2026-11-11, not run yet"; } > "$T/t31b.jsonl"
+check "register entry whose replay is only a date" "$T/t31b.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a promise binds only with a mechanism (Working Rule #10)
+replay: 6 turns"; } > "$T/t31c.jsonl"
+check "invariant citing a core rule number" "$T/t31c.jsonl" allow "$CWD"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: the shopping overview must list docs/business/list.md
 replay: 4 hits"; } > "$T/t32.jsonl"
 check "invariant names a path (the instance, not the rule)" "$T/t32.jsonl" block "$CWD"
@@ -151,6 +158,9 @@ mkdir -p "$T/disk/docs/maintenance"; printf '## old\ninvariant: an older rule sa
 check "entry on disk: the newest one lacks the invariant (an older one has it)" "$T/t36.jsonl" block "$T/disk"
 printf '## new\ninvariant: a summary reads every source before it counts\nreplay: 5 turns\n' >> "$T/disk/$REG"
 check "entry on disk: the newest one is complete" "$T/t36.jsonl" allow "$T/disk"
+# a register without `## ` headings: the last block is judged, not the whole file (Windows review of #491, finding 3)
+mkdir -p "$T/disk2/docs/maintenance"; printf 'invariant: an older rule said once\nreplay: 2 hits\n\ncause: x\n' > "$T/disk2/$REG"
+check "entry on disk without headings: the last block lacks the invariant" "$T/t36.jsonl" block "$T/disk2"
 
 # --- other languages only as instance data (the German lines here are DATA an instance carries)
 DE="$T/cwd-de"; mkdir -p "$DE/.claude/rules"

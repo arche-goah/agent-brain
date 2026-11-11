@@ -11,3 +11,7 @@
   the register in that turn needs `invariant:` (no path, no PR number, no instance proper noun from the new instance
   data `invariant_forbidden`) and `replay:` with a count (`pending` refused). Template `templates/carrier-register.md`
   gains the field. Fixture `scripts/test-root-cause-gate.sh`: ten new cases; the six blocking ones are red against main.
+  After the Windows content review: a date or clock time is no replay count (`replay: 2026-11-11, not run yet` passed),
+  a core rule number ("Working Rule #10") is no instance name (only a PR/issue number or a bare 3-digit `#nnn` is), and a
+  register without `## ` headings is judged by its last blank-line block, not the whole file. Three more fixture cases;
+  the date and rule-number ones were red against the previous head.
