@@ -21,7 +21,10 @@
 const fs = require('fs');
 const path = require('path');
 
+const { isNotification, isPeerMessage } = require('./turn-kind.cjs');
+
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+const PEER = /^\s*<cross-session-message\b/;
 const TEXT = /\.(md|txt|json|jsonl|csv|ya?ml)$/i;
 
 function walk(rel, out, depth = 0) {
@@ -59,7 +62,12 @@ if (require.main === module) {
   process.stdin.on('end', () => {
     try {
       const d = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude', 'rules', 'topic-sources.json'), 'utf8'));
-      const out = render(JSON.parse(buf).prompt || '', d);
+      const input = JSON.parse(buf);
+      const prompt = input.prompt || '';
+      // a notification, a Stop-hook echo or another session's message is no operator prompt (measured
+      // 2026-11-11, macOS instance: the alpha fired three times on peer messages naming the topic)
+      if (isNotification(prompt) || isPeerMessage(input) || PEER.test(prompt)) process.exit(0);
+      const out = render(prompt, d);
       if (out) console.log(out);
     } catch (e) { /* no data, no output */ }
     process.exit(0);

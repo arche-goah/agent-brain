@@ -4,7 +4,7 @@
 # The incident (2026-11-11): a shopping total was built from one project's files; the overview in the
 # same folder was never opened. Must: a prompt that hits a topic lists EVERY source file of it (files
 # and folders, recursive, text only, no dot files) and names the decision register; a prompt that hits
-# no topic, missing data or bad JSON stays silent; two topics hit both.
+# no topic, missing data, bad JSON, a peer message, a notification or a Stop-hook echo stays silent; two topics hit both.
 # Usage: bash scripts/test-topic-sources.sh (exit 0 = pass)
 set -u
 T="$(mktemp -d)"
@@ -32,6 +32,14 @@ out="$(say 'shopping and the router today')"
 case "$out" in *'topic="shopping"'*'topic="network"'*) ok "two topics hit both";; *) bad "two topics: $out";; esac
 out="$(say 'what time is it')"
 [ -z "$out" ] && ok "no topic, silent" || bad "no-topic prompt touched: $out"
+out="$(say '<cross-session-message from="peer">the shopping session asks about the net total</cross-session-message>')"
+[ -z "$out" ] && ok "peer message, silent" || bad "peer message touched: $out"
+out="$(say '<task-notification><summary>shopping list updated</summary></task-notification>')"
+[ -z "$out" ] && ok "task notification, silent" || bad "notification touched: $out"
+out="$(say 'Stop hook feedback: shopping decision not carried')"
+[ -z "$out" ] && ok "stop-hook echo, silent" || bad "stop echo touched: $out"
+out="$(printf '{"prompt":"shopping net total?","origin":{"kind":"peer"}}' | node "$H")"
+[ -z "$out" ] && ok "peer origin, silent" || bad "peer origin touched: $out"
 echo 'not json' > "$P/.claude/rules/topic-sources.json"
 out="$(say 'shopping')"
 [ -z "$out" ] && ok "bad data, silent" || bad "bad data touched: $out"
