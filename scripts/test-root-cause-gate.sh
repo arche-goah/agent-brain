@@ -109,6 +109,15 @@ check "second stop in the same turn, echo by label" "$T/t12.jsonl" allow "$CWD"
 CLASS — gate.cjs changed"; asst "ok"; } > "$T/t13.jsonl"
 check "another check's line is not its own echo" "$T/t13.jsonl" block "$CWD"
 XP=''
+# --- 2026-11-11: held for a MISSING cause, the re-issued reply names the cause - the carrier is still owed (one more block)
+{ cat "$T/t1.jsonl"; user "Stop hook feedback: ROOT-CAUSE-GATE: reads as a correction"; asst "Cause: the summary read a subset of the shopping folder (overview file never opened)."; } > "$T/t14.jsonl"
+check "cause named only after the cause block, no mechanism (the 2026-11-11 class)" "$T/t14.jsonl" block "$CWD"
+{ cat "$T/t14.jsonl"; user "Stop hook feedback: ROOT-CAUSE-GATE: names a cause - no mechanism written"; asst "Building it next."; } > "$T/t15.jsonl"
+check "second block already given in the turn (at most two)" "$T/t15.jsonl" allow "$CWD"
+{ cat "$T/t1.jsonl"; user "Stop hook feedback: ROOT-CAUSE-GATE: reads as a correction"; asst "Cause: the summary read a subset of the shopping folder."; write "scripts/sources.cjs"; write "$CWD/$REG"; } > "$T/t16.jsonl"
+check "cause after the cause block, with mechanism and register" "$T/t16.jsonl" allow "$CWD"
+{ user "go"; asst "Cause: the post tool does not check the audience."; user "Stop hook feedback: ROOT-CAUSE-GATE: names a cause - no mechanism written"; asst "ok"; } > "$T/t17.jsonl"
+check "the first block was already the carrier block (cause before it): re-issue passes" "$T/t17.jsonl" allow "$CWD"
 
 # --- other languages only as instance data (the German lines here are DATA an instance carries)
 DE="$T/cwd-de"; mkdir -p "$DE/.claude/rules"

@@ -31,7 +31,9 @@
  * Two tiers (operator 2026-10-26: "a lighter variant that runs along, and a heavy workload
  * that runs regularly and targeted, like the coherence scan"):
  *   - Stop (this file through stop-dispatcher.cjs): once per turn, re-issue passes, a
- *     notification turn is not an operator turn, quotes and code stripped.
+ *     notification turn is not an operator turn, quotes and code stripped. One exception
+ *     (2026-11-11): a turn held for a MISSING cause whose re-issued reply names the cause is
+ *     held once more for that cause's carrier - at most two blocks per turn.
  *   - `--review [N] [--since YYYY-MM-DD]`: the same detector replayed over this project's
  *     transcripts (newest N, default 40) — every correction turn, whether its reply named a
  *     cause, whether a mechanism file (helpers/, scripts/, hooks/, rules/, skills/,
@@ -195,7 +197,14 @@ function readTurns(tp, tail) {
     if (msg.role !== 'user') continue;
     const t = promptText(msg);
     if (t === null) continue;
-    if (HOOK_ECHO.test(t)) { if (OWN_ECHO.test(t) && cur) cur.fired = true; continue; }
+    if (HOOK_ECHO.test(t)) {
+      if (OWN_ECHO.test(t) && cur) {
+        cur.fired = true;
+        cur.fires = (cur.fires || 0) + 1;
+        if (cur.echoAt === undefined) cur.echoAt = cur.texts.length;   // texts written before the first own block
+      }
+      continue;
+    }
     if (isNotification(t) || isAgentOrigin(d) || isSkillExpansion(d) || HARNESS_NOTICE.test(t)) continue;
     cur = { prompt: t, when: d.timestamp || '', texts: [], writes: [], fired: false, queued: false };
     turns.push(cur);
@@ -212,7 +221,16 @@ function currentTurn(turns) {
   let k = turns.length - 1;
   while (k > 0 && turns[k].queued) k -= 1;
   const group = turns.slice(Math.max(0, k));
-  return { group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes), fired: group.some((t) => t.fired) };
+  // The texts written before the first own block of the turn: did that block ask for the cause, or for the carrier?
+  const preEcho = [];
+  for (const t of group) {
+    if (t.echoAt !== undefined) { preEcho.push(...t.texts.slice(0, t.echoAt)); break; }
+    preEcho.push(...t.texts);
+  }
+  return {
+    group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes),
+    fired: group.some((t) => t.fired), fires: group.reduce((n, t) => n + (t.fires || 0), 0), preEcho,
+  };
 }
 
 // The first correction in the turn (word list, else the prompt classifier's record) that no later text answers with
@@ -310,16 +328,22 @@ function gate(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let turns;
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
-  const { group, texts, writes, fired } = currentTurn(turns);
-  if (!group.length || fired) return;
+  const { group, texts, writes, fired, fires, preEcho } = currentTurn(turns);
+  if (!group.length) return;
   // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
   // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
   // cause line owed), never close one the words opened. Every message of the turn is judged (currentTurn), a
   // cause line from that message on answers it.
   const causeRx = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
-  const hit = firstCorrection(group, cwd, input.transcript_path,
-    loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'), causeRx);
   const cause = causeIn(texts, causeRx);
+  // A block passes on its re-issue (frequency design) - but a block for a MISSING cause is no release of the carrier
+  // owed once the cause is named after it (2026-11-11, macOS instance: a correction turn was held for its cause, the
+  // re-issued reply named the cause, the turn ended without a mechanism; the operator had to ask a second time why the
+  // cause found was neither researched further nor fixed). So: at most two blocks per turn, the second only for the
+  // carrier of a cause that came after the first block.
+  if (fired && (fires >= 2 || causeIn(preEcho, causeRx) || !cause)) return;
+  const hit = fired ? null : firstCorrection(group, cwd, input.transcript_path,
+    loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'), causeRx);
   if (cause) {
     const reg = registerPath(cwd);
     const mech = writes.some(isMechanismWrite)
@@ -329,7 +353,7 @@ function gate(input) {
     const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`].filter(Boolean).join(', ');
     process.stdout.write(JSON.stringify(declare({
       decision: 'block',
-      reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}. Fixing the instance (a re-post, a manual merge, a `
+      reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}${fired ? ' (the cause came after the first block; naming it does not release the carrier)' : ''}. Fixing the instance (a re-post, a manual merge, a `
         + 'ledger or memory note) leaves the tool that let it happen as it was. Before this turn ends: change the '
         + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
         + 'lives) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
