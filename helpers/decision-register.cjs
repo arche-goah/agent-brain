@@ -159,7 +159,7 @@ function match(question, entries, cfg, useModel = true) {
 }
 
 // ---- hooks ----------------------------------------------------------------------------------
-const qhash = (s, q) => crypto.createHash('sha1').update(String(s) + '\n' + q).digest('hex').slice(0, 12);
+const qhash = (s, q) => crypto.createHash('sha256').update(String(s) + '\n' + q).digest('hex').slice(0, 12);
 function denied(cfg) { try { return JSON.parse(fs.readFileSync(cfg.state, 'utf8')); } catch (e) { return {}; } }
 
 function post(input, cfg) {
