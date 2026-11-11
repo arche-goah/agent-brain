@@ -383,8 +383,14 @@ function relabelled(t, cwd, sessionId) {
   // matcher read "2D" in "the worlds 2D, 3D" as a request two days old (same measurement).
   // A date alone names nothing: measured 2026-11-11 on the Windows instance, a BLOCKED line carrying a ledger id
   // `…-2026-11-11` was read as a mention of an unrelated request of that day. The date counts together with one of
-  // the item's own topic words (generic ones left out) in the same line.
-  const topical = (it, l) => { const low = l.toLowerCase(); return (it.words || []).some((w) => !generic.has(w) && low.includes(w)); };
+  // the item's own topic words (generic ones left out) in the same line. An item without topic words (a past session,
+  // named by its date by design) keeps the date alone as its name (macOS review of #495).
+  const topical = (it, l) => {
+    const w = (it.words || []).filter((x) => !generic.has(x));
+    if (!w.length) return true;
+    const low = l.toLowerCase();
+    return w.some((x) => low.includes(x));
+  };
   const strict = (it, l) => (it.num ? new RegExp(`#${it.num}(?!\\d)`).test(l)
     : (it.date && l.includes(it.date.join('-')) && topical(it, l)) || (it.base && l.includes(it.base)));
   const bad = [];
