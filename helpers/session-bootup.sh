@@ -809,20 +809,27 @@ for e in entries:
 for e in done:
     title = f" ({e['title'][:60]})" if e["title"] else ""
     print(f"deadline {e['date']}{title}: DONE by its check — delete the entry (docs/business/deadlines.md)")
-best = None
-for e in entries:
-    if e in done:
-        continue
-    if best is None or e["date"] < best["date"]:
-        best = e
-if best:
-    days = (best["date"] - today).days
-    title = f" ({best['title'][:60]})" if best["title"] else ""
+# Every overdue entry gets its own line: reporting only the earliest one kept a second overdue
+# entry silent for days (2026-11-11). After them, the next entry that is not overdue yet.
+open_ = sorted((e for e in entries if e not in done), key=lambda e: e["date"])
+# Every entry inside the 7-day band gets its line too (Windows review: a second one in the band stayed silent).
+# Capped, so a stale file cannot flood the hook output that is cut silently past its limit.
+CAP = 8
+loud = [e for e in open_ if (e["date"] - today).days < 7]
+for e in loud[:CAP]:
+    days = (e["date"] - today).days
+    title = f" ({e['title'][:60]})" if e["title"] else ""
     if days < 0:
-        print(f"!! deadline OVERDUE by {-days} d: {best['date']}{title} — docs/business/deadlines.md")
-    elif days < 7:
-        print(f"!! deadline {best['date']} in {days} d{title} — docs/business/deadlines.md")
+        print(f"!! deadline OVERDUE by {-days} d: {e['date']}{title} — docs/business/deadlines.md")
     else:
+        print(f"!! deadline {e['date']} in {days} d{title} — docs/business/deadlines.md")
+if len(loud) > CAP:
+    print(f"!! deadline: {len(loud) - CAP} more overdue or due within 7 d — docs/business/deadlines.md")
+if not any((e["date"] - today).days >= 0 for e in loud):
+    best = next((e for e in open_ if (e["date"] - today).days >= 7), None)
+    if best:
+        days = (best["date"] - today).days
+        title = f" ({best['title'][:60]})" if best["title"] else ""
         print(f"deadlines: next {best['date']} in {days} d{title} — docs/business/deadlines.md")
 PY
 )
