@@ -371,6 +371,21 @@ f="$T/23c.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; us
 check "later turn: the same item said as ours" "$f" allow "$EN"
 f="$T/23d.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "#112 is waiting on its owner."; } > "$f"
 check "later turn: a parked item said to wait (not ours, control)" "$f" allow "$EN"
+# 2026-11-11 (Windows instance): a ledger id carrying the date of an open request is no mention of that request.
+f="$T/23d2.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "BLOCKED: wait-records-2026-09-13 — waits on the operator's word in the conversation"; } > "$f"
+check "later turn: only the date of an ours request in another id (no mention)" "$f" allow "$EN"
+f="$T/23d3.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "The fixtures request of 2026-09-13 waits on peer-d."; } > "$f"
+check "later turn: date plus the request's topic word is a mention (control)" "$f" block "$EN"
+# 2026-11-11 (Windows instance, autonomous run): the operator's last prompt was hours old; an earlier reply's line
+# kept every later reply blocked. Only the reply since the newest user record (event, echo, prompt) is judged.
+f="$T/23d4.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "work through it on your own"; asst "Only #61, it is waiting on the owner."; user "<task-notification>CI green</task-notification>"; asst "$CLOSE_OURS"; } > "$f"
+check "an old reply's line no longer holds a newer reply after a watcher event" "$f" allow "$EN"
+f="$T/23d5.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "work through it on your own"; asst "Done with the rest."; user "<task-notification>CI green</task-notification>"; asst "Only #61, it is waiting on the owner."; } > "$f"
+check "the newest reply putting an ours item with others still blocks (control)" "$f" block "$EN"
+# macOS review of #495: an item without topic words (a past session) keeps its date alone as its name.
+SBLOCK="=== BRAIN BOOTUP CHECK ===${NL}open for us: 1 — ai 1 · human 0 · unclassified 0${NL}- [session|ai] 2026-09-13 session/abc — no close — first report${NL}=== END BOOTUP ==="
+f="$T/23d6.jsonl"; { boot_ok startup "$SBLOCK"; user "stand?"; asst "1 item I can handle myself (the session of 2026-09-13 without a close) — shall I go ahead?"; user "and now?"; asst "The session of 2026-09-13 waits on peer-d."; } > "$f"
+check "a session item named by its date alone still counts as named (control)" "$f" block "$EN"
 WS="$T/cwd-seen"; mkdir -p "$WS/.claude-state"
 printf '%s\n' '{"items":{"example-market#61":{"first":"2026-10-07","sessions":[],"wait":"waiting on someone: our review is in"}}}' > "$WS/.claude-state/open-items-seen.json"
 f="$T/23e.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "$CLOSE_BAD"; } > "$f"

@@ -139,6 +139,10 @@ function readTurn(tp) {
   let total = 0;
   let reply = [];
   let last = []; // the running turn: every reply since the newest operator prompt
+  // The reply being judged now: text since the newest user record of any kind. Measured 2026-11-11 on the Windows
+  // instance: in an autonomous run the newest operator prompt was hours old, so a line from an earlier reply kept the
+  // relabel check blocking every later reply, however it was worded - a loop the agent could not end.
+  let newest = [];
   let lastCmds = []; // ...and its shell commands (is it the session-close turn?)
   let lastPrompt = '';
   let since = ''; // when the running turn began (the close stamp must be no older)
@@ -153,7 +157,7 @@ function readTurn(tp) {
       if (att.type === 'hook_cancelled') boot = { kind: 'cancelled', source, ms: att.durationMs };
       else if (att.type === 'hook_success') boot = { kind: 'ok', source, text: persistedText(String(att.content || att.stdout || '')) };
       else continue;
-      prompts = 0; reply = []; first = ''; last = []; lastCmds = []; ended = false;
+      prompts = 0; reply = []; first = ''; last = []; newest = []; lastCmds = []; ended = false;
       continue;
     }
     // The first turn is over once the harness wrote its end (every Stop hook let it through). Later
@@ -169,12 +173,13 @@ function readTurn(tp) {
     if (msg.role === 'user') {
       if (isSkillExpansion(d) || isAgentOrigin(d)) continue;   // a loaded skill's text or another agent's report is no second prompt
       const t = promptText(msg);
+      if (t !== null) newest = [];   // any user text - a prompt, a watcher event, a hook echo - opens a new reply
       if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; last = []; lastCmds = []; lastPrompt = t; since = d.timestamp || ''; if (prompts === 1) first = t; }
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
       for (const b of msg.content) {
-        if (b.type === 'text' && b.text) last.push(b.text);
+        if (b.type === 'text' && b.text) { last.push(b.text); newest.push(b.text); }
         else if (b.type === 'tool_use' && b.input && typeof b.input.command === 'string') lastCmds.push(b.input.command);
       }
     }
@@ -189,7 +194,7 @@ function readTurn(tp) {
       }
     }
   }
-  return { boot, prompts, total, ended, first, reply: reply.join('\n'), last: last.join('\n'), lastCmds, lastPrompt, since };
+  return { boot, prompts, total, ended, first, reply: reply.join('\n'), last: last.join('\n'), newest: newest.join('\n'), lastCmds, lastPrompt, since };
 }
 
 /**
@@ -379,11 +384,21 @@ function relabelled(t, cwd, sessionId) {
   const oursRx = patterns(cwd, 'ours');
   // Blocking direction: named only by `#n`, a date or the exact file — the lenient first-reply
   // matcher read "2D" in "the worlds 2D, 3D" as a request two days old (same measurement).
+  // A date alone names nothing: measured 2026-11-11 on the Windows instance, a BLOCKED line carrying a ledger id
+  // `…-2026-11-11` was read as a mention of an unrelated request of that day. The date counts together with one of
+  // the item's own topic words (generic ones left out) in the same line. An item without topic words (a past session,
+  // named by its date by design) keeps the date alone as its name (macOS review of #495).
+  const topical = (it, l) => {
+    const w = (it.words || []).filter((x) => !generic.has(x));
+    if (!w.length) return true;
+    const low = l.toLowerCase();
+    return w.some((x) => low.includes(x));
+  };
   const strict = (it, l) => (it.num ? new RegExp(`#${it.num}(?!\\d)`).test(l)
-    : (it.date && l.includes(it.date.join('-'))) || (it.base && l.includes(it.base)));
+    : (it.date && l.includes(it.date.join('-')) && topical(it, l)) || (it.base && l.includes(it.base)));
   const bad = [];
   let head = false;
-  for (const l of t.last.split('\n')) {
+  for (const l of (t.newest || t.last).split('\n')) {
     const under = /^\s+[-*\d]/.test(l);
     if (!under) head = waitRx.test(l) && !oursRx.test(l) && /:[*_]*\s*$/.test(l);
     if ((!waitRx.test(l) || oursRx.test(l)) && !(under && head)) continue;
