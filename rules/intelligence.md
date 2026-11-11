@@ -32,7 +32,7 @@ verbatim).
 2026-10-18). No scheduler starts it unless the instance opts in (`core/scripts/brain-scan.sh`).
 
 **Three levels of self-check — every brain knows all three, and their price** (operator decisions
-2026-10-09): (1) **session start** — near-free, reports only what is off; (2) **brain-scan** — every
+2026-10-09; every single check by moment, trigger and result: `python3 core/scripts/check-catalog.py`): (1) **session start** — near-free, reports only what is off; (2) **brain-scan** — every
 two weeks on the operator's OK, every finding leaves with an exit (`backlog-catch-up`), no fixing
 inside the run; (3) **deep check** — only on a reason: `coherence-scan`, `memory-dream`,
 `full-audit`. The AI RECOGNISES the reason and TELLS the operator what, why now and the measured price,

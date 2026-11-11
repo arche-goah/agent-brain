@@ -96,6 +96,8 @@ known:     scripts/brain-update.sh=7
 known:     scripts/carrier-audit-test.py=22
 known:     scripts/carrier-audit.py=13
 known:     scripts/caveman-armed.py=6
+known:     scripts/check-catalog-test.py=11
+known:     scripts/check-catalog.py=11
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
@@ -150,6 +152,9 @@ of a file the script opens (settings, stop-checks, declarations, the core checko
 2026-10-09: the caveman check moved out of session-bootup.sh into caveman-armed.py
 (bootup 8 -> 4, new file 6). Same review: every join builds a path the script opens;
 it prints only plugin id, version and style name.
+2026-11-10, check-catalog.py and its fixture baselined after review: every join builds a path that is only
+opened, listed or written in a temp dir; the names the catalog prints come from regexes over hooks.json and
+session-bootup.sh (always `/`) or from `os.listdir` (a bare file name), never from a joined path.
 2026-10-09, always-loaded.py baselined after that review: the four joins build paths it
 only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
 2026-10-09, commitments.py baselined after that review: the five joins build the transcript
