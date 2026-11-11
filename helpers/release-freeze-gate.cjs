@@ -15,7 +15,9 @@
  * release) or `# SCOPE-OK: "<the operator's words>" <YYYY-MM-DD>` in the command (the operator's quoted word).
  *
  * The target repo is the origin URL's last path part of the directory the command works in (`git -C <dir>`, else the
- * hook's cwd) or the `--repo` of gh; it must equal the scope's `repo`. Fails open: no scope, a closed scope, an
+ * hook's cwd) or the `--repo` of gh; it must equal the scope's `repo`. A scope whose tag `v<version>` already stands
+ * in that directory counts as closed (the release shipped; closing it by hand was a forgotten step). Fails open: no
+ * scope, a closed scope, an
  * unreadable state file, a command it cannot read to the end, or a target repo it cannot name.
  * Exit 2 = block. Input is read to its end.
  */
@@ -102,9 +104,12 @@ function gate(input) {
   const listed = new Set([...(scope.items || []), ...Object.keys(scope.excluded || {})].map(String));
   const found = starts(cmd, input.tool_name === 'PowerShell', input.cwd || process.cwd());
   if (!found) return 0;
+  // A scope whose version tag already stands is a release that has shipped: read it as closed (measured 2026-11-08 on
+  // the macOS instance: scope 2.1.4 stayed `open` after tag v2.1.4 and held every new core branch for a day).
+  const tagged = (dir) => !!scope.version && !!git(dir, ['rev-parse', '-q', '--verify', `refs/tags/v${scope.version}`]);
   const held = found.filter((s) => {
     const repo = s.repo || repoName(git(s.dir, ['config', '--get', 'remote.origin.url']));
-    return repo === want && !listed.has(s.branch);
+    return repo === want && !listed.has(s.branch) && !tagged(s.dir);
   });
   if (!held.length) return 0;
   const marker = /#\s*SCOPE-OK:([^\n]*)/.exec(cmd);
