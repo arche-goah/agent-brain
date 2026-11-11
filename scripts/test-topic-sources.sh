@@ -28,6 +28,11 @@ case "$out" in *'docs/list.md'*'docs/shop/overview.md'*'docs/shop/projA/order.md
 case "$out" in *photo.png*|*.hidden*) bad "non-text or dot file listed";; *) ok "only text files, no dot files";; esac
 case "$out" in *decision-register*) ok "names the decision register";; *) bad "register not named";; esac
 case "$out" in *'docs/net/plan.md'*) bad "unhit topic listed";; *) ok "unhit topic not listed";; esac
+# the register path has one home, decision-register.json (Windows review of #490, finding 5)
+printf '{"register":"ledgers/answers.jsonl"}' > "$P/.claude/rules/decision-register.json"
+out="$(say 'what is the total, net?')"
+case "$out" in *'ledgers/answers.jsonl'*) ok "register path read from decision-register.json";; *) bad "register path not read: $out";; esac
+rm "$P/.claude/rules/decision-register.json"
 out="$(say 'shopping and the router today')"
 case "$out" in *'topic="shopping"'*'topic="network"'*) ok "two topics hit both";; *) bad "two topics: $out";; esac
 out="$(say 'what time is it')"

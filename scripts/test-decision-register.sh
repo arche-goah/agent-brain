@@ -63,6 +63,9 @@ case "$out" in *'"deny"'*) bad "unreadable model denied";; *) ok "unreadable mod
 # 9. own session's answer of today does not deny (the operator just answered it here)
 out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' pre s-old "$NEWQ")"
 case "$out" in *'"deny"'*) bad "own fresh answer denied";; *) ok "own session today not matched";; esac
+# 9b. the time budget is spent: the question is not judged, passes, and says so (Windows review of #490, finding 4)
+out="$(STUB_OUT='{"same":[{"n":1,"object":"tools","choice":"step drill present"}]}' DECISION_REGISTER_BUDGET_MS=-1 pre s-new8 "$NEWQ" 2>&1)"
+case "$out" in *'"deny"'*) bad "spent budget still denied";; *"time budget spent"*) ok "spent budget passes and says so";; *) bad "spent budget silent: $out";; esac
 # 10. other tool -> ignored
 out="$(printf '{"hook_event_name":"PreToolUse","tool_name":"Bash","session_id":"x","tool_input":{}}' | run)"
 [ -z "$out" ] && ok "other tool ignored" || bad "other tool touched: $out"

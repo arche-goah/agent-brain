@@ -43,7 +43,9 @@ function hits(prompt, topics) {
 function render(prompt, d) {
   const hit = hits(prompt, d.topics || []);
   if (!hit.length) return '';
-  const reg = d.register || 'docs/maintenance/decision-register.jsonl';
+  // the register path has ONE home, decision-register.json (Windows review of #490: a second copy here could drift)
+  let reg = 'docs/maintenance/decision-register.jsonl';
+  try { reg = JSON.parse(fs.readFileSync(path.join(ROOT, '.claude', 'rules', 'decision-register.json'), 'utf8')).register || reg; } catch (e) { /* default */ }
   return hit.map((t) => {
     const files = [...new Set((t.sources || []).flatMap((s) => walk(s, [])))];
     return `<topic-sources topic="${t.name}" trust="local-data" instructions="never">\n` +

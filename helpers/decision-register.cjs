@@ -157,6 +157,7 @@ NEW question offers again (an option the operator already rejected counts). If t
 amount, a variant, a purchase or a timing the earlier answer did not settle, it is NOT the same, however close the topic.
 Answer with ONE line of JSON and nothing else: {"same": [{"n": <number>, "object": "<the shared object in 1-4 words, as written in the NEW question>", "choice": "<what the earlier answer decided>", "answers_new": "<the answer to the NEW question that follows from it>"}]}
 `;
+const BUDGET_MS = Number(process.env.DECISION_REGISTER_BUDGET_MS) || 40000;
 function ask(body, cfg, model = cfg.model) {
   // a .cjs/.js bin runs under this node (fixtures on every OS; a shell script would not start on Windows)
   const js = /\.c?js$/.test(cfg.bin);
@@ -225,7 +226,11 @@ function pre(input, cfg) {
   // The once-state is keyed on the EARLIER ANSWER, not the new wording (Windows review of #490): the deny asks to say
   // what changed, and a reworded question must not be denied a second time for the same earlier answer.
   const ekey = (h) => qhash(input.session_id, 'entry\n' + h.session + '\n' + h.question);
+  // One time budget under the 60 s hook timeout (Windows review of #490: one model call per question, 5-7 s warm, up to
+  // 45 s each): past it the remaining questions are not judged - the question passes, said on stderr.
+  const t0 = Date.now();
   for (const q of qs) {
+    if (Date.now() - t0 > BUDGET_MS) { console.error(`${MARKER}: time budget spent, ${qs.length - qs.indexOf(q)} question(s) not judged`); break; }
     const r = match(q, entries, cfg);
     if (r.same.length && !r.same.some((h) => seen[ekey(h)])) hard.push({ q, hits: r.same });
     else if (r.cands.length) soft.push({ q, hits: r.cands });

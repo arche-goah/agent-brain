@@ -3,4 +3,7 @@
   `projectTranscriptDir`, every non-alphanumeric character to `-`; the old rule kept spaces and `--backfill` died on
   ENOENT), a missing folder is "nothing read", not a crash; the deny-once state is keyed on the earlier answer, not the new
   wording (a reworded re-ask saying what changed is not denied twice); the template says the register stays in a private
-  repo. Fixture +3; the two transcript-folder cases were red against the previous head.
+  repo. Fixture +3; the two transcript-folder cases were red against the previous head. Also from that review: one time
+  budget (40 s) under the 60 s hook timeout, past it the remaining questions pass unjudged and say so; topic-sources reads
+  the register path from `decision-register.json` (its template copy is gone). Debt: question-gate's prose re-ask check and
+  this register are two stores for one invariant ("the operator already spoke"); merging them is a design step of its own.
