@@ -102,6 +102,8 @@ known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
 known:     scripts/hook-coverage.py=25
+known:     scripts/ledger-fields-test.py=2
+known:     scripts/ledger_fields.py=1
 known:     scripts/lesson-carriers.py=5
 known:     scripts/live-doc-lint-test.py=2
 known:     scripts/live-doc-lint.py=3
@@ -158,6 +160,8 @@ session-bootup.sh (always `/`) or from `os.listdir` (a bare file name), never fr
 2026-11-11, the same two files after the review fix (commit/push section, deep skills read from the rule): the new
 joins open the hook scripts, ci.yml and rules/intelligence.md, or write the fake core in a temp dir; the names
 printed come from regexes over those files (always `/`), never from a joined path.
+2026-11-10, ledger_fields.py and its fixture baselined after review: the joins build the path of
+ledger-fields.json and of the JavaScript twin, which are only opened or handed to node; nothing prints a path.
 2026-10-09, always-loaded.py baselined after that review: the four joins build paths it
 only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
 2026-10-09, commitments.py baselined after that review: the five joins build the transcript
