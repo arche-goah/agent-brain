@@ -809,18 +809,19 @@ for e in entries:
 for e in done:
     title = f" ({e['title'][:60]})" if e["title"] else ""
     print(f"deadline {e['date']}{title}: DONE by its check — delete the entry (docs/business/deadlines.md)")
-best = None
-for e in entries:
-    if e in done:
-        continue
-    if best is None or e["date"] < best["date"]:
-        best = e
+# Every overdue entry gets its own line: reporting only the earliest one kept a second overdue
+# entry silent for days (2026-11-11). After them, the next entry that is not overdue yet.
+open_ = sorted((e for e in entries if e not in done), key=lambda e: e["date"])
+for e in open_:
+    days = (e["date"] - today).days
+    if days < 0:
+        title = f" ({e['title'][:60]})" if e["title"] else ""
+        print(f"!! deadline OVERDUE by {-days} d: {e['date']}{title} — docs/business/deadlines.md")
+best = next((e for e in open_ if (e["date"] - today).days >= 0), None)
 if best:
     days = (best["date"] - today).days
     title = f" ({best['title'][:60]})" if best["title"] else ""
-    if days < 0:
-        print(f"!! deadline OVERDUE by {-days} d: {best['date']}{title} — docs/business/deadlines.md")
-    elif days < 7:
+    if days < 7:
         print(f"!! deadline {best['date']} in {days} d{title} — docs/business/deadlines.md")
     else:
         print(f"deadlines: next {best['date']} in {days} d{title} — docs/business/deadlines.md")

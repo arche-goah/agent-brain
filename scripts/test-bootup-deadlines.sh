@@ -38,4 +38,8 @@ run "a writing check is refused -> OVERDUE"   "## $yday — a trap\n\ncheck: ech
 [ -f "$T/brain/written.txt" ] && { echo "  FAIL the refused check wrote a file"; fail=1; } || echo "  OK  the refused check wrote nothing"
 run "far entry: check not run, reported as next" "## $later — far away\n\ncheck: test -f exists.txt\n" "deadlines: next" "DONE"
 run "two entries: the done one steps aside"   "## $yday — done one\n\ncheck: test -f exists.txt\n\n## $later — next one\n\ntext\n" "deadlines: next $later" "OVERDUE"
+d2="$(date -u -v-2d +%F 2>/dev/null || date -u -d '-2 day' +%F)"
+run "two overdue: the later one is reported too" "## $d2 — first overdue\n\ntext\n\n## $yday — second overdue\n\ntext\n" "OVERDUE by 1 d: $yday" ""
+run "two overdue: the earlier one stays reported" "## $d2 — first overdue\n\ntext\n\n## $yday — second overdue\n\ntext\n" "OVERDUE by 2 d: $d2" ""
+run "overdue plus a future entry: the next one follows" "## $yday — overdue\n\ntext\n\n## $later — next one\n\ntext\n" "deadlines: next $later" ""
 [ "$fail" = 0 ] && echo "bootup-deadlines: all cases pass" || { echo "bootup-deadlines: FAILURES"; exit 1; }
