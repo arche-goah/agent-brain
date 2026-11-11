@@ -60,6 +60,11 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/question-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
+            "timeout": 60
           }
         ]
       },
@@ -217,6 +222,16 @@
             "async": true
           }
         ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -284,6 +299,11 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/basics-hint.cjs\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/topic-sources.cjs\"",
             "timeout": 5
           }
         ]

@@ -297,6 +297,7 @@ known:     scripts/test-content-review-gate.sh=1
 known:     scripts/test-dead-carriers.sh=1
 known:     scripts/test-decision-presentation-gate.sh=1
 known:     scripts/test-decision-readiness.sh=1
+known:     scripts/test-decision-register.sh=1
 known:     scripts/test-decision-review.sh=1
 known:     scripts/test-delivered-read-gate.sh=1
 known:     scripts/test-diagnose-gate.sh=1
@@ -364,6 +365,7 @@ known:     scripts/test-suite-plugin-linkage.sh=3
 known:     scripts/test-template-drift.sh=1
 known:     scripts/test-text-leaks-notice.sh=1
 known:     scripts/test-time-gate.sh=1
+known:     scripts/test-topic-sources.sh=1
 known:     scripts/test-transcript-archive.sh=1
 known:     scripts/test-turn-kind.sh=1
 known:     scripts/test-verification-gate.sh=1
@@ -560,6 +562,9 @@ and the gate fails OPEN on both, so every must-block case would pass silently.
 (`collab-watch-plan.py`) only as an ARGUMENT, which Git Bash converts; the state dir, the pid file and
 the events log are read and written by bash alone (`tail -F`, `cat`, `>>`). No temp path crosses into
 node or python as data.
+2026-11-11, test-decision-register.sh and test-topic-sources.sh baselined after the same review: the brain
+dir (`CLAUDE_PROJECT_DIR`), the model stub (`DECISION_REGISTER_BIN`) and the backfill transcript dir cross
+into node only through `native()`; the register and the source files are read back by bash (`grep`).
 
 ## OS-5 — grep swallows a report line by calling the stream binary
 
