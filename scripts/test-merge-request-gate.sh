@@ -124,6 +124,11 @@ spr 'feat: x' '["macOS OK at head `abc1234`", "Windows OK once the path is trans
 sprobe "an OK promised on a condition" "$M" block "$D"
 spr 'feat: x' '["macOS OK at head `abc1234`", "**Windows OK at head `abc1234`** (the Windows instance, measured once)"]'
 sprobe "a real Windows OK with the instance named after it (control)" "$M" allow "$D"
+# A finding comment whose evidence carries pass words is no OK: the explicit no is its verdict (13 drafts, 2026-11-12).
+spr 'feat: x' '["macOS OK at head `abc1234`", "Windows check (head abc1234)\nNo Windows OK yet: 1 finding, builder = author side.\n- **Windows, measured:** 17/17 passed rc=0"]'
+sprobe "a finding comment with passing suites" "$M" block "$D"
+spr 'feat: x' '["macOS OK at head `abc1234`", "Windows FAIL at head abc1234: test-x.sh red; the other suites pass on Windows"]'
+sprobe "Windows FAIL with pass words after it (control, blocked before too)" "$M" block "$D"
 
 # 2026-10-28 (#157): an earlier head separated only by "update branch" merges still counts.
 cpr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "fff0000aaa", body: "feat: x", commits: JSON.parse(process.argv[2]), comments: JSON.parse(process.argv[1]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }

@@ -65,7 +65,7 @@ function readPr(t) {
 
 // The OS verdict of a line is read by the ONE reader of OS reviews, shared with release-preflight check 8
 // (two readers disagreed on the same threads, measured 2026-11-06 - see helpers/os-review.cjs).
-const { saysOk, OK_RX, NAME_RX } = require('./os-review.cjs');
+const { saysOk, saysNo, OK_RX, NAME_RX } = require('./os-review.cjs');
 
 /** The repo's `dependencies.json` as an object, null when it has none (not a suite). */
 function readDeps(t) {
@@ -133,7 +133,7 @@ function uncovered(pr, deps, repo) {
     .filter((x) => shas.some((s) => x.includes(s)));
   const byCi = ciProof(repo);
   return want.filter((os) => !(byCi.includes(os) && ciGreenFor(pr, os))
-    && !texts.some((x) => x.split(/\r?\n/).some((l) => saysOk(l, os))));
+    && !texts.some((x) => !saysNo(x, os) && x.split(/\r?\n/).some((l) => saysOk(l, os))));
 }
 
 function gate(input) {
