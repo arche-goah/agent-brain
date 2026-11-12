@@ -117,15 +117,18 @@ HOLDER="$STATE/collab-watch.pid"
 PARENT=$PPID
 holder_alive() { local p; p=$(cat "$HOLDER" 2>/dev/null) && [[ -n "$p" && "$p" != "$$" ]] && kill -0 "$p" 2>/dev/null; }
 if holder_alive; then
-  echo "NOTE: collaboration watch already held by pid $(cat "$HOLDER") — following its events ($EVENTS); taking over if it ends"
   touch "$EVENTS"
-  # No filter: tail alone, `$!` is its pid. With a filter: a plain pipe - a process substitution behind `&` passed no
-  # line on Git Bash (portability windows-latest, train #510, 2026-11-12). `$!` is then the filter's pid; killing it
+  # Read from the byte the log had BEFORE the note, not `-n 0` at tail's start: tail starts later than this line runs
+  # (slow on Git Bash), and a line logged in between was lost - portability windows-latest 2026-11-12, case 1 and 5
+  # of test-collab-watch-follow.sh red in one run, green in another.
+  from=$(( $(wc -c < "$EVENTS") + 1 ))
+  echo "NOTE: collaboration watch already held by pid $(cat "$HOLDER") — following its events ($EVENTS); taking over if it ends"
+  # No filter: tail alone, `$!` is its pid. With a filter: a plain pipe; `$!` is then the filter's pid, and killing it
   # leaves tail to end with SIGPIPE at the next line, which the new holder writes at once (its arm note goes to the log).
   if [[ -n "$SHOW" ]]; then
-    tail -n 0 -F "$EVENTS" 2>/dev/null | show_filter &
+    tail -c "+$from" -F "$EVENTS" 2>/dev/null | show_filter &
   else
-    tail -n 0 -F "$EVENTS" 2>/dev/null &
+    tail -c "+$from" -F "$EVENTS" 2>/dev/null &
   fi
   TAIL=$!
   trap 'kill "$TAIL" 2>/dev/null' EXIT

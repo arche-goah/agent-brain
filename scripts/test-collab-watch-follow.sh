@@ -81,6 +81,19 @@ grep -q "a core comment" "$T/state/events.log" && ok "the log still holds the fo
 kill "$RUN" 2>/dev/null; wait "$RUN" 2>/dev/null; RUN=""
 kill "$FAKE" 2>/dev/null; wait "$FAKE" 2>/dev/null; FAKE=""
 
+echo "6. a slow tail start loses no line (portability windows-latest 2026-11-12: cases 1 and 5 flaky on Git Bash)"
+mkdir -p "$T/slowbin"
+REAL_TAIL="$(command -v tail)"
+printf '#!/usr/bin/env bash\nsleep 2\nexec "%s" "$@"\n' "$REAL_TAIL" > "$T/slowbin/tail"; chmod +x "$T/slowbin/tail"
+sleep 300 & FAKE=$!
+echo "$FAKE" > "$T/state/collab-watch.pid"
+PATH="$T/slowbin:$PATH" bash "$CW" > "$T/out6" 2>&1 & RUN=$!
+wait_for "$T/out6" "following its events" 50 || true
+echo "COMMENT acme/core https://example.invalid/pull/8 :: logged before tail is up" >> "$T/state/events.log"
+wait_for "$T/out6" "logged before tail is up" 50 && ok "a line logged before tail is up still reaches the follower" || bad "line lost in the start window: $(cat "$T/out6")"
+kill "$RUN" 2>/dev/null; wait "$RUN" 2>/dev/null; RUN=""
+kill "$FAKE" 2>/dev/null; wait "$FAKE" 2>/dev/null; FAKE=""
+
 echo
 echo "$((checks - fails))/$checks passed"
 [[ $fails -eq 0 ]]
