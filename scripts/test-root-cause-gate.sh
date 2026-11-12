@@ -80,6 +80,11 @@ check "shell-written carrier, no register entry" "$T/t9.jsonl" block "$SHW"
 SPC="$T/sh w"; mkdir -p "$SPC/docs/maintenance" "$SPC/scripts"; touch "$SPC/scripts/gen.py"; cp "$SHW/$REG" "$SPC/$REG"
 { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> \"$(native "$SPC")/$REG\""; } > "$T/t9a.jsonl"
 check "register written by an absolute quoted path with a space" "$T/t9a.jsonl" allow "$SPC"
+# portability windows-latest, train #510: the runner's temp folder is an 8.3 name (`RUNNER~1`, OS-8) - a `~` inside a
+# segment ended the match. Measured on every OS with a folder named that way.
+TLD="$T/RUN~1"; mkdir -p "$TLD/docs/maintenance" "$TLD/scripts"; touch "$TLD/scripts/gen.py"; cp "$SHW/$REG" "$TLD/$REG"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $(native "$TLD")/$REG"; } > "$T/t9d.jsonl"
+check "register written by a path with an 8.3 short segment (RUN~1)" "$T/t9d.jsonl" allow "$TLD"
 if command -v cygpath >/dev/null 2>&1; then
   M="$(cygpath -m "$SHW")"; U="/$(printf %s "${M:0:1}" | tr 'A-Z' 'a-z')${M:2}"
   { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $M/$REG"; } > "$T/t9b.jsonl"

@@ -341,7 +341,9 @@ function shellWrites(shell, cwd, since) {
   // A path starts with ~, /, ./, ../ or a drive (C:/, C:\ - Windows review 2026-11-12); a quoted one may hold spaces.
   // nativePath: a Git Bash `/c/...` is no path node can stat on Windows (docs/os-traps.md OS-19).
   const lead = '(?:~|[A-Za-z]:[\\\\/]|\\/|\\.{0,2}\\/)?';
-  const bare = new RegExp(`(?:^|[\\s"'=<>|;&(])(${lead}[\\w.~@+-]+(?:[\\\\/][\\w.@+-]+)+)`, 'g');
+  // `~` inside a segment too: Windows writes the user folder as its 8.3 name (`RUNNER~1`, docs/os-traps.md OS-8) -
+  // without it the match ended before the `~` of `<home>` (portability windows-latest, train #510, 2026-11-12)
+  const bare = new RegExp(`(?:^|[\\s"'=<>|;&(])(${lead}[\\w.~@+-]+(?:[\\\\/][\\w.~@+-]+)+)`, 'g');
   const quoted = new RegExp(`(["'])(${lead}[^"'\\n]*?[\\\\/][^"'\\n]*?)\\1`, 'g');
   for (const cmd of shell) {
     const found = [...String(cmd).matchAll(bare)].map((m) => m[1]).concat([...String(cmd).matchAll(quoted)].map((m) => m[2]));
