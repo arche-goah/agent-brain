@@ -65,7 +65,8 @@ def url_problems(url, search, shapes):
 
 
 def read_rows(path):
-    with open(path, newline="", encoding="utf-8") as f:
+    # utf-8-sig: a list saved as "CSV UTF-8" by Excel starts with a BOM, which would stick to the first header
+    with open(path, newline="", encoding="utf-8-sig") as f:
         return list(csv.DictReader(f))
 
 
@@ -87,7 +88,7 @@ def check_plan(path, need_path, rules):
         if p:
             bad.append(f"{key}: " + "; ".join(p))
     if need_path:
-        with open(need_path, encoding="utf-8") as f:
+        with open(need_path, encoding="utf-8-sig") as f:
             need = [l.strip() for l in f if l.strip() and not l.startswith("#")]
         bad += [f"{k}: no source row" for k in need if k not in by_key]
     return rows, bad

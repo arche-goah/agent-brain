@@ -84,6 +84,17 @@ with tempfile.TemporaryDirectory() as tmp:
     _, bad = ps.check_order(order_empty, 24, RULES, NOW)
     check("order: empty url, availability and read_at are each named", len(bad) == 1 and all(k in bad[0] for k in ("url empty", "availability empty", "read_at empty")))
 
+    # --- BOM (a list saved as "CSV UTF-8" by Excel on Windows) ---
+    bom = "﻿"
+    plan_bom = write("plan-bom.csv", bom + "key,product_url,fit_evidence,verdict\n"
+                     "J1,https://shop-a.example/p/terminal-2pole-1234,datasheet p3 pitch 5.08,fits\n")
+    need_bom = write("need-bom.txt", bom + "J1\n")
+    _, bad = ps.check_plan(plan_bom, need_bom, RULES)
+    check("bom: a plan and a need list with a BOM read their first column", bad == [])
+    order_bom = write("order-bom.csv", bom + head + f"shop-a,terminal 2-pole,6,https://shop-a.example/p/terminal-2pole-1234,In stock,{fresh}\n")
+    rows, bad = ps.check_order(order_bom, 24, RULES, NOW)
+    check("bom: an order list with a BOM keeps its 'shop' column", bad == [] and rows[0].get("shop") == "shop-a")
+
     # --- rules file and CLI ---
     rf = write("product-sources.json", json.dumps({"unavailable_patterns": ["on request only"]}))
     rules = ps.compile_rules(ps.load_rules(rf))
@@ -95,5 +106,5 @@ with tempfile.TemporaryDirectory() as tmp:
     check("cli: plan clean exits 0", ps.main(["x", "plan", plan_ok, "--rules", rf]) == 0)
     check("cli: unknown mode exits 2", ps.main(["x", "buy", plan_ok]) == 2)
 
-print(f"\n{17 - fails}/17 passed")
+print(f"\n{19 - fails}/19 passed")
 sys.exit(1 if fails else 0)
