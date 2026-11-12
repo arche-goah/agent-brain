@@ -234,6 +234,34 @@ mgt_probe "mechanism-guard/quote said: no transcript - the form check stands (co
   'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"merge everything\"' allow ""
 rm -rf "$MG"
 
+# --- mechanism-guard: `pr_repos` holds a PR whose RESOLVED target repo is listed (2026-11-08) -------------------
+# Measured on the macOS instance: instance rules matched the repo's name in the text, so `env -C <checkout> gh pr create
+# --fill` went through. Two throwaway repos (no network): lab (listed) and other.
+MG="$(native "$(mktemp -d)")"
+mkdir -p "$MG/.claude/rules"
+printf '%s' '[{"pattern":"\\bgh\\s+pr\\s+create\\b","was":"PR mid-work in a self-run repo","stattdessen":"collect, one PR at the end","pr_repos":["o/lab"]}]' \
+  > "$MG/.claude/rules/mechanism-rules.json"
+for r in lab other; do
+  git init -q "$MG/$r" && git -C "$MG/$r" remote add origin "https://example.invalid/o/$r.git"
+done
+pr_probe() { # $1 name, $2 command, $3 block|allow, $4 cwd
+  local out helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
+  out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:unesc(a[1])},cwd:a[2]}))' "$2" "$4" \
+        | HOME="$MG" CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1)
+  local rc=$?
+  # a bash pattern match, no grep on a pipe (docs/os-traps.md OS-5)
+  if [ "$rc" -eq 2 ] || [[ "$out" == *'"permissionDecision"'*'"deny"'* ]]; then got=block; else got=allow; fi
+  [ "$got" = "$3" ] && ok "$1 ($got)" || bad "$1: expected $3, got $got: ${out:0:200}"
+}
+pr_probe "mechanism-guard/pr_repos: --repo names the listed repo" "gh pr create -R o/lab --fill" block "$MG"
+pr_probe "mechanism-guard/pr_repos: env -C into the listed checkout, no -R" "env -C $MG/lab gh pr create --fill" block "$MG"
+pr_probe "mechanism-guard/pr_repos: cd into the listed checkout first" "cd $MG/lab && gh pr create --fill" block "$MG"
+pr_probe "mechanism-guard/pr_repos: hook cwd is the listed checkout" "gh pr create --fill" block "$MG/lab"
+pr_probe "mechanism-guard/pr_repos: env -C into another repo" "env -C $MG/other gh pr create --fill" allow "$MG"
+pr_probe "mechanism-guard/pr_repos: --repo names another repo, cwd in the listed one" "gh pr create -R o/other --fill" allow "$MG/lab"
+pr_probe "mechanism-guard/pr_repos: a message naming the command (control)" "git commit -m 'gh pr create -R o/lab'" allow "$MG"
+rm -rf "$MG"
+
 # --- mechanism-guard: the TEMPLATE's release-tag rule, read from the template itself ---------
 # Measured 2026-10-26: `\bv\d+.\d+.\d+\b` caught a feature branch `data/v1.1.31-windows-package-check`
 # (`\b` matches after `/`) as a release tag; the push went through by renaming the branch. The

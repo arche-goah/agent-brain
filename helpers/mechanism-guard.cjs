@@ -136,7 +136,10 @@ function compile(list, source) {
                  // that text (multi-line text belongs in a file), which the cut below would hide.
                  target: r.target === 'path' ? 'path' : r.target === 'raw' ? 'raw' : 'command', source,
                  needsOperatorWord: r.needs_operator_word === true,
-                 foregroundOnly: r.foreground_only === true, monitorOnly: r.monitor_only === true };
+                 foregroundOnly: r.foreground_only === true, monitorOnly: r.monitor_only === true,
+                 // `pr_repos`: the rule holds only a `gh pr create` whose RESOLVED target repo is listed (helpers/pr-repo.cjs:
+                 // --repo, else env -C / cd / cwd through the origin URL) - the repo's name in the text is not needed.
+                 prRepos: Array.isArray(r.pr_repos) ? r.pr_repos.map((s) => String(s).toLowerCase()) : null };
       } catch (_) { return null; }
     })
     .filter(Boolean);
@@ -332,6 +335,11 @@ process.stdin.on('end', () => {
     const hit = r.target === 'path' ? (filePath && r.re.test(filePath))
       : r.target === 'raw' ? (cmd && r.re.test(cmd)) : (cmd && r.re.test(stripped));
     if (!hit || (r.foregroundOnly && background) || (r.monitorOnly && !monitor)) continue;
+    if (r.prRepos) {
+      let targets = [];
+      try { targets = require('./pr-repo.cjs').prTargets(cmd, hinCwd || project, hinTool === 'PowerShell'); } catch (_) {}
+      if (!targets.some((t) => r.prRepos.includes(t))) continue;
+    }
     let missing = [];
     if (marker) {
       if (!r.needsOperatorWord) continue;
