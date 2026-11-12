@@ -122,6 +122,16 @@
       "pattern": "(?:^|[\\n;&|(])\\s*(?:\\S*/)?(?:textutil\\b[^\\n]*-convert\\s+(?:docx|doc|rtf|odt)\\b|pandoc\\b[^\\n]*(?:-o|--output)[ =]\\S+\\.(?:docx|pptx|odt)\\b|(?:soffice|libreoffice)\\b[^\\n]*--convert-to\\s+(?:docx|xlsx|pptx|doc|xls|ppt)\\b)",
       "was": "an office file (Word, Excel, PowerPoint) built by a generic converter (textutil, pandoc, soffice --convert-to). Measured 2026-11-11 on the macOS instance: textutil turned 10.5 pt into 12 pt and wrote no page size or margins, so a page that fit in the preview ran over in Word.",
       "instead": "Build office files through the office skill of the harness (docx, xlsx, pptx — page size, margins and sizes set explicitly). Reading an office file into text or Markdown (`-convert txt`, `pandoc a.docx -o a.md`) stays free."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:\\S*/)?open\\s+(?:-\\S+\\s+)*(?:-a\\s+(?:\"[^\"]+\"|'[^']+'|\\S+)\\s+)?[\"']?https?://[^\\s\"']*(?:search|suche|/s\\?|[?&](?:q|k|exps|query|search|searchterm)=)",
+      "was": "a shop SEARCH page opened as a tab for the operator (measured 2026-11-11 on the macOS instance: 81 order tabs, most of them search pages, because the order list carried article numbers). A search result is no order position.",
+      "instead": "Order tabs only through `python3 core/scripts/product-sources.py open <order-list.csv>` - every line a product page with an availability read under 24 h. When no product page is found, say which shop does not carry it and name the link, never open it."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*osascript\\b(?![^\\n]*product-sources)[^\\n]*(?:make\\s+new\\s+(?:tab|document)|open\\s+location|set\\s+URL|\\.applescript\\b|\\.scpt\\b)",
+      "was": "browser tabs opened by an AppleScript of its own, past the order-list check (same incident: the tabs were opened from a URL file via osascript, which the open-command rule did not see).",
+      "instead": "`python3 core/scripts/product-sources.py open <order-list.csv>` opens the tabs after the check. Reading the browser (`osascript -e 'tell application \"Safari\" to get URL of ...'`) stays free."
     }
   ]
 }

@@ -112,6 +112,7 @@ known:     scripts/memory-lint-test.py=6
 known:     scripts/orphan-check-test.py=7
 known:     scripts/orphan-check.py=1
 known:     scripts/plugin-records-test.py=1
+known:     scripts/product-sources.py=1
 known:     scripts/recorder-report.py=3
 known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-reach-check.py=11
@@ -154,6 +155,8 @@ of a file the script opens (settings, stop-checks, declarations, the core checko
 2026-10-09: the caveman check moved out of session-bootup.sh into caveman-armed.py
 (bootup 8 -> 4, new file 6). Same review: every join builds a path the script opens;
 it prints only plugin id, version and style name.
+2026-11-11, product-sources.py baselined: its one join builds the default path of the instance's
+`.claude/rules/product-sources.json`, which is only opened; the tool prints rows and verdicts, never a path.
 2026-11-10, check-catalog.py and its fixture baselined after review: every join builds a path that is only
 opened, listed or written in a temp dir; the names the catalog prints come from regexes over hooks.json and
 session-bootup.sh (always `/`) or from `os.listdir` (a bare file name), never from a joined path.
