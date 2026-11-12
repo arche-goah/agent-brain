@@ -1133,6 +1133,7 @@ known:     helpers/instance-key-gate.cjs=3
 known:     helpers/public-text-guard.cjs=2
 known:     helpers/published-text.cjs=4
 known:     helpers/review-claim-gate.cjs=2
+known:     helpers/root-cause-gate.cjs=1
 known:     helpers/session-areas.cjs=2
 known:     helpers/watch-gate.cjs=1
 instances: 3

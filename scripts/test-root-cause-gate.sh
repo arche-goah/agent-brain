@@ -75,6 +75,20 @@ check "register and carrier written by shell commands, changed in this turn" "$T
 check "the same files named but unchanged since the turn began (negative control)" "$T/t8.jsonl" block "$SHW"
 { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; } > "$T/t9.jsonl"
 check "shell-written carrier, no register entry" "$T/t9.jsonl" block "$SHW"
+# --- Windows review 2026-11-12 (OS-19): the register named by an ABSOLUTE path - quoted with a space (native form on
+# Windows), the drive form C:/... and the Git Bash form /c/... (only where cygpath exists: node elsewhere has no drives)
+SPC="$T/sh w"; mkdir -p "$SPC/docs/maintenance" "$SPC/scripts"; touch "$SPC/scripts/gen.py"; cp "$SHW/$REG" "$SPC/$REG"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> \"$(native "$SPC")/$REG\""; } > "$T/t9a.jsonl"
+check "register written by an absolute quoted path with a space" "$T/t9a.jsonl" allow "$SPC"
+if command -v cygpath >/dev/null 2>&1; then
+  M="$(cygpath -m "$SHW")"; U="/$(printf %s "${M:0:1}" | tr 'A-Z' 'a-z')${M:2}"
+  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $M/$REG"; } > "$T/t9b.jsonl"
+  check "register written by its drive path (cygpath -m form)" "$T/t9b.jsonl" allow "$SHW"
+  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $U/$REG"; } > "$T/t9c.jsonl"
+  check "register written by its Git Bash path (/c/... form)" "$T/t9c.jsonl" allow "$SHW"
+else
+  echo "  --  register written by its drive path and its /c/... path (Windows only: no cygpath here)"
+fi
 
 # --- 2026-11-08 (operator, question tool): a project repo names its own carriers in .claude/rules/carrier-paths.json
 PRJ="$T/prj"; mkdir -p "$PRJ/.git" "$PRJ/.claude/rules" "$PRJ/docs/bench/layout" "$PRJ/.claude/skills/bench-run"
