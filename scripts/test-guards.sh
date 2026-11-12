@@ -422,6 +422,11 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: -d with -C" Bash command 'git -C /r push -d origin feat' block
   tr_probe "mechanism-guard/core rule: --no-verify skips the pre-push hook" Bash command 'git -C /r push --no-verify origin main' block
   tr_probe "mechanism-guard/core rule: force-with-lease" Bash command 'git -C /r push --force-with-lease' block
+  # 2026-11-09 (macOS instance): a ' + ' in the marker comment behind '#' was read as a +refspec and held a plain push
+  tr_probe "mechanism-guard/core rule: plain push with a marker comment holding ' + ' (control)" Bash command 'git -C /r push -u origin rel/v1 # CONDITION-NONE: answered Ja, Tag + Pin' allow
+  tr_probe "mechanism-guard/core rule: plain push with ':x' and --force inside the comment (control)" Bash command 'git -C /r push origin feat # MECHANISM-OK: see :notes and --force in the old log' allow
+  tr_probe "mechanism-guard/core rule: +refspec before a comment" Bash command 'git -C /r push origin +main # comment' block
+  tr_probe "mechanism-guard/core rule: force before a comment" Bash command 'git -C /r push --force origin b # why' block
   # (no double quotes in these values: tr_probe writes them into JSON unescaped, and a broken JSON reads as allow)
   tr_probe "mechanism-guard/core rule: pre-push marker needs the word" Bash command 'PUSH_GUARD_OK=cleanup git -C /r push origin feat' block
   tr_probe "mechanism-guard/core rule: commit message with push and +3 (control)" Bash command "git -C /r commit -q -m 'a push is judged by the branch' -m 'Fixture +3 with a real repo' -- a.cjs" allow
