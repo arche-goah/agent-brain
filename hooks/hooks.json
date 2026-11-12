@@ -97,6 +97,12 @@
           },
           {
             "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/check-request-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/merge-request-gate.cjs\"",
             "timeout": 15,
             "onFailure": "block"

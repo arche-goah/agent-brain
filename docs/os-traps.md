@@ -292,6 +292,7 @@ known:     scripts/test-brain-check-brief.sh=1
 known:     scripts/test-brain-scan-files.sh=1
 known:     scripts/test-caveman-armed.sh=1
 known:     scripts/test-change-level.sh=1
+known:     scripts/test-check-request-gate.sh=1
 known:     scripts/test-ci-lint-local.sh=1
 known:     scripts/test-close-loss-gate.sh=1
 known:     scripts/test-code-scanning-alerts.sh=1
