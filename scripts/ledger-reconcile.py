@@ -29,6 +29,14 @@ The script runs every `check:` of the registered ledgers and reports:
               run. Measured 2026-11-02 on a Windows brain: 16 entries of one ledger parked a command
               there; 5 of the open ones were done (work in the pin or on main) and still open. Write it as the check (a command that exits 0 when done: `grep -q`,
               `test -s`), or keep `none` with a reason and no command.
+  MERGED-MAIN a check that reads the pinned core (`core/...`, `git -C core ...`) is red there and green
+              on the core's current main (`origin/main`, fetched once per run, read in a temporary
+              worktree under .claude-state that is removed afterwards; the submodule's own checkout
+              never moves). Measured 2026-11-12 on the macOS instance: five entries whose work was
+              merged on core main (a train merge) read red against the pin and were taken for
+              "waiting for the next pin"; the operator: merged work is done in the core, the pin is a
+              release question, nothing waits on it. An open entry is reported as done (tick it), a
+              ticked one is not REGRESSED; red on main as well stays red.
 A check that times out or cannot start is reported as such, never as done.
 
 Two bounds, because the checks run on their own at every session start:
@@ -56,7 +64,7 @@ Usage: ledger-reconcile.py [--root DIR] [--brief|--cached] [--ledger PATH ...] [
   --brief   silent when clean, one `!!` line per class otherwise
   --cached  what the session start runs: last run's --brief result now, next run in the background
             (result file .claude-state/ledger-reconcile.brief, its time in ...stamp)
-Exit: 0 always without --strict; with --strict 1 when DONE-OPEN or REGRESSED exist.
+Exit: 0 always without --strict; with --strict 1 when DONE-OPEN, MERGED-MAIN or REGRESSED exist.
 Checks run with the brain root as working directory.
 """
 import argparse
@@ -267,6 +275,72 @@ def pin_date(pin, timeout):
         return ""
 
 
+class CoreMain:
+    """The core's current main as a temporary worktree, made on first use, for checks that read the pin.
+
+    A check names the pin by its path (`core/x`, `git -C core ...`); the same check is re-run with that path
+    pointing at the worktree. The path is relative to the brain root and under .claude-state (the script's
+    own state folder), so the rewritten command stays inside the closed grammar `permitted` reads.
+    """
+
+    def __init__(self, root, pin, timeout, ref="origin/main"):
+        self.root, self.pin, self.timeout, self.ref = root, pin, timeout, ref
+        self.rel = os.path.relpath(pin, root).replace(os.sep, "/") if pin else ""
+        self.tree = None      # relative path of the worktree, once made
+        self.tried = False
+        self.ref_pat = (re.compile(r"(?<![\w./-])" + re.escape(self.rel) + r"(?=/)|(?<=-C )"
+                                   + re.escape(self.rel) + r"(?=\s|$)") if self.rel and not self.rel.startswith("..")
+                        else None)
+
+    def reads_pin(self, cmd):
+        return bool(self.ref_pat and self.ref_pat.search(cmd))
+
+    def _git(self, *args, timeout=None):
+        return subprocess.run(["git", "-C", self.pin, *args], capture_output=True, text=True,
+                              timeout=timeout or self.timeout)
+
+    def path(self):
+        """The worktree's path relative to the root, or None when main cannot be read (then nothing is claimed)."""
+        if self.tried:
+            return self.tree
+        self.tried = True
+        rel = f".claude-state/ledger-reconcile-main-{os.getpid()}"
+        try:
+            # A failed fetch (offline) keeps the last fetched main: main only moves forward, so green there is
+            # still merged. No such ref at all = no claim.
+            self._git("fetch", "-q", "origin", self.ref.split("/", 1)[-1], timeout=max(self.timeout, 20))
+            if self._git("rev-parse", "--verify", "-q", self.ref + "^{commit}").returncode != 0:
+                return None
+            (pathlib.Path(self.root) / ".claude-state").mkdir(exist_ok=True)
+            dest = str(pathlib.Path(self.root) / rel)
+            if self._git("worktree", "add", "-q", "--detach", dest, self.ref,
+                         timeout=max(self.timeout, 20)).returncode != 0:
+                return None
+        except (OSError, subprocess.SubprocessError):
+            return None
+        self.tree = rel
+        return rel
+
+    def rewrite(self, cmd):
+        tree = self.path()
+        return self.ref_pat.sub(tree, cmd) if tree else None
+
+    def close(self):
+        if not self.tree:
+            return
+        dest = str(pathlib.Path(self.root) / self.tree)
+        try:
+            self._git("worktree", "remove", "--force", dest, timeout=max(self.timeout, 20))
+        except (OSError, subprocess.SubprocessError):
+            pass
+        shutil.rmtree(dest, ignore_errors=True)
+        try:
+            self._git("worktree", "prune")
+        except (OSError, subprocess.SubprocessError):
+            pass
+        self.tree = None
+
+
 def pin_met(e, pin, timeout, since=""):
     """Every PR an open `check: none` entry names next to the word pin is in the pin: True.
     `since` = the pin's commit date: an entry whose newest exit is dated on or after it was looked at
@@ -303,7 +377,15 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
     `pin`: the pinned core checkout; open `check: none` entries waiting for its PRs are measured."""
     out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": [],
            "refused": [], "not_run": [], "unproven": [], "pin_met": [], "parked": [], "multi_exit": [],
-           "own_unchecked": []}
+           "own_unchecked": [], "merged_main": []}
+    main = CoreMain(root, pin, timeout)
+    try:
+        return _reconcile(out, main, root, ledgers, since, timeout, shell, allowed, budget, seen, pin)
+    finally:
+        main.close()
+
+
+def _reconcile(out, main, root, ledgers, since, timeout, shell, allowed, budget, seen, pin):
     pin_since = pin_date(pin, timeout) if pin else ""
     baseline = seen is not None and not seen
     deadline = time.monotonic() + budget
@@ -346,6 +428,11 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
                 out["not_run"].append(label(e, rel))
                 continue
             res = run_check(chk, root, timeout, shell)
+            # Red on the pin, but the check reads the pin: is the change merged on core main (2026-11-12)?
+            on_main = False
+            if res == "fail" and main.reads_pin(chk) and deadline - time.monotonic() >= timeout:
+                alt = main.rewrite(chk)
+                on_main = bool(alt) and permitted(alt, allowed) and run_check(alt, root, timeout, shell) == "pass"
             # Negative control (operator 2026-10-28): a check that is green the first time it is
             # seen on an open entry never showed it can be red — measured that day, two checks
             # grepped a word that stood in the file before the work, one waited for a format the
@@ -362,7 +449,12 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
             elif res == "pass" and not e["done"]:
                 out["done_open"].append(label(e, rel))
                 out.setdefault("done_open_at", []).append({"ledger": rel, "line": e["line"], "id": label(e, rel)})
-            elif res == "fail" and e["done"]:
+            elif on_main and not e["done"]:
+                # done in the core; open-items.py lists it with the DONE-OPEN rows ("check green - tick it")
+                out["merged_main"].append(label(e, rel))
+                out.setdefault("done_open_at", []).append({"ledger": rel, "line": e["line"], "id": label(e, rel),
+                                                           "where": "core main, not pinned"})
+            elif res == "fail" and e["done"] and not on_main:
                 out["regressed"].append(label(e, rel))
     return out
 
@@ -458,6 +550,8 @@ def main():
     say("done_open", "entr(y/ies) done but still open (its check passes)",
         "tick it with the evidence, and name why the ledger missed it (copied from a report? fixed in passing?)"
         " - or, with work left, the check measures only a part: make it measure the exit")
+    say("merged_main", "open entr(y/ies) merged in core main, not pinned (check red on the pin, green on main)",
+        "done in the core: tick it with the evidence - the pin is a release question, nothing waits on it")
     say("unproven", "open entr(y/ies) whose check was green from its first run - negative control missing",
         "a check must be red while the work is missing: run it against the state before the work, sharpen it"
         " until it is, then it counts (a changed check is seen anew)")
@@ -497,7 +591,7 @@ def main():
             f.write(time.strftime("%Y-%m-%d %H:%M") + "\n")
     else:
         sys.stdout.write(text)
-    if a.strict and (r["done_open"] or r["regressed"]):
+    if a.strict and (r["done_open"] or r["merged_main"] or r["regressed"]):
         return 1
     return 0
 
