@@ -237,9 +237,53 @@ function pointerExists(text, project) {
 
 // What the marker's justification is missing for a rule that needs the operator's word;
 // an empty list means it carries one.
-function operatorWordMissing(justification, project) {
+// Everything the operator said in this transcript: typed prompts (also typed ahead mid-turn) and answers through the
+// question tool, pasted blocks removed (turn-kind.cjs). null = no transcript to read - the form check alone decides.
+function operatorSaid(transcript) {
+  let raw = '';
+  try { raw = transcript ? fs.readFileSync(transcript, 'utf8') : ''; } catch (_) { return null; }
+  if (!raw) return null;
+  const { operatorPrompt, operatorWords, questionAnswers } = require('./turn-kind.cjs');
+  const answered = questionAnswers();
+  const out = [];
+  for (const line of raw.split('\n')) {
+    let d = null;
+    try { d = JSON.parse(line); } catch (_) { continue; }
+    const p = operatorPrompt(d);
+    if (p) out.push(operatorWords(p));
+    if (answered(d)) {
+      for (const b of d.message.content) {
+        if (b && b.type === 'tool_result') out.push(typeof b.content === 'string' ? b.content : JSON.stringify(b.content || ''));
+      }
+    }
+  }
+  return out.join('\n');
+}
+
+const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+const QUOTES_G = /"([^"\n]{3,})"|„([^“”"\n]{3,})[“”"]|“([^”\n]{3,})”/g;
+
+// The quotation has the right FORM - is it also the operator's WORD? Measured 2026-11-06 on the macOS instance: the
+// guard checked quotes plus a date only, while root-cause-gate and autonomous-idle-gate already checked the quote
+// against the operator's messages; the operator released the same check here on 2026-11-08 (question tool). One
+// quoted passage found in what the operator said is enough; without a readable transcript the form check stands.
+function quoteNotSaid(justification, transcript) {
+  const said = operatorSaid(transcript);
+  if (said === null) return false;
+  const hay = norm(said);
+  for (const m of justification.matchAll(QUOTES_G)) {
+    if (hay.includes(norm(m[1] || m[2] || m[3] || ''))) return false;
+  }
+  return true;
+}
+
+function operatorWordMissing(justification, project, transcript) {
   const quote = QUOTE_RE.test(justification);
   const date = DATE_RE.test(justification);
+  if (quote && date && !pointerExists(justification, project) && quoteNotSaid(justification, transcript)) {
+    return ['a quotation that stands in the operator\'s own messages of this session (typed or answered) - the quoted '
+      + 'words were not found there; for an older word point at the file that records it (path[:line])'];
+  }
   if (quote && date) return [];
   if (pointerExists(justification, project)) return [];
   const missing = [];
@@ -291,7 +335,7 @@ process.stdin.on('end', () => {
     let missing = [];
     if (marker) {
       if (!r.needsOperatorWord) continue;
-      missing = operatorWordMissing(marker[1], project);
+      missing = operatorWordMissing(marker[1], project, transcript);
       if (missing.length === 0) continue;
     }
     const how = marker
