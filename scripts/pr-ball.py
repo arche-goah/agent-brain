@@ -132,6 +132,7 @@ def main():
     ap.add_argument("--stall-hours", type=float, default=24)
     a = ap.parse_args()
     now = ts(a.now) if a.now else datetime.now(timezone.utc)
+    sys.stdin.reconfigure(encoding="utf-8")  # gh writes UTF-8; Windows would decode cp1252 (OS-23)
     try:
         data = json.load(sys.stdin)
     except Exception:

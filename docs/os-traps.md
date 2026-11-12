@@ -1195,14 +1195,15 @@ behind a length test.
 shape: A
 
 invariant: Every `Path.read_text` / `Path.write_text` and every text-mode builtin `open()` in the core's
-Python names its encoding (`encoding="utf-8"`, keyword or positional). Without it Python takes the locale codec: UTF-8 on macOS
+Python names its encoding (`encoding="utf-8"`, keyword or positional), and every file that reads `sys.stdin` pins it
+(`sys.stdin.reconfigure(encoding="utf-8")`, or reads `sys.stdin.buffer`). Without it Python takes the locale codec: UTF-8 on macOS
 and Linux, cp1252 on Windows. A fixture that writes `·` or an em dash then hands a correct UTF-8
 reader the byte 0xB7 or 0x97, and the reader fails only on Windows.
 check:     scripts/text-encoding-test.py — AST scan of every git-tracked .py file (a call split over
 lines counts), with a negative control; runs in the CI fixture step like every scripts/*-test.py.
 mechanizable: tool — "names its encoding" is a property of one call, which may span lines; a line grep
 cannot state it.
-instances: 38
+instances: 41
 repeat:    yes — the stdout half is OS-9; the cp1252 finding of 2026-08-04 was the first of the shape
 status:    closed
 note:      Measured 2026-11-06 on the Windows instance (Windows 11, Python 3.14, Git Bash) at train head
@@ -1216,3 +1217,10 @@ fake core was written with `open(path, "w")`, which the scan did not cover (it r
 so the lint passed. The scan now covers text-mode `open()` (binary mode and a computed mode pass); 23 calls in
 5 files pinned in the same commit (check-catalog-test.py 13, freshness-gate-test.py 4, transcript-recall-test.py 3,
 skills/firecrawl-web/fc.py 2, audit-audit-plan-check-test.py 1), no baseline.
+2026-11-12, the Windows instance (Windows 11, Python 3.14, Git Bash): every `COMMENT` line of the collab watch
+showed an em dash as `â€”`, while the comment on GitHub held the correct UTF-8 bytes (read back with `gh api`).
+Cause, reproduced: `repo-activity-filter.py` pinned stdout (OS-9) but read gh's JSON with `sys.stdin.read()`, and
+Python on Windows decodes a piped stdin as cp1252 (`sys.stdin.encoding` printed `cp1252`; the bytes E2 80 94 came out
+as the three letters). The scan now covers a `sys.stdin` read in a file that never pins stdin (code inside a string,
+a child script a fixture writes, is not seen); 3 files pinned in the same commit (repo-activity-filter.py,
+pr-ball.py, plugin-scope-check.py), red on origin/main for all three, no baseline.
