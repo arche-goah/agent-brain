@@ -87,6 +87,9 @@ NOWTS="$(node -e 'process.stdout.write(new Date(Date.now()-60000).toISOString())
 tsbash() { printf '{"type":"assistant","timestamp":"%s","message":{"role":"assistant","content":[{"type":"tool_use","id":"b2","name":"Bash","input":{"command":%s}}]}}\n' "$NOWTS" "$(js "$1")"; }
 f="$T/4s.jsonl"; { user "work through the open points autonomously"; tsbash "$MEAS"; asst "BLOCKED: item C — the operator's word on the deploy"; user "<task-notification>PR 12 comment by a peer</task-notification>"; asst "Noted, the list is unchanged."; } > "$f"
 check "the turn before ended on a measured BLOCKED list, nothing changed since: it stands" "$f" allow
+# Windows review 2026-11-12: with two quiet events the "Noted" turn in between must not hide the list that still stands.
+f="$T/4v.jsonl"; { user "work through the open points autonomously"; tsbash "$MEAS"; asst "BLOCKED: item C — the operator's word on the deploy"; user "<task-notification>PR 12 comment by a peer</task-notification>"; asst "Noted, the list is unchanged."; user "<task-notification>PR 13 comment by a peer</task-notification>"; asst "Noted, the list is unchanged."; } > "$f"
+check "two quiet events after a measured BLOCKED list: it still stands" "$f" allow
 f="$T/4t.jsonl"; { user "work through the open points autonomously"; tsbash "$MEAS"; asst "BLOCKED: item C — the operator's word on the deploy"; user "<task-notification>PR 12 comment by a peer</task-notification>"; tsbash "git commit -m 'x' -- a.md"; asst "Committed a fix."; } > "$f"
 check "a state change since the measured list: the list is asked again" "$f" block
 f="$T/4u.jsonl"; { user "work through the open points autonomously"; tsbash "$MEAS"; asst "Working on item C."; user "<task-notification>PR 12 comment by a peer</task-notification>"; asst "Noted."; } > "$f"

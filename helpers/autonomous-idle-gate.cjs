@@ -74,7 +74,7 @@ function turnOf(tp) {
   try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return null; }
   let text = ''; let wake = false; let asked = false; let ans = ''; let cmds = []; let prev = null; let lastUserIsNotification = false; let since = '';
   let opener = '';   // the user record that opened the turn (see ownEventsOnly)
-  let prevText = '';
+  let lastEndText = '';
   const askIds = new Set();
   // Every command of the session in order, with its time: an earlier measurement can still stand (see judge).
   const all = [];
@@ -101,7 +101,10 @@ function turnOf(tp) {
       if (t !== null && !HOOK_ECHO.test(t)) {
         lastUserIsNotification = /<task-notification>|<cross-session-message\b/.test(t);
         if (text) prev = { text, wake, asked, answers: ans, cmds, since, opener };
-        if (text) prevText = text;   // the closing text of the turn before (see judge: a BLOCKED list that still stands)
+        // The newest end line of an earlier turn, carried across quiet turns (see judge: a BLOCKED list that still
+        // stands). Windows review 2026-11-12: keeping only the turn before let the "Noted" turn of the first quiet
+        // event hide the list, so every second event asked for it again; standingMeasurement still ends it on a change.
+        if (text && END_LINE.test(text)) lastEndText = text;
         text = ''; wake = false; asked = false; ans = ''; cmds = []; since = d.timestamp || ''; opener = t;
       } else if (t === null) {
         for (const [, a] of answers(msg, askIds)) ans += '\n' + squash(a); // the operator's answers in this turn
@@ -121,8 +124,8 @@ function turnOf(tp) {
     }
   }
   const waiting = [...armed].some((id) => !ended.has(id));
-  if (!text && prev && lastUserIsNotification) return { ...prev, waiting, all, prevText: '' };
-  return { text, wake, asked, answers: ans, cmds, since, waiting, all, opener, prevText };
+  if (!text && prev && lastUserIsNotification) return { ...prev, waiting, all, lastEndText: '' };
+  return { text, wake, asked, answers: ans, cmds, since, waiting, all, opener, lastEndText };
 }
 
 /** A watcher event that reports only this instance's own doing, or the watcher's own state - nothing to act on.
@@ -409,7 +412,7 @@ function judge(input, now) {
   // again after watcher events that changed nothing - four identical lists in a row. When the turn before ended on an end
   // line and its measurement still stands (fresh, and no state-changing call since - standingMeasurement), this turn ends
   // without repeating it. Any change since (an edit, a commit, a push, a post) or an older measurement asks again.
-  if (t.prevText && END_LINE.test(t.prevText) && standingMeasurement(t.all, measurers(root), now)) return null;
+  if (t.lastEndText && END_LINE.test(t.lastEndText) && standingMeasurement(t.all, measurers(root), now)) return null;
   return 'AUTONOMOUS-IDLE: the run is autonomous and this turn ends without its continuation. ' +
     'Do the next item now (tool calls in this turn), or end the turn in one of the run\'s end forms: ' +
     'a line `BLOCKED: <item> — <what restores it, who>`, a line `POOL EMPTY: <how measured>`, or for a run over an ' +
