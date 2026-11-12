@@ -187,6 +187,13 @@ if [ -f "$root/scripts/english-only.py" ]; then
   run_check "english-only" "$py" "$root/scripts/english-only.py"
 fi
 
+# The content guard (malicious-content classes: invisible characters, bidi controls), where the repo ships it. Measured
+# 2026-11-12 on the macOS instance: an agent's fixture carried a literal U+FEFF, its commits passed leak-scan, and only
+# the full lint at the merge-train head found it - one more lint round. Runs in ~1 s over the repo.
+if [ -f "$root/scripts/content-guard.py" ]; then
+  run_check "content-guard" "$py" "$root/scripts/content-guard.py"
+fi
+
 if [ "$fail" -ne 0 ]; then
   echo ""
   echo "Nothing was committed. Fix it — or, with a reason: git commit --no-verify"
