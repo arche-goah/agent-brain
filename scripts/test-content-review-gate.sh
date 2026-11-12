@@ -118,6 +118,17 @@ probe "approve with a prose Model line naming opus" "gh pr review 5 -R o/r --app
 transcript claude-sonnet-5-5
 probe "a prose Model line claiming opus on a sonnet session" "gh pr comment 5 -R o/r --body-file $N/rev-prose.md" block
 
+# CHECK 3b - an OS review posted as a comment carries the counted content lines (agent-brain #473, 2026-11-12)
+transcript claude-opus-5-5
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
+printf '<!-- instance-key: %s -->\nWindows check OK at head abc1234.\n**fit: yes, design: partly, cost: low**\n- Model: claude-opus-5-5\n' "$B" > "$T/os-heading.md"
+printf '<!-- instance-key: %s -->\nWindows check OK at head abc1234.\n%s\nModel: claude-opus-5-5\n' "$B" "$GOOD" > "$T/os-full.md"
+printf '<!-- instance-key: %s -->\nmacOS OK at head abc1234, all fixtures pass.\n' "$A" > "$T/os-author.md"
+probe "the incident: an OS review with fit/design/cost in one heading line" "gh pr comment 5 -R o/r --body-file $N/os-heading.md" block
+probe "an OS review with the four lines" "gh pr comment 5 -R o/r --body-file $N/os-full.md" allow
+probe "the author's own OS check needs no content review" "gh pr comment 5 -R o/r --body-file $N/os-author.md" allow
+probe "an author update without an OS verdict stays free" "gh pr comment 5 -R o/r --body-file $N/rev-thin.md" allow
+
 # CHECK 4 - merge
 M="gh pr merge 5 -R o/r --merge"
 printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$GOOD" "$B" > "$T/c-other.md"
