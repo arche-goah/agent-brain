@@ -104,6 +104,14 @@ function blankNonVerdicts(s) {
   return out;
 }
 
+/** Does `text` say NO for `os` in so many words — "no / not <OS> OK", "<OS> FAIL", "<OS> check: not OK"? */
+function saysNo(text, os) {
+  const name = osRx(os).source.replace(/^\\b/, '');
+  const clean = String(text).replace(/`[^`]*`/g, '``');
+  return new RegExp(`\\b(?:no|not)\\s+[*_]*(?:${name})[*_]*\\s+(?:hand\\s+)?(?:ok|pass)\\b`, 'i').test(clean)
+    || new RegExp(`\\b(?:${name})(?:\\s+(?:hand\\s+)?(?:check|review|test)s?)?[\\s*:_-]*(?:fail(?:ed|s)?|not ok)\\b`, 'i').test(clean);
+}
+
 /** Does this line say OK for `os`? */
 function saysOk(line, os) {
   const clean = blankNonVerdicts(String(line).replace(/`[^`]*`/g, '``').replace(/[\w./-]+\.[a-z]{1,4}\b/gi, '``')
@@ -137,6 +145,10 @@ function handReview(text, os, opts = {}) {
   if (opts.head && !t.includes(String(opts.head).slice(0, 7))) return null;
   const first = t.trim().split(/\r?\n/)[0] || '';
   if (CI_NOTE.test(first) && !hasStatement(first)) return null;
+  // An explicit no for this OS ("No Windows OK yet: 1 finding", "Windows FAIL") is the verdict of the whole text: the
+  // pass words of its evidence ("Windows, measured: … 17/17 passed") must not turn a finding into an OK (measured
+  // 2026-11-12 on 13 finding drafts for core PRs: every one read as a Windows hand review before this line).
+  if (saysNo(t, os)) return null;
   return sentences(t).some((s) => saysOk(s, os)) ? key[1].toLowerCase() : null;
 }
 
@@ -160,4 +172,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { saysOk, handReview, statementAt, NAME_RX, OK_RX, NOT_RX, KEY_RX, CI_NOTE };
+module.exports = { saysOk, saysNo, handReview, statementAt, NAME_RX, OK_RX, NOT_RX, KEY_RX, CI_NOTE };
