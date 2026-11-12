@@ -361,6 +361,8 @@ known:     scripts/test-release-freeze-gate.sh=1
 known:     scripts/test-repo-activity-watch.sh=1
 known:     scripts/test-review-claim-gate.sh=1
 known:     scripts/test-root-cause-gate.sh=1
+known:     scripts/test-session-areas.sh=1
+known:     scripts/test-claim-write-gate.sh=1
 known:     scripts/test-session-closing.sh=1
 known:     scripts/test-core-branch.sh=1
 known:     scripts/test-session-helpers.sh=1
@@ -1121,14 +1123,16 @@ translates the path as the shell sees it before opening it: `/c/...` to `C:/...`
 `cygpath -m` (`nativePath` in `helpers/public-text-guard.cjs`). Node on Windows reads `/c/...` as a
 path on the current drive's root and fails; the hook swallows the read error and judges the command
 without the file — on macOS and Linux the same path is the native one, so the defect is invisible there.
-pattern:   publishedText\(
+pattern:   publishedText\(|nativePath\(
 paths:     --include=*.cjs helpers
-known:     helpers/content-review-gate.cjs=1
-known:     helpers/instance-key-gate.cjs=1
-known:     helpers/public-text-guard.cjs=1
-known:     helpers/published-text.cjs=3
-known:     helpers/review-claim-gate.cjs=1
-instances: 2
+known:     helpers/content-review-gate.cjs=3
+known:     helpers/instance-key-gate.cjs=3
+known:     helpers/public-text-guard.cjs=2
+known:     helpers/published-text.cjs=4
+known:     helpers/review-claim-gate.cjs=2
+known:     helpers/session-areas.cjs=2
+known:     helpers/watch-gate.cjs=1
+instances: 3
 repeat:    yes
 status:    closed
 note:      Measured twice on Windows: 2026-10-14 `instance-key-gate.cjs` blocked `gh pr create --body-file
@@ -1137,7 +1141,15 @@ note:      Measured twice on Windows: 2026-10-14 `instance-key-gate.cjs` blocked
 skipped). Both now translate with `nativePath`. The search lists the consumers of the handed-file list: a
 new consumer appears as a new site and is read for the translation.
 2026-11-10, content-review-gate.cjs read: its `postedText()` translates each handed file with
-`public-text-guard.cjs` `nativePath` before `readFileSync`, the same form as review-claim-gate.
+`public-text-guard.cjs` `nativePath` before `readFileSync`, the same form as review-claim-gate. Third instance 2026-11-11 (Windows
+review of `session-areas.cjs`): a `git -C "/c/..." commit -- <paths>` was recorded as the area `C:/c/...`
+with no repo root. The search now also lists every `nativePath(` caller (the function lives in
+`helpers/published-text.cjs` since 2026-11-12), so a hook that reads a `-C` value or a pathspec from the
+command text shows up as a site of the class too. The sweep of `git -C` readers in `helpers/` that day
+found two more without the translation, both fixed: `content-review-gate.cjs` (the repo of a commit) and
+`watch-gate.cjs` `callDir` (the checkout a push acts on); `release-freeze-gate.cjs` and
+`shared-working-copy-guard.cjs` already translate with their own helper. A reader that never calls
+`nativePath(` stays invisible to this pattern — read every new `-C` reader by hand.
 
 ## OS-21 — a fixture runs the session start in the home of the machine running it
 

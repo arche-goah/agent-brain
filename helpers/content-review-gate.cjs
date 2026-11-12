@@ -41,7 +41,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { invocations, publishedText } = require('./published-text.cjs');
+const { invocations, publishedText, nativePath } = require('./published-text.cjs');
 
 const LABELS = ['Fit', 'Design', 'Cost'];
 const MIN_ANSWER = 25;
@@ -190,7 +190,7 @@ function postedText(cmd, ps, cwd) {
   for (const f of pub.files) {
     const p = String(f).replace(/^~(?=$|[\\/])/, require('os').homedir());
     // nativePath: a Git Bash `/c/...` path node on Windows cannot open (OS-19, same reader as review-claim-gate)
-    try { text += '\n' + fs.readFileSync(path.resolve(cwd, require('./public-text-guard.cjs').nativePath(p)), 'utf8'); }
+    try { text += '\n' + fs.readFileSync(path.resolve(cwd, nativePath(p)), 'utf8'); }
     catch (e) { /* the post fails on it too */ }
   }
   return text;
@@ -251,7 +251,7 @@ function checkCommit(cmd, ps, cwd, getModel) {
   const commits = hits === null ? /\bgit\b[^\n;&|]*\scommit\b/.test(cmd) : hits.some((w) => sub(w) === 'commit');
   if (!commits) return 0;
   const dir = (/\bgit\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd) || [])[1];
-  const repo = dir ? path.resolve(cwd, dir.replace(/^["']|["']$/g, '')) : cwd;
+  const repo = dir ? path.resolve(cwd, nativePath(dir.replace(/^["']|["']$/g, ''))) : cwd;   // OS-19
   let root;
   try { root = execFileSync('git', ['-C', repo, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
   catch (e) { return 0; }

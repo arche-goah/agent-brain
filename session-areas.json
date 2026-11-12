@@ -1,0 +1,9 @@
+{
+  "_doc": "Words with which the operator speaks of other sessions. helpers/session-areas.cjs (UserPromptSubmit) matches the prompt against these regexes (case-insensitive) and, on a hit, injects the live session map (who, which areas, which overlaps) with the order to coordinate now. Triggers are English; an instance adds its language in .claude/rules/session-areas.json ({\"triggers\": [\"regex\", ...]}).",
+  "triggers": [
+    "\\bparallel(ly)?\\s+(claude\\s+)?sessions?\\b",
+    "\\b(other|another|second|third|both|all)\\s+(claude\\s+)?sessions?\\b",
+    "\\bsessions?\\s+(next door|in parallel|at the same time)\\b",
+    "\\bwho\\s+(else\\s+)?(is\\s+)?work(s|ing)?\\s+on\\s+what\\b"
+  ]
+}

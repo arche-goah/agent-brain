@@ -20,6 +20,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/root-cause-gate.cjs\" --pre",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/claim-write-gate.cjs\"",
+            "timeout": 5
           }
         ]
       },
@@ -213,6 +218,16 @@
         ]
       },
       {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/session-areas.cjs\" record",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "mcp__.*",
         "hooks": [
           {
@@ -319,6 +334,11 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/basics-hint.cjs\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/session-areas.cjs\" prompt",
             "timeout": 5
           },
           {
