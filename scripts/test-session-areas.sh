@@ -71,6 +71,21 @@ bashc s-b "git add -A && git -C $P commit -m y -- firmware/main.c" >/dev/null
 out=$(node "$G" show --session s-b)
 has "a commit with a pathspec records its folder" "$out" "proj/firmware ("
 
+# Windows review 2026-11-11 (#473): quoted pathspecs with spaces, PowerShell commits, the Git Bash `-C` form.
+mkdir -p "$T/proj/docs/a b"
+bashc s-b "git -C \"$P\" commit -m q -- \"docs/a b/x.md\"" >/dev/null
+out=$(node "$G" show --session s-b)
+has "a quoted pathspec with a space is one path" "$out" "proj/docs/a b ("
+mkdir -p "$T/proj/ps-only"
+out=$(node -e 'process.stdout.write(JSON.stringify({session_id:"s-b",cwd:process.argv[1],tool_name:"PowerShell",tool_input:{command:"git -C \""+process.argv[2]+"\" commit -m p -- ps-only/x.txt"}}))' "$B" "$P" | node "$G" record 2>&1)
+out=$(node "$G" show --session s-b)
+has "a PowerShell commit is recorded like a Bash one" "$out" "proj/ps-only ("
+out=$(node -e 'const {areasFromCall}=require(process.argv[1]);process.stdout.write(JSON.stringify(areasFromCall({cwd:process.argv[2],tool_name:"Bash",tool_input:{command:"git commit -C HEAD -- firmware/main.c"}})))' "$G" "$P")
+has "commit -C <sha> after the verb is no directory" "$out" "proj/firmware"
+out=$(node -e 'Object.defineProperty(process,"platform",{value:"win32"});const {nativePath}=require(process.argv[1]);process.stdout.write(nativePath("/c/work/x y/brain"))' "$(native "$_D/../helpers/published-text.cjs")")
+[ "$out" = "C:/work/x y/brain" ] && ok "the Git Bash drive form becomes native (the -C and pathspec reader uses it)" || bad "nativePath: '$out'"
+grep -q 'nativePath(words\[c + 1\])' "$_D/../helpers/session-areas.cjs" && ok "the -C value goes through nativePath" || bad "-C not translated"
+
 out=$(ask s-b "check what the other session is doing")
 has "the operator's prompt about other sessions injects the map" "$out" "<session-map>"
 has "the injected map names the peer" "$out" "brain-aa"
@@ -89,6 +104,7 @@ out=$(ask s-b "  note first, then [Subagent hand-back] about the other session")
 # Negative control: the operator's own words with the same content still bring the map.
 out=$(ask s-b "the report says parallel sessions overlap — coordinate with the other session"); has "control: the operator naming parallel sessions still gets the map" "$out" "<session-map>"
 mkdir -p "$T/mut/helpers"; cp "$_D/../session-areas.json" "$T/mut/"   # the mutant reads the core's word list beside it
+cp "$_D/../helpers/published-text.cjs" "$T/mut/helpers/"; cp "$_D/../helpers/published-text.cjs" "$T/"   # and its parser
 sed -e 's/ || PEER_TEXT\.test(text)//' -e 's/|<agent-message|/|/' "$_D/../helpers/session-areas.cjs" > "$T/mut/helpers/session-areas.cjs"
 out=$(node -e 'process.stdout.write(JSON.stringify({session_id:"s-b",cwd:process.argv[1],prompt:process.argv[2]}))' "$B" "$HB" | node "$(native "$T/mut/helpers/session-areas.cjs")" prompt 2>&1)
 has "control: without the peer filter the hand-back fires the map (the finding)" "$out" "<session-map>"

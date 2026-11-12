@@ -9,8 +9,8 @@
  * after the operator asked. Who writes where is already in every tool call; it only has to be
  * written down where the other sessions read.
  *
- *   PostToolUse  (Write|Edit|MultiEdit|NotebookEdit|Bash):  session-areas.cjs record
- *       derives the written area from the call (file path; `git commit -- <paths>` for Bash) and
+ *   PostToolUse  (Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell):  session-areas.cjs record
+ *       derives the written area from the call (file path; `git commit -- <paths>` for a shell) and
  *       stores it in `.claude-state/session-areas/<session id>.json`. When that write meets a
  *       live peer's area or claim for the first time, the session is told at once (additionalContext).
  *   UserPromptSubmit:  session-areas.cjs prompt
@@ -31,6 +31,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { shellSegments, unquote, nativePath } = require('./published-text.cjs');
 
 const AREA_DEPTH = 3;          // levels below the repo root an area keeps
 const AREA_TTL_H = 8;          // a write older than this is no longer "recent"
@@ -98,22 +99,32 @@ function committedFiles(root, resp) {
   } catch (e) { return []; }
 }
 
+/** The word arrays of every `git … commit …` call in a command line. A line the parser cannot read to the
+ *  end (a heredoc, an open quote) falls back to a plain split — a hook here only records, never blocks. */
+function commitCalls(cmd, ps) {
+  const segs = shellSegments(cmd, ps) || cmd.split(/&&|\|\||;|\n/).map((s) => s.trim().split(/\s+/).map(unquote));
+  return segs.filter((w) => { const g = w.indexOf('git'); return g >= 0 && w.indexOf('commit', g) > g; })
+    .map((w) => w.slice(w.indexOf('git')));
+}
+
 /** The areas one tool call writes to. */
 function areasFromCall(input) {
   const ti = input.tool_input || {};
   const cwd = input.cwd || process.cwd();
   const fp = ti.file_path || ti.notebook_path;
   if (fp && /^(Write|Edit|MultiEdit|NotebookEdit)$/.test(input.tool_name || '')) return [areaOf(path.resolve(cwd, fp), false)];
-  if (input.tool_name !== 'Bash' || typeof ti.command !== 'string') return [];
+  const ps = input.tool_name === 'PowerShell';
+  if ((input.tool_name !== 'Bash' && !ps) || typeof ti.command !== 'string') return [];
   const out = [];
-  // Every `git [-C <dir>] … commit … [-- <paths>]` segment of the command line.
-  for (const seg of ti.command.split(/&&|\|\||;|\n/)) {
-    const m = seg.match(/\bgit\s+(.*?)\bcommit\b(.*)$/);
-    if (!m) continue;
-    const c = m[1].match(/-C\s+("[^"]+"|'[^']+'|\S+)/);
-    const base = path.resolve(cwd, c ? c[1].replace(/^["']|["']$/g, '') : '.');
-    const dd = m[2].indexOf(' -- ');
-    const specs = dd >= 0 ? m[2].slice(dd + 4).trim().split(/\s+/).filter((s) => s && !/^[#|>]/.test(s)) : [];
+  // Every `git [-C <dir>] … commit … [-- <paths>]` segment, read as the shell reads it (quotes, comments)
+  // with published-text's word split; a path in the shell's form is made native first (OS-19: Git Bash
+  // `/c/...` resolved by node on Windows to `C:\c\...`, measured 2026-11-11 on the Windows instance).
+  for (const words of commitCalls(ti.command, ps)) {
+    const ci = words.indexOf('commit');
+    const c = words.slice(0, ci).indexOf('-C');   // `git commit -C <sha>` after the verb is a message source
+    const base = path.resolve(cwd, c >= 0 ? nativePath(words[c + 1]) : '.');
+    const dd = words.indexOf('--', ci);
+    const specs = dd >= 0 ? words.slice(dd + 1).filter((s) => !/^[|>]/.test(s)) : [];
     if (!specs.length) {
       // No pathspec: the files of the commit this call made (its sha from the tool's own output); else the
       // repo root, which is an unknown area — shown, never an overlap.
@@ -125,7 +136,7 @@ function areasFromCall(input) {
       continue;
     }
     for (const s of specs) {
-      const abs = path.resolve(repoRoot(norm(base)) || base, s.replace(/^["']|["']$/g, ''));
+      const abs = path.resolve(repoRoot(norm(base)) || base, nativePath(s));
       let isDir = false; try { isDir = fs.statSync(abs).isDirectory(); } catch (e) { isDir = false; }
       out.push(areaOf(abs, isDir));
     }

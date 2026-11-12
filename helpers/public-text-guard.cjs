@@ -136,15 +136,7 @@ function unquote(s) {
 // holding a person's name passed this guard (unreadable = skipped) and reached the public core;
 // the same file as `C:/<home>/.../x.md` was blocked. Drive form is rewritten here; everything
 // else that starts with `/` goes through `cygpath -m` when it exists (Git Bash ships it).
-function nativePath(p) {
-  const s = String(p);
-  if (process.platform !== 'win32' || !s.startsWith('/')) return s;
-  const m = /^\/([a-zA-Z])(\/|$)(.*)$/.exec(s);
-  if (m) return m[1].toUpperCase() + ':/' + m[3];
-  try {
-    return execFileSync('cygpath', ['-m', s], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }).toString().trim() || s;
-  } catch (e) { return s; }
-}
+// `nativePath` lives in published-text.cjs since 2026-11-12, shared with session-areas.cjs.
 
 function resolveFrom(cwd, p) {
   const home = require('os').homedir();
@@ -167,7 +159,7 @@ function referencedFiles(cmd) {
   return out.filter((f) => f !== '-');
 }
 
-const { shellSegments, publishedText } = require('./published-text.cjs');
+const { shellSegments, publishedText, nativePath } = require('./published-text.cjs');
 
 function slugFromRemote(dir) {
   try {
