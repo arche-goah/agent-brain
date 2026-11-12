@@ -101,7 +101,7 @@ known:     scripts/check-catalog.py=16
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
-known:     scripts/hook-coverage.py=25
+known:     scripts/hook-coverage.py=26
 known:     scripts/ledger-fields-test.py=2
 known:     scripts/ledger_fields.py=1
 known:     scripts/lesson-carriers.py=5
@@ -200,6 +200,9 @@ inside a document, never from a join.
 path of the core helper and of the wired command's file, which are only tested with `os.path.isfile`
 or opened for the line comparison; the path inside the command is matched against `core/<sub>/<name>`
 AFTER backslashes became `/`, and every line it prints still names the helper's FILE NAME only.
+2026-11-10, hook-coverage.py 25 -> 26 after that review (`declared_commands()`): the new join builds the
+path of `.claude/rules/local-machinery.json`, which is only opened; the keys it reads are compared with the
+wired command text, never with a joined path.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 

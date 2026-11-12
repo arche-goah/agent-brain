@@ -73,6 +73,22 @@ case "$out" in
   *"PreToolUse: node"*) bad "duplicate case also reports plugin hooks as missing: '$(printf '%s' "$out" | grep -a 'PreToolUse: node' | head -1)'";;
   *) ok "plugin-shipped hooks are not demanded from settings.json";;
 esac
+#    ... unless the brain declares that copy on purpose (local-machinery.json, with a reason and a
+#    date not passed): a user-level copy guarding every project outside the plugin's scope
+CMD='node "$CLAUDE_PROJECT_DIR/core/helpers/file-guard.cjs"'
+"$PY" -c 'import json,sys; json.dump({"alpha":{sys.argv[2]:{"until":"2999-01-01","why":"guards projects outside the plugin scope"}}},open(sys.argv[1],"w",encoding="utf-8"))' "$B/.claude/rules/local-machinery.json" "$CMD"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"file-guard.cjs runs twice"*) bad "a declared copy is still named as a duplicate";;
+  *) ok "a copy declared in local-machinery.json is not named as a duplicate";;
+esac
+"$PY" -c 'import json,sys; json.dump({"alpha":{sys.argv[2]:{"until":"2000-01-01","why":"old"}}},open(sys.argv[1],"w",encoding="utf-8"))' "$B/.claude/rules/local-machinery.json" "$CMD"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"file-guard.cjs runs twice"*) ok "a declaration past its date no longer hides the duplicate";;
+  *) bad "an expired declaration hides the duplicate";;
+esac
+rm -f "$B/.claude/rules/local-machinery.json"
 
 # 2) plugin ships, settings clean -> silent
 B="$T/clean"; make_brain "$B"
