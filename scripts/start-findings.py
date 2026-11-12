@@ -41,6 +41,7 @@ from pathlib import Path
 
 try:  # OS-9: the bootup and open-items-gate.cjs parse this output
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8", newline="\n")  # error lines carry an em dash; cp1252 CI run, 2026-11-12
     sys.stdin.reconfigure(encoding="utf-8")
 except Exception:
     pass
