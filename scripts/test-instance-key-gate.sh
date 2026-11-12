@@ -65,6 +65,18 @@ hi
 X
 )\"" block
 probe "no instance id: nothing to check" "gh pr comment 5 -R o/r --body hi" allow ""
+# A local script the command runs is read one level deep (2026-11-12, both instances: posts made inside
+# `bash <file>` went out unread - the gate saw only the outer command).
+SC="$T/scripts"; mkdir -p "$SC"
+printf '%s\n' '#!/usr/bin/env bash' "# don't forget the note" "$G pr comment \"\$1\" -R o/r --body \"fixed\"" > "$SC/nokey.sh"
+printf '%s\n' '#!/usr/bin/env bash' "$G pr comment \"\$1\" -R o/r --body \"fixed <!-- instance-key: $KEY -->\"" > "$SC/key.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo nothing posted' > "$SC/quiet.sh"
+printf '%s\n' '#!/usr/bin/env bash' "$G pr comment \"\$1\" -R o/r --body-file \"\$2\"" > "$SC/runtime.sh"
+probe "a script run as bash <file> posting without the key" "bash $(native "$SC/nokey.sh") 5" block
+probe "the same script with the key" "bash $(native "$SC/key.sh") 5" allow
+probe "a script that posts nothing" "bash $(native "$SC/quiet.sh")" allow
+probe "a script whose body file comes at run time" "bash $(native "$SC/runtime.sh") 5 body.md" allow
+probe "a script the gate cannot read (variable path)" 'bash "$NOSUCHDIR/nokey.sh" 5' allow
 
 # The block message names the exact line to add (an agent must not have to guess the key).
 out=$(printf '%s' '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 5 --body hi"}}' \

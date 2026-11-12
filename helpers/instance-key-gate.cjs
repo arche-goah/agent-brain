@@ -126,12 +126,24 @@ function levelFindings(cmd, cwd, ps) {
   return lv.check(repo, only === null ? undefined : only).findings;
 }
 
-function gate(input) {
+// `script`: set when `input` carries the text of a local script the command runs (scriptBodies,
+// published-text.cjs, 2026-11-12: posts made inside `bash <file>` went out unread). Its posts need
+// the key like the command's own; a script that cannot be read passes (as an unreadable handed file
+// does here), a body or handed path the script composes at run time passes too - its key is not in
+// the source. The change-level check stays with the outer command: a script may change folder first.
+function gate(input, script) {
   if (!input || !['Bash', 'PowerShell'].includes(input.tool_name)) return 0;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
   const ps = input.tool_name === 'PowerShell';
+  if (!script) {
+    const { scriptBodies } = require('./published-text.cjs');
+    for (const s of scriptBodies(cmd, ps, input.cwd || process.cwd())) {
+      const rc = s.text === null ? 0 : gate(Object.assign({}, input, { tool_input: { command: s.text } }), s.file);
+      if (rc) return rc;
+    }
+  }
   if (!posts(cmd, ps)) return 0;
-  const lv = levelFindings(cmd, input.cwd || process.cwd(), ps);
+  const lv = script ? [] : levelFindings(cmd, input.cwd || process.cwd(), ps);
   if (lv.length) {
     console.error('BLOCKED (instance-key-gate, change level): a changelog fragment of this PR does not declare its level.\n' +
       lv.map((f) => '  ' + f).join('\n') + '\n' +
@@ -162,9 +174,13 @@ function gate(input) {
     try { text += '\n' + fs.readFileSync(path.resolve(cwd, p), 'utf8'); } catch (e) { /* the write fails on it too */ }
   }
   if (new RegExp(`<!--\\s*instance-key:\\s*${key}\\s*-->`, 'i').test(text)) return 0;
+  if (script && pub && (unread.length || pub.spans.some(([s, e]) => /\$/.test(cmd.slice(s, e).replace(/^--?[\w-]+=/, '').replace(/^'[\s\S]*'$/, ''))))) {
+    console.error(`instance-key-gate: the script ${script} composes its post at run time - the key is not checked there`);
+    return 0;
+  }
   const noBody = /\bgh\s+pr\s+review\b/.test(cmd) && !/--body(-file)?\b|\s-b\s|\s-F\s/.test(cmd);
   console.error(
-    `BLOCKED (instance-key-gate): this GitHub text carries no instance key. Add this line to its body:\n  ${mark}\n` +
+    `BLOCKED (instance-key-gate): this GitHub text${script ? ` (posted by the script ${script})` : ''} carries no instance key. Add this line to its body:\n  ${mark}\n` +
     (unread.length ? `A handed file names a variable this gate cannot resolve (${unread.join(', ')}) - write the path out.\n` : '') +
     (noBody ? 'A review without a body has no place for it - add --body "<one line> ' + mark + '".\n' : '') +
     'Why: several instances can post under one GitHub login; the readers that decide whose move a PR\n' +

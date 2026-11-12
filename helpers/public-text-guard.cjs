@@ -19,6 +19,8 @@
  * `git commit|tag -m/--message`, plus every file handed over (`--body-file`, `--notes-file`,
  * `-F <file>`, `--file`, `--input`, `key=@file`, `$(cat <file>)`). Paths, flags, the working
  * directory, shell comments and the environment are never published and never scanned.
+ * A local shell script the command runs (`bash <file>`, `./x.sh`) is read one level deep and its
+ * command lines go through the same reading (2026-11-12; see gate() and scriptBodies).
  * Until 2026-10-19 the guard scanned the WHOLE command and masked known path forms: every new
  * form was a new false alarm, and a path-shaped word inside a body was masked, i.e. not
  * checked. A command the parser cannot read to the end (a heredoc, an unbalanced quote) is
@@ -167,7 +169,7 @@ function referencedFiles(cmd) {
   return out.filter((f) => f !== '-');
 }
 
-const { shellSegments, publishedText } = require('./published-text.cjs');
+const { shellSegments, publishedText, scriptBodies } = require('./published-text.cjs');
 
 function slugFromRemote(dir) {
   try {
@@ -183,6 +185,8 @@ function slugFromRemote(dir) {
 function targetRepos(cmd, cwd) {
   const slugs = new Set();
   for (const m of cmd.matchAll(/(?:-R|--repo)[=\s]+("?)([\w.-]+\/[\w.-]+)\1/g)) slugs.add(m[2]);
+  // `-R "$1"` (a script's argument, a variable): the repo is chosen at run time - unknown, not the cwd's
+  if (/(?:^|\s)(?:-R|--repo)[=\s]+"?\$/.test(cmd)) slugs.add('?');
   for (const m of cmd.matchAll(/\brepos\/([\w.-]+\/[\w.-]+?)(?=\/|\s|$|["'?])/g)) slugs.add(m[1]);
   if (!slugs.size) {
     const c = /git\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd);
@@ -253,30 +257,61 @@ function leakPatterns(texts) {
   }
 }
 
-function gate(input) {
+const namesOf = (root) => [...new Set([...(watchList(root) || []), ...partiesList()])];
+
+// A script the command runs but the guard cannot read: refused where an unreadable handed file is
+// refused (a public or unknown target, a watch list to check against), free elsewhere. The target is
+// what the OUTER command names (its -R, its git -C, else the session folder's origin).
+function unreadableScript(input, cmd, cwd, s) {
+  const root = brainRoot(input);
+  if (!namesOf(root).length) return 0;
+  const repos = targetRepos(cmd, cwd);
+  const open = repos.filter((r) => !['private', 'internal'].includes(visibility(r, root)));
+  if (repos.length && !open.length) return 0;
+  console.error(
+    `BLOCKED (public-text-guard): the command runs the script ${s.file}, which the guard cannot read (${s.why}),\n` +
+    `toward ${open.filter((r) => r !== '?').join(', ') || 'a repo whose visibility is unknown'}. A script's gh and git posts are read like the command's own;\n` +
+    'unsure means stricter in public. Give the script\'s literal path (on Windows C:/... not /c/...), or post from the command itself.');
+  return 2;
+}
+
+// `script`: set when `input` carries the text of a local script the command runs (scriptBodies,
+// published-text.cjs) - its command lines are read as the outer command is, one level deep. Text a
+// script composes at run time (`$1`, a variable, `$(printf …)` output) is beyond any reading of its
+// source: its literal parts are scanned, a variable in a body or a handed path is not refused there.
+function gate(input, script) {
   if (!input || !['Bash', 'PowerShell'].includes(input.tool_name)) return 0;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
-  if (!isWrite(cmd)) return 0;
+  const ps = input.tool_name === 'PowerShell';
+  const cwd = input.cwd || process.cwd();
+  if (!script) {
+    for (const s of scriptBodies(cmd, ps, cwd)) {
+      const rc = s.text === null ? unreadableScript(input, cmd, cwd, s)
+        : gate(Object.assign({}, input, { tool_input: { command: s.text } }), s.file);
+      if (rc) return rc;
+    }
+  }
+  // a script's own comment lines are no commands (an apostrophe in one would open a quote for isWrite)
+  if (!isWrite(script ? cmd.replace(/^[ \t]*#.*$/gm, '') : cmd)) return 0;
   const root = brainRoot(input);
-  const own = watchList(root);
-  const names = [...new Set([...(own || []), ...partiesList()])];
+  const names = namesOf(root);
   if (!names.length) {
     console.error('public-text-guard: no watch list (.claude/rules/leak-names.json, parties.json of the shared memory) - nothing checked');
     return 0;
   }
   // `s?`: the German genitive (a file slug `reply-<name>s-...`) is the name too (2026-11-02).
   const rx = new RegExp('\\b(' + names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')s?\\b', 'gi');
-  const cwd = input.cwd || process.cwd();
   const found = new Map(); // word -> where
   const published = []; // the texts that reach GitHub, for the leak-scan patterns below
   const scan = (text, where, isText = true) => {
     if (isText) published.push(String(text));
     for (const m of String(text).matchAll(rx)) if (!found.has(m[1].toLowerCase())) found.set(m[1].toLowerCase(), where);
   };
-  const pub = publishedText(cmd, input.tool_name === 'PowerShell');
+  const pub = publishedText(cmd, ps);
   const unreadable = []; // what the guard could not read: a shell variable, a file node cannot open
   const readFiles = (list) => {
     for (const f of list) {
+      if (script && /\$\{?[A-Za-z_\d@*#]/.test(f)) continue; // a path the script builds at run time
       try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { unreadable.push(`file ${f} (cannot be read by the guard)`); }
     }
   };
@@ -286,7 +321,7 @@ function gate(input) {
     for (const [s, e] of pub.spans) {
       const raw = cmd.slice(s, e);
       const literal = /^'[\s\S]*'$/.test(raw.replace(/^--?[\w-]+=/, ''));
-      if (!literal && /\$\{?[A-Za-z_]/.test(raw)) unreadable.push(raw.length > 40 ? raw.slice(0, 40) + '…' : raw);
+      if (!script && !literal && /\$\{?[A-Za-z_]/.test(raw)) unreadable.push(raw.length > 40 ? raw.slice(0, 40) + '…' : raw);
     }
   } else {
     // Not readable to the end (heredoc, unbalanced quote): scan it whole. Only the home part of
@@ -307,7 +342,7 @@ function gate(input) {
   const repos = targetRepos(cmd, cwd);
   const open = repos.filter((s) => visibility(s, root) !== 'private' && visibility(s, root) !== 'internal');
   if (repos.length && !open.length) return 0;
-  const target = open.join(', ') || 'a repo whose visibility is unknown';
+  const target = (open.filter((s) => s !== '?').join(', ') || 'a repo whose visibility is unknown') + (script ? ` (posted by the script ${script})` : '');
   const leaks = found.size || unreadable.length ? [] : leakPatterns(published);
   if (!found.size && !unreadable.length && !leaks.length) return 0;
   if (leaks.length) {
