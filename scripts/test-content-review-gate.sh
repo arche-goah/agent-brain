@@ -14,7 +14,8 @@ bad() { echo "  FAIL $1"; fail=1; }
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 N="$(native "$T")"  # native form: the gate (node) reads the --body-file paths below
-printf 'process.stdout.write(require("fs").readFileSync(process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
+# the fake gh: `gh api ...` (the compare view) answers COMPARE_FILES, everything else the PR JSON
+printf 'process.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : require("fs").readFileSync(process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
 # a core-like repo: its root carries pr-risk.json
 git init -q "$T/core"
 cp "$ROOT/pr-risk.json" "$T/core/pr-risk.json"
@@ -70,6 +71,30 @@ foreign=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$T/brain")\",
 [ "$frc" -ne 2 ] && ok "create -R from another repo's checkout: its branch files do not set the floor" \
   || bad "create -R from another repo's checkout was scored by the checkout: ${foreign:0:200}"
 [[ "$foreign" == *"not this checkout"* ]] && ok "  ... and says the floor was not checked" || bad "  ... no 'not this checkout' note"
+# Windows review of #504: an SSH origin of the SAME repo was read as foreign, so a high-risk PR passed declared low
+# an empty global git config: a machine's `url.<https>.insteadOf git@github.com:` turns the SSH origin back into
+# https in `git remote get-url`, and the case would pass on the old code (measured on the macOS instance)
+: > "$T/empty.gitconfig"
+create_in() { # $1 label, $2 cwd, $3 command, $4 block|allow, [$5 compare files of the fake gh api]
+  local out rc
+  out=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$2")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$3")}}" \
+    | env -u CONTENT_REVIEW_GATE_FILES GIT_CONFIG_GLOBAL="$(native "$T/empty.gitconfig")" GIT_CONFIG_NOSYSTEM=1 \
+      CONTENT_REVIEW_GATE_GH="$(native "$T/gh.js")" PR_JSON="$(native "$T/pr.json")" COMPARE_FILES="${5-}" \
+      node "$(native "$GATE")" 2>&1); rc=$?
+  if [ "$rc" -eq 2 ]; then [ "$4" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:200}"
+  else [ "$4" = allow ] && ok "$1 allows" || bad "$1 did NOT block (rc=$rc): ${out:0:200}"; fi
+}
+git init -q "$T/ssh"
+git -C "$T/ssh" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+git -C "$T/ssh" update-ref refs/remotes/origin/main HEAD
+git -C "$T/ssh" remote add origin git@github.com:O/R.git
+mkdir -p "$T/ssh/helpers"; printf 'x\n' > "$T/ssh/helpers/x-gate.cjs"
+git -C "$T/ssh" add helpers/x-gate.cjs
+git -C "$T/ssh" -c user.name=t -c user.email=t@t commit -q -m gate
+create_in "create -R from an SSH origin of the same repo is scored by the branch (gate file, declared low)" "$T/ssh" "gh pr create -R o/r --body-file $N/body-low.md" block
+create_in "create -R HOST/OWNER/REPO from the same repo is scored by the branch" "$T/ssh" "gh pr create -R github.com/o/r --body-file $N/body-low.md" block
+create_in "create -R a foreign repo with --head: the compare view sets the floor" "$T/brain" "gh pr create -R o/r --head feat/x --body-file $N/body-low.md" block "helpers/x-gate.cjs"
+create_in "create -R a foreign repo with --head, docs only in the compare view (control)" "$T/brain" "gh pr create -R o/r --head feat/x --body-file $N/body-low.md" allow "docs/a.md"
 # review of #478 (Windows instance): a trailing synthetic entry or an unknown family is no model at all
 printf '{"type":"assistant","message":{"model":"claude-sonnet-5-5"}}\n{"type":"assistant","message":{"model":"<synthetic>"}}\n' > "$T/t.jsonl"
 probe "a trailing <synthetic> entry: the last real model counts (sonnet, high)" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"
