@@ -282,10 +282,14 @@ def main():
                 "test -f a & rm -f b", "diff <(rm -f b) a", "git diff --output=out.txt",
                 "git log --output out.txt", "git grep -Ovi x", "test -f a; rm -f b",
                 "grep x a > b", "cat $(rm -f b)", "cat `rm -f b`", "test -f a\nrm -f b",
-                "git -c core.pager=rm log", "git push", "touch x"]:
+                "git -c core.pager=rm log", "git push", "touch x",
+                "gh pr view 5 --web", "gh pr view 5 -w", "gh pr merge 5", "gh pr comment 5 -b x",
+                "git -C core push", "git -C core -c core.pager=rm log"]:
         ok(not lr.permitted(cmd, lr.ALLOWED), f"refused: {cmd!r}")
     for cmd in ["grep -q x file", "test -f a && git log -1 --format=%H", "git log --oneline | grep -q fix",
-                "! grep -q draft notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md"]:
+                "! grep -q draft notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md",
+                "gh pr view 437 -R o/r --json state --jq .state | grep -q MERGED",
+                "git -C core merge-base --is-ancestor cc8dfc3 HEAD", "git -C core log -1"]:
         ok(lr.permitted(cmd, lr.ALLOWED), f"allowed: {cmd!r}")
 
     # Negative control (operator 2026-10-28): a check green the first time it is seen on an open
