@@ -1044,6 +1044,7 @@ def main() -> int:
     # OS-9: --inventory and --json are redirected into files that a workflow and its agents
     # parse as JSON; the entries carry umlauts. Unpinned, Windows writes the ANSI codepage.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 
     if not a.repo.is_dir():
         print(f"ERROR: shared-memory repo not found: {a.repo}", file=sys.stderr)

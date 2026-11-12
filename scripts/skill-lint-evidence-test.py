@@ -16,6 +16,7 @@ from pathlib import Path
 # stdout on Windows is the ANSI codepage, and the print raised before a verdict (CI
 # 2026-10-28, windows-latest). Pin the stream, not the labels.
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 spec = importlib.util.spec_from_file_location("skill_lint", Path(__file__).with_name("skill-lint.py"))
 lint = importlib.util.module_from_spec(spec)

@@ -130,6 +130,7 @@ def member_channels(root=None, default=None, path=None) -> list[dict]:
 
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # parsed by bash (OS-9)
+    sys.stderr.reconfigure(encoding="utf-8")
     if argv[1:] != ["further"]:
         print("usage: shared_channels.py further", file=sys.stderr)
         return 64

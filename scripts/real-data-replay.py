@@ -108,6 +108,7 @@ def symptoms(core, section):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # OS-9: the preflight reads this
+    sys.stderr.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--brain", default=os.environ.get("RELEASE_REPLAY_BRAIN", ""))
     ap.add_argument("--base", default="")

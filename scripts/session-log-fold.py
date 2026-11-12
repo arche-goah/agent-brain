@@ -111,6 +111,7 @@ def cutoff_for(blocks, max_bytes, today):
 def main():
     global P
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # OS-9: session-closing.sh reads this
+    sys.stderr.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--before", metavar="YYYY-MM-DD",
