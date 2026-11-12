@@ -95,9 +95,12 @@ INLINE_FIELD = re.compile(r"(?:^|\s)(id|check):\s*(`[^`]*`|.+?)\s*(?=\s[|·;]\s[
 DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 NONE = re.compile(r"^none\b", re.I)
 # A current exit line: a field line `exit:` (also as a list item or in backticks); `was-exit:` is history, not counted.
-MULTI_EXIT = re.compile(r"^[\s>*-]*`?exit:", re.M)
-# The kind of the current exit (`exit: ai-does-it 2026-11-08 ...` -> ai-does-it).
-EXIT_KIND = re.compile(r"^[\s>*-]*`?exit:\s*`?([\w-]+)", re.M)
+# A prose line that merely starts with the field name in a code span ("  `exit: ask-operator` went through ...") is no field:
+# in the field's code-span form the span runs to the line end (measured 2026-11-08, macOS instance: counted as a second exit).
+NOT_PROSE = r"(?![\s>*-]*`exit:[^`\n]*`[ \t]*\S)"
+MULTI_EXIT = re.compile(r"^" + NOT_PROSE + r"[\s>*-]*`?exit:", re.M)
+# The kind of the current exit (`exit: ai-does-it 2026-11-08 ...` -> ai-does-it); the same prose rule as MULTI_EXIT.
+EXIT_KIND = re.compile(r"^" + NOT_PROSE + r"[\s>*-]*`?exit:\s*`?([\w-]+)", re.M)
 # Exits that say the remaining work is the AI's own or rides on a PR: their delivery is code or a merge, which a
 # reading command can see. With `check: none` nothing ever sees it, and the entry is reported open after it shipped.
 OWN_WORK = {"ai-does-it", "in-pr"}
