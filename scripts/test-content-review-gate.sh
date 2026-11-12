@@ -95,6 +95,32 @@ create_in "create -R from an SSH origin of the same repo is scored by the branch
 create_in "create -R HOST/OWNER/REPO from the same repo is scored by the branch" "$T/ssh" "gh pr create -R github.com/o/r --body-file $N/body-low.md" block
 create_in "create -R a foreign repo with --head: the compare view sets the floor" "$T/brain" "gh pr create -R o/r --head feat/x --body-file $N/body-low.md" block "helpers/x-gate.cjs"
 create_in "create -R a foreign repo with --head, docs only in the compare view (control)" "$T/brain" "gh pr create -R o/r --head feat/x --body-file $N/body-low.md" allow "docs/a.md"
+# 2026-11-12 (#524, #525): `env -C <clone> gh pr create` was scored by the HOOK cwd's branch (the brain's working copy),
+# a brain-only script raised the floor. The directory comes from helpers/pr-repo.cjs prCalls: env -C, cd, else cwd.
+mkrepo() { # $1 dir, $2 origin url, $3 file on the branch
+  git init -q "$1"
+  git -C "$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+  git -C "$1" update-ref refs/remotes/origin/main HEAD
+  git -C "$1" remote add origin "$2"
+  mkdir -p "$1/$(dirname "$3")"; printf 'x\n' > "$1/$3"
+  git -C "$1" add "$3"
+  git -C "$1" -c user.name=t -c user.email=t@t commit -q -m change
+}
+mkrepo "$T/cdocs" https://github.com/o/r.git docs/a.md
+mkrepo "$T/cgate" https://github.com/o/r.git helpers/y-gate.cjs
+mkrepo "$T/bdocs" https://github.com/x/brain.git docs/b.md
+NCD="$(native "$T/cdocs")"; NCG="$(native "$T/cgate")"
+create_in "env -C <docs clone> from a cwd whose branch has a gate: the gate in the cwd does not raise the floor" "$T/brain" "env -C $NCD gh pr create --body-file $N/body-low.md" allow
+create_in "env -C <gate clone> from a docs-only cwd: the clone's gate sets the floor" "$T/bdocs" "env -C $NCG gh pr create --body-file $N/body-low.md" block
+create_in "cd <docs clone> && gh pr create from a gate cwd" "$T/brain" "cd $NCD && gh pr create --body-file $N/body-low.md" allow
+create_in "cd <gate clone> && gh pr create from a docs-only cwd" "$T/bdocs" "cd $NCG && gh pr create --body-file $N/body-low.md" block
+create_in "env -C <gate clone> gh pr create -R o/r --head: the clone's branch, not the compare view" "$T/brain" "env -C $NCG gh pr create -R o/r --head feat/x --body-file $N/body-low.md" block "docs/a.md"
+create_in "env -C <docs clone> gh pr create -R o/r --head: a gate in the cwd does not count" "$T/brain" "env -C $NCD gh pr create -R o/r --head feat/x --body-file $N/body-low.md" allow "docs/a.md"
+create_in "no directory named: the hook cwd's branch as before (gate, declared low)" "$T/brain" "gh pr create --body-file $N/body-low.md" block
+create_in "no directory named, docs-only cwd (control)" "$T/bdocs" "gh pr create --body-file $N/body-low.md" allow
+printf 'Risk: low - one doc line in the clone\n' > "$T/cdocs/rel-body.md"
+create_in "env -C <clone>: a relative --body-file is read in the clone" "$T/bdocs" "env -C $NCD gh pr create --body-file rel-body.md" allow
+create_in "the same relative --body-file without env -C, cwd elsewhere: no Risk line read (control)" "$T/bdocs" "gh pr create --body-file rel-body.md" block
 # review of #478 (Windows instance): a trailing synthetic entry or an unknown family is no model at all
 printf '{"type":"assistant","message":{"model":"claude-sonnet-5-5"}}\n{"type":"assistant","message":{"model":"<synthetic>"}}\n' > "$T/t.jsonl"
 probe "a trailing <synthetic> entry: the last real model counts (sonnet, high)" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"

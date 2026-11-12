@@ -20,7 +20,8 @@
  * when a check needs it; `<synthetic>` or an unknown family = not measured.
  *
  * CHECK 1 — `gh pr create`: the body carries a `Risk:` line at or above the floor of the branch's files
- *   (`git diff --name-only origin/main...HEAD` in the call's directory), and the session's model is at
+ *   (`git diff --name-only origin/main...HEAD` in the call's directory: `env -C <dir>`, `cd <dir>`, else the
+ *   hook's cwd, resolved by helpers/pr-repo.cjs `prCalls`), and the session's model is at
  *   least `minimum.<risk>.build`.
  * CHECK 2 — `gh pr review --approve` (or `-a`): the text carries `Fit:`, `Design:`, `Cost:` (each a real
  *   answer, MIN_ANSWER characters, not "ok"/"n/a") and a `Model:` line naming the measured model, which is
@@ -280,11 +281,21 @@ function checkCommit(cmd, ps, cwd, getModel) {
     HANDOFF.replace('<tier>', CFG.tiers[least]));
 }
 
+/** The directory a `gh pr <verb>` runs in (`env -C`, `cd`, else the hook's cwd; helpers/pr-repo.cjs), the first
+ * invocation's. 2026-11-12: `env -C <clone> gh pr create` was scored by the hook cwd's branch (the brain's working
+ * copy) - a brain-only script raised two core PRs (#524, #525) to medium. */
+function callDir(cmd, ps, cwd, verbs) {
+  let calls = null;
+  try { calls = require('./pr-repo.cjs').prCalls(cmd, cwd, ps, verbs); } catch (e) { /* unreadable: the hook cwd */ }
+  return (calls && calls[0] && calls[0].dir) || cwd;
+}
+
 function checkCreate(cmd, ps, cwd, getModel) {
   const hits = invocations(cmd, ps, 'gh', ['pr'], ['create']);
   if (hits === null ? !/\bgh\s+pr\s+create\b/.test(cmd) : !hits.length) return 0;
-  const body = postedText(cmd, ps, cwd);
-  const files = createFiles(cmd, cwd);
+  const dir = callDir(cmd, ps, cwd, ['create']);
+  const body = postedText(cmd, ps, dir);
+  const files = createFiles(cmd, dir);
   if (!files) console.error('content-review-gate: branch files unreadable, risk floor not checked');
   const fl = floor(files || []);
   const d = declared(body);
@@ -304,7 +315,7 @@ function checkReviewPost(cmd, ps, cwd, getModel) {
   const isPost = hits === null ? /\bgh\s+pr\s+(?:review|comment)\b/.test(cmd) : hits.length > 0;
   if (!isPost) return 0;
   const model = getModel();
-  const text = postedText(cmd, ps, cwd);
+  const text = postedText(cmd, ps, callDir(cmd, ps, cwd, ['review', 'comment']));
   const claimed = modelLine(text);
   if (claimed && model !== null && tier(claimed) !== tier(model)) {
     return block(`the text says \`Model: ${claimed}\`, the transcript says this session runs on ${model}. Write the model it ran on.`);
