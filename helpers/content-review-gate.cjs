@@ -343,6 +343,9 @@ function checkReviewComment(cmd, text) {
   let pr = null;
   if (t) { try { pr = readPr(t.repo, t.nr); } catch (e) { /* below */ } }
   if (!pr) { console.error('content-review-gate: PR unreadable, review form not checked'); return 0; }
+  // A merge train's OS check is the one hand check at its head; the content reviews belong to its members (CHECK 4
+  // reads them there). Windows review of #508, 2026-11-12: without this the train's OS OK would be held.
+  if (/^\s*##\s*Merge train\b/.test(String(pr.body || ''))) return 0;
   const author = (KEY_RX.exec(String(pr.body || '')) || [])[1];
   if (author && author.toLowerCase() === String(reviewer).toLowerCase()) return 0;   // the author's own OS check
   const gone = missing(text);

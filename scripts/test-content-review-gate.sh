@@ -153,6 +153,13 @@ probe "the incident: an OS review with fit/design/cost in one heading line" "gh 
 probe "an OS review with the four lines" "gh pr comment 5 -R o/r --body-file $N/os-full.md" allow
 probe "the author's own OS check needs no content review" "gh pr comment 5 -R o/r --body-file $N/os-author.md" allow
 probe "an author update without an OS verdict stays free" "gh pr comment 5 -R o/r --body-file $N/rev-thin.md" allow
+# Windows review of #508: the one OS check at a merge train's head carries no content lines - its members do
+pr "## Merge train train/x
+- #5 a/b 1234567 <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
+printf '<!-- instance-key: %s -->\nWindows OK at head abc1234, ci-lint-local all steps passed.\n' "$B" > "$T/os-train.md"
+probe "the OS check at a merge train's head" "gh pr comment 5 -R o/r --body-file $N/os-train.md" allow
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
+probe "control: the same OS check on a plain PR is held" "gh pr comment 5 -R o/r --body-file $N/os-train.md" block
 
 # CHECK 4 - merge
 M="gh pr merge 5 -R o/r --merge"
