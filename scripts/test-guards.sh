@@ -260,6 +260,24 @@ pr_probe "mechanism-guard/pr_repos: hook cwd is the listed checkout" "gh pr crea
 pr_probe "mechanism-guard/pr_repos: env -C into another repo" "env -C $MG/other gh pr create --fill" allow "$MG"
 pr_probe "mechanism-guard/pr_repos: --repo names another repo, cwd in the listed one" "gh pr create -R o/other --fill" allow "$MG/lab"
 pr_probe "mechanism-guard/pr_repos: a message naming the command (control)" "git commit -m 'gh pr create -R o/lab'" allow "$MG"
+# Windows review 2026-11-12 (OS-19): a Git Bash session writes `cd /c/...` / `env -C /c/...`; node read it as C:\c\...,
+# no repo resolved, the rule did not hold. (a) the translation, on every OS: platform set to win32, the git call recorded.
+if PRH=$(resolve helpers/pr-repo.cjs); then
+  for form in "cd /c/work/lab && gh pr create --fill" "env -C /c/work/lab gh pr create --fill"; do
+    got=$(node -e 'Object.defineProperty(process,"platform",{value:"win32"});const cp=require("child_process");let seen="";
+      cp.execFileSync=(f,a)=>{if(f==="git")seen=a[1];return "";};require(require("path").resolve(process.argv[1])).prTargets(process.argv[2],"/x");
+      process.stdout.write(seen.replace(/\\/g,"/"))' "$PRH" "$form")
+    [[ "$got" == *"C:/work/lab" ]] && ok "pr-repo: '$form' resolves the drive path (got $got)" || bad "pr-repo: '$form' asked git for '$got', not C:/work/lab"
+  done
+else skip "pr-repo: /c/... translation"; fi
+# (b) end to end where the shell has the form (cygpath): the listed checkout by its /c/... path holds
+if command -v cygpath >/dev/null 2>&1; then
+  U="/$(printf %s "${MG:0:1}" | tr 'A-Z' 'a-z')${MG:2}"
+  pr_probe "mechanism-guard/pr_repos: env -C into the listed checkout by its Git Bash path" "env -C $U/lab gh pr create --fill" block "$MG"
+  pr_probe "mechanism-guard/pr_repos: cd into the listed checkout by its Git Bash path" "cd $U/lab && gh pr create --fill" block "$MG"
+else
+  echo "  --  mechanism-guard/pr_repos: /c/... checkout end to end (Windows only: no cygpath here)"
+fi
 rm -rf "$MG"
 
 # --- mechanism-guard: the TEMPLATE's release-tag rule, read from the template itself ---------

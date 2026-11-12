@@ -1131,6 +1131,7 @@ paths:     --include=*.cjs helpers
 known:     helpers/content-review-gate.cjs=3
 known:     helpers/instance-key-gate.cjs=3
 known:     helpers/public-text-guard.cjs=2
+known:     helpers/pr-repo.cjs=1
 known:     helpers/published-text.cjs=4
 known:     helpers/review-claim-gate.cjs=2
 known:     helpers/root-cause-gate.cjs=1
@@ -1154,6 +1155,10 @@ found two more without the translation, both fixed: `content-review-gate.cjs` (t
 `watch-gate.cjs` `callDir` (the checkout a push acts on); `release-freeze-gate.cjs` and
 `shared-working-copy-guard.cjs` already translate with their own helper. A reader that never calls
 `nativePath(` stays invisible to this pattern — read every new `-C` reader by hand.
+2026-11-12, Windows review of the train: three more sites of the class, fixed — `pr-repo.cjs` (a `cd`/`env -C /c/...`
+resolved no repo, a `pr_repos` rule failed open), `root-cause-gate.cjs` `shellWrites` (a drive path or a quoted path
+with a space never matched, `/c/...` could not be stat'ed) and the `--staged` repair hint of `scripts/ledger-one-exit.py`
+(both paths unquoted, the command broke under a profile with a space; Python, outside this pattern).
 
 ## OS-21 — a fixture runs the session start in the home of the machine running it
 
