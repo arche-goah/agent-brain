@@ -106,5 +106,75 @@ with tempfile.TemporaryDirectory() as tmp:
     check("cli: plan clean exits 0", ps.main(["x", "plan", plan_ok, "--rules", rf]) == 0)
     check("cli: unknown mode exits 2", ps.main(["x", "buy", plan_ok]) == 2)
 
-print(f"\n{19 - fails}/19 passed")
+    # --- register (operator 2026-11-12: one purchase register, no purchase with a deadline lost) ---
+    import contextlib
+    import io
+    import os
+
+    H = ",".join(ps.REGISTER_COLUMNS) + "\n"
+    URL = "https://shop-a.example/p/terminal-2pole-1234"
+    d = lambda n: (NOW.date() + dt.timedelta(days=n)).isoformat()  # noqa: E731
+
+    def row(i, status="open", urgency="soon", need="", url=URL, av="In stock", at=fresh, item="terminal"):
+        return f"{i},{item},board-x,6,2-pole 5.08,{url},shop-a,{av},{at},3 d,{need},{urgency},{status},,\n"
+
+    reg_ok = write("reg-ok.csv", H + row("P1", need=d(5)) + row("P2", urgency="later", av="", at="")
+                   + row("P3", status="ordered", url="", av="", at=""))
+    _, bad = ps.check_register(reg_ok, 24, 14, RULES, NOW)
+    check("register: open rows with product pages, a fresh read where needed, an ordered row without url pass", bad == [])
+
+    reg_bad = write("reg-bad.csv", H + row("P1", url="https://shop-a.example/search?q=x") + row("P1", need="next week")
+                    + row("P2", status="maybe", urgency="asap"))
+    _, bad = ps.check_register(reg_bad, 24, 14, RULES, NOW)
+    check("register: search page, duplicate id, bad need_by, bad status and urgency each named",
+          len(bad) == 3 and "search page" in bad[0] and "duplicate id" in bad[1] and "need_by" in bad[1]
+          and "status" in bad[2] and "urgency" in bad[2])
+
+    reg_stale = write("reg-stale.csv", H + row("P1", need=d(3), at=stale) + row("P2", urgency="now", av="", at="")
+                      + row("P3", need=d(30), at=stale) + row("P4", need=d(2), av="Sold out"))
+    _, bad = ps.check_register(reg_stale, 24, 14, RULES, NOW)
+    check("register: needed within 14 d with a stale read, 'now' without a read, sold out fail; 30 d out stays silent",
+          len(bad) == 3 and "read it again" in bad[0] and "P2" in bad[1] and "not available" in bad[2])
+
+    reg_head = write("reg-head.csv", "id,item,qty\nP1,x,1\n")
+    _, bad = ps.check_register(reg_head, 24, 14, RULES, NOW)
+    check("register: a header other than the fixed one fails", len(bad) == 1 and "header" in bad[0])
+
+    reg_due = write("reg-due.csv", H + row("LATE", need=d(-2)) + row("SOON", need=d(4)) + row("FAR", need=d(20))
+                    + row("DONE", status="ordered", need=d(-5)) + row("NONE"))
+    rows, _ = ps.check_register(reg_due, 24, 14, BUILTIN, NOW)
+    check("due: past and within 14 d, soonest first; ordered, far and dateless rows stay out",
+          [r["id"] for _, r in ps.due_rows(rows, 14, NOW)] == ["LATE", "SOON"])
+
+    def run(argv):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = ps.main(argv, NOW)
+        return rc, buf.getvalue().strip()
+
+    rc, out = run(["x", "register", "brief", "--register", reg_due])
+    check("brief: one line, counts and every row due within 7 d or past",
+          rc == 0 and len(out.splitlines()) == 1 and "4 open, 1 ordered" in out and "LATE" in out and "2 d late" in out
+          and "SOON" in out and "FAR" not in out)
+    reg_calm = write("reg-calm.csv", H + row("FAR", need=d(20)) + row("NONE"))
+    check("brief: nothing due and a clean check is silent", run(["x", "register", "brief", "--register", reg_calm]) == (0, ""))
+    rc, out = run(["x", "register", "brief", "--register", reg_bad])
+    check("brief: a failing register check is named even with nothing due", rc == 0 and "3 failing" in out)
+    check("brief: a brain without a register is silent", run(["x", "register", "brief", "--register", str(t / "none.csv")]) == (0, ""))
+    check("cli: register check red exits 1, clean exits 0",
+          run(["x", "register", "check", "--register", reg_bad])[0] == 1 and run(["x", "register", "check", "--register", reg_ok])[0] == 0)
+    os.makedirs(t / "brain" / ".claude" / "rules")
+    (t / "brain" / ".claude" / "rules" / "purchase-register.json").write_text(json.dumps({"register": "reg.csv"}), encoding="utf-8")
+    (t / "brain" / "reg.csv").write_text(H + row("LATE", need=d(-1)), encoding="utf-8")
+    old = os.environ.get("CLAUDE_PROJECT_DIR")
+    os.environ["CLAUDE_PROJECT_DIR"] = str(t / "brain")
+    rc, out = run(["x", "register", "due"])
+    if old is None:
+        os.environ.pop("CLAUDE_PROJECT_DIR")
+    else:
+        os.environ["CLAUDE_PROJECT_DIR"] = old
+    check("cli: the register path comes from the instance data", rc == 0 and "LATE" in out and "1 due" in out)
+    check("cli: unknown register subcommand exits 2", run(["x", "register", "buy"])[0] == 2)
+
+print(f"\n{31 - fails}/31 passed")
 sys.exit(1 if fails else 0)

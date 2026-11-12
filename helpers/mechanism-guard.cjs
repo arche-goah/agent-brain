@@ -193,9 +193,43 @@ function toolRuleFiles(project) {
   return [...found];
 }
 
+// The purchase register (operator 2026-11-12, translated: "there must not be wildly scattered shopping lists"):
+// measured that day on the macOS instance, one list, ten timestamped copies and five CSVs side by side. Once the
+// instance names its register in .claude/rules/purchase-register.json, a NEW file whose name matches one of its
+// `list_patterns` is refused - by Write/Edit, and by a shell redirect, tee, touch or the target of cp/mv. The
+// register itself and an existing file pass; the words are instance data.
+function registerRules(project) {
+  const data = readJson(`${project}/.claude/rules/purchase-register.json`) || {};
+  const reg = String(data.register || '').replace(/\\/g, '/').replace(/^\.\//, '');
+  const pats = (Array.isArray(data.list_patterns) ? data.list_patterns : []).filter((s) => typeof s === 'string' && s);
+  if (!reg || !pats.length) return [];
+  let words;
+  try { words = new RegExp(pats.join('|'), 'i'); } catch (_) { return []; }
+  const isList = (p) => {
+    const f = String(p).replace(/^["']|["']$/g, '').replace(/\\/g, '/');
+    return f && !f.endsWith(reg) && words.test(f.split('/').pop());
+  };
+  const exists = (p) => {
+    try { return fs.existsSync(path.isAbsolute(p) ? p : path.join(project, p)); } catch (_) { return false; }
+  };
+  const TOK = `("[^"]+"|'[^']+'|[^\\s;&|()<>]+)`;
+  const shell = new RegExp(`(?:>>?|\\btee\\b(?:\\s+-a)?|\\btouch\\b)\\s*${TOK}|\\b(?:cp|mv)\\b[^\\n;&|]*\\s${TOK}\\s*(?=$|[\\n;&|)])`, 'g');
+  const base = {
+    was: 'a separate shopping list next to the purchase register (a new list file, a dated copy, a CSV per shop or project)',
+    instead: `One row per purchase in the register \`${reg}\` (header and checks: \`python3 core/scripts/product-sources.py register check\`; `
+      + 'due rows: `register due`). A list for one order session is a filter of the register, not a file.',
+    source: 'agent-brain (purchase register)', needsOperatorWord: false, foregroundOnly: false, monitorOnly: false, prRepos: null,
+  };
+  return [
+    Object.assign({ target: 'path', test: (_c, fp) => !!fp && isList(fp) && !exists(fp) }, base),
+    Object.assign({ target: 'command', test: (c) => [...String(c || '').matchAll(shell)].some((m) => isList(m[1] || m[2])) }, base),
+  ];
+}
+
 function loadRules() {
   const project = process.env.CLAUDE_PROJECT_DIR || '.';
   const rules = compile(readJson(`${project}/.claude/rules/mechanism-rules.json`), 'this instance');
+  try { rules.push(...registerRules(project)); } catch (_) {}
   let files = [];
   try { files = toolRuleFiles(project); } catch (_) { files = []; }
   for (const f of files) {
@@ -336,7 +370,8 @@ process.stdin.on('end', () => {
   // (published-text.cjs). A line it cannot read to the end keeps the two older cuts.
   const stripped = literalPipes((cmd && withoutPublished(cmd, false)) || stripMessages(stripHeredocs(cmd)));
   for (const r of rules) {
-    const hit = r.target === 'path' ? (filePath && r.re.test(filePath))
+    const hit = r.test ? r.test(stripped, filePath)
+      : r.target === 'path' ? (filePath && r.re.test(filePath))
       : r.target === 'raw' ? (cmd && r.re.test(cmd)) : (cmd && r.re.test(stripped));
     if (!hit || (r.foregroundOnly && background) || (r.monitorOnly && !monitor)) continue;
     if (r.prRepos) {
