@@ -177,13 +177,20 @@ function gh(args) {
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
 }
 const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', 'body,comments,reviews,files']));
+/** `-R OWNER/REPO` or gh's long form `-R HOST/OWNER/REPO`, as OWNER/REPO (Windows review of #504). */
+function repoArg(cmd) {
+  const m = /(?:-R|--repo)[=\s]+["']?([\w.-]+(?:\/[\w.-]+){1,2})/.exec(cmd);
+  return m ? m[1].split('/').slice(-2).join('/') : null;
+}
+/** A remote URL's OWNER/REPO, case-folded: https, ssh:// and scp-like `git@host:owner/repo.git` alike. */
+const remoteSlug = (url) => ((/[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url) || [])[1] || '').toLowerCase();
 
 function target(cmd, verb) {
   const url = /github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(cmd);
   if (url) return { repo: url[1], nr: url[2] };
-  const repo = /(?:-R|--repo)[=\s]+["']?([\w.-]+\/[\w.-]+)/.exec(cmd);
+  const repo = repoArg(cmd);
   const nr = new RegExp(`\\bgh\\s+pr\\s+${verb}\\s+(?:(?:-R|--repo)[=\\s]+\\S+\\s+)?["']?(\\d+)\\b`).exec(cmd);
-  return repo && nr ? { repo: repo[1], nr: nr[1] } : null;
+  return repo && nr ? { repo, nr: nr[1] } : null;
 }
 
 function postedText(cmd, ps, cwd) {
@@ -215,12 +222,13 @@ function branchFiles(cwd) {
  * without `--head` they are unreadable (not checked, said on stderr). */
 function createFiles(cmd, cwd) {
   if (process.env.CONTENT_REVIEW_GATE_FILES !== undefined) return branchFiles(cwd);
-  const repo = (/(?:-R|--repo)[=\s]+["']?([\w.-]+\/[\w.-]+)/.exec(cmd) || [])[1];
+  const repo = repoArg(cmd);
   if (!repo) return branchFiles(cwd);
   let origin = '';
   try { origin = execFileSync('git', ['-C', cwd, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
   catch (e) { /* no checkout here */ }
-  if (origin.replace(/\.git$/, '').toLowerCase().endsWith('/' + repo.toLowerCase())) return branchFiles(cwd);
+  // the normalised OWNER/REPO, not a '/'-suffix: an SSH origin (git@github.com:owner/repo) has a ':' there
+  if (remoteSlug(origin) === repo.toLowerCase()) return branchFiles(cwd);
   const head = (/--head[=\s]+["']?([^\s"']+)/.exec(cmd) || [])[1];
   const base = (/--base[=\s]+["']?([^\s"']+)/.exec(cmd) || [])[1] || 'main';
   if (!head) { console.error(`content-review-gate: ${repo} is not this checkout and no --head given - risk floor not checked`); return null; }
