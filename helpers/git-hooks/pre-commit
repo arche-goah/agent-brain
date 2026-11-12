@@ -232,7 +232,7 @@ covers_check
 # 2026-11-12 on the macOS instance: an agent's fixture carried a literal U+FEFF, its commits passed leak-scan, and only
 # the full lint at the merge-train head found it - one more lint round. Runs in ~1 s over the repo.
 if [ -f "$root/scripts/content-guard.py" ]; then
-  run_check "content-guard" "$py" "$root/scripts/content-guard.py"
+  run_check "content-guard" "$py" "$root/scripts/content-guard.py" --root "$root" --staged
 fi
 
 if [ "$fail" -ne 0 ]; then

@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -103,8 +104,21 @@ def walk(root: Path):
             yield p
 
 
-def scan_file(root: Path, p: Path, allow: set[tuple[str, str]]) -> list[dict]:
-    rel = p.relative_to(root).as_posix()
+def staged(root: Path):
+    """(rel, bytes) of every staged added/changed file, read from the INDEX, not the working tree: a commit carries the
+    blob, and an untracked or unstaged file is no part of it (Windows review of #511, 2026-11-12)."""
+    names = subprocess.run(["git", "-C", str(root), "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
+                           capture_output=True, check=True).stdout.decode("utf-8", "replace").split("\0")
+    for rel in sorted(n for n in names if n):
+        if any(part in SKIP_DIRS for part in Path(rel).parts):
+            continue
+        blob = subprocess.run(["git", "-C", str(root), "show", f":{rel}"], capture_output=True)
+        if blob.returncode == 0:
+            yield rel, blob.stdout
+
+
+def scan_file(root: Path, p: Path, allow: set[tuple[str, str]], raw: bytes | None = None, rel: str | None = None) -> list[dict]:
+    rel = rel or p.relative_to(root).as_posix()
     findings: list[dict] = []
     if rel in SELF:
         return findings
@@ -114,7 +128,7 @@ def scan_file(root: Path, p: Path, allow: set[tuple[str, str]]) -> list[dict]:
             return
         findings.append({"class": cls, "path": rel, "line": line, "excerpt": excerpt.strip()[:120]})
 
-    raw = p.read_bytes()
+    raw = p.read_bytes() if raw is None else raw
     if b"\x00" in raw[:8192]:
         hit("binary", 0, f"{len(raw)} bytes, NUL byte present")
         return findings
@@ -156,6 +170,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--root", default=str(Path(__file__).resolve().parent.parent))
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--staged", action="store_true", help="scan the staged blobs only (the pre-commit's view)")
     a = ap.parse_args()
     root = Path(a.root).resolve()
     if not root.is_dir():
@@ -164,9 +179,14 @@ def main() -> int:
     allow = load_allow(root)
     findings: list[dict] = []
     files = 0
-    for p in walk(root):
-        files += 1
-        findings.extend(scan_file(root, p, allow))
+    if a.staged:
+        for rel, raw in staged(root):
+            files += 1
+            findings.extend(scan_file(root, root / rel, allow, raw=raw, rel=rel))
+    else:
+        for p in walk(root):
+            files += 1
+            findings.extend(scan_file(root, p, allow))
     if a.json:
         print(json.dumps({"files": files, "findings": findings}, indent=1))
     else:
