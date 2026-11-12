@@ -5,6 +5,7 @@
 """
 import importlib.util
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -152,6 +153,35 @@ with tempfile.TemporaryDirectory() as tmp:
     body = led.read_text(encoding="utf-8")
     check("reconcile MULTI_EXIT counts one exit for the prose-wrapped entry and one for the span field",
           [len(lint.MULTI_EXIT.findall(t)) for t in body.split("\n- [")[1:]] == [1, 1], body)
+
+# Windows review 2026-11-12: the repair command the hint hands out must run as printed under a root with a space
+# (shlex.split = the shell's word split; argv[0] is this interpreter, not a bare python3 - OS-17)
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp) / "my brain"
+    (root / ".claude" / "rules").mkdir(parents=True)
+    g = lambda *a: subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)  # noqa: E731
+    g("init", "-q")
+    (root / ".claude" / "rules" / "ledgers.json").write_text(json.dumps({"ledgers": ["docs/l.md"]}), encoding="utf-8")
+    (root / "docs").mkdir()
+    led = root / "docs" / "l.md"
+    led.write_text(LEDGER, encoding="utf-8")
+    g("add", "docs/l.md")
+    r = subprocess.run([sys.executable, str(TOOL), "--root", str(root), "--staged"], capture_output=True, text=True)
+    hint = [ln.strip() for ln in r.stdout.splitlines() if ln.strip().startswith("python3 ") and "--write" in ln]
+    rr = subprocess.run([sys.executable] + shlex.split(hint[0])[1:], capture_output=True, text=True) if hint else None
+    check("staged: the --write hint runs as printed under a root with a space",
+          rr is not None and rr.returncode == 0 and "  was-exit: ai-does-it 2026-11-01 — old" in led.read_text(encoding="utf-8"),
+          (r.stdout + (rr.stdout + rr.stderr if rr else "")))
+
+    # an unreadable aggregator turns the exit-kind check off, and says so
+    lone = Path(tmp) / "lone"
+    lone.mkdir()
+    (lone / "ledger-one-exit.py").write_text(TOOL.read_text(encoding="utf-8"), encoding="utf-8")
+    led.write_text(CLEAN, encoding="utf-8")
+    g("add", "docs/l.md")
+    r = subprocess.run([sys.executable, str(lone / "ledger-one-exit.py"), "--root", str(root), "--staged"], capture_output=True, text=True)
+    check("staged: without open-items.py the exit-kind check is off and says so on stderr",
+          r.returncode == 0 and "exit-kind check off" in r.stderr, r.stdout + r.stderr)
 
 print("ledger-one-exit fixtures:", "ALL passed" if not fails else f"{fails} FAILED")
 sys.exit(1 if fails else 0)

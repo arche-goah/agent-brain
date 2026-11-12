@@ -22,6 +22,7 @@ Default is a preview. Exit 0 = nothing to change (or written), 1 = the preview f
 import argparse
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -116,6 +117,8 @@ def main(argv=None):
         staged = set(r.stdout.splitlines()) if r.returncode == 0 else set()
     total_entries = total_lines = 0
     kinds = known_exits() if a.staged else None
+    if a.staged and kinds is None:
+        print("ledger-one-exit: exit-kind check off: open-items.py unreadable", file=sys.stderr)
     bad_kinds = []
     for rel in ledgers:
         p = root / rel
@@ -146,8 +149,9 @@ def main(argv=None):
                     f.write("\n".join(lines))
     print(f"ledger-one-exit: {total_entries} entr(y/ies), {total_lines} line(s) {'rewritten' if a.write else 'to rewrite'}")
     if a.staged and total_lines:
+        # quoted: a Windows profile with a space broke the command handed out (Windows review 2026-11-12, OS-19 note)
         print("An open entry carries ONE current exit: line; older ones are was-exit: (convention 2026-11-06). Fix and stage again:\n"
-              f"  python3 {Path(__file__).resolve().as_posix()} --root {root.as_posix()} --write")
+              f"  python3 {shlex.quote(Path(__file__).resolve().as_posix())} --root {shlex.quote(root.as_posix())} --write")
     for rel, n, k in bad_kinds:
         print(f"{rel}:{n}: unknown exit kind '{k}' - write one of {', '.join(sorted(kinds))} (skill backlog-catch-up)")
     if bad_kinds:
