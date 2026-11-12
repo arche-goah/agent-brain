@@ -65,6 +65,13 @@ if [ -f "$root/.claude/rules/lesson-carriers.json" ] && [ -f "$core/scripts/carr
   run_check "carrier-audit" "$py" "$core/scripts/carrier-audit.py" --repo "$root" --core "$core" --staged
 fi
 
+# 4d. One current exit: line per open ledger entry (convention 2026-11-06): only ledger-reconcile.py at session start knew
+#     it, so two exits per entry went through three path commits on one brain (measured 2026-11-08). Judges only the
+#     registered ledgers this commit stages, by their staged content; ~0.1 s.
+if [ -f "$root/.claude/rules/ledgers.json" ] && [ -f "$core/scripts/ledger-one-exit.py" ]; then
+  run_check "ledger-one-exit" "$py" "$core/scripts/ledger-one-exit.py" --root "$root" --staged
+fi
+
 # 4c. A new dated rule: which OLD places say something about the same thing? (rule-conflict protocol step 2,
 #     `rules/thinking-protocol.md`). REPORT ONLY, never blocks: judging an old place takes a look, not a gate.
 #     Until 2026-11-02 backprop-report.py had no caller but a prose pointer (audit of the audits, package G);
@@ -132,16 +139,19 @@ behind_check
 # 6. A NEW site of a known OS trap (operator, 2026-10-29: build it): on one instance three closed
 #    traps came back in a single day and each was found only by CI on the other OS. This step never
 #    reads invariant-check.py's exit code (it also reports open classes and prose-only entries); it
-#    blocks only on a "NEW site" line under a [closed] trap, i.e. drift against the register's
-#    baseline. Only where the repo ships the register and the checker (the core); ~0.4 s.
+#    blocks only on a "NEW site", "drift" or "vanished" line under a [closed] trap, i.e. drift against the
+#    register's baseline. Only where the repo ships the register and the checker (the core); ~0.4 s.
+#    "drift" and "vanished" too since 2026-11-08 (macOS instance): two branches added a hit to a file the register
+#    already knew (test-guards.sh 2 -> 3); the old filter read only "NEW site", the commit passed and the push
+#    lint went red on the same CI step.
 if [ -f "$root/docs/os-traps.md" ] && [ -f "$root/scripts/invariant-check.py" ]; then
   # only CLOSED traps: a new site of an open class is the register's normal growth, not a regression.
-  # awk, not `| grep -q`: that is OS-5 itself.
+  # awk, not a grep on a pipe: that is OS-5 itself.
   new=$("$py" "$root/scripts/invariant-check.py" "$root/docs/os-traps.md" 2>&1 \
-        | awk '/^  (!!|ok|\?\?)  / { head = $0; closed = ($0 ~ /\[closed\]/) } /NEW site/ && closed { print head; print }')
+        | awk '/^  (!!|ok|\?\?)  / { head = $0; closed = ($0 ~ /\[closed\]/) } /NEW site|drift:|vanished:/ && closed { print head; print }')
   if [ -n "$new" ]; then
     echo ""
-    echo "pre-commit: a closed OS trap has a NEW site (docs/os-traps.md) — fix it, or extend the register's known: baseline with the reason"
+    echo "pre-commit: a closed OS trap moved against its baseline (docs/os-traps.md: new site, drift or vanished) — fix it, or update the register's known: baseline with the reason"
     printf '%s\n' "$new"
     fail=1
   fi
