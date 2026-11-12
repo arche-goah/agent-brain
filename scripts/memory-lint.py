@@ -56,6 +56,7 @@ from pathlib import Path
 # "braucht-neu�" (measured 2026-10-11; os-traps OS-9).
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):  # a stream that cannot be reconfigured
     pass
 

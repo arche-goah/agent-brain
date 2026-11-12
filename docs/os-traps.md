@@ -810,6 +810,8 @@ known:     scripts/shared-memory-index.py=4
 known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-reach-check.py=6
 known:     scripts/transcript-recall.py=1
+check:     the stderr half — scripts/text-encoding-test.py (AST scan of every git-tracked .py file): a script
+that calls `sys.stdout.reconfigure` must also call `sys.stderr.reconfigure`; negative control inside.
 instances: 1
 repeat:    no
 status:    open
@@ -854,6 +856,15 @@ FAIL lines and summary — so stdout is pinned at import, like lesson-carriers.p
 2026-10-31, open-items.py 8 -> 9 after the same question: the new site is the no-owner note
 (`note: open PRs not looked for — …`); the bootup and open-items-gate.cjs parse this output, and
 the script pins stdout in `main()`, so the em dash leaves as UTF-8 on every platform.
+
+2026-11-12, the stderr half (agent-brain #522, ubuntu CI): the fixture loop runs Python under
+`PYTHONIOENCODING=cp1252`; `scripts/start-findings.py` pinned stdout and stdin but not stderr, an error line
+with an em dash left as the cp1252 byte 0x97, and the test decoding UTF-8 crashed. The pin on stdout alone
+does not cover the error path. Class search: 66 scripts pinned stdout and never stderr (only one went red,
+because no other fixture reads a non-ASCII stderr). All 66 pinned in the same commit; the scan in
+`scripts/text-encoding-test.py` now reports a script that pins stdout without stderr, so the check starts
+with no baseline. The local fast lint already runs the CI fixture step (it parses it from ci.yml), so the
+cp1252 loop is covered there without a change.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
 

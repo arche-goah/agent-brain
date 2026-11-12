@@ -308,6 +308,7 @@ def main(argv=None) -> int:
     r.add_argument("--title", default="Check table")
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")   # OS-9: callers parse this output
+    sys.stderr.reconfigure(encoding="utf-8")
     try:
         if a.cmd == "verdict" and a.file:
             try:

@@ -30,6 +30,7 @@ from pathlib import Path
 # producer's; a consumer cannot repair bytes that already left wrong.
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):  # a stream that cannot be reconfigured
     pass
 

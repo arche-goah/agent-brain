@@ -41,6 +41,7 @@ import os
 import sys
 
 sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # parsed by bash (OS-9)
+sys.stderr.reconfigure(encoding="utf-8")
 
 TS = {"comments": "created_at", "open": "createdAt", "merged": "mergedAt", "runs": "updatedAt"}
 

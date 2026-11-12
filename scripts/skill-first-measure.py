@@ -112,6 +112,7 @@ def measure(directory: Path, since: str, until: str) -> dict:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # OS-9: the JSON is parsed
+    sys.stderr.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--dir", default=str(DIR_DEFAULT))
     ap.add_argument("--since", default="0000-00-00")

@@ -50,6 +50,7 @@ from instance_key import key_for, key_in, self_id  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # OS-9: the preflight reads this output
+    sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass
 

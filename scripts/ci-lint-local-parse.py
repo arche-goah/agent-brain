@@ -87,6 +87,7 @@ def main(argv):
     wf, out, want = argv[1], argv[2], argv[3:]
     # The index is read by the shell half; step names carry non-ASCII (OS-9): pin the encoding.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
     with open(wf, encoding="utf-8") as f:
         jobs = parse(f.read().splitlines())
     missing = [j for j in want if j not in jobs]

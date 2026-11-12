@@ -201,6 +201,7 @@ def fork_findings(repo: str):
 def main() -> int:
     # brain-scan-prep.py parses this output: same bytes on every platform (docs/os-traps.md OS-9).
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default="")
     ap.add_argument("--brain", default="")

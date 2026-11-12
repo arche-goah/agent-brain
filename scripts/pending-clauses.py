@@ -103,6 +103,7 @@ def pr_in_pin(core, n, cache):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # OS-9: callers parse this
+    sys.stderr.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--repo", default=".")
     ap.add_argument("--core", default=None)

@@ -587,6 +587,7 @@ def main() -> int:
     # the Windows console and the portability smoke's cp1252 run would crash a print (2026-11-04).
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+        sys.stderr.reconfigure(encoding="utf-8")
     if a.mine is not None:
         return mine(a.repo, [x.strip() for x in a.mine.split(",") if x.strip()], a.ref)
     if a.ref and a.write:

@@ -66,6 +66,7 @@ def count_tools(name, root, timeout):
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # OS-9: --json is parsed
+    sys.stderr.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("servers", nargs="*", help="limit to these server names")
     ap.add_argument("--expected", help="expected counts (JSON object server -> N)")

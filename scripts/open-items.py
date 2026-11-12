@@ -1022,6 +1022,7 @@ def main():
     # OS-9: the bootup and the Stop gate parse this output, and the item texts carry the
     # authors' umlauts and dashes. Unpinned, Windows writes the ANSI codepage.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 
     root = Path(a.root)
     state_dir = root / ".claude-state"

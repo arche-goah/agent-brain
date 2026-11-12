@@ -38,6 +38,7 @@ import sys
 # already left wrong (core register docs/os-traps.md, form A and OS-2).
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):  # a stream that cannot be reconfigured
     pass
 

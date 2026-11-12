@@ -66,6 +66,7 @@ import sys
 # em dashes in the cp1252 codepage and ends lines CRLF (core register docs/os-traps.md OS-9).
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):  # a stream that cannot be reconfigured
     pass
 
