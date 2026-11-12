@@ -2,7 +2,8 @@
 # Fixture for helpers/git-hooks/pre-push: real pushes into bare remotes with core.hooksPath set to a
 # copy of the hook inside a sandbox brain (<brain>/core/helpers/git-hooks), the way a brain mounts it.
 # Blocks: delete, rewrite (force, a moved tag), main of a repo that is neither the brain, nor the
-# shared memory, nor listed. Passes: fast-forward, new branch, new tag, main of the brain, of the
+# shared memory, nor listed; a new branch carrying commits of a local main that is ahead of the
+# remote main (named in the block). Passes: fast-forward, new branch, new tag, main of the brain, of the
 # shared memory and of a listed repo, the PUSH_GUARD_OK marker. Negative control: without the hook
 # the rewrite goes through. Sandbox only (GIT_CONFIG_GLOBAL), nothing reaches a real remote.
 set -uo pipefail
@@ -40,7 +41,20 @@ try "main of a listed repo passes" ok "$W" main
 c "$W" two; try "fast-forward of a listed main passes" ok "$W" main
 printf '{"main_ok": ["o/other"]}\n' > "$LIST"
 c "$W" three; try "main of a repo the list does not name is blocked" blocked "$W" main
-try "a feature branch of that repo passes" ok "$W" main:refs/heads/feat/y
+# --- a new branch says what it carries (2026-11-12: six commits of a local main rode along) -----
+try "a new branch from a main that is ahead is blocked" blocked "$W" main:refs/heads/feat/y
+grep -q 'three' "$TMP/err" && pass "  ... and the block names the riding commit" || fail "  ... riding commit not named: $(tr '\n' ' ' < "$TMP/err")"
+PUSH_GUARD_OK="fixture" try "the marker lets that new branch through" ok "$W" main:refs/heads/feat/y
+git -C "$W" checkout -qb feat/own origin/main; c "$W" own-1
+try "a new branch with only its own commit passes" ok "$W" feat/own
+git -C "$W" checkout -qb feat/two origin/main; c "$W" two-1; c "$W" two-2
+try "a new branch with two own commits passes" ok "$W" feat/two
+grep -q 'sends 2 commits' "$TMP/err" && grep -q 'two-1' "$TMP/err" && pass "  ... and lists what it sends" \
+  || fail "  ... list missing: $(tr '\n' ' ' < "$TMP/err")"
+git -C "$W" checkout -qb feat/one origin/main; c "$W" one-1
+try "a new branch with one own commit passes" ok "$W" feat/one
+grep -q 'sends' "$TMP/err" && fail "  ... a one-commit branch printed a list" || pass "  ... and prints no list"
+git -C "$W" checkout -q main; git -C "$W" reset -q --hard origin/main
 rm -f "$LIST"
 git -C "$B" init -q; git -C "$B" remote add origin "$TMP/o/brain.git"; git init -q --bare "$TMP/o/brain.git"
 c "$B" b1; try "main of the brain itself passes" ok "$B" main
