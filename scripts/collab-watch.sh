@@ -119,8 +119,14 @@ holder_alive() { local p; p=$(cat "$HOLDER" 2>/dev/null) && [[ -n "$p" && "$p" !
 if holder_alive; then
   echo "NOTE: collaboration watch already held by pid $(cat "$HOLDER") — following its events ($EVENTS); taking over if it ends"
   touch "$EVENTS"
-  # into a process substitution, not a pipe: `$!` must stay tail's pid, or the takeover kills the filter only
-  tail -n 0 -F "$EVENTS" 2>/dev/null > >(show_filter) &
+  # No filter: tail alone, `$!` is its pid. With a filter: a plain pipe - a process substitution behind `&` passed no
+  # line on Git Bash (portability windows-latest, train #510, 2026-11-12). `$!` is then the filter's pid; killing it
+  # leaves tail to end with SIGPIPE at the next line, which the new holder writes at once (its arm note goes to the log).
+  if [[ -n "$SHOW" ]]; then
+    tail -n 0 -F "$EVENTS" 2>/dev/null | show_filter &
+  else
+    tail -n 0 -F "$EVENTS" 2>/dev/null &
+  fi
   TAIL=$!
   trap 'kill "$TAIL" 2>/dev/null' EXIT
   trap 'exit 0' INT TERM
