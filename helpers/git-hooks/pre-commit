@@ -187,6 +187,37 @@ if [ -f "$root/scripts/english-only.py" ]; then
   run_check "english-only" "$py" "$root/scripts/english-only.py"
 fi
 
+# A staged data file runs the fixture that covers it (2026-11-07, measured on the macOS instance: three new guard rules
+# went in without a single case and a removed rule left its cases behind; the instance's fixture said so only at the next
+# session start, four commits later). A fixture in the repo's scripts/ takes part when it carries the line
+# `# pre-commit: covers` (opt-in: it must run in seconds) — then it runs when a staged file's base name without its
+# extension stands in its `# covers:` line (`.claude/rules/mechanism-rules.json` -> `mechanism-rules`), when the
+# fixture itself is staged, and for a removed file too. Red blocks. In every repo, so an instance's fixture counts.
+covers_check() {
+  [ -d "$root/scripts" ] || return 0
+  local staged f stems tokens t s run
+  staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+  [ -n "$staged" ] || return 0
+  stems=" "
+  while IFS= read -r f; do s=${f##*/}; stems="$stems${s%.*} "; done <<< "$staged"
+  # JS fixtures (test-*.cjs / test-*.js) take part the same way with `//` comments (reach finding at #453, 2026-11-07:
+  # the gate fixtures are .cjs and stayed out of reach).
+  for f in "$root"/scripts/test-*.sh "$root"/scripts/*-test.py "$root"/scripts/test-*.cjs "$root"/scripts/test-*.js; do
+    [ -f "$f" ] && grep -qE '^(#|//) pre-commit: covers' "$f" || continue
+    run=0
+    case "$stems" in *" $(basename "${f%.*}") "*) run=1 ;; esac
+    tokens=$(sed -nE 's,^(#|//) covers:[[:space:]]*,,p' "$f" | head -1 | sed 's/(.*//')
+    for t in $tokens; do case "$stems" in *" $t "*) run=1 ;; esac; done
+    [ "$run" -eq 1 ] || continue
+    case "$f" in
+      *.cjs|*.js) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && node "$2"' _ "$root" "$f" ;;
+      *.py) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && "$2" "$3"' _ "$root" "$py" "$f" ;;
+      *)    run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && bash "$2"' _ "$root" "$f" ;;
+    esac
+  done
+}
+covers_check
+
 if [ "$fail" -ne 0 ]; then
   echo ""
   echo "Nothing was committed. Fix it — or, with a reason: git commit --no-verify"
