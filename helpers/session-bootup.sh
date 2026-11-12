@@ -919,6 +919,17 @@ fi
 [[ -n "${BOOT_PARTS:-}" ]] && rm -f "$BOOT_PARTS"
 # end time budget report
 
+# The findings (top-level `!!` lines) go to their tracked entries (operator order 2026-11-12, translated: "not
+# flooded, nothing lost"): scripts/start-findings.py gives each a stable id, an owner and a session counter in
+# .claude-state/start-findings.json and prints ONE count line, up to three operator items and the loud ones in their
+# place. A hand run (no session id) and BOOTUP_FULL_FINDINGS=1 keep every line here; `start-findings.py list` prints
+# them all. A failed run (or an
+# empty answer) leaves the body as it was — the lines are never lost to a crash.
+if [[ -f "$HERE/../scripts/start-findings.py" ]]; then
+  sf_body=$(printf '%s' "$body" | "$PY" "$HERE/../scripts/start-findings.py" record --root "$R" --hook-input "$HOOK_INPUT" 2>/dev/null) \
+    && [[ -n "$sf_body" ]] && body="$sf_body"
+fi
+
 if (( $(printf '%s' "$body" | wc -c) > CAP )); then
   # The cut keeps the proof lines: the end marker (or abort note) is how session-audit.py tells
   # a finished start from a broken one (2026-10-14: a finished start cut mid-list was reported failed).
