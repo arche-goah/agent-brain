@@ -132,6 +132,16 @@
       "pattern": "(?:^|[\\n;&|(])\\s*osascript\\b(?![^\\n]*product-sources)[^\\n]*(?:make\\s+new\\s+(?:tab|document)|open\\s+location|set\\s+URL|\\.applescript\\b|\\.scpt\\b)",
       "was": "browser tabs opened by an AppleScript of its own, past the order-list check (same incident: the tabs were opened from a URL file via osascript, which the open-command rule did not see).",
       "instead": "`python3 core/scripts/product-sources.py open <order-list.csv>` opens the tabs after the check. Reading the browser (`osascript -e 'tell application \"Safari\" to get URL of ...'`) stays free."
+    },
+    {
+      "pattern": "(?:^|[;&|]\\s*)(?:(?:bash|sh|python3|python)\\s+)?[^\\s;&|]*(handover-gate|effect-check|leak-scan|suite-check|skill-lint|dep-lint|memory-lint|ecosystem-sync|workflow-parse-check|parallel-sessions|brain-scan\\.sh)[^|;&]*\\|\\s*(tail|head|grep|tee|cut|sed|awk)\\b",
+      "was": "a core gate or check run through a pipe (`leak-scan.py | tail`) - the pipeline's exit code is the LAST command's, so a red gate reads green. Measured 2026-08-04 on the Windows instance: a red gate slipped through into a commit and a push; ported 2026-11-07 from that instance's rule data (in use since 2026-08-04, command position anchored 2026-08-08 so reading a script with `git show ... | sed` passes)",
+      "instead": "Run the gate without a pipe and read its exit code on its own (`python3 core/scripts/leak-scan.py; echo \"exit=$?\"`), or write the output to a file first and filter that."
+    },
+    {
+      "pattern": "^(?![\\s\\S]*marketplace\\s+update[\\s\\S]*claude\\s+plugin\\s+update)(?:[\\s\\S]*[;&|]\\s*)?claude\\s+plugin\\s+update\\b",
+      "was": "`claude plugin update` without a marketplace refresh before it - a stale marketplace clone pins an older version and writes the fix back. Measured 2026-08-04 on the Windows instance; ported 2026-11-07 from that instance's rule data. A refresh earlier in the same command passes; the command position is anchored, so the phrase quoted in a message is no hit",
+      "instead": "Core update: `bash core/scripts/brain-update.sh` (follows the pin of the enabled channel). A single suite plugin: `claude plugin marketplace update <marketplace>` first, then `claude plugin update <plugin>@<marketplace>`. If the refresh already ran in this session, repeat the command with `# MECHANISM-OK: marketplace refresh ran in this session`."
     }
   ]
 }

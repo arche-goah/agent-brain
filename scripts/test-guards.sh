@@ -377,6 +377,16 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: Monitor stream through a buffered grep" Monitor command "tail -f run.log | grep ERROR" block
   tr_probe "mechanism-guard/core rule: Monitor stream through grep --line-buffered" Monitor command "tail -f run.log | grep --line-buffered ERROR" allow
   tr_probe "mechanism-guard/core rule: the same grep in the foreground is no stream" Bash command "cat run.log | grep ERROR" allow
+  # 2026-11-07, ported from instance data: a gate through a pipe reports the pipe's exit code
+  tr_probe "mechanism-guard/core rule: a gate through a pipe" Bash command "python3 core/scripts/leak-scan.py | tail -5" block
+  tr_probe "mechanism-guard/core rule: a gate through a pipe after a separator" Bash command "cd /r; bash core/scripts/handover-gate.sh | grep FAIL" block
+  tr_probe "mechanism-guard/core rule: a gate with its exit code read alone" Bash command "python3 core/scripts/leak-scan.py; echo exit=\$?" allow
+  tr_probe "mechanism-guard/core rule: reading a gate script through a pipe" Bash command "git show origin/main:scripts/leak-scan.py | sed -n 1,20p" allow
+  # 2026-11-07, ported from instance data: plugin update without a marketplace refresh
+  tr_probe "mechanism-guard/core rule: plugin update alone" Bash command "claude plugin update suite@market" block
+  tr_probe "mechanism-guard/core rule: plugin update after a separator" Bash command "cd /r && claude plugin update x@m" block
+  tr_probe "mechanism-guard/core rule: plugin update after the marketplace refresh" Bash command "claude plugin marketplace update m && claude plugin update x@m" allow
+  tr_probe "mechanism-guard/core rule: the phrase inside a message" Bash command "git -C /r commit -m \"docs: say claude plugin update\"" allow
   # class sweep of the same day: waiting scripts by name
   tr_probe "mechanism-guard/core rule: wait-mcp-reconnect in the foreground" Bash command "bash core/scripts/wait-mcp-reconnect.sh touchdesigner" block
   tr_probe "mechanism-guard/core rule: shared-memory-watch in the foreground" Bash command "bash core/scripts/shared-memory-watch.sh watch 300" block
