@@ -561,6 +561,21 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: osascript reads the URL (control)" Bash command "osascript -e 'tell application \"Safari\" to get URL of current tab of window 1'" allow
   tr_probe "mechanism-guard/core rule: tabs through product-sources (control)" Bash command "python3 core/scripts/product-sources.py open list.csv" allow
   tr_probe "mechanism-guard/core rule: a plain \$VAR (control)" Bash command 'bash -c \"echo $HOME\"' allow
+  # 2026-11-12 (macOS instance): one list, ten timestamped copies and five CSVs side by side - one purchase register.
+  tr_probe "mechanism-guard/purchase register: no register declared, a new list passes (control)" Write file_path "docs/shopping-list-v2.md" allow
+  mkdir -p "$TR/proj/.claude/rules" "$TR/proj/docs/buy"
+  printf '%s' '{"register":"docs/buy/register.csv","list_patterns":["shopping[-_ ]?list","einkaufsliste"]}' > "$TR/proj/.claude/rules/purchase-register.json"
+  : > "$TR/proj/docs/old-shopping-list.md"
+  tr_probe "mechanism-guard/purchase register: a new list file by Write" Write file_path "docs/shopping-list-v2.md" block
+  tr_probe "mechanism-guard/purchase register: a dated copy, instance word, any case" Write file_path "$(native "$TR")/x/Einkaufsliste_2026-11-04_final.txt" block
+  tr_probe "mechanism-guard/purchase register: a list by shell redirect" Bash command "printf 'a' > docs/einkaufsliste-neu.csv" block
+  tr_probe "mechanism-guard/purchase register: a list as the target of cp" Bash command "cp docs/buy/register.csv /tmp/shopping_list.csv" block
+  tr_probe "mechanism-guard/purchase register: the register itself (control)" Write file_path "docs/buy/register.csv" allow
+  tr_probe "mechanism-guard/purchase register: an existing list is edited (control)" Edit file_path "docs/old-shopping-list.md" allow
+  tr_probe "mechanism-guard/purchase register: reading a list (control)" Bash command "cat docs/old-shopping-list.md" allow
+  tr_probe "mechanism-guard/purchase register: a list moved away, source only (control)" Bash command "mv docs/einkaufsliste.md docs/archive/" allow
+  tr_probe "mechanism-guard/purchase register: the word in a commit message (control)" Bash command "git commit -m 'drop the shopping-list file' -- a.txt" allow
+  rm -f "$TR/proj/.claude/rules/purchase-register.json"
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then

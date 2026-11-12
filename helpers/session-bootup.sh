@@ -434,6 +434,13 @@ if [[ -f "$HERE/../scripts/ledger-reconcile.py" ]]; then
   CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/ledger-reconcile.py" --root "$R" --cached 2>/dev/null
 fi
 
+# Purchases: one line when an open row of the purchase register is due within 7 days or past, or the register
+# check fails; silent otherwise and in a brain that names no register (operator 2026-11-12, translated: "no
+# purchase with a deadline may get lost"). Reads one CSV, no network.
+if [[ -f "$R/.claude/rules/purchase-register.json" && -f "$HERE/../scripts/product-sources.py" ]]; then
+  CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/product-sources.py" register brief 2>/dev/null
+fi
+
 # Clock: silent unless the system time is off against the outside (one HEAD, 3 s cap,
 # silent offline). A wrong clock corrupts commit timestamps and every since= cursor.
 if [[ -f "$HERE/../scripts/clock-skew.py" ]]; then
