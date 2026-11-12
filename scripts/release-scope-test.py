@@ -88,13 +88,27 @@ with tempfile.TemporaryDirectory() as tmp:
     r = gate()
     check("check without a scope is red", r.returncode == 1 and "no release scope" in r.stdout, r.stdout)
 
+    # No scope before a pin is due (operator 2026-11-12): open takes the operator's quoted word naming the release.
     r = scope("open", "2.1.4")
+    check("open without the operator's word is refused, says the train collects", r.returncode == 3
+          and "the train is open and collects everything" in r.stdout
+          and not (brain / ".claude-state" / "release-scope.json").exists(), r.stdout)
+    check("negative control: a quote without its date is refused",
+          scope("open", "2.1.4", "--operator-word", '"cut the beta now"').returncode == 3)
+    check("negative control: an unquoted paraphrase is refused",
+          scope("open", "2.1.4", "--operator-word", "the operator said cut it 2026-11-12").returncode == 3)
+    check("negative control: a one-word quote is refused",
+          scope("open", "2.1.4", "--operator-word", '"ok" 2026-11-12').returncode == 3)
+    WORD = ["--operator-word", '"cut beta 2.1.4 now" 2026-11-12']
+    r = scope("open", "2.1.4", *WORD)
     state = json.loads((brain / ".claude-state" / "release-scope.json").read_text(encoding="utf-8"))
-    check("open writes an open scope for the version", r.returncode == 0 and state["status"] == "open"
+    check("open with the word writes an open scope for the version", r.returncode == 0 and state["status"] == "open"
           and state["version"] == "2.1.4" and state["repo"] == "agent-brain", r.stdout)
+    check("the operator's word is stored in the scope", state.get("operator_word") == '"cut beta 2.1.4 now" 2026-11-12',
+          str(state))
     check("the state file is LF only", b"\r" not in (brain / ".claude-state" / "release-scope.json").read_bytes())
     check("open again, same version: no change", scope("open", "2.1.4").returncode == 0)
-    r = scope("open", "2.1.5")
+    r = scope("open", "2.1.5", *WORD)
     check("open another version while one is open is refused", r.returncode == 1 and "close it first" in r.stdout,
           r.stdout)
 
@@ -152,14 +166,15 @@ with tempfile.TemporaryDirectory() as tmp:
     git(clone, "checkout", "-q", "main")
     check("a PR in scope covers its branch", gate().returncode == 0)
     r = scope("show")
-    check("show lists items and exclusions", "in   core-pr" in r.stdout
+    check("show lists items and exclusions", "cut beta 2.1.4 now" in r.stdout and "in   core-pr" in r.stdout
           and "out  feat/open-work - experiment, not for this release" in r.stdout, r.stdout)
 
     r = scope("close")
     state = json.loads((brain / ".claude-state" / "release-scope.json").read_text(encoding="utf-8"))
     check("close ends the scope", r.returncode == 0 and state["status"] == "closed")
     check("add after close is refused", scope("add", "y").returncode == 1)
-    check("a new version opens after close", scope("open", "2.1.5").returncode == 0)
+    check("a new version opens after close - only with the word", scope("open", "2.1.5").returncode == 3
+          and scope("open", "2.1.5", *WORD).returncode == 0)
 
 print(f"\n{total - fails}/{total} passed")
 sys.exit(1 if fails else 0)
