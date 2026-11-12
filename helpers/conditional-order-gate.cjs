@@ -44,6 +44,7 @@ const path = require('path');
 const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
+const { answerHalves } = require('./published-text.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
 
 let data = '';
@@ -116,11 +117,14 @@ function promptText(msg) {
   return t || null;
 }
 
-/** The text of a question-tool answer record (its tool_result content, string or text blocks). */
+/** The operator's half of a question-tool answer record (its tool_result content, string or text blocks): only the
+ * answer of each `"question"="answer"` pair - the whole pair is quoted and stripQuoted would drop it (Windows review
+ * 2026-11-12). No pair: the whole text, unsure means stricter. */
 function answerText(msg) {
   const r = msg.content.find((b) => b && b.type === 'tool_result') || {};
-  if (typeof r.content === 'string') return r.content;
-  return (Array.isArray(r.content) ? r.content : []).filter((b) => b && b.type === 'text').map((b) => b.text).join('\n');
+  const t = typeof r.content === 'string' ? r.content
+    : (Array.isArray(r.content) ? r.content : []).filter((b) => b && b.type === 'text').map((b) => b.text).join('\n');
+  return answerHalves(t) || t;
 }
 
 /** Last operator message, the assistant texts since it, and the Agent calls since it. */

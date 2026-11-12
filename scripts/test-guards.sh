@@ -211,6 +211,8 @@ cat > "$TR" <<'JSONL'
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{}}]}}
 {"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q1","content":"\"Merge it?\"=\"Yes, merge now\""}]}}
 {"type":"user","message":{"role":"user","content":"<pasted_content id=\"a1\">ship the release tonight</pasted_content id=\"a1\">"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"q2","name":"AskUserQuestion","input":{}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q2","content":"Your questions have been answered: \"Shall I tag v2.2 and move the pin now?\"=\"No, wait for macOS\". You can now continue with the answers in mind."}]}}
 JSONL
 mgt_probe() { # $1 name, $2 command, $3 block|allow, $4 transcript path (empty = none)
   local out rc helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
@@ -224,6 +226,11 @@ mgt_probe "mechanism-guard/quote said: typed prompt" \
   'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"go ahead with the gate\"' allow "$TR"
 mgt_probe "mechanism-guard/quote said: question-tool answer" \
   'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: „Yes, merge now“' allow "$TR"
+# Windows review 2026-11-12: the question half of an answer is the AI's own text, not the operator's word.
+mgt_probe "mechanism-guard/quote said: quote of the question text blocks" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-12: \"tag v2.2 and move the pin now\"' block "$TR"
+mgt_probe "mechanism-guard/quote said: the answer half of the same answer passes" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-12: \"No, wait for macOS\"' allow "$TR"
 mgt_probe "mechanism-guard/quote said: invented quote blocks" \
   'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"merge everything\"' block "$TR"
 mgt_probe "mechanism-guard/quote said: words from a pasted block are not the operator's" \

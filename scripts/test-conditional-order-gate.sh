@@ -175,9 +175,10 @@ run_case blob-as-user block Bash '{"command":"git push"}'
 
 # --- the measured shape (2026-11-07, held twice: git push and gh pr comment): a condition in the FIRST prompt, then the
 # operator's answer in the question tool without one. The answer is the newest operator word and ends the window.
+# The real result format (Windows review 2026-11-12): the answer stands quoted inside a `"question"="answer"` pair.
 qa() { # $1 file, $2 answer text, $3 is_error (true|false)
   printf '{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_q1","name":"AskUserQuestion","input":{}}]}}\n' >> "$1"
-  printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_q1","is_error":%s,"content":"%s"}]}}\n' "$3" "$2" >> "$1"
+  printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_q1","is_error":%s,"content":"Your questions have been answered: \\"How shall I go on?\\"=\\"%s\\". You can now continue with the answers in mind."}]}}\n' "$3" "$2" >> "$1"
 }
 mk "$T/qa-answer.jsonl" '"after the mac answers, push it"' 0 ''
 qa "$T/qa-answer.jsonl" "go ahead with all 13 points" false

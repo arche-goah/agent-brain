@@ -37,7 +37,7 @@
  * without the flag keep the old behaviour; a brain that never sets it changes nothing.
  */
 const fs = require('fs');
-const { withoutPublished } = require('./published-text.cjs');
+const { withoutPublished, answerHalves } = require('./published-text.cjs');
 
 // A heredoc body is literal text ONLY when its consumer cannot execute it. Scanning the
 // raw command without stripping produces a false positive on any heredoc that merely
@@ -256,7 +256,11 @@ function operatorSaid(transcript) {
     if (p) out.push(operatorWords(p));
     if (answered(d)) {
       for (const b of d.message.content) {
-        if (b && b.type === 'tool_result') out.push(typeof b.content === 'string' ? b.content : JSON.stringify(b.content || ''));
+        // Only the answer halves: the question half is the AI's own text (Windows review 2026-11-12).
+        if (b && b.type === 'tool_result') {
+          out.push(answerHalves(typeof b.content === 'string' ? b.content
+            : (Array.isArray(b.content) ? b.content : []).map((x) => (x && x.text) || '').join('\n')));
+        }
       }
     }
   }

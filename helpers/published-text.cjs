@@ -204,4 +204,13 @@ function withoutPublished(cmd, ps) {
   return out;
 }
 
-module.exports = { shellSegments, publishedText, invocations, withoutPublished, unquote, expandVars, nativePath };
+// The operator's half of a question-tool answer. The harness writes `"<the AI's question>"="<the chosen label>"`
+// pairs; the left half is the AI's own text. Windows review 2026-11-12: conditional-order-gate lost the answer to its
+// quote stripper, mechanism-guard took the question text as the operator's word. Answer halves joined by newlines,
+// '' when the text has no pair.
+const ANSWER_PAIR = /"(?:[^"\\]|\\.)*"="((?:[^"\\]|\\.)*)"/g;
+function answerHalves(text) {
+  return [...String(text || '').matchAll(ANSWER_PAIR)].map((m) => m[1]).join('\n');
+}
+
+module.exports = { shellSegments, publishedText, invocations, withoutPublished, unquote, expandVars, nativePath, answerHalves };
