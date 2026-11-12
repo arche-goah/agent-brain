@@ -40,6 +40,14 @@ o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"english-only"* ]] && ok "a staged Germa
 rm "$R/changelog.d/de.md"; gq -C "$R" add -A
 o=$(hook "$R"); [ $? -eq 0 ] && ok "  ... and passes once it is gone" || bad "after removal" "$o"
 
+# The content guard in the same hook (2026-11-12): a literal invisible character in a staged file is refused at
+# commit time, not first at the full lint. The character is written by printf, so this file holds none.
+cp "$HERE/content-guard.py" "$R/scripts/content-guard.py"; gq -C "$R" add -A; gq -C "$R" commit -qm guard --no-verify
+printf 'bom = "\xef\xbb\xbf"\n' > "$R/scripts/x.py"; gq -C "$R" add -A
+o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"content-guard"* ]] && ok "a staged invisible character is refused by the content guard" || bad "invisible char" "$o"
+printf 'bom = chr(0xFEFF)\n' > "$R/scripts/x.py"; gq -C "$R" add -A
+o=$(hook "$R"); [ $? -eq 0 ] && ok "  ... and passes written as a code point" || bad "code point" "$o"
+
 echo ""
 [ "$fails" -eq 0 ] && echo "pre-commit change-level: all $checks checks pass" || echo "pre-commit change-level: $fails of $checks FAILED"
 exit "$fails"
