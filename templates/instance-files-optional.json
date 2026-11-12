@@ -4,6 +4,7 @@
     "backprop.json": "backprop-report.py: rule files and search paths; missing file = built-in defaults that fit a brain",
     "basics.json": "basics-hint.cjs: triggers in the instance's language and basics of its own; missing file = the core's English list in basics.json",
     "brain-scan-prep.json": "brain-scan-prep.py: decided/dropped words in the instance's language; missing file = English built-ins",
+    "carrier-paths.json": "root-cause-gate.cjs: a PROJECT repo (not the brain) lists globs of its own carriers (generators, project skills); missing file = only the core's folder list counts",
     "class-gate.json": "class-gate.cjs: level_patterns in the instance's language; missing file = English built-ins",
     "dead-carriers.json": "dead-carriers.py: absence_patterns in the instance's language; missing file = English built-ins",
     "freshness-gate.json": "freshness-gate.cjs: per-brain thresholds; missing file = built-in defaults (14 days)",
