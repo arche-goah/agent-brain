@@ -132,5 +132,46 @@ printf '%s\n' '- **new.** (test: T0)' > "$SU/changelog.d/new.md"
 git -C "$SU" -c user.email=t@t -c user.name=t commit -qam bad
 lvprobe "negative control: a committed malformed fragment of the PR blocks" "$SU" "gh pr create --title t --body \"b <!-- instance-key: $KEY -->\"" block
 
+# A commit the text points at must be on the remote (2026-11-12, macOS instance: nine comments named
+# a train commit that was only local; the Windows instance got 422 "No commit found"). gh is a node
+# stand-in (INSTANCE_KEY_GATE_GH): FAKE_GH=missing answers 422, pushed answers, offline cannot connect.
+printf '%s\n' "const a = process.argv.find((x) => x.startsWith('repos/')) || ''; const sha = a.split('/').pop();" \
+  "const m = process.env.FAKE_GH || 'missing';" \
+  "if (m === 'offline') { process.stderr.write('error connecting to api.github.com\n'); process.exit(1); }" \
+  "if (m === 'pushed') { console.log(sha); process.exit(0); }" \
+  "process.stderr.write('gh: No commit found for SHA: ' + sha + ' (HTTP 422)\n'); process.exit(1);" > "$T/gh.cjs"
+shaprobe() { # $1 label, $2 cwd, $3 body file, $4 block|allow, [$5 SELF, default mac]; prints the gate's stderr into $SHAOUT
+  local rc
+  SHAOUT=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$2")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "gh pr comment 5 -R o/r --body-file $(native "$3")")}}" \
+        | CLAUDE_PROJECT_DIR="$(native "$T/brain")" SHARED_MEMORY_SELF="${5-mac}" INSTANCE_KEY_GATE_GH="$(native "$T/gh.cjs")" node "$(native "$GATE")" 2>&1); rc=$?
+  if [ "$rc" -eq 2 ]; then [ "$4" = block ] && ok "$1 blocks" || bad "$1 blocked: ${SHAOUT:0:160}"
+  else [ "$4" = allow ] && ok "$1 allows" || bad "$1 did NOT block (rc=$rc)"; fi
+}
+printf 'fixed in the train at `4a560f8`\n<!-- instance-key: %s -->\n' "$KEY" > "$T/sha.md"
+FAKE_GH=missing shaprobe "a sha the remote does not have" "$T" "$T/sha.md" block
+case "$SHAOUT" in *"4a560f8"*"Push first, then post"*) ok "block message names the sha and says push first" ;; *) bad "sha message: ${SHAOUT:0:200}" ;; esac
+FAKE_GH=pushed shaprobe "a sha the API answers" "$T" "$T/sha.md" allow
+FAKE_GH=offline shaprobe "no network" "$T" "$T/sha.md" allow
+case "$SHAOUT" in *"not readable for 4a560f8"*) ok "no network says so on stderr" ;; *) bad "offline line missing: ${SHAOUT:0:200}" ;; esac
+FAKE_GH=missing shaprobe "without an instance id the pointer still holds" "$T" "$T/sha.md" block ""
+printf 'see https://github.com/o/r/commit/`4a560f8` and [x](https://github.com/o/r/blob/4a560f8/a.md)\n<!-- instance-key: %s -->\n' "$KEY" > "$T/url.md"
+FAKE_GH=missing shaprobe "hex inside a URL" "$T" "$T/url.md" allow
+printf 'measured on `20261112`, word `defaced`, not hex `4a560fz`\n<!-- instance-key: %s -->\n' "$KEY" > "$T/num.md"
+FAKE_GH=missing shaprobe "a plain number, a hex-letter word, a non-hex word" "$T" "$T/num.md" allow
+# A checkout of the target repo answers without the API: a remote branch that contains the commit.
+RC="$T/rc"; git init -q -b main "$RC"; git -C "$RC" remote add origin https://github.com/o/r.git
+GIT_AUTHOR_DATE=2026-11-12T00:00:00Z GIT_COMMITTER_DATE=2026-11-12T00:00:00Z git -C "$RC" -c user.email=t@t -c user.name=t commit -q --allow-empty -m pushed
+git -C "$RC" update-ref refs/remotes/origin/main HEAD
+PUSHED="$(git -C "$RC" rev-parse --short=8 HEAD)"
+GIT_AUTHOR_DATE=2026-11-12T00:00:00Z GIT_COMMITTER_DATE=2026-11-12T00:00:00Z git -C "$RC" -c user.email=t@t -c user.name=t commit -q --allow-empty -m local
+LOCAL="$(git -C "$RC" rev-parse --short=8 HEAD)"
+printf 'fixed at `%s`\n<!-- instance-key: %s -->\n' "$PUSHED" "$KEY" > "$T/rc-pushed.md"
+printf 'fixed at `%s`\n<!-- instance-key: %s -->\n' "$LOCAL" "$KEY" > "$T/rc-local.md"
+# A short sha from rev-parse may be all digits or all letters; the pointer rule needs both (named limit).
+if [[ "$PUSHED" =~ [a-f] && "$PUSHED" =~ [0-9] && "$LOCAL" =~ [a-f] && "$LOCAL" =~ [0-9] ]]; then
+  FAKE_GH=missing shaprobe "a sha on a remote branch of the checkout (API says 422)" "$RC" "$T/rc-pushed.md" allow
+  FAKE_GH=missing shaprobe "negative control: a local-only commit of the same checkout" "$RC" "$T/rc-local.md" block
+else ok "checkout case skipped: generated sha $PUSHED/$LOCAL lacks a letter or a digit"; fi
+
 [ "$fail" -eq 0 ] && echo "test-instance-key-gate: all checks passed"
 exit "$fail"
