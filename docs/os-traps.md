@@ -237,6 +237,7 @@ known:     scripts/shared-memory-index.py=3
 known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-memory-log-rotate.py=1
 known:     scripts/shared-memory-post.py=2
+known:     scripts/start-findings.py=1
 known:     scripts/template-drift.py=1
 instances: 3
 repeat:    yes
@@ -269,6 +270,8 @@ TextIOWrapper.
 `.claude-state/`, not git-tracked) opens with `newline="\n"`.
 2026-11-06, scripts/release-scope.py baselined: its one write (the release scope under `.claude-state/`, not
 git-tracked, read by node in release-freeze-gate.cjs) opens with `newline="\n"`; its fixture asserts no CR byte.
+2026-11-12, scripts/start-findings.py baselined: its one write (the findings state under `.claude-state/`, not
+git-tracked) opens with `newline="\n"`.
 
 ## OS-3 — a fixture hands a shell path to a native process
 
@@ -809,6 +812,7 @@ known:     scripts/session-audit.py=3
 known:     scripts/shared-memory-index.py=4
 known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-reach-check.py=6
+known:     scripts/start-findings.py=2
 known:     scripts/transcript-recall.py=1
 instances: 1
 repeat:    no
@@ -845,7 +849,8 @@ cp1252 byte 0xb7 (measured at core #24 on 2026-10-18; a planted accented letter 
 `main()`; `portability-smoke.sh` asserts the piped `--inventory` parses as UTF-8 JSON. Left `open` deliberately — the 12 unpinned sites are fine only
 as long as that answer stays no. 2026-10-25, scripts/live-doc-lint.py (2): the question answered
 yes — its `--json` is parsed by the fixture and the text report is read by a CI log and a reviewer —
-so stdout is pinned at import, like the others.
+so stdout is pinned at import, like the others. 2026-11-12, scripts/start-findings.py (2): yes — the session
+start prints its output and open-items-gate.cjs parses the count line and the items — so stdout is pinned at import.
 
 2026-10-25, lesson-carriers.py baselined after the review: its two report lines carry an em dash and are
 parsed by brain-scan-prep.py and the session-close step; stdout is pinned at the top of the script.
