@@ -15,6 +15,9 @@
 #   3. a push to main or master of any repo but the brain itself and the shared memory (the repo
 #      with parties.json at its top, as prepare-commit-msg tells it) — both are pushed to main by
 #      design. More repos: .claude/rules/push-targets.json  {"main_ok": ["owner/repo", ...]}
+#   4. a NEW branch that carries commits of the local main/master its remote main does not have
+#      (the local main is ahead and its commits ride along). A new branch that sends only its own
+#      commits passes; with more than one, the list goes to stderr (what goes, not a block).
 # Tags are judged like branches for 1 and 2 (moving a published tag is a rewrite); a new tag passes.
 # GLOBAL via core.hooksPath like pre-commit: what is not listed is still guarded for 1 and 2.
 # Bypass `git push --no-verify` stays possible on purpose (see pre-commit); the core's mechanism
@@ -59,6 +62,29 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     refs/heads/main|refs/heads/master)
       [ "$main_ok" = no ] && problems="$problems\n  push to ${remote_ref#refs/heads/} of $slug (not in main_ok of $targets)" ;;
   esac
+  # 4. a NEW branch says what it carries (measured 2026-11-12: six commits made on a local main
+  #    that may not be pushed rode along on `push origin HEAD:refs/heads/feat/x`; the PR carried
+  #    8 commits instead of 2, seen only at the merge). Sends = commits no remote ref has.
+  case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
+  [ -z "${remote_sha//0/}" ] || continue
+  rem=--remotes; git remote 2>/dev/null | grep -qxF "$remote_name" && rem="--remotes=$remote_name"
+  sends=$(git rev-list --count "$local_sha" --not "$rem" 2>/dev/null || echo 0)
+  riding=""
+  for mb in main master; do
+    git rev-parse -q --verify "refs/heads/$mb" >/dev/null || continue
+    git rev-parse -q --verify "refs/remotes/$remote_name/$mb" >/dev/null || break   # no remote main: nothing to be ahead of
+    bases=$(git merge-base --all "$local_sha" "refs/heads/$mb" 2>/dev/null) || break
+    # shellcheck disable=SC2086   # bases: one sha per word
+    riding=$(git log --format='    %h %s' -n 10 $bases --not "$rem" 2>/dev/null)
+    n_riding=$(git rev-list --count $bases --not "$rem" 2>/dev/null || echo 0)
+    break
+  done
+  if [ -n "$riding" ]; then
+    problems="$problems\n  new branch ${remote_ref#refs/heads/} on $slug carries $n_riding commit(s) of the local $mb that $remote_name/$mb does not have (of $sends sent):\n$riding\n  way out: branch from $remote_name/$mb and cherry-pick only this branch's commits"
+  elif [ "${sends:-0}" -gt 1 ]; then
+    printf 'pre-push: new branch %s on %s sends %s commits:\n%s\n' "${remote_ref#refs/heads/}" "$slug" "$sends" \
+      "$(git log --format='    %h %s' -n 10 "$local_sha" --not "$rem" 2>/dev/null)" >&2
+  fi
 done
 
 [ -z "$problems" ] && exit 0

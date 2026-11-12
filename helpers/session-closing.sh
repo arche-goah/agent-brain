@@ -154,6 +154,20 @@ if [ -f "$eco" ] && command -v node >/dev/null 2>&1; then
       printf '\n## Neighbour repo %s: NOT delivered\n%s uncommitted, %s unpushed in %s.\n' \
         "$name" "$n_dirty" "$n_unpushed" "$p" >> .claude/HANDOFF.md
     fi
+    # A local main ahead of its remote main, whichever branch is checked out (measured
+    # 2026-11-12: six commits on a project repo's main that only leaves by PR went unnoticed,
+    # then rode along on a new branch). Counted against the remote main, not --remotes: once
+    # they rode out on a branch, they are on a remote and still not on main.
+    for mb in main master; do
+      git -C "$p" rev-parse -q --verify "refs/remotes/origin/$mb" >/dev/null || continue
+      n_ahead=$(git -C "$p" rev-list --count "origin/$mb..refs/heads/$mb" 2>/dev/null || echo 0)
+      if [ "${n_ahead:-0}" -gt 0 ]; then
+        echo "FAIL neighbour repo $name: local $mb is ${n_ahead} commit(s) ahead of origin/$mb in $p — commits on a main that only leaves by PR: branch from origin/$mb, cherry-pick, open the PR; or push $mb where it may be pushed"
+        printf '\n## Neighbour repo %s: main ahead\nlocal %s is %s commit(s) ahead of origin/%s in %s.\n' \
+          "$name" "$mb" "$n_ahead" "$mb" "$p" >> .claude/HANDOFF.md
+      fi
+      break
+    done
   done
 fi
 
