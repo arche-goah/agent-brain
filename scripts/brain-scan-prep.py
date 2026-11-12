@@ -115,8 +115,12 @@ def parse_orders(text):
             entries.append(cur)
         elif cur is not None:
             cur["text"] += "\n" + line
+    # `id:` on its own line or inside the entry line (`... | id: x | class: todo`, the field form of the
+    # order-list convention). Measured 2026-11-10 on the Windows instance (audit-audit): all 232 ids of its
+    # order list stand mid-line, none at a line start, so the return channel called 36 tracked findings
+    # "vanished".
     for e in entries:
-        e["ids"] = set(re.findall(r"^\s*id:\s*([A-Za-z0-9][A-Za-z0-9_.-]*)", e["text"], re.M))
+        e["ids"] = set(re.findall(r"(?:^|[|\s])id:\s*([A-Za-z0-9][A-Za-z0-9_.-]*)", e["text"], re.M))
     return entries
 
 

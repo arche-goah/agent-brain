@@ -31,6 +31,18 @@ function unquote(s) {
   return s.replace(/^(['"])(.*)\1$/, '$2');
 }
 
+// A path as the shell wrote it, in the form node can open (docs/os-traps.md OS-19): on Windows
+// `/c/...` becomes `C:/...`, any other `/...` goes through `cygpath -m`; elsewhere unchanged.
+function nativePath(p) {
+  const s = String(p);
+  if (process.platform !== 'win32' || !s.startsWith('/')) return s;
+  const m = /^\/([a-zA-Z])(\/|$)(.*)$/.exec(s);
+  if (m) return m[1].toUpperCase() + ':/' + m[3];
+  try {
+    return require('child_process').execFileSync('cygpath', ['-m', s], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }).toString().trim() || s;
+  } catch (e) { return s; }
+}
+
 function shellSegments(cmd, ps) {
   const segs = [Object.assign([], { spans: [] })];
   let word = null; // null = between words
@@ -192,4 +204,13 @@ function withoutPublished(cmd, ps) {
   return out;
 }
 
-module.exports = { shellSegments, publishedText, invocations, withoutPublished, unquote, expandVars };
+// The operator's half of a question-tool answer. The harness writes `"<the AI's question>"="<the chosen label>"`
+// pairs; the left half is the AI's own text. Windows review 2026-11-12: conditional-order-gate lost the answer to its
+// quote stripper, mechanism-guard took the question text as the operator's word. Answer halves joined by newlines,
+// '' when the text has no pair.
+const ANSWER_PAIR = /"(?:[^"\\]|\\.)*"="((?:[^"\\]|\\.)*)"/g;
+function answerHalves(text) {
+  return [...String(text || '').matchAll(ANSWER_PAIR)].map((m) => m[1]).join('\n');
+}
+
+module.exports = { shellSegments, publishedText, invocations, withoutPublished, unquote, expandVars, nativePath, answerHalves };

@@ -173,6 +173,25 @@ mk "$T/blob-as-user.jsonl" '"weiter im programm"' 0 ''
 printf '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"**SECHS KREISE — wer entscheidet** (2026-09-21; kanonisch)"}]}}\n' >> "$T/blob-as-user.jsonl"
 run_case blob-as-user block Bash '{"command":"git push"}'
 
+# --- the measured shape (2026-11-07, held twice: git push and gh pr comment): a condition in the FIRST prompt, then the
+# operator's answer in the question tool without one. The answer is the newest operator word and ends the window.
+# The real result format (Windows review 2026-11-12): the answer stands quoted inside a `"question"="answer"` pair.
+qa() { # $1 file, $2 answer text, $3 is_error (true|false)
+  printf '{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_q1","name":"AskUserQuestion","input":{}}]}}\n' >> "$1"
+  printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_q1","is_error":%s,"content":"Your questions have been answered: \\"How shall I go on?\\"=\\"%s\\". You can now continue with the answers in mind."}]}}\n' "$3" "$2" >> "$1"
+}
+mk "$T/qa-answer.jsonl" '"after the mac answers, push it"' 0 ''
+qa "$T/qa-answer.jsonl" "go ahead with all 13 points" false
+run_case qa-answer allow Bash '{"command":"git push origin feat/x"}'
+# ... the answer can carry a condition itself
+mk "$T/qa-cond.jsonl" '"run the scan"' 0 ''
+qa "$T/qa-cond.jsonl" "after the mac answers, push it" false
+run_case qa-cond block Bash '{"command":"git push origin feat/x"}'
+# negative control: a refused question (is_error) is no answer, the first prompt's condition stands
+mk "$T/qa-refused.jsonl" '"after the mac answers, push it"' 0 ''
+qa "$T/qa-refused.jsonl" "user rejected" true
+run_case qa-refused block Bash '{"command":"git push origin feat/x"}'
+
 # --- the measured shape (2026-10-22): a subagent's hand-back arrives as a user record with
 # origin.kind "peer" and carries a condition word; the operator's own words carry "human".
 mk "$T/peer.jsonl" '"weiter im programm"' 0 ''
@@ -257,6 +276,12 @@ CIC="$T/cls"; mkdir -p "$CIC/.claude-state"
 run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
 printf '{"at":"2026-10-30T19:00:04.000Z","session":"cls-cond","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
 run_case cls-cond block Workflow '{"name":"x"}' "$CIC"
+# 2026-11-08: a classifier hit names no sentence of its own - the message must not present the first sentence as the condition
+msg="$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:"Workflow",tool_input:{name:"x"},transcript_path:a[1],cwd:a[2]}))' \
+  "$(native "$T/cls-cond.jsonl")" "$(native "$CIC")" | node "$G" 2>&1)"
+case "$msg" in *"prompt classifier read a condition in that message"*) ok "classifier hit says where the reading came from";;
+  *) bad "classifier hit message: '${msg:0:200}'";; esac
+case "$msg" in *'Sentence: "'*) bad "classifier hit still shows a sentence as the condition";; *) ok "classifier hit shows no sentence as the condition";; esac
 printf '{"at":"2026-10-30T19:00:04.000Z","session":"cls-cond","mode":"hook","model":{"condition":false}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
 run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
 printf '{"at":"2026-10-30T19:00:04.000Z","session":"other","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"

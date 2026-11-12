@@ -92,7 +92,9 @@ for pid in $(ps -axo pid=,comm= | awk '$2 ~ /(^|\/)claude$/ {print $1}'); do
   is_cli_call "$(ps -o args= -p "$pid" 2>/dev/null)" && continue
   cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)
   if [ "$cwd" = "$R" ]; then
-    echo "claude-session pid=$pid cwd=$cwd"
+    # The session's order in one sentence (session-order.sh, 2026-11-08): a hand-over names the receiver's order.
+    order=$(CLAUDE_PROJECT_DIR="$R" bash "$(dirname "$0")/session-order.sh" show "$pid" 2>/dev/null)
+    echo "claude-session pid=$pid cwd=$cwd order=${order:-(none set - session-order.sh set \"<one sentence>\")}"
     count=$((count + 1))
   fi
 done

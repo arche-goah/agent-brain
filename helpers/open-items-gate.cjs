@@ -72,6 +72,9 @@ const BUILTIN = {
   repeat: ['\\balready reported\\b', '\\breported (before|in \\d+|\\d+ times)\\b', '\\bstill open\\b'],
   // the unit after a number that makes it an age ("32 days")
   age_unit: ['days?\\b', 'd\\b'],
+  // the unit after a number that makes it the count of session-start findings ("18 session-start findings"); a bare
+  // number matched by chance in 59 of 60 real first replies (2026-11-11 replay), so the noun is part of the count
+  finding_unit: ['session-start findings?\\b', 'start(?:up)? findings?\\b', 'findings? (?:of|from) the session start\\b'],
   // an operator prompt that already orders the work: no shall-I question needed
   goahead: ['\\bgo ahead\\b', '\\b(handle|do|finish|work through) (it all|them all|all of (it|them)|everything)\\b'],
   // items under a standing approval: reported as done or under way
@@ -236,6 +239,18 @@ function mandatedTopics(tp) {
     }
     return out;
   } catch (e) { return []; }
+}
+
+/**
+ * The session start's own findings: every top-level `!!` line outside the open-items block (self-test FAIL, ledger
+ * checks, settings drift, auto-fire gaps). Measured 2026-11-11 on the macOS instance over 60 transcripts: such lines
+ * stood in 13 to 30 session starts unfixed - the first reply only had to REPORT them, nobody owned them, and almost
+ * every session is a topic session. The operator's word the same day (question tool): "Jede Session, erster Zug" -
+ * the first reply counts them and says what happened to each (handled, handed over, blocked). Indented sub-lines
+ * belong to the finding above them; "!! open for us:" lines are this gate's own block.
+ */
+function bootFindings(text) {
+  return text.split('\n').filter((l) => /^!!\s/.test(l) && !/^!! open for us:/.test(l));
 }
 
 /** Parse the open-items block out of the bootup text. */
@@ -518,12 +533,22 @@ function judge(input) {
   if (blk.items.some((it) => it.repeat) && !patterns(cwd, 'repeat').test(text)) {
     missing.push('that some were reported before and are still open');
   }
+  const findings = bootFindings(t.boot.text);
+  if (findings.length) {
+    const unit = patterns(cwd, 'finding_unit').source;
+    if (!new RegExp(`(?<!\\d)${findings.length}\\s+(?:${unit})`, 'iu').test(text)) {
+      missing.push(`count of session-start findings, said as "${findings.length} session-start findings"`);
+    }
+    if (!patterns(cwd, 'handled').test(text)) {
+      missing.push('what happened to each session-start finding (handled now, handed to its owner, or its blocker)');
+    }
+  }
   if (blk.failed && !patterns(cwd, 'failed').test(text)) missing.push('failed source');
   if (blk.parked && !patterns(cwd, 'parked').test(text)) missing.push('parked line');
   if (blk.nothing && !patterns(cwd, 'nothing').test(text)) missing.push('"nothing open"');
   if (missing.length === 0) return null;
   const shown = missing.length > 6 ? `${missing.slice(0, 6).join(', ')} +${missing.length - 6} more` : missing.join(', ');
-  return `First reply leaves out the open points from the session start — split by who acts: "n I can handle, shall I?" + "n need you" (up to ${HUMAN_LIST_MAX} named, more offered) + "n handled under a standing approval" when the list has such items; repeats said. Missing: ${shown}`;
+  return `First reply leaves out the open points from the session start — split by who acts: "n I can handle, shall I?" + "n need you" (up to ${HUMAN_LIST_MAX} named, more offered) + "n handled under a standing approval" when the list has such items; repeats said; the session-start findings (!! lines) counted, each handled now, handed to its owner or named with its blocker. Missing: ${shown}`;
 }
 
 module.exports = { firstTurnOwnsQuestion, mandatedTopics };

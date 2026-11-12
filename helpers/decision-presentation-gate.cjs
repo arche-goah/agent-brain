@@ -35,6 +35,12 @@
  * This hook demands the tool and that last question, never the other wording, and does NOT check
  * that a question was re-measured before it is put - that is not carried here.
  * Output: {"decision":"block","reason":"..."}. Fails open on unreadable input.
+ *
+ * Frequency design: no cooldown on purpose. The trigger is the moment, not a turn: the operator's
+ * newest prompt asked what is open or ended the autonomous mode; any other turn never meets the
+ * check. It blocks at most once per turn (stop_hook_active lets the re-issue through), and one
+ * AskUserQuestion call ends it. A quiet period would skip the second asking prompt of the hour,
+ * which is the same operator present again and owed the same tool.
  */
 'use strict';
 const fs = require('fs');

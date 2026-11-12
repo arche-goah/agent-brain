@@ -21,6 +21,8 @@
  * - otherwise the OS name with a pass word AFTER it, in the part that belongs to that OS (up to the
  *   next OS name), and no fail word in that part ("**Test (Windows, Git Bash):** all cases pass").
  *   A pass word only BEFORE the OS name is no OK for it ("16 checks OK including macOS and Windows").
+ * - an OK named as a thing or promised is no verdict and blanked first: "No Windows OK yet", "the / your
+ *   macOS OK", "Windows OK once / when / if …", "… OK stays with you" (2026-11-12, #473).
  * - fail words are whole words; a hyphen joins a compound ("red-free", "fail-fast" are no verdict).
  *   Code spans, bare file names and the fixture phrase "red against the old code" are no verdict
  *   (2026-10-28 #164, 2026-11-02 mikrotik-suite #44); "red against main" still is. A fail word of
@@ -47,6 +49,10 @@ const KEY_RX = /<!--\s*instance-key:\s*([0-9a-f]+)\s*-->/i;
 const CI_NOTE = /from ci|windows-latest|macos-latest|portability \(|ci job|windows job|ci at|checks? none failing|\bci (?:is |was )?green\b/i;
 // a dash (not a hyphen) or a bracket starts the evidence; "OK - the fixture is red" stays one clause
 const CLAUSE_END = /\s[—–]\s|\(|;/;
+// A statement that names an OK as a thing ("the / no / your Windows OK": asked for, missing, owed) or promises one
+// ("Windows OK once / when / if …") is no verdict (see saysOk).
+const DETERMINER_BEFORE = /\b(?:the|a|an|no|your|my|our|their|its|this|that|his|her)\s+[*_]*$/i;
+const CONDITION_AFTER = /^[\s*_]*(?:once|when|if|after|as soon as|until|stays|is (?:yours|wanted|owed)|from you)\b/i;
 
 // Only the known systems: a pattern is never built from the caller's text (code scanning js/regex-injection,
 // 2026-11-06 on this PR — the CLI's OS argument reached `new RegExp`). An unknown OS matches nothing.
@@ -54,9 +60,13 @@ const NEVER = /(?!)/;
 function osRx(os) { return Object.prototype.hasOwnProperty.call(NAME_RX, os) ? NAME_RX[os] : NEVER; }
 
 /** The OS name at the start of `rest`, then (optionally a version, "check"/"review") the verdict. */
-function statementAt(rest, os) {
+function statementAt(rest, os) { return statementLength(rest, os) >= 0; }
+
+/** Length of the statement at the start of `rest` (OS name up to the verdict word), or -1. */
+function statementLength(rest, os) {
   const name = osRx(os).source.replace(/^\\b/, '');
-  return new RegExp(`^(?:${name})(?:\\s+\\d+)?[\\s*:_,-]*(?:(?:hand\\s+)?(?:check|review|test)s?[\\s*:_-]*)?(?:ok|pass(?:es|ed)?|green)\\b`, 'i').test(rest);
+  const m = new RegExp(`^(?:${name})(?:\\s+\\d+)?[\\s*:_,-]*(?:(?:hand\\s+)?(?:check|review|test)s?[\\s*:_-]*)?(?:ok|pass(?:es|ed)?|green)\\b`, 'i').exec(rest);
+  return m ? m[0].length : -1;
 }
 
 /** Does any OS name in `line` open a statement ("macOS OK at head …")? */
@@ -70,10 +80,42 @@ function hasStatement(line) {
   });
 }
 
+/**
+ * Blank every statement that is no verdict: an OK named as a thing ("No Windows OK yet", "The Windows OK stays with
+ * you") or promised ("Windows OK once …"). Blanked BEFORE both branches of saysOk, because the pass-word branch would
+ * otherwise find its "OK" from an earlier mention of the OS ("Windows finding fixed … The Windows OK stays with you").
+ * Measured 2026-11-12 on agent-brain #473: both sentences read as a Windows hand review at the head.
+ */
+function blankNonVerdicts(s) {
+  let out = s;
+  for (const o of Object.keys(NAME_RX)) {
+    const rx = new RegExp(osRx(o).source, 'gi');
+    let m;
+    while ((m = rx.exec(out))) {
+      const len = statementLength(out.slice(m.index), o);
+      if (len < 0) continue;
+      const after = CONDITION_AFTER.exec(out.slice(m.index + len));
+      if (!after && !DETERMINER_BEFORE.test(out.slice(0, m.index))) continue;
+      const span = len + (after ? after[0].length : 0);
+      out = out.slice(0, m.index) + '``' + out.slice(m.index + span);
+      rx.lastIndex = m.index + 2;
+    }
+  }
+  return out;
+}
+
+/** Does `text` say NO for `os` in so many words — "no / not <OS> OK", "<OS> FAIL", "<OS> check: not OK"? */
+function saysNo(text, os) {
+  const name = osRx(os).source.replace(/^\\b/, '');
+  const clean = String(text).replace(/`[^`]*`/g, '``');
+  return new RegExp(`\\b(?:no|not)\\s+[*_]*(?:${name})[*_]*\\s+(?:hand\\s+)?(?:ok|pass)\\b`, 'i').test(clean)
+    || new RegExp(`\\b(?:${name})(?:\\s+(?:hand\\s+)?(?:check|review|test)s?)?[\\s*:_-]*(?:fail(?:ed|s)?|not ok)\\b`, 'i').test(clean);
+}
+
 /** Does this line say OK for `os`? */
 function saysOk(line, os) {
-  const clean = String(line).replace(/`[^`]*`/g, '``').replace(/[\w./-]+\.[a-z]{1,4}\b/gi, '``')
-    .replace(/\bred (?:against|with) the old (?:code|state)\b/gi, '``');
+  const clean = blankNonVerdicts(String(line).replace(/`[^`]*`/g, '``').replace(/[\w./-]+\.[a-z]{1,4}\b/gi, '``')
+    .replace(/\bred (?:against|with) the old (?:code|state)\b/gi, '``'));
   const others = Object.entries(NAME_RX).filter(([k]) => k !== os).map(([, r]) => r.source).join('|');
   const rx = new RegExp(osRx(os).source, 'gi');
   let m;
@@ -103,6 +145,10 @@ function handReview(text, os, opts = {}) {
   if (opts.head && !t.includes(String(opts.head).slice(0, 7))) return null;
   const first = t.trim().split(/\r?\n/)[0] || '';
   if (CI_NOTE.test(first) && !hasStatement(first)) return null;
+  // An explicit no for this OS ("No Windows OK yet: 1 finding", "Windows FAIL") is the verdict of the whole text: the
+  // pass words of its evidence ("Windows, measured: … 17/17 passed") must not turn a finding into an OK (measured
+  // 2026-11-12 on 13 finding drafts for core PRs: every one read as a Windows hand review before this line).
+  if (saysNo(t, os)) return null;
   return sentences(t).some((s) => saysOk(s, os)) ? key[1].toLowerCase() : null;
 }
 
@@ -126,4 +172,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { saysOk, handReview, statementAt, NAME_RX, OK_RX, NOT_RX, KEY_RX, CI_NOTE };
+module.exports = { saysOk, saysNo, handReview, statementAt, NAME_RX, OK_RX, NOT_RX, KEY_RX, CI_NOTE };

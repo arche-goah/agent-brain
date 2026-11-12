@@ -1,0 +1,6 @@
+{
+  "_comment": "Instance data for helpers/plan-label-gate.cjs: which files are plans (path regexes, in addition to file names with plan/list/order/todo/checklist/shopping) and the uncertainty labels in the instance's own language (the English built-ins stay).",
+  "enabled": true,
+  "plan_paths": ["/docs/business/"],
+  "labels": []
+}

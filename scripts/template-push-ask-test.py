@@ -29,6 +29,10 @@ CASES = [
     ("git -C /r push origin maintenance-fix", False),
     ("git -C /r push -u origin fix/main-loop", False),
     ("git -C /r push https://github.com/o/r.git fix/x:fix/x", False),
+    # 2026-11-08 (macOS instance, operator: "Ja, verengen"): `* main *` asked on the word main inside a comment;
+    # a push with flags after `main` is judged by its refs in helpers/git-hooks/pre-push instead.
+    ("git push -q # this is the brain's own main push", False),
+    ("git push origin main -u", False),
 ]
 fail = 0
 for cmd, want in CASES:

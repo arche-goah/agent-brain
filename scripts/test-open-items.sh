@@ -281,6 +281,18 @@ has "standing 4" "$(head -1 <<<"$outs")" && ok "header still counts each standin
 outs=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=5 run p5 "$PS")
 [ "$(grep -c -F '[PR|standing]' <<<"$outs")" = 4 ] && ! has "[PR-standing]" "$outs" \
   && ok "negative control: few standing PRs keep their lines" || bad "below threshold: $outs"
+# A PR a CLOSED release scope left out for a later release waits on the next release, the operator's word -
+# never `standing` (measured 2026-11-11: 21 such PRs stood as "handle these, no question" in 24 session starts).
+mkdir -p "$PS/.claude-state"
+printf '%s\n' '{"version":"9.9.9","repo":"core","status":"closed","items":[],"excluded":{"owned#4":"next train"}}' > "$PS/.claude-state/release-scope.json"
+outs=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=5 run p6 "$PS")
+has "[PR|human]" "$(line 'owned#4 ' "$outs")" && has "left out of release 9.9.9" "$(line 'owned#4 ' "$outs")" \
+  && ok "a PR left out of a closed release is the operator's (next release), not standing" || bad "left out of closed release: $(line 'owned#4 ' "$outs")"
+has "[PR|standing]" "$(line 'owned#9 ' "$outs")" && ok "negative control: a PR not excluded stays standing" || bad "not excluded: $(line 'owned#9 ' "$outs")"
+printf '%s\n' '{"version":"9.9.9","repo":"core","status":"open","items":[],"excluded":{"owned#4":"next train"}}' > "$PS/.claude-state/release-scope.json"
+outs=$(OWNER=me OPEN_ITEMS_WAIT_COLLAPSE=5 run p7 "$PS")
+has "[PR|standing]" "$(line 'owned#4 ' "$outs")" && ok "negative control: an OPEN scope's exclusion stays the building session's work" || bad "open scope: $(line 'owned#4 ' "$outs")"
+rm -rf "$PS/.claude-state"
 l1=$(line 'suite-x#1 ' "$out2")
 has "waiting on peer" "$l1" && ! has "reported in" "$l1" && ok "a wait does not count up" || bad "a wait was counted: $l1"
 has "!! reported in 2 sessions" "$(line 'core#6 ' "$out2")" && ok "past wait counts up" || bad "past wait count: $(line 'core#6 ' "$out2")"

@@ -14,6 +14,21 @@
         ]
       },
       {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/root-cause-gate.cjs\" --pre",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/claim-write-gate.cjs\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {
@@ -203,6 +218,16 @@
         ]
       },
       {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/session-areas.cjs\" record",
+            "timeout": 5
+          }
+        ]
+      },
+      {
         "matcher": "mcp__.*",
         "hooks": [
           {
@@ -230,6 +255,16 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/plan-label-gate.cjs\"",
+            "timeout": 5
           }
         ]
       }
@@ -299,6 +334,11 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/basics-hint.cjs\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/session-areas.cjs\" prompt",
             "timeout": 5
           },
           {

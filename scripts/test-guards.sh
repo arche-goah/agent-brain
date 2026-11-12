@@ -202,6 +202,89 @@ mg_probe "mechanism-guard/operator word: unflagged rule + bare marker (control)"
 mg_probe "mechanism-guard/operator word: unflagged rule without marker (control)" \
   "fixture-shortcut --now" block
 mg_probe "mechanism-guard/operator word: plain command (control)" "git status --short" allow
+
+# 2026-11-08 (operator, question tool): the quote must stand in the operator's own messages of the transcript.
+# Fixture transcript: one typed prompt, one question-tool answer, one pasted block (not the operator's words).
+TR="$MG/t.jsonl"
+cat > "$TR" <<'JSONL'
+{"type":"user","message":{"role":"user","content":"go ahead with the gate, but only today"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q1","content":"\"Merge it?\"=\"Yes, merge now\""}]}}
+{"type":"user","message":{"role":"user","content":"<pasted_content id=\"a1\">ship the release tonight</pasted_content id=\"a1\">"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"q2","name":"AskUserQuestion","input":{}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q2","content":"Your questions have been answered: \"Shall I tag v2.2 and move the pin now?\"=\"No, wait for macOS\". You can now continue with the answers in mind."}]}}
+JSONL
+mgt_probe() { # $1 name, $2 command, $3 block|allow, $4 transcript path (empty = none)
+  local out rc helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
+  out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:unesc(a[1])},cwd:a[2],transcript_path:a[3]}))' "$2" "$MG" "$(native "${4:-}")" \
+        | HOME="$MG" CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1); rc=$?
+  # a bash pattern match, no grep on a pipe (docs/os-traps.md OS-5)
+  if [ "$rc" -eq 2 ] || [[ "$out" == *'"permissionDecision"'*'"deny"'* ]]; then got=block; else got=allow; fi
+  [ "$got" = "$3" ] && ok "$1 ($got)" || bad "$1: expected $3, got $got: ${out:0:200}"
+}
+mgt_probe "mechanism-guard/quote said: typed prompt" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"go ahead with the gate\"' allow "$TR"
+mgt_probe "mechanism-guard/quote said: question-tool answer" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: „Yes, merge now“' allow "$TR"
+# Windows review 2026-11-12: the question half of an answer is the AI's own text, not the operator's word.
+mgt_probe "mechanism-guard/quote said: quote of the question text blocks" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-12: \"tag v2.2 and move the pin now\"' block "$TR"
+mgt_probe "mechanism-guard/quote said: the answer half of the same answer passes" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-12: \"No, wait for macOS\"' allow "$TR"
+mgt_probe "mechanism-guard/quote said: invented quote blocks" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"merge everything\"' block "$TR"
+mgt_probe "mechanism-guard/quote said: words from a pasted block are not the operator's" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"ship the release tonight\"' block "$TR"
+mgt_probe "mechanism-guard/quote said: older word with a pointer to its record passes" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-10-12: \"merge everything\" docs/decision.md:2' allow "$TR"
+mgt_probe "mechanism-guard/quote said: no transcript - the form check stands (control)" \
+  'fixture-operator-gate --now  # MECHANISM-OK: operator 2026-11-08: \"merge everything\"' allow ""
+rm -rf "$MG"
+
+# --- mechanism-guard: `pr_repos` holds a PR whose RESOLVED target repo is listed (2026-11-08) -------------------
+# Measured on the macOS instance: instance rules matched the repo's name in the text, so `env -C <checkout> gh pr create
+# --fill` went through. Two throwaway repos (no network): lab (listed) and other.
+MG="$(native "$(mktemp -d)")"
+mkdir -p "$MG/.claude/rules"
+printf '%s' '[{"pattern":"\\bgh\\s+pr\\s+create\\b","was":"PR mid-work in a self-run repo","stattdessen":"collect, one PR at the end","pr_repos":["o/lab"]}]' \
+  > "$MG/.claude/rules/mechanism-rules.json"
+for r in lab other; do
+  git init -q "$MG/$r" && git -C "$MG/$r" remote add origin "https://example.invalid/o/$r.git"
+done
+pr_probe() { # $1 name, $2 command, $3 block|allow, $4 cwd
+  local out helper; helper=$(resolve helpers/mechanism-guard.cjs) || { skip "$1"; return 0; }
+  out=$(MSYS2_ARG_CONV_EXCL='*' node -e "$UNESC"'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:unesc(a[1])},cwd:a[2]}))' "$2" "$4" \
+        | HOME="$MG" CLAUDE_PROJECT_DIR="$MG" node "$helper" 2>&1)
+  local rc=$?
+  # a bash pattern match, no grep on a pipe (docs/os-traps.md OS-5)
+  if [ "$rc" -eq 2 ] || [[ "$out" == *'"permissionDecision"'*'"deny"'* ]]; then got=block; else got=allow; fi
+  [ "$got" = "$3" ] && ok "$1 ($got)" || bad "$1: expected $3, got $got: ${out:0:200}"
+}
+pr_probe "mechanism-guard/pr_repos: --repo names the listed repo" "gh pr create -R o/lab --fill" block "$MG"
+pr_probe "mechanism-guard/pr_repos: env -C into the listed checkout, no -R" "env -C $MG/lab gh pr create --fill" block "$MG"
+pr_probe "mechanism-guard/pr_repos: cd into the listed checkout first" "cd $MG/lab && gh pr create --fill" block "$MG"
+pr_probe "mechanism-guard/pr_repos: hook cwd is the listed checkout" "gh pr create --fill" block "$MG/lab"
+pr_probe "mechanism-guard/pr_repos: env -C into another repo" "env -C $MG/other gh pr create --fill" allow "$MG"
+pr_probe "mechanism-guard/pr_repos: --repo names another repo, cwd in the listed one" "gh pr create -R o/other --fill" allow "$MG/lab"
+pr_probe "mechanism-guard/pr_repos: a message naming the command (control)" "git commit -m 'gh pr create -R o/lab'" allow "$MG"
+# Windows review 2026-11-12 (OS-19): a Git Bash session writes `cd /c/...` / `env -C /c/...`; node read it as C:\c\...,
+# no repo resolved, the rule did not hold. (a) the translation, on every OS: platform set to win32, the git call recorded.
+if PRH=$(resolve helpers/pr-repo.cjs); then
+  for form in "cd /c/work/lab && gh pr create --fill" "env -C /c/work/lab gh pr create --fill"; do
+    got=$(node -e 'Object.defineProperty(process,"platform",{value:"win32"});const cp=require("child_process");let seen="";
+      cp.execFileSync=(f,a)=>{if(f==="git")seen=a[1];return "";};require(require("path").resolve(process.argv[1])).prTargets(process.argv[2],"/x");
+      process.stdout.write(seen.replace(/\\/g,"/"))' "$PRH" "$form")
+    [[ "$got" == *"C:/work/lab" ]] && ok "pr-repo: '$form' resolves the drive path (got $got)" || bad "pr-repo: '$form' asked git for '$got', not C:/work/lab"
+  done
+else skip "pr-repo: /c/... translation"; fi
+# (b) end to end where the shell has the form (cygpath): the listed checkout by its /c/... path holds
+if command -v cygpath >/dev/null 2>&1; then
+  U="/$(printf %s "${MG:0:1}" | tr 'A-Z' 'a-z')${MG:2}"
+  pr_probe "mechanism-guard/pr_repos: env -C into the listed checkout by its Git Bash path" "env -C $U/lab gh pr create --fill" block "$MG"
+  pr_probe "mechanism-guard/pr_repos: cd into the listed checkout by its Git Bash path" "cd $U/lab && gh pr create --fill" block "$MG"
+else
+  echo "  --  mechanism-guard/pr_repos: /c/... checkout end to end (Windows only: no cygpath here)"
+fi
 rm -rf "$MG"
 
 # --- mechanism-guard: the TEMPLATE's release-tag rule, read from the template itself ---------
@@ -319,6 +402,16 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: Monitor stream through a buffered grep" Monitor command "tail -f run.log | grep ERROR" block
   tr_probe "mechanism-guard/core rule: Monitor stream through grep --line-buffered" Monitor command "tail -f run.log | grep --line-buffered ERROR" allow
   tr_probe "mechanism-guard/core rule: the same grep in the foreground is no stream" Bash command "cat run.log | grep ERROR" allow
+  # 2026-11-07, ported from instance data: a gate through a pipe reports the pipe's exit code
+  tr_probe "mechanism-guard/core rule: a gate through a pipe" Bash command "python3 core/scripts/leak-scan.py | tail -5" block
+  tr_probe "mechanism-guard/core rule: a gate through a pipe after a separator" Bash command "cd /r; bash core/scripts/handover-gate.sh | grep FAIL" block
+  tr_probe "mechanism-guard/core rule: a gate with its exit code read alone" Bash command "python3 core/scripts/leak-scan.py; echo exit=\$?" allow
+  tr_probe "mechanism-guard/core rule: reading a gate script through a pipe" Bash command "git show origin/main:scripts/leak-scan.py | sed -n 1,20p" allow
+  # 2026-11-07, ported from instance data: plugin update without a marketplace refresh
+  tr_probe "mechanism-guard/core rule: plugin update alone" Bash command "claude plugin update suite@market" block
+  tr_probe "mechanism-guard/core rule: plugin update after a separator" Bash command "cd /r && claude plugin update x@m" block
+  tr_probe "mechanism-guard/core rule: plugin update after the marketplace refresh" Bash command "claude plugin marketplace update m && claude plugin update x@m" allow
+  tr_probe "mechanism-guard/core rule: the phrase inside a message" Bash command "git -C /r commit -m \"docs: say claude plugin update\"" allow
   # class sweep of the same day: waiting scripts by name
   tr_probe "mechanism-guard/core rule: wait-mcp-reconnect in the foreground" Bash command "bash core/scripts/wait-mcp-reconnect.sh touchdesigner" block
   tr_probe "mechanism-guard/core rule: shared-memory-watch in the foreground" Bash command "bash core/scripts/shared-memory-watch.sh watch 300" block
@@ -364,6 +457,17 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: -d with -C" Bash command 'git -C /r push -d origin feat' block
   tr_probe "mechanism-guard/core rule: --no-verify skips the pre-push hook" Bash command 'git -C /r push --no-verify origin main' block
   tr_probe "mechanism-guard/core rule: force-with-lease" Bash command 'git -C /r push --force-with-lease' block
+  # 2026-11-09 (macOS instance): a ' + ' in the marker comment behind '#' was read as a +refspec and held a plain push
+  tr_probe "mechanism-guard/core rule: plain push with a marker comment holding ' + ' (control)" Bash command 'git -C /r push -u origin rel/v1 # CONDITION-NONE: answered Ja, Tag + Pin' allow
+  tr_probe "mechanism-guard/core rule: plain push with ':x' and --force inside the comment (control)" Bash command 'git -C /r push origin feat # MECHANISM-OK: see :notes and --force in the old log' allow
+  tr_probe "mechanism-guard/core rule: +refspec before a comment" Bash command 'git -C /r push origin +main # comment' block
+  tr_probe "mechanism-guard/core rule: force before a comment" Bash command 'git -C /r push --force origin b # why' block
+  # 2026-11-12 (Windows review): a '#' inside a word is no comment - a branch may hold one (feat#1)
+  tr_probe "mechanism-guard/core rule: force after a branch with '#'" Bash command 'git -C /r push origin feat#1 --force' block
+  tr_probe "mechanism-guard/core rule: +refspec after a branch with '#'" Bash command 'git -C /r push origin wip#2 +main' block
+  tr_probe "mechanism-guard/core rule: colon delete after a branch with '#'" Bash command 'git push origin issue#5 :old' block
+  tr_probe "mechanism-guard/core rule: force before a branch with '#'" Bash command 'git -C /r push --force origin feat#1' block
+  tr_probe "mechanism-guard/core rule: --force only in a shell comment (control)" Bash command 'git push origin main # --force' allow
   # (no double quotes in these values: tr_probe writes them into JSON unescaped, and a broken JSON reads as allow)
   tr_probe "mechanism-guard/core rule: pre-push marker needs the word" Bash command 'PUSH_GUARD_OK=cleanup git -C /r push origin feat' block
   tr_probe "mechanism-guard/core rule: commit message with push and +3 (control)" Bash command "git -C /r commit -q -m 'a push is judged by the branch' -m 'Fixture +3 with a real repo' -- a.cjs" allow
@@ -448,6 +552,14 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: soffice converts to pptx" Bash command "soffice --headless --convert-to pptx a.odp" block
   tr_probe "mechanism-guard/core rule: textutil reads a docx to txt (control)" Bash command "textutil -convert txt a.docx" allow
   tr_probe "mechanism-guard/core rule: pandoc reads a docx to md (control)" Bash command "pandoc a.docx -o a.md" allow
+  # 2026-11-11 (macOS instance): 81 order tabs, most of them shop search pages, opened past the order-list check
+  tr_probe "mechanism-guard/core rule: a search page opened in Safari" Bash command "open -a Safari 'https://shop.example/search?q=clip'" block
+  tr_probe "mechanism-guard/core rule: a search page in the default browser" Bash command "open 'https://shop.example/s?k=clip'" block
+  tr_probe "mechanism-guard/core rule: a product page opened (control)" Bash command "open https://shop.example/product/clip-1234" allow
+  tr_probe "mechanism-guard/core rule: tabs from an AppleScript file" Bash command "osascript /tmp/tabs.applescript /tmp/urls.txt" block
+  tr_probe "mechanism-guard/core rule: osascript makes a new tab" Bash command "osascript -e 'tell application \"Safari\" to make new tab'" block
+  tr_probe "mechanism-guard/core rule: osascript reads the URL (control)" Bash command "osascript -e 'tell application \"Safari\" to get URL of current tab of window 1'" allow
+  tr_probe "mechanism-guard/core rule: tabs through product-sources (control)" Bash command "python3 core/scripts/product-sources.py open list.csv" allow
   tr_probe "mechanism-guard/core rule: a plain \$VAR (control)" Bash command 'bash -c \"echo $HOME\"' allow
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)

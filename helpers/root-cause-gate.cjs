@@ -54,6 +54,7 @@ const path = require('path');
 const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
+const { nativePath } = require('./published-text.cjs');
 
 let OWN_ECHO = /ROOT-CAUSE-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -104,7 +105,41 @@ const BUILTIN_CAUSE = [
 const BUILTIN_NOCARRIER = [
   '^[ \\t>*_-]*(carrier|mechanism)\\b[^\\n]{0,24}:\\s*(none|not possible|n/a)\\b[^\\n]{8,}',
 ];
-const isMechanismWrite = (p) => MECHANISM_PATH.test(p) && !/\.md$/i.test(p);
+const isFolderMechanism = (p) => MECHANISM_PATH.test(p) && !/\.md$/i.test(p);
+// A project repo names its own carriers (operator 2026-11-08, question tool: "Ja, als Kern-PR bauen"; measured that day:
+// a project kept its gates and generators in docs/bench/layout/*.py and its rules in .claude/skills/*/SKILL.md, none of
+// which the folder list above knew). Data: <repo>/.claude/rules/carrier-paths.json {"carrier_paths": ["glob", ...]},
+// globs relative to the repo's git top, `**` any depth, `*` within one folder. A listed file counts even as .md.
+const carrierCache = new Map();
+function repoCarriers(p) {
+  let dir = path.dirname(path.resolve(String(p)));
+  for (let i = 0; i < 40; i++) {
+    if (carrierCache.has(dir)) return carrierCache.get(dir);
+    if (fs.existsSync(path.join(dir, '.git'))) {
+      let res = null;
+      try {
+        const d = JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'rules', 'carrier-paths.json'), 'utf8'));
+        const globs = Array.isArray(d.carrier_paths) ? d.carrier_paths.filter((g) => typeof g === 'string' && g) : [];
+        const rx = globs.map((g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+          .replace(/\*\*\/?/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/\u0000/g, '(?:.*/)?') + '$'));
+        res = { top: dir, rx };
+      } catch (e) { res = { top: dir, rx: [] }; }
+      carrierCache.set(dir, res);
+      return res;
+    }
+    const up = path.dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return { top: '', rx: [] };
+}
+function isMechanismWrite(p) {
+  if (isFolderMechanism(p)) return true;
+  const { top, rx } = repoCarriers(p);
+  if (!top || !rx.length) return false;
+  const rel = path.relative(top, path.resolve(String(p))).split(path.sep).join('/');
+  return rx.some((r) => r.test(rel));
+}
 // Every cause with its carrier — or the reason none can carry it — goes into ONE register the review
 // re-reads (operator 2026-10-28, translated: "if none is possible, that reason belongs in a clean register
 // of its own, so we can check again and again whether it really is impossible; the mechanisms found too,
@@ -250,6 +285,9 @@ function readTurns(tp, tail) {
           cur.writes.push(b.input.file_path);
           (cur.writeTexts = cur.writeTexts || []).push({ p: b.input.file_path, t: String(b.input.new_string || b.input.content || '') });
         }
+        // A file written by a shell command (`cat x >> register.md`, a script) carries no file_path: keep the command, the
+        // judge reads the paths it names and checks they changed in this turn (shellWrites below).
+        if (b.type === 'tool_use' && b.input && typeof b.input.command === 'string') (cur.shell = cur.shell || []).push(b.input.command);
       }
       continue;
     }
@@ -290,7 +328,32 @@ function currentTurn(turns) {
     group, texts: group.flatMap((t) => t.texts), writes: group.flatMap((t) => t.writes),
     fired: group.some((t) => t.fired), fires: group.reduce((n, t) => n + (t.fires || 0), 0), preEcho,
     writeTexts: group.flatMap((t) => t.writeTexts || []),
+    shell: group.flatMap((t) => t.shell || []), since: Date.parse((group[0] && group[0].when) || '') || 0,
   };
+}
+
+// Files a shell command of the turn names that exist and changed since the turn began. Measured 2026-11-08 on the macOS
+// instance: a register entry appended with `cat … >> docs/maintenance/carrier-register.md` and a generator rewritten by a
+// python script were both invisible - the gate read only Write/Edit file paths and reported "no entry" three times.
+function shellWrites(shell, cwd, since) {
+  if (!since) return [];
+  const out = [];
+  // A path starts with ~, /, ./, ../ or a drive (C:/, C:\ - Windows review 2026-11-12); a quoted one may hold spaces.
+  // nativePath: a Git Bash `/c/...` is no path node can stat on Windows (docs/os-traps.md OS-19).
+  const lead = '(?:~|[A-Za-z]:[\\\\/]|\\/|\\.{0,2}\\/)?';
+  // `~` inside a segment too: Windows writes the user folder as its 8.3 name (`RUNNER~1`, docs/os-traps.md OS-8) -
+  // without it the match ended before the `~` of `<home>` (portability windows-latest, train #510, 2026-11-12)
+  const bare = new RegExp(`(?:^|[\\s"'=<>|;&(])(${lead}[\\w.~@+-]+(?:[\\\\/][\\w.~@+-]+)+)`, 'g');
+  const quoted = new RegExp(`(["'])(${lead}[^"'\\n]*?[\\\\/][^"'\\n]*?)\\1`, 'g');
+  for (const cmd of shell) {
+    const found = [...String(cmd).matchAll(bare)].map((m) => m[1]).concat([...String(cmd).matchAll(quoted)].map((m) => m[2]));
+    for (const raw of found) {
+      const p = nativePath(raw.replace(/^~(?=[\\/])/, process.env.HOME || process.env.USERPROFILE || '~'));
+      const abs = path.isAbsolute(p) ? p : path.join(cwd, p);
+      try { if (fs.statSync(abs).mtimeMs >= since - 1000) out.push(abs); } catch (e) { /* not a file */ }
+    }
+  }
+  return out;
 }
 
 // The first correction in the turn (word list, else the prompt classifier's record) that no later text answers with
@@ -388,8 +451,9 @@ function gate(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let turns;
   try { turns = readTurns(input.transcript_path, true); } catch (e) { return; }
-  const { group, texts, writes, fired, fires, preEcho, writeTexts } = currentTurn(turns);
+  const { group, texts, writes: direct, fired, fires, preEcho, writeTexts, shell, since } = currentTurn(turns);
   if (!group.length) return;
+  const writes = direct.concat(shellWrites(shell, cwd, since));
   // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
   // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
   // cause line owed), never close one the words opened. Every message of the turn is judged (currentTurn), a
@@ -417,7 +481,7 @@ function gate(input) {
       reason: `ROOT-CAUSE-GATE: this turn names a cause - ${missing}${fired ? ' (the cause came after the first block; naming it does not release the carrier)' : ''}. Fixing the instance (a re-post, a manual merge, a `
         + 'ledger or memory note) leaves the tool that let it happen as it was. Before this turn ends: change the '
         + 'producing tool or gate data (helpers/, scripts/, hooks/, rule JSON - a core or suite PR where the tool '
-        + 'lives) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
+        + 'lives, or a path the repo lists in .claude/rules/carrier-paths.json) with a fixture. "Carrier: none" releases only with the operator\'s words on the same line, '
         + 'operator-ok: "<their words>", found in their own messages - never on the agent\'s say-so; AND write the entry in '
         + `${reg}: incident, cause, invariant (the broken rule without the instance's names), effect, carrier (or none + `
         + 'reason + recheck date), related cases, replay (the invariant run over the history, with its count), '

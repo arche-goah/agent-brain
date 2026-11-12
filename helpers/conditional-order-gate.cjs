@@ -41,9 +41,10 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
+const { answerHalves } = require('./published-text.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
 
 let data = '';
@@ -116,6 +117,16 @@ function promptText(msg) {
   return t || null;
 }
 
+/** The operator's half of a question-tool answer record (its tool_result content, string or text blocks): only the
+ * answer of each `"question"="answer"` pair - the whole pair is quoted and stripQuoted would drop it (Windows review
+ * 2026-11-12). No pair: the whole text, unsure means stricter. */
+function answerText(msg) {
+  const r = msg.content.find((b) => b && b.type === 'tool_result') || {};
+  const t = typeof r.content === 'string' ? r.content
+    : (Array.isArray(r.content) ? r.content : []).filter((b) => b && b.type === 'text').map((b) => b.text).join('\n');
+  return answerHalves(t) || t;
+}
+
 /** Last operator message, the assistant texts since it, and the Agent calls since it. */
 function analyze(transcriptPath) {
   const size = fs.statSync(transcriptPath).size;
@@ -134,6 +145,7 @@ function analyze(transcriptPath) {
   let operatorAt = '';
   let texts = [];
   let agents = 0;
+  const answered = questionAnswers();
   for (const line of lines) {
     if (!line.trim()) continue;
     let d;
@@ -142,6 +154,13 @@ function analyze(transcriptPath) {
     if (queued !== null) { operator = queued; operatorAt = d.timestamp || ''; texts = []; agents = 0; continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
+    // The operator's answer in the question tool is the newest operator word too (measured 2026-11-07: the gate held
+    // a push on a condition from the FIRST prompt although an answer in the question tool came after it; promptText
+    // skips every tool_result). The answer text itself may carry a condition, so it becomes `operator`.
+    if (answered(d)) {
+      operator = answerText(msg); operatorAt = d.timestamp || ''; texts = []; agents = 0;
+      continue;
+    }
     if (msg.role === 'user') {
       // A loaded skill's text: no condition, no new turn (2026-10-19, "then" in session-close).
       if (isSkillExpansion(d) || isAgentOrigin(d)) continue;
@@ -169,7 +188,12 @@ function deny(hit, why) {
       permissionDecisionReason:
         'CONDITIONAL-ORDER-GATE: the operator\'s last message binds the order to a condition, '
         + `and this call is ${why}.\n`
-        + `Sentence: "${hit.sentence.slice(0, 160)}" (condition word: ${hit.word})\n`
+        // The classifier records only "condition: true", never the sentence: showing the message's first sentence
+        // as the condition misled (macOS instance 2026-11-08 — "was willst du vorbereiten schon wieder?" shown, while the
+        // condition was "in einigen tagen" two sentences later). Say where the reading came from instead.
+        + (hit.classifier
+          ? `The prompt classifier read a condition in that message (it records no sentence); message: "${hit.sentence.slice(0, 160)}"\n`
+          : `Sentence: "${hit.sentence.slice(0, 160)}" (condition word: ${hit.word})\n`)
         + 'Write ONE line, then call again — either as a comment IN the call (`# CONDITION-NONE: …` in the command, a line in the prompt), or in the answer, letting that message end before the next call (its record lands only after it):\n'
         + '  CONDITION-MET: <the condition in the operator\'s words> — <evidence: where and when it was met>\n'
         + '  CONDITION-NONE: <why this word is no condition here>\n'
@@ -212,7 +236,7 @@ process.stdin.on('end', () => {
   // #195", in the operator's language, passed the word list). It can only add a check, never waive one.
   if (!hit) {
     const intent = intentFor(intents(input.transcript_path, cwd), seen.operatorAt);
-    if (intent && intent.condition) hit = { sentence: sentences(stripQuoted(seen.operator))[0] || seen.operator, word: 'the prompt classifier read a condition' };
+    if (intent && intent.condition) hit = { sentence: stripQuoted(seen.operator).replace(/\s+/g, ' ').trim(), word: 'the prompt classifier read a condition', classifier: true };
   }
   if (!hit) return allow();
   // The line may also stand in the call itself (a `# CONDITION-NONE: …` comment in the command,

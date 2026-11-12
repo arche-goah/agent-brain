@@ -680,6 +680,20 @@ def standing_match(it, classes, repo):
     return None
 
 
+def next_release_waits(root):
+    """{ "<repo>#<n>": version } for every PR the brain's CLOSED release scope left out for a later release.
+
+    Measured 2026-11-11 on the macOS instance: a closed release scope (`.claude-state/release-scope.json`, written by
+    release-scope.py) excluded 21 own core PRs "collected for the next train". The PRs stayed `standing` ("handle these,
+    no question") in 24 session starts, while the only move left - starting the next train or release - is the
+    operator's (release is on every operator-only list); no session could act and none asked. An open scope is the
+    train being built: its exclusions are that session's work, not a question."""
+    scope = load_json(root / ".claude-state" / "release-scope.json", {})
+    if not isinstance(scope, dict) or scope.get("status") != "closed" or not scope.get("version"):
+        return {}
+    return {k: str(scope["version"]) for k in (scope.get("excluded") or {}) if "#" in k}
+
+
 NOT_A_PROMPT = re.compile(r"^\s*(Stop hook feedback|<task-notification|<system-reminder|<local-command|<command-)")
 
 
@@ -1047,6 +1061,7 @@ def main():
     store = load_json(cls_file, {})
     waits = cfg.get("waiting") or {}  # instance data: {"<id>": {"until": "YYYY-MM-DD", "why": "..."}}
     standing, refused = standing_classes(root)
+    later = next_release_waits(root)
 
     def counts(s):
         """A session counts as a report only once its transcript shows the list reached a human.
@@ -1127,6 +1142,10 @@ def main():
             it["why"] = "parked domain — answer anyway: receipt, state, when it resumes"
         if it["kind"] == "wake":   # unparking is the operator's call, never the agent's
             it["parked"], it["cls"], it["why"] = False, "human", "the party that paused it moved again"
+        # Left out of a closed release for a later one: the next move is starting that release (next_release_waits).
+        if it["kind"] == "PR" and it["id"] in later and it["cls"] in ("ai", "?"):
+            it["cls"], it["why"] = "human", (f"left out of release {later[it['id']]} for a later one (release scope) — "
+                                             "when the next train or release starts is the operator's word")
         # A standing approval covers what the agent may do anyway (ai) or what nobody classified
         # yet — never an item the data gives to a person (circle, addressee, the agent's own class).
         c = standing_match(it, standing, a.repo) if it["cls"] in ("ai", "?") and not it["parked"] else None

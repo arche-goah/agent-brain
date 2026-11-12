@@ -64,6 +64,7 @@ and one for the enabled brain-core plugin that ships it. Exit 0 when it runs, 1 
 Caller: scripts/onboarding-verify.sh check 5 (its grep of settings.json failed every brain whose
 hooks come from the plugin - fresh-brain trial 2026-10-31).
 """
+import datetime
 import difflib
 import json
 import os
@@ -172,6 +173,25 @@ def runs_file(cmd, core_file, root, missing=True):
             return missing
         return same_script(path, core_file)
     return False
+
+
+def declared_commands(root):
+    """Wired commands the brain declares on purpose in .claude/rules/local-machinery.json (instance, or
+    an alpha whose date has not passed), each with a reason. A user-level copy of a plugin hook can be
+    wanted: the plugin runs in its project scope only, the copy guards every other project (measured
+    2026-11-10 on a Windows brain, the operator's input guard; audit-audit AA-5). Such a copy is no
+    duplicate to drop."""
+    data = load(os.path.join(root, ".claude", "rules", "local-machinery.json")) or {}
+    today = datetime.date.today().isoformat()
+    out = set()
+    for kind in ("instance", "alpha"):
+        for key, e in (data.get(kind) or {}).items():
+            if not isinstance(e, dict) or not str(e.get("why") or "").strip():
+                continue
+            if kind == "alpha" and str(e.get("until") or "") < today:
+                continue
+            out.add(key.strip())
+    return out
 
 
 def registered_via_dispatcher(root, wired):
@@ -344,6 +364,7 @@ def main():
     # plugin's copy against a settings copy) — named before the shipped hooks join `wired`,
     # so every later check sees the brain as it runs: plugin hooks plus its own.
     duplicate = []
+    declared = declared_commands(root)
     plugin_id, shipped = plugin_shipped_hooks(root, cfg)
     for event, pairs in commands_by_event(shipped).items():
         for _m, cmd, _f in pairs:
@@ -352,6 +373,8 @@ def main():
                 continue
             core_file = os.path.join(root, "core", m.group(1), m.group(2))
             for _wm, wc, _wf in wired.get(event, []):
+                if wc.strip() in declared:
+                    continue
                 if runs_file(wc, core_file, root):
                     duplicate.append("%s: %s runs twice - the plugin %s ships it (hooks/hooks.json) and %s wires a "
                                      "copy; drop the copy from %s" % (event, m.group(2), plugin_id,

@@ -113,6 +113,23 @@ sprobe "a word in the evidence after the verdict" "$M" allow "$D"
 spr 'feat: x' '["**macOS OK at head `abc1234`** - the fixture is red", "Windows OK at head `abc1234`"]'
 sprobe "a whole fail word in the verdict clause still cancels it (control)" "$M" block "$D"
 
+# 2026-11-12 (agent-brain #473, measured on the Windows instance): an OK named as a thing or promised is no verdict.
+# The reviewer's "No Windows OK yet: one finding" and the author's "The Windows OK stays with you" both counted as a
+# Windows hand review at the head. Both block cases are red against the reader before this fix.
+spr 'feat: x' '["macOS OK at head `abc1234`", "No Windows OK yet: one finding, builder = author side. Head abc1234."]'
+sprobe "No Windows OK yet (a finding, not a verdict)" "$M" block "$D"
+spr 'feat: x' '["macOS OK at head `abc1234`", "Windows finding fixed, head `abc1234`. Please re-run your probe. The Windows OK stays with you."]'
+sprobe "the author asking for the Windows OK" "$M" block "$D"
+spr 'feat: x' '["macOS OK at head `abc1234`", "Windows OK once the path is translated (head abc1234)"]'
+sprobe "an OK promised on a condition" "$M" block "$D"
+spr 'feat: x' '["macOS OK at head `abc1234`", "**Windows OK at head `abc1234`** (the Windows instance, measured once)"]'
+sprobe "a real Windows OK with the instance named after it (control)" "$M" allow "$D"
+# A finding comment whose evidence carries pass words is no OK: the explicit no is its verdict (13 drafts, 2026-11-12).
+spr 'feat: x' '["macOS OK at head `abc1234`", "Windows check (head abc1234)\nNo Windows OK yet: 1 finding, builder = author side.\n- **Windows, measured:** 17/17 passed rc=0"]'
+sprobe "a finding comment with passing suites" "$M" block "$D"
+spr 'feat: x' '["macOS OK at head `abc1234`", "Windows FAIL at head abc1234: test-x.sh red; the other suites pass on Windows"]'
+sprobe "Windows FAIL with pass words after it (control, blocked before too)" "$M" block "$D"
+
 # 2026-10-28 (#157): an earlier head separated only by "update branch" merges still counts.
 cpr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "fff0000aaa", body: "feat: x", commits: JSON.parse(process.argv[2]), comments: JSON.parse(process.argv[1]).map((b) => ({body: b}))}))' "$1" "$2" > "$T/pr.json"; }
 OKS='["macOS OK at `abc1234`", "Windows OK at `abc1234`"]'

@@ -327,7 +327,8 @@ def main() -> int:
     ap.add_argument("--body-file")
     ap.add_argument("--answers", default="")
     ap.add_argument("--status")
-    ap.add_argument("--repo", type=Path, default=_lint.REPO_DEFAULT)
+    ap.add_argument("--repo", type=Path, default=_lint.REPO_DEFAULT,
+                    help="the local shared-memory CHECKOUT (a folder) - not the GitHub repo of a PR the entry is about")
     ap.add_argument("--date", default=dt.date.today().isoformat())
     ap.add_argument("--one-machine", default="", help="a check that needs exactly this machine: the reason")
     ap.add_argument("--one-machine-evidence", default="",
@@ -342,6 +343,11 @@ def main() -> int:
     if not me:
         return refuse("SHARED_MEMORY_SELF is not set - the sender must be this instance's device id")
     von = me[0]
+    # Measured 2026-11-08 (macOS instance): `--repo arche-goah/grandma3-suite` (the PR's repo) was read as the checkout and
+    # refused with "'grandma3' is not an area" - true, but it named the wrong thing.
+    if not a.repo.is_dir() and re.fullmatch(r"[\w.-]+/[\w.-]+", str(a.repo).replace("\\", "/")):
+        return refuse(f"--repo '{a.repo}' looks like a GitHub repo; --repo is the local shared-memory checkout (a folder). "
+                      "Name the PR's repo in the text instead (owner/repo#n)")
     area_dir = a.repo / a.area
     if not (area_dir / "LOG.md").is_file():
         return refuse(f"'{a.area}' is not an area (a folder with a LOG.md)")

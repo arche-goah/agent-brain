@@ -584,6 +584,11 @@ if [[ -n "${PSC_SELF:-}" && -f "$PSC_SELF/../scripts/parallel-sessions.sh" ]]; t
     grep -E '^!!|^note:' <<<"$ps_out" || true
   fi
 fi
+# WHAT the other sessions work on and which areas they own (session-areas.cjs; silent without a peer).
+if [[ -n "${PSC_SELF:-}" && -f "$PSC_SELF/session-areas.cjs" ]]; then
+  sa="$PSC_SELF/session-areas.cjs"; command -v cygpath >/dev/null 2>&1 && sa="$(cygpath -m "$sa")"
+  node "$sa" show --brief --peers-only --root "$R" 2>/dev/null | sed -E 's/^OVERLAP:/!! OVERLAP:/' || true
+fi
 
 # Brain-scan status — freshness comes from the REPORT, not from a side stamp.
 # The scheduled launcher's stamp was never written by an in-session run (full-audit,

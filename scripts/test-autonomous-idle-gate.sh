@@ -82,6 +82,18 @@ check "a measurement of an earlier turn without a known time does not count" "$f
 # Measured on an instance: eight end lines stood on the list piped into a filter that kept only the counts.
 f="$T/4e.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS | head -3"; asst "BLOCKED: item D — the peer's merge"; } > "$f"
 check "the list piped into a filter is no measurement" "$f" block
+# 2026-11-08 (operator, question tool): a measured BLOCKED list stands until the list or a blocker changes.
+NOWTS="$(node -e 'process.stdout.write(new Date(Date.now()-60000).toISOString())')"
+tsbash() { printf '{"type":"assistant","timestamp":"%s","message":{"role":"assistant","content":[{"type":"tool_use","id":"b2","name":"Bash","input":{"command":%s}}]}}\n' "$NOWTS" "$(js "$1")"; }
+f="$T/4s.jsonl"; { user "work through the open points autonomously"; tsbash "$MEAS"; asst "BLOCKED: item C — the operator's word on the deploy"; user "<task-notification>PR 12 comment by a peer</task-notification>"; asst "Noted, the list is unchanged."; } > "$f"
+check "the turn before ended on a measured BLOCKED list, nothing changed since: it stands" "$f" allow
+# Windows review 2026-11-12: with two quiet events the "Noted" turn in between must not hide the list that still stands.
+f="$T/4v.jsonl"; { user "work through the open points autonomously"; tsbash "$MEAS"; asst "BLOCKED: item C — the operator's word on the deploy"; user "<task-notification>PR 12 comment by a peer</task-notification>"; asst "Noted, the list is unchanged."; user "<task-notification>PR 13 comment by a peer</task-notification>"; asst "Noted, the list is unchanged."; } > "$f"
+check "two quiet events after a measured BLOCKED list: it still stands" "$f" allow
+f="$T/4t.jsonl"; { user "work through the open points autonomously"; tsbash "$MEAS"; asst "BLOCKED: item C — the operator's word on the deploy"; user "<task-notification>PR 12 comment by a peer</task-notification>"; tsbash "git commit -m 'x' -- a.md"; asst "Committed a fix."; } > "$f"
+check "a state change since the measured list: the list is asked again" "$f" block
+f="$T/4u.jsonl"; { user "work through the open points autonomously"; tsbash "$MEAS"; asst "Working on item C."; user "<task-notification>PR 12 comment by a peer</task-notification>"; asst "Noted."; } > "$f"
+check "the turn before ended without an end line: nothing stands" "$f" block
 IN="$T/inst"; mkdir -p "$IN/.claude/rules"
 printf '%s\n' '{"own_items_commands": ["offene-punkte\\.py"]}' > "$IN/.claude/rules/autonomous-patterns.json"
 f="$T/4d.jsonl"; { user "work through the open points autonomously"; bash_cmd "scripts/offene-punkte.py --liste"; asst "BLOCKED: item D — the peer's merge"; } > "$f"

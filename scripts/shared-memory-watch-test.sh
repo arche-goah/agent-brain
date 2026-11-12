@@ -18,6 +18,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 WATCH="${1:-$HERE/shared-memory-watch.sh}"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+# after the trap: the sandbox chains its own clean-up onto it (global hooksPath of the machine stays out)
+. "$(dirname "$0")/git-sandbox.sh"
 
 BARE="$TMP/remote.git"
 WORK="$TMP/work"      # "our" checkout — the one the watcher polls
