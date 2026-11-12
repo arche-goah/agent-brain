@@ -85,7 +85,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check("order: empty url, availability and read_at are each named", len(bad) == 1 and all(k in bad[0] for k in ("url empty", "availability empty", "read_at empty")))
 
     # --- BOM (a list saved as "CSV UTF-8" by Excel on Windows) ---
-    bom = "﻿"
+    bom = chr(0xFEFF)  # the byte-order mark, written as a code point (content guard: no invisible characters in source)
     plan_bom = write("plan-bom.csv", bom + "key,product_url,fit_evidence,verdict\n"
                      "J1,https://shop-a.example/p/terminal-2pole-1234,datasheet p3 pitch 5.08,fits\n")
     need_bom = write("need-bom.txt", bom + "J1\n")
