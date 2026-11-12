@@ -192,4 +192,54 @@ function withoutPublished(cmd, ps) {
   return out;
 }
 
-module.exports = { shellSegments, publishedText, invocations, withoutPublished, unquote, expandVars };
+// The local shell scripts a command RUNS, read one level deep: `bash|sh|zsh <file> …` and a path
+// run directly (`./x.sh`, `dir/x`) whose first line is a shell shebang. Measured 2026-11-12, on both
+// instances: a `gh pr comment` inside a script started as `bash <file>` reached GitHub past the text
+// gates - they read only the outer command. Windows: two comments with a home-path placeholder, the
+// repo's text-leaks workflow went red; macOS: `bash <scratch>/fixed-note.sh <sha>` posted nine.
+// Returns [{ file, text, why }]: `text` null when the script cannot be read (`why` says so); a path
+// that does not exist is left out - the shell cannot run it either. Over SCRIPT_MAX: a `bash <file>`
+// counts as unreadable, a directly run path is skipped (it may well be a binary).
+const SCRIPT_MAX = 200 * 1024;
+const SHELL_RX = /^(?:.*[\\/])?(?:ba|z|da|k)?sh(?:\.exe)?$/;
+function scriptBodies(cmd, ps, cwd) {
+  const segs = shellSegments(cmd, ps);
+  if (!segs) return [];
+  const fs = require('fs');
+  const path = require('path');
+  // nativePath moves into this module with another open change; until then it is the guard's
+  const native = (p) => (module.exports.nativePath || require('./public-text-guard.cjs').nativePath)(p);
+  const out = [];
+  for (const w of segs) {
+    let i = 0;
+    while (i < w.length && /^[A-Za-z_]\w*=/.test(w[i])) i++; // VAR=value prefixes
+    let file = null;
+    let direct = false;
+    if (SHELL_RX.test(w[i] || '')) {
+      let j = i + 1;
+      for (; j < w.length && /^[-+]/.test(w[j]); j++) if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(w[j])) { j = w.length; break; } // -c: inline text
+      file = w[j] || null;
+    } else if (/[\\/]/.test(w[i] || '')) {
+      file = w[i];
+      direct = true;
+    }
+    if (!file) continue;
+    const v = expandVars(file, cmd);
+    if (v === null) { out.push({ file, text: null, why: 'its path holds a shell variable the hook cannot expand' }); continue; }
+    const p = path.resolve(cwd || '.', native(v.replace(/^~(?=$|[\\/])/, require('os').homedir())));
+    let st;
+    try { st = fs.statSync(p); } catch (e) {
+      if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') out.push({ file, text: null, why: e.code || 'cannot be read' });
+      continue;
+    }
+    if (!st.isFile()) continue;
+    if (st.size > SCRIPT_MAX) { if (!direct) out.push({ file, text: null, why: `larger than ${SCRIPT_MAX} bytes` }); continue; }
+    let text;
+    try { text = fs.readFileSync(p, 'utf8'); } catch (e) { out.push({ file, text: null, why: e.code || 'cannot be read' }); continue; }
+    if (direct && !/^#!\s*\S*?(?:\/env\s+)?(?:ba|z|da|k)?sh\b/.test(text)) continue;
+    out.push({ file, text, why: '' });
+  }
+  return out;
+}
+
+module.exports = { shellSegments, publishedText, invocations, withoutPublished, unquote, expandVars, scriptBodies };
