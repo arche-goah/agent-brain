@@ -206,6 +206,25 @@ function branchFiles(cwd) {
   try { return git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean); } catch (e) { return null; }
 }
 
+/** The PR's files for `gh pr create`. With `-R <repo>` naming another repo than the checkout the call runs in, the
+ * checkout's branch says nothing about the PR (2026-11-12: a core PR opened from the brain's working copy was scored
+ * by a brain script and forced to "medium"): the files come from the repo's compare view of `--head` instead, and
+ * without `--head` they are unreadable (not checked, said on stderr). */
+function createFiles(cmd, cwd) {
+  if (process.env.CONTENT_REVIEW_GATE_FILES !== undefined) return branchFiles(cwd);
+  const repo = (/(?:-R|--repo)[=\s]+["']?([\w.-]+\/[\w.-]+)/.exec(cmd) || [])[1];
+  if (!repo) return branchFiles(cwd);
+  let origin = '';
+  try { origin = execFileSync('git', ['-C', cwd, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+  catch (e) { /* no checkout here */ }
+  if (origin.replace(/\.git$/, '').toLowerCase().endsWith('/' + repo.toLowerCase())) return branchFiles(cwd);
+  const head = (/--head[=\s]+["']?([^\s"']+)/.exec(cmd) || [])[1];
+  const base = (/--base[=\s]+["']?([^\s"']+)/.exec(cmd) || [])[1] || 'main';
+  if (!head) { console.error(`content-review-gate: ${repo} is not this checkout and no --head given - risk floor not checked`); return null; }
+  try { return gh(['api', `repos/${repo}/compare/${base}...${head}`, '--jq', '.files[].filename']).split('\n').filter(Boolean); }
+  catch (e) { console.error(`content-review-gate: compare ${base}...${head} in ${repo} unreadable - risk floor not checked`); return null; }
+}
+
 const QUESTIONS =
   `  Fit:    what already does this or part of it (rule, gate, script, skill)? duplicate, extension or contradiction? right place (core / suite / instance)?\n` +
   `  Design: right object and level? a second copy of a rule? a simpler way? what does it couple?\n` +
@@ -254,7 +273,7 @@ function checkCreate(cmd, ps, cwd, getModel) {
   const hits = invocations(cmd, ps, 'gh', ['pr'], ['create']);
   if (hits === null ? !/\bgh\s+pr\s+create\b/.test(cmd) : !hits.length) return 0;
   const body = postedText(cmd, ps, cwd);
-  const files = branchFiles(cwd);
+  const files = createFiles(cmd, cwd);
   if (!files) console.error('content-review-gate: branch files unreadable, risk floor not checked');
   const fl = floor(files || []);
   const d = declared(body);

@@ -56,6 +56,20 @@ probe "create with high risk on opus" "gh pr create -R o/r --body-file $N/body-h
 transcript claude-sonnet-5-5
 probe "create with high risk on sonnet" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"
 probe "create low risk on sonnet" "gh pr create -R o/r --body-file $N/body-low.md" allow "docs/a.md"
+# 2026-11-12: `gh pr create -R <core>` run from ANOTHER repo's checkout (the brain) was scored by that checkout's branch
+# (a brain script set the floor). Here the cwd is a brain-like repo whose branch carries a gate file; -R names o/r.
+git init -q "$T/brain"
+git -C "$T/brain" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+git -C "$T/brain" update-ref refs/remotes/origin/main HEAD
+git -C "$T/brain" remote add origin https://github.com/x/brain.git
+mkdir -p "$T/brain/helpers"; printf 'x\n' > "$T/brain/helpers/x-gate.cjs"
+git -C "$T/brain" add helpers/x-gate.cjs
+git -C "$T/brain" -c user.name=t -c user.email=t@t commit -q -m gate
+foreign=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$T/brain")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":\"gh pr create -R o/r --body-file $N/body-low.md\"}}" \
+  | env -u CONTENT_REVIEW_GATE_FILES CONTENT_REVIEW_GATE_GH="$(native "$T/gh.js")" PR_JSON="$(native "$T/pr.json")" node "$(native "$GATE")" 2>&1); frc=$?
+[ "$frc" -ne 2 ] && ok "create -R from another repo's checkout: its branch files do not set the floor" \
+  || bad "create -R from another repo's checkout was scored by the checkout: ${foreign:0:200}"
+[[ "$foreign" == *"not this checkout"* ]] && ok "  ... and says the floor was not checked" || bad "  ... no 'not this checkout' note"
 # review of #478 (Windows instance): a trailing synthetic entry or an unknown family is no model at all
 printf '{"type":"assistant","message":{"model":"claude-sonnet-5-5"}}\n{"type":"assistant","message":{"model":"<synthetic>"}}\n' > "$T/t.jsonl"
 probe "a trailing <synthetic> entry: the last real model counts (sonnet, high)" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"
