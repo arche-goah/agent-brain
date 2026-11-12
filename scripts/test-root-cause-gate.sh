@@ -8,6 +8,8 @@
 # Other languages only as instance data. `--review` counts over a directory of transcripts.
 # Usage: bash scripts/test-root-cause-gate.sh (exit 0 = pass)
 set -u
+# the gate reads CLAUDE_PROJECT_DIR before the cwd in --review; a session-start run points it at the real brain
+unset CLAUDE_PROJECT_DIR
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 G="$(cd "$(dirname "$0")" && pwd)/../helpers/root-cause-gate.cjs"

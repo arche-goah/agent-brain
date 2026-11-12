@@ -20,6 +20,8 @@ PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+# after the trap: the sandbox chains its own clean-up onto it (global hooksPath of the machine stays out)
+. "$(dirname "$0")/git-sandbox.sh"
 FAIL=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAIL=1; }
