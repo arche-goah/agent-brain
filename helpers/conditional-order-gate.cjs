@@ -41,7 +41,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords } = require('./turn-kind.cjs');
+const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
 const { isGitPush } = require('./git-push.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
@@ -116,6 +116,13 @@ function promptText(msg) {
   return t || null;
 }
 
+/** The text of a question-tool answer record (its tool_result content, string or text blocks). */
+function answerText(msg) {
+  const r = msg.content.find((b) => b && b.type === 'tool_result') || {};
+  if (typeof r.content === 'string') return r.content;
+  return (Array.isArray(r.content) ? r.content : []).filter((b) => b && b.type === 'text').map((b) => b.text).join('\n');
+}
+
 /** Last operator message, the assistant texts since it, and the Agent calls since it. */
 function analyze(transcriptPath) {
   const size = fs.statSync(transcriptPath).size;
@@ -134,6 +141,7 @@ function analyze(transcriptPath) {
   let operatorAt = '';
   let texts = [];
   let agents = 0;
+  const answered = questionAnswers();
   for (const line of lines) {
     if (!line.trim()) continue;
     let d;
@@ -142,6 +150,13 @@ function analyze(transcriptPath) {
     if (queued !== null) { operator = queued; operatorAt = d.timestamp || ''; texts = []; agents = 0; continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
+    // The operator's answer in the question tool is the newest operator word too (measured 2026-11-07: the gate held
+    // a push on a condition from the FIRST prompt although an answer in the question tool came after it; promptText
+    // skips every tool_result). The answer text itself may carry a condition, so it becomes `operator`.
+    if (answered(d)) {
+      operator = answerText(msg); operatorAt = d.timestamp || ''; texts = []; agents = 0;
+      continue;
+    }
     if (msg.role === 'user') {
       // A loaded skill's text: no condition, no new turn (2026-10-19, "then" in session-close).
       if (isSkillExpansion(d) || isAgentOrigin(d)) continue;
