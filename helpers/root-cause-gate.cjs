@@ -54,6 +54,7 @@ const path = require('path');
 const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
+const { nativePath } = require('./published-text.cjs');
 
 let OWN_ECHO = /ROOT-CAUSE-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -337,9 +338,15 @@ function currentTurn(turns) {
 function shellWrites(shell, cwd, since) {
   if (!since) return [];
   const out = [];
+  // A path starts with ~, /, ./, ../ or a drive (C:/, C:\ - Windows review 2026-11-12); a quoted one may hold spaces.
+  // nativePath: a Git Bash `/c/...` is no path node can stat on Windows (docs/os-traps.md OS-19).
+  const lead = '(?:~|[A-Za-z]:[\\\\/]|\\/|\\.{0,2}\\/)?';
+  const bare = new RegExp(`(?:^|[\\s"'=<>|;&(])(${lead}[\\w.~@+-]+(?:[\\\\/][\\w.@+-]+)+)`, 'g');
+  const quoted = new RegExp(`(["'])(${lead}[^"'\\n]*?[\\\\/][^"'\\n]*?)\\1`, 'g');
   for (const cmd of shell) {
-    for (const m of String(cmd).matchAll(/(?:^|[\s"'=<>|;&(])((?:~|\/|\.{0,2}\/)?[\w.~@+-]+(?:\/[\w.@+-]+)+)/g)) {
-      const p = m[1].replace(/^~(?=\/)/, process.env.HOME || process.env.USERPROFILE || '~');
+    const found = [...String(cmd).matchAll(bare)].map((m) => m[1]).concat([...String(cmd).matchAll(quoted)].map((m) => m[2]));
+    for (const raw of found) {
+      const p = nativePath(raw.replace(/^~(?=[\\/])/, process.env.HOME || process.env.USERPROFILE || '~'));
       const abs = path.isAbsolute(p) ? p : path.join(cwd, p);
       try { if (fs.statSync(abs).mtimeMs >= since - 1000) out.push(abs); } catch (e) { /* not a file */ }
     }

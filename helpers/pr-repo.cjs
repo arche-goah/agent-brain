@@ -12,7 +12,7 @@
  */
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { shellSegments } = require('./published-text.cjs');
+const { shellSegments, nativePath } = require('./published-text.cjs');
 
 function slug(url) {
   const m = /[/:]([^/:]+)\/([^/]+?)(?:\.git)?\/?$/.exec(String(url || '').trim());
@@ -39,7 +39,8 @@ function prTargets(cmd, cwd, ps) {
   const segs = shellSegments(String(cmd || ''), ps);
   if (!segs) return [];
   const home = process.env.HOME || process.env.USERPROFILE || '';
-  const abs = (base, d) => path.resolve(base, String(d).replace(/^~(?=$|\/)/, home));
+  // nativePath: a Git Bash `cd /c/...` is no directory node can use on Windows (docs/os-traps.md OS-19)
+  const abs = (base, d) => path.resolve(base, nativePath(String(d).replace(/^~(?=$|\/)/, home)));
   let dir = cwd || process.cwd();
   const out = [];
   for (const w of segs) {
