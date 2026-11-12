@@ -48,6 +48,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ledger_fields import first_value  # noqa: E402  the one id grammar (ledger-fields.json)
+
 # OS-9: the session-close step parses this output — pin the bytes
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
@@ -155,7 +158,6 @@ def ledgers(repo: str) -> list[str]:
 
 
 ENTRY_RX = re.compile(r"^\s*-\s*\[ \]\s")
-ID_RX = re.compile(r"\bid:\s*`?([\w-]+)`?")
 REACH_RX = re.compile(r"\breach:\s*shared\b")
 
 
@@ -172,9 +174,9 @@ def shared_entries(repo: str) -> list[tuple[str, str]]:
         def flush():
             text = "\n".join(block)
             if block and ENTRY_RX.match(block[0]) and REACH_RX.search(text):
-                m = ID_RX.search(text)
-                if m:
-                    found.append((led, m.group(1)))
+                v = first_value(text, "id")
+                if v:
+                    found.append((led, v))
         for ln in lines:
             if re.match(r"^\s*-\s*\[[ xX]\]\s", ln) or ln.startswith("#"):
                 flush()

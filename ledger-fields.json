@@ -1,0 +1,17 @@
+{
+  "_comment": "The ONE grammar of ledger fields, read by every reader in Python (scripts/ledger_fields.py) and JavaScript (helpers/ledger-fields.cjs). A field stands at a line start (after list marks, `>`, `*`, a backtick) or inside an entry line after a field bar or whitespace (`... | id: x | class: todo`). Before 2026-11-10 four readers of `id:` used four patterns (brain-scan-prep, instrument-watch, shared-reach-check, autonomous-idle-gate); one still read line starts only (content review of agent-brain #475).",
+  "fields": {
+    "id": {
+      "lead": "(?:^|[|\\s])[>*\\s-]*`?",
+      "value": "([A-Za-z0-9][A-Za-z0-9_.:/-]*?)",
+      "end": "`?(?=[\\s|,;`]|[.:]?(?:\\s|$))"
+    }
+  },
+  "_cases": [
+    {"text": "  id: pkg-a", "id": "pkg-a"},
+    {"text": "- [ ] do X | id: x-1 | class: todo", "id": "x-1"},
+    {"text": "  `id: core/thing-2`", "id": "core/thing-2"},
+    {"text": "see id: v2.1.5.", "id": "v2.1.5"},
+    {"text": "the userid: nope", "id": null}
+  ]
+}

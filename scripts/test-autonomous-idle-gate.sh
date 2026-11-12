@@ -150,6 +150,26 @@ check "interactive: a waiter with its condition covers its item only, another re
 f="$T/i11.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — CI watcher, PR 12 green
 BLOCKED: pkg-b — the operator's word on the deploy"; } > "$f"
 check "interactive: both released items named BLOCKED" "$f" allow "$R"
+# A release the operator left for a new topic is superseded (evaluation 2026-11-10: 28 of 36 interactive blocks in
+# one session, all on a release given hours before the operator moved on).
+f="$T/i11b.jsonl"; { user "go ahead with the plan"; asst "On it."; user "the capacitive sensor stays on a new rest value, look at that"; asst "Next: package A."; } > "$f"
+check "interactive: a later message on another topic supersedes the release" "$f" allow "$R"
+f="$T/i11c.jsonl"; { user "go ahead with the plan"; asst "On it."; user "ok"; asst "Next: package A."; } > "$f"
+check "interactive: a short reply does not supersede it" "$f" block "$R"
+f="$T/i11d.jsonl"; { user "go ahead with the plan"; asst "On it."; user "pkg-a first, then the rest please"; asst "Next: package A."; } > "$f"
+check "interactive: a later message naming the entry keeps it released" "$f" block "$R"
+f="$T/i11e.jsonl"; { user "look at the sensor first"; user "now go ahead with the plan"; asst "Next: package A."; } > "$f"
+check "interactive: an earlier other topic does not supersede a later release" "$f" block "$R"
+# Windows review of #480: a question-tool answer (79 of 80 messages were >= 12 characters, the suffix " (recommended)"
+# alone is 14) and a bare continuation prompt are no new topic; a typed new topic still is.
+f="$T/i11f.jsonl"; { user "go ahead with the plan"; ask; answer "Yes, merge it (Recommended)"; asst "Merged."; user "ok"; asst "Next: package A."; } > "$f"
+check "interactive: a question-tool answer does not supersede the release" "$f" block "$R"
+f="$T/i11g.jsonl"; { user "go ahead with the plan"; asst "On it."; user "please continue"; asst "Next: package A."; } > "$f"
+check "interactive: a continuation prompt does not supersede the release" "$f" block "$R"
+f="$T/i11h.jsonl"; { user "go ahead with the plan"; asst "On it."; user "ok (Recommended)"; asst "Next: package A."; } > "$f"
+check "interactive: a short reply with the harness suffix does not supersede it" "$f" block "$R"
+f="$T/i11i.jsonl"; { user "go ahead with the plan"; ask; answer "Yes (Recommended)"; asst "Merged."; user "what is still open for me on the website?"; asst "Next: package A."; } > "$f"
+check "interactive: a typed new topic after an answer still supersedes" "$f" allow "$R"
 cat_ledger "exit: other-side 2026-11-02 — released: \"go ahead with the plan\"" "exit: parked 2026-11-02"
 f="$T/i12.jsonl"; { user "go ahead with the plan"; asst "Next: package A."; } > "$f"
 check "interactive: a released clause under another exit is no release" "$f" allow "$R"
@@ -185,6 +205,16 @@ SHARED_MEMORY_SELF=mac check "a peer's comment still needs its continuation" "$f
 f="$T/peer2.jsonl"; { user "work through the open points autonomously"; ev "SESSIONS: changed
 PR o/r #20: fix (peer) — opened on another machine"; asst "Noted."; } > "$f"
 SHARED_MEMORY_SELF=mac check "own state line plus a peer's PR still blocks" "$f" block
+
+# The piped view is no measurement, and the refusal's `Missing:` value - the only part the stop dispatcher
+# shows - names the form (measured 2026-11-07 on the Windows instance: four blocks in a row on `| head`).
+f="$T/pipe.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS | head -40"; asst "BLOCKED: item C — needs the operator's word on the deploy"; } > "$f"
+check "a BLOCKED line after a piped view still blocks" "$f" block
+out=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$f")" "$(native "$B")" | CLAUDE_PROJECT_DIR="$(native "$B")" node "$(native "$G")" 2>&1)
+case "$out" in *'Missing: own-items measurement (open-items.py as a command of its own, no pipe after it)'*) ok "the Missing value names the form without a pipe";; *) bad "the Missing value does not name the form: ${out: -200}";; esac
+f="$T/2.jsonl"
+out=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$f")" "$(native "$B")" | CLAUDE_PROJECT_DIR="$(native "$B")" node "$(native "$G")" 2>&1)
+case "$out" in *'Missing: continuation (the next item now, or a BLOCKED / POOL EMPTY / LIST EMPTY line after measuring the list)'*) ok "the continuation Missing value names the end forms";; *) bad "the continuation Missing value names no end form: ${out: -200}";; esac
 
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-idle-gate: all cases pass" || echo "autonomous-idle-gate: FAILURES"

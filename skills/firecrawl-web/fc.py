@@ -126,7 +126,7 @@ def main():
         print(result)
 
     elif args.command == "extract":
-        with open(args.schema) as f:
+        with open(args.schema, encoding="utf-8") as f:
             schema = json.load(f)
         data = extract_data(args.url, schema, args.prompt)
         print(json.dumps(data, indent=2))
@@ -146,7 +146,7 @@ def main():
             Path(args.output).mkdir(parents=True, exist_ok=True)
             for i, page in enumerate(pages):
                 filename = f"{args.output}/page_{i:03d}.md"
-                with open(filename, "w") as f:
+                with open(filename, "w", encoding="utf-8") as f:
                     f.write(page.markdown or "")
             print(f"Saved {len(pages)} pages to {args.output}/")
         else:

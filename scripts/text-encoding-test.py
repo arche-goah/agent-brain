@@ -26,6 +26,17 @@ def unencoded(src, name):
                 # positional encoding: read_text(encoding), write_text(data, encoding)
                 and len(n.args) < (1 if n.func.attr == "read_text" else 2)):
             hits.append((n.lineno, n.func.attr))
+        # The builtin open() in text mode has the same platform default (2026-11-11: check-catalog-test.py,
+        # 9/18 on Windows at the 2.1.5 train head; the scan saw only read_text/write_text, so the lint passed).
+        # Binary mode carries no encoding; encoding= or the 4th positional (file, mode, buffering, encoding) passes.
+        elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "open"
+                and not any(k.arg == "encoding" for k in n.keywords) and len(n.args) < 4):
+            mode = n.args[1] if len(n.args) > 1 else next((k.value for k in n.keywords if k.arg == "mode"), None)
+            if isinstance(mode, ast.Constant) and isinstance(mode.value, str) and "b" in mode.value:
+                continue
+            if mode is not None and not isinstance(mode, ast.Constant):
+                continue  # a computed mode cannot be judged here
+            hits.append((n.lineno, "open"))
     return hits
 
 
@@ -43,6 +54,10 @@ bad = 'from pathlib import Path\nPath("a").write_text("x ·")\nPath("b").write_t
 good = 'from pathlib import Path\nPath("a").write_text("x", encoding="utf-8")\nPath("c").read_text("utf-8")\n'
 check("a write_text without encoding is found (one line and split)", sorted(h[0] for h in unencoded(bad, "bad")) == [2, 3, 6])
 check("a call with encoding (keyword or positional) passes", unencoded(good, "good") == [])
+bad_open = 'open("a", "w")\nopen("b")\nopen(\n    "c", mode="r"\n)\n'
+good_open = 'open("a", "w", encoding="utf-8")\nopen("b", "rb")\nopen("c", mode="wb")\nopen("d", "r", -1, "utf-8")\n'
+check("an open() in text mode without encoding is found (one line and split)", sorted(h[0] for h in unencoded(bad_open, "bad_open")) == [1, 2, 3])
+check("an open() with encoding, or in binary mode, passes", unencoded(good_open, "good_open") == [])
 with tempfile.TemporaryDirectory() as tmp:
     p = Path(tmp) / "planted.py"
     p.write_text(bad, encoding="utf-8")
@@ -60,7 +75,7 @@ for f in files:
     except (SyntaxError, UnicodeDecodeError):
         continue
     found += [f"{f}:{line} {meth}" for line, meth in hits]
-check(f"every read_text/write_text in the core names its encoding ({len(files)} files)", not found)
+check(f"every read_text/write_text/text-mode open() in the core names its encoding ({len(files)} files)", not found)
 for h in found:
     print("       " + h + ' - add encoding="utf-8"')
 

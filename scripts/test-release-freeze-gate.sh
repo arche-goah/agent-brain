@@ -49,6 +49,10 @@ probe "plain checkout of an existing branch is no new work" "git checkout main" 
 probe "a commit message naming the command is no command" "git commit -m 'git checkout -b feat/new'" allow
 probe "marker with the operator's quoted word and date" "git checkout -b feat/new # SCOPE-OK: \"start it now\" 2026-11-06" allow
 probe "marker without a quotation" "git checkout -b feat/new # SCOPE-OK: the operator agreed" block
+git -C "$T/core" tag v2.1.4
+probe "open scope whose tag v2.1.4 already stands reads as closed" "git checkout -b feat/new" allow
+git -C "$T/core" tag -d v2.1.4 >/dev/null
+probe "tag removed again: the open scope holds" "git checkout -b feat/new" block
 scope closed '[]'
 probe "closed scope" "git checkout -b feat/new" allow
 rm -f "$T/brain/.claude-state/release-scope.json"

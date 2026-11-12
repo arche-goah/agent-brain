@@ -37,7 +37,9 @@
  * Released = an OPEN entry of a registered ledger (.claude/rules/ledgers.json) whose last exit is `ai-does-it`
  * and which carries `released: "<the operator's words>"` — and those words stand in one of the operator's own
  * messages of THIS transcript (a prompt, a message typed mid-turn, a question-tool answer). A quote the agent
- * invents releases nothing. With such an entry open, the turn may end only:
+ * invents releases nothing. A release is superseded once the operator writes, after it, a message of their own
+ * that names neither the id nor the release words (operator decision 2026-11-10 after the alpha evaluation; see
+ * superseded()). With such an entry open, the turn may end only:
  *   - with an AskUserQuestion call in this turn, or a line `HAND STEP: <what the operator does>`, or
  *   - when every released entry is named by its id in a `BLOCKED: <id> — <what restores it>` line, after
  *     measuring the list (as above). A running waiter is no end, even with its condition named (operator,
@@ -137,15 +139,17 @@ function ownEventsOnly(opener, key) {
  *  answers — never a notification, a hook echo, a loaded skill, a peer's or the harness's text, frames or pasted
  *  blocks. The same filters as autonomous-mode.cjs promptModes. */
 const squash = (s) => String(s || '').toLowerCase().replace(/[\s ]+/g, ' ').trim();
-function operatorSaid(tp) {
+const operatorSaid = (tp) => operatorMessages(tp).map((m) => m.s).join('\n');
+/** The same, one squashed entry per operator message, in transcript order: {s, ans} - ans marks a question-tool answer. */
+function operatorMessages(tp) {
   let lines;
-  try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return ''; }
+  try { lines = fs.readFileSync(tp, 'utf8').split('\n'); } catch (e) { return []; }
   const out = []; const askIds = new Set();
   for (const line of lines) {
     if (!line.trim()) continue;
     let d; try { d = JSON.parse(line); } catch (e) { continue; }
     const queued = queuedHumanPrompt(d);
-    if (queued) { out.push(operatorWords(queued.replace(FRAMES, ' ').replace(LOCAL, ' '))); continue; }
+    if (queued) { out.push({ s: operatorWords(queued.replace(FRAMES, ' ').replace(LOCAL, ' ')) }); continue; }
     if (!isTranscriptRecord(d) || isSkillExpansion(d) || isAgentOrigin(d) || !d.message) continue;
     const msg = d.message;
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -153,12 +157,12 @@ function operatorSaid(tp) {
       continue;
     }
     if (msg.role !== 'user') continue;
-    for (const [, a] of answers(msg, askIds)) out.push(a);
+    for (const [, a] of answers(msg, askIds)) out.push({ s: a, ans: true });
     const t = promptText(msg);
     if (!t || PROMPT_ECHO.test(t) || isNotification(t)) continue;
-    out.push(operatorWords(t.replace(FRAMES, ' ').replace(LOCAL, ' ')));
+    out.push({ s: operatorWords(t.replace(FRAMES, ' ').replace(LOCAL, ' ')) });
   }
-  return squash(out.join('\n'));
+  return out.map((m) => ({ s: squash(m.s), ans: !!m.ans })).filter((m) => m.s);
 }
 
 /** Open entries of the registered ledgers that the operator released in this session (see the header):
@@ -166,10 +170,42 @@ function operatorSaid(tp) {
  *  Returns their ids; [] on any unreadable part (fail open). The entry shape is the one open-items.py and
  *  decision-presentation-gate.cjs read: a `- [ ]` line and its indented lines. */
 const RELEASED = /\breleased:\s*["„“”]([^"„“”\n]{4,})["“”]/gu;
+
+/** A release is SUPERSEDED once the operator, after the message that released it, writes a message of their own
+ *  that names neither the entry's id nor the release words — a new topic. Measured 2026-11-10 (evaluation of the
+ *  interactive alpha on the macOS instance): 28 of 36 interactive blocks fell in ONE session, every one on a
+ *  release the operator had given at 18:01 and then left for other topics for five hours; the check kept holding
+ *  each turn on the old item. A short reply (`ja`, `ok`, under SHORT characters) is no new topic. */
+// Windows review of #480: 79 of 80 operator messages on one machine were 12 characters or longer, 36 of them
+// question-tool answers carrying " (recommended)" (14 characters alone), so a release lasted about one message. Now a
+// question-tool answer never supersedes (it answers the agent's own question, mostly on the work in hand), the
+// suffix is cut before the length is measured, and a bare continuation ("please continue") is no new topic either:
+// English built in, other languages as data (`continue_patterns` in autonomous-patterns.json).
+const SHORT = 12;
+const RECOMMENDED = /\s*\(recommended\)/gi;
+const CONTINUE_BUILTIN = ['^(?:please\\s+|ok,?\\s+|yes,?\\s+)?(?:continue|go on|go ahead|keep going|carry on|proceed|next)\\b[\\s.!,]*(?:please)?[\\s.!]*$'];
+function continuation(root) {
+  const list = [...CONTINUE_BUILTIN];
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'autonomous-patterns.json'), 'utf8'));
+    for (const x of (d && d.continue_patterns) || []) { try { new RegExp(x); list.push(x); } catch (e) { /* skip */ } }
+  } catch (e) { /* no data: English only */ }
+  return new RegExp(list.join('|'), 'i');
+}
+function superseded(msgs, quotes, id, cont) {
+  let last = -1;
+  msgs.forEach((m, i) => { if (quotes.some((q) => m.s.includes(q))) last = i; });
+  const idl = String(id || '').toLowerCase();
+  return msgs.slice(last + 1).some((m) => {
+    if (m.ans) return false;
+    const s = m.s.replace(RECOMMENDED, '').trim();
+    return s.length >= SHORT && !(cont && cont.test(s)) && !(idl && s.includes(idl)) && !quotes.some((q) => s.includes(q));
+  });
+}
 function releasedOpen(root, tp) {
   let cfg;
   try { cfg = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'ledgers.json'), 'utf8')); } catch (e) { return []; }
-  const out = []; let said = null;
+  const out = []; let said = null; let cont = null;
   for (const rel of (cfg && cfg.ledgers) || []) {
     let text;
     try { text = fs.readFileSync(path.join(root, rel), 'utf8'); } catch (e) { continue; }
@@ -185,11 +221,13 @@ function releasedOpen(root, tp) {
       if (exit && exit !== 'ai-does-it') continue;
       const quotes = [...body.matchAll(RELEASED)].map((q) => squash(q[1]));
       if (!quotes.length) continue;
-      if (said === null) said = operatorSaid(tp);
-      const found = quotes.filter((q) => said.includes(q));
+      if (said === null) said = operatorMessages(tp);
+      const found = quotes.filter((q) => said.some((m) => m.s.includes(q)));
       if (!found.length) continue;
-      const id = /\bid:\s*`?([\w.:/-]+)/.exec(body);
-      out.push({ id: id ? id[1].replace(/[.:]+$/, '') : m[1].replace(/[*`]/g, '').slice(0, 60), quotes: found });
+      const idm = /\bid:\s*`?([\w.:/-]+)/.exec(body);
+      const id = idm ? idm[1].replace(/[.:]+$/, '') : m[1].replace(/[*`]/g, '').slice(0, 60);
+      if (superseded(said, found, id, cont || (cont = continuation(root)))) continue;
+      out.push({ id, quotes: found });
     }
   }
   return out;
@@ -219,9 +257,9 @@ function judgeInteractive(input, root, now) {
     + 'working on it. Do the next step now (tool calls in this turn), or end in one of the allowed forms: a question '
     + 'through the question tool, a line `HAND STEP: <what the operator does>`, or every released entry named in a '
     + 'line `BLOCKED: <id> — <what restores it, who>` after measuring the list in this turn '
-    + '(core/scripts/open-items.py or the instance command). A running waiter is no end, even with its condition: '
+    + '(core/scripts/open-items.py or the instance command, without a pipe after it). A running waiter is no end, even with its condition: '
     + 'it explains why one item waits — name that one as BLOCKED and work on the others. This check holds once per turn. '
-    + `Missing: ${!measured && !unnamed.length ? 'own-items measurement' : 'continuation on released work'}`;
+    + `Missing: ${!measured && !unnamed.length ? MEASURE_MISSING : 'continuation on released work'}`;
 }
 
 /** A measurement from an EARLIER turn still stands when nothing was done since and it is fresh.
@@ -241,6 +279,10 @@ function standingMeasurement(all, measurers, now) {
   if (!ts || (now || Date.now()) - ts > STANDING_MIN * 60000) return false;
   return !all.slice(at + 1).some((c) => CHANGE_TOOLS.has(c.name) || (c.cmd && CHANGES.test(c.cmd)));
 }
+
+// The stop dispatcher shows only the text after `Missing:` (stop-checks.json `extract`), so the form the
+// measurement must take stands IN that value (measured on the macOS instance 2026-11-11, review of #494).
+const MEASURE_MISSING = 'own-items measurement (open-items.py as a command of its own, no pipe after it)';
 
 /** The commands that measure the brain's own open items: the core's, plus the instance's (data). */
 function measurers(root) {
@@ -349,15 +391,16 @@ function judge(input, now) {
     return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY / LIST EMPTY line, but the list behind it was not measured ' +
       'in this turn — the line is a recollection, not a reading. Run the brain\'s own-items measurement now ' +
       '(core/scripts/open-items.py, or the instance command in .claude/rules/autonomous-patterns.json ' +
-      '`own_items_commands`), do what it lists as yours, and end only when every item left is named as blocked. ' +
-      'Missing: own-items measurement';
+      '`own_items_commands`) as a command of its own, without a pipe or a filter after it (`| head` keeps the counts and drops ' +
+      'the items, so it does not count), do what it lists as yours, and end only when every item left is named as blocked. ' +
+      `Missing: ${MEASURE_MISSING}`;
   }
   return 'AUTONOMOUS-IDLE: the run is autonomous and this turn ends without its continuation. ' +
     'Do the next item now (tool calls in this turn), or end the turn in one of the run\'s end forms: ' +
     'a line `BLOCKED: <item> — <what restores it, who>`, a line `POOL EMPTY: <how measured>`, or for a run over an ' +
     'ordered list `LIST EMPTY: <the order, how measured>` — the pool is what the operator ordered plus an agreed ' +
     'reserve, not the whole ledger (Order Fidelity #3). All after measuring the list in this turn. A wakeup alone is no continuation, and a running watcher (CI, a peer) continues only its own event, not your items. ' +
-    'Missing: continuation';
+    'Missing: continuation (the next item now, or a BLOCKED / POOL EMPTY / LIST EMPTY line after measuring the list)';
 }
 
 if (require.main === module) {
@@ -372,4 +415,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { judge };
+module.exports = { judge, END_LINE };
