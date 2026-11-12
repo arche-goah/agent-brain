@@ -24,6 +24,11 @@
 #         the grandMA work; the party filter dropped every PR event under the operator's own
 #         login — the other machine's test fix and its "please review" — because one login
 #         carries both of the operator's machines and a login filter cannot keep one of them.
+# Show:   $COLLAB_WATCH_SHOW = an extended regex: the event lines THIS session is told (its stdout). NOTE:/ERROR:
+#         lines always pass; events.log keeps every line, so a follower or a later holder with another filter
+#         loses nothing. Empty = everything. WHY (measured 2026-11-12, 3D session): the session holding the
+#         watch is the one it wakes - about 14 grandMA and core events reached a 3D conversation, the
+#         operator (translated): "none of this interests me here". The party scope cannot say "only my topic".
 # State:  $COLLAB_WATCH_STATE, default <instance>/.claude-state/collab-watch — cursors AND
 #         locks of every channel. Its own shared-memory cursor on purpose: sharing the cursor
 #         of the session-start check lets ANY session's start consume a find before the
@@ -38,6 +43,7 @@ INSTANCE="$(resolve_project_dir "$HERE")"
 CONFIG="${COLLAB_WATCH_CONFIG:-$INSTANCE/.claude/rules/collab-watch.json}"
 SCOPE="${COLLAB_WATCH_SCOPE:-all}"
 TOPICS="${COLLAB_WATCH_TOPICS:-}"
+SHOW="${COLLAB_WATCH_SHOW:-}"
 STATE="${COLLAB_WATCH_STATE:-$INSTANCE/.claude-state/collab-watch}"
 PY=python3
 "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
@@ -85,8 +91,18 @@ logins_for_tag() {
     *) echo "$ONLY_LOGINS" ;;
   esac
 }
+# What this session is told: NOTE/ERROR always, event lines only when they match $COLLAB_WATCH_SHOW (grep -E).
+# Applied AFTER the log, never before it: the log is every session's source.
+show_filter() {
+  if [[ -n "$SHOW" ]]; then
+    awk -v rx="$SHOW" '/^(NOTE|ERROR):/ || $0 ~ rx { print; fflush() }'
+  else
+    cat
+  fi
+}
 # Fixture seam: run only the shared-memory filter over stdin, arm nothing.
 if [[ "${1:-}" == "--filter-stdin" ]]; then sm_scope_filter; exit 0; fi
+if [[ "${1:-}" == "--show-stdin" ]]; then show_filter; exit 0; fi
 if [[ "${1:-}" == "--logins-for" ]]; then logins_for_tag "${2:-}"; exit 0; fi
 
 mkdir -p "$STATE"
@@ -101,9 +117,19 @@ HOLDER="$STATE/collab-watch.pid"
 PARENT=$PPID
 holder_alive() { local p; p=$(cat "$HOLDER" 2>/dev/null) && [[ -n "$p" && "$p" != "$$" ]] && kill -0 "$p" 2>/dev/null; }
 if holder_alive; then
-  echo "NOTE: collaboration watch already held by pid $(cat "$HOLDER") — following its events ($EVENTS); taking over if it ends"
   touch "$EVENTS"
-  tail -n 0 -F "$EVENTS" 2>/dev/null &
+  # Read from the byte the log had BEFORE the note, not `-n 0` at tail's start: tail starts later than this line runs
+  # (slow on Git Bash), and a line logged in between was lost - portability windows-latest 2026-11-12, case 1 and 5
+  # of test-collab-watch-follow.sh red in one run, green in another.
+  from=$(( $(wc -c < "$EVENTS") + 1 ))
+  echo "NOTE: collaboration watch already held by pid $(cat "$HOLDER") — following its events ($EVENTS); taking over if it ends"
+  # No filter: tail alone, `$!` is its pid. With a filter: a plain pipe; `$!` is then the filter's pid, and killing it
+  # leaves tail to end with SIGPIPE at the next line, which the new holder writes at once (its arm note goes to the log).
+  if [[ -n "$SHOW" ]]; then
+    tail -c "+$from" -F "$EVENTS" 2>/dev/null | show_filter &
+  else
+    tail -c "+$from" -F "$EVENTS" 2>/dev/null &
+  fi
   TAIL=$!
   trap 'kill "$TAIL" 2>/dev/null' EXIT
   trap 'exit 0' INT TERM
@@ -120,7 +146,7 @@ fi
 echo "$$" > "$HOLDER"
 # A log above 1 MB starts over: followers read only new lines, so nothing they need is lost.
 [[ -f "$EVENTS" && $(wc -c < "$EVENTS") -gt 1048576 ]] && : > "$EVENTS"
-exec > >(sm_scope_filter | tee -a "$EVENTS")
+exec > >(sm_scope_filter | tee -a "$EVENTS" | show_filter)
 
 # A non-default state dir is invisible to helpers/watch-gate.cjs (the variable lives on the
 # Monitor command, not in the hook's environment), so name it where the gate looks. Node

@@ -62,6 +62,38 @@ kill "$RUN" 2>/dev/null; wait "$RUN" 2>/dev/null; RUN=""
 sleep 0.5
 [[ -f "$T/state/collab-watch.pid" ]] && bad "the holder left its pid file on exit" || ok "the holder removes its pid file on exit"
 
+echo "5. COLLAB_WATCH_SHOW: a session is told only its topic, the log keeps everything (2026-11-12, 3D session)"
+in=$'NOTE: armed\nPR acme/3d-print-suite #4: stand\nCOMMENT acme/agent-brain https://x/pull/9 :: core\nERROR: a channel died\nFOUND: 1 new commit(s) - grandma3/LOG.md'
+out=$(COLLAB_WATCH_SHOW='3d-print|3d-printing/' bash "$CW" --show-stdin <<<"$in")
+grep -q "3d-print-suite #4" <<<"$out" && ok "a matching event passes" || bad "matching event dropped: $out"
+grep -q "agent-brain" <<<"$out" && bad "a foreign event passed the filter" || ok "a foreign event is not told"
+grep -q "^NOTE: armed" <<<"$out" && grep -q "^ERROR: a channel died" <<<"$out" && ok "NOTE and ERROR lines always pass" || bad "NOTE/ERROR dropped: $out"
+[[ "$(COLLAB_WATCH_SHOW= bash "$CW" --show-stdin <<<"$in")" == "$in" ]] && ok "no filter: every line passes" || bad "empty filter changed the stream"
+sleep 300 & FAKE=$!
+echo "$FAKE" > "$T/state/collab-watch.pid"
+COLLAB_WATCH_SHOW='3d-print' bash "$CW" > "$T/out5" 2>&1 & RUN=$!
+wait_for "$T/out5" "following its events" 50 || true
+echo "COMMENT acme/agent-brain https://x/pull/9 :: a core comment" >> "$T/state/events.log"
+echo "PR acme/3d-print-suite #5: a 3d PR" >> "$T/state/events.log"
+wait_for "$T/out5" "a 3d PR" 50 && ok "the follower tells its topic" || bad "topic event not relayed: $(cat "$T/out5")"
+grep -q "a core comment" "$T/out5" && bad "the follower told a foreign event" || ok "the follower drops a foreign event"
+grep -q "a core comment" "$T/state/events.log" && ok "the log still holds the foreign event for other sessions" || bad "log lost a line"
+kill "$RUN" 2>/dev/null; wait "$RUN" 2>/dev/null; RUN=""
+kill "$FAKE" 2>/dev/null; wait "$FAKE" 2>/dev/null; FAKE=""
+
+echo "6. a slow tail start loses no line (portability windows-latest 2026-11-12: cases 1 and 5 flaky on Git Bash)"
+mkdir -p "$T/slowbin"
+REAL_TAIL="$(command -v tail)"
+printf '#!/usr/bin/env bash\nsleep 2\nexec "%s" "$@"\n' "$REAL_TAIL" > "$T/slowbin/tail"; chmod +x "$T/slowbin/tail"
+sleep 300 & FAKE=$!
+echo "$FAKE" > "$T/state/collab-watch.pid"
+PATH="$T/slowbin:$PATH" bash "$CW" > "$T/out6" 2>&1 & RUN=$!
+wait_for "$T/out6" "following its events" 50 || true
+echo "COMMENT acme/core https://example.invalid/pull/8 :: logged before tail is up" >> "$T/state/events.log"
+wait_for "$T/out6" "logged before tail is up" 50 && ok "a line logged before tail is up still reaches the follower" || bad "line lost in the start window: $(cat "$T/out6")"
+kill "$RUN" 2>/dev/null; wait "$RUN" 2>/dev/null; RUN=""
+kill "$FAKE" 2>/dev/null; wait "$FAKE" 2>/dev/null; FAKE=""
+
 echo
 echo "$((checks - fails))/$checks passed"
 [[ $fails -eq 0 ]]
