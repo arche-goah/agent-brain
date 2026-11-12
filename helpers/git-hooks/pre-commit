@@ -32,10 +32,13 @@ run_check() {   # run_check <label> <command...>
 # 1. Instance data in a tool repo: only where the repo ships its own scanner (core, suites). The
 #    brain's watch list goes along for the names; without one the generic classes still apply.
 if [ -f "$root/scripts/leak-scan.py" ]; then
+  # The staged blobs, where the repo's copy knows the switch (a suite may ship an older one; 2026-11-12, Windows review of #511)
+  ls_args=()
+  grep -q -- '"--staged"' "$root/scripts/leak-scan.py" && ls_args=(--root "$root" --staged)
   if [ -f "$brain/.claude/rules/leak-names.json" ] && [ "$root" != "$brain" ]; then
-    LEAK_NAMES_JSON="$(cat "$brain/.claude/rules/leak-names.json")" run_check "leak-scan" "$py" "$root/scripts/leak-scan.py"
+    LEAK_NAMES_JSON="$(cat "$brain/.claude/rules/leak-names.json")" run_check "leak-scan" "$py" "$root/scripts/leak-scan.py" ${ls_args[@]+"${ls_args[@]}"}
   else
-    run_check "leak-scan" "$py" "$root/scripts/leak-scan.py"
+    run_check "leak-scan" "$py" "$root/scripts/leak-scan.py" ${ls_args[@]+"${ls_args[@]}"}
   fi
 fi
 
@@ -232,7 +235,12 @@ covers_check
 # 2026-11-12 on the macOS instance: an agent's fixture carried a literal U+FEFF, its commits passed leak-scan, and only
 # the full lint at the merge-train head found it - one more lint round. Runs in ~1 s over the repo.
 if [ -f "$root/scripts/content-guard.py" ]; then
-  run_check "content-guard" "$py" "$root/scripts/content-guard.py" --root "$root" --staged
+  # the staged blobs (Windows review of #511) where the repo's copy knows the switch, else its whole-tree read
+  if grep -q -- '"--staged"' "$root/scripts/content-guard.py"; then
+    run_check "content-guard" "$py" "$root/scripts/content-guard.py" --root "$root" --staged
+  else
+    run_check "content-guard" "$py" "$root/scripts/content-guard.py"
+  fi
 fi
 
 if [ "$fail" -ne 0 ]; then
