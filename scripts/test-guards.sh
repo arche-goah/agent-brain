@@ -437,6 +437,12 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: plain push with ':x' and --force inside the comment (control)" Bash command 'git -C /r push origin feat # MECHANISM-OK: see :notes and --force in the old log' allow
   tr_probe "mechanism-guard/core rule: +refspec before a comment" Bash command 'git -C /r push origin +main # comment' block
   tr_probe "mechanism-guard/core rule: force before a comment" Bash command 'git -C /r push --force origin b # why' block
+  # 2026-11-12 (Windows review): a '#' inside a word is no comment - a branch may hold one (feat#1)
+  tr_probe "mechanism-guard/core rule: force after a branch with '#'" Bash command 'git -C /r push origin feat#1 --force' block
+  tr_probe "mechanism-guard/core rule: +refspec after a branch with '#'" Bash command 'git -C /r push origin wip#2 +main' block
+  tr_probe "mechanism-guard/core rule: colon delete after a branch with '#'" Bash command 'git push origin issue#5 :old' block
+  tr_probe "mechanism-guard/core rule: force before a branch with '#'" Bash command 'git -C /r push --force origin feat#1' block
+  tr_probe "mechanism-guard/core rule: --force only in a shell comment (control)" Bash command 'git push origin main # --force' allow
   # (no double quotes in these values: tr_probe writes them into JSON unescaped, and a broken JSON reads as allow)
   tr_probe "mechanism-guard/core rule: pre-push marker needs the word" Bash command 'PUSH_GUARD_OK=cleanup git -C /r push origin feat' block
   tr_probe "mechanism-guard/core rule: commit message with push and +3 (control)" Bash command "git -C /r commit -q -m 'a push is judged by the branch' -m 'Fixture +3 with a real repo' -- a.cjs" allow
