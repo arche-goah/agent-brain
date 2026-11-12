@@ -465,6 +465,61 @@ def main():
                        ("own-check", "own work with a real check"), ("own-done", "a ticked entry")):
             ok(i not in ou, f"OWN-UNCHECKED negative: {why} stays silent", out)
 
+    # MERGED-MAIN (2026-11-12, macOS instance): a check reading `core/` is red on the pin while the work is merged
+    # on core main (a train merge, not pinned). Merged work is done in the core (operator, same day): it is named
+    # as such, never as waiting; red on main as well stays red; the submodule's checkout never moves.
+    with tempfile.TemporaryDirectory() as root:
+        R = pathlib.Path(root)
+        g = lambda d, *a: subprocess.run(["git", "-C", str(d), "-c", "user.email=t@t", "-c", "user.name=t", *a],
+                                         check=True, capture_output=True, text=True).stdout.strip()
+        O, W, P = R / "origin.git", R / "work", R / "core"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(O)], check=True)
+        subprocess.run(["git", "clone", "-q", str(O), str(W)], check=True, capture_output=True)
+        (W / "base.md").write_text("base\n", encoding="utf-8")
+        g(W, "add", "base.md")
+        g(W, "commit", "-q", "--no-verify", "-m", "base")
+        g(W, "push", "-q", "--no-verify", "origin", "HEAD:main")
+        subprocess.run(["git", "clone", "-q", str(O), str(P)], check=True, capture_output=True)
+        pinned = g(P, "rev-parse", "HEAD")
+        (W / "feature.md").write_text("new-flag\n", encoding="utf-8")
+        g(W, "add", "feature.md")
+        g(W, "commit", "-q", "--no-verify", "-m", "merged on main")
+        g(W, "push", "-q", "--no-verify", "origin", "HEAD:main")
+        merged = g(W, "rev-parse", "HEAD")
+        (R / "elsewhere").mkdir()
+        (R / "docs").mkdir()
+        (R / ".claude" / "rules").mkdir(parents=True)
+        json.dump({"ledgers": ["docs/m.md"]}, open(R / ".claude" / "rules" / "ledgers.json", "w", encoding="utf-8"))
+        (R / "docs" / "m.md").write_text(
+            "- [ ] **merged, not pinned** — derived (2026-11-12)\n  id: on-main\n  check: grep -q new-flag core/feature.md\n\n"
+            f"- [ ] **ancestor on main** — derived (2026-11-12)\n  id: on-main-git\n  check: git -C core merge-base --is-ancestor {merged} HEAD\n\n"
+            "- [ ] **not built anywhere** — derived (2026-11-12)\n  id: nowhere\n  check: test -f core/never-built\n\n"
+            "- [ ] **not the core** — derived (2026-11-12)\n  id: not-core\n  check: test -f elsewhere/feature.md\n\n"
+            "- [x] **ticked, merged on main** — derived (2026-11-12)\n  id: ticked-on-main\n  check: grep -q new-flag core/feature.md\n\n"
+            "- [x] **ticked, gone everywhere** — derived (2026-11-12)\n  id: ticked-nowhere\n  check: test -f core/never-built\n",
+            encoding="utf-8")
+        rc, out = run(root, "--brief")
+        mm = next((l for l in out.splitlines() if "merged in core main, not pinned" in l), "")
+        reg = next((l for l in out.splitlines() if "whose check fails" in l), "")
+        ok("on-main" in mm and "on-main-git" in mm and mm.startswith("!! ledger: 2 "),
+           "MERGED-MAIN: red on the pin, green on core main (a file check and a git -C core check)", out)
+        ok("nowhere" not in mm and "not-core" not in mm, "MERGED-MAIN negative: red on main too / not a core check stays out", out)
+        ok("waiting" not in mm and "on-main" not in next((l for l in out.splitlines() if "done but still open" in l), ""),
+           "MERGED-MAIN is its own state, neither DONE-OPEN nor waiting", out)
+        ok("ticked-nowhere" in reg and "ticked-on-main" not in reg,
+           "a ticked entry green on main is not REGRESSED; red on main too still is", out)
+        ok(g(P, "rev-parse", "HEAD") == pinned, "the submodule's checkout did not move")
+        ok(len(g(P, "worktree", "list").splitlines()) == 1
+           and not list((R / ".claude-state").glob("ledger-reconcile-main-*")), "the temporary worktree is removed")
+        res = json.loads((R / ".claude-state" / "ledger-reconcile.json").read_text(encoding="utf-8"))
+        ok({"on-main", "on-main-git"} <= {d.get("id") for d in res.get("done_open", [])},
+           "MERGED-MAIN rows reach ledger-reconcile.json for open-items (tick it)", json.dumps(res))
+        # Once the pin carries it, the same entry is DONE-OPEN (it was red before: seen memory, not UNPROVEN).
+        g(P, "pull", "-q", "--ff-only", "origin", "main")
+        rc, out = run(root, "--brief")
+        ok("merged in core main" not in out and "on-main" in next((l for l in out.splitlines() if "done but still open" in l), ""),
+           "after the pin moved: DONE-OPEN, no longer MERGED-MAIN", out)
+
     print()
     if fails:
         print(f"ledger-reconcile-test: {fails} FAILURE(S)")
