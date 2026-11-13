@@ -412,7 +412,7 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: a gate on a quoted path with a space through a pipe" Bash command "python3 \"C:/x y/brain/core/scripts/leak-scan.py\" | tail -5" block
   tr_probe "mechanism-guard/core rule: a gate with an interpreter flag through a pipe" Bash command "python3 -I core/scripts/leak-scan.py | tail -5" block
   tr_probe "mechanism-guard/core rule: a gate on its own line through a pipe" Bash command "cd /r
-python3 core/scripts/leak-scan.py | grep FAIL" block
+bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: stderr merged, exit code read alone" Bash command "python3 core/scripts/leak-scan.py 2>&1; echo exit=\$?" allow
   # 2026-11-07, ported from instance data: plugin update without a marketplace refresh
   tr_probe "mechanism-guard/core rule: plugin update alone" Bash command "claude plugin update suite@market" block
