@@ -413,6 +413,7 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: a gate with an interpreter flag through a pipe" Bash command "python3 -I core/scripts/leak-scan.py | tail -5" block
   tr_probe "mechanism-guard/core rule: a gate on its own line through a pipe" Bash command "cd /r
 bash core/scripts/handover-gate.sh | grep FAIL" block
+  tr_probe "mechanism-guard/core rule: a gate through bash's |& (stderr merged)" Bash command "python3 core/scripts/leak-scan.py |& tail -5" block
   tr_probe "mechanism-guard/core rule: stderr merged, exit code read alone" Bash command "python3 core/scripts/leak-scan.py 2>&1; echo exit=\$?" allow
   # same class, the two foreground-wait rows: a quoted script path with a space
   tr_probe "mechanism-guard/core rule: ci-watch on a quoted path with a space in the foreground" Bash command "bash \"C:/x y/brain/core/scripts/ci-watch.sh\" pr o/r 5" block
