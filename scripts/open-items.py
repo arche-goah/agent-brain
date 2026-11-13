@@ -184,7 +184,7 @@ def requests(repo, label=""):
 PR_QUERY = """query($q: String!, $after: String) { viewer { login }
   search(query: $q, type: ISSUE, first: 50, after: $after) { issueCount
   pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
-    number title isDraft createdAt body headRefName author { login } repository { name }
+    number title isDraft mergeable createdAt body headRefName author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
     latestReviews(first: 20) { nodes { author { login } submittedAt body } }
     commits(last: 1) { nodes { commit { oid committedDate } } }
@@ -238,6 +238,38 @@ def shared_owners(repo):
         if isinstance(entry, dict) and entry.get("owner") and entry.get("source"):
             out[name] = entry["owner"]
     return out
+
+
+# The ONE reader of an OS hand review (helpers/os-review.cjs, shared with merge-request-gate and
+# release-preflight): a second reader here would disagree with the gate that holds the merge.
+OS_REVIEW = Path(__file__).resolve().parent.parent / "helpers" / "os-review.cjs"
+MERGE_READY_OS = ("macOS", "Windows")
+
+
+def hand_review(text, os_name, head):
+    """True when `text` is a hand review that says OK for `os_name` at `head` (os-review.cjs CLI).
+    No node, no reader, a timeout: False - the PR then keeps its old reading, never a false 'ours'."""
+    try:
+        r = subprocess.run(["node", str(OS_REVIEW), os_name, "--head", head], input=text,
+                           capture_output=True, text=True, encoding="utf-8", timeout=10)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def merge_ready(p, oid):
+    """Another login's PR that is ready to merge: not a draft, GitHub reads it MERGEABLE, and a hand
+    review says OK at its head for macOS AND Windows. collab-watch step 4 (operator decision
+    2026-10-11): such a PR is merged by whoever comes first - so it is our move, not a wait on its
+    author. Measured 2026-11-13 on the macOS instance: grandma3-suite #204 had both OS OKs at
+    `4cafe69` (2026-10-25, 2026-11-12), CI green, CLEAN, and printed as "waiting on" its author in
+    every session start; the ledger repeated "review pending" for a review that had stood 19 days."""
+    head = (oid or "")[:7]
+    if p.get("isDraft") or p.get("mergeable") != "MERGEABLE" or not head or not OS_REVIEW.exists():
+        return False
+    nodes = (p.get("comments") or {}).get("nodes", []) + (p.get("latestReviews") or {}).get("nodes", [])
+    texts = [t for t in [p.get("body") or ""] + [n.get("body") or "" for n in nodes] if head in t]
+    return all(any(hand_review(t, o, head) for t in texts) for o in MERGE_READY_OS)
 
 
 def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset(), parties_repo=None):
@@ -299,6 +331,14 @@ def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset(), parties_re
             seen = [last] + [c.get("createdAt") or "" for c in comments if ours(c)]
             if not (theirs and max(theirs) > max(seen)):
                 return owner, f"{p['repository']['name']} is {owner}'s to merge, our own PR waits on that"
+        return None
+    # Ready to merge (both OS OKs at the head, MERGEABLE): whoever comes first merges, so the move
+    # is ours - unless another instance behind OUR login is the repo's merger (the core case), whose
+    # move it stays. A merger of another login does not hold it: its word is for the stable pin.
+    sibling_merger = bool(owner_key and my_key and owner_key != my_key
+                          and owner_login and owner_login.lower() == me.lower())
+    if not sibling_merger and merge_ready(p, oid):
+        p["_merge_ready"] = True
         return None
     if last and any(t > last for t in touched):
         return author, "we reviewed or commented after the last commit"
@@ -429,6 +469,8 @@ def prs(owner, owners, repos=(None,), extra=()):
         author = (p.get("author") or {}).get("login", "?")
         # parties.json lives in the first channel, the shared memory itself.
         waiting, note = ball(p, me, owners, shas, same_os, repos[0]), ""
+        if p.get("_merge_ready"):
+            note = "macOS and Windows OK at the head, MERGEABLE: merge it, whoever comes first (CI first)"
         if waiting is None and ref in asked:
             # Our own open request names this PR: its addressee moves - for one day. After that the
             # PR is ours again with the reminder (operator rule 2026-10-21: no answer within a day =
