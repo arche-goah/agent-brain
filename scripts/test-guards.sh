@@ -414,6 +414,9 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: a gate on its own line through a pipe" Bash command "cd /r
 bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: stderr merged, exit code read alone" Bash command "python3 core/scripts/leak-scan.py 2>&1; echo exit=\$?" allow
+  # same class, the two foreground-wait rows: a quoted script path with a space
+  tr_probe "mechanism-guard/core rule: ci-watch on a quoted path with a space in the foreground" Bash command "bash \"C:/x y/brain/core/scripts/ci-watch.sh\" pr o/r 5" block
+  tr_probe "mechanism-guard/core rule: wait script on a quoted path with a space in the foreground" Bash command "bash \"C:/x y/brain/core/scripts/wait-mcp-reconnect.sh\"" block
   # 2026-11-07, ported from instance data: plugin update without a marketplace refresh
   tr_probe "mechanism-guard/core rule: plugin update alone" Bash command "claude plugin update suite@market" block
   tr_probe "mechanism-guard/core rule: plugin update after a separator" Bash command "cd /r && claude plugin update x@m" block
