@@ -185,7 +185,7 @@ def requests(repo, label=""):
 PR_QUERY = """query($q: String!, $after: String) { viewer { login }
   search(query: $q, type: ISSUE, first: 50, after: $after) { issueCount
   pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
-    number title isDraft mergeable createdAt body headRefName author { login } repository { name }
+    number title isDraft mergeStateStatus createdAt body headRefName author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
     latestReviews(first: 20) { nodes { author { login } submittedAt body } }
     commits(last: 1) { nodes { commit { oid committedDate } } }
@@ -301,7 +301,7 @@ def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset(), parties_re
             if not (theirs and max(theirs) > max(seen)):
                 return owner, f"{p['repository']['name']} is {owner}'s to merge, our own PR waits on that"
         return None
-    # Ready to merge (both OS OKs at the head, MERGEABLE): whoever comes first merges, so the move
+    # Ready to merge (both OS OKs at the head, merge state CLEAN): whoever comes first merges, so the move
     # is ours - unless another instance behind OUR login is the repo's merger (the core case), whose
     # move it stays. A merger of another login does not hold it: its word is for the stable pin.
     sibling_merger = bool(owner_key and my_key and owner_key != my_key
@@ -439,7 +439,7 @@ def prs(owner, owners, repos=(None,), extra=()):
         # parties.json lives in the first channel, the shared memory itself.
         waiting, note = ball(p, me, owners, shas, same_os, repos[0]), ""
         if p.get("_merge_ready"):
-            note = "macOS and Windows OK at the head, MERGEABLE: merge it, whoever comes first (CI first)"
+            note = "macOS and Windows OK at the head, merge state CLEAN: merge it, whoever comes first (CI first)"
         if waiting is None and ref in asked:
             # Our own open request names this PR: its addressee moves - for one day. After that the
             # PR is ours again with the reminder (operator rule 2026-10-21: no answer within a day =

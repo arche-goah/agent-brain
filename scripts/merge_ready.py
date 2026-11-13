@@ -9,7 +9,7 @@ Windows OK (2026-11-12) at the same head, CI green, CLEAN — and both readers p
 as "waiting on" its author, pr-ball said nothing (no commit since our last look). collab-watch
 step 4 (operator decision 2026-10-11): when both sides said yes, whoever comes first merges.
 
-Ready = not a draft, GitHub reads it MERGEABLE, and a hand review says OK at its head for macOS
+Ready = not a draft, GitHub's merge state is CLEAN (nothing blocks the merge), and a hand review says OK at its head for macOS
 AND Windows. The OS verdict is read by helpers/os-review.cjs (its CLI), the one reader the merge
 gate and release-preflight use. No node, no reader, a timeout: not ready — the PR keeps its old
 reading, never a false "ours".
@@ -32,9 +32,12 @@ def hand_review(text, os_name, head):
 
 
 def merge_ready(pr, oid, review_key="latestReviews"):
-    """`pr` = a GraphQL PullRequest node (isDraft, mergeable, body, comments, `review_key`)."""
+    """`pr` = a GraphQL PullRequest node (isDraft, mergeStateStatus, body, comments, `review_key`).
+    CLEAN, not `mergeable`: measured 2026-11-13 on core #529 - `mergeable: MERGEABLE` while
+    `mergeStateStatus: BLOCKED` (required macOS/Windows checks run only at a train head); a merge
+    there is refused by the branch rules, so "merge it" would be a false move."""
     head = (oid or "")[:7]
-    if pr.get("isDraft") or pr.get("mergeable") != "MERGEABLE" or not head or not OS_REVIEW.exists():
+    if pr.get("isDraft") or pr.get("mergeStateStatus") != "CLEAN" or not head or not OS_REVIEW.exists():
         return False
     nodes = ((pr.get("comments") or {}).get("nodes") or []) + ((pr.get(review_key) or {}).get("nodes") or [])
     texts = [t for t in [pr.get("body") or ""] + [(n or {}).get("body") or "" for n in nodes] if head in t]

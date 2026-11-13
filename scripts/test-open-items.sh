@@ -220,22 +220,22 @@ has "[PR|ai]" "$(line 'core#15 ' "$(instrun i4 ws)")" && ok "negative control: a
 rm -f "$T/repo/repo-owners.json"
 # Ready to merge (measured 2026-11-13, grandma3-suite #204): another login's PR in a repo the
 # owners map gives to that login, our look after its last commit, macOS AND Windows OK at the head,
-# MERGEABLE - whoever comes first merges (collab-watch step 4), so it is our move, not a wait.
+# CLEAN - whoever comes first merges (collab-watch step 4), so it is our move, not a wait.
 # Negative controls: only one OS at the head, a draft, an OK at an older head.
 mkdir -p "$T/core/helpers"; cp "$(dirname "$SRC")/../helpers/os-review.cjs" "$T/core/helpers/os-review.cjs"
 readyrun() { # $1 session, $2 isDraft, $3 Windows comment sha, $4 mergeable
   local cm="{\"author\":{\"login\":\"me\"},\"createdAt\":\"2026-10-07T10:00:00Z\",\"body\":\"<!-- instance-key: $KMAC -->\\n**macOS OK at head \`abc1234\`**\"}"
   local cw="{\"author\":{\"login\":\"me\"},\"createdAt\":\"2026-10-08T10:00:00Z\",\"body\":\"<!-- instance-key: $KWS -->\\nWindows OK at head $3.\"}"
-  printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[{"number":18,"title":"t18","isDraft":%s,"mergeable":"%s","createdAt":"2026-10-06T10:00:00Z","body":"","author":{"login":"peer"},"repository":{"name":"owned"},"reviewRequests":{"nodes":[]},"latestReviews":{"nodes":[]},"commits":{"nodes":[{"commit":{"oid":"abc1234def","committedDate":"2026-10-06T11:00:00Z"}}]},"comments":{"nodes":[%s,%s]}}]}}}\n' \
+  printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[{"number":18,"title":"t18","isDraft":%s,"mergeStateStatus":"%s","createdAt":"2026-10-06T10:00:00Z","body":"","author":{"login":"peer"},"repository":{"name":"owned"},"reviewRequests":{"nodes":[]},"latestReviews":{"nodes":[]},"commits":{"nodes":[{"commit":{"oid":"abc1234def","committedDate":"2026-10-06T11:00:00Z"}}]},"comments":{"nodes":[%s,%s]}}]}}}\n' \
     "$2" "$4" "$cm" "$cw" > "$T/prs-ready.json"
   OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-ready.json")" SHARED_MEMORY_SELF=mac OWNER=me run "$1"
 }
 if command -v node >/dev/null 2>&1; then
-  r=$(line 'owned#18 ' "$(readyrun r1 false abc1234 MERGEABLE)")
-  has "[PR|ai]" "$r" && has "merge it, whoever comes first" "$r" && ok "both OS OK at the head, MERGEABLE = our move to merge" || bad "merge-ready: $r"
-  has "waiting on peer" "$(line 'owned#18 ' "$(readyrun r2 false 0000000 MERGEABLE)")" && ok "negative control: Windows OK at an older head = still waiting" || bad "older head: $(line 'owned#18 ' "$(readyrun r2 false 0000000 MERGEABLE)")"
-  has "waiting on peer" "$(line 'owned#18 ' "$(readyrun r3 true abc1234 MERGEABLE)")" && ok "negative control: a draft = still waiting" || bad "draft: $(line 'owned#18 ' "$(readyrun r3 true abc1234 MERGEABLE)")"
-  has "waiting on peer" "$(line 'owned#18 ' "$(readyrun r4 false abc1234 CONFLICTING)")" && ok "negative control: CONFLICTING = still waiting" || bad "conflict: $(line 'owned#18 ' "$(readyrun r4 false abc1234 CONFLICTING)")"
+  r=$(line 'owned#18 ' "$(readyrun r1 false abc1234 CLEAN)")
+  has "[PR|ai]" "$r" && has "merge it, whoever comes first" "$r" && ok "both OS OK at the head, CLEAN = our move to merge" || bad "merge-ready: $r"
+  has "waiting on peer" "$(line 'owned#18 ' "$(readyrun r2 false 0000000 CLEAN)")" && ok "negative control: Windows OK at an older head = still waiting" || bad "older head: $(line 'owned#18 ' "$(readyrun r2 false 0000000 CLEAN)")"
+  has "waiting on peer" "$(line 'owned#18 ' "$(readyrun r3 true abc1234 CLEAN)")" && ok "negative control: a draft = still waiting" || bad "draft: $(line 'owned#18 ' "$(readyrun r3 true abc1234 CLEAN)")"
+  has "waiting on peer" "$(line 'owned#18 ' "$(readyrun r4 false abc1234 BLOCKED)")" && ok "negative control: BLOCKED = still waiting" || bad "conflict: $(line 'owned#18 ' "$(readyrun r4 false abc1234 BLOCKED)")"
 else
   echo "  SKIP merge-ready cases: no node on this machine (the reader is os-review.cjs)"
 fi

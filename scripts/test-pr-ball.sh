@@ -208,16 +208,16 @@ unlimited="$(grep -rnE 'gh pr list' "$ROOT/helpers" "$ROOT/scripts" --include='*
   | grep -av -- '--limit' | grep -avE '^[^:]+:[0-9]+:\s*#|test-|pr-list\b|\| \.\.\.' || true)"
 [ -z "$unlimited" ] && ok "every gh pr list names its --limit" || bad "gh pr list without --limit (default 30 cuts silently): $unlimited"
 # Ready to merge (2026-11-13, a suite PR with macOS and Windows OK at one head stood unnamed for 19 days):
-# another login's PR, our look after its last commit, both OS OKs at the head, MERGEABLE = a move.
-# Negative controls: only one OS at the head; CONFLICTING. The reader is helpers/os-review.cjs (node).
+# another login's PR, our look after its last commit, both OS OKs at the head, CLEAN = a move.
+# Negative controls: only one OS at the head; BLOCKED. The reader is helpers/os-review.cjs (node).
 if command -v node >/dev/null 2>&1; then
   ready() { # $1 Windows sha, $2 mergeable
-    pr maint "{\"number\":204,\"isDraft\":false,\"mergeable\":\"$2\",\"body\":\"\",\"repository\":{\"name\":\"suite\"},\"author\":{\"login\":\"lead\"},\"commits\":{\"nodes\":[{\"commit\":{\"oid\":\"abc1234def\",\"committedDate\":\"2026-09-13T16:00:00Z\"}}]},\"reviews\":{\"nodes\":[]},\"comments\":{\"nodes\":[{\"author\":{\"login\":\"maint\"},\"createdAt\":\"2026-09-13T18:00:00Z\",\"body\":\"<!-- instance-key: 1111aaaa22 -->\\n**macOS OK at head \`abc1234\`**\"},{\"author\":{\"login\":\"maint\"},\"createdAt\":\"2026-09-14T18:00:00Z\",\"body\":\"<!-- instance-key: 3333bbbb44 -->\\nWindows OK at head $1.\"}]},\"reviewRequests\":{\"nodes\":[]}}"
+    pr maint "{\"number\":204,\"isDraft\":false,\"mergeStateStatus\":\"$2\",\"body\":\"\",\"repository\":{\"name\":\"suite\"},\"author\":{\"login\":\"lead\"},\"commits\":{\"nodes\":[{\"commit\":{\"oid\":\"abc1234def\",\"committedDate\":\"2026-09-13T16:00:00Z\"}}]},\"reviews\":{\"nodes\":[]},\"comments\":{\"nodes\":[{\"author\":{\"login\":\"maint\"},\"createdAt\":\"2026-09-13T18:00:00Z\",\"body\":\"<!-- instance-key: 1111aaaa22 -->\\n**macOS OK at head \`abc1234\`**\"},{\"author\":{\"login\":\"maint\"},\"createdAt\":\"2026-09-14T18:00:00Z\",\"body\":\"<!-- instance-key: 3333bbbb44 -->\\nWindows OK at head $1.\"}]},\"reviewRequests\":{\"nodes\":[]}}"
   }
-  expect_line "merge-ready: both OS OK at the head, MERGEABLE = a merge move" "$(ready abc1234 MERGEABLE)" \
-    "suite#204 merge - macOS and Windows OK at the head, MERGEABLE"
-  expect_silent "negative control: Windows OK at an older head stays silent" "$(ready 0000000 MERGEABLE)"
-  expect_silent "negative control: CONFLICTING stays silent" "$(ready abc1234 CONFLICTING)"
+  expect_line "merge-ready: both OS OK at the head, CLEAN = a merge move" "$(ready abc1234 CLEAN)" \
+    "suite#204 merge - macOS and Windows OK at the head, merge state CLEAN"
+  expect_silent "negative control: Windows OK at an older head stays silent" "$(ready 0000000 CLEAN)"
+  expect_silent "negative control: BLOCKED stays silent" "$(ready abc1234 BLOCKED)"
 else
   echo "  SKIP merge-ready cases: no node on this machine (the reader is os-review.cjs)"
 fi
