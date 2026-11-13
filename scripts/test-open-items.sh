@@ -25,6 +25,7 @@ cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
 cp "$(dirname "$SRC")/shared_channels.py" "$T/core/scripts/shared_channels.py"
 cp "$(dirname "$SRC")/ledger-reconcile.py" "$T/core/scripts/ledger-reconcile.py"
 cp "$(dirname "$SRC")/eco_owner.py" "$T/core/scripts/eco_owner.py"
+cp "$(dirname "$SRC")/merge_ready.py" "$T/core/scripts/merge_ready.py"
 # The work-ledger registry: empty here (registered nothing on purpose); the ledger cases below
 # use their own root.
 mkdir -p "$T/root/.claude/rules"; printf '%s\n' '{"ledgers": []}' > "$T/root/.claude/rules/ledgers.json"

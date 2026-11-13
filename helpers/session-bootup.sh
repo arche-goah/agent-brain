@@ -336,7 +336,7 @@ fi
 if [[ -n "$BOOT_BG" && -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
   gh api graphql -f q="user:$eco_owner is:pr is:open archived:false" -f query='query($q: String!) { viewer { login }
     search(query: $q, type: ISSUE, first: 100) { issueCount nodes { ... on PullRequest {
-      number isDraft body repository { name } author { login }
+      number isDraft mergeable body repository { name } author { login }
       commits(last: 1) { nodes { commit { oid committedDate } } }
       reviews(last: 30) { nodes { author { login } state submittedAt body } }
       comments(last: 30) { nodes { author { login } createdAt body } }

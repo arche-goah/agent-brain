@@ -38,6 +38,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from instance_key import is_self, key_in, self_key  # noqa: E402
 from shared_answers import checked_head, own_shared_shas, sibling_keys_same_os  # noqa: E402
+from merge_ready import merge_ready  # noqa: E402  (the same answer open-items.py gives)
 
 
 # The PR body's own wait mark, the same form open-items.py reads (WAIT_MARK there):
@@ -110,6 +111,11 @@ def moves(data, now, my_key="", shared_shas=frozenset()):
                                                     if mine(c)] if t]
                 if theirs and (not seen or max(theirs) > max(seen)):
                     since, kind = max(theirs), "yours - reply since your last commit"
+        elif login(pr.get("author")) != me and merge_ready(pr, head.get("oid"), review_key="reviews"):
+            # Another login's PR with macOS and Windows OK at its head, MERGEABLE: whoever comes
+            # first merges (collab-watch step 4) - a move, not silence (measured 2026-11-13: a
+            # suite PR with both OKs at one head stood unnamed for 19 days, see merge_ready.py).
+            since, kind = last_commit, "merge - macOS and Windows OK at the head, MERGEABLE"
         else:
             my_reviews = [ts(r["submittedAt"]) for r in reviews if mine(r)]
             touched = my_reviews + [ts(c.get("createdAt")) for c in nodes(pr, "comments")

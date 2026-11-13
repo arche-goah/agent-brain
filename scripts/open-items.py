@@ -92,6 +92,7 @@ from instance_key import is_self, key_for, key_in, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
 from shared_answers import checked_head, default_repo, own_open_requests, own_shared_shas, sibling_keys_same_os  # noqa: E402
 import shared_channels  # noqa: E402
+from merge_ready import merge_ready  # noqa: E402  (one answer for open-items and pr-ball)
 OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*"
                   r"\(([^()]+\.md|(?:[\w.-]+/)?LOG@\d{4}-\d{2}-\d{2}#\d+)\)\s*$")
@@ -238,38 +239,6 @@ def shared_owners(repo):
         if isinstance(entry, dict) and entry.get("owner") and entry.get("source"):
             out[name] = entry["owner"]
     return out
-
-
-# The ONE reader of an OS hand review (helpers/os-review.cjs, shared with merge-request-gate and
-# release-preflight): a second reader here would disagree with the gate that holds the merge.
-OS_REVIEW = Path(__file__).resolve().parent.parent / "helpers" / "os-review.cjs"
-MERGE_READY_OS = ("macOS", "Windows")
-
-
-def hand_review(text, os_name, head):
-    """True when `text` is a hand review that says OK for `os_name` at `head` (os-review.cjs CLI).
-    No node, no reader, a timeout: False - the PR then keeps its old reading, never a false 'ours'."""
-    try:
-        r = subprocess.run(["node", str(OS_REVIEW), os_name, "--head", head], input=text,
-                           capture_output=True, text=True, encoding="utf-8", timeout=10)
-        return r.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def merge_ready(p, oid):
-    """Another login's PR that is ready to merge: not a draft, GitHub reads it MERGEABLE, and a hand
-    review says OK at its head for macOS AND Windows. collab-watch step 4 (operator decision
-    2026-10-11): such a PR is merged by whoever comes first - so it is our move, not a wait on its
-    author. Measured 2026-11-13 on the macOS instance: grandma3-suite #204 had both OS OKs at
-    `4cafe69` (2026-10-25, 2026-11-12), CI green, CLEAN, and printed as "waiting on" its author in
-    every session start; the ledger repeated "review pending" for a review that had stood 19 days."""
-    head = (oid or "")[:7]
-    if p.get("isDraft") or p.get("mergeable") != "MERGEABLE" or not head or not OS_REVIEW.exists():
-        return False
-    nodes = (p.get("comments") or {}).get("nodes", []) + (p.get("latestReviews") or {}).get("nodes", [])
-    texts = [t for t in [p.get("body") or ""] + [n.get("body") or "" for n in nodes] if head in t]
-    return all(any(hand_review(t, o, head) for t in texts) for o in MERGE_READY_OS)
 
 
 def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset(), parties_repo=None):
