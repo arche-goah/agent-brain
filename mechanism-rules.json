@@ -134,7 +134,7 @@
       "instead": "`python3 core/scripts/product-sources.py open <order-list.csv>` opens the tabs after the check. Reading the browser (`osascript -e 'tell application \"Safari\" to get URL of ...'`) stays free."
     },
     {
-      "pattern": "(?:^|[;&|]\\s*)(?:(?:bash|sh|python3|python)\\s+)?[^\\s;&|]*(handover-gate|effect-check|leak-scan|suite-check|skill-lint|dep-lint|memory-lint|ecosystem-sync|workflow-parse-check|parallel-sessions|brain-scan\\.sh)[^|;&]*\\|\\s*(tail|head|grep|tee|cut|sed|awk)\\b",
+      "pattern": "(?:^|[\\n;&|(]\\s*)(?:(?:bash|sh|python3|python|node)\\s+(?:-\\S+\\s+)*)?(?:\"[^\"\\n]*|'[^'\\n]*|[^\\s;&|]*)(handover-gate|effect-check|leak-scan|suite-check|skill-lint|dep-lint|memory-lint|ecosystem-sync|workflow-parse-check|parallel-sessions|brain-scan\\.sh)(?:[^|;&\\n]|\\d?>&\\d?)*\\|\\s*(tail|head|grep|tee|cut|sed|awk)\\b",
       "was": "a core gate or check run through a pipe (`leak-scan.py | tail`) - the pipeline's exit code is the LAST command's, so a red gate reads green. Measured 2026-08-04 on the Windows instance: a red gate slipped through into a commit and a push; ported 2026-11-07 from that instance's rule data (in use since 2026-08-04, command position anchored 2026-08-08 so reading a script with `git show ... | sed` passes)",
       "instead": "Run the gate without a pipe and read its exit code on its own (`python3 core/scripts/leak-scan.py; echo \"exit=$?\"`), or write the output to a file first and filter that."
     },
