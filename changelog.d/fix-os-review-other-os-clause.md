@@ -8,5 +8,6 @@
   of grandma3-suite each (120 PRs, 5289 lines, old vs new reader): 5 lines flip, all from OK to no OK, all an OS named in
   the evidence of the other system's OK ("Since the Windows OK at `02b04be` …", "With the Windows OK …", "Windows plugin
   cache … pass", "Windows check … requested"); 0 lines lose a real OK. Fixture: `scripts/test-merge-request-gate.sh`
-  +2 (the incident blocks, red against main's reader; the same OK plus a macOS line of its own passes);
+  +3 (the incident blocks, red against main's reader; the same OK plus a macOS line of its own passes; a labelled
+  second verdict in the same line, "macOS: all 256 pass", stays a macOS OK — the macOS review's edge);
   `release-preflight-test.sh` 61/61 unchanged.

@@ -75,6 +75,8 @@ spr 'feat: x' '["Windows OK at head `abc1234` - npm test rc 0 (257 tests, 256 pa
 sprobe "the incident: a Windows OK naming macOS in its evidence is no macOS OK" "$M" block "$D"
 spr 'feat: x' '["Windows OK at head `abc1234` - npm test rc 0.", "macOS: tests pass at head `abc1234`"]'
 sprobe "control: the same Windows OK plus a macOS line of its own" "$M" allow "$D"
+spr 'feat: x' '["Windows OK at head `abc1234`, macOS: all 256 pass at head `abc1234`"]'
+sprobe "a labelled second verdict in the same line (macOS:) stays a macOS OK" "$M" allow "$D"
 
 # 2026-11-06 (operator, question tool: "Ja, auf solche Suiten ausweiten"): for a repo the instance lists in
 # .claude/rules/os-proof.json, a green CI job named for the OS counts as that OS's check at the head.

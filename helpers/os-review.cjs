@@ -128,10 +128,15 @@ function saysOk(line, os) {
     if (statementAt(rest, os)) {
       const end = part.search(CLAUSE_END);
       if (!NOT_RX.test(end < 0 ? part : part.slice(0, end))) return true;
-    } else if (OK_RX.test(part) && !NOT_RX.test(part) && !otherStatementBefore(clean, os, m.index)) return true;
+    } else if (OK_RX.test(part) && !NOT_RX.test(part)
+      && (OWN_LABEL_RX.test(rest.slice(m[0].length)) || !otherStatementBefore(clean, os, m.index))) return true;
   }
   return false;
 }
+
+// "macOS: all 256 pass" — an OS name labelled with a colon opens its own part even after another system's OK
+// (macOS review of #529: "Windows OK at abc1234, macOS: all 256 pass" must stay a macOS OK).
+const OWN_LABEL_RX = /^[*_]*\s*:/;
 
 /** Does another system's statement ("Windows OK at head …") open before `idx` in `s`? Then a mention of `os` after it
  * is evidence inside that verdict ("… the same totals as macOS"), not a verdict for `os`. Measured 2026-11-13 on
