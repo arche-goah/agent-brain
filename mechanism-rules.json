@@ -9,7 +9,7 @@
       "needs_operator_word": true
     },
     {
-      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?ci-watch\\.sh\\s+(?:pr|ref)\\b|gh\\s+run\\s+watch\\b|gh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
+      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:(?:bash|sh|zsh)\\s+)?(?:\"[^\"\\n]*/|'[^'\\n]*/|\\S*/)?ci-watch\\.sh[\"']?\\s+(?:pr|ref)\\b|gh\\s+run\\s+watch\\b|gh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
       "foreground_only": true,
       "was": "waiting for CI in the foreground - a core CI run takes about 15 minutes and holds the whole session; several PRs in a row cost hours",
       "instead": "Start the same command with Bash run_in_background and keep working; the verdict arrives as a notification (Working Rule #9). Not through Monitor: the harness ends a Monitor after 30 min at most, and a core CI run takes about 36 min (2026-10-26). Several PRs: one detached watch each, in parallel."
@@ -33,7 +33,7 @@
       "instead": "Start the loop detached (Bash run_in_background, or Monitor) and keep working; its end arrives as a notification. A background job you already started notifies on its own - no loop needed (Working Rule #13)."
     },
     {
-      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
+      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\"[^\"\\n]*/|'[^'\\n]*/|\\S*/)?(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
       "foreground_only": true,
       "was": "a waiting script (wait-*.sh, *-watch.sh: reconnect, link, collab, repo-activity, shared-memory watches) in the foreground - the class sweep of the wait-loop rule (2026-10-26): these scripts are the same wait under a name, and only ci-watch.sh was listed",
       "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A help call passes, and so do the `status`/`disarm` subcommands of the two scripts that have them (repo-activity-watch.sh, shared-memory-watch.sh) - collab-watch.sh has none: `collab-watch.sh status` ARMS the watch (measured 2026-10-26)."
@@ -134,7 +134,7 @@
       "instead": "`python3 core/scripts/product-sources.py open <order-list.csv>` opens the tabs after the check. Reading the browser (`osascript -e 'tell application \"Safari\" to get URL of ...'`) stays free."
     },
     {
-      "pattern": "(?:^|[;&|]\\s*)(?:(?:bash|sh|python3|python)\\s+)?[^\\s;&|]*(handover-gate|effect-check|leak-scan|suite-check|skill-lint|dep-lint|memory-lint|ecosystem-sync|workflow-parse-check|parallel-sessions|brain-scan\\.sh)[^|;&]*\\|\\s*(tail|head|grep|tee|cut|sed|awk)\\b",
+      "pattern": "(?:^|[\\n;&|(]\\s*)(?:(?:bash|sh|python3|python|node)\\s+(?:-\\S+\\s+)*)?(?:\"[^\"\\n]*|'[^'\\n]*|[^\\s;&|]*)(handover-gate|effect-check|leak-scan|suite-check|skill-lint|dep-lint|memory-lint|ecosystem-sync|workflow-parse-check|parallel-sessions|brain-scan\\.sh)(?:[^|;&\\n]|\\d?>&\\d?)*\\|&?\\s*(tail|head|grep|tee|cut|sed|awk)\\b",
       "was": "a core gate or check run through a pipe (`leak-scan.py | tail`) - the pipeline's exit code is the LAST command's, so a red gate reads green. Measured 2026-08-04 on the Windows instance: a red gate slipped through into a commit and a push; ported 2026-11-07 from that instance's rule data (in use since 2026-08-04, command position anchored 2026-08-08 so reading a script with `git show ... | sed` passes)",
       "instead": "Run the gate without a pipe and read its exit code on its own (`python3 core/scripts/leak-scan.py; echo \"exit=$?\"`), or write the output to a file first and filter that."
     },
