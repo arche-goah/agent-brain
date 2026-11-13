@@ -70,6 +70,11 @@ spr 'feat: x' '["Windows OK at head `abc1234`", "macOS: tests pass at head `9999
 sprobe "suite, macOS OK only at an OLDER head" "$M" block "$D"
 spr 'feat: x' '["Windows OK at head `abc1234`; macOS check wanted, macOS unchecked"]'
 sprobe "suite, macOS named only as open" "$M" block "$D"
+# 2026-11-13 (grandma3-suite #253): an OS named in the evidence of ANOTHER system's OK is no verdict for it.
+spr 'feat: x' '["Windows OK at head `abc1234` - npm test rc 0 (257 tests, 256 pass - the same totals as macOS); CI green at this head."]'
+sprobe "the incident: a Windows OK naming macOS in its evidence is no macOS OK" "$M" block "$D"
+spr 'feat: x' '["Windows OK at head `abc1234` - npm test rc 0.", "macOS: tests pass at head `abc1234`"]'
+sprobe "control: the same Windows OK plus a macOS line of its own" "$M" allow "$D"
 
 # 2026-11-06 (operator, question tool: "Ja, auf solche Suiten ausweiten"): for a repo the instance lists in
 # .claude/rules/os-proof.json, a green CI job named for the OS counts as that OS's check at the head.
