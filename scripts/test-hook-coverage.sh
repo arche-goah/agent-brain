@@ -89,6 +89,39 @@ case "$out" in
   *) bad "an expired declaration hides the duplicate";;
 esac
 rm -f "$B/.claude/rules/local-machinery.json"
+#    ... and the declaration may be keyed by the copy's PATH instead of the whole command (content
+#    review 2026-11-10: one brain keys by command, the other by file path - hook-coverage read the
+#    file itself, compared whole commands, and the path-keyed declaration was unknown to it). The
+#    answer now comes from local-machinery.py, whose key rule covers both.
+B="$T/dup-path"; make_brain "$B"; mkdir -p "$B/userhooks"; cp "$CORE/helpers/file-guard.cjs" "$B/userhooks/"
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8"))
+d["hooks"]={"PreToolUse":[{"matcher":"Write|Edit|MultiEdit","hooks":[{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/userhooks/file-guard.cjs\"","timeout":10,"onFailure":"block"}]}]}
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"file-guard.cjs runs twice"*) ok "an undeclared copy at another path is named as a duplicate (control)";;
+  *) bad "the copy at another path is not named: '$(printf '%s' "$out" | head -1)'";;
+esac
+decl() { "$PY" -c 'import json,sys; json.dump(json.loads(sys.argv[2]),open(sys.argv[1],"w",encoding="utf-8"))' "$B/.claude/rules/local-machinery.json" "$1"; }
+decl '{"instance":{"userhooks/file-guard.cjs":{"why":"guards projects outside the plugin scope"}}}'
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"file-guard.cjs runs twice"*) bad "a copy declared by its path is still named as a duplicate";;
+  *) ok "a copy declared by its path (not the whole command) is not named as a duplicate";;
+esac
+decl '{"alpha":{"userhooks/file-guard.cjs":{"until":"2000-01-01","why":"old"}},"instance":{"userhooks/":{"why":"a folder of own hooks"}}}'
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"file-guard.cjs runs twice"*) ok "a path-keyed alpha past its date hides nothing, whatever instance says";;
+  *) bad "an expired path-keyed alpha hides the duplicate";;
+esac
+decl '{"instance":{"userhooks/file-guard.cjs":{"why":"  "}}}'
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-ship" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in
+  *"file-guard.cjs runs twice"*) ok "a path-keyed declaration without a reason hides nothing";;
+  *) bad "a declaration without a reason hides the duplicate";;
+esac
 
 # 2) plugin ships, settings clean -> silent
 B="$T/clean"; make_brain "$B"

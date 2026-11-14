@@ -101,7 +101,7 @@ known:     scripts/check-catalog.py=16
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
-known:     scripts/hook-coverage.py=26
+known:     scripts/hook-coverage.py=27
 known:     scripts/ledger-fields-test.py=2
 known:     scripts/ledger_fields.py=1
 known:     scripts/lesson-carriers.py=5
@@ -203,6 +203,10 @@ AFTER backslashes became `/`, and every line it prints still names the helper's 
 2026-11-10, hook-coverage.py 25 -> 26 after that review (`declared_commands()`): the new join builds the
 path of `.claude/rules/local-machinery.json`, which is only opened; the keys it reads are compared with the
 wired command text, never with a joined path.
+2026-11-14, hook-coverage.py 26 -> 27 after that review (`declared_copy()` replaces `declared_commands()`):
+one join builds the path of the sibling `local-machinery.py`, which is only loaded as a module, the other the
+path of `.claude/rules/local-machinery.json`, which is only opened; the key comparison moved to
+`local-machinery.py` (`declared_live()`), which compares forward-slashed ids (`rel_id`), never a joined path.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 

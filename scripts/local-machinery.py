@@ -683,6 +683,35 @@ def match(decl, it):
     return max(keys, key=len) if keys else None
 
 
+def declared_live(decl, cmd, C, today):
+    """Is this wired hook command a deviation the brain declared on purpose, and does the declaration
+    still hold? The ONE answer for every reader outside this file (hook-coverage.py asks here).
+    A key matches as everywhere in this file: it covers the id of the script the command runs
+    (repo-relative, `~/` for the user's Claude dir) or it stands in the command text. An alpha that
+    matches decides, as in judge(): past its date it declares nothing, whatever `instance` says. Each
+    declaration needs a reason (`why`; the old string form is its own reason).
+    WHY here (content review of the declared-copy fix, 2026-11-10): hook-coverage.py read the file
+    itself and compared whole commands with the keys. One brain keys its declarations by command, the
+    other by file path — the same declaration held on one and was unknown on the other."""
+    t = cmd_target(cmd, C)
+    it = {"id": C.rel_id(t) if t else cmd, "cmd": cmd}
+
+    def section(name):
+        sec = decl.get(name) if isinstance(decl, dict) else None
+        return {k: v for k, v in (sec or {}).items() if str(k).strip()} if isinstance(sec, dict) else {}
+
+    def reason(d):
+        return str((d.get("why") if isinstance(d, dict) else d) or "").strip()
+
+    alpha, inst = section("alpha"), section("instance")
+    ka = match(alpha, it)
+    if ka is not None:
+        d = alpha[ka]
+        return bool(reason(d)) and isinstance(d, dict) and str(d.get("until") or "") >= today
+    ki = match(inst, it)
+    return ki is not None and bool(reason(inst[ki]))
+
+
 def identity_matcher(tokens_):
     if isinstance(tokens_, dict):
         tokens_ = [t for v in tokens_.values() for t in (v if isinstance(v, list) else [v])]
