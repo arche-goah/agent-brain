@@ -281,6 +281,20 @@ f="$T/19c.jsonl"; { boot_ok startup "$LB"; user "stand?"; asst "2 points need yo
 check "ledger items named (dated and undated)" "$f" allow "$EN"
 f="$T/19d.jsonl"; { boot_ok startup "$LB"; user "stand?"; asst "2 points need you: the ipc remeasure from 2026-10-11."; } > "$f"
 check "undated ledger item left out" "$f" block "$EN"
+# 19e — orthography fold (measured 2026-11-04, Windows instance): the item's words come from an
+# ASCII slug (ae/oe/ue/ss), the reply names it in the operator's language with the real letters.
+# Literal compare: 1 of 3 words hit, 2 required, the reply was blocked. Both spellings name it now.
+L3="- [ledger|human]  geraete-staender-plan — operator: x — first report (a decision in the ledger)"
+LU="=== BRAIN BOOTUP CHECK ===${NL}open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${L3}${NL}=== END BOOTUP ==="
+f="$T/19e.jsonl"; { boot_ok startup "$LU"; user "stand?"; asst "1 point needs you: the Geräte-Ständer question."; } > "$f"
+check "slug in ASCII digraphs, reply with the real letters" "$f" allow "$EN"
+f="$T/19f.jsonl"; { boot_ok startup "$LU"; user "stand?"; asst "1 point needs you: a question about the rack."; } > "$f"
+check "the same item not named at all (control)" "$f" block "$EN"
+# ...and the other way round: the ledger title carries the real letters, the reply the digraphs.
+L4="- [ledger|human]  rack-a — operator: Geräte und Ständer — first report (a decision in the ledger)"
+LV="=== BRAIN BOOTUP CHECK ===${NL}open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${L4}${NL}=== END BOOTUP ==="
+f="$T/19g.jsonl"; { boot_ok startup "$LV"; user "stand?"; asst "1 point needs you: geraete and staender."; } > "$f"
+check "title with the real letters, reply in ASCII digraphs" "$f" allow "$EN"
 
 # 20 — a standing approval (full-audit 2026-10-15, Windows instance): the operator approved the
 # item's class once for good, so the reply reports it handled instead of asking. Asking anyway
@@ -379,6 +393,10 @@ f="$T/23d2.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; u
 check "later turn: only the date of an ours request in another id (no mention)" "$f" allow "$EN"
 f="$T/23d3.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "The fixtures request of 2026-09-13 waits on peer-d."; } > "$f"
 check "later turn: date plus the request's topic word is a mention (control)" "$f" block "$EN"
+# The same mention with the topic word in the operator's orthography (slug `geraete`, reply with the real letter).
+UBLOCK="=== BRAIN BOOTUP CHECK ===${NL}open for us: 1 — ai 1 · human 0 · unclassified 0${NL}- [request|ai] 2026-09-13 core/anfrage-geraete-2026-09-13.md — peer-d: ANFRAGE — first report (circle C)${NL}=== END BOOTUP ==="
+f="$T/23d3u.jsonl"; { boot_ok startup "$UBLOCK"; user "stand?"; asst "1 item I can handle myself (the request of 2026-09-13) — shall I go ahead?"; user "and now?"; asst "The Geräte request of 2026-09-13 waits on peer-d."; } > "$f"
+check "later turn: date plus the topic word in the other orthography is a mention" "$f" block "$EN"
 # 2026-11-11 (Windows instance, autonomous run): the operator's last prompt was hours old; an earlier reply's line
 # kept every later reply blocked. Only the reply since the newest user record (event, echo, prompt) is judged.
 f="$T/23d4.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "work through it on your own"; asst "Only #61, it is waiting on the owner."; user "<task-notification>CI green</task-notification>"; asst "$CLOSE_OURS"; } > "$f"
