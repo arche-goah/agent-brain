@@ -10,8 +10,9 @@ escaped the finding because a changelog line, a comment and a fixture named thei
 A recording check exists to answer one question — would this gate have blocked, how often,
 on what? — and a measurement series nobody reads answers nothing.
 
-WHAT IT DOES: reads `.claude/rules/stop-checks.json`, and for every check in `mode: record`
-reads its log (current generation plus the rotated `.1.jsonl`), counting the entries inside
+WHAT IT DOES: asks the stop dispatcher which checks run (`stop-dispatcher.cjs --list`: the
+instance's `.claude/rules/stop-checks.json` plus the template's required ones), and for every
+check in `mode: record` reads its log (current generation plus the rotated `.1.jsonl`), counting the entries inside
 the window: entries, sessions, and how many would have blocked (`would_block: true`, where
 the recorder writes that field). It judges nothing; the brain-scan
 (`scripts/brain-scan-prep.py`) runs it and turns each line into a finding.
@@ -21,6 +22,8 @@ Output, one line per recorder, then one summary line:
       when at least one entry in the window would have blocked (the measurement exists);
   `   <LABEL>: ...` otherwise (recording, nothing that would have blocked, or no log yet);
   `recorder report summary: <k> recorder(s), <m> with a decision due`.
+When the dispatcher cannot name its list: one `!! recorder report: ...` line and
+  `recorder report summary: recorders NOT countable` - never a zero.
 
 Usage: recorder-report.py [--root DIR] [--days N] [--today YYYY-MM-DD]
 Exit 0 always — a report, not a verdict.
@@ -30,6 +33,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -52,6 +56,34 @@ def entries(path):
         return
 
 
+def effective_checks(root):
+    """The checks the stop dispatcher runs in this brain, asked of the dispatcher itself (`--list`):
+    the instance file's checks plus the template's required ones the instance lacks and did not
+    switch off. Returns (checks, "") or (None, why).
+    WHY asked, not rebuilt (content review 2026-11-10 of the required-recorders fix): this report
+    had its own copy of the dispatcher's required-from-template merge. Before that copy existed it
+    said "0 recorder(s)" while TIME, CLOCK and DIAGNOSE ran from the template (audit-audit
+    2026-11-10, Windows instance); a copy is right until the dispatcher's rule moves.
+    The dispatcher asked is the brain's consumed one (core/helpers/), else the one next to this
+    script - each reads the template of its own checkout."""
+    here = Path(__file__).resolve().parent
+    disp = next((p for p in (Path(root) / "core" / "helpers" / "stop-dispatcher.cjs",
+                             here.parent / "helpers" / "stop-dispatcher.cjs") if p.is_file()), None)
+    if disp is None:
+        return None, "stop-dispatcher.cjs not found"
+    try:
+        r = subprocess.run(["node", str(disp), "--list"], capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=20, stdin=subprocess.DEVNULL,
+                           env=dict(os.environ, CLAUDE_PROJECT_DIR=str(root)))
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, f"node could not run it: {type(e).__name__}"
+    try:
+        checks = json.loads(r.stdout)["checks"]
+    except (ValueError, KeyError, TypeError):
+        return None, "no list on stdout - a dispatcher from before `--list`?"
+    return (checks, "") if isinstance(checks, list) else (None, "the list is no array")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
@@ -59,27 +91,14 @@ def main(argv=None):
     ap.add_argument("--today", default=datetime.date.today().isoformat())
     a = ap.parse_args(argv)
     since = (datetime.date.fromisoformat(a.today) - datetime.timedelta(days=a.days)).isoformat()
-    try:
-        with open(os.path.join(a.root, ".claude/rules/stop-checks.json"), encoding="utf-8") as fh:
-            cfg = json.load(fh)
-    except (OSError, ValueError):
-        cfg = {}
-    checks = cfg.get("checks", []) if isinstance(cfg, dict) else []
-    # The dispatcher also runs the template's `required` checks the instance file lacks
-    # (stop-dispatcher.cjs requiredFromTemplate) — the same set here, or their logs read as absent
-    # (audit-audit 2026-11-10, Windows instance: TIME, CLOCK and DIAGNOSE ran from the template and the
-    # report said "0 recorder(s)").
-    disabled = cfg.get("disabled") or {} if isinstance(cfg, dict) else {}
-    have = {c.get("marker") for c in checks}
-    try:
-        tpl = json.loads((Path(a.root) / "core/templates/rules-instance/stop-checks.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        tpl = {}
-    for c in (tpl.get("checks") or []) if isinstance(tpl, dict) else []:
-        if c.get("required") is True and c.get("marker") and c["marker"] not in have \
-                and not str(disabled.get(c["marker"]) or "").strip():
-            checks.append(c)
-    recorders = [c for c in checks if c.get("mode") == "record" and c.get("marker")]
+    checks, why = effective_checks(a.root)
+    if checks is None:
+        # No quiet zero: "0 recorder(s)" would read as "nothing records" (CONVENTIONS §7).
+        print(f"!! recorder report: which checks run could not be read from the stop dispatcher ({why}) - "
+              "recorders NOT countable; run `node core/helpers/stop-dispatcher.cjs --list` and read its error")
+        print("recorder report summary: recorders NOT countable")
+        return 0
+    recorders = [c for c in checks if isinstance(c, dict) and c.get("mode") == "record" and c.get("marker")]
     due = 0
     for c in recorders:
         # A gate may keep a log of its own (promise-gate: promises.jsonl) — the same
