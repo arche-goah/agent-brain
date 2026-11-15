@@ -23,6 +23,9 @@ differ(){ if [ "$2" != "$3" ]; then ok "$1"; else bad "$1" "unchanged [$2]"; fi;
 
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
+# after the trap: the sandbox chains its own clean-up onto it. The fixture pushes (main included) into local bare
+# remotes: a host that wires a pre-push hook globally must not decide those pushes.
+. "$HERE/git-sandbox.sh"
 # A path handed to a native process as DATA (env) must be in its form (os-traps OS-3).
 native() { cygpath -m "$1" 2>/dev/null || printf '%s' "$1"; }
 # A home of its own (2026-11-02): the bootup heals the statusline into ~/.claude - never the

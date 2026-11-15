@@ -91,5 +91,18 @@ bg="$(grep -anE 'git[^|;]* fetch' "$HERE/collab-watch.sh" "$HERE/shared-memory-w
   "$HERE/../helpers/git-hooks/pre-commit" | grep -av -- '--no-write-fetch-head' | grep -avE '^[^:]+:[0-9]+:\s*#' || true)"
 [ -z "$bg" ] && ok "every unattended fetch leaves FETCH_HEAD alone" || bad "unattended fetch writes FETCH_HEAD: $bg"
 
+# Class guard (2026-11-15): a shell fixture that really runs `git ... push` into a temp remote sources git-sandbox.sh (or sets
+# GIT_CONFIG_GLOBAL itself). Measured on a Windows machine that wires the core hooks globally: the pre-push guard refused every
+# push to main, the sandbox remote stayed empty and the fixtures failed far from the cause (or passed on nothing). Quoted text
+# (a printf of a settings file, a transcript line) is stripped first, so only a command that runs counts.
+unsb=""
+for f in "$HERE"/*test*.sh; do
+  [ "$f" = "$HERE/test-git-sandbox.sh" ] && continue
+  sed -E "s/\"[^\"]*\"|'[^']*'//g" "$f" | grep -aE '^[[:space:]]*#' -v \
+    | grep -aqE '(^|[;&]|then|do)[[:space:]]*(git|git_|git_q|g)[[:space:]][^#]*[[:space:]]push([[:space:]]|$)' || continue
+  grep -aqE 'git-sandbox\.sh|GIT_CONFIG_GLOBAL' "$f" || unsb="$unsb $(basename "$f")"
+done
+[ -z "$unsb" ] && ok "every fixture that pushes isolates its git config" || bad "pushes without git-sandbox.sh or GIT_CONFIG_GLOBAL:$unsb"
+
 if [ "$fail" -eq 0 ]; then echo "test-git-sandbox: all green"; else echo "test-git-sandbox: FAILED"; fi
 exit "$fail"
