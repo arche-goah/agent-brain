@@ -14,7 +14,8 @@ bad() { echo "  FAIL $1"; fail=1; }
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 N="$(native "$T")"  # native form: the gate (node) reads the --body-file paths below
-printf 'process.stdout.write(require("fs").readFileSync(process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
+# the fake gh: `gh api ...` (the compare view) answers COMPARE_FILES, everything else the PR JSON
+printf 'process.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : require("fs").readFileSync(process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
 # a core-like repo: its root carries pr-risk.json
 git init -q "$T/core"
 cp "$ROOT/pr-risk.json" "$T/core/pr-risk.json"
@@ -56,6 +57,44 @@ probe "create with high risk on opus" "gh pr create -R o/r --body-file $N/body-h
 transcript claude-sonnet-5-5
 probe "create with high risk on sonnet" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"
 probe "create low risk on sonnet" "gh pr create -R o/r --body-file $N/body-low.md" allow "docs/a.md"
+# 2026-11-12: `gh pr create -R <core>` run from ANOTHER repo's checkout (the brain) was scored by that checkout's branch
+# (a brain script set the floor). Here the cwd is a brain-like repo whose branch carries a gate file; -R names o/r.
+git init -q "$T/brain"
+git -C "$T/brain" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+git -C "$T/brain" update-ref refs/remotes/origin/main HEAD
+git -C "$T/brain" remote add origin https://github.com/x/brain.git
+mkdir -p "$T/brain/helpers"; printf 'x\n' > "$T/brain/helpers/x-gate.cjs"
+git -C "$T/brain" add helpers/x-gate.cjs
+git -C "$T/brain" -c user.name=t -c user.email=t@t commit -q -m gate
+foreign=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$T/brain")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":\"gh pr create -R o/r --body-file $N/body-low.md\"}}" \
+  | env -u CONTENT_REVIEW_GATE_FILES CONTENT_REVIEW_GATE_GH="$(native "$T/gh.js")" PR_JSON="$(native "$T/pr.json")" node "$(native "$GATE")" 2>&1); frc=$?
+[ "$frc" -ne 2 ] && ok "create -R from another repo's checkout: its branch files do not set the floor" \
+  || bad "create -R from another repo's checkout was scored by the checkout: ${foreign:0:200}"
+[[ "$foreign" == *"not this checkout"* ]] && ok "  ... and says the floor was not checked" || bad "  ... no 'not this checkout' note"
+# Windows review of #504: an SSH origin of the SAME repo was read as foreign, so a high-risk PR passed declared low
+# an empty global git config: a machine's `url.<https>.insteadOf git@github.com:` turns the SSH origin back into
+# https in `git remote get-url`, and the case would pass on the old code (measured on the macOS instance)
+: > "$T/empty.gitconfig"
+create_in() { # $1 label, $2 cwd, $3 command, $4 block|allow, [$5 compare files of the fake gh api]
+  local out rc
+  out=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$2")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$3")}}" \
+    | env -u CONTENT_REVIEW_GATE_FILES GIT_CONFIG_GLOBAL="$(native "$T/empty.gitconfig")" GIT_CONFIG_NOSYSTEM=1 \
+      CONTENT_REVIEW_GATE_GH="$(native "$T/gh.js")" PR_JSON="$(native "$T/pr.json")" COMPARE_FILES="${5-}" \
+      node "$(native "$GATE")" 2>&1); rc=$?
+  if [ "$rc" -eq 2 ]; then [ "$4" = block ] && ok "$1 blocks" || bad "$1 blocked: ${out:0:200}"
+  else [ "$4" = allow ] && ok "$1 allows" || bad "$1 did NOT block (rc=$rc): ${out:0:200}"; fi
+}
+git init -q "$T/ssh"
+git -C "$T/ssh" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+git -C "$T/ssh" update-ref refs/remotes/origin/main HEAD
+git -C "$T/ssh" remote add origin git@github.com:O/R.git
+mkdir -p "$T/ssh/helpers"; printf 'x\n' > "$T/ssh/helpers/x-gate.cjs"
+git -C "$T/ssh" add helpers/x-gate.cjs
+git -C "$T/ssh" -c user.name=t -c user.email=t@t commit -q -m gate
+create_in "create -R from an SSH origin of the same repo is scored by the branch (gate file, declared low)" "$T/ssh" "gh pr create -R o/r --body-file $N/body-low.md" block
+create_in "create -R HOST/OWNER/REPO from the same repo is scored by the branch" "$T/ssh" "gh pr create -R github.com/o/r --body-file $N/body-low.md" block
+create_in "create -R a foreign repo with --head: the compare view sets the floor" "$T/brain" "gh pr create -R o/r --head feat/x --body-file $N/body-low.md" block "helpers/x-gate.cjs"
+create_in "create -R a foreign repo with --head, docs only in the compare view (control)" "$T/brain" "gh pr create -R o/r --head feat/x --body-file $N/body-low.md" allow "docs/a.md"
 # review of #478 (Windows instance): a trailing synthetic entry or an unknown family is no model at all
 printf '{"type":"assistant","message":{"model":"claude-sonnet-5-5"}}\n{"type":"assistant","message":{"model":"<synthetic>"}}\n' > "$T/t.jsonl"
 probe "a trailing <synthetic> entry: the last real model counts (sonnet, high)" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"
@@ -103,6 +142,24 @@ transcript claude-opus-5-5
 probe "approve with a prose Model line naming opus" "gh pr review 5 -R o/r --approve --body-file $N/rev-prose.md" allow
 transcript claude-sonnet-5-5
 probe "a prose Model line claiming opus on a sonnet session" "gh pr comment 5 -R o/r --body-file $N/rev-prose.md" block
+
+# CHECK 3b - an OS review posted as a comment carries the counted content lines (agent-brain #473, 2026-11-12)
+transcript claude-opus-5-5
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
+printf '<!-- instance-key: %s -->\nWindows check OK at head abc1234.\n**fit: yes, design: partly, cost: low**\n- Model: claude-opus-5-5\n' "$B" > "$T/os-heading.md"
+printf '<!-- instance-key: %s -->\nWindows check OK at head abc1234.\n%s\nModel: claude-opus-5-5\n' "$B" "$GOOD" > "$T/os-full.md"
+printf '<!-- instance-key: %s -->\nmacOS OK at head abc1234, all fixtures pass.\n' "$A" > "$T/os-author.md"
+probe "the incident: an OS review with fit/design/cost in one heading line" "gh pr comment 5 -R o/r --body-file $N/os-heading.md" block
+probe "an OS review with the four lines" "gh pr comment 5 -R o/r --body-file $N/os-full.md" allow
+probe "the author's own OS check needs no content review" "gh pr comment 5 -R o/r --body-file $N/os-author.md" allow
+probe "an author update without an OS verdict stays free" "gh pr comment 5 -R o/r --body-file $N/rev-thin.md" allow
+# Windows review of #508: the one OS check at a merge train's head carries no content lines - its members do
+pr "## Merge train train/x
+- #5 a/b 1234567 <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
+printf '<!-- instance-key: %s -->\nWindows OK at head abc1234, ci-lint-local all steps passed.\n' "$B" > "$T/os-train.md"
+probe "the OS check at a merge train's head" "gh pr comment 5 -R o/r --body-file $N/os-train.md" allow
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
+probe "control: the same OS check on a plain PR is held" "gh pr comment 5 -R o/r --body-file $N/os-train.md" block
 
 # CHECK 4 - merge
 M="gh pr merge 5 -R o/r --merge"

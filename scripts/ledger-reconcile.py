@@ -95,7 +95,15 @@ INLINE_FIELD = re.compile(r"(?:^|\s)(id|check):\s*(`[^`]*`|.+?)\s*(?=\s[|·;]\s[
 DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 NONE = re.compile(r"^none\b", re.I)
 # A current exit line: a field line `exit:` (also as a list item or in backticks); `was-exit:` is history, not counted.
-MULTI_EXIT = re.compile(r"^[\s>*-]*`?exit:", re.M)
+# A prose line that merely starts with the field name in a code span ("  `exit: ask-operator` went through ...") is no field:
+# in the field's code-span form the span runs to the line end (measured 2026-11-08, macOS instance: counted as a second exit).
+NOT_PROSE = r"(?![\s>*-]*`exit:[^`\n]*`[ \t]*\S)"
+MULTI_EXIT = re.compile(r"^" + NOT_PROSE + r"[\s>*-]*`?exit:", re.M)
+# The kind of the current exit (`exit: ai-does-it 2026-11-08 ...` -> ai-does-it); the same prose rule as MULTI_EXIT.
+EXIT_KIND = re.compile(r"^" + NOT_PROSE + r"[\s>*-]*`?exit:\s*`?([\w-]+)", re.M)
+# Exits that say the remaining work is the AI's own or rides on a PR: their delivery is code or a merge, which a
+# reading command can see. With `check: none` nothing ever sees it, and the entry is reported open after it shipped.
+OWN_WORK = {"ai-does-it", "in-pr"}
 # A command parked as text behind `none` (see PARKED above): a backtick span whose first word is a
 # command. A path or a name in backticks (`core/x.md`, `#315`) is no command and stays a reason.
 PARKED_CMD = re.compile(r"`\s*(?:test|\[|grep|ls|wc|head|tail|cat|diff|git|gh|python3?|node|bash|sh|find|jq)\s[^`]+`")
@@ -163,7 +171,12 @@ def find_shell(explicit=None):
 # `find` is NOT here: -delete/-exec make it a writer, and a check rarely needs it (`ls`, `test`).
 ALLOWED = ["test", "[", "grep", "ls", "wc", "head", "tail", "cat", "diff",
            "git log", "git show", "git grep", "git rev-parse", "git ls-files", "git cat-file",
-           "git merge-base", "git diff", "git status"]
+           "git merge-base", "git diff", "git status", "gh pr view"]
+# `gh pr view` reads a PR's state - the natural check of an entry whose exit waits on a merge (measured
+# 2026-11-07 on the Windows instance: 10 such checks in one brain's ledgers, every one refused). Its one
+# acting option opens a browser; that is refused below. `git -C <dir>` is read as the same git command:
+# every brain checks its core submodule as `git -C core ...`; `-c` (a config override) stays refused.
+GH_OPENS = {"--web", "-w"}
 # The shell grammar a check may use is closed, not filtered: parts joined by `&&`, `||` or `|`
 # (a pipe), each part a plain command with words. After those separators are taken out, ANY
 # other shell control character refuses the check — `;`, a single `&`, `<`, `>`, `(`, `)`,
@@ -183,6 +196,10 @@ def permitted(cmd, allowed):
     for part in parts:
         words = part.strip().lstrip("!").split()
         if not words:
+            return False
+        if len(words) > 3 and words[0] == "git" and words[1] == "-C":
+            words = ["git"] + words[3:]
+        if words[0] == "gh" and GH_OPENS & set(words):
             return False
         if not any(words[:len(p.split())] == p.split() for p in allowed):
             return False
@@ -285,7 +302,8 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
     None = no memory (hand runs with --ledger); an empty dict on a brain's first run = baseline.
     `pin`: the pinned core checkout; open `check: none` entries waiting for its PRs are measured."""
     out = {"done_open": [], "regressed": [], "no_check": [], "broken": [], "missing": [],
-           "refused": [], "not_run": [], "unproven": [], "pin_met": [], "parked": [], "multi_exit": []}
+           "refused": [], "not_run": [], "unproven": [], "pin_met": [], "parked": [], "multi_exit": [],
+           "own_unchecked": []}
     pin_since = pin_date(pin, timeout) if pin else ""
     baseline = seen is not None and not seen
     deadline = time.monotonic() + budget
@@ -311,6 +329,11 @@ def reconcile(root, ledgers, since, timeout, shell, allowed=ALLOWED, budget=10.0
             if NONE.match(chk):
                 if not e["done"] and PARKED_CMD.search(chk):
                     out["parked"].append(label(e, rel))
+                # Measured 2026-11-08 on the macOS instance: three open entries (own work or waiting on a core PR)
+                # were shipped in the pin and still reported "open" for 8 sessions - their `check: none` could not see it.
+                kinds = EXIT_KIND.findall(e["text"])
+                if not e["done"] and kinds and kinds[-1] in OWN_WORK:
+                    out["own_unchecked"].append(label(e, rel))
                 if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout, pin_since):
                     out["pin_met"].append(label(e, rel))
                 continue
@@ -443,6 +466,9 @@ def main():
     say("parked", "open `check: none` entr(y/ies) that park a command as text - never run",
         "write it as the check, a command that exits 0 when done (`grep -q` instead of `grep -c ... = 1`,"
         " `test -s` for \"not empty\"), or keep `none` with a reason and no command")
+    say("own_unchecked", "open entr(y/ies) whose exit is the AI's own work or a PR, with `check: none`",
+        "its delivery is code or a merge a reading command can see - write that command (`grep -q <feature> <file>`,"
+        " `git -C core merge-base --is-ancestor <sha> HEAD`), or the entry stays reported open after it shipped")
     say("regressed", "ticked entr(y/ies) whose check fails",
         "reopen it, or the check no longer measures the thing")
     say("broken", "check(s) that could not give an answer",

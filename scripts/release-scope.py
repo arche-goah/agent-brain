@@ -17,7 +17,8 @@ An item is a ledger id, `<repo>#<n>` (or `#<n>`) or a branch name.
     release-scope.py open <version> [--repo NAME]     start the scope (helpers/release-freeze-gate.cjs then holds
                                                      new core branches that are not in it)
     release-scope.py add <item> [<item> ...]          in this release
-    release-scope.py exclude <item> <reason ...>      deliberately not in this release, with the reason
+    release-scope.py exclude <item> <reason ...>      deliberately not in this release, with the reason; needs
+                                                     RELEASE_SCOPE_EXCLUDE_OK='"<operator's words>" <YYYY-MM-DD>'
     release-scope.py show
     release-scope.py check --core-clone DIR [--version X.Y.Z]
     release-scope.py close                            after the tag; the freeze ends
@@ -57,6 +58,8 @@ STATE = Path(".claude-state") / "release-scope.json"
 # the words "reach: shared" inside a sentence are prose, not the entry's field.
 REACH = re.compile(r"(?:^\s*(?:[-*]\s+)?|[|·;]\s*)`?reach:\s*`?(shared|core)\b", re.I | re.M)
 ACTIVE_EXITS = ("ai-does-it", "in-pr")
+# The operator's words in quote marks (straight or typographic), as release-preflight's RELEASE_EARLY_OK takes them.
+QUOTED = re.compile(r"[\"“„«][^\"“”„«»]{3,}[\"”“»]")
 
 
 def state_path(root):
@@ -207,7 +210,8 @@ def check(root, clone, version):
         print(f"OPEN {kind} {ident} - {why}")
         if kind not in ("source", "scope"):
             print(f"       in this release:  release-scope.py add {ident}")
-            print(f"       not in it:        release-scope.py exclude {ident} \"<reason>\"")
+            print(f"       not in it:        ask the operator; RELEASE_SCOPE_EXCLUDE_OK='\"<their words>\" <date>' "
+                  f"release-scope.py exclude {ident} \"<reason>\"")
     print(f"FAIL {len(findings)} item(s) of this instance are open but not in release scope {scope.get('version')}")
     return 1
 
@@ -276,6 +280,16 @@ def main(argv=None):
         if not reason:
             print("FAIL an exclusion names its reason")
             return 2
+        # What a release leaves out is the operator's call (release is on every operator-only list). Measured
+        # 2026-11-11 on the macOS instance: check 11 held tag 2.1.5 because 21 own PRs, older than the train, were
+        # neither in it nor excluded; a script excluded all 21 with one reason that quoted the operator about the check
+        # procedure, not about leaving them out. The preflight went green, the PRs stood for good.
+        word = os.environ.get("RELEASE_SCOPE_EXCLUDE_OK", "")
+        if not (QUOTED.search(word) and re.search(r"\b\d{4}-\d{2}-\d{2}\b", word)):
+            print(f"FAIL leaving {args.item} out of release {scope.get('version')} is the operator's call: ask with the list, "
+                  "then RELEASE_SCOPE_EXCLUDE_OK='\"<their words about these items>\" <YYYY-MM-DD>' release-scope.py exclude ...")
+            return 3
+        reason = f"{reason} — operator: {word.strip()}"
         scope["items"] = [i for i in scope.get("items") or [] if i != args.item]
         scope.setdefault("excluded", {})[args.item] = reason
         save(root, scope)

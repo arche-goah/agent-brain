@@ -26,6 +26,8 @@ WATCH="${1:-$HERE/shared-memory-watch.sh}"
 N=8
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+# after the trap: the sandbox chains its own clean-up onto it (global hooksPath of the machine stays out)
+. "$(dirname "$0")/git-sandbox.sh"
 # The race and ownership properties test the lock itself: no grace, immediate verdict.
 # The re-arm grace has its own property at the end.
 export WATCH_CLAIM_GRACE=0

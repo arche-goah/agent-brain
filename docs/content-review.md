@@ -8,7 +8,9 @@ Operator order 2026-11-10: ask it in small portions, on every PR, on every side.
 
 `helpers/content-review-gate.cjs` holds an approval (`gh pr review --approve`) and a merge (`gh pr merge`)
 until a review carries the three lines below, each with a real answer. A merge needs that review from an
-instance other than the author's.
+instance other than the author's. An OS review posted as a comment on another instance's PR is held at
+posting until it carries them too, plus `Model:` — each on a line of its own; a summary like
+`fit: yes, design: partly, cost: low` is not counted (agent-brain #473, 2026-11-12).
 
 ```
 Fit:    <answer>

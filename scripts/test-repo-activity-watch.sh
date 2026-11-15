@@ -68,7 +68,9 @@ printf '%s' '[
  {"workflowName":"CI","event":"push","headBranch":"main","status":"completed","conclusion":"cancelled","createdAt":"2026-01-02T06:00:00Z","updatedAt":"2026-01-02T06:00:05Z","url":"run3"},
  {"workflowName":"CI","event":"push","headBranch":"main","status":"completed","conclusion":"success","createdAt":"2026-01-02T06:00:03Z","updatedAt":"2026-01-02T06:12:00Z","url":"run4"},
  {"workflowName":"CI","event":"push","headBranch":"main","status":"in_progress","conclusion":"","createdAt":"2026-01-02T07:00:00Z","updatedAt":"2026-01-02T07:00:00Z","url":"run5"},
- {"workflowName":"CI","event":"push","headBranch":"old","status":"completed","conclusion":"failure","createdAt":"2025-12-30T00:00:00Z","updatedAt":"2025-12-30T00:10:00Z","url":"run6"}]' > "$D/one.runs.json"
+ {"workflowName":"CI","event":"push","headBranch":"old","status":"completed","conclusion":"failure","createdAt":"2025-12-30T00:00:00Z","updatedAt":"2025-12-30T00:10:00Z","url":"run6"},
+ {"workflowName":"CI","event":"pull_request","headBranch":"lab","status":"completed","conclusion":"failure","createdAt":"2026-01-02T08:00:00Z","updatedAt":"2026-01-02T08:20:00Z","url":"run7"},
+ {"workflowName":"CI","event":"pull_request","headBranch":"lab","status":"completed","conclusion":"success","createdAt":"2026-01-02T08:04:00Z","updatedAt":"2026-01-02T08:15:00Z","url":"run8"}]' > "$D/one.runs.json"
 
 # a local clone of "one" carrying local-branch: PR #8 must be marked as made on this machine
 git init -q "$T/clones/one"
@@ -99,6 +101,8 @@ has   "failed PR run"                 "CI-RED acme/one CI on peer-branch (pull_r
 has   "cancelled run, still the newest on its branch" "CI-RED acme/one CI on local-branch (pull_request, cancelled) run2" "$out"
 has   "red run on a local branch is marked" "run2 — branch is LOCAL" "$out"
 hasnt "cancelled run superseded by a newer one (concurrency)" "run3" "$out"
+# 2026-11-10 (heavy-metal #124): a failed run of an OLD head, reported after the newer head's run passed
+hasnt "failed run superseded by a newer run on its branch" "run7" "$out"
 hasnt "green run"                     "run4" "$out"
 hasnt "running run"                   "run5" "$out"
 hasnt "red run before the cursor"     "run6" "$out"
