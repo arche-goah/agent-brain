@@ -42,6 +42,9 @@ function flagValue(w, i, names) {
  * is the raw `--repo/-R` value or ''. null when the command cannot be read to its end. Also the reader of the
  * directory for content-review-gate (2026-11-12: it scored the hook cwd's branch, not the `env -C` clone's).
  */
+const DIR_SH = /^(?:cd|pushd)$/;
+const DIR_PS = /^(?:cd|chdir|sl|set-location|push-location|pushd)$/i;
+
 function prCalls(cmd, cwd, ps, verbs) {
   const segs = shellSegments(String(cmd || ''), ps);
   if (!segs) return null;
@@ -51,8 +54,16 @@ function prCalls(cmd, cwd, ps, verbs) {
   let dir = cwd || process.cwd();
   const out = [];
   for (const w of segs) {
-    if (w[0] === 'cd' && w[1]) { dir = abs(dir, w[1]); continue; }
-    const g = w.indexOf('gh');
+    // A directory change (Windows review of #526, 2026-11-13: only a lower-case `cd` was read). Bash: cd, pushd.
+    // PowerShell (case-insensitive): cd, chdir, sl, Set-Location, Push-Location, pushd; a -Path / -LiteralPath flag
+    // word is skipped. `cd -` and popd are not followed (the earlier directory is not tracked).
+    if (ps ? DIR_PS.test(w[0] || '') : DIR_SH.test(w[0] || '')) {
+      const to = w.slice(1).find((x) => !/^-(?:-|P|L|Path|LiteralPath)$/i.test(x));
+      if (to && to !== '-') dir = abs(dir, to);
+      continue;
+    }
+    // `gh`, a path to it, or gh.exe (the same review: `gh.exe pr create` was not seen as a gh call)
+    const g = w.findIndex((x) => String(x).replace(/\\/g, '/').replace(/^.*\//, '').replace(/\.exe$/i, '') === 'gh');
     if (g < 0 || w[g + 1] !== 'pr' || !verbs.includes(w[g + 2])) continue;
     let here = dir;
     for (let i = 0; i < g; i++) {

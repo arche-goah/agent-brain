@@ -116,6 +116,19 @@ create_in "cd <docs clone> && gh pr create from a gate cwd" "$T/brain" "cd $NCD 
 create_in "cd <gate clone> && gh pr create from a docs-only cwd" "$T/bdocs" "cd $NCG && gh pr create --body-file $N/body-low.md" block
 create_in "env -C <gate clone> gh pr create -R o/r --head: the clone's branch, not the compare view" "$T/brain" "env -C $NCG gh pr create -R o/r --head feat/x --body-file $N/body-low.md" block "docs/a.md"
 create_in "env -C <docs clone> gh pr create -R o/r --head: a gate in the cwd does not count" "$T/brain" "env -C $NCD gh pr create -R o/r --head feat/x --body-file $N/body-low.md" allow "docs/a.md"
+create_in "pushd <gate clone> && gh pr create from a docs-only cwd" "$T/bdocs" "pushd $NCG && gh pr create --body-file $N/body-low.md" block
+create_in "gh.exe pr create in a gate clone, declared low" "$T/bdocs" "cd $NCG && gh.exe pr create --body-file $N/body-low.md" block
+# Windows review of #526 (2026-11-13): PowerShell's own directory commands, case-insensitive, a -Path flag skipped.
+# prCalls read directly with ps=true (the dir it reports is what the gate scores).
+PRC="$(native "$ROOT/helpers/pr-repo.cjs")"
+psdir() { node -e 'const c=require(process.argv[1]).prCalls(process.argv[2],process.argv[3],true,["create"]);process.stdout.write(c&&c[0]?c[0].dir:"")' "$PRC" "$1" "$(native "$T/bdocs")"; }
+for form in "Set-Location -Path \"$NCG\"; gh pr create --fill" "Push-Location $NCG; gh pr create --fill" "sl $NCG; gh pr create --fill" \
+            "CD $NCG; gh pr create --fill" "set-location -LiteralPath '$NCG'; gh pr create --fill"; do
+  got="$(psdir "$form")"
+  [ "$(native "$got")" = "$NCG" ] && ok "PowerShell: '${form%%;*}' moves the directory" || bad "PowerShell: '${form%%;*}' read '$got', not the gate clone"
+done
+got="$(psdir "Get-Location; gh pr create --fill")"
+[ "$(native "$got")" = "$(native "$T/bdocs")" ] && ok "PowerShell: a command that is no directory change keeps the cwd (control)" || bad "PowerShell control read '$got'"
 create_in "no directory named: the hook cwd's branch as before (gate, declared low)" "$T/brain" "gh pr create --body-file $N/body-low.md" block
 create_in "no directory named, docs-only cwd (control)" "$T/bdocs" "gh pr create --body-file $N/body-low.md" allow
 printf 'Risk: low - one doc line in the clone\n' > "$T/cdocs/rel-body.md"
