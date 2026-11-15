@@ -20,7 +20,7 @@ printf 'process.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FI
 git init -q "$T/core"
 cp "$ROOT/pr-risk.json" "$T/core/pr-risk.json"
 transcript() { printf '{"type":"assistant","message":{"model":"%s"}}\n' "$1" > "$T/t.jsonl"; }
-pr() { node -e 'const fs=require("fs"); const rd=(l)=>(l||"").split(",").filter(Boolean).map((f)=>({body: fs.readFileSync(f,"utf8")})); process.stdout.write(JSON.stringify({body: process.argv[1], files: process.argv[2].split(",").filter(Boolean).map((p) => ({path: p})), comments: rd(process.argv[3]), reviews: rd(process.argv[4])}))' "$@" > "$T/pr.json"; }
+pr() { node -e 'const fs=require("fs"); const rd=(l)=>(l||"").split(",").filter(Boolean).map((e)=>{ const [f, d] = e.split("@"); return d ? {body: fs.readFileSync(f,"utf8"), createdAt: d} : {body: fs.readFileSync(f,"utf8")}; }); process.stdout.write(JSON.stringify({body: process.argv[1], files: process.argv[2].split(",").filter(Boolean).map((p) => ({path: p})), comments: rd(process.argv[3]), reviews: rd(process.argv[4])}))' "$@" > "$T/pr.json"; }
 probe() { # $1 label, $2 command, $3 block|allow, [$4 staged/branch files, newline list]
   local out rc
   out=$(printf '%s' "{\"tool_name\":\"Bash\",${AGENT:+\"agent_id\":\"$AGENT\",}\"cwd\":\"$(native "$T/core")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$2")}}" \
@@ -32,7 +32,10 @@ probe() { # $1 label, $2 command, $3 block|allow, [$4 staged/branch files, newli
 A="aaaaaaaaaa"; B="bbbbbbbbbb"
 GOOD="Fit: no existing gate asks for a design verdict, searched helpers/README.md
 Design: one reader for approval and merge, data in pr-risk.json, no second copy
-Cost: runs only on gh pr and git commit calls, one gh view per merge"
+Cost: runs only on gh pr and git commit calls, one gh view per merge
+Gaps: fed an empty answer, a one-line heading and a second instance key; all three held"
+# the same review before the Gaps line existed (2026-11-15): counts only when it is dated before GAPS_FROM
+OLD="$(printf '%s\n' "$GOOD" | grep -av '^Gaps:')"
 
 # CHECK 0 - commit at build time
 transcript claude-sonnet-5-5
@@ -176,6 +179,16 @@ probe "merge reviewed on a too small model" "$M" block
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-os.md"
 probe "merge with an OS check only" "$M" block
 probe "override names why" "$M # CONTENT-REVIEW-OK: data PR, no second reviewer in this repo" allow
+# Gaps (2026-11-15): a review without it counts only when it was posted before GAPS_FROM
+printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$OLD" "$B" > "$T/c-nogaps.md"
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-nogaps.md@2026-11-15T10:00:00Z"
+probe "merge on a review without Gaps, posted before the line existed" "$M" allow
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-nogaps.md@2026-11-16T10:00:00Z"
+probe "merge on a review without Gaps, posted after" "$M" block
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-nogaps.md"
+probe "merge on an undated review without Gaps" "$M" block
+printf '%s\nModel: claude-opus-5-5\n' "$OLD" > "$T/rev-nogaps.md"
+probe "approve without a Gaps line" "gh pr review 5 -R o/r --approve --body-file $N/rev-nogaps.md" block
 pr "## Merge train t1
 - #7 fix/a abc
 - #8 fix/b def" "" ""

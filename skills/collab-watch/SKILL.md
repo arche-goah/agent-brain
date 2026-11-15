@@ -98,7 +98,7 @@ opt-out and holds for that session only.
 1. **Review with evidence chain.** Read diff, PR text and the WHOLE thread (comments carry
    the history, not only `reviews`). **Judge the content, not only the function** (operator
    order 2026-11-10): how is it built, does it fit the whole, does something already do it —
-   the review carries `Fit:` / `Design:` / `Cost:` / `Model:` (`docs/content-review.md`), on at
+   the review carries `Fit:` / `Design:` / `Cost:` / `Gaps:` / `Model:` (`docs/content-review.md`), on at
    least the model family the PR's risk needs (`pr-risk.json`; below it, hand the review to an
    agent or session on that family); `helpers/content-review-gate.cjs` holds approval and merge
    without it. Split every claim: measured / derived / assumed. Take
