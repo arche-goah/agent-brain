@@ -109,6 +109,9 @@ function modelLine(text) {
 /** Risk index of a PR: its declaration and its files' floor, the higher. */
 function prRisk(pr) {
   const files = (pr.files || []).map((f) => f.path);
+  // gh returns at most one page of files: when the list is shorter than the PR's own count, a hidden file may carry a
+  // higher floor, so the PR counts at the top risk.
+  if (typeof pr.changedFiles === 'number' && pr.changedFiles > files.length) return RISKS.length - 1;
   return Math.max(declared(pr.body), floor(files).risk, 0);
 }
 
@@ -176,7 +179,7 @@ function gh(args) {
   return execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
 }
-const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', 'body,comments,reviews,files']));
+const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', 'body,comments,reviews,files,changedFiles']));
 /** `-R OWNER/REPO` or gh's long form `-R HOST/OWNER/REPO`, as OWNER/REPO (Windows review of #504). */
 function repoArg(cmd) {
   const m = /(?:-R|--repo)[=\s]+["']?([\w.-]+(?:\/[\w.-]+){1,2})/.exec(cmd);

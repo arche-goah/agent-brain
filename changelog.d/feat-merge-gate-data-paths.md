@@ -10,3 +10,5 @@
   list (`gh pr view --json files`) and lets it through when every file matches one of the suite's `data_paths`
   globs (anchored, `*` inside one path segment, `**` across). A PR without a readable file list is not a data
   change.
+  Class search: `helpers/content-review-gate.cjs` reads the same one-page file list for the risk floor; a PR whose
+  list is shorter than `changedFiles` now counts at the top risk there too (fixture +2 cases).
