@@ -60,6 +60,14 @@ probe "request: <bare stem> in the text" "$OPEN" "gh pr comment 99 --body \"Plea
 probe "a plain review verdict" "$EMPTY" "gh pr review 510 --approve --body \"macOS OK at head f24270f - lint all 12 steps.\"" allow
 probe "a comment that answers a request" "$EMPTY" "gh pr comment 510 --body \"Windows OK at head f24270f, by hand (answers core/request-windows-hand-check-510).\"" allow
 probe "a review finding for the author" "$EMPTY" "gh pr comment 510 --body \"Floor is high - please declare high and add the Risk line.\"" allow
+# Windows review of #518 (2026-11-13): a finding for the author may say "please check / verify / test" ...
+probe "a finding paragraph for the author" "$EMPTY" "gh pr comment 510 --body \"**Finding (builder: the author side):** please check the regex at line 40.\"" allow
+probe "a proposal paragraph for the author" "$EMPTY" "gh pr comment 510 --body \"Proposal: please verify the fixture idea with a path that has a space.\"" allow
+# ... but a check request disguised as a finding is still one, and the exemption ends with the paragraph
+probe "a finding that asks for an OS check" "$EMPTY" "gh pr comment 510 --body \"Finding: please run the Windows check at head abc1234.\"" block
+probe "a plain ask after a finding paragraph" "$EMPTY" "gh pr comment 510 --body \"Finding: please check the regex.
+
+Please re-run your probe at the new head.\"" block
 probe "a quoted earlier request" "$EMPTY" "gh pr comment 509 --body 'Thanks for catching my \"The Windows OK stays with you\" on #473.'" allow
 probe "a commit message quoting the ask is no post" "$EMPTY" "git commit -m \"Please run the Windows hand check\"" allow
 probe "unreadable shared memory fails open" "$T/nowhere" "$C_ASK" allow

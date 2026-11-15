@@ -53,12 +53,22 @@ function unquoted(text) {
     .replace(/^\s*>.*$/gm, ' ');
 }
 
-/** The phrase that asks another instance to act, or ''. */
+/** A paragraph a reviewer addresses to the PR's author: it opens with `Finding` / `Proposal` or `(builder: ...)`. */
+const AUTHOR_PARA = /^\s*(?:[-*]\s*)*(?:\*\*)?(?:finding|proposal)\b|^\s*(?:\*\*)?\(builder:/i;
+/** ... unless it names an OS or a hand check: then "please run/check" still asks another instance (no disguise). */
+const OTHER_INSTANCE = /\b(?:windows|macos|linux|os:\w+|hand[- ]check)\b/i;
+
+/** The phrase that asks another instance to act, or ''. The first pattern (the generic "please check / verify /
+ * test") is not counted in an author-addressed paragraph that names no OS (Windows review of #518, 2026-11-13: a
+ * finding saying "please check the regex" was held as a check request). The other patterns count everywhere. */
 function asks(text) {
-  const t = unquoted(text);
-  for (const rx of words()) {
-    const m = rx.exec(t);
-    if (m) return m[0];
+  for (const para of unquoted(text).split(/\n\s*\n/)) {
+    const forAuthor = AUTHOR_PARA.test(para) && !OTHER_INSTANCE.test(para);
+    for (const [i, rx] of words().entries()) {
+      if (i === 0 && forAuthor) continue;
+      const m = rx.exec(para);
+      if (m) return m[0];
+    }
   }
   return '';
 }
