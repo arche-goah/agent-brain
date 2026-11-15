@@ -80,7 +80,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     break
   done
   if [ -n "$riding" ]; then
-    problems="$problems\n  new branch ${remote_ref#refs/heads/} on $slug carries $n_riding commit(s) of the local $mb that $remote_name/$mb does not have (of $sends sent):\n$riding\n  way out: branch from $remote_name/$mb and cherry-pick only this branch's commits"
+    problems="$problems\n  new branch ${remote_ref#refs/heads/} on $slug carries $n_riding commit(s) of the local $mb that $remote_name/$mb does not have (of $sends sent):\n$riding\n  way out: branch from $remote_name/$mb and cherry-pick only this branch's commits; then move the local $mb back (git branch -f $mb $remote_name/$mb from another branch - it drops the local commits, the operator's call once they are safe on the branch), or every new branch carries them again"
   elif [ "${sends:-0}" -gt 1 ]; then
     printf 'pre-push: new branch %s on %s sends %s commits:\n%s\n' "${remote_ref#refs/heads/}" "$slug" "$sends" \
       "$(git log --format='    %h %s' -n 10 "$local_sha" --not "$rem" 2>/dev/null)" >&2

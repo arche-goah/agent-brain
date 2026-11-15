@@ -235,6 +235,9 @@ git_q -C "$SUITE" checkout -q main; : > "$SUITE/on-main.py"; git_q -C "$SUITE" a
 git_q -C "$SUITE" checkout -q work
 out="$(run4)"
 has "FAIL line names the main that is ahead" "FAIL neighbour repo my-suite: local main is 1 commit(s) ahead of origin/main" "$out"
+# Windows review of #520 (2026-11-13): the way out names its last step, and the close only NAMES it - it never runs it
+has "the way out names moving main back" "git branch -f main origin/main" "$out"
+has "the close did not move the local main" "1" "$(git -C "$SUITE" rev-list --count origin/main..main)"
 has "HANDOFF carries it" "Neighbour repo my-suite: main ahead" "$(cat "$B4/.claude/HANDOFF.md")"
 echo "positive control 4: still FAIL after those commits rode out on a new branch"
 git_q -C "$SUITE" push -q origin main:refs/heads/feat/rode

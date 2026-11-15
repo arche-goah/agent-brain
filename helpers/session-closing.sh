@@ -162,7 +162,7 @@ if [ -f "$eco" ] && command -v node >/dev/null 2>&1; then
       git -C "$p" rev-parse -q --verify "refs/remotes/origin/$mb" >/dev/null || continue
       n_ahead=$(git -C "$p" rev-list --count "origin/$mb..refs/heads/$mb" 2>/dev/null || echo 0)
       if [ "${n_ahead:-0}" -gt 0 ]; then
-        echo "FAIL neighbour repo $name: local $mb is ${n_ahead} commit(s) ahead of origin/$mb in $p — commits on a main that only leaves by PR: branch from origin/$mb, cherry-pick, open the PR; or push $mb where it may be pushed"
+        echo "FAIL neighbour repo $name: local $mb is ${n_ahead} commit(s) ahead of origin/$mb in $p — commits on a main that only leaves by PR: branch from origin/$mb, cherry-pick, open the PR, then move the local $mb back (git branch -f $mb origin/$mb, from another branch - it drops the local commits, the operator's call once they are safe on the branch); or push $mb where it may be pushed"
         printf '\n## Neighbour repo %s: main ahead\nlocal %s is %s commit(s) ahead of origin/%s in %s.\n' \
           "$name" "$mb" "$n_ahead" "$mb" "$p" >> .claude/HANDOFF.md
       fi
