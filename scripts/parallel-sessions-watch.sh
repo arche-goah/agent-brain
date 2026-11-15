@@ -18,6 +18,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 R="${1:-$PWD}"
 INTERVAL="${2:-60}"
 PARENT=$PPID
+AREAS="$HERE/../helpers/session-areas.cjs"
+command -v cygpath >/dev/null 2>&1 && AREAS="$(cygpath -m "$AREAS")"   # OS-3: native path for node
+said_overlaps=""
 prev=""
 first=1
 unknown_said=0
@@ -31,14 +34,26 @@ while true; do
   else
     unknown_said=0
     summary=$(printf '%s' "$out" | tr '\n' '|' | sed 's/|$//; s/|/ | /g')
-    if [[ $first -eq 1 ]]; then
-      echo "SESSIONS: ${summary:-at most this session in $R}"
+    if [[ $first -eq 1 || "$out" != "$prev" ]]; then
+      if [[ $first -eq 1 ]]; then
+        echo "SESSIONS: ${summary:-at most this session in $R}"
+      else
+        echo "SESSIONS: changed — ${summary:-at most this session in $R} — own-account commits/PRs may come from any of them"
+      fi
+      # WHAT each one works on (helpers/session-areas.cjs): one line, peers only, OVERLAP lines below.
+      areas=$(node "$AREAS" show --brief --peers-only --root "$R" 2>/dev/null | grep -av '^OVERLAP:' | tr '\n' '|' | sed 's/|$//; s/|/ | /g')
+      [[ -n "$areas" ]] && echo "SESSIONS: $areas"
       first=0
-    elif [[ "$out" != "$prev" ]]; then
-      echo "SESSIONS: changed — ${summary:-at most this session in $R} — own-account commits/PRs may come from any of them"
     fi
     prev="$out"
   fi
+  # A new overlap between two sessions' write areas is its own event, each one said once.
+  while IFS= read -r ov; do
+    [[ -n "$ov" ]] || continue
+    grep -qxF -- "$ov" <<<"$said_overlaps" && continue
+    echo "$ov"
+    said_overlaps+="$ov"$'\n'
+  done < <(node "$AREAS" overlaps --root "$R" 2>/dev/null)
   for (( slept = 0; slept < INTERVAL; slept += 5 )); do
     sleep 5
     kill -0 "$PARENT" 2>/dev/null || exit 0

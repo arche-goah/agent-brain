@@ -50,6 +50,13 @@ refuses "  ... and the file is named" "$R" "scripts/new.sh"
 rm "$R/scripts/new.sh"; gq -C "$R" add -A
 passes "  ... and passes again once it is gone" "$R"
 
+# 2026-11-08 (macOS instance): a second hit in a file the register already knows ("drift") passed the hook and
+# failed the push lint's same step.
+echo 'echo TRAPWORD again' >> "$R/scripts/old.sh"; gq -C "$R" add -A
+refuses "a drift (one more hit in a known file) of a closed trap is refused" "$R" "drift: scripts/old.sh 1 -> 2"
+sed -i.bak '/TRAPWORD again/d' "$R/scripts/old.sh" && rm -f "$R/scripts/old.sh.bak"; gq -C "$R" add -A
+passes "  ... and passes again once the extra hit is gone" "$R"
+
 P="$T/plain"; mkdir -p "$P"; gq init -q "$P"; echo a > "$P/a.txt"; gq -C "$P" add -A
 passes "a repo without the register is not checked" "$P"
 

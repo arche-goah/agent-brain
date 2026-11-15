@@ -165,6 +165,15 @@ kexpect_line "negative control: a foreign text naming the head is no look of our
   "suite#117 review - asked, not looked at yet"
 rm -rf "$SM/core" "$SM/.git"
 
+# 26-27. The PR body's wait mark (measured 2026-11-08, marketplace #90: open-items listed it as
+#     waiting, this line said "!! review - asked, not looked at yet, 133 h"). Before the date
+#     silence; on the date it is a move again.
+kexpect_silent "waiting-until in the future: the sibling PR waits on its condition" \
+  "$(pr acct '{"number":90,"isDraft":false,"body":"drop\n\nwaiting-until: 2026-09-20: merge once every device runs v2 <!-- instance-key: '"$KWS"' -->","repository":{"name":"market"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-13T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')"
+kexpect_line "negative control: waiting-until reached, the move is named again" \
+  "$(pr acct '{"number":90,"isDraft":false,"body":"drop\n\nwaiting-until: 2026-09-15: merge once every device runs v2 <!-- instance-key: '"$KWS"' -->","repository":{"name":"market"},"author":{"login":"acct"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-13T08:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')" \
+  "market#90 review - asked, not looked at yet"
+
 # 9. drafts never count
 expect_silent "draft: never a move" \
   "$(pr author '{"number":10,"isDraft":true,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-13T15:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"maint"},"state":"CHANGES_REQUESTED","submittedAt":"2026-09-13T16:00:00Z"}]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')"

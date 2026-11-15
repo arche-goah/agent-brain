@@ -61,9 +61,24 @@ def main(argv=None):
     since = (datetime.date.fromisoformat(a.today) - datetime.timedelta(days=a.days)).isoformat()
     try:
         with open(os.path.join(a.root, ".claude/rules/stop-checks.json"), encoding="utf-8") as fh:
-            checks = json.load(fh).get("checks", [])
+            cfg = json.load(fh)
     except (OSError, ValueError):
-        checks = []
+        cfg = {}
+    checks = cfg.get("checks", []) if isinstance(cfg, dict) else []
+    # The dispatcher also runs the template's `required` checks the instance file lacks
+    # (stop-dispatcher.cjs requiredFromTemplate) — the same set here, or their logs read as absent
+    # (audit-audit 2026-11-10, Windows instance: TIME, CLOCK and DIAGNOSE ran from the template and the
+    # report said "0 recorder(s)").
+    disabled = cfg.get("disabled") or {} if isinstance(cfg, dict) else {}
+    have = {c.get("marker") for c in checks}
+    try:
+        tpl = json.loads((Path(a.root) / "core/templates/rules-instance/stop-checks.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        tpl = {}
+    for c in (tpl.get("checks") or []) if isinstance(tpl, dict) else []:
+        if c.get("required") is True and c.get("marker") and c["marker"] not in have \
+                and not str(disabled.get(c["marker"]) or "").strip():
+            checks.append(c)
     recorders = [c for c in checks if c.get("mode") == "record" and c.get("marker")]
     due = 0
     for c in recorders:

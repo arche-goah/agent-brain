@@ -389,6 +389,10 @@ def main() -> int:
         t = req.read_text(encoding="utf-8") if req.is_file() else ""
         check("NEGATIVE: a repo not on the list reaches every Windows device",
               "  next: kim-win, lee-win\n" in t, r.stdout + r.stderr + t)
+    # 2026-11-08 (macOS instance): the PR's GitHub repo given as --repo was refused as "not an area" - now named for what it is
+    r = post(Path("o/some-suite"), "request", "--area", "core", "--to", "os:windows", "--title", "x", "--body", "y")
+    check("--repo owner/repo (a GitHub repo, no folder) is refused and named as such",
+          r.returncode != 0 and "looks like a GitHub repo" in (r.stdout + r.stderr), r.stdout + r.stderr)
     print("shared-memory-post: all cases pass" if not fails else f"shared-memory-post: {fails} FAILURES")
     return 1 if fails else 0
 

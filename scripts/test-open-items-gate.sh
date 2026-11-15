@@ -507,4 +507,19 @@ check "an unnamed issue item blocks" "$f" block "$EN"
 f="$T/25b.jsonl"; { boot_ok startup "$PI"; user "stand?"; asst "1 needs you: issue #12, a question on the schema."; } > "$f"
 check "a named issue item passes" "$f" allow "$EN"
 
+# 26 — the session start's own findings (2026-11-11, macOS instance: `!!` lines stood in 13-30 starts unfixed; the
+# operator's word "Jede Session, erster Zug"): the first reply counts them and says what happened to each.
+FB="!! brain-check: needs a look${NL}  !!  test-x FAILED${NL}!! settings: 1 permission rule missing${NL}open for us: 0 — ai 0 · human 0 · unclassified 0${NL}- nothing open (requests, PRs and work ledgers read)"
+f="$T/26a.jsonl"; { boot_ok startup "$FB"; user "stand?"; asst "Nothing open. 2 session-start findings: the settings rule is handled (declared), the failing self-test is handed to its PR."; } > "$f"
+check "findings counted and handled" "$f" allow "$EN"
+f="$T/26b.jsonl"; { boot_ok startup "$FB"; user "stand?"; asst "Nothing open. The self-test failed and a settings rule is missing."; } > "$f"
+check "findings only reported, nothing done (the 2026-11-11 class)" "$f" block "$EN"
+f="$T/26c.jsonl"; { boot_ok startup "$FB"; user "stand?"; asst "Nothing open. Findings handled."; } > "$f"
+check "findings handled but not counted" "$f" block "$EN"
+f="$T/26e.jsonl"; { boot_ok startup "$FB"; user "stand?"; asst "Nothing open. 2 PRs merged, findings handled."; } > "$f"
+check "a matching number without the noun is no count (the replay class)" "$f" block "$EN"
+FN="open for us: 0 — ai 0 · human 0 · unclassified 0${NL}- nothing open (requests, PRs and work ledgers read)${NL}  !!  an indented sub-line"
+f="$T/26d.jsonl"; { boot_ok startup "$FN"; user "stand?"; asst "Nothing open."; } > "$f"
+check "negative control: no top-level finding, nothing asked" "$f" allow "$EN"
+
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

@@ -61,7 +61,7 @@ line() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","n
 res()  { printf '{"message":{"role":"user","content":[{"type":"tool_result","content":"x"}]},"toolUseResult":{"type":"text","file":{"filePath":"%s","startLine":%s,"numLines":%s,"totalLines":%s}}}\n' "$NT/$1" "$2" "$3" "$4"; }
 raw() { # $1 engine, $2 transcript, $3 tool name, $4 tool_input json → the hook's stdout
   # JSON built by node from argv (escaping; a printf-built input broke on a double quote, 2026-11-02)
-  node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:JSON.parse(a[2]),transcript_path:a[3],cwd:a[4]}))' "$3" "$4" "$(native "$2")" "$NT" \
+  node -e 'const a=process.argv;const h={tool_name:a[1],tool_input:JSON.parse(a[2]),transcript_path:a[3],cwd:a[4]};if(a[5])h.agent_id=a[5];process.stdout.write(JSON.stringify(h))' "$3" "$4" "$(native "$2")" "$NT" "${AGENT_ID:-}" \
     | CLAUDE_PROJECT_DIR="$NT" node "$1"
 }
 verdict() { if printf '%s' "$(raw "$@")" | grep -q '"permissionDecision":"deny"'; then echo deny; else echo allow; fi; }
@@ -158,6 +158,16 @@ seq 1 1468 | sed 's/^/line /' > "$T/docs/net/long.md"
 { res docs/net/ledger.md 1 1 1; line Bash "{\"command\":\"cat $NT/memo.md\"}"; } > "$T/t16.jsonl"
 node -e 'const fs=require("fs");const pad=JSON.stringify({message:{role:"user",content:[{type:"tool_result",content:"x".repeat(1024*1024)}]}})+"\n";for(let i=0;i<18;i++)fs.appendFileSync(process.argv[1],pad)' "$NT/t16.jsonl"
 check "16 read 18 MB back in the transcript" allow "$T/t16.jsonl" mcp__nettool__health '{}'
+
+# 17. a sub-agent reads in ITS OWN transcript; the hook input names the session's (2026-11-12)
+mkdir -p "$T/s17/subagents"
+: > "$T/s17.jsonl"
+{ res docs/net/ledger.md 1 1 1; line Bash "{\"command\":\"cat $NT/memo.md\"}"; } > "$T/s17/subagents/agent-abc123.jsonl"
+AGENT_ID=abc123 check "17a sub-agent read in its own transcript" allow "$T/s17.jsonl" mcp__nettool__health '{}'
+# 17c. another agent's read does not count for this one
+AGENT_ID=zzz999 check "17c another sub-agent's read" deny "$T/s17.jsonl" mcp__nettool__health '{}'
+# 17d. without an agent id the session's own (empty) transcript decides
+check "17d session call, read only in a sub-agent" deny "$T/s17.jsonl" mcp__nettool__health '{}'
 
 # 10. broken instance file → fail-open, logged
 printf '{"domains": [' > "$T/.claude/rules/live-read.json"
