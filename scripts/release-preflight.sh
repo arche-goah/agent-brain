@@ -374,7 +374,7 @@ EOF
     if [ "$src" = 0 ]; then
       ok "release scope $VER: every open item of this instance is in the scope or excluded"
     elif [ "$src" = 1 ]; then
-      bad "release scope $VER: items of this instance are open but neither in the scope nor excluded (above) — release-scope.py add or exclude, then collect"
+      bad "release scope $VER: items of this instance are open but neither in the scope nor excluded (above) — release-scope.py add, or ask the operator which stay out (exclude takes their quoted word), then collect"
     else
       bad "release scope check could not run (rc=$src) — a check that did not run is red"
     fi

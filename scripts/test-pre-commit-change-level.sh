@@ -40,6 +40,14 @@ o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"english-only"* ]] && ok "a staged Germa
 rm "$R/changelog.d/de.md"; gq -C "$R" add -A
 o=$(hook "$R"); [ $? -eq 0 ] && ok "  ... and passes once it is gone" || bad "after removal" "$o"
 
+# The content guard in the same hook (2026-11-12): a literal invisible character in a staged file is refused at
+# commit time, not first at the full lint. The character is written by printf, so this file holds none.
+cp "$HERE/content-guard.py" "$R/scripts/content-guard.py"; gq -C "$R" add -A; gq -C "$R" commit -qm guard --no-verify
+printf 'bom = "\xef\xbb\xbf"\n' > "$R/scripts/x.py"; gq -C "$R" add -A
+o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"content-guard"* ]] && ok "a staged invisible character is refused by the content guard" || bad "invisible char" "$o"
+printf 'bom = chr(0xFEFF)\n' > "$R/scripts/x.py"; gq -C "$R" add -A
+o=$(hook "$R"); [ $? -eq 0 ] && ok "  ... and passes written as a code point" || bad "code point" "$o"
+
 # The CI lint's commit steps in the same hook (2026-11-12): where the repo ships ci-lint-local.sh, the hook runs its
 # --commit mode, so a step the lint holds is held at commit time too. Two steps as the core's ci.yml has them, plus a
 # failing step named shellcheck that --commit must leave out (the one step over the threshold, measured ~21 s).
@@ -50,8 +58,8 @@ jobs:
   leaks:
     runs-on: ubuntu-latest
     steps:
-      - name: stands in for the leak scan
-        run: "true"
+      - name: instance-data leak scan (tree)
+        run: exit 1
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -66,6 +74,8 @@ jobs:
       - name: helpers parse (node syntax check)
         run: |
           for f in helpers/*.cjs; do node --check "$f"; done
+      - name: content guard (malicious-content classes)
+        run: exit 1
   shellcheck:
     runs-on: ubuntu-latest
     steps:
@@ -90,6 +100,13 @@ if command -v node >/dev/null 2>&1; then
   rm "$L/helpers/broken.cjs"; gq -C "$L" add -A
 fi
 o=$(hook "$L"); [ $? -eq 0 ] && ok "  ... and passes once both are gone" || bad "after removal (lint)" "$o"
+# Windows review of #516 (2026-11-13): in lint mode the lint's two working-tree steps are left out (their stand-ins
+# above fail on every run, so the clean commit proves the skip) and the hook's own commit-side content guard still holds.
+cp "$HERE/content-guard.py" "$L/scripts/content-guard.py"; gq -C "$L" add -A; gq -C "$L" commit -qm guard --no-verify
+printf 'bom = "\xef\xbb\xbf"\n' > "$L/scripts/x.py"; gq -C "$L" add -A
+o=$(hook "$L"); [[ $? -ne 0 && "$o" == *"content-guard BLOCKS"* ]] \
+  && ok "in lint mode the hook's own content guard still refuses a staged invisible character" || bad "content guard (lint mode)" "$o"
+rm "$L/scripts/x.py"; gq -C "$L" add -A
 
 echo ""
 [ "$fails" -eq 0 ] && echo "pre-commit change-level: all $checks checks pass" || echo "pre-commit change-level: $fails of $checks FAILED"

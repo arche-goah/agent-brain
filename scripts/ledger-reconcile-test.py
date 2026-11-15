@@ -282,10 +282,14 @@ def main():
                 "test -f a & rm -f b", "diff <(rm -f b) a", "git diff --output=out.txt",
                 "git log --output out.txt", "git grep -Ovi x", "test -f a; rm -f b",
                 "grep x a > b", "cat $(rm -f b)", "cat `rm -f b`", "test -f a\nrm -f b",
-                "git -c core.pager=rm log", "git push", "touch x"]:
+                "git -c core.pager=rm log", "git push", "touch x",
+                "gh pr view 5 --web", "gh pr view 5 -w", "gh pr merge 5", "gh pr comment 5 -b x",
+                "git -C core push", "git -C core -c core.pager=rm log"]:
         ok(not lr.permitted(cmd, lr.ALLOWED), f"refused: {cmd!r}")
     for cmd in ["grep -q x file", "test -f a && git log -1 --format=%H", "git log --oneline | grep -q fix",
-                "! grep -q draft notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md"]:
+                "! grep -q draft notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md",
+                "gh pr view 437 -R o/r --json state --jq .state | grep -q MERGED",
+                "git -C core merge-base --is-ancestor cc8dfc3 HEAD", "git -C core log -1"]:
         ok(lr.permitted(cmd, lr.ALLOWED), f"allowed: {cmd!r}")
 
     # Negative control (operator 2026-10-28): a check green the first time it is seen on an open
@@ -434,6 +438,32 @@ def main():
         ok("two-exits" in me, "an open entry with two exit lines is named", out)
         ok("one-exit" not in me, "negative control: one exit plus was-exit history stays silent", out)
         ok("done-two" not in me, "negative control: a ticked entry is not named", out)
+
+    # 2026-11-08 (macOS instance): own work or a PR behind `check: none` is reported open after it shipped.
+    with tempfile.TemporaryDirectory() as root:
+        R = pathlib.Path(root)
+        (R / "docs").mkdir()
+        (R / ".claude" / "rules").mkdir(parents=True)
+        (R / "docs" / "o.md").write_text(
+            "- [ ] **own work** — derived (2026-11-08)\n  id: own-none\n  check: none - core PR\n"
+            "  exit: ai-does-it 2026-11-08 — build it\n\n"
+            "- [ ] **in a PR** — derived (2026-11-08)\n  id: pr-none\n  check: none - waits\n"
+            "  was-exit: ai-does-it 2026-11-07\n  exit: in-pr 2026-11-08 o/r#5\n\n"
+            "- [ ] **operator decides** — derived (2026-11-08)\n  id: op-none\n  check: none - a decision\n"
+            "  was-exit: ai-does-it 2026-11-07\n  exit: operator-decision 2026-11-08\n\n"
+            "- [ ] **own work with a check** — derived (2026-11-08)\n  id: own-check\n  check: test -f nothing-here\n"
+            "  exit: ai-does-it 2026-11-08\n\n"
+            "- [x] **ticked own work** — derived (2026-11-08)\n  id: own-done\n  check: none - x\n"
+            "  exit: ai-does-it 2026-11-08\n", encoding="utf-8")
+        json.dump({"ledgers": ["docs/o.md"], "allowed": ["test"]},
+                  open(R / ".claude" / "rules" / "ledgers.json", "w", encoding="utf-8"))
+        rc, out = run(root, "--brief")
+        ou = next((l for l in out.splitlines() if "AI's own work or a PR" in l), "")
+        ok("own-none" in ou and "pr-none" in ou and ou.startswith("!! ledger: 2 "),
+           "OWN-UNCHECKED: ai-does-it and in-pr behind check none are named", out)
+        for i, why in (("op-none", "an operator decision (its history said ai-does-it)"),
+                       ("own-check", "own work with a real check"), ("own-done", "a ticked entry")):
+            ok(i not in ou, f"OWN-UNCHECKED negative: {why} stays silent", out)
 
     print()
     if fails:

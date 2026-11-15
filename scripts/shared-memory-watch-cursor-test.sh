@@ -19,6 +19,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 WATCH="${1:-$HERE/shared-memory-watch.sh}"
 TMP=$(mktemp -d)
 trap 'kill $(jobs -p) 2>/dev/null; rm -rf "$TMP"' EXIT
+# after the trap: the sandbox chains its own clean-up onto it (global hooksPath of the machine stays out)
+. "$(dirname "$0")/git-sandbox.sh"
 fails=0
 pass() { echo "OK   $1"; }
 fail() { echo "FAIL $1"; fails=$((fails + 1)); }

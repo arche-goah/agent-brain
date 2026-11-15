@@ -101,7 +101,7 @@ known:     scripts/check-catalog.py=16
 known:     scripts/commitments.py=5
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
-known:     scripts/hook-coverage.py=25
+known:     scripts/hook-coverage.py=26
 known:     scripts/ledger-fields-test.py=2
 known:     scripts/ledger_fields.py=1
 known:     scripts/lesson-carriers.py=5
@@ -112,6 +112,7 @@ known:     scripts/memory-lint-test.py=6
 known:     scripts/orphan-check-test.py=7
 known:     scripts/orphan-check.py=1
 known:     scripts/plugin-records-test.py=1
+known:     scripts/product-sources.py=1
 known:     scripts/recorder-report.py=3
 known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-reach-check.py=11
@@ -154,6 +155,8 @@ of a file the script opens (settings, stop-checks, declarations, the core checko
 2026-10-09: the caveman check moved out of session-bootup.sh into caveman-armed.py
 (bootup 8 -> 4, new file 6). Same review: every join builds a path the script opens;
 it prints only plugin id, version and style name.
+2026-11-11, product-sources.py baselined: its one join builds the default path of the instance's
+`.claude/rules/product-sources.json`, which is only opened; the tool prints rows and verdicts, never a path.
 2026-11-10, check-catalog.py and its fixture baselined after review: every join builds a path that is only
 opened, listed or written in a temp dir; the names the catalog prints come from regexes over hooks.json and
 session-bootup.sh (always `/`) or from `os.listdir` (a bare file name), never from a joined path.
@@ -197,6 +200,9 @@ inside a document, never from a join.
 path of the core helper and of the wired command's file, which are only tested with `os.path.isfile`
 or opened for the line comparison; the path inside the command is matched against `core/<sub>/<name>`
 AFTER backslashes became `/`, and every line it prints still names the helper's FILE NAME only.
+2026-11-10, hook-coverage.py 25 -> 26 after that review (`declared_commands()`): the new join builds the
+path of `.claude/rules/local-machinery.json`, which is only opened; the keys it reads are compared with the
+wired command text, never with a joined path.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -314,7 +320,7 @@ known:     scripts/test-fixture-own-home.sh=1
 known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
-known:     scripts/test-guards.sh=5
+known:     scripts/test-guards.sh=6
 known:     scripts/test-headless-browser-gate.sh=1
 known:     scripts/test-hook-coverage.sh=1
 known:     scripts/test-install-git-hooks.sh=1
@@ -346,6 +352,7 @@ known:     scripts/test-pre-commit-behind.sh=1
 known:     scripts/test-pre-commit-change-level.sh=1
 known:     scripts/test-pre-commit-os-traps.sh=1
 known:     scripts/test-pre-commit-backprop.sh=1
+known:     scripts/test-pre-commit-covers.sh=1
 known:     scripts/test-pre-push.sh=1
 known:     scripts/test-premise-gate.sh=1
 known:     scripts/test-promise-gate.sh=1
@@ -357,8 +364,12 @@ known:     scripts/test-release-freeze-gate.sh=1
 known:     scripts/test-repo-activity-watch.sh=1
 known:     scripts/test-review-claim-gate.sh=1
 known:     scripts/test-root-cause-gate.sh=1
+known:     scripts/test-session-areas.sh=1
+known:     scripts/test-claim-write-gate.sh=1
 known:     scripts/test-session-closing.sh=1
+known:     scripts/test-core-branch.sh=1
 known:     scripts/test-session-helpers.sh=1
+known:     scripts/test-session-order.sh=1
 known:     scripts/test-session-pull.sh=1
 known:     scripts/test-setup-shell-start.sh=1
 known:     scripts/test-shared-memory-channels.sh=1
@@ -1115,14 +1126,18 @@ translates the path as the shell sees it before opening it: `/c/...` to `C:/...`
 `cygpath -m` (`nativePath` in `helpers/public-text-guard.cjs`). Node on Windows reads `/c/...` as a
 path on the current drive's root and fails; the hook swallows the read error and judges the command
 without the file — on macOS and Linux the same path is the native one, so the defect is invisible there.
-pattern:   publishedText\(
+pattern:   publishedText\(|nativePath\(
 paths:     --include=*.cjs helpers
-known:     helpers/content-review-gate.cjs=1
-known:     helpers/instance-key-gate.cjs=1
-known:     helpers/public-text-guard.cjs=1
-known:     helpers/published-text.cjs=3
-known:     helpers/review-claim-gate.cjs=1
-instances: 2
+known:     helpers/content-review-gate.cjs=3
+known:     helpers/instance-key-gate.cjs=3
+known:     helpers/public-text-guard.cjs=2
+known:     helpers/pr-repo.cjs=1
+known:     helpers/published-text.cjs=4
+known:     helpers/review-claim-gate.cjs=2
+known:     helpers/root-cause-gate.cjs=1
+known:     helpers/session-areas.cjs=2
+known:     helpers/watch-gate.cjs=1
+instances: 3
 repeat:    yes
 status:    closed
 note:      Measured twice on Windows: 2026-10-14 `instance-key-gate.cjs` blocked `gh pr create --body-file
@@ -1131,7 +1146,19 @@ note:      Measured twice on Windows: 2026-10-14 `instance-key-gate.cjs` blocked
 skipped). Both now translate with `nativePath`. The search lists the consumers of the handed-file list: a
 new consumer appears as a new site and is read for the translation.
 2026-11-10, content-review-gate.cjs read: its `postedText()` translates each handed file with
-`public-text-guard.cjs` `nativePath` before `readFileSync`, the same form as review-claim-gate.
+`public-text-guard.cjs` `nativePath` before `readFileSync`, the same form as review-claim-gate. Third instance 2026-11-11 (Windows
+review of `session-areas.cjs`): a `git -C "/c/..." commit -- <paths>` was recorded as the area `C:/c/...`
+with no repo root. The search now also lists every `nativePath(` caller (the function lives in
+`helpers/published-text.cjs` since 2026-11-12), so a hook that reads a `-C` value or a pathspec from the
+command text shows up as a site of the class too. The sweep of `git -C` readers in `helpers/` that day
+found two more without the translation, both fixed: `content-review-gate.cjs` (the repo of a commit) and
+`watch-gate.cjs` `callDir` (the checkout a push acts on); `release-freeze-gate.cjs` and
+`shared-working-copy-guard.cjs` already translate with their own helper. A reader that never calls
+`nativePath(` stays invisible to this pattern — read every new `-C` reader by hand.
+2026-11-12, Windows review of the train: three more sites of the class, fixed — `pr-repo.cjs` (a `cd`/`env -C /c/...`
+resolved no repo, a `pr_repos` rule failed open), `root-cause-gate.cjs` `shellWrites` (a drive path or a quoted path
+with a space never matched, `/c/...` could not be stat'ed) and the `--staged` repair hint of `scripts/ledger-one-exit.py`
+(both paths unquoted, the command broke under a profile with a space; Python, outside this pattern).
 
 ## OS-21 — a fixture runs the session start in the home of the machine running it
 

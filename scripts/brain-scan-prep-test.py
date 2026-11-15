@@ -94,6 +94,15 @@ with tempfile.TemporaryDirectory() as d:
     _, _, rc, _, _ = run(r, "--skip-machine")
     check(state(rc, "tracked") == "dropped", "an instance marker (data, not code) marks dropped")
 
+    # the field form: id inside the entry line, not on a line of its own
+    orders(r, "- [ ] **tracked** - text | id: tracked | class: todo | origin: operator\n\n"
+              "- [x] **fixed** - text | id: fixed | class: todo\n  check: test -f x\n\n"
+              "- [ ] **valid** - a word ending in id: notakey\n")
+    _, _, rc, _, _ = run(r, "--skip-machine")
+    check(state(rc, "tracked") == "still-open", "an id mid-line (field form) is found, not vanished")
+    check(state(rc, "fixed") == "done", "a checked entry with a mid-line id is done")
+    check(state(rc, "gone") == "vanished", "a word ending in 'id:' is no id")
+
     # legacy report without index
     lg = Path(d) / "legacy"
     write(lg / "docs/research/brain-scan/scan-2026-10-01.md", "# old\n\n1. **[P1] something**\n")

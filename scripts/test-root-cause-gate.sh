@@ -8,6 +8,8 @@
 # Other languages only as instance data. `--review` counts over a directory of transcripts.
 # Usage: bash scripts/test-root-cause-gate.sh (exit 0 = pass)
 set -u
+# the gate reads CLAUDE_PROJECT_DIR before the cwd in --review; a session-start run points it at the real brain
+unset CLAUDE_PROJECT_DIR
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 G="$(cd "$(dirname "$0")" && pwd)/../helpers/root-cause-gate.cjs"
@@ -60,6 +62,52 @@ check "the cause named in a later text of the same turn" "$T/t5.jsonl" allow "$C
 { user "go"; asst "ok"; user "something went wrong, leave it, nothing to build there"; asst "Cause unknown — the transcript of that session is gone; what is missing: the register's state of that day.
 Carrier: none — the cause is unknown, operator-ok: \"leave it, nothing to build there\""; write "$CWD/$REG"; } > "$T/t6.jsonl"
 check "cause unknown, carrier none with the operator's own words, registered" "$T/t6.jsonl" allow "$CWD"
+# --- 2026-11-08 (macOS instance): register and carrier written by a SHELL command count when the file changed in this turn
+sh() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":%s}}]}}\n' "$(js "$1")"; }
+SHW="$T/shw"; mkdir -p "$SHW/docs/maintenance" "$SHW/scripts"
+NOW="$(node -e 'process.stdout.write(new Date(Date.now()-5000).toISOString())')"
+touch "$SHW/scripts/gen.py"
+# the shell append lands a complete entry (the register-field check reads the newest entry on disk, train 2026-11-12)
+printf '## 2026-11-08 — generator pads\nid: gen-pads\ninvariant: a generator takes positions from the data file, never from a photo\nreplay: 2 cases in 40 transcripts\n' > "$SHW/$REG"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t7.jsonl"
+check "register and carrier written by shell commands, changed in this turn" "$T/t7.jsonl" allow "$SHW"
+{ WHEN="2099-01-01T00:00:00.000Z" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t8.jsonl"
+check "the same files named but unchanged since the turn began (negative control)" "$T/t8.jsonl" block "$SHW"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; } > "$T/t9.jsonl"
+check "shell-written carrier, no register entry" "$T/t9.jsonl" block "$SHW"
+# --- Windows review 2026-11-12 (OS-19): the register named by an ABSOLUTE path - quoted with a space (native form on
+# Windows), the drive form C:/... and the Git Bash form /c/... (only where cygpath exists: node elsewhere has no drives)
+SPC="$T/sh w"; mkdir -p "$SPC/docs/maintenance" "$SPC/scripts"; touch "$SPC/scripts/gen.py"; cp "$SHW/$REG" "$SPC/$REG"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> \"$(native "$SPC")/$REG\""; } > "$T/t9a.jsonl"
+check "register written by an absolute quoted path with a space" "$T/t9a.jsonl" allow "$SPC"
+# portability windows-latest, train #510: the runner's temp folder is an 8.3 name (`RUNNER~1`, OS-8) - a `~` inside a
+# segment ended the match. Measured on every OS with a folder named that way.
+TLD="$T/RUN~1"; mkdir -p "$TLD/docs/maintenance" "$TLD/scripts"; touch "$TLD/scripts/gen.py"; cp "$SHW/$REG" "$TLD/$REG"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $(native "$TLD")/$REG"; } > "$T/t9d.jsonl"
+check "register written by a path with an 8.3 short segment (RUN~1)" "$T/t9d.jsonl" allow "$TLD"
+if command -v cygpath >/dev/null 2>&1; then
+  M="$(cygpath -m "$SHW")"; U="/$(printf %s "${M:0:1}" | tr 'A-Z' 'a-z')${M:2}"
+  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $M/$REG"; } > "$T/t9b.jsonl"
+  check "register written by its drive path (cygpath -m form)" "$T/t9b.jsonl" allow "$SHW"
+  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $U/$REG"; } > "$T/t9c.jsonl"
+  check "register written by its Git Bash path (/c/... form)" "$T/t9c.jsonl" allow "$SHW"
+else
+  echo "  --  register written by its drive path and its /c/... path (Windows only: no cygpath here)"
+fi
+
+# --- 2026-11-08 (operator, question tool): a project repo names its own carriers in .claude/rules/carrier-paths.json
+PRJ="$T/prj"; mkdir -p "$PRJ/.git" "$PRJ/.claude/rules" "$PRJ/docs/bench/layout" "$PRJ/.claude/skills/bench-run"
+printf '%s\n' '{"carrier_paths": ["docs/bench/layout/*.py", ".claude/skills/*/SKILL.md"]}' > "$PRJ/.claude/rules/carrier-paths.json"
+{ user "go"; asst "Cause: the generator took the pad positions from the photo."; write "$PRJ/docs/bench/layout/gen.py"; write "$CWD/$REG"; } > "$T/t10.jsonl"
+check "a generator the project lists as a carrier counts" "$T/t10.jsonl" allow "$CWD"
+{ user "go"; asst "Cause: the bench run read only the state file."; write "$PRJ/.claude/skills/bench-run/SKILL.md"; write "$CWD/$REG"; } > "$T/t11.jsonl"
+check "a listed SKILL.md counts although it is .md" "$T/t11.jsonl" allow "$CWD"
+{ user "go"; asst "Cause: the generator took the pad positions from the photo."; write "$PRJ/docs/notes.py"; write "$CWD/$REG"; } > "$T/t12.jsonl"
+check "a project file outside the listed globs is no carrier (control)" "$T/t12.jsonl" block "$CWD"
+NOP="$T/nop"; mkdir -p "$NOP/.git" "$NOP/docs/bench/layout"
+{ user "go"; asst "Cause: the generator took the pad positions from the photo."; write "$NOP/docs/bench/layout/gen.py"; write "$CWD/$REG"; } > "$T/t13.jsonl"
+check "the same path in a repo without carrier-paths.json is no carrier (control)" "$T/t13.jsonl" block "$CWD"
+
 # --- must block: the instance fixed, the tool left as it was
 { user "go"; asst "Re-posted the request to the right group."; asst "Cause: the post tool does not check the audience."; } > "$T/t20.jsonl"
 check "a self-found cause, no correction, no mechanism (the 2026-10-28 class)" "$T/t20.jsonl" block "$CWD"

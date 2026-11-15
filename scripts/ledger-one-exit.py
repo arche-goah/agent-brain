@@ -10,17 +10,32 @@ The newest exit by date stays `exit:` (same date: the later line in the text); e
 renamed to `was-exit:` - text, order and indentation unchanged, so the history stays readable and no reader counts it.
 Ticked entries are left as they are. Ledgers come from the brain's `.claude/rules/ledgers.json`.
 
-    python3 core/scripts/ledger-one-exit.py [--root <brain>] [--write]
+    python3 core/scripts/ledger-one-exit.py [--root <brain>] [--write | --staged]
+
+`--staged` is the pre-commit step (helpers/git-hooks/pre-commit): it judges only the registered ledgers the commit
+stages, by their STAGED content, and never writes. Measured 2026-11-08 on the macOS instance: three entries with two
+`exit:` lines went through three path commits on one ledger, because only ledger-reconcile.py (session start) knew the
+convention; the operator the same day, translated: "exit vs was-exit apparently needs a mechanical safeguard".
 
 Default is a preview. Exit 0 = nothing to change (or written), 1 = the preview found entries to change, 2 = no registry.
 """
 import argparse
 import json
 import re
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
 EXIT = re.compile(r"^([\s>*-]*`?)exit:(\s*`?[\w-]+(?:\s+(\d{4}-\d{2}-\d{2}))?)")
+# A prose line wrapped so that it starts with the field name in a code span ("  `exit: ask-operator` went through ...") is no
+# field: in the field's code-span form the span runs to the end of the line. Measured 2026-11-08 on the macOS instance:
+# two such prose lines were read as exits (one counted as a second exit, one as an unknown exit kind).
+PROSE_SPAN = re.compile(r"^[\s>*-]*`exit:[^`\n]*`\s*\S")
+
+
+def exit_match(line):
+    return None if PROSE_SPAN.match(line) else EXIT.match(line)
 ENTRY = re.compile(r"^- \[[ xX]\] ")
 
 
@@ -42,7 +57,7 @@ def migrate(lines):
     """Rewrite in place; return (entries changed, lines renamed)."""
     n_entries = n_lines = 0
     for a, b in entries(lines):
-        ex = [(k, m.group(3) or "") for k in range(a, b) for m in [EXIT.match(lines[k])] if m]
+        ex = [(k, m.group(3) or "") for k in range(a, b) for m in [exit_match(lines[k])] if m]
         if len(ex) < 2:
             continue
         keep = max(enumerate(ex), key=lambda ie: (ie[1][1], ie[0]))[1][0]
@@ -54,11 +69,40 @@ def migrate(lines):
     return n_entries, n_lines
 
 
+def known_exits():
+    """The exit kinds the aggregator reads - its own set (open-items.py EXITS), never a second list here. None if unreadable."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("open_items", Path(__file__).resolve().parent / "open-items.py")
+    try:
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return set(mod.EXITS)
+    except Exception:  # noqa: BLE001 - a broken aggregator must not block every commit; the exit-kind check then stays off
+        return None
+
+
+def unknown_kinds(lines, kinds):
+    """[(line number, kind)] of open entries whose current exit kind the aggregator does not know."""
+    out = []
+    for a, b in entries(lines):
+        for k in range(a, b):
+            m = exit_match(lines[k])
+            if m:
+                kind = m.group(2).strip().strip("`").split()[0]
+                if kind not in kinds:
+                    out.append((k + 1, kind))
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--root", default=".", help="the brain's root (default: the current directory)")
     ap.add_argument("--write", action="store_true", help="rewrite the ledgers (default: preview)")
+    ap.add_argument("--staged", action="store_true",
+                    help="pre-commit mode: judge only the registered ledgers this commit stages, by their staged content")
     a = ap.parse_args(argv)
+    if a.staged and a.write:
+        ap.error("--staged judges the index; it never writes")
     root = Path(a.root).resolve()
     reg = root / ".claude" / "rules" / "ledgers.json"
     try:
@@ -66,12 +110,33 @@ def main(argv=None):
     except (OSError, ValueError) as e:
         print(f"ledger-one-exit: cannot read {reg.as_posix()}: {e}", file=sys.stderr)
         return 2
+    staged = None
+    if a.staged:
+        r = subprocess.run(["git", "-C", str(root), "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+                           capture_output=True, text=True, encoding="utf-8")
+        staged = set(r.stdout.splitlines()) if r.returncode == 0 else set()
     total_entries = total_lines = 0
+    kinds = known_exits() if a.staged else None
+    if a.staged and kinds is None:
+        print("ledger-one-exit: exit-kind check off: open-items.py unreadable", file=sys.stderr)
+    bad_kinds = []
     for rel in ledgers:
         p = root / rel
-        if not p.is_file():
+        if staged is not None:
+            if rel not in staged:
+                continue
+            r = subprocess.run(["git", "-C", str(root), "show", f":{rel}"], capture_output=True, text=True, encoding="utf-8")
+            if r.returncode != 0:
+                continue
+            lines = r.stdout.split("\n")
+        elif not p.is_file():
             continue
-        lines = p.read_text(encoding="utf-8").split("\n")
+        else:
+            lines = p.read_text(encoding="utf-8").split("\n")
+        if kinds:
+            # Measured 2026-11-08 (macOS instance): `exit: ask-operator` went through a commit; only the session-start
+            # aggregator said "unknown exit" a session later.
+            bad_kinds += [(rel, n, k) for n, k in unknown_kinds(lines, kinds)]
         n_entries, n_lines = migrate(lines)
         if n_lines:
             total_entries += n_entries
@@ -83,6 +148,14 @@ def main(argv=None):
                 with open(p, "w", encoding="utf-8", newline="\n") as f:
                     f.write("\n".join(lines))
     print(f"ledger-one-exit: {total_entries} entr(y/ies), {total_lines} line(s) {'rewritten' if a.write else 'to rewrite'}")
+    if a.staged and total_lines:
+        # quoted: a Windows profile with a space broke the command handed out (Windows review 2026-11-12, OS-19 note)
+        print("An open entry carries ONE current exit: line; older ones are was-exit: (convention 2026-11-06). Fix and stage again:\n"
+              f"  python3 {shlex.quote(Path(__file__).resolve().as_posix())} --root {shlex.quote(root.as_posix())} --write")
+    for rel, n, k in bad_kinds:
+        print(f"{rel}:{n}: unknown exit kind '{k}' - write one of {', '.join(sorted(kinds))} (skill backlog-catch-up)")
+    if bad_kinds:
+        return 1
     return 0 if (a.write or not total_lines) else 1
 
 

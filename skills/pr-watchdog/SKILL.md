@@ -34,7 +34,8 @@ at the tag and says so.
 0. **Scope first, the moment release prep is ordered** (why: Evidence, 2026-11-06).
    `python3 core/scripts/release-scope.py open X.Y.Z` in the brain, then `add` every PR,
    branch and ledger id this release carries and `exclude <item> "<reason>"` what it
-   deliberately leaves out. While the scope is open, `helpers/release-freeze-gate.cjs`
+   deliberately leaves out — what stays out is the operator's call: ask with the list, then
+   `RELEASE_SCOPE_EXCLUDE_OK='"<their words>" <YYYY-MM-DD>'` (the tool refuses without it). While the scope is open, `helpers/release-freeze-gate.cjs`
    holds new core branches outside it. Run `release-scope.py check --core-clone <clone>
    --version X.Y.Z` BEFORE the OS hand-check request goes out and again before the tag
    (release preflight check 11 runs it with `RELEASE_SCOPE_BRAIN=<brain root>`); exit 1

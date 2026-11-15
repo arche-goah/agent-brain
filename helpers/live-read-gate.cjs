@@ -130,12 +130,12 @@ function eachLine(file, wanted, fn) {
  *   windows: Map<key, [first, last][]>  — line windows the harness DELIVERED
  *   cats:    Set<key>                   — files dumped via Bash `cat`
  */
-function readEvidence(transcriptPath, requiredPaths) {
+function readEvidence(transcriptPaths, requiredPaths) {
   const names = [...new Set(requiredPaths.map((p) => path.basename(p)))];
   const windows = new Map();
   const cats = new Set();
   const wanted = (l) => names.some((n) => l.includes(n));
-  eachLine(transcriptPath, wanted, (line) => {
+  for (const transcriptPath of transcriptPaths) eachLine(transcriptPath, wanted, (line) => {
     let d;
     try { d = JSON.parse(line); } catch (_) { return; }
     // (a) the harness's own record of a Read result: what was actually delivered
@@ -226,9 +226,18 @@ process.stdin.on('end', () => {
     log(`NO-TRANSCRIPT tool=${tool}`); process.exit(0);
   }
 
+  // A sub-agent's own Reads land in ITS transcript (<session>/subagents/agent-<id>.jsonl), while the
+  // hook input names the session's transcript: the agent read the file and was refused anyway
+  // (2026-11-12, measured: Read 07:34:10 in the sub-agent transcript, deny 07:34:13). Both count.
+  const sources = [hook.transcript_path];
+  if (hook.agent_id) {
+    const sub = path.join(path.dirname(hook.transcript_path), path.basename(hook.transcript_path, '.jsonl'),
+      'subagents', `agent-${String(hook.agent_id).replace(/[^\w-]/g, '')}.jsonl`);
+    if (fs.existsSync(sub)) sources.push(sub); else log(`NO-SUBAGENT-TRANSCRIPT agent=${hook.agent_id}`);
+  }
   let ev;
   try {
-    ev = readEvidence(hook.transcript_path, hits.flatMap((d) => d.required.map((r) => r.path)));
+    ev = readEvidence(sources, hits.flatMap((d) => d.required.map((r) => r.path)));
   } catch (e) { log(`ERR ${e.message}`); process.exit(0); }
 
   const missing = [];

@@ -38,6 +38,9 @@ has   "first run shows the payload" "payload first" "$out1"
 hasnt "first run does not claim reuse" "reused" "$out1"
 eq    "second run does NOT execute again" "1" "$(runs)"
 has   "second run announces the reuse" "(reused: unchanged" "$out2"
+# the note precedes the stored report (2026-11-07: below a long report it went unread)
+eq    "the reuse note is the FIRST line, before the stored report" "(reused: unchanged" \
+      "$(printf '%s\n' "$out2" | head -1 | sed 's/^ *//' | cut -c1-18)"
 has   "the reuse names its key" "key K1" "$out2"
 eq    "exit code survives the cache" "$rc1" "$rc2"
 

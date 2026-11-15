@@ -36,20 +36,25 @@ run_check() {   # run_check <label> <command...>
 #    (skill lint, instance templates, bare python3, core/ prefix, node syntax, and the content guard); an agent's literal
 #    U+FEFF passed the commit and was held only at the train-head lint. Measured the same day on the macOS instance: all
 #    steps but shellcheck (~21 s) take ~10 s together. Where this runs, the copies below that the CI lint covers
-#    (leak-scan, change-level, english-only, the OS-trap register) are left out; the others stay, the lint has no twin.
+#    (change-level, english-only, the OS-trap register) are left out; the others stay, the lint has no twin.
+#    The other way round for the leak scan and the content guard (Windows review of #516, 2026-11-13): the lint's steps
+#    read the WORKING TREE, a commit is the STAGED blobs; the hook's own blocks below judge what is committed, so the
+#    lint skips its two tree steps and the hook keeps them. Each runs once either way.
 lint_mode=0
 if [ -f "$root/scripts/ci-lint-local.sh" ] && [ -f "$root/.github/workflows/ci.yml" ]; then
   lint_mode=1
+  lint=(bash "$root/scripts/ci-lint-local.sh" --commit --skip "leak scan (tree)" --skip "content guard")
   if [ -f "$brain/.claude/rules/leak-names.json" ] && [ "$root" != "$brain" ]; then
-    LEAK_NAMES_JSON="$(cat "$brain/.claude/rules/leak-names.json")" run_check "ci lint (--commit)" bash "$root/scripts/ci-lint-local.sh" --commit
+    LEAK_NAMES_JSON="$(cat "$brain/.claude/rules/leak-names.json")" run_check "ci lint (--commit)" "${lint[@]}"
   else
-    run_check "ci lint (--commit)" bash "$root/scripts/ci-lint-local.sh" --commit
+    run_check "ci lint (--commit)" "${lint[@]}"
   fi
 fi
 
 # 1. Instance data in a tool repo: only where the repo ships its own scanner (core, suites). The
 #    brain's watch list goes along for the names; without one the generic classes still apply.
-if [ "$lint_mode" -eq 0 ] && [ -f "$root/scripts/leak-scan.py" ]; then
+#    Runs in lint mode too: it is the commit-side twin of the lint's tree step (see step 0).
+if [ -f "$root/scripts/leak-scan.py" ]; then
   if [ -f "$brain/.claude/rules/leak-names.json" ] && [ "$root" != "$brain" ]; then
     LEAK_NAMES_JSON="$(cat "$brain/.claude/rules/leak-names.json")" run_check "leak-scan" "$py" "$root/scripts/leak-scan.py"
   else
@@ -81,6 +86,13 @@ fi
 #     brain-scan reports them (scripts/carrier-audit.py, report mode).
 if [ -f "$root/.claude/rules/lesson-carriers.json" ] && [ -f "$core/scripts/carrier-audit.py" ]; then
   run_check "carrier-audit" "$py" "$core/scripts/carrier-audit.py" --repo "$root" --core "$core" --staged
+fi
+
+# 4d. One current exit: line per open ledger entry (convention 2026-11-06): only ledger-reconcile.py at session start knew
+#     it, so two exits per entry went through three path commits on one brain (measured 2026-11-08). Judges only the
+#     registered ledgers this commit stages, by their staged content; ~0.1 s.
+if [ -f "$root/.claude/rules/ledgers.json" ] && [ -f "$core/scripts/ledger-one-exit.py" ]; then
+  run_check "ledger-one-exit" "$py" "$core/scripts/ledger-one-exit.py" --root "$root" --staged
 fi
 
 # 4c. A new dated rule: which OLD places say something about the same thing? (rule-conflict protocol step 2,
@@ -150,17 +162,20 @@ behind_check
 # 6. A NEW site of a known OS trap (operator, 2026-10-29: build it): on one instance three closed
 #    traps came back in a single day and each was found only by CI on the other OS. This step never
 #    reads invariant-check.py's exit code (it also reports open classes and prose-only entries); it
-#    blocks only on a "NEW site" line under a [closed] trap, i.e. drift against the register's
-#    baseline. Only where the repo ships the register and the checker (the core); ~0.4 s.
+#    blocks only on a "NEW site", "drift" or "vanished" line under a [closed] trap, i.e. drift against the
+#    register's baseline. Only where the repo ships the register and the checker (the core); ~0.4 s.
+#    "drift" and "vanished" too since 2026-11-08 (macOS instance): two branches added a hit to a file the register
+#    already knew (test-guards.sh 2 -> 3); the old filter read only "NEW site", the commit passed and the push
+#    lint went red on the same CI step.
 #    Where step 0 runs, the CI step (stricter: any drift is red) holds it instead.
 if [ "$lint_mode" -eq 0 ] && [ -f "$root/docs/os-traps.md" ] && [ -f "$root/scripts/invariant-check.py" ]; then
   # only CLOSED traps: a new site of an open class is the register's normal growth, not a regression.
-  # awk, not `| grep -q`: that is OS-5 itself.
+  # awk, not a grep on a pipe: that is OS-5 itself.
   new=$("$py" "$root/scripts/invariant-check.py" "$root/docs/os-traps.md" 2>&1 \
-        | awk '/^  (!!|ok|\?\?)  / { head = $0; closed = ($0 ~ /\[closed\]/) } /NEW site/ && closed { print head; print }')
+        | awk '/^  (!!|ok|\?\?)  / { head = $0; closed = ($0 ~ /\[closed\]/) } /NEW site|drift:|vanished:/ && closed { print head; print }')
   if [ -n "$new" ]; then
     echo ""
-    echo "pre-commit: a closed OS trap has a NEW site (docs/os-traps.md) — fix it, or extend the register's known: baseline with the reason"
+    echo "pre-commit: a closed OS trap moved against its baseline (docs/os-traps.md: new site, drift or vanished) — fix it, or update the register's known: baseline with the reason"
     printf '%s\n' "$new"
     fail=1
   fi
@@ -204,6 +219,44 @@ fi
 # fragment reached the push lint before anything said so). Runs in ~0.3 s over the repo.
 if [ "$lint_mode" -eq 0 ] && [ -f "$root/scripts/english-only.py" ]; then
   run_check "english-only" "$py" "$root/scripts/english-only.py"
+fi
+
+# A staged data file runs the fixture that covers it (2026-11-07, measured on the macOS instance: three new guard rules
+# went in without a single case and a removed rule left its cases behind; the instance's fixture said so only at the next
+# session start, four commits later). A fixture in the repo's scripts/ takes part when it carries the line
+# `# pre-commit: covers` (opt-in: it must run in seconds) — then it runs when a staged file's base name without its
+# extension stands in its `# covers:` line (`.claude/rules/mechanism-rules.json` -> `mechanism-rules`), when the
+# fixture itself is staged, and for a removed file too. Red blocks. In every repo, so an instance's fixture counts.
+covers_check() {
+  [ -d "$root/scripts" ] || return 0
+  local staged f stems tokens t s run
+  staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+  [ -n "$staged" ] || return 0
+  stems=" "
+  while IFS= read -r f; do s=${f##*/}; stems="$stems${s%.*} "; done <<< "$staged"
+  # JS fixtures (test-*.cjs / test-*.js) take part the same way with `//` comments (reach finding at #453, 2026-11-07:
+  # the gate fixtures are .cjs and stayed out of reach).
+  for f in "$root"/scripts/test-*.sh "$root"/scripts/*-test.py "$root"/scripts/test-*.cjs "$root"/scripts/test-*.js; do
+    [ -f "$f" ] && grep -qE '^(#|//) pre-commit: covers' "$f" || continue
+    run=0
+    case "$stems" in *" $(basename "${f%.*}") "*) run=1 ;; esac
+    tokens=$(sed -nE 's,^(#|//) covers:[[:space:]]*,,p' "$f" | head -1 | sed 's/(.*//')
+    for t in $tokens; do case "$stems" in *" $t "*) run=1 ;; esac; done
+    [ "$run" -eq 1 ] || continue
+    case "$f" in
+      *.cjs|*.js) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && node "$2"' _ "$root" "$f" ;;
+      *.py) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && "$2" "$3"' _ "$root" "$py" "$f" ;;
+      *)    run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && bash "$2"' _ "$root" "$f" ;;
+    esac
+  done
+}
+covers_check
+
+# The content guard (malicious-content classes: invisible characters, bidi controls), where the repo ships it. Measured
+# 2026-11-12 on the macOS instance: an agent's fixture carried a literal U+FEFF, its commits passed leak-scan, and only
+# the full lint at the merge-train head found it - one more lint round. Runs in ~1 s over the repo.
+if [ -f "$root/scripts/content-guard.py" ]; then
+  run_check "content-guard" "$py" "$root/scripts/content-guard.py"
 fi
 
 if [ "$fail" -ne 0 ]; then

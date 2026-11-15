@@ -27,6 +27,9 @@
  *   at least `minimum.<risk>.review` of the PR (risk from its body and its files).
  * CHECK 3 — any `gh pr comment|review` with a `Model:` line: the line names the measured model (a review
  *   cannot claim a stronger model than it ran on).
+ * CHECK 3b — `gh pr comment|review` (not an approval) whose text is an OS hand review (`os-review.cjs`
+ *   `handReview`) by an instance other than the PR author's: it carries `Fit:` / `Design:` / `Cost:` / `Model:`
+ *   in the form CHECK 4 counts, held when posted — not first at the merge.
  * CHECK 4 — `gh pr merge`: the thread (comments and review bodies) holds a content review by an instance
  *   OTHER than the author's (key in the body; a body without a key accepts any keyed review) whose `Model:`
  *   is at least the review minimum. A merge train PR (body opens with `## Merge train`) is checked per
@@ -41,7 +44,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { invocations, publishedText } = require('./published-text.cjs');
+const { invocations, publishedText, nativePath } = require('./published-text.cjs');
 
 const LABELS = ['Fit', 'Design', 'Cost'];
 const MIN_ANSWER = 25;
@@ -174,13 +177,20 @@ function gh(args) {
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
 }
 const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', 'body,comments,reviews,files']));
+/** `-R OWNER/REPO` or gh's long form `-R HOST/OWNER/REPO`, as OWNER/REPO (Windows review of #504). */
+function repoArg(cmd) {
+  const m = /(?:-R|--repo)[=\s]+["']?([\w.-]+(?:\/[\w.-]+){1,2})/.exec(cmd);
+  return m ? m[1].split('/').slice(-2).join('/') : null;
+}
+/** A remote URL's OWNER/REPO, case-folded: https, ssh:// and scp-like `git@host:owner/repo.git` alike. */
+const remoteSlug = (url) => ((/[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url) || [])[1] || '').toLowerCase();
 
 function target(cmd, verb) {
   const url = /github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(cmd);
   if (url) return { repo: url[1], nr: url[2] };
-  const repo = /(?:-R|--repo)[=\s]+["']?([\w.-]+\/[\w.-]+)/.exec(cmd);
+  const repo = repoArg(cmd);
   const nr = new RegExp(`\\bgh\\s+pr\\s+${verb}\\s+(?:(?:-R|--repo)[=\\s]+\\S+\\s+)?["']?(\\d+)\\b`).exec(cmd);
-  return repo && nr ? { repo: repo[1], nr: nr[1] } : null;
+  return repo && nr ? { repo, nr: nr[1] } : null;
 }
 
 function postedText(cmd, ps, cwd) {
@@ -190,7 +200,7 @@ function postedText(cmd, ps, cwd) {
   for (const f of pub.files) {
     const p = String(f).replace(/^~(?=$|[\\/])/, require('os').homedir());
     // nativePath: a Git Bash `/c/...` path node on Windows cannot open (OS-19, same reader as review-claim-gate)
-    try { text += '\n' + fs.readFileSync(path.resolve(cwd, require('./public-text-guard.cjs').nativePath(p)), 'utf8'); }
+    try { text += '\n' + fs.readFileSync(path.resolve(cwd, nativePath(p)), 'utf8'); }
     catch (e) { /* the post fails on it too */ }
   }
   return text;
@@ -204,6 +214,26 @@ function branchFiles(cwd) {
   let base = 'origin/main';
   try { base = git(['rev-parse', '--abbrev-ref', 'origin/HEAD']).trim() || base; } catch (e) { /* no origin/HEAD set: main */ }
   try { return git(['diff', '--name-only', `${base}...HEAD`]).split('\n').filter(Boolean); } catch (e) { return null; }
+}
+
+/** The PR's files for `gh pr create`. With `-R <repo>` naming another repo than the checkout the call runs in, the
+ * checkout's branch says nothing about the PR (2026-11-12: a core PR opened from the brain's working copy was scored
+ * by a brain script and forced to "medium"): the files come from the repo's compare view of `--head` instead, and
+ * without `--head` they are unreadable (not checked, said on stderr). */
+function createFiles(cmd, cwd) {
+  if (process.env.CONTENT_REVIEW_GATE_FILES !== undefined) return branchFiles(cwd);
+  const repo = repoArg(cmd);
+  if (!repo) return branchFiles(cwd);
+  let origin = '';
+  try { origin = execFileSync('git', ['-C', cwd, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+  catch (e) { /* no checkout here */ }
+  // the normalised OWNER/REPO, not a '/'-suffix: an SSH origin (git@github.com:owner/repo) has a ':' there
+  if (remoteSlug(origin) === repo.toLowerCase()) return branchFiles(cwd);
+  const head = (/--head[=\s]+["']?([^\s"']+)/.exec(cmd) || [])[1];
+  const base = (/--base[=\s]+["']?([^\s"']+)/.exec(cmd) || [])[1] || 'main';
+  if (!head) { console.error(`content-review-gate: ${repo} is not this checkout and no --head given - risk floor not checked`); return null; }
+  try { return gh(['api', `repos/${repo}/compare/${base}...${head}`, '--jq', '.files[].filename']).split('\n').filter(Boolean); }
+  catch (e) { console.error(`content-review-gate: compare ${base}...${head} in ${repo} unreadable - risk floor not checked`); return null; }
 }
 
 const QUESTIONS =
@@ -232,7 +262,7 @@ function checkCommit(cmd, ps, cwd, getModel) {
   const commits = hits === null ? /\bgit\b[^\n;&|]*\scommit\b/.test(cmd) : hits.some((w) => sub(w) === 'commit');
   if (!commits) return 0;
   const dir = (/\bgit\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd) || [])[1];
-  const repo = dir ? path.resolve(cwd, dir.replace(/^["']|["']$/g, '')) : cwd;
+  const repo = dir ? path.resolve(cwd, nativePath(dir.replace(/^["']|["']$/g, ''))) : cwd;   // OS-19
   let root;
   try { root = execFileSync('git', ['-C', repo, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
   catch (e) { return 0; }
@@ -254,7 +284,7 @@ function checkCreate(cmd, ps, cwd, getModel) {
   const hits = invocations(cmd, ps, 'gh', ['pr'], ['create']);
   if (hits === null ? !/\bgh\s+pr\s+create\b/.test(cmd) : !hits.length) return 0;
   const body = postedText(cmd, ps, cwd);
-  const files = branchFiles(cwd);
+  const files = createFiles(cmd, cwd);
   if (!files) console.error('content-review-gate: branch files unreadable, risk floor not checked');
   const fl = floor(files || []);
   const d = declared(body);
@@ -281,7 +311,7 @@ function checkReviewPost(cmd, ps, cwd, getModel) {
   }
   const approves = hits === null ? /\bgh\s+pr\s+review\b[^\n]*\s(?:--approve|-a)\b/.test(cmd)
     : hits.some((w) => w[2] === 'review' && (w.includes('--approve') || w.includes('-a')));
-  if (!approves) return 0;
+  if (!approves) return checkReviewComment(cmd, text);
   const gone = missing(text);
   if (!claimed) gone.push('Model');
   if (gone.length) return block(`an approval needs a content review, not only a function or OS check - missing: ${gone.join(', ')}.\n` +
@@ -297,6 +327,33 @@ function checkReviewPost(cmd, ps, cwd, getModel) {
   if (tier(model || claimed) < least) return block(`${t.repo}#${t.nr} has risk ${risk}; it is reviewed with at least ${CFG.tiers[least]}, ` +
     `this review runs on ${model || claimed}.\n` + HANDOFF.replace('<tier>', CFG.tiers[least]).replace(/build/g, 'review'));
   return 0;
+}
+
+/**
+ * CHECK 3b — a review posted as a COMMENT (an OS hand review on a PR another instance wrote) carries the content lines
+ * in the form `missing()` reads, held at posting time. Measured 2026-11-12 on agent-brain #473: the Windows review held
+ * fit, design and cost in one heading line ("fit: yes, design: partly, cost: low"); `missing()` read Fit and Design
+ * as absent, and nothing said so until the train merge would block - 30 of 33 PRs of that train had no counted review.
+ */
+function checkReviewComment(cmd, text) {
+  const { handReview } = require('./os-review.cjs');
+  const reviewer = ['macOS', 'Windows', 'Linux'].map((os) => handReview(text, os)).find(Boolean);
+  if (!reviewer) return 0;
+  const t = target(cmd, 'comment') || target(cmd, 'review');
+  let pr = null;
+  if (t) { try { pr = readPr(t.repo, t.nr); } catch (e) { /* below */ } }
+  if (!pr) { console.error('content-review-gate: PR unreadable, review form not checked'); return 0; }
+  // A merge train's OS check is the one hand check at its head; the content reviews belong to its members (CHECK 4
+  // reads them there). Windows review of #508, 2026-11-12: without this the train's OS OK would be held.
+  if (/^\s*##\s*Merge train\b/.test(String(pr.body || ''))) return 0;
+  const author = (KEY_RX.exec(String(pr.body || '')) || [])[1];
+  if (author && author.toLowerCase() === String(reviewer).toLowerCase()) return 0;   // the author's own OS check
+  const gone = missing(text);
+  if (!modelLine(text)) gone.push('Model');
+  if (!gone.length) return 0;
+  return block(`this comment is an OS review of ${t.repo}#${t.nr} by another instance, but the content review the merge counts is missing: `
+    + `${gone.join(', ')}.\nEach on a line of its own, at least ${MIN_ANSWER} characters (a heading like "fit: yes, design: partly" is not read):\n`
+    + QUESTIONS + '\nWhy: 2026-11-12 - a review in another form was posted, counted nowhere, and found only at the train merge.');
 }
 
 function checkMerge(cmd, ps) {

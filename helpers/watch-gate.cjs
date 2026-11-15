@@ -424,7 +424,8 @@ function prWatched(root, calls) {
   return locks.length > 0 && anyAlive(locks) !== false;
 }
 
-function expandHome(p) { return p.replace(/^~(?=$|[\\/])/, require('os').homedir()); }
+// `~` expanded, a Git Bash `/c/...` made native (OS-19).
+function expandHome(p) { return require('./published-text.cjs').nativePath(p.replace(/^~(?=$|[\\/])/, require('os').homedir())); }
 /** The checkout a shell call acts on: `git -C <dir>`, else a leading `cd <dir>`, else the project root. */
 function callDir(cmd, root) {
   let m = /\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);

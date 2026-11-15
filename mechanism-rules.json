@@ -39,7 +39,7 @@
       "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A help call passes, and so do the `status`/`disarm` subcommands of the two scripts that have them (repo-activity-watch.sh, shared-memory-watch.sh) - collab-watch.sh has none: `collab-watch.sh status` ARMS the watch (measured 2026-10-26)."
     },
     {
-      "pattern": "(?:\\bgit\\b[^|;&\\n]*?\\spush\\b[^|;&\\n]*\\s:[^\\s:]|\\bgit\\s+(?:-c\\s+\\S+\\s+)*(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?(?:-c\\s+\\S+\\s+)*push\\b[^|;&\\n]*\\s(?:--force(?:-with-lease)?\\b|-f\\b|--mirror\\b|--delete\\b|-d\\b|--no-verify\\b|\\+))",
+      "pattern": "(?:\\bgit\\b(?:[^|;&\\n#]|(?<=\\S)#)*?\\spush\\b(?:[^|;&\\n#]|(?<=\\S)#)*\\s:[^\\s:]|\\bgit\\s+(?:-c\\s+\\S+\\s+)*(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?(?:-c\\s+\\S+\\s+)*push\\b(?:[^|;&\\n#]|(?<=\\S)#)*\\s(?:--force(?:-with-lease)?\\b|-f\\b|--mirror\\b|--delete\\b|-d\\b|--no-verify\\b|\\+))",
       "was": "a destructive push in a form no permission pattern can catch: a branch delete by colon refspec (`git push origin :feat`), or a force/mirror push behind `git -c k=v` - a deny pattern ending in `:*` is read as a trailing wildcard (docs permissions: `Bash(ls:*)` equals `Bash(ls *)`), so `git push * :*` would deny every push with two arguments, and `-c` moves `push` out of every prefix pattern (found 2026-10-26 by the macOS instance's review of the settings template); since 2026-11-02 every `git [-C <repo>] push` form, plus --delete/-d and --no-verify (skips the pre-push hook): the settings template dropped its `git -C * push …` text rules because they matched commit messages too",
       "instead": "Deleting a remote branch or rewriting remote history is the operator's word (destructive). A merged PR's branch goes with `gh pr merge --delete-branch`; anything else: report it and wait for the word.",
       "needs_operator_word": true
@@ -122,6 +122,26 @@
       "pattern": "(?:^|[\\n;&|(])\\s*(?:\\S*/)?(?:textutil\\b[^\\n]*-convert\\s+(?:docx|doc|rtf|odt)\\b|pandoc\\b[^\\n]*(?:-o|--output)[ =]\\S+\\.(?:docx|pptx|odt)\\b|(?:soffice|libreoffice)\\b[^\\n]*--convert-to\\s+(?:docx|xlsx|pptx|doc|xls|ppt)\\b)",
       "was": "an office file (Word, Excel, PowerPoint) built by a generic converter (textutil, pandoc, soffice --convert-to). Measured 2026-11-11 on the macOS instance: textutil turned 10.5 pt into 12 pt and wrote no page size or margins, so a page that fit in the preview ran over in Word.",
       "instead": "Build office files through the office skill of the harness (docx, xlsx, pptx — page size, margins and sizes set explicitly). Reading an office file into text or Markdown (`-convert txt`, `pandoc a.docx -o a.md`) stays free."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:\\S*/)?open\\s+(?:-\\S+\\s+)*(?:-a\\s+(?:\"[^\"]+\"|'[^']+'|\\S+)\\s+)?[\"']?https?://[^\\s\"']*(?:search|suche|/s\\?|[?&](?:q|k|exps|query|search|searchterm)=)",
+      "was": "a shop SEARCH page opened as a tab for the operator (measured 2026-11-11 on the macOS instance: 81 order tabs, most of them search pages, because the order list carried article numbers). A search result is no order position.",
+      "instead": "Order tabs only through `python3 core/scripts/product-sources.py open <order-list.csv>` - every line a product page with an availability read under 24 h. When no product page is found, say which shop does not carry it and name the link, never open it."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*osascript\\b(?![^\\n]*product-sources)[^\\n]*(?:make\\s+new\\s+(?:tab|document)|open\\s+location|set\\s+URL|\\.applescript\\b|\\.scpt\\b)",
+      "was": "browser tabs opened by an AppleScript of its own, past the order-list check (same incident: the tabs were opened from a URL file via osascript, which the open-command rule did not see).",
+      "instead": "`python3 core/scripts/product-sources.py open <order-list.csv>` opens the tabs after the check. Reading the browser (`osascript -e 'tell application \"Safari\" to get URL of ...'`) stays free."
+    },
+    {
+      "pattern": "(?:^|[;&|]\\s*)(?:(?:bash|sh|python3|python)\\s+)?[^\\s;&|]*(handover-gate|effect-check|leak-scan|suite-check|skill-lint|dep-lint|memory-lint|ecosystem-sync|workflow-parse-check|parallel-sessions|brain-scan\\.sh)[^|;&]*\\|\\s*(tail|head|grep|tee|cut|sed|awk)\\b",
+      "was": "a core gate or check run through a pipe (`leak-scan.py | tail`) - the pipeline's exit code is the LAST command's, so a red gate reads green. Measured 2026-08-04 on the Windows instance: a red gate slipped through into a commit and a push; ported 2026-11-07 from that instance's rule data (in use since 2026-08-04, command position anchored 2026-08-08 so reading a script with `git show ... | sed` passes)",
+      "instead": "Run the gate without a pipe and read its exit code on its own (`python3 core/scripts/leak-scan.py; echo \"exit=$?\"`), or write the output to a file first and filter that."
+    },
+    {
+      "pattern": "^(?![\\s\\S]*marketplace\\s+update[\\s\\S]*claude\\s+plugin\\s+update)(?:[\\s\\S]*[;&|]\\s*)?claude\\s+plugin\\s+update\\b",
+      "was": "`claude plugin update` without a marketplace refresh before it - a stale marketplace clone pins an older version and writes the fix back. Measured 2026-08-04 on the Windows instance; ported 2026-11-07 from that instance's rule data. A refresh earlier in the same command passes; the command position is anchored, so the phrase quoted in a message is no hit",
+      "instead": "Core update: `bash core/scripts/brain-update.sh` (follows the pin of the enabled channel). A single suite plugin: `claude plugin marketplace update <marketplace>` first, then `claude plugin update <plugin>@<marketplace>`. If the refresh already ran in this session, repeat the command with `# MECHANISM-OK: marketplace refresh ran in this session`."
     }
   ]
 }
