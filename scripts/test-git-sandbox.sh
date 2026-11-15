@@ -104,5 +104,18 @@ for f in "$HERE"/*test*.sh; do
 done
 [ -z "$unsb" ] && ok "every fixture that pushes isolates its git config" || bad "pushes without git-sandbox.sh or GIT_CONFIG_GLOBAL:$unsb"
 
+# Same class, python half (2026-11-15, macOS review of the PR): a `*test*.py` fixture that runs a git call with "push" as an
+# ARGUMENT (`git(wt, "push", ...)`, `["git", "-C", d, "push"]`) imports git_sandbox (or sets GIT_CONFIG_GLOBAL). Unlike the shell scan,
+# string literals stay (the word IS a literal); instead only a git-call shape counts and comment lines are dropped, so "push" as
+# prose or as a settings rule (`"Bash(git push origin main)"`) is no hit. Limits: a text scan — a push whose argument list is built
+# in a variable, or a helper not named like git, is not seen; a docstring line shaped like a call would be a false hit.
+unsbp=""
+for f in "$HERE"/*test*.py; do
+  grep -aE '^[[:space:]]*#' -v "$f" \
+    | grep -aqE '([A-Za-z_]*git[A-Za-z_]*\(([^()]*,)?[[:space:]]*["'"'"']push["'"'"']|["'"'"']git["'"'"'][^]]*["'"'"']push["'"'"'])' || continue
+  grep -aqE 'import git_sandbox|GIT_CONFIG_GLOBAL' "$f" || unsbp="$unsbp $(basename "$f")"
+done
+[ -z "$unsbp" ] && ok "every python fixture that pushes isolates its git config" || bad "python pushes without git_sandbox or GIT_CONFIG_GLOBAL:$unsbp"
+
 if [ "$fail" -eq 0 ]; then echo "test-git-sandbox: all green"; else echo "test-git-sandbox: FAILED"; fi
 exit "$fail"
