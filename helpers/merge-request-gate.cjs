@@ -57,7 +57,7 @@ function target(cmd) {
 
 function readPr(t) {
   const fake = process.env.MERGE_REQUEST_GATE_GH;
-  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid,commits,statusCheckRollup'];
+  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid,commits,statusCheckRollup,files'];
   const out = execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
   return JSON.parse(out);
@@ -124,8 +124,29 @@ function ciGreenFor(pr, os) {
     && String(c.conclusion || c.state || '').toUpperCase() === 'SUCCESS');
 }
 
+/**
+ * A PR whose every file lies under the suite's own `data_paths` (globs in its `dependencies.json`, e.g.
+ * "releases/*.md") is a data change: no OS behaviour to check, so no OS OK is required. Operator decision
+ * 2026-11-15 (question tool, "Ja, bauen"); measured 2026-11-13 on a suite: five result rows in a release record
+ * could only pass as a `BETA-MERGE`, a label that was false for a data change. A PR without a readable file list,
+ * or with one file outside the globs, is not a data change. Globs are anchored: `*` stays inside one path segment,
+ * `**` crosses segments.
+ */
+function dataOnly(pr, deps) {
+  const globs = Array.isArray(deps && deps.data_paths) ? deps.data_paths.filter((g) => typeof g === 'string' && g) : [];
+  const files = Array.isArray(pr.files) ? pr.files.map((f) => String((f && f.path) || '')).filter(Boolean) : [];
+  if (!globs.length || !files.length) return false;
+  const rx = globs.map((g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*') + '$'));
+  return files.every((f) => rx.some((r) => r.test(f)));
+}
+
 function uncovered(pr, deps, repo) {
   if (!deps) return [];
+  if (dataOnly(pr, deps)) {
+    console.error('merge-request-gate: every file is under the suite\'s data_paths - a data change, no OS OK required');
+    return [];
+  }
   const want = Array.isArray(deps.required_os) && deps.required_os.length ? deps.required_os : ['macOS', 'Windows'];
   const shas = headShas(pr);
   if (!shas.length) return [];
