@@ -72,7 +72,7 @@ spr 'feat: x' '["Windows OK at head `abc1234`; macOS check wanted, macOS uncheck
 sprobe "suite, macOS named only as open" "$M" block "$D"
 
 # 2026-11-15 (operator, question tool: "Ja, bauen"): a PR whose every file is under the suite's data_paths needs no OS OK.
-dpr() { node -e 'process.stdout.write(JSON.stringify({headRefOid: "abc1234def5678", body: "data: result rows", comments: [], files: JSON.parse(process.argv[1]).map((p) => ({path: p}))}))' "$1" > "$T/pr.json"; }
+dpr() { node -e 'const f = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify({headRefOid: "abc1234def5678", body: "data: result rows", comments: [], changedFiles: Number(process.argv[2] || f.length), files: f.map((p) => ({path: p}))}))' "$1" "${2-}" > "$T/pr.json"; }
 printf '{"data_paths": ["releases/*.md", "references/fixture-types/**"]}\n' > "$T/deps-data.json"
 DD="$(native "$T/deps-data.json")"
 dpr '["releases/v1.2.0.md"]'
@@ -87,6 +87,8 @@ dpr '["releases/v1.2.0.md.js"]'
 sprobe "anchored: releases/x.md.js is not releases/*.md" "$M" block "$DD"
 dpr '[]'
 sprobe "no file list: not a data change" "$M" block "$DD"
+dpr '["releases/v1.2.0.md"]' 150
+sprobe "file list shorter than changedFiles (gh page limit): not a data change" "$M" block "$DD"
 dpr '["releases/v1.2.0.md"]'
 sprobe "same data PR, suite without data_paths (control)" "$M" block "$D"
 

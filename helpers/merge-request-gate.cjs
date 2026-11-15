@@ -57,7 +57,7 @@ function target(cmd) {
 
 function readPr(t) {
   const fake = process.env.MERGE_REQUEST_GATE_GH;
-  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid,commits,statusCheckRollup,files'];
+  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid,commits,statusCheckRollup,files,changedFiles'];
   const out = execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
   return JSON.parse(out);
@@ -136,6 +136,8 @@ function dataOnly(pr, deps) {
   const globs = Array.isArray(deps && deps.data_paths) ? deps.data_paths.filter((g) => typeof g === 'string' && g) : [];
   const files = Array.isArray(pr.files) ? pr.files.map((f) => String((f && f.path) || '')).filter(Boolean) : [];
   if (!globs.length || !files.length) return false;
+  // gh returns at most one page of files: a list shorter than the PR's own count hides files, so it is no proof.
+  if (typeof pr.changedFiles !== 'number' || pr.changedFiles !== files.length) return false;
   const rx = globs.map((g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*') + '$'));
   return files.every((f) => rx.some((r) => r.test(f)));
