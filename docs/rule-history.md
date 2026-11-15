@@ -551,6 +551,13 @@ Measured the day the rule was written: one finding,
    "no session ran" and "findings stayed unreported" looked the same. The device report
    already proves a session ran (it is written at session start); it now also carries the
    date of the device's last shared-memory entry, so the gap between the two is read, not guessed.
+   2026-11-15 (finding of the Windows instance, agreed by the macOS instance, which named the wording): the rule said
+   "one shared-memory entry" and named no other target. A brain with a private channel (a device channel next to the
+   shared memory) or private projects could follow it only by sharing what is private - a contradiction to the leak
+   discipline, not a wording question; and offline (a show network) it had no target at all. The target is now named
+   by reference to `shared-memory-channels.json` (no second list beside the channel file), a private project's
+   finding stays in the instance ledger with only its core or suite part shared, and offline means ledger now, post at
+   the next start, `open end:` line at the close (the close already reads those, `close-stamp.cjs`).
 
 Wording before the context diet of 2026-10-20, verbatim. The rule file now carries the condensed rule; this is the past state it was condensed from.
 
