@@ -3,12 +3,15 @@
 # copy of the hook inside a sandbox brain (<brain>/core/helpers/git-hooks), the way a brain mounts it.
 # Blocks: delete, rewrite (force, a moved tag), main of a repo that is neither the brain, nor the
 # shared memory, nor listed. Passes: fast-forward, new branch, new tag, main of the brain, of the
-# shared memory and of a listed repo, the PUSH_GUARD_OK marker. Negative control: without the hook
+# shared memory, of a listed repo and of a remote under the system temp, the PUSH_GUARD_OK marker. Negative control: without the hook
 # the rewrite goes through. Sandbox only (GIT_CONFIG_GLOBAL), nothing reaches a real remote.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+# The hook frees main for a remote under the system temp (a fixture's bare repo), so the remotes that
+# must stay GUARDED live outside it: under $HOME, which is never a temp root.
+REM="$HOME/.test-pre-push.$$"; mkdir -p "$REM"   # only git reads these paths, as with $TMP's remotes before
+trap 'rm -rf "$TMP" "$REM"' EXIT
 FAIL=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAIL=1; }
@@ -21,10 +24,10 @@ printf '[user]\n\tname = t\n\temail = t@example.invalid\n[init]\n\tdefaultBranch
   "$(native "$HOOKS")" > "$GIT_CONFIG_GLOBAL"
 LIST="$B/.claude/rules/push-targets.json"
 
-repo() { # $1 name -> bare remote $TMP/o/$1.git, clone at $2
-  git init -q --bare "$TMP/o/$1.git"; git clone -q "$TMP/o/$1.git" "$2" 2>/dev/null
+repo() { # $1 name -> bare remote $REM/o/$1.git (outside the temp roots), clone at $2
+  git init -q --bare "$REM/o/$1.git"; git clone -q "$REM/o/$1.git" "$2" 2>/dev/null
 }
-mkdir -p "$TMP/o"
+mkdir -p "$REM/o"
 W="$TMP/work"; repo widget "$W"
 c() { echo "$2" > "$1/f"; git -C "$1" add f; git -C "$1" commit -qm "$2"; }
 try() { # $1 label  $2 expect ok|blocked  $3 repo  $4.. push args
@@ -42,10 +45,22 @@ printf '{"main_ok": ["o/other"]}\n' > "$LIST"
 c "$W" three; try "main of a repo the list does not name is blocked" blocked "$W" main
 try "a feature branch of that repo passes" ok "$W" main:refs/heads/feat/y
 rm -f "$LIST"
-git -C "$B" init -q; git -C "$B" remote add origin "$TMP/o/brain.git"; git init -q --bare "$TMP/o/brain.git"
+git -C "$B" init -q; git -C "$B" remote add origin "$REM/o/brain.git"; git init -q --bare "$REM/o/brain.git"
 c "$B" b1; try "main of the brain itself passes" ok "$B" main
 S="$TMP/shared"; repo shared "$S"; echo '{}' > "$S/parties.json"; git -C "$S" add parties.json; c "$S" s1
 try "main of the shared memory (parties.json) passes" ok "$S" main
+
+# --- a fixture's throwaway remote under the system temp: main is free, rewrite and delete are not ----
+F="$TMP/fixture"; git init -q --bare "$TMP/f.git"; git clone -q "$TMP/f.git" "$F" 2>/dev/null
+c "$F" f1; try "main of a remote under the system temp passes" ok "$F" main
+git -C "$F" remote set-url origin "file://$(native "$TMP/f.git")"
+c "$F" f2; try "the same remote as a file:// URL passes" ok "$F" main
+git -C "$F" commit -q --amend -m f2-rewritten
+try "a rewrite of a temp remote's main is still blocked" blocked "$F" +main
+try "a side branch on a temp remote passes" ok "$F" HEAD:refs/heads/side
+try "deleting a branch on a temp remote is still blocked" blocked "$F" :side
+git -C "$F" remote set-url origin "$REM/o/widget.git"
+try "main of a remote outside the temp roots stays blocked" blocked "$F" HEAD:refs/heads/main
 
 # --- delete and rewrite: every repo ---------------------------------------------------------------
 git -C "$W" checkout -qb feat/x; c "$W" four

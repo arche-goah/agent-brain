@@ -15,6 +15,10 @@
 #   3. a push to main or master of any repo but the brain itself and the shared memory (the repo
 #      with parties.json at its top, as prepare-commit-msg tells it) — both are pushed to main by
 #      design. More repos: .claude/rules/push-targets.json  {"main_ok": ["owner/repo", ...]}
+#      Also free: a remote that is a local path under the system temp directory ($TMPDIR, $TEMP,
+#      $TMP, /tmp, /var/tmp) - a fixture's throwaway bare repo, never a published one. Measured
+#      2026-11-16: a suite's release-preflight fixture pushed main into a mktemp bare repo and was
+#      refused on the operator's machine while the same test passed in CI. 1 and 2 still apply there.
 # Tags are judged like branches for 1 and 2 (moving a published tag is a rewrite); a new tag passes.
 # GLOBAL via core.hooksPath like pre-commit: what is not listed is still guarded for 1 and 2.
 # Bypass `git push --no-verify` stays possible on purpose (see pre-commit); the core's mechanism
@@ -29,9 +33,22 @@ targets="${PUSH_TARGETS_JSON:-$brain/.claude/rules/push-targets.json}"
 # owner/repo from the remote URL (https://github.com/o/r(.git), git@github.com:o/r(.git), local paths: last two parts)
 slug=$(printf '%s' "$remote_url" | sed -E 's#\.git/?$##; s#/+$##; s#^.*[:/]([^/:]+/[^/:]+)$#\1#')
 
+# a local path (plain or file://) that resolves under one of the system temp roots; a URL never does
+temp_remote() {
+  local p=$1 t r
+  case "$p" in file://*) p=${p#file://} ;; *://*|*@*:*) return 1 ;; esac
+  p=$(cd "$p" 2>/dev/null && pwd -P) || return 1
+  for t in "${TMPDIR:-}" "${TEMP:-}" "${TMP:-}" /tmp /var/tmp; do
+    [ -n "$t" ] || continue
+    r=$(cd "$t" 2>/dev/null && pwd -P) || continue
+    case "$p/" in "${r%/}/"*) return 0 ;; esac
+  done
+  return 1
+}
+
 top=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 main_ok=no
-if [ "$(cd "$top" && pwd -P)" = "$(cd "$brain" && pwd -P)" ] || [ -f "$top/parties.json" ]; then
+if [ "$(cd "$top" && pwd -P)" = "$(cd "$brain" && pwd -P)" ] || [ -f "$top/parties.json" ] || temp_remote "$remote_url"; then
   main_ok=yes
 elif [ -f "$targets" ]; then
   py=python3; "$py" -c 'import sys' >/dev/null 2>&1 || py=python   # Windows: python3 can be the Store stub
