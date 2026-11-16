@@ -332,11 +332,10 @@ History: core/docs/rule-history.md, "Order Fidelity (Auftragstreue) (HARD)".
 7. **Every finding on every level is reported, in the same turn, never only on request**
    (2026-10-16): device or app, suite tool, suite skill, core hook/gate/rule, the harness,
    the AI's own behaviour (a skipped part, a wrong assumption, a needless question). One
-   entry in the channel `shared-memory-channels.json` names for the level (2026-11-15); a
-   private project's finding goes to the instance ledger, and only its core or suite part,
-   without the project's name, to the shared memory: what happened (verbatim, error text),
-   what is measured, which level, what it blocks, a proposal. Offline: the ledger at once,
-   the post at the next start, named as an `open end:` line at the close. Silence is measured, not trusted:
+   shared-memory entry (a device-private one in an own-devices channel; a private project's in
+   the ledger, its core part unnamed in the shared memory, 2026-11-15): what happened (verbatim,
+   error text), what is measured, which level, what it blocks, a proposal. Offline: ledger now,
+   post at the next start, `open end:` at the close. Silence is measured, not trusted:
    the device report carries the date of the device's last shared-memory entry, and
    `core/scripts/device-status.py --brief` names a device that ran a session but posted
    nothing for a week.
