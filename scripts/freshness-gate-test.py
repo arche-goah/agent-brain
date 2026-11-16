@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 HOOK = os.path.join(os.path.dirname(__file__), "..", "helpers", "freshness-gate.cjs")
 
@@ -113,6 +114,72 @@ with tempfile.TemporaryDirectory() as tmp:
     st = make_state(tmp, "big-audit", age_days=1)
     res = run({"script": "phase('a')"}, st, root)
     cases.append(("nameless script allows", res is None))
+
+    # AA-9 (audit-audit 2026-11-10): a dated report counts as a run, a failed run with its report counts,
+    # a resumed run is not a cheap probe. Each case has a neighbour that must stay silent.
+    def day(age):
+        return time.strftime("%Y-%m-%d", time.localtime(time.time() - age * 86400))
+
+    def repo_with(sub, *files):
+        r = Path(tmp) / sub
+        for f in files:
+            p = r / f
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("# report\n", encoding="utf-8")
+        return str(r)
+
+    def record(rec, agent_mtime=None):
+        sess = Path(tmp) / "aa9-state" / "session-1"
+        wf = sess / "workflows"
+        wf.mkdir(parents=True, exist_ok=True)
+        (wf / "wf_aa9-1.json").write_text(json.dumps(rec), encoding="utf-8")
+        adir = sess / "subagents" / "workflows" / "wf_aa9-1"
+        adir.mkdir(parents=True, exist_ok=True)
+        for old in adir.glob("agent-*.jsonl"):
+            old.unlink()
+        if agent_mtime is not None:
+            a = adir / "agent-x.jsonl"
+            a.write_text("{}\n", encoding="utf-8")
+            os.utime(a, (agent_mtime, agent_mtime))
+        return str(Path(tmp) / "aa9-state")
+
+    no_state = str(Path(tmp) / "aa9-no-records")
+    r = repo_with("aa9-a1", f"docs/research/big-audit/register-{day(3)}.md")
+    res = run({"script": SCRIPT}, no_state, r)
+    cases.append(("a dated report without a record denies (another machine's run)", res is not None
+                  and "report:" in res["hookSpecificOutput"]["permissionDecisionReason"]))
+    r = repo_with("aa9-a2", f"docs/research/big-audit/register-{day(30)}.md")
+    cases.append(("control: an old dated report allows", run({"script": SCRIPT}, no_state, r) is None))
+    r = repo_with("aa9-a3", "docs/research/big-audit/notes.md", f"docs/research/other-audit/scan-{day(1)}.md")
+    cases.append(("control: an undated file or another workflow's report allows", run({"script": SCRIPT}, no_state, r) is None))
+    r = repo_with("aa9-a4", f"docs/research/big-audit-{day(2)}/synthesis.md")
+    cases.append(("a dated report folder denies", run({"script": SCRIPT}, no_state, r) is not None))
+
+    iso2 = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 2 * 86400))
+    failed = {"workflowName": "big-audit", "status": "failed", "timestamp": iso2, "totalTokens": 900000,
+              "args": json.dumps({"date": day(2)})}
+    st = record(failed)
+    r = repo_with("aa9-b1", f"docs/research/big-audit/register-{day(2)}.md")
+    res = run({"script": SCRIPT}, st, r)
+    cases.append(("a failed run that wrote its report denies", res is not None
+                  and "ended failed" in res["hookSpecificOutput"]["permissionDecisionReason"]))
+    r = repo_with("aa9-b2", f"docs/research/big-audit/register-{day(9)}.md")
+    res = run({"name": "big-audit"}, st, r)
+    cases.append(("control: a failed run without its report does not count, the older report does",
+                  res is not None and "ended failed" not in res["hookSpecificOutput"]["permissionDecisionReason"]))
+    r = repo_with("aa9-b3")
+    cases.append(("control: a failed run with no report at all allows", run({"script": SCRIPT}, st, r) is None))
+
+    start_ms = int((time.time() - 3600) * 1000)
+    resumed = {"workflowName": "big-audit", "status": "completed", "timestamp": iso2, "totalTokens": 800,
+               "startTime": start_ms}
+    st = record(resumed, agent_mtime=time.time() - 7200)
+    res = run({"script": SCRIPT}, st, repo_with("aa9-c1"))
+    cases.append(("a resumed run below the token floor still denies (the record holds only the resumed part)",
+                  res is not None and "after a resume" in res["hookSpecificOutput"]["permissionDecisionReason"]))
+    st = record(resumed, agent_mtime=time.time() - 60)
+    cases.append(("control: the same record without an earlier attempt stays a cheap probe",
+                  run({"script": SCRIPT}, st, repo_with("aa9-c2")) is None))
 
     # 12b coherence-scan partial run (operator decision 2026-11-02) passes under the cadence; a full run does not
     st = make_state(tmp, "coherence-scan", age_days=6)

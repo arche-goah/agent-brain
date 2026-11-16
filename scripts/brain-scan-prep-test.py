@@ -273,5 +273,64 @@ with tempfile.TemporaryDirectory() as d:
           and "did not complete" not in fd[0]["title"],
           "fork-drift without GitHub reads as 'not checked', not as a crash and not as 'no drift'")
 
+with tempfile.TemporaryDirectory() as d:
+    # ── suppression list (audit-audit 2026-11-10, AA-16): held back with reason + expiry, never silently ─
+    s = Path(d) / "supp"
+    report(s, "2026-09-20", [("held", "ai-does-it"), ("free", "ai-does-it")])
+    report(s, "2026-10-01", [("held", "ai-does-it"), ("free", "ai-does-it")])
+    empty_core = Path(d) / "emptycore"
+    empty_core.mkdir()
+    _, summ, rc, mach, _ = run(s, core=empty_core)
+    check("held" in summ.get("decision_due", []) and state(rc, "held") == "vanished",
+          "control: without an entry the twice-seen key is decision-due")
+    check(any(f["title"].startswith("not available") for f in mach["findings"]),
+          "control: without an entry the machine finding stands")
+
+    def supp(entries):
+        write(s / ".claude/rules/suppressed-findings.json", json.dumps({"entries": entries}))
+
+    ok = {"reason": "INFO the scan regenerates every run", "expires": "2026-12-31", "by": "operator 2026-10-05"}
+    supp([dict(ok, key="held"), dict(ok, pattern="not AVAILABLE in this core")])
+    _, summ, rc, mach, head = run(s, core=empty_core)
+    check(state(rc, "held") == "suppressed" and "held" not in summ.get("decision_due", []),
+          "an earlier key on the list reads suppressed and is no decision")
+    check("free" in summ.get("decision_due", []), "a key not on the list stays decision-due")
+    check(not any(f["title"].startswith("not available") for f in mach["findings"]) and summ.get("suppressed") == 1,
+          "a machine finding matching a pattern is held back and counted")
+    check("1 machine finding(s) suppressed, 1 earlier key(s) suppressed (held)" in head,
+          "the report head says how many were suppressed")
+    act = json.loads((s / "_out/suppressed.json").read_text(encoding="utf-8"))["active"]
+    check(len(act) == 2 and summ.get("suppress_active") == 2, "the active list reaches the scan agents' file")
+
+    supp([dict(ok, key="held", expires="2026-10-08"), {"pattern": "not available", "expires": "2026-12-31", "by": "x"},
+          dict(ok, key="free", by="")])
+    _, summ, rc, mach, _ = run(s, core=empty_core)
+    probs = [f["title"] for f in mach["findings"] if f["title"].startswith("suppressed-findings:")]
+    check(state(rc, "held") != "suppressed" and "held" in summ.get("decision_due", []),
+          "an expired entry suppresses nothing")
+    check(any("expired on 2026-10-08" in p for p in probs), "an expired entry is itself a finding")
+    check(any("has no reason" in p for p in probs) and any(f["title"].startswith("not available") for f in mach["findings"]),
+          "a reason-less entry is a finding and holds nothing back")
+    check(any("names no one who decided it" in p for p in probs), "an entry without a decider is a finding")
+    check(all(f["severity"] == "P2" for f in mach["findings"] if f["title"].startswith("suppressed-findings:")),
+          "entry problems are P2")
+    write(s / ".claude/rules/suppressed-findings.json", "{broken")
+    _, _, _, mach, _ = run(s, core=empty_core)
+    check(any("unreadable" in f["title"] for f in mach["findings"]), "a broken list is reported, not ignored")
+
+    # ── price from this machine's run records (AA-8) ─────────────────────────
+    c = Path(d) / "price"
+    write(c / "docs/research/coherence-scan/register-2026-09-18.md", "# register\n")
+    write(c / ".claude/rules/feedback.md", "".join(f"- rule {i} (operator 2026-10-0{i + 1})\n" for i in range(5)))
+    runs = Path(d) / "runs"
+    write(runs / "s1/workflows/wf_x.json", json.dumps(
+        {"runId": "wf_x", "workflowName": "coherence-scan", "status": "completed",
+         "timestamp": "2026-10-05T10:00:00Z", "totalTokens": 4000000}))
+    _, summ, _, _, _ = run(c, "--skip-machine", "--runs-dir", str(runs))
+    got = deep(summ, "coherence-scan")
+    check(bool(got) and "~4.0M tokens per run, median of 1 run(s) on this machine" in got[0],
+          "the deep-check price is the median of the local run records")
+    check(bool(got) and "(brain-scan ~1.5M tokens)" in got[0], "a workflow without a record keeps the fallback")
+
 print(f"brain-scan-prep-test: {'all checks passed' if not fails else f'{fails} FAILED'}")
 sys.exit(1 if fails else 0)

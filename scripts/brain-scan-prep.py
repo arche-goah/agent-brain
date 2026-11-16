@@ -26,8 +26,14 @@ What it does (read-only on the brain; writes only into --out):
      local-machinery, commitments, fork-drift (network), decision-review (how the brain asked and acted
      alone, from the transcripts), recorder-report (would a recording gate have blocked); each turned into findings of the scan's finding shape.
      A script absent from this core checkout is reported ONCE as "not available".
-  3. DEEP CHECK — one deterministic line per triggered deep check, with why and the price
-     measured on the proving brain. It never starts anything.
+  3. DEEP CHECK — one deterministic line per triggered deep check, with why and the price:
+     the median of this machine's own run records (scripts/run-price.py), the old fixed
+     number only as a marked fallback. It never starts anything.
+  4. SUPPRESSION — entries of .claude/rules/suppressed-findings.json (scripts/suppressed-findings.py)
+     hold back a machine finding whose title matches, and an earlier key they name reads
+     "suppressed" in the return channel (never decision-due); the head says how many. An
+     entry without reason, decider or expiry, or past it, suppresses nothing and is itself a
+     P2 finding. The active list goes to <out>/suppressed.json for the scan agents.
 
 Finding index (written by the report stage, read here on the next run) — one line each,
 under a heading `## Finding index`:
@@ -41,14 +47,17 @@ An unchecked order-list entry containing the token `rebuild-ahead` announces a s
 rebuild (deep-check trigger for full-audit).
 
 Usage: brain-scan-prep.py --out DIR [--repo DIR] [--today YYYY-MM-DD] [--core DIR]
-                          [--memory-dir DIR] [--skip-machine]
-Writes: <out>/return-channel.json, <out>/scan-machine.json, <out>/report-machine.md
+                          [--memory-dir DIR] [--runs-dir DIR] [--skip-machine]
+--runs-dir: the run-record dir the price is read from (default ~/.claude/projects/<munged repo>).
+Writes: <out>/return-channel.json, <out>/scan-machine.json, <out>/report-machine.md,
+        <out>/suppressed.json
 Prints: human lines, then ONE last line: {"brain_scan_prep": {...}} (small summary).
 Exit 0 always — a scan must still run when a check cannot.
 """
 import argparse
 import concurrent.futures
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -69,12 +78,20 @@ INDEX_LINE = re.compile(r"^- key: ([a-z0-9][a-z0-9-]*) \| severity: (P0|P1|P2|IN
 DATE = re.compile(r"\b(20\d\d-\d\d-\d\d)\b")
 DECIDED = [r"\bdecided\b", r"\bdecision taken\b"]
 DROPPED = [r"\bdropped\b", r"\bsuperseded\b", r"\bwithdrawn\b"]
-# Measured on the proving brain, 2026-08 .. 2026-10, fresh tokens per completed run
-# (audit-audit 2026-10-09, efficiency part). The price differs per subscription; the
-# operator weighs it against their plan.
-PRICE = {"brain-scan": 1.5, "memory-dream": 0.6, "coherence-scan": 2.6, "full-audit": 6.0}
 NEW_RULES_MIN = 5
 MEM_LINES, MEM_BYTES, MEM_NEAR = 200, 25600, 0.9
+
+
+def sibling(name):
+    """A script next to this one as a module (its file name has a hyphen)."""
+    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), Path(__file__).resolve().parent / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+RUN_PRICE = sibling("run-price")
+SUPPRESS = sibling("suppressed-findings")
 
 
 def read(p):
@@ -134,7 +151,7 @@ def title_of(entry):
     return (m.group(1) if m else entry["text"].splitlines()[0])[:120]
 
 
-def return_channel(reports, orders, markers):
+def return_channel(reports, orders, markers, suppress=()):
     """State of every finding of the newest indexed earlier report."""
     indexed = [(p, parse_index(read(p))) for p in reports]
     latest = reports[-1] if reports else None
@@ -152,7 +169,9 @@ def return_channel(reports, orders, markers):
         for key, f in latest_index.items():
             hits = by_id.get(key, [])
             text = "\n".join(e["text"] for e in hits)
-            if f["exit"] == "done-already" or any(e["checked"] or re.match(r"(Done|Erledigt)\b", e["section"]) for e in hits):
+            if any(SUPPRESS.matches(s, key, f["title"]) for s in suppress):
+                state = "suppressed"  # dropped on purpose, with reason and expiry: never decision-due
+            elif f["exit"] == "done-already" or any(e["checked"] or re.match(r"(Done|Erledigt)\b", e["section"]) for e in hits):
                 # "done" without a check line is a claim (audit-audit 2026-11-02, macOS instance: on 10-30 seven keys the
                 # return channel called done came back; the six that returned after a tick all had no check:). It keeps
                 # counting toward a decision; only a done entry with a check stops the count.
@@ -188,8 +207,13 @@ def dated_lines_after(paths, after):
     return n
 
 
-def deep_checks(repo, rc, orders, mem_dir):
+def deep_checks(repo, rc, orders, mem_dir, prices=None):
     why = {}  # check -> reasons; two reasons for one check are ONE recommendation
+    prices = prices or {}
+
+    def price(name):
+        """'~2.6M tokens per run, <median of n run(s) on this machine | fallback ...>' (scripts/run-price.py)."""
+        return RUN_PRICE.price_line(name, prices.get(name)).split(": ", 1)[1]
 
     def say(check, reason):
         why.setdefault(check, []).append(reason)
@@ -230,8 +254,8 @@ def deep_checks(repo, rc, orders, mem_dir):
                              f"{'; '.join(r)} — the last full register is {age} day(s) old, a full run waits for day 14; "
                              f"a partial run audits only the rule files changed since, three lenses")
                 continue
-        lines.append(f"deep check suggested: {c} — {'; '.join(r)} — measured price on the proving brain: "
-                     f"~{PRICE[c]}M tokens per run (brain-scan ~{PRICE['brain-scan']}M)")
+        lines.append(f"deep check suggested: {c} — {'; '.join(r)} — price: {price(c)} "
+                     f"(brain-scan {price('brain-scan').split(' per run')[0]})")
     return lines
 
 
@@ -482,7 +506,7 @@ def machine(repo, core, last_date, today):
     return findings, sorted(run_jobs)
 
 
-def render(rc, deep, orders_open):
+def render(rc, deep, orders_open, supp=None):
     st = {}
     for r in rc["earlier"]:
         st[r["state"]] = st.get(r["state"], 0) + 1
@@ -505,6 +529,12 @@ def render(rc, deep, orders_open):
     L += [f"- {title_of(e)}" for e in orders_open] or ["None open."]
     L += ["", "## Deep check", ""]
     L += deep or ["No deep check suggested."]
+    if supp and (supp["active"] or supp["problems"]):
+        earlier = [r["key"] for r in rc["earlier"] if r["state"] == "suppressed"]
+        L += ["", "## Suppressed (.claude/rules/suppressed-findings.json)", "",
+              f"{supp['machine']} machine finding(s) suppressed, {len(earlier)} earlier key(s) suppressed"
+              + (f" ({', '.join(earlier)})" if earlier else "") + f"; {len(supp['active'])} active entr(y/ies)"
+              + (f", {len(supp['problems'])} entr(y/ies) with a problem (reported as findings)" if supp["problems"] else "")]
     return "\n".join(L) + "\n\n"
 
 
@@ -515,6 +545,7 @@ def main(argv=None):
     ap.add_argument("--today", default=datetime.date.today().isoformat())
     ap.add_argument("--core", default=str(Path(__file__).resolve().parent.parent))
     ap.add_argument("--memory-dir")
+    ap.add_argument("--runs-dir")
     ap.add_argument("--skip-machine", action="store_true")
     a = ap.parse_args(argv)
     repo, out, core = Path(a.repo).resolve(), Path(a.out), Path(a.core).resolve()
@@ -531,11 +562,17 @@ def main(argv=None):
     reports = sorted((p for p in (repo / "docs/research/brain-scan").glob("scan-*.md")
                       if report_date(p) and report_date(p) < a.today), key=report_date)
     orders = parse_orders(read(repo / "docs/maintenance/brain-scan-auftraege.md"))
-    rc = return_channel(reports, orders, markers)
+    active, problems = SUPPRESS.load(repo, a.today)
+    rc = return_channel(reports, orders, markers, active)
     last_date = report_date(reports[-1]) if reports else None
-    deep = deep_checks(repo, rc, orders, mem)
+    runs_dir = Path(a.runs_dir) if a.runs_dir else RUN_PRICE.record_dir(repo)
+    deep = deep_checks(repo, rc, orders, mem, RUN_PRICE.prices(runs_dir) if runs_dir.is_dir() else {})
     oo = ordered_open(orders)
     findings, ran = ([], []) if a.skip_machine else machine(repo, core, last_date, a.today)
+    # A deliberately dropped finding stays out until its entry expires; OK lines are no findings to hold back.
+    kept = [f for f in findings if f["severity"] == "OK" or not any(SUPPRESS.matches(s, None, f["title"]) for s in active)]
+    supp = {"machine": len(findings) - len(kept), "active": active, "problems": problems}
+    findings = kept + [F("P2", f"suppressed-findings: {p}") for p in problems]
 
     rc_out = dict(rc, deep_check=deep, ordered_open=[title_of(e) for e in oo], last_scan_date=last_date)
     with open(out / "return-channel.json", "w", encoding="utf-8", newline="\n") as fh:
@@ -545,10 +582,12 @@ def main(argv=None):
             {"section": "machine", "summary": f"deterministic checks run: {', '.join(ran) or 'none'}",
              "findings": findings}, indent=1, ensure_ascii=False) + "\n")
     with open(out / "report-machine.md", "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(render(rc, deep, oo))
+        fh.write(render(rc, deep, oo, supp))
+    with open(out / "suppressed.json", "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps({"active": active, "suppressed_machine": supp["machine"]}, indent=1, ensure_ascii=False) + "\n")
 
     states = {s: sum(1 for r in rc["earlier"] if r["state"] == s)
-              for s in ("done", "decided", "dropped", "still-open", "vanished")}
+              for s in ("done", "decided", "dropped", "still-open", "vanished", "suppressed")}
     for l in deep:
         print(l)
     summary = {
@@ -564,6 +603,8 @@ def main(argv=None):
         "machine_ok": sum(1 for f in findings if f["severity"] == "OK"),
         "machine_p0": sum(1 for f in findings if f["severity"] == "P0"),
         "machine_p1": sum(1 for f in findings if f["severity"] == "P1"),
+        "suppressed": supp["machine"],
+        "suppress_active": len(active),
     }
     print(json.dumps({"brain_scan_prep": summary}, ensure_ascii=False))
     return 0
