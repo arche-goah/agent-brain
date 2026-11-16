@@ -176,6 +176,25 @@ with tempfile.TemporaryDirectory() as td:
     ok(any(l == "WARN" and "python_floor" in m for l, m in sc.check(pyrepo, contract)),
        "check() carries the python-floor finding (wired, not only defined)")
 
+    # MCP server version (2026-11-16): four suites wrote it into the code, two already apart from plugin.json.
+    sv = make_repo(base, "srvver")
+    (sv / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "x", "version": "1.0.7"}), encoding="utf-8")
+    (sv / "mcp").mkdir()
+    (sv / "mcp" / "server.py").write_text('SERVER_VERSION = "1.0.0"\n', encoding="utf-8")
+    (sv / "mcp" / "index.ts").write_text('const s = new McpServer({ name: "x", version: "1.0.7" });\n', encoding="utf-8")
+    (sv / "mcp" / "fixtures").mkdir()
+    (sv / "mcp" / "fixtures" / "stub.ts").write_text('new McpServer({ name: "s", version: "9.9.9" })\n', encoding="utf-8")
+    git(sv, "add", "-A")
+    found = [m for l, m in sc.check(sv, contract) if "MCP server version" in m]
+    ok(any("server.py:1" in m and "already differs" in m for m in found), "a literal apart from plugin.json: WARN, says it differs")
+    ok(any("index.ts:1" in m and "equal to plugin.json today" in m for m in found), "an equal literal: WARN, the drift trap")
+    ok(not any("fixtures" in m for m in found), "a test fixture stub is no finding (control)")
+    rd = make_repo(base, "srvread")
+    (rd / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "x", "version": "1.0.7"}), encoding="utf-8")
+    (rd / "server.py").write_text('SERVER_VERSION = json.load(open(PLUGIN))["version"]\n', encoding="utf-8")
+    git(rd, "add", "-A")
+    ok(not any("MCP server version" in m for _, m in sc.check(rd, contract)), "a version read from plugin.json: no finding (control)")
+
 core_levels = [lvl for lvl, _ in sc.marketplace_findings(HERE.parent)]
 ok((HERE.parent / ".claude-plugin" / "marketplace.json").exists() and "ERROR" not in core_levels,
    "the core's own marketplace.json: no ERROR")

@@ -258,6 +258,38 @@ def python_floor_findings(has_py: bool, floor, ci_text: str):
     return []
 
 
+# An MCP server that writes its version into the code reports that number at `initialize` while the
+# plugin moves on (measured 2026-11-16 on the macOS instance: four suites, two already apart — 0.2.0 vs
+# 0.2.15, 1.0.0 vs 1.0.7). The version belongs to .claude-plugin/plugin.json and is read from there at start.
+SERVER_SRC_SUFFIX = {".py", ".ts", ".js", ".mjs", ".cjs"}
+SERVER_VERSION_LITERAL = re.compile(
+    r"""(?:\bSERVER_VERSION\s*[:=]\s*["'](\d+\.\d+\.\d+)["']"""
+    r"""|(?:serverInfo|McpServer|\bServer\s*\()[\s\S]{0,200}?\bversion["']?\s*[:=]\s*["'](\d+\.\d+\.\d+)["'])""")
+
+
+def server_version_findings(repo: Path, files, plugin_version) -> list:
+    """WARN per hardcoded MCP server version literal; says whether it already differs from plugin.json."""
+    out = []
+    for f in files:
+        if f.suffix.lower() not in SERVER_SRC_SUFFIX or not f.is_file():
+            continue
+        rel = f.relative_to(repo).as_posix()
+        if re.search(r"(^|/)(fixtures?|node_modules|tests?)/", rel) or re.search(r"(^|[-_.])test([-_.]|$)", f.stem):
+            continue  # a test stub carries a version on purpose
+        try:
+            text = f.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for m in SERVER_VERSION_LITERAL.finditer(text):
+            lit = m.group(1) or m.group(2)
+            line = text.count("\n", 0, m.start()) + 1
+            state = (f"already differs from plugin.json {plugin_version}" if plugin_version and lit != plugin_version
+                     else "equal to plugin.json today, apart at the next release")
+            out.append(("WARN", f"{rel}:{line}: MCP server version written into the code ({lit}, {state}) - "
+                                "read it from .claude-plugin/plugin.json at start"))
+    return out
+
+
 def check(repo: Path, contract: dict):
     """Return a list of (level, message)."""
     out = []
@@ -330,6 +362,12 @@ def check(repo: Path, contract: dict):
                     f.read_text(encoding="utf-8", errors="replace")):
                 add(lvl, f"{f.relative_to(repo)}: {msg}")
     files = tracked_files(repo)
+    plugin_version = None
+    try:
+        plugin_version = json.loads(pj.read_text(encoding="utf-8")).get("version") if pj.exists() else None
+    except (OSError, json.JSONDecodeError):
+        pass
+    out.extend(server_version_findings(repo, files, plugin_version))
     if ci.is_dir():
         out.extend(python_floor_findings(any(f.suffix == ".py" for f in files), py_floor, text))
     # absolute home paths in anything tracked
