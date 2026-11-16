@@ -3,6 +3,7 @@
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -514,6 +515,27 @@ def main():
         res = json.loads((R / ".claude-state" / "ledger-reconcile.json").read_text(encoding="utf-8"))
         ok({"on-main", "on-main-git"} <= {d.get("id") for d in res.get("done_open", [])},
            "MERGED-MAIN rows reach ledger-reconcile.json for open-items (tick it)", json.dumps(res))
+        # Leftovers of an earlier run are swept (review 2026-11-13, Windows instance): a killed run's registered
+        # worktree and a locked close's plain folder go; a live, young run's folder stays (negative control).
+        dead = subprocess.Popen([sys.executable, "-c", ""])
+        dead.wait()
+        st = R / ".claude-state"
+        killed = st / f"ledger-reconcile-main-{dead.pid}"
+        g(P, "worktree", "add", "-q", "--detach", str(killed), "HEAD")
+        locked = st / "ledger-reconcile-main-999999"
+        locked.mkdir()
+        (locked / "held.txt").write_text("x\n", encoding="utf-8")
+        live = st / f"ledger-reconcile-main-{os.getpid()}"
+        live.mkdir()
+        old = time.time() - 7200
+        os.utime(killed, (old, old))
+        os.utime(locked, (old, old))
+        ok(len(g(P, "worktree", "list").splitlines()) == 2, "sweep setup: a leftover worktree is registered")
+        rc, out = run(root, "--brief")
+        ok(len(g(P, "worktree", "list").splitlines()) == 1 and not killed.exists() and not locked.exists(),
+           "a killed run's worktree and a locked close's folder are swept", g(P, "worktree", "list"))
+        ok(live.exists(), "sweep negative: a live, young run's folder stays")
+        shutil.rmtree(live, ignore_errors=True)
         # Once the pin carries it, the same entry is DONE-OPEN (it was red before: seen memory, not UNPROVEN).
         g(P, "pull", "-q", "--ff-only", "origin", "main")
         rc, out = run(root, "--brief")

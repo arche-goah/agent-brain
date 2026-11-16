@@ -304,6 +304,7 @@ class CoreMain:
         if self.tried:
             return self.tree
         self.tried = True
+        self.sweep()
         rel = f".claude-state/ledger-reconcile-main-{os.getpid()}"
         try:
             # A failed fetch (offline) keeps the last fetched main: main only moves forward, so green there is
@@ -321,6 +322,48 @@ class CoreMain:
         self.tree = rel
         return rel
 
+    # A run's worktree older than this is a leftover whatever its pid says (the run budget is seconds).
+    STALE_S = 600
+
+    @staticmethod
+    def _alive(pid):
+        """False only when the pid is measurably gone. Windows: unknown (os.kill there terminates)."""
+        if os.name == "nt":
+            return None
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except OSError:
+            return True
+        return True
+
+    def sweep(self):
+        """Remove what an earlier run left: killed between path() and close() (a registered worktree), or a
+        close() whose rmtree a held file stopped (a plain folder; review 2026-11-13, Windows instance).
+        Stale = its pid is gone (POSIX) or it is older than STALE_S; this run's own and a live young one stay."""
+        state = pathlib.Path(self.root) / ".claude-state"
+        swept = False
+        for d in state.glob("ledger-reconcile-main-*") if state.is_dir() else []:
+            try:
+                pid = int(d.name.rsplit("-", 1)[1])
+                age = time.time() - d.stat().st_mtime
+            except (ValueError, OSError):
+                continue
+            if pid == os.getpid() or not (self._alive(pid) is False or age > self.STALE_S):
+                continue
+            try:
+                self._git("worktree", "remove", "--force", str(d), timeout=max(self.timeout, 20))
+            except (OSError, subprocess.SubprocessError):
+                pass
+            shutil.rmtree(d, ignore_errors=True)
+            swept = True
+        if swept:
+            try:
+                self._git("worktree", "prune")
+            except (OSError, subprocess.SubprocessError):
+                pass
+
     def rewrite(self, cmd):
         tree = self.path()
         return self.ref_pat.sub(tree, cmd) if tree else None
@@ -334,6 +377,7 @@ class CoreMain:
         except (OSError, subprocess.SubprocessError):
             pass
         shutil.rmtree(dest, ignore_errors=True)
+        # prune acts on the whole core checkout: it drops every entry whose folder is gone, not only this run's
         try:
             self._git("worktree", "prune")
         except (OSError, subprocess.SubprocessError):
