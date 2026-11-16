@@ -96,17 +96,42 @@ def rule_paragraphs(repo, stop):
     return out
 
 
-def scan_session(path, patterns, stop, first):
-    """(commitments, rule_writes) — commitments as (timestamp, sentence), writes as (timestamp, words)."""
-    found, writes = [], []
+# The take-backs commitment-carrier-gate accepts (its RETRACT), plus the instance's `retract_patterns`.
+RETRACT = [r"\bi take (that|it|this|the promise|the statement) back\b", r"\bis not guaranteed\b",
+           r"\bi withdraw (that|it|the promise)\b"]
+HOOK_ECHO = re.compile(r"^Stop hook feedback:")
+
+
+def operator_turn(rec):
+    """True for a record that starts a new turn the way the gate counts it: an operator message, not a hook echo
+    and not a task notification."""
+    if rec.get("type") != "user":
+        return False
+    c = (rec.get("message") or {}).get("content")
+    return isinstance(c, str) and not HOOK_ECHO.match(c) and "<task-notification>" not in c
+
+
+def scan_session(path, patterns, stop, first, retract=()):
+    """(commitments, rule_writes, retracted) — commitments as (timestamp, sentence), writes as (timestamp, words).
+
+    A text that takes a promise back clears the promises made before it in the same turn, exactly as
+    commitment-carrier-gate does, and the take-back text itself is no promise. Measured 2026-11-16 on the macOS
+    instance: of 41 promises this report listed as loose over 20 days, 19 had been held by the gate and then taken
+    back in the same turn, and 4 more were the take-back sentences themselves - the report counted the gate's own
+    way out as a miss."""
+    found, writes, retracted, turn = [], [], 0, []
+    rx_retract = [re.compile(p, re.I) for p in list(RETRACT) + list(retract)]
     try:
         lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
     except OSError:
-        return found, writes
+        return found, writes, retracted
     for line in lines:
         try:
             rec = json.loads(line)
         except ValueError:
+            continue
+        if operator_turn(rec):
+            turn = []
             continue
         if rec.get("type") != "assistant":
             continue
@@ -115,11 +140,19 @@ def scan_session(path, patterns, stop, first):
             if not isinstance(block, dict):
                 continue
             if block.get("type") == "text":
+                if any(r.search(block.get("text") or "") for r in rx_retract):
+                    for item in turn:
+                        if item in found:
+                            found.remove(item)
+                            retracted += 1
+                    turn = []
+                    continue
                 for sent in re.split(r"(?<=[.!?])\s+|\n+", block.get("text") or ""):
                     # quoted text is mention, not commitment ("words like 'from now on'")
                     bare = re.sub(r"„[^“”]*[“”]|\"[^\"]*\"|`[^`]*`|'[^']{3,}'", " ", sent)
                     if any(re.search(p, bare, re.I) for p in patterns) and any(re.search(p, bare, re.I) for p in first):
                         found.append((ts, sent.strip()))
+                        turn.append(found[-1])
             elif block.get("type") == "tool_use" and block.get("name") in ("Edit", "Write", "MultiEdit"):
                 inp = block.get("input") or {}
                 fp = str(inp.get("file_path") or "").replace("\\", "/")
@@ -130,7 +163,7 @@ def scan_session(path, patterns, stop, first):
                     # the file name speaks too: a gate called no-window-from-bridge carries "window"
                     body += " " + re.sub(r"[^A-Za-z]+", " ", os.path.basename(fp))
                     writes.append((ts, words(body, stop), bool(MECH_PATH.search(fp))))
-    return found, writes
+    return found, writes, retracted
 
 
 def main(argv):
@@ -151,10 +184,11 @@ def main(argv):
     else:
         cutoff = datetime.datetime.now().timestamp() - a.days * 86400
         files = [f for f in glob.glob(os.path.join(d, "*.jsonl")) if os.path.getmtime(f) >= cutoff]
-    loose, carried, total, prose = [], 0, 0, 0
+    loose, carried, total, prose, retracted = [], 0, 0, 0, 0
     paras = None
     for f in sorted(files):
-        found, writes = scan_session(f, patterns, stop, first)
+        found, writes, back = scan_session(f, patterns, stop, first, data.get("retract_patterns") or [])
+        retracted += back
         for ts, sent in found:
             total += 1
             need = words(sent, stop)
@@ -172,17 +206,47 @@ def main(argv):
             prose += 1 if in_text else 0
             loose.append({"session": os.path.basename(f)[:8], "at": ts[:16], "sentence": sent[:200],
                           "why": "prose only — rule text, memory or feedback, no mechanism" if in_text else "nothing written"})
+    # Promises the stop dispatcher's loop brake let through: the gate held them three times, then the turn ended
+    # uncarried (.claude-state/stop-loops.jsonl, written by helpers/stop-dispatcher.cjs). Measured 2026-11-16 on
+    # the macOS instance: 8 of the 41 promises this report listed over 20 days ended that way - the only ones the
+    # gate itself had not resolved. Named here with their own reason, so the close sees exactly those.
+    cutoff_iso = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=a.days)).isoformat()
+    braked = 0
+    try:
+        with open(os.path.join(a.repo, ".claude-state", "stop-loops.jsonl"), encoding="utf-8") as fh:
+            for ln in fh:
+                try:
+                    r = json.loads(ln)
+                except ValueError:
+                    continue
+                if r.get("marker") != "COMMITMENT-CARRIER-GATE" or str(r.get("at", "")) < cutoff_iso:
+                    continue
+                if a.session:
+                    continue   # the log carries no session id: a one-session report cannot attribute it
+                body = str(r.get("reason", "")).split(":\n", 1)[-1].split("\nBuild")[0]
+                seen = {l["sentence"][:60] for l in loose}
+                for item in [s.strip(" -") for s in body.splitlines() if s.strip()]:
+                    # already listed from the transcript, or itself a take-back: not a second entry
+                    if item[:60] in seen or any(re.search(p, item, re.I) for p in list(RETRACT) + list(data.get("retract_patterns") or [])):
+                        continue
+                    seen.add(item[:60])
+                    braked += 1
+                    loose.append({"session": "-", "at": str(r.get("at", ""))[:16], "sentence": item[:200],
+                                  "why": "released by the loop brake after the gate held it three times"})
+    except OSError:
+        pass
     # Without instance phrasing only English is matched — in a brain that speaks another
     # language "found=0" is a coverage gap, not a result (Windows check 2026-10-09).
     scope = "all" if data.get("patterns") else "english-only"
     if a.json:
-        print(json.dumps({"found": total, "carried": carried, "prose": prose, "loose": loose, "phrasing": scope}, ensure_ascii=False))
+        print(json.dumps({"found": total, "carried": carried, "prose": prose, "retracted": retracted,
+                          "loose": loose, "phrasing": scope}, ensure_ascii=False))
         return 0
     for l in loose:
         print(f"loose commitment ({l['why']}): {l['at']} session {l['session']}: {l['sentence']}")
     if scope == "english-only":
         print("commitments: only English phrasing checked — add this brain's language in .claude/rules/commitments.json (template in core templates/rules-instance/)")
-    print(f"commitments summary: found={total} carried={carried} prose={prose} loose={len(loose)} phrasing={scope}")
+    print(f"commitments summary: found={total} carried={carried} prose={prose} retracted={retracted} loose={len(loose)} phrasing={scope}")
     return 0
 
 
