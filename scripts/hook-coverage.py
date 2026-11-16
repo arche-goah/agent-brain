@@ -198,7 +198,13 @@ def declared_copy(root):
     if not isinstance(decl, dict):
         return lambda cmd: False
     today = datetime.date.today().isoformat()
-    return lambda cmd: lm.declared_live(decl, cmd, ctx, today)
+    def declared(cmd):
+        # one command the key rules cannot parse counts as undeclared, it does not end the report (macOS review of #531)
+        try:
+            return lm.declared_live(decl, cmd, ctx, today)
+        except Exception:
+            return False
+    return declared
 
 
 def registered_via_dispatcher(root, wired):
