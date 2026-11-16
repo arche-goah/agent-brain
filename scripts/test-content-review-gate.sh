@@ -181,9 +181,9 @@ probe "merge with an OS check only" "$M" block
 probe "override names why" "$M # CONTENT-REVIEW-OK: data PR, no second reviewer in this repo" allow
 # Gaps (2026-11-15): a review without it counts only when it was posted before GAPS_FROM
 printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$OLD" "$B" > "$T/c-nogaps.md"
-pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-nogaps.md@2026-11-15T10:00:00Z"
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/c-nogaps.md")@2026-11-15T10:00:00Z"
 probe "merge on a review without Gaps, posted before the line existed" "$M" allow
-pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-nogaps.md@2026-11-16T10:00:00Z"
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/c-nogaps.md")@2026-11-16T10:00:00Z"
 probe "merge on a review without Gaps, posted after" "$M" block
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-nogaps.md"
 probe "merge on an undated review without Gaps" "$M" block
