@@ -55,12 +55,6 @@ function loadConfig(projectRoot) {
     if (typeof raw.minTokens === 'number') cfg.minTokens = raw.minTokens;
     if (raw.workflows && typeof raw.workflows === 'object') Object.assign(cfg.workflows, raw.workflows);
   } catch (_) { /* defaults */ }
-  for (const [name, floor] of Object.entries(DEFAULT_WORKFLOWS)) {
-    const w = cfg.workflows[name];
-    if (w && typeof w.thresholdDays === 'number' && w.thresholdDays < floor.thresholdDays) {
-      cfg.workflows[name] = { ...w, thresholdDays: floor.thresholdDays };
-    }
-  }
   return cfg;
 }
 
@@ -134,7 +128,10 @@ process.stdin.on('end', () => {
   const projectRoot = process.env.CLAUDE_PROJECT_DIR || data.cwd || '.';
   const cfg = loadConfig(projectRoot);
   const wfCfg = cfg.workflows[name] || {};
-  const thresholdDays = typeof wfCfg.thresholdDays === 'number' ? wfCfg.thresholdDays : cfg.thresholdDays;
+  // The floor is applied to the EFFECTIVE value, so neither the workflow entry nor the global fallback lowers it
+  // (macOS review of #539: an entry without a numeric thresholdDays fell back to a global value below the floor).
+  const effective = typeof wfCfg.thresholdDays === 'number' ? wfCfg.thresholdDays : cfg.thresholdDays;
+  const thresholdDays = DEFAULT_WORKFLOWS[name] ? Math.max(DEFAULT_WORKFLOWS[name].thresholdDays, effective) : effective;
   const minTokens = typeof wfCfg.minTokens === 'number' ? wfCfg.minTokens : cfg.minTokens;
 
   const stateDir = projectStateDir(data);
