@@ -22,9 +22,10 @@
  * Not covered (named limit): `gh api` writes and the web UI; the operator's own hand-written
  * comments carry no key, and the readers count an unkeyed text under our login as ours.
  *
- * COMMIT POINTERS (2026-11-12): a backticked sha in the text must be on the remote - push first,
- * then post (pointedShas/onRemote below; fixture seam INSTANCE_KEY_GATE_GH, a node script standing
- * in for gh). Checked with or without a key; unreadable = pass with one stderr line.
+ * COMMIT POINTERS (2026-11-12): a backticked sha that is a local-only commit must be on the remote -
+ * push first, then post (pointedShas/localState/apiHas below; fixture seam INSTANCE_KEY_GATE_GH, a
+ * node script standing in for gh). Checked with or without a key; a sha no local checkout knows,
+ * unreadable, or over the shared API budget = pass with one stderr line.
  *
  * No instance id configured = allow, said on stderr: a brain that has not named itself has
  * no key to give (and its readers keep the old login-only rule). Exit 2 = block.
@@ -135,9 +136,15 @@ function levelFindings(cmd, cwd, ps) {
 // train at `4a560f8`" while that commit was only local; the Windows instance asked the API
 // (422 "No commit found") and checked the old head. A pointer = a backticked hex word of 7-40
 // characters with a letter and a digit (a plain number or word is no sha); hex inside a URL is
-// left to GitHub. On the remote = a remote branch of a checkout of the target repo contains it
-// (as of that checkout's last fetch), else `gh api repos/<repo>/commits/<sha>` answers - one call
-// per sha. Only a 422 counts as missing; anything else unreadable passes with one stderr line.
+// left to GitHub. Held is only the incident's shape (review 2026-11-13, Windows instance: a 422 also
+// comes for another repo's commit and for a backticked 10-hex instance key): the sha is a commit of
+// a local checkout (the target repo's, or the cwd's) AND no remote branch of that checkout contains
+// it (as of its last fetch) AND `gh api repos/<repo>/commits/<sha>` answers 422. A hex word no
+// local checkout knows passes - it is someone else's, or no sha. The API calls share ONE budget
+// (API_BUDGET_MS), each call gets what is left, and the first timeout ends the asking: the hook's
+// own 10 s timeout blocks (`onFailure: block`), so a hanging network must never reach it.
+// Anything else unreadable passes with one stderr line.
+const API_BUDGET_MS = 3000;
 function pointedShas(text) {
   const out = new Set();
   for (const m of String(text).replace(/https?:\/\/\S+/g, ' ').matchAll(/`([0-9a-f]{7,40})`/g)) {
@@ -160,25 +167,32 @@ function targetRepo(cmd, ps, cwd) {
   const own = (/github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\s*$/.exec(origin) || [])[1] || '';
   // `-R HOST/OWNER/REPO` is gh's long form: the last two parts are the repo
   const repo = (named.split('/').slice(-2).join('/') || (url && url[1]) || own).toLowerCase();
-  return { repo, checkout: co && repo && own.toLowerCase() === repo ? co : null };
+  return { repo, checkout: co && repo && own.toLowerCase() === repo ? co : null, local: co };
 }
 
-function onRemote(sha, repo, checkout) {
+// 'remote' = a remote branch of the checkout holds it · 'local' = a commit only this checkout has ·
+// 'unknown' = no commit of this checkout (another repo's sha, an instance key, a word).
+function localState(sha, checkout) {
   const { execFileSync } = require('child_process');
-  if (checkout) {
-    try {
-      const b = execFileSync('git', ['-C', checkout, 'branch', '-r', '--contains', sha],
-        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-      if (b.trim()) return true;
-    } catch (e) { /* not in this checkout */ }
-  }
+  const opt = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
+  try { execFileSync('git', ['-C', checkout, 'cat-file', '-e', `${sha}^{commit}`], opt); } catch (e) { return 'unknown'; }
+  try {
+    if (execFileSync('git', ['-C', checkout, 'branch', '-r', '--contains', sha], opt).trim()) return 'remote';
+  } catch (e) { /* unreadable: treat as local, the API decides */ }
+  return 'local';
+}
+
+// true = on the remote, false = the API answers 422, null = unreadable, 'timeout' = budget spent.
+function apiHas(sha, repo, ms) {
+  const { execFileSync } = require('child_process');
   const fake = process.env.INSTANCE_KEY_GATE_GH;
   const args = ['api', `repos/${repo}/commits/${sha}`, '--jq', '.sha'];
   try {
     execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
-      { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
+      { encoding: 'utf8', timeout: ms, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
     return true;
   } catch (e) {
+    if (e.code === 'ETIMEDOUT' || e.signal) return 'timeout';
     const said = `${e.stdout || ''}${e.stderr || ''}`;
     if (/No commit found|HTTP 422/i.test(said)) return false;
     return null;
@@ -189,16 +203,25 @@ function unpushed(cmd, ps, cwd, files, pub) {
   // pub: the gate's own published-text reading; its handed files arrive already read (nativePath, OS-19)
   const shas = pointedShas((pub ? pub.texts.join('\n') : cmd) + '\n' + files.join('\n'));
   if (!shas.length) return [];
-  const { repo, checkout } = targetRepo(cmd, ps, cwd);
+  const { repo, checkout, local } = targetRepo(cmd, ps, cwd);
   if (!repo) {
     console.error(`instance-key-gate: no target repo found, commit pointers ${shas.join(', ')} not checked`);
     return [];
   }
+  const checkouts = [...new Set([checkout, local].filter(Boolean))];
   const missing = [];
+  const end = Date.now() + API_BUDGET_MS;
   for (const sha of shas) {
-    const on = onRemote(sha, repo, checkout);
+    const states = checkouts.map((c) => localState(sha, c));
+    if (states.includes('remote') || !states.includes('local')) continue; // pushed, or not ours
+    const left = end - Date.now();
+    const on = left > 0 ? apiHas(sha, repo, left) : 'timeout';
     if (on === false) missing.push(sha);
     else if (on === null) console.error(`instance-key-gate: ${repo} not readable for ${sha} (no network?) - not checked`);
+    else if (on === 'timeout') {
+      console.error(`instance-key-gate: ${repo} did not answer within ${API_BUDGET_MS} ms - commit pointers from ${sha} on not checked`);
+      break;
+    }
   }
   return missing;
 }
