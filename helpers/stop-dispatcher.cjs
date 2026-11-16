@@ -265,12 +265,32 @@ function record(check, items, payload) {
   } catch (e) { /* recording must never break a turn */ }
 }
 
+// A check row names a script the dispatcher runs with node at every turn end. Whoever can write
+// stop-checks.json (or a file it names) would otherwise run code from anywhere (Windows coherence scan
+// 2026-11-16, agreed by the operator the same day). Allowed: the brain's core helpers, its scripts/,
+// its .claude/ folder, and the folders of this dispatcher's own core (the plugin copy of the same
+// helpers). Compared after normalising, so `..` cannot climb out; case-insensitive on Windows.
+const OWN_CORE = path.resolve(__dirname, '..');
+function allowedRoots() {
+  return [path.join(ROOT, 'core', 'helpers'), path.join(ROOT, 'scripts'), path.join(ROOT, '.claude'),
+    path.join(OWN_CORE, 'helpers'), path.join(OWN_CORE, 'scripts')].map((p) => path.resolve(p));
+}
+function insideAllowed(file) {
+  const norm = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const f = norm(path.resolve(file));
+  return allowedRoots().some((r) => { const root = norm(r); return f === root || f.startsWith(root + path.sep); });
+}
+
 function run(check, base) {
   // Each check learns its own label and marker, so it can find its echo without a token
   // in the operator's line (helpers/stop-echo.cjs).
   const payload = JSON.stringify({ ...base, stop_check: { label: check.label, marker: check.marker } });
   return new Promise((resolve) => {
     const cmd = path.isAbsolute(check.cmd) ? check.cmd : path.join(ROOT, check.cmd);
+    if (!insideAllowed(cmd)) {
+      return resolve({ check, message: `STOP-CHECK ${check.label || check.marker}: check path outside the allowed folders `
+        + `(${check.cmd}) — this check does not run. Allowed: core/helpers/, scripts/, .claude/ of the project.` });
+    }
     // A wired check whose file is gone is a silent hole, not "nothing to say" (audit-audit 2026-11-02,
     // macOS instance: five places checked hook targets and none saw a stop-check row whose script was
     // missing — the dispatcher skipped it without a word). Say it, every turn, until the row is fixed.
