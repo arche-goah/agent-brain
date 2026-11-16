@@ -320,7 +320,8 @@ const GENERIC = ['request', 'question', 'answer', 'reply', 'receipt', 'from', 'w
 
 /** Topic words of a request: its file slug (or, for a LOG-only request, its own words). */
 function topicWords(s) {
-  return String(s).toLowerCase().replace(/\.md$/, '').replace(/\d{4}-\d{2}-\d{2}/g, ' ')
+  // NFC: a combining mark is no letter, so a decomposed word would be split at it (same class as fold())
+  return String(s).normalize('NFC').toLowerCase().replace(/\.md$/, '').replace(/\d{4}-\d{2}-\d{2}/g, ' ')
     .split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 4 && !/^\d+$/.test(w));
 }
 
@@ -335,7 +336,9 @@ function topicWords(s) {
  */
 const DIGRAPH = { '\u00e4': 'ae', '\u00f6': 'oe', '\u00fc': 'ue', '\u00df': 'ss' };
 function fold(s) {
-  return String(s).toLowerCase().replace(/[\u00e4\u00f6\u00fc\u00df]/g, (c) => DIGRAPH[c])
+  // NFC first: a decomposed letter (vowel + combining diaeresis, as macOS file names and pasted text carry it)
+  // would else miss the digraph and fold to the bare vowel (macOS review of #530).
+  return String(s).normalize('NFC').toLowerCase().replace(/[\u00e4\u00f6\u00fc\u00df]/g, (c) => DIGRAPH[c])
     .normalize('NFD').replace(/\p{M}+/gu, '');
 }
 

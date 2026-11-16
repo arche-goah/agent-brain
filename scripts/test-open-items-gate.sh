@@ -295,6 +295,10 @@ L4="- [ledger|human]  rack-a — operator: Geräte und Ständer — first report
 LV="=== BRAIN BOOTUP CHECK ===${NL}open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${L4}${NL}=== END BOOTUP ==="
 f="$T/19g.jsonl"; { boot_ok startup "$LV"; user "stand?"; asst "1 point needs you: geraete and staender."; } > "$f"
 check "title with the real letters, reply in ASCII digraphs" "$f" allow "$EN"
+# ...and with the letters decomposed (vowel + U+0308, as macOS file names and pasted text carry them; macOS review of #530).
+NFD="$(printf 'Gera\xcc\x88te-Sta\xcc\x88nder')"
+f="$T/19h.jsonl"; { boot_ok startup "$LU"; user "stand?"; asst "1 point needs you: the $NFD question."; } > "$f"
+check "slug in ASCII digraphs, reply with decomposed letters" "$f" allow "$EN"
 
 # 20 — a standing approval (full-audit 2026-10-15, Windows instance): the operator approved the
 # item's class once for good, so the reply reports it handled instead of asking. Asking anyway
