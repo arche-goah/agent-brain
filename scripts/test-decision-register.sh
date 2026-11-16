@@ -85,6 +85,28 @@ case "$out" in *'"deny"'*) bad "unanchored object denied";; *) ok "unanchored ob
 out="$(STUB_OUT='{"same":[1]}' pre s-new7 "$NEWQ")"
 case "$out" in *'"deny"'*) bad "objectless verdict denied";; *) ok "objectless verdict passes";; esac
 
+# 10f. same-session deferral (incident 2026-11-16): a deferred matter asked again in other words in the SAME session is
+#      held without a model; the operator's language comes as instance deferral_patterns
+#      (the incident pair, translated; "some other day" is the instance pattern under test, "next time" built in)
+printf '{"register":"reg.jsonl","deferral_patterns":["\\\\bsome other day\\\\b"]}' > "$P/.claude/rules/decision-register.json"
+DQ1='Shall I start with the first step on the device now, i.e. the onboarding?'
+DA1='let us finish the plan first, maybe we do the onboarding today, otherwise some other day'
+DQ2='Onboarding of the first router on the device: start now or next time?'
+printf '{"hook_event_name":"PostToolUse","tool_name":"AskUserQuestion","session_id":"s-def","tool_input":{"questions":[{"question":"%s"}]},"tool_response":{"answers":{"%s":"%s"}}}' "$DQ1" "$DQ1" "$DA1" | run
+out="$(STUB_OUT='{"same":[]}' pre s-def "$DQ2")"
+case "$out" in *'"permissionDecision":"deny"'*"deferred"*"some other day"*) ok "same-session deferral asked again in other words is held";; *) bad "deferred matter re-asked passed: $out";; esac
+out="$(STUB_OUT='{"same":[]}' pre s-def "$DQ2")"
+case "$out" in *'"deny"'*) bad "deferral held twice for the same earlier answer";; *) ok "re-issue after the deferral hold passes";; esac
+# 10g. same topic, but the earlier answer was a yes -> no deferral, passes
+DA2='Yes, start now'
+printf '{"hook_event_name":"PostToolUse","tool_name":"AskUserQuestion","session_id":"s-yes","tool_input":{"questions":[{"question":"%s"}]},"tool_response":{"answers":{"%s":"%s"}}}' "$DQ1" "$DQ1" "$DA2" | run
+out="$(STUB_OUT='{"same":[]}' pre s-yes "$DQ2")"
+case "$out" in *'"deny"'*) bad "a yes was read as a deferral: $out";; *) ok "same topic after a yes passes";; esac
+# 10h. a deferral on ANOTHER subject in the same session does not hold an unrelated question
+out="$(STUB_OUT='{"same":[]}' pre s-def 'DMX termination at the end of the chain: standard terminator or self-built, later or now?')"
+case "$out" in *'"deny"'*) bad "unrelated question held by a deferral: $out";; *) ok "unrelated question passes";; esac
+printf '{"register":"reg.jsonl"}' > "$P/.claude/rules/decision-register.json"
+
 # 11. backfill from a transcript, dedupe on the second run
 D="$T/proj"; mkdir -p "$D"
 printf '%s\n' '{"timestamp":"2026-11-01T10:00:00Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"AskUserQuestion","input":{"questions":[{"question":"Case: 19 inch or small?"}]}}]}}' \

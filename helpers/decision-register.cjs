@@ -28,9 +28,13 @@
  *                [--no-model]` runs the matcher over history (each question against answers of
  *                OTHER sessions before it); `--check "<question>"` matches one question.
  *
+ *   Same session: an answer that DEFERS a matter ("later", "next time", the operator's words as `deferral_patterns`)
+ *                holds a new question of the same session sharing two topic words with it - deterministic, no model,
+ *                once per earlier answer (incident 2026-11-16: a deferred onboarding asked again in other words).
+ *
  * Instance data `.claude/rules/decision-register.json` (all optional):
  *   {"register": "docs/maintenance/decision-register.jsonl", "model": "opus", "min_score": 0.22,
- *    "enabled": true}
+ *    "enabled": true, "deferral_patterns": ["\\bsome other day\\b"]}
  * Env for fixtures: DECISION_REGISTER_BIN (model binary, default `claude`), DECISION_REGISTER_MODEL.
  * Fixture: scripts/test-decision-register.sh.
  */
@@ -56,7 +60,34 @@ function config() {
     enabled: d.enabled !== false,
     state: path.join(ROOT, '.claude-state', 'decision-register-denied.json'),
     recurring: [...RECURRING, ...(d.recurring_patterns || [])].map((p) => { try { return new RegExp(p, 'iu'); } catch (e) { return null; } }).filter(Boolean),
+    deferral: [...DEFERRAL, ...(d.deferral_patterns || [])].map((p) => { try { return new RegExp(p, 'giu'); } catch (e) { return null; } }).filter(Boolean),
   };
+}
+
+// A deferral is the operator's "not now" on a matter: in the SAME session it is not asked again in other words
+// (incident 2026-11-16: "plan it first, maybe onboarding today, else next time" - one round later the same onboarding
+// was asked as "start now or next time?"; the word match skipped same-session answers and the model treats a
+// postponement as "not the same matter"). English built in; the operator's language as instance data
+// `deferral_patterns`. "remind me" is no deferral here: it asks for the question to come back.
+const DEFERRAL = [
+  '\\blater\\b', '\\bnext time\\b', '\\bnot (now|yet|today)\\b', '\\b(decide|see|talk about) (it |that |this )?(later|tomorrow)\\b',
+  '\\bwe(\'ll| will) (still )?decide\\b',
+];
+const stripDeferral = (t, cfg) => cfg.deferral.reduce((s, r) => s.replace(r, ' '), String(t));
+const deferred = (a, cfg) => cfg.deferral.some((r) => { r.lastIndex = 0; const hit = r.test(String(a)); r.lastIndex = 0; return hit; });
+// Earlier answers of THIS session that defer, sharing at least two topic words with the new question (the deferral
+// words themselves do not count - "next time" in both texts is no shared subject).
+function deferrals(question, sameSession, cfg) {
+  if (recurring(question, cfg)) return [];
+  const qw = words(stripDeferral(question, cfg));
+  const out = [];
+  for (const e of sameSession) {
+    if (!deferred(e.answer, cfg) || recurring(e.question, cfg)) continue;
+    const ew = new Set(words(stripDeferral(e.question + ' ' + e.answer, cfg)));
+    const shared = qw.filter((w) => ew.has(w));
+    if (shared.length >= 2) out.push({ ...e, shared });
+  }
+  return out;
 }
 
 // Recurring check-ins are asked every session BY DESIGN — their answer holds for that moment only, so they are
@@ -219,13 +250,29 @@ function pre(input, cfg) {
   if (process.env.DECISION_REGISTER_CHILD) return null;
   const qs = (((input.tool_input || {}).questions) || []).filter((q) => q && q.question)
     .map((q) => q.question + optText((q.options || []).map((o) => o.label).filter(Boolean)));
-  const entries = load(cfg.register).filter((e) => e.session !== input.session_id || e.date < new Date().toISOString().slice(0, 10));
-  if (!qs.length || !entries.length) return null;
+  const all = load(cfg.register);
+  const entries = all.filter((e) => e.session !== input.session_id || e.date < new Date().toISOString().slice(0, 10));
+  const own = input.session_id ? all.filter((e) => e.session === input.session_id) : [];
+  if (!qs.length || (!entries.length && !own.length)) return null;
   const seen = denied(cfg);
   const hard = [], soft = [];
   // The once-state is keyed on the EARLIER ANSWER, not the new wording (Windows review of #490): the deny asks to say
   // what changed, and a reworded question must not be denied a second time for the same earlier answer.
   const ekey = (h) => qhash(input.session_id, 'entry\n' + h.session + '\n' + h.question);
+  // Same-session deferral first: deterministic, no model (a postponement is "not the same matter" to the judge).
+  const held = [];
+  for (const q of qs) {
+    const d = deferrals(q, own, cfg).filter((h) => !seen[ekey(h)]);
+    if (d.length) held.push({ q, hits: d });
+  }
+  if (held.length) {
+    for (const h of held) for (const e of h.hits) seen[ekey(e)] = new Date().toISOString();
+    try { fs.mkdirSync(path.dirname(cfg.state), { recursive: true }); fs.writeFileSync(cfg.state, JSON.stringify(seen)); } catch (e) { /* state never blocks */ }
+    const why = held.map((h) => `"${h.q.slice(0, 140)}"\n${h.hits.map((e) => `  - asked earlier in this session: "${String(e.question).slice(0, 160)}"\n    answer: "${String(e.answer).slice(0, 200)}"\n    shared: ${e.shared.join(', ')}`).join('\n')}`).join('\n');
+    return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
+      permissionDecisionReason: `${MARKER}: the operator deferred this matter in this session:\n${why}\nDo not ask it again in other words; it comes back when the operator picks it up or a measurement changed the situation (then say what changed - the same question re-issued passes).` } };
+  }
+  if (!entries.length) return null;
   // One time budget under the 60 s hook timeout (Windows review of #490: one model call per question, 5-7 s warm, up to
   // 45 s each): past it the remaining questions are not judged - the question passes, said on stderr.
   const t0 = Date.now();
