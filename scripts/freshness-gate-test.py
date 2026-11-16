@@ -143,6 +143,12 @@ with tempfile.TemporaryDirectory() as tmp:
     st = make_state(tmp, "brain-scan", age_days=8)
     res = run({"script": scan}, st, root)
     cases.append(("instance entry replaces the brain-scan default", res is not None))
+
+    # 16 an instance entry below the core floor does not lower it (a brain once set 6; the floor is 7)
+    json.dump({"workflows": {"brain-scan": {"thresholdDays": 6}}}, open(cfgp, "w", encoding="utf-8"))
+    st = make_state(tmp, "brain-scan", age_days=6.5)
+    res = run({"script": scan}, st, root)
+    cases.append(("instance entry below the floor does not lower it", res is not None))
     os.unlink(cfgp)
 
 fails = [n for n, ok in cases if not ok]
