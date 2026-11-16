@@ -316,6 +316,7 @@ known:     scripts/test-delivered-read-gate.sh=1
 known:     scripts/test-diagnose-gate.sh=1
 known:     scripts/test-eco-owner.sh=1
 known:     scripts/test-ecosystem-sync.sh=1
+known:     scripts/test-effect-check-e3.sh=1
 known:     scripts/test-fixture-own-home.sh=1
 known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
@@ -506,6 +507,9 @@ resolves the pointer probes' record files under it — all through `native()`. B
 directions matter: an unresolvable dir loads no rules (every must-block case would pass
 silently) and finds no record file (the must-allow pointer case would block). Windows run
 still owed at baseline time.
+2026-11-16, test-effect-check-e3.sh baselined after the same review: the temp brain reaches
+only bash (the argument of effect-check.sh, which reads it with grep and `[ -f ]`); nothing
+crosses into node or python.
 
 2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
 test-full-audit-synthesis-files.sh baselined on the same review and the same construction
