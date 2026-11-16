@@ -609,6 +609,21 @@ function ghListed(ghCalls, root) {
   return (ends) => ghCalls.every((c) => listed(ends, [nameOf(ghRepo(c, root)), ghNumber(c)]));
 }
 
+// `BLOCKED:` line plus `WATCH-GAP: <key>`, the key declared in .claude/rules/local-machinery.json.
+// Returns the key, or null (no token, no BLOCKED line, unreadable file, undeclared key).
+function watchGap(root, text) {
+  const t = stripQuoted(text || '');
+  if (!/^[ \t>*_-]*BLOCKED:/m.test(t)) return null;
+  const m = /\bWATCH-GAP:\s*(\S+)/.exec(t);
+  if (!m) return null;
+  const key = m[1].replace(/[.,;)]+$/, '');
+  try {
+    const lm = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'local-machinery.json'), 'utf8'));
+    return ['instance', 'external', 'alpha'].some((k) => lm[k] && typeof lm[k] === 'object'
+      && Object.prototype.hasOwnProperty.call(lm[k], key)) ? key : null;
+  } catch (e) { return null; }
+}
+
 function main(input) {
   OWN_ECHO = ownEcho(input, OWN_ECHO);
   if (input.stop_hook_active || !input.transcript_path) process.exit(0);
@@ -694,10 +709,21 @@ function main(input) {
     }
   }
   if (!missing.length) process.exit(0);
+  // A measured BLOCKED end with a declared watcher gap (Windows coherence scan 2026-11-16, agreed by the
+  // operator the same day): a machine that cannot keep a watcher alive (no collaborators, a show machine
+  // offline, a channel it may not poll) ended every such turn here, although the gap is written down. The
+  // reply carries a `BLOCKED:` line AND `WATCH-GAP: <key>`, the key naming an entry of
+  // .claude/rules/local-machinery.json (instance / external / alpha) — a declaration with its reason, not a
+  // word the agent makes up. It passes the watcher findings that a close could also cover; a hand step or a
+  // reload asked of the human, and a done claim over an unread CI verdict, are never covered by it.
+  let gapped = missing;
+  const gap = watchGap(root, lastText);
+  if (gap) gapped = missing.filter((m) => !m.covered);
+  if (!gapped.length) process.exit(0);
   // The close turn: a close stamp of this session and turn passes what its entry lists (header).
-  let left = missing;
-  const ends = missing.some((m) => m.covered) ? closeOpenEnds(root, { sessionId: input.session_id, since, calls }) : null;
-  if (ends) left = missing.filter((m) => !(m.covered && m.covered(ends)));
+  let left = gapped;
+  const ends = gapped.some((m) => m.covered) ? closeOpenEnds(root, { sessionId: input.session_id, since, calls }) : null;
+  if (ends) left = gapped.filter((m) => !(m.covered && m.covered(ends)));
   if (!left.length) process.exit(0);
   process.stdout.write(JSON.stringify(declare({
     decision: 'block',

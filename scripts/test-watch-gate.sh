@@ -454,6 +454,21 @@ check "(h) other language without instance patterns: built-ins only" "$T/dc10.js
 printf '{"done_claim_patterns": ["\\\\bnichts\\\\s+(?:mehr\\\\s+)?offen\\\\b", "\\\\barbeit\\\\s+ist\\\\s+durch\\\\b"]}\n' > "$DC/.claude/rules/watch-gate.json"
 check "(h) instance done-claim patterns" "$T/dc10.jsonl" block "$DC"
 
+# --- a measured BLOCKED end with a declared watcher gap (2026-11-16) ---
+# `BLOCKED:` + `WATCH-GAP: <key>` passes the coverable watcher findings when the key is an entry of
+# .claude/rules/local-machinery.json; an undeclared key, a missing BLOCKED line or a hand step still block.
+WG="$T/wg-brain"; mkdir -p "$WG/.claude/rules"
+printf '{"instance":{"scripts/no-watch-here":{"why":"show machine offline, no poller","evidence":["x"]}},"alpha":{},"external":{}}\n' \
+  > "$WG/.claude/rules/local-machinery.json"
+{ user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "BLOCKED: PR review — no watcher can run here. WATCH-GAP: scripts/no-watch-here"; } > "$T/wg1.jsonl"
+check "BLOCKED + declared WATCH-GAP" "$T/wg1.jsonl" allow "$WG"
+{ user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "BLOCKED: PR review — WATCH-GAP: scripts/made-up"; } > "$T/wg2.jsonl"
+check "WATCH-GAP naming an undeclared key" "$T/wg2.jsonl" block "$WG"
+{ user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "No watcher here. WATCH-GAP: scripts/no-watch-here"; } > "$T/wg3.jsonl"
+check "WATCH-GAP without a BLOCKED line" "$T/wg3.jsonl" block "$WG"
+{ user "go"; asst "BLOCKED: the run. WATCH-GAP: scripts/no-watch-here. Please start the onPC desk."; } > "$T/wg4.jsonl"
+check "WATCH-GAP does not cover a hand step" "$T/wg4.jsonl" block "$WG"
+
 G0="$G"; G="$T/stub.cjs"; before=$fail; fail=0
 for c in t1 t2 p1 r1 r4 c1 c7 m1 p3 h1 h5 i1 i2 cs2 cs5 dc1 dc3 dc6 dc7; do check "stub on $c" "$T/$c.jsonl" block "$R" >/dev/null; done
 check "stub on g1" "$T/g1.jsonl" block "$SW" >/dev/null
