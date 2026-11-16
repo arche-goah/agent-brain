@@ -225,6 +225,30 @@ check "push, ci-watch armed in the swapped form" "$T/c8.jsonl" allow "$R"
 check "negative control: swapped form, another repo" "$T/c9.jsonl" block "$R"
 { user "fix"; tool Bash "git -C $PLAINN push -q origin x"; } > "$T/c6.jsonl"
 check "push into a repo without workflows" "$T/c6.jsonl" allow "$R"
+# A workflow that runs only on main and on PRs starts nothing for a feature-branch push (measured 2026-11-16, macOS:
+# four suite branches pushed, zero runs, a watcher demanded for each). The form the suites use, then the list form.
+MO="$T/mainonly"; git init -q "$MO"; mkdir -p "$MO/.github/workflows"; git -C "$MO" remote add origin https://github.com/o/r.git
+printf 'name: CI\non:\n  push:\n    branches: [main]\n    tags: ["v*"]\n  pull_request:\njobs: {}\n' > "$MO/.github/workflows/ci.yml"
+MON="$(native "$MO")"
+{ user "fix"; tool Bash "git -C $MON push -q -u origin fix/thing"; asst "pushed"; } > "$T/w1.jsonl"
+check "push to a feature branch, workflow runs on main and PRs only" "$T/w1.jsonl" allow "$R"
+{ user "fix"; tool Bash "git -C $MON push -q origin main"; asst "pushed"; } > "$T/w2.jsonl"
+check "push to main of that repo, no ci-watch" "$T/w2.jsonl" block "$R"
+{ user "fix"; tool Bash "git -C $MON push -q origin HEAD:refs/heads/main"; asst "pushed"; } > "$T/w3.jsonl"
+check "push HEAD:refs/heads/main, no ci-watch" "$T/w3.jsonl" block "$R"
+{ user "fix"; tool Bash "git -C $MON push -q"; asst "pushed"; } > "$T/w4.jsonl"
+check "a bare push (branch unknown) counts as a run" "$T/w4.jsonl" block "$R"
+printf 'on:\n  push:\n    branches:\n      - main\n      - "release/**"\n  pull_request:\n' > "$MO/.github/workflows/ci.yml"
+{ user "fix"; tool Bash "git -C $MON push -q origin fix/thing"; asst "pushed"; } > "$T/w5.jsonl"
+check "list form: feature branch starts nothing" "$T/w5.jsonl" allow "$R"
+{ user "fix"; tool Bash "git -C $MON push -q origin release/2.1/rc"; asst "pushed"; } > "$T/w6.jsonl"
+check "list form: a release/** branch is a run" "$T/w6.jsonl" block "$R"
+printf 'on:\n  push:\n    tags: ["v*"]\n' > "$MO/.github/workflows/ci.yml"
+{ user "fix"; tool Bash "git -C $MON push -q origin main"; asst "pushed"; } > "$T/w7.jsonl"
+check "tags-only workflow: a branch push starts nothing" "$T/w7.jsonl" allow "$R"
+printf 'on: [push, pull_request]\n' > "$MO/.github/workflows/ci.yml"
+{ user "fix"; tool Bash "git -C $MON push -q origin fix/thing"; asst "pushed"; } > "$T/w8.jsonl"
+check "on: [push, ...]: every branch push is a run" "$T/w8.jsonl" block "$R"
 # A push that never ran or moved no ref starts no run (measured 2026-11-09, macOS: a PreToolUse gate refused the push,
 # the branch was not on the remote, the Stop check still demanded a watcher). The result is matched by tool_use_id.
 idtool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }

@@ -435,6 +435,56 @@ function callDir(cmd, root) {
 function hasWorkflows(dir) {
   try { return fs.readdirSync(path.join(dir, '.github', 'workflows')).some((f) => /\.ya?ml$/i.test(f)); } catch (e) { return false; }
 }
+/** The branch a `git push <remote> <refspec>` sends to; null when the command names none (a bare push, a tag, --all). */
+function pushedBranch(cmd) {
+  const m = /\bpush\b((?:\s+(?:"[^"]*"|'[^']*'|\S+))*)/.exec(cmd.split(/[\n;&|]/).find((s) => /\bgit\b.*\bpush\b/.test(s)) || '');
+  const args = m ? m[1].trim().split(/\s+/).filter((a) => a && !a.startsWith('-')) : [];
+  if (args.length < 2) return null;
+  const dst = args[1].replace(/^\+/, '').split(':').pop();
+  if (!dst || dst === 'HEAD' || /^refs\/tags\//.test(dst)) return null;
+  return dst.replace(/^refs\/heads\//, '');
+}
+/** Does a push to `branch` start a run? Reads each workflow's `on:` block. Measured 2026-11-16 on the macOS instance:
+ *  four suite branches pushed, CI there runs on `push: branches: [main]` and pull_request only - zero runs, and this
+ *  gate demanded a watcher for each. Unreadable, a bare `push`, `branches-ignore`, or an unknown branch: a run (the
+ *  gate errs toward the watch). Only `push.branches` that miss the branch, or `push.tags` alone, or no `push` at all,
+ *  say no run. ponytail: a line reader for the common forms, not a YAML parser; anything else counts as a run. */
+function pushRunsCi(dir, branch) {
+  let files;
+  try { files = fs.readdirSync(path.join(dir, '.github', 'workflows')).filter((f) => /\.ya?ml$/i.test(f)); } catch (e) { return false; }
+  if (!files.length) return false;
+  if (!branch) return true;
+  const glob = (g) => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\0').replace(/\*/g, '[^/]*').replace(/\0/g, '.*') + '$');
+  const list = (s) => s.replace(/^\[|\]$/g, '').split(',').map((x) => x.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+  return files.some((f) => {
+    let text;
+    try { text = fs.readFileSync(path.join(dir, '.github', 'workflows', f), 'utf8'); } catch (e) { return true; }
+    const lines = text.split(/\r?\n/);
+    const at = lines.findIndex((l) => /^["']?on["']?\s*:/.test(l));
+    if (at < 0) return true;
+    const inline = lines[at].replace(/^["']?on["']?\s*:\s*/, '').replace(/\s+#.*$/, '').trim();
+    if (inline) return /\bpush\b/.test(inline) || !/^\[|^[\w-]+$/.test(inline);
+    const block = [];
+    for (const l of lines.slice(at + 1)) { if (/^\S/.test(l)) break; block.push(l); }
+    const p = block.findIndex((l) => /^\s+push\s*:/.test(l));
+    if (p < 0) return false;
+    const ind = block[p].search(/\S/);
+    const sub = [];
+    for (const l of block.slice(p + 1)) { if (l.trim() && l.search(/\S/) <= ind) break; sub.push(l); }
+    const key = (k) => {
+      const i = sub.findIndex((l) => new RegExp(`^\\s+${k}\\s*:`).test(l));
+      if (i < 0) return null;
+      const v = sub[i].replace(/^[^:]*:\s*/, '').replace(/\s+#.*$/, '').trim();
+      if (v) return list(v);
+      const out = [];
+      for (const l of sub.slice(i + 1)) { const m = /^\s+-\s*(.+?)\s*$/.exec(l); if (!m) break; out.push(m[1].replace(/^["']|["']$/g, '')); }
+      return out;
+    };
+    const branches = key('branches');
+    if (branches) return branches.some((g) => glob(g).test(branch));
+    return !key('tags');
+  });
+}
 /** owner/repo of `origin` when it is a GitHub remote, '' otherwise (then nothing is required). */
 function originSlug(dir) {
   let url;
@@ -482,7 +532,7 @@ function ciStarted(shell, root) {
       continue;
     }
     const dir = callDir(c.cmd, root);
-    if (!hasWorkflows(dir)) continue;
+    if (!pushRunsCi(dir, pushedBranch(c.cmd))) continue;
     const slug = originSlug(dir);
     if (slug) out.add(slug);
   }
