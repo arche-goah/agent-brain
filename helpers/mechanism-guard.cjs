@@ -210,10 +210,20 @@ function registerRules(project) {
     return f && !f.endsWith(reg) && words.test(f.split('/').pop());
   };
   const exists = (p) => {
-    try { return fs.existsSync(path.isAbsolute(p) ? p : path.join(project, p)); } catch (_) { return false; }
+    const f = String(p).replace(/^["']|["']$/g, '').replace(/\\/g, '/');
+    try { return fs.existsSync(path.isAbsolute(f) ? f : path.join(project, f)); } catch (_) { return false; }
   };
   const TOK = `("[^"]+"|'[^']+'|[^\\s;&|()<>]+)`;
-  const shell = new RegExp(`(?:>>?|\\btee\\b(?:\\s+-a)?|\\btouch\\b)\\s*${TOK}|\\b(?:cp|mv)\\b[^\\n;&|]*\\s${TOK}\\s*(?=$|[\\n;&|)])`, 'g');
+  // PowerShell writes files with cmdlets, not redirects (Windows review on #521): the target is the first
+  // positional or the value of -FilePath/-Path/-LiteralPath, after any other flags; Copy-Item/Move-Item name it
+  // with -Destination. Groups: 1 redirect/tee/touch, 2 cp/mv, 3 cmdlet, 4 Copy-/Move-Item.
+  const PSFLAGS = `(?:\\s+-(?:ItemType|Encoding|Value|InputObject)\\s+\\S+|\\s+-(?:Force|Append|NoNewline|NoClobber))*`;
+  const shell = new RegExp(`(?:>>?|\\btee\\b(?:\\s+-a)?|\\btouch\\b)\\s*${TOK}`
+    + `|\\b(?:cp|mv)\\b[^\\n;&|]*\\s${TOK}\\s*(?=$|[\\n;&|)])`
+    + `|\\b(?:Out-File|Set-Content|Add-Content|New-Item)\\b${PSFLAGS}(?:\\s+-(?:FilePath|Path|LiteralPath))?\\s+${TOK}`
+    + `|\\b(?:Copy-Item|Move-Item)\\b[^\\n;&|]*\\s-Destination\\s+${TOK}`, 'gi');
+  // Only a NEW list is refused, as the path rule does: a write into an existing list passes.
+  const target = (m) => m[1] || m[2] || m[3] || m[4];
   const base = {
     was: 'a separate shopping list next to the purchase register (a new list file, a dated copy, a CSV per shop or project)',
     instead: `One row per purchase in the register \`${reg}\` (header and checks: \`python3 core/scripts/product-sources.py register check\`; `
@@ -222,7 +232,7 @@ function registerRules(project) {
   };
   return [
     Object.assign({ target: 'path', test: (_c, fp) => !!fp && isList(fp) && !exists(fp) }, base),
-    Object.assign({ target: 'command', test: (c) => [...String(c || '').matchAll(shell)].some((m) => isList(m[1] || m[2])) }, base),
+    Object.assign({ target: 'command', test: (c) => [...String(c || '').matchAll(shell)].some((m) => isList(target(m)) && !exists(target(m))) }, base),
   ];
 }
 

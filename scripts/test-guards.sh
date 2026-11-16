@@ -575,6 +575,13 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/purchase register: reading a list (control)" Bash command "cat docs/old-shopping-list.md" allow
   tr_probe "mechanism-guard/purchase register: a list moved away, source only (control)" Bash command "mv docs/einkaufsliste.md docs/archive/" allow
   tr_probe "mechanism-guard/purchase register: the word in a commit message (control)" Bash command "git commit -m 'drop the shopping-list file' -- a.txt" allow
+  # Windows review on #521: PowerShell cmdlets write files without a redirect, and an append to an existing list passes.
+  tr_probe "mechanism-guard/purchase register: a new list by Out-File" PowerShell command "'a' | Out-File docs\\einkaufsliste-ps.md" block
+  tr_probe "mechanism-guard/purchase register: a new list by Set-Content -Path" PowerShell command "Set-Content -Path docs\\shopping-list-ps.md -Value a" block
+  tr_probe "mechanism-guard/purchase register: a new list by New-Item" PowerShell command "New-Item -ItemType File docs/einkaufsliste-neu.md" block
+  tr_probe "mechanism-guard/purchase register: a list as Copy-Item -Destination" PowerShell command "Copy-Item docs/buy/register.csv -Destination C:/tmp/shopping_list.csv" block
+  tr_probe "mechanism-guard/purchase register: an append to an existing list (control)" Bash command "echo a >> docs/old-shopping-list.md" allow
+  tr_probe "mechanism-guard/purchase register: Add-Content to an existing list (control)" PowerShell command "Add-Content -Path docs\\old-shopping-list.md -Value a" allow
   rm -f "$TR/proj/.claude/rules/purchase-register.json"
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
