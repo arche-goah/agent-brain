@@ -23,6 +23,8 @@
 # what brain-update.sh already committed on another machine, and new hooks next to an old core
 # lock the session out.
 #
+# One exception for the brain: when its only changes are docs/memory-snapshot/ and the session log
+# (what an ended session's hooks write), they are leftovers - pulled past, then committed by path.
 # Per repo: uncommitted changes = reported, nothing touched (untracked files do not count —
 # git itself refuses a fast-forward that would overwrite one) · detached HEAD or no upstream
 # = skipped with a note · behind = `merge --ff-only` after a fetch · diverged = reported ·
@@ -143,7 +145,15 @@ pull_one() {
   local name=$1 p=$2 br rem ahead behind rc dirty
   BEFORE=""; AFTER=""
   n_checked=$((n_checked + 1))
+  # The brain whose ONLY changes are what an ended session's hooks write by construction (the memory
+  # export into docs/memory-snapshot/, the session log): leftovers, not local edits. Measured 2026-11-16:
+  # 28 brain commits since 2026-10-15 touch docs/memory-snapshot, several of them "leftovers of ended
+  # sessions" - and every such start skipped the pull. Pulled past (git refuses the fast-forward itself
+  # when the incoming commits touch the same files) and committed BY PATH after the pull, so the commit
+  # never lands behind the server.
+  LEFT=""
   dirty=$(git -C "$p" status --porcelain --untracked-files=no 2>/dev/null)
+  if [ -n "$dirty" ] && [ "$name" = brain ] && leftovers_only "$dirty"; then LEFT=$(printf '%s\n' "$dirty" | awk '{print $NF}'); dirty=""; fi
   if [ -n "$dirty" ]; then
     # the brain whose only change is core/ off its pin: that is the cause, not local edits
     if [ "$name" = brain ] && [ "$(printf '%s\n' "$dirty" | awk '{print $NF}')" = core ]; then
@@ -162,7 +172,7 @@ pull_one() {
   fi
   read -r ahead behind <<< "$(git -C "$p" rev-list --left-right --count 'HEAD...@{u}' 2>/dev/null)"
   case "$ahead$behind" in ''|*[!0-9]*) log "$name: upstream of '$br' not readable — skipped"; return ;; esac
-  [ "$behind" -eq 0 ] && return
+  if [ "$behind" -eq 0 ]; then commit_leftovers "$p"; return; fi
   if [ "$ahead" -ne 0 ]; then
     look "$name ($br): diverged — $ahead local and $behind upstream commits, not pulled"; return
   fi
@@ -170,8 +180,35 @@ pull_one() {
   if git -C "$p" -c submodule.recurse=false merge -q --ff-only '@{u}' >"$TMPF" 2>&1; then
     AFTER=$(git -C "$p" rev-parse HEAD)
     log "$name ($br): updated ${BEFORE:0:7}..${AFTER:0:7} ($behind commit(s))"; n_updated=$((n_updated + 1))
+    commit_leftovers "$p"
   else
     look "$name ($br): fast-forward refused — $(tail -1 "$TMPF")"; BEFORE=""
+  fi
+}
+
+# <dirty porcelain> - true when every changed path is a leftover an ended session writes by construction.
+leftovers_only() {
+  local f
+  while IFS= read -r f; do
+    f=${f##* }
+    case "$f" in docs/memory-snapshot/*|docs/maintenance/session-log.md) ;; *) return 1 ;; esac
+  done <<< "$1"
+  return 0
+}
+
+# <dir> - commit the leftovers found before the pull, by path, once the checkout is level with the server.
+commit_leftovers() {
+  local p=$1 list cnt sl=docs/maintenance/session-log.md
+  [ -n "$LEFT" ] || return 0
+  list=$LEFT; LEFT=""
+  cnt=$(printf '%s\n' "$list" | awk 'NF { n++ } END { print n + 0 }')
+  # Two fixed pathspecs, no path list (no array: OS-22; no word split: OS-10): the folder always, the session log only
+  # when it is among the leftovers (a pathspec that matches nothing makes git refuse the commit).
+  case $'\n'"$list"$'\n' in *$'\n'"$sl"$'\n'*) ;; *) sl=docs/memory-snapshot ;; esac
+  if git -C "$p" commit -q -m "leftovers of an ended session: memory snapshot / session log" -- docs/memory-snapshot "$sl" >"$TMPF" 2>&1; then
+    log "brain: committed the leftovers of an ended session by path ($cnt file(s)), not pushed"
+  else
+    look "brain: leftovers of an ended session ($cnt file(s) under docs/memory-snapshot or the session log) not committed — $(tail -1 "$TMPF")"
   fi
 }
 

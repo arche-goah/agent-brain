@@ -233,6 +233,29 @@ same "dirty brain: not pulled" "$(head_of "$BRAIN")" "$h_brain"
 has  "dirty brain: reported" "brain: uncommitted changes" "$(cat "$T/err")"
 git -C "$BRAIN" checkout -q -- seed.txt
 
+# leftovers of an ended session: only docs/memory-snapshot/ and the session log are dirty -> the brain is
+# pulled anyway and the leftovers are committed by path afterwards (2026-11-16: such starts skipped the pull)
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+advance brain docs/maintenance/session-log.md; run_pull >/dev/null   # the brain level with a session log in it
+advance brain; h_up=$(git -C "$T/r/brain.git" rev-parse main)
+echo "left by an ended session" >> "$BRAIN/docs/memory-snapshot/note.md"
+echo "line" >> "$BRAIN/docs/maintenance/session-log.md"
+run_pull >/dev/null
+if git -C "$BRAIN" merge-base --is-ancestor "$h_up" HEAD 2>/dev/null; then ok "leftovers only: the brain is pulled"; else bad "leftovers only: the brain is pulled" "upstream ${h_up:0:7} not in HEAD"; fi
+same "leftovers only: committed, tree clean" "$(git -C "$BRAIN" status --porcelain --untracked-files=no)" ""
+has  "leftovers only: the commit names them" "leftovers of an ended session" "$(git -C "$BRAIN" log -1 --format=%s)"
+has  "leftovers only: said on stderr" "committed the leftovers of an ended session by path (2 file(s))" "$(cat "$T/err")"
+git_q -C "$BRAIN" push -q origin HEAD:main
+# negative control: a leftover next to a real edit -> nothing pulled, nothing committed
+advance brain; h_b=$(head_of "$BRAIN")
+echo more >> "$BRAIN/docs/memory-snapshot/note.md"; echo x >> "$BRAIN/seed.txt"
+run_pull >/dev/null
+same "leftover plus a real edit: not pulled" "$(head_of "$BRAIN")" "$h_b"
+has  "leftover plus a real edit: reported as uncommitted changes" "brain: uncommitted changes" "$(cat "$T/err")"
+git -C "$BRAIN" checkout -q -- seed.txt docs/memory-snapshot/note.md
+run_pull >/dev/null   # level again for the cases below
+unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+
 # dead network: a remote that never answers costs the stall limit, not the session start
 git_q clone -q "$T/r/clean.git" "$T/w/hang"
 git -C "$T/w/hang" remote set-url origin "ssh://hang.invalid/x.git"

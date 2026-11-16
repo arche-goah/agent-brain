@@ -248,6 +248,27 @@ ms_run import
   && ok "memory-sync import keeps the local edit and parks the remote one as .incoming.md" \
   || bad "memory-sync import lost one side of a diverged file"
 
+# --- memory-sync: no export onto a snapshot base the upstream has moved past ----------
+# Coherence finding 2026-11-16: an export onto a checkout behind its upstream on docs/memory-snapshot
+# writes over a snapshot the import has not seen; the next pull is refused. Held until pull + import.
+# no host git config: a machine's global pre-push guard refuses the push into the temp bare repo (scripts/git-sandbox.sh)
+gq() { GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -c user.email=t@t -c user.name=t -c init.defaultBranch=main "$@" >/dev/null 2>&1; }
+gq init -q --bare "$T/xr.git"; gq clone -q "$T/xr.git" "$T/xa"
+mkdir -p "$T/xa/docs/memory-snapshot" "$T/xlive"; printf 'v1\n' > "$T/xa/docs/memory-snapshot/n.md"
+gq -C "$T/xa" add -A; gq -C "$T/xa" commit -qm s; gq -C "$T/xa" push -q -u origin HEAD:main
+gq clone -q "$T/xr.git" "$T/xb"; printf 'v2 from another machine\n' > "$T/xb/docs/memory-snapshot/n.md"
+gq -C "$T/xb" commit -qam other; gq -C "$T/xb" push -q origin HEAD:main
+gq -C "$T/xa" fetch -q origin
+printf 'local edit\n' > "$T/xlive/fresh.md"
+out=$(cd "$T/xa" && CLAUDE_PROJECT_DIR="$T/xa" CLAUDE_MEMORY_DIR="$T/xlive" node "$MS" export 2>&1)
+[ ! -f "$T/xa/docs/memory-snapshot/fresh.md" ] && ok "memory-sync export is held while the upstream is ahead on the snapshot" \
+  || bad "memory-sync export wrote onto a snapshot base behind its upstream"
+case "$out" in *"export held"*) ok "memory-sync export says why it held" ;; *) bad "memory-sync held export without a line: ${out:0:120}" ;; esac
+gq -C "$T/xa" merge -q --ff-only '@{u}'
+(cd "$T/xa" && CLAUDE_PROJECT_DIR="$T/xa" CLAUDE_MEMORY_DIR="$T/xlive" node "$MS" export >/dev/null 2>&1)
+[ -f "$T/xa/docs/memory-snapshot/fresh.md" ] && ok "memory-sync export runs once the checkout is level again (control)" \
+  || bad "memory-sync export still held after the pull"
+
 # --- memory-sync: export prunes what was deleted HERE, and holds everything else -------
 # Coherence scan 2026-10-15 (P1-2): the SessionEnd/PreCompact export never pruned, so a memory
 # deleted in a session that closed without the skill came back at the next import. The guard
