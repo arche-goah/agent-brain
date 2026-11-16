@@ -571,6 +571,28 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: pin edit by PowerShell Set-Content" PowerShell command "Set-Content m/.claude-plugin/marketplace.json x" block
   tr_probe "mechanism-guard/core rule: pin edit by PowerShell pipe into Out-File" PowerShell command "Get-Content a.json | Out-File m/.claude-plugin/marketplace.json" block
   tr_probe "mechanism-guard/core rule: pin edit by gh api DELETE" Bash command "gh api -X DELETE repos/o/m/contents/.claude-plugin/marketplace.json" block
+  # The other direction (macOS review of this sweep, 2026-11-15): write modes of the listed readers and write calls
+  # an inline-script denylist misses. An inline script naming the pin passes only in the read-only allowlist form
+  # (json.load(open(<pin>)), readFileSync(<pin>)); xxd and base64 are no readers (both have a write mode).
+  tr_probe "mechanism-guard/core rule: pin written by xxd -r" Bash command "xxd -r dump.hex .claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin written by base64 -o" Bash command "base64 -d -i x.b64 -o .claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin written by inline node cpSync" Bash command "node -e \"require('fs').cpSync('x.json','.claude-plugin/marketplace.json')\"" block
+  tr_probe "mechanism-guard/core rule: pin written by inline node createWriteStream" Bash command "node -e \"require('fs').createWriteStream('.claude-plugin/marketplace.json').end('{}')\"" block
+  tr_probe "mechanism-guard/core rule: pin truncated by inline python os.open" Bash command "python3 -c \"import os; os.open('.claude-plugin/marketplace.json', os.O_WRONLY|os.O_TRUNC)\"" block
+  tr_probe "mechanism-guard/core rule: pin written by a sed w command" Bash command "sed -n 'w .claude-plugin/marketplace.json' other.json" block
+  tr_probe "mechanism-guard/core rule: pin written by git diff --output" Bash command "git diff --output=.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin written by inline python argv" Bash command "python3 -c \"import sys,shutil;shutil.copy('x',sys.argv[1])\" .claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin read and written in one inline script" Bash command "python3 -c \"import json;d=json.load(open('.claude-plugin/marketplace.json'));open('.claude-plugin/marketplace.json','W'.lower()).write('x')\"" block
+  tr_probe "mechanism-guard/core rule: pin read by inline python, single-quoted script (control)" Bash command "python3 -c 'import json;print(json.load(open(\".claude-plugin/marketplace.json\")))'" allow
+  tr_probe "mechanism-guard/core rule: style copied in by cp -t" Bash command "cp -t .claude/output-styles/ caveman.md" block
+  tr_probe "mechanism-guard/core rule: style copied in by cp -rt (bundled flags)" Bash command "cp -rt .claude/output-styles x.md" block
+  tr_probe "mechanism-guard/core rule: style copied in by cp --target-directory" Bash command "cp --target-directory=.claude/output-styles caveman.md" block
+  tr_probe "mechanism-guard/core rule: style dir copied in by cp -r, no trailing slash" Bash command "cp -r core/output-styles .claude/output-styles" block
+  tr_probe "mechanism-guard/core rule: style edited by sed with -i after the script" Bash command "sed -e 's/a/b/' -i .claude/output-styles/caveman.md" block
+  tr_probe "mechanism-guard/core rule: style edited by sed -i.bak" Bash command "sed -i.bak 's/a/b/' .claude/output-styles/caveman.md" block
+  tr_probe "mechanism-guard/core rule: style edited by sed --in-place" Bash command "sed --in-place 's/a/b/' .claude/output-styles/caveman.md" block
+  tr_probe "mechanism-guard/core rule: style read by sed --posix -n (control)" Bash command "sed --posix -n p .claude/output-styles/caveman.md" allow
+  tr_probe "mechanism-guard/core rule: style read by sed -n with a file name holding an i (control)" Bash command "sed -n 1,5p .claude/output-styles/minimal.md" allow
   # An inline script in double quotes: a backtick or $( in its text runs as a command first (measured 2026-11-03,
   # Windows instance: two backtick paths in a protocol entry ran as scripts; ported from a macOS instance rule).
   tr_probe "mechanism-guard/core rule: python -c with a backtick" Bash command 'python3 -c \"print(`date`)\"' block
