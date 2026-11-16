@@ -7,6 +7,7 @@ the same root). A register therefore stores the INVARIANT together with the sear
 command that spans its space — and this script runs that search again.
 
   invariant-check.py <register.md> [<register.md> ...]
+  invariant-check.py --write <register.md> ...   # report, then rewrite drifted `known:` baselines (session close)
 
 Exit 0 = every baseline matches, 1 = drift (new/changed/vanished hits) or a failed
 search. Open classes above the build threshold are REPORTED, never failed: an open
@@ -232,13 +233,63 @@ def verdict(b):
     return "single case — no build"
 
 
+def write_baselines(regp, current):
+    """Rewrite the `known:` lines of the pattern blocks in `current` ({block id: {file: n}}) to today's counts.
+
+    The style of a block is kept: one `known:` line per file when it had more than one, else one line. A block
+    without a `known:` line gets it after its `pattern:` line. Every other line stays byte-identical.
+    """
+    text = regp.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    multi, cur = {}, None
+    for line in lines:   # which blocks use the one-file-per-line form
+        if line.startswith("## "):
+            cur = line[3:].strip()
+        elif cur in current and line.strip().startswith("known:"):
+            multi[cur] = multi.get(cur, 0) + 1
+
+    def fresh(bid):
+        items = [f"{f}={n}" for f, n in sorted(current[bid].items())]
+        if not items:
+            return ["known:"]
+        return [f"known: {i}" for i in items] if multi.get(bid, 0) > 1 else ["known: " + " ".join(items)]
+
+    out, cur, placed = [], None, set()
+    for line in lines:
+        if line.startswith("## "):
+            cur = line[3:].strip()
+            out.append(line)
+            continue
+        if cur in current and line.strip().startswith("known:"):
+            if cur not in placed:
+                out.extend(fresh(cur))
+                placed.add(cur)
+            continue
+        out.append(line)
+        if cur in current and cur not in placed and not multi.get(cur) and line.strip().startswith("pattern:"):
+            out.extend(fresh(cur))
+            placed.add(cur)
+    # The register is git-tracked: LF pinned (OS-2), through open() because the newline argument of the Path
+    # helper is 3.10+ (OS-13).
+    with open(regp, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(out) + ("\n" if text.endswith("\n") else ""))
+
+
 def main(argv):
-    bad = 0
+    bad = failed = 0
     unmechanized = []
     asserted_closed = []
+    # --write: after the report, the drifted baselines are rewritten to today's counts. The session close runs it
+    # (operator decision 2026-11-16: an instance register drifted for the third time, 294 lines; measured the same
+    # day, about two thirds of them were new fixture files of the pinned core matching an instance class). The
+    # report above IS the reading; the close keeps its lines in the session log, and drift never piles up past
+    # one session again.
+    write = "--write" in argv
+    argv = [a for a in argv if a != "--write"]
     for reg in argv or ["docs/maintenance/invariants.md"]:
         regp = Path(reg).resolve()
         root, blocks = parse(regp)
+        rewrite = {}
         rootp = (regp.parent / root).resolve()
         print(f"\n=== {regp.name}  (root: {rootp}) ===")
         for b in blocks:
@@ -267,7 +318,7 @@ def main(argv):
                 now = counts(rootp, b["pattern"], b.get("paths"))
             except (RuntimeError, FileNotFoundError) as e:
                 print(f"  !!  {head}\n      search failed: {e}")
-                bad = 1
+                bad = failed = 1
                 continue
             was = baseline(b.get("known"))
             new = {f: n for f, n in now.items() if f not in was}
@@ -275,6 +326,7 @@ def main(argv):
             gone = [f for f in was if f not in now]
             if new or grew or gone:
                 bad = 1
+                rewrite[b["id"]] = now
                 print(f"  !!  {head}")
                 for f, n in new.items():
                     print(f"      NEW site: {f} ({n} hits) — the class is growing")
@@ -286,6 +338,10 @@ def main(argv):
                 print(f"  ok  {head}  ({sum(now.values())} hits in {len(now)} files)")
             if says_open(b.get("status", "")):
                 print(f"      -> {verdict(b)}")
+        if write and rewrite:
+            write_baselines(regp, rewrite)
+            print(f"\n  baseline written: {len(rewrite)} block(s) of {regp.name} now hold today's counts "
+                  f"(the drift above is absorbed - keep these lines in the session log)")
 
     if unmechanized:
         # Printed as a count, because a backlog buried in per-entry lines is a backlog
@@ -312,7 +368,8 @@ def main(argv):
             print(f"    -- {i}{'' if not also_open else '  (partly still open)'}")
         print("     Either give them a `pattern`/tool, or say in `status` that the close "
               "is a judgement with no instrument — so the next reader knows which it is.")
-    return bad
+    # With --write the absorbed drift is no failure any more; a search that could not run still is.
+    return failed if write else bad
 
 
 if __name__ == "__main__":
