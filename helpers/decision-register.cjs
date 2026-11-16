@@ -74,20 +74,23 @@ const DEFERRAL = [
   '\\bwe(\'ll| will) (still )?decide\\b',
 ];
 const stripDeferral = (t, cfg) => cfg.deferral.reduce((s, r) => s.replace(r, ' '), String(t));
-const deferred = (a, cfg) => cfg.deferral.some((r) => { r.lastIndex = 0; const hit = r.test(String(a)); r.lastIndex = 0; return hit; });
-// Earlier answers of THIS session that defer, sharing at least two topic words with the new question (the deferral
-// words themselves do not count - "next time" in both texts is no shared subject).
-function deferrals(question, sameSession, cfg) {
-  if (recurring(question, cfg)) return [];
-  const qw = words(stripDeferral(question, cfg));
-  const out = [];
-  for (const e of sameSession) {
-    if (!deferred(e.answer, cfg) || recurring(e.question, cfg)) continue;
-    const ew = new Set(words(stripDeferral(e.question + ' ' + e.answer, cfg)));
-    const shared = qw.filter((w) => ew.has(w));
-    if (shared.length >= 2) out.push({ ...e, shared });
-  }
-  return out;
+// The deferral carries the answer: it leads it (first 60 characters, "Later (Recommended)") or the answer is short
+// (at most 120 characters, "plan it first, maybe today, else next time") - a "later" deep inside a long yes is no
+// deferral (replay 2026-11-16: anywhere-matching held answers like "yes, run it, and later also ...").
+// ponytail: length/position heuristic, a typed answer record if it misreads.
+const deferred = (a, cfg) => cfg.deferral.some((r) => {
+  r.lastIndex = 0; const m = r.exec(String(a)); r.lastIndex = 0;
+  return !!m && (m.index < 60 || String(a).length <= 120);
+});
+// Earlier answers of THIS session that defer and match the new question by the same rare-word score as the
+// cross-session prefilter, weighted over the whole register (the deferral words themselves are stripped from the
+// question - "next time" in both texts is no shared subject). A plain two-shared-words test held 36 of 51 deferrals
+// in the replay of 2026-11-16, most of them on generic words; the weighted score is the measured prefilter.
+function deferrals(question, all, session, cfg) {
+  if (!session || recurring(question, cfg)) return [];
+  const pool = all.filter((e) => !recurring(e.question, cfg));
+  return candidates(stripDeferral(question, cfg), pool, cfg.minScore, 5)
+    .filter((c) => c.session === session && deferred(c.answer, cfg));
 }
 
 // Recurring check-ins are asked every session BY DESIGN — their answer holds for that moment only, so they are
@@ -253,7 +256,7 @@ function pre(input, cfg) {
   const all = load(cfg.register);
   const entries = all.filter((e) => e.session !== input.session_id || e.date < new Date().toISOString().slice(0, 10));
   const own = input.session_id ? all.filter((e) => e.session === input.session_id) : [];
-  if (!qs.length || (!entries.length && !own.length)) return null;
+  if (!qs.length || (!entries.length && !own.some((e) => deferred(e.answer, cfg)))) return null;
   const seen = denied(cfg);
   const hard = [], soft = [];
   // The once-state is keyed on the EARLIER ANSWER, not the new wording (Windows review of #490): the deny asks to say
@@ -262,7 +265,7 @@ function pre(input, cfg) {
   // Same-session deferral first: deterministic, no model (a postponement is "not the same matter" to the judge).
   const held = [];
   for (const q of qs) {
-    const d = deferrals(q, own, cfg).filter((h) => !seen[ekey(h)]);
+    const d = deferrals(q, all, input.session_id, cfg).filter((h) => !seen[ekey(h)]);
     if (d.length) held.push({ q, hits: d });
   }
   if (held.length) {
@@ -370,7 +373,7 @@ function cli(argv) {
   return 0;
 }
 
-module.exports = { answerPairs, candidates, match, words, transcriptAnswers };
+module.exports = { answerPairs, candidates, match, words, transcriptAnswers, deferrals, config };
 
 if (require.main === module) {
   if (process.argv.slice(2).some((a) => a.startsWith('--'))) process.exit(cli(process.argv.slice(1)));
