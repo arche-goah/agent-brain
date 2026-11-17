@@ -156,11 +156,44 @@ function sentences(text) {
     .flatMap((l) => l.replace(/\([^()]*\bagainst\b[^()]*\)/gi, '``').split(/[;.]\s+/));
 }
 
+/**
+ * STRUCTURED FORM (ported 2026-11-17 from an instance alpha): one HTML comment line per verdict,
+ *     <!-- os-review: os=<macOS|Windows|Linux> verdict=<ok|fail> head=<sha> -->
+ * written by scripts/post-os-ok.sh. When a text carries the form for an OS, the form ALONE is that text's verdict for
+ * it: no word of the prose can cancel or create it. WHY (measured 2026-10-28 on the macOS instance): the line reader
+ * dropped an OK whose line also held "open" (a fixture name), "pending" or "0 missing"; three merges were held in one
+ * day (#164, #193, #192) until the OK was restated, and each narrowing of the word lists since (#187, #324, #473, #529)
+ * fixes the next wording. Fields in any order; an unknown OS, verdict or a head that is no hex sha makes the line
+ * void. Several lines for one OS: the last one counts.
+ */
+const FORM_RX = /<!--\s*os-review:\s*([^>]*?)\s*-->/gi;
+function structured(text, os) {
+  let last = null;
+  for (const m of String(text || '').matchAll(FORM_RX)) {
+    const f = {};
+    for (const kv of m[1].split(/\s+/)) { const i = kv.indexOf('='); if (i > 0) f[kv.slice(0, i).toLowerCase()] = kv.slice(i + 1); }
+    if (String(f.os || '').toLowerCase() !== String(os || '').toLowerCase()) continue;
+    if (!/^(ok|fail)$/i.test(f.verdict || '') || !/^[0-9a-f]{7,40}$/i.test(f.head || '')) continue;
+    last = { verdict: f.verdict.toLowerCase(), head: f.head.toLowerCase() };
+  }
+  return last;
+}
+
+/** The form's verdict for `os` at one of `shas` (short or long): true / false, or null when the text has no form. */
+function formSays(text, os, shas) {
+  const f = structured(text, os);
+  if (!f) return null;
+  const at = (shas || []).filter(Boolean).map((s) => String(s).toLowerCase().slice(0, 7));
+  return f.verdict === 'ok' && (!at.length || at.some((s) => f.head.startsWith(s)));
+}
+
 /** Is `text` a hand review for `os`? Returns the instance key, or null. */
 function handReview(text, os, opts = {}) {
   const t = String(text || '');
   const key = KEY_RX.exec(t);
   if (!key) return null;
+  const form = formSays(t, os, opts.head ? [opts.head] : []);
+  if (form !== null) return form ? key[1].toLowerCase() : null;
   if (opts.head && !t.includes(String(opts.head).slice(0, 7))) return null;
   const first = t.trim().split(/\r?\n/)[0] || '';
   if (CI_NOTE.test(first) && !hasStatement(first)) return null;
@@ -191,4 +224,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { saysOk, saysNo, handReview, statementAt, NAME_RX, OK_RX, NOT_RX, KEY_RX, CI_NOTE };
+module.exports = { saysOk, saysNo, handReview, statementAt, structured, formSays, NAME_RX, OK_RX, NOT_RX, KEY_RX, CI_NOTE };
