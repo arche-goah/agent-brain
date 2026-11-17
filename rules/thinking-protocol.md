@@ -100,8 +100,13 @@ History: core/docs/rule-history.md, "Confidence Assessment".
 A HARD marker in an instance file (feedback rules, memory) does not lift that rule above a core
 HARD rule: the rank is the operator's explicit word, then core HARD, then the instance's rule
 files, then the rest (operator decision 2026-10-15); HARD itself is reserved for a gate or
-safety rule WITH a mechanical check, never a weight word.
-1. Explicit user instructions · 2. **HARD core rules that name their carrier** (mechanism
+safety rule WITH a mechanical check, never a weight word. **The operator's explicit word is a word
+said in the running session** (operator decision 2026-11-16): an archived quote in an instance
+file ranks as that file's rule (item 3), however strong its wording; a recorded `ai_handover`
+keeps the rank its own paragraph below gives it. A recorded quote that a carrier asks for
+(`needs_operator_word`, a standing approval) still counts where that carrier names it; it ranks
+no higher in a conflict.
+1. Explicit user instructions (in the running session) · 2. **HARD core rules that name their carrier** (mechanism
 discipline, one system, order fidelity #3 and the conditional part of #7 — `working-rules.md`; evidence chain, the
 items naming a carrier — above); a HARD item whose section names no carrier for it ranks with
 item 3 (operator decision 2026-11-03) · 3.

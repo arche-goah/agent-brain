@@ -13,9 +13,11 @@ then an explicit release follows.
 
 0. **End the autonomous mode first** (operator decision 2026-11-03): closing is a change of
    state, not one more autonomous step. A close step that needs the operator's word (a gated
-   push, a prune, a release) is asked through the question tool, which an autonomous run
-   forbids; with the mode still on, those steps were collected as prose and the release could
-   not be given. The close prompt itself ends the mode where the instance's off-patterns carry
+   push, a release) is asked through the question tool, which an autonomous run forbids; with
+   the mode still on, those steps were collected as prose and the release could not be given.
+   The `memory-sync.cjs prune` of step 2 is NOT one of them: it drops only the snapshot copies
+   of memory files this session deleted, merged or renamed, and git keeps them — it runs
+   without asking, as step 2 says. The close prompt itself ends the mode where the instance's off-patterns carry
    the close words; otherwise say in the first close line that the run ends here.
 
 1. **Secure open work (semantic — no script can do this):**
@@ -155,6 +157,9 @@ then an explicit release follows.
    It also moves the `hook-end` lines that earlier sessions without a close left waiting in
    `.claude-state/session-log-pending.md` into the log, in front of this close's line - extra
    log lines in the close diff are those, and they belong to this commit.
+   With `docs/maintenance/invariants.md` present it reads the register's drift and absorbs it
+   (`invariant-check.py --write`): the drift lines it prints are the reading, the rewritten
+   register belongs to this commit, and the close line names the count.
    The same stamp lets this turn end past `watch-gate` and `question-gate` — but only for the
    items step 3's entry lists as `open end:` lines (step 4); an unlisted item still blocks.
    Unset `SESSION_LOG_FOLD_MAX_BYTES` with a log above 100 000 bytes prints a `WARN

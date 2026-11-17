@@ -142,9 +142,25 @@ function withLock(fn) {
   finally { try { fs.unlinkSync(lockPath); } catch (e) { /* already gone */ } }
 }
 
+// Commits the upstream (as last fetched) has on docs/memory-snapshot that this checkout lacks. An export onto
+// such a base writes over a snapshot the import has not seen yet; the next pull then conflicts or is refused
+// (coherence finding of a Windows instance, 2026-11-16). No fetch here: the hook must stay fast and offline-safe,
+// so "behind" means behind the last fetch - the session start's pull keeps that fresh. Unreadable = not behind.
+function snapshotBehind() {
+  try {
+    const n = git(['rev-list', '--count', 'HEAD..@{u}', '--', 'docs/memory-snapshot']).trim();
+    return /^\d+$/.test(n) ? Number(n) : 0;
+  } catch (_) { return 0; }
+}
+
 function doExport() {
   const live = liveDir();
   if (!fs.existsSync(live)) { log(`[memory-sync] no live memory dir (${live}); nothing to export`); return; }
+  const behind = snapshotBehind();
+  if (behind > 0) {
+    log(`[memory-sync] !! export held: the upstream has ${behind} commit(s) on docs/memory-snapshot this checkout lacks - pull, then import, then export`);
+    return;
+  }
   fs.mkdirSync(snapshotDir, { recursive: true });
   const m = loadManifest();
   const b = loadBase();

@@ -92,7 +92,7 @@ echo "open-items: every member channel read, ids labelled"
 mkdir -p "$T/core/scripts"
 for f in open-items.py instance_key.py project_dir.py shared_answers.py shared_channels.py \
          shared-memory-inbox.py shared-memory-index.py shared-memory-lint.py shared-memory-log-rotate.py shared-memory-parties.py \
-         ledger-reconcile.py; do
+         ledger-reconcile.py merge_ready.py; do
   cp "$HERE/$f" "$T/core/scripts/"
 done
 # No work ledgers registered on purpose — without the file open-items says "work ledgers NOT checked".

@@ -643,6 +643,7 @@ def main() -> int:
     # OS-9: the text is the authors' own (umlauts, dashes) and a hook reads it. Unpinned,
     # Windows writes the ANSI codepage and dies on the first unencodable character.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
     me = set() if args.senders else tokens(args.me.replace(",", " "))
     # A known device in SELF also answers to its person and OS (`person:<p>`, `os:<o>`),
     # read from the repo's parties.json at the ref this run reads. No file: SELF as given.

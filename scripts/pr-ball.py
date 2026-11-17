@@ -25,19 +25,25 @@ ruleset leaves them. The line knew only a CHANGES_REQUESTED review, and only aft
 so the session starting four hours later was told nothing and the operator had to ask.
 A move is an obligation from the moment it exists; age decides only how loud it is.
 
+  yours  — your PR in a repo whose PRs need another instance's review (the core), open an
+           hour or more, nobody else has said a word on it, and none of your own
+           shared-memory texts names its number: the review was never asked for
+
 Input: the JSON of the GraphQL query in helpers/session-bootup.sh on stdin (viewer + search
 nodes). Output: nothing, or ONE line. Exit 0 always — a bootup line never blocks a start.
 """
 import argparse
 import json
+import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from instance_key import is_self, key_in, self_key  # noqa: E402
-from shared_answers import checked_head, own_shared_shas, sibling_keys_same_os  # noqa: E402
+from shared_answers import checked_head, own_named_numbers, own_shared_shas, sibling_keys_same_os  # noqa: E402
+from merge_ready import merge_ready  # noqa: E402  (the same answer open-items.py gives)
 
 
 # The PR body's own wait mark, the same form open-items.py reads (WAIT_MARK there):
@@ -70,7 +76,14 @@ def is_bot(name):
     return name.endswith("[bot]") or name in ("github-actions", "dependabot")
 
 
-def moves(data, now, my_key="", shared_shas=frozenset()):
+# Repos whose every PR needs another instance's content review before a merge (rules/
+# intelligence.md, Model Routing): the core. A comma list in PR_BALL_ASK_REPOS replaces it.
+ASK_REPOS = frozenset(r.strip() for r in os.environ.get("PR_BALL_ASK_REPOS", "agent-brain").split(",") if r.strip())
+# A request is posted in the turn the PR opens; an hour leaves room for that turn to end.
+ASK_GRACE = timedelta(hours=1)
+
+
+def moves(data, now, my_key="", shared_shas=frozenset(), asked=frozenset(), ask_repos=ASK_REPOS):
     me = login((data.get("data") or {}).get("viewer"))
     if not me:
         return []
@@ -89,7 +102,8 @@ def moves(data, now, my_key="", shared_shas=frozenset()):
     for pr in nodes((data.get("data") or {}), "search"):
         if not pr or pr.get("isDraft") or waiting(pr.get("body"), now):
             continue
-        name = f'{(pr.get("repository") or {}).get("name", "?")}#{pr.get("number")}'
+        repo = (pr.get("repository") or {}).get("name", "?")
+        name = f'{repo}#{pr.get("number")}'
         commits = nodes(pr, "commits")
         head = (commits[-1] if commits else {}).get("commit") or {}
         last_commit = ts(head.get("committedDate"))
@@ -110,6 +124,19 @@ def moves(data, now, my_key="", shared_shas=frozenset()):
                                                     if mine(c)] if t]
                 if theirs and (not seen or max(theirs) > max(seen)):
                     since, kind = max(theirs), "yours - reply since your last commit"
+                # Nobody else has said a word, and no own shared-memory text names the PR: the
+                # review it needs was never asked for (measured 2026-11-17: eight own core PRs
+                # sat ~5 h as "standing" with the review only as a session-log `open end:` line).
+                created = ts(pr.get("createdAt")) or last_commit
+                if (since is None and not theirs and repo in ask_repos
+                        and pr.get("number") not in asked and created
+                        and now - created >= ASK_GRACE):
+                    since, kind = created, "yours - no review asked"
+        elif login(pr.get("author")) != me and merge_ready(pr, head.get("oid"), review_key="reviews"):
+            # Another login's PR with macOS and Windows OK at its head, merge state CLEAN: whoever comes
+            # first merges (collab-watch step 4) - a move, not silence (measured 2026-11-13: a
+            # suite PR with both OKs at one head stood unnamed for 19 days, see merge_ready.py).
+            since, kind = last_commit, "merge - macOS and Windows OK at the head, merge state CLEAN"
         else:
             my_reviews = [ts(r["submittedAt"]) for r in reviews if mine(r)]
             touched = my_reviews + [ts(c.get("createdAt")) for c in nodes(pr, "comments")
@@ -147,12 +174,13 @@ def main():
     ap.add_argument("--stall-hours", type=float, default=24)
     a = ap.parse_args()
     now = ts(a.now) if a.now else datetime.now(timezone.utc)
+    sys.stdin.reconfigure(encoding="utf-8")  # gh writes UTF-8; Windows would decode cp1252 (OS-23)
     try:
         data = json.load(sys.stdin)
     except Exception:
         # The bootup reports a failed gh call itself; here no JSON stays silence.
         return 0
-    found = moves(data, now, self_key(), own_shared_shas())
+    found = moves(data, now, self_key(), own_shared_shas(), own_named_numbers())
     # A cut search is said, never read as the whole list (measured 2026-11-03: 59 open PRs
     # against a page of 40 — the rest fell off silently).
     search = (data.get("data") or {}).get("search") or {}

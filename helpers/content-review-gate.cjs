@@ -20,15 +20,21 @@
  * when a check needs it; `<synthetic>` or an unknown family = not measured.
  *
  * CHECK 1 — `gh pr create`: the body carries a `Risk:` line at or above the floor of the branch's files
- *   (`git diff --name-only origin/main...HEAD` in the call's directory), and the session's model is at
+ *   (`git diff --name-only origin/main...HEAD` in the call's directory: `env -C <dir>`, `cd <dir>`, else the
+ *   hook's cwd, resolved by helpers/pr-repo.cjs `prCalls`), and the session's model is at
  *   least `minimum.<risk>.build`.
- * CHECK 2 — `gh pr review --approve` (or `-a`): the text carries `Fit:`, `Design:`, `Cost:` (each a real
+ * GAPS (operator order 2026-11-15, the macOS instance): a review also says what it tried in order to BREAK the
+ *   change — the inputs it fed, the result. Measured that day on agent-brain #533: fixtures green on two OS, the
+ *   three content lines answerable, and twelve write forms of a pin rule probed by hand, six of them newly passing.
+ *   Fit/Design/Cost ask whether a change is the right one; none asked to attack it. A review dated before
+ *   GAPS_FROM still counts without the line, so the open PRs keep their reviews.
+ * CHECK 2 — `gh pr review --approve` (or `-a`): the text carries `Fit:`, `Design:`, `Cost:`, `Gaps:` (each a real
  *   answer, MIN_ANSWER characters, not "ok"/"n/a") and a `Model:` line naming the measured model, which is
  *   at least `minimum.<risk>.review` of the PR (risk from its body and its files).
  * CHECK 3 — any `gh pr comment|review` with a `Model:` line: the line names the measured model (a review
  *   cannot claim a stronger model than it ran on).
  * CHECK 3b — `gh pr comment|review` (not an approval) whose text is an OS hand review (`os-review.cjs`
- *   `handReview`) by an instance other than the PR author's: it carries `Fit:` / `Design:` / `Cost:` / `Model:`
+ *   `handReview`) by an instance other than the PR author's: it carries `Fit:` / `Design:` / `Cost:` / `Gaps:` / `Model:`
  *   in the form CHECK 4 counts, held when posted — not first at the merge.
  * CHECK 4 — `gh pr merge`: the thread (comments and review bodies) holds a content review by an instance
  *   OTHER than the author's (key in the body; a body without a key accepts any keyed review) whose `Model:`
@@ -46,7 +52,8 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { invocations, publishedText, nativePath } = require('./published-text.cjs');
 
-const LABELS = ['Fit', 'Design', 'Cost'];
+const LABELS = ['Fit', 'Design', 'Cost', 'Gaps'];
+const GAPS_FROM = '2026-11-16';   // a review posted before this day counts without `Gaps:` (see GAPS above)
 const MIN_ANSWER = 25;
 const EMPTY_RX = /^(?:n\/?a|none|ok(?:ay)?|fine|lgtm|looks good|-+|—|yes|no)\.?$/i;
 const KEY_RX = /<!--\s*instance-key:\s*([0-9a-f]{6,})\s*-->/i;
@@ -86,17 +93,19 @@ function declared(body) {
 }
 
 /** The labels of the block that are missing or carry no real answer in `text`. [] = a content review. */
-function missing(text) {
+function missing(text, labels = LABELS) {
   const got = {};
   for (const line of String(text || '').split(/\r?\n/)) {
-    const m = /^\s*(?:[-*>]\s*)*(?:\*\*)?(fit|design|cost)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)$/i.exec(line);
+    const m = /^\s*(?:[-*>]\s*)*(?:\*\*)?(fit|design|cost|gaps)(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.*)$/i.exec(line);
     if (!m) continue;
     const label = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
     const answer = m[2].replace(/\*\*/g, '').trim();
     if (answer.length >= MIN_ANSWER && !EMPTY_RX.test(answer)) got[label] = true;
   }
-  return LABELS.filter((l) => !got[l]);
+  return labels.filter((l) => !got[l]);
 }
+/** The labels a posted review must carry: without `Gaps` when it is dated before GAPS_FROM. */
+const labelsAt = (c) => (String((c && (c.createdAt || c.submittedAt)) || '9') < GAPS_FROM ? LABELS.filter((l) => l !== 'Gaps') : LABELS);
 /** The model a `Model:` line names: the first word of a known family on the line ("Model: reviewed by Opus 5.5" names
  * opus - Windows review of #478 read "reviewed"), else its first word (an unknown name stays unknown, tier -1). */
 function modelLine(text) {
@@ -109,6 +118,9 @@ function modelLine(text) {
 /** Risk index of a PR: its declaration and its files' floor, the higher. */
 function prRisk(pr) {
   const files = (pr.files || []).map((f) => f.path);
+  // gh returns at most one page of files: when the list is shorter than the PR's own count, a hidden file may carry a
+  // higher floor, so the PR counts at the top risk.
+  if (typeof pr.changedFiles === 'number' && pr.changedFiles > files.length) return RISKS.length - 1;
   return Math.max(declared(pr.body), floor(files).risk, 0);
 }
 
@@ -116,10 +128,10 @@ function prRisk(pr) {
 function reviewed(pr) {
   const author = (KEY_RX.exec(String(pr.body || '')) || [])[1];
   const least = need(RISKS[prRisk(pr)], 'review');
-  const texts = [...(pr.comments || []), ...(pr.reviews || [])].map((c) => String((c && c.body) || ''));
-  return texts.some((t) => {
+  return [...(pr.comments || []), ...(pr.reviews || [])].some((c) => {
+    const t = String((c && c.body) || '');
     const k = (KEY_RX.exec(t) || [])[1];
-    return k && (!author || k.toLowerCase() !== author.toLowerCase()) && missing(t).length === 0
+    return k && (!author || k.toLowerCase() !== author.toLowerCase()) && missing(t, labelsAt(c)).length === 0
       && tier(modelLine(t)) >= least;
   });
 }
@@ -176,7 +188,7 @@ function gh(args) {
   return execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
 }
-const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', 'body,comments,reviews,files']));
+const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', 'body,comments,reviews,files,changedFiles']));
 /** `-R OWNER/REPO` or gh's long form `-R HOST/OWNER/REPO`, as OWNER/REPO (Windows review of #504). */
 function repoArg(cmd) {
   const m = /(?:-R|--repo)[=\s]+["']?([\w.-]+(?:\/[\w.-]+){1,2})/.exec(cmd);
@@ -240,6 +252,7 @@ const QUESTIONS =
   `  Fit:    what already does this or part of it (rule, gate, script, skill)? duplicate, extension or contradiction? right place (core / suite / instance)?\n` +
   `  Design: right object and level? a second copy of a rule? a simpler way? what does it couple?\n` +
   `  Cost:   how often does it run, what does it add to always-loaded context or a run, what does it weaken?\n` +
+  `  Gaps:   what did you try in order to break it - which inputs, edge cases, bypasses, the other direction of its fixtures - and what came out?\n` +
   `  Model:  <the model this review ran on, as the transcript records it>\n` +
   `  (the questions and the risk criteria: ${DOC}; model minimums: pr-risk.json)`;
 const block = (msg) => { console.error(`BLOCKED (content-review-gate): ${msg}`); return 2; };
@@ -280,11 +293,21 @@ function checkCommit(cmd, ps, cwd, getModel) {
     HANDOFF.replace('<tier>', CFG.tiers[least]));
 }
 
+/** The directory a `gh pr <verb>` runs in (`env -C`, `cd`, else the hook's cwd; helpers/pr-repo.cjs), the first
+ * invocation's. 2026-11-12: `env -C <clone> gh pr create` was scored by the hook cwd's branch (the brain's working
+ * copy) - a brain-only script raised two core PRs (#524, #525) to medium. */
+function callDir(cmd, ps, cwd, verbs) {
+  let calls = null;
+  try { calls = require('./pr-repo.cjs').prCalls(cmd, cwd, ps, verbs); } catch (e) { /* unreadable: the hook cwd */ }
+  return (calls && calls[0] && calls[0].dir) || cwd;
+}
+
 function checkCreate(cmd, ps, cwd, getModel) {
   const hits = invocations(cmd, ps, 'gh', ['pr'], ['create']);
   if (hits === null ? !/\bgh\s+pr\s+create\b/.test(cmd) : !hits.length) return 0;
-  const body = postedText(cmd, ps, cwd);
-  const files = createFiles(cmd, cwd);
+  const dir = callDir(cmd, ps, cwd, ['create']);
+  const body = postedText(cmd, ps, dir);
+  const files = createFiles(cmd, dir);
   if (!files) console.error('content-review-gate: branch files unreadable, risk floor not checked');
   const fl = floor(files || []);
   const d = declared(body);
@@ -304,7 +327,7 @@ function checkReviewPost(cmd, ps, cwd, getModel) {
   const isPost = hits === null ? /\bgh\s+pr\s+(?:review|comment)\b/.test(cmd) : hits.length > 0;
   if (!isPost) return 0;
   const model = getModel();
-  const text = postedText(cmd, ps, cwd);
+  const text = postedText(cmd, ps, callDir(cmd, ps, cwd, ['review', 'comment']));
   const claimed = modelLine(text);
   if (claimed && model !== null && tier(claimed) !== tier(model)) {
     return block(`the text says \`Model: ${claimed}\`, the transcript says this session runs on ${model}. Write the model it ran on.`);

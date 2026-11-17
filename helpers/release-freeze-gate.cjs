@@ -16,8 +16,9 @@
  *
  * The target repo is the origin URL's last path part of the directory the command works in (`git -C <dir>`, else the
  * hook's cwd) or the `--repo` of gh; it must equal the scope's `repo`. A scope whose tag `v<version>` already stands
- * in that directory counts as closed (the release shipped; closing it by hand was a forgotten step). Fails open: no
- * scope, a closed scope, an
+ * in that directory counts as closed (the release shipped; closing it by hand was a forgotten step). No scope is the
+ * NORMAL state: until a pin is due the train collects everything (operator 2026-11-12). Fails open: no scope, a
+ * closed scope, a scope without the operator's word (`operator_word`, written by `open --operator-word`), an
  * unreadable state file, a command it cannot read to the end, or a target repo it cannot name.
  * Exit 2 = block. Input is read to its end.
  */
@@ -100,6 +101,10 @@ function gate(input) {
   let scope = null;
   try { scope = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return 0; }
   if (!scope || scope.status !== 'open') return 0;
+  // No scope before a pin is due (operator 2026-11-12): a scope opens only with the operator's word naming the release
+  // (release-scope.py open --operator-word). One without it was opened while the train was still collecting - it holds
+  // nothing (measured 2026-11-12 on the macOS instance: scope 2.1.6, opened right after a train merge, closed the train).
+  if (!String(scope.operator_word || '').trim()) return 0;
   const want = String(scope.repo || 'agent-brain');
   const listed = new Set([...(scope.items || []), ...Object.keys(scope.excluded || {})].map(String));
   const found = starts(cmd, input.tool_name === 'PowerShell', input.cwd || process.cwd());

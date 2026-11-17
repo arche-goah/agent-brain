@@ -109,6 +109,43 @@ def own_open_requests(repo=None):
     return out
 
 
+def _pr_numbers(area):
+    """PR-shaped mentions only: `#N`, `PR N` / `PRs N-M`, `<area> N` / `<area> N-M` (in a file name
+    `<area>-N-M`). A bare number is no mention: measured 2026-11-17 by the Windows instance, a
+    plain number match over one device's own files covered 61 % of the numbers 400-700 (counts like
+    "580 real prompts", digit groups, an OSC address range) and would have silenced 4 of the next
+    30 core PRs."""
+    a = re.escape(area)
+    return re.compile(rf"(?:#|\bPRs?\s+|(?<![\w.]){a}[\s-])(\d{{2,6}})(?:\s*-\s*(\d{{2,6}}))?(?![\d.])", re.I)
+
+
+def own_named_numbers(repo=None, area=None):
+    """The PR numbers our own fact files (front matter `von: <self>`) under the area folder of the
+    review repo name PR-shaped — in the file name, front matter or body — a range `561-568`
+    expanded (span up to 50). pr-ball.py reads it as "a review of PR N was asked for". The area is
+    the shared-memory topic of the repo (`core` for the core, PR_BALL_ASK_AREA replaces it):
+    numbers in other topics belong to other repos. Unset self or no clone = empty set."""
+    me = os.environ.get("SHARED_MEMORY_SELF", "").split(",")[0].strip()
+    root = Path(repo or default_repo())
+    area = area or os.environ.get("PR_BALL_ASK_AREA", "core")
+    if not me or not (root / ".git").is_dir():
+        return set()
+    von = re.compile(r"^\s*von:\s*" + re.escape(me) + r"\s*$", re.M)
+    rx = _pr_numbers(area)
+    found = set()
+    for f in list((root / area).glob("*.md")) + list((root / area).glob("archive/*/*.md")):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if f.name == "LOG.md" or not (text.startswith("---") and von.search(text.split("\n---", 2)[0])):
+            continue
+        for a, b in rx.findall(f.stem + "\n" + text):
+            lo, hi = int(a), int(b or a)
+            found.update(range(lo, hi + 1) if 0 <= hi - lo <= 50 else {lo, hi})
+    return found
+
+
 def checked_head(oid, shas):
     """True when one of our shas is a prefix of this head's full oid."""
     oid = (oid or "").lower()

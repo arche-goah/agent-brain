@@ -1,0 +1,37 @@
+{
+  "_comment": "Data for core helpers/hand-step-gate.cjs (Stop check HAND STEP, and `--replay` over the transcripts): a hand step the reply gives the operator must be one only their hand can take, with what they have at hand. Patterns are JavaScript regex, case-insensitive. Copy to .claude/rules/hand-steps.json and fill it in your language; no file = the check is inert.",
+  "addressed_words": [
+    "\\b(you|your|please)\\b"
+  ],
+  "_addressed_words": "A sentence with one of these words is an instruction to the operator (list items always are). Put your language's forms here, e.g. the second person and 'please'.",
+  "self_run": {
+    "_why": "A code block in the reply for a command the AI runs itself hands the operator the AI's work (measured 2026-10-28: a flash command block for a board on the AI's own USB port). The check fires in the hook only while a device of device_globs is attached; the replay reports every case.",
+    "commands": [
+      "\\besptool(\\.py)?\\b",
+      "\\barduino-cli\\b",
+      "\\b(pio|platformio) run\\b"
+    ],
+    "device_globs": [
+      "/dev/cu.usbmodem*",
+      "/dev/cu.usbserial*",
+      "/dev/ttyACM*",
+      "/dev/ttyUSB*"
+    ],
+    "procedure": ""
+  },
+  "not_at_hand": {
+    "_why": "An instruction that needs something the operator does not have right now (measured 2026-10-28: a multimeter step while the operator was away from the lab, a state the brain had in memory). One item per missing thing, for a window of days: words (what names it), since / until (YYYY-MM-DD, inclusive), why (said in the block). Empty = nothing is missing.",
+    "items": [],
+    "_example_item": {
+      "words": ["\\bmultimeter", "\\boscilloscope"],
+      "since": "2026-10-27",
+      "until": "2026-11-01",
+      "why": "the operator is away from the lab until 2026-11-01"
+    },
+    "waits": [
+      "\\b(waits?|follows?|comes?) (until|once|when)\\b",
+      "\\buntil \\d{4}-\\d{2}-\\d{2}\\b"
+    ],
+    "_waits": "A line that already says the step waits until the missing thing is back passes - the second way out the block names."
+  }
+}

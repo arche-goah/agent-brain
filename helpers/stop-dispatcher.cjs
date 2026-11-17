@@ -73,6 +73,13 @@
  * before — the default changes nothing, and each switch is a measured, per-check
  * decision in the instance config.
  *
+ * `--list` (2026-11-14): prints the EFFECTIVE check list as one JSON object on stdout
+ * (`{"config": <path>, "checks": [...]}`: the instance file's checks plus the template's
+ * required ones the instance lacks, each of those with `fromTemplate: true`) and exits
+ * without reading stdin. Which checks run was computed here and re-derived by every reader
+ * (content review 2026-11-10: recorder-report.py had rebuilt the required-from-template
+ * merge on its own); a reader asks this instead (recorder-report.py does).
+ *
  * Fails open by design: a broken dispatcher silently disables every check at once, so
  * its fixture run (`scripts/test-stop-dispatcher.sh`) is the only proof they still
  * fire and belongs in the recurring audit, not in someone's memory.
@@ -204,6 +211,13 @@ function loadConfig() {
   };
 }
 
+// `--list`: the effective list for a reader, then out — stdin is never read (header, `--list`).
+const LIST = process.argv.includes('--list');
+if (LIST) {
+  const text = JSON.stringify({ config: CONFIG.split(path.sep).join('/'), checks: loadConfig().checks }) + '\n';
+  process.stdout.write(text, () => process.exit(0));
+}
+
 function short(s, n) {
   const t = String(s).trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
@@ -265,12 +279,32 @@ function record(check, items, payload) {
   } catch (e) { /* recording must never break a turn */ }
 }
 
+// A check row names a script the dispatcher runs with node at every turn end. Whoever can write
+// stop-checks.json (or a file it names) would otherwise run code from anywhere (Windows coherence scan
+// 2026-11-16, agreed by the operator the same day). Allowed: the brain's core helpers, its scripts/,
+// its .claude/ folder, and the folders of this dispatcher's own core (the plugin copy of the same
+// helpers). Compared after normalising, so `..` cannot climb out; case-insensitive on Windows.
+const OWN_CORE = path.resolve(__dirname, '..');
+function allowedRoots() {
+  return [path.join(ROOT, 'core', 'helpers'), path.join(ROOT, 'scripts'), path.join(ROOT, '.claude'),
+    path.join(OWN_CORE, 'helpers'), path.join(OWN_CORE, 'scripts')].map((p) => path.resolve(p));
+}
+function insideAllowed(file) {
+  const norm = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const f = norm(path.resolve(file));
+  return allowedRoots().some((r) => { const root = norm(r); return f === root || f.startsWith(root + path.sep); });
+}
+
 function run(check, base) {
   // Each check learns its own label and marker, so it can find its echo without a token
   // in the operator's line (helpers/stop-echo.cjs).
   const payload = JSON.stringify({ ...base, stop_check: { label: check.label, marker: check.marker } });
   return new Promise((resolve) => {
     const cmd = path.isAbsolute(check.cmd) ? check.cmd : path.join(ROOT, check.cmd);
+    if (!insideAllowed(cmd)) {
+      return resolve({ check, message: `STOP-CHECK ${check.label || check.marker}: check path outside the allowed folders `
+        + `(${check.cmd}) — this check does not run. Allowed: core/helpers/, scripts/, .claude/ of the project.` });
+    }
     // A wired check whose file is gone is a silent hole, not "nothing to say" (audit-audit 2026-11-02,
     // macOS instance: five places checked hook targets and none saw a stop-check row whose script was
     // missing — the dispatcher skipped it without a word). Say it, every turn, until the row is fixed.
@@ -309,6 +343,7 @@ function run(check, base) {
 }
 
 process.stdin.on('end', async () => {
+  if (LIST) return; // the list is on its way out; its write callback ends the process
   let input = {};
   try { input = JSON.parse(data); } catch (e) { process.exit(0); }
   const cfg = loadConfig();

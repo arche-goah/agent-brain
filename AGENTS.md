@@ -44,7 +44,9 @@ session start.
    readers on a REAL brain against the previous tag (`RELEASE_REPLAY_BRAIN=<brain root>`,
    `scripts/real-data-replay.py`) — fixtures alone let fixes ship that did not hold; check 11 demands
    that every own open PR, unshipped branch and active shared ledger entry stands in the release scope or
-   is excluded with a reason (`RELEASE_SCOPE_BRAIN=<brain root>`, `scripts/release-scope.py`). CI re-checks
+   is excluded with a reason (`RELEASE_SCOPE_BRAIN=<brain root>`, `scripts/release-scope.py`); the scope opens
+   only when the pin is due, with the operator's quoted word naming the release — before that there is none and
+   the train collects everything. CI re-checks
    manifest+CHANGELOG on every pushed `v*` tag, so a broken tag turns red on the
    repo page instead of failing silently on the next consumer update (the v1.2.0
    incident: tagged with the manifest still on 1.1.2).

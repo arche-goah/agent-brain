@@ -161,4 +161,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { gate, readForPr, readSincePost, namedFiles, CLAIM };
+module.exports = { gate, readForPr, readSincePost, namedFiles, postedText, CLAIM };

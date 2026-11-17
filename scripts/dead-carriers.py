@@ -90,6 +90,7 @@ def main(argv=None):
     ap.add_argument("--repo", default=os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
     repo = pathlib.Path(a.repo)
     files = [repo / "CLAUDE.md"] + sorted((repo / ".claude" / "rules").glob("*.md"))
     named = missing = 0

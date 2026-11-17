@@ -66,4 +66,5 @@ def main(argv, stdin):
 
 
 if __name__ == "__main__":
+    sys.stdin.reconfigure(encoding="utf-8")  # JSON input is UTF-8; Windows would decode cp1252 (OS-23)
     sys.exit(main(sys.argv, sys.stdin))
