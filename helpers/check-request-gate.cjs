@@ -55,8 +55,15 @@ function unquoted(text) {
 
 /** A paragraph a reviewer addresses to the PR's author: it opens with `Finding` / `Proposal` or `(builder: ...)`. */
 const AUTHOR_PARA = /^\s*(?:[-*]\s*)*(?:\*\*)?(?:finding|proposal)\b|^\s*(?:\*\*)?\(builder:/i;
-/** ... unless it names an OS or a hand check: then "please run/check" still asks another instance (no disguise). */
-const OTHER_INSTANCE = /\b(?:windows|macos|linux|os:\w+|hand[- ]check)\b/i;
+/** ... unless it ASKS for an OS or a hand check: then "please run/check" still asks another instance (no disguise).
+ *  Only the ask forms count - `<OS> check|run|test|review|measure`, `please … on <OS>` in one clause, `os:<x>`, a hand
+ *  check. An OS named as the place of a measurement ("measured on Windows", "macOS shows the same") is no ask
+ *  (Windows review 2026-11-17: that review form, which both instances use, re-armed the hold). */
+const OTHER_INSTANCE = new RegExp([
+  '\\b(?:windows|macos|linux)\\s+(?:check|run|test|review|measure)',
+  '\\bplease\\b[^.;\\n]{0,40}\\bon\\s+(?:windows|macos|linux)\\b',
+  '\\bon\\s+(?:windows|macos|linux)\\s*,?\\s*please\\b',
+  '\\bos:\\w+', '\\bhand[- ]check\\b'].join('|'), 'i');
 
 /** The phrase that asks another instance to act, or ''. The first pattern (the generic "please check / verify /
  * test") is not counted in an author-addressed paragraph that names no OS (Windows review of #518, 2026-11-13: a

@@ -65,6 +65,10 @@ probe "a finding paragraph for the author" "$EMPTY" "gh pr comment 510 --body \"
 probe "a proposal paragraph for the author" "$EMPTY" "gh pr comment 510 --body \"Proposal: please verify the fixture idea with a path that has a space.\"" allow
 # ... but a check request disguised as a finding is still one, and the exemption ends with the paragraph
 probe "a finding that asks for an OS check" "$EMPTY" "gh pr comment 510 --body \"Finding: please run the Windows check at head abc1234.\"" block
+# Windows review 2026-11-17: an OS named as the place of a measurement is no ask - the review form both instances use
+probe "a finding measured on Windows" "$EMPTY" "gh pr comment 510 --body \"**Finding (builder: the author side):** please check the regex at line 40; measured on Windows (Git Bash).\"" allow
+probe "a finding: macOS shows the same" "$EMPTY" "gh pr comment 510 --body \"Finding (builder: the author side): please test it with a path that has a space; macOS shows the same (derived).\"" allow
+probe "a finding asking please ... on macOS" "$EMPTY" "gh pr comment 510 --body \"Finding: please re-run the fixture on macOS at the new head.\"" block
 probe "a plain ask after a finding paragraph" "$EMPTY" "gh pr comment 510 --body \"Finding: please check the regex.
 
 Please re-run your probe at the new head.\"" block
