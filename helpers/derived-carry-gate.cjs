@@ -29,6 +29,8 @@ const { ownEcho, declare } = require('./stop-echo.cjs');
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 16 * 1024 * 1024;   // a derived claim can sit hours back: measured 2026-11-17, a 10.9 MB session, the source 6 MB before the end
 const MIN_SHARED = 2;
+const MAX_EARLIER = 400;   // newest marked sentences with an anchor that a repeat is held against
+const BUDGET_MS = 3000;    // the stop hook limit is far above; past this the gate allows
 const WRITES = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'SendMessage', 'AskUserQuestion', 'TodoWrite']);
 const BUILTIN_MARKERS = [
   'derived', 'i infer', 'inferred', 'i conclude', 'concluded from', 'assumed', 'assumption', 'not measured',
@@ -119,27 +121,49 @@ function judge(evs, markRx) {
   for (let i = evs.length - 1; i >= 0; i--) if (evs[i].boundary) { last = i; break; }
   if (last < 0) return null;
   for (let i = last + 1; i < evs.length; i++) if (evs[i].echo) return null;   // already said once this turn
-  const earlier = [];   // {s, tok, at}
-  for (let i = 0; i < last; i++) {
+  // Bounded (measured 2026-11-17: with the English markers alone a brain whose ledgers say "origin: derived" gave
+  // thousands of marked sentences, and the read check per pair ran over every event - the gate hung past 120 s).
+  // The newest MAX_EARLIER marked sentences, each once, with an anchor; tool indices once; a time budget, then allow.
+  const started = Date.now();
+  const seen = new Set();
+  const earlier = [];   // {s, tok, at}, newest first
+  for (let i = last - 1; i >= 0 && earlier.length < MAX_EARLIER; i--) {
     if (!evs[i].text) continue;
-    for (const s of sentences(evs[i].text)) if (markRx.test(s)) earlier.push({ s, tok: tokens(s), at: i });
+    for (const s of sentences(evs[i].text)) {
+      if (!markRx.test(s) || seen.has(s)) continue;
+      const tok = tokens(s);
+      if (!tok.anchors.size) continue;
+      seen.add(s);
+      earlier.push({ s, tok, at: i });
+    }
   }
   if (!earlier.length) return null;
+  const tools = [];
+  evs.forEach((x, i) => { if (x.tool) tools.push(i); });
+  const readCache = new Map();
+  const readBetween = (from, to, anchors) => {
+    const key = `${from}|${to}|${anchors.join(',')}`;
+    if (!readCache.has(key)) {
+      // A read counts when ONE call carries EVERY shared anchor (measured 2026-11-17: port reads named ether7 but
+      // never PoE; "any anchor" let the measured case pass).
+      readCache.set(key, tools.some((k) => k > from && k < to && anchors.every((a) => evs[k].tool.includes(a))));
+    }
+    return readCache.get(key);
+  };
   for (let i = last + 1; i < evs.length; i++) {
     if (!evs[i].text) continue;
     for (const s of sentences(evs[i].text)) {
       if (markRx.test(s)) continue;
       const t = tokens(s);
+      if (!t.anchors.size) continue;
       for (const e of earlier) {
+        if (Date.now() - started > BUDGET_MS) return null;   // fails open
         const anchors = [...e.tok.anchors].filter((a) => t.anchors.has(a));
         if (!anchors.length) continue;
         const shared = [...e.tok.words].filter((w) => t.words.has(w));
         // The repeat is mostly the earlier claim: at least MIN_SHARED words, and half of what the new sentence says.
         if (shared.length < MIN_SHARED || shared.length * 2 < t.words.size) continue;
-        // A read counts when ONE call carries EVERY shared anchor (measured 2026-11-17: port reads named ether7 but
-        // never PoE; "any anchor" let the measured case pass).
-        const read = evs.slice(e.at + 1, i).some((x) => x.tool && anchors.every((a) => x.tool.includes(a)));
-        if (!read) return { earlier: e.s, now: s, anchors };
+        if (!readBetween(e.at, i, anchors)) return { earlier: e.s, now: s, anchors };
       }
     }
   }

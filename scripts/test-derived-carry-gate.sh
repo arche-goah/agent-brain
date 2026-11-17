@@ -50,6 +50,24 @@ check "an earlier sentence without a marker is no source" "$f" allow
 f="$T/7.jsonl"; { user "status?"; asst "The node probably ran on PoE at ether7, I infer that from the link alone."; user "and now?"; asst 'I said before: "The node ran on PoE at ether7." - not measured yet.'; } > "$f"
 check "a quoted sentence is talk about the claim" "$f" allow
 
+# Bounded (2026-11-17: thousands of marked sentences hung the gate past 120 s): 3000 marked sentences with anchors
+# and 3000 tool calls, then the measured repeat - it still ends within seconds and still finds the case.
+f="$T/big.jsonl"
+node -e '
+const out = [JSON.stringify({ message: { role: "user", content: "start" } })];
+for (let i = 0; i < 3000; i++) {
+  out.push(JSON.stringify({ message: { role: "assistant", content: [{ type: "text", text: `Port ether${i} probably carries VLAN${i} traffic on switch sw${i}.` }] } }));
+  out.push(JSON.stringify({ message: { role: "assistant", content: [{ type: "tool_use", name: "Read", input: { file_path: `docs/x${i}.md` } }] } }));
+}
+out.push(JSON.stringify({ message: { role: "assistant", content: [{ type: "text", text: process.argv[1] }] } }));
+out.push(JSON.stringify({ message: { role: "user", content: "and now?" } }));
+out.push(JSON.stringify({ message: { role: "assistant", content: [{ type: "text", text: process.argv[2] }] } }));
+process.stdout.write(out.join("\n") + "\n");' "$E" "$N" > "$f"
+t0=$(date +%s)
+check "3000 marked sentences: the case is still found" "$f" block
+t1=$(date +%s)
+[ $((t1 - t0)) -le 5 ] && ok "3000 marked sentences end within 5 s ($((t1 - t0)) s)" || bad "too slow: $((t1 - t0)) s"
+
 echo
 [ "$fail" -eq 0 ] && echo "derived-carry-gate fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
