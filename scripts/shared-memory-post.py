@@ -351,6 +351,9 @@ def main() -> int:
     area_dir = a.repo / a.area
     if not (area_dir / "LOG.md").is_file():
         return refuse(f"'{a.area}' is not an area (a folder with a LOG.md)")
+    stale = pull_first(a.repo)
+    if stale:
+        return refuse(stale)
     parties = _parties.load(a.repo)
     to = [t.strip().lower() for t in a.to.split(",") if t.strip()]
     if parties:
@@ -465,6 +468,46 @@ def main() -> int:
     else:
         print("next: commit and push the shared-memory repo")
     return 0
+
+
+def _git(repo: Path, *args: str, timeout: int = 60) -> subprocess.CompletedProcess | None:
+    try:
+        return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def pull_first(repo: Path) -> str:
+    """Bring the checkout up to its upstream BEFORE anything is written; '' when that worked or there
+    is nothing to do. Measured 2026-11-16 (macOS instance): the checkout was one commit behind, the
+    script wrote the entry and regenerated the index pages anyway, the pre-commit hook refused the
+    commit as behind and `pull --ff-only` refused over the changed index pages - the only ways out
+    were discarding the post or a commit past the hook, both refused by the permission layer. So:
+    fetch, and if behind, fast-forward while the tree is clean; behind with local changes = refuse
+    and write nothing. Offline (fetch fails) or no upstream: say so on stderr and go on - the hook
+    still guards the commit."""
+    f = _git(repo, "fetch", "-q")
+    if f is None or f.returncode != 0:
+        print("note: could not fetch the shared memory - posting on the local state", file=sys.stderr)
+        return ""
+    n = _git(repo, "rev-list", "--count", "HEAD..@{u}")
+    if n is None or n.returncode != 0 or not n.stdout.strip().isdigit():
+        return ""                                   # no upstream (a bare local checkout): nothing to compare
+    behind = int(n.stdout.strip())
+    if behind == 0:
+        return ""
+    if changed_paths(repo):
+        return (f"the checkout is {behind} commit(s) behind its upstream and has local changes - nothing was written. "
+                "Commit or settle your changes, `git pull --ff-only` (with an own commit: `git pull --rebase`, the "
+                "repo's README form), then post again")
+    p = _git(repo, "pull", "-q", "--ff-only")
+    if p is None or p.returncode != 0:
+        return (f"the checkout is {behind} commit(s) behind and `git pull --ff-only` failed - nothing was written: "
+                + ((p.stderr or "").strip().splitlines() or ["(no output)"])[-1]
+                + " - with an own commit: `git pull --rebase`, the repo's README form, then post again")
+    print(f"pulled {behind} commit(s) before writing", file=sys.stderr)
+    return ""
 
 
 def changed_paths(repo: Path) -> list[str]:
