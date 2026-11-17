@@ -12,13 +12,13 @@ TMP=$(mktemp -d)
 # The hook frees main for a remote under the system temp (a fixture's bare repo), so the remotes that
 # must stay GUARDED live outside it. Which root is "the temp" is named for the hook (PUSH_TEMP_ROOTS = $TMP only):
 # $HOME is no safe outside - portability-smoke runs every suite with HOME under mktemp (merge train 2.1.6).
-export PUSH_TEMP_ROOTS="$TMP"
 REM=$(mktemp -d)   # a sibling of $TMP, not under it: guarded
 trap 'rm -rf "$TMP" "$REM"' EXIT
 FAIL=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAIL=1; }
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+PUSH_TEMP_ROOTS=$(native "$TMP"); export PUSH_TEMP_ROOTS   # native form: the hook may run as a native git child (OS-3)
 
 B="$TMP/brain"; HOOKS="$B/core/helpers/git-hooks"; mkdir -p "$HOOKS" "$B/.claude/rules"
 cp "$HERE/../helpers/git-hooks/pre-push" "$HOOKS/pre-push"; chmod +x "$HOOKS/pre-push"

@@ -372,7 +372,7 @@ known:     scripts/test-pre-commit-change-level.sh=1
 known:     scripts/test-pre-commit-os-traps.sh=1
 known:     scripts/test-pre-commit-backprop.sh=1
 known:     scripts/test-pre-commit-covers.sh=1
-known:     scripts/test-pre-push.sh=1
+known:     scripts/test-pre-push.sh=2
 known:     scripts/test-premise-gate.sh=1
 known:     scripts/test-promise-gate.sh=1
 known:     scripts/test-public-text-guard.sh=1
@@ -529,6 +529,7 @@ still owed at baseline time.
 2026-11-16, test-effect-check-e3.sh baselined after the same review: the temp brain reaches
 only bash (the argument of effect-check.sh, which reads it with grep and `[ -f ]`); nothing
 crosses into node or python.
+2026-11-17, test-pre-push.sh 1 -> 2 after the review (merge train 2.1.6): the guarded remotes moved from `$HOME` to a second `mktemp -d`, a sibling of `$TMP`, because portability-smoke runs every suite with HOME under mktemp. Both dirs go only to git; the one path that reaches the hook as data, PUSH_TEMP_ROOTS, goes through `native()`.
 
 2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
 test-full-audit-synthesis-files.sh baselined on the same review and the same construction
