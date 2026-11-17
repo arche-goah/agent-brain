@@ -10,8 +10,8 @@
  * not carry.
  *
  * Mechanics: on `gh pr create … --head <branch> -R|--repo <owner/repo>`, read the branch's changed files
- * (`gh api repos/<r>/compare/<base>...<head>`) and the open PRs with their files (`gh pr list --json
- * number,title,headRefName,files`). An overlap with another PR's files = deny ONCE, naming the PRs and
+ * (`gh api repos/<r>/compare/<base>...<head>`) and the open PRs with their files (`gh pr list --limit 100
+ * --json number,title,headRefName,files`). An overlap with another PR's files = deny ONCE, naming the PRs and
  * files. Pass: the same command with `# OVERLAP-OK: <why>` (read the other PR first), or no overlap.
  * Fails open: no repo/head in the command, network or parse error, no gh. Test fixture via
  * PR_OVERLAP_FIXTURE (JSON {files:[…], prs:[{number,title,headRefName,files:[{path}]}]}).
