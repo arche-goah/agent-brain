@@ -283,7 +283,8 @@ def server_version_findings(repo: Path, files, plugin_version) -> list:
         for m in SERVER_VERSION_LITERAL.finditer(text):
             lit = m.group(1) or m.group(2)
             line = text.count("\n", 0, m.start()) + 1
-            state = (f"already differs from plugin.json {plugin_version}" if plugin_version and lit != plugin_version
+            state = ("no plugin.json version to compare" if not plugin_version
+                     else f"already differs from plugin.json {plugin_version}" if lit != plugin_version
                      else "equal to plugin.json today, apart at the next release")
             out.append(("WARN", f"{rel}:{line}: MCP server version written into the code ({lit}, {state}) - "
                                 "read it from .claude-plugin/plugin.json at start"))

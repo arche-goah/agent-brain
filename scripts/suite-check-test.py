@@ -194,6 +194,12 @@ with tempfile.TemporaryDirectory() as td:
     (rd / "server.py").write_text('SERVER_VERSION = json.load(open(PLUGIN))["version"]\n', encoding="utf-8")
     git(rd, "add", "-A")
     ok(not any("MCP server version" in m for _, m in sc.check(rd, contract)), "a version read from plugin.json: no finding (control)")
+    nv = make_repo(base, "srvnover")
+    (nv / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "x"}), encoding="utf-8")
+    (nv / "server.py").write_text('SERVER_VERSION = "1.0.0"\n', encoding="utf-8")
+    git(nv, "add", "-A")
+    ok(any("server.py:1" in m and "no plugin.json version to compare" in m for _, m in sc.check(nv, contract)),
+       "a literal with no plugin.json version: WARN, says there is nothing to compare")
 
 core_levels = [lvl for lvl, _ in sc.marketplace_findings(HERE.parent)]
 ok((HERE.parent / ".claude-plugin" / "marketplace.json").exists() and "ERROR" not in core_levels,

@@ -10,3 +10,5 @@
   already differs from plugin.json. Run over the four suites: four findings, one each. Fixture:
   `scripts/suite-check-test.py` (+4: a differing literal, an equal literal, a fixture stub is none, a version
   read from plugin.json is none); the two finding cases fail on main.
+  A literal in a suite whose plugin.json has no version now says "no plugin.json version to compare" instead of
+  "equal to plugin.json today" (fixture case "a literal with no plugin.json version"; Windows review 2026-11-17).
