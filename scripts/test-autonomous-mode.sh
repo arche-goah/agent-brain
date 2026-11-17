@@ -197,7 +197,14 @@ irec 2026-10-28T21:35:00Z sess-a true false > "$IC/.claude-state/intent-classifi
 mode "a record far after the prompt does not count" "$f" "$IC" autonomous
 f="$T/sess-b.jsonl"; { tuser 2026-10-28T21:00:00Z "fix the parser"; } > "$f"
 irec 2026-10-28T21:00:03Z sess-b false true > "$IC/.claude-state/intent-classifier.jsonl"
-mode "a matched record decides: the model's mode_on switches it on (operator 2026-10-28/11-01, semantic not word logic)" "$f" "$IC" autonomous
+mode "the model's mode_on alone does not switch it on (operator 2026-11-17, supersedes the on-direction of 10-28/11-01)" "$f" "$IC" interactive
+f="$T/sess-b2.jsonl"; { tuser 2026-10-28T21:00:00Z "fix the parser, work through it autonomously"; } > "$f"
+irec 2026-10-28T21:00:03Z sess-b2 false true > "$IC/.claude-state/intent-classifier.jsonl"
+mode "model and words both read the order: it switches on (control)" "$f" "$IC" autonomous
+# 2026-11-17, macOS instance: a complaint about a mode and a question about it, both read as mode_on by the model.
+f="$T/sess-h.jsonl"; { tuser 2026-11-17T18:47:30Z "getting interactive prompts about the network again and again"; asst "x"; tuser 2026-11-17T18:49:00Z "why do you switch to autonomous=?????"; } > "$f"
+{ irec 2026-11-17T18:47:32Z sess-h false true; irec 2026-11-17T18:49:02Z sess-h false true; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a complaint and a question about the mode, model mode_on, words none: stays interactive" "$f" "$IC" interactive
 f="$T/sess-c.jsonl"; { tuser 2026-10-31T15:40:00Z "work through all open points, everything you can do yourself, handle it autonomously"; } > "$f"
 irec 2026-10-31T15:40:05Z sess-c true true > "$IC/.claude-state/intent-classifier.jsonl"
 mode "the model's asks_open does not cancel an autonomous order in the same prompt" "$f" "$IC" autonomous

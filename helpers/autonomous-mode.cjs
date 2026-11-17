@@ -284,13 +284,20 @@ function promptModes(transcriptPath, cwd) {
     // before me" (model asks_open, words not), and the start "status?" (both none).
     // The model's asks_open yields to its own mode_on in the SAME prompt (2026-10-31: "work through all open
     // points, handle them autonomously" carried both; the run the operator had just ordered must start).
+    // The model never switches the run ON alone (operator decision 2026-11-17, supersedes the on-direction of
+    // 2026-10-28/11-01): its mode_on counts only when the word lists also read an order. Measured the same day on
+    // the macOS instance: a complaint about repeated interactive prompts and the question "why do you switch to
+    // autonomous?" were both read as mode_on, the words as nothing - the session went autonomous on a complaint.
+    // A complaint about a mode is not an order for it; a missed order costs one more word, a false one silences
+    // the operator's questions. The SAFE directions (asks, mode_off) stay with the model.
     let asks;
     let off;
     let ordered = false; // this prompt itself ordered the run (the close stamp is compared against the newest order)
     if (intent && typeof intent.asks_open === 'boolean') {
-      asks = intent.asks_open && !intent.mode_on;
+      const on = Boolean(intent.mode_on) && ordersOn(w.on, own);
+      asks = intent.asks_open && !on;
       off = intent.mode_off;
-      if (!off && !asks && intent.mode_on) state = ordered = true;
+      if (!off && !asks && on) state = ordered = true;
     } else {
       asks = w.ask.test(own);
       off = w.off.test(own);
