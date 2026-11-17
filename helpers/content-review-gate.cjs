@@ -387,7 +387,9 @@ function checkMerge(cmd, ps) {
   let pr;
   try { pr = readPr(t.repo, t.nr); } catch (e) { console.error('content-review-gate: PR unreadable, nothing checked'); return 0; }
   const train = /^\s*##\s*Merge train\b/.test(String(pr.body || ''));
-  const members = train ? [...String(pr.body).matchAll(/^\s*-\s*#(\d+)\b/gm)].map((m) => m[1]) : [t.nr];
+  // members are manifest lines (`- #N <branch> <sha>`), never a note line "- #N: …" or a left-out "- #N (conflicts …)" (merge
+  // train 2.1.6: release-preflight read train #510's notes as members; this reader had the same loose form)
+  const members = train ? [...String(pr.body).matchAll(/^- #(\d+) \S+ [0-9a-f]{3,40}(?:\s|$)/gm)].map((m) => m[1]) : [t.nr];
   const open = [];
   for (const n of members) {
     let p = pr;

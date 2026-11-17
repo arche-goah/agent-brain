@@ -15,7 +15,8 @@ native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else pri
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 N="$(native "$T")"  # native form: the gate (node) reads the --body-file paths below
 # the fake gh: `gh api ...` (the compare view) answers COMPARE_FILES, everything else the PR JSON
-printf 'process.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : require("fs").readFileSync(process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
+# pr-<n>.json next to pr.json, when present, answers `gh pr view <n>` (a train's member); else pr.json
+printf 'const fs = require("fs"); const own = process.env.PR_JSON.replace(/\\.json$/, "-" + process.argv[4] + ".json");\nprocess.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : fs.readFileSync(fs.existsSync(own) ? own : process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
 # a core-like repo: its root carries pr-risk.json
 git init -q "$T/core"
 cp "$ROOT/pr-risk.json" "$T/core/pr-risk.json"
@@ -236,5 +237,19 @@ pr "## Merge train t1
 - #7 fix/a abc
 - #8 fix/b def" "" ""
 probe "train PR whose members lack a content review" "$M" block
+# merge train 2.1.6: a note line "- #N: …" or a left-out line is no member; only #7, which has its review, is one
+printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$GOOD" "$B" > "$T/c-7.md"
+pr "## Merge train t2
+- #7 fix/a abc1234
+
+Left out:
+- #9 (conflicts with the train so far)
+
+Train-level fixes:
+- #8: a note about #8, which is no member" "" "$T/c-7.md"
+printf '{"body":"Risk: high - gate","files":[{"path":"helpers/x-gate.cjs"}],"comments":[],"reviews":[]}' > "$T/pr-8.json"
+cp "$T/pr-8.json" "$T/pr-9.json"
+probe "note and left-out lines of a train are no members" "$M" allow
+rm -f "$T/pr-8.json" "$T/pr-9.json"
 
 [ "$fail" -eq 0 ] && echo "content-review-gate fixtures: ALL passed" || { echo "content-review-gate fixtures: FAILURES"; exit 1; }
