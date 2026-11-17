@@ -82,5 +82,12 @@ SHARED_MEMORY_SELF="" POST_OS_OK_DRY=1 POST_OS_OK_HEAD=$H bash "$ROOT/scripts/po
 [ "$rc" -eq 2 ] && ok "poster: no instance key, nothing posted" || bad "poster: no key rc=$rc"
 POST_OS_OK_DRY=1 POST_OS_OK_HEAD=$H SHARED_MEMORY_SELF=mac bash "$ROOT/scripts/post-os-ok.sh" o/r 67 BeOS "$T/details.md" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && ok "poster: an unknown OS is refused" || bad "poster: unknown OS rc=$rc"
+# Windows review 2026-11-17 (finding on #567): a post from inside a script passes the text guards unseen. The poster
+# writes the body and prints the post line for the session to run; it never calls gh to post.
+outp="$(SHARED_MEMORY_SELF=mac POST_OS_OK_HEAD=$H bash "$ROOT/scripts/post-os-ok.sh" o/r 67 macOS "$T/details.md")"; rc=$?
+[ "$rc" -eq 0 ] && [ -s "$T/details.os-ok.md" ] && ok "poster: writes the body next to the details" || bad "poster: no body file rc=$rc"
+case "$outp" in *"pr comment 67 -R o/r --body-file "*"details.os-ok.md"*) ok "poster: prints the post line" ;; *) bad "poster: post line missing: $outp" ;; esac
+grep -anE '^[^#]*\bgh\s+pr\s+comment\b' "$ROOT/scripts/post-os-ok.sh" | grep -av printf >/dev/null \
+  && bad "poster: the script itself still posts" || ok "poster: the script never posts (no gh pr comment call)"
 [ $fail -eq 0 ] && echo "os-ok-form: all passed" || echo "os-ok-form: FAILED"
 exit $fail

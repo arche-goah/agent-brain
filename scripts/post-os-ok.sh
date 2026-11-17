@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# post-os-ok.sh <owner/repo> <pr> <macOS|Windows|Linux> <details-file> — post this instance's OS OK on a PR at its CURRENT
-# head, in the structured form helpers/os-review.cjs reads (`<!-- os-review: os=… verdict=ok head=… -->`), so no word of
-# the details can cancel it. The details (what was run, the numbers) come from a file and stand below the OK line.
+# post-os-ok.sh <owner/repo> <pr> <macOS|Windows|Linux> <details-file> — write this instance's OS OK for a PR at its
+# CURRENT head, in the structured form helpers/os-review.cjs reads (`<!-- os-review: os=… verdict=ok head=… -->`), so no
+# word of the details can cancel it. The details (what was run, the numbers) come from a file and stand below the OK line.
+# It WRITES the body (next to the details file, `<details>.os-ok.md`) and PRINTS the post line; the session runs that
+# line itself. It never posts: a post from inside a script is invisible to public-text-guard and instance-key-gate,
+# which read only the command the tool runs (Windows review 2026-11-17, finding on core #567: measured 2026-11-12,
+# 30 comments posted through a script, two carried a home-path placeholder, the text-leak workflow went red - the
+# first barrier, working rule #11, never saw them).
 #
 # WHY (ported 2026-11-17 from an instance alpha, used in 13 sessions): the OS reader judged an OK by its words and
 # dropped one whose line also held "open", "pending" or "0 missing" — three merges held in one day (2026-10-28). The head
@@ -9,7 +14,7 @@
 # push behind the branch). The instance key comes from scripts/instance_key.py (SHARED_MEMORY_SELF); without a key
 # nothing is posted, since the readers count only a text that carries one.
 # POST_OS_OK_DRY=1 prints the body instead of posting (the fixture's seam; POST_OS_OK_HEAD sets the head).
-# Exit 0 = posted (or printed), 2 = could not run.
+# Exit 0 = body written and the post line printed (or, dry, the body printed), 2 = could not run.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python   # Windows: python3 can be the Store stub (OS-17)
@@ -28,7 +33,7 @@ if [ -z "$head" ]; then
   head="$(git ls-remote "https://github.com/$REPO" "$ref" | cut -c1-40)"
 fi
 [[ "$head" =~ ^[0-9a-f]{7,40}$ ]] || { echo "post-os-ok: no head for $REPO#$PR" >&2; exit 2; }
-f="$(mktemp "${TMPDIR:-/tmp}/os-ok.XXXXXX")"; trap 'rm -f "$f"' EXIT
+f="${DETAILS%.*}.os-ok.md"
 {
   printf '%s\n' "$key"
   printf '<!-- os-review: os=%s verdict=ok head=%s -->\n' "$OS" "$head"
@@ -36,4 +41,5 @@ f="$(mktemp "${TMPDIR:-/tmp}/os-ok.XXXXXX")"; trap 'rm -f "$f"' EXIT
   cat "$DETAILS"
 } > "$f"
 if [ "${POST_OS_OK_DRY:-}" = 1 ]; then cat "$f"; exit 0; fi
-gh pr comment "$PR" -R "$REPO" --body-file "$f"
+echo "post-os-ok: body written to $f - post it with this line, run directly so the text guards see it:"
+printf 'gh pr comment %s -R %s --body-file %s\n' "$PR" "$REPO" "$f"
