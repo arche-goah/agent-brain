@@ -114,6 +114,19 @@ out="$(printf '%s' "$(noask 570 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-
 case "$out" in *"agent-brain#570 yours - no review asked"*) ok "author: a number outside the range stays unasked" ;; *) bad "outside range: got: ${out:-<silence>}" ;; esac
 out="$(printf '%s' "$(noask 564 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-b "$PY" "$BALL" --now "$NOW")"
 case "$out" in *"agent-brain#564 yours - no review asked"*) ok "author: another device's request is not ours" ;; *) bad "foreign request: got: ${out:-<silence>}" ;; esac
+# 17b. Windows review 2026-11-17: a bare number is no PR mention — a count, a digit group, an address range, and any
+#      number in another topic's folder. Measured there: 4 of the next 30 core PRs silenced by such numbers.
+mkdir -p "$SM/grandma3"
+printf -- '---\nname: n\nmetadata:\n  von: dev-a\n---\n580 real prompts, 158 598 bytes, OSC 600-610\n' > "$SM/core/note-counts.md"
+printf -- '---\nname: g\nmetadata:\n  von: dev-a\n---\nsee #575 and core 576\n' > "$SM/grandma3/note-g.md"
+for n in 580 598 605 575 576; do
+  out="$(printf '%s' "$(noask $n 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-a "$PY" "$BALL" --now "$NOW")"
+  case "$out" in *"agent-brain#$n yours - no review asked"*) ok "a bare or foreign-topic $n is no request" ;; *) bad "number $n silenced the line: ${out:-<silence>}" ;; esac
+done
+printf -- '---\nname: f\nmetadata:\n  von: dev-a\n---\nbody without numbers\n' > "$SM/core/request-core-590-thing-2026-09-14.md"
+out="$(printf '%s' "$(noask 590 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-a "$PY" "$BALL" --now "$NOW")"
+[ -z "$out" ] && ok "the file name core-590 names the PR" || bad "file-name request: got: $out"
+rm -rf "$SM/grandma3"
 rm -rf "$SM/.git" "$SM/core"
 
 # 16. a bot comment is nobody's move
