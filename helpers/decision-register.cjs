@@ -29,8 +29,11 @@
  *                OTHER sessions before it); `--check "<question>"` matches one question.
  *
  *   Same session: an answer that DEFERS a matter ("later", "next time", the operator's words as `deferral_patterns`)
- *                holds a new question of the same session sharing two topic words with it - deterministic, no model,
- *                once per earlier answer (incident 2026-11-16: a deferred onboarding asked again in other words).
+ *                holds a new question of the same session that the rare-word prefilter (`candidates`, weights over
+ *                the whole register) matches to it - deterministic, no model, once per earlier answer (incident
+ *                2026-11-16: a deferred onboarding asked again in other words). The other "operator postponed it":
+ *                question-gate.cjs's `deferred:<words>` state for the agent's OWN open questions - a change to what
+ *                counts as deferred touches both.
  *
  * Instance data `.claude/rules/decision-register.json` (all optional):
  *   {"register": "docs/maintenance/decision-register.jsonl", "model": "opus", "min_score": 0.22,
