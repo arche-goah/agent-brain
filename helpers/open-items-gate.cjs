@@ -341,8 +341,26 @@ const GENERIC = ['request', 'question', 'answer', 'reply', 'receipt', 'from', 'w
 
 /** Topic words of a request: its file slug (or, for a LOG-only request, its own words). */
 function topicWords(s) {
-  return String(s).toLowerCase().replace(/\.md$/, '').replace(/\d{4}-\d{2}-\d{2}/g, ' ')
+  // NFC: a combining mark is no letter, so a decomposed word would be split at it (same class as fold())
+  return String(s).normalize('NFC').toLowerCase().replace(/\.md$/, '').replace(/\d{4}-\d{2}-\d{2}/g, ' ')
     .split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 4 && !/^\d+$/.test(w));
+}
+
+/**
+ * Orthography fold for the word comparison: lower case, the four letters a slug writes as a
+ * digraph (a/o/u with diaeresis -> ae/oe/ue, sharp s -> ss), every other accent dropped.
+ * Measured 2026-11-04 on the Windows instance: an item's words come from an ASCII slug
+ * (the letter spelled as a digraph), the reply named it in the operator's language with the real letter —
+ * 1 of 3 words hit, 2 were required, the reply was blocked. A slug is ASCII by convention and
+ * a reply follows the operator's orthography, so the literal compare could never meet; only a
+ * date or an age saved such a reply. Both sides are folded, so either spelling names the item.
+ */
+const DIGRAPH = { '\u00e4': 'ae', '\u00f6': 'oe', '\u00fc': 'ue', '\u00df': 'ss' };
+function fold(s) {
+  // NFC first: a decomposed letter (vowel + combining diaeresis, as macOS file names and pasted text carry it)
+  // would else miss the digraph and fold to the bare vowel (macOS review of #530).
+  return String(s).normalize('NFC').toLowerCase().replace(/[\u00e4\u00f6\u00fc\u00df]/g, (c) => DIGRAPH[c])
+    .normalize('NFD').replace(/\p{M}+/gu, '');
 }
 
 function genericWords(cwd) {
@@ -363,16 +381,16 @@ function genericWords(cwd) {
 function named(item, reply, ageRx, generic) {
   if (item.num) return new RegExp(`#${item.num}(?!\\d)`).test(reply);
   if (!item.date) {
-    const low = reply.toLowerCase();
+    const low = fold(reply);
     const words = (item.words || []).filter((w) => !generic.has(w));
-    return reply.includes(item.base) || (words.length > 0 && words.filter((w) => low.includes(w)).length >= Math.min(2, words.length));
+    return reply.includes(item.base) || (words.length > 0 && words.filter((w) => low.includes(fold(w))).length >= Math.min(2, words.length));
   }
   const [y, mo, d] = item.date;
   if (reply.includes(`${y}-${mo}-${d}`) || new RegExp(`(?<!\\d)${mo}-${d}(?!\\d)`).test(reply)
     || new RegExp(`(?<!\\d)${Number(d)}\\.\\s?${Number(mo)}\\.|(?<!\\d)${d}\\.${mo}\\.`).test(reply)) return true;
-  const low = reply.toLowerCase();
+  const low = fold(reply);
   const words = (item.words || []).filter((w) => !generic.has(w));
-  const hit = words.filter((w) => low.includes(w)).length;
+  const hit = words.filter((w) => low.includes(fold(w))).length;
   if (words.length && hit >= Math.min(2, words.length)) return true;
   // Age in days, local calendar, one day of slack either way (time zones, midnight).
   const age = Math.round((Date.now() - new Date(`${y}-${mo}-${d}T12:00:00`).getTime()) / 86400000);
@@ -427,8 +445,8 @@ function relabelled(t, cwd, sessionId) {
   const topical = (it, l) => {
     const w = (it.words || []).filter((x) => !generic.has(x));
     if (!w.length) return true;
-    const low = l.toLowerCase();
-    return w.some((x) => low.includes(x));
+    const low = fold(l);
+    return w.some((x) => low.includes(fold(x)));
   };
   const strict = (it, l) => (it.num ? new RegExp(`#${it.num}(?!\\d)`).test(l)
     : (it.date && l.includes(it.date.join('-')) && topical(it, l)) || (it.base && l.includes(it.base)));
