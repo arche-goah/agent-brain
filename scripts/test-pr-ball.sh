@@ -94,6 +94,41 @@ expect_silent "author: my own comment after theirs hands the move back" \
 expect_silent "author: a comment before my last commit is not a move" \
   "$(pr author '{"number":150,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-15T06:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"peer"},"createdAt":"2026-09-15T04:00:00Z"}]},"reviewRequests":{"nodes":[]}}')"
 
+# 16. the measured case 2026-11-17: my core PR, 3 h open, nobody else said a word, no own
+#     shared-memory text names it — the review was never asked for
+noask() { # $1 number, $2 createdAt
+  pr author '{"number":'"$1"',"isDraft":false,"createdAt":"'"$2"'","body":"","repository":{"name":"agent-brain"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"'"$2"'"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}'
+}
+expect_line "author: own core PR, no review asked anywhere" \
+  "$(noask 564 2026-09-15T05:00:00Z)" "agent-brain#564 yours - no review asked, 3 h"
+expect_silent "author: own core PR younger than an hour is still in its turn" \
+  "$(noask 564 2026-09-15T07:30:00Z)"
+expect_silent "author: own PR outside the review repos needs no request" \
+  "$(pr author '{"number":5,"isDraft":false,"createdAt":"2026-09-15T05:00:00Z","body":"","repository":{"name":"own-suite"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-15T05:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')"
+# 17. an own request naming a range "561-568" asks for every PR inside it
+mkdir -p "$SM/.git" "$SM/core"
+printf -- '---\nname: r\nmetadata:\n  von: dev-a\n---\ncore 561-568: content review\n' > "$SM/core/request-r.md"
+out="$(printf '%s' "$(noask 564 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-a "$PY" "$BALL" --now "$NOW")"
+[ -z "$out" ] && ok "author: an own request naming 561-568 covers 564" || bad "range request: expected silence, got: $out"
+out="$(printf '%s' "$(noask 570 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-a "$PY" "$BALL" --now "$NOW")"
+case "$out" in *"agent-brain#570 yours - no review asked"*) ok "author: a number outside the range stays unasked" ;; *) bad "outside range: got: ${out:-<silence>}" ;; esac
+out="$(printf '%s' "$(noask 564 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-b "$PY" "$BALL" --now "$NOW")"
+case "$out" in *"agent-brain#564 yours - no review asked"*) ok "author: another device's request is not ours" ;; *) bad "foreign request: got: ${out:-<silence>}" ;; esac
+# 17b. Windows review 2026-11-17: a bare number is no PR mention — a count, a digit group, an address range, and any
+#      number in another topic's folder. Measured there: 4 of the next 30 core PRs silenced by such numbers.
+mkdir -p "$SM/grandma3"
+printf -- '---\nname: n\nmetadata:\n  von: dev-a\n---\n580 real prompts, 158 598 bytes, OSC 600-610\n' > "$SM/core/note-counts.md"
+printf -- '---\nname: g\nmetadata:\n  von: dev-a\n---\nsee #575 and core 576\n' > "$SM/grandma3/note-g.md"
+for n in 580 598 605 575 576; do
+  out="$(printf '%s' "$(noask $n 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-a "$PY" "$BALL" --now "$NOW")"
+  case "$out" in *"agent-brain#$n yours - no review asked"*) ok "a bare or foreign-topic $n is no request" ;; *) bad "number $n silenced the line: ${out:-<silence>}" ;; esac
+done
+printf -- '---\nname: f\nmetadata:\n  von: dev-a\n---\nbody without numbers\n' > "$SM/core/request-core-590-thing-2026-09-14.md"
+out="$(printf '%s' "$(noask 590 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-a "$PY" "$BALL" --now "$NOW")"
+[ -z "$out" ] && ok "the file name core-590 names the PR" || bad "file-name request: got: $out"
+rm -rf "$SM/grandma3"
+rm -rf "$SM/.git" "$SM/core"
+
 # 16. a bot comment is nobody's move
 expect_silent "author: a bot comment is not a reply" \
   "$(pr author '{"number":150,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T20:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"github-actions"},"createdAt":"2026-09-15T04:00:00Z"}]},"reviewRequests":{"nodes":[]}}')"
