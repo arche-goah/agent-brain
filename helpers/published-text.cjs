@@ -215,8 +215,13 @@ function withoutPublished(cmd, ps) {
 // Returns [{ file, text, why }]: `text` null when the script cannot be read (`why` says so); a path
 // that does not exist is left out - the shell cannot run it either. Over SCRIPT_MAX: a `bash <file>`
 // counts as unreadable, a directly run path is skipped (it may well be a binary).
+// PowerShell scripts the same way (debt named in #515, follow-up item 6): `pwsh|powershell [opts] [-File] x.ps1`
+// (an inline `-Command` is no file), `& x.ps1` and `.\x.ps1`; the entry carries `ps: true`, and a reader gates its text
+// as PowerShell.
 const SCRIPT_MAX = 200 * 1024;
 const SHELL_RX = /^(?:.*[\\/])?(?:ba|z|da|k)?sh(?:\.exe)?$/;
+const PWSH_RX = /^(?:.*[\\/])?(?:pwsh|powershell)(?:\.exe)?$/i;
+const PS1_RX = /\.ps1$/i;
 function scriptBodies(cmd, ps, cwd) {
   const segs = shellSegments(cmd, ps);
   if (!segs) return [];
@@ -229,10 +234,20 @@ function scriptBodies(cmd, ps, cwd) {
     while (i < w.length && /^[A-Za-z_]\w*=/.test(w[i])) i++; // VAR=value prefixes
     let file = null;
     let direct = false;
+    let psFile = false;
+    if (w[i] === '&' && PS1_RX.test(w[i + 1] || '')) i++;   // PowerShell call operator
     if (SHELL_RX.test(w[i] || '')) {
       let j = i + 1;
       for (; j < w.length && /^[-+]/.test(w[j]); j++) if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(w[j])) { j = w.length; break; } // -c: inline text
       file = w[j] || null;
+    } else if (PWSH_RX.test(w[i] || '')) {
+      const rest = w.slice(i + 1);
+      if (rest.some((t) => /^-c(?:ommand)?$/i.test(t))) continue;   // inline text, no file
+      file = rest.find((t) => PS1_RX.test(t)) || null;
+      psFile = true;
+    } else if (PS1_RX.test(w[i] || '')) {
+      file = w[i];
+      psFile = true;
     } else if (/[\\/]/.test(w[i] || '')) {
       file = w[i];
       direct = true;
@@ -251,7 +266,7 @@ function scriptBodies(cmd, ps, cwd) {
     let text;
     try { text = fs.readFileSync(p, 'utf8'); } catch (e) { out.push({ file, text: null, why: e.code || 'cannot be read' }); continue; }
     if (direct && !/^#!\s*\S*?(?:\/env\s+)?(?:ba|z|da|k)?sh\b/.test(text)) continue;
-    out.push({ file, text, why: '' });
+    out.push(psFile ? { file, text, why: '', ps: true } : { file, text, why: '' });
   }
   return out;
 }
