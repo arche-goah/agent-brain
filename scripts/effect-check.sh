@@ -182,6 +182,19 @@ for f in "$BRAIN/CLAUDE.md" "$BRAIN"/.claude/rules/*.md "$CORE"/rules/*.md; do
     checked=$((checked + 1))
     [ -e "$BRAIN/$p" ] || [ -e "$CORE/$p" ] || dangling="$dangling $p"
   done
+  # A bare script name (`memory-sync.cjs`) names a carrier without its place; it is a pointer
+  # only while a script of that name exists in the brain's or the core's script folders
+  # (2026-11-16: memories named carriers deleted weeks earlier, nothing reported them).
+  for p in $(grep -oE '`[A-Za-z0-9_.@-]+\.(sh|cjs|py)`' "$f" 2>/dev/null | tr -d '`' | sort -u); do
+    checked=$((checked + 1))
+    found=""
+    for d in "$BRAIN/scripts" "$BRAIN/scripts/hooks" "$CORE/scripts" "$CORE/helpers" "$CORE/helpers/git-hooks"; do
+      [ -e "$d/$p" ] && { found=1; break; }
+    done
+    # a skill's own script (`mt.py` beside its SKILL.md) is a pointer too
+    [ -n "$found" ] || [ -z "$(find -L "$BRAIN/.claude/skills" -name "$p" -print -quit 2>/dev/null)" ] || found=1
+    [ -n "$found" ] || dangling="$dangling $p"
+  done
 done
 dangling=$(printf '%s' "$dangling" | tr ' ' '\n' | sort -u | tr '\n' ' ')
 if [ -n "${dangling// /}" ]; then say WARN E5 "Rule Pointers" "$checked checked, resolve nowhere:$dangling"
