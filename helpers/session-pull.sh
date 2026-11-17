@@ -198,14 +198,16 @@ leftovers_only() {
 
 # <dir> - commit the leftovers found before the pull, by path, once the checkout is level with the server.
 commit_leftovers() {
-  local p=$1 list cnt sl=docs/maintenance/session-log.md
+  local p=$1 list cnt sl=docs/maintenance/session-log.md snap=docs/memory-snapshot
   [ -n "$LEFT" ] || return 0
   list=$LEFT; LEFT=""
   cnt=$(printf '%s\n' "$list" | awk 'NF { n++ } END { print n + 0 }')
-  # Two fixed pathspecs, no path list (no array: OS-22; no word split: OS-10): the folder always, the session log only
-  # when it is among the leftovers (a pathspec that matches nothing makes git refuse the commit).
-  case $'\n'"$list"$'\n' in *$'\n'"$sl"$'\n'*) ;; *) sl=docs/memory-snapshot ;; esac
-  if git -C "$p" commit -q -m "leftovers of an ended session: memory snapshot / session log" -- docs/memory-snapshot "$sl" >"$TMPF" 2>&1; then
+  # Two fixed pathspecs, no path list (no array: OS-22; no word split: OS-10): each only when it is among the
+  # leftovers, the other one repeated in its place - a pathspec that matches nothing makes git refuse the commit
+  # (a brain that tracks no docs/memory-snapshot/ with only its session log dirty, Windows review 2026-11-17).
+  case $'\n'"$list"$'\n' in *$'\n'"$sl"$'\n'*) ;; *) sl=$snap ;; esac
+  case $'\n'"$list" in *$'\n'"$snap"/*) ;; *) snap=$sl ;; esac
+  if git -C "$p" commit -q -m "leftovers of an ended session: memory snapshot / session log" -- "$snap" "$sl" >"$TMPF" 2>&1; then
     log "brain: committed the leftovers of an ended session by path ($cnt file(s)), not pushed"
   else
     look "brain: leftovers of an ended session ($cnt file(s) under docs/memory-snapshot or the session log) not committed — $(tail -1 "$TMPF")"

@@ -254,6 +254,16 @@ same "leftover plus a real edit: not pulled" "$(head_of "$BRAIN")" "$h_b"
 has  "leftover plus a real edit: reported as uncommitted changes" "brain: uncommitted changes" "$(cat "$T/err")"
 git -C "$BRAIN" checkout -q -- seed.txt docs/memory-snapshot/note.md
 run_pull >/dev/null   # level again for the cases below
+# a brain that tracks no docs/memory-snapshot/, only its session log dirty: the commit must not name the absent folder
+# (Windows review 2026-11-17: the pathspec refused the commit)
+git_q -C "$BRAIN" rm -r -q docs/memory-snapshot; git_q -C "$BRAIN" commit -qm "no snapshot"; h_rm=$(head_of "$BRAIN")
+git_q -C "$BRAIN" push -q origin HEAD:main
+advance brain; h_up=$(git -C "$T/r/brain.git" rev-parse main)
+echo "line" >> "$BRAIN/docs/maintenance/session-log.md"
+run_pull >/dev/null
+if git -C "$BRAIN" merge-base --is-ancestor "$h_up" HEAD 2>/dev/null; then ok "session log only, no snapshot tracked: pulled"; else bad "session log only, no snapshot tracked: pulled" "upstream ${h_up:0:7} not in HEAD"; fi
+same "session log only, no snapshot tracked: committed, tree clean" "$(git -C "$BRAIN" status --porcelain --untracked-files=no)" ""
+git_q -C "$BRAIN" revert --no-edit "$h_rm"; git_q -C "$BRAIN" push -q origin HEAD:main
 unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
 
 # dead network: a remote that never answers costs the stall limit, not the session start

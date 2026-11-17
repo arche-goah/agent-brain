@@ -13,3 +13,4 @@
   clean tree, commit message, stderr line, a real edit next to a leftover still blocks) and
   `scripts/test-session-helpers.sh` (+3: held while behind, says why, runs once level); against main 4 and 2 of
   them fail.
+  Windows review 2026-11-17: when no `docs/memory-snapshot/` is tracked and only the session log is dirty, the commit names only the session log (it refused on the absent folder before); fixture +2.
