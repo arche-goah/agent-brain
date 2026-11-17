@@ -21,6 +21,8 @@
  * - otherwise the OS name with a pass word AFTER it, in the part that belongs to that OS (up to the
  *   next OS name), and no fail word in that part ("**Test (Windows, Git Bash):** all cases pass").
  *   A pass word only BEFORE the OS name is no OK for it ("16 checks OK including macOS and Windows").
+ *   Nor is an OS named inside ANOTHER system's statement ("Windows OK at head … the same totals as macOS",
+ *   2026-11-13, grandma3-suite #253): this branch counts only where no other system's statement opened earlier.
  * - an OK named as a thing or promised is no verdict and blanked first: "No Windows OK yet", "the / your
  *   macOS OK", "Windows OK once / when / if …", "… OK stays with you" (2026-11-12, #473).
  * - fail words are whole words; a hyphen joins a compound ("red-free", "fail-fast" are no verdict).
@@ -126,9 +128,26 @@ function saysOk(line, os) {
     if (statementAt(rest, os)) {
       const end = part.search(CLAUSE_END);
       if (!NOT_RX.test(end < 0 ? part : part.slice(0, end))) return true;
-    } else if (OK_RX.test(part) && !NOT_RX.test(part)) return true;
+    } else if (OK_RX.test(part) && !NOT_RX.test(part)
+      && (OWN_LABEL_RX.test(rest.slice(m[0].length)) || !otherStatementBefore(clean, os, m.index))) return true;
   }
   return false;
+}
+
+// "macOS: all 256 pass" — an OS name labelled with a colon opens its own part even after another system's OK
+// (macOS review of #529: "Windows OK at abc1234, macOS: all 256 pass" must stay a macOS OK).
+const OWN_LABEL_RX = /^[*_]*\s*:/;
+
+/** Does another system's statement ("Windows OK at head …") open before `idx` in `s`? Then a mention of `os` after it
+ * is evidence inside that verdict ("… the same totals as macOS"), not a verdict for `os`. Measured 2026-11-13 on
+ * grandma3-suite #253: a Windows OK line naming macOS in its evidence was read as the macOS OK, and the merge passed. */
+function otherStatementBefore(s, os, idx) {
+  return Object.keys(NAME_RX).filter((o) => o !== os).some((o) => {
+    const rx = new RegExp(osRx(o).source, 'gi');
+    let m;
+    while ((m = rx.exec(s)) && m.index < idx) if (statementAt(s.slice(m.index), o)) return true;
+    return false;
+  });
 }
 
 /** Sentences of a text; a bracket naming "against …" (a negative control) is blanked first. */
