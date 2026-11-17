@@ -98,7 +98,7 @@ known:     scripts/carrier-audit.py=13
 known:     scripts/caveman-armed.py=6
 known:     scripts/check-catalog-test.py=15
 known:     scripts/check-catalog.py=16
-known:     scripts/commitments.py=5
+known:     scripts/commitments.py=6
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
 known:     scripts/hook-coverage.py=27
@@ -169,6 +169,8 @@ ledger-fields.json and of the JavaScript twin, which are only opened or handed t
 only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
 2026-10-09, commitments.py baselined after that review: the five joins build the transcript
 dir, a session file and the instance data path it opens; it reports session ids, never a path.
+2026-11-16, commitments.py 5 -> 6: the new join opens the stop dispatcher's loop log; it reports
+the promise text from it, never the path.
 2026-10-11, hook-coverage.py 6 -> 9 after that review: the three new joins only feed
 `os.path.isfile` (is the wired helper / the registered stop check in the consumed core?); the
 lines it prints name the helper's FILE NAME, never a joined path.
