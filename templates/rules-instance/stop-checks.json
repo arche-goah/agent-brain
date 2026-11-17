@@ -197,6 +197,17 @@
       "maxLength": 240,
       "onReissue": "run",
       "required": true
+    },
+    {
+      "label": "STALE PEER",
+      "marker": "PEER-SESSION-GATE",
+      "cmd": "core/helpers/peer-session-gate.cjs",
+      "mode": "block",
+      "extract": "measures only this one: ([^\\n]+)",
+      "template": "No other session runs here any more: \"{1}\" - measure it fresh or drop the sentence",
+      "maxLength": 120,
+      "required": true,
+      "_note": "Carrier of 'a peer's state counts once it is measured' (rules/thinking-protocol.md rule 0, freshness): the closing reply names a peer session as running or holding a claim while parallel-sessions.sh measures only this one. Words in the operator's language: .claude/rules/peer-session.json."
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",
