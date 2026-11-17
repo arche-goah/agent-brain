@@ -176,8 +176,11 @@ function invocations(cmd, ps, prog, subs, verbs) {
   if (!segs) return null;
   if (!prog) return segs;
   const out = [];
+  // the program by its name: a path to it and a Windows `.exe` count (Windows review of #526, 2026-11-13:
+  // `gh.exe pr create` and `& "<...>\gh.exe" pr create` were no gh call for any gate reading this)
+  const named = (x) => String(x).replace(/\\/g, '/').replace(/^.*\//, '').replace(/\.exe$/i, '') === prog;
   for (const w of segs) {
-    const i = w.indexOf(prog);
+    const i = w.findIndex(named);
     if (i < 0) continue;
     if (subs && !subs.includes(w[i + 1])) continue;
     if (verbs && !verbs.includes(w[i + 2])) continue;
