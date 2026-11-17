@@ -269,6 +269,14 @@ no_ci_check() {
     echo "CI-WATCH NO-CI: $REPO has no Actions workflow — nothing to wait for (not green)"
     exit 3
   fi
+  # Workflows exist, zero checks: a PR from a FORK runs them only after a maintainer approves (2026-11-15,
+  # measured on the macOS instance: a marketplace pin PR from a fork, `on: pull_request` workflow, 0 runs for
+  # its head - the watch would have waited out its whole timeout for a run that does not start by itself).
+  [[ "$MODE" == pr ]] || return 0
+  ghq pr view "$TARGET" -R "$REPO" --json isCrossRepository --jq .isCrossRepository || return 0
+  if [[ "$gh_out" == "true" ]]; then
+    fail_unknown "PR #$TARGET on $REPO comes from a fork and has zero checks: its workflows wait for a maintainer's approval or never run — no CI verdict will arrive by waiting (not green). Push the branch into $REPO and open the PR from there, or approve the run"
+  fi
 }
 
 # A check-run can be FINISHED while its status still says in_progress: measured 2026-10-12
