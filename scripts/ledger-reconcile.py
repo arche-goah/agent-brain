@@ -490,6 +490,7 @@ def _reconcile(out, main, root, ledgers, since, timeout, shell, allowed, budget,
                 out["broken"].append(f"{label(e, rel)} ({res})")
             elif res == "pass" and not e["done"] and first == "pass":
                 out["unproven"].append(label(e, rel))
+                out.setdefault("unproven_at", []).append({"ledger": rel, "line": e["line"], "id": label(e, rel)})
             elif res == "pass" and not e["done"]:
                 out["done_open"].append(label(e, rel))
                 out.setdefault("done_open_at", []).append({"ledger": rel, "line": e["line"], "id": label(e, rel)})
@@ -580,9 +581,11 @@ def main():
         res_path = seen_path.with_name("ledger-reconcile.json")
         tmp = res_path.with_name(f"{res_path.name}.{os.getpid()}")
         with open(tmp, "w", encoding="utf-8", newline="\n") as f:
-            json.dump({"at": time.time(), "done_open": r.get("done_open_at", [])}, f, ensure_ascii=False, sort_keys=True)
+            json.dump({"at": time.time(), "done_open": r.get("done_open_at", []),
+                       "unproven": r.get("unproven_at", [])}, f, ensure_ascii=False, sort_keys=True)
         os.replace(tmp, res_path)
     r.pop("done_open_at", None)
+    r.pop("unproven_at", None)
     lines = []
 
     def say(key, head, tail):

@@ -796,6 +796,9 @@ ANY_EXIT = re.compile(FIELD_LINE + r"exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re
 # still ahead or a topic is not due at the session start. Measured 2026-10-30: nine entries with a
 # topic trigger printed every session, seven of them as "needs you".
 ASK_WHEN = re.compile(FIELD_LINE + r"ask-when:\s*(.+?)\s*$", re.M)
+# `record-read: <date> ...` - the agent read the record of a green-from-birth operator decision and the answer is not in
+# it (Windows review 2026-11-17, #570: without it a weak check kept a real decision away from the operator for good).
+RECORD_READ = re.compile(FIELD_LINE + r"record-read:\s*\d{4}-\d{2}-\d{2}\b", re.M)
 # The exits of skill backlog-catch-up, step 3.
 EXITS ={"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
 
@@ -851,6 +854,7 @@ def ledgers(root):
     green = load_json(root / ".claude-state" / "ledger-reconcile.json", None)
     green_at = green.get("at") if isinstance(green, dict) and isinstance(green.get("at"), (int, float)) else None
     green_rows = green.get("done_open") if green_at is not None and isinstance(green.get("done_open"), list) else []
+    unproven_rows = green.get("unproven") if green_at is not None and isinstance(green.get("unproven"), list) else []
     for rel in cfg.get("ledgers") or []:
         try:
             text = (root / rel).read_text(encoding="utf-8")
@@ -859,6 +863,7 @@ def ledgers(root):
             unread.append(f"{rel} (file not found)")
             continue
         ticks = {r.get("line") for r in green_rows if fresh and isinstance(r, dict) and r.get("ledger") == rel}
+        greens = {r.get("line") for r in unproven_rows if fresh and isinstance(r, dict) and r.get("ledger") == rel}
         found = list(mod.entries(text))
         # Entries that are not `- [ ]` / `- [x]` lines read as an empty ledger — the same silence.
         if not found and re.search(r"^[\s>*-]*`?id:", text, re.M):
@@ -912,6 +917,8 @@ def ledgers(root):
                 item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
             if e["line"] in ticks:
                 item["tick"] = True
+            if e["line"] in greens:
+                item["green_unproven"] = True
             items.append(item)
     return items, unread
 
@@ -1172,6 +1179,21 @@ def main():
             own = None
         it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx)
         it["cls"] = it["cls"] or "?"
+        # An operator decision whose check was green from its first run: the answer may already be applied
+        # (measured 2026-11-17 on the macOS instance: an entry the operator had decided the day before, its
+        # paragraph in place and its check green, stood as "needs you" in the start report — reconcile had
+        # named it "negative control missing", and nobody read that against the entry). Reading the record
+        # and ticking or sharpening the check is the agent's move; only then may it go to the operator.
+        # The way back (Windows review 2026-11-17, #570): a green-from-birth check proves the check weak, not the
+        # decision made. The agent that read the record and found the answer NOT in writes `record-read: <date> ...`
+        # into the entry; from then on it is the operator's again, marked so.
+        if it.get("green_unproven") and it["cls"] == "human":
+            if RECORD_READ.search(it.get("body") or ""):
+                it["why"] = "an operator decision (record read, answer not in; its check is weak - sharpen it)"
+            else:
+                it["cls"], it["why"] = "ai", ("its check is green although the box is open - read the record: the answer "
+                                              "may be in, tick it with the evidence; if it is not, write `record-read: "
+                                              "<date> answer not in` and it returns to the operator")
         # Parked means not WORKED ON, never unanswered: a request from another side in a parked
         # domain still gets an answer (receipt, state, when it resumes). Measured: one such
         # question lay 30 days on the parked line.

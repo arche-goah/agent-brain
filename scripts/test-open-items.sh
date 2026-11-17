@@ -546,6 +546,28 @@ out=$(run "" "$L")
 has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ! has "tick it" "$out" \
   && ok "a result older than the ledger counts nothing (negative control)" || bad "stale result still ticks: $out"
 rm -f "$L/.claude-state/ledger-reconcile.json"
+# 2026-11-17 (macOS instance): an operator decision whose check was green from its first run stood as "needs you"
+# although the answer was applied the day before. reconcile names it UNPROVEN; open-items gives it to the agent.
+printf '%s\n' '' '- [ ] Settled by the operator yesterday' '  id: settled-thing' '  class: decision' \
+  '  exit: operator-decision 2026-10-25 — the operator words it' >> "$L/docs/x/open.md"
+out=$(run "" "$L")
+has "[ledger|human] 2026-10-25 settled-thing" "$out" && ok "operator decision without a reconcile result stays human (control)" \
+  || bad "operator decision: $(line ' settled-thing ' "$out")"
+ln=$(grep -n 'Settled by the operator' "$L/docs/x/open.md" | cut -d: -f1)
+"$PY" -c 'import json,sys,time; json.dump({"at": time.time() + 5, "done_open": [], "unproven": [{"ledger": "docs/x/open.md", "line": int(sys.argv[2]), "id": "settled-thing"}]}, open(sys.argv[1], "w", encoding="utf-8"))' \
+  "$(native "$L/.claude-state/ledger-reconcile.json")" "$ln"
+out=$(run "" "$L")
+has "[ledger|ai] 2026-10-25 settled-thing" "$out" && has "its check is green although the box is open" "$out" \
+  && ok "a green-from-birth check moves an operator decision to the agent" || bad "green decision: $(line ' settled-thing ' "$out")"
+# the way back (Windows review 2026-11-17): the agent read the record, the answer is not in - the operator's again
+"$PY" -c 'import sys; p=sys.argv[1]; s=open(p,encoding="utf-8").read(); s=s.replace("  exit: operator-decision 2026-10-25 — the operator words it", "  exit: operator-decision 2026-10-25 — the operator words it\n  record-read: 2026-10-26 answer not in the record"); open(p,"w",encoding="utf-8").write(s)' "$(native "$L/docs/x/open.md")"
+ln=$(grep -n 'Settled by the operator' "$L/docs/x/open.md" | cut -d: -f1)
+"$PY" -c 'import json,sys,time; json.dump({"at": time.time() + 5, "done_open": [], "unproven": [{"ledger": "docs/x/open.md", "line": int(sys.argv[2]), "id": "settled-thing"}]}, open(sys.argv[1], "w", encoding="utf-8"))' \
+  "$(native "$L/.claude-state/ledger-reconcile.json")" "$ln"
+out=$(run "" "$L")
+has "[ledger|human] 2026-10-25 settled-thing" "$out" && has "record read, answer not in" "$out" \
+  && ok "record-read sends a green-from-birth decision back to the operator" || bad "way back: $(line ' settled-thing ' "$out")"
+rm -f "$L/.claude-state/ledger-reconcile.json"
 
 # 2026-10-28 (macOS instance, 95 ledger rows): the shown date was the first date anywhere in the
 # text, "nothing done yet" was printed unmeasured, a `class: decision` read as the operator's
