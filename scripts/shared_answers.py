@@ -109,6 +109,33 @@ def own_open_requests(repo=None):
     return out
 
 
+NUM_RANGE = re.compile(r"(?<![\w.-])(\d{2,6})(?:\s*-\s*(\d{2,6}))?(?![\w.])")
+
+
+def own_named_numbers(repo=None):
+    """Every number our own fact files name (front matter `von: <self>`), a range `561-568`
+    expanded (span up to 50). pr-ball.py reads it as "a review of PR N was asked for": an own
+    text naming the number. Wrong only in the safe direction — a number meant for something
+    else silences the line, it never invents one. Unset self or no clone = empty set."""
+    me = os.environ.get("SHARED_MEMORY_SELF", "").split(",")[0].strip()
+    root = Path(repo or default_repo())
+    if not me or not (root / ".git").is_dir():
+        return set()
+    von = re.compile(r"^\s*von:\s*" + re.escape(me) + r"\s*$", re.M)
+    found = set()
+    for f in list(root.glob("*/*.md")) + list(root.glob("*/archive/*/*.md")):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if f.name == "LOG.md" or not (text.startswith("---") and von.search(text.split("\n---", 2)[0])):
+            continue
+        for a, b in NUM_RANGE.findall(text):
+            lo, hi = int(a), int(b or a)
+            found.update(range(lo, hi + 1) if 0 <= hi - lo <= 50 else {lo, hi})
+    return found
+
+
 def checked_head(oid, shas):
     """True when one of our shas is a prefix of this head's full oid."""
     oid = (oid or "").lower()

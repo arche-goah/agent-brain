@@ -94,6 +94,28 @@ expect_silent "author: my own comment after theirs hands the move back" \
 expect_silent "author: a comment before my last commit is not a move" \
   "$(pr author '{"number":150,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-15T06:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"peer"},"createdAt":"2026-09-15T04:00:00Z"}]},"reviewRequests":{"nodes":[]}}')"
 
+# 16. the measured case 2026-11-17: my core PR, 3 h open, nobody else said a word, no own
+#     shared-memory text names it — the review was never asked for
+noask() { # $1 number, $2 createdAt
+  pr author '{"number":'"$1"',"isDraft":false,"createdAt":"'"$2"'","body":"","repository":{"name":"agent-brain"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"'"$2"'"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}'
+}
+expect_line "author: own core PR, no review asked anywhere" \
+  "$(noask 564 2026-09-15T05:00:00Z)" "agent-brain#564 yours - no review asked, 3 h"
+expect_silent "author: own core PR younger than an hour is still in its turn" \
+  "$(noask 564 2026-09-15T07:30:00Z)"
+expect_silent "author: own PR outside the review repos needs no request" \
+  "$(pr author '{"number":5,"isDraft":false,"createdAt":"2026-09-15T05:00:00Z","body":"","repository":{"name":"own-suite"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-15T05:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[]},"reviewRequests":{"nodes":[]}}')"
+# 17. an own request naming a range "561-568" asks for every PR inside it
+mkdir -p "$SM/.git" "$SM/core"
+printf -- '---\nname: r\nmetadata:\n  von: dev-a\n---\ncore 561-568: content review\n' > "$SM/core/request-r.md"
+out="$(printf '%s' "$(noask 564 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-a "$PY" "$BALL" --now "$NOW")"
+[ -z "$out" ] && ok "author: an own request naming 561-568 covers 564" || bad "range request: expected silence, got: $out"
+out="$(printf '%s' "$(noask 570 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-a "$PY" "$BALL" --now "$NOW")"
+case "$out" in *"agent-brain#570 yours - no review asked"*) ok "author: a number outside the range stays unasked" ;; *) bad "outside range: got: ${out:-<silence>}" ;; esac
+out="$(printf '%s' "$(noask 564 2026-09-15T05:00:00Z)" | SHARED_MEMORY_SELF=dev-b "$PY" "$BALL" --now "$NOW")"
+case "$out" in *"agent-brain#564 yours - no review asked"*) ok "author: another device's request is not ours" ;; *) bad "foreign request: got: ${out:-<silence>}" ;; esac
+rm -rf "$SM/.git" "$SM/core"
+
 # 16. a bot comment is nobody's move
 expect_silent "author: a bot comment is not a reply" \
   "$(pr author '{"number":150,"isDraft":false,"body":"","repository":{"name":"core"},"author":{"login":"author"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T20:00:00Z"}}]},"reviews":{"nodes":[]},"comments":{"nodes":[{"author":{"login":"github-actions"},"createdAt":"2026-09-15T04:00:00Z"}]},"reviewRequests":{"nodes":[]}}')"
