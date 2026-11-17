@@ -29,6 +29,7 @@ from pathlib import Path
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")  # OS-9 stderr half (#524)
 except (AttributeError, ValueError):
     pass
 

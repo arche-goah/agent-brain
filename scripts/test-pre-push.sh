@@ -10,8 +10,10 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP=$(mktemp -d)
 # The hook frees main for a remote under the system temp (a fixture's bare repo), so the remotes that
-# must stay GUARDED live outside it: under $HOME, which is never a temp root.
-REM="$HOME/.test-pre-push.$$"; mkdir -p "$REM"   # only git reads these paths, as with $TMP's remotes before
+# must stay GUARDED live outside it. Which root is "the temp" is named for the hook (PUSH_TEMP_ROOTS = $TMP only):
+# $HOME is no safe outside - portability-smoke runs every suite with HOME under mktemp (merge train 2.1.6).
+export PUSH_TEMP_ROOTS="$TMP"
+REM=$(mktemp -d)   # a sibling of $TMP, not under it: guarded
 trap 'rm -rf "$TMP" "$REM"' EXIT
 FAIL=0
 pass() { echo "PASS: $1"; }

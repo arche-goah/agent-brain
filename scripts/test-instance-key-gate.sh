@@ -192,7 +192,9 @@ printf 'at `%s` and `%s`\n<!-- instance-key: %s -->\n' "$LOCAL" "$LOCAL2" "$KEY"
 t0=$(date +%s)
 FAKE_GH=slow shaprobe "a hanging network, two local shas" "$RC" "$T/two.md" allow
 dt=$(( $(date +%s) - t0 ))
-[ "$dt" -lt 4 ] && ok "a hanging network ends within the budget (${dt} s)" || bad "a hanging network took ${dt} s"
+# Whole-second clock, a 3 s budget plus node start and git reads: `-lt 4` left under a second and failed one run in
+# three at the train head (2.1.6, measured on macOS). What must hold is the hook's own 10 s timeout, far off.
+[ "$dt" -lt 6 ] && ok "a hanging network ends within the budget (${dt} s)" || bad "a hanging network took ${dt} s"
 case "$SHAOUT" in *"did not answer within"*) ok "the timeout says so on stderr" ;; *) bad "timeout line missing: ${SHAOUT:0:200}" ;; esac
 
 [ "$fail" -eq 0 ] && echo "test-instance-key-gate: all checks passed"

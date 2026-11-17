@@ -42,7 +42,11 @@ temp_remote() {
   case "$p" in file://*) p=${p#file://} ;; *://*|*@*:*) return 1 ;; esac
   case "$p" in /[A-Za-z]:/*) p=${p#/} ;; esac   # file:///C:/... is file://C:/... (Windows)
   p=$(cd "$p" 2>/dev/null && pwd -P) || return 1
-  for t in "${TMPDIR:-}" "${TEMP:-}" "${TMP:-}" /tmp /var/tmp; do
+  # PUSH_TEMP_ROOTS: a fixture names the one temp root it means (merge train 2.1.6: portability-smoke runs every suite
+  # with HOME under mktemp, so a fixture's "guarded" remotes under $HOME counted as temp remotes and main went free).
+  local roots=("${TMPDIR:-}" "${TEMP:-}" "${TMP:-}" /tmp /var/tmp)
+  [ -n "${PUSH_TEMP_ROOTS:-}" ] && roots=("$PUSH_TEMP_ROOTS")
+  for t in "${roots[@]}"; do
     [ -n "$t" ] || continue
     r=$(cd "$t" 2>/dev/null && pwd -P) || continue
     case "$p/" in "${r%/}/"*) return 0 ;; esac
