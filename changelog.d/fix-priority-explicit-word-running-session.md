@@ -9,3 +9,5 @@
   `ai_handover` keeps its own rank (harmonised, rule-conflict step 1). Old spots searched: `rules/`, `skills/`,
   `CONVENTIONS.md`, `templates/` — the only other rank-1 mention is that handover paragraph. History entry in
   `docs/rule-history.md`.
+  One clause added: a recorded quote a carrier asks for (`needs_operator_word`, a standing approval) still counts where
+  that carrier names it and ranks no higher in a conflict (Windows review 2026-11-17).
