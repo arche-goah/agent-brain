@@ -120,17 +120,8 @@ def enabled_plugins():
     marketplace). The first one in the install registry won, so `--write` kept recording
     the switched-off old channel as the core's consumer. A later layer overrides an earlier.
     """
-    state = {}
-    for path in (config_dir() / "settings.json",
-                 BRAIN / ".claude" / "settings.json",
-                 BRAIN / ".claude" / "settings.local.json"):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        for pid, on in (data.get("enabledPlugins") or {}).items():
-            state[pid] = bool(on)
-    return state
+    import settings_layers   # the one layer reader (follow-up 4)
+    return settings_layers.enabled_plugins(BRAIN)
 
 
 def pick_consumer(candidates, enabled):
