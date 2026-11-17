@@ -56,7 +56,7 @@ const { execFileSync } = require('child_process');
 const WRITE_RX = [
   /(^|[;&|(]\s*|\s)gh\s+(pr|issue)\s+(create|comment|edit|review|close|reopen|merge)\b/,
   /(^|[;&|(]\s*|\s)gh\s+release\s+(create|edit)\b/,
-  /(^|[;&|(]\s*|\s)git\s+(-C\s+\S+\s+)?(commit|tag)\b[^;&|]*\s(-[a-zA-Z]*m|--message|-F|--file)\b/,
+  /(^|[;&|(]\s*|\s)git\s+(-C\s+(?:"[^"]*"|'[^']*'|\S+)\s+)?(commit|tag)\b[^;&|]*\s(-[a-zA-Z]*m|--message|-F|--file)\b/,
 ];
 // Any commit or tag carries an AUTHOR identity (git config user.name / user.email), message or
 // not. Measured 2026-10-10 in a public core repo: 46 commits carried a full real name and a
