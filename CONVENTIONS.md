@@ -378,7 +378,9 @@ falls through the table above. Rules, in the order they bite:
     checked on ONE system only (macOS only, or Windows only) is allowed solely as a beta,
     labelled with that system ("macOS beta" / "Windows beta") and with the other system's
     verification open in the check table; it never reaches stable, which needs a `pass` on every
-    required system.
+    required system. A PR whose every file matches one of the suite's `data_paths` globs in
+    `dependencies.json` (e.g. `"releases/*.md"`; `*` inside one path segment, `**` across) is a
+    data change and needs no OS check (operator decision 2026-11-15; `helpers/merge-request-gate.cjs`).
 
 ## 12. Staying compatible — and how anyone can check it
 

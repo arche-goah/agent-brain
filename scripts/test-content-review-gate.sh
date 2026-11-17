@@ -20,7 +20,7 @@ printf 'process.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FI
 git init -q "$T/core"
 cp "$ROOT/pr-risk.json" "$T/core/pr-risk.json"
 transcript() { printf '{"type":"assistant","message":{"model":"%s"}}\n' "$1" > "$T/t.jsonl"; }
-pr() { node -e 'const fs=require("fs"); const rd=(l)=>(l||"").split(",").filter(Boolean).map((e)=>{ const [f, d] = e.split("@"); return d ? {body: fs.readFileSync(f,"utf8"), createdAt: d} : {body: fs.readFileSync(f,"utf8")}; }); process.stdout.write(JSON.stringify({body: process.argv[1], files: process.argv[2].split(",").filter(Boolean).map((p) => ({path: p})), comments: rd(process.argv[3]), reviews: rd(process.argv[4])}))' "$@" > "$T/pr.json"; }
+pr() { node -e 'const fs=require("fs"); const rd=(l)=>(l||"").split(",").filter(Boolean).map((e)=>{ const [f, d] = e.split("@"); return d ? {body: fs.readFileSync(f,"utf8"), createdAt: d} : {body: fs.readFileSync(f,"utf8")}; }); process.stdout.write(JSON.stringify({body: process.argv[1], files: process.argv[2].split(",").filter(Boolean).map((p) => ({path: p})), comments: rd(process.argv[3]), reviews: rd(process.argv[4]), ...(process.argv[5] ? {changedFiles: Number(process.argv[5])} : {})}))' "$@" > "$T/pr.json"; }
 probe() { # $1 label, $2 command, $3 block|allow, [$4 staged/branch files, newline list]
   local out rc
   out=$(printf '%s' "{\"tool_name\":\"Bash\",${AGENT:+\"agent_id\":\"$AGENT\",}\"cwd\":\"$(native "$T/core")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$2")}}" \
@@ -228,6 +228,10 @@ pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-noga
 probe "merge on an undated review without Gaps" "$M" block
 printf '%s\nModel: claude-opus-5-5\n' "$OLD" > "$T/rev-nogaps.md"
 probe "approve without a Gaps line" "gh pr review 5 -R o/r --approve --body-file $N/rev-nogaps.md" block
+pr "Risk: low - docs <!-- instance-key: $A -->" "docs/x.md" "$T/c-small.md" "" 1
+probe "control: low-risk docs PR, review on the smaller model" "$M" allow
+pr "Risk: low - docs <!-- instance-key: $A -->" "docs/x.md" "$T/c-small.md" "" 150
+probe "file list shorter than changedFiles (gh page limit): top risk, smaller model too small" "$M" block
 pr "## Merge train t1
 - #7 fix/a abc
 - #8 fix/b def" "" ""
