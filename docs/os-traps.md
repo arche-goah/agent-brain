@@ -325,6 +325,7 @@ known:     scripts/test-conditional-order-gate.sh=1
 known:     scripts/test-content-review-gate.sh=1
 known:     scripts/test-dead-carriers.sh=1
 known:     scripts/test-decision-presentation-gate.sh=1
+known:     scripts/test-derived-carry-gate.sh=1
 known:     scripts/test-decision-readiness.sh=1
 known:     scripts/test-decision-register.sh=1
 known:     scripts/test-decision-review.sh=1
