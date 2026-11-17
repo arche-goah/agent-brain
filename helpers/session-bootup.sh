@@ -569,7 +569,7 @@ fi
 # the public repo; deprecation stubs keep old references working for ONE major
 # release only — warn until the instance has migrated its side.
 if [[ -f CLAUDE.md ]] && grep -q '@core/rules/arbeitsregeln\.md' CLAUDE.md; then
-  echo "!! legacy import: CLAUDE.md imports @core/rules/arbeitsregeln.md — renamed to working-rules.md (stub redirects until the next major); update the import line"
+  echo "!! legacy import: CLAUDE.md imports @core/rules/arbeitsregeln.md — the stub is removed (2.1.6), this import loads NOTHING; change it to @core/rules/working-rules.md"
 fi
 lg=$(grep -lE 'autonomer-lauf|kohaerenz-scan' .claude/rules/*.md 2>/dev/null)
 [[ -n "$lg" ]] && echo "!! legacy skill names (autonomer-lauf -> autonomous-run, kohaerenz-scan -> coherence-scan) still referenced in: ${lg//$'\n'/, } (the redirect stubs are removed — these names no longer load)"

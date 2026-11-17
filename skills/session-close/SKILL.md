@@ -13,9 +13,11 @@ then an explicit release follows.
 
 0. **End the autonomous mode first** (operator decision 2026-11-03): closing is a change of
    state, not one more autonomous step. A close step that needs the operator's word (a gated
-   push, a prune, a release) is asked through the question tool, which an autonomous run
-   forbids; with the mode still on, those steps were collected as prose and the release could
-   not be given. The close prompt itself ends the mode where the instance's off-patterns carry
+   push, a release) is asked through the question tool, which an autonomous run forbids; with
+   the mode still on, those steps were collected as prose and the release could not be given.
+   The `memory-sync.cjs prune` of step 2 is NOT one of them: it drops only the snapshot copies
+   of memory files this session deleted, merged or renamed, and git keeps them — it runs
+   without asking, as step 2 says. The close prompt itself ends the mode where the instance's off-patterns carry
    the close words; otherwise say in the first close line that the run ends here.
 
 1. **Secure open work (semantic — no script can do this):**
