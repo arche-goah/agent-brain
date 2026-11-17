@@ -157,10 +157,11 @@ measurable, verifiable and cleanly tested"). Until then the core's own path from
 lived only as instance prose on two brains, measured the same day.
 
 1. **Alpha — local, declared, dated.** A new function runs first on one brain, declared in
-   `.claude/rules/local-machinery.json` as `alpha` with an expiry date and what is being measured
-   (`rules/working-rules.md`, "One System, Not Local Workarounds"). `local-machinery.py` names
-   undeclared and expired items at every session start. At expiry: a PR, an extension with a
-   reason, or unwired.
+   `.claude/rules/local-machinery.json` as `alpha` with an expiry date and its kind — `test` (what
+   is being measured; the PR waits for it) or `unreleased` (a clear core feature, its PR opened at
+   once, `core_pr`) (`rules/working-rules.md`, "One System, Not Local Workarounds").
+   `local-machinery.py` names undeclared, expired and kindless items at every session start. At
+   expiry: a PR, an extension with a reason, or unwired.
 2. **Beta — a PR, measured on both systems, merged, shipped on the channel.** The PR is checked at
    its head on macOS AND Windows (a machine of the operator counts; green Windows CI is not "checked
    on Windows"), then merged, then shipped with a beta tag through the `-next` channel

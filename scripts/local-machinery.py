@@ -31,7 +31,11 @@ Declarations: `.claude/rules/local-machinery.json`
                   path or the declared prefix)
    "external": {"<id or prefix>": {"source": "<where it comes from>", "why": "..."}},
                  (third-party skills/plugins used as they are — not ours to port to the core)
-   "alpha":   {"<id or prefix>": {"until": "YYYY-MM-DD", "why": "<what is being measured>"}},
+   "alpha":   {"<id or prefix>": {"kind": "test" | "unreleased", "until": "YYYY-MM-DD", "why": "...",
+                                  "core_pr": "<PR URL or owner/repo#n>"}},
+                 (test: a real test phase, the core port waits for it, `why` names what is measured;
+                  unreleased: a clear core feature wired before its release, `core_pr` required, the
+                  date is an emergency brake; no kind, or unreleased without core_pr = loud)
    "review_days": 90, "review_batch": 3}
 Every instance/external declaration carries "reviewed": "YYYY-MM-DD" — a deviation is judged again,
 not justified once for good. Missing or older than review_days = due; the session start names the
@@ -73,7 +77,7 @@ SCRIPT_EXT = (".sh", ".py", ".cjs", ".js", ".mjs", ".ps1")
 TEXT_EXT = SCRIPT_EXT + (".md", ".json", ".txt", ".toml", ".yaml", ".yml", ".plist", ".xml", ".ts")
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "site-packages", ".claude-state"}
 CORE_PLUGIN_PREFIXES = ("brain-core@", "brain-core-next@")  # same as plugin-scope-check.py
-LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels", "caughtup")
+LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels", "caughtup", "alphakind")
 CLASSES = LOUD + ("duplicate", "undeclared", "review")
 # A deviation is not justified once and for all (operator order 2026-10-29: a local deviation must not
 # stay justified once and never questioned again; past exceptions need routine review). Measured the same day on the macOS
@@ -975,6 +979,26 @@ def uniq(xs):
     return list(dict.fromkeys(xs))
 
 
+# The repo is named (Windows review 2026-11-17: a bare "#n" names no repo). Shape only: reading the PR state would be
+# a network call at every session start, so a PR closed unmerged stays silent until the date (the debt).
+CORE_PR = re.compile(r"[\w.-]+/[\w.-]+#\d+|https?://\S+/pull/\d+/?")
+
+
+def alpha_kinds(decl):
+    """Every alpha names its kind (operator 2026-11-17): `test` waits for a real test result before
+    the core port; `unreleased` is a clear core feature wired at once so nobody waits for a release,
+    and its core PR exists from the start. Before, an alpha read as "wait for the date, then port"
+    held a generic feature back for weeks. The old string form has no kind."""
+    out = []
+    for key, d in (decl.get("alpha") or {}).items():
+        kind = str(d.get("kind") or "").strip() if isinstance(d, dict) else ""
+        if kind not in ("test", "unreleased"):
+            out.append(f"{key} ({'kind ' + repr(kind) if kind else 'no kind'})")
+        elif kind == "unreleased" and not CORE_PR.fullmatch(str(d.get("core_pr") or "").strip()):
+            out.append(f"{key} (unreleased without core_pr)")
+    return out
+
+
 MESSAGES = {
     "edited": "!! local machinery: {n} core file(s) edited inside core/: {x} — core changes go as a PR against the core, never edited in place",
     "offmain": "!! local machinery: {n} tool source checkout(s) not on main feed this brain (MCP server or skill symlink): {x} — unreleased code in every session; switch the checkout back to main, or declare it as alpha",
@@ -985,6 +1009,7 @@ MESSAGES = {
     "shadow": "!! local machinery: {n} instance item(s) shadow a core item of the same name: {x} — use the core one and remove the copy, or rename it if it is a different tool",
     "caughtup": "!! local machinery: {n} alpha(s) the running core has caught up with, still wired: {x} — unwire the copy and its wiring now (the core carries it)",
     "expired": "!! local machinery: {n} alpha(s) past their date, still wired: {x} — merge, extend with a reason, or unwire",
+    "alphakind": "!! local machinery: {n} alpha declaration(s) without a valid kind: {x} — name \"kind\": \"test\" (a real test phase; the core port waits for its result) or \"unreleased\" (a clear core feature wired before its release) with \"core_pr\": the core PR (URL or owner/repo#n), opened now",
     "outside": "!! local machinery: {n} item(s) run from outside this brain and outside the core, undeclared: {x} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR",
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
     "noevidence": "!! local machinery: {n} instance declaration(s) give a reason without evidence: {x} — add \"evidence\": the instance-specific token the item relies on",
@@ -1020,6 +1045,7 @@ def main(argv):
     found["edited"] = edited_core(C)
     found["missing"] = C.missing
     found["channels"] = both_channels(C)
+    found["alphakind"] = alpha_kinds(decl)
     n_due, found["review"] = review_due(decl, a.today, a.review_all)
     if a.review_all:
         print(f"local machinery review: {n_due} declared deviation(s), all listed - judge each again "
@@ -1056,7 +1082,7 @@ def main(argv):
         for it in items:
             print(f"{it['class']:11} {it['carrier']:12} {it['id']}")
 
-    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "caughtup", "expired", "outside", "general",
+    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "caughtup", "expired", "alphakind", "outside", "general",
                 "noevidence", "badevidence", "duplicate", "undeclared", "review"):
         xs = uniq(found[cls])
         if not xs:

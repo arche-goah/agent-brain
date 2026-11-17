@@ -61,7 +61,7 @@ DEV="$(nat "$T/dev")"
 D_HOOK="$(H "$(C "node $DEV/helpers/d.cjs")")"
 out=$(mk "$D_HOOK" '' '')
 grep -q '^!! local machinery: 1 item(s) run from outside' <<< "$out" && ok "undeclared-outside-loud" || bad "undeclared-outside-loud: $out"
-out=$(mk "$D_HOOK" '' "{\"alpha\":{\"$DEV/\":{\"until\":\"2026-10-20\",\"why\":\"alpha\"}}}")
+out=$(mk "$D_HOOK" '' "{\"alpha\":{\"$DEV/\":{\"kind\":\"test\",\"until\":\"2026-10-20\",\"why\":\"alpha\"}}}")
 [[ -z "$out" ]] && ok "alpha-in-date-silent" || bad "alpha-in-date-silent: $out"
 out=$(mk "$D_HOOK" '' "{\"alpha\":{\"$DEV/\":{\"until\":\"2026-10-01\",\"why\":\"alpha\"}}}")
 grep -q 'past their date' <<< "$out" && ok "alpha-expired-loud" || bad "alpha-expired-loud: $out"
@@ -145,9 +145,34 @@ out=$(run); grep -q 'without a declaration (script 1).*: scripts/rig-check.sh' <
   && ok "undeclared-script-listed-fixture-skipped" || bad "undeclared-script-listed-fixture-skipped: $out"
 decl '{"instance":{"scripts/rig-":{"reviewed":"2026-10-01","why":"probes this venue only","evidence":"rig-switch-a"}}}'
 out=$(run); [[ -z "$out" ]] && ok "declared-prefix-with-evidence-silent" || bad "declared-prefix-with-evidence-silent: $out"
-decl '{"alpha":{"scripts/rig-check.sh":{"until":"2026-10-20","why":"core port"}}}'
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"core port"}}}'
 out=$(run); [[ -z "$out" ]] && ok "alpha-script-in-date-silent" || bad "alpha-script-in-date-silent: $out"
 out=$(TODAY=2026-10-21 run); grep -q 'past their date.*scripts/rig-check.sh' <<< "$out" && ok "alpha-script-expired-loud" || bad "alpha-script-expired-loud: $out"
+# Every alpha names its kind (operator 2026-11-17): test waits for its result, unreleased carries its core PR.
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"o/r#123"}}}'
+out=$(run); [[ -z "$out" ]] && ok "alpha-unreleased-with-core-pr-silent" || bad "alpha-unreleased-with-core-pr-silent: $out"
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"https://github.com/o/r/pull/9"}}}'
+out=$(run); [[ -z "$out" ]] && ok "alpha-unreleased-with-pr-url-silent" || bad "alpha-unreleased-with-pr-url-silent: $out"
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature"}}}'
+out=$(run); grep -q '^!! local machinery: 1 alpha declaration(s) without a valid kind: scripts/rig-check.sh (unreleased without core_pr)' <<< "$out" \
+  && grep -q '^local machinery summary: .*alphakind=1' <<< "$out" \
+  && ok "alpha-unreleased-without-core-pr-loud" || bad "alpha-unreleased-without-core-pr-loud: $out"
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"soon"}}}'
+out=$(run); grep -q 'without a valid kind: scripts/rig-check.sh (unreleased without core_pr)' <<< "$out" \
+  && ok "alpha-unreleased-core-pr-not-a-pr-loud" || bad "alpha-unreleased-core-pr-not-a-pr-loud: $out"
+# A bare "#n" names no repo (Windows review 2026-11-17).
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"#123"}}}'
+out=$(run); grep -q 'without a valid kind: scripts/rig-check.sh (unreleased without core_pr)' <<< "$out" \
+  && ok "alpha-unreleased-core-pr-without-repo-loud" || bad "alpha-unreleased-core-pr-without-repo-loud: $out"
+decl '{"alpha":{"scripts/rig-check.sh":{"until":"2026-10-20","why":"core port"}}}'
+out=$(run); grep -q "without a valid kind: scripts/rig-check.sh (no kind)" <<< "$out" \
+  && ok "alpha-without-kind-loud" || bad "alpha-without-kind-loud: $out"
+decl '{"alpha":{"scripts/rig-check.sh":"core port"}}'
+out=$(run); grep -q "without a valid kind: scripts/rig-check.sh (no kind)" <<< "$out" \
+  && ok "alpha-string-form-without-kind-loud" || bad "alpha-string-form-without-kind-loud: $out"
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"later","until":"2026-10-20","why":"core port"}}}'
+out=$(run); grep -q "without a valid kind: scripts/rig-check.sh (kind 'later')" <<< "$out" \
+  && ok "alpha-unknown-kind-loud" || bad "alpha-unknown-kind-loud: $out"
 
 # --- identity tokens: an undeclared item without any is presumably general ----------------
 decl '{"identity_tokens":{"devices":["rig-switch-a"],"hosts":["203.0.113.7"]}}'
@@ -280,7 +305,7 @@ printf '{"mcpServers":{"s":{"command":"node","args":["%s"]}}}' "$(nat "$T/suite/
 out=$(run); [[ -z "$out" ]] && ok "mcp-source-on-main-silent" || bad "mcp-source-on-main-silent: $out"
 git -C "$T/suite" checkout -q -b feat/x
 out=$(run); grep -q 'suite@feat/x' <<< "$out" && ok "mcp-source-off-main-loud" || bad "mcp-source-off-main-loud: $out"
-decl "$(printf '{"alpha":{"%s":{"until":"2026-10-20","why":"alpha"}}}' "$(nat "$T/suite")")"
+decl "$(printf '{"alpha":{"%s":{"kind":"test","until":"2026-10-20","why":"alpha"}}}' "$(nat "$T/suite")")"
 out=$(run); [[ -z "$out" ]] && ok "off-main-declared-alpha-silent" || bad "off-main-declared-alpha-silent: $out"
 rm -f "$T/b/.mcp.json" "$T/b/.claude/rules/local-machinery.json"; mkdir -p "$T/b/.claude/skills"
 ln -s "$T/suite/skills/s1" "$T/b/.claude/skills/s1" 2>/dev/null
@@ -306,7 +331,7 @@ printf '{"plugins":[{"name":"suite","source":{"source":"url","url":"https://gith
   > "$T/fakehome/.claude/plugins/marketplaces/m/.claude-plugin/marketplace.json"
 out=$(run); grep -q 'suite clone.*plugin suite@m' <<< "$out" \
   && ok "url-source-names-the-same-repo" || bad "url-source-names-the-same-repo: $out"
-decl "$(printf '{"alpha":{"%s":{"until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
+decl "$(printf '{"alpha":{"%s":{"kind":"test","until":"2026-10-20","why":"checking a PR head"}}}' "$(nat "$T/suite")")"
 out=$(run); [[ -z "$out" ]] && ok "clone-declared-alpha-silent" || bad "clone-declared-alpha-silent: $out"
 out=$(TODAY=2026-10-21 run); grep -q 'past their date' <<< "$out" \
   && ok "clone-on-main-alpha-expired-loud" || bad "clone-on-main-alpha-expired-loud: $out"
