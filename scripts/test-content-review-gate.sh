@@ -16,7 +16,7 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 N="$(native "$T")"  # native form: the gate (node) reads the --body-file paths below
 # the fake gh: `gh api ...` (the compare view) answers COMPARE_FILES, everything else the PR JSON
 # pr-<n>.json next to pr.json, when present, answers `gh pr view <n>` (a train's member); else pr.json
-printf 'const fs = require("fs"); const own = process.env.PR_JSON.replace(/\\.json$/, "-" + process.argv[4] + ".json");\nprocess.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : fs.readFileSync(fs.existsSync(own) ? own : process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
+printf 'const fs = require("fs"); const own = process.env.PR_JSON.replace(/\\.json$/, "-" + process.argv[4] + ".json");\nif (process.env.GH_DELAY_MS && process.argv[2] === "pr") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.GH_DELAY_MS));\nprocess.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : fs.readFileSync(fs.existsSync(own) ? own : process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
 # a core-like repo: its root carries pr-risk.json
 git init -q "$T/core"
 cp "$ROOT/pr-risk.json" "$T/core/pr-risk.json"
@@ -251,5 +251,17 @@ printf '{"body":"Risk: high - gate","files":[{"path":"helpers/x-gate.cjs"}],"com
 cp "$T/pr-8.json" "$T/pr-9.json"
 probe "note and left-out lines of a train are no members" "$M" allow
 rm -f "$T/pr-8.json" "$T/pr-9.json"
+# train #571 (2026-11-17): 55 members read one after another took 34 s against the hook's 30 s. 40 members whose gh
+# answer takes 1 s each: read in parallel, the merge is judged within the budget (sequential would need 40 s).
+body="## Merge train big"; for n in $(seq 100 139); do body="$body
+- #$n fix/m$n abc1234"; done
+pr "$body" "" "$T/c-7.md"
+for n in $(seq 100 139); do cp "$T/pr.json" "$T/pr-$n.json"; done
+pr "$body" "" ""
+t0=$(date +%s)
+GH_DELAY_MS=1000 probe "40 members, 1 s per gh answer: all read, all reviewed" "$M" allow
+t1=$(date +%s)
+[ $((t1 - t0)) -le 15 ] && ok "  ... in $((t1 - t0)) s (sequential: 40 s)" || bad "  ... took $((t1 - t0)) s"
+for n in $(seq 100 139); do rm -f "$T/pr-$n.json"; done
 
 [ "$fail" -eq 0 ] && echo "content-review-gate fixtures: ALL passed" || { echo "content-review-gate fixtures: FAILURES"; exit 1; }
