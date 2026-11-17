@@ -132,5 +132,56 @@ printf '%s\n' '- **new.** (test: T0)' > "$SU/changelog.d/new.md"
 git -C "$SU" -c user.email=t@t -c user.name=t commit -qam bad
 lvprobe "negative control: a committed malformed fragment of the PR blocks" "$SU" "gh pr create --title t --body \"b <!-- instance-key: $KEY -->\"" block
 
+# A commit the text points at must be on the remote (2026-11-12, macOS instance: nine comments named
+# a train commit that was only local; the Windows instance got 422 "No commit found"). gh is a node
+# stand-in (INSTANCE_KEY_GATE_GH): FAKE_GH=missing answers 422, pushed answers, offline cannot connect.
+printf '%s\n' "const a = process.argv.find((x) => x.startsWith('repos/')) || ''; const sha = a.split('/').pop();" \
+  "const m = process.env.FAKE_GH || 'missing';" \
+  "if (m === 'offline') { process.stderr.write('error connecting to api.github.com\n'); process.exit(1); }" \
+  "if (m === 'pushed') { console.log(sha); process.exit(0); }" \
+  "if (m === 'slow') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);" \
+  "process.stderr.write('gh: No commit found for SHA: ' + sha + ' (HTTP 422)\n'); process.exit(1);" > "$T/gh.cjs"
+shaprobe() { # $1 label, $2 cwd, $3 body file, $4 block|allow, [$5 SELF, default mac]; prints the gate's stderr into $SHAOUT
+  local rc
+  SHAOUT=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$2")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "gh pr comment 5 -R o/r --body-file $(native "$3")")}}" \
+        | CLAUDE_PROJECT_DIR="$(native "$T/brain")" SHARED_MEMORY_SELF="${5-mac}" INSTANCE_KEY_GATE_GH="$(native "$T/gh.cjs")" node "$(native "$GATE")" 2>&1); rc=$?
+  if [ "$rc" -eq 2 ]; then [ "$4" = block ] && ok "$1 blocks" || bad "$1 blocked: ${SHAOUT:0:160}"
+  else [ "$4" = allow ] && ok "$1 allows" || bad "$1 did NOT block (rc=$rc)"; fi
+}
+# Held is only a commit of a local checkout that no remote branch of it contains (review 2026-11-13,
+# Windows instance: a 422 also comes for another repo's sha and for a 10-hex instance key). Full
+# 40-character shas, so the pointer rule (a letter and a digit) holds in every run.
+mkcommit() { GIT_AUTHOR_DATE=2026-11-12T00:00:00Z GIT_COMMITTER_DATE=2026-11-12T00:00:00Z git -C "$1" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "$2"; git -C "$1" rev-parse HEAD; }
+RC="$T/rc"; git init -q -b main "$RC"; git -C "$RC" remote add origin https://github.com/o/r.git
+PUSHED="$(mkcommit "$RC" pushed)"; git -C "$RC" update-ref refs/remotes/origin/main HEAD
+LOCAL="$(mkcommit "$RC" local)"
+LOCAL2="$(mkcommit "$RC" local2)"
+OTHER="$T/other"; git init -q -b main "$OTHER"; FOREIGN="$(mkcommit "$OTHER" foreign)"
+printf 'fixed in the train at `%s`\n<!-- instance-key: %s -->\n' "$LOCAL" "$KEY" > "$T/sha.md"
+FAKE_GH=missing shaprobe "a local-only commit the remote does not have" "$RC" "$T/sha.md" block
+case "$SHAOUT" in *"$LOCAL"*"Push first, then post"*) ok "block message names the sha and says push first" ;; *) bad "sha message: ${SHAOUT:0:200}" ;; esac
+FAKE_GH=pushed shaprobe "a local commit the API answers" "$RC" "$T/sha.md" allow
+FAKE_GH=offline shaprobe "no network" "$RC" "$T/sha.md" allow
+case "$SHAOUT" in *"not readable for $LOCAL"*) ok "no network says so on stderr" ;; *) bad "offline line missing: ${SHAOUT:0:200}" ;; esac
+FAKE_GH=missing shaprobe "without an instance id the pointer still holds" "$RC" "$T/sha.md" block ""
+printf 'fixed at `%s`\n<!-- instance-key: %s -->\n' "$PUSHED" "$KEY" > "$T/rc-pushed.md"
+FAKE_GH=missing shaprobe "a sha on a remote branch of the checkout (API says 422)" "$RC" "$T/rc-pushed.md" allow
+printf 'the other instance is `181fb5d93f`\n<!-- instance-key: %s -->\n' "$KEY" > "$T/key.md"
+FAKE_GH=missing shaprobe "a backticked 10-hex instance key (API says 422)" "$RC" "$T/key.md" allow
+printf 'the suite head is `%s`\n<!-- instance-key: %s -->\n' "$FOREIGN" "$KEY" > "$T/foreign.md"
+FAKE_GH=missing shaprobe "a commit of another repo (API says 422)" "$RC" "$T/foreign.md" allow
+FAKE_GH=missing shaprobe "a sha outside any checkout (cwd no repo)" "$T" "$T/sha.md" allow
+printf 'see https://github.com/o/r/commit/`%s` and [x](https://github.com/o/r/blob/%s/a.md)\n<!-- instance-key: %s -->\n' "$LOCAL" "$LOCAL" "$KEY" > "$T/url.md"
+FAKE_GH=missing shaprobe "hex inside a URL" "$RC" "$T/url.md" allow
+printf 'measured on `20261112`, word `defaced`, not hex `4a560fz`\n<!-- instance-key: %s -->\n' "$KEY" > "$T/num.md"
+FAKE_GH=missing shaprobe "a plain number, a hex-letter word, a non-hex word" "$RC" "$T/num.md" allow
+# One API budget for all shas; the first timeout ends the asking (the hook's own 10 s timeout blocks).
+printf 'at `%s` and `%s`\n<!-- instance-key: %s -->\n' "$LOCAL" "$LOCAL2" "$KEY" > "$T/two.md"
+t0=$(date +%s)
+FAKE_GH=slow shaprobe "a hanging network, two local shas" "$RC" "$T/two.md" allow
+dt=$(( $(date +%s) - t0 ))
+[ "$dt" -lt 4 ] && ok "a hanging network ends within the budget (${dt} s)" || bad "a hanging network took ${dt} s"
+case "$SHAOUT" in *"did not answer within"*) ok "the timeout says so on stderr" ;; *) bad "timeout line missing: ${SHAOUT:0:200}" ;; esac
+
 [ "$fail" -eq 0 ] && echo "test-instance-key-gate: all checks passed"
 exit "$fail"
