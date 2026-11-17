@@ -48,6 +48,66 @@ o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"content-guard"* ]] && ok "a staged invi
 printf 'bom = chr(0xFEFF)\n' > "$R/scripts/x.py"; gq -C "$R" add -A
 o=$(hook "$R"); [ $? -eq 0 ] && ok "  ... and passes written as a code point" || bad "code point" "$o"
 
+# The CI lint's commit steps in the same hook (2026-11-12): where the repo ships ci-lint-local.sh, the hook runs its
+# --commit mode, so a step the lint holds is held at commit time too. Two steps as the core's ci.yml has them, plus a
+# failing step named shellcheck that --commit must leave out (the one step over the threshold, measured ~21 s).
+L="$T/lintrepo"; mkdir -p "$L/scripts" "$L/helpers" "$L/.github/workflows"
+cp "$HERE/ci-lint-local.sh" "$HERE/ci-lint-local-parse.py" "$L/scripts/"
+cat > "$L/.github/workflows/ci.yml" <<'YML'
+jobs:
+  leaks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: instance-data leak scan (tree)
+        run: exit 1
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: no bare python3 in shell scripts
+        run: |
+          hits=$(grep -rnE '(^|\$\(|\||&&|;)[[:space:]]*python3[[:space:]]' \
+                   --include='*.sh' . | grep -avE ':[0-9]+:[[:space:]]*#' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            exit 1
+          fi
+      - name: helpers parse (node syntax check)
+        run: |
+          for f in helpers/*.cjs; do node --check "$f"; done
+      - name: content guard (malicious-content classes)
+        run: exit 1
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: shellcheck (severity error) over helpers/ and scripts/
+        run: exit 1
+YML
+echo 'module.exports = 1;' > "$L/helpers/ok.cjs"
+gq init -q "$L"; gq -C "$L" add -A; gq -C "$L" commit -qm seed --no-verify
+
+echo "the CI lint's commit steps in the pre-commit"
+echo 'echo hi' > "$L/scripts/fine.sh"; gq -C "$L" add -A
+o=$(hook "$L"); [ $? -eq 0 ] && ok "a clean commit passes; the slow shellcheck step is left out" || bad "clean commit (lint)" "$o"
+# the bare interpreter is assembled at run time, so this fixture's own line is no hit for the same lint step
+printf '%s %s\n' "python3" "-c 1" > "$L/scripts/bare.sh"; gq -C "$L" add -A
+o=$(hook "$L"); [[ $? -ne 0 && "$o" == *"ci lint (--commit)"* && "$o" == *"bare.sh"* ]] \
+  && ok "a staged shell script with a bare python3 is refused at commit time" || bad "bare python3" "$o"
+rm "$L/scripts/bare.sh"; gq -C "$L" add -A
+if command -v node >/dev/null 2>&1; then
+  echo 'module.exports = {;' > "$L/helpers/broken.cjs"; gq -C "$L" add -A
+  o=$(hook "$L"); [[ $? -ne 0 && "$o" == *"helpers parse"* ]] \
+    && ok "a staged helper with a JS syntax error is refused at commit time" || bad "JS syntax error" "$o"
+  rm "$L/helpers/broken.cjs"; gq -C "$L" add -A
+fi
+o=$(hook "$L"); [ $? -eq 0 ] && ok "  ... and passes once both are gone" || bad "after removal (lint)" "$o"
+# Windows review of #516 (2026-11-13): in lint mode the lint's two working-tree steps are left out (their stand-ins
+# above fail on every run, so the clean commit proves the skip) and the hook's own commit-side content guard still holds.
+cp "$HERE/content-guard.py" "$L/scripts/content-guard.py"; gq -C "$L" add -A; gq -C "$L" commit -qm guard --no-verify
+printf 'bom = "\xef\xbb\xbf"\n' > "$L/scripts/x.py"; gq -C "$L" add -A
+o=$(hook "$L"); [[ $? -ne 0 && "$o" == *"content-guard BLOCKS"* ]] \
+  && ok "in lint mode the hook's own content guard still refuses a staged invisible character" || bad "content guard (lint mode)" "$o"
+rm "$L/scripts/x.py"; gq -C "$L" add -A
+
 echo ""
 [ "$fails" -eq 0 ] && echo "pre-commit change-level: all $checks checks pass" || echo "pre-commit change-level: $fails of $checks FAILED"
 exit "$fails"

@@ -64,6 +64,13 @@ jobs:
         run: echo "   note: 1 untracked file(s) NOT checked — stage them and re-run before trusting this: new.py"
       - name: a test name with the same words is no note
         run: echo "  OK  count mismatch = NOT checked"
+  slow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: shellcheck stands in for the slow step
+        run: exit 1
+      - name: a fast step next to it
+        run: echo fast > marker-fast
 YML
 
 # A Windows-shaped PATH for the py job: `python3` is a stub that only prints the Store message
@@ -130,6 +137,16 @@ grep -q "SKIP py / needs a missing tool (not installed here: no-such-tool-xyz" "
 run partial; rc=$?
 grep -q "untracked file(s) NOT checked" "$T/out" && ok "a step's NOT-checked note is printed under its OK" || bad "a step's NOT-checked note is printed under its OK"
 [ "$rc" = 1 ] && grep -q "ci-lint-local: 1 step(s) passed but did NOT check everything" "$T/out" && ok "a NOT-checked note makes the run not green (rc 1), a test name with the words does not count" || bad "a NOT-checked note makes the run not green (rc $rc)"
+# --commit (2026-11-12): the pre-commit's mode. A step over the commit threshold (COMMIT_SLOW) is listed, not run; the
+# rest runs; a NOT-checked note is shown but leaves the run green, since untracked files are normal at commit time.
+run --commit slow; rc=$?
+[ "$rc" = 0 ] && grep -q "SKIP slow / shellcheck stands in for the slow step (--commit: slower than" "$T/out" && [ -f "$T/repo/marker-fast" ] \
+  && ok "--commit leaves the slow step out, named, and runs the fast one" || bad "--commit leaves the slow step out (rc $rc)"
+run slow; rc=$?
+[ "$rc" = 1 ] && ok "  ... without --commit the same step runs and is red (rc 1)" || bad "without --commit the slow step runs (rc $rc)"
+run --commit partial; rc=$?
+[ "$rc" = 0 ] && grep -q "untracked file(s) NOT checked" "$T/out" \
+  && ok "--commit prints a NOT-checked note and stays green" || bad "--commit and a NOT-checked note (rc $rc)"
 rm -f "$T/repo/marker-py"
 # BASH_ENV cleared: when this fixture itself runs under ci-lint-local (its fixture-suite step), the
 # outer run's prelude would put its own python3 first and the control would not see the stub.
