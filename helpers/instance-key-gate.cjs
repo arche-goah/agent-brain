@@ -182,6 +182,28 @@ function localState(sha, checkout) {
   return 'local';
 }
 
+// The submodules of a checkout whose URL is the target repo (#514 review, 2026-11-17): a brain posts to the core
+// from its own root, where `origin` is the brain - the core's commits live in the submodule `core/`, so a local-only
+// core commit read as "not ours" and passed unchecked. Read from .gitmodules; none or unreadable = [].
+function submodulesOf(checkout, repo) {
+  if (!checkout || !repo) return [];
+  const { execFileSync } = require('child_process');
+  let out = '';
+  try {
+    out = execFileSync('git', ['-C', checkout, 'config', '-f', '.gitmodules', '--get-regexp', '^submodule\\..*\\.(url|path)$'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (e) { return []; }
+  const subs = {};
+  for (const line of out.split('\n')) {
+    const m = /^submodule\.(.+)\.(url|path) (.+)$/.exec(line.trim());
+    if (m) (subs[m[1]] = subs[m[1]] || {})[m[2]] = m[3];
+  }
+  const want = repo.toLowerCase();
+  return Object.values(subs)
+    .filter((s) => s.url && s.path && ((/github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?$/.exec(s.url) || [])[1] || '').toLowerCase() === want)
+    .map((s) => require('path').join(checkout, s.path));
+}
+
 // true = on the remote, false = the API answers 422, null = unreadable, 'timeout' = budget spent.
 function apiHas(sha, repo, ms) {
   const { execFileSync } = require('child_process');
@@ -208,7 +230,7 @@ function unpushed(cmd, ps, cwd, files, pub) {
     console.error(`instance-key-gate: no target repo found, commit pointers ${shas.join(', ')} not checked`);
     return [];
   }
-  const checkouts = [...new Set([checkout, local].filter(Boolean))];
+  const checkouts = [...new Set([checkout, local, ...submodulesOf(local, repo)].filter(Boolean))];
   const missing = [];
   const end = Date.now() + API_BUDGET_MS;
   for (const sha of shas) {
