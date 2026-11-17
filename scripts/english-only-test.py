@@ -15,6 +15,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.stdout.reconfigure(encoding="utf-8", newline="\n")   # the smoke greps these lines
+sys.stderr.reconfigure(encoding="utf-8")
 fails = 0
 
 

@@ -59,6 +59,7 @@ from pathlib import Path
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # OS-9: cp1252 + CRLF on Windows
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
     pass
 

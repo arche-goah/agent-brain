@@ -69,6 +69,7 @@ from plugin_records import own_record  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
     pass
 

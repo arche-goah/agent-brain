@@ -57,6 +57,26 @@ def unpinned_stdin(src, name):
     return [] if pinned or not reads else [(min(reads), "stdin")]
 
 
+def stream_pins(src, name):
+    """Names of the std streams a script pins with `sys.<stream>.reconfigure(...)`."""
+    pins = set()
+    for n in ast.walk(ast.parse(src, name)):
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "reconfigure"
+                and isinstance(n.func.value, ast.Attribute) and isinstance(n.func.value.value, ast.Name)
+                and n.func.value.value.id == "sys"):
+            pins.add(n.func.value.attr)
+    return pins
+
+
+# OS-9, stderr half (2026-11-12): a script that pins stdout but not stderr still writes its error
+# lines in the platform codec. The CI fixture loop runs Python under PYTHONIOENCODING=cp1252;
+# start-findings.py pinned stdout only, an error line with an em dash left as 0x97, and the test
+# that decodes UTF-8 crashed (agent-brain #522, ubuntu). 66 scripts had the same shape.
+def stderr_unpinned(src, name):
+    pins = stream_pins(src, name)
+    return "stdout" in pins and "stderr" not in pins
+
+
 fails = checks = 0
 
 
@@ -82,6 +102,11 @@ child = 'CHILD = "import sys\\nfor line in sys.stdin: pass"\n'
 check("a sys.stdin read in a file that never pins stdin is found", unencoded(bad_stdin, "bad_stdin") == [(3, "stdin")])
 check("a pinned stdin, or stdin code inside a string, passes",
       unencoded(good_stdin, "good_stdin") == [] and unencoded(child, "child") == [])
+pin_out = 'import sys\nsys.stdout.reconfigure(encoding="utf-8")\n'
+pin_both = pin_out + 'try:\n    sys.stderr.reconfigure(encoding="utf-8")\nexcept ValueError:\n    pass\n'
+check("a script pinning stdout but not stderr is reported", stderr_unpinned(pin_out, "pin_out"))
+check("a script pinning both streams, or neither, passes",
+      not stderr_unpinned(pin_both, "pin_both") and not stderr_unpinned("import sys\n", "none"))
 with tempfile.TemporaryDirectory() as tmp:
     p = Path(tmp) / "planted.py"
     p.write_text(bad, encoding="utf-8")
@@ -89,6 +114,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
 files = subprocess.run(["git", "-C", str(ROOT), "ls-files", "*.py"], capture_output=True, text=True, check=True).stdout.split()
 found = []
+unpinned = []
 for f in files:
     path = ROOT / f
     if not path.is_file():
@@ -96,12 +122,18 @@ for f in files:
     try:
         src = path.read_text(encoding="utf-8")
         hits = unencoded(src, f)
+        if stderr_unpinned(src, f):
+            unpinned.append(f)
     except (SyntaxError, UnicodeDecodeError):
         continue
     found += [f"{f}:{line} {meth}" for line, meth in hits]
 check(f"every read_text/write_text/text-mode open()/stdin read in the core names its encoding ({len(files)} files)", not found)
 for h in found:
     print("       " + h + (' - add sys.stdin.reconfigure(encoding="utf-8")' if h.endswith(" stdin") else ' - add encoding="utf-8"'))
+
+check(f"every script that pins stdout also pins stderr ({len(files)} files)", not unpinned)
+for f in unpinned:
+    print("       " + f + ' - add sys.stderr.reconfigure(encoding="utf-8") next to the stdout pin')
 
 print(f"\n{checks - fails}/{checks} passed")
 sys.exit(1 if fails else 0)

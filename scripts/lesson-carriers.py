@@ -58,6 +58,7 @@ from pathlib import Path
 # OS-9: the session-close step and brain-scan-prep.py parse this output — pin the bytes
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
     pass
 

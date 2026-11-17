@@ -79,6 +79,7 @@ from pathlib import Path
 # as a precaution: a consumer that changes what it extracts must not have to know this.
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):  # a stream that cannot be reconfigured
     pass
 

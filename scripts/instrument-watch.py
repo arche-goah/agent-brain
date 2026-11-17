@@ -30,6 +30,7 @@ from ledger_fields import first_value  # noqa: E402  the one id grammar (ledger-
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
     pass
 

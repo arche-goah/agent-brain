@@ -30,6 +30,7 @@ from pathlib import Path
 # write explicit utf-8), only the display — measured 2026-08-04.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 CORE = Path(__file__).resolve().parent.parent
 BRAIN = Path(os.environ.get("BRAIN_DIR", Path.cwd())).resolve()

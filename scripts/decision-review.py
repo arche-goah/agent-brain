@@ -61,6 +61,7 @@ from transcript_kind import sessions as sessions_only  # noqa: E402  (headless c
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
     pass
 

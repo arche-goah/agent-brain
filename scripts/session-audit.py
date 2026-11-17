@@ -279,6 +279,7 @@ def main():
     ap.add_argument("--ack", nargs="+")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # OS-9: parsed by the bootup and open-items
+    sys.stderr.reconfigure(encoding="utf-8")
 
     root = Path(a.root)
     state_file = root / ".claude-state" / "session-audit.json"
