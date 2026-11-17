@@ -563,6 +563,10 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: git -C stash push" Bash command "git -C /r stash push -m x" block
   tr_probe "mechanism-guard/core rule: git stash list (control)" Bash command "git stash list" allow
   tr_probe "mechanism-guard/core rule: git stash show (control)" Bash command "git -C /r stash show -p" allow
+  # 2026-11-17, ported from the Windows instance: a parallel fetch moves FETCH_HEAD under a worktree add
+  tr_probe "mechanism-guard/core rule: worktree add at FETCH_HEAD" Bash command "git -C /r fetch -q origin pull/5/head && git -C /r worktree add -q /x/wt-5 FETCH_HEAD" block
+  tr_probe "mechanism-guard/core rule: worktree add at a full sha (control)" Bash command "git -C /r worktree add -q /x/wt-5 74c45dad5c24bf3f6f8ae8b751fb18e6ccb0febe" allow
+  tr_probe "mechanism-guard/core rule: rev-parse FETCH_HEAD (control)" Bash command "git -C /r rev-parse FETCH_HEAD" allow
   # 2026-11-11 (macOS instance): an office file built by a generic converter lost its sizes and page setup
   tr_probe "mechanism-guard/core rule: textutil builds a docx" Bash command "textutil -convert docx -output a.docx a.html" block
   tr_probe "mechanism-guard/core rule: pandoc builds a docx" Bash command "pandoc a.md -o out.docx" block
