@@ -31,6 +31,7 @@ import datetime
 import glob
 import json
 import os
+import pathlib
 import re
 import sys
 
@@ -107,12 +108,12 @@ def gate_retract(gate):
     m = re.search(r"^const RETRACT = \[(.*)\];\s*$", src, re.M)
     pats = re.findall(r"/((?:\\.|[^/\\])+)/[a-z]*", m.group(1)) if m else []
     if not pats:
-        raise SystemExit(f"commitments: no `const RETRACT = [...]` line in {gate}")
+        raise SystemExit(f"commitments: no `const RETRACT = [...]` line in {os.path.basename(str(gate))}")
     return pats
 
 
 # The take-backs the gate accepts (its RETRACT), plus the instance's `retract_patterns` at the call.
-RETRACT = gate_retract(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "helpers", "commitment-carrier-gate.cjs"))
+RETRACT = gate_retract(pathlib.Path(__file__).resolve().parent.parent / "helpers" / "commitment-carrier-gate.cjs")
 HOOK_ECHO = re.compile(r"^Stop hook feedback:")
 
 
