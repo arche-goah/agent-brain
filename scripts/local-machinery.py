@@ -32,7 +32,7 @@ Declarations: `.claude/rules/local-machinery.json`
    "external": {"<id or prefix>": {"source": "<where it comes from>", "why": "..."}},
                  (third-party skills/plugins used as they are — not ours to port to the core)
    "alpha":   {"<id or prefix>": {"kind": "test" | "unreleased", "until": "YYYY-MM-DD", "why": "...",
-                                  "core_pr": "<PR URL or #n>"}},
+                                  "core_pr": "<PR URL or owner/repo#n>"}},
                  (test: a real test phase, the core port waits for it, `why` names what is measured;
                   unreleased: a clear core feature wired before its release, `core_pr` required, the
                   date is an emergency brake; no kind, or unreleased without core_pr = loud)
@@ -944,7 +944,9 @@ def uniq(xs):
     return list(dict.fromkeys(xs))
 
 
-CORE_PR = re.compile(r"#\d+|https?://\S+/pull/\d+/?")
+# The repo is named (Windows review 2026-11-17: a bare "#n" names no repo). Shape only: reading the PR state would be
+# a network call at every session start, so a PR closed unmerged stays silent until the date (the debt).
+CORE_PR = re.compile(r"[\w.-]+/[\w.-]+#\d+|https?://\S+/pull/\d+/?")
 
 
 def alpha_kinds(decl):
@@ -972,7 +974,7 @@ MESSAGES = {
     "shadow": "!! local machinery: {n} instance item(s) shadow a core item of the same name: {x} — use the core one and remove the copy, or rename it if it is a different tool",
     "caughtup": "!! local machinery: {n} alpha(s) the running core has caught up with, still wired: {x} — unwire the copy and its wiring now (the core carries it)",
     "expired": "!! local machinery: {n} alpha(s) past their date, still wired: {x} — merge, extend with a reason, or unwire",
-    "alphakind": "!! local machinery: {n} alpha declaration(s) without a valid kind: {x} — name \"kind\": \"test\" (a real test phase; the core port waits for its result) or \"unreleased\" (a clear core feature wired before its release) with \"core_pr\": the core PR, opened now",
+    "alphakind": "!! local machinery: {n} alpha declaration(s) without a valid kind: {x} — name \"kind\": \"test\" (a real test phase; the core port waits for its result) or \"unreleased\" (a clear core feature wired before its release) with \"core_pr\": the core PR (URL or owner/repo#n), opened now",
     "outside": "!! local machinery: {n} item(s) run from outside this brain and outside the core, undeclared: {x} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR",
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
     "noevidence": "!! local machinery: {n} instance declaration(s) give a reason without evidence: {x} — add \"evidence\": the instance-specific token the item relies on",

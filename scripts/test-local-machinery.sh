@@ -143,7 +143,7 @@ decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why"
 out=$(run); [[ -z "$out" ]] && ok "alpha-script-in-date-silent" || bad "alpha-script-in-date-silent: $out"
 out=$(TODAY=2026-10-21 run); grep -q 'past their date.*scripts/rig-check.sh' <<< "$out" && ok "alpha-script-expired-loud" || bad "alpha-script-expired-loud: $out"
 # Every alpha names its kind (operator 2026-11-17): test waits for its result, unreleased carries its core PR.
-decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"#123"}}}'
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"o/r#123"}}}'
 out=$(run); [[ -z "$out" ]] && ok "alpha-unreleased-with-core-pr-silent" || bad "alpha-unreleased-with-core-pr-silent: $out"
 decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"https://github.com/o/r/pull/9"}}}'
 out=$(run); [[ -z "$out" ]] && ok "alpha-unreleased-with-pr-url-silent" || bad "alpha-unreleased-with-pr-url-silent: $out"
@@ -154,6 +154,10 @@ out=$(run); grep -q '^!! local machinery: 1 alpha declaration(s) without a valid
 decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"soon"}}}'
 out=$(run); grep -q 'without a valid kind: scripts/rig-check.sh (unreleased without core_pr)' <<< "$out" \
   && ok "alpha-unreleased-core-pr-not-a-pr-loud" || bad "alpha-unreleased-core-pr-not-a-pr-loud: $out"
+# A bare "#n" names no repo (Windows review 2026-11-17).
+decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"#123"}}}'
+out=$(run); grep -q 'without a valid kind: scripts/rig-check.sh (unreleased without core_pr)' <<< "$out" \
+  && ok "alpha-unreleased-core-pr-without-repo-loud" || bad "alpha-unreleased-core-pr-without-repo-loud: $out"
 decl '{"alpha":{"scripts/rig-check.sh":{"until":"2026-10-20","why":"core port"}}}'
 out=$(run); grep -q "without a valid kind: scripts/rig-check.sh (no kind)" <<< "$out" \
   && ok "alpha-without-kind-loud" || bad "alpha-without-kind-loud: $out"
