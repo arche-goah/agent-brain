@@ -766,6 +766,9 @@ ANY_EXIT = re.compile(FIELD_LINE + r"exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re
 # still ahead or a topic is not due at the session start. Measured 2026-10-30: nine entries with a
 # topic trigger printed every session, seven of them as "needs you".
 ASK_WHEN = re.compile(FIELD_LINE + r"ask-when:\s*(.+?)\s*$", re.M)
+# `record-read: <date> ...` - the agent read the record of a green-from-birth operator decision and the answer is not in
+# it (Windows review 2026-11-17, #570: without it a weak check kept a real decision away from the operator for good).
+RECORD_READ = re.compile(FIELD_LINE + r"record-read:\s*\d{4}-\d{2}-\d{2}\b", re.M)
 # The exits of skill backlog-catch-up, step 3.
 EXITS ={"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
 
@@ -1142,9 +1145,16 @@ def main():
         # paragraph in place and its check green, stood as "needs you" in the start report — reconcile had
         # named it "negative control missing", and nobody read that against the entry). Reading the record
         # and ticking or sharpening the check is the agent's move; only then may it go to the operator.
+        # The way back (Windows review 2026-11-17, #570): a green-from-birth check proves the check weak, not the
+        # decision made. The agent that read the record and found the answer NOT in writes `record-read: <date> ...`
+        # into the entry; from then on it is the operator's again, marked so.
         if it.get("green_unproven") and it["cls"] == "human":
-            it["cls"], it["why"] = "ai", ("its check is green although the box is open - read the record: the answer may "
-                                          "be in, tick it with the evidence, or sharpen the check until it is red without the work")
+            if RECORD_READ.search(it.get("body") or ""):
+                it["why"] = "an operator decision (record read, answer not in; its check is weak - sharpen it)"
+            else:
+                it["cls"], it["why"] = "ai", ("its check is green although the box is open - read the record: the answer "
+                                              "may be in, tick it with the evidence; if it is not, write `record-read: "
+                                              "<date> answer not in` and it returns to the operator")
         # Parked means not WORKED ON, never unanswered: a request from another side in a parked
         # domain still gets an answer (receipt, state, when it resumes). Measured: one such
         # question lay 30 days on the parked line.
