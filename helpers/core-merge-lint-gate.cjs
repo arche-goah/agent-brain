@@ -119,7 +119,9 @@ function lsRemote(ref, repo) {
 }
 
 function judge(input) {
-  if (!input || input.tool_name !== 'Bash') return null;
+  // PowerShell too (Windows review 2026-11-17): the hook group is registered for both, but a Bash-only check here let a
+  // merge or a push through the PowerShell tool on Windows pass unseen.
+  if (!input || (input.tool_name !== 'Bash' && input.tool_name !== 'PowerShell')) return null;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
   if (!/\bgh\s+pr\s+merge\b|\bgit\s+-C\b[^\n]*\bpush\b/.test(cmd)) return null;
   const repo = coreRepo();

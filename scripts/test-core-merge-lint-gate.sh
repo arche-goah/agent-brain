@@ -21,6 +21,8 @@ hook() { node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_inp
 REFS='{"refs/pull/7/head":"aaaa111","refs/heads/main":"bbbb222"}'
 probe() { verdict "$1" "$(hook "$2" | CORE_MERGE_LINT_REFS="$REFS" CORE_MERGE_LINT_STAMPS="$TN" node "$G")" "$3"; }
 probe "core merge without a stamp" "gh pr merge 7 -R example-org/core --squash" block
+# Windows review 2026-11-17: the same merge through the PowerShell tool is held too
+verdict "core merge through the PowerShell tool, no stamp" "$(node -e 'process.stdout.write(JSON.stringify({tool_name:"PowerShell",tool_input:{command:process.argv[1]}}))' "gh pr merge 7 -R example-org/core --squash" | CORE_MERGE_LINT_REFS="$REFS" CORE_MERGE_LINT_STAMPS="$TN" node "$G")" block
 : > "$T/aaaa111-bbbb222.ok"
 probe "core merge with a stamp for head + main" "gh pr merge 7 -R example-org/core --squash" allow
 probe "the --repo spelling with a stamp" "gh pr merge 7 --repo example-org/core --squash" allow

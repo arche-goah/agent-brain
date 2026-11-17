@@ -10,4 +10,5 @@
   (2026-11-11: ten branches linted in full one by one, ~2 h queue). The core repo is data — `CORE_LINT_REPO`, else
   the origin of the core checkout — never a name in the code; a push to `<repo>-shared` no longer matches as the
   core (the alpha matched by substring). Fixtures: `scripts/test-core-merge-lint-gate.sh` (26, both directions),
-  `scripts/test-guards.sh` (+5 rows).
+  `scripts/test-guards.sh` (+5 rows). The gate reads the PowerShell tool as well as Bash (Windows review 2026-11-17:
+  its hook group was registered for both, the gate itself returned early for PowerShell; one fixture case, red before).
