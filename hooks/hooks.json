@@ -124,6 +124,11 @@
           },
           {
             "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/core-merge-lint-gate.cjs\"",
+            "timeout": 30
+          },
+          {
+            "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/content-review-gate.cjs\"",
             "timeout": 30,
             "onFailure": "block"
