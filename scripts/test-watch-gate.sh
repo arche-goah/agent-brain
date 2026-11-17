@@ -458,8 +458,11 @@ check "(h) instance done-claim patterns" "$T/dc10.jsonl" block "$DC"
 # `BLOCKED:` + `WATCH-GAP: <key>` passes the coverable watcher findings when the key is an entry of
 # .claude/rules/local-machinery.json; an undeclared key, a missing BLOCKED line or a hand step still block.
 WG="$T/wg-brain"; mkdir -p "$WG/.claude/rules"
-printf '{"instance":{"scripts/no-watch-here":{"why":"show machine offline, no poller","evidence":["x"]}},"alpha":{},"external":{}}\n' \
+printf '{"instance":{"scripts/no-watch-here":{"why":"show machine offline, no poller","evidence":["x"],"watch_gap":"the show machine has no network, nothing can poll it"},"CLAUDE.md":{"why":"instance rules","evidence":["x"]}},"alpha":{},"external":{}}\n' \
   > "$WG/.claude/rules/local-machinery.json"
+# Windows review 2026-11-17 (#546): a declared entry that declares no watcher gap is no pass
+{ user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "BLOCKED: PR review. WATCH-GAP: CLAUDE.md"; } > "$T/wg0.jsonl"
+check "WATCH-GAP naming a declared but unrelated key (no watch_gap field)" "$T/wg0.jsonl" block "$WG"
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "BLOCKED: PR review — no watcher can run here. WATCH-GAP: scripts/no-watch-here"; } > "$T/wg1.jsonl"
 check "BLOCKED + declared WATCH-GAP" "$T/wg1.jsonl" allow "$WG"
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "BLOCKED: PR review — WATCH-GAP: scripts/made-up"; } > "$T/wg2.jsonl"

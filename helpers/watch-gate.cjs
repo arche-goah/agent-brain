@@ -609,8 +609,10 @@ function ghListed(ghCalls, root) {
   return (ends) => ghCalls.every((c) => listed(ends, [nameOf(ghRepo(c, root)), ghNumber(c)]));
 }
 
-// `BLOCKED:` line plus `WATCH-GAP: <key>`, the key declared in .claude/rules/local-machinery.json.
-// Returns the key, or null (no token, no BLOCKED line, unreadable file, undeclared key).
+// `BLOCKED:` line plus `WATCH-GAP: <key>`, the key an entry of .claude/rules/local-machinery.json that DECLARES a
+// watcher gap: a non-empty `watch_gap` field (what cannot be watched, and why). Windows review 2026-11-17 (#546): any
+// entry passed - `WATCH-GAP: CLAUDE.md` let a PR end unwatched in a brain with 44 unrelated instance entries.
+// Returns the key, or null (no token, no BLOCKED line, unreadable file, undeclared key, an entry without watch_gap).
 function watchGap(root, text) {
   const t = stripQuoted(text || '');
   if (!/^[ \t>*_-]*BLOCKED:/m.test(t)) return null;
@@ -619,8 +621,10 @@ function watchGap(root, text) {
   const key = m[1].replace(/[.,;)]+$/, '');
   try {
     const lm = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'local-machinery.json'), 'utf8'));
-    return ['instance', 'external', 'alpha'].some((k) => lm[k] && typeof lm[k] === 'object'
-      && Object.prototype.hasOwnProperty.call(lm[k], key)) ? key : null;
+    return ['instance', 'external', 'alpha'].some((k) => {
+      const e = lm[k] && typeof lm[k] === 'object' && Object.prototype.hasOwnProperty.call(lm[k], key) ? lm[k][key] : null;
+      return e && typeof e === 'object' && typeof e.watch_gap === 'string' && e.watch_gap.trim();
+    }) ? key : null;
   } catch (e) { return null; }
 }
 

@@ -5,8 +5,8 @@
   instance's coherence scan (2026-11-16) measured that the gate had no BLOCKED case: a machine that cannot
   keep a watcher alive (a show machine offline, a channel it may not poll) was held at every turn end
   although the gap was written down. The operator agreed the same day. A reply with a `BLOCKED:` line AND
-  `WATCH-GAP: <key>`, the key an entry of `.claude/rules/local-machinery.json` (instance / external / alpha),
+  `WATCH-GAP: <key>`, the key an entry of `.claude/rules/local-machinery.json` (instance / external / alpha) that carries a non-empty `watch_gap` field (what cannot be watched, and why - Windows review 2026-11-17: any entry passed, `WATCH-GAP: CLAUDE.md` included),
   passes the watcher findings a close could also cover ((a), (b), (d), (f), (g)); a hand step or reload asked
   of the human and a done claim over an unread CI verdict are never covered. Fixture:
-  `scripts/test-watch-gate.sh` (+4: declared gap passes, undeclared key blocks, no BLOCKED line blocks, a hand
+  `scripts/test-watch-gate.sh` (+5: declared gap passes, a declared entry without `watch_gap` blocks, undeclared key blocks, no BLOCKED line blocks, a hand
   step still blocks); the passing case fails on main.
