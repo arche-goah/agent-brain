@@ -65,7 +65,14 @@ function readPr(t) {
 
 // The OS verdict of a line is read by the ONE reader of OS reviews, shared with release-preflight check 8
 // (two readers disagreed on the same threads, measured 2026-11-06 - see helpers/os-review.cjs).
-const { saysOk, saysNo, OK_RX, NAME_RX } = require('./os-review.cjs');
+const { saysOk, saysNo, formSays, OK_RX, NAME_RX } = require('./os-review.cjs');
+
+/** Does this text say OK for `os` at the head? The structured form decides alone where present (os-review.cjs). */
+function textOk(x, os, shas) {
+  const form = formSays(x, os, shas);
+  if (form !== null) return form;
+  return !saysNo(x, os) && x.split(/\r?\n/).some((l) => saysOk(l, os));
+}
 
 /** The repo's `dependencies.json` as an object, null when it has none (not a suite). */
 function readDeps(t) {
@@ -133,7 +140,7 @@ function uncovered(pr, deps, repo) {
     .filter((x) => shas.some((s) => x.includes(s)));
   const byCi = ciProof(repo);
   return want.filter((os) => !(byCi.includes(os) && ciGreenFor(pr, os))
-    && !texts.some((x) => !saysNo(x, os) && x.split(/\r?\n/).some((l) => saysOk(l, os))));
+    && !texts.some((x) => textOk(x, os, shas)));
 }
 
 function gate(input) {
