@@ -435,21 +435,39 @@ function callDir(cmd, root) {
 function hasWorkflows(dir) {
   try { return fs.readdirSync(path.join(dir, '.github', 'workflows')).some((f) => /\.ya?ml$/i.test(f)); } catch (e) { return false; }
 }
-/** The branch a `git push <remote> <refspec>` sends to; null when the command names none (a bare push, a tag, --all). */
-function pushedBranch(cmd) {
-  const m = /\bpush\b((?:\s+(?:"[^"]*"|'[^']*'|\S+))*)/.exec(cmd.split(/[\n;&|]/).find((s) => /\bgit\b.*\bpush\b/.test(s)) || '');
-  const args = m ? m[1].trim().split(/\s+/).filter((a) => a && !a.startsWith('-')) : [];
+/** The branch one `git push <remote> <refspec>` segment sends to; null when it names none (a bare push, a tag, --all).
+ *  A flag that takes a value (`-o x`, `--push-option x`, `--repo x`) takes its value with it (Windows review
+ *  2026-11-17: `-o ci.skip origin fix/thing` read `origin` as the branch). */
+function segmentBranch(seg) {
+  const m = /\bpush\b((?:\s+(?:"[^"]*"|'[^']*'|\S+))*)/.exec(seg);
+  const raw = m ? m[1].trim().split(/\s+/).filter(Boolean) : [];
+  const args = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (/^(?:-o|--push-option|--repo|--receive-pack|--exec)$/.test(raw[i])) { i++; continue; }
+    if (!raw[i].startsWith('-')) args.push(raw[i]);
+  }
   if (args.length < 2) return null;
   const dst = args[1].replace(/^\+/, '').split(':').pop();
   if (!dst || dst === 'HEAD' || /^refs\/tags\//.test(dst)) return null;
   return dst.replace(/^refs\/heads\//, '');
 }
+/** Every `git push` segment of one call, each with its branch (Windows review 2026-11-17: in
+ *  `git push origin fix/a; git push origin main` only the first push was read). */
+function pushSegments(cmd) {
+  return cmd.split(/[\n;&|]/).filter((s) => /\bgit\b.*\bpush\b/.test(s)).map(segmentBranch);
+}
+function pushedBranch(cmd) { return pushSegments(cmd)[0] || null; }
 /** Does a push to `branch` start a run? Reads each workflow's `on:` block. Measured 2026-11-16 on the macOS instance:
  *  four suite branches pushed, CI there runs on `push: branches: [main]` and pull_request only - zero runs, and this
  *  gate demanded a watcher for each. Unreadable, a bare `push`, `branches-ignore`, or an unknown branch: a run (the
  *  gate errs toward the watch). Only `push.branches` that miss the branch, or `push.tags` alone, or no `push` at all,
- *  say no run. ponytail: a line reader for the common forms, not a YAML parser; anything else counts as a run. */
-function pushRunsCi(dir, branch) {
+ *  say no run. ponytail: a line reader for the common forms, not a YAML parser; anything else counts as a run.
+ *  A push to an EXISTING branch also runs a workflow with `pull_request` (event `synchronize`): the follow-up commit
+ *  on an open PR, the case working rule #9 names (Windows review 2026-11-17, finding on #557: the core's own ci.yml,
+ *  `push: branches: [main]` + `pull_request:`, read as "no run" for every PR-branch push). Only a push the output
+ *  shows as `[new branch]` is exempt (no PR can exist yet); a quiet push (`-q`, no output) counts as a run. A
+ *  `pull_request.types` list without `synchronize` is no run. */
+function pushRunsCi(dir, branch, newBranch = false) {
   let files;
   try { files = fs.readdirSync(path.join(dir, '.github', 'workflows')).filter((f) => /\.ya?ml$/i.test(f)); } catch (e) { return false; }
   if (!files.length) return false;
@@ -465,13 +483,17 @@ function pushRunsCi(dir, branch) {
     const inline = lines[at].replace(/^["']?on["']?\s*:\s*/, '').replace(/\s+#.*$/, '').trim();
     if (inline) return /\bpush\b/.test(inline) || !/^\[|^[\w-]+$/.test(inline);
     const block = [];
-    for (const l of lines.slice(at + 1)) { if (/^\S/.test(l)) break; block.push(l); }
-    const p = block.findIndex((l) => /^\s+push\s*:/.test(l));
-    if (p < 0) return false;
-    const ind = block[p].search(/\S/);
-    const sub = [];
-    for (const l of block.slice(p + 1)) { if (l.trim() && l.search(/\S/) <= ind) break; sub.push(l); }
-    const key = (k) => {
+    // a column-0 comment inside the block does not end it (Windows review 2026-11-17)
+    for (const l of lines.slice(at + 1)) { if (/^#/.test(l)) continue; if (/^\S/.test(l)) break; block.push(l); }
+    const section = (name) => {
+      const p = block.findIndex((l) => new RegExp(`^\\s+${name}\\s*:`).test(l));
+      if (p < 0) return null;
+      const ind = block[p].search(/\S/);
+      const sub = [];
+      for (const l of block.slice(p + 1)) { if (l.trim() && l.search(/\S/) <= ind) break; sub.push(l); }
+      return sub;
+    };
+    const key = (sub, k) => {
       const i = sub.findIndex((l) => new RegExp(`^\\s+${k}\\s*:`).test(l));
       if (i < 0) return null;
       const v = sub[i].replace(/^[^:]*:\s*/, '').replace(/\s+#.*$/, '').trim();
@@ -480,9 +502,16 @@ function pushRunsCi(dir, branch) {
       for (const l of sub.slice(i + 1)) { const m = /^\s+-\s*(.+?)\s*$/.exec(l); if (!m) break; out.push(m[1].replace(/^["']|["']$/g, '')); }
       return out;
     };
-    const branches = key('branches');
+    const pr = section('pull_request');
+    if (pr && !newBranch) {
+      const types = key(pr, 'types');
+      if (!types || types.includes('synchronize')) return true;
+    }
+    const sub = section('push');
+    if (!sub) return false;
+    const branches = key(sub, 'branches');
     if (branches) return branches.some((g) => glob(g).test(branch));
-    return !key('tags');
+    return !key(sub, 'tags');
   });
 }
 /** owner/repo of `origin` when it is a GitHub remote, '' otherwise (then nothing is required). */
@@ -532,7 +561,8 @@ function ciStarted(shell, root) {
       continue;
     }
     const dir = callDir(c.cmd, root);
-    if (!pushRunsCi(dir, pushedBranch(c.cmd))) continue;
+    const fresh = /\[new branch\]/.test(c.out || '');
+    if (!pushSegments(c.cmd).some((b) => pushRunsCi(dir, b, fresh))) continue;
     const slug = originSlug(dir);
     if (slug) out.add(slug);
   }
