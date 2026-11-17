@@ -129,9 +129,17 @@ fi
 # E3 Hook targets: a hook whose script is missing fails silently, per event, forever.
 missing=""
 count=0
-for p in $(grep -oE '\$CLAUDE_PROJECT_DIR/[^" \\]+' "$PROJ_SET" 2>/dev/null | sort -u); do
+# A `VAR="$CLAUDE_PROJECT_DIR/…"` prefix sets an environment value (often a directory), not a hook target:
+# skipped (an instance read it as a missing script, 2026-11-16). Only an assignment in command-word position
+# (identifier name right after the start, a quote or whitespace) is skipped; `--opt=$CLAUDE_PROJECT_DIR/…` stays a target.
+assign_re='^[A-Za-z_][A-Za-z0-9_]*='
+seen=" "
+for p in $(grep -aoE '([^ "\\=;&|(]*=\\?"?)?\$CLAUDE_PROJECT_DIR/[^" \\]+' "$PROJ_SET" 2>/dev/null | sort -u); do
+  [[ $p =~ $assign_re ]] && continue
+  rel=${p#*\$CLAUDE_PROJECT_DIR/}
+  case "$seen" in *" $rel "*) continue ;; esac
+  seen="$seen$rel "
   count=$((count + 1))
-  rel=${p#\$CLAUDE_PROJECT_DIR/}
   [ -f "$BRAIN/$rel" ] || missing="$missing $rel"
 done
 if [ "$count" -eq 0 ]; then say INFO E3 "Hook Targets" "no \$CLAUDE_PROJECT_DIR hooks declared"
