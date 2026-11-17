@@ -225,10 +225,52 @@ check "push, ci-watch armed in the swapped form" "$T/c8.jsonl" allow "$R"
 check "negative control: swapped form, another repo" "$T/c9.jsonl" block "$R"
 { user "fix"; tool Bash "git -C $PLAINN push -q origin x"; } > "$T/c6.jsonl"
 check "push into a repo without workflows" "$T/c6.jsonl" allow "$R"
+# A workflow that runs only on main and on PRs starts nothing for a feature-branch push (measured 2026-11-16, macOS:
+# four suite branches pushed, zero runs, a watcher demanded for each). The form the suites use, then the list form.
+MO="$T/mainonly"; git init -q "$MO"; mkdir -p "$MO/.github/workflows"; git -C "$MO" remote add origin https://github.com/o/r.git
+printf 'name: CI\non:\n  push:\n    branches: [main]\n    tags: ["v*"]\n  pull_request:\njobs: {}\n' > "$MO/.github/workflows/ci.yml"
+MON="$(native "$MO")"
+{ user "fix"; tool Bash "git -C $MON push -q -u origin fix/thing"; asst "pushed"; } > "$T/w1.jsonl"
+# Windows review 2026-11-17 (finding on #557): a quiet push to an EXISTING branch runs `pull_request` (synchronize) -
+# the follow-up commit on an open PR. Without `[new branch]` in the output it is a run.
+check "quiet push to a feature branch, pull_request workflow: a run (follow-up on an open PR)" "$T/w1.jsonl" block "$R"
+{ user "fix"; tool Bash "git -C $MON push -q origin main"; asst "pushed"; } > "$T/w2.jsonl"
+check "push to main of that repo, no ci-watch" "$T/w2.jsonl" block "$R"
+{ user "fix"; tool Bash "git -C $MON push -q origin HEAD:refs/heads/main"; asst "pushed"; } > "$T/w3.jsonl"
+check "push HEAD:refs/heads/main, no ci-watch" "$T/w3.jsonl" block "$R"
+{ user "fix"; tool Bash "git -C $MON push -q"; asst "pushed"; } > "$T/w4.jsonl"
+check "a bare push (branch unknown) counts as a run" "$T/w4.jsonl" block "$R"
+printf 'on:\n  push:\n    branches:\n      - main\n      - "release/**"\n  pull_request:\n' > "$MO/.github/workflows/ci.yml"
+{ user "fix"; tool Bash "git -C $MON push -q origin fix/thing"; asst "pushed"; } > "$T/w5.jsonl"
+check "list form: quiet feature-branch push is a run through pull_request" "$T/w5.jsonl" block "$R"
+{ user "fix"; tool Bash "git -C $MON push -q origin release/2.1/rc"; asst "pushed"; } > "$T/w6.jsonl"
+check "list form: a release/** branch is a run" "$T/w6.jsonl" block "$R"
+printf 'on:\n  push:\n    tags: ["v*"]\n' > "$MO/.github/workflows/ci.yml"
+{ user "fix"; tool Bash "git -C $MON push -q origin main"; asst "pushed"; } > "$T/w7.jsonl"
+check "tags-only workflow: a branch push starts nothing" "$T/w7.jsonl" allow "$R"
+printf 'on: [push, pull_request]\n' > "$MO/.github/workflows/ci.yml"
+{ user "fix"; tool Bash "git -C $MON push -q origin fix/thing"; asst "pushed"; } > "$T/w8.jsonl"
+check "on: [push, ...]: every branch push is a run" "$T/w8.jsonl" block "$R"
 # A push that never ran or moved no ref starts no run (measured 2026-11-09, macOS: a PreToolUse gate refused the push,
 # the branch was not on the remote, the Stop check still demanded a watcher). The result is matched by tool_use_id.
 idtool() { printf '{"message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
 result() { printf '{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":%s,"content":%s}]}}\n' "$1" "$2" "$(js "$3")"; }
+# 2026-11-17 (#557 review): a NEW branch starts nothing on main+pull_request (the measured 11-16 case), an update does
+printf 'name: CI\non:\n  push:\n    branches: [main]\n  pull_request:\njobs: {}\n' > "$MO/.github/workflows/ci.yml"
+{ user "fix"; idtool n1 "git -C $MON push -u origin fix/thing"; result n1 false " * [new branch]      fix/thing -> fix/thing"; asst "pushed"; } > "$T/n1.jsonl"
+check "a [new branch] push on main+pull_request starts nothing" "$T/n1.jsonl" allow "$R"
+{ user "fix"; idtool n2 "git -C $MON push origin fix/thing"; result n2 false "   1234567..89abcde  fix/thing -> fix/thing"; asst "pushed"; } > "$T/n2.jsonl"
+check "an update of an existing branch on main+pull_request is a run" "$T/n2.jsonl" block "$R"
+printf 'on:\n  push:\n    branches: [main]\n  pull_request:\n    types: [opened]\n' > "$MO/.github/workflows/ci.yml"
+{ user "fix"; idtool n3 "git -C $MON push origin fix/thing"; result n3 false "   1234567..89abcde  fix/thing -> fix/thing"; asst "pushed"; } > "$T/n3.jsonl"
+check "pull_request.types without synchronize: an update starts nothing" "$T/n3.jsonl" allow "$R"
+printf 'on:\n# triggers\n  push:\n    branches: [main]\n' > "$MO/.github/workflows/ci.yml"
+{ user "fix"; tool Bash "git -C $MON push -q origin main"; asst "pushed"; } > "$T/n4.jsonl"
+check "a column-0 comment inside on: does not end the block" "$T/n4.jsonl" block "$R"
+{ user "fix"; tool Bash "git -C $MON push -q -o ci.skip origin main"; asst "pushed"; } > "$T/n5.jsonl"
+check "-o <value> is skipped: origin main read right" "$T/n5.jsonl" block "$R"
+{ user "fix"; idtool n6 "git -C $MON push origin fix/a; git -C $MON push origin main"; result n6 false " * [new branch]      fix/a -> fix/a"; asst "pushed"; } > "$T/n6.jsonl"
+check "the second push of a compound call is read too" "$T/n6.jsonl" block "$R"
 { user "fix"; idtool p1 "git -C $CIN push -u origin x"; result p1 true "PreToolUse:Bash hook error: CORE-PUSH-LINT: no green stamp"; asst "held"; } > "$T/c8.jsonl"
 check "push refused by a hook before it ran" "$T/c8.jsonl" allow "$R"
 { user "fix"; idtool p2 "git -C $CIN push origin x"; result p2 true "pre-push: BLOCKED (origin)
