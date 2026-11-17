@@ -96,9 +96,23 @@ def rule_paragraphs(repo, stop):
     return out
 
 
-# The take-backs commitment-carrier-gate accepts (its RETRACT), plus the instance's `retract_patterns`.
-RETRACT = [r"\bi take (that|it|this|the promise|the statement) back\b", r"\bis not guaranteed\b",
-           r"\bi withdraw (that|it|the promise)\b"]
+def gate_retract(gate):
+    """The take-backs commitment-carrier-gate accepts, read from its `const RETRACT = [...]` line: one source, no
+    second copy that drifts (Windows review 2026-11-17). An unreadable line is loud, never a silent empty list."""
+    try:
+        with open(gate, encoding="utf-8") as fh:
+            src = fh.read()
+    except OSError as e:
+        raise SystemExit(f"commitments: cannot read the gate's RETRACT list ({e})")
+    m = re.search(r"^const RETRACT = \[(.*)\];\s*$", src, re.M)
+    pats = re.findall(r"/((?:\\.|[^/\\])+)/[a-z]*", m.group(1)) if m else []
+    if not pats:
+        raise SystemExit(f"commitments: no `const RETRACT = [...]` line in {gate}")
+    return pats
+
+
+# The take-backs the gate accepts (its RETRACT), plus the instance's `retract_patterns` at the call.
+RETRACT = gate_retract(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "helpers", "commitment-carrier-gate.cjs"))
 HOOK_ECHO = re.compile(r"^Stop hook feedback:")
 
 

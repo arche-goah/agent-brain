@@ -13,3 +13,4 @@
   after the fix: found 17, retracted 34, loose 18 (11 from transcripts, 7 brake releases). Fixture
   `scripts/commitments-test.py` +5 (take-back clears, a take-back after a new operator message does not, instance
   take-back phrasing, a brake release is loose, another gate's or an old brake entry is not); against main 4 fail.
+  Windows review 2026-11-17: the take-back list is no longer a Python copy - `scripts/commitments.py` reads the gate's own `const RETRACT = [...]` line (loud exit when it is missing); fixture +1.

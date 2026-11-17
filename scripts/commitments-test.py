@@ -130,6 +130,12 @@ check(len(r["loose"]) == 1 and r["retracted"] == 0, "negative control: a take-ba
 inst = {"patterns": [r"\bfrom today onward\b"], "retract_patterns": [r"\bstrike that sentence\b"]}
 r = run([say("From today onward I announce the minute beforehand."), say("Please strike that sentence.")], data=inst)
 check(not r["loose"] and r["retracted"] == 1, "the instance's retract_patterns count as a take-back")
+# One source (Windows review 2026-11-17): the take-back list is read from the gate's RETRACT line, not copied.
+g = Path(tempfile.mkdtemp()) / "gate.cjs"
+g.write_text("const X = 1;\nconst RETRACT = [/\\bscratch that\\b/i, /\\bnot\\/never\\b/i];\n", encoding="utf-8")
+check(cm.gate_retract(str(g)) == [r"\bscratch that\b", r"\bnot\/never\b"]
+      and cm.RETRACT == cm.gate_retract(str(ROOT / "helpers" / "commitment-carrier-gate.cjs")) and len(cm.RETRACT) >= 3,
+      "the take-back list is the gate's own RETRACT line, read, not a copy")
 
 
 # The loop brake let a held promise end the turn: listed with its own reason (8 of 41 on 2026-11-16).
