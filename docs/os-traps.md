@@ -1067,14 +1067,17 @@ known site is such a guarded branch.
 pattern:   ^[^#]*os\.kill\([^)]*, *0\)
 paths:     --include=*.py scripts helpers
 known:     scripts/session-audit.py=1
-instances: 1
+known:     scripts/ledger-reconcile.py=1
+instances: 2
 repeat:    no
 status:    closed
 note:      Registered 2026-10-31 BEFORE a defect, with the first site: `session-audit.py` learned to
 read the harness session registry (`~/.claude/sessions/<pid>.json`) and must test the pid. Python
 documentation, `os.kill`: "Windows: … any other value for sig will cause the process to be
 unconditionally killed by the TerminateProcess API". The Windows branch is unmeasured until the
-PR's Windows check.
+PR's Windows check. Second site 2026-11-16, `ledger-reconcile.py` `CoreMain._alive` (sweeping a
+killed run's worktree): guarded by `os.name == "nt"`, where it answers "unknown" and the sweep goes
+by the folder's age alone.
 
 ## OS-17 — `python3` exists on Windows but is the Store stub, and a script that only checks existence runs nothing
 
