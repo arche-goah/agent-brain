@@ -389,7 +389,10 @@ function checkMerge(cmd, ps) {
   const train = /^\s*##\s*Merge train\b/.test(String(pr.body || ''));
   // members are manifest lines (`- #N <branch> <sha>`), never a note line "- #N: …" or a left-out "- #N (conflicts …)" (merge
   // train 2.1.6: release-preflight read train #510's notes as members; this reader had the same loose form)
-  const members = train ? [...String(pr.body).matchAll(/^- #(\d+) \S+ [0-9a-f]{3,40}(?:\s|$)/gm)].map((m) => m[1]) : [t.nr];
+  // ONE pattern with release-preflight.sh (#574 review): the form merge-train.sh writes, `- #N <branch> <sha>` with 7-40
+  // hex and nothing after it, read only above "Left out:".
+  const contains = String(pr.body).split(/^Left out:/m)[0];
+  const members = train ? [...contains.matchAll(/^- #(\d+) \S+ [0-9a-f]{7,40}[ \t]*$/gm)].map((m) => m[1]) : [t.nr];
   const open = [];
   for (const n of members) {
     let p = pr;
