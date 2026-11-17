@@ -137,6 +137,16 @@
         ]
       },
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/pr-overlap-gate.cjs\"",
+            "timeout": 30
+          }
+        ]
+      },
+      {
         "matcher": "Bash|PowerShell|mcp__.*",
         "hooks": [
           {
