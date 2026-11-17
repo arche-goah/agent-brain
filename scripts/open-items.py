@@ -92,6 +92,7 @@ from instance_key import is_self, key_for, key_in, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
 from shared_answers import checked_head, default_repo, own_open_requests, own_shared_shas, sibling_keys_same_os  # noqa: E402
 import shared_channels  # noqa: E402
+from merge_ready import merge_ready  # noqa: E402  (one answer for open-items and pr-ball)
 OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*"
                   r"\(([^()]+\.md|(?:[\w.-]+/)?LOG@\d{4}-\d{2}-\d{2}#\d+)\)\s*$")
@@ -184,7 +185,7 @@ def requests(repo, label=""):
 PR_QUERY = """query($q: String!, $after: String) { viewer { login }
   search(query: $q, type: ISSUE, first: 50, after: $after) { issueCount
   pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
-    number title isDraft createdAt body headRefName author { login } repository { name }
+    number title isDraft mergeStateStatus createdAt body headRefName author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
     latestReviews(first: 20) { nodes { author { login } submittedAt body } }
     commits(last: 1) { nodes { commit { oid committedDate } } }
@@ -299,6 +300,14 @@ def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset(), parties_re
             seen = [last] + [c.get("createdAt") or "" for c in comments if ours(c)]
             if not (theirs and max(theirs) > max(seen)):
                 return owner, f"{p['repository']['name']} is {owner}'s to merge, our own PR waits on that"
+        return None
+    # Ready to merge (both OS OKs at the head, merge state CLEAN): whoever comes first merges, so the move
+    # is ours - unless another instance behind OUR login is the repo's merger (the core case), whose
+    # move it stays. A merger of another login does not hold it: its word is for the stable pin.
+    sibling_merger = bool(owner_key and my_key and owner_key != my_key
+                          and owner_login and owner_login.lower() == me.lower())
+    if not sibling_merger and merge_ready(p, oid):
+        p["_merge_ready"] = True
         return None
     if last and any(t > last for t in touched):
         return author, "we reviewed or commented after the last commit"
@@ -429,6 +438,8 @@ def prs(owner, owners, repos=(None,), extra=()):
         author = (p.get("author") or {}).get("login", "?")
         # parties.json lives in the first channel, the shared memory itself.
         waiting, note = ball(p, me, owners, shas, same_os, repos[0]), ""
+        if p.get("_merge_ready"):
+            note = "macOS and Windows OK at the head, merge state CLEAN: merge it, whoever comes first (CI first)"
         if waiting is None and ref in asked:
             # Our own open request names this PR: its addressee moves - for one day. After that the
             # PR is ours again with the reminder (operator rule 2026-10-21: no answer within a day =
