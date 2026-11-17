@@ -91,5 +91,31 @@ bg="$(grep -anE 'git[^|;]* fetch' "$HERE/collab-watch.sh" "$HERE/shared-memory-w
   "$HERE/../helpers/git-hooks/pre-commit" | grep -av -- '--no-write-fetch-head' | grep -avE '^[^:]+:[0-9]+:\s*#' || true)"
 [ -z "$bg" ] && ok "every unattended fetch leaves FETCH_HEAD alone" || bad "unattended fetch writes FETCH_HEAD: $bg"
 
+# Class guard (2026-11-15): a shell fixture that really runs `git ... push` into a temp remote sources git-sandbox.sh (or sets
+# GIT_CONFIG_GLOBAL itself). Measured on a Windows machine that wires the core hooks globally: the pre-push guard refused every
+# push to main, the sandbox remote stayed empty and the fixtures failed far from the cause (or passed on nothing). Quoted text
+# (a printf of a settings file, a transcript line) is stripped first, so only a command that runs counts.
+unsb=""
+for f in "$HERE"/*test*.sh; do
+  [ "$f" = "$HERE/test-git-sandbox.sh" ] && continue
+  sed -E "s/\"[^\"]*\"|'[^']*'//g" "$f" | grep -aE '^[[:space:]]*#' -v \
+    | grep -aqE '(^|[;&]|then|do)[[:space:]]*(git|git_|git_q|g)[[:space:]][^#]*[[:space:]]push([[:space:]]|$)' || continue
+  grep -aqE 'git-sandbox\.sh|GIT_CONFIG_GLOBAL' "$f" || unsb="$unsb $(basename "$f")"
+done
+[ -z "$unsb" ] && ok "every fixture that pushes isolates its git config" || bad "pushes without git-sandbox.sh or GIT_CONFIG_GLOBAL:$unsb"
+
+# Same class, python half (2026-11-15, macOS review of the PR): a `*test*.py` fixture that runs a git call with "push" as an
+# ARGUMENT (`git(wt, "push", ...)`, `["git", "-C", d, "push"]`) imports git_sandbox (or sets GIT_CONFIG_GLOBAL). Unlike the shell scan,
+# string literals stay (the word IS a literal); instead only a git-call shape counts and comment lines are dropped, so "push" as
+# prose or as a settings rule (`"Bash(git push origin main)"`) is no hit. Limits: a text scan — a push whose argument list is built
+# in a variable, or a helper not named like git, is not seen; a docstring line shaped like a call would be a false hit.
+unsbp=""
+for f in "$HERE"/*test*.py; do
+  grep -aE '^[[:space:]]*#' -v "$f" \
+    | grep -aqE '([A-Za-z_]*git[A-Za-z_]*\(([^()]*,)?[[:space:]]*["'"'"']push["'"'"']|["'"'"']git["'"'"'][^]]*["'"'"']push["'"'"'])' || continue
+  grep -aqE 'import git_sandbox|GIT_CONFIG_GLOBAL' "$f" || unsbp="$unsbp $(basename "$f")"
+done
+[ -z "$unsbp" ] && ok "every python fixture that pushes isolates its git config" || bad "python pushes without git_sandbox or GIT_CONFIG_GLOBAL:$unsbp"
+
 if [ "$fail" -eq 0 ]; then echo "test-git-sandbox: all green"; else echo "test-git-sandbox: FAILED"; fi
 exit "$fail"

@@ -30,6 +30,9 @@ T="$(mktemp -d)"
 # below usable by both git (fine with either form) and python (needs the native one).
 command -v cygpath >/dev/null 2>&1 && T="$(cygpath -w "$T")"
 trap 'rm -rf "$T"' EXIT
+# after the trap: the sandbox chains its own clean-up onto it. The fixture pushes main and tags into local bare
+# remotes: a host that wires a pre-push hook globally must not decide those pushes.
+. "$ROOT/scripts/git-sandbox.sh"
 # A home of its own (2026-11-02): the bootup heals the statusline into ~/.claude - never the
 # real one of the machine running this. USERPROFILE: Python and node read it on Windows, not HOME.
 H="$T/home"; mkdir -p "$H"; export HOME="$H" USERPROFILE="$H" CLAUDE_CONFIG_DIR="$H/.claude"
