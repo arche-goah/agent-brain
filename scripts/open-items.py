@@ -821,6 +821,7 @@ def ledgers(root):
     green = load_json(root / ".claude-state" / "ledger-reconcile.json", None)
     green_at = green.get("at") if isinstance(green, dict) and isinstance(green.get("at"), (int, float)) else None
     green_rows = green.get("done_open") if green_at is not None and isinstance(green.get("done_open"), list) else []
+    unproven_rows = green.get("unproven") if green_at is not None and isinstance(green.get("unproven"), list) else []
     for rel in cfg.get("ledgers") or []:
         try:
             text = (root / rel).read_text(encoding="utf-8")
@@ -829,6 +830,7 @@ def ledgers(root):
             unread.append(f"{rel} (file not found)")
             continue
         ticks = {r.get("line") for r in green_rows if fresh and isinstance(r, dict) and r.get("ledger") == rel}
+        greens = {r.get("line") for r in unproven_rows if fresh and isinstance(r, dict) and r.get("ledger") == rel}
         found = list(mod.entries(text))
         # Entries that are not `- [ ]` / `- [x]` lines read as an empty ledger — the same silence.
         if not found and re.search(r"^[\s>*-]*`?id:", text, re.M):
@@ -882,6 +884,8 @@ def ledgers(root):
                 item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
             if e["line"] in ticks:
                 item["tick"] = True
+            if e["line"] in greens:
+                item["green_unproven"] = True
             items.append(item)
     return items, unread
 
@@ -1133,6 +1137,14 @@ def main():
             own = None
         it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx)
         it["cls"] = it["cls"] or "?"
+        # An operator decision whose check was green from its first run: the answer may already be applied
+        # (measured 2026-11-17 on the macOS instance: an entry the operator had decided the day before, its
+        # paragraph in place and its check green, stood as "needs you" in the start report — reconcile had
+        # named it "negative control missing", and nobody read that against the entry). Reading the record
+        # and ticking or sharpening the check is the agent's move; only then may it go to the operator.
+        if it.get("green_unproven") and it["cls"] == "human":
+            it["cls"], it["why"] = "ai", ("its check is green although the box is open - read the record: the answer may "
+                                          "be in, tick it with the evidence, or sharpen the check until it is red without the work")
         # Parked means not WORKED ON, never unanswered: a request from another side in a parked
         # domain still gets an answer (receipt, state, when it resumes). Measured: one such
         # question lay 30 days on the parked line.
