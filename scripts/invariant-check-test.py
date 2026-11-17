@@ -97,6 +97,43 @@ status: closed
             ok("2b a baseline over several known: lines counts every line")
         else:
             bad(f"2b expected ok over two known: lines, got rc={rc}: {out.strip()[:160]}")
+        # 2c. --write (the session close, 2026-11-16): the drift is reported, then absorbed into the baseline;
+        #     a second plain run is quiet, the other blocks and lines stay byte-identical, and rc is 0
+        reg3 = write(tmp, """## X-3 — drifts, then absorbed
+invariant: the thing must not spread
+pattern: FORBIDDEN_CALL
+paths: --include=*.py src
+known: src/a.py=1
+status: open
+note: keep me
+
+## X-4 — external, untouched
+invariant: judged by hand
+check: manual
+mechanizable: no — the term differs every time
+known: free text that is no baseline
+status: open
+""")
+        before = reg3.read_text(encoding="utf-8")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = ic.main(["--write", str(reg3)])
+        out = buf.getvalue()
+        after = reg3.read_text(encoding="utf-8")
+        if "NEW site: src/b.py" in out and "baseline written: 1 block(s)" in out and rc == 0:
+            ok("2c --write reports the drift, then absorbs it (rc 0)")
+        else:
+            bad(f"2c --write expected report + absorb + rc 0, got rc={rc}: {out.strip()[-200:]}")
+        if "known: src/a.py=1 src/b.py=1" in after and "known: free text that is no baseline" in after \
+                and after.replace("known: src/a.py=1 src/b.py=1", "known: src/a.py=1") == before:
+            ok("2c --write rewrote only the drifted known: line")
+        else:
+            bad(f"2c --write changed more than the drifted baseline: {after!r}")
+        out, rc = run(reg3)
+        if "  ok  X-3" in out and rc == 0:
+            ok("2c after --write a plain run is quiet")
+        else:
+            bad(f"2c drift still reported after --write: rc={rc}")
         (tmp / "src" / "b.py").unlink()
 
         # 3. NO pattern and NO reason -> '??' and counted in the closing summary. This is

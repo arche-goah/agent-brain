@@ -315,6 +315,19 @@ seed_log
 (cd "$B3" && printf '{"session_id":"H","hook_event_name":"SessionEnd"}' | CLAUDE_PROJECT_DIR="$B3" SHARED_MEMORY_REPO="$TMP/nowhere" SESSION_LOG_FOLD_MAX_BYTES=600 bash "$CLOSING" >/dev/null 2>&1)
 hasnt "no FOLD marker from the hook" "- FOLD " "$(cat "$LOG3")"
 
+echo "invariant register: the close reads its drift and absorbs it into the baseline (2026-11-16)"
+B6="$TMP/brain6"; mkdir -p "$B6/.claude" "$B6/docs/maintenance" "$B6/src"
+git -C "$B6" init -q 2>/dev/null
+printf 'X()\n' > "$B6/src/a.py"; printf 'X()\n' > "$B6/src/b.py"
+printf 'root: ../..\n\n## K-1 — X must not spread\ninvariant: no X\npattern: X\\(\\)\npaths: --include=*.py src\nknown: src/a.py=1\nstatus: open\n' > "$B6/docs/maintenance/invariants.md"
+out6=$( (cd "$B6" && CLAUDE_PROJECT_DIR="$B6" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" --pre-commit --session I 2>&1 </dev/null) )
+has "close names the drift it read" "NEW site: src/b.py" "$out6"
+has "close says it absorbed it" "1 drift line(s) read and absorbed" "$out6"
+has "baseline now holds today's count" "known: src/a.py=1 src/b.py=1" "$(cat "$B6/docs/maintenance/invariants.md")"
+has "the close line in the session log names it" "invariants: 1 drift line(s) absorbed" "$(tail -1 "$B6/docs/maintenance/session-log.md")"
+out6=$( (cd "$B6" && CLAUDE_PROJECT_DIR="$B6" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" --pre-commit --session I2 2>&1 </dev/null) )
+hasnt "negative control: no drift, no register line" "invariant register:" "$out6"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "test-session-closing: all checks passed"; exit 0; fi
 echo "test-session-closing: $fails check(s) FAILED"; exit 1

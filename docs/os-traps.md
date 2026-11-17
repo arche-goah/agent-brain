@@ -231,6 +231,7 @@ known:     scripts/device-status.py=1
 known:     scripts/eco_owner.py=1
 known:     scripts/ecosystem-sync.py=1
 known:     scripts/english-only.py=1
+known:     scripts/invariant-check.py=1
 known:     scripts/invariant-index.py=1
 known:     scripts/ledger-one-exit.py=1
 known:     scripts/ledger-reconcile.py=5

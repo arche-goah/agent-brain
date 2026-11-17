@@ -199,6 +199,24 @@ if [ "$pre_commit" -eq 1 ]; then
       echo "WARN session-log fold: SESSION_LOG_FOLD_MAX_BYTES unset, log is $log_bytes bytes — set it in settings env"
     fi
   fi
+  # Invariant register: the drift is read here and absorbed into the baseline (operator decision 2026-11-16:
+  # a register drifted for the third time, 294 lines; measured the same day, about two thirds were new fixture
+  # files of the pinned core matching an instance class, and nobody pulled the baseline). The report lines go
+  # into this close's output - that is the reading; the rewritten register goes into the close commit.
+  # A search that cannot run is a WARN line, never a failed close.
+  reg=docs/maintenance/invariants.md
+  if [ -f "$reg" ] && [ -f "$HERE/../scripts/invariant-check.py" ]; then
+    PY=python3
+    "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+    inv_out=$("$PY" "$HERE/../scripts/invariant-check.py" --write "$reg" 2>&1); inv_rc=$?
+    inv_drift=$(printf '%s\n' "$inv_out" | awk '/NEW site:|drift:|vanished:/ { n++ } END { print n + 0 }')
+    if [ "$inv_drift" -gt 0 ]; then
+      printf 'invariant register: %s drift line(s) read and absorbed into %s (commit it with the close):\n' "$inv_drift" "$reg"
+      printf '%s\n' "$inv_out" | awk '/^  !!|NEW site:|drift:|vanished:/ { print "  " $0 }'
+      sm_line="${sm_line:+$sm_line | }invariants: $inv_drift drift line(s) absorbed"
+    fi
+    [ "$inv_rc" -eq 0 ] || echo "WARN invariant register: a search could not run (invariant-check.py rc=$inv_rc) — see its output"
+  fi
   mkdir -p .claude-state
   # Line 2 is the log line itself: the Stop gates find this close's entry by it and read its
   # `open end:` lines (helpers/close-stamp.cjs). The hook below reads line 1 only.
