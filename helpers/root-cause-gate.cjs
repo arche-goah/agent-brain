@@ -175,7 +175,9 @@ const NOT_A_COUNT = /\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2
 const hasCount = (line) => COUNT.test(line.replace(NOT_A_COUNT, ''));
 // A replay that cannot run yet says so with its reason and the day it is re-checked (root-cause review 2026-11-16:
 // "pending", "not run", "open" stood in entries for weeks with no day to come back). `none - <why> - recheck <date>`.
-const NONE_WITH_RECHECK = /^\s*none\b[\s\S]{12,}?\b\d{4}-\d{2}-\d{2}\b/i;
+// The word `recheck` stands right before the date (Windows review 2026-11-17: "none - looked once on 2025-01-01"
+// passed, any date after twelve characters counted).
+const NONE_WITH_RECHECK = /^\s*none\b[\s\S]{4,}?\brecheck\s+\d{4}-\d{2}-\d{2}\b/i;
 const replayOk = (line) => hasCount(line) || NONE_WITH_RECHECK.test(line);
 // A PR or issue number names the instance; a core rule number ("Working Rule #10") is the rule itself (same review).
 const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|\b(?:PR|issue|pull)s?\s*#?\d+\b|\b[\w.-]+#\d+\b|(?:^|[\s(])#\d{3,}\b|\b\w+\.(cjs|js|py|sh|json|md)\b/iu;

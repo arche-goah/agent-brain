@@ -225,6 +225,9 @@ check "replay none with reason and recheck date" "$T/t42.jsonl" allow "$CWD"
 { user "go"; asst "Register entry added."; write "$CWD/$REG" "invariant: a summary reads every source before it counts
 replay: none - later"; } > "$T/t43.jsonl"
 check "replay none without a recheck date" "$T/t43.jsonl" block "$CWD"
+{ user "go"; asst "Register entry added."; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: none - looked once on 2025-01-01"; } > "$T/t43b.jsonl"
+check "replay none with a date but no recheck word (Windows review 2026-11-17)" "$T/t43b.jsonl" block "$CWD"
 { user "go"; asst "Done."; write "docs/notes.md" "x"; } > "$T/t44.jsonl"
 check "no register write, no cause (control)" "$T/t44.jsonl" allow "$CWD"
 mkdir -p "$T/cwdf/.claude/rules"; printf '{"invariant_forbidden":["\\\\bwaveshare\\\\b"]}' > "$T/cwdf/.claude/rules/root-cause-patterns.json"
