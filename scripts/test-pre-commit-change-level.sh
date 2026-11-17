@@ -47,6 +47,23 @@ printf 'bom = "\xef\xbb\xbf"\n' > "$R/scripts/x.py"; gq -C "$R" add -A
 o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"content-guard"* ]] && ok "a staged invisible character is refused by the content guard" || bad "invisible char" "$o"
 printf 'bom = chr(0xFEFF)\n' > "$R/scripts/x.py"; gq -C "$R" add -A
 o=$(hook "$R"); [ $? -eq 0 ] && ok "  ... and passes written as a code point" || bad "code point" "$o"
+# Windows review of #511: the guard reads what the commit carries (the index), not the working tree.
+gq -C "$R" commit -qm cp --no-verify
+printf 'junk = "\xef\xbb\xbf"\n' > "$R/scripts/untracked.py"; echo c > "$R/a.txt"; gq -C "$R" add a.txt
+o=$(hook "$R"); [ $? -eq 0 ] && ok "an untracked file with an invisible character does not hold another commit" || bad "untracked held" "$o"
+rm "$R/scripts/untracked.py"
+printf 'bom = "\xef\xbb\xbf"\n' > "$R/scripts/y.py"; gq -C "$R" add scripts/y.py; printf 'bom = 1\n' > "$R/scripts/y.py"
+o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"content-guard"* ]] && ok "a staged blob cleaned only in the working tree is still refused" || bad "cleaned in tree passed" "$o"
+gq -C "$R" reset -q -- scripts/y.py; rm -f "$R/scripts/y.py"
+# The same for leak-scan (class of the finding above): the commit's blobs, not the tree. The home path is built at run
+# time, so this file holds none.
+cp "$HERE/leak-scan.py" "$R/scripts/leak-scan.py"; gq -C "$R" add -A; gq -C "$R" commit -qm ls --no-verify
+hp="/Us""ers/someone/x"
+printf 'p = "%s"\n' "$hp" > "$R/scripts/untracked2.py"; echo d > "$R/a.txt"; gq -C "$R" add a.txt
+o=$(hook "$R"); [ $? -eq 0 ] && ok "an untracked file with a home path does not hold another commit" || bad "leak-scan untracked held" "$o"
+rm "$R/scripts/untracked2.py"
+printf 'p = "%s"\n' "$hp" > "$R/scripts/z.py"; gq -C "$R" add scripts/z.py; printf 'p = 1\n' > "$R/scripts/z.py"
+o=$(hook "$R"); [[ $? -ne 0 && "$o" == *"leak-scan"* ]] && ok "a staged home path cleaned only in the tree is still refused by leak-scan" || bad "leak-scan cleaned passed" "$o"
 
 # The CI lint's commit steps in the same hook (2026-11-12): where the repo ships ci-lint-local.sh, the hook runs its
 # --commit mode, so a step the lint holds is held at commit time too. Two steps as the core's ci.yml has them, plus a
