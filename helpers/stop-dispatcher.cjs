@@ -73,6 +73,13 @@
  * before — the default changes nothing, and each switch is a measured, per-check
  * decision in the instance config.
  *
+ * `--list` (2026-11-14): prints the EFFECTIVE check list as one JSON object on stdout
+ * (`{"config": <path>, "checks": [...]}`: the instance file's checks plus the template's
+ * required ones the instance lacks, each of those with `fromTemplate: true`) and exits
+ * without reading stdin. Which checks run was computed here and re-derived by every reader
+ * (content review 2026-11-10: recorder-report.py had rebuilt the required-from-template
+ * merge on its own); a reader asks this instead (recorder-report.py does).
+ *
  * Fails open by design: a broken dispatcher silently disables every check at once, so
  * its fixture run (`scripts/test-stop-dispatcher.sh`) is the only proof they still
  * fire and belongs in the recurring audit, not in someone's memory.
@@ -204,6 +211,13 @@ function loadConfig() {
   };
 }
 
+// `--list`: the effective list for a reader, then out — stdin is never read (header, `--list`).
+const LIST = process.argv.includes('--list');
+if (LIST) {
+  const text = JSON.stringify({ config: CONFIG.split(path.sep).join('/'), checks: loadConfig().checks }) + '\n';
+  process.stdout.write(text, () => process.exit(0));
+}
+
 function short(s, n) {
   const t = String(s).trim();
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
@@ -309,6 +323,7 @@ function run(check, base) {
 }
 
 process.stdin.on('end', async () => {
+  if (LIST) return; // the list is on its way out; its write callback ends the process
   let input = {};
   try { input = JSON.parse(data); } catch (e) { process.exit(0); }
   const cfg = loadConfig();

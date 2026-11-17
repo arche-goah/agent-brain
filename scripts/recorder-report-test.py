@@ -9,6 +9,8 @@
 Usage: python3 scripts/recorder-report-test.py   (exit 0 = all fixtures pass)
 """
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +22,7 @@ except (AttributeError, ValueError):
     pass
 
 REPORT = Path(__file__).resolve().parent / "recorder-report.py"
+HELPERS = Path(__file__).resolve().parent.parent / "helpers"
 fails = []
 
 
@@ -43,6 +46,10 @@ with tempfile.TemporaryDirectory() as td:
     (root / ".claude/rules").mkdir(parents=True)
     (root / ".claude-state").mkdir()
     (root / "core/helpers").mkdir(parents=True)
+    # The report asks the brain's consumed dispatcher which checks run (`--list`); the fixture brain
+    # consumes the one under test, which reads the template of ITS checkout (root/core/templates).
+    for helper in ("stop-dispatcher.cjs", "turn-kind.cjs"):
+        shutil.copy(HELPERS / helper, root / "core/helpers" / helper)
     (root / "core/helpers/own.cjs").write_text("path.join(dir, 'own-log.jsonl')\n", encoding="utf-8")
     (root / ".claude/rules/stop-checks.json").write_text(json.dumps({"checks": [
         {"label": "DUE", "marker": "DUE-GATE", "cmd": "core/helpers/due.cjs", "mode": "record"},
@@ -118,7 +125,33 @@ with tempfile.TemporaryDirectory() as td:
     ok("a required recorder disabled with a reason and an optional one stay out",
        "OFF" not in out and "OPT" not in out, out)
 
+    # 2026-11-14 (content review of the fix above): ONE source for "which checks run". The set the
+    # report counts equals the record-mode checks of the dispatcher's own `--list` - no second merge.
+    lst = subprocess.run(["node", str(root / "core/helpers/stop-dispatcher.cjs"), "--list"],
+                         capture_output=True, text=True, encoding="utf-8", stdin=subprocess.DEVNULL,
+                         env=dict(os.environ, CLAUDE_PROJECT_DIR=str(root))).stdout
+    listed = {c.get("label") for c in json.loads(lst or '{"checks": []}')["checks"] if c.get("mode") == "record"}
+    reported = {l.strip().lstrip("! ").split(":")[0].split(" (logs")[0] for l in out.splitlines()
+                if l.strip() and not l.startswith("recorder report summary")}
+    ok("the report's recorders are the dispatcher's record-mode checks, no more and no fewer",
+       listed and listed == reported, f"dispatcher {sorted(listed)} vs report {sorted(reported)}")
+    # A rule only the dispatcher knows reaches the report: here a required template check that the
+    # instance file lists under ANOTHER mode stays the instance's (block), never doubled as a recorder.
+    cfg["checks"].append({"label": "REQ", "marker": "REQ-GATE", "cmd": "core/helpers/req.cjs", "mode": "block"})
+    (root / ".claude/rules/stop-checks.json").write_text(json.dumps(cfg), encoding="utf-8")
+    out = subprocess.run([sys.executable, str(REPORT), "--root", str(root), "--days", "14",
+                          "--today", "2026-10-23"], capture_output=True, text=True, encoding="utf-8").stdout
+    ok("an instance line wins over the template's required one (the dispatcher's rule)",
+       "REQ:" not in out and "6 recorder(s)" in out, out)
+    # No quiet zero: a dispatcher that cannot name its list (one from before `--list`) is said, loudly.
+    (root / "core/helpers/stop-dispatcher.cjs").write_text("process.exit(0);\n", encoding="utf-8")
+    res = subprocess.run([sys.executable, str(REPORT), "--root", str(root), "--days", "14",
+                          "--today", "2026-10-23"], capture_output=True, text=True, encoding="utf-8")
+    ok("a dispatcher without a list: NOT countable, never '0 recorder(s)'",
+       res.returncode == 0 and line_in(res.stdout, "recorder report:").startswith("!! ")
+       and "NOT countable" in res.stdout and "0 recorder(s)" not in res.stdout, res.stdout)
+
 if fails:
     print(f"recorder-report-test: {len(fails)} FAILURE(S)")
     sys.exit(1)
-print("recorder-report-test: all 11 fixtures passed")
+print("recorder-report-test: all 14 fixtures passed")

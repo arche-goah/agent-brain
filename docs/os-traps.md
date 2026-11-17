@@ -113,7 +113,7 @@ known:     scripts/orphan-check-test.py=7
 known:     scripts/orphan-check.py=1
 known:     scripts/plugin-records-test.py=1
 known:     scripts/product-sources.py=1
-known:     scripts/recorder-report.py=3
+known:     scripts/recorder-report.py=2
 known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-reach-check.py=11
 known:     scripts/test-open-items.sh=1
@@ -182,6 +182,9 @@ it prints names the live-read domain and the fixed text `.claude/rules/live-watc
 2026-10-23, scripts/recorder-report.py baselined after review: its three joins build the paths of
 stop-checks.json, the gate's source and the recorder logs, which are only opened or tested for
 existence; what it prints is the check's label and the log's bare file name, never a joined path.
+2026-11-14, scripts/recorder-report.py 3 -> 2 after review: the join for stop-checks.json went (the
+report asks `stop-dispatcher.cjs --list`; the dispatcher's path is built with pathlib and handed to
+node as an argument, never printed), the gate's source and the recorder logs stay as above.
 2026-10-25, scripts/live-doc-lint.py (3) and its fixture (2) baselined after review: the lint's
 joins build the paths of dependencies.json, the glob root and the file it opens; every path it
 REPORTS or hands to `git diff` is `relpath(...).replace(os.sep, "/")`. The fixture's joins build

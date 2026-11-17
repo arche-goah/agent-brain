@@ -296,6 +296,25 @@ if [ -f "$ROOT/helpers/commitment-carrier-gate.cjs" ] && [ -f "$ROOT/templates/r
   printf '%s\n' '{"checks":[],"disabled":{"COMMITMENT-CARRIER-GATE":""}}' > "$P/.claude/rules/stop-checks.json"
   case "$(feedreq)" in *'"decision":"block"'*) ok "disabled WITHOUT a reason does not switch it off";;
     *) bad "an empty reason switched the required check off";; esac
+  # `--list` (2026-11-14): the effective list for a reader - instance checks plus the template's
+  # required ones, a disabled one left out - printed without reading stdin (stdin is closed here).
+  lst() { CLAUDE_PROJECT_DIR="$P" node "$D" --list < /dev/null; }
+  has() { # has <list json> <instance|template|config|absent>
+    "$PY" -c 'import json,sys
+d=json.loads(sys.argv[1]); m={c["marker"]:c for c in d["checks"]}; req=m.get("COMMITMENT-CARRIER-GATE")
+tests={"instance": "OWN-PROBE" in m and "fromTemplate" not in m.get("OWN-PROBE", {}),
+       "template": bool(req) and req.get("fromTemplate") is True,
+       "config": str(d.get("config", "")).endswith(".claude/rules/stop-checks.json"),
+       "absent": req is None}
+sys.exit(0 if tests[sys.argv[2]] else 1)' "$1" "$2"; }
+  printf '%s\n' '{"checks":[{"label":"OWN","marker":"OWN-PROBE","cmd":"x.cjs","mode":"record"}]}' > "$P/.claude/rules/stop-checks.json"
+  L="$(lst)"
+  has "$L" instance && ok "--list names an instance check" || bad "--list misses the instance check: ${L:0:200}"
+  has "$L" template && ok "--list names a required template check the instance lacks, marked fromTemplate" || bad "--list misses the required template check: ${L:0:200}"
+  has "$L" config && ok "--list names the config file it read" || bad "--list names no config: ${L:0:200}"
+  printf '%s\n' '{"checks":[],"disabled":{"COMMITMENT-CARRIER-GATE":"test brain"}}' > "$P/.claude/rules/stop-checks.json"
+  L="$(lst)"
+  has "$L" absent && ok "--list leaves out a required check disabled with a reason" || bad "--list still names the disabled check: ${L:0:200}"
 else
   skip "required template checks"
 fi
