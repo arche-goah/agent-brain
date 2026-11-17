@@ -37,6 +37,7 @@ slug=$(printf '%s' "$remote_url" | sed -E 's#\.git/?$##; s#/+$##; s#^.*[:/]([^/:
 temp_remote() {
   local p=$1 t r
   case "$p" in file://*) p=${p#file://} ;; *://*|*@*:*) return 1 ;; esac
+  case "$p" in /[A-Za-z]:/*) p=${p#/} ;; esac   # file:///C:/... is file://C:/... (Windows)
   p=$(cd "$p" 2>/dev/null && pwd -P) || return 1
   for t in "${TMPDIR:-}" "${TEMP:-}" "${TMP:-}" /tmp /var/tmp; do
     [ -n "$t" ] || continue

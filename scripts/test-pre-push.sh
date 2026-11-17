@@ -55,6 +55,8 @@ F="$TMP/fixture"; git init -q --bare "$TMP/f.git"; git clone -q "$TMP/f.git" "$F
 c "$F" f1; try "main of a remote under the system temp passes" ok "$F" main
 git -C "$F" remote set-url origin "file://$(native "$TMP/f.git")"
 c "$F" f2; try "the same remote as a file:// URL passes" ok "$F" main
+n=$(native "$TMP/f.git"); git -C "$F" remote set-url origin "file:///${n#/}"   # Windows: file:///C:/...
+c "$F" f3; try "the same remote as a file:/// URL passes" ok "$F" main
 git -C "$F" commit -q --amend -m f2-rewritten
 try "a rewrite of a temp remote's main is still blocked" blocked "$F" +main
 try "a side branch on a temp remote passes" ok "$F" HEAD:refs/heads/side

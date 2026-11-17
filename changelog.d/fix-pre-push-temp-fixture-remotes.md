@@ -9,3 +9,5 @@
   treats a remote that is a local path (plain or `file://`) resolving under `$TMPDIR`, `$TEMP`, `$TMP`, `/tmp` or
   `/var/tmp` like a listed repo for the main rule only. With the change the same suite test passes 9/9. The core's own
   fixture keeps its guarded remotes under `$HOME` so the main block is still exercised.
+  A `file:///C:/...` URL now loses the slash before the drive letter and counts like `file://C:/...` (fixture case
+  "the same remote as a file:/// URL passes"; Windows review 2026-11-17).
