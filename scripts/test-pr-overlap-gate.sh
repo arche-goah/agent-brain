@@ -27,6 +27,12 @@ check "a bare double quote in the command still blocks" "$C --label \"x\"" block
 out=$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(js "$C")" | PR_OVERLAP_FIXTURE="$FIX" node "$G")
 case "$out" in *"#194"*"scripts/pattern-cases.py"*) ok "the block names the PR and the shared file";; *) bad "PR or file not named: $out";; esac
 case "$out" in *"#199"*) bad "a PR without shared files was named";; *) ok "a PR without shared files is not named";; esac
+# Windows review 2026-11-17: the same call through the PowerShell tool is held too (Bash-only let it pass on Windows)
+out=$(printf '{"tool_name":"PowerShell","tool_input":{"command":%s}}' "$(js "$C")" | PR_OVERLAP_FIXTURE="$FIX" node "$G")
+case "$out" in *'"permissionDecision":"deny"'*) ok "the PowerShell tool is held as well";; *) bad "PowerShell passed: ${out:0:200}";; esac
+grep -aq '"matcher": "Bash|PowerShell"' "$(dirname "$G")/../hooks/hooks.json" && node -e '
+const d=require(process.argv[1]);process.exit(d.hooks.PreToolUse.some(g=>/PowerShell/.test(g.matcher)&&g.hooks.some(h=>/pr-overlap-gate/.test(h.command)))?0:1)' "$(cd "$(dirname "$G")/.." && pwd)/hooks/hooks.json" \
+  && ok "hooks.json registers it for Bash and PowerShell" || bad "hooks.json: not registered for PowerShell"
 # Short (2026-10-31): a stacked branch overlapped ~45 PRs and the block listed every file (~5000 characters).
 BIG=$(node -e 'const f=["a","b","c","d","e"];const prs=[];for(let i=1;i<=8;i++)prs.push({number:i,title:"pr "+i,headRefName:"h"+i,files:f.slice(0,i>5?1:5).map(p=>({path:p}))});process.stdout.write(JSON.stringify({files:f,prs}))')
 out=$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(js "$C")" | PR_OVERLAP_FIXTURE="$BIG" node "$G")

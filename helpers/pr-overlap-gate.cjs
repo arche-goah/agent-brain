@@ -83,7 +83,9 @@ function read(t) {
 }
 
 function judge(input) {
-  if (!input || input.tool_name !== 'Bash') return null;
+  // PowerShell too (Windows review 2026-11-17): on Windows the same branch start or `gh pr create` runs through the
+  // PowerShell tool, and a Bash-only gate let it pass unseen - the neighbours on this path are registered for both.
+  if (!input || (input.tool_name !== 'Bash' && input.tool_name !== 'PowerShell')) return null;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
   const start = judgeStart(cmd);
   if (start) return start;
