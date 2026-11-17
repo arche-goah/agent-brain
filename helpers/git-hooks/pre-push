@@ -15,6 +15,10 @@
 #   3. a push to main or master of any repo but the brain itself and the shared memory (the repo
 #      with parties.json at its top, as prepare-commit-msg tells it) — both are pushed to main by
 #      design. More repos: .claude/rules/push-targets.json  {"main_ok": ["owner/repo", ...]}
+#      Also free: a remote that is a local path under the system temp directory ($TMPDIR, $TEMP,
+#      $TMP, /tmp, /var/tmp) - a fixture's throwaway bare repo, never a published one. Measured
+#      2026-11-16: a suite's release-preflight fixture pushed main into a mktemp bare repo and was
+#      refused on the operator's machine while the same test passed in CI. 1 and 2 still apply there.
 #   4. a NEW branch that carries commits of the local main/master its remote main does not have
 #      (the local main is ahead and its commits ride along). A new branch that sends only its own
 #      commits passes; with more than one, the list goes to stderr (what goes, not a block).
@@ -32,9 +36,23 @@ targets="${PUSH_TARGETS_JSON:-$brain/.claude/rules/push-targets.json}"
 # owner/repo from the remote URL (https://github.com/o/r(.git), git@github.com:o/r(.git), local paths: last two parts)
 slug=$(printf '%s' "$remote_url" | sed -E 's#\.git/?$##; s#/+$##; s#^.*[:/]([^/:]+/[^/:]+)$#\1#')
 
+# a local path (plain or file://) that resolves under one of the system temp roots; a URL never does
+temp_remote() {
+  local p=$1 t r
+  case "$p" in file://*) p=${p#file://} ;; *://*|*@*:*) return 1 ;; esac
+  case "$p" in /[A-Za-z]:/*) p=${p#/} ;; esac   # file:///C:/... is file://C:/... (Windows)
+  p=$(cd "$p" 2>/dev/null && pwd -P) || return 1
+  for t in "${TMPDIR:-}" "${TEMP:-}" "${TMP:-}" /tmp /var/tmp; do
+    [ -n "$t" ] || continue
+    r=$(cd "$t" 2>/dev/null && pwd -P) || continue
+    case "$p/" in "${r%/}/"*) return 0 ;; esac
+  done
+  return 1
+}
+
 top=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 main_ok=no
-if [ "$(cd "$top" && pwd -P)" = "$(cd "$brain" && pwd -P)" ] || [ -f "$top/parties.json" ]; then
+if [ "$(cd "$top" && pwd -P)" = "$(cd "$brain" && pwd -P)" ] || [ -f "$top/parties.json" ] || temp_remote "$remote_url"; then
   main_ok=yes
 elif [ -f "$targets" ]; then
   py=python3; "$py" -c 'import sys' >/dev/null 2>&1 || py=python   # Windows: python3 can be the Store stub
@@ -67,6 +85,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   #    8 commits instead of 2, seen only at the merge). Sends = commits no remote ref has.
   case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
   [ -z "${remote_sha//0/}" ] || continue
+  # Where main may be pushed anyway (the brain, the shared memory, a listed repo, a fixture's temp remote), commits of
+  # the local main riding along are no problem: the check guards main commits that may NOT go (merge train 2.1.6:
+  # #543's temp-remote case "a side branch on a temp remote passes" met #520's riding check).
+  [ "$main_ok" = yes ] && continue
   rem=--remotes; git remote 2>/dev/null | grep -qxF "$remote_name" && rem="--remotes=$remote_name"
   sends=$(git rev-list --count "$local_sha" --not "$rem" 2>/dev/null || echo 0)
   riding=""
