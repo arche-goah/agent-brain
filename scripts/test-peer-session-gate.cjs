@@ -1,8 +1,9 @@
 // covers: peer-session-gate
 // Fixture for helpers/peer-session-gate.cjs - both directions, no live process list.
 // The must-block case is the incident (2026-11-17): the closing reply named a peer session's claim as
-// holding while only this session ran. Session count through parallel-sessions.sh's own seam
-// PARALLEL_SESSIONS_CMDLINES (one line = this session only, two = a peer runs).
+// holding while only this session ran. Live sessions through session-areas.cjs's seams: a harness registry
+// under CLAUDE_CONFIG_DIR/sessions and SESSION_AREAS_ALIVE (the pids that count as alive). No shell is run
+// (Windows review 2026-11-17: a `bash` spawn gave ENOENT in a hook and the gate went silent).
 // Usage: node scripts/test-peer-session-gate.cjs   (exit 0 = pass)
 'use strict';
 const fs = require('fs');
@@ -11,13 +12,20 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const GATE = path.join(__dirname, '..', 'helpers', 'peer-session-gate.cjs');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'peer-session-gate-'));
+const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'peer-session-gate-')));
 const root = path.join(tmp, 'my-brain');
 fs.mkdirSync(path.join(root, '.claude', 'rules'), { recursive: true });
-const one = path.join(tmp, 'one.txt');
-const two = path.join(tmp, 'two.txt');
-fs.writeFileSync(one, 'claude\n');
-fs.writeFileSync(two, 'claude\nclaude --resume\n');
+const cfg = path.join(tmp, 'cfg');
+fs.mkdirSync(path.join(cfg, 'sessions'), { recursive: true });
+// the registry: this session (pid 101), the incident's closed peer my-brain-2b (pid 102), a live peer my-brain-ff (103)
+const reg = (pid, id, name) => fs.writeFileSync(path.join(cfg, 'sessions', `${pid}.json`),
+  JSON.stringify({ pid, sessionId: id, cwd: root, name }));
+reg(101, 'self', 'my-brain-5f');
+reg(102, 'peer2b', 'my-brain-2b');
+reg(103, 'peerff', 'my-brain-ff');
+const one = '101';          // only this session alive
+const two = '101,102';      // the named peer my-brain-2b alive too
+const other = '101,103';    // a different peer alive, the named one closed
 
 let fail = 0;
 const ok = (m) => console.log(`  OK  ${m}`);
@@ -33,10 +41,10 @@ function transcript(reply) {
   return f;
 }
 
-function run(reply, cmdlines, extra) {
-  const input = { transcript_path: transcript(reply), cwd: root, ...(extra || {}) };
-  const r = spawnSync('node', [GATE], { input: JSON.stringify(input), encoding: 'utf8',
-    env: { ...process.env, PARALLEL_SESSIONS_CMDLINES: cmdlines } });
+function run(reply, alive, extra) {
+  const input = { transcript_path: transcript(reply), cwd: root, session_id: 'self', ...(extra || {}) };
+  const r = spawnSync(process.execPath, [GATE], { input: JSON.stringify(input), encoding: 'utf8',
+    env: { ...process.env, CLAUDE_CONFIG_DIR: cfg, SESSION_AREAS_ALIVE: alive } });
   return r.stdout || '';
 }
 
@@ -50,10 +58,14 @@ function check(label, reply, cmdlines, want, extra) {
 
 const INCIDENT = 'Also, session my-brain-2b still holds its claim on docs/maintenance/.';
 const out = check('the incident: a closed peer named as holding a claim, only this session runs', INCIDENT, one, 'block');
-if (out.includes('measures only this one') && out.includes('my-brain-2b')) ok('the block names the sentence');
+if (out.includes('no live session of that name') && out.includes('my-brain-2b')) ok('the block names the peer and the sentence');
 else bad(`the block does not name the sentence: ${out.slice(0, 200)}`);
 check('present form "is running", only this session', 'A second session (my-brain-ff) is running in this brain.', one, 'block');
-check('a peer really runs (two sessions measured)', INCIDENT, two, 'allow');
+check('the named peer really runs', INCIDENT, two, 'allow');
+// Windows review design point (1): ANOTHER session running does not keep a stale claim about THIS peer alive
+check('a different peer runs, the named one is closed', INCIDENT, other, 'block');
+check('the live peer named is fine', 'Session my-brain-ff is running in this brain.', other, 'allow');
+check('this session missing from the registry: unmeasurable, passes', INCIDENT, one, 'allow', { session_id: 'unknown' });
 check('past form: the peer ran', 'Session my-brain-2b ran from 06:14 to 06:19.', one, 'allow');
 check('past form: the peer was closed', 'A second session existed, it was closed at 06:19 (my-brain-2b).', one, 'allow');
 check('a name without a present claim', 'The lines were written by my-brain-ff.', one, 'allow');

@@ -7,13 +7,13 @@
  * session of the same brain ran from 06:14 to 06:19 and acknowledged a path claim; the watcher reported
  * at about 06:22 that only one session was left, and at about 06:40 the closing reply still named the
  * peer's claim as holding. A peer's state was used without a freshness proof. The live measurement
- * exists: scripts/parallel-sessions.sh (one line per Claude process working in this repo).
+ * exists: the harness session registry, read through helpers/session-areas.cjs (name, pid, repo-exact).
  *
  * Mechanics: the turn's closing reply (close-loss-gate's replyText) is split into sentences; a sentence
  * that names a peer session — the harness's session name `<repo-folder>-<2 hex>`, the folder taken from
  * the project dir — in a PRESENT form ("is running", "holds", "claims", ...) and without a PAST form
- * ("ran", "closed", ...) is a claim. Then parallel-sessions.sh measures: exit 0 (at most this session)
- * blocks; exit 1 (another session runs) or 2 (cannot be measured) lets the claim stand.
+ * ("ran", "closed", ...) is a claim. Then the registry decides: a named peer that is not a live session of
+ * this brain blocks; a live one, or a registry that does not even list this session (unmeasurable), passes.
  * Instance data: .claude/rules/peer-session.json {"now_patterns", "past_patterns", "name_patterns"} —
  * regexes in the operator's language, extending the English built-ins (template in
  * templates/rules-instance/).
@@ -21,12 +21,11 @@
  * a corrected reply or a reasoned keep passes.
  * Output: {"decision":"block","reason":"PEER-SESSION-GATE: ... measures only this one: <sentence>"}.
  * Fails open: no transcript, unreadable input, unmeasurable session count.
- * Fixture: scripts/test-peer-session-gate.cjs (seam: PARALLEL_SESSIONS_CMDLINES of parallel-sessions.sh).
+ * Fixture: scripts/test-peer-session-gate.cjs (seams of session-areas.cjs: CLAUDE_CONFIG_DIR, SESSION_AREAS_ALIVE).
  */
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
 const { replyText } = require('./close-loss-gate.cjs');
 const { declare } = require('./stop-echo.cjs');
 
@@ -58,13 +57,15 @@ function claims(text, p) {
     .filter((s) => p.name.test(s) && p.now.test(s) && !p.past.test(s));
 }
 
-/** 0 = at most this session, 1 = another runs, 2 = unmeasurable (parallel-sessions.sh exit codes). */
-function sessionsRc(root) {
-  try {
-    execFileSync('bash', [path.join(__dirname, '..', 'scripts', 'parallel-sessions.sh'), root],
-      { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] });
-    return 0;
-  } catch (e) { return typeof e.status === 'number' ? e.status : 2; }
+/** Names of the live sessions of this brain from the harness registry (session-areas.cjs), or null when this
+ *  session itself is not found there (unmeasurable). No shell: the Windows review 2026-11-17 found that a spawn of
+ *  `bash` by name gives ENOENT in a hook process whose PATH carries Git\cmd only, and the gate then let every stale
+ *  claim stand. The registry also names THE peer, not "any second Claude process on the machine". */
+function liveNames(root, selfId) {
+  let list;
+  try { list = require('./session-areas.cjs').sessions(root, Date.now()); } catch (e) { return null; }
+  if (!selfId || !list.some((s) => s.id === selfId)) return null;
+  return new Set(list.map((s) => s.name));
 }
 
 function judge(input) {
@@ -72,11 +73,23 @@ function judge(input) {
   const root = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let inst = {};
   try { inst = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'peer-session.json'), 'utf8')); } catch (e) { /* built-ins */ }
-  const hits = claims(replyText(input.transcript_path), patterns(root, inst));
+  const p = patterns(root, inst);
+  const hits = claims(replyText(input.transcript_path), p);
   if (!hits.length) return null;
-  if (sessionsRc(root) !== 0) return null; // another session runs, or unmeasurable: the claim may hold
-  return `${MARKER}: the reply says another session runs or holds a claim, but parallel-sessions.sh measures ` +
-    `only this one: ${hits[0].trim().slice(0, 120)}`;
+  const live = liveNames(root, input.session_id);
+  if (!live) return null; // unmeasurable: the claim may hold
+  const folder = path.basename(path.resolve(root));
+  const named = new RegExp(`\\b${esc(folder)}-[0-9a-f]{2}\\b`, 'giu');
+  for (const s of hits) {
+    const names = s.match(named) || [];
+    // a sentence named only through an instance pattern: it stands while any other session runs
+    const stale = names.length ? names.find((n) => !live.has(n)) : (live.size <= 1 ? '(a peer)' : null);
+    if (stale) {
+      return `${MARKER}: the reply says ${stale} runs or holds a claim, but the session registry has no live ` +
+        `session of that name in this brain: ${s.trim().slice(0, 120)}`;
+    }
+  }
+  return null;
 }
 
 module.exports = { judge, claims, patterns };
