@@ -225,7 +225,7 @@ pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
 known:     scripts/always-loaded.py=1
 known:     scripts/autonomy-diagnose.py=1
-known:     scripts/brain-scan-prep.py=3
+known:     scripts/brain-scan-prep.py=4
 known:     scripts/changelog-assemble.py=1
 known:     scripts/ci-lint-local-parse.py=1
 known:     scripts/decision-review.py=1
@@ -282,6 +282,8 @@ TextIOWrapper.
 git-tracked, read by node in release-freeze-gate.cjs) opens with `newline="\n"`; its fixture asserts no CR byte.
 2026-11-12, scripts/start-findings.py baselined: its one write (the findings state under `.claude-state/`, not
 git-tracked) opens with `newline="\n"`.
+2026-11-16, scripts/brain-scan-prep.py 3 -> 4: the fourth write is `suppressed.json` in the scan's scratch dir (the
+active suppression list for the scan agents, not git-tracked); it opens with `newline="\n"` like the other three.
 
 ## OS-3 — a fixture hands a shell path to a native process
 
