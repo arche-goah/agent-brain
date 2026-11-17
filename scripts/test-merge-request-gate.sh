@@ -192,6 +192,23 @@ probe "another instance's finding (not this gate's)" "$M" allow
 rpr '[]' "[\"Windows OK; leak-scan 0 findings, the old pattern fails both cases <!-- instance-key: $KEY -->\"]"
 probe "an OK that mentions findings and fails in prose (control)" "$M" allow
 
+# Fifth check (follow-up 5, port of an instance alpha): a finding of ANY instance that names the current head holds.
+hpr() { node -e 'process.stdout.write(JSON.stringify({body: "feat: x", headRefOid: process.argv[1], statusCheckRollup: [], comments: JSON.parse(process.argv[2]).map((b) => ({body: b})), reviews: []}))' "$1" "$2" > "$T/pr.json"; }
+F1='**Content review at head `abc1234`**\n**Finding (builder: the author side) — the guard misses x** <!-- instance-key: 0123456789 -->'
+hpr abc1234def0 "[\"$F1\"]"
+probe "another instance's finding at this head" "$M" block
+probe "  ... a marker names where it closed" "$M # FINDING-CLOSED: answered in the thread, not a defect" allow
+hpr fff0000aaa0 "[\"$F1\"]"
+probe "the head moved past the finding" "$M" allow
+hpr abc1234def0 '["**Content review at head `abc1234`**\n**Finding (builder: the author side, non-blocking) — x** <!-- instance-key: 0123456789 -->"]'
+probe "a finding marked non-blocking" "$M" allow
+hpr abc1234def0 '["Windows FAIL at head abc1234: test-guards red <!-- instance-key: 0123456789 -->"]'
+probe "an OS FAIL at this head" "$M" block
+hpr abc1234def0 "[\"The note recommended before merge (at abc1234) is done in fff0000. <!-- instance-key: $KEY -->\"]"
+probe "the author's own answer quoting the finding" "$M" allow
+hpr abc1234def0 '["**Finding (builder: the author side) — x**, no head named <!-- instance-key: 0123456789 -->"]'
+probe "a finding that names no head is not judged" "$M" allow
+
 echo
 [ "$fail" -eq 0 ] && echo "test-merge-request-gate: all checks passed" || echo "test-merge-request-gate: FAILURES"
 exit "$fail"
