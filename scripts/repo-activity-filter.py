@@ -41,6 +41,7 @@ import os
 import sys
 
 sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # parsed by bash (OS-9)
+sys.stdin.reconfigure(encoding="utf-8")  # gh writes UTF-8; Windows would decode cp1252 (OS-23)
 
 TS = {"comments": "created_at", "open": "createdAt", "merged": "mergedAt", "runs": "updatedAt"}
 
