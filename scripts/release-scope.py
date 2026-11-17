@@ -8,14 +8,28 @@ was rebuilt three times, and the train was closed (the Windows hand check reques
 had two own branches in work and two operator-released items unbuilt; the operator found them afterwards. Nothing
 said what the release was meant to hold, so nothing could say that something was missing.
 
+NO SCOPE BEFORE A PIN IS DUE (operator 2026-11-12, translated: "As long as no pin is acutely due, the train is
+collected. How do you come to say now what will be in the train in maybe several days and automatically exclude
+everything else? That is exactly the opposite of how we want to work."). Measured the same day on the macOS
+instance: `open 2.1.6` ran right after a train merge with no pin or tag due; from then on the release was an opt-in
+list, leaving anything out needed the operator's word, and the freeze gate held every new core branch outside it -
+an early scope turned "the train is open" into "the train is closed". So: while no scope is open (the NORMAL state)
+the train collects - every mature item rides along by default, there is no member list and no exclusion. `open`
+starts a scope only when a pin/tag is acutely due, and only with the operator's quoted word naming that release:
+    --operator-word '"<the operator's words>" <YYYY-MM-DD>'   (the form of RELEASE_EARLY_OK / RELEASE_SCOPE_EXCLUDE_OK;
+                                                              at least three words inside the quote marks)
+The word is stored in the scope file; a scope without it (opened before this rule) does not hold new branches.
+
 The scope is a file in the INSTANCE that cuts the release (a core script's own folder is not the brain):
     <brain>/.claude-state/release-scope.json
     {"version": "2.1.4", "repo": "agent-brain", "status": "open"|"closed", "opened": "YYYY-MM-DD",
+     "operator_word": "\"<their words>\" YYYY-MM-DD",
      "items": ["agent-brain#433", "feat/x", "<ledger id>"], "excluded": {"<item>": "<reason>"}}
 An item is a ledger id, `<repo>#<n>` (or `#<n>`) or a branch name.
 
-    release-scope.py open <version> [--repo NAME]     start the scope (helpers/release-freeze-gate.cjs then holds
-                                                     new core branches that are not in it)
+    release-scope.py open <version> --operator-word W [--repo NAME]
+                                                     start the scope when the pin is due (helpers/release-freeze-gate.cjs
+                                                     then holds new core branches that are not in it)
     release-scope.py add <item> [<item> ...]          in this release
     release-scope.py exclude <item> <reason ...>      deliberately not in this release, with the reason; needs
                                                      RELEASE_SCOPE_EXCLUDE_OK='"<operator's words>" <YYYY-MM-DD>'
@@ -60,6 +74,13 @@ REACH = re.compile(r"(?:^\s*(?:[-*]\s+)?|[|·;]\s*)`?reach:\s*`?(shared|core)\b"
 ACTIVE_EXITS = ("ai-does-it", "in-pr")
 # The operator's words in quote marks (straight or typographic), as release-preflight's RELEASE_EARLY_OK takes them.
 QUOTED = re.compile(r"[\"“„«][^\"“”„«»]{3,}[\"”“»]")
+DATED = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+
+def operator_word_ok(word):
+    """The operator's quoted words with their date; the quote holds at least three words."""
+    m = QUOTED.search(word or "")
+    return bool(m and DATED.search(word) and len(m.group(0)[1:-1].split()) >= 3)
 
 
 def state_path(root):
@@ -152,7 +173,8 @@ def ledger_items(root):
 def check(root, clone, version):
     scope = load(root)
     if scope is None:
-        print(f"FAIL no release scope at {STATE.as_posix()} - start it: release-scope.py open <version>")
+        print(f"FAIL no release scope at {STATE.as_posix()} - a pin is being cut, so it is due now: "
+              "release-scope.py open <version> --operator-word '\"<the operator's words naming this release>\" <YYYY-MM-DD>'")
         return 1
     repo = scope.get("repo") or "agent-brain"
     covered = set(scope.get("items") or []) | set((scope.get("excluded") or {}).keys())
@@ -224,6 +246,8 @@ def main(argv=None):
     o = sub.add_parser("open", parents=[common])
     o.add_argument("version")
     o.add_argument("--repo", default="agent-brain", help="the repo this release is cut from")
+    o.add_argument("--operator-word", default="",
+                   help="'\"<the operator's words naming this release>\" <YYYY-MM-DD>' - a scope opens only when a pin is due")
     a = sub.add_parser("add", parents=[common])
     a.add_argument("items", nargs="+")
     e = sub.add_parser("exclude", parents=[common])
@@ -247,8 +271,14 @@ def main(argv=None):
         if is_open:
             print(f"release scope {args.version} is already open ({len(scope.get('items') or [])} item(s))")
             return 0
+        if not operator_word_ok(args.operator_word):
+            print(f"FAIL no release scope opened: the train is open and collects everything until a pin is due - every "
+                  f"mature item rides along, no member list, no exclusion (operator 2026-11-12). Open {args.version} only "
+                  "when its pin/tag is acutely due, with the operator's word naming it: release-scope.py open "
+                  f"{args.version} --operator-word '\"<their words, at least three>\" <YYYY-MM-DD>'")
+            return 3
         save(root, {"version": args.version, "repo": args.repo, "status": "open", "opened": today,
-                    "items": [], "excluded": {}})
+                    "operator_word": args.operator_word.strip(), "items": [], "excluded": {}})
         print(f"release scope {args.version} opened in {STATE.as_posix()}; new {args.repo} branches outside it are held")
         return 0
     if args.cmd == "check":
@@ -259,6 +289,7 @@ def main(argv=None):
             return 1
         print(f"release scope {scope.get('version')} ({scope.get('repo')}) - {scope.get('status')} since "
               f"{scope.get('closed') or scope.get('opened')}")
+        print(f"  operator: {scope.get('operator_word') or '(none - opened before a pin was due; holds nothing)'}")
         for i in scope.get("items") or []:
             print(f"  in   {i}")
         for i, why in sorted((scope.get("excluded") or {}).items()):

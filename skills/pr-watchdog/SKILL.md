@@ -31,8 +31,11 @@ at the tag and says so.
 
 ## Release chain
 
-0. **Scope first, the moment release prep is ordered** (why: Evidence, 2026-11-06).
-   `python3 core/scripts/release-scope.py open X.Y.Z` in the brain, then `add` every PR,
+0. **Scope first, the moment a pin is acutely due — never earlier** (why: Evidence,
+   2026-11-06 and 2026-11-12). Until then there is NO scope: the train collects, every
+   mature item rides along by default, no member list, no exclusion. When the pin/tag is
+   due: `python3 core/scripts/release-scope.py open X.Y.Z --operator-word '"<the operator's
+   words naming this release>" <YYYY-MM-DD>'` in the brain (refused without it), then `add` every PR,
    branch and ledger id this release carries and `exclude <item> "<reason>"` what it
    deliberately leaves out — what stays out is the operator's call: ask with the list, then
    `RELEASE_SCOPE_EXCLUDE_OK='"<their words>" <YYYY-MM-DD>'` (the tool refuses without it). While the scope is open, `helpers/release-freeze-gate.cjs`
@@ -69,5 +72,10 @@ at the tag and says so.
   rebuilt three times, and it was closed (Windows hand check requested) while the same
   instance still had two own branches in work and two operator-released items unbuilt;
   the operator found them afterwards. Since then step 0 writes the scope down first.
+- 2026-11-12: a scope for 2.1.6 was opened right after a train merge with no pin due; from
+  then on everything not added was out, leaving it out needed the operator's word and the
+  freeze gate held new core branches — the train was closed days before its release. The
+  operator: "As long as no pin is acutely due, the train is collected." Since then `open`
+  takes the operator's word naming the release, and a scope without it holds nothing.
 - 2026-11-02: this skill lived in an instance-only plugin (as a local deviation from the
   one-system rule); the operator moved it into the core ("these should be core skills").
