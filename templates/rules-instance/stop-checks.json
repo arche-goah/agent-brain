@@ -165,6 +165,17 @@
       "required": true
     },
     {
+      "label": "HAND STEP",
+      "marker": "HAND-STEP-GATE",
+      "cmd": "core/helpers/hand-step-gate.cjs",
+      "mode": "block",
+      "_note": "Inert without .claude/rules/hand-steps.json (template next to this file).",
+      "extract": "not theirs to take:\\s*([\\s\\S]+)",
+      "template": "A hand step for the operator that is not theirs to take: {1}",
+      "maxLength": 240,
+      "required": true
+    },
+    {
       "label": "IDLE",
       "marker": "AUTONOMOUS-IDLE",
       "cmd": "core/helpers/autonomous-idle-gate.cjs",
