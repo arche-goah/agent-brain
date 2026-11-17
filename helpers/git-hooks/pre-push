@@ -76,6 +76,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     bases=$(git merge-base --all "$local_sha" "refs/heads/$mb" 2>/dev/null) || break
     # shellcheck disable=SC2086   # bases: one sha per word
     riding=$(git log --format='    %h %s' -n 10 $bases --not "$rem" 2>/dev/null)
+    # a subject is text, not a printf escape: `\c` in it cut the message at that point (Windows review 2026-11-17)
+    riding=${riding//\\/\\\\}
     n_riding=$(git rev-list --count $bases --not "$rem" 2>/dev/null || echo 0)
     break
   done

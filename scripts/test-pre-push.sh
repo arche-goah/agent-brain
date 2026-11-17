@@ -44,6 +44,11 @@ c "$W" three; try "main of a repo the list does not name is blocked" blocked "$W
 # --- a new branch says what it carries (2026-11-12: six commits of a local main rode along) -----
 try "a new branch from a main that is ahead is blocked" blocked "$W" main:refs/heads/feat/y
 grep -q 'three' "$TMP/err" && pass "  ... and the block names the riding commit" || fail "  ... riding commit not named: $(tr '\n' ' ' < "$TMP/err")"
+# Windows review 2026-11-17: a backslash in a riding subject is text - `\c` cut the message before `way out:`
+c "$W" 'path C:\core\x'
+try "a riding subject with a backslash is blocked" blocked "$W" main:refs/heads/feat/bs
+grep -aq 'way out:' "$TMP/err" && grep -aqF 'C:\core\x' "$TMP/err" && pass "  ... and the block keeps the subject and its way out" \
+  || fail "  ... message cut by the backslash: $(tr '\n' ' ' < "$TMP/err")"
 PUSH_GUARD_OK="fixture" try "the marker lets that new branch through" ok "$W" main:refs/heads/feat/y
 git -C "$W" checkout -qb feat/own origin/main; c "$W" own-1
 try "a new branch with only its own commit passes" ok "$W" feat/own
