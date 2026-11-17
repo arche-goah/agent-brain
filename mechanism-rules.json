@@ -21,6 +21,12 @@
       "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; read its summary line before claiming green (Working Rule #13)."
     },
     {
+      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:(?:env|command)\\s+)?(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?core-(?:merge|push)-lint\\.sh\\b",
+      "foreground_only": true,
+      "was": "running core-merge-lint.sh or core-push-lint.sh in the foreground - both run ci-lint-local.sh plus the touched fixture suites; measured 2026-10-31 on the macOS instance: a merge lint held the session for over 3 min until the operator moved it to the background by hand (ported 2026-11-17 from that instance's rule, which stood in no core file)",
+      "instead": "Start the same command detached (Bash run_in_background) and keep working; read its GREEN/RED line before pushing or merging (Working Rule #13). Several PRs: one clone each through CORE_MERGE_LINT_CLONE, in parallel."
+    },
+    {
       "target": "raw",
       "pattern": "(?:\\bcommit\\b[^\\n]*?\\s(?:-m|--message)|\\bgh\\s+(?:pr|issue)\\s+\\w+\\b[^\\n]*?\\s(?:-b|--body|--title|-t))[=\\s]*([\"'])(?:(?!\\1)[\\s\\S])*\\n",
       "was": "multi-line text written into the command itself (a `git commit -m` message, a `gh pr|issue` body or title spanning lines) - permission rules match the whole command text with wildcards, so a word in the text trips an ask rule: measured 2026-10-26 on the Windows instance, a commit message naming `git -C <brain> push` and `main-push` matched the template's `git -C * push * main*` ask and prompted the operator in the middle of an autonomous run",

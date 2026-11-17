@@ -385,6 +385,10 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: ci-lint-local in the foreground" Bash command "bash scripts/ci-lint-local.sh lint" block
   tr_probe "mechanism-guard/core rule: ci-lint-local via Monitor" Monitor command "bash scripts/ci-lint-local.sh lint" allow
   tr_probe "mechanism-guard/core rule: the ci-lint-local fixture itself" Bash command "bash scripts/test-ci-lint-local.sh" allow
+  tr_probe "mechanism-guard/core rule: core-push-lint in the foreground" Bash command "bash core/scripts/core-push-lint.sh --fast /tmp/wt" block
+  tr_probe "mechanism-guard/core rule: core-merge-lint in the foreground, env prefix" Bash command "CORE_MERGE_LINT_CLONE=/tmp/c bash scripts/core-merge-lint.sh 217" block
+  tr_probe "mechanism-guard/core rule: grep in core-push-lint.sh (control)" Bash command "grep -n fast scripts/core-push-lint.sh" allow
+  tr_probe "mechanism-guard/core rule: the queue fixture of core-push-lint (control)" Bash command "bash scripts/test-core-push-lint-queue.sh" allow
   # 2026-10-26: multi-line text belongs in a file - a commit message tripped a push ask rule
   tr_probe "mechanism-guard/core rule: multi-line commit -m" Bash command 'git -C /r commit -m \"fix: x\n\nbody names git -C <r> push to main\"' block
   tr_probe "mechanism-guard/core rule: one-line commit -m" Bash command 'git -C /r commit -m \"fix: one line\"' allow
@@ -606,6 +610,13 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
     bad "mechanism-guard/core rule: ci-watch with run_in_background blocked what it should allow"
   else
     ok "mechanism-guard/core rule: ci-watch with run_in_background allows"
+  fi
+  out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/core-push-lint.sh --fast /tmp/wt","run_in_background":true}}' \
+        | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
+  if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then
+    bad "mechanism-guard/core rule: core-push-lint with run_in_background blocked what it should allow"
+  else
+    ok "mechanism-guard/core rule: core-push-lint with run_in_background allows"
   fi
   # a background Bash reports once at its end: a grep without --line-buffered there is no stream
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"make test | grep FAIL","run_in_background":true}}' \
