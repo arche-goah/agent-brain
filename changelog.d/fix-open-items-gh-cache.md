@@ -9,4 +9,4 @@
   fresh list at every turn end, one session ran this script more than twenty times within an hour, and the account's
   GitHub budget fell to 22 % - the collaboration watch slowed to its 25-minute floor for every repo. Each run sends
   the same GraphQL searches; minutes apart they give the same answer. `run()` now keeps a successful `gh` answer in
-  `.claude-state/open-items-gh-cache.json` for `OPEN_ITEMS_GH_CACHE_TTL` seconds (default 300); `--fresh` bypasses it.
+  `.claude-state/open-items-gh-cache.json` for `OPEN_ITEMS_GH_CACHE_TTL` seconds (default 300); `--fresh` bypasses it. A TTL that is no whole number (`5m`) falls back to 300 with one stderr line instead of ending the list in a ValueError (Windows review 2026-11-17; test case 8, red against the first head).

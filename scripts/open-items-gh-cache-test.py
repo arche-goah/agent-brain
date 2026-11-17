@@ -67,5 +67,16 @@ with tempfile.TemporaryDirectory() as tmp:
     oi.run(GH), oi.run(GH)
     check("without a cache file nothing is cached", len(calls) == 9, f"{len(calls)} calls")
 
+# Windows review 2026-11-17 (#555): a typo in the TTL env (`5m`) ended the whole list in a ValueError. A real child
+# process (Popen: subprocess.run is the patched stand-in above), an empty root, no network needed for the parse.
+import os
+with tempfile.TemporaryDirectory() as empty:
+    p = subprocess.Popen([sys.executable, str(HERE / "open-items.py"), "--root", empty],
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                         env={**os.environ, "OPEN_ITEMS_GH_CACHE_TTL": "5m"})
+    out, err = p.communicate(timeout=60)
+    check("a TTL typo falls back to 300 and says so, no ValueError",
+          "ValueError" not in err and "not a whole number of seconds" in err, (err or out)[-300:])
+
 print("open-items-gh-cache: all cases pass" if not fails else f"open-items-gh-cache: {fails} FAILURES")
 sys.exit(1 if fails else 0)

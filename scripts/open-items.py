@@ -1047,7 +1047,13 @@ def main():
     state_dir = root / ".claude-state"
     seen_file, cls_file = state_dir / "open-items-seen.json", state_dir / "open-items-class.json"
     GH_CACHE["file"] = state_dir / "open-items-gh-cache.json"
-    GH_CACHE["ttl"] = 0 if a.fresh else int(os.environ.get("OPEN_ITEMS_GH_CACHE_TTL", "300") or 0)
+    # A typo in the env (`5m`) must not blank the list with a ValueError (Windows review 2026-11-17, #555): default, said once.
+    try:
+        ttl = int(os.environ.get("OPEN_ITEMS_GH_CACHE_TTL", "300") or 0)
+    except ValueError:
+        print("open-items: OPEN_ITEMS_GH_CACHE_TTL is not a whole number of seconds - using 300", file=sys.stderr)
+        ttl = 300
+    GH_CACHE["ttl"] = 0 if a.fresh else ttl
     # The default shared memory, then every further channel this instance is a member of
     # (scripts/shared_channels.py). A broken channel file reads the default alone and says so.
     try:
