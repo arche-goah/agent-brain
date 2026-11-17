@@ -95,6 +95,12 @@ out=$(run); ! grep -q 'contradicting' <<< "$out" && ok "manual-list-without-it-s
 decl '{"instance":{"scripts/hooks/":{"why":"w","evidence":"// x"}},"alpha":{"scripts/hooks/x.cjs":{"until":"2026-10-20","why":"a"}}}'
 out=$(run); grep -q "declared both instance 'scripts/hooks/' and alpha 'scripts/hooks/x.cjs'" <<< "$out" \
   && ok "instance-and-alpha-contradiction-loud" || bad "instance-and-alpha-contradiction-loud: $out"
+# A wrapper in front of a declared script is no contradiction: the wrapper's key matches by command text,
+# the script's key by its own path, and the script's own key decides (2026-11-17).
+mk "$(H "$(C 'bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/wrap.sh\" x python3 \"$CLAUDE_PROJECT_DIR/scripts/y.py\"')")" '' '' >/dev/null
+mkdir -p "$T/b/scripts/hooks"; printf '# y of plotter-7\n' > "$T/b/scripts/y.py"; printf '# wrap\n' > "$T/b/scripts/hooks/wrap.sh"
+decl '{"instance":{"scripts/y.py":{"why":"w","evidence":"plotter-7"}},"alpha":{"scripts/hooks/wrap.sh":{"until":"2026-10-20","why":"a"}}}'
+out=$(run); ! grep -q 'contradicting' <<< "$out" && ok "wrapper-in-command-no-contradiction" || bad "wrapper-in-command-no-contradiction: $out"
 out=$(mk '{' '' ''); rc=$?
 [[ $rc -eq 0 && -z "$out" ]] && ok "broken-settings-silent-exit0" || bad "broken-settings-silent-exit0 rc=$rc: $out"
 

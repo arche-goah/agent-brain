@@ -765,6 +765,12 @@ def judge(items, decl, C, today):
         it["class"] = "ok"
         name = it["name"]
         ka, ki = match(alpha, it), match(inst, it)
+        # A wrapper in the command is no second declaration of the item: `bash wrap.sh name python3 x.py`
+        # matches the wrapper's key by command text and x.py's key by its path (measured 2026-11-17, four
+        # SessionStart scripts behind a data-frame wrapper read as "declared both instance and alpha").
+        # The key that covers the item's own path decides; a contradiction needs both to cover it.
+        if ka and ki and covers(ka, it["id"]) != covers(ki, it["id"]):
+            ka, ki = (ka, None) if covers(ka, it["id"]) else (None, ki)
         if name and name in core and it["carrier"] in ("script", "skill", "workflow"):
             # A declared alpha copy of a core item the pin does not carry yet is the deviation
             # itself, not a shadow: measured 2026-10-27, two copies of merged core changes ahead
