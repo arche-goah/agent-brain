@@ -695,7 +695,7 @@ function ghListed(ghCalls, root) {
 // Returns the key, or null (no token, no BLOCKED line, unreadable file, undeclared key, an entry without watch_gap).
 function watchGap(root, text) {
   const t = stripQuoted(text || '');
-  if (!/^[ \t>*_-]*BLOCKED:/m.test(t)) return null;
+  if (!/^[ \t>*_`-]*BLOCKED:/m.test(t)) return null;
   const m = /\bWATCH-GAP:\s*(\S+)/.exec(t);
   if (!m) return null;
   const key = m[1].replace(/[.,;)]+$/, '');

@@ -161,8 +161,8 @@ const writesTo = (writes, rel) => writes.some((w) => String(w).replace(/\\/g, '/
 //   invariant: <the rule that was broken, said without the instance's names - no path, no PR/issue number>
 //   replay:    <the detector over the history with its count> (a digit; "pending" is no replay)
 // Instance data `invariant_forbidden` (root-cause-patterns.json) adds its own proper nouns the invariant must not use.
-const INVARIANT = /^[ \t>*_-]*invariant:[ \t]*(\S[^\n]{11,})/imu;
-const REPLAY_LINE = /^[ \t>*_-]*replay:[ \t]*(?!pending)([^\n]*)/imu;
+const INVARIANT = /^[ \t>*_`-]*invariant:[ \t]*(\S[^\n]{11,})/imu;
+const REPLAY_LINE = /^[ \t>*_`-]*replay:[ \t]*(?!pending)([^\n]*)/imu;
 // A count, not a date (Windows review of #491: "replay: 2026-11-11, not run yet" passed): dates and clock times are
 // removed before the digit test.
 // Second Windows review: any other digit passed too ("waits for the v2.1.5 pin", "after 3 sessions"), so a count is a
