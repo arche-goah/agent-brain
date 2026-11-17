@@ -237,5 +237,28 @@ expect "home path only inside --body-file blocks"           block "$T" "gh pr cr
 expect "the <home> placeholder passes"                      allow "$T" 'gh pr comment 1 -R o/pub --body "see <home>/notes"'
 expect "a home path only in the --body-file PATH passes"    allow "$T" "gh pr create -R o/pub --title fix --body-file $(native "$HOME_MAC")/clean.md"
 
+# A local script the command runs is read one level deep (2026-11-12, both instances: posts made inside
+# `bash <file>` went out unread - the guard saw only the outer command).
+SC="$T/scripts"; mkdir -p "$SC"
+printf '%s\n' '#!/usr/bin/env bash' '# posts the fix note' 'gh pr comment "$1" -R o/pub --body "fixed, thanks zorbalina"' > "$SC/named.sh"
+printf '%s\n' '#!/usr/bin/env bash' '# the reviewer'"'"'s note, said to zorbalina only in this comment' 'gh pr comment "$1" -R o/pub --body "fixed in $2"' > "$SC/clean.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo "zorbalina"' > "$SC/quiet.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'gh pr comment "$1" -R "$2" --body "$(printf '"'"'fixed in %s, thanks zorbalina'"'"' "$3")"' > "$SC/printf.sh"
+printf '%s\n' '#!/usr/bin/env bash' "gh pr comment 1 -R o/pub --body \"see $HP\"" > "$SC/leaky.sh"
+printf '%s\n' '#!/usr/bin/env bash' "gh pr comment 1 -R o/pub --body-file $NT/named.md" > "$SC/file.sh"
+cp "$SC/named.sh" "$SC/direct.sh"; chmod +x "$SC/direct.sh"
+expect "a script run as bash <file> posting a name blocks"   block "$T" "bash $NT/scripts/named.sh 5"
+expect "the same script without the name passes"            allow "$T" "bash $NT/scripts/clean.sh 5 abc123"
+expect "a script that posts nothing passes"                 allow "$T" "bash $NT/scripts/quiet.sh"
+expect "the name in a printf template, repo from \$2, blocks" block "$T" "bash $NT/scripts/printf.sh 5 o/pub abc123"
+expect "a repo from \$2 is unknown, not the private cwd's"   block "$T/privclone" "bash $NT/scripts/printf.sh 5 o/pub abc123"
+expect "a home path in a script's body blocks"             block "$T" "bash $NT/scripts/leaky.sh"
+expect "a name in a file the script hands over blocks"      block "$T" "sh $NT/scripts/file.sh"
+expect "a script run directly (./path) is read too"         block "$SC" "./direct.sh 5"
+expect "a script after a ; and VAR= prefix is read too"     block "$T" "echo go; X=1 bash -e $NT/scripts/named.sh 5"
+expect "a script path that does not exist passes"           allow "$T" "bash $NT/scripts/no-such.sh"
+expect "a script path the guard cannot expand blocks (unknown target)" block "$T" 'bash "$NOSUCHDIR/named.sh" 5'
+expect "the same unreadable script from a private clone passes" allow "$T/privclone" 'bash "$NOSUCHDIR/named.sh" 5'
+
 [ "$fail" -eq 0 ] && echo "public-text-guard: all checks passed" || echo "public-text-guard: FAILURE"
 exit "$fail"
