@@ -259,6 +259,14 @@ expect "a script after a ; and VAR= prefix is read too"     block "$T" "echo go;
 expect "a script path that does not exist passes"           allow "$T" "bash $NT/scripts/no-such.sh"
 expect "a script path the guard cannot expand blocks (unknown target)" block "$T" 'bash "$NOSUCHDIR/named.sh" 5'
 expect "the same unreadable script from a private clone passes" allow "$T/privclone" 'bash "$NOSUCHDIR/named.sh" 5'
+# PowerShell scripts the same way (debt named in #515): pwsh/powershell with a .ps1, `& x.ps1`, a .ps1 run by path
+printf '%s\n' '# posts the fix note' 'gh pr comment 5 -R o/pub --body "fixed, thanks zorbalina"' > "$SC/named.ps1"
+printf '%s\n' '# the reviewer'"'"'s note' 'gh pr comment 5 -R o/pub --body "fixed in abc123"' > "$SC/clean.ps1"
+expect "pwsh -File <x.ps1> posting a name blocks"           block "$T" "pwsh -NoProfile -ExecutionPolicy Bypass -File $NT/scripts/named.ps1"
+expect "powershell <x.ps1> posting a name blocks"           block "$T" "powershell.exe $NT/scripts/named.ps1"
+expect "a .ps1 run by its path blocks"                      block "$T" "$NT/scripts/named.ps1"
+expect "the same .ps1 without the name passes"              allow "$T" "pwsh -File $NT/scripts/clean.ps1"
+expect "pwsh -Command with inline text names no file"       allow "$T" "pwsh -Command Get-Date $NT/scripts/named.ps1"
 
 [ "$fail" -eq 0 ] && echo "public-text-guard: all checks passed" || echo "public-text-guard: FAILURE"
 exit "$fail"
