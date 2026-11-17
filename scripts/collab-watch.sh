@@ -93,11 +93,15 @@ logins_for_tag() {
 }
 # What this session is told: NOTE/ERROR always, event lines only when they match $COLLAB_WATCH_SHOW (grep -E).
 # Applied AFTER the log, never before it: the log is every session's source.
+# `exec`: in a pipeline the function runs in a bash subshell, and `$!` of `tail … | show_filter &` named that subshell -
+# killing it left awk (and tail) running and still writing, so a takeover told every event twice (Windows review of
+# #512, measured at e0022f6 and f23a27f; reproduced on macOS: two arm notes after one takeover). With exec the
+# subshell IS awk: `kill $!` ends it, tail ends with SIGPIPE at the next line.
 show_filter() {
   if [[ -n "$SHOW" ]]; then
-    awk -v rx="$SHOW" '/^(NOTE|ERROR):/ || $0 ~ rx { print; fflush() }'
+    exec awk -v rx="$SHOW" '/^(NOTE|ERROR):/ || $0 ~ rx { print; fflush() }'
   else
-    cat
+    exec cat
   fi
 }
 # Fixture seam: run only the shared-memory filter over stdin, arm nothing.

@@ -78,8 +78,19 @@ echo "PR acme/3d-print-suite #5: a 3d PR" >> "$T/state/events.log"
 wait_for "$T/out5" "a 3d PR" 50 && ok "the follower tells its topic" || bad "topic event not relayed: $(cat "$T/out5")"
 grep -q "a core comment" "$T/out5" && bad "the follower told a foreign event" || ok "the follower drops a foreign event"
 grep -q "a core comment" "$T/state/events.log" && ok "the log still holds the foreign event for other sessions" || bad "log lost a line"
-kill "$RUN" 2>/dev/null; wait "$RUN" 2>/dev/null; RUN=""
+# Windows review (finding at e0022f6 and f23a27f): the filtered follower's `$!` was a bash subshell, so a takeover told
+# every event twice and tail + awk leaked. The holder ends, the follower takes over: ONE arm note, and after the run
+# is killed no filter process with this topic survives.
 kill "$FAKE" 2>/dev/null; wait "$FAKE" 2>/dev/null; FAKE=""
+wait_for "$T/out5" "NOTE: collaboration watch armed" 50 || true
+sleep 2
+n_arm=$(grep -ac "NOTE: collaboration watch armed" "$T/out5")
+[ "$n_arm" -eq 1 ] && ok "after the takeover the arm note comes once" || bad "arm note $n_arm times after the takeover: $(cat "$T/out5")"
+kill "$RUN" 2>/dev/null; wait "$RUN" 2>/dev/null; RUN=""
+sleep 1
+left=$(ps -ef 2>/dev/null | grep -a "rx=3d-print" | grep -av grep | wc -l | tr -d ' ')
+[ "$left" -eq 0 ] && ok "no filter process survives the run" || bad "$left filter process(es) left: $(ps -ef | grep -a 'rx=3d-print' | grep -av grep)"
+pkill -f "rx=3d-print" 2>/dev/null || true
 
 echo "6. a slow tail start loses no line (portability windows-latest 2026-11-12: cases 1 and 5 flaky on Git Bash)"
 mkdir -p "$T/slowbin"
