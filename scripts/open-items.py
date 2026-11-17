@@ -84,6 +84,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -104,13 +105,31 @@ CIRCLE = re.compile(r"^\s+circle:\s*([A-Fa-f])\b", re.M)
 AI_CIRCLES = {"A", "C"}  # one AI alone · the AIs of several sides — everything else has a human in it
 
 
+# A short cache for GitHub calls (`gh ...`) in the brain's .claude-state. Measured 2026-11-16 on the macOS instance:
+# the Stop check of an autonomous run asks for a fresh list at every turn end, one session ran this script more than
+# twenty times in an hour, and the account's GitHub budget fell to 22 % - the collaboration watch slowed down for
+# everyone. The same search minutes apart gives the same answer. `--fresh` (or OPEN_ITEMS_GH_CACHE_TTL=0) asks GitHub
+# again; only a successful answer is kept, so a failed read is never served as a list.
+GH_CACHE = {"file": None, "ttl": 300}
+
+
 def run(cmd, cwd=None, timeout=25):
+    cached = GH_CACHE["file"] and cmd and cmd[0] == "gh"     # --fresh still writes: the next run reads the new answer
+    if cached:
+        key = json.dumps([cmd, str(cwd or "")])
+        data = load_json(GH_CACHE["file"], {})
+        hit = data.get(key)
+        if hit and 0 <= time.time() - hit.get("at", 0) < GH_CACHE["ttl"]:
+            return 0, hit.get("out", "")
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=timeout, cwd=cwd)
-        return p.returncode, p.stdout
     except (OSError, subprocess.TimeoutExpired) as e:
         return 127, str(e)
+    if cached and p.returncode == 0:
+        data[key] = {"at": time.time(), "out": p.stdout}  # ponytail: keys never expire from the file, few searches
+        save_json(GH_CACHE["file"], data)
+    return p.returncode, p.stdout
 
 
 def load_json(path, default):
@@ -1023,6 +1042,7 @@ def main():
     # extend: the hint prints one --classify per item; with the default action only the last one counted.
     ap.add_argument("--classify", nargs="+", action="extend", metavar="ID=ai|human[:why]")
     ap.add_argument("--top", type=int, default=0, help="show only the N oldest items per side (own / operator); 0 = all")
+    ap.add_argument("--fresh", action="store_true", help="ask GitHub again, ignore the short cache")
     a = ap.parse_args()
     # --owner is a GitHub account, not the item side the output prints as [..|ai] / [..|human]. Measured 2026-11-03
     # on the macOS instance: a hand run with `--owner ai` searched the foreign account "ai", listed 26 of its PRs as
@@ -1037,6 +1057,14 @@ def main():
     root = Path(a.root)
     state_dir = root / ".claude-state"
     seen_file, cls_file = state_dir / "open-items-seen.json", state_dir / "open-items-class.json"
+    GH_CACHE["file"] = state_dir / "open-items-gh-cache.json"
+    # A typo in the env (`5m`) must not blank the list with a ValueError (Windows review 2026-11-17, #555): default, said once.
+    try:
+        ttl = int(os.environ.get("OPEN_ITEMS_GH_CACHE_TTL", "300") or 0)
+    except ValueError:
+        print("open-items: OPEN_ITEMS_GH_CACHE_TTL is not a whole number of seconds - using 300", file=sys.stderr)
+        ttl = 300
+    GH_CACHE["ttl"] = 0 if a.fresh else ttl
     # The default shared memory, then every further channel this instance is a member of
     # (scripts/shared_channels.py). A broken channel file reads the default alone and says so.
     try:
