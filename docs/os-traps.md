@@ -88,7 +88,7 @@ pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
 known:     helpers/session-bootup.sh=4
 known:     scripts/always-loaded.py=4
-known:     scripts/autonomy-diagnose.py=26
+known:     scripts/autonomy-diagnose.py=23
 known:     scripts/backprop-report.py=5
 known:     scripts/brain-friction.py=1
 known:     scripts/brain-selftest.sh=3
