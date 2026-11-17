@@ -426,6 +426,12 @@ def main() -> int:
         r = post(a_dir, "request", "--area", "core", "--to", "alex-mac", "--title", "Behind and dirty", "--body", "x")
         check("behind with local changes: refused, nothing written",
               r.returncode != 0 and "behind" in (r.stdout + r.stderr) and files(a_dir) == before, r.stdout + r.stderr)
+        (a_dir / "core" / "draft.md").unlink()                        # clean again, but diverged: ff-only fails
+        before = files(a_dir)
+        r = post(a_dir, "request", "--area", "core", "--to", "alex-mac", "--title", "Behind and diverged", "--body", "x")
+        check("behind and diverged: ff-only refused, the message names `git pull --rebase`",
+              r.returncode != 0 and "git pull --rebase" in (r.stdout + r.stderr) and files(a_dir) == before,
+              r.stdout + r.stderr)
     print("shared-memory-post: all cases pass" if not fails else f"shared-memory-post: {fails} FAILURES")
     return 1 if fails else 0
 

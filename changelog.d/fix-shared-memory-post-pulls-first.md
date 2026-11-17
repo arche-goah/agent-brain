@@ -10,3 +10,5 @@
   post or committing past the hook - were both refused by the permission layer; the operator had to release the
   commit. The script's own docstring already said a request is written "after a pull"; nothing made it so. Now
   `pull_first()` fetches, fast-forwards a clean behind checkout and refuses a dirty one before the first write.
+  The `--ff-only failed` refusal (a diverged checkout) now names the same way out as the dirty one, `git pull --rebase`
+  with an own commit (fixture case "behind and diverged"; Windows review 2026-11-17).

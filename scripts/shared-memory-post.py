@@ -504,7 +504,8 @@ def pull_first(repo: Path) -> str:
     p = _git(repo, "pull", "-q", "--ff-only")
     if p is None or p.returncode != 0:
         return (f"the checkout is {behind} commit(s) behind and `git pull --ff-only` failed - nothing was written: "
-                + ((p.stderr or "").strip().splitlines() or ["(no output)"])[-1])
+                + ((p.stderr or "").strip().splitlines() or ["(no output)"])[-1]
+                + " - with an own commit: `git pull --rebase`, the repo's README form, then post again")
     print(f"pulled {behind} commit(s) before writing", file=sys.stderr)
     return ""
 
