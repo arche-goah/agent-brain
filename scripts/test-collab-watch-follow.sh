@@ -87,8 +87,12 @@ sleep 2
 n_arm=$(grep -ac "NOTE: collaboration watch armed" "$T/out5")
 [ "$n_arm" -eq 1 ] && ok "after the takeover the arm note comes once" || bad "arm note $n_arm times after the takeover: $(cat "$T/out5")"
 kill "$RUN" 2>/dev/null; wait "$RUN" 2>/dev/null; RUN=""
-sleep 1
-left=$(ps -ef 2>/dev/null | grep -a "rx=3d-print" | grep -av grep | wc -l | tr -d ' ')
+# The holder's own output filter ends once its supervisors' children close the pipe - a short linger, not a leak
+# (CI ubuntu-latest 2026-11-17: one awk still there 1 s after the kill). A leak is a process still there after 15 s.
+for _ in $(seq 1 30); do
+  left=$(ps -ef 2>/dev/null | grep -a "rx=3d-print" | grep -av grep | wc -l | tr -d ' ')
+  [ "$left" -eq 0 ] && break; sleep 0.5
+done
 [ "$left" -eq 0 ] && ok "no filter process survives the run" || bad "$left filter process(es) left: $(ps -ef | grep -a 'rx=3d-print' | grep -av grep)"
 pkill -f "rx=3d-print" 2>/dev/null || true
 
