@@ -368,6 +368,7 @@ known:     scripts/test-session-areas.sh=1
 known:     scripts/test-claim-write-gate.sh=1
 known:     scripts/test-session-closing.sh=1
 known:     scripts/test-core-branch.sh=1
+known:     scripts/test-core-merge-lint-gate.sh=1
 known:     scripts/test-session-helpers.sh=1
 known:     scripts/test-session-order.sh=1
 known:     scripts/test-session-pull.sh=1

@@ -142,6 +142,11 @@
       "pattern": "^(?![\\s\\S]*marketplace\\s+update[\\s\\S]*claude\\s+plugin\\s+update)(?:[\\s\\S]*[;&|]\\s*)?claude\\s+plugin\\s+update\\b",
       "was": "`claude plugin update` without a marketplace refresh before it - a stale marketplace clone pins an older version and writes the fix back. Measured 2026-08-04 on the Windows instance; ported 2026-11-07 from that instance's rule data. A refresh earlier in the same command passes; the command position is anchored, so the phrase quoted in a message is no hit",
       "instead": "Core update: `bash core/scripts/brain-update.sh` (follows the pin of the enabled channel). A single suite plugin: `claude plugin marketplace update <marketplace>` first, then `claude plugin update <plugin>@<marketplace>`. If the refresh already ran in this session, repeat the command with `# MECHANISM-OK: marketplace refresh ran in this session`."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*(?:bash\\s+)?\\S*core-push-lint\\.sh\\s+(?!--fast)",
+      "was": "a full core push lint (lint jobs plus every fixture suite, ~17 min, one run per machine) for a single branch instead of once at a merge train's head - measured 2026-11-11 on the macOS instance: ten PRs linted in full one by one, a queue of ~2 h, another machine waiting on it; ported 2026-11-17 with core-push-lint.sh",
+      "instead": "A branch push: `bash core/scripts/core-push-lint.sh --fast <worktree>` (seconds, stamp `<sha>.fast.ok`, which the push gate accepts). A fix to a train member goes into the train head (`merge-train.sh`): one lint, one CI run, one hand check per OS at the head. A full run at a train head only: the same command with `# MECHANISM-OK: train head <name>`."
     }
   ]
 }

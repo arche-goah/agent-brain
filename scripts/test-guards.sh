@@ -412,6 +412,12 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: plugin update after a separator" Bash command "cd /r && claude plugin update x@m" block
   tr_probe "mechanism-guard/core rule: plugin update after the marketplace refresh" Bash command "claude plugin marketplace update m && claude plugin update x@m" allow
   tr_probe "mechanism-guard/core rule: the phrase inside a message" Bash command "git -C /r commit -m \"docs: say claude plugin update\"" allow
+  # 2026-11-17, ported with core-push-lint.sh: a full push lint per branch (2026-11-11, ten branches, ~2 h queue)
+  tr_probe "mechanism-guard/core rule: full push lint for one branch" Monitor command "bash core/scripts/core-push-lint.sh /x/wt" block
+  tr_probe "mechanism-guard/core rule: full push lint after a separator" Monitor command "echo go; core/scripts/core-push-lint.sh /x/wt" block
+  tr_probe "mechanism-guard/core rule: fast push lint" Monitor command "bash core/scripts/core-push-lint.sh --fast /x/wt" allow
+  tr_probe "mechanism-guard/core rule: full push lint at a train head with the marker" Monitor command "bash core/scripts/core-push-lint.sh /x/wt # MECHANISM-OK: train head train/2026-11-17-a" allow
+  tr_probe "mechanism-guard/core rule: grep in the push lint" Bash command "grep -n FAST core/scripts/core-push-lint.sh" allow
   # class sweep of the same day: waiting scripts by name
   tr_probe "mechanism-guard/core rule: wait-mcp-reconnect in the foreground" Bash command "bash core/scripts/wait-mcp-reconnect.sh touchdesigner" block
   tr_probe "mechanism-guard/core rule: shared-memory-watch in the foreground" Bash command "bash core/scripts/shared-memory-watch.sh watch 300" block
