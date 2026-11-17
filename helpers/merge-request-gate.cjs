@@ -57,7 +57,7 @@ function target(cmd) {
 
 function readPr(t) {
   const fake = process.env.MERGE_REQUEST_GATE_GH;
-  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,headRefOid,commits,statusCheckRollup,files,changedFiles'];
+  const args = ['pr', 'view', t.nr, '-R', t.repo, '--json', 'body,comments,reviews,headRefOid,commits,statusCheckRollup,files,changedFiles'];
   const out = execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
   return JSON.parse(out);
@@ -177,7 +177,8 @@ function gate(input) {
   if (!t) { console.error('merge-request-gate: no repo and number in the command, nothing checked'); return 0; }
   let pr;
   try { pr = readPr(t); } catch (e) { console.error('merge-request-gate: PR unreadable, nothing checked'); return 0; }
-  const blocked = requestOpen(pr, key, t) || ciNotGreen(pr, t, cmd) || findingOpen(pr, key, t, cmd);
+  const blocked = requestOpen(pr, key, t) || ciNotGreen(pr, t, cmd) || findingOpen(pr, key, t, cmd)
+    || headFindingOpen(pr, key, t, cmd);
   if (blocked) return blocked;
   if (/#\s*BETA-MERGE:\s*\S/.test(cmd)) {
     console.error('merge-request-gate: merged as a beta (BETA-MERGE) - say in the PR which system was checked and which is open');
@@ -264,6 +265,35 @@ function findingOpen(pr, key, t, cmd) {
     'Close it with a later comment of this instance that says OK at the head, or, settled elsewhere: ' +
     'add `# FINDING-CLOSED: <where>` to the call.\n' +
     'Why: 2026-10-26, the merge table says open own findings hold the merge; nothing read it.');
+  return 2;
+}
+
+/**
+ * FIFTH CHECK - a review finding AT THIS HEAD, by any instance (port of an instance alpha, 2026-10-27 to 2026-11-17;
+ * follow-up item 5): a note that names the current head (`at <sha>`, `at head <sha>`) and carries a finding - an OS
+ * FAIL, `**Finding (builder ...)` that is not marked non-blocking, or "recommended before merge" - holds the merge. A
+ * new commit moves the head and lifts it (the fix then gets its own look); a note naming no head is not judged. The
+ * author's own answer quotes the finding and names the new head - a text with THIS instance's key is no finding.
+ * Override: `# FINDING-CLOSED: <where>`.
+ */
+const HEAD_FINDING_RX = /\b(?:windows|macos|linux) fail\b|\*\*finding \(builder(?![^)\n]*non-blocking)|recommended before merge(?!, not blocking)/i;
+const AT_HEAD_RX = /\bat (?:head )?`?([0-9a-f]{7,40})\b/gi;
+function headFindingOpen(pr, key, t, cmd) {
+  if (/#\s*FINDING-CLOSED:\s*\S/.test(cmd)) return 0;
+  const head = String(pr.headRefOid || '').toLowerCase();
+  if (!head) return 0;
+  const mine = new RegExp(`instance-key:\\s*${key}\\b`, 'i');
+  const texts = [String(pr.body || ''), ...(pr.comments || []).map((c) => String(c.body || '')),
+    ...(pr.reviews || []).map((r) => String(r.body || ''))];
+  const hit = texts.find((b) => !mine.test(b) && HEAD_FINDING_RX.test(b)
+    && [...b.matchAll(AT_HEAD_RX)].some((m) => head.startsWith(m[1].toLowerCase())));
+  if (!hit) return 0;
+  console.error(
+    `BLOCKED (merge-request-gate): ${t.repo}#${t.nr} - a review finding names the current head \`${head.slice(0, 7)}\`:\n` +
+    '  > ' + (hit.split(/\r?\n/).find((l) => HEAD_FINDING_RX.test(l)) || '').trim().slice(0, 200) + '\n' +
+    'Fix it with a new commit (the head moves, the finding gets its own look), or, settled elsewhere: ' +
+    'add `# FINDING-CLOSED: <where>` to the call.\n' +
+    'Why: a finding at the head held the merge only in an instance alpha (2026-10-27); the core read only own findings.');
   return 2;
 }
 
