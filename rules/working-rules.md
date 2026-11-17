@@ -236,8 +236,12 @@ A mechanism that would help every brain is built IN the core (or the owning suit
 PR, never as a local copy. Allowed deviations are DECLARED with the reason in
 `.claude/rules/local-machinery.json`: **instance** (can only live here; names its
 `evidence` token or its `reach` analysis — "not yet ported" is no reason) · **external**
-(third-party, used as is; names its `source`) · **alpha** (under test, with expiry date
-and what is measured; past it: merge, extend with a reason, or unwire).
+(third-party, used as is; names its `source`) · **alpha** (with an expiry date; past it:
+merge, extend with a reason, or unwire). **An alpha names its kind** (operator decision
+2026-11-17): `test` — a real test phase, names what is measured, the core port waits for
+its result; `unreleased` — a clear core feature wired here at once so nobody waits for a
+release: its core PR is opened at once, in the same strand (`core_pr`), the local copy
+goes with the pin, and the date is an emergency brake, never a waiting period.
 **A suite that ships as a plugin is consumed as the plugin** (2026-10-11); a clone only to
 check a PR head, as a dated alpha. **A fork is not a place for work** (2026-10-11): core
 work on a branch IN the core repo; the core consumed only from the org repo's pin.
