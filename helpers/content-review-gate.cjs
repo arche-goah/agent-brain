@@ -198,30 +198,31 @@ const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo
  * what came back within MEMBERS_BUDGET_MS.
  */
 const PARALLEL = 8;
-const MEMBERS_BUDGET_MS = 20000;
+const MEMBERS_BUDGET_MS = Number(process.env.CONTENT_REVIEW_GATE_BUDGET_MS) || 20000;   // env = the fixture's seam
 function readPrs(repo, nrs) {
   const fake = process.env.CONTENT_REVIEW_GATE_GH;
   const child = `
 const { execFile } = require('child_process');
 const [bin, fake, repo, fields, par, ...nrs] = process.argv.slice(1);
-const out = {};
 let next = 0, running = 0;
-const done = () => { if (next >= nrs.length && running === 0) process.stdout.write(JSON.stringify(out)); };
 const start = () => {
   while (running < Number(par) && next < nrs.length) {
     const n = nrs[next++]; running++;
     const args = ['pr', 'view', n, '-R', repo, '--json', fields];
     execFile(bin, fake ? [fake, ...args] : args, { encoding: 'utf8', timeout: 15000 }, (err, so) => {
-      try { out[n] = err ? null : JSON.parse(so); } catch (e) { out[n] = null; }
-      running--; start(); done();
+      let v = null; try { v = err ? null : JSON.parse(so); } catch (e) { v = null; }
+      process.stdout.write(JSON.stringify([n, v]) + '\\n');
+      running--; start();
     });
   }
 };
-start(); done();`;
+start();`;
   const r = spawnSync(process.execPath, ['-e', child, fake ? process.execPath : 'gh', fake || '', repo, PR_FIELDS,
     String(PARALLEL), ...nrs.map(String)], { encoding: 'utf8', timeout: MEMBERS_BUDGET_MS });
-  let got = {};
-  try { got = JSON.parse(r.stdout || '{}'); } catch (e) { got = {}; }
+  // One line per member as it arrives: a budget overrun keeps every member already answered (Windows review of #590,
+  // 2026-11-18: the child wrote its JSON once at the end, a kill at the budget lost all of them).
+  const got = {};
+  for (const l of String(r.stdout || '').split('\n')) { try { const [n, v] = JSON.parse(l); got[n] = v; } catch (e) { /* partial line */ } }
   const res = {};
   for (const n of nrs) res[n] = got[n] || null;
   return res;
