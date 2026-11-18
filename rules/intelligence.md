@@ -116,6 +116,12 @@ first move, needs no data) vs. the **finding class** (is the DEFECT a one-off or
 data is read: first the single case **with all its subordinate clauses**, then the mechanism, the class
 last and only if it survives every case.
 
+**Before the first move — one order, five steps** (operator 2026-11-18, coherence register 2026-10-25 §P2-3;
+each step lives at its canonical place, nothing copied): (1) skill-first, the list below · (2) procedure class,
+Knowledge Carriers #3 above · (3) an unexpected subtask: the three questions, `working-rules.md` Mechanism
+Discipline · (4) ask or act, the same section's ASK OR ACT · (5) a spawn: the model class, Model Routing below.
+On a small fix the order still runs; only the steps that do not apply drop out.
+
 **Skill-first order of inquiry (operator order 2026-08-19), on EVERY task before the first move — a
 task that ARISES mid-session included:**
 
