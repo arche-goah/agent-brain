@@ -277,7 +277,12 @@ function ownGuardFixture(file, cwd) {
   try {
     const p = fs.realpathSync(path.resolve(cwd || '.', nativePath(String(file))));
     if (!['test-guards.sh', 'test-public-text-guard.sh'].includes(path.basename(p)) || path.basename(path.dirname(p)) !== 'scripts') return false;
-    return fs.existsSync(path.join(path.dirname(p), '..', 'helpers', 'public-text-guard.cjs'));
+    const top = path.join(path.dirname(p), '..');
+    if (!fs.existsSync(path.join(top, 'helpers', 'public-text-guard.cjs'))) return false;
+    // ...and the checkout is the core repo itself (review of this PR, the Windows instance 2026-11-18: any file of that
+    // name passed). Not the running guard's own path: that one lives in the plugin cache, the fixture in a clone.
+    const url = execFileSync('git', ['-C', top, 'remote', 'get-url', 'origin'], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim();
+    return /[/:]arche-goah\/agent-brain(\.git)?$/.test(url);
   } catch (e) { return false; }
 }
 

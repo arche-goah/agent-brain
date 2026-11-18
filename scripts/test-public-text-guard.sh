@@ -262,6 +262,11 @@ expect "a script path that does not exist passes"           allow "$T" "bash $NT
 FX="$T/fxcore"; mkdir -p "$FX/scripts" "$FX/helpers" "$T/fxother/scripts"
 cp "$SC/named.sh" "$FX/scripts/test-guards.sh"; : > "$FX/helpers/public-text-guard.cjs"
 cp "$SC/named.sh" "$FX/scripts/test-other.sh"; cp "$SC/named.sh" "$T/fxother/scripts/test-guards.sh"
+# ...and only in a checkout of the core repo (review 2026-11-18: any file of that name passed): a tree whose origin is
+# another repo is read (control), the core's own origin passes.
+cp -R "$FX" "$T/fxfake"; git init -q "$T/fxfake"; git -C "$T/fxfake" remote add origin https://github.com/o/pub.git
+expect "the same layout in another repo is read (control)"   block "$T" "bash $(native "$T")/fxfake/scripts/test-guards.sh 5"
+git init -q "$FX"; git -C "$FX" remote add origin https://github.com/arche-goah/agent-brain.git
 expect "the core's own guard fixture is not read as posts"  allow "$T" "bash $(native "$FX")/scripts/test-guards.sh"
 cp "$SC/named.sh" "$FX/scripts/test-public-text-guard.sh"
 expect "the guard's second fixture is not read as posts"    allow "$T" "bash $(native "$FX")/scripts/test-public-text-guard.sh"
