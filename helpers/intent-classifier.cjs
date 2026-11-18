@@ -121,16 +121,20 @@ function resolveBin(bin, platform = process.platform, pathEnv = process.env.PATH
   for (const d of dirs) { const exe = path.join(d, `${bin}.exe`); if (fs.existsSync(exe)) return [exe, []]; }
   for (const d of dirs) {
     if (!fs.existsSync(path.join(d, `${bin}.cmd`))) continue;
-    const cli = path.join(d, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-    if (fs.existsSync(cli)) return [process.execPath, [cli]];
+    // the shim's target: current npm installs ship a native bin/claude.exe in the package (Windows re-review of #594,
+    // 2026-11-18: no cli.js there), older ones a cli.js that node runs
+    const pkg = path.join(d, 'node_modules', '@anthropic-ai', 'claude-code');
+    if (fs.existsSync(path.join(pkg, 'bin', `${bin}.exe`))) return [path.join(pkg, 'bin', `${bin}.exe`), []];
+    if (fs.existsSync(path.join(pkg, 'cli.js'))) return [process.execPath, [path.join(pkg, 'cli.js')]];
   }
-  return [bin, []];
+  return [null, []];   // nothing to start: modelVerdict records why instead of a silent ENOENT
 }
 
 function modelVerdict(text) {
   const args = ['-p', '--model', MODEL, '--settings', '{"disableAllHooks": true}'];
   // a .cjs/.js stub runs through node - the fixture's stand-in for the model on every OS (no shebang on Windows)
   const [cmd, pre] = resolveBin(BIN);
+  if (!cmd) { modelVerdict.why = `no ${BIN} binary found on PATH (win32: .exe, or the npm shim's target)`; return null; }
   const r = spawnSync(cmd, [...pre, ...args], {
     input: INSTRUCTION + text.slice(0, 4000), encoding: 'utf8', timeout: 60000, cwd: os.tmpdir(),
     env: { ...process.env, INTENT_CLASSIFIER_CHILD: '1' },

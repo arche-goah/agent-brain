@@ -69,6 +69,12 @@ done
 WB="$T/winbin"; mkdir -p "$WB/node_modules/@anthropic-ai/claude-code"; : > "$WB/claude.cmd"; : > "$WB/node_modules/@anthropic-ai/claude-code/cli.js"
 r="$(node -e 'const {resolveBin}=require(process.argv[1]);const [c,a]=resolveBin("claude","win32",process.argv[2]);process.stdout.write((c===process.execPath?"node":c)+" "+a.join(" "))' "$H" "$WB")"
 case "$r" in "node "*cli.js) ok "win32 npm shim: node runs the cli.js next to claude.cmd";; *) bad "win32 npm shim resolved to: $r";; esac
+# Windows re-review (2026-11-18): current npm installs ship bin/claude.exe in the package, no cli.js
+WB2="$T/winbin2"; mkdir -p "$WB2/node_modules/@anthropic-ai/claude-code/bin"; : > "$WB2/claude.cmd"; : > "$WB2/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
+r="$(node -e 'const {resolveBin}=require(process.argv[1]);process.stdout.write(String(resolveBin("claude","win32",process.argv[2])[0]))' "$H" "$WB2")"
+case "$r" in *bin*claude.exe) ok "win32 npm shim: the package's native bin/claude.exe";; *) bad "win32 native shim resolved to: $r";; esac
+r="$(node -e 'const {resolveBin}=require(process.argv[1]);process.stdout.write(String(resolveBin("claude","win32",process.argv[2])[0]))' "$H" "$T/empty-nowhere")"
+[ "$r" = null ] && ok "win32, nothing found: null, not the bare name" || bad "win32 nothing found resolved to: $r"
 : > "$WB/claude.exe"
 r="$(node -e 'const {resolveBin}=require(process.argv[1]);process.stdout.write(resolveBin("claude","win32",process.argv[2])[0])' "$H" "$WB")"
 case "$r" in *claude.exe) ok "win32: claude.exe on PATH wins";; *) bad "win32 exe resolved to: $r";; esac
