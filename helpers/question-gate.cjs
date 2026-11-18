@@ -341,7 +341,8 @@ function siblingQuestionSets(tp, toolUseId) {
  *  Fails open: no interpreter, a timeout or an unreadable answer = no hit. */
 function doneLedgerIds(input, qs) {
   const text = qs.map((q) => [q.question, q.header, ...((q.options || []).map((o) => `${o.label || ''} ${o.description || ''}`))].join(' ')).join(' ');
-  const ids = [...new Set(text.match(/\b[a-z0-9]+(?:-[a-z0-9]+){2,}\b/g) || [])];
+  // slugs of three or more parts, and the codes a ledger title opens with (KS-110, FA22-03 - 2026-11-18)
+  const ids = [...new Set(text.match(/\b[a-z0-9]+(?:-[a-z0-9]+){2,}\b|\b[A-Z][A-Z0-9]*-[0-9]+\b/g) || [])];
   if (!ids.length) return [];
   const r = root(input.cwd);
   const script = path.join(__dirname, '..', 'scripts', 'ledger-reconcile.py');
@@ -350,7 +351,7 @@ function doneLedgerIds(input, qs) {
   for (const py of ['python3', 'python']) {
     const p = spawnSync(py, [script, '--root', r, '--ids', ids.join(',')], { encoding: 'utf8', timeout: 8000, windowsHide: true });
     let res; try { res = JSON.parse(String(p.stdout || '').trim().split('\n').pop()); } catch (e) { continue; }
-    return Object.entries(res || {}).filter(([, v]) => v === 'pass').map(([k]) => k);
+    return Object.entries(res || {}).filter(([, v]) => v === 'pass' || v === 'ticked').map(([k]) => k);
   }
   return [];
 }
@@ -416,7 +417,7 @@ function preTool(input) {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
         permissionDecisionReason:
-          `QUESTION-GATE: this question names ledger item(s) whose check passes now: ${done.slice(0, 4).join(', ')}. `
+          `QUESTION-GATE: this question names ledger item(s) that are done (check passes now, or ticked): ${done.slice(0, 4).join(', ')}. `
           + 'A green check means the item is done - tick it with the evidence and report it; ask only what is still open. '
           + '(Measured 2026-10-31: points from an older report reached the operator although they were done.)',
       },

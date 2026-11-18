@@ -335,11 +335,16 @@ if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
   R="$T/r-ledger"; fresh "$R"; mkdir -p "$R/.claude/rules" "$R/docs"
   printf '{"ledgers": ["docs/list.md"]}\n' > "$R/.claude/rules/ledgers.json"
   printf '%s\n' '# list' '' '- [ ] **The thing is built**' '  id: built-thing-here' '  check: test -f built.txt' '' \
-    '- [ ] **The other thing is still to do**' '  id: still-open-thing' '  check: test -f missing.txt' > "$R/docs/list.md"
+    '- [ ] **The other thing is still to do**' '  id: still-open-thing' '  check: test -f missing.txt' '' \
+    '- [x] **KS-9 (P1) A finding closed long ago**' '  check: none - built' '' \
+    '- [ ] **KS-8 (P1) A finding still open**' '  check: none - waits' > "$R/docs/list.md"
   : > "$R/built.txt"
   ask "a question about a ledger item whose check passes" "Shall I build built-thing-here now?" deny "$R"
   ask "a question about a ledger item whose check fails" "Shall I build still-open-thing now?" allow "$R"
   ask "a slug that is no ledger id" "Shall I rename some-other-slug-here?" allow "$R"
+  # 2026-11-18: a title code of a TICKED entry (check none) is done too; an open one is a question
+  ask "a question naming the code of a ticked entry" "Shall I build the four functions (KS-9, KS-8)?" deny "$R"
+  ask "a question naming only an open code" "Shall I build KS-8 now?" allow "$R"
   rm -f "$R/built.txt"
   ask "the same item once its check fails (control)" "Shall I build built-thing-here now?" allow "$R"
 else
