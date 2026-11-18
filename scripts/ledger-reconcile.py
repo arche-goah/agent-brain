@@ -91,6 +91,24 @@ ENTRY = re.compile(r"^- \[( |x|X)\] (.*)$")
 PIN_WORD = re.compile(r"(?<![\w-])pin\b", re.I)   # not inside a slug (`none-pin-bedingung`)
 PIN_NEAR = 80   # characters on each side of the word pin in which a #N is the condition
 PR_REF = re.compile(r"(?:(?<![\w-])agent-brain#|(?<![\w/#-])#)(\d+)\b")
+# A bare `#N` right after another repo's name and one space ("heavy-metal #67") is that repo's number, not the
+# core's: measured 2026-11-18 on the macOS instance, a project ledger's "Pin-Lage ... heavy-metal #67" read as
+# a core PR waiting for the pin.
+OTHER_REPO_BEFORE = re.compile(r"(?<![\w-])(?!agent-brain\s$)([A-Za-z0-9_.]+(?:-[A-Za-z0-9_.]+)+)\s$")
+
+
+def core_refs(text, ledger=""):
+    """The core PR numbers in `text`: `agent-brain#N`, and a bare `#N` no other repo's name owns. A hyphenated word
+    before a bare `#N` is a repo's name only when the ledger also writes it as one (`name#N` or `owner/name`): the
+    Windows review of this change (2026-11-18) measured "the follow-up #601" read as a repo and the core PR dropped."""
+    out = []
+    for m in PR_REF.finditer(text):
+        if m.group(0).startswith("#"):
+            o = OTHER_REPO_BEFORE.search(text[max(0, m.start() - 60):m.start()])
+            if o and re.search(r"(?<![\w-])" + re.escape(o.group(1)) + r"#\d|/" + re.escape(o.group(1)) + r"\b", ledger or text):
+                continue
+        out.append(m.group(1))
+    return out
 # A field line is `  key: value`, and just as often a list item `  - key: value` or a code span
 # `  - `key: value``: measured 2026-10-26 on the Windows instance, 20 of 20 entries the ratchet
 # named as "without a check" were in list form, ids and checks unread.
@@ -386,7 +404,7 @@ class CoreMain:
         self.tree = None
 
 
-def pin_met(e, pin, timeout, since=""):
+def pin_met(e, pin, timeout, since="", ledger=""):
     """Every PR an open `check: none` entry names next to the word pin is in the pin: True.
     `since` = the pin's commit date: an entry whose newest exit is dated on or after it was looked at
     after the pin moved, and stays silent (macOS instance, 2026-11-02: entries already set to their
@@ -400,7 +418,7 @@ def pin_met(e, pin, timeout, since=""):
     # entry's #N made a 25-PR collection entry and a suite's "Pin `x` folgt" read as conditions.
     t = e["text"]
     nums = sorted({n for m in PIN_WORD.finditer(t)
-                   for n in PR_REF.findall(t[max(0, m.start() - PIN_NEAR):m.end() + PIN_NEAR])}, key=int)
+                   for n in core_refs(t[max(0, m.start() - PIN_NEAR):m.end() + PIN_NEAR], ledger)}, key=int)
     if not nums:
         return False
     for n in nums:
@@ -461,7 +479,7 @@ def _reconcile(out, main, root, ledgers, since, timeout, shell, allowed, budget,
                 kinds = EXIT_KIND.findall(e["text"])
                 if not e["done"] and kinds and kinds[-1] in OWN_WORK:
                     out["own_unchecked"].append(label(e, rel))
-                if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout, pin_since):
+                if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout, pin_since, text):
                     out["pin_met"].append(label(e, rel))
                 continue
             if not permitted(chk, allowed):
