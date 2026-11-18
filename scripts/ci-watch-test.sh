@@ -160,7 +160,9 @@ case "${CI_WATCH_STUB:?}" in
   pr_noci_nochecks) if [[ "${1:-}" == api ]]; then echo 0
                     else echo "no checks reported on the 'feature' branch" >&2; exit 1; fi ;;
   # negative controls: workflows exist (2) / the count cannot be read — keep waiting.
-  pr_zero_hasci)    if [[ "${1:-}" == api ]]; then echo 2; else echo '[]'; fi ;;
+  pr_zero_hasci)    if [[ "${1:-}" == api ]]; then echo 2; elif [[ "$*" == *isCrossRepository* ]]; then echo false; else echo '[]'; fi ;;
+  # 2026-11-15: workflows exist, zero checks, the PR comes from a fork - nothing starts by waiting.
+  pr_zero_fork)     if [[ "${1:-}" == api ]]; then echo 2; elif [[ "$*" == *isCrossRepository* ]]; then echo true; else echo '[]'; fi ;;
   pr_zero_apierr)   if [[ "${1:-}" == api ]]; then echo "HTTP 403" >&2; exit 1; else echo '[]'; fi ;;
   ref_noci)         if [[ "${1:-}" == api && "${2:-}" == */actions/workflows ]]; then echo 0
                     elif [[ "$*" == */commits/* ]]; then echo abc123
@@ -486,6 +488,9 @@ grep -q "not green" "$TMP/out" && echo "  OK   no-CI verdict says not green" \
 check "pr: 'no checks' wording + no workflows = NO-CI(3)" pr_noci_nochecks 3 pr 12 30
 check "pr: zero checks, workflows exist = wait, timeout(2)" pr_zero_hasci 2 pr 12 2
 check "pr: zero checks, count unreadable = wait, timeout(2)" pr_zero_apierr 2 pr 12 2
+check "pr: zero checks from a fork = unknown(2), not a wait" pr_zero_fork 2 pr 12 2
+grep -aq "comes from a fork" "$TMP/out" && echo "  OK   the fork verdict names the fork (a plain timeout would not)" \
+  || { echo "  FAIL the fork verdict does not name the fork"; fails=$((fails+1)); }
 check "ref: repo without workflows = NO-CI(3)"         ref_noci        3 ref main 30
 check "pr: stale check-run (in_progress + conclusion success) = GREEN without waiting for the status" pr_stale_green 0 pr 12 30
 grep -q "left the status stale" "$TMP/out" && echo "  OK   stale check-run is named in the output" \

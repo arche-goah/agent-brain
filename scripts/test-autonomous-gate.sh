@@ -67,6 +67,13 @@ probe "edit of another rules file in an autonomous run" Edit '{"file_path":".cla
 probe "a status question mid-run keeps the mode: no question tool" AskUserQuestion '{"questions":[]}' "$STAT" block
 probe "push naming main (ask glob)" Bash '{"command":"git -C /r push -q origin main"}' "$AUTO" block
 probe "branch-less push (no ask rule)" Bash '{"command":"git -C /r push"}' "$AUTO" allow
+# A compound command: the harness applies an ask rule per sub-command (measured 2026-11-16 on an instance: a
+# sub-agent's `D=…; … ; git -C xa push -q -u origin HEAD:main; …` raised the dialog mid-run; the gate had
+# tested only the whole string).
+probe "ask-rule push inside a compound command" Bash '{"command":"D=/tmp/x; mkdir -p $D; git -C xa push -q -u origin main; git -C xa rev-parse HEAD"}' "$AUTO" block
+probe "ask-rule push after cd &&" Bash '{"command":"cd /r && git -C . push -q origin main"}' "$AUTO" block
+probe "compound command without an ask-rule part (control)" Bash '{"command":"D=/tmp/x; mkdir -p $D; git -C xa status"}' "$AUTO" allow
+probe "compound ask-rule push in an interactive run (control)" Bash '{"command":"D=/tmp/x; git -C xa push -q origin main"}' "$INTER" allow
 probe "gh pr close (ask prefix)" Bash '{"command":"gh pr close 5 -R o/r"}' "$AUTO" block
 probe "a plain edit outside every ask rule" Edit '{"file_path":"docs/notes.md"}' "$AUTO" allow
 # Hook data the classifier holds without an ask rule (macOS measurement 2026-10-26).

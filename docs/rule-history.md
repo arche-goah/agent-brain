@@ -1359,6 +1359,13 @@ mechanics it means those AIs — the handover is the person's explicit instructi
 core text outranks it. Own reversible terrain stays with the brain's AI, and whatever needs a
 human at that machine stays with the person, directly (`working-rules.md` Working Across Parties #6).
 
+**Rank 1 means the running session** (2026-11-16): a Windows instance's coherence scan found instance files
+quoting old operator words with a date and ranking them as rank 1 over a core HARD rule, so a sentence said
+once months ago outranked a carrier-backed rule. Its own operator decided for that brain that an archived quote
+ranks as an instance rule; the operator of the macOS instance agreed the same day to carry it into the core
+(question tool). The `ai_handover` paragraph above keeps its own rank: it is a standing handover record, not a
+quoted sentence.
+
 ### Rule-Conflict Protocol (operator instruction 2026-08-01, from coherence-scan K-19 — CANONICAL place)
 
 Measured on a proving brain the same day:

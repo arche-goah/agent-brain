@@ -98,10 +98,10 @@ known:     scripts/carrier-audit.py=13
 known:     scripts/caveman-armed.py=6
 known:     scripts/check-catalog-test.py=15
 known:     scripts/check-catalog.py=16
-known:     scripts/commitments.py=5
+known:     scripts/commitments.py=6
 known:     scripts/device-status.py=19
 known:     scripts/freshness-gate-test.py=9
-known:     scripts/hook-coverage.py=26
+known:     scripts/hook-coverage.py=27
 known:     scripts/ledger-fields-test.py=2
 known:     scripts/ledger_fields.py=1
 known:     scripts/lesson-carriers.py=5
@@ -113,7 +113,7 @@ known:     scripts/orphan-check-test.py=7
 known:     scripts/orphan-check.py=1
 known:     scripts/plugin-records-test.py=1
 known:     scripts/product-sources.py=1
-known:     scripts/recorder-report.py=3
+known:     scripts/recorder-report.py=2
 known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-reach-check.py=11
 known:     scripts/test-open-items.sh=1
@@ -169,6 +169,8 @@ ledger-fields.json and of the JavaScript twin, which are only opened or handed t
 only sizes or writes (rule globs, the state file); it reports byte counts, never a path.
 2026-10-09, commitments.py baselined after that review: the five joins build the transcript
 dir, a session file and the instance data path it opens; it reports session ids, never a path.
+2026-11-16, commitments.py 5 -> 6: the new join opens the stop dispatcher's loop log; it reports
+the promise text from it, never the path.
 2026-10-11, hook-coverage.py 6 -> 9 after that review: the three new joins only feed
 `os.path.isfile` (is the wired helper / the registered stop check in the consumed core?); the
 lines it prints name the helper's FILE NAME, never a joined path.
@@ -182,6 +184,9 @@ it prints names the live-read domain and the fixed text `.claude/rules/live-watc
 2026-10-23, scripts/recorder-report.py baselined after review: its three joins build the paths of
 stop-checks.json, the gate's source and the recorder logs, which are only opened or tested for
 existence; what it prints is the check's label and the log's bare file name, never a joined path.
+2026-11-14, scripts/recorder-report.py 3 -> 2 after review: the join for stop-checks.json went (the
+report asks `stop-dispatcher.cjs --list`; the dispatcher's path is built with pathlib and handed to
+node as an argument, never printed), the gate's source and the recorder logs stay as above.
 2026-10-25, scripts/live-doc-lint.py (3) and its fixture (2) baselined after review: the lint's
 joins build the paths of dependencies.json, the glob root and the file it opens; every path it
 REPORTS or hands to `git diff` is `relpath(...).replace(os.sep, "/")`. The fixture's joins build
@@ -203,6 +208,10 @@ AFTER backslashes became `/`, and every line it prints still names the helper's 
 2026-11-10, hook-coverage.py 25 -> 26 after that review (`declared_commands()`): the new join builds the
 path of `.claude/rules/local-machinery.json`, which is only opened; the keys it reads are compared with the
 wired command text, never with a joined path.
+2026-11-14, hook-coverage.py 26 -> 27 after that review (`declared_copy()` replaces `declared_commands()`):
+one join builds the path of the sibling `local-machinery.py`, which is only loaded as a module, the other the
+path of `.claude/rules/local-machinery.json`, which is only opened; the key comparison moved to
+`local-machinery.py` (`declared_live()`), which compares forward-slashed ids (`rel_id`), never a joined path.
 
 ## OS-2 — a generator writes a git-tracked text file without pinning the line ending
 
@@ -216,7 +225,7 @@ pattern:   \.write_text\(|\bopen\(.*["']w["']
 paths:     --include=*.py --exclude=*-test.py scripts helpers
 known:     scripts/always-loaded.py=1
 known:     scripts/autonomy-diagnose.py=1
-known:     scripts/brain-scan-prep.py=3
+known:     scripts/brain-scan-prep.py=4
 known:     scripts/changelog-assemble.py=1
 known:     scripts/ci-lint-local-parse.py=1
 known:     scripts/decision-review.py=1
@@ -224,6 +233,7 @@ known:     scripts/device-status.py=1
 known:     scripts/eco_owner.py=1
 known:     scripts/ecosystem-sync.py=1
 known:     scripts/english-only.py=1
+known:     scripts/invariant-check.py=1
 known:     scripts/invariant-index.py=1
 known:     scripts/ledger-one-exit.py=1
 known:     scripts/ledger-reconcile.py=5
@@ -237,6 +247,7 @@ known:     scripts/shared-memory-index.py=3
 known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-memory-log-rotate.py=1
 known:     scripts/shared-memory-post.py=2
+known:     scripts/start-findings.py=1
 known:     scripts/template-drift.py=1
 instances: 3
 repeat:    yes
@@ -269,6 +280,10 @@ TextIOWrapper.
 `.claude-state/`, not git-tracked) opens with `newline="\n"`.
 2026-11-06, scripts/release-scope.py baselined: its one write (the release scope under `.claude-state/`, not
 git-tracked, read by node in release-freeze-gate.cjs) opens with `newline="\n"`; its fixture asserts no CR byte.
+2026-11-12, scripts/start-findings.py baselined: its one write (the findings state under `.claude-state/`, not
+git-tracked) opens with `newline="\n"`.
+2026-11-16, scripts/brain-scan-prep.py 3 -> 4: the fourth write is `suppressed.json` in the scan's scratch dir (the
+active suppression list for the scan agents, not git-tracked); it opens with `newline="\n"` like the other three.
 
 ## OS-3 — a fixture hands a shell path to a native process
 
@@ -298,6 +313,7 @@ known:     scripts/test-brain-check-brief.sh=1
 known:     scripts/test-brain-scan-files.sh=1
 known:     scripts/test-caveman-armed.sh=1
 known:     scripts/test-change-level.sh=1
+known:     scripts/test-check-request-gate.sh=1
 known:     scripts/test-ci-lint-local.sh=1
 known:     scripts/test-close-loss-gate.sh=1
 known:     scripts/test-code-scanning-alerts.sh=1
@@ -316,7 +332,9 @@ known:     scripts/test-delivered-read-gate.sh=1
 known:     scripts/test-diagnose-gate.sh=1
 known:     scripts/test-eco-owner.sh=1
 known:     scripts/test-ecosystem-sync.sh=1
+known:     scripts/test-effect-check-e3.sh=1
 known:     scripts/test-fixture-own-home.sh=1
+known:     scripts/test-effect-check-e5.sh=1
 known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
@@ -343,6 +361,7 @@ known:     scripts/test-open-items-gate.sh=1
 known:     scripts/test-open-items-wake.sh=1
 known:     scripts/test-open-items.sh=1
 known:     scripts/test-order-list-reader.sh=1
+known:     scripts/test-os-ok-form.sh=1
 known:     scripts/test-own-open-gate.sh=1
 known:     scripts/test-parallel-sessions.sh=1
 known:     scripts/test-pattern-cases.sh=1
@@ -353,7 +372,7 @@ known:     scripts/test-pre-commit-change-level.sh=1
 known:     scripts/test-pre-commit-os-traps.sh=1
 known:     scripts/test-pre-commit-backprop.sh=1
 known:     scripts/test-pre-commit-covers.sh=1
-known:     scripts/test-pre-push.sh=1
+known:     scripts/test-pre-push.sh=2
 known:     scripts/test-premise-gate.sh=1
 known:     scripts/test-promise-gate.sh=1
 known:     scripts/test-public-text-guard.sh=1
@@ -368,6 +387,7 @@ known:     scripts/test-session-areas.sh=1
 known:     scripts/test-claim-write-gate.sh=1
 known:     scripts/test-session-closing.sh=1
 known:     scripts/test-core-branch.sh=1
+known:     scripts/test-core-merge-lint-gate.sh=1
 known:     scripts/test-session-helpers.sh=1
 known:     scripts/test-session-order.sh=1
 known:     scripts/test-session-pull.sh=1
@@ -506,6 +526,10 @@ resolves the pointer probes' record files under it — all through `native()`. B
 directions matter: an unresolvable dir loads no rules (every must-block case would pass
 silently) and finds no record file (the must-allow pointer case would block). Windows run
 still owed at baseline time.
+2026-11-16, test-effect-check-e3.sh baselined after the same review: the temp brain reaches
+only bash (the argument of effect-check.sh, which reads it with grep and `[ -f ]`); nothing
+crosses into node or python.
+2026-11-17, test-pre-push.sh 1 -> 2 after the review (merge train 2.1.6): the guarded remotes moved from `$HOME` to a second `mktemp -d`, a sibling of `$TMP`, because portability-smoke runs every suite with HOME under mktemp. Both dirs go only to git; the one path that reaches the hook as data, PUSH_TEMP_ROOTS, goes through `native()`.
 
 2026-09-13, test-brain-scan-files.sh, test-memory-dream-files.sh and
 test-full-audit-synthesis-files.sh baselined on the same review and the same construction
@@ -809,7 +833,10 @@ known:     scripts/session-audit.py=3
 known:     scripts/shared-memory-index.py=4
 known:     scripts/shared-memory-lint.py=1
 known:     scripts/shared-reach-check.py=6
+known:     scripts/start-findings.py=2
 known:     scripts/transcript-recall.py=1
+check:     the stderr half — scripts/text-encoding-test.py (AST scan of every git-tracked .py file): a script
+that calls `sys.stdout.reconfigure` must also call `sys.stderr.reconfigure`; negative control inside.
 instances: 1
 repeat:    no
 status:    open
@@ -845,7 +872,8 @@ cp1252 byte 0xb7 (measured at core #24 on 2026-10-18; a planted accented letter 
 `main()`; `portability-smoke.sh` asserts the piped `--inventory` parses as UTF-8 JSON. Left `open` deliberately — the 12 unpinned sites are fine only
 as long as that answer stays no. 2026-10-25, scripts/live-doc-lint.py (2): the question answered
 yes — its `--json` is parsed by the fixture and the text report is read by a CI log and a reviewer —
-so stdout is pinned at import, like the others.
+so stdout is pinned at import, like the others. 2026-11-12, scripts/start-findings.py (2): yes — the session
+start prints its output and open-items-gate.cjs parses the count line and the items — so stdout is pinned at import.
 
 2026-10-25, lesson-carriers.py baselined after the review: its two report lines carry an em dash and are
 parsed by brain-scan-prep.py and the session-close step; stdout is pinned at the top of the script.
@@ -854,6 +882,15 @@ FAIL lines and summary — so stdout is pinned at import, like lesson-carriers.p
 2026-10-31, open-items.py 8 -> 9 after the same question: the new site is the no-owner note
 (`note: open PRs not looked for — …`); the bootup and open-items-gate.cjs parse this output, and
 the script pins stdout in `main()`, so the em dash leaves as UTF-8 on every platform.
+
+2026-11-12, the stderr half (agent-brain #522, ubuntu CI): the fixture loop runs Python under
+`PYTHONIOENCODING=cp1252`; `scripts/start-findings.py` pinned stdout and stdin but not stderr, an error line
+with an em dash left as the cp1252 byte 0x97, and the test decoding UTF-8 crashed. The pin on stdout alone
+does not cover the error path. Class search: 66 scripts pinned stdout and never stderr (only one went red,
+because no other fixture reads a non-ASCII stderr). All 66 pinned in the same commit; the scan in
+`scripts/text-encoding-test.py` now reports a script that pins stdout without stderr, so the check starts
+with no baseline. The local fast lint already runs the CI fixture step (it parses it from ci.yml), so the
+cp1252 loop is covered there without a change.
 
 ## OS-10 — a shell loop over a path list splits at the space in a Windows profile name
 
@@ -1061,14 +1098,17 @@ known site is such a guarded branch.
 pattern:   ^[^#]*os\.kill\([^)]*, *0\)
 paths:     --include=*.py scripts helpers
 known:     scripts/session-audit.py=1
-instances: 1
+known:     scripts/ledger-reconcile.py=1
+instances: 2
 repeat:    no
 status:    closed
 note:      Registered 2026-10-31 BEFORE a defect, with the first site: `session-audit.py` learned to
 read the harness session registry (`~/.claude/sessions/<pid>.json`) and must test the pid. Python
 documentation, `os.kill`: "Windows: … any other value for sig will cause the process to be
 unconditionally killed by the TerminateProcess API". The Windows branch is unmeasured until the
-PR's Windows check.
+PR's Windows check. Second site 2026-11-16, `ledger-reconcile.py` `CoreMain._alive` (sweeping a
+killed run's worktree): guarded by `os.name == "nt"`, where it answers "unknown" and the sweep goes
+by the folder's age alone.
 
 ## OS-17 — `python3` exists on Windows but is the Store stub, and a script that only checks existence runs nothing
 
@@ -1222,14 +1262,15 @@ behind a length test.
 shape: A
 
 invariant: Every `Path.read_text` / `Path.write_text` and every text-mode builtin `open()` in the core's
-Python names its encoding (`encoding="utf-8"`, keyword or positional). Without it Python takes the locale codec: UTF-8 on macOS
+Python names its encoding (`encoding="utf-8"`, keyword or positional), and every file that reads `sys.stdin` pins it
+(`sys.stdin.reconfigure(encoding="utf-8")`, or reads `sys.stdin.buffer`). Without it Python takes the locale codec: UTF-8 on macOS
 and Linux, cp1252 on Windows. A fixture that writes `·` or an em dash then hands a correct UTF-8
 reader the byte 0xB7 or 0x97, and the reader fails only on Windows.
 check:     scripts/text-encoding-test.py — AST scan of every git-tracked .py file (a call split over
 lines counts), with a negative control; runs in the CI fixture step like every scripts/*-test.py.
 mechanizable: tool — "names its encoding" is a property of one call, which may span lines; a line grep
 cannot state it.
-instances: 38
+instances: 41
 repeat:    yes — the stdout half is OS-9; the cp1252 finding of 2026-08-04 was the first of the shape
 status:    closed
 note:      Measured 2026-11-06 on the Windows instance (Windows 11, Python 3.14, Git Bash) at train head
@@ -1243,3 +1284,10 @@ fake core was written with `open(path, "w")`, which the scan did not cover (it r
 so the lint passed. The scan now covers text-mode `open()` (binary mode and a computed mode pass); 23 calls in
 5 files pinned in the same commit (check-catalog-test.py 13, freshness-gate-test.py 4, transcript-recall-test.py 3,
 skills/firecrawl-web/fc.py 2, audit-audit-plan-check-test.py 1), no baseline.
+2026-11-12, the Windows instance (Windows 11, Python 3.14, Git Bash): every `COMMENT` line of the collab watch
+showed an em dash as `â€”`, while the comment on GitHub held the correct UTF-8 bytes (read back with `gh api`).
+Cause, reproduced: `repo-activity-filter.py` pinned stdout (OS-9) but read gh's JSON with `sys.stdin.read()`, and
+Python on Windows decodes a piped stdin as cp1252 (`sys.stdin.encoding` printed `cp1252`; the bytes E2 80 94 came out
+as the three letters). The scan now covers a `sys.stdin` read in a file that never pins stdin (code inside a string,
+a child script a fixture writes, is not seen); 3 files pinned in the same commit (repo-activity-filter.py,
+pr-ball.py, plugin-scope-check.py), red on origin/main for all three, no baseline.

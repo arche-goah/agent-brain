@@ -129,9 +129,17 @@ fi
 # E3 Hook targets: a hook whose script is missing fails silently, per event, forever.
 missing=""
 count=0
-for p in $(grep -oE '\$CLAUDE_PROJECT_DIR/[^" \\]+' "$PROJ_SET" 2>/dev/null | sort -u); do
+# A `VAR="$CLAUDE_PROJECT_DIR/…"` prefix sets an environment value (often a directory), not a hook target:
+# skipped (an instance read it as a missing script, 2026-11-16). Only an assignment in command-word position
+# (identifier name right after the start, a quote or whitespace) is skipped; `--opt=$CLAUDE_PROJECT_DIR/…` stays a target.
+assign_re='^[A-Za-z_][A-Za-z0-9_]*='
+seen=" "
+for p in $(grep -aoE '([^ "\\=;&|(]*=\\?"?)?\$CLAUDE_PROJECT_DIR/[^" \\]+' "$PROJ_SET" 2>/dev/null | sort -u); do
+  [[ $p =~ $assign_re ]] && continue
+  rel=${p#*\$CLAUDE_PROJECT_DIR/}
+  case "$seen" in *" $rel "*) continue ;; esac
+  seen="$seen$rel "
   count=$((count + 1))
-  rel=${p#\$CLAUDE_PROJECT_DIR/}
   [ -f "$BRAIN/$rel" ] || missing="$missing $rel"
 done
 if [ "$count" -eq 0 ]; then say INFO E3 "Hook Targets" "no \$CLAUDE_PROJECT_DIR hooks declared"
@@ -173,6 +181,19 @@ for f in "$BRAIN/CLAUDE.md" "$BRAIN"/.claude/rules/*.md "$CORE"/rules/*.md; do
     esac
     checked=$((checked + 1))
     [ -e "$BRAIN/$p" ] || [ -e "$CORE/$p" ] || dangling="$dangling $p"
+  done
+  # A bare script name (`memory-sync.cjs`) names a carrier without its place; it is a pointer
+  # only while a script of that name exists in the brain's or the core's script folders
+  # (2026-11-16: memories named carriers deleted weeks earlier, nothing reported them).
+  for p in $(grep -oE '`[A-Za-z0-9_.@-]+\.(sh|cjs|py)`' "$f" 2>/dev/null | tr -d '`' | sort -u); do
+    checked=$((checked + 1))
+    found=""
+    for d in "$BRAIN/scripts" "$BRAIN/scripts/hooks" "$CORE/scripts" "$CORE/helpers" "$CORE/helpers/git-hooks"; do
+      [ -e "$d/$p" ] && { found=1; break; }
+    done
+    # a skill's own script (`mt.py` beside its SKILL.md) is a pointer too
+    [ -n "$found" ] || [ -z "$(find -L "$BRAIN/.claude/skills" -name "$p" -print -quit 2>/dev/null)" ] || found=1
+    [ -n "$found" ] || dangling="$dangling $p"
   done
 done
 dangling=$(printf '%s' "$dangling" | tr ' ' '\n' | sort -u | tr '\n' ' ')

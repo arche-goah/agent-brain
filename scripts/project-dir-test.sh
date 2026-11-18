@@ -17,6 +17,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 HELPER="${1:-$HERE/project-dir.sh}"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+# after the trap: the sandbox chains its own clean-up onto it. The fixture pushes main into a local bare remote:
+# a host that wires a pre-push hook globally must not decide that push.
+. "$HERE/git-sandbox.sh"
 FAIL=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAIL=1; }

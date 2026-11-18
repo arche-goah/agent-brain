@@ -117,6 +117,50 @@ check(r["carried"] == 0 and r["prose"] == 1, "rule text written later is prose, 
 r = run_with_rule([c], "- Shell commands are atomic and must match a permission pattern; no heredocs anywhere.\n")
 check(len(r["loose"]) == 1, "an unrelated rule paragraph does not carry")
 
+# A take-back in the same turn clears the promise, as the gate does (2026-11-16: 19 of 41 "loose" promises over 20
+# days had been held by the gate and taken back; the report still listed them), and is no promise itself.
+op = {"type": "user", "message": {"content": "next order"}}
+echo = {"type": "user", "message": {"content": "Stop hook feedback:\nEMPTY PROMISE ..."}}
+p = say("From now on I start the CI watch in the same turn as every pull request.")
+back = say("I take that back: from now on is not what I can promise, it is not guaranteed.", ts="2026-10-09T10:02:00Z")
+r = run([p, echo, back])
+check(not r["loose"] and r["retracted"] == 1, "a take-back later in the same turn clears the promise (the gate's way out)")
+r = run([p, op, back])
+check(len(r["loose"]) == 1 and r["retracted"] == 0, "negative control: a take-back after a new operator message does not reach back")
+inst = {"patterns": [r"\bfrom today onward\b"], "retract_patterns": [r"\bstrike that sentence\b"]}
+r = run([say("From today onward I announce the minute beforehand."), say("Please strike that sentence.")], data=inst)
+check(not r["loose"] and r["retracted"] == 1, "the instance's retract_patterns count as a take-back")
+# One source (Windows review 2026-11-17): the take-back list is read from the gate's RETRACT line, not copied.
+g = Path(tempfile.mkdtemp()) / "gate.cjs"
+g.write_text("const X = 1;\nconst RETRACT = [/\\bscratch that\\b/i, /\\bnot\\/never\\b/i];\n", encoding="utf-8")
+check(cm.gate_retract(str(g)) == [r"\bscratch that\b", r"\bnot\/never\b"]
+      and cm.RETRACT == cm.gate_retract(str(ROOT / "helpers" / "commitment-carrier-gate.cjs")) and len(cm.RETRACT) >= 3,
+      "the take-back list is the gate's own RETRACT line, read, not a copy")
+
+
+# The loop brake let a held promise end the turn: listed with its own reason (8 of 41 on 2026-11-16).
+def run_brake(lines):
+    d = tempfile.mkdtemp()
+    repo = Path(d) / "repo"
+    (repo / ".claude-state").mkdir(parents=True)
+    (repo / ".claude-state" / "stop-loops.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n", encoding="utf-8")
+    tdir = Path(d) / "t"
+    tdir.mkdir()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        cm.main(["--repo", str(repo), "--dir", str(tdir), "--json"])
+    return json.loads(buf.getvalue())
+
+
+import datetime as _dt
+now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+held = {"at": now, "marker": "COMMITMENT-CARRIER-GATE", "blocks": 3,
+        "reason": "EMPTY PROMISE: conduct promised without a mechanism written this turn:\n  - From now on I review every PR twice.\nBuild the carrier now"}
+r = run_brake([held])
+check(len(r["loose"]) == 1 and "loop brake" in r["loose"][0]["why"], "a promise the loop brake let through is loose, with that reason")
+r = run_brake([dict(held, marker="TIME-GATE"), dict(held, at="2020-01-01T00:00:00+00:00")])
+check(not r["loose"], "negative control: another gate's brake entry or one outside the window is not counted")
+
 saved = cm.FIRST_PERSON
 cm.FIRST_PERSON = [r"."]
 r = run([say("The detector will report near-duplicates from now on.")])

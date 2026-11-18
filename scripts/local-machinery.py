@@ -31,7 +31,11 @@ Declarations: `.claude/rules/local-machinery.json`
                   path or the declared prefix)
    "external": {"<id or prefix>": {"source": "<where it comes from>", "why": "..."}},
                  (third-party skills/plugins used as they are — not ours to port to the core)
-   "alpha":   {"<id or prefix>": {"until": "YYYY-MM-DD", "why": "<what is being measured>"}},
+   "alpha":   {"<id or prefix>": {"kind": "test" | "unreleased", "until": "YYYY-MM-DD", "why": "...",
+                                  "core_pr": "<PR URL or owner/repo#n>"}},
+                 (test: a real test phase, the core port waits for it, `why` names what is measured;
+                  unreleased: a clear core feature wired before its release, `core_pr` required, the
+                  date is an emergency brake; no kind, or unreleased without core_pr = loud)
    "review_days": 90, "review_batch": 3}
 Every instance/external declaration carries "reviewed": "YYYY-MM-DD" — a deviation is judged again,
 not justified once for good. Missing or older than review_days = due; the session start names the
@@ -66,6 +70,7 @@ import sys
 # em dashes in the cp1252 codepage and ends lines CRLF (core register docs/os-traps.md OS-9).
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):  # a stream that cannot be reconfigured
     pass
 
@@ -73,7 +78,7 @@ SCRIPT_EXT = (".sh", ".py", ".cjs", ".js", ".mjs", ".ps1")
 TEXT_EXT = SCRIPT_EXT + (".md", ".json", ".txt", ".toml", ".yaml", ".yml", ".plist", ".xml", ".ts")
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "site-packages", ".claude-state"}
 CORE_PLUGIN_PREFIXES = ("brain-core@", "brain-core-next@")  # same as plugin-scope-check.py
-LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels", "caughtup")
+LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels", "caughtup", "alphakind")
 CLASSES = LOUD + ("duplicate", "undeclared", "review")
 # A deviation is not justified once and for all (operator order 2026-10-29: a local deviation must not
 # stay justified once and never questioned again; past exceptions need routine review). Measured the same day on the macOS
@@ -683,6 +688,35 @@ def match(decl, it):
     return max(keys, key=len) if keys else None
 
 
+def declared_live(decl, cmd, C, today):
+    """Is this wired hook command a deviation the brain declared on purpose, and does the declaration
+    still hold? The ONE answer for every reader outside this file (hook-coverage.py asks here).
+    A key matches as everywhere in this file: it covers the id of the script the command runs
+    (repo-relative, `~/` for the user's Claude dir) or it stands in the command text. An alpha that
+    matches decides, as in judge(): past its date it declares nothing, whatever `instance` says. Each
+    declaration needs a reason (`why`; the old string form is its own reason).
+    WHY here (content review of the declared-copy fix, 2026-11-10): hook-coverage.py read the file
+    itself and compared whole commands with the keys. One brain keys its declarations by command, the
+    other by file path — the same declaration held on one and was unknown on the other."""
+    t = cmd_target(cmd, C)
+    it = {"id": C.rel_id(t) if t else cmd, "cmd": cmd}
+
+    def section(name):
+        sec = decl.get(name) if isinstance(decl, dict) else None
+        return {k: v for k, v in (sec or {}).items() if str(k).strip()} if isinstance(sec, dict) else {}
+
+    def reason(d):
+        return str((d.get("why") if isinstance(d, dict) else d) or "").strip()
+
+    alpha, inst = section("alpha"), section("instance")
+    ka = match(alpha, it)
+    if ka is not None:
+        d = alpha[ka]
+        return bool(reason(d)) and isinstance(d, dict) and str(d.get("until") or "") >= today
+    ki = match(inst, it)
+    return ki is not None and bool(reason(inst[ki]))
+
+
 def identity_matcher(tokens_):
     if isinstance(tokens_, dict):
         tokens_ = [t for v in tokens_.values() for t in (v if isinstance(v, list) else [v])]
@@ -736,6 +770,12 @@ def judge(items, decl, C, today):
         it["class"] = "ok"
         name = it["name"]
         ka, ki = match(alpha, it), match(inst, it)
+        # A wrapper in the command is no second declaration of the item: `bash wrap.sh name python3 x.py`
+        # matches the wrapper's key by command text and x.py's key by its path (measured 2026-11-17, four
+        # SessionStart scripts behind a data-frame wrapper read as "declared both instance and alpha").
+        # The key that covers the item's own path decides; a contradiction needs both to cover it.
+        if ka and ki and covers(ka, it["id"]) != covers(ki, it["id"]):
+            ka, ki = (ka, None) if covers(ka, it["id"]) else (None, ki)
         if name and name in core and it["carrier"] in ("script", "skill", "workflow"):
             # A declared alpha copy of a core item the pin does not carry yet is the deviation
             # itself, not a shadow: measured 2026-10-27, two copies of merged core changes ahead
@@ -940,6 +980,26 @@ def uniq(xs):
     return list(dict.fromkeys(xs))
 
 
+# The repo is named (Windows review 2026-11-17: a bare "#n" names no repo). Shape only: reading the PR state would be
+# a network call at every session start, so a PR closed unmerged stays silent until the date (the debt).
+CORE_PR = re.compile(r"[\w.-]+/[\w.-]+#\d+|https?://\S+/pull/\d+/?")
+
+
+def alpha_kinds(decl):
+    """Every alpha names its kind (operator 2026-11-17): `test` waits for a real test result before
+    the core port; `unreleased` is a clear core feature wired at once so nobody waits for a release,
+    and its core PR exists from the start. Before, an alpha read as "wait for the date, then port"
+    held a generic feature back for weeks. The old string form has no kind."""
+    out = []
+    for key, d in (decl.get("alpha") or {}).items():
+        kind = str(d.get("kind") or "").strip() if isinstance(d, dict) else ""
+        if kind not in ("test", "unreleased"):
+            out.append(f"{key} ({'kind ' + repr(kind) if kind else 'no kind'})")
+        elif kind == "unreleased" and not CORE_PR.fullmatch(str(d.get("core_pr") or "").strip()):
+            out.append(f"{key} (unreleased without core_pr)")
+    return out
+
+
 MESSAGES = {
     "edited": "!! local machinery: {n} core file(s) edited inside core/: {x} — core changes go as a PR against the core, never edited in place",
     "offmain": "!! local machinery: {n} tool source checkout(s) not on main feed this brain (MCP server or skill symlink): {x} — unreleased code in every session; switch the checkout back to main, or declare it as alpha",
@@ -950,6 +1010,7 @@ MESSAGES = {
     "shadow": "!! local machinery: {n} instance item(s) shadow a core item of the same name: {x} — use the core one and remove the copy, or rename it if it is a different tool",
     "caughtup": "!! local machinery: {n} alpha(s) the running core has caught up with, still wired: {x} — unwire the copy and its wiring now (the core carries it)",
     "expired": "!! local machinery: {n} alpha(s) past their date, still wired: {x} — merge, extend with a reason, or unwire",
+    "alphakind": "!! local machinery: {n} alpha declaration(s) without a valid kind: {x} — name \"kind\": \"test\" (a real test phase; the core port waits for its result) or \"unreleased\" (a clear core feature wired before its release) with \"core_pr\": the core PR (URL or owner/repo#n), opened now",
     "outside": "!! local machinery: {n} item(s) run from outside this brain and outside the core, undeclared: {x} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR",
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
     "noevidence": "!! local machinery: {n} instance declaration(s) give a reason without evidence: {x} — add \"evidence\": the instance-specific token the item relies on",
@@ -985,6 +1046,7 @@ def main(argv):
     found["edited"] = edited_core(C)
     found["missing"] = C.missing
     found["channels"] = both_channels(C)
+    found["alphakind"] = alpha_kinds(decl)
     n_due, found["review"] = review_due(decl, a.today, a.review_all)
     if a.review_all:
         print(f"local machinery review: {n_due} declared deviation(s), all listed - judge each again "
@@ -1021,7 +1083,7 @@ def main(argv):
         for it in items:
             print(f"{it['class']:11} {it['carrier']:12} {it['id']}")
 
-    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "caughtup", "expired", "outside", "general",
+    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "caughtup", "expired", "alphakind", "outside", "general",
                 "noevidence", "badevidence", "duplicate", "undeclared", "review"):
         xs = uniq(found[cls])
         if not xs:

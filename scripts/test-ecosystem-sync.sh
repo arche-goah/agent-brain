@@ -63,6 +63,31 @@ run --write >/dev/null
 "$PY" -c 'import json,os,sys; sys.exit(0 if "consumer_plugin" not in json.load(open(os.environ["EF"]))["repos"]["suite-b"] else 1)' \
   && ok "a consumer_plugin no installed plugin carries is dropped (control)" || bad "a stale consumer_plugin survived"
 
+# Two installed plugins come from the same repo (an old channel and the current one); the settings
+# layers decide which one delivers it (coherence register 2026-11-16: the switched-off old core
+# channel was written back because it came first in the install registry).
+mkdir -p "$T/core" "$T/brain2/config" "$T/brain2/.claude" "$T/cfg2/plugins/marketplaces/m/.claude-plugin" "$T/cfg2/plugins/marketplaces/n/.claude-plugin"
+git -C "$T/core" init -q
+git -C "$T/core" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+git -C "$T/core" remote add origin https://github.com/o/core.git
+printf '{"core_contract": "%s", "repos": {"core": {"path": "%s", "kind": "core", "remote": "https://github.com/o/core.git", "consumer_plugin": "old-core@m"}}, "plugins": {}}' \
+  "$CONTRACT_VERSION" "$(native "$T/core")" > "$T/brain2/config/ecosystem.json"
+printf '%s' '{"version":2,"plugins":{"old-core@m":[{"version":"1.0.0","gitCommitSha":"cccccccccccc"}],"new-core@n":[{"version":"2.0.0","gitCommitSha":"dddddddddddd"}]}}' \
+  > "$T/cfg2/plugins/installed_plugins.json"
+printf '%s' '{"plugins":[{"name":"old-core","source":{"source":"github","repo":"o/core"}}]}' > "$T/cfg2/plugins/marketplaces/m/.claude-plugin/marketplace.json"
+printf '%s' '{"plugins":[{"name":"new-core","source":{"source":"github","repo":"o/core"}}]}' > "$T/cfg2/plugins/marketplaces/n/.claude-plugin/marketplace.json"
+printf '%s' '{"enabledPlugins":{"old-core@m":false,"new-core@n":true}}' > "$T/cfg2/settings.json"
+run2() { BRAIN_DIR="$(native "$T/brain2")" CLAUDE_CONFIG_DIR="$(native "$T/cfg2")" "$PY" "$(native "$SYNC")" "$@" 2>&1; }
+export EF2; EF2="$(native "$T/brain2/config/ecosystem.json")"
+run2 --write >/dev/null
+"$PY" -c 'import json,os,sys; sys.exit(0 if json.load(open(os.environ["EF2"]))["repos"]["core"].get("consumer_plugin")=="new-core@n" else 1)' \
+  && ok "the enabled channel is the consumer, not the switched-off one listed first" || bad "--write kept the switched-off channel"
+# A later layer overrides: the brain's local settings switch the new channel off and the old one on.
+printf '%s' '{"enabledPlugins":{"old-core@m":true,"new-core@n":false}}' > "$T/brain2/.claude/settings.local.json"
+run2 --write >/dev/null
+"$PY" -c 'import json,os,sys; sys.exit(0 if json.load(open(os.environ["EF2"]))["repos"]["core"].get("consumer_plugin")=="old-core@m" else 1)' \
+  && ok "the local settings layer overrides the user layer" || bad "the local layer was not read"
+
 echo
 [ "$fail" -eq 0 ] && echo "test-ecosystem-sync: all checks passed" || echo "test-ecosystem-sync: FAILURES"
 exit "$fail"

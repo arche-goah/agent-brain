@@ -281,6 +281,24 @@ f="$T/19c.jsonl"; { boot_ok startup "$LB"; user "stand?"; asst "2 points need yo
 check "ledger items named (dated and undated)" "$f" allow "$EN"
 f="$T/19d.jsonl"; { boot_ok startup "$LB"; user "stand?"; asst "2 points need you: the ipc remeasure from 2026-10-11."; } > "$f"
 check "undated ledger item left out" "$f" block "$EN"
+# 19e — orthography fold (measured 2026-11-04, Windows instance): the item's words come from an
+# ASCII slug (ae/oe/ue/ss), the reply names it in the operator's language with the real letters.
+# Literal compare: 1 of 3 words hit, 2 required, the reply was blocked. Both spellings name it now.
+L3="- [ledger|human]  geraete-staender-plan — operator: x — first report (a decision in the ledger)"
+LU="=== BRAIN BOOTUP CHECK ===${NL}open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${L3}${NL}=== END BOOTUP ==="
+f="$T/19e.jsonl"; { boot_ok startup "$LU"; user "stand?"; asst "1 point needs you: the Geräte-Ständer question."; } > "$f"
+check "slug in ASCII digraphs, reply with the real letters" "$f" allow "$EN"
+f="$T/19f.jsonl"; { boot_ok startup "$LU"; user "stand?"; asst "1 point needs you: a question about the rack."; } > "$f"
+check "the same item not named at all (control)" "$f" block "$EN"
+# ...and the other way round: the ledger title carries the real letters, the reply the digraphs.
+L4="- [ledger|human]  rack-a — operator: Geräte und Ständer — first report (a decision in the ledger)"
+LV="=== BRAIN BOOTUP CHECK ===${NL}open for us: 1 — ai 0 · human 1 · unclassified 0${NL}${L4}${NL}=== END BOOTUP ==="
+f="$T/19g.jsonl"; { boot_ok startup "$LV"; user "stand?"; asst "1 point needs you: geraete and staender."; } > "$f"
+check "title with the real letters, reply in ASCII digraphs" "$f" allow "$EN"
+# ...and with the letters decomposed (vowel + U+0308, as macOS file names and pasted text carry them; macOS review of #530).
+NFD="$(printf 'Gera\xcc\x88te-Sta\xcc\x88nder')"
+f="$T/19h.jsonl"; { boot_ok startup "$LU"; user "stand?"; asst "1 point needs you: the $NFD question."; } > "$f"
+check "slug in ASCII digraphs, reply with decomposed letters" "$f" allow "$EN"
 
 # 20 — a standing approval (full-audit 2026-10-15, Windows instance): the operator approved the
 # item's class once for good, so the reply reports it handled instead of asking. Asking anyway
@@ -379,6 +397,10 @@ f="$T/23d2.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; u
 check "later turn: only the date of an ours request in another id (no mention)" "$f" allow "$EN"
 f="$T/23d3.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "and now?"; asst "The fixtures request of 2026-09-13 waits on peer-d."; } > "$f"
 check "later turn: date plus the request's topic word is a mention (control)" "$f" block "$EN"
+# The same mention with the topic word in the operator's orthography (slug `geraete`, reply with the real letter).
+UBLOCK="=== BRAIN BOOTUP CHECK ===${NL}open for us: 1 — ai 1 · human 0 · unclassified 0${NL}- [request|ai] 2026-09-13 core/anfrage-geraete-2026-09-13.md — peer-d: ANFRAGE — first report (circle C)${NL}=== END BOOTUP ==="
+f="$T/23d3u.jsonl"; { boot_ok startup "$UBLOCK"; user "stand?"; asst "1 item I can handle myself (the request of 2026-09-13) — shall I go ahead?"; user "and now?"; asst "The Geräte request of 2026-09-13 waits on peer-d."; } > "$f"
+check "later turn: date plus the topic word in the other orthography is a mention" "$f" block "$EN"
 # 2026-11-11 (Windows instance, autonomous run): the operator's last prompt was hours old; an earlier reply's line
 # kept every later reply blocked. Only the reply since the newest user record (event, echo, prompt) is judged.
 f="$T/23d4.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_EN"; user "work through it on your own"; asst "Only #61, it is waiting on the owner."; user "<task-notification>CI green</task-notification>"; asst "$CLOSE_OURS"; } > "$f"
@@ -521,5 +543,31 @@ check "a matching number without the noun is no count (the replay class)" "$f" b
 FN="open for us: 0 — ai 0 · human 0 · unclassified 0${NL}- nothing open (requests, PRs and work ledgers read)${NL}  !!  an indented sub-line"
 f="$T/26d.jsonl"; { boot_ok startup "$FN"; user "stand?"; asst "Nothing open."; } > "$f"
 check "negative control: no top-level finding, nothing asked" "$f" allow "$EN"
+
+# 27 — the brief view (operator order 2026-11-12, translated: "not flooded, nothing lost"): scripts/start-findings.py
+# prints one count line, the operator items and the loud ones in place of the `!!` lines; the first reply carries the
+# count line and names those items - the ai items below the loud mark are tracked entries and need not be listed.
+PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+SFR="$T/sf-root"; mkdir -p "$SFR"
+RAW="!! hook coverage: 3 rules missing — fill the data file${NL}!! update available: v9.9.9 — ask the operator, then run brain-update.sh${NL}!! broken skill symlinks: alpha-skill${NL}open for us: 0 — ai 0 · human 0 · unclassified 0${NL}- nothing open (requests, PRs and work ledgers read)"
+SB="$(printf '%s' "$RAW" | "$PY" "$(dirname "$0")/start-findings.py" --root "$(native "$SFR")" record --hook-input '{"session_id":"fx1"}')"
+case "$SB" in *'!! session-start findings: 3 '*) ok "the script printed the brief count line" ;; *) bad "no brief line: '$SB'" ;; esac
+f="$T/27a.jsonl"; { boot_ok startup "$SB"; user "stand?"; asst "Nothing open. 3 session-start findings: the update available needs you (shall I run it?); the other two are handled now."; } > "$f"
+check "brief: count line + the operator item named passes, ai items unlisted" "$f" allow "$EN"
+f="$T/27b.jsonl"; { boot_ok startup "$SB"; user "stand?"; asst "Nothing open. 3 session-start findings, handled now."; } > "$f"
+check "brief: the operator item left out blocks" "$f" block "$EN"
+f="$T/27c.jsonl"; { boot_ok startup "$SB"; user "stand?"; asst "Nothing open. The update is available, findings handled."; } > "$f"
+check "brief: the count line left out blocks" "$f" block "$EN"
+# #502's reading counted the brief's own two `!!` lines and let this pass, the operator item unnamed (negative control)
+f="$T/27f.jsonl"; { boot_ok startup "$SB"; user "stand?"; asst "Nothing open. 2 session-start findings, handled now."; } > "$f"
+check "brief: the count of the brief's own lines, the operator item unnamed, blocks" "$f" block "$EN"
+LB="!! session-start findings: 1 — 0 need the operator, 1 back on 3+ days unhandled; the rest are tracked${NL}!! [finding|loud] 1a2b3c4d seen on 4 days (7 sessions), not handled: broken skill symlinks: alpha-skill${NL}open for us: 0 — ai 0 · human 0 · unclassified 0${NL}- nothing open (requests, PRs and work ledgers read)"
+f="$T/27d.jsonl"; { boot_ok startup "$LB"; user "stand?"; asst "Nothing open. 1 session-start findings, handled now."; } > "$f"
+check "brief: a loud item left out blocks" "$f" block "$EN"
+f="$T/27e.jsonl"; { boot_ok startup "$LB"; user "stand?"; asst "Nothing open. 1 session-start findings: 1a2b3c4d is back on its fourth day - handling it now."; } > "$f"
+check "brief: a loud item named by its id passes" "$f" allow "$EN"
+# stoppen-gate's mandated topics read the operator item through its tag and id
+mt="$(node -e 'console.log(require(process.argv[1]).mandatedTopics(process.argv[2]).join(","))' "$(native "$G")" "$(native "$T/27a.jsonl")")"
+[ "$mt" = "update available" ] && ok "brief: the ask-the-operator topic still reaches stoppen-gate" || bad "mandated topics from the brief: '$mt'"
 
 [ "$fail" = 0 ] && echo "open-items-gate: all cases pass" || { echo "open-items-gate: FAILURES"; exit 1; }

@@ -30,6 +30,7 @@ from pathlib import Path
 # write explicit utf-8), only the display — measured 2026-08-04.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 CORE = Path(__file__).resolve().parent.parent
 BRAIN = Path(os.environ.get("BRAIN_DIR", Path.cwd())).resolve()
@@ -111,6 +112,36 @@ def observe_plugins():
     return out
 
 
+def enabled_plugins():
+    """plugin-id -> True/False as the settings layers set it (user, then project, then local).
+
+    WHY (coherence register 2026-11-16, measured on a macOS brain): three installed plugins
+    came from the core repo (old stable channel, old beta channel, the core's own
+    marketplace). The first one in the install registry won, so `--write` kept recording
+    the switched-off old channel as the core's consumer. A later layer overrides an earlier.
+    """
+    state = {}
+    for path in (config_dir() / "settings.json",
+                 BRAIN / ".claude" / "settings.json",
+                 BRAIN / ".claude" / "settings.local.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        for pid, on in (data.get("enabledPlugins") or {}).items():
+            state[pid] = bool(on)
+    return state
+
+
+def pick_consumer(candidates, enabled):
+    """The plugin that delivers a repo: an enabled one first, else one no layer switched off."""
+    on = [p for p in candidates if enabled.get(p) is True]
+    if on:
+        return on[0]
+    rest = [p for p in candidates if enabled.get(p) is not False]
+    return rest[0] if rest else None
+
+
 def repo_slug(remote):
     """'git@github.com:owner/repo.git' / 'https://github.com/owner/repo' -> 'owner/repo'."""
     if not remote:
@@ -178,6 +209,7 @@ def main() -> int:
     # any) delivers it to the operator — see observe_marketplace_sources() docstring.
     now_plugins = observe_plugins()
     plugin_sources = observe_marketplace_sources()
+    plugin_state = enabled_plugins()
 
     for name, entry in lock["repos"].items():
         # A suite consumed ONLY as a plugin has no clone (path null): its state is the
@@ -212,8 +244,9 @@ def main() -> int:
         # remote, never by repo/plugin NAME (those legitimately differ, e.g.
         # "grandma3-suite" the repo vs "grandma3" the plugin id).
         slug = repo_slug(entry.get("remote"))
-        match = next((pid for pid in now_plugins
-                      if plugin_sources.get(pid.split("@", 1)[0]) == slug), None) if slug else None
+        candidates = [pid for pid in now_plugins
+                      if plugin_sources.get(pid.split("@", 1)[0]) == slug] if slug else []
+        match = pick_consumer(candidates, plugin_state)
         if match:
             entry["consumer_plugin"] = match
         elif entry.get("consumer_plugin") in now_plugins:

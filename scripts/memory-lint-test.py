@@ -102,6 +102,16 @@ def t_long_line_in_subindex(d):
     return (len(hit) == 1, f"limits={f['limits']}")
 
 
+def t_long_bold_line_in_subindex(d):
+    # a bold entry ("- **Topic** — …") counts like a link entry (2026-11-16: 529 chars passed unseen)
+    memfile(d, "rig-a")
+    memfile(d, "index-rig", "- [A](rig-a.md) — a\n- **Topic** — " + "x" * 420)
+    idx(d, ["- [Rig](index-rig.md) — topic index"])
+    f = run(d)
+    hit = [x for x in f["limits"] if x.get("index") == "index-rig.md"]
+    return (len(hit) == 1, f"limits={f['limits']}")
+
+
 def t_no_recursion(d):
     # index-a links index-b; index-b's entries must NOT count (one level only).
     memfile(d, "deep")
@@ -207,6 +217,7 @@ if __name__ == "__main__":
         case("unlinked index-*.md is an orphan, not followed", t_unlinked_subindex_is_not_followed),
         case("missing target inside sub-index reported", t_missing_target_in_subindex),
         case("overlong entry inside sub-index reported", t_long_line_in_subindex),
+        case("overlong bold entry inside sub-index reported", t_long_bold_line_in_subindex),
         case("no recursion beyond one level", t_no_recursion),
         case("plain index without sub-index unchanged", t_plain_index_unchanged),
         case("manifest entry without any file reported", t_manifest_ghost_reported),

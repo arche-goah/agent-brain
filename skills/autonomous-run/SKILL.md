@@ -106,7 +106,10 @@ The `disarm` output is the evidence that belongs in the report:
 5. **Do not finish because the work feels done** — the run ends at `remaining` = 0, or
    earlier ONLY through the explicit "pool empty, time was still left" report of step 4
    (that is order fidelity #3 applied inside a time-boxed run, not a contradiction of it),
-   or through the BLOCKED end below. Nothing else ends it.
+   or through the BLOCKED end below. Nothing else ends it. The end lines are the idle gate's
+   tokens, its one source (`helpers/autonomous-idle-gate.cjs`): `POOL EMPTY:` (time-boxed
+   run), `LIST EMPTY:` (list run), `BLOCKED:` (either). Ending is the WORK's end, never the
+   session's or the run mode's.
 6. **BLOCKED end — items remain, none can run** (coherence finding 2026-09-18): every
    remaining item, main order and pool alike, depends on a defined path that is
    interrupted, and restoring it needs the operator (a `/mcp` reconnect, a device, a
