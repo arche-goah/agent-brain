@@ -73,6 +73,17 @@ run_case incident-en '"In a conflict the one who lets go last always wins."' Ask
 run_case rule-plus-write '"Der Fader sendet grundsaetzlich absolut, darum baue ich das so."' Write block
 run_case rule-plus-instruction '"Ein Motorfader haelt nie von selbst.\n\n1. **Pult 201** hochziehen."' - block
 
+# --- the record carries the sentence, early enough for the dispatcher's 300-character record (2026-11-18) ---
+tr="$T/sentence.jsonl"
+printf '%s\n' '{"message":{"role":"user","content":"frage"}}' > "$tr"
+printf '{"message":{"role":"assistant","content":[{"type":"text","text":%s},{"type":"tool_use","name":"Write","input":{}}]}}\n' '"Vorab gelesen. Der Fader sendet grundsaetzlich absolut, darum baue ich das so."' >> "$tr"
+out="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$tr")" "$(native "$T")" | node "$G" 2>&1)"
+reason="$(printf '%s' "$out" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).reason.slice(0,300))}catch(e){}})')"
+case "$reason" in
+  *'Sentence: "Der Fader sendet grundsaetzlich absolut, darum baue ich das so."'*) ok "the reason's first 300 characters carry the sentence";;
+  *) bad "the sentence is missing from the first 300 characters: '${reason:0:200}'";;
+esac
+
 # --- negative controls: each half alone stays silent ---
 run_case rule-alone '"Im Konflikt gewinnt immer der, der zuletzt loslaesst."' - allow
 run_case action-alone '"Layout gebaut, gelintet, 0 Probleme."' Write allow
