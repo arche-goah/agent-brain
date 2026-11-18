@@ -198,7 +198,11 @@ process.stdin.on('end', () => {
   // (macOS review of #539: an entry without a numeric thresholdDays fell back to a global value below the floor).
   const effective = typeof wfCfg.thresholdDays === 'number' ? wfCfg.thresholdDays : cfg.thresholdDays;
   const thresholdDays = DEFAULT_WORKFLOWS[name] ? Math.max(DEFAULT_WORKFLOWS[name].thresholdDays, effective) : effective;
-  const minTokens = typeof wfCfg.minTokens === 'number' ? wfCfg.minTokens : cfg.minTokens;
+  // The cheap-probe exemption is the floor's second lever (Windows review of #539: `minTokens: 1e12`, per workflow
+  // or global, let a 1.5M-token brain-scan of two days ago count as a probe). For a workflow with a core floor the
+  // instance can lower the token bound, never raise it above the core default.
+  const effTokens = typeof wfCfg.minTokens === 'number' ? wfCfg.minTokens : cfg.minTokens;
+  const minTokens = DEFAULT_WORKFLOWS[name] ? Math.min(DEFAULT_MIN_TOKENS, effTokens) : effTokens;
 
   const stateDir = projectStateDir(data);
   if (!stateDir) return allow();
