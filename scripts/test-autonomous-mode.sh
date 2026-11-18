@@ -67,6 +67,13 @@ rm -f "$LATER/.claude-state/open-questions.json"
 mode "the same prompt after the item is done stays interactive (count of the first reading)" "$f" "$LATER" interactive
 f="$T/3i.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; asst "y"; user "anything open for me now?"; } > "$f"
 mode "a NEW ask with nothing open keeps the run (control: the memo is per prompt)" "$f" "$LATER" autonomous
+# 2026-11-18 (macOS instance): the ask read 0 (decisions filed wrongly), then the agent filed them right - the kept 0
+# held the run autonomous and the question tool was refused on the operator's own request. A kept 0 is measured again.
+RISE="$T/rise"; mkdir -p "$RISE"
+f="$T/3r.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
+mode "asking what is open, nothing filed yet, keeps the run (first reading 0)" "$f" "$RISE" autonomous
+open_q "$RISE"
+mode "the same prompt once a decision is filed ends it (a kept 0 is re-measured)" "$f" "$RISE" interactive
 # 2026-11-06 (operator: closing the session IS a mode change; the end-of-session loop had come back several times):
 # a close stamp of THIS session written after the order ends the run; another session's stamp does not; a new order
 # after the close switches it on again.

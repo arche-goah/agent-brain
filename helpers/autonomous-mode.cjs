@@ -322,7 +322,14 @@ function openCountMemo(cwd) {
     count(key) {
       // a pattern case names its own count (scripts/pattern-cases.py): no memo, or one run's count leaks into the next
       if (/^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '')) return openForOperator(cwd);
-      if (!(key in data)) { data[key] = openForOperator(cwd); dirty = true; }
+      // Only a count ABOVE 0 is kept. A kept 0 is measured again (2026-11-18, macOS instance: "what is open for me?"
+      // counted 0 because the agent had filed the decisions wrongly; once filed right the count was 3, but the kept 0
+      // held the run autonomous and the question tool was refused on the operator's own request, three times). The
+      // 2026-11-06 case is a FALL to 0, which keeping the positive count still prevents.
+      if (!(key in data) || data[key] === 0) {
+        const n = openForOperator(cwd);
+        if (!(key in data) || n !== data[key]) { data[key] = n; dirty = true; }
+      }
       return data[key];
     },
     save() {

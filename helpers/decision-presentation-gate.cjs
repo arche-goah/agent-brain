@@ -71,7 +71,10 @@ function ledgerDecisions(root) {
       const block = [lines[i]];
       while (j < lines.length && lines[j].startsWith(' ')) block.push(lines[j++]);
       const body = block.join('\n');
-      if (!ITEM_CLASS.test(body)) continue;
+      // An entry whose NEWEST exit is `operator-decision` waits on the operator whatever its class says (2026-11-18,
+      // macOS instance: a proposal filed `class: todo` with that exit was invisible here, "what is open for me?" counted 0
+      // and kept the autonomous run - the question tool was refused on the operator's own request).
+      if (!ITEM_CLASS.test(body) && newestExitKind(body) !== 'operator-decision') continue;
       const circle = /^\s+(?:-\s*)?circle:\s*`?([A-Fa-f])\b/m.exec(body);
       if (circle && !OPERATOR_CIRCLES.has(circle[1].toUpperCase())) continue;
       // The entry's NEWEST exit line (helpers/ledger-exit.cjs) says who moves now; only
