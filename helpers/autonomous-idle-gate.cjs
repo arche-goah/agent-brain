@@ -247,6 +247,18 @@ function releasedOpen(root, tp) {
 
 const HAND_STEP_LINE = /^[ \t>*_-]*HAND STEP:\s*\S/m;
 
+/** The AI's own open session-start findings (scripts/start-findings.py state): owner ai, neither handled nor closed.
+ *  Why (2026-11-18, the macOS instance, the operator: the standstill was needless again): with every released entry
+ *  named BLOCKED the turn ended four times in a row while the start report tracked 27 findings for the AI. */
+function ownStartFindings(root) {
+  let st;
+  try { st = JSON.parse(fs.readFileSync(path.join(root, '.claude-state', 'start-findings.json'), 'utf8')); } catch (e) { return []; }
+  return Object.values((st && st.findings) || {})
+    .filter((e) => e && (e.owner || 'ai') === 'ai' && !e.handled_at && !e.closed_at)
+    .sort((a, b) => (Number(b.sessions_seen) || 0) - (Number(a.sessions_seen) || 0));
+}
+const HANDLED_CALL = /start-findings\.py\s+handled\b/;
+
 /** The interactive variant: one block per turn while released work is open and the turn has no allowed end. */
 function judgeInteractive(input, root, now) {
   if (input.stop_hook_active) return null; // holds once: the re-issue after its own block passes
@@ -263,7 +275,18 @@ function judgeInteractive(input, root, now) {
   const measured = t.cmds.some((c) => m.some((r) => r.test(c))) || standingMeasurement(t.all, m, now);
   const blockedLines = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:\s*\S/.test(l));
   const unnamed = ids.filter((id) => !blockedLines.some((l) => l.includes(id)));
-  if (measured && !unnamed.length) return null;
+  if (measured && !unnamed.length) {
+    // Every released entry waits on someone else: the AI's own start findings are the work that goes on meanwhile.
+    const own = ownStartFindings(root);
+    if (!own.length || t.cmds.some((c) => HANDLED_CALL.test(c))) return null;
+    const open = own.filter((e) => !blockedLines.some((l) => l.includes(e.id)));
+    if (!open.length) return null;
+    return `IDLE (interactive, own findings): every released entry is BLOCKED, but the session start tracks ${own.length} `
+      + `finding(s) for the AI that nobody else holds. Work on one now - next: ${open[0].id} ${String(open[0].text || '').slice(0, 120)} `
+      + '- and close it with `scripts/start-findings.py handled <id> --how "..."`, or name each in a line '
+      + '`BLOCKED: <id> — <what restores it, who>`. This check holds once per turn. '
+      + 'Missing: continuation on own start findings';
+  }
   const list = (unnamed.length ? unnamed : ids).slice(0, 5).join(', ');
   return `IDLE (interactive, released work): the operator released ${list} in this session and this turn ends without `
     + 'working on it. Do the next step now (tool calls in this turn), or end in one of the allowed forms: a question '

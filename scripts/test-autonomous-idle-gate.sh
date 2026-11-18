@@ -156,6 +156,20 @@ f="$T/i8.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKE
 check "interactive: every released entry named BLOCKED after measuring" "$f" allow "$R"
 f="$T/i9.jsonl"; { user "go ahead with the plan"; asst "BLOCKED: pkg-a — the peer's merge"; } > "$f"
 check "interactive: the BLOCKED line without measuring the list (control)" "$f" block "$R"
+# Own start findings (2026-11-18, macOS instance): every released entry BLOCKED is no idle end while the session start
+# tracks findings for the AI; a handled call, or each finding named BLOCKED, ends it; operator-owned ones do not count.
+mkdir -p "$R/.claude-state"
+printf '%s\n' '{"findings":{"f1a2b3c4":{"id":"f1a2b3c4","owner":"ai","text":"local machinery: 1 alpha past its date","sessions_seen":3},"f9e8d7c6":{"id":"f9e8d7c6","owner":"operator","text":"settings line","sessions_seen":2},"f0000001":{"id":"f0000001","owner":"ai","text":"old","handled_at":"2026-11-17"}}}' > "$R/.claude-state/start-findings.json"
+f="$T/i8b.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the peer's merge of the shared carrier"; } > "$f"
+check "interactive: released BLOCKED, an own start finding open (the 2026-11-18 class)" "$f" block "$R"
+f="$T/i8c.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; bash_cmd 'python3 core/scripts/start-findings.py handled f1a2b3c4 --how "unwired"'; asst "BLOCKED: pkg-a — the peer's merge"; } > "$f"
+check "interactive: released BLOCKED, a start finding handled in the turn" "$f" allow "$R"
+f="$T/i8d.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the peer's merge
+BLOCKED: f1a2b3c4 — needs the core pin, the release owner"; } > "$f"
+check "interactive: released BLOCKED, the own finding named BLOCKED too" "$f" allow "$R"
+printf '%s\n' '{"findings":{"f9e8d7c6":{"id":"f9e8d7c6","owner":"operator","text":"settings line"}}}' > "$R/.claude-state/start-findings.json"
+check "interactive: released BLOCKED, only operator findings open" "$T/i8b.jsonl" allow "$R"
+rm -f "$R/.claude-state/start-findings.json"
 cat_ledger "$REL" "$REL"
 f="$T/i10.jsonl"; { user "go ahead with the plan"; tool Bash; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the CI watcher runs, continue when PR 12 is green"; } > "$f"
 check "interactive: a waiter with its condition covers its item only, another released item open" "$f" block "$R"
