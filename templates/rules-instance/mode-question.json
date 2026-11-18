@@ -1,4 +1,0 @@
-{
-  "_comment": "Read by helpers/mode-question-order-gate.cjs: extra regexes (case-insensitive) that mark a question as the mode question ('continue autonomously?'), in the operator's language. English and German are built in; missing file = built-ins only.",
-  "patterns": []
-}
