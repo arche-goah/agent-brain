@@ -472,10 +472,17 @@ out=$(run)
 grep -q 'local machinery: 5 declared deviation(s) due for review (oldest 3 shown)' <<< "$out" && ! grep -q 'c/ (instance' <<< "$out" \
   && grep -q 'review=5' <<< "$out" && ok "review-batch-of-the-oldest" || bad "review-batch-of-the-oldest: $out"
 TODAY=2026-10-08 out=$(run --review-all)
-grep -q 'local machinery review: 6 declared deviation(s), all listed' <<< "$out" && grep -q 'c/ (instance, reviewed 2026-10-01)' <<< "$out" \
+grep -q 'local machinery review: 6 declared deviation(s), all listed' <<< "$out" && grep -q 'c/ (instance, reviewed 2026-10-01, cadence 90 days)' <<< "$out" \
   && ok "review-all-lists-every-declaration" || bad "review-all-lists-every-declaration: $out"
 decl '{"instance":{"c/":{"reviewed":"2026-10-01","why":"w","evidence":"x"}}}'
 out=$(run); ! grep -q 'due for review' <<< "$out" && ok "review-fresh-silent" || bad "review-fresh-silent: $out"
+# --- per-deviation cadence (2026-11-18, drift scan agreed between the instances) --------------------
+# a hook path is capped at 30 days, its own shorter cadence counts, a docs path may go to 180; an alpha `until` far ahead is named
+decl '{"instance":{"scripts/hooks/g.cjs":{"reviewed":"2026-09-01","why":"w","evidence":"x"},"scripts/x.py":{"reviewed":"2026-09-20","review_every_days":14,"why":"w","evidence":"x"},"docs/n.md":{"reviewed":"2026-06-01","review_every_days":180,"why":"w","evidence":"x"}}}'
+out=$(run); grep -q 'scripts/hooks/g.cjs (instance, reviewed 2026-09-01, cadence 30 days)' <<< "$out" && grep -q 'scripts/x.py (instance, reviewed 2026-09-20, cadence 14 days)' <<< "$out" \
+  && ! grep -q 'docs/n.md (instance' <<< "$out" && ok "review-cadence-per-deviation" || bad "review-cadence-per-deviation: $out"
+decl '{"alpha":{"scripts/hooks/y.cjs":{"until":"2027-06-01","why":"alpha","kind":"test"}}}'
+out=$(run); grep -q 'scripts/hooks/y.cjs (alpha, until more than 90 days ahead)' <<< "$out" && ok "review-alpha-until-far-ahead" || bad "review-alpha-until-far-ahead: $out"
 rm -rf "$T/b"
 
 # --- an alpha the running core caught up with (operator 2026-10-31: unwired with the update) -------

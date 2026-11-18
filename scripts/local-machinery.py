@@ -87,7 +87,7 @@ REVIEW_DAYS = 90
 REVIEW_BATCH = 3
 
 
-def review_due(decl, today, review_all=False, since_core=None):
+def review_due(decl, today, review_all=False, since_core=None, touched=None):
     """Instance/external declarations whose `reviewed` date is missing or older than review_days,
     oldest first (never reviewed = oldest). Returns (total due, the batch to show). The session start
     shows a few at a time (routine, never a wall); the brain-scan passes review_all: EVERY declaration,
@@ -95,19 +95,34 @@ def review_due(decl, today, review_all=False, since_core=None):
     looked through). since_core (ISO date of the brain's last core update): a review older than it is due
     too (operator rule 2026-11-18, translated: "90 days, plus at every core update check local deviations
     without an expiry")."""
-    days = 0 if review_all else int(decl.get("review_days") or REVIEW_DAYS)
+    # Per deviation since 2026-11-18 (drift scan, agreed between the instances): its own cadence (`review_every_days`,
+    # capped by the path rule in template_deviation.cadence), and a core update makes it due only when the pin diff
+    # touches it (template_deviation.touches; `touched` None = unknown, then every update counts, as before).
+    try:
+        import template_deviation as td
+    except ImportError:  # a copy run outside scripts/ (fixture negative controls): one cadence for all, as before
+        class td:  # noqa: N801
+            REVIEW_DAYS = REVIEW_DAYS
+            cadence = staticmethod(lambda key, d: REVIEW_DAYS)
+            touches = staticmethod(lambda key, touched: True)
     batch = None if review_all else int(decl.get("review_batch") or REVIEW_BATCH)
-    limit = (datetime.date.fromisoformat(today) - datetime.timedelta(days=days)).isoformat()
-    if since_core and since_core > limit:
-        limit = since_core
+    day = datetime.date.fromisoformat(today)
     due = []
     for sec in ("instance", "external"):
         for key, d in (decl.get(sec) or {}).items():
             rev = str(d.get("reviewed", "")) if isinstance(d, dict) else ""
-            if review_all or not rev or rev < limit:
-                due.append((rev, sec, key))
+            days = int(decl.get("review_days") or 0) or td.cadence(key, d)
+            limit = (day - datetime.timedelta(days=days)).isoformat()
+            pin = bool(since_core and rev and rev < since_core and (touched is None or td.touches(key, touched)))
+            if review_all or not rev or rev < limit or pin:
+                due.append((rev, sec, key, days))
+    for key, d in (decl.get("alpha") or {}).items():
+        until = str(d.get("until", "")) if isinstance(d, dict) else ""
+        if until and until > (day + datetime.timedelta(days=td.REVIEW_DAYS)).isoformat():
+            due.append(("", "alpha", key, 0))  # a date more than 90 days ahead is an unlimited deviation in disguise
     due.sort()
-    return len(due), [f"{key} ({sec}, reviewed {rev or 'never'})" for rev, sec, key in due[:batch]]
+    return len(due), [f"{key} ({sec}, until more than {td.REVIEW_DAYS} days ahead)" if sec == "alpha"
+                      else f"{key} ({sec}, reviewed {rev or 'never'}, cadence {days} days)" for rev, sec, key, days in due[:batch]]
 
 
 def load(path):
@@ -1055,9 +1070,10 @@ def main(argv):
     try:
         import template_deviation  # the one reader of the brain's last core update
         cu = template_deviation.core_updated(a.repo)
+        tc = template_deviation.core_touched(a.repo)
     except ImportError:  # a copy run outside scripts/ (fixture negative controls): the 90 days alone
-        cu = None
-    n_due, found["review"] = review_due(decl, a.today, a.review_all, cu.isoformat() if cu else None)
+        cu = tc = None
+    n_due, found["review"] = review_due(decl, a.today, a.review_all, cu.isoformat() if cu else None, tc)
     if a.review_all:
         print(f"local machinery review: {n_due} declared deviation(s), all listed - judge each again "
               "(reason still true? core or suite carries it by now? still used?), then core PR, unwire, "
