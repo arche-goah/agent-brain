@@ -37,16 +37,54 @@ def unencoded(src, name):
             if mode is not None and not isinstance(mode, ast.Constant):
                 continue  # a computed mode cannot be judged here
             hits.append((n.lineno, "open"))
-    return hits
+    return hits + unpinned_stdin(src, name)
 
 
-fails = 0
+def unpinned_stdin(src, name):
+    """(line, "stdin") of the first sys.stdin read in a file that never pins it to UTF-8.
+
+    stdin has the same locale default: on Windows gh's UTF-8 JSON is decoded as cp1252, so an em dash
+    becomes three letters (2026-11-12: repo-activity-filter.py, every comment line of the collab watch).
+    `sys.stdin.reconfigure(encoding=...)` anywhere in the file or a read via `sys.stdin.buffer` passes;
+    code inside a string (a child script a fixture writes) is not an attribute and is not seen."""
+    reads, pinned = [], False
+    for n in ast.walk(ast.parse(src, name)):
+        if isinstance(n, ast.Attribute) and n.attr == "stdin" and isinstance(n.value, ast.Name) and n.value.id == "sys":
+            reads.append(n.lineno)
+        elif (isinstance(n, ast.Attribute) and n.attr in ("reconfigure", "buffer")
+                and isinstance(n.value, ast.Attribute) and n.value.attr == "stdin"):
+            pinned = True
+    return [] if pinned or not reads else [(min(reads), "stdin")]
+
+
+def stream_pins(src, name):
+    """Names of the std streams a script pins with `sys.<stream>.reconfigure(...)`."""
+    pins = set()
+    for n in ast.walk(ast.parse(src, name)):
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "reconfigure"
+                and isinstance(n.func.value, ast.Attribute) and isinstance(n.func.value.value, ast.Name)
+                and n.func.value.value.id == "sys"):
+            pins.add(n.func.value.attr)
+    return pins
+
+
+# OS-9, stderr half (2026-11-12): a script that pins stdout but not stderr still writes its error
+# lines in the platform codec. The CI fixture loop runs Python under PYTHONIOENCODING=cp1252;
+# start-findings.py pinned stdout only, an error line with an em dash left as 0x97, and the test
+# that decodes UTF-8 crashed (agent-brain #522, ubuntu). 66 scripts had the same shape.
+def stderr_unpinned(src, name):
+    pins = stream_pins(src, name)
+    return "stdout" in pins and "stderr" not in pins
+
+
+fails = checks = 0
 
 
 def check(name, ok):
-    global fails
+    global fails, checks
     print(("  OK   " if ok else "  FAIL ") + name)
     fails += 0 if ok else 1
+    checks += 1
 
 
 # Negative control: the scanner must see the defect, one-line and split over lines.
@@ -58,6 +96,17 @@ bad_open = 'open("a", "w")\nopen("b")\nopen(\n    "c", mode="r"\n)\n'
 good_open = 'open("a", "w", encoding="utf-8")\nopen("b", "rb")\nopen("c", mode="wb")\nopen("d", "r", -1, "utf-8")\n'
 check("an open() in text mode without encoding is found (one line and split)", sorted(h[0] for h in unencoded(bad_open, "bad_open")) == [1, 2, 3])
 check("an open() with encoding, or in binary mode, passes", unencoded(good_open, "good_open") == [])
+bad_stdin = 'import json, sys\n\ndata = json.load(sys.stdin)\n'
+good_stdin = 'import json, sys\nsys.stdin.reconfigure(encoding="utf-8")\ndata = json.load(sys.stdin)\n'
+child = 'CHILD = "import sys\\nfor line in sys.stdin: pass"\n'
+check("a sys.stdin read in a file that never pins stdin is found", unencoded(bad_stdin, "bad_stdin") == [(3, "stdin")])
+check("a pinned stdin, or stdin code inside a string, passes",
+      unencoded(good_stdin, "good_stdin") == [] and unencoded(child, "child") == [])
+pin_out = 'import sys\nsys.stdout.reconfigure(encoding="utf-8")\n'
+pin_both = pin_out + 'try:\n    sys.stderr.reconfigure(encoding="utf-8")\nexcept ValueError:\n    pass\n'
+check("a script pinning stdout but not stderr is reported", stderr_unpinned(pin_out, "pin_out"))
+check("a script pinning both streams, or neither, passes",
+      not stderr_unpinned(pin_both, "pin_both") and not stderr_unpinned("import sys\n", "none"))
 with tempfile.TemporaryDirectory() as tmp:
     p = Path(tmp) / "planted.py"
     p.write_text(bad, encoding="utf-8")
@@ -65,6 +114,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
 files = subprocess.run(["git", "-C", str(ROOT), "ls-files", "*.py"], capture_output=True, text=True, check=True).stdout.split()
 found = []
+unpinned = []
 for f in files:
     path = ROOT / f
     if not path.is_file():
@@ -72,13 +122,18 @@ for f in files:
     try:
         src = path.read_text(encoding="utf-8")
         hits = unencoded(src, f)
+        if stderr_unpinned(src, f):
+            unpinned.append(f)
     except (SyntaxError, UnicodeDecodeError):
         continue
     found += [f"{f}:{line} {meth}" for line, meth in hits]
-check(f"every read_text/write_text/text-mode open() in the core names its encoding ({len(files)} files)", not found)
+check(f"every read_text/write_text/text-mode open()/stdin read in the core names its encoding ({len(files)} files)", not found)
 for h in found:
-    print("       " + h + ' - add encoding="utf-8"')
+    print("       " + h + (' - add sys.stdin.reconfigure(encoding="utf-8")' if h.endswith(" stdin") else ' - add encoding="utf-8"'))
 
-total = 4
-print(f"\n{total - fails}/{total} passed")
+check(f"every script that pins stdout also pins stderr ({len(files)} files)", not unpinned)
+for f in unpinned:
+    print("       " + f + ' - add sys.stderr.reconfigure(encoding="utf-8") next to the stdout pin')
+
+print(f"\n{checks - fails}/{checks} passed")
 sys.exit(1 if fails else 0)

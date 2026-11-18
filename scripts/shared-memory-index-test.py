@@ -39,6 +39,7 @@ fails = []
 # smoke's cp1252 run would crash the print of a case name (measured 2026-11-04, PR 408 portability).
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 
 def ok(n, cond, detail=""):

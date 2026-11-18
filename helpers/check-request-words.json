@@ -1,0 +1,12 @@
+{
+  "_comment": "check-request-gate.cjs: phrases that ask ANOTHER instance to act (run, check, review). Regexes, case-insensitive, matched after quoted text (backticks, double quotes, > lines) is removed. Kept narrow on purpose: replayed over 168 posts of the last 100 core PRs (2026-11-12), see the changelog fragment feat-check-request-via-shared-memory.",
+  "request_patterns": [
+    "\\bplease\\s+(?:also\\s+)?(?:run|re-?run|re-?check|check|review|re-?test|test|verify|probe|replay)\\b",
+    "\\b(?:windows|macos|linux)\\s+(?:hand[- ]check|check|re-?check|review)\\b(?:\\s+\\w+){0,4}?\\s+(?:is\\s+)?requested\\b",
+    "\\b(?:wanted|needed)\\s+from\\s+(?:the\\s+)?(?:windows|macos|linux|os:\\w+)\\b",
+    "\\bneeded:\\s+(?:[\\w-]+\\s+){0,2}reviews?\\b",
+    "\\b(?:final\\s+)?for\\s+your\\s+(?:hand[- ]check|probe|re-?check|review)\\b",
+    "\\byour\\s+(?:windows\\s+|macos\\s+|linux\\s+)?hand[- ]check\\b",
+    "\\bthe\\s+(?:windows|macos|linux)\\s+(?:ok|check|hand[- ]check)\\s+stays\\s+with\\s+you\\b"
+  ]
+}

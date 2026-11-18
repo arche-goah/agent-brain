@@ -9,9 +9,11 @@
 # OS-trap register, then a new site of a known trap). A hand-kept list of "the steps to run"
 # is the same omission one level up, so the steps come from the workflow file itself.
 #
-# Usage: bash scripts/ci-lint-local.sh [--skip <text>]... [job ...]
+# Usage: bash scripts/ci-lint-local.sh [--commit] [--skip <text>]... [job ...]
 #   job       CI job names to run (default: leaks lint shellcheck)
 #   --skip    leave out every step whose name contains <text> (repeatable), e.g. --skip fixture
+#   --commit  the steps a commit can afford (helpers/git-hooks/pre-commit): every step but COMMIT_SLOW;
+#             a NOT-checked note is printed but does not turn the run red (untracked files are normal then)
 # Steps that read GitHub context (`${{ … }}`) are listed as SKIP — unless the context sits only in
 # `env:` and every such variable has a local stand-in (see local_context: the PR view against
 # origin/main), then they run and say so;
@@ -23,11 +25,19 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${CI_LINT_ROOT:-$HERE/..}" && pwd)"   # CI_LINT_ROOT: the fixture's synthetic repo
 PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python   # Windows: python3 can be the Store stub (OS-17)
 
-skips=(); jobs=()
+# COMMIT MODE (2026-11-12, measured on the macOS instance, two runs per step): the pre-commit kept its own copies of
+# some lint steps, and six steps had none; an agent's literal U+FEFF passed the commit and was held only at the
+# train-head lint. Durations: shellcheck 20.5 / 22.4 s; helpers parse 4.7 / 4.9 s; content guard 1.4 / 1.1 s; every
+# other step under 1.3 s. Threshold 10 s: only what is slower stays out of --commit, so a NEW step joins the commit
+# by default. A step over the threshold in --commit is named, so this list is corrected by measurement.
+COMMIT_SLOW=("shellcheck"); COMMIT_MAX_S=10
+
+skips=(); jobs=(); commit=0
 while (( $# )); do
   case "$1" in
     --skip) skips+=("${2:-}"); shift 2 ;;
-    -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    --commit) commit=1; shift ;;
+    -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) jobs+=("$1"); shift ;;
   esac
 done
@@ -77,6 +87,11 @@ while IFS=$'\t' read -r n job name why; do
   for s in "${skips[@]+"${skips[@]}"}"; do
     [[ -n "$s" && "$name" == *"$s"* ]] && why="skip:--skip $s"
   done
+  if (( commit )); then
+    for s in ${COMMIT_SLOW[@]+"${COMMIT_SLOW[@]}"}; do
+      [[ "$name" == *"$s"* ]] && why="skip:--commit: slower than ${COMMIT_MAX_S} s, measured — the push lint runs it"
+    done
+  fi
   set_env=""
   if [[ "$why" == env:* ]]; then
     vars="${why#env:}"
@@ -91,8 +106,12 @@ while IFS=$'\t' read -r n job name why; do
   ran=$((ran+1))
   # </dev/null: a step that reads stdin (a fixture suite did) would eat the rest of the step list
   # this loop reads — measured 2026-10-21, four steps vanished and the run still said "all passed".
+  t0=$SECONDS
   if (cd "$ROOT" && eval "$set_env" && BASH_ENV="$PRE" bash -e "$T/$n.sh") </dev/null >"$T/$n.log" 2>&1; then
     echo "  OK   $job / $name${set_env:+ (GitHub context set locally: ${why#env:})}"
+    if (( commit && SECONDS - t0 > COMMIT_MAX_S )); then
+      echo "       note: took $((SECONDS - t0)) s, over the commit threshold of ${COMMIT_MAX_S} s — measure it and add it to COMMIT_SLOW"
+    fi
     # A step that passed but says it did NOT check something (english-only names unstaged files):
     # locally that is not the run CI will see. Measured 2026-10-28 on the macOS instance: a new
     # script with German words passed here unstaged and went red in CI; the step's own note never
@@ -121,7 +140,7 @@ if (( ran + skipped != want )); then
   echo "ci-lint-local: only $((ran + skipped)) of $want step(s) judged — the step list was cut short"; exit 1
 fi
 if (( fail )); then echo "ci-lint-local: $fail of $ran step(s) FAILED ($skipped skipped)"; exit 1; fi
-if (( partial )); then
+if (( partial && !commit )); then
   echo "ci-lint-local: $partial step(s) passed but did NOT check everything (lines above) — stage the files and re-run; this is not the run CI will see"
   exit 1
 fi

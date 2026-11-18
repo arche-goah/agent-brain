@@ -84,6 +84,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -92,6 +93,7 @@ from instance_key import is_self, key_for, key_in, self_key  # noqa: E402
 from project_dir import resolve_project_dir  # noqa: E402
 from shared_answers import checked_head, default_repo, own_open_requests, own_shared_shas, sibling_keys_same_os  # noqa: E402
 import shared_channels  # noqa: E402
+from merge_ready import merge_ready  # noqa: E402  (one answer for open-items and pr-ball)
 OPTIONAL = re.compile(r"^optional: (.+?); unclaimed - (take it if you can and want)\s+—")
 LINE = re.compile(r"^\s*-\s+(\d{4}-\d{2}-\d{2})\s+\[([^\]]+)\]\s+([^:]+):\s+(.*?)\s*"
                   r"\(([^()]+\.md|(?:[\w.-]+/)?LOG@\d{4}-\d{2}-\d{2}#\d+)\)\s*$")
@@ -103,13 +105,31 @@ CIRCLE = re.compile(r"^\s+circle:\s*([A-Fa-f])\b", re.M)
 AI_CIRCLES = {"A", "C"}  # one AI alone · the AIs of several sides — everything else has a human in it
 
 
+# A short cache for GitHub calls (`gh ...`) in the brain's .claude-state. Measured 2026-11-16 on the macOS instance:
+# the Stop check of an autonomous run asks for a fresh list at every turn end, one session ran this script more than
+# twenty times in an hour, and the account's GitHub budget fell to 22 % - the collaboration watch slowed down for
+# everyone. The same search minutes apart gives the same answer. `--fresh` (or OPEN_ITEMS_GH_CACHE_TTL=0) asks GitHub
+# again; only a successful answer is kept, so a failed read is never served as a list.
+GH_CACHE = {"file": None, "ttl": 300}
+
+
 def run(cmd, cwd=None, timeout=25):
+    cached = GH_CACHE["file"] and cmd and cmd[0] == "gh"     # --fresh still writes: the next run reads the new answer
+    if cached:
+        key = json.dumps([cmd, str(cwd or "")])
+        data = load_json(GH_CACHE["file"], {})
+        hit = data.get(key)
+        if hit and 0 <= time.time() - hit.get("at", 0) < GH_CACHE["ttl"]:
+            return 0, hit.get("out", "")
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=timeout, cwd=cwd)
-        return p.returncode, p.stdout
     except (OSError, subprocess.TimeoutExpired) as e:
         return 127, str(e)
+    if cached and p.returncode == 0:
+        data[key] = {"at": time.time(), "out": p.stdout}  # ponytail: keys never expire from the file, few searches
+        save_json(GH_CACHE["file"], data)
+    return p.returncode, p.stdout
 
 
 def load_json(path, default):
@@ -184,7 +204,7 @@ def requests(repo, label=""):
 PR_QUERY = """query($q: String!, $after: String) { viewer { login }
   search(query: $q, type: ISSUE, first: 50, after: $after) { issueCount
   pageInfo { hasNextPage endCursor } nodes { ... on PullRequest {
-    number title isDraft createdAt body headRefName author { login } repository { name }
+    number title isDraft mergeStateStatus createdAt body headRefName author { login } repository { name }
     reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
     latestReviews(first: 20) { nodes { author { login } submittedAt body } }
     commits(last: 1) { nodes { commit { oid committedDate } } }
@@ -299,6 +319,14 @@ def ball(p, me, owners, shared_shas=frozenset(), same_os=frozenset(), parties_re
             seen = [last] + [c.get("createdAt") or "" for c in comments if ours(c)]
             if not (theirs and max(theirs) > max(seen)):
                 return owner, f"{p['repository']['name']} is {owner}'s to merge, our own PR waits on that"
+        return None
+    # Ready to merge (both OS OKs at the head, merge state CLEAN): whoever comes first merges, so the move
+    # is ours - unless another instance behind OUR login is the repo's merger (the core case), whose
+    # move it stays. A merger of another login does not hold it: its word is for the stable pin.
+    sibling_merger = bool(owner_key and my_key and owner_key != my_key
+                          and owner_login and owner_login.lower() == me.lower())
+    if not sibling_merger and merge_ready(p, oid):
+        p["_merge_ready"] = True
         return None
     if last and any(t > last for t in touched):
         return author, "we reviewed or commented after the last commit"
@@ -429,6 +457,8 @@ def prs(owner, owners, repos=(None,), extra=()):
         author = (p.get("author") or {}).get("login", "?")
         # parties.json lives in the first channel, the shared memory itself.
         waiting, note = ball(p, me, owners, shas, same_os, repos[0]), ""
+        if p.get("_merge_ready"):
+            note = "macOS and Windows OK at the head, merge state CLEAN: merge it, whoever comes first (CI first)"
         if waiting is None and ref in asked:
             # Our own open request names this PR: its addressee moves - for one day. After that the
             # PR is ours again with the reminder (operator rule 2026-10-21: no answer within a day =
@@ -766,6 +796,9 @@ ANY_EXIT = re.compile(FIELD_LINE + r"exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re
 # still ahead or a topic is not due at the session start. Measured 2026-10-30: nine entries with a
 # topic trigger printed every session, seven of them as "needs you".
 ASK_WHEN = re.compile(FIELD_LINE + r"ask-when:\s*(.+?)\s*$", re.M)
+# `record-read: <date> ...` - the agent read the record of a green-from-birth operator decision and the answer is not in
+# it (Windows review 2026-11-17, #570: without it a weak check kept a real decision away from the operator for good).
+RECORD_READ = re.compile(FIELD_LINE + r"record-read:\s*\d{4}-\d{2}-\d{2}\b", re.M)
 # The exits of skill backlog-catch-up, step 3.
 EXITS ={"done-already", "ai-does-it", "in-pr", "other-side", "parked", "later-at-system", "drop", "operator-decision"}
 
@@ -821,6 +854,7 @@ def ledgers(root):
     green = load_json(root / ".claude-state" / "ledger-reconcile.json", None)
     green_at = green.get("at") if isinstance(green, dict) and isinstance(green.get("at"), (int, float)) else None
     green_rows = green.get("done_open") if green_at is not None and isinstance(green.get("done_open"), list) else []
+    unproven_rows = green.get("unproven") if green_at is not None and isinstance(green.get("unproven"), list) else []
     for rel in cfg.get("ledgers") or []:
         try:
             text = (root / rel).read_text(encoding="utf-8")
@@ -829,6 +863,7 @@ def ledgers(root):
             unread.append(f"{rel} (file not found)")
             continue
         ticks = {r.get("line") for r in green_rows if fresh and isinstance(r, dict) and r.get("ledger") == rel}
+        greens = {r.get("line") for r in unproven_rows if fresh and isinstance(r, dict) and r.get("ledger") == rel}
         found = list(mod.entries(text))
         # Entries that are not `- [ ]` / `- [x]` lines read as an empty ledger — the same silence.
         if not found and re.search(r"^[\s>*-]*`?id:", text, re.M):
@@ -882,6 +917,8 @@ def ledgers(root):
                 item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
             if e["line"] in ticks:
                 item["tick"] = True
+            if e["line"] in greens:
+                item["green_unproven"] = True
             items.append(item)
     return items, unread
 
@@ -1012,6 +1049,7 @@ def main():
     # extend: the hint prints one --classify per item; with the default action only the last one counted.
     ap.add_argument("--classify", nargs="+", action="extend", metavar="ID=ai|human[:why]")
     ap.add_argument("--top", type=int, default=0, help="show only the N oldest items per side (own / operator); 0 = all")
+    ap.add_argument("--fresh", action="store_true", help="ask GitHub again, ignore the short cache")
     a = ap.parse_args()
     # --owner is a GitHub account, not the item side the output prints as [..|ai] / [..|human]. Measured 2026-11-03
     # on the macOS instance: a hand run with `--owner ai` searched the foreign account "ai", listed 26 of its PRs as
@@ -1022,10 +1060,19 @@ def main():
     # OS-9: the bootup and the Stop gate parse this output, and the item texts carry the
     # authors' umlauts and dashes. Unpinned, Windows writes the ANSI codepage.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 
     root = Path(a.root)
     state_dir = root / ".claude-state"
     seen_file, cls_file = state_dir / "open-items-seen.json", state_dir / "open-items-class.json"
+    GH_CACHE["file"] = state_dir / "open-items-gh-cache.json"
+    # A typo in the env (`5m`) must not blank the list with a ValueError (Windows review 2026-11-17, #555): default, said once.
+    try:
+        ttl = int(os.environ.get("OPEN_ITEMS_GH_CACHE_TTL", "300") or 0)
+    except ValueError:
+        print("open-items: OPEN_ITEMS_GH_CACHE_TTL is not a whole number of seconds - using 300", file=sys.stderr)
+        ttl = 300
+    GH_CACHE["ttl"] = 0 if a.fresh else ttl
     # The default shared memory, then every further channel this instance is a member of
     # (scripts/shared_channels.py). A broken channel file reads the default alone and says so.
     try:
@@ -1133,6 +1180,21 @@ def main():
             own = None
         it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx)
         it["cls"] = it["cls"] or "?"
+        # An operator decision whose check was green from its first run: the answer may already be applied
+        # (measured 2026-11-17 on the macOS instance: an entry the operator had decided the day before, its
+        # paragraph in place and its check green, stood as "needs you" in the start report — reconcile had
+        # named it "negative control missing", and nobody read that against the entry). Reading the record
+        # and ticking or sharpening the check is the agent's move; only then may it go to the operator.
+        # The way back (Windows review 2026-11-17, #570): a green-from-birth check proves the check weak, not the
+        # decision made. The agent that read the record and found the answer NOT in writes `record-read: <date> ...`
+        # into the entry; from then on it is the operator's again, marked so.
+        if it.get("green_unproven") and it["cls"] == "human":
+            if RECORD_READ.search(it.get("body") or ""):
+                it["why"] = "an operator decision (record read, answer not in; its check is weak - sharpen it)"
+            else:
+                it["cls"], it["why"] = "ai", ("its check is green although the box is open - read the record: the answer "
+                                              "may be in, tick it with the evidence; if it is not, write `record-read: "
+                                              "<date> answer not in` and it returns to the operator")
         # Parked means not WORKED ON, never unanswered: a request from another side in a parked
         # domain still gets an answer (receipt, state, when it resumes). Measured: one such
         # question lay 30 days on the parked line.

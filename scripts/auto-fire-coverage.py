@@ -139,6 +139,7 @@ def unlisted_local(root):
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     gaps, dead, local = missing(root), stale(root), unlisted_local(root)
     for sid in gaps:

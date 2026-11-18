@@ -56,6 +56,7 @@ from pathlib import Path
 # "braucht-neu�" (measured 2026-10-11; os-traps OS-9).
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):  # a stream that cannot be reconfigured
     pass
 
@@ -180,7 +181,8 @@ def lint(mem: Path, snap: Path | None, root: Path = _INSTANCE) -> dict:
     # (sub-indexes included — they are read whole when their topic is opened)
     for src, text_ in [(INDEX, index_text)] + [(s + ".md", t) for s, t in sub_texts.items()]:
         for i, raw in enumerate(text_.splitlines(), 1):
-            if raw.startswith("- [") and len(raw) > MAX_INDEX_LINE:
+            # a bold sub-index entry ("- **Topic** — …") is an entry too (an instance, 2026-11-16: 529 chars unseen)
+            if raw.startswith(("- [", "- **")) and len(raw) > MAX_INDEX_LINE:
                 f["limits"].append({"issue": "index entry too long", "index": src, "line": i,
                                     "chars": len(raw), "max": MAX_INDEX_LINE,
                                     "entry": raw[:60] + "…"})

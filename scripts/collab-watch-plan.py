@@ -39,6 +39,7 @@ import sys
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # parsed by bash (OS-9)
+sys.stderr.reconfigure(encoding="utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import shared_channels  # noqa: E402
 

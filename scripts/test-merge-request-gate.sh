@@ -70,6 +70,34 @@ spr 'feat: x' '["Windows OK at head `abc1234`", "macOS: tests pass at head `9999
 sprobe "suite, macOS OK only at an OLDER head" "$M" block "$D"
 spr 'feat: x' '["Windows OK at head `abc1234`; macOS check wanted, macOS unchecked"]'
 sprobe "suite, macOS named only as open" "$M" block "$D"
+# 2026-11-13 (grandma3-suite #253): an OS named in the evidence of ANOTHER system's OK is no verdict for it.
+spr 'feat: x' '["Windows OK at head `abc1234` - npm test rc 0 (257 tests, 256 pass - the same totals as macOS); CI green at this head."]'
+sprobe "the incident: a Windows OK naming macOS in its evidence is no macOS OK" "$M" block "$D"
+spr 'feat: x' '["Windows OK at head `abc1234` - npm test rc 0.", "macOS: tests pass at head `abc1234`"]'
+sprobe "control: the same Windows OK plus a macOS line of its own" "$M" allow "$D"
+spr 'feat: x' '["Windows OK at head `abc1234`, macOS: all 256 pass at head `abc1234`"]'
+sprobe "a labelled second verdict in the same line (macOS:) stays a macOS OK" "$M" allow "$D"
+
+# 2026-11-15 (operator, question tool: "Ja, bauen"): a PR whose every file is under the suite's data_paths needs no OS OK.
+dpr() { node -e 'const f = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify({headRefOid: "abc1234def5678", body: "data: result rows", comments: [], changedFiles: Number(process.argv[2] || f.length), files: f.map((p) => ({path: p}))}))' "$1" "${2-}" > "$T/pr.json"; }
+printf '{"data_paths": ["releases/*.md", "references/fixture-types/**"]}\n' > "$T/deps-data.json"
+DD="$(native "$T/deps-data.json")"
+dpr '["releases/v1.2.0.md"]'
+sprobe "data change: only release-record rows, no OS OK" "$M" allow "$DD"
+dpr '["references/fixture-types/a/b.xml", "releases/v1.2.0.md"]'
+sprobe "data change: ** crosses folders" "$M" allow "$DD"
+dpr '["releases/v1.2.0.md", "mcp/src/index.ts"]'
+sprobe "one code file next to the data rows: OS OK required" "$M" block "$DD"
+dpr '["releases/notes/v1.2.0.md"]'
+sprobe "* stays in one folder (releases/notes/x.md is no data path)" "$M" block "$DD"
+dpr '["releases/v1.2.0.md.js"]'
+sprobe "anchored: releases/x.md.js is not releases/*.md" "$M" block "$DD"
+dpr '[]'
+sprobe "no file list: not a data change" "$M" block "$DD"
+dpr '["releases/v1.2.0.md"]' 150
+sprobe "file list shorter than changedFiles (gh page limit): not a data change" "$M" block "$DD"
+dpr '["releases/v1.2.0.md"]'
+sprobe "same data PR, suite without data_paths (control)" "$M" block "$D"
 
 # 2026-11-06 (operator, question tool: "Ja, auf solche Suiten ausweiten"): for a repo the instance lists in
 # .claude/rules/os-proof.json, a green CI job named for the OS counts as that OS's check at the head.

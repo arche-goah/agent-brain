@@ -1,0 +1,12 @@
+{
+  "_comment": [
+    "Instance data for core/helpers/peer-session-gate.cjs: regexes in the operator's own language.",
+    "now_patterns: a present form that claims a peer session is running or holds something ('is running', 'holds');",
+    "past_patterns: a past form that makes the sentence history, not a claim ('ran', 'closed').",
+    "name_patterns: further ways this brain names a peer session; the harness form <repo-folder>-<2 hex> is built in.",
+    "English built-ins stay in force; these lists extend them. A broken regex is skipped."
+  ],
+  "now_patterns": [],
+  "past_patterns": [],
+  "name_patterns": []
+}

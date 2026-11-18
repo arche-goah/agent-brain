@@ -50,7 +50,9 @@
     operator correction) may be pushed and opened without a new word: the agreed channel
     ASK OR ACT step 1 names. Making a repo public, a first publication, a push outside the
     organisation's repos and a deployment stay gated. Carriers on every push: leak-scan,
-    the English-only ratchet, the instance's name guard. **The barriers against a name in
+    the English-only ratchet, the instance's name guard. Commit messages, branch names and
+    PR texts are English too, on every path into the core (the ratchet reads files only).
+    **The barriers against a name in
     public stand in this order** (operator order 2026-10-25): the brain's own
     `public-text-guard` refuses the text before it is posted — the first barrier; the
     repo's text-leaks workflow is the LAST one, and a hit there is a finding against the
@@ -236,8 +238,12 @@ A mechanism that would help every brain is built IN the core (or the owning suit
 PR, never as a local copy. Allowed deviations are DECLARED with the reason in
 `.claude/rules/local-machinery.json`: **instance** (can only live here; names its
 `evidence` token or its `reach` analysis — "not yet ported" is no reason) · **external**
-(third-party, used as is; names its `source`) · **alpha** (under test, with expiry date
-and what is measured; past it: merge, extend with a reason, or unwire).
+(third-party, used as is; names its `source`) · **alpha** (with an expiry date; past it:
+merge, extend with a reason, or unwire). **An alpha names its kind** (operator decision
+2026-11-17): `test` — a real test phase, names what is measured, the core port waits for
+its result; `unreleased` — a clear core feature wired here at once so nobody waits for a
+release: its core PR is opened at once, in the same strand (`core_pr`), the local copy
+goes with the pin, and the date is an emergency brake, never a waiting period.
 **A suite that ships as a plugin is consumed as the plugin** (2026-10-11); a clone only to
 check a PR head, as a dated alpha. **A fork is not a place for work** (2026-10-11): core
 work on a branch IN the core repo; the core consumed only from the org repo's pin.
@@ -274,7 +280,8 @@ History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operat
 2. **No self-invented goals while an operator assignment is open.** Every item on an
    assignment list carries its origin (`von: Operator` | `abgeleitet` =
    `origin: operator | derived`); derived items are **proposals** and need an OK.
-3. **An empty list is a SUCCESS, not an emergency** → **report and stop**, don't refill;
+3. **An empty list is a SUCCESS, not an emergency** → **report and stop** (stop = the
+   work, not the session or the run mode), don't refill;
    order done → check-in with the operator. Only a scheduled time-boxed run derives follow-ups, from a **reserve pool agreed
    beforehand** (skill `autonomous-run`).
 4. **A workaround is a DEBT, not a checkmark** → entry "spec not fulfilled"; done is only
@@ -297,8 +304,8 @@ History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operat
 10. **What the operator just criticised is not re-released unseen** (2026-08-19).
 
 **Carriers** (operator decision 2026-11-03, HARD needs a mechanical check): #3
-`core/helpers/autonomous-idle-gate.cjs` (an idle end of an autonomous run needs BLOCKED or POOL
-EMPTY, measured), #7 in its conditional part only — `core/helpers/conditional-order-gate.cjs` (a
+`core/helpers/autonomous-idle-gate.cjs` (an idle end of an autonomous run needs one of the gate's
+end lines `BLOCKED:`, `POOL EMPTY:` or `LIST EMPTY:`, measured; the gate is their one source), #7 in its conditional part only — `core/helpers/conditional-order-gate.cjs` (a
 condition word holds the first expensive call). The rest of #7 ("own notes are not orders",
 "settle WHICH machine first") and the other items carry none and rank with the instance's rule
 files (`thinking-protocol.md`, Priority Hierarchy).

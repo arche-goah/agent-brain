@@ -162,6 +162,7 @@ def main() -> int:
     ap.add_argument("--today", default=dt.date.today().isoformat())
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
     current = args.today[:7]
     me = {t for t in re.split(r"[^\w-]+", os.environ.get("SHARED_MEMORY_SELF", "").lower()) if t}
     plans = [plan(log, current) for log in logs(args.repo)]

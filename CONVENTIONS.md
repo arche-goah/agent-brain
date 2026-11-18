@@ -157,10 +157,11 @@ measurable, verifiable and cleanly tested"). Until then the core's own path from
 lived only as instance prose on two brains, measured the same day.
 
 1. **Alpha — local, declared, dated.** A new function runs first on one brain, declared in
-   `.claude/rules/local-machinery.json` as `alpha` with an expiry date and what is being measured
-   (`rules/working-rules.md`, "One System, Not Local Workarounds"). `local-machinery.py` names
-   undeclared and expired items at every session start. At expiry: a PR, an extension with a
-   reason, or unwired.
+   `.claude/rules/local-machinery.json` as `alpha` with an expiry date and its kind — `test` (what
+   is being measured; the PR waits for it) or `unreleased` (a clear core feature, its PR opened at
+   once, `core_pr`) (`rules/working-rules.md`, "One System, Not Local Workarounds").
+   `local-machinery.py` names undeclared, expired and kindless items at every session start. At
+   expiry: a PR, an extension with a reason, or unwired.
 2. **Beta — a PR, measured on both systems, merged, shipped on the channel.** The PR is checked at
    its head on macOS AND Windows (a machine of the operator counts; green Windows CI is not "checked
    on Windows"), then merged, then shipped with a beta tag through the `-next` channel
@@ -377,7 +378,9 @@ falls through the table above. Rules, in the order they bite:
     checked on ONE system only (macOS only, or Windows only) is allowed solely as a beta,
     labelled with that system ("macOS beta" / "Windows beta") and with the other system's
     verification open in the check table; it never reaches stable, which needs a `pass` on every
-    required system.
+    required system. A PR whose every file matches one of the suite's `data_paths` globs in
+    `dependencies.json` (e.g. `"releases/*.md"`; `*` inside one path segment, `**` across) is a
+    data change and needs no OS check (operator decision 2026-11-15; `helpers/merge-request-gate.cjs`).
 
 ## 12. Staying compatible — and how anyone can check it
 

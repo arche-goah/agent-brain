@@ -161,6 +161,7 @@ def start(target: str, root: Path):
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")  # OS-9: callers parse this
+    sys.stderr.reconfigure(encoding="utf-8")
     import argparse
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("target", help="server name from .mcp.json, or a launcher executable")

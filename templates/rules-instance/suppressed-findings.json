@@ -1,0 +1,14 @@
+{
+  "_comment": "Instance data for core/scripts/suppressed-findings.py, read by the brain-scan (scripts/brain-scan-prep.py and workflows/brain-scan.js). A finding the operator dropped on purpose stays out of the scan report until its entry expires; the report says in one line how many were held back. An entry without key and pattern, without a reason, without a decider (by) or without an expiry date, or past it, suppresses nothing and is itself a P2 finding of the next scan. No file, or an empty list, suppresses nothing.",
+  "_fields": "key: a finding-index key of an earlier report (the return channel marks it suppressed, never decision-due) · pattern: regex on a raw finding's title, case-insensitive (machine checks are filtered by the script, scan agents by the same rule) · reason: why it is dropped · expires: YYYY-MM-DD, the last day it holds · by: who decided it, with the date.",
+  "entries": [],
+  "_example_entries": [
+    {
+      "key": "mcp-spec-deprecations-upstream",
+      "pattern": "MCP spec.*deprecat",
+      "reason": "upstream notice without an effect on the servers here; the scan regenerates it every run",
+      "expires": "YYYY-MM-DD",
+      "by": "<the operator> YYYY-MM-DD"
+    }
+  ]
+}

@@ -15,12 +15,13 @@ native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else pri
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 N="$(native "$T")"  # native form: the gate (node) reads the --body-file paths below
 # the fake gh: `gh api ...` (the compare view) answers COMPARE_FILES, everything else the PR JSON
-printf 'process.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : require("fs").readFileSync(process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
+# pr-<n>.json next to pr.json, when present, answers `gh pr view <n>` (a train's member); else pr.json
+printf 'const fs = require("fs"); const own = process.env.PR_JSON.replace(/\\.json$/, "-" + process.argv[4] + ".json");\nprocess.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : fs.readFileSync(fs.existsSync(own) ? own : process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
 # a core-like repo: its root carries pr-risk.json
 git init -q "$T/core"
 cp "$ROOT/pr-risk.json" "$T/core/pr-risk.json"
 transcript() { printf '{"type":"assistant","message":{"model":"%s"}}\n' "$1" > "$T/t.jsonl"; }
-pr() { node -e 'const fs=require("fs"); const rd=(l)=>(l||"").split(",").filter(Boolean).map((f)=>({body: fs.readFileSync(f,"utf8")})); process.stdout.write(JSON.stringify({body: process.argv[1], files: process.argv[2].split(",").filter(Boolean).map((p) => ({path: p})), comments: rd(process.argv[3]), reviews: rd(process.argv[4])}))' "$@" > "$T/pr.json"; }
+pr() { node -e 'const fs=require("fs"); const rd=(l)=>(l||"").split(",").filter(Boolean).map((e)=>{ const [f, d] = e.split("@"); return d ? {body: fs.readFileSync(f,"utf8"), createdAt: d} : {body: fs.readFileSync(f,"utf8")}; }); process.stdout.write(JSON.stringify({body: process.argv[1], files: process.argv[2].split(",").filter(Boolean).map((p) => ({path: p})), comments: rd(process.argv[3]), reviews: rd(process.argv[4]), ...(process.argv[5] ? {changedFiles: Number(process.argv[5])} : {})}))' "$@" > "$T/pr.json"; }
 probe() { # $1 label, $2 command, $3 block|allow, [$4 staged/branch files, newline list]
   local out rc
   out=$(printf '%s' "{\"tool_name\":\"Bash\",${AGENT:+\"agent_id\":\"$AGENT\",}\"cwd\":\"$(native "$T/core")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$2")}}" \
@@ -32,7 +33,10 @@ probe() { # $1 label, $2 command, $3 block|allow, [$4 staged/branch files, newli
 A="aaaaaaaaaa"; B="bbbbbbbbbb"
 GOOD="Fit: no existing gate asks for a design verdict, searched helpers/README.md
 Design: one reader for approval and merge, data in pr-risk.json, no second copy
-Cost: runs only on gh pr and git commit calls, one gh view per merge"
+Cost: runs only on gh pr and git commit calls, one gh view per merge
+Gaps: fed an empty answer, a one-line heading and a second instance key; all three held"
+# the same review before the Gaps line existed (2026-11-15): counts only when it is dated before GAPS_FROM
+OLD="$(printf '%s\n' "$GOOD" | grep -av '^Gaps:')"
 
 # CHECK 0 - commit at build time
 transcript claude-sonnet-5-5
@@ -95,6 +99,45 @@ create_in "create -R from an SSH origin of the same repo is scored by the branch
 create_in "create -R HOST/OWNER/REPO from the same repo is scored by the branch" "$T/ssh" "gh pr create -R github.com/o/r --body-file $N/body-low.md" block
 create_in "create -R a foreign repo with --head: the compare view sets the floor" "$T/brain" "gh pr create -R o/r --head feat/x --body-file $N/body-low.md" block "helpers/x-gate.cjs"
 create_in "create -R a foreign repo with --head, docs only in the compare view (control)" "$T/brain" "gh pr create -R o/r --head feat/x --body-file $N/body-low.md" allow "docs/a.md"
+# 2026-11-12 (#524, #525): `env -C <clone> gh pr create` was scored by the HOOK cwd's branch (the brain's working copy),
+# a brain-only script raised the floor. The directory comes from helpers/pr-repo.cjs prCalls: env -C, cd, else cwd.
+mkrepo() { # $1 dir, $2 origin url, $3 file on the branch
+  git init -q "$1"
+  git -C "$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m base
+  git -C "$1" update-ref refs/remotes/origin/main HEAD
+  git -C "$1" remote add origin "$2"
+  mkdir -p "$1/$(dirname "$3")"; printf 'x\n' > "$1/$3"
+  git -C "$1" add "$3"
+  git -C "$1" -c user.name=t -c user.email=t@t commit -q -m change
+}
+mkrepo "$T/cdocs" https://github.com/o/r.git docs/a.md
+mkrepo "$T/cgate" https://github.com/o/r.git helpers/y-gate.cjs
+mkrepo "$T/bdocs" https://github.com/x/brain.git docs/b.md
+NCD="$(native "$T/cdocs")"; NCG="$(native "$T/cgate")"
+create_in "env -C <docs clone> from a cwd whose branch has a gate: the gate in the cwd does not raise the floor" "$T/brain" "env -C $NCD gh pr create --body-file $N/body-low.md" allow
+create_in "env -C <gate clone> from a docs-only cwd: the clone's gate sets the floor" "$T/bdocs" "env -C $NCG gh pr create --body-file $N/body-low.md" block
+create_in "cd <docs clone> && gh pr create from a gate cwd" "$T/brain" "cd $NCD && gh pr create --body-file $N/body-low.md" allow
+create_in "cd <gate clone> && gh pr create from a docs-only cwd" "$T/bdocs" "cd $NCG && gh pr create --body-file $N/body-low.md" block
+create_in "env -C <gate clone> gh pr create -R o/r --head: the clone's branch, not the compare view" "$T/brain" "env -C $NCG gh pr create -R o/r --head feat/x --body-file $N/body-low.md" block "docs/a.md"
+create_in "env -C <docs clone> gh pr create -R o/r --head: a gate in the cwd does not count" "$T/brain" "env -C $NCD gh pr create -R o/r --head feat/x --body-file $N/body-low.md" allow "docs/a.md"
+create_in "pushd <gate clone> && gh pr create from a docs-only cwd" "$T/bdocs" "pushd $NCG && gh pr create --body-file $N/body-low.md" block
+create_in "gh.exe pr create in a gate clone, declared low" "$T/bdocs" "cd $NCG && gh.exe pr create --body-file $N/body-low.md" block
+# Windows review of #526 (2026-11-13): PowerShell's own directory commands, case-insensitive, a -Path flag skipped.
+# prCalls read directly with ps=true (the dir it reports is what the gate scores).
+PRC="$(native "$ROOT/helpers/pr-repo.cjs")"
+psdir() { node -e 'const c=require(process.argv[1]).prCalls(process.argv[2],process.argv[3],true,["create"]);process.stdout.write(c&&c[0]?c[0].dir:"")' "$PRC" "$1" "$(native "$T/bdocs")"; }
+for form in "Set-Location -Path \"$NCG\"; gh pr create --fill" "Push-Location $NCG; gh pr create --fill" "sl $NCG; gh pr create --fill" \
+            "CD $NCG; gh pr create --fill" "set-location -LiteralPath '$NCG'; gh pr create --fill"; do
+  got="$(psdir "$form")"
+  [ "$(native "$got")" = "$NCG" ] && ok "PowerShell: '${form%%;*}' moves the directory" || bad "PowerShell: '${form%%;*}' read '$got', not the gate clone"
+done
+got="$(psdir "Get-Location; gh pr create --fill")"
+[ "$(native "$got")" = "$(native "$T/bdocs")" ] && ok "PowerShell: a command that is no directory change keeps the cwd (control)" || bad "PowerShell control read '$got'"
+create_in "no directory named: the hook cwd's branch as before (gate, declared low)" "$T/brain" "gh pr create --body-file $N/body-low.md" block
+create_in "no directory named, docs-only cwd (control)" "$T/bdocs" "gh pr create --body-file $N/body-low.md" allow
+printf 'Risk: low - one doc line in the clone\n' > "$T/cdocs/rel-body.md"
+create_in "env -C <clone>: a relative --body-file is read in the clone" "$T/bdocs" "env -C $NCD gh pr create --body-file rel-body.md" allow
+create_in "the same relative --body-file without env -C, cwd elsewhere: no Risk line read (control)" "$T/bdocs" "gh pr create --body-file rel-body.md" block
 # review of #478 (Windows instance): a trailing synthetic entry or an unknown family is no model at all
 printf '{"type":"assistant","message":{"model":"claude-sonnet-5-5"}}\n{"type":"assistant","message":{"model":"<synthetic>"}}\n' > "$T/t.jsonl"
 probe "a trailing <synthetic> entry: the last real model counts (sonnet, high)" "gh pr create -R o/r --body-file $N/body-high.md" block "helpers/x-gate.cjs"
@@ -176,9 +219,37 @@ probe "merge reviewed on a too small model" "$M" block
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-os.md"
 probe "merge with an OS check only" "$M" block
 probe "override names why" "$M # CONTENT-REVIEW-OK: data PR, no second reviewer in this repo" allow
+# Gaps (2026-11-15): a review without it counts only when it was posted before GAPS_FROM
+printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$OLD" "$B" > "$T/c-nogaps.md"
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/c-nogaps.md")@2026-11-15T10:00:00Z"
+probe "merge on a review without Gaps, posted before the line existed" "$M" allow
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$(native "$T/c-nogaps.md")@2026-11-16T10:00:00Z"
+probe "merge on a review without Gaps, posted after" "$M" block
+pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" "$T/c-nogaps.md"
+probe "merge on an undated review without Gaps" "$M" block
+printf '%s\nModel: claude-opus-5-5\n' "$OLD" > "$T/rev-nogaps.md"
+probe "approve without a Gaps line" "gh pr review 5 -R o/r --approve --body-file $N/rev-nogaps.md" block
+pr "Risk: low - docs <!-- instance-key: $A -->" "docs/x.md" "$T/c-small.md" "" 1
+probe "control: low-risk docs PR, review on the smaller model" "$M" allow
+pr "Risk: low - docs <!-- instance-key: $A -->" "docs/x.md" "$T/c-small.md" "" 150
+probe "file list shorter than changedFiles (gh page limit): top risk, smaller model too small" "$M" block
 pr "## Merge train t1
 - #7 fix/a abc
 - #8 fix/b def" "" ""
 probe "train PR whose members lack a content review" "$M" block
+# merge train 2.1.6: a note line "- #N: …" or a left-out line is no member; only #7, which has its review, is one
+printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$GOOD" "$B" > "$T/c-7.md"
+pr "## Merge train t2
+- #7 fix/a abc1234
+
+Left out:
+- #9 (conflicts with the train so far)
+
+Train-level fixes:
+- #8: a note about #8, which is no member" "" "$T/c-7.md"
+printf '{"body":"Risk: high - gate","files":[{"path":"helpers/x-gate.cjs"}],"comments":[],"reviews":[]}' > "$T/pr-8.json"
+cp "$T/pr-8.json" "$T/pr-9.json"
+probe "note and left-out lines of a train are no members" "$M" allow
+rm -f "$T/pr-8.json" "$T/pr-9.json"
 
 [ "$fail" -eq 0 ] && echo "content-review-gate fixtures: ALL passed" || { echo "content-review-gate fixtures: FAILURES"; exit 1; }

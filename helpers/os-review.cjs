@@ -21,6 +21,8 @@
  * - otherwise the OS name with a pass word AFTER it, in the part that belongs to that OS (up to the
  *   next OS name), and no fail word in that part ("**Test (Windows, Git Bash):** all cases pass").
  *   A pass word only BEFORE the OS name is no OK for it ("16 checks OK including macOS and Windows").
+ *   Nor is an OS named inside ANOTHER system's statement ("Windows OK at head … the same totals as macOS",
+ *   2026-11-13, grandma3-suite #253): this branch counts only where no other system's statement opened earlier.
  * - an OK named as a thing or promised is no verdict and blanked first: "No Windows OK yet", "the / your
  *   macOS OK", "Windows OK once / when / if …", "… OK stays with you" (2026-11-12, #473).
  * - fail words are whole words; a hyphen joins a compound ("red-free", "fail-fast" are no verdict).
@@ -126,9 +128,26 @@ function saysOk(line, os) {
     if (statementAt(rest, os)) {
       const end = part.search(CLAUSE_END);
       if (!NOT_RX.test(end < 0 ? part : part.slice(0, end))) return true;
-    } else if (OK_RX.test(part) && !NOT_RX.test(part)) return true;
+    } else if (OK_RX.test(part) && !NOT_RX.test(part)
+      && (OWN_LABEL_RX.test(rest.slice(m[0].length)) || !otherStatementBefore(clean, os, m.index))) return true;
   }
   return false;
+}
+
+// "macOS: all 256 pass" — an OS name labelled with a colon opens its own part even after another system's OK
+// (macOS review of #529: "Windows OK at abc1234, macOS: all 256 pass" must stay a macOS OK).
+const OWN_LABEL_RX = /^[*_]*\s*:/;
+
+/** Does another system's statement ("Windows OK at head …") open before `idx` in `s`? Then a mention of `os` after it
+ * is evidence inside that verdict ("… the same totals as macOS"), not a verdict for `os`. Measured 2026-11-13 on
+ * grandma3-suite #253: a Windows OK line naming macOS in its evidence was read as the macOS OK, and the merge passed. */
+function otherStatementBefore(s, os, idx) {
+  return Object.keys(NAME_RX).filter((o) => o !== os).some((o) => {
+    const rx = new RegExp(osRx(o).source, 'gi');
+    let m;
+    while ((m = rx.exec(s)) && m.index < idx) if (statementAt(s.slice(m.index), o)) return true;
+    return false;
+  });
 }
 
 /** Sentences of a text; a bracket naming "against …" (a negative control) is blanked first. */
@@ -137,11 +156,44 @@ function sentences(text) {
     .flatMap((l) => l.replace(/\([^()]*\bagainst\b[^()]*\)/gi, '``').split(/[;.]\s+/));
 }
 
+/**
+ * STRUCTURED FORM (ported 2026-11-17 from an instance alpha): one HTML comment line per verdict,
+ *     <!-- os-review: os=<macOS|Windows|Linux> verdict=<ok|fail> head=<sha> -->
+ * written by scripts/post-os-ok.sh. When a text carries the form for an OS, the form ALONE is that text's verdict for
+ * it: no word of the prose can cancel or create it. WHY (measured 2026-10-28 on the macOS instance): the line reader
+ * dropped an OK whose line also held "open" (a fixture name), "pending" or "0 missing"; three merges were held in one
+ * day (#164, #193, #192) until the OK was restated, and each narrowing of the word lists since (#187, #324, #473, #529)
+ * fixes the next wording. Fields in any order; an unknown OS, verdict or a head that is no hex sha makes the line
+ * void. Several lines for one OS: the last one counts.
+ */
+const FORM_RX = /<!--\s*os-review:\s*([^>]*?)\s*-->/gi;
+function structured(text, os) {
+  let last = null;
+  for (const m of String(text || '').matchAll(FORM_RX)) {
+    const f = {};
+    for (const kv of m[1].split(/\s+/)) { const i = kv.indexOf('='); if (i > 0) f[kv.slice(0, i).toLowerCase()] = kv.slice(i + 1); }
+    if (String(f.os || '').toLowerCase() !== String(os || '').toLowerCase()) continue;
+    if (!/^(ok|fail)$/i.test(f.verdict || '') || !/^[0-9a-f]{7,40}$/i.test(f.head || '')) continue;
+    last = { verdict: f.verdict.toLowerCase(), head: f.head.toLowerCase() };
+  }
+  return last;
+}
+
+/** The form's verdict for `os` at one of `shas` (short or long): true / false, or null when the text has no form. */
+function formSays(text, os, shas) {
+  const f = structured(text, os);
+  if (!f) return null;
+  const at = (shas || []).filter(Boolean).map((s) => String(s).toLowerCase().slice(0, 7));
+  return f.verdict === 'ok' && (!at.length || at.some((s) => f.head.startsWith(s)));
+}
+
 /** Is `text` a hand review for `os`? Returns the instance key, or null. */
 function handReview(text, os, opts = {}) {
   const t = String(text || '');
   const key = KEY_RX.exec(t);
   if (!key) return null;
+  const form = formSays(t, os, opts.head ? [opts.head] : []);
+  if (form !== null) return form ? key[1].toLowerCase() : null;
   if (opts.head && !t.includes(String(opts.head).slice(0, 7))) return null;
   const first = t.trim().split(/\r?\n/)[0] || '';
   if (CI_NOTE.test(first) && !hasStatement(first)) return null;
@@ -172,4 +224,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { saysOk, saysNo, handReview, statementAt, NAME_RX, OK_RX, NOT_RX, KEY_RX, CI_NOTE };
+module.exports = { saysOk, saysNo, handReview, statementAt, structured, formSays, NAME_RX, OK_RX, NOT_RX, KEY_RX, CI_NOTE };

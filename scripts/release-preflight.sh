@@ -283,7 +283,10 @@ EOF
           is_train=1
           head="$(printf '%s\n' "$txt" | sed -n 's/.*train head: *\([0-9a-f]\{7,\}\).*/\1/p' | sed -n 1p)"
           # members stand under "Contains"; a PR under "Left out" (conflicts) was not merged by this train
-          for m in $(printf '%s\n' "$txt" | awk '/^Left out:/{exit} /^- #[0-9]+/{print $2}' | tr -d '#'); do
+          # a member line is the manifest's own form `- #N <branch> <sha>` (7 to 40 hex): a note line further down the body that
+          # opens with `- #N:` or `- #N <prose>` named its PR as a member "N:" that no gh call could read (merge
+          # train 2.1.6, 2026-11-17: train #510's notes "- #466: …" and "- #469: …" held the tag as "unreadable")
+          for m in $(printf '%s\n' "$txt" | awk '/^Left out:/{exit} /^- #[0-9]+ [^ ]+ [0-9a-f]{7,40}[[:space:]]*$/{print $2}' | tr -d '#'); do
             queue="$queue $m"; members+=("$m")
           done
           continue

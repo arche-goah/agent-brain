@@ -143,6 +143,23 @@ function globToRegex(glob, pathMode) {
 
 function norm(p) { return String(p || '').replace(/\\/g, '/'); }
 
+/**
+ * The parts of a compound shell command, the whole first. The harness applies an ask rule to each
+ * sub-command; this gate tested the whole string only. Measured 2026-11-16 on an instance: a sub-agent ran
+ * `D=…; rm -rf $D; … cd $D && git … ; git -C xa push -q -u origin HEAD:main; …`; the rule
+ * `Bash(git -C * push *:main)` matched no whole string (the line starts with `D=`), so the gate let it pass
+ * and the harness put the dialog in front of the operator mid-run. Split on `;`, `&&`, `||`, `|`, `&` and
+ * newlines, with a leading `(` or `{` dropped; quoting is not parsed - a separator inside quotes only yields
+ * an extra fragment to test, never a missed one.
+ */
+function subCommands(cmd) {
+  const whole = String(cmd || '').trim();
+  const parts = whole.split(/\s*(?:&&|\|\||;|\||&|\r?\n)\s*/)
+    .map((p) => p.replace(/^[({]\s*/, '').replace(/\s*[)}]$/, '').trim())
+    .filter(Boolean);
+  return [whole, ...parts];
+}
+
 /** The first ask rule this call hits, or null. */
 function hitRule(rules, tool, input, root) {
   for (const r of rules) {
@@ -153,7 +170,8 @@ function hitRule(rules, tool, input, root) {
     if (name !== tool && !edit) continue;
     if (arg === undefined || arg === '*' || arg === '') return r;
     if (tool === 'Bash' || tool === 'PowerShell') {
-      if (globToRegex(arg, false).test(String(input.command || '').trim())) return r;
+      const rx = globToRegex(arg, false);
+      if (subCommands(input.command).some((c) => rx.test(c))) return r;
     } else if (EDIT_TOOLS.has(tool) || tool === 'Read') {
       const file = norm(input.file_path || input.notebook_path);
       const rel = path.isAbsolute(file) || /^[A-Za-z]:\//.test(file) ? norm(path.relative(root, file)) : file;

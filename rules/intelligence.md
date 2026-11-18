@@ -39,8 +39,10 @@ inside the run; (3) **deep check** — only on a reason: `coherence-scan`, `memo
 and never starts it on its own (AI side handed over: those AIs decide, `working-rules.md` Working
 Across Parties #6). Reasons: five or more new dated rules since the last coherence register; memory
 index near its limit or contradictions found; a restructuring ahead; a brain-scan finding back for
-the third time. Price per run on one brain (2026-08/10): brain-scan ~1.5M tokens, memory-dream ~0.6M,
-coherence-scan ~2.6M, full audit ~6M — said in plain words ("about four times a brain-scan").
+the third time. The price is measured, not recalled (2026-11-10): `python3 core/scripts/run-price.py` gives
+the median per run from this machine's run records; only without a record the fallback (one brain, 2026-08/10:
+brain-scan ~1.5M tokens, memory-dream ~0.6M, coherence-scan ~2.6M, full audit ~6M) — said in plain words
+("about four times a brain-scan").
 **Above them, the audit-audit** (operator decision 2026-11-02, skill `audit-audit`): it checks the checks
 — function, cost, effect, findability — and ends with an action plan in which every finding has an exit
 (`core/scripts/audit-audit-plan-check.py`); same rule, proposed with reason and price (~1.4M), never started
@@ -212,7 +214,8 @@ around it (another tool, a script, a rename); the spawning brief asks for exactl
 function** (operator orders 2026-11-10): the body names `Risk:`; build and review run at least on the
 family `pr-risk.json` names for it, measured from the transcript — below it, the session hands the work
 to an agent or a session on that family; an approval or merge needs a review by another instance with
-`Fit:` / `Design:` / `Cost:` / `Model:`. Carrier `core/helpers/content-review-gate.cjs`; questions and
+`Fit:` / `Design:` / `Cost:` / `Gaps:` / `Model:` — `Gaps:` names what the reviewer fed it to break it, and
+what came out (operator order 2026-11-15). Carrier `core/helpers/content-review-gate.cjs`; questions and
 criteria `core/docs/content-review.md`.
 
 History: core/docs/rule-history.md, "Model Routing".

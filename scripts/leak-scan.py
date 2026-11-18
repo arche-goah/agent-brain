@@ -198,6 +198,9 @@ def main() -> int:
                     help="also scan these free-text files (PR title and body, a comment)")
     ap.add_argument("--no-tree", action="store_true",
                     help="skip the file tree (only --commits / --text)")
+    ap.add_argument("--staged", action="store_true",
+                    help="scan the staged blobs instead of the working tree (the pre-commit's view: an "
+                         "untracked file is no part of the commit, a blob cleaned only in the tree still is)")
     args = ap.parse_args()
 
     global ROOT
@@ -237,7 +240,23 @@ def main() -> int:
                         hit = f"<redacted {len(hit)} chars>"
                     findings.append({"check": name, "file": where, "line": lineno, "match": hit})
 
-    if not args.no_tree:
+    if args.staged and not args.no_tree:
+        names = subprocess.run(["git", "-C", str(ROOT), "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"],
+                               capture_output=True).stdout.decode("utf-8", "replace").split("\0")
+        for rel in sorted(n for n in names if n):
+            p = Path(rel)
+            if p.suffix.lower() in SKIP_SUFFIX or any(part in SKIP_DIRS for part in p.parts):
+                continue
+            if (ROOT / p).resolve() == Path(__file__).resolve():
+                continue  # the scanner names what it looks for
+            blob = subprocess.run(["git", "-C", str(ROOT), "show", f":{rel}"], capture_output=True)
+            if blob.returncode != 0:
+                continue
+            try:
+                scan(blob.stdout.decode("utf-8").splitlines(), p.as_posix())
+            except UnicodeDecodeError:
+                continue
+    elif not args.no_tree:
         for path in files(args.only):
             try:
                 lines = path.read_text(encoding="utf-8").splitlines()

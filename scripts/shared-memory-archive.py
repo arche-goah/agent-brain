@@ -61,6 +61,7 @@ def main() -> int:
     a = ap.parse_args()
     if hasattr(sys.stdout, "reconfigure"):  # entry titles can carry characters cp1252 cannot encode
         sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+        sys.stderr.reconfigure(encoding="utf-8")
     repo = a.repo.resolve()
     if not (repo / ".git").exists():
         print(f"ERROR: {repo} is no git checkout - the move has to be a git rename", file=sys.stderr)

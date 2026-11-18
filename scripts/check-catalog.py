@@ -190,6 +190,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     sys.stdout.reconfigure(encoding="utf-8")  # OS-9: headers carry dashes; cp1252 on Windows would fail on them
+    sys.stderr.reconfigure(encoding="utf-8")
     sys.stdout.write(render(ap.parse_args(argv).root) + "\n")
     return 0
 

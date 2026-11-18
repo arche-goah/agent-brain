@@ -24,6 +24,12 @@ resolve() {
   return 1
 }
 skip() { echo "  --  $1 (not in this layout)"; }
+# The dispatcher runs only scripts under the project's core/helpers/, scripts/ or .claude/ (or its own
+# core). A probe written to a temp folder would be refused, so each config gets its own copy.
+inprobe() { # $1 project root, $2 probe file -> native path of the copy
+  mkdir -p "$1/.claude/probes"; cp "$2" "$1/.claude/probes/$(basename "$2")"
+  native "$1/.claude/probes/$(basename "$2")"
+}
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -118,7 +124,7 @@ printf '%s\n' "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',
 CFG2="$(mktemp -d)"
 mkdir -p "$CFG2/.claude/rules"
 printf '{"checks":[{"label":"SKIPPER","marker":"SKIP-PROBE","cmd":"%s","mode":"block","onNotification":"skip"},{"label":"PLAIN","marker":"PLAIN-PROBE","cmd":"%s","mode":"block"}]}' \
-  "$(native "$PROBE")" "$(native "$PROBE")" > "$CFG2/.claude/rules/stop-checks.json"
+  "$(inprobe "$CFG2" "$PROBE")" "$(inprobe "$CFG2" "$PROBE")" > "$CFG2/.claude/rules/stop-checks.json"
 trap 'rm -rf "$T" "$CFG" "$CFG2"' EXIT
 feed2() {
   printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$1")" "$(native "$CFG2")" \
@@ -143,7 +149,7 @@ case "$OUT5" in *'kind=operator'*) ok "checks are told turn_kind=operator";; *) 
 # A wired row whose file is gone says so (audit-audit 2026-11-02: the dispatcher skipped it without a word).
 CFG3="$T/ghost-cfg"
 mkdir -p "$CFG3/.claude/rules"
-printf '{"checks":[{"label":"GHOST","marker":"GHOST-GATE","cmd":"helpers/gone-gate.cjs","mode":"block"}]}' \
+printf '{"checks":[{"label":"GHOST","marker":"GHOST-GATE","cmd":"scripts/gone-gate.cjs","mode":"block"}]}' \
   > "$CFG3/.claude/rules/stop-checks.json"
 OUT6="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TO")" "$(native "$CFG3")" \
   | CLAUDE_PROJECT_DIR="$(native "$CFG3")" node "$D" 2>/dev/null)"
@@ -183,7 +189,7 @@ printf '%s\n' "console.log(JSON.stringify({record:[{probe:'fresh-row'}]}))" > "$
 CFG3="$(mktemp -d)"
 mkdir -p "$CFG3/.claude/rules" "$CFG3/.claude-state"
 printf '{"checks":[{"label":"REC","marker":"REC-PROBE","cmd":"%s","mode":"record"}]}' \
-  "$(native "$REC")" > "$CFG3/.claude/rules/stop-checks.json"
+  "$(inprobe "$CFG3" "$REC")" > "$CFG3/.claude/rules/stop-checks.json"
 trap 'rm -rf "$T" "$CFG" "$CFG2" "$CFG3"' EXIT
 RLOG="$CFG3/.claude-state/rec-probe.jsonl"
 feed3() {
@@ -213,7 +219,7 @@ fi
 BLK="$T/blk.cjs"
 printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'probe premise'}))" > "$BLK"
 printf '{"checks":[{"label":"BLK","marker":"BLK-PROBE","cmd":"%s","mode":"record"}]}' \
-  "$(native "$BLK")" > "$CFG3/.claude/rules/stop-checks.json"
+  "$(inprobe "$CFG3" "$BLK")" > "$CFG3/.claude/rules/stop-checks.json"
 BOUT="$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TR2")" "$(native "$CFG3")" \
   | CLAUDE_PROJECT_DIR="$(native "$CFG3")" node "$D" 2>/dev/null)"
 case "$BOUT" in *'probe premise'*) bad "a block in a record slot reached the turn";; *) ok "a block in a record slot does not block";; esac
@@ -234,12 +240,12 @@ feed4() { # $1 transcript, $2 stop_hook_active
     | CLAUDE_PROJECT_DIR="$(native "$CFG4")" node "$D" 2>/dev/null
 }
 printf '{"checks":[{"label":"REISSUE","marker":"REISSUE-PROBE","cmd":"%s","mode":"block","onReissue":"run"},{"label":"PLAIN","marker":"PLAIN-PROBE","cmd":"%s","mode":"block"}]}' \
-  "$(native "$PROBE")" "$(native "$PROBE")" > "$CFG4/.claude/rules/stop-checks.json"
+  "$(inprobe "$CFG4" "$PROBE")" "$(inprobe "$CFG4" "$PROBE")" > "$CFG4/.claude/rules/stop-checks.json"
 OUT6="$(feed4 "$TR2" true)"
 case "$OUT6" in *'[REISSUE-PROBE]'*) ok "an opted-in check runs on the re-issue pass";; *) bad "opted-in check silent on re-issue: $OUT6";; esac
 case "$OUT6" in *'PLAIN-PROBE'*) bad "a check without onReissue ran on the re-issue pass: $OUT6";; *) ok "a check without onReissue stays silent on the re-issue pass";; esac
 printf '{"checks":[{"label":"LOUD","marker":"LOUD-PROBE","cmd":"%s","mode":"block"}]}' \
-  "$(native "$LOUD")" > "$CFG4/.claude/rules/stop-checks.json"
+  "$(inprobe "$CFG4" "$LOUD")" > "$CFG4/.claude/rules/stop-checks.json"
 OUT7="$(feed4 "$TR2" false)"
 case "$OUT7" in *'"decision"'*) bad "a let-through turned into a block: $OUT7";;
   *'[LOUD-PROBE]'*) bad "a let-through carries a token: $OUT7";;
@@ -296,6 +302,25 @@ if [ -f "$ROOT/helpers/commitment-carrier-gate.cjs" ] && [ -f "$ROOT/templates/r
   printf '%s\n' '{"checks":[],"disabled":{"COMMITMENT-CARRIER-GATE":""}}' > "$P/.claude/rules/stop-checks.json"
   case "$(feedreq)" in *'"decision":"block"'*) ok "disabled WITHOUT a reason does not switch it off";;
     *) bad "an empty reason switched the required check off";; esac
+  # `--list` (2026-11-14): the effective list for a reader - instance checks plus the template's
+  # required ones, a disabled one left out - printed without reading stdin (stdin is closed here).
+  lst() { CLAUDE_PROJECT_DIR="$P" node "$D" --list < /dev/null; }
+  has() { # has <list json> <instance|template|config|absent>
+    "$PY" -c 'import json,sys
+d=json.loads(sys.argv[1]); m={c["marker"]:c for c in d["checks"]}; req=m.get("COMMITMENT-CARRIER-GATE")
+tests={"instance": "OWN-PROBE" in m and "fromTemplate" not in m.get("OWN-PROBE", {}),
+       "template": bool(req) and req.get("fromTemplate") is True,
+       "config": str(d.get("config", "")).endswith(".claude/rules/stop-checks.json"),
+       "absent": req is None}
+sys.exit(0 if tests[sys.argv[2]] else 1)' "$1" "$2"; }
+  printf '%s\n' '{"checks":[{"label":"OWN","marker":"OWN-PROBE","cmd":"x.cjs","mode":"record"}]}' > "$P/.claude/rules/stop-checks.json"
+  L="$(lst)"
+  has "$L" instance && ok "--list names an instance check" || bad "--list misses the instance check: ${L:0:200}"
+  has "$L" template && ok "--list names a required template check the instance lacks, marked fromTemplate" || bad "--list misses the required template check: ${L:0:200}"
+  has "$L" config && ok "--list names the config file it read" || bad "--list names no config: ${L:0:200}"
+  printf '%s\n' '{"checks":[],"disabled":{"COMMITMENT-CARRIER-GATE":"test brain"}}' > "$P/.claude/rules/stop-checks.json"
+  L="$(lst)"
+  has "$L" absent && ok "--list leaves out a required check disabled with a reason" || bad "--list still names the disabled check: ${L:0:200}"
 else
   skip "required template checks"
 fi
@@ -306,7 +331,7 @@ if [ -f "$ROOT/templates/rules-instance/stop-checks.json" ]; then
   P="$T/oi-brain"; mkdir -p "$P/.claude/rules"
   printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'The close report leaves out what the session start lists as ours and is still open — the operator shuts down on this answer. Missing: core#7'}))" > "$T/oi-gate.cjs"
   node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).checks.find(x=>x.marker==="OPEN-ITEMS-GATE");c.cmd=process.argv[2];fs.writeFileSync(process.argv[3],JSON.stringify({checks:[c]}))' \
-    "$(native "$ROOT/templates/rules-instance/stop-checks.json")" "$(native "$T/oi-gate.cjs")" "$(native "$P/.claude/rules/stop-checks.json")"
+    "$(native "$ROOT/templates/rules-instance/stop-checks.json")" "$(inprobe "$P" "$T/oi-gate.cjs")" "$(native "$P/.claude/rules/stop-checks.json")"
   TR="$T/oi.jsonl"; printf '%s\n' '{"type":"user","message":{"role":"user","content":"close"}}' > "$TR"
   OI=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$TR")" "$(native "$P")" | CLAUDE_PROJECT_DIR="$P" node "$D")
   case "$OI" in *"The close report leaves out"*"missing: core#7"*) ok "open-items line names the branch and what is missing";;
@@ -316,7 +341,7 @@ if [ -f "$ROOT/templates/rules-instance/stop-checks.json" ]; then
   # gate grew "own-items measurement"; the template matched only "continuation" and the full text went out).
   printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'AUTONOMOUS-IDLE: this turn ends on a BLOCKED line, but the list behind it was not measured in this turn. Missing: own-items measurement'}))" > "$T/idle-gate.cjs"
   node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).checks.find(x=>x.marker==="AUTONOMOUS-IDLE");c.cmd=process.argv[2];fs.writeFileSync(process.argv[3],JSON.stringify({checks:[c]}))' \
-    "$(native "$ROOT/templates/rules-instance/stop-checks.json")" "$(native "$T/idle-gate.cjs")" "$(native "$P/.claude/rules/stop-checks.json")"
+    "$(native "$ROOT/templates/rules-instance/stop-checks.json")" "$(inprobe "$P" "$T/idle-gate.cjs")" "$(native "$P/.claude/rules/stop-checks.json")"
   ID=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$TR")" "$(native "$P")" | CLAUDE_PROJECT_DIR="$P" node "$D")
   case "$ID" in *"missing: own-items measurement"*) ok "idle line names the missing branch in one short line";;
     *) bad "idle line: $ID";; esac
@@ -334,7 +359,7 @@ printf '%s\n' "console.log(JSON.stringify({decision:'block',reason:'AUTONOMOUS-I
 feed5() { printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TR2")" "$(native "$CFG5")" \
   | CLAUDE_PROJECT_DIR="$(native "$CFG5")" node "$D" 2>/dev/null; }
 printf '{"header":"","checks":[{"label":"IDLE","marker":"IDLE-PROBE","cmd":"%s","mode":"block","extract":"Missing: continuation","template":"never matches"},{"label":"SECOND","marker":"SECOND-PROBE","cmd":"%s","mode":"block","short":"own items not measured"}]}' \
-  "$(native "$LONG")" "$(native "$LONG")" > "$CFG5/.claude/rules/stop-checks.json"
+  "$(inprobe "$CFG5" "$LONG")" "$(inprobe "$CFG5" "$LONG")" > "$CFG5/.claude/rules/stop-checks.json"
 OUT10="$(feed5)"
 case "$OUT10" in *'Run the own-items'*) bad "a cut line still carries the gate's full text: $OUT10";; *) ok "a template that no longer matches cuts to the first sentence";; esac
 case "$OUT10" in *'IDLE'*'this turn ends on a BLOCKED line'*) ok "the first sentence stays (the finding is not swallowed)";; *) bad "first sentence lost: $OUT10";; esac
@@ -349,7 +374,7 @@ case "$OUT10" in *'"reason":"\n'*) bad "an empty header left an empty first line
 # Measured: 27 runs of >= 3 consecutive blocks of one check, the longest 33. A check that judges text
 # the new reply cannot change has no exit; the dispatcher ends the loop loudly instead.
 CFG6="$T/cfg6"; mkdir -p "$CFG6/.claude/rules"
-printf '{"checks":[{"label":"PLAIN","marker":"PLAIN-PROBE","cmd":"%s","mode":"block"}]}' "$(native "$PROBE")" > "$CFG6/.claude/rules/stop-checks.json"
+printf '{"checks":[{"label":"PLAIN","marker":"PLAIN-PROBE","cmd":"%s","mode":"block"}]}' "$(inprobe "$CFG6" "$PROBE")" > "$CFG6/.claude/rules/stop-checks.json"
 fb() { printf '{"message":{"role":"user","content":"Stop hook feedback:\\nPLAIN — kind=operator   [PLAIN-PROBE]"}}\n'; }
 said() { printf '{"message":{"role":"assistant","content":[{"type":"text","text":"%s"}]}}\n' "$1"; }
 feed6() { printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$1")" "$(native "$CFG6")" \
@@ -366,6 +391,21 @@ case "$(feed6 "$L3")" in *'"decision":"block"'*) ok "an operator prompt resets t
 L4="$T/loop4.jsonl"; { printf '%s\n' '{"message":{"role":"user","content":"frage"}}'; said a; fb; said b
   printf '%s\n' '{"message":{"role":"user","content":"Stop hook feedback:\nOTHER — x   [OTHER-PROBE]"}}'; said c; fb; said d; } > "$L4"
 case "$(feed6 "$L4")" in *'"decision":"block"'*) ok "a feedback without the check breaks its streak";; *) bad "streak not broken by another check's feedback";; esac
+
+# --- path check (2026-11-16): a row naming a script outside the allowed folders does not run ---
+# Whoever can write stop-checks.json could otherwise run any file at every turn end.
+CFG7="$T/cfg7"; mkdir -p "$CFG7/.claude/rules"
+printf '{"checks":[{"label":"OUTSIDE","marker":"OUTSIDE-PROBE","cmd":"%s","mode":"block"}]}' "$(native "$PROBE")" > "$CFG7/.claude/rules/stop-checks.json"
+feed7() { printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s"}' "$(native "$TR2")" "$(native "$CFG7")" \
+  | CLAUDE_PROJECT_DIR="$(native "$CFG7")" node "$D" 2>/dev/null; }
+OUT12="$(feed7)"
+case "$OUT12" in *'kind='*) bad "a script outside the allowed folders ran: $OUT12";; *) ok "a script outside the allowed folders does not run";; esac
+case "$OUT12" in *'OUTSIDE'*'outside the allowed folders'*) ok "the refusal is named in one line";; *) bad "refusal not named: $OUT12";; esac
+mkdir -p "$CFG7/scripts"; cp "$PROBE" "$CFG7/scripts/probe.cjs"
+printf '{"checks":[{"label":"CLIMB","marker":"CLIMB-PROBE","cmd":"scripts/../../../%s/probe.cjs","mode":"block"}]}' "$(basename "$T")" > "$CFG7/.claude/rules/stop-checks.json"
+case "$(feed7)" in *'kind='*) bad "a .. path climbed out and ran";; *'outside the allowed folders'*) ok "a .. path cannot climb out";; *) bad "climb case: $(feed7)";; esac
+printf '{"checks":[{"label":"INSIDE","marker":"INSIDE-PROBE","cmd":"scripts/probe.cjs","mode":"block"}]}' > "$CFG7/.claude/rules/stop-checks.json"
+case "$(feed7)" in *'kind='*) ok "a script under scripts/ runs";; *) bad "an allowed script was refused: $(feed7)";; esac
 
 echo
 [ "$fail" -eq 0 ] && echo "stop-dispatcher fixtures: ALL passed" || echo "FAILURE"

@@ -1,0 +1,9 @@
+{
+  "_comment": "Instance data for the brain's ONE purchase register (scripts/product-sources.py register check|due|brief; helpers/mechanism-guard.cjs). `register`: the CSV in this brain, header exactly id,item,project,qty,spec,product_url,shop,availability,availability_read_at,lead_time,need_by,urgency,status,order_ref,notes (urgency now|soon|later, status open|ordered|delivered|stock|dropped, need_by YYYY-MM-DD or empty). Empty = no register yet: the session start says nothing and the guard stays off. `list_patterns`: regexes (case-insensitive) on a FILE NAME that mark a separate shopping list; once `register` is set, creating such a file outside the register is refused. Add the words of this brain's language.",
+  "register": "",
+  "list_patterns": [
+    "shopping[-_ ]?list",
+    "purchase[-_ ]?list",
+    "buy[-_ ]?list"
+  ]
+}
