@@ -106,18 +106,60 @@ const QUOTED = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
 
 // Each command text as { judge, raw }: `judge` has its quoted parts emptied (what decides whether it is a write),
 // `raw` keeps them (where a quoted `git -C "<dir with spaces>"` is read from).
+// What the shell RUNS of a quoted text is read where it runs, not everywhere (2026-11-18, macOS instance, measured
+// with the pinned guard: 7 of 14 core fixtures refused on a hand run - one `$(` anywhere in a script turned EVERY
+// quoted probe argument (`pr_probe "…" "gh pr create -R o/lab --fill"`) into a command). Read as commands: the body
+// of each `$( … )` and each backtick pair, anywhere (also inside double quotes), and the quoted parts of a segment
+// whose OWN command is `sh -c` / `eval`. A quoted argument of any other command stays data.
+const RUNNER = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-c\b|\beval\b/;
+// The shell's own reading, char by char: nothing runs inside single quotes, a backslash makes the next char text
+// (outside single quotes), `$(` and a backtick run their body outside quotes and inside double quotes.
+function substitutions(cmd) {
+  const out = [];
+  let q = '';
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q === "'") { if (c === "'") q = ''; continue; }
+    if (c === '\\') { i++; continue; }
+    if (c === '"') { q = q === '"' ? '' : '"'; continue; }
+    if (c === "'" && !q) { q = "'"; continue; }
+    if (c === '$' && cmd[i + 1] === '(') {
+      let depth = 0, j = i + 1, iq = '';
+      for (; j < cmd.length; j++) {
+        const d = cmd[j];
+        if (iq === "'") { if (d === "'") iq = ''; continue; }
+        if (d === '\\') { j++; continue; }
+        if (d === '"' || d === "'") { iq = iq === d ? '' : (iq || d); continue; }
+        if (iq) continue;
+        if (d === '(') depth++;
+        else if (d === ')' && --depth === 0) break;
+      }
+      out.push(cmd.slice(i + 2, j));
+      i = j;
+    } else if (c === '`') {
+      const j = cmd.indexOf('`', i + 1);
+      if (j === -1) break;
+      out.push(cmd.slice(i + 1, j));
+      i = j;
+    }
+  }
+  return out;
+}
 function commandParts(cmd) {
   const outside = segments(cmd).map((s) => ({ judge: s.replace(QUOTED, '""').trim(), raw: s.trim() }));
   if (!RUNS_QUOTED.test(cmd)) return outside;
-  const inside = [...cmd.matchAll(QUOTED)].map((m) => m[0].slice(1, -1));
-  return [...outside, ...inside.flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
+  const ran = substitutions(cmd);
+  for (const s of segments(cmd)) if (RUNNER.test(s.replace(QUOTED, '""'))) ran.push(...[...s.matchAll(QUOTED)].map((m) => m[0].slice(1, -1)));
+  return [...outside, ...ran.flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
 }
 const commandTexts = (cmd) => commandParts(cmd).map((p) => p.judge);
 
 function isWrite(cmd) {
   const texts = commandTexts(cmd);
   if (texts.some((t) => WRITE_RX.some((rx) => rx.test(t)) || AUTHOR_RX.test(t))) return true;
-  for (const m of cmd.matchAll(GH_API_RX)) {
+  // over the command parts as judged (quoted data emptied), not the raw text: a quoted `gh api … -f x` is a probe
+  // argument, not a call (2026-11-18, the same 7-of-14 measurement)
+  for (const m of texts.join('\n').matchAll(GH_API_RX)) {
     const args = m[2];
     if (/\s(-f|-F|--field|--raw-field|--input)\b/.test(args)) return true;
     if (/\s(-X|--method)\s*(POST|PATCH|PUT)\b/i.test(args)) return true;

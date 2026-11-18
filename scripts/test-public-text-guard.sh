@@ -257,6 +257,14 @@ expect "a name in a file the script hands over blocks"      block "$T" "sh $NT/s
 expect "a script run directly (./path) is read too"         block "$SC" "./direct.sh 5"
 expect "a script after a ; and VAR= prefix is read too"     block "$T" "echo go; X=1 bash -e $NT/scripts/named.sh 5"
 expect "a script path that does not exist passes"           allow "$T" "bash $NT/scripts/no-such.sh"
+# 2026-11-18 (7 of 14 core fixtures refused on a hand run): one `$(` anywhere made every quoted probe argument a command.
+# Now only what the shell runs is read: `$( )` and backtick bodies (not inside single quotes, not escaped), and the
+# quoted text of a segment whose own command is `sh -c` / `eval`.
+if [ -f "$ROOT/scripts/test-review-claim-gate.sh" ]; then
+  expect "a core fixture whose gh commands are probe arguments is no post (red on the previous guard)" allow "$T" "bash $(native "$ROOT")/scripts/test-review-claim-gate.sh"
+fi
+cp "$SC/named.sh" "$SC/probes-post.sh"; printf '%s\n' 'n="$(date)"' 'probe "x" "gh api -X POST repos/o/r/issues -f body=y"' >> "$SC/probes-post.sh"
+expect "a real post beside probe arguments still blocks (control)" block "$T" "bash $NT/scripts/probes-post.sh 5"
 expect "a script path the guard cannot expand blocks (unknown target)" block "$T" 'bash "$NOSUCHDIR/named.sh" 5'
 expect "the same unreadable script from a private clone passes" allow "$T/privclone" 'bash "$NOSUCHDIR/named.sh" 5'
 
