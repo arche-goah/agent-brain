@@ -373,6 +373,7 @@ def main():
             "- [ ] **waits** — derived (2026-11-02)\n  id: waits-met\n  check: none — waits for the pin that carries #1\n\n"
             "- [ ] **two** — derived (2026-11-02)\n  id: one-outside\n  check: none — after the Pin with agent-brain#1 and #2\n\n"
             "- [ ] **other repo** — derived (2026-11-02)\n  id: other-repo\n  check: none — pin carries grandma3-suite#1\n\n"
+            "- [ ] **other repo spaced** — derived (2026-11-18)\n  id: other-repo-spaced\n  check: none — Pin-Lage per heavy-metal #1\n\n"
             "- [ ] **no anchor word** — derived (2026-11-02)\n  id: no-pin-word\n  check: none — see #1\n\n"
             "- [ ] **unreadable** — derived (2026-11-02)\n  id: unreadable\n  check: none — the pin with #9\n\n"
             "- [x] **ticked** — derived (2026-11-02)\n  id: ticked-pin\n  check: none — the pin with #1\n\n"
@@ -385,7 +386,7 @@ def main():
         out = r.stdout + r.stderr
         pm = next((l for l in out.splitlines() if "waiting for a pin" in l), "")
         ok("waits-met" in pm, "PIN-MET: every named PR is in the pin (head or merge commit an ancestor)", out)
-        for i, why in (("one-outside", "one PR outside the pin"), ("other-repo", "another repo's #N"),
+        for i, why in (("one-outside", "one PR outside the pin"), ("other-repo", "another repo's #N"), ("other-repo-spaced", "another repo's name, a space, then #N"),
                        ("no-pin-word", "no word pin"), ("unreadable", "an unreadable PR"),
                        ("ticked-pin", "a ticked entry"),
                        ("looked-at", "an exit dated on or after the pin's commit")):

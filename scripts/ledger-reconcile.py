@@ -91,6 +91,16 @@ ENTRY = re.compile(r"^- \[( |x|X)\] (.*)$")
 PIN_WORD = re.compile(r"(?<![\w-])pin\b", re.I)   # not inside a slug (`none-pin-bedingung`)
 PIN_NEAR = 80   # characters on each side of the word pin in which a #N is the condition
 PR_REF = re.compile(r"(?:(?<![\w-])agent-brain#|(?<![\w/#-])#)(\d+)\b")
+# A bare `#N` right after another repo's name and one space ("heavy-metal #67") is that repo's number, not the
+# core's: measured 2026-11-18 on the macOS instance, a project ledger's "Pin-Lage ... heavy-metal #67" read as
+# a core PR waiting for the pin.
+OTHER_REPO_BEFORE = re.compile(r"(?<![\w-])(?!agent-brain\s$)[A-Za-z0-9_.]+(?:-[A-Za-z0-9_.]+)+\s$")
+
+
+def core_refs(text):
+    """The core PR numbers in `text`: `agent-brain#N`, and a bare `#N` no other repo's name owns."""
+    return [m.group(1) for m in PR_REF.finditer(text)
+            if not (m.group(0).startswith("#") and OTHER_REPO_BEFORE.search(text[max(0, m.start() - 60):m.start()]))]
 # A field line is `  key: value`, and just as often a list item `  - key: value` or a code span
 # `  - `key: value``: measured 2026-10-26 on the Windows instance, 20 of 20 entries the ratchet
 # named as "without a check" were in list form, ids and checks unread.
@@ -400,7 +410,7 @@ def pin_met(e, pin, timeout, since=""):
     # entry's #N made a 25-PR collection entry and a suite's "Pin `x` folgt" read as conditions.
     t = e["text"]
     nums = sorted({n for m in PIN_WORD.finditer(t)
-                   for n in PR_REF.findall(t[max(0, m.start() - PIN_NEAR):m.end() + PIN_NEAR])}, key=int)
+                   for n in core_refs(t[max(0, m.start() - PIN_NEAR):m.end() + PIN_NEAR])}, key=int)
     if not nums:
         return False
     for n in nums:
