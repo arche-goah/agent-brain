@@ -8,7 +8,7 @@
  * work" read word lists, and word lists miss paraphrase, word order and every language the brain has no data for.
  * Ported from an instance alpha (2026-10-28 .. 2026-11-18). Hand-judged sample of 40 disagreements per field on the
  * macOS instance, 2026-11-18 (model right / decided): asks_open 32/35, correction 30/37, orders_task 32/33; mode_on
- * gave no gain (all eight model errors were false trues). Operator decision 2026-11-18 (question tool): a record of
+ * gave no gain (all eight model errors were false trues) - the prompt below names those cases instead. Operator decision 2026-11-18 (question tool): a record of
  * THIS prompt decides those three fields (autonomous-mode.cjs `modelSays` / `intentFor`), no record = the words;
  * mode_on, mode_off and condition keep the reading they had (autonomous-mode.cjs, conditional-order-gate.cjs).
  *
@@ -60,12 +60,23 @@ mode_on: the operator ORDERS the assistant to work on its own without asking, no
   FALSE when the operator only leaves HOW a task is solved to the assistant ("do it the way it makes sense, I don't care how").
   FALSE when the operator says that no OK of a THIRD party is needed ("we own this, so we need not wait for an OK").
   FALSE when the message is a complaint, finding or demand about the WORK itself and says nothing about working without asking.
+  FALSE when the operator approves or orders a set of WORK - a yes to "shall I handle these items?", "work through all of
+  it", "really everything that can be done, please", "explore the failure class at the root and fix it if possible" - that
+  releases tasks, it does not order working without asking; the operator stays reachable for questions (2026-11-18: read
+  as mode_on, the session went autonomous and the question tool was refused).
+  FALSE when the operator complains that the assistant stood still, stopped, or asked too much ("standstill again, for no
+  reason", "why do you do all this only after being asked several times?") - a correction about the work, not the mode.
+  FALSE for a report that something asked interactively during auto mode, and for a question about what a go would do
+  ("the settings change came up interactively in auto mode", "if I give the go, will there be interactive prompts again?").
   FALSE when the operator explains or checks what the INTERACTIVE mode means while staying in it.
   TRUE when the operator complains that the assistant switched to interactive by itself, or is NOT working autonomously
   although autonomy was ordered - such a message is a correction AND mode_on, both true.
   TRUE when the order is limited to a scope or a role ("work only these tasks on your own").
 mode_off: the operator ends that autonomous mode - the short word "ask mode" always does; or orders interactive or normal work
   again ("continue interactively", "normal mode", "not autonomous anymore"), or says they are back.
+  TRUE when the operator says the switch to autonomous was wrong or not wanted, or asks to be set back to interactive
+  ("you switched to autonomous mode, that was not the goal", "set it back to interactive now", "autonomous is not wanted
+  right now") - 2026-11-18.
   FALSE when the message reports or complains that the assistant switched to interactive by itself.
 correction: the operator says the ASSISTANT did something wrong, missed something, or repeats a complaint about the assistant's
   work. FALSE when something else went wrong (a supplier, a device, a print, the operator's own mistake), FALSE for a plain order,
