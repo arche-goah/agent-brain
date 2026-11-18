@@ -276,6 +276,8 @@ function findingOpen(pr, key, t, cmd) {
  * author's own answer quotes the finding and names the new head - a text with THIS instance's key is no finding.
  * Override: `# FINDING-CLOSED: <where>`.
  */
+// The form a review writes a finding in, so this gate can read it (blocking unless marked non-blocking).
+const FINDING_FORM_RX = /\*\*finding \(builder/i;
 const HEAD_FINDING_RX = /\b(?:windows|macos|linux) fail\b|\*\*finding \(builder(?![^)\n]*non-blocking)|recommended before merge(?!, not blocking)/i;
 const AT_HEAD_RX = /\bat (?:head )?`?([0-9a-f]{7,40})\b/gi;
 function headFindingOpen(pr, key, t, cmd) {
@@ -309,4 +311,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { gate, target, saysOk, ciNotGreen, findingOpen };
+module.exports = { gate, target, saysOk, ciNotGreen, findingOpen, FINDING_FORM_RX };
