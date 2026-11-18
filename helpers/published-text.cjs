@@ -230,7 +230,7 @@ function expandVars(f, cmd) {
   return unknown ? null : out;
 }
 
-function invocations(cmd, ps, prog, subs, verbs) {
+function invocations(cmd, ps, prog, subs, verbs, inner = false) {
   const segs = shellSegments(cmd, ps);
   if (!segs) return null;
   if (!prog) return segs;
@@ -245,6 +245,9 @@ function invocations(cmd, ps, prog, subs, verbs) {
     if (verbs && !verbs.includes(w[i + 2])) continue;
     out.push(w.slice(i));
   }
+  // what the shell RUNS inside the command is a call too, one level deep (2026-11-18, review of agent-brain #615: a post
+  // through `bash -c '…'` was no gh call for instance-key-gate, so its key went unchecked)
+  if (!inner) for (const t of ranTexts(cmd)) out.push(...(invocations(t, ps, prog, subs, verbs, true) || []));
   return out;
 }
 
