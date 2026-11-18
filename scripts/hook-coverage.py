@@ -361,6 +361,7 @@ def main():
     cfg = config_dir()
     wired = {}
     have_allow = []
+    deviated = set()
     have_timeout = {}
     scopes = {}  # (event, command) -> the settings scope that wires it, as a fixed forward-slashed label
     for p, label in settings_scopes(root, cfg):
@@ -370,6 +371,11 @@ def main():
             for _m, c, _f in pairs:
                 scopes[(event, c)] = label
         have_allow.extend(allow_entries(s))
+        # A rule the brain declares in permissions._template_deviations (with a reason) is no gap - the same reading
+        # as template-drift.py (measured 2026-11-18 on the macOS instance: two declared rules, one reader silent, this
+        # one still reporting them).
+        deviated.update({k for k, v in ((s.get("permissions") or {}).get("_template_deviations") or {}).items()
+                         if str(v).strip()})
         for key, t in timeouts(s).items():
             have_timeout[key] = max(have_timeout.get(key, 0), t)
 
@@ -412,7 +418,7 @@ def main():
 
     not_granted = []
     for entry in allow_entries(template):
-        if CORE_PERMISSION.search(entry) and not granted(entry, have_allow):
+        if CORE_PERMISSION.search(entry) and not granted(entry, have_allow) and entry not in deviated:
             not_granted.append('permissions: "%s" from the core template is not granted here - every run of a core '
                                'tool it covers ends in a prompt, or in auto mode in the classifier refusing it; add it '
                                'to .claude/settings.json permissions.allow' % entry)

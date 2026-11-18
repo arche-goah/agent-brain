@@ -263,5 +263,20 @@ case "$rc:$out" in
   *) bad "--runs settings case: rc=$rc out='$out'";;
 esac
 
+# A template allow rule the brain moved to ask on purpose and declared in permissions._template_deviations is no gap -
+# the same reading as template-drift.py (2026-11-18, macOS instance: declared, still reported here). Control: undeclared.
+B="$T/dev"; make_brain "$B"; make_cfg "$T/cfg-dev" "$T/cache-dev" yes
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8")); a=d["permissions"]["allow"]
+a[:]=[x for x in a if x!="Bash(claude plugin update *)"]
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-dev" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in *'"Bash(claude plugin update *)" from the core template is not granted'*) ok "an undeclared missing template permission is named (control)";; *) bad "undeclared case: '$(printf '%s' "$out" | head -2)'";; esac
+"$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8")); d["permissions"]["_template_deviations"]={"Bash(claude plugin update *)":"kept under ask: the operator confirms every plugin update"}
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json"
+out="$(CLAUDE_CONFIG_DIR="$T/cfg-dev" "$PY" "$HC" "$B" 2>&1)"
+case "$out" in *'"Bash(claude plugin update *)" from the core template is not granted'*) bad "a declared deviation is still reported";; *) ok "a declared template deviation is no gap";; esac
+
 if [ "$fail" -eq 0 ]; then echo "hook-coverage fixtures: ALL passed"; else echo "hook-coverage fixtures: FAILED"; fi
 exit "$fail"
