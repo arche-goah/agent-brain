@@ -80,6 +80,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
             "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/mode-question-order-gate.cjs\"",
+            "timeout": 5
           }
         ]
       },
