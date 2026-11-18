@@ -52,7 +52,8 @@ const DEFAULT_MIN_TOKENS = 50000;
 // Floors the core itself sets (operator decision 2026-10-18): a brain-scan needs at least 7
 // days since the last completed one; the bootup reports it due only after 14. Earlier only
 // on the operator's clear word, given as the FRESHNESS-OK marker. An instance entry of the
-// same name replaces the default.
+// same name replaces the default, but only upwards: a floor is not lowered by instance data
+// (2026-11-16, Windows instance: a brain had brain-scan at 6 days and the gate let it through).
 const DEFAULT_WORKFLOWS = { 'brain-scan': { thresholdDays: 7 } };
 
 function allow() { process.exit(0); }
@@ -193,8 +194,15 @@ process.stdin.on('end', () => {
   const projectRoot = process.env.CLAUDE_PROJECT_DIR || data.cwd || '.';
   const cfg = loadConfig(projectRoot);
   const wfCfg = cfg.workflows[name] || {};
-  const thresholdDays = typeof wfCfg.thresholdDays === 'number' ? wfCfg.thresholdDays : cfg.thresholdDays;
-  const minTokens = typeof wfCfg.minTokens === 'number' ? wfCfg.minTokens : cfg.minTokens;
+  // The floor is applied to the EFFECTIVE value, so neither the workflow entry nor the global fallback lowers it
+  // (macOS review of #539: an entry without a numeric thresholdDays fell back to a global value below the floor).
+  const effective = typeof wfCfg.thresholdDays === 'number' ? wfCfg.thresholdDays : cfg.thresholdDays;
+  const thresholdDays = DEFAULT_WORKFLOWS[name] ? Math.max(DEFAULT_WORKFLOWS[name].thresholdDays, effective) : effective;
+  // The cheap-probe exemption is the floor's second lever (Windows review of #539: `minTokens: 1e12`, per workflow
+  // or global, let a 1.5M-token brain-scan of two days ago count as a probe). For a workflow with a core floor the
+  // instance can lower the token bound, never raise it above the core default.
+  const effTokens = typeof wfCfg.minTokens === 'number' ? wfCfg.minTokens : cfg.minTokens;
+  const minTokens = DEFAULT_WORKFLOWS[name] ? Math.min(DEFAULT_MIN_TOKENS, effTokens) : effTokens;
 
   const stateDir = projectStateDir(data);
   if (!stateDir) return allow();
