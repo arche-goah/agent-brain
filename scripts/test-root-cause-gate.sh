@@ -313,6 +313,16 @@ printf '{"at":"2026-10-30T18:13:35.000Z","session":"other","mode":"hook","model"
 check "a record of another session does not count" "$T/sess-rc.jsonl" allow "$IC"
 printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rc","mode":"hook","model":{"correction":false}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
 check "classifier reads no correction: allows" "$T/sess-rc.jsonl" allow "$IC"
+# 2026-11-18 (operator decision): the record decides both ways - a word hit the model reads as no correction passes
+{ user "go"; asst "ok"; user "that is already active! something went wrong"; asst "Done."; } > "$T/sess-rw.jsonl"
+: > "$IC/.claude-state/intent-classifier.jsonl"
+check "words hit, no record: blocks (control)" "$T/sess-rw.jsonl" block "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rw","mode":"hook","model":{"correction":false}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "words hit, the record reads no correction: allows" "$T/sess-rw.jsonl" allow "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rw","mode":"hook","model":null}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "a failed classifier call falls back to the words: blocks" "$T/sess-rw.jsonl" block "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rw","mode":"hook","prompt":"something else entirely","model":{"correction":false}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "a record of another prompt does not count: blocks" "$T/sess-rw.jsonl" block "$IC"
 unset WHEN
 
 # --- a correction typed mid-turn (queued_command attachment, 2026-10-29 / 2026-11-02, macOS instance)

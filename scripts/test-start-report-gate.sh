@@ -73,4 +73,23 @@ case "$rp" in *rd.jsonl*) echo "ok   replay: a first-turn merge is named";; *) e
 # --replay without a pattern file says so and exits 0 (same review, finding 5)
 rpn=$(CLAUDE_PROJECT_DIR="$(native "$T/nobrain")" node helpers/start-report-gate.cjs --replay "$(native "$T/rd.jsonl")" 2>&1); rcn=$?
 case "$rcn $rpn" in "0 "*"no pattern file"*) echo "ok   replay without a pattern file";; *) echo "FAIL replay without a pattern file: rc=$rcn $rpn"; fail=1;; esac
+# 2026-11-18 (operator decision): a prompt classifier's record of the first message decides orders_task; no record = words
+mkdir -p "$T/brain/.claude-state"; IC="$T/brain/.claude-state/intent-classifier.jsonl"
+trec() { printf '{"type":"user","timestamp":"2026-11-18T10:00:00.000Z","message":{"role":"user","content":%s}}\n' "$1"; }
+irec() { printf '{"at":"2026-11-18T10:00:05.000Z","session":"%s","mode":"hook","prompt":%s,"model":{"orders_task":%s}}\n' "$1" "$2" "$3"; }
+trec '"the release from yesterday, take care of that"' > "$T/ic1.jsonl"
+run "control: words miss the order, no record - denied" "$T/ic1.jsonl" '"gh pr merge 54 --squash"' deny
+irec ic1 '"the release from yesterday, take care of that"' true > "$IC"
+run "record reads orders_task: allowed" "$T/ic1.jsonl" '"gh pr merge 54 --squash"' allow
+irec other '"the release from yesterday, take care of that"' true > "$IC"
+run "a record of another session counts not" "$T/ic1.jsonl" '"gh pr merge 54 --squash"' deny
+trec '"please merge PR 54? no wait, just status"' > "$T/ic2.jsonl"
+: > "$IC"
+run "control: order words hit, no record - allowed" "$T/ic2.jsonl" '"gh pr merge 54 --squash"' allow
+irec ic2 '"please merge PR 54? no wait, just status"' false > "$IC"
+run "record reads no order although the words hit: denied" "$T/ic2.jsonl" '"gh pr merge 54 --squash"' deny
+printf '{"at":"2026-11-18T10:00:05.000Z","session":"ic2","mode":"hook","prompt":"please merge PR 54? no wait, just status","model":null}\n' > "$IC"
+run "a failed classifier call falls back to the words" "$T/ic2.jsonl" '"gh pr merge 54 --squash"' allow
+printf '{"at":"2026-11-18T10:05:00.000Z","session":"ic2","mode":"hook","prompt":"please merge PR 54? no wait, just status","model":{"orders_task":false}}\n' > "$IC"
+run "a record outside the window is stale: words" "$T/ic2.jsonl" '"gh pr merge 54 --squash"' allow
 exit $fail
