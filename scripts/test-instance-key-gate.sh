@@ -32,6 +32,9 @@ probe() { # $1 label, $2 command, $3 block|allow, [$4 SELF value, default mac]
 probe "comment without key" "gh pr comment 5 -R o/r --body \"OK to merge\"" block
 probe "comment with own key" "gh pr comment 5 -R o/r --body \"OK <!-- instance-key: $KEY -->\"" allow
 probe "comment with ANOTHER instance's key" "gh pr comment 5 -R o/r --body \"OK <!-- instance-key: 0123456789 -->\"" block
+# what the shell runs is published too (2026-11-18, review of #615: a post through bash -c or $( ) skipped every text gate)
+probe "comment without key, run through bash -c" "bash -c 'gh pr comment 5 -R o/r --body \"OK to merge\"'" block
+probe "comment with own key, run through bash -c" "bash -c 'gh pr comment 5 -R o/r --body \"OK <!-- instance-key: $KEY -->\"'" allow
 printf 'body\n<!-- instance-key: %s -->\n' "$KEY" > "$T/body.md"
 probe "create with key in --body-file" "gh pr create --head x --title t --body-file $(native "$T/body.md")" allow
 printf 'body without key\n' > "$T/nokey.md"
