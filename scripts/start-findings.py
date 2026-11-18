@@ -294,6 +294,22 @@ def cmd_handled(a, root):
     return 0
 
 
+def cmd_release(a, root):
+    """The operator released the AI's start findings in this session (their words, quoted as said): interactive turn
+    ends are then held for them like for released ledger work (autonomous-idle-gate). The gate checks the words in
+    the operator's messages, so a release nobody said does not count. Operator 2026-11-18: own start findings hold a
+    turn end "only autonomous or released"."""
+    st = load(state_path(root))
+    words = (a.words or "").strip()
+    if len(words) < 4:
+        print("release needs the operator's words (--words '<as said>')", file=sys.stderr)
+        return 1
+    st["released"] = {"words": words, "at": now(), "session": st.get("last_session", "")}
+    save(root, st)
+    print(f"start findings released for this session: \"{words}\"")
+    return 0
+
+
 def cmd_brief(a, root):
     _, loud_after = config(root)
     for l in brief(load(state_path(root)), loud_after):
@@ -317,13 +333,16 @@ def main(argv=None):
     h.add_argument("--how", required=True)
     h.add_argument("--by", default="ai", choices=["ai", "operator"])
     b = sub.add_parser("brief")
-    for s in (r, l, h, b):
+    rl = sub.add_parser("release")
+    rl.add_argument("--words", required=True)
+    for s in (r, l, h, b, rl):
         s.add_argument("--root", default=argparse.SUPPRESS)
     a = p.parse_args(argv)
     root = Path(a.root)
     if a.brief or not a.cmd:
         return cmd_brief(a, root)
-    return {"record": cmd_record, "list": cmd_list, "handled": cmd_handled, "brief": cmd_brief}[a.cmd](a, root)
+    return {"record": cmd_record, "list": cmd_list, "handled": cmd_handled, "brief": cmd_brief,
+            "release": cmd_release}[a.cmd](a, root)
 
 
 if __name__ == "__main__":

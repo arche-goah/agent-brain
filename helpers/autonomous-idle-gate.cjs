@@ -258,6 +258,17 @@ function ownStartFindings(root) {
     .sort((a, b) => (Number(b.sessions_seen) || 0) - (Number(a.sessions_seen) || 0));
 }
 const HANDLED_CALL = /start-findings\.py\s+handled\b/;
+/** Interactive mode counts own start findings only once the operator released them in this session (operator
+ *  2026-11-18, question tool: "Nur autonom oder freigegeben (Recommended)"; the Windows review of this PR measured a plain
+ *  answer to an info question held while one finding was open). The release is `start-findings.py release --words`,
+ *  for the session the start report recorded, and its words must stand in what the operator said. */
+function startReleased(root, tp) {
+  let st;
+  try { st = JSON.parse(fs.readFileSync(path.join(root, '.claude-state', 'start-findings.json'), 'utf8')); } catch (e) { return false; }
+  const r = st && st.released;
+  if (!r || !r.words || (st.last_session && r.session && r.session !== st.last_session)) return false;
+  return squash(operatorSaid(tp)).includes(squash(r.words));
+}
 
 /** A measurement from an EARLIER turn still stands when nothing was done since and it is fresh.
  *  Measured 2026-10-31 on the macOS instance over 80 sessions: 31 of 86 idle blocks were answered by re-running the
@@ -346,7 +357,7 @@ function judge(input, now) {
   const autonomous = autonomousMode(input.transcript_path, root);
   keepWatchdog(root, autonomous);
   const rel = releasedOpen(root, input.transcript_path);
-  const own = ownStartFindings(root);
+  const own = autonomous || startReleased(root, input.transcript_path) ? ownStartFindings(root) : [];
   if (!autonomous && !rel.length && !own.length) return null; // no own work open: nothing to hold
   const t = turnOf(input.transcript_path);
   if (!t || !t.text) return null;

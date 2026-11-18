@@ -168,7 +168,14 @@ check "autonomous: a question-tool call is no end (the one difference: autonomou
 # Own start findings (2026-11-18, macOS instance): every released entry BLOCKED is no idle end while the session start
 # tracks findings for the AI; a handled call, or each finding named BLOCKED, ends it; operator-owned ones do not count.
 mkdir -p "$R/.claude-state"
+# interactive: they count only once the operator released them (operator 2026-11-18: "Nur autonom oder freigegeben")
 printf '%s\n' '{"findings":{"f1a2b3c4":{"id":"f1a2b3c4","owner":"ai","text":"local machinery: 1 alpha past its date","sessions_seen":3},"f9e8d7c6":{"id":"f9e8d7c6","owner":"operator","text":"settings line","sessions_seen":2},"f0000001":{"id":"f0000001","owner":"ai","text":"old","handled_at":"2026-11-17"}}}' > "$R/.claude-state/start-findings.json"
+f="$T/i8a.jsonl"; { user "how late does the switch run?"; asst "It runs until 18:00."; } > "$f"
+check "interactive, findings not released: a plain answer ends the turn (Windows review of #597)" "$f" allow "$R"
+f="$T/i8r.jsonl"; { user "go ahead with the plan"; asst "Started."; } > "$f"
+printf '%s\n' '{"findings":{"f1a2b3c4":{"id":"f1a2b3c4","owner":"ai","text":"x"}},"released":{"words":"words never said"}}' > "$R/.claude-state/start-findings.json"
+check "interactive: a release whose words the operator never said does not count" "$T/i8a.jsonl" allow "$R"
+printf '%s\n' '{"findings":{"f1a2b3c4":{"id":"f1a2b3c4","owner":"ai","text":"local machinery: 1 alpha past its date","sessions_seen":3},"f9e8d7c6":{"id":"f9e8d7c6","owner":"operator","text":"settings line","sessions_seen":2},"f0000001":{"id":"f0000001","owner":"ai","text":"old","handled_at":"2026-11-17"}},"released":{"words":"go ahead with the plan"}}' > "$R/.claude-state/start-findings.json"
 f="$T/i8b.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the peer's merge of the shared carrier"; } > "$f"
 check "interactive: released BLOCKED, an own start finding open (the 2026-11-18 class)" "$f" block "$R"
 f="$T/i8c.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; bash_cmd 'python3 core/scripts/start-findings.py handled f1a2b3c4 --how "unwired"'; asst "BLOCKED: pkg-a — the peer's merge"; } > "$f"
