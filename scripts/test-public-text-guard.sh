@@ -263,6 +263,8 @@ FX="$T/fxcore"; mkdir -p "$FX/scripts" "$FX/helpers" "$T/fxother/scripts"
 cp "$SC/named.sh" "$FX/scripts/test-guards.sh"; : > "$FX/helpers/public-text-guard.cjs"
 cp "$SC/named.sh" "$FX/scripts/test-other.sh"; cp "$SC/named.sh" "$T/fxother/scripts/test-guards.sh"
 expect "the core's own guard fixture is not read as posts"  allow "$T" "bash $(native "$FX")/scripts/test-guards.sh"
+cp "$SC/named.sh" "$FX/scripts/test-public-text-guard.sh"
+expect "the guard's second fixture is not read as posts"    allow "$T" "bash $(native "$FX")/scripts/test-public-text-guard.sh"
 expect "another script beside the guard is read (control)"  block "$T" "bash $(native "$FX")/scripts/test-other.sh 5"
 expect "test-guards.sh without the guard beside it is read (control)" block "$T" "bash $(native "$T")/fxother/scripts/test-guards.sh 5"
 expect "a script path the guard cannot expand blocks (unknown target)" block "$T" 'bash "$NOSUCHDIR/named.sh" 5'

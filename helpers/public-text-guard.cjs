@@ -267,7 +267,8 @@ function unreadableScript(input, cmd, cwd, s) {
   return 2;
 }
 
-// The core's own guard fixture, and only it: `scripts/test-guards.sh` in a checkout whose
+// The core's own guard fixtures, and only they: `scripts/test-guards.sh` and `scripts/test-public-text-guard.sh` (operator
+// 2026-11-18, the second one: "Ja, gleiche Bedingung (Recommended)") in a checkout whose
 // `helpers/public-text-guard.cjs` sits beside it. Its gh commands are probe ARGUMENTS against throw-away
 // repos (o/lab, o/r) and a fake gh; read as posts they refused every hand run of the fixture on a machine
 // with a watch list (2026-11-18, macOS instance, review of #533). Operator, question tool, the same day:
@@ -275,7 +276,7 @@ function unreadableScript(input, cmd, cwd, s) {
 function ownGuardFixture(file, cwd) {
   try {
     const p = fs.realpathSync(path.resolve(cwd || '.', nativePath(String(file))));
-    if (path.basename(p) !== 'test-guards.sh' || path.basename(path.dirname(p)) !== 'scripts') return false;
+    if (!['test-guards.sh', 'test-public-text-guard.sh'].includes(path.basename(p)) || path.basename(path.dirname(p)) !== 'scripts') return false;
     return fs.existsSync(path.join(path.dirname(p), '..', 'helpers', 'public-text-guard.cjs'));
   } catch (e) { return false; }
 }
