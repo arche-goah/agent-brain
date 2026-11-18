@@ -49,7 +49,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const { invocations, publishedText, nativePath } = require('./published-text.cjs');
 
 const LABELS = ['Fit', 'Design', 'Cost', 'Gaps'];
@@ -188,7 +188,45 @@ function gh(args) {
   return execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
 }
-const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', 'body,comments,reviews,files,changedFiles']));
+const PR_FIELDS = 'body,comments,reviews,files,changedFiles';
+const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', PR_FIELDS]));
+
+/**
+ * A train's members, read IN PARALLEL with one shared budget: { <nr>: pr | null } (null = unread in time or unreadable).
+ * Measured 2026-11-17 at train #571: 55 members read one after another took 34 s against the hook's 30 s, and the merge
+ * was held by the timeout. A child process starts the gh calls together (at most PARALLEL at a time) and returns
+ * what came back within MEMBERS_BUDGET_MS.
+ */
+const PARALLEL = 8;
+const MEMBERS_BUDGET_MS = Number(process.env.CONTENT_REVIEW_GATE_BUDGET_MS) || 20000;   // env = the fixture's seam
+function readPrs(repo, nrs) {
+  const fake = process.env.CONTENT_REVIEW_GATE_GH;
+  const child = `
+const { execFile } = require('child_process');
+const [bin, fake, repo, fields, par, ...nrs] = process.argv.slice(1);
+let next = 0, running = 0;
+const start = () => {
+  while (running < Number(par) && next < nrs.length) {
+    const n = nrs[next++]; running++;
+    const args = ['pr', 'view', n, '-R', repo, '--json', fields];
+    execFile(bin, fake ? [fake, ...args] : args, { encoding: 'utf8', timeout: 15000 }, (err, so) => {
+      let v = null; try { v = err ? null : JSON.parse(so); } catch (e) { v = null; }
+      process.stdout.write(JSON.stringify([n, v]) + '\\n');
+      running--; start();
+    });
+  }
+};
+start();`;
+  const r = spawnSync(process.execPath, ['-e', child, fake ? process.execPath : 'gh', fake || '', repo, PR_FIELDS,
+    String(PARALLEL), ...nrs.map(String)], { encoding: 'utf8', timeout: MEMBERS_BUDGET_MS });
+  // One line per member as it arrives: a budget overrun keeps every member already answered (Windows review of #590,
+  // 2026-11-18: the child wrote its JSON once at the end, a kill at the budget lost all of them).
+  const got = {};
+  for (const l of String(r.stdout || '').split('\n')) { try { const [n, v] = JSON.parse(l); got[n] = v; } catch (e) { /* partial line */ } }
+  const res = {};
+  for (const n of nrs) res[n] = got[n] || null;
+  return res;
+}
 /** `-R OWNER/REPO` or gh's long form `-R HOST/OWNER/REPO`, as OWNER/REPO (Windows review of #504). */
 function repoArg(cmd) {
   const m = /(?:-R|--repo)[=\s]+["']?([\w.-]+(?:\/[\w.-]+){1,2})/.exec(cmd);
@@ -391,9 +429,10 @@ function checkMerge(cmd, ps) {
   // train 2.1.6: release-preflight read train #510's notes as members; this reader had the same loose form)
   const members = train ? [...String(pr.body).matchAll(/^- #(\d+) \S+ [0-9a-f]{3,40}(?:\s|$)/gm)].map((m) => m[1]) : [t.nr];
   const open = [];
+  const read = train ? readPrs(t.repo, members) : {};
   for (const n of members) {
     let p = pr;
-    if (train) { try { p = readPr(t.repo, n); } catch (e) { open.push(`#${n} (unreadable)`); continue; } }
+    if (train) { p = read[n]; if (!p) { open.push(`#${n} (unreadable)`); continue; } }
     if (!reviewed(p)) open.push(`#${n} (risk ${RISKS[prRisk(p)]}, review on ${CFG.tiers[need(RISKS[prRisk(p)], 'review')]} or above)`);
   }
   if (!open.length) return 0;
