@@ -84,6 +84,17 @@ const BUILTIN_CORRECTION = [
   '\\b(this|that|it) (keeps|still) (happening|going on)\\b',
   '\\bstop (doing|asking|saying) (that|this|it)\\b',
 ];
+// A surprise the AGENT finds is a mishap too (operator 2026-11-18, translated: "check the cause - why do I always
+// have to say it extra?"). Measured that day on the macOS instance: the reply wrote "two of the four are long built"
+// and went on to the questions with no cause; the gate fired only on the operator's next message. Its own text
+// saying an earlier statement or record was wrong opens the same inquiry. Narrow on purpose: a status line
+// ("#600 is merged") is no surprise. Replay 2026-11-18 over 40 transcripts of that instance, German instance data:
+// 26 hits of "war falsch / veraltet", each a real self-correction ("my claim from before was wrong").
+const BUILTIN_SELF_SURPRISE = [
+  '\\bturned out\\b',
+  '\\b(my|the) (earlier|previous) (claim|count|statement|report|measurement|reading) was (wrong|false|stale)\\b',
+  '\\bwas (stale|outdated) all along\\b',
+];
 // A harness notice about another session arrives as a user record without the frames
 // turn-kind.cjs knows (measured in the same replay: seven of them matched "you asked").
 const HARNESS_NOTICE = /^\s*\[Cross-session [^\]]*\]/;
@@ -391,6 +402,16 @@ function correctionIn(prompt, rx) {
   return m ? sentenceAt(clean, m.index) : null;
 }
 
+/** A sentence of the agent's own text that says an earlier statement or record was wrong; quotes and code stripped. */
+function selfSurprise(texts, rx) {
+  for (const t of texts || []) {
+    const clean = stripQuoted(String(t || ''));
+    const m = rx.exec(clean);
+    if (m) return sentenceAt(clean, m.index);
+  }
+  return null;
+}
+
 function causeIn(texts, rx) {
   return texts.some((t) => rx.test(stripQuoted(t)));
 }
@@ -513,10 +534,11 @@ function gate(input) {
     }, input)));
     return;
   }
-  if (!hit) return;
+  const self = hit || fired ? null : selfSurprise(texts, loadPatterns(cwd, 'self_surprise_patterns', BUILTIN_SELF_SURPRISE, 'iu'));
+  if (!hit && !self) return;
   process.stdout.write(JSON.stringify(declare({
     decision: 'block',
-    reason: `ROOT-CAUSE-GATE: an operator message in this turn reads as a correction or a mishap: "${hit.slice(0, 160)}". `
+    reason: `ROOT-CAUSE-GATE: ${hit ? 'an operator message in this turn reads as a correction or a mishap' : 'your own text in this turn finds a mishap'}: "${(hit || self).slice(0, 160)}". `
       + 'The reply names no cause. Before this turn ends, measure what produced it and write ONE line — '
       + 'Cause: <what was read, where> — <A produced B>, or Cause: unknown — <what is missing to tell>. '
       + 'Then the class (search: where else does the same sit?) and the carrier (where it is fixed for good: gate, script, rule, core PR). '
