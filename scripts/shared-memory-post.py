@@ -386,6 +386,14 @@ def main() -> int:
         or (a.kind == "request" and one_machine_unproven(a.one_machine, a.one_machine_evidence, a.repo))
     if miss:
         return refuse(miss)
+    # The lint's own reader decides too: the two readers disagreed (measured 2026-11-18 on the macOS instance, a
+    # request "... your Windows run at the next train head" to one Windows device was written here and refused by
+    # the pre-commit lint, check 9). One reader for one question; a writer never writes what the lint refuses.
+    if a.kind in ("request", "note") and not a.one_machine:
+        one = _parties.windows_check_to_one_device(a.title + "\n" + body, ", ".join(to), parties)
+        if one:
+            return refuse(f"this asks for a Windows check but goes to one machine ({one}) - address os:windows "
+                          "(whoever comes first takes it); a check only that machine can do: --one-machine <reason>")
     if a.kind == "request" and not a.hand_check_ok:
         needless = os_check_not_needed(a.title + "\n" + body)
         if needless:
