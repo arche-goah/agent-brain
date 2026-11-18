@@ -122,22 +122,29 @@ def project_drift(repo, template):
         have = set(here.get(kind) or [])
         gone = [r for r in tpl.get(kind) or [] if r not in have and r not in valid]
         undated += [f"{r} ({judged[r][1]})" for r in gone if r in judged]
-        if gone:
-            parts.append(shown(kind, gone))
-            total += len(gone)
-    if not parts:
+        bare = [r for r in gone if r not in judged]   # missing AND undeclared
+        if bare:
+            parts.append(shown(kind, bare))
+            total += len(bare)
+    if not parts and not undated:
         return None
+    # One message with both parts (Windows review of #599, 2026-11-18): when a declared deviation did not count, the
+    # rules missing AND undeclared in the same run were left out until the next run.
+    msgs = []
     if undated:
         # Declared, but no longer counted: time-limited and expired, unlimited and not recertified, or a bare text.
-        return (f"!! settings: {len(undated)} declared template deviation(s) do not count - {'; '.join(undated[:SHOWN])}"
-                f"{f' (+{len(undated) - SHOWN} more)' if len(undated) > SHOWN else ''}. A deviation is a time-limited "
-                f"alpha ({{\"until\": \"YYYY-MM-DD\", \"why\": ...}}) or an unlimited one, explained in full and recertified "
-                f"every 90 days ({{\"reviewed\": \"YYYY-MM-DD\", \"why\": ...}}); otherwise take the template's rule over")
-    return (f"!! settings: {total} permission rule(s) of the core template are not in this brain's "
+        msgs.append(f"{len(undated)} declared template deviation(s) do not count - {'; '.join(undated[:SHOWN])}"
+                    f"{f' (+{len(undated) - SHOWN} more)' if len(undated) > SHOWN else ''}. A deviation is a time-limited "
+                    f"alpha ({{\"until\": \"YYYY-MM-DD\", \"why\": ...}}) or an unlimited one, explained in full and recertified "
+                    f"every 90 days ({{\"reviewed\": \"YYYY-MM-DD\", \"why\": ...}}); otherwise take the template's rule over")
+    if not parts:
+        return "!! settings: " + msgs[0]
+    msgs.append(f"{total} permission rule(s) of the core template are not in this brain's "
             f".claude/settings.json - {'; '.join(parts)}. A missing allow leaves the step to the "
             f"harness (in auto mode the classifier may refuse it), a missing deny or ask drops a "
             f"limit. Take them over, or declare why in permissions._template_deviations "
             f"(full list: {py_name()} core/scripts/autonomy-diagnose.py, section 4)")
+    return "!! settings: " + " | ".join(msgs)
 
 
 def wanted_auto(user_template, org, key="autoMode"):

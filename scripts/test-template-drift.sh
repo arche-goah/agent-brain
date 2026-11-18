@@ -62,6 +62,11 @@ brain b3b '{"permissions":{"allow":["Bash(git status*)","Bash(gh pr create*)"],"
 out="$(run b3b)"
 case "$out" in *'gh pr ready'*) ok "a blank reason is no declaration";; *) bad "blank reason silenced the rule: '$out'";; esac
 
+# Windows review of #599 (2026-11-18): a declaration that does not count AND an undeclared missing rule - one message, both parts
+brain b3m '{"permissions":{"allow":["Bash(git status*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"],"_template_deviations":{"Bash(gh pr ready*)":"this brain never drafts"}}}'
+out="$(run b3m)"
+case "$out" in *'do not count'*'gh pr ready'*'gh pr create'*) ok "a non-counting declaration and an undeclared missing rule are named in one run";; *) bad "one part missing: '$out'";; esac
+
 # 4 a missing deny is named too (a dropped limit)
 brain b4 '{"permissions":{"allow":["Bash(gh pr ready*)","Bash(gh pr create*)","Bash(git status*)"],"ask":["Edit(.claude/settings.json)"]}}'
 out="$(run b4)"
