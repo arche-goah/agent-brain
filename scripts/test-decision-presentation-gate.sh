@@ -39,6 +39,10 @@ X="$T/exit"; mkdir -p "$X/.claude/rules" "$X/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$X/.claude/rules/ledgers.json"
 # "Parked choice" writes its exit as a list item, the project ledgers' form (2026-11-03: such exits went unread).
 printf '%s\n' '- [ ] Parked choice' '  - class: decision' '  - exit: parked 2026-10-20' '- [ ] Release now' '  - class: decision' '  exit: operator-decision 2026-10-28' '  ask-when: 2026-01-01' > "$X/docs/questions.md"   # a date reached: due (counter-case to ask-when in $N)
+# A todo whose newest exit is the operator's decision counts (2026-11-18: filed `class: todo`, counted 0).
+K="$T/todo-exit"; mkdir -p "$K/.claude/rules" "$K/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$K/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Guard exception for its fixture' '  class: todo' '  exit: operator-decision 2026-11-18 — proposal' > "$K/docs/questions.md"
 O="$T/circle"; mkdir -p "$O/.claude/rules" "$O/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$O/.claude/rules/ledgers.json"
 printf '%s\n' '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Release now' '  - class: decision' '  - circle: B' > "$O/docs/questions.md"
@@ -54,6 +58,7 @@ check() { # $1 label, $2 transcript, $3 brain dir, $4 block|allow
 
 f="$T/1.jsonl"; { user "fix the parser"; asst "done"; user "anything open for me?"; asst "Four points: remove the worktrees (recommendation: yes) ..."; } > "$f"
 check "the incident: asked what is open, decisions answered in prose" "$f" "$B" block
+check "a todo whose newest exit is operator-decision counts" "$T/1.jsonl" "$K" block
 f="$T/2.jsonl"; { user "anything open for me?"; asst "Two decisions:"; ask; } > "$f"
 check "same question, answered through the question tool" "$f" "$B" allow
 # An api-request-blob after the prompt repeats its text; it is no prompt (class sweep 2026-11-03).
