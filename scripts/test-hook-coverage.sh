@@ -272,11 +272,19 @@ a[:]=[x for x in a if x!="Bash(claude plugin update *)"]
 json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json"
 out="$(CLAUDE_CONFIG_DIR="$T/cfg-dev" "$PY" "$HC" "$B" 2>&1)"
 case "$out" in *'"Bash(claude plugin update *)" from the core template is not granted'*) ok "an undeclared missing template permission is named (control)";; *) bad "undeclared case: '$(printf '%s' "$out" | head -2)'";; esac
-"$PY" -c 'import json,sys
-p=sys.argv[1]; d=json.load(open(p,encoding="utf-8")); d["permissions"]["_template_deviations"]={"Bash(claude plugin update *)":"kept under ask: the operator confirms every plugin update"}
-json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json"
-out="$(CLAUDE_CONFIG_DIR="$T/cfg-dev" "$PY" "$HC" "$B" 2>&1)"
-case "$out" in *'"Bash(claude plugin update *)" from the core template is not granted'*) bad "a declared deviation is still reported";; *) ok "a declared template deviation is no gap";; esac
+dev() { # dev <json value>: set the declaration of the one rule
+  "$PY" -c 'import json,sys
+p=sys.argv[1]; d=json.load(open(p,encoding="utf-8")); d["permissions"]["_template_deviations"]={"Bash(claude plugin update *)":json.loads(sys.argv[2])}
+json.dump(d,open(p,"w",encoding="utf-8"),indent=2)' "$B/.claude/settings.json" "$1"
+  CLAUDE_CONFIG_DIR="$T/cfg-dev" "$PY" "$HC" "$B" 2>&1
+}
+GAP='"Bash(claude plugin update *)" from the core template is not granted'
+WHY='"kept under ask on purpose: a plugin update changes the hooks of every session on this machine, the operator confirms each one"'
+# Operator rule 2026-11-18: a deviation is a time-limited alpha, or unlimited, explained in full and recertified (90 days, every core update).
+case "$(dev '{"until": "2999-01-01", "why": "test"}')" in *"$GAP"*) bad "a time-limited deviation is still reported";; *) ok "a time-limited declared deviation is no gap";; esac
+case "$(dev '{"until": "2000-01-01", "why": "test"}')" in *"$GAP"*) ok "an expired deviation is a gap again";; *) bad "an expired deviation still counts";; esac
+case "$(dev "{\"reviewed\": \"$(date +%Y-%m-%d)\", \"why\": $WHY}")" in *"$GAP"*) bad "a recertified unlimited deviation is still reported";; *) ok "an unlimited deviation recertified today is no gap";; esac
+case "$(dev '"kept under ask: the operator confirms every plugin update"')" in *"$GAP"*) ok "a bare text without a date does not count (operator 2026-11-18)";; *) bad "a bare text still counts";; esac
 
 if [ "$fail" -eq 0 ]; then echo "hook-coverage fixtures: ALL passed"; else echo "hook-coverage fixtures: FAILED"; fi
 exit "$fail"

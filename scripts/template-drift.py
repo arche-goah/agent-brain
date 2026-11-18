@@ -51,6 +51,9 @@ import pathlib
 import shutil
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import template_deviation  # noqa: E402 - the one reader of permissions._template_deviations
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -112,16 +115,24 @@ def project_drift(repo, template):
         return ("!! settings: .claude/settings.json missing or not valid JSON - the core template's "
                 "permission rules cannot be compared")
     here = here.get("permissions") or {}
-    declared = here.get("_template_deviations") or {}
-    parts, total = [], 0
+    judged = template_deviation.declared(here, since_core=template_deviation.core_updated(repo))
+    valid = {k for k, (ok, _w) in judged.items() if ok}
+    parts, total, undated = [], 0, []
     for kind in KINDS:
         have = set(here.get(kind) or [])
-        gone = [r for r in tpl.get(kind) or [] if r not in have and not str(declared.get(r, "")).strip()]
+        gone = [r for r in tpl.get(kind) or [] if r not in have and r not in valid]
+        undated += [f"{r} ({judged[r][1]})" for r in gone if r in judged]
         if gone:
             parts.append(shown(kind, gone))
             total += len(gone)
     if not parts:
         return None
+    if undated:
+        # Declared, but no longer counted: time-limited and expired, unlimited and not recertified, or a bare text.
+        return (f"!! settings: {len(undated)} declared template deviation(s) do not count - {'; '.join(undated[:SHOWN])}"
+                f"{f' (+{len(undated) - SHOWN} more)' if len(undated) > SHOWN else ''}. A deviation is a time-limited "
+                f"alpha ({{\"until\": \"YYYY-MM-DD\", \"why\": ...}}) or an unlimited one, explained in full and recertified "
+                f"every 90 days ({{\"reviewed\": \"YYYY-MM-DD\", \"why\": ...}}); otherwise take the template's rule over")
     return (f"!! settings: {total} permission rule(s) of the core template are not in this brain's "
             f".claude/settings.json - {'; '.join(parts)}. A missing allow leaves the step to the "
             f"harness (in auto mode the classifier may refuse it), a missing deny or ask drops a "
