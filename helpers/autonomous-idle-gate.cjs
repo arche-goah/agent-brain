@@ -259,44 +259,6 @@ function ownStartFindings(root) {
 }
 const HANDLED_CALL = /start-findings\.py\s+handled\b/;
 
-/** The interactive variant: one block per turn while released work is open and the turn has no allowed end. */
-function judgeInteractive(input, root, now) {
-  if (input.stop_hook_active) return null; // holds once: the re-issue after its own block passes
-  const rel = releasedOpen(root, input.transcript_path);
-  if (!rel.length) return null;
-  const ids = rel.map((r) => r.id);
-  const t = turnOf(input.transcript_path);
-  if (!t || !t.text) return null;
-  // A question asked in this turn ends it — unless its own answer released the work: then the turn goes on with it.
-  const releasedNow = rel.some((r) => r.quotes.some((q) => t.answers.includes(q)));
-  if ((t.asked && !releasedNow) || HAND_STEP_LINE.test(t.text)) return null;
-  if (closeOpenEnds(root, { sessionId: input.session_id, since: t.since, calls: t.cmds.map((cmd) => ({ cmd })) }) !== null) return null;
-  const m = measurers(root);
-  const measured = t.cmds.some((c) => m.some((r) => r.test(c))) || standingMeasurement(t.all, m, now);
-  const blockedLines = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:\s*\S/.test(l));
-  const unnamed = ids.filter((id) => !blockedLines.some((l) => l.includes(id)));
-  if (measured && !unnamed.length) {
-    // Every released entry waits on someone else: the AI's own start findings are the work that goes on meanwhile.
-    const own = ownStartFindings(root);
-    if (!own.length || t.cmds.some((c) => HANDLED_CALL.test(c))) return null;
-    const open = own.filter((e) => !blockedLines.some((l) => l.includes(e.id)));
-    if (!open.length) return null;
-    return `IDLE (interactive, own findings): every released entry is BLOCKED, but the session start tracks ${own.length} `
-      + `finding(s) for the AI that nobody else holds. Work on one now - next: ${open[0].id} ${String(open[0].text || '').slice(0, 120)} `
-      + '- and close it with `scripts/start-findings.py handled <id> --how "..."`, or name each in a line '
-      + '`BLOCKED: <id> — <what restores it, who>`. This check holds once per turn. '
-      + 'Missing: continuation on own start findings';
-  }
-  const list = (unnamed.length ? unnamed : ids).slice(0, 5).join(', ');
-  return `IDLE (interactive, released work): the operator released ${list} in this session and this turn ends without `
-    + 'working on it. Do the next step now (tool calls in this turn), or end in one of the allowed forms: a question '
-    + 'through the question tool, a line `HAND STEP: <what the operator does>`, or every released entry named in a '
-    + 'line `BLOCKED: <id> — <what restores it, who>` after measuring the list in this turn '
-    + '(core/scripts/open-items.py or the instance command, without a pipe after it). A running waiter is no end, even with its condition: '
-    + 'it explains why one item waits — name that one as BLOCKED and work on the others. This check holds once per turn. '
-    + `Missing: ${!measured && !unnamed.length ? MEASURE_MISSING : 'continuation on released work'}`;
-}
-
 /** A measurement from an EARLIER turn still stands when nothing was done since and it is fresh.
  *  Measured 2026-10-31 on the macOS instance over 80 sessions: 31 of 86 idle blocks were answered by re-running the
  *  same measurement and re-sending the same text - each watcher notification starts a turn, and the turn before had
@@ -364,84 +326,101 @@ function keepWatchdog(root, autonomous) {
   } catch (_) { /* fail open: the watchdog never holds a turn */ }
 }
 
+/** ONE turn-end law for both run modes (operator 2026-11-18, question tool: one turn-end law for both,
+ *  recommended option) - the modes behave alike except that interactive asks a question now and autonomous collects it).
+ *  Own work: the autonomous run itself, the entries the operator released in this session, the AI's own open
+ *  session-start findings. While any is open the turn ends only in an allowed form, judged at every stop (the re-issue
+ *  included; the end forms are the valve, not a quiet period):
+ *    - a question through the question tool - interactive only, the one difference: autonomous files it and goes on;
+ *    - a line `HAND STEP: <what the operator does>`;
+ *    - a measured `BLOCKED:` / `POOL EMPTY:` / `LIST EMPTY:` line - every released entry named in a BLOCKED line, and
+ *      the own start findings worked on (a `start-findings.py handled` call) or each named;
+ *    - the session close, a notification of only this instance's own events, an end line whose measurement still stands.
+ *  A BLOCKED line that waits on a pin, beta tag or Windows check blocks the merge, not the building - in both modes. */
 function judge(input, now) {
   // The retry after a block is judged too (measured on an instance, 2026-10-29): the second attempt ended on a
-  // BLOCKED line over a sliced list and passed unread, because stop_hook_active skipped the whole judgement.
-  // The demand is cheap to meet (one reading command), so no loop. Pair it with `onReissue: run` in the
-  // brain's stop-checks.json row: without it the dispatcher never calls this gate after ANOTHER gate's block
-  // (2026-10-30: a 15-min wakeup after two other blocks passed with 67 own items open).
+  // BLOCKED line over a sliced list and passed unread. Pair it with `onReissue: run` in the brain's stop-checks.json
+  // row: without it the dispatcher never calls this gate after ANOTHER gate's block (2026-10-30).
   if (!input.transcript_path) return null;
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const autonomous = autonomousMode(input.transcript_path, root);
   keepWatchdog(root, autonomous);
-  if (!autonomous) return judgeInteractive(input, root, now);
+  const rel = releasedOpen(root, input.transcript_path);
+  const own = ownStartFindings(root);
+  if (!autonomous && !rel.length && !own.length) return null; // no own work open: nothing to hold
   const t = turnOf(input.transcript_path);
   if (!t || !t.text) return null;
-  // The session close ends the run (measured 2026-10-31 and again 2026-11-01 on the macOS instance: after a
-  // successful `session-close`, this gate blocked the closing report with "Missing: continuation" - a closed
-  // session continues nothing, and its open ends stand in the session log). The same checkable carrier the
-  // watch and question gates accept: a close stamp written in THIS turn by `session-closing.sh --pre-commit`.
+  // The session close ends every run (measured 2026-10-31 / 11-01): a close stamp written in THIS turn.
   if (closeOpenEnds(root, { sessionId: input.session_id, since: t.since, calls: t.cmds.map((cmd) => ({ cmd })) }) !== null) return null;
   {
     const { keyFor, selfId } = require('./instance-key-gate.cjs');
     if (ownEventsOnly(t.opener, keyFor(selfId(root)))) return null;
   }
-  // A wakeup alone is no continuation (measured on an instance, 2026-10-29, the operator asking why it stopped
-  // again): a 15-min wakeup while own work was doable now was the same idle stop under another name — and a
-  // waiter was running too, so "wakeup + waiter" would have let it pass as well. Only the end lines below end
-  // a turn: BLOCKED (every item left waits on something named) or POOL EMPTY — both measured against the list.
+  const ids = rel.map((r) => r.id);
+  // The one difference between the modes: interactive asks now - a question ends the turn, unless its own answer
+  // released the work (then the turn goes on with it). Autonomous collects the question and goes on.
+  const releasedNow = rel.some((r) => r.quotes.some((q) => t.answers.includes(q)));
+  if (!autonomous && t.asked && !releasedNow) return null;
+  if (HAND_STEP_LINE.test(t.text)) return null;
+  // A wakeup alone or a running waiter is no end (2026-10-29): only the forms above.
   void t.wake; void t.waiting;
+  const m = measurers(root);
+  const measured = t.cmds.some((c) => m.some((r) => r.test(c))) || standingMeasurement(t.all, m, now);
   if (END_LINE.test(t.text)) {
-    const m = measurers(root);
-    if (t.cmds.some((c) => m.some((r) => r.test(c))) || standingMeasurement(t.all, m, now)) {
-      const exempt = exemptWords(root);
-      // A BLOCKED line whose reason is a pin / beta tag / Windows check blocks the MERGE or the release, never the
-      // building (third case on an instance, 2026-10-30: follow-up PRs held "until the next beta tag" while they
-      // could be built stacked). Another party's merge may block (a peer's work comes first) and stays free.
-      // It passes when it cites the operator's order for that sequence, or when the work is already merged;
-      // other languages' words for both come from autonomous-patterns.json `blocked_exempt_patterns`.
-      // The operator's order is also named when the line QUOTES it and the quote stands in what the operator said
-      // in this transcript (2026-11-06, operator: "the core should deliver this end to end, without extra tinkering"):
-      // a line in the operator's language that cited the order by the operator's exact words was held twice, because
-      // the instance's name pattern missed a genitive. A checked quote needs no word list, no name and no language.
-      let said = null;
-      const quotesOperator = (l) => {
-        for (const m of l.matchAll(/["„“”«»]([^"„“”«»\n]{12,})["“”«»]/gu)) {
-          if (said === null) said = operatorSaid(input.transcript_path);
-          if (said.includes(squash(m[1]))) return true;
-        }
-        return false;
-      };
-      const mergeOnly = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:/.test(l)
-        && /(beta-tag|beta tag|\bpin\b|windows)/i.test(l)
-        && !exempt.test(l) && !quotesOperator(l));
-      if (!mergeOnly.length) return null;
-      return 'AUTONOMOUS-IDLE: a BLOCKED line waits on a merge, pin, beta tag or Windows check — that blocks the merge, '
+    if (!measured) {
+      return 'IDLE: this turn ends on a BLOCKED / POOL EMPTY / LIST EMPTY line, but the list behind it was not measured ' +
+        'in this turn — the line is a recollection, not a reading. Run the brain\'s own-items measurement now ' +
+        '(core/scripts/open-items.py, or the instance command in .claude/rules/autonomous-patterns.json ' +
+        '`own_items_commands`) as a command of its own, without a pipe or a filter after it (`| head` keeps the counts and drops ' +
+        'the items, so it does not count), do what it lists as yours, and end only when every item left is named as blocked. ' +
+        `Missing: ${MEASURE_MISSING}`;
+    }
+    const exempt = exemptWords(root);
+    // A BLOCKED line whose reason is a pin / beta tag / Windows check blocks the MERGE or the release, never the
+    // building (2026-10-30). It passes when it cites the operator's order for that sequence (words, or a quote that
+    // stands in what the operator said in this transcript - 2026-11-06), or when the work is already merged.
+    let said = null;
+    const quotesOperator = (l) => {
+      for (const q of l.matchAll(/["„“”«»]([^"„“”«»\n]{12,})["“”«»]/gu)) {
+        if (said === null) said = operatorSaid(input.transcript_path);
+        if (said.includes(squash(q[1]))) return true;
+      }
+      return false;
+    };
+    const blockedLines = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:\s*\S/.test(l));
+    const mergeOnly = blockedLines.filter((l) => /(beta-tag|beta tag|\bpin\b|windows)/i.test(l)
+      && !exempt.test(l) && !quotesOperator(l));
+    if (mergeOnly.length) {
+      return 'IDLE: a BLOCKED line waits on a merge, pin, beta tag or Windows check — that blocks the merge, '
         + `not the building: "${mergeOnly[0].trim().slice(0, 140)}". Build it now (stacked on the open PR if needed), `
         + 'or name the operator\'s order that sets this sequence. Missing: build or the order behind the wait';
-      // Its own last words (2026-10-31): with "Missing: continuation" the dispatcher's LEERLAUF row turned this
-      // specific reason into the generic idle sentence, and the real cause (a Windows word in the BLOCKED line)
-      // stayed hidden through four retries.
     }
-    return 'AUTONOMOUS-IDLE: this turn ends on a BLOCKED / POOL EMPTY / LIST EMPTY line, but the list behind it was not measured ' +
-      'in this turn — the line is a recollection, not a reading. Run the brain\'s own-items measurement now ' +
-      '(core/scripts/open-items.py, or the instance command in .claude/rules/autonomous-patterns.json ' +
-      '`own_items_commands`) as a command of its own, without a pipe or a filter after it (`| head` keeps the counts and drops ' +
-      'the items, so it does not count), do what it lists as yours, and end only when every item left is named as blocked. ' +
-      `Missing: ${MEASURE_MISSING}`;
+    const unnamed = ids.filter((id) => !blockedLines.some((l) => l.includes(id)));
+    if (unnamed.length) {
+      return `IDLE: the operator released ${unnamed.slice(0, 5).join(', ')} in this session and the end line does not name `
+        + 'it. Work on it now, or name each released entry in a line `BLOCKED: <id> — <what restores it, who>`. '
+        + 'Missing: continuation on released work';
+    }
+    if (!own.length || t.cmds.some((c) => HANDLED_CALL.test(c))) return null;
+    const open = own.filter((e) => !blockedLines.some((l) => l.includes(e.id)));
+    if (!open.length) return null;
+    return `IDLE: the end line is measured, but the session start tracks ${own.length} finding(s) for the AI that nobody `
+      + `else holds. Work on one now - next: ${open[0].id} ${String(open[0].text || '').slice(0, 120)} - and close it with `
+      + '`scripts/start-findings.py handled <id> --how "..."`, or name each in a line `BLOCKED: <id> — <what restores it, who>`. '
+      + 'Missing: continuation on own start findings';
   }
-  // A measured BLOCKED list stands until the list or a blocker changes (operator 2026-11-08, question tool: "Ja, als Kern-PR
-  // bauen"). Measured that day on the macOS instance: seven idle holds in one autonomous run demanded the same BLOCKED list
-  // again after watcher events that changed nothing - four identical lists in a row. When the turn before ended on an end
-  // line and its measurement still stands (fresh, and no state-changing call since - standingMeasurement), this turn ends
-  // without repeating it. Any change since (an edit, a commit, a push, a post) or an older measurement asks again.
-  if (t.lastEndText && END_LINE.test(t.lastEndText) && standingMeasurement(t.all, measurers(root), now)) return null;
-  return 'AUTONOMOUS-IDLE: the run is autonomous and this turn ends without its continuation. ' +
-    'Do the next item now (tool calls in this turn), or end the turn in one of the run\'s end forms: ' +
-    'a line `BLOCKED: <item> — <what restores it, who>`, a line `POOL EMPTY: <how measured>`, or for a run over an ' +
-    'ordered list `LIST EMPTY: <the order, how measured>` — the pool is what the operator ordered plus an agreed ' +
-    'reserve, not the whole ledger (Order Fidelity #3). All after measuring the list in this turn. A wakeup alone is no continuation, and a running watcher (CI, a peer) continues only its own event, not your items. ' +
-    'Missing: continuation (the next item now, or a BLOCKED / POOL EMPTY / LIST EMPTY line after measuring the list)';
+  // A measured end line stands until the list or a blocker changes (operator 2026-11-08): when the turn before ended on
+  // one and its measurement still stands (fresh, no state-changing call since), this turn ends without repeating it.
+  if (t.lastEndText && END_LINE.test(t.lastEndText) && standingMeasurement(t.all, m, now)) return null;
+  const what = [autonomous ? 'the autonomous run' : null, ids.length ? `released ${ids.slice(0, 3).join(', ')}` : null,
+    own.length ? `${own.length} own start finding(s)` : null].filter(Boolean).join(', ');
+  return `IDLE: own work is open (${what}) and this turn ends without its continuation. `
+    + 'Do the next item now (tool calls in this turn), or end in one of the allowed forms: '
+    + (autonomous ? '' : 'a question through the question tool, ')
+    + 'a line `HAND STEP: <what the operator does>`, a line `BLOCKED: <item> — <what restores it, who>`, '
+    + '`POOL EMPTY: <how measured>`, or for an ordered list `LIST EMPTY: <the order, how measured>` — all after measuring '
+    + 'the list in this turn. A wakeup alone is no continuation, and a running watcher continues only its own event. '
+    + 'Missing: continuation (the next item now, or a BLOCKED / POOL EMPTY / LIST EMPTY line after measuring the list)';
 }
 
 if (require.main === module) {
