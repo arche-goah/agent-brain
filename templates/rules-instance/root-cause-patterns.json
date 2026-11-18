@@ -15,6 +15,7 @@
     "turn, reply = the answer, default 'Done.'); run by core/scripts/pattern-cases.py at every self-test."
   ],
   "correction_patterns": [],
+  "self_surprise_patterns": [],
   "cause_patterns": [],
   "_cases": [
     {"text": "why did you ask that again?", "expect": "block"},

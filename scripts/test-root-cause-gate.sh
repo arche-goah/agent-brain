@@ -47,6 +47,21 @@ CWD="$T/cwd"; mkdir -p "$CWD"
 # --- the class: a correction, a fix on the spot, no cause named
 { user "check the PRs"; asst "Done."; user "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/t1.jsonl"
 check "correction answered without a cause" "$T/t1.jsonl" block "$CWD"
+# 2026-11-18: the agent's own text finds the mishap - same inquiry, no operator word needed
+{ user "go on"; asst "Measured: my earlier claim was wrong - two of the four were built on 2026-10-31. Next the questions."; } > "$T/s1.jsonl"
+check "own text finds a mishap, no cause line" "$T/s1.jsonl" block "$CWD"
+{ user "go on"; asst "It turned out two of the four were built.
+Cause: the correction stood in a research note, not in the entry (git log f3e152ed)."; write "core/helpers/ledger-reconcile.py"; write "$CWD/docs/maintenance/carrier-register.md"; } > "$T/s2.jsonl"
+check "own text finds a mishap, names the cause, writes carrier and register" "$T/s2.jsonl" allow "$CWD"
+{ user "go on"; asst "It turned out two of the four were built.
+Cause: the correction stood in a research note."; } > "$T/s5.jsonl"
+check "own text finds a mishap, names the cause, no carrier" "$T/s5.jsonl" block "$CWD"
+{ user "go on"; asst "PR #600 is merged, CI green."; } > "$T/s3.jsonl"
+check "a status line is no surprise" "$T/s3.jsonl" allow "$CWD"
+{ user "go on"; asst "The oblique one turned out well."; } > "$T/s6.jsonl"
+check "an everyday result sentence is no surprise (Windows review)" "$T/s6.jsonl" allow "$CWD"
+{ user "go on"; asst "The reviewer wrote \"it turned out fine\" - quoted."; } > "$T/s4.jsonl"
+check "a quoted surprise word stays silent" "$T/s4.jsonl" allow "$CWD"
 { user "go"; asst "ok"; user "why did you ask that again?"; asst "Sorry, I will not ask again."; } > "$T/t2.jsonl"
 check "why-did-you answered with an apology" "$T/t2.jsonl" block "$CWD"
 { user "go"; asst "ok"; user "the same failure class again, this keeps happening"; tres; asst "Fixed."; } > "$T/t3.jsonl"
