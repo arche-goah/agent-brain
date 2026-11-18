@@ -561,10 +561,12 @@ def main():
                     ident = code.group(1)
                 if ident not in want or ident in res:
                     continue
-                if e["done"]:
+                chk = e["fields"].get("check", "")
+                # ticked behind `check: none` = done by the ledger's word; a ticked entry WITH a check is judged by it
+                # (Windows review 2026-11-18: five ticked entries with a failing check would have read as done)
+                if e["done"] and (not chk or NONE.match(chk)):
                     res[ident] = "ticked"
                     continue
-                chk = e["fields"].get("check", "")
                 res[ident] = ("none" if not chk or NONE.match(chk) else
                               "refused" if not permitted(chk, allowed) else run_check(chk, a.root, timeout, shell))
         sys.stdout.write(json.dumps(res, sort_keys=True) + "\n")
