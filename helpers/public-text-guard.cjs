@@ -106,54 +106,6 @@ const QUOTED = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
 
 // Each command text as { judge, raw }: `judge` has its quoted parts emptied (what decides whether it is a write),
 // `raw` keeps them (where a quoted `git -C "<dir with spaces>"` is read from).
-// What the shell RUNS of a quoted text is read where it runs, not everywhere (2026-11-18, macOS instance, measured
-// with the pinned guard: 7 of 14 core fixtures refused on a hand run - one `$(` anywhere in a script turned EVERY
-// quoted probe argument (`pr_probe "…" "gh pr create -R o/lab --fill"`) into a command). Read as commands: the body
-// of each `$( … )` and each backtick pair, anywhere (also inside double quotes), and the quoted parts of a segment
-// whose OWN command is `sh -c` / `eval`. A quoted argument of any other command stays data.
-const RUNNER = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-[a-z]*c[a-z]*\b|\beval\b/; // `-c`, also combined (`-lc`, `-ec`)
-// The shell's own reading, char by char: nothing runs inside single quotes, a backslash makes the next char text
-// (outside single quotes), `$(` and a backtick run their body outside quotes and inside double quotes.
-function substitutions(cmd) {
-  const out = [];
-  let q = '';
-  for (let i = 0; i < cmd.length; i++) {
-    const c = cmd[i];
-    if (q === "'") { if (c === "'") q = ''; continue; }
-    if (c === '\\') { i++; continue; }
-    if (c === '"') { q = q === '"' ? '' : '"'; continue; }
-    if (c === "'" && !q) { q = "'"; continue; }
-    if (c === '$' && cmd[i + 1] === '(') {
-      let depth = 0, j = i + 1, iq = '';
-      for (; j < cmd.length; j++) {
-        const d = cmd[j];
-        if (iq === "'") { if (d === "'") iq = ''; continue; }
-        if (d === '\\') { j++; continue; }
-        if (d === '"' || d === "'") { iq = iq === d ? '' : (iq || d); continue; }
-        if (iq) continue;
-        if (d === '(') depth++;
-        else if (d === ')' && --depth === 0) break;
-      }
-      out.push(cmd.slice(i + 2, j));
-      i = j;
-    } else if (c === '`') {
-      const j = cmd.indexOf('`', i + 1);
-      if (j === -1) break;
-      out.push(cmd.slice(i + 1, j));
-      i = j;
-    }
-  }
-  return out;
-}
-// The texts the shell runs inside the command: `$( )` / backtick bodies and the quoted text of an `sh -c` / `eval`
-// segment. Their published text is read too (review of this PR, the Windows instance 2026-11-18: a named post run
-// through `bash -c '…'` or `echo "$(…)"` was judged a write, but its body was read from the outer command only).
-function ranTexts(cmd) {
-  if (!RUNS_QUOTED.test(cmd)) return [];
-  const ran = substitutions(cmd);
-  for (const s of segments(cmd)) if (RUNNER.test(s.replace(QUOTED, '""'))) ran.push(...[...s.matchAll(QUOTED)].map((m) => m[0].slice(1, -1)));
-  return ran;
-}
 function commandParts(cmd) {
   const outside = segments(cmd).map((s) => ({ judge: s.replace(QUOTED, '""').trim(), raw: s.trim() }));
   return [...outside, ...ranTexts(cmd).flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
@@ -209,7 +161,7 @@ function referencedFiles(cmd) {
   return out.filter((f) => f !== '-');
 }
 
-const { shellSegments, publishedText, nativePath, scriptBodies } = require('./published-text.cjs');
+const { shellSegments, publishedText, nativePath, scriptBodies, ranTexts } = require('./published-text.cjs');
 
 function slugFromRemote(dir) {
   try {
@@ -355,10 +307,6 @@ function gate(input, script) {
       try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { unreadable.push(`file ${f} (cannot be read by the guard)`); }
     }
   };
-  for (const t of ranTexts(cmd)) {
-    const inner = publishedText(t, ps);
-    if (inner) { inner.texts.forEach((x) => scan(x, 'the published text (run by sh -c, eval or $( ))')); readFiles(inner.files); }
-  }
   if (pub) {
     pub.texts.forEach((t) => scan(t, 'the published text'));
     readFiles(pub.files);
