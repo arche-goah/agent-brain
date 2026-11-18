@@ -323,6 +323,15 @@ askp "the mode question right after the answers, no step between (the 2026-11-18
 askp "the same mode question again (no step was needed)" "$f" t2 "Continue autonomously?" allow "$R"
 f="$T/ans2.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; bcall m2 e1; ares e1; qcall m3 t3 "Continue autonomously?"; } > "$f"
 askp "the mode question after the answers and a step" "$f" t3 "Continue autonomously?" allow "$R"
+# Windows review 2026-11-18, the measured sequence in a fresh root: held, then asked again after a step (passes by the
+# early return, the state stays `held`), then a NEW round of answers with no step - must be held again, was passed
+R2="$T/r-mode2"; fresh "$R2"
+f="$T/r1.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; qcall m2 t2 "Continue autonomously?"; } > "$f"
+askp "round 1: right after the answers" "$f" t2 "Continue autonomously?" deny "$R2"
+f="$T/r2.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; bcall m2 e1; ares e1; qcall m3 t3 "Continue autonomously?"; } > "$f"
+askp "round 1: after the step" "$f" t3 "Continue autonomously?" allow "$R2"
+f="$T/r3.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; bcall m2 e1; ares e1; qcall m3 t3 "Continue autonomously?"; ares t3; qcall m4 t4 "Merge PR 5?"; ares t4; qcall m5 t5 "Continue autonomously?"; } > "$f"
+askp "round 2: right after new answers is held again" "$f" t5 "Continue autonomously?" deny "$R2"
 f="$T/par2.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; qcall m1 t2 "Merge PR 5 now?"; } > "$f"
 askp "two parallel decisions without a mode question" "$f" t2 "Merge PR 5 now?" allow "$R"
 askp "a call not yet in the transcript fails open" "$f" t9 "Continue autonomously?" allow "$R"

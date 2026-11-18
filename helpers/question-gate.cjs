@@ -343,7 +343,7 @@ function modeAlone(input, q) {
   if (!on || !asksMode || !asksMode(on, String(q.question || ''))) return false;
   let lines;
   try { lines = fs.readFileSync(input.transcript_path, 'utf8').split('\n'); } catch (e) { return false; }
-  const askIds = new Set(); let answered = false; let calls = 0;
+  const askIds = new Set(); let answered = false; let calls = 0; let round = '';
   for (const l of lines) {
     let d; try { d = JSON.parse(l); } catch (e) { continue; }
     const content = d && d.message && Array.isArray(d.message.content) ? d.message.content : [];
@@ -352,12 +352,14 @@ function modeAlone(input, q) {
         if (b.name === 'AskUserQuestion') askIds.add(b.id);
         else if (answered) calls += 1;
       } else if (b && b.type === 'tool_result' && askIds.has(b.tool_use_id) && b.tool_use_id !== input.tool_use_id && !b.is_error) {
-        answered = true; calls = 0;
+        answered = true; calls = 0; round = b.tool_use_id;
       }
     }
   }
   if (!answered || calls) return false;
-  const key = require('crypto').createHash('sha1').update(String(q.question || '')).digest('hex');
+  // the key is the answer round: a new round of answers holds the mode question anew (Windows review 2026-11-18:
+  // keyed by the question text alone, a hold that was released stayed `held`, and the next round passed unheld)
+  const key = require('crypto').createHash('sha1').update(`${round}\n${String(q.question || '')}`).digest('hex');
   const sp = path.join(root(input.cwd), '.claude-state', 'question-gate-mode.json');
   let st = {}; try { st = JSON.parse(fs.readFileSync(sp, 'utf8')); } catch (e) { /* first */ }
   try { fs.mkdirSync(path.dirname(sp), { recursive: true }); fs.writeFileSync(sp, JSON.stringify(st.held === key ? { passed: key } : { held: key })); } catch (e) { /* ignore */ }
