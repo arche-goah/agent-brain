@@ -91,7 +91,8 @@ const BUILTIN_CORRECTION = [
 // ("#600 is merged") is no surprise. Replay 2026-11-18 over 40 transcripts of that instance, German instance data:
 // 26 hits of "war falsch / veraltet", each a real self-correction ("my claim from before was wrong").
 const BUILTIN_SELF_SURPRISE = [
-  '\\bturned out\\b',
+  // "turned out" alone blocked "the oblique one turned out well" (Windows review 2026-11-18): only with a verdict
+  '\\bturned out to be (wrong|false|stale|outdated|already (done|built|merged))\\b',
   '\\b(my|the) (earlier|previous) (claim|count|statement|report|measurement|reading) was (wrong|false|stale)\\b',
   '\\bwas (stale|outdated) all along\\b',
 ];
