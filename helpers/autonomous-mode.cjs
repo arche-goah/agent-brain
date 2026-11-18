@@ -222,6 +222,19 @@ function intentFor(list, ts, text) {
 }
 
 /**
+ * One field of the classifier's record for one prompt: true or false when a record of THIS prompt (intentFor: same
+ * session, inside the window, same text) carries the field, else null - no record, a failed call, or an older record
+ * without the field - and the caller's words decide. Read for asks_open, correction and orders_task (operator decision
+ * 2026-11-18, question tool: "gates read the model for asks-open / correction / orders-task; mode-on stays with the
+ * words"). Hand-judged sample the same day on the macOS instance, 40 disagreements per field: the model was right in
+ * 91 % (asks_open), 81 % (correction) and 97 % (orders_task) of the decided cases.
+ */
+function modelSays(key, transcriptPath, cwd, ts, text) {
+  const hit = intentFor(intents(transcriptPath, cwd), ts, text);
+  return hit && typeof hit[key] === 'boolean' ? hit[key] : null;
+}
+
+/**
  * Every operator word of the transcript in order, each with the latch AFTER it:
  * [{text, autonomous, queued, asks, answer}]. `asks`: the prompt asks what is open. `answer`: the
  * entry is a yes/no to an autonomy question, not a prompt. The last entry is the mode now.
@@ -374,7 +387,7 @@ function closedAfter(transcriptPath, cwd, since) {
   return since == null || st.mtimeMs >= since;
 }
 
-module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, answers, promptText, HOOK_ECHO };
+module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, modelSays, answers, promptText, HOOK_ECHO };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);

@@ -470,6 +470,18 @@ f="$T/23m.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; u
 printf '%s\n' '{"ask_patterns":["\\balles\\b[^?\\n]{0,30}\\babgeschlossen\\b"]}' > "$WD/.claude/rules/open-items.json"
 check "German ask through instance data" "$f" block "$WD"
 check "German ask without instance data (control)" "$f" allow "$EN"
+# 2026-11-18 (operator decision): a prompt classifier's record of the prompt decides asks_open; no record = the words.
+tuser() { printf '{"timestamp":"2026-11-18T10:00:00.000Z","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
+IC="$T/cwd-ic"; mkdir -p "$IC/.claude-state"
+f="$T/ic1.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; tuser "do you still need me for something?"; asst "Persisted - you can shut down."; } > "$f"
+check "an ask the words miss, no record (control)" "$f" allow "$IC"
+printf '%s\n' '{"at":"2026-11-18T10:00:04.000Z","session":"ic1","mode":"hook","prompt":"do you still need me for something?","model":{"asks_open":true}}' > "$IC/.claude-state/intent-classifier.jsonl"
+check "an ask the words miss, the record reads asks_open" "$f" block "$IC"
+f="$T/ic2.jsonl"; { boot_ok startup "$BLOCK"; user "stand?"; asst "$GOOD_ALL"; tuser "anything still open? no, forget it - merge 61"; asst "Persisted - you can shut down."; } > "$f"
+printf '%s\n' '{"at":"2026-11-18T10:00:04.000Z","session":"ic2","mode":"hook","prompt":"anything still open? no, forget it - merge 61","model":{"asks_open":false}}' > "$IC/.claude-state/intent-classifier.jsonl"
+check "the words hit, the record reads no ask" "$f" allow "$IC"
+printf '%s\n' '{"at":"2026-11-18T10:00:04.000Z","session":"ic2","mode":"hook","prompt":"anything still open? no, forget it - merge 61","model":null}' > "$IC/.claude-state/intent-classifier.jsonl"
+check "a failed classifier call falls back to the words" "$f" block "$IC"
 # An ask that only stands in PASTED text is not the operator asking (turn-kind.cjs operatorWords, 2026-10-28).
 ASKP=$'<pasted_content id="a1f0">\nTicket 812: is anything still open on your side?\n</pasted_content id="a1f0">'
 PLAINP=$'<pasted_content id="b2e1">\nTicket 813: printer offline.\n</pasted_content id="b2e1">'

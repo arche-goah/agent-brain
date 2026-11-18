@@ -31,6 +31,7 @@ const path = require('path');
 const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, isTurnEnd } =
   require('./turn-kind.cjs');
 const { segments } = require('./shell-segments.cjs');
+const { modelSays } = require('./autonomous-mode.cjs');
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || path.join(__dirname, '..', '..');
 
@@ -77,14 +78,25 @@ function queuedPrompts(transcript) {
     if (!l) continue;
     let d; try { d = JSON.parse(l); } catch (e) { continue; }
     const q = queuedHumanPrompt(d);
-    if (q) out.push(q);
+    if (q) out.push({ text: q, at: d.timestamp || '' });
   }
   return out;
+}
+
+/**
+ * Does this operator message order work? A prompt classifier's record of it decides (`orders_task`, operator decision
+ * 2026-11-18, question tool; hand-judged sample the same day: model right in 32 of 33 decided disagreements); without
+ * a record the order words do.
+ */
+function orders(p, transcript, pat) {
+  const m = modelSays('orders_task', transcript, ROOT, p.at, p.text);
+  return m === null ? pat.order.some((r) => r.test(p.text)) : m;
 }
 
 function prompts(transcript) {
   const out = [];
   out.ended = false;
+  out.at = [];
   const askIds = new Set();
   let lines = [];
   try { lines = fs.readFileSync(transcript, 'utf8').split('\n'); } catch (e) { return null; }
@@ -99,7 +111,7 @@ function prompts(transcript) {
       continue;
     }
     const t = promptText(d) || questionAnswer(d, askIds);
-    if (t) out.push(t);
+    if (t) { out.push(t); out.at.push(d.timestamp || ''); }
   }
   return out;
 }
@@ -141,8 +153,10 @@ function judge(input) {
   const ps = prompts(input.transcript_path || '');
   if (!ps || ps.length !== 1 || ps.ended) return null;
   const first = ps[0];
-  const said = [first, ...queuedPrompts(input.transcript_path || '')];
-  if (said.some((t) => pat.order.some((r) => r.test(t)))) return null;
+  const tp = input.transcript_path || '';
+  const typed = [{ text: first, at: ps.at[0] }, ...queuedPrompts(tp)];
+  if (typed.some((p) => orders(p, tp, pat))) return null;
+  const said = typed.map((p) => p.text);
   const esc = /#\s*START-REPORT-OK:\s*(.+)/.exec(String((input.tool_input || {}).command || ''));
   // the escape names a quoted order, and the quote has to stand in the operator's own words (Windows review of #482)
   const squash = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
