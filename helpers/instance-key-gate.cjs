@@ -22,6 +22,11 @@
  * Not covered (named limit): `gh api` writes and the web UI; the operator's own hand-written
  * comments carry no key, and the readers count an unkeyed text under our login as ours.
  *
+ * COMMIT POINTERS (2026-11-12): a backticked sha that is a local-only commit must be on the remote -
+ * push first, then post (pointedShas/localState/apiHas below; fixture seam INSTANCE_KEY_GATE_GH, a
+ * node script standing in for gh). Checked with or without a key; a sha no local checkout knows,
+ * unreadable, or over the shared API budget = pass with one stderr line.
+ *
  * No instance id configured = allow, said on stderr: a brain that has not named itself has
  * no key to give (and its readers keep the old login-only rule). Exit 2 = block.
  * INPUT IS READ TO ITS END, never on a timer (see file-guard.cjs for the measured reason).
@@ -126,12 +131,128 @@ function levelFindings(cmd, cwd, ps) {
   return lv.check(repo, only === null ? undefined : only).findings;
 }
 
-function gate(input) {
+// A commit the text points another instance at must be one the remote has (operator approval
+// 2026-11-12). Measured 2026-11-12, macOS instance: nine PR comments said "fixed in the merge
+// train at `4a560f8`" while that commit was only local; the Windows instance asked the API
+// (422 "No commit found") and checked the old head. A pointer = a backticked hex word of 7-40
+// characters with a letter and a digit (a plain number or word is no sha); hex inside a URL is
+// left to GitHub. Held is only the incident's shape (review 2026-11-13, Windows instance: a 422 also
+// comes for another repo's commit and for a backticked 10-hex instance key): the sha is a commit of
+// a local checkout (the target repo's, or the cwd's) AND no remote branch of that checkout contains
+// it (as of its last fetch) AND `gh api repos/<repo>/commits/<sha>` answers 422. A hex word no
+// local checkout knows passes - it is someone else's, or no sha. The API calls share ONE budget
+// (API_BUDGET_MS), each call gets what is left, and the first timeout ends the asking: the hook's
+// own 10 s timeout blocks (`onFailure: block`), so a hanging network must never reach it.
+// Anything else unreadable passes with one stderr line.
+const API_BUDGET_MS = 3000;
+function pointedShas(text) {
+  const out = new Set();
+  for (const m of String(text).replace(/https?:\/\/\S+/g, ' ').matchAll(/`([0-9a-f]{7,40})`/g)) {
+    if (/[a-f]/.test(m[1]) && /[0-9]/.test(m[1])) out.add(m[1]);
+  }
+  return [...out];
+}
+
+function targetRepo(cmd, ps, cwd) {
+  const url = /github\.com\/([\w.-]+\/[\w.-]+)\/(?:pull|issues)\/\d+/.exec(cmd);
+  const seg = (invocations(cmd, ps, 'gh') || []).find((t) => ['pr', 'issue'].includes(t[1])) || [];
+  const r = seg.findIndex((t) => t === '-R' || t === '--repo' || /^--repo=/.test(t));
+  const named = r < 0 ? '' : (seg[r].startsWith('--repo=') ? seg[r].slice(7) : seg[r + 1] || '');
+  const co = checkoutOf(cwd);
+  let origin = '';
+  try {
+    origin = require('child_process').execFileSync('git', ['-C', co || cwd, 'remote', 'get-url', 'origin'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (e) { /* no checkout */ }
+  const own = (/github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\s*$/.exec(origin) || [])[1] || '';
+  // `-R HOST/OWNER/REPO` is gh's long form: the last two parts are the repo
+  const repo = (named.split('/').slice(-2).join('/') || (url && url[1]) || own).toLowerCase();
+  return { repo, checkout: co && repo && own.toLowerCase() === repo ? co : null, local: co };
+}
+
+// 'remote' = a remote branch of the checkout holds it · 'local' = a commit only this checkout has ·
+// 'unknown' = no commit of this checkout (another repo's sha, an instance key, a word).
+function localState(sha, checkout) {
+  const { execFileSync } = require('child_process');
+  const opt = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] };
+  try { execFileSync('git', ['-C', checkout, 'cat-file', '-e', `${sha}^{commit}`], opt); } catch (e) { return 'unknown'; }
+  try {
+    if (execFileSync('git', ['-C', checkout, 'branch', '-r', '--contains', sha], opt).trim()) return 'remote';
+  } catch (e) { /* unreadable: treat as local, the API decides */ }
+  return 'local';
+}
+
+// true = on the remote, false = the API answers 422, null = unreadable, 'timeout' = budget spent.
+function apiHas(sha, repo, ms) {
+  const { execFileSync } = require('child_process');
+  const fake = process.env.INSTANCE_KEY_GATE_GH;
+  const args = ['api', `repos/${repo}/commits/${sha}`, '--jq', '.sha'];
+  try {
+    execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
+      { encoding: 'utf8', timeout: ms, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
+    return true;
+  } catch (e) {
+    if (e.code === 'ETIMEDOUT' || e.signal) return 'timeout';
+    const said = `${e.stdout || ''}${e.stderr || ''}`;
+    if (/No commit found|HTTP 422/i.test(said)) return false;
+    return null;
+  }
+}
+
+function unpushed(cmd, ps, cwd, files, pub) {
+  // pub: the gate's own published-text reading; its handed files arrive already read (nativePath, OS-19)
+  const shas = pointedShas((pub ? pub.texts.join('\n') : cmd) + '\n' + files.join('\n'));
+  if (!shas.length) return [];
+  const { repo, checkout, local } = targetRepo(cmd, ps, cwd);
+  if (!repo) {
+    console.error(`instance-key-gate: no target repo found, commit pointers ${shas.join(', ')} not checked`);
+    return [];
+  }
+  const checkouts = [...new Set([checkout, local].filter(Boolean))];
+  const missing = [];
+  const end = Date.now() + API_BUDGET_MS;
+  for (const sha of shas) {
+    const states = checkouts.map((c) => localState(sha, c));
+    if (states.includes('remote') || !states.includes('local')) continue; // pushed, or not ours
+    const left = end - Date.now();
+    const on = left > 0 ? apiHas(sha, repo, left) : 'timeout';
+    if (on === false) missing.push(sha);
+    else if (on === null) console.error(`instance-key-gate: ${repo} not readable for ${sha} (no network?) - not checked`);
+    else if (on === 'timeout') {
+      console.error(`instance-key-gate: ${repo} did not answer within ${API_BUDGET_MS} ms - commit pointers from ${sha} on not checked`);
+      break;
+    }
+  }
+  return missing;
+}
+
+function shaVerdict(cmd, ps, cwd, files, pub) {
+  const missing = unpushed(cmd, ps, cwd, files, pub);
+  if (!missing.length) return 0;
+  console.error(`BLOCKED (instance-key-gate, commit pointer): this text points at ${missing.map((s) => '`' + s + '`').join(', ')}, ` +
+    'which the remote does not have.\nPush first, then post. Another instance that reads the text asks GitHub for the commit ' +
+    'and gets "No commit found" (measured 2026-11-12: it checked the old head instead).');
+  return 2;
+}
+
+// `script`: set when `input` carries the text of a local script the command runs (scriptBodies,
+// published-text.cjs, 2026-11-12: posts made inside `bash <file>` went out unread). Its posts need
+// the key like the command's own; a script that cannot be read passes (as an unreadable handed file
+// does here), a body or handed path the script composes at run time passes too - its key is not in
+// the source. The change-level check stays with the outer command: a script may change folder first.
+function gate(input, script) {
   if (!input || !['Bash', 'PowerShell'].includes(input.tool_name)) return 0;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
   const ps = input.tool_name === 'PowerShell';
+  if (!script) {
+    const { scriptBodies } = require('./published-text.cjs');
+    for (const s of scriptBodies(cmd, ps, input.cwd || process.cwd())) {
+      const rc = s.text === null ? 0 : gate(Object.assign({}, input, { tool_input: { command: s.text } }), s.file);
+      if (rc) return rc;
+    }
+  }
   if (!posts(cmd, ps)) return 0;
-  const lv = levelFindings(cmd, input.cwd || process.cwd(), ps);
+  const lv = script ? [] : levelFindings(cmd, input.cwd || process.cwd(), ps);
   if (lv.length) {
     console.error('BLOCKED (instance-key-gate, change level): a changelog fragment of this PR does not declare its level.\n' +
       lv.map((f) => '  ' + f).join('\n') + '\n' +
@@ -142,13 +263,10 @@ function gate(input) {
   }
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const key = keyFor(selfId(root));
-  if (!key) {
-    console.error('instance-key-gate: SHARED_MEMORY_SELF unset - this instance has no key, nothing checked');
-    return 0;
-  }
   const mark = `<!-- instance-key: ${key} -->`;
   const cwd = input.cwd || process.cwd();
   let text = cmd;
+  const read = [];
   const unread = [];
   const pub = require('./published-text.cjs').publishedText(cmd, ps);
   for (const f of pub ? pub.files : handedFiles(cmd)) {
@@ -159,12 +277,21 @@ function gate(input) {
     const v = require('./published-text.cjs').expandVars(f, cmd);
     if (v === null) { unread.push(f); continue; }
     const p = require('./public-text-guard.cjs').nativePath(v.replace(/^~(?=$|[\\/])/, require('os').homedir()));
-    try { text += '\n' + fs.readFileSync(path.resolve(cwd, p), 'utf8'); } catch (e) { /* the write fails on it too */ }
+    try { read.push(fs.readFileSync(path.resolve(cwd, p), 'utf8')); } catch (e) { /* the write fails on it too */ }
   }
-  if (new RegExp(`<!--\\s*instance-key:\\s*${key}\\s*-->`, 'i').test(text)) return 0;
+  text += read.map((t) => '\n' + t).join('');
+  if (!key) {
+    console.error('instance-key-gate: SHARED_MEMORY_SELF unset - this instance has no key, key not checked');
+    return shaVerdict(cmd, ps, cwd, read, pub);
+  }
+  if (new RegExp(`<!--\\s*instance-key:\\s*${key}\\s*-->`, 'i').test(text)) return shaVerdict(cmd, ps, cwd, read, pub);
+  if (script && pub && (unread.length || pub.spans.some(([s, e]) => /\$/.test(cmd.slice(s, e).replace(/^--?[\w-]+=/, '').replace(/^'[\s\S]*'$/, ''))))) {
+    console.error(`instance-key-gate: the script ${script} composes its post at run time - the key is not checked there`);
+    return 0;
+  }
   const noBody = /\bgh\s+pr\s+review\b/.test(cmd) && !/--body(-file)?\b|\s-b\s|\s-F\s/.test(cmd);
   console.error(
-    `BLOCKED (instance-key-gate): this GitHub text carries no instance key. Add this line to its body:\n  ${mark}\n` +
+    `BLOCKED (instance-key-gate): this GitHub text${script ? ` (posted by the script ${script})` : ''} carries no instance key. Add this line to its body:\n  ${mark}\n` +
     (unread.length ? `A handed file names a variable this gate cannot resolve (${unread.join(', ')}) - write the path out.\n` : '') +
     (noBody ? 'A review without a body has no place for it - add --body "<one line> ' + mark + '".\n' : '') +
     'Why: several instances can post under one GitHub login; the readers that decide whose move a PR\n' +
@@ -184,4 +311,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { gate, keyFor, selfId, handedFiles };
+module.exports = { gate, keyFor, selfId, handedFiles, pointedShas };

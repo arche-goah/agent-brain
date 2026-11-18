@@ -32,6 +32,7 @@ from pathlib import Path
 # would write a non-ASCII rule line as bytes that are not UTF-8 on Windows.
 try:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
 except (AttributeError, ValueError):
     pass
 

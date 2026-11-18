@@ -60,7 +60,7 @@ case "$*" in
   *beta-candidate*) [ -e "$d/gh-down" ] && exit 1
     case "$*" in *"label list"*) cat "$d/gh-label";; *) cat "$d/gh-cand";; esac ;;
   *isDraft*) cat "$d/gh-open" ;;
-  *"pr view"*) a="$*"; n="${a#*pr view }"; n="${n%%%% *}"; if [ -f "$d/proof-$n.txt" ]; then cat "$d/proof-$n.txt"; else cat "$d/proof.txt"; fi ;;
+  *"pr view"*) a="$*"; n="${a#*pr view }"; n="${n%%%% *}"; case "$n" in *[!0-9]*) exit 1;; esac; if [ -f "$d/proof-$n.txt" ]; then cat "$d/proof-$n.txt"; else cat "$d/proof.txt"; fi ;;
   *) echo 0 ;;
 esac
 ' "$TMP" > "$GHDEF/gh"
@@ -422,6 +422,17 @@ train_case "a train review naming another OS does not cover the missing one" 1 "
   '<!-- instance-key: def --> **macOS OK at head abc1234, by hand** (the Windows instance read it on a Mac)'
 train_case "a train review that names no head covers nobody" 1 "#9(neither)" \
   '<!-- instance-key: abc --> macOS OK at the train head' '<!-- instance-key: def --> Windows OK at the train head'
+# 19b. a note line further down the train body ("- #8: fixed …") is no member (merge train 2.1.6, 2026-11-17: train #510's
+#      notes "- #466: …" made a member "466:" that no gh call could read, and the tag was held as "unreadable")
+TRAIN="$TRAIN
+
+Train-level fixes:
+- #8: the hint quotes its paths.
+- #9 \`scripts/x.py\`: a note, not a member."
+train_case "note lines in the train body are no members" 0 - \
+  '<!-- instance-key: abc --> **macOS OK at head `abc1234`, by hand** (the macOS instance, measured once)' \
+  '<!-- instance-key: def --> **Windows OK at head abc1234, by hand** (the Windows instance, measured once)'
+grep -aq "unreadable" "$LAST"; [ $? -eq 1 ]; check "no note line is read as an unreadable member" 0 $?
 rm -f "$TMP/proof-7.txt" "$TMP/proof-8.txt" "$TMP/proof-9.txt"
 
 # 20. check 11, the release scope (operator 2026-11-06): no brain = red and said "NOT run"; an own open PR outside the

@@ -213,6 +213,23 @@ check "invariant names a path (the instance, not the rule)" "$T/t32.jsonl" block
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: PR #472 must not repeat the missing-carrier slip
 replay: 4 hits"; } > "$T/t33.jsonl"
 check "invariant names a PR number" "$T/t33.jsonl" block "$CWD"
+# --- 2026-11-16 root-cause review: an entry is judged whenever the register is written, not only in a cause turn
+{ user "go"; asst "Register entry added."; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: pending - after the pin"; } > "$T/t40.jsonl"
+check "register written without a cause line, replay pending" "$T/t40.jsonl" block "$CWD"
+{ user "go"; asst "Register entry added."; write "$CWD/$REG"; } > "$T/t41.jsonl"
+check "register written without a cause line, complete entry" "$T/t41.jsonl" allow "$CWD"
+{ user "go"; asst "Register entry added."; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: none - single case, no instrument reads it yet - recheck 2026-12-01"; } > "$T/t42.jsonl"
+check "replay none with reason and recheck date" "$T/t42.jsonl" allow "$CWD"
+{ user "go"; asst "Register entry added."; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: none - later"; } > "$T/t43.jsonl"
+check "replay none without a recheck date" "$T/t43.jsonl" block "$CWD"
+{ user "go"; asst "Register entry added."; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: none - looked once on 2025-01-01"; } > "$T/t43b.jsonl"
+check "replay none with a date but no recheck word (Windows review 2026-11-17)" "$T/t43b.jsonl" block "$CWD"
+{ user "go"; asst "Done."; write "docs/notes.md" "x"; } > "$T/t44.jsonl"
+check "no register write, no cause (control)" "$T/t44.jsonl" allow "$CWD"
 mkdir -p "$T/cwdf/.claude/rules"; printf '{"invariant_forbidden":["\\\\bwaveshare\\\\b"]}' > "$T/cwdf/.claude/rules/root-cause-patterns.json"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$T/cwdf/$REG" "invariant: a waveshare splitter decision reaches the purchase list
 replay: 4 hits"; } > "$T/t34.jsonl"

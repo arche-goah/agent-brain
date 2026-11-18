@@ -154,6 +154,20 @@ if [ -f "$eco" ] && command -v node >/dev/null 2>&1; then
       printf '\n## Neighbour repo %s: NOT delivered\n%s uncommitted, %s unpushed in %s.\n' \
         "$name" "$n_dirty" "$n_unpushed" "$p" >> .claude/HANDOFF.md
     fi
+    # A local main ahead of its remote main, whichever branch is checked out (measured
+    # 2026-11-12: six commits on a project repo's main that only leaves by PR went unnoticed,
+    # then rode along on a new branch). Counted against the remote main, not --remotes: once
+    # they rode out on a branch, they are on a remote and still not on main.
+    for mb in main master; do
+      git -C "$p" rev-parse -q --verify "refs/remotes/origin/$mb" >/dev/null || continue
+      n_ahead=$(git -C "$p" rev-list --count "origin/$mb..refs/heads/$mb" 2>/dev/null || echo 0)
+      if [ "${n_ahead:-0}" -gt 0 ]; then
+        echo "FAIL neighbour repo $name: local $mb is ${n_ahead} commit(s) ahead of origin/$mb in $p — commits on a main that only leaves by PR: branch from origin/$mb, cherry-pick, open the PR, then move the local $mb back (git branch -f $mb origin/$mb, from another branch - it drops the local commits, the operator's call once they are safe on the branch); or push $mb where it may be pushed"
+        printf '\n## Neighbour repo %s: main ahead\nlocal %s is %s commit(s) ahead of origin/%s in %s.\n' \
+          "$name" "$mb" "$n_ahead" "$mb" "$p" >> .claude/HANDOFF.md
+      fi
+      break
+    done
   done
 fi
 
@@ -184,6 +198,24 @@ if [ "$pre_commit" -eq 1 ]; then
     if [ "${log_bytes:-0}" -gt 100000 ]; then
       echo "WARN session-log fold: SESSION_LOG_FOLD_MAX_BYTES unset, log is $log_bytes bytes — set it in settings env"
     fi
+  fi
+  # Invariant register: the drift is read here and absorbed into the baseline (operator decision 2026-11-16:
+  # a register drifted for the third time, 294 lines; measured the same day, about two thirds were new fixture
+  # files of the pinned core matching an instance class, and nobody pulled the baseline). The report lines go
+  # into this close's output - that is the reading; the rewritten register goes into the close commit.
+  # A search that cannot run is a WARN line, never a failed close.
+  reg=docs/maintenance/invariants.md
+  if [ -f "$reg" ] && [ -f "$HERE/../scripts/invariant-check.py" ]; then
+    PY=python3
+    "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+    inv_out=$("$PY" "$HERE/../scripts/invariant-check.py" --write "$reg" 2>&1); inv_rc=$?
+    inv_drift=$(printf '%s\n' "$inv_out" | awk '/NEW site:|drift:|vanished:/ { n++ } END { print n + 0 }')
+    if [ "$inv_drift" -gt 0 ]; then
+      printf 'invariant register: %s drift line(s) read and absorbed into %s (commit it with the close):\n' "$inv_drift" "$reg"
+      printf '%s\n' "$inv_out" | awk '/^  !!|NEW site:|drift:|vanished:/ { print "  " $0 }'
+      sm_line="${sm_line:+$sm_line | }invariants: $inv_drift drift line(s) absorbed"
+    fi
+    [ "$inv_rc" -eq 0 ] || echo "WARN invariant register: a search could not run (invariant-check.py rc=$inv_rc) — see its output"
   fi
   mkdir -p .claude-state
   # Line 2 is the log line itself: the Stop gates find this close's entry by it and read its

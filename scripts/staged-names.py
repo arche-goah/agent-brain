@@ -40,6 +40,7 @@ def watch_list(brain: Path):
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8")
     arg = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("BRAIN_DIR", "")
     brain = Path(arg)
     names = watch_list(brain) if arg else None

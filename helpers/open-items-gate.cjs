@@ -233,7 +233,8 @@ function mandatedTopics(tp) {
     const out = [];
     for (const l of t.boot.text.split('\n')) {
       if (!/\bask the operator\b/i.test(l)) continue;
-      const m = /^(?:!!\s*)?([^:]+):/.exec(l.trim());
+      // a brief item of start-findings.py carries its tag and id in front of the line's own label
+      const m = /^(?:!!\s*)?(?:\[finding\|[\w+]+\]\s+[0-9a-f]{8}\s+(?:seen on \d+ days \(\d+ sessions\), not handled:\s+)?)?([^:]+):/.exec(l.trim());
       const topic = m ? m[1].replace(/\s+[A-Z]{2,}$/, '').trim() : '';
       if (topic) out.push(topic.toLowerCase());
     }
@@ -251,6 +252,26 @@ function mandatedTopics(tp) {
  */
 function bootFindings(text) {
   return text.split('\n').filter((l) => /^!!\s/.test(l) && !/^!! open for us:/.test(l));
+}
+
+/**
+ * The brief view scripts/start-findings.py prints in place of the `!!` lines (operator order 2026-11-12, translated:
+ * "not flooded, nothing lost"): one count line, up to three operator items and every loud one (back on n days,
+ * not handled). Only those items must be named; the rest are tracked entries in .claude-state/start-findings.json.
+ * null when the start printed no brief (older core, BOOTUP_FULL_FINDINGS=1, the script failed) — then #502's rule.
+ */
+const BRIEF_HEAD = /^!! session-start findings: (\d+)\b/;
+const BRIEF_ITEM = /^!! \[finding\|([\w+]+)\] ([0-9a-f]{8}) (?:seen on \d+ days \(\d+ sessions\), not handled: )?(.*)$/;
+function briefFindings(text) {
+  const lines = text.split('\n');
+  const head = lines.map((l) => BRIEF_HEAD.exec(l)).find(Boolean);
+  if (!head) return null;
+  const items = [];
+  for (const l of lines) {
+    const m = BRIEF_ITEM.exec(l);
+    if (m) items.push({ tags: m[1], id: m[2], text: m[3], words: topicWords(m[3]) });
+  }
+  return { count: Number(head[1]), items };
 }
 
 /** Parse the open-items block out of the bootup text. */
@@ -320,8 +341,26 @@ const GENERIC = ['request', 'question', 'answer', 'reply', 'receipt', 'from', 'w
 
 /** Topic words of a request: its file slug (or, for a LOG-only request, its own words). */
 function topicWords(s) {
-  return String(s).toLowerCase().replace(/\.md$/, '').replace(/\d{4}-\d{2}-\d{2}/g, ' ')
+  // NFC: a combining mark is no letter, so a decomposed word would be split at it (same class as fold())
+  return String(s).normalize('NFC').toLowerCase().replace(/\.md$/, '').replace(/\d{4}-\d{2}-\d{2}/g, ' ')
     .split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 4 && !/^\d+$/.test(w));
+}
+
+/**
+ * Orthography fold for the word comparison: lower case, the four letters a slug writes as a
+ * digraph (a/o/u with diaeresis -> ae/oe/ue, sharp s -> ss), every other accent dropped.
+ * Measured 2026-11-04 on the Windows instance: an item's words come from an ASCII slug
+ * (the letter spelled as a digraph), the reply named it in the operator's language with the real letter —
+ * 1 of 3 words hit, 2 were required, the reply was blocked. A slug is ASCII by convention and
+ * a reply follows the operator's orthography, so the literal compare could never meet; only a
+ * date or an age saved such a reply. Both sides are folded, so either spelling names the item.
+ */
+const DIGRAPH = { '\u00e4': 'ae', '\u00f6': 'oe', '\u00fc': 'ue', '\u00df': 'ss' };
+function fold(s) {
+  // NFC first: a decomposed letter (vowel + combining diaeresis, as macOS file names and pasted text carry it)
+  // would else miss the digraph and fold to the bare vowel (macOS review of #530).
+  return String(s).normalize('NFC').toLowerCase().replace(/[\u00e4\u00f6\u00fc\u00df]/g, (c) => DIGRAPH[c])
+    .normalize('NFD').replace(/\p{M}+/gu, '');
 }
 
 function genericWords(cwd) {
@@ -342,16 +381,16 @@ function genericWords(cwd) {
 function named(item, reply, ageRx, generic) {
   if (item.num) return new RegExp(`#${item.num}(?!\\d)`).test(reply);
   if (!item.date) {
-    const low = reply.toLowerCase();
+    const low = fold(reply);
     const words = (item.words || []).filter((w) => !generic.has(w));
-    return reply.includes(item.base) || (words.length > 0 && words.filter((w) => low.includes(w)).length >= Math.min(2, words.length));
+    return reply.includes(item.base) || (words.length > 0 && words.filter((w) => low.includes(fold(w))).length >= Math.min(2, words.length));
   }
   const [y, mo, d] = item.date;
   if (reply.includes(`${y}-${mo}-${d}`) || new RegExp(`(?<!\\d)${mo}-${d}(?!\\d)`).test(reply)
     || new RegExp(`(?<!\\d)${Number(d)}\\.\\s?${Number(mo)}\\.|(?<!\\d)${d}\\.${mo}\\.`).test(reply)) return true;
-  const low = reply.toLowerCase();
+  const low = fold(reply);
   const words = (item.words || []).filter((w) => !generic.has(w));
-  const hit = words.filter((w) => low.includes(w)).length;
+  const hit = words.filter((w) => low.includes(fold(w))).length;
   if (words.length && hit >= Math.min(2, words.length)) return true;
   // Age in days, local calendar, one day of slack either way (time zones, midnight).
   const age = Math.round((Date.now() - new Date(`${y}-${mo}-${d}T12:00:00`).getTime()) / 86400000);
@@ -406,8 +445,8 @@ function relabelled(t, cwd, sessionId) {
   const topical = (it, l) => {
     const w = (it.words || []).filter((x) => !generic.has(x));
     if (!w.length) return true;
-    const low = l.toLowerCase();
-    return w.some((x) => low.includes(x));
+    const low = fold(l);
+    return w.some((x) => low.includes(fold(x)));
   };
   const strict = (it, l) => (it.num ? new RegExp(`#${it.num}(?!\\d)`).test(l)
     : (it.date && l.includes(it.date.join('-')) && topical(it, l)) || (it.base && l.includes(it.base)));
@@ -533,7 +572,27 @@ function judge(input) {
   if (blk.items.some((it) => it.repeat) && !patterns(cwd, 'repeat').test(text)) {
     missing.push('that some were reported before and are still open');
   }
-  const findings = bootFindings(t.boot.text);
+  const brief = briefFindings(t.boot.text);
+  const findings = brief ? [] : bootFindings(t.boot.text);
+  if (brief && brief.count) {
+    const unit = patterns(cwd, 'finding_unit').source;
+    if (!new RegExp(`(?<!\\d)${brief.count}\\s+(?:${unit})`, 'iu').test(text)) {
+      missing.push(`count of session-start findings, said as "${brief.count} session-start findings"`);
+    }
+    if (!patterns(cwd, 'handled').test(text)) {
+      missing.push('what happens to the session-start findings (handled now, handed to the owner, or the blocker)');
+    }
+    // Each operator or loud item by its id or by two of its own words - a plain-words sentence passes.
+    const generic = genericWords(cwd);
+    const low = text.toLowerCase();
+    for (const it of brief.items) {
+      const w = it.words.filter((x) => !generic.has(x));
+      const hit = w.filter((x) => low.includes(x)).length;
+      if (!text.includes(it.id) && !(w.length && hit >= Math.min(2, w.length))) {
+        missing.push(`session-start finding ${it.id} (${it.tags}): ${it.text.slice(0, 80)}`);
+      }
+    }
+  }
   if (findings.length) {
     const unit = patterns(cwd, 'finding_unit').source;
     if (!new RegExp(`(?<!\\d)${findings.length}\\s+(?:${unit})`, 'iu').test(text)) {
@@ -548,7 +607,7 @@ function judge(input) {
   if (blk.nothing && !patterns(cwd, 'nothing').test(text)) missing.push('"nothing open"');
   if (missing.length === 0) return null;
   const shown = missing.length > 6 ? `${missing.slice(0, 6).join(', ')} +${missing.length - 6} more` : missing.join(', ');
-  return `First reply leaves out the open points from the session start — split by who acts: "n I can handle, shall I?" + "n need you" (up to ${HUMAN_LIST_MAX} named, more offered) + "n handled under a standing approval" when the list has such items; repeats said; the session-start findings (!! lines) counted, each handled now, handed to its owner or named with its blocker. Missing: ${shown}`;
+  return `First reply leaves out the open points from the session start — split by who acts: "n I can handle, shall I?" + "n need you" (up to ${HUMAN_LIST_MAX} named, more offered) + "n handled under a standing approval" when the list has such items; repeats said; the session-start findings counted ("n session-start findings"), said what happens to them, and every operator or loud item of the brief view named (by its id or in plain words). Missing: ${shown}`;
 }
 
 module.exports = { firstTurnOwnsQuestion, mandatedTopics };

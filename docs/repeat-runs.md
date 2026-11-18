@@ -26,6 +26,23 @@ and demands exactly this sequence — read artifacts, declare reuse, or relaunch
 Thresholds are instance data: `.claude/rules/freshness-gate.json` (a scheduled cadence
 sets its per-workflow threshold below the cadence instead of carrying a marker).
 
+**What counts as the last run** (audit-audit 2026-11-10, AA-9): a completed record; a
+record that ended `failed` but wrote its report (a dated report of the workflow for the
+run's date — two of seven deep runs on one brain failed at the script's final check after
+the report stood on disk); and a dated report in the repo without a record on this
+machine (a run on another machine, a pulled brain). The report places the gate reads:
+`docs/research/<workflow>/<anything>-YYYY-MM-DD.md`, `docs/research/<workflow>-YYYY-MM-DD/`
+and `docs/maintenance/<workflow>-YYYY-MM-DD.md` — a workflow that writes elsewhere is
+seen only by its records. A **resumed** run is one run with its earlier attempt: the
+resume rewrites the record with the resumed part's tokens only (measured -58 %), so the
+token floor does not apply to it, and `scripts/run-price.py` adds the earlier attempt's
+agent transcripts to its price.
+
+**Price of a run:** `python3 core/scripts/run-price.py` prints the median tokens per run of
+each deep check from this machine's own records (count and date range with it); a workflow
+without a record is quoted with the old fixed number, marked "fallback". The brain-scan
+head quotes the same.
+
 **A report that recommends its own repeat run is not an assignment.** It is checked
 against the run record: if an agent's prose tally deviates from the machine result,
 `result`/`logs` count, not the prose.

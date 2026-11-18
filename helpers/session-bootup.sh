@@ -336,7 +336,7 @@ fi
 if [[ -n "$BOOT_BG" && -n "$eco_owner" && -f "$HERE/../scripts/pr-ball.py" ]]; then
   gh api graphql -f q="user:$eco_owner is:pr is:open archived:false" -f query='query($q: String!) { viewer { login }
     search(query: $q, type: ISSUE, first: 100) { issueCount nodes { ... on PullRequest {
-      number isDraft body repository { name } author { login }
+      number isDraft mergeStateStatus createdAt body repository { name } author { login }
       commits(last: 1) { nodes { commit { oid committedDate } } }
       reviews(last: 30) { nodes { author { login } state submittedAt body } }
       comments(last: 30) { nodes { author { login } createdAt body } }
@@ -432,6 +432,13 @@ if [[ -f "$HERE/../scripts/ledger-reconcile.py" ]]; then
   # --cached: the previous run's answer now, the next run in the background — the start pays a
   # file read, not the checks (Windows starts already used 18-28 s of the 30 s hook, 2026-10-19).
   CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/ledger-reconcile.py" --root "$R" --cached 2>/dev/null
+fi
+
+# Purchases: one line when an open row of the purchase register is due within 7 days or past, or the register
+# check fails; silent otherwise and in a brain that names no register (operator 2026-11-12, translated: "no
+# purchase with a deadline may get lost"). Reads one CSV, no network.
+if [[ -f "$R/.claude/rules/purchase-register.json" && -f "$HERE/../scripts/product-sources.py" ]]; then
+  CLAUDE_PROJECT_DIR="$R" "$PY" "$HERE/../scripts/product-sources.py" register brief 2>/dev/null
 fi
 
 # Clock: silent unless the system time is off against the outside (one HEAD, 3 s cap,
@@ -562,7 +569,7 @@ fi
 # the public repo; deprecation stubs keep old references working for ONE major
 # release only — warn until the instance has migrated its side.
 if [[ -f CLAUDE.md ]] && grep -q '@core/rules/arbeitsregeln\.md' CLAUDE.md; then
-  echo "!! legacy import: CLAUDE.md imports @core/rules/arbeitsregeln.md — renamed to working-rules.md (stub redirects until the next major); update the import line"
+  echo "!! legacy import: CLAUDE.md imports @core/rules/arbeitsregeln.md — the stub is removed (2.1.6), this import loads NOTHING; change it to @core/rules/working-rules.md"
 fi
 lg=$(grep -lE 'autonomer-lauf|kohaerenz-scan' .claude/rules/*.md 2>/dev/null)
 [[ -n "$lg" ]] && echo "!! legacy skill names (autonomer-lauf -> autonomous-run, kohaerenz-scan -> coherence-scan) still referenced in: ${lg//$'\n'/, } (the redirect stubs are removed — these names no longer load)"
@@ -918,6 +925,17 @@ if (( boot_took * 3 >= boot_limit * 2 )); then
 fi
 [[ -n "${BOOT_PARTS:-}" ]] && rm -f "$BOOT_PARTS"
 # end time budget report
+
+# The findings (top-level `!!` lines) go to their tracked entries (operator order 2026-11-12, translated: "not
+# flooded, nothing lost"): scripts/start-findings.py gives each a stable id, an owner and a session counter in
+# .claude-state/start-findings.json and prints ONE count line, up to three operator items and the loud ones in their
+# place. A hand run (no session id) and BOOTUP_FULL_FINDINGS=1 keep every line here; `start-findings.py list` prints
+# them all. A failed run (or an
+# empty answer) leaves the body as it was — the lines are never lost to a crash.
+if [[ -f "$HERE/../scripts/start-findings.py" ]]; then
+  sf_body=$(printf '%s' "$body" | "$PY" "$HERE/../scripts/start-findings.py" record --root "$R" --hook-input "$HOOK_INPUT" 2>/dev/null) \
+    && [[ -n "$sf_body" ]] && body="$sf_body"
+fi
 
 if (( $(printf '%s' "$body" | wc -c) > CAP )); then
   # The cut keeps the proof lines: the end marker (or abort note) is how session-audit.py tells

@@ -1,4 +1,4 @@
 # German-NAMED paths that may still exist: the LA1 deprecation stubs (renamed
 # 2026-08-14, removed with the next major release). One-way list — entries only
 # ever leave. A new German name anywhere else fails english-only.py directly.
-rules/arbeitsregeln.md
+# (empty since 2026-11-16: rules/arbeitsregeln.md, the last stub, is removed)

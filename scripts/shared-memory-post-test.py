@@ -393,6 +393,45 @@ def main() -> int:
     r = post(Path("o/some-suite"), "request", "--area", "core", "--to", "os:windows", "--title", "x", "--body", "y")
     check("--repo owner/repo (a GitHub repo, no folder) is refused and named as such",
           r.returncode != 0 and "looks like a GitHub repo" in (r.stdout + r.stderr), r.stdout + r.stderr)
+    # A checkout BEHIND its upstream (measured 2026-11-16, macOS instance): the script wrote entry and index pages
+    # onto the stale tree, the commit was refused as behind and the pull refused over the written pages.
+    with tempfile.TemporaryDirectory() as tmp:
+        g = lambda d, *c: subprocess.run(["git", "-C", str(d), *c], capture_output=True, text=True)  # noqa: E731
+        origin, a_dir, b_dir = Path(tmp) / "origin.git", Path(tmp) / "a", Path(tmp) / "b"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], capture_output=True)
+        subprocess.run(["git", "clone", "-q", str(origin), str(a_dir)], capture_output=True)
+        for c in (["config", "user.email", "t@t"], ["config", "user.name", "t"], ["checkout", "-q", "-b", "main"]):
+            g(a_dir, *c)
+        (a_dir / "core").mkdir()
+        (a_dir / "core" / "LOG.md").write_text("# Log\n", encoding="utf-8")
+        (a_dir / "INDEX.md").write_text("# Index\n", encoding="utf-8")
+        (a_dir / "parties.json").write_text(json.dumps({"people": {
+            "kim": {"github": "k", "devices": {"kim-pc": {"os": "windows"}}},
+            "alex": {"github": "a", "devices": {"alex-mac": {"os": "macos"}}}}}), encoding="utf-8")
+        g(a_dir, "add", "-A"); g(a_dir, "commit", "-qm", "seed"); g(a_dir, "push", "-q", "-u", "origin", "main")
+        subprocess.run(["git", "clone", "-q", str(origin), str(b_dir)], capture_output=True)
+        for c in (["config", "user.email", "t@t"], ["config", "user.name", "t"]):
+            g(b_dir, *c)
+        (b_dir / "core" / "other.md").write_text("another instance's entry\n", encoding="utf-8")
+        g(b_dir, "add", "-A"); g(b_dir, "commit", "-qm", "other"); g(b_dir, "push", "-q")
+        r = post(a_dir, "request", "--area", "core", "--to", "alex-mac", "--title", "Behind and clean", "--body", "x")
+        check("behind with a clean tree: the script pulls first, then writes",
+              r.returncode == 0 and (a_dir / "core" / "other.md").is_file()
+              and (a_dir / "core" / f"request-behind-and-clean-{STATE}.md").is_file(), r.stdout + r.stderr)
+        g(a_dir, "add", "-A"); g(a_dir, "commit", "-qm", "own")       # a's own post committed, not pushed
+        (b_dir / "core" / "third.md").write_text("one more\n", encoding="utf-8")
+        g(b_dir, "add", "-A"); g(b_dir, "commit", "-qm", "third"); g(b_dir, "pull", "-q", "--rebase"); g(b_dir, "push", "-q")
+        (a_dir / "core" / "draft.md").write_text("uncommitted\n", encoding="utf-8")
+        before = files(a_dir)
+        r = post(a_dir, "request", "--area", "core", "--to", "alex-mac", "--title", "Behind and dirty", "--body", "x")
+        check("behind with local changes: refused, nothing written",
+              r.returncode != 0 and "behind" in (r.stdout + r.stderr) and files(a_dir) == before, r.stdout + r.stderr)
+        (a_dir / "core" / "draft.md").unlink()                        # clean again, but diverged: ff-only fails
+        before = files(a_dir)
+        r = post(a_dir, "request", "--area", "core", "--to", "alex-mac", "--title", "Behind and diverged", "--body", "x")
+        check("behind and diverged: ff-only refused, the message names `git pull --rebase`",
+              r.returncode != 0 and "git pull --rebase" in (r.stdout + r.stderr) and files(a_dir) == before,
+              r.stdout + r.stderr)
     print("shared-memory-post: all cases pass" if not fails else f"shared-memory-post: {fails} FAILURES")
     return 1 if fails else 0
 

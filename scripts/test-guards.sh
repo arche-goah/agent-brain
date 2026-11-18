@@ -407,11 +407,28 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: a gate through a pipe after a separator" Bash command "cd /r; bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: a gate with its exit code read alone" Bash command "python3 core/scripts/leak-scan.py; echo exit=\$?" allow
   tr_probe "mechanism-guard/core rule: reading a gate script through a pipe" Bash command "git show origin/main:scripts/leak-scan.py | sed -n 1,20p" allow
+  # 2026-11-13, review finding on #448: the commonest shape (stderr merged) and a quoted path with a space
+  tr_probe "mechanism-guard/core rule: a gate with stderr merged through a pipe" Bash command "python3 core/scripts/leak-scan.py 2>&1 | tail -5" block
+  tr_probe "mechanism-guard/core rule: a gate on a quoted path with a space through a pipe" Bash command "python3 \"C:/x y/brain/core/scripts/leak-scan.py\" | tail -5" block
+  tr_probe "mechanism-guard/core rule: a gate with an interpreter flag through a pipe" Bash command "python3 -I core/scripts/leak-scan.py | tail -5" block
+  tr_probe "mechanism-guard/core rule: a gate on its own line through a pipe" Bash command "cd /r
+bash core/scripts/handover-gate.sh | grep FAIL" block
+  tr_probe "mechanism-guard/core rule: a gate through bash's |& (stderr merged)" Bash command "python3 core/scripts/leak-scan.py |& tail -5" block
+  tr_probe "mechanism-guard/core rule: stderr merged, exit code read alone" Bash command "python3 core/scripts/leak-scan.py 2>&1; echo exit=\$?" allow
+  # same class, the two foreground-wait rows: a quoted script path with a space
+  tr_probe "mechanism-guard/core rule: ci-watch on a quoted path with a space in the foreground" Bash command "bash \"C:/x y/brain/core/scripts/ci-watch.sh\" pr o/r 5" block
+  tr_probe "mechanism-guard/core rule: wait script on a quoted path with a space in the foreground" Bash command "bash \"C:/x y/brain/core/scripts/wait-mcp-reconnect.sh\"" block
   # 2026-11-07, ported from instance data: plugin update without a marketplace refresh
   tr_probe "mechanism-guard/core rule: plugin update alone" Bash command "claude plugin update suite@market" block
   tr_probe "mechanism-guard/core rule: plugin update after a separator" Bash command "cd /r && claude plugin update x@m" block
   tr_probe "mechanism-guard/core rule: plugin update after the marketplace refresh" Bash command "claude plugin marketplace update m && claude plugin update x@m" allow
   tr_probe "mechanism-guard/core rule: the phrase inside a message" Bash command "git -C /r commit -m \"docs: say claude plugin update\"" allow
+  # 2026-11-17, ported with core-push-lint.sh: a full push lint per branch (2026-11-11, ten branches, ~2 h queue)
+  tr_probe "mechanism-guard/core rule: full push lint for one branch" Monitor command "bash core/scripts/core-push-lint.sh /x/wt" block
+  tr_probe "mechanism-guard/core rule: full push lint after a separator" Monitor command "echo go; core/scripts/core-push-lint.sh /x/wt" block
+  tr_probe "mechanism-guard/core rule: fast push lint" Monitor command "bash core/scripts/core-push-lint.sh --fast /x/wt" allow
+  tr_probe "mechanism-guard/core rule: full push lint at a train head with the marker" Monitor command "bash core/scripts/core-push-lint.sh /x/wt # MECHANISM-OK: train head train/2026-11-17-a" allow
+  tr_probe "mechanism-guard/core rule: grep in the push lint" Bash command "grep -n FAST core/scripts/core-push-lint.sh" allow
   # class sweep of the same day: waiting scripts by name
   tr_probe "mechanism-guard/core rule: wait-mcp-reconnect in the foreground" Bash command "bash core/scripts/wait-mcp-reconnect.sh touchdesigner" block
   tr_probe "mechanism-guard/core rule: shared-memory-watch in the foreground" Bash command "bash core/scripts/shared-memory-watch.sh watch 300" block
@@ -480,6 +497,10 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: pin read by cat (control)" Bash command "cat m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by sed -n (control)" Bash command "sed -n 1,40p m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by awk (control)" Bash command "awk '/name/' m/.claude-plugin/marketplace.json" allow
+  # Windows review of #533 (2026-11-17): GNU awk edits in place - awk is a reader only without `-i inplace`
+  tr_probe "mechanism-guard/core rule: pin edit by awk -i inplace" Bash command "awk -i inplace '{print}' m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by awk --include=inplace" Bash command "awk --include=inplace '{print}' m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin read by awk -F (control)" Bash command "awk -F: '{print \$1}' m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by diff (control)" Bash command "diff m/.claude-plugin/marketplace.json /tmp/x" allow
   tr_probe "mechanism-guard/core rule: pin read by jq (control)" Bash command "jq .plugins m/.claude-plugin/marketplace.json" allow
   # 2026-11-02: a GET of the remote file through gh api is a read; the same endpoint with a method or field is a write
@@ -626,6 +647,28 @@ if CR=$(resolve mechanism-rules.json); then
   tr_probe "mechanism-guard/core rule: osascript reads the URL (control)" Bash command "osascript -e 'tell application \"Safari\" to get URL of current tab of window 1'" allow
   tr_probe "mechanism-guard/core rule: tabs through product-sources (control)" Bash command "python3 core/scripts/product-sources.py open list.csv" allow
   tr_probe "mechanism-guard/core rule: a plain \$VAR (control)" Bash command 'bash -c \"echo $HOME\"' allow
+  # 2026-11-12 (macOS instance): one list, ten timestamped copies and five CSVs side by side - one purchase register.
+  tr_probe "mechanism-guard/purchase register: no register declared, a new list passes (control)" Write file_path "docs/shopping-list-v2.md" allow
+  mkdir -p "$TR/proj/.claude/rules" "$TR/proj/docs/buy"
+  printf '%s' '{"register":"docs/buy/register.csv","list_patterns":["shopping[-_ ]?list","einkaufsliste"]}' > "$TR/proj/.claude/rules/purchase-register.json"
+  : > "$TR/proj/docs/old-shopping-list.md"
+  tr_probe "mechanism-guard/purchase register: a new list file by Write" Write file_path "docs/shopping-list-v2.md" block
+  tr_probe "mechanism-guard/purchase register: a dated copy, instance word, any case" Write file_path "$(native "$TR")/x/Einkaufsliste_2026-11-04_final.txt" block
+  tr_probe "mechanism-guard/purchase register: a list by shell redirect" Bash command "printf 'a' > docs/einkaufsliste-neu.csv" block
+  tr_probe "mechanism-guard/purchase register: a list as the target of cp" Bash command "cp docs/buy/register.csv /tmp/shopping_list.csv" block
+  tr_probe "mechanism-guard/purchase register: the register itself (control)" Write file_path "docs/buy/register.csv" allow
+  tr_probe "mechanism-guard/purchase register: an existing list is edited (control)" Edit file_path "docs/old-shopping-list.md" allow
+  tr_probe "mechanism-guard/purchase register: reading a list (control)" Bash command "cat docs/old-shopping-list.md" allow
+  tr_probe "mechanism-guard/purchase register: a list moved away, source only (control)" Bash command "mv docs/einkaufsliste.md docs/archive/" allow
+  tr_probe "mechanism-guard/purchase register: the word in a commit message (control)" Bash command "git commit -m 'drop the shopping-list file' -- a.txt" allow
+  # Windows review on #521: PowerShell cmdlets write files without a redirect, and an append to an existing list passes.
+  tr_probe "mechanism-guard/purchase register: a new list by Out-File" PowerShell command "'a' | Out-File docs\\einkaufsliste-ps.md" block
+  tr_probe "mechanism-guard/purchase register: a new list by Set-Content -Path" PowerShell command "Set-Content -Path docs\\shopping-list-ps.md -Value a" block
+  tr_probe "mechanism-guard/purchase register: a new list by New-Item" PowerShell command "New-Item -ItemType File docs/einkaufsliste-neu.md" block
+  tr_probe "mechanism-guard/purchase register: a list as Copy-Item -Destination" PowerShell command "Copy-Item docs/buy/register.csv -Destination C:/tmp/shopping_list.csv" block
+  tr_probe "mechanism-guard/purchase register: an append to an existing list (control)" Bash command "echo a >> docs/old-shopping-list.md" allow
+  tr_probe "mechanism-guard/purchase register: Add-Content to an existing list (control)" PowerShell command "Add-Content -Path docs\\old-shopping-list.md -Value a" allow
+  rm -f "$TR/proj/.claude/rules/purchase-register.json"
   out=$(printf '{"tool_name":"Bash","tool_input":{"command":"bash core/scripts/ci-watch.sh pr o/r 5","run_in_background":true}}' \
         | CLAUDE_PROJECT_DIR="$(native "$TR/proj")" HOME="$TR/fakeuser" USERPROFILE="$(native "$TR/fakeuser")" node "$(resolve helpers/mechanism-guard.cjs)" 2>&1)
   if printf '%s' "$out" | grep -aq '"permissionDecision": *"deny"'; then

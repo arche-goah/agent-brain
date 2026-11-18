@@ -224,6 +224,29 @@ git_q -C "$SUITE" checkout -q work
 out="$(run4)"
 hasnt "no neighbour FAIL for a branch nobody works on" "FAIL neighbour" "$out"
 
+# Measured 2026-11-12: six commits on a project repo's main that only leaves by PR went unnoticed,
+# then rode along on a new branch. The main is judged against origin/main, whatever is checked out.
+echo "negative control 4: a local main equal to origin/main stays silent"
+git_q -C "$SUITE" branch -f main origin/main
+out="$(run4)"
+hasnt "no main-ahead line for a main at origin/main" "ahead of origin/main" "$out"
+echo "positive control 3: local main ahead of origin/main while another branch is checked out"
+git_q -C "$SUITE" checkout -q main; : > "$SUITE/on-main.py"; git_q -C "$SUITE" add -A; git_q -C "$SUITE" commit -qm "on main"
+git_q -C "$SUITE" checkout -q work
+out="$(run4)"
+has "FAIL line names the main that is ahead" "FAIL neighbour repo my-suite: local main is 1 commit(s) ahead of origin/main" "$out"
+# Windows review of #520 (2026-11-13): the way out names its last step, and the close only NAMES it - it never runs it
+has "the way out names moving main back" "git branch -f main origin/main" "$out"
+has "the close did not move the local main" "1" "$(git -C "$SUITE" rev-list --count origin/main..main)"
+has "HANDOFF carries it" "Neighbour repo my-suite: main ahead" "$(cat "$B4/.claude/HANDOFF.md")"
+echo "positive control 4: still FAIL after those commits rode out on a new branch"
+git_q -C "$SUITE" push -q origin main:refs/heads/feat/rode
+out="$(run4)"
+has "the main is still ahead of origin/main" "local main is 1 commit(s) ahead of origin/main" "$out"
+git_q -C "$SUITE" branch -f main origin/main
+out="$(run4)"
+hasnt "back at origin/main: silence" "FAIL neighbour" "$out"
+
 echo "~ in a recorded path resolves against HOME"
 echo "again" >> "$SUITE/tool.py"
 printf '{"repos":{"my-suite":{"path":"~/suite"}}}\n' > "$B4/config/ecosystem.json"
@@ -291,6 +314,19 @@ echo "the hook path never folds, threshold or not"
 seed_log
 (cd "$B3" && printf '{"session_id":"H","hook_event_name":"SessionEnd"}' | CLAUDE_PROJECT_DIR="$B3" SHARED_MEMORY_REPO="$TMP/nowhere" SESSION_LOG_FOLD_MAX_BYTES=600 bash "$CLOSING" >/dev/null 2>&1)
 hasnt "no FOLD marker from the hook" "- FOLD " "$(cat "$LOG3")"
+
+echo "invariant register: the close reads its drift and absorbs it into the baseline (2026-11-16)"
+B6="$TMP/brain6"; mkdir -p "$B6/.claude" "$B6/docs/maintenance" "$B6/src"
+git -C "$B6" init -q 2>/dev/null
+printf 'X()\n' > "$B6/src/a.py"; printf 'X()\n' > "$B6/src/b.py"
+printf 'root: ../..\n\n## K-1 — X must not spread\ninvariant: no X\npattern: X\\(\\)\npaths: --include=*.py src\nknown: src/a.py=1\nstatus: open\n' > "$B6/docs/maintenance/invariants.md"
+out6=$( (cd "$B6" && CLAUDE_PROJECT_DIR="$B6" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" --pre-commit --session I 2>&1 </dev/null) )
+has "close names the drift it read" "NEW site: src/b.py" "$out6"
+has "close says it absorbed it" "1 drift line(s) read and absorbed" "$out6"
+has "baseline now holds today's count" "known: src/a.py=1 src/b.py=1" "$(cat "$B6/docs/maintenance/invariants.md")"
+has "the close line in the session log names it" "invariants: 1 drift line(s) absorbed" "$(tail -1 "$B6/docs/maintenance/session-log.md")"
+out6=$( (cd "$B6" && CLAUDE_PROJECT_DIR="$B6" SHARED_MEMORY_REPO="$TMP/nowhere" bash "$CLOSING" --pre-commit --session I2 2>&1 </dev/null) )
+hasnt "negative control: no drift, no register line" "invariant register:" "$out6"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "test-session-closing: all checks passed"; exit 0; fi

@@ -66,6 +66,11 @@ Monitor({ command: "bash core/scripts/collab-watch.sh",
   folder, then pass from EVERY party — the operator's other machine included. Without it a
   one-collaborator scope drops the other own machine's PRs in the very repo the session owns
   (measured 2026-10-11).
+- **Several sessions, one topic each: each arms with its own `COLLAB_WATCH_SHOW="<regex>"`**
+  (e.g. `3d-print|3d-printing/`, `agent-brain|core/`). It filters only what THIS session is told;
+  `NOTE:`/`ERROR:` always pass, `events.log` keeps every line, so a holder with one topic does not
+  starve a follower with another. Unlike `COLLAB_WATCH_SCOPE` it drops nothing for good (2026-11-12:
+  the 3D session held the watch and was woken by ~14 grandMA and core events).
 - **Leaving an item to another session is a hand-over, delivered to THAT session.** When
   several sessions on one machine split the work by topic, an item one of them declines goes
   to the session that owns the topic (session message, or a shared-memory note in its topic
@@ -98,7 +103,7 @@ opt-out and holds for that session only.
 1. **Review with evidence chain.** Read diff, PR text and the WHOLE thread (comments carry
    the history, not only `reviews`). **Judge the content, not only the function** (operator
    order 2026-11-10): how is it built, does it fit the whole, does something already do it —
-   the review carries `Fit:` / `Design:` / `Cost:` / `Model:` (`docs/content-review.md`), on at
+   the review carries `Fit:` / `Design:` / `Cost:` / `Gaps:` / `Model:` (`docs/content-review.md`), on at
    least the model family the PR's risk needs (`pr-risk.json`; below it, hand the review to an
    agent or session on that family); `helpers/content-review-gate.cjs` holds approval and merge
    without it. Split every claim: measured / derived / assumed. Take

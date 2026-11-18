@@ -173,6 +173,12 @@ const REPLAY_LINE = /^[ \t>*_-]*replay:[ \t]*(?!pending)([^\n]*)/imu;
 const COUNT = /\b\d+\s*(?:of\s+\d+|[a-zÀ-ɏ]{2,})/i;
 const NOT_A_COUNT = /\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?Z?)?|\b\d{1,2}:\d{2}\b|\bv?\d+(?:\.\d+)+\b|\b(?:after|in|for|since|within|every)\s+\d+\s+\w+/gi;
 const hasCount = (line) => COUNT.test(line.replace(NOT_A_COUNT, ''));
+// A replay that cannot run yet says so with its reason and the day it is re-checked (root-cause review 2026-11-16:
+// "pending", "not run", "open" stood in entries for weeks with no day to come back). `none - <why> - recheck <date>`.
+// The word `recheck` stands right before the date (Windows review 2026-11-17: "none - looked once on 2025-01-01"
+// passed, any date after twelve characters counted).
+const NONE_WITH_RECHECK = /^\s*none\b[\s\S]{4,}?\brecheck\s+\d{4}-\d{2}-\d{2}\b/i;
+const replayOk = (line) => hasCount(line) || NONE_WITH_RECHECK.test(line);
 // A PR or issue number names the instance; a core rule number ("Working Rule #10") is the rule itself (same review).
 const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|\b(?:PR|issue|pull)s?\s*#?\d+\b|\b[\w.-]+#\d+\b|(?:^|[\s(])#\d{3,}\b|\b\w+\.(cjs|js|py|sh|json|md)\b/iu;
 function newestEntry(all) {
@@ -207,7 +213,8 @@ function entryGaps(writeTexts, rel, forbidden, cwd) {
   if (!inv) gaps.push('the register entry names no invariant:');
   else if (INSTANCE_WORD.test(inv[1]) || forbidden.test(inv[1])) gaps.push('the invariant: names the instance (a path, a number, a proper noun) - say the rule, not the case');
   const rep = REPLAY_LINE.exec(text);
-  if (!rep || !hasCount(rep[1])) gaps.push('the register entry has no replay: count (a date is no count)');
+  if (!rep || !replayOk(rep[1])) gaps.push('the register entry has no replay: count (a date is no count; '
+    + '"none - <why> - recheck <YYYY-MM-DD>" when it cannot run yet)');
   return gaps;
 }
 
@@ -468,6 +475,23 @@ function gate(input) {
   if (fired && (fires >= 2 || causeIn(preEcho, causeRx) || !cause)) return;
   const hit = fired ? null : firstCorrection(group, cwd, input.transcript_path,
     loadPatterns(cwd, 'correction_patterns', BUILTIN_CORRECTION, 'iu'), causeRx);
+  // A register entry is judged whenever it is written, not only in the turn that names the cause (root-cause review
+  // 2026-11-16, class "instance fixed, class never searched": entries written in a later turn or taken over from a
+  // delegated agent kept "replay: pending" for weeks - the check ran only behind `if (cause)`). One block per turn.
+  if (!cause && !fired) {
+    const reg = registerPath(cwd);
+    const gaps = writesTo(writes, reg)
+      ? entryGaps(writeTexts, reg, loadPatterns(cwd, 'invariant_forbidden', ['(?!)'], 'iu'), cwd) : [];
+    if (gaps.length) {
+      process.stdout.write(JSON.stringify(declare({
+        decision: 'block',
+        reason: `ROOT-CAUSE-GATE: this turn writes ${reg} - ${gaps.join(', ')}. An entry is a class entry: invariant `
+          + '(the broken rule without the instance\'s names) and replay (the invariant run over the history, with its '
+          + 'count; when it cannot run yet: "none - <why> - recheck <YYYY-MM-DD>"). Complete the entry, then end the turn.',
+      }, input)));
+      return;
+    }
+  }
   if (cause) {
     const reg = registerPath(cwd);
     const mech = writes.some(isMechanismWrite)

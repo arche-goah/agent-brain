@@ -7,7 +7,7 @@ next to an existing one that already covered half of it, a reader fixed where th
 Operator order 2026-11-10: ask it in small portions, on every PR, on every side.
 
 `helpers/content-review-gate.cjs` holds an approval (`gh pr review --approve`) and a merge (`gh pr merge`)
-until a review carries the three lines below, each with a real answer. A merge needs that review from an
+until a review carries the four lines below, each with a real answer. A merge needs that review from an
 instance other than the author's. An OS review posted as a comment on another instance's PR is held at
 posting until it carries them too, plus `Model:` — each on a line of its own; a summary like
 `fit: yes, design: partly, cost: low` is not counted (agent-brain #473, 2026-11-12).
@@ -16,6 +16,7 @@ posting until it carries them too, plus `Model:` — each on a line of its own; 
 Fit:    <answer>
 Design: <answer>
 Cost:   <answer>
+Gaps:   <answer>
 ```
 
 ## Fit — does it belong, and does it already exist?
@@ -41,6 +42,25 @@ Cost:   <answer>
 - What does it add to always-loaded context, to a run's tokens, to a session's wait?
 - A new gate: what is its frequency design, its escape, and which existing check does it weaken or make
   ritual (a gate that fires on every hit with no quiet period trains people to override it)?
+
+## Gaps — what did you try in order to break it?
+
+Operator order 2026-11-15: the reviewer probes the change for gaps on purpose, as part of the review, not only
+when asked. Fit, Design and Cost ask whether a change is the RIGHT one; this asks whether it HOLDS. Measured
+that day on agent-brain #533: fixtures green on Windows and macOS, and twelve write forms of a pin rule probed by
+hand — six newly passed what main had held. The fixtures had been added in one direction only.
+
+- Feed it the inputs its fixtures do not hold: the other direction (a rule that now lets reads pass — do the
+  writes still block?), edge cases (empty, zero, a still file, a path with a space, the other OS's form), and
+  the bypasses a reader of the pattern would try.
+- Run the same probes against `main`: what the change newly lets through is a regression, what passed before
+  too is an old gap — say both apart.
+- A claim in the body marked "not verified" is the first thing to verify where your machine can.
+- The answer names what was tried and what came out. "Docs only, nothing runs differently" is an answer for a
+  PR with no behaviour; "looks fine" is not.
+
+A review posted before 2026-11-16 counts without the `Gaps:` line (`GAPS_FROM` in the gate), so open PRs keep
+the reviews they have.
 
 An answer may be short; it may not be empty. "Nothing found" is an answer when it names where you looked.
 

@@ -25,6 +25,7 @@ cp "$(dirname "$SRC")/shared_answers.py" "$T/core/scripts/shared_answers.py"
 cp "$(dirname "$SRC")/shared_channels.py" "$T/core/scripts/shared_channels.py"
 cp "$(dirname "$SRC")/ledger-reconcile.py" "$T/core/scripts/ledger-reconcile.py"
 cp "$(dirname "$SRC")/eco_owner.py" "$T/core/scripts/eco_owner.py"
+cp "$(dirname "$SRC")/merge_ready.py" "$T/core/scripts/merge_ready.py"
 # The work-ledger registry: empty here (registered nothing on purpose); the ledger cases below
 # use their own root.
 mkdir -p "$T/root/.claude/rules"; printf '%s\n' '{"ledgers": []}' > "$T/root/.claude/rules/ledgers.json"
@@ -217,6 +218,27 @@ has "waiting on mac: core is mac's to merge" "$(line 'core#15 ' "$(instrun i3 ws
 printf '%s\n' '{"repos":{"core":{"owner":"mac"}}}' > "$T/repo/repo-owners.json"
 has "[PR|ai]" "$(line 'core#15 ' "$(instrun i4 ws)")" && ok "negative control: a shared owner entry without its source is not read" || bad "shared owner without source: $(line 'core#15 ' "$(instrun i4 ws)")"
 rm -f "$T/repo/repo-owners.json"
+# Ready to merge (measured 2026-11-13, grandma3-suite #204): another login's PR in a repo the
+# owners map gives to that login, our look after its last commit, macOS AND Windows OK at the head,
+# CLEAN - whoever comes first merges (collab-watch step 4), so it is our move, not a wait.
+# Negative controls: only one OS at the head, a draft, an OK at an older head.
+mkdir -p "$T/core/helpers"; cp "$(dirname "$SRC")/../helpers/os-review.cjs" "$T/core/helpers/os-review.cjs"
+readyrun() { # $1 session, $2 isDraft, $3 Windows comment sha, $4 mergeable
+  local cm="{\"author\":{\"login\":\"me\"},\"createdAt\":\"2026-10-07T10:00:00Z\",\"body\":\"<!-- instance-key: $KMAC -->\\n**macOS OK at head \`abc1234\`**\"}"
+  local cw="{\"author\":{\"login\":\"me\"},\"createdAt\":\"2026-10-08T10:00:00Z\",\"body\":\"<!-- instance-key: $KWS -->\\nWindows OK at head $3.\"}"
+  printf '{"data":{"viewer":{"login":"me"},"search":{"issueCount":1,"nodes":[{"number":18,"title":"t18","isDraft":%s,"mergeStateStatus":"%s","createdAt":"2026-10-06T10:00:00Z","body":"","author":{"login":"peer"},"repository":{"name":"owned"},"reviewRequests":{"nodes":[]},"latestReviews":{"nodes":[]},"commits":{"nodes":[{"commit":{"oid":"abc1234def","committedDate":"2026-10-06T11:00:00Z"}}]},"comments":{"nodes":[%s,%s]}}]}}}\n' \
+    "$2" "$4" "$cm" "$cw" > "$T/prs-ready.json"
+  OPEN_ITEMS_PR_FIXTURE="$(native "$T/prs-ready.json")" SHARED_MEMORY_SELF=mac OWNER=me run "$1"
+}
+if command -v node >/dev/null 2>&1; then
+  r=$(line 'owned#18 ' "$(readyrun r1 false abc1234 CLEAN)")
+  has "[PR|ai]" "$r" && has "merge it, whoever comes first" "$r" && ok "both OS OK at the head, CLEAN = our move to merge" || bad "merge-ready: $r"
+  has "waiting on peer" "$(line 'owned#18 ' "$(readyrun r2 false 0000000 CLEAN)")" && ok "negative control: Windows OK at an older head = still waiting" || bad "older head: $(line 'owned#18 ' "$(readyrun r2 false 0000000 CLEAN)")"
+  has "waiting on peer" "$(line 'owned#18 ' "$(readyrun r3 true abc1234 CLEAN)")" && ok "negative control: a draft = still waiting" || bad "draft: $(line 'owned#18 ' "$(readyrun r3 true abc1234 CLEAN)")"
+  has "waiting on peer" "$(line 'owned#18 ' "$(readyrun r4 false abc1234 BLOCKED)")" && ok "negative control: BLOCKED = still waiting" || bad "conflict: $(line 'owned#18 ' "$(readyrun r4 false abc1234 BLOCKED)")"
+else
+  echo "  SKIP merge-ready cases: no node on this machine (the reader is os-review.cjs)"
+fi
 cp "$T/oi-saved.json" "$T/root/.claude/rules/open-items.json"
 rm -f "$T/repo/parties.json"
 # The check was answered in the shared memory, not on the PR (measured 2026-10-11: two
@@ -523,6 +545,28 @@ has "[ledger|ai] 2026-10-25 mine-thing" "$out" && bad "green entry still listed 
 out=$(run "" "$L")
 has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ! has "tick it" "$out" \
   && ok "a result older than the ledger counts nothing (negative control)" || bad "stale result still ticks: $out"
+rm -f "$L/.claude-state/ledger-reconcile.json"
+# 2026-11-17 (macOS instance): an operator decision whose check was green from its first run stood as "needs you"
+# although the answer was applied the day before. reconcile names it UNPROVEN; open-items gives it to the agent.
+printf '%s\n' '' '- [ ] Settled by the operator yesterday' '  id: settled-thing' '  class: decision' \
+  '  exit: operator-decision 2026-10-25 — the operator words it' >> "$L/docs/x/open.md"
+out=$(run "" "$L")
+has "[ledger|human] 2026-10-25 settled-thing" "$out" && ok "operator decision without a reconcile result stays human (control)" \
+  || bad "operator decision: $(line ' settled-thing ' "$out")"
+ln=$(grep -n 'Settled by the operator' "$L/docs/x/open.md" | cut -d: -f1)
+"$PY" -c 'import json,sys,time; json.dump({"at": time.time() + 5, "done_open": [], "unproven": [{"ledger": "docs/x/open.md", "line": int(sys.argv[2]), "id": "settled-thing"}]}, open(sys.argv[1], "w", encoding="utf-8"))' \
+  "$(native "$L/.claude-state/ledger-reconcile.json")" "$ln"
+out=$(run "" "$L")
+has "[ledger|ai] 2026-10-25 settled-thing" "$out" && has "its check is green although the box is open" "$out" \
+  && ok "a green-from-birth check moves an operator decision to the agent" || bad "green decision: $(line ' settled-thing ' "$out")"
+# the way back (Windows review 2026-11-17): the agent read the record, the answer is not in - the operator's again
+"$PY" -c 'import sys; p=sys.argv[1]; s=open(p,encoding="utf-8").read(); s=s.replace("  exit: operator-decision 2026-10-25 — the operator words it", "  exit: operator-decision 2026-10-25 — the operator words it\n  record-read: 2026-10-26 answer not in the record"); open(p,"w",encoding="utf-8").write(s)' "$(native "$L/docs/x/open.md")"
+ln=$(grep -n 'Settled by the operator' "$L/docs/x/open.md" | cut -d: -f1)
+"$PY" -c 'import json,sys,time; json.dump({"at": time.time() + 5, "done_open": [], "unproven": [{"ledger": "docs/x/open.md", "line": int(sys.argv[2]), "id": "settled-thing"}]}, open(sys.argv[1], "w", encoding="utf-8"))' \
+  "$(native "$L/.claude-state/ledger-reconcile.json")" "$ln"
+out=$(run "" "$L")
+has "[ledger|human] 2026-10-25 settled-thing" "$out" && has "record read, answer not in" "$out" \
+  && ok "record-read sends a green-from-birth decision back to the operator" || bad "way back: $(line ' settled-thing ' "$out")"
 rm -f "$L/.claude-state/ledger-reconcile.json"
 
 # 2026-10-28 (macOS instance, 95 ledger rows): the shown date was the first date anywhere in the
