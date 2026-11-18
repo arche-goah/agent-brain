@@ -76,6 +76,14 @@
       "mode": "record"
     },
     {
+      "label": "DERIVED",
+      "marker": "DERIVED-CARRY",
+      "cmd": "core/helpers/derived-carry-gate.cjs",
+      "mode": "record",
+      "short": "A claim marked as derived comes back as a fact",
+      "_note": "Carrier of rule 0 (measured / derived / assumed apart) across replies. Shipped as a recorder; blocking is the operator's decision per brain, like the time gate."
+    },
+    {
       "label": "TIME",
       "marker": "TIME-GATE",
       "cmd": "core/helpers/time-gate.cjs",
