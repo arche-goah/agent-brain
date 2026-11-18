@@ -1170,7 +1170,7 @@ pattern:   publishedText\(|nativePath\(
 paths:     --include=*.cjs helpers
 known:     helpers/content-review-gate.cjs=3
 known:     helpers/instance-key-gate.cjs=3
-known:     helpers/public-text-guard.cjs=2
+known:     helpers/public-text-guard.cjs=3
 known:     helpers/pr-repo.cjs=1
 known:     helpers/published-text.cjs=4
 known:     helpers/review-claim-gate.cjs=2

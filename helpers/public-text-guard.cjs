@@ -101,7 +101,7 @@ function watchList(root) {
 // backticks: there the quoted text is read as a command too (before this, `bash -c "git commit -m x"` passed
 // the author check: the anchor wanted whitespace or a separator before `git`, and found a quote).
 const { segments } = require('./shell-segments.cjs');
-const RUNS_QUOTED = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-c\b|\beval\b|\$\(|`/;
+const RUNS_QUOTED = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-[a-z]*c[a-z]*\b|\beval\b|\$\(|`/;
 const QUOTED = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
 
 // Each command text as { judge, raw }: `judge` has its quoted parts emptied (what decides whether it is a write),
@@ -111,7 +111,7 @@ const QUOTED = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
 // quoted probe argument (`pr_probe "…" "gh pr create -R o/lab --fill"`) into a command). Read as commands: the body
 // of each `$( … )` and each backtick pair, anywhere (also inside double quotes), and the quoted parts of a segment
 // whose OWN command is `sh -c` / `eval`. A quoted argument of any other command stays data.
-const RUNNER = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-c\b|\beval\b/;
+const RUNNER = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-[a-z]*c[a-z]*\b|\beval\b/; // `-c`, also combined (`-lc`, `-ec`)
 // The shell's own reading, char by char: nothing runs inside single quotes, a backslash makes the next char text
 // (outside single quotes), `$(` and a backtick run their body outside quotes and inside double quotes.
 function substitutions(cmd) {
@@ -145,12 +145,18 @@ function substitutions(cmd) {
   }
   return out;
 }
-function commandParts(cmd) {
-  const outside = segments(cmd).map((s) => ({ judge: s.replace(QUOTED, '""').trim(), raw: s.trim() }));
-  if (!RUNS_QUOTED.test(cmd)) return outside;
+// The texts the shell runs inside the command: `$( )` / backtick bodies and the quoted text of an `sh -c` / `eval`
+// segment. Their published text is read too (review of this PR, the Windows instance 2026-11-18: a named post run
+// through `bash -c '…'` or `echo "$(…)"` was judged a write, but its body was read from the outer command only).
+function ranTexts(cmd) {
+  if (!RUNS_QUOTED.test(cmd)) return [];
   const ran = substitutions(cmd);
   for (const s of segments(cmd)) if (RUNNER.test(s.replace(QUOTED, '""'))) ran.push(...[...s.matchAll(QUOTED)].map((m) => m[0].slice(1, -1)));
-  return [...outside, ...ran.flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
+  return ran;
+}
+function commandParts(cmd) {
+  const outside = segments(cmd).map((s) => ({ judge: s.replace(QUOTED, '""').trim(), raw: s.trim() }));
+  return [...outside, ...ranTexts(cmd).flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
 }
 const commandTexts = (cmd) => commandParts(cmd).map((p) => p.judge);
 
@@ -349,6 +355,10 @@ function gate(input, script) {
       try { scan(fs.readFileSync(resolveFrom(cwd, f), 'utf8'), f); } catch (e) { unreadable.push(`file ${f} (cannot be read by the guard)`); }
     }
   };
+  for (const t of ranTexts(cmd)) {
+    const inner = publishedText(t, ps);
+    if (inner) { inner.texts.forEach((x) => scan(x, 'the published text (run by sh -c, eval or $( ))')); readFiles(inner.files); }
+  }
   if (pub) {
     pub.texts.forEach((t) => scan(t, 'the published text'));
     readFiles(pub.files);

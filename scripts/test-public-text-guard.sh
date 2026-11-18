@@ -265,6 +265,12 @@ if [ -f "$ROOT/scripts/test-review-claim-gate.sh" ]; then
 fi
 cp "$SC/named.sh" "$SC/probes-post.sh"; printf '%s\n' 'n="$(date)"' 'probe "x" "gh api -X POST repos/o/r/issues -f body=y"' >> "$SC/probes-post.sh"
 expect "a real post beside probe arguments still blocks (control)" block "$T" "bash $NT/scripts/probes-post.sh 5"
+# A named post the shell RUNS is read with its text (review of #615, the Windows instance: all of these passed before)
+expect "a named post through bash -c blocks"                 block "$T" "bash -c 'gh pr comment 1 -R o/pub --body \"thanks zorbalina\"'"
+expect "a named post through bash -lc blocks"                block "$T" "bash -lc 'gh pr comment 1 -R o/pub --body \"thanks zorbalina\"'"
+expect "a named post through sh -ec blocks"                  block "$T" "sh -ec 'gh pr comment 1 -R o/pub --body \"thanks zorbalina\"'"
+expect "a named post inside \$( ) in double quotes blocks"    block "$T" 'echo "$(gh pr comment 1 -R o/pub --body "thanks zorbalina")"'
+expect "a clean post through bash -c passes (control)"       allow "$T" "bash -c 'gh pr comment 1 -R o/pub --body \"thanks\"'"
 expect "a script path the guard cannot expand blocks (unknown target)" block "$T" 'bash "$NOSUCHDIR/named.sh" 5'
 expect "the same unreadable script from a private clone passes" allow "$T/privclone" 'bash "$NOSUCHDIR/named.sh" 5'
 
