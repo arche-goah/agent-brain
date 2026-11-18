@@ -228,6 +228,15 @@ mode "the model reads an ask the words miss: the run ends" "$f" "$IC" interactiv
 printf '%s\n' '{"at":"2026-11-01T07:53:44Z","session":"sess-g","mode":"hook","prompt":"go on, give me what you have collected","model":{}}' > "$IC/.claude-state/intent-classifier.jsonl"
 mode "a record without readable fields falls back to the words" "$f" "$IC" autonomous
 
+# A record written BEFORE the prompt's transcript record (2026-11-18, macOS instance): typed while the agent worked,
+# classified at submit (06:39:22), written to the transcript when the next turn began (06:39:31).
+ireco() { printf '{"at":"%s","session":"%s","mode":"hook","prompt":%s,"model":{"asks_open":false,"mode_on":false,"mode_off":%s,"correction":true}}\n' "$1" "$2" "$(js "$3")" "$4"; }
+f="$T/sess-h.jsonl"; { tuser 2026-11-18T06:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-18T06:39:31Z "switch back to interactive now, autonomous was never wanted"; } > "$f"
+ireco 2026-11-18T06:39:22Z sess-h "switch back to interactive now, autonomous was never wanted" true > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a record written before the prompt's transcript record, same text, still decides" "$f" "$IC" interactive
+ireco 2026-11-18T06:39:22Z sess-h "something else entirely" true > "$IC/.claude-state/intent-classifier.jsonl"
+mode "an earlier record of another text does not count (control)" "$f" "$IC" autonomous
+
 # initial_mode: a brain whose operator wants every session autonomous until asked (measured
 # 2026-11-01, macOS instance: a start prompt "status?" with no on-word left the session interactive,
 # and a mid-run question reached the operator who believed the run autonomous).
