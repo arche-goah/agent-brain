@@ -110,11 +110,28 @@ function wordVerdict(text) {
     orders_task: t(rxOf('start-report-patterns.json', 'order_patterns', 'i')) };
 }
 
+/** The command that starts `bin`, without a shell. A .cjs/.js stub runs through node (the fixture's stand-in for the
+ *  model on every OS). On Windows an npm install leaves `claude.cmd`, which spawnSync cannot start without a shell
+ *  (Windows review of #594, 2026-11-18: `spawnSync('claude')` returned ENOENT, every record was `model: null`, silently);
+ *  so a `claude.exe` on PATH wins, and otherwise the shim's own target runs: node with the cli.js next to the .cmd. */
+function resolveBin(bin, platform = process.platform, pathEnv = process.env.PATH || '') {
+  if (/\.c?js$/.test(bin)) return [process.execPath, [bin]];
+  if (platform !== 'win32' || /[\\/]/.test(bin) || /\.(exe|cmd)$/i.test(bin)) return [bin, []];
+  const dirs = pathEnv.split(path.delimiter).filter(Boolean);
+  for (const d of dirs) { const exe = path.join(d, `${bin}.exe`); if (fs.existsSync(exe)) return [exe, []]; }
+  for (const d of dirs) {
+    if (!fs.existsSync(path.join(d, `${bin}.cmd`))) continue;
+    const cli = path.join(d, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+    if (fs.existsSync(cli)) return [process.execPath, [cli]];
+  }
+  return [bin, []];
+}
+
 function modelVerdict(text) {
   const args = ['-p', '--model', MODEL, '--settings', '{"disableAllHooks": true}'];
   // a .cjs/.js stub runs through node - the fixture's stand-in for the model on every OS (no shebang on Windows)
-  const js = /\.c?js$/.test(BIN);
-  const r = spawnSync(js ? process.execPath : BIN, js ? [BIN, ...args] : args, {
+  const [cmd, pre] = resolveBin(BIN);
+  const r = spawnSync(cmd, [...pre, ...args], {
     input: INSTRUCTION + text.slice(0, 4000), encoding: 'utf8', timeout: 60000, cwd: os.tmpdir(),
     env: { ...process.env, INTENT_CLASSIFIER_CHILD: '1' },
   });
@@ -186,7 +203,7 @@ function answerText(inp) {
   }).join('\n\n');
 }
 
-module.exports = { wordVerdict, modelVerdict, differ, prompts, answerText };
+module.exports = { resolveBin, wordVerdict, modelVerdict, differ, prompts, answerText };
 
 if (require.main === module) {
   const a = process.argv.slice(2);

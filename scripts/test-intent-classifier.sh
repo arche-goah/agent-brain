@@ -65,5 +65,15 @@ for p in '<task-notification>\n<task-id>x</task-id> done</task-notification>' '<
 done
 [ "$n1" = "$(lines)" ] && ok "a background notice and a peer message are not classified" || bad "a notice wrote a line"
 
+# Windows review of #594 (2026-11-18): an npm install leaves claude.cmd, which spawnSync cannot start without a shell
+WB="$T/winbin"; mkdir -p "$WB/node_modules/@anthropic-ai/claude-code"; : > "$WB/claude.cmd"; : > "$WB/node_modules/@anthropic-ai/claude-code/cli.js"
+r="$(node -e 'const {resolveBin}=require(process.argv[1]);const [c,a]=resolveBin("claude","win32",process.argv[2]);process.stdout.write((c===process.execPath?"node":c)+" "+a.join(" "))' "$H" "$WB")"
+case "$r" in "node "*cli.js) ok "win32 npm shim: node runs the cli.js next to claude.cmd";; *) bad "win32 npm shim resolved to: $r";; esac
+: > "$WB/claude.exe"
+r="$(node -e 'const {resolveBin}=require(process.argv[1]);process.stdout.write(resolveBin("claude","win32",process.argv[2])[0])' "$H" "$WB")"
+case "$r" in *claude.exe) ok "win32: claude.exe on PATH wins";; *) bad "win32 exe resolved to: $r";; esac
+r="$(node -e 'const {resolveBin}=require(process.argv[1]);process.stdout.write(resolveBin("claude","darwin","/nowhere")[0])' "$H")"
+[ "$r" = claude ] && ok "other OS: the bare name" || bad "darwin resolved to: $r"
+
 [ $fail -eq 0 ] && echo "intent-classifier: all passed" || echo "intent-classifier: FAILED"
 exit $fail
