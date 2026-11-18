@@ -18,7 +18,7 @@
  * Markers: English built-ins; every other language is DATA in `.claude/rules/derived-patterns.json`
  * ({"derived_markers": ["..."]}), missing file = English only.
  * Mode: shipped as a recorder in the stop-checks template (a brain turns it to block on its operator's word, like
- * the time gate); one hit per turn; the reason names both sentences.
+ * the time gate). Frequency design: one hit per turn; the reason names both sentences.
  */
 'use strict';
 const fs = require('fs');
