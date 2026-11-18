@@ -1052,8 +1052,11 @@ def main(argv):
     found["channels"] = both_channels(C)
     found["alphakind"] = alpha_kinds(decl)
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import template_deviation  # the one reader of the brain's last core update
-    cu = template_deviation.core_updated(a.repo)
+    try:
+        import template_deviation  # the one reader of the brain's last core update
+        cu = template_deviation.core_updated(a.repo)
+    except ImportError:  # a copy run outside scripts/ (fixture negative controls): the 90 days alone
+        cu = None
     n_due, found["review"] = review_due(decl, a.today, a.review_all, cu.isoformat() if cu else None)
     if a.review_all:
         print(f"local machinery review: {n_due} declared deviation(s), all listed - judge each again "
