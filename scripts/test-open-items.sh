@@ -636,6 +636,8 @@ printf '%s\n' '' '- [ ] Carried by bare number' '  id: carried' '  exit: in-pr 2
   '- [ ] Ask at the stand' '  id: ask-topic' '  class: decision' '  ask-when: topic stand' '' \
   '- [ ] Ask next year' '  id: ask-later' '  exit: ai-does-it 2026-10-28' '  ask-when: 2099-01-01' '' \
   '- [ ] Ask since long' '  id: ask-due' '  class: decision' '  exit: operator-decision 2025-12-01' '  ask-when: 2026-01-01' '' \
+  '- [ ] Waved off by the operator' '  id: op-deferred' '  operator-only: deferred — the operator said all fine, only on their word' '  exit: operator-decision 2026-10-28' '' \
+  '- [ ] A real open decision' '  id: op-open' '  operator-only: taste — which look' '  exit: operator-decision 2026-10-28' '' \
   '- [ ] Ambiguous number' '  id: ambiguous' '  exit: in-pr 2026-10-28 #33' '' \
   '- [ ] Text mention only' '  id: issue-only' '  STAND: Kern-PR #31 offen, plus own work' '  exit: ai-does-it 2026-10-28' '' \
   '- [ ] Closed PR' '  id: closed-pr' '  exit: in-pr 2026-10-28 core#99' '' \
@@ -660,6 +662,10 @@ has "waiting on the open PR core#32" "$(line ' carried-own ' "$out")" && ok "own
 has "[ledger|wait]" "$(line ' ask-topic ' "$out")" && has "ask-when" "$(line ' ask-topic ' "$out")" && ok "ask-when topic waits for its trigger" || bad "ask-topic: $(line ' ask-topic ' "$out")"
 has "[ledger|wait]" "$(line ' ask-later ' "$out")" && ok "ask-when date ahead waits, even under ai-does-it" || bad "ask-later: $(line ' ask-later ' "$out")"
 has "[ledger|human]" "$(line ' ask-due ' "$out")" && ok "ask-when date reached is due" || bad "ask-due: $(line ' ask-due ' "$out")"
+# 2026-11-18 (macOS instance): "all fine, leave it" recorded as operator-decision + operator-only: deferred printed as
+# "needs you" in 30 session starts. The deferral waits for the operator's word; a real open decision stays the operator's.
+has "[ledger|wait]" "$(line ' op-deferred ' "$out")" && ok "operator-only: deferred waits for the operator's word" || bad "op-deferred: $(line ' op-deferred ' "$out")"
+has "[ledger|human]" "$(line ' op-open ' "$out")" && ok "an operator decision with another reason stays the operator's (control)" || bad "op-open: $(line ' op-open ' "$out")"
 has "[ledger|ai]" "$(line ' ambiguous ' "$out")" && ok "bare #N with two open PRs stays ours" || bad "ambiguous: $(line ' ambiguous ' "$out")"
 has "[ledger|ai]" "$(line ' issue-only ' "$out")" && ok "a PR named in the text alone does not carry the entry" || bad "text mention: $(line ' issue-only ' "$out")"
 has "names no open PR any more" "$(line ' closed-pr ' "$out")" && ok "a PR no longer open hands the entry back, saying so" || bad "closed: $(line ' closed-pr ' "$out")"

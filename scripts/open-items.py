@@ -796,6 +796,12 @@ ANY_EXIT = re.compile(FIELD_LINE + r"exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re
 # still ahead or a topic is not due at the session start. Measured 2026-10-30: nine entries with a
 # topic trigger printed every session, seven of them as "needs you".
 ASK_WHEN = re.compile(FIELD_LINE + r"ask-when:\s*(.+?)\s*$", re.M)
+# `operator-only: deferred` - the operator put the topic off in their own words: it returns on their word, not at every
+# session start (rules/intelligence.md, "a point the operator deferred is said once per session - and only the operator
+# defers"). Measured 2026-11-18 on the macOS instance: an entry whose operator had said "all fine, leave it", recorded
+# as operator-decision + `operator-only: deferred` without an ask-when line, printed as "needs you" in 30 session starts;
+# no reader knew the field, and the next session asked it again and nearly built the fix nobody wanted.
+DEFERRED = re.compile(FIELD_LINE + r"operator-only:\s*deferred\b", re.M)
 # `record-read: <date> ...` - the agent read the record of a green-from-birth operator decision and the answer is not in
 # it (Windows review 2026-11-17, #570: without it a weak check kept a real decision away from the operator for good).
 RECORD_READ = re.compile(FIELD_LINE + r"record-read:\s*\d{4}-\d{2}-\d{2}\b", re.M)
@@ -912,7 +918,8 @@ def ledgers(root):
                     "exit": last[0] if last else "", "body": e["text"],
                     "until": until,
                     "waiting_on": (f"the ledger exit {x[0]}", f"since {x[1]}") if x
-                    else ("its trigger", f"ask-when {topic}") if topic else None}
+                    else ("its trigger", f"ask-when {topic}") if topic
+                    else ("the operator's word", "deferred by the operator") if DEFERRED.search(e["text"]) else None}
             if rows:
                 item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
             if e["line"] in ticks:
