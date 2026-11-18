@@ -361,7 +361,20 @@ function judge(input, now) {
   // released the work (then the turn goes on with it). Autonomous collects the question and goes on.
   const releasedNow = rel.some((r) => r.quotes.some((q) => t.answers.includes(q)));
   if (!autonomous && t.asked && !releasedNow) return null;
-  if (HAND_STEP_LINE.test(t.text)) return null;
+  // A hand step ends the turn only after the independent work is done (working-rules ASK OR ACT, "named turn ends":
+  // finish the independent work, arm the watcher, end with the command block). Measured 2026-11-18 on the macOS
+  // instance: three turns in a row ended on a HAND STEP line while eleven own start findings were open and doable; the
+  // operator: "warum hast du gestoppt, wenn bei dir was offen ist?". So with own start findings open, a HAND STEP line
+  // counts only when each is handled in the turn or named in a BLOCKED line - the same test as the end lines below.
+  if (HAND_STEP_LINE.test(t.text)) {
+    const named = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:\s*\S/.test(l));
+    const left = own.filter((e) => !named.some((l) => l.includes(e.id)));
+    if (!left.length || t.cmds.some((c) => HANDLED_CALL.test(c))) return null;
+    return `IDLE: this turn ends on a HAND STEP while ${left.length} own start finding(s) are open - a hand step closes the `
+      + `turn once the independent work is done. Work on one now - next: ${left[0].id} ${String(left[0].text || '').slice(0, 120)} `
+      + '- and close it with `scripts/start-findings.py handled <id> --how "..."`, or name each in a line `BLOCKED: <id> — <why>`. '
+      + 'Missing: continuation on own start findings';
+  }
   // A wakeup alone or a running waiter is no end (2026-10-29): only the forms above.
   void t.wake; void t.waiting;
   const m = measurers(root);

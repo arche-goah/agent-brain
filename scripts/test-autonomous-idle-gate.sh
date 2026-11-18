@@ -176,6 +176,14 @@ check "interactive: released BLOCKED, a start finding handled in the turn" "$f" 
 f="$T/i8d.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the peer's merge
 BLOCKED: f1a2b3c4 — waits on the owner of the shared carrier"; } > "$f"
 check "interactive: released BLOCKED, the own finding named BLOCKED too" "$f" allow "$R"
+# A HAND STEP closes the turn only after the independent work (2026-11-18: three hand-step ends with eleven own findings open).
+f="$T/i8h.jsonl"; { user "go ahead with the plan"; asst "HAND STEP: read the router log and send me the output"; } > "$f"
+check "a HAND STEP with an own start finding open is no end (the 2026-11-18 class)" "$f" block "$R"
+f="$T/i8i.jsonl"; { user "go ahead with the plan"; bash_cmd 'python3 core/scripts/start-findings.py handled f1a2b3c4 --how "unwired"'; asst "HAND STEP: read the router log"; } > "$f"
+check "a HAND STEP after handling a start finding in the turn ends it" "$f" allow "$R"
+f="$T/i8j.jsonl"; { user "go ahead with the plan"; asst "BLOCKED: f1a2b3c4 — waits on the operator's router read-out
+HAND STEP: read the router log"; } > "$f"
+check "a HAND STEP with every own finding named BLOCKED ends it" "$f" allow "$R"
 printf '%s\n' '{"findings":{"f9e8d7c6":{"id":"f9e8d7c6","owner":"operator","text":"settings line"}}}' > "$R/.claude-state/start-findings.json"
 check "interactive: released BLOCKED, only operator findings open" "$T/i8b.jsonl" allow "$R"
 rm -f "$R/.claude-state/start-findings.json"
