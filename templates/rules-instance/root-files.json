@@ -1,0 +1,5 @@
+{
+  "_comment": "Files this instance allows in its repo root BESIDE the core's list (rules/working-rules.md, File Rules). Read by core/helpers/root-files-gate.cjs at every turn end. An entry is the operator's decision - name it with its date in _why.",
+  "_why": {},
+  "allowed": []
+}

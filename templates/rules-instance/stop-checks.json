@@ -154,6 +154,15 @@
       "mode": "block"
     },
     {
+      "label": "ROOT FILE",
+      "marker": "ROOT-FILES",
+      "cmd": "core/helpers/root-files-gate.cjs",
+      "mode": "block",
+      "extract": "stray in the repo root:\\s*(.+?)\\. Only",
+      "template": "Stray file in the repo root: {1} - move it to its folder or delete it",
+      "maxLength": 160
+    },
+    {
       "label": "EMPTY PROMISE",
       "marker": "COMMITMENT-CARRIER-GATE",
       "cmd": "core/helpers/commitment-carrier-gate.cjs",
