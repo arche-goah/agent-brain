@@ -87,15 +87,19 @@ REVIEW_DAYS = 90
 REVIEW_BATCH = 3
 
 
-def review_due(decl, today, review_all=False):
+def review_due(decl, today, review_all=False, since_core=None):
     """Instance/external declarations whose `reviewed` date is missing or older than review_days,
     oldest first (never reviewed = oldest). Returns (total due, the batch to show). The session start
     shows a few at a time (routine, never a wall); the brain-scan passes review_all: EVERY declaration,
     due or not, is judged again there (operator order 2026-10-29: in a brain-scan all of them are
-    looked through)."""
+    looked through). since_core (ISO date of the brain's last core update): a review older than it is due
+    too (operator rule 2026-11-18, translated: "90 days, plus at every core update check local deviations
+    without an expiry")."""
     days = 0 if review_all else int(decl.get("review_days") or REVIEW_DAYS)
     batch = None if review_all else int(decl.get("review_batch") or REVIEW_BATCH)
     limit = (datetime.date.fromisoformat(today) - datetime.timedelta(days=days)).isoformat()
+    if since_core and since_core > limit:
+        limit = since_core
     due = []
     for sec in ("instance", "external"):
         for key, d in (decl.get(sec) or {}).items():
@@ -1047,7 +1051,10 @@ def main(argv):
     found["missing"] = C.missing
     found["channels"] = both_channels(C)
     found["alphakind"] = alpha_kinds(decl)
-    n_due, found["review"] = review_due(decl, a.today, a.review_all)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import template_deviation  # the one reader of the brain's last core update
+    cu = template_deviation.core_updated(a.repo)
+    n_due, found["review"] = review_due(decl, a.today, a.review_all, cu.isoformat() if cu else None)
     if a.review_all:
         print(f"local machinery review: {n_due} declared deviation(s), all listed - judge each again "
               "(reason still true? core or suite carries it by now? still used?), then core PR, unwire, "

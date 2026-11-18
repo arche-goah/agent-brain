@@ -514,5 +514,13 @@ out=$(run); [[ -z "$out" ]] \
   && ok "hash-key-prefix-at-word-boundary-covers" || bad "hash-key-prefix-at-word-boundary-covers: $out"
 rm -rf "$T/b"
 
+# --- review at every core update (operator rule 2026-11-18): a review older than the last core update is due ------------
+HERE="$(cd "$(dirname "$0")" && pwd)"
+out="$("$PY" -c 'import importlib.util,sys
+s=importlib.util.spec_from_file_location("lm", sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+d={"instance":{"a":{"why":"x","reviewed":"2026-11-15"},"b":{"why":"x","reviewed":"2026-11-18"}}}
+print(m.review_due(d,"2026-11-18")[0], m.review_due(d,"2026-11-18",since_core="2026-11-17")[0])' "$HERE/local-machinery.py" 2>&1)"
+[[ "$out" == "0 1" ]] && ok "review-due-after-core-update" || bad "review-due-after-core-update: $out"
+
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"
