@@ -389,7 +389,16 @@ function checkMerge(cmd, ps) {
   const train = /^\s*##\s*Merge train\b/.test(String(pr.body || ''));
   // members are manifest lines (`- #N <branch> <sha>`), never a note line "- #N: …" or a left-out "- #N (conflicts …)" (merge
   // train 2.1.6: release-preflight read train #510's notes as members; this reader had the same loose form)
-  const members = train ? [...String(pr.body).matchAll(/^- #(\d+) \S+ [0-9a-f]{3,40}(?:\s|$)/gm)].map((m) => m[1]) : [t.nr];
+  // ONE pattern with release-preflight.sh (#574 review): the form merge-train.sh writes, `- #N <branch> <sha>` with 7-40
+  // hex and nothing after it, read only above "Left out:".
+  const contains = String(pr.body).split(/^Left out:/m)[0];
+  const members = train ? [...contains.matchAll(/^- #(\d+) \S+ [0-9a-f]{7,40}[ \t]*$/gm)].map((m) => m[1]) : [t.nr];
+  // a train whose body names no member in that form is not "nothing to review" - it is unread (Windows review of #587,
+  // 2026-11-19: a short sha below 7 hex merged unchecked)
+  if (train && !members.length) {
+    return block(`${t.repo}#${t.nr} - a merge train whose body names no member in the form \`- #N <branch> <sha>\` (7-40 hex), ` +
+      'so no member review could be read. Write the members as merge-train.sh writes them, or add `# CONTENT-REVIEW-OK: <why>`.');
+  }
   const open = [];
   for (const n of members) {
     let p = pr;

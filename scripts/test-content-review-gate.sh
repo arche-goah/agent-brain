@@ -198,7 +198,8 @@ probe "the author's own OS check needs no content review" "gh pr comment 5 -R o/
 probe "an author update without an OS verdict stays free" "gh pr comment 5 -R o/r --body-file $N/rev-thin.md" allow
 # Windows review of #508: the one OS check at a merge train's head carries no content lines - its members do
 pr "## Merge train train/x
-- #5 a/b 1234567 <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
+- #5 a/b 1234567
+<!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
 printf '<!-- instance-key: %s -->\nWindows OK at head abc1234, ci-lint-local all steps passed.\n' "$B" > "$T/os-train.md"
 probe "the OS check at a merge train's head" "gh pr comment 5 -R o/r --body-file $N/os-train.md" allow
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
@@ -234,8 +235,8 @@ probe "control: low-risk docs PR, review on the smaller model" "$M" allow
 pr "Risk: low - docs <!-- instance-key: $A -->" "docs/x.md" "$T/c-small.md" "" 150
 probe "file list shorter than changedFiles (gh page limit): top risk, smaller model too small" "$M" block
 pr "## Merge train t1
-- #7 fix/a abc
-- #8 fix/b def" "" ""
+- #7 fix/a abc1234
+- #8 fix/b def5678" "" ""
 probe "train PR whose members lack a content review" "$M" block
 # merge train 2.1.6: a note line "- #N: …" or a left-out line is no member; only #7, which has its review, is one
 printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$GOOD" "$B" > "$T/c-7.md"
@@ -246,10 +247,17 @@ Left out:
 - #9 (conflicts with the train so far)
 
 Train-level fixes:
-- #8: a note about #8, which is no member" "" "$T/c-7.md"
+- #8: a note about #8, which is no member
+- #8 fix/b def5678 was merged by hand later (prose after the sha: no member line)" "" "$T/c-7.md"
 printf '{"body":"Risk: high - gate","files":[{"path":"helpers/x-gate.cjs"}],"comments":[],"reviews":[]}' > "$T/pr-8.json"
 cp "$T/pr-8.json" "$T/pr-9.json"
 probe "note and left-out lines of a train are no members" "$M" allow
 rm -f "$T/pr-8.json" "$T/pr-9.json"
+# Windows review of #587: a train with no member line in the writer's form (a 6-hex sha) was "nothing open" and merged
+pr "## Merge train t3
+- #7 fix/a abc123" "" ""
+probe "a train whose body names no member in the writer's form is held" "$M" block
+pr "## Merge train t4" "" ""
+probe "an empty train body is held" "$M" block
 
 [ "$fail" -eq 0 ] && echo "content-review-gate fixtures: ALL passed" || { echo "content-review-gate fixtures: FAILURES"; exit 1; }
