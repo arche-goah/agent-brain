@@ -253,5 +253,11 @@ printf '{"body":"Risk: high - gate","files":[{"path":"helpers/x-gate.cjs"}],"com
 cp "$T/pr-8.json" "$T/pr-9.json"
 probe "note and left-out lines of a train are no members" "$M" allow
 rm -f "$T/pr-8.json" "$T/pr-9.json"
+# Windows review of #587: a train with no member line in the writer's form (a 6-hex sha) was "nothing open" and merged
+pr "## Merge train t3
+- #7 fix/a abc123" "" ""
+probe "a train whose body names no member in the writer's form is held" "$M" block
+pr "## Merge train t4" "" ""
+probe "an empty train body is held" "$M" block
 
 [ "$fail" -eq 0 ] && echo "content-review-gate fixtures: ALL passed" || { echo "content-review-gate fixtures: FAILURES"; exit 1; }
