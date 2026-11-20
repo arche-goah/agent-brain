@@ -102,7 +102,11 @@ def resolve_next(to: list[str], parties: dict, text: str = "") -> list[str]:
 # English here; an instance adds its language in .claude/rules/shared-memory-post.json
 # {"check_words": [regex, ...]}.
 OS_NAMES = {"windows": r"\bwindows\b|\bwin(?:10|11)?\b", "macos": r"\bmac\s?os\b", "linux": r"\blinux\b"}
-CHECK_WORDS = [r"\bcounter-?check", r"\bchecks? (?:it |them )?(?:on|at)\b", r"\bplease (?:run|check|verify|test)\b",
+# "re-check", "please re-run / review", "run on <OS>" (2026-11-20, macOS instance): four core requests that day asked a
+# Windows hand check of single PRs in those words and passed os_check_not_needed unseen; replayed over the 196 os:windows
+# requests under core/ of the shared memory, the old list missed 13, the new words catch all 13.
+CHECK_WORDS = [r"\bcounter-?check", r"\bre-?check", r"\bchecks? (?:it |them )?(?:on|at)\b",
+               r"\bplease (?:re-?)?(?:run|review|check|verify|test)\b", r"\brun (?:it |them )?on (?:windows|macos|linux)\b",
                r"\bverify (?:on|at)\b"]
 
 # The unit a check word rules is its SENTENCE, not the whole text (2026-11-04, four refusals of correct requests

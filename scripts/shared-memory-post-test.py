@@ -331,6 +331,15 @@ def main() -> int:
                     ("Single PR with a reason", "Please run the fixtures on Windows at the head of #1.",
                      ["--hand-check-ok", "touches the Windows hook path only a machine shows"], 0,
                      "a stated reason lets a single-PR hand check go"),
+                    # 2026-11-20: the wordings of four requests that passed unseen
+                    ("Review single PR", "Please review #1 at abc1234 on Windows.", [], 2,
+                     "'please review' with Windows for a single PR is refused"),
+                    ("Re-check single PR", "Re-check #1 at abc1234 on Windows - the finding is fixed.", [], 2,
+                     "'re-check' on Windows for a single PR is refused"),
+                    ("Run on Windows single PR", "Run on Windows the fixture of #1 at abc1234.", [], 2,
+                     "'run on Windows' for a single PR is refused"),
+                    ("Content review only", "Please review #1 at abc1234: Fit, Design, Cost, Gaps.", [], 0,
+                     "control: a content review that names no OS passes"),
                 ):
                     r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                              *extra, me="alex-mac", brain=cip)
