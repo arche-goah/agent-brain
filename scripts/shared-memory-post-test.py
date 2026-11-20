@@ -345,6 +345,9 @@ def main() -> int:
                      "a title naming the OS and a single PR is refused without a check word"),
                     ("Content review: o/core#1 start findings", "Fit, Design, Cost, Gaps.", [], 0,
                      "control: a title naming no OS passes"),
+                    # content review of #622: a content-review title naming the OS is no hand check
+                    ("Content review core o/core#1 on Windows", "Fit, Design, Cost, Gaps; no hand run.", [], 0,
+                     "a content-review title naming the OS passes"),
                 ):
                     r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                              *extra, me="alex-mac", brain=cip)

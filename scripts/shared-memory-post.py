@@ -310,7 +310,8 @@ def os_check_not_needed(text: str, extra=()) -> str:
         return ""
     return ("an OS hand check is asked for single PR(s) " + ", ".join(single) + " - in this repo a green CI job is the OS "
             "proof for a merge, and a hand check happens at most once per OS at a merge train's head (build the train, ask "
-            "for its PR), or say why this single PR needs a hand check: --hand-check-ok <reason>")
+            "for its PR), or say why this single PR needs a hand check: --hand-check-ok <reason>. A content review: "
+            "leave the OS out of the sentence that asks (\"Content review of #N: Fit, Design, Cost, Gaps\").")
 
 
 def os_check_not_ready(text: str) -> str:
@@ -402,7 +403,9 @@ def main() -> int:
     if a.kind == "request" and not a.hand_check_ok:
         # A request addressed to an OS is that machine's work: its TITLE counts as a check sentence whatever its words
         # (2026-11-20 replay: "Windows-Pruefung agent-brain #320 am Kopf ..." and 23 more single-PR titles had no check word).
-        needless = os_check_not_needed(a.title + "\n" + body, [a.title] if any(t.startswith("os:") for t in to) else [])
+        # A content review is no hand check (content review of #622, 2026-11-20): its title is not a check sentence.
+        title_rule = any(t.startswith("os:") for t in to) and not re.search(r"\bcontent[- ]review\b", a.title, re.I)
+        needless = os_check_not_needed(a.title + "\n" + body, [a.title] if title_rule else [])
         if needless:
             return refuse(needless)
     if a.kind == "request" and not a.ci_not_green_ok:
