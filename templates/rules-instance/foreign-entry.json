@@ -1,0 +1,6 @@
+{
+  "_comment": "Data for helpers/foreign-entry-gate.cjs: append files every session of this brain writes. On a path commit of one of them, an added id this session's transcript never saw is another session's entry and the commit is refused. Empty `files` = inert. file_patterns: a per-file id regex (first group = the id), e.g. a session log that names a session by its 8-hex id.",
+  "files": [],
+  "id_pattern": "^id:\\s*(\\S+)",
+  "file_patterns": {}
+}
