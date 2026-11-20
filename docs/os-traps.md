@@ -345,6 +345,7 @@ known:     scripts/test-install-git-hooks.sh=1
 known:     scripts/test-instance-key-gate.sh=1
 known:     scripts/test-instrument-watch.sh=1
 known:     scripts/test-leak-scan.sh=1
+known:     scripts/test-lint-placeholders.sh=1
 known:     scripts/test-live-read-gate.sh=1
 known:     scripts/test-live-watchdog.sh=1
 known:     scripts/test-local-machinery.sh=1
@@ -1240,7 +1241,7 @@ was read.
 pattern:   ^[^#]*[^+#]"\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}"
 paths:     --include=*.sh scripts helpers
 known:     scripts/ci-lint-local.sh=1
-known:     scripts/lint-placeholders.sh=1
+known:     scripts/lint-placeholders.sh=3
 known:     scripts/merge-train.sh=1
 known:     scripts/repo-activity-watch.sh=1
 known:     scripts/shared-memory-watch-lock-test.sh=3
