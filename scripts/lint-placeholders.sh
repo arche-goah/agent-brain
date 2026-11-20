@@ -27,13 +27,20 @@ else
 fi
 
 hits=$(grep -rInE "$PATTERN" "${TARGETS[@]}" 2>/dev/null | grep -vE "$EXCLUDE_RE" || true)
+# A <placeholder> left as a whole JSON string of a copied template ("<owner>/<core-repo>", "<operator>-<machine-1>";
+# macOS instance's review of #624: collab-watch.json carries 14 of them in live data). JSON only and a string with
+# no space, so prose ("kill <pid>", Markdown usage lines) and "_..." comment lines stay out.
+JSON_PH='(^|[^\\])"[^" ]*<[a-z][a-z0-9._-]*>[^" ]*"'
+ph=$(grep -rInE --include='*.json' "$JSON_PH" "${TARGETS[@]}" 2>/dev/null | grep -avE '^[^:]+:[0-9]+:[[:space:]]*"_' \
+  | grep -avE "$EXCLUDE_RE" || true)
+hits=$(printf '%s\n%s' "$hits" "$ph" | sed '/^$/d')
 
 if [ -n "$hits" ]; then
   echo "FAIL: template placeholders found:"
   echo "$hits"
   echo ""
   echo "Replace {DEIN_NAME}/{User} with the real value or neutral wording; an \"example-...\" entry of a copied"
-  echo "template with the instance's own value, or delete the entry."
+  echo "template, or a \"<...>\" string in a copied JSON file, with the instance's own value, or delete the entry."
   exit 1
 fi
 

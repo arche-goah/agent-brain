@@ -17,5 +17,14 @@ check "an example server key of mcp-expected is red" 1 '{"example-server": 7}'
 check "an example shop of product-sources is red" 1 '{"example-shop.com": "/product/x"}'
 check "a filled os-proof is green" 0 '{"ci_counts_as_os_check": {"arche-goah/agent-brain": ["Windows"]}}'
 check "the word example inside prose is green" 0 '{"_comment": "for example-style values see the template"}'
+# macOS instance's review of #624: the <...> form of collab-watch.json and its siblings
+check "a <owner>/<core-repo> repo of collab-watch is red" 1 '    { "tag": "core", "repos": ["<owner>/<core-repo>"], "interval": 60 },'
+check "a <operator>-<machine-1> id is red" 1 '    { "id": "<operator>-<machine-1>", "github": "<operator-login>" }'
+check "a <placeholder> in a string with spaces (prose) is green" 0 '  "stattdessen": "run ci-watch.sh pr <owner/repo> <nr> via Monitor"'
+check "a <placeholder> in a _comment line is green" 0 '  "_comment": "replace every <placeholder> - the plan step refuses"'
+check "an escaped quote in prose is green" 0 '  "Map: \"<owner/repo>\": [<OS>, ...] - the systems",'
+printf '%s\n' 'Run `tidy.py check "<projekt>"` first.' > "$tmp/case.md"
+bash "$lint" "$tmp/case.md" > /dev/null 2>&1 && echo "  ok    a <placeholder> in Markdown is green (JSON only)" \
+  || { echo "  FAIL  a <placeholder> in Markdown is red"; fail=1; }
 [ "$fail" -eq 0 ] && echo "test-lint-placeholders: all cases pass"
 exit "$fail"

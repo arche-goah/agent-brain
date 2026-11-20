@@ -1241,7 +1241,7 @@ was read.
 pattern:   ^[^#]*[^+#]"\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}"
 paths:     --include=*.sh scripts helpers
 known:     scripts/ci-lint-local.sh=1
-known:     scripts/lint-placeholders.sh=1
+known:     scripts/lint-placeholders.sh=2
 known:     scripts/merge-train.sh=1
 known:     scripts/repo-activity-watch.sh=1
 known:     scripts/shared-memory-watch-lock-test.sh=3
