@@ -84,7 +84,12 @@ out=$(node -e 'const {areasFromCall}=require(process.argv[1]);process.stdout.wri
 has "commit -C <sha> after the verb is no directory" "$out" "proj/firmware"
 out=$(node -e 'Object.defineProperty(process,"platform",{value:"win32"});const {nativePath}=require(process.argv[1]);process.stdout.write(nativePath("/c/work/x y/brain"))' "$(native "$_D/../helpers/published-text.cjs")")
 [ "$out" = "C:/work/x y/brain" ] && ok "the Git Bash drive form becomes native (the -C and pathspec reader uses it)" || bad "nativePath: '$out'"
-grep -q 'nativePath(words\[c + 1\])' "$_D/../helpers/session-areas.cjs" && ok "the -C value goes through nativePath" || bad "-C not translated"
+grep -q 'nativePath(dir)' "$_D/../helpers/session-areas.cjs" && ok "the -C value goes through nativePath" || bad "-C not translated"
+# 2026-11-20: `git -C ~/<repo>` from the brain landed in <brain>/scripts (a false OVERLAP between two sessions)
+mkdir -p "$T/hm"; ln -s "$T/proj" "$T/hm/proj" 2>/dev/null || cp -R "$T/proj" "$T/hm/proj"
+out=$(HOME="$(native "$T/hm")" USERPROFILE="$(native "$T/hm")" node -e 'const {areasFromCall}=require(process.argv[1]);process.stdout.write(JSON.stringify(areasFromCall({cwd:process.argv[2],tool_name:"Bash",tool_input:{command:"git -C ~/proj commit -m t -- firmware/main.c"}})))' "$G" "$B")
+has "a ~ path in -C is the home folder" "$out" "proj/firmware"
+lacks "a ~ path in -C does not land in the cwd" "$out" "brain/firmware"
 
 out=$(ask s-b "check what the other session is doing")
 has "the operator's prompt about other sessions injects the map" "$out" "<session-map>"

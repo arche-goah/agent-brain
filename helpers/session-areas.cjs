@@ -122,7 +122,11 @@ function areasFromCall(input) {
   for (const words of commitCalls(ti.command, ps)) {
     const ci = words.indexOf('commit');
     const c = words.slice(0, ci).indexOf('-C');   // `git commit -C <sha>` after the verb is a message source
-    const base = path.resolve(cwd, c >= 0 ? nativePath(words[c + 1]) : '.');
+    // A leading `~` is the home folder (measured 2026-11-20: `git -C ~/Projects/<repo> commit -- scripts/x.py` from
+    // the brain resolved to `<brain>/~/...`, no folder, and the file landed in `<brain>/scripts` - a false OVERLAP).
+    let dir = c >= 0 ? words[c + 1] : '.';
+    if (dir === '~' || /^~[\\/]/.test(dir)) dir = path.join(require('os').homedir(), dir.slice(1));
+    const base = path.resolve(cwd, nativePath(dir));
     const dd = words.indexOf('--', ci);
     const specs = dd >= 0 ? words.slice(dd + 1).filter((s) => !/^[|>]/.test(s)) : [];
     if (!specs.length) {
