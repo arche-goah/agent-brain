@@ -75,6 +75,19 @@ out="$(runc "$OWN" "git -C \"$(native "$SP")\" commit -m x -- docs/maintenance/c
 case "$out" in *"their-entry"*) ok "a quoted git -C path with a space blocks";; *) bad "quoted -C with space passed: '$out'";; esac
 case "$out" in *"my-entry"*) bad "own id named as foreign via -C";; *) ok "the own id stays unnamed via -C";; esac
 
+# Windows re-check of #620: `-c` before `-C`, the -C of the commit's own segment, `~`, and a -C that is no folder
+out="$(runc "$OWN" "git -c user.email=a@b -C $(native "$R") commit -m x -- docs/maintenance/carrier-register.md" "$T" "$R")"
+case "$out" in *"their-entry"*) ok "-c key=val before -C still finds the repo";; *) bad "-c before -C passed: '$out'";; esac
+out="$(runc "$OWN" "git -C $(native "$T") status && git -C $(native "$R") commit -m x -- docs/maintenance/carrier-register.md" "$T" "$R")"
+case "$out" in *"their-entry"*) ok "the -C of the commit's segment wins over an earlier one";; *) bad "first -C of a chain won: '$out'";; esac
+H="$T/home"; mkdir -p "$H"; ln -s "$R" "$H/repo" 2>/dev/null || cp -R "$R" "$H/repo"
+out="$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:process.argv[1]},transcript_path:process.argv[2],cwd:process.argv[3]}))' \
+  "git -C ~/repo commit -m x -- docs/maintenance/carrier-register.md" "$(native "$OWN")" "$(native "$T")" \
+  | HOME="$(native "$H")" USERPROFILE="$(native "$H")" CLAUDE_PROJECT_DIR="$(native "$R")" node "$G")"
+case "$out" in *"their-entry"*) ok "a ~ path in -C is the home folder";; *) bad "~ path passed: '$out'";; esac
+out="$(runc "$OWN" "git -C /no/such/dir commit -m x -- docs/maintenance/carrier-register.md" "$R" "$R")"
+case "$out" in *"their-entry"*) ok "a -C that is no folder falls back to the cwd";; *) bad "unresolvable -C passed: '$out'";; esac
+
 # no data file: inert (a brain that has not named its append files)
 rm -f "$R/.claude/rules/foreign-entry.json"
 out="$(run "$OWN" "$C")"

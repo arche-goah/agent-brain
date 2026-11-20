@@ -24,6 +24,7 @@
  */
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
@@ -43,11 +44,21 @@ function fromShellPath(p) {
 
 // The repo the commit acts on: `git -C <path>` (quoted or not) when the command names one, else the cwd.
 // Windows review of #620 (2026-11-20): with the cwd outside the repo, the diff threw and the commit passed silently.
+// Windows re-check of #620 (2026-11-20): the -C is read in the SAME segment as `commit` (not the first one of a
+// chain), after any `-c key=val`; a leading `~` is the home folder; a target that is no folder (an MSYS mount such as
+// /tmp, a typo) falls back to the cwd, so the gate never judges a non-repo and passes silently.
 function commitRepo(cmd, cwd) {
-  const c = /\bgit\s+-C\s*("[^"]+"|'[^']+'|\S+)[^\n]*\bcommit\b/.exec(cmd);
-  if (!c) return cwd;
-  const raw = c[1].replace(/^(["'])(.*)\1$/, '$2');
-  return path.resolve(cwd, fromShellPath(raw));
+  for (const seg of cmd.split(/&&|\|\||[;|\n]/)) {
+    if (!/\bgit\b/.test(seg) || !/\bcommit\b/.test(seg)) continue;
+    const c = /\bgit\b(?:\s+-c\s*\S+)*\s+-C\s*("[^"]+"|'[^']+'|\S+)/.exec(seg);
+    if (!c) return cwd;
+    let raw = c[1].replace(/^(["'])(.*)\1$/, '$2');
+    if (raw === '~' || raw.startsWith('~/')) raw = path.join(os.homedir(), raw.slice(1));
+    const dir = path.resolve(cwd, fromShellPath(raw));
+    try { if (fs.statSync(dir).isDirectory()) return dir; } catch (e) { /* not a folder: the cwd */ }
+    return cwd;
+  }
+  return cwd;
 }
 
 function addedIds(cwd, file, rx) {
