@@ -33,10 +33,28 @@ function cfg(project) {
   } catch (e) { return null; }
 }
 
+// A command typed in Git Bash carries MSYS paths (`git -C /c/work/repo`); node would resolve `/c/...` against
+// the cwd's drive. Same translation as shared-working-copy-guard.cjs (fromShellPath).
+function fromShellPath(p) {
+  if (process.platform !== 'win32') return p;
+  const m = /^\/([a-zA-Z])(\/.*)?$/.exec(p);
+  return m ? `${m[1].toUpperCase()}:${m[2] || '/'}` : p;
+}
+
+// The repo the commit acts on: `git -C <path>` (quoted or not) when the command names one, else the cwd.
+// Windows review of #620 (2026-11-20): with the cwd outside the repo, the diff threw and the commit passed silently.
+function commitRepo(cmd, cwd) {
+  const c = /\bgit\s+-C\s*("[^"]+"|'[^']+'|\S+)[^\n]*\bcommit\b/.exec(cmd);
+  if (!c) return cwd;
+  const raw = c[1].replace(/^(["'])(.*)\1$/, '$2');
+  return path.resolve(cwd, fromShellPath(raw));
+}
+
 function addedIds(cwd, file, rx) {
   let diff = '';
   try {
-    diff = execFileSync('git', ['-C', cwd, 'diff', 'HEAD', '--', file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    // `:/<file>`: the watched path is repo-relative, whichever folder of the repo `-C` names
+    diff = execFileSync('git', ['-C', cwd, 'diff', 'HEAD', '--', ':/' + file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
   } catch (e) { return []; }
   const out = [];
   for (const line of diff.split('\n')) {
@@ -53,7 +71,7 @@ function main(raw) {
   if (input.tool_name !== 'Bash') return '';
   const cmd = String((input.tool_input && input.tool_input.command) || '');
   if (!/\bgit\b[^\n]*\bcommit\b/.test(cmd) || /#\s*FOREIGN-ENTRY-OK:\s*\S/.test(cmd)) return '';
-  const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || '.';
+  const cwd = commitRepo(cmd, input.cwd || process.env.CLAUDE_PROJECT_DIR || '.');
   const c = cfg(process.env.CLAUDE_PROJECT_DIR || cwd);
   if (!c || !Array.isArray(c.files) || !c.files.length) return '';
   let idRx;

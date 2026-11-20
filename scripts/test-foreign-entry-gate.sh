@@ -56,6 +56,25 @@ out="$(run "$LOGOWN" 'git commit -m close -- docs/maintenance/session-log.md')"
 case "$out" in *"bbbb2222"*) ok "a session-log line of another session blocks and is named";; *) bad "foreign session line not blocked: '$out'";; esac
 case "$out" in *"aaaa1111"*) bad "own session id named as foreign";; *) ok "the own session's line is not named";; esac
 
+# `git -C <repo> commit` from a cwd outside the repo (Windows review of #620, 2026-11-20: passed silently),
+# unquoted and quoted, in a repo whose path has a space
+SP="$T/brain with space"
+mkdir -p "$SP/docs/maintenance" "$SP/.claude/rules"
+cp "$R/.claude/rules/foreign-entry.json" "$SP/.claude/rules/"
+git -C "$SP" init -q; git -C "$SP" config user.name t; git -C "$SP" config user.email t@t
+printf '# register\n' > "$SP/docs/maintenance/carrier-register.md"
+git -C "$SP" add -A; git -C "$SP" commit -q -m init
+printf '\nid: my-entry\n\nid: their-entry\n' >> "$SP/docs/maintenance/carrier-register.md"
+runc() { # $1 transcript $2 command $3 cwd $4 project
+  node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",tool_input:{command:process.argv[1]},transcript_path:process.argv[2],cwd:process.argv[3]}))' \
+    "$2" "$(native "$1")" "$(native "$3")" | CLAUDE_PROJECT_DIR="$(native "$4")" node "$G"
+}
+out="$(runc "$OWN" "git -C $(native "$R") commit -m x -- docs/maintenance/carrier-register.md" "$T" "$R")"
+case "$out" in *"their-entry"*) ok "git -C <repo> from a cwd outside the repo blocks";; *) bad "git -C from outside passed: '$out'";; esac
+out="$(runc "$OWN" "git -C \"$(native "$SP")\" commit -m x -- docs/maintenance/carrier-register.md" "$T" "$SP")"
+case "$out" in *"their-entry"*) ok "a quoted git -C path with a space blocks";; *) bad "quoted -C with space passed: '$out'";; esac
+case "$out" in *"my-entry"*) bad "own id named as foreign via -C";; *) ok "the own id stays unnamed via -C";; esac
+
 # no data file: inert (a brain that has not named its append files)
 rm -f "$R/.claude/rules/foreign-entry.json"
 out="$(run "$OWN" "$C")"
