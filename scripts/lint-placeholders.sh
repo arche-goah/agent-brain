@@ -27,12 +27,36 @@ else
 fi
 
 hits=$(grep -rInE "$PATTERN" "${TARGETS[@]}" 2>/dev/null | grep -vE "$EXCLUDE_RE" || true)
-# A <placeholder> left as a whole JSON string of a copied template ("<owner>/<core-repo>", "<operator>-<machine-1>";
-# macOS instance's review of #624: collab-watch.json carries 14 of them in live data). JSON only and a string with
-# no space, so prose ("kill <pid>", Markdown usage lines) and "_..." comment lines stay out.
-JSON_PH='(^|[^\\])"[^" ]*<[a-z][a-z0-9._-]*>[^" ]*"'
-ph=$(grep -rInE --include='*.json' "$JSON_PH" "${TARGETS[@]}" 2>/dev/null | grep -avE '^[^:]+:[0-9]+:[[:space:]]*"_' \
-  | grep -avE "$EXCLUDE_RE" || true)
+# A <placeholder> left as a whole JSON string or key of a copied template ("<owner>/<core-repo>",
+# "<operator>-<machine-1>"; macOS instance's review of #624: collab-watch.json carries 14 of them in live data).
+# Read with a JSON parser: every "_"-key is dropped WITH its content, so an inert "_example_channels" block laid
+# out one object per line stays out (a line grep saw only the line's own key - second review of #624). A string
+# with a space is prose ("kill <pid>"); Markdown is never read here. node, because every brain's hooks need it.
+ph=""
+if command -v node >/dev/null 2>&1; then
+  files=()
+  while IFS= read -r f; do
+    command -v cygpath >/dev/null 2>&1 && f="$(cygpath -m "$f")"   # a native process needs the native path (OS-3)
+    files+=("$f")
+  done < <(find "${TARGETS[@]}" -type f -name '*.json' 2>/dev/null | grep -avE "$EXCLUDE_RE")
+  if [ "${#files[@]}" -gt 0 ]; then
+    ph=$(node -e '
+      const fs = require("fs"), PH = /^[^ ]*<[a-z][a-z0-9._-]*>[^ ]*$/;
+      for (const f of process.argv.slice(1)) {
+        let d; try { d = JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { continue; }
+        const walk = (v, at) => {
+          if (typeof v === "string") { if (PH.test(v)) console.log(`${f}: ${at}: "${v}"`); return; }
+          if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${at}[${i}]`)); return; }
+          if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) {
+            if (k.startsWith("_")) continue;
+            if (PH.test(k)) console.log(`${f}: ${at}: key "${k}"`);
+            walk(x, at ? `${at}.${k}` : k);
+          }
+        };
+        walk(d, "");
+      }' "${files[@]}" || true)
+  fi
+fi
 hits=$(printf '%s\n%s' "$hits" "$ph" | sed '/^$/d')
 
 if [ -n "$hits" ]; then
