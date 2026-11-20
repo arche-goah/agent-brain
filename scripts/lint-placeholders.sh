@@ -12,6 +12,10 @@
 set -eu
 
 PATTERN='\{DEIN_[A-Z_]*\}|\{Users?\}|\{deine-domain\}|\{DATUM\}|\{DEINE_[A-Z_]*\}'
+# The example value of a copied templates/rules-instance file, left as a JSON key or value (2026-11-20, Windows
+# instance: .claude/rules/os-proof.json still held "example-owner/example-repo" from the copy, so no repo counted
+# its green CI as the OS proof and shared-memory-post.py / merge-request-gate never fired there).
+PATTERN="$PATTERN"'|"example-[a-z0-9.-]+(/example-[a-z0-9.-]+)?"'
 
 # Files that may legitimately mention the placeholder patterns (this linter, the audit report).
 EXCLUDE_RE='scripts/lint-placeholders\.sh|docs/research/repo-audit-'
@@ -28,7 +32,8 @@ if [ -n "$hits" ]; then
   echo "FAIL: template placeholders found:"
   echo "$hits"
   echo ""
-  echo "Replace {DEIN_NAME}/{User} with the real value or neutral wording."
+  echo "Replace {DEIN_NAME}/{User} with the real value or neutral wording; an \"example-...\" entry of a copied"
+  echo "template with the instance's own value, or delete the entry."
   exit 1
 fi
 

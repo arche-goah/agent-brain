@@ -345,6 +345,7 @@ known:     scripts/test-install-git-hooks.sh=1
 known:     scripts/test-instance-key-gate.sh=1
 known:     scripts/test-instrument-watch.sh=1
 known:     scripts/test-leak-scan.sh=1
+known:     scripts/test-lint-placeholders.sh=1
 known:     scripts/test-live-read-gate.sh=1
 known:     scripts/test-live-watchdog.sh=1
 known:     scripts/test-local-machinery.sh=1
