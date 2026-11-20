@@ -39,6 +39,14 @@ run "overdue, passing check -> DONE, not OVERDUE" "## $yday — a scan that ran\
 run "overdue, failing check -> OVERDUE"       "## $yday — a scan that did not run\n\ncheck: test -f missing.txt\n" "deadline OVERDUE" "DONE"
 run "a writing check is refused -> OVERDUE"   "## $yday — a trap\n\ncheck: echo x > written.txt\n" "deadline OVERDUE" "DONE"
 [ -f "$T/brain/written.txt" ] && { echo "  FAIL the refused check wrote a file"; fail=1; } || echo "  OK  the refused check wrote nothing"
+# a refused check is said on the entry's line (2026-11-20: a `python3 -c` check was skipped silently)
+run "a refused check is named on the line"    "## $in2 — done but unreadable\n\ncheck: python3 -c 'pass'\n" "its check is refused" "DONE"
+run "a permitted check names no refusal"      "## $in2 — plain\n\ncheck: test -f missing.txt\n" "in 2 d" "refused"
+# the instance's allow list replaces the default, as in ledger-reconcile.py
+mkdir -p "$T/brain/.claude/rules"
+printf '{"allowed": ["test", "python3"]}' > "$T/brain/.claude/rules/ledgers.json"
+run "the instance's allow list is used"       "## $in2 — instance-permitted\n\ncheck: python3 -c 'pass'\n" "DONE by its check" "refused"
+rm -f "$T/brain/.claude/rules/ledgers.json"
 run "far entry: check not run, reported as next" "## $later — far away\n\ncheck: test -f exists.txt\n" "deadlines: next" "DONE"
 run "two entries: the done one steps aside"   "## $yday — done one\n\ncheck: test -f exists.txt\n\n## $later — next one\n\ntext\n" "deadlines: next $later" "OVERDUE"
 d2="$(date -v-2d +%F 2>/dev/null || date -d '-2 day' +%F)"
