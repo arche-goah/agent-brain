@@ -812,11 +812,23 @@ for line in open(os.environ["DEADLINE_FILE"], encoding="utf-8"):
     if cur is not None and cur["check"] is None and c:
         cur["check"] = c.group(1)
 shell = shutil.which("bash")
+# The ledgers' allow list, the instance's own when it names one (ledger-reconcile.py: it replaces the default).
+allowed = lr.ALLOWED if lr else []
+try:
+    import json
+    with open(root + "/.claude/rules/ledgers.json", encoding="utf-8") as f:
+        allowed = json.load(f).get("allowed") or allowed
+except Exception:
+    pass
 done = []
 for e in entries:
     if not e["check"] or lr is None or (e["date"] - today).days >= 7:
         continue
-    if lr.permitted(e["check"], lr.ALLOWED) and lr.run_check(e["check"], root, 5, shell) == "pass":
+    # A refused check is said, never skipped silently: measured 2026-11-20 (macOS instance), a `python3 -c` check
+    # was refused without a word and a part done three days earlier stayed reported as due.
+    if not lr.permitted(e["check"], allowed):
+        e["refused"] = True
+    elif lr.run_check(e["check"], root, 5, shell) == "pass":
         done.append(e)
 for e in done:
     title = f" ({e['title'][:60]})" if e["title"] else ""
@@ -831,10 +843,11 @@ loud = [e for e in open_ if (e["date"] - today).days < 7]
 for e in loud[:CAP]:
     days = (e["date"] - today).days
     title = f" ({e['title'][:60]})" if e["title"] else ""
+    note = " — its check is refused (not on the ledgers' read-only list), so it may be done already" if e.get("refused") else ""
     if days < 0:
-        print(f"!! deadline OVERDUE by {-days} d: {e['date']}{title} — docs/business/deadlines.md")
+        print(f"!! deadline OVERDUE by {-days} d: {e['date']}{title}{note} — docs/business/deadlines.md")
     else:
-        print(f"!! deadline {e['date']} in {days} d{title} — docs/business/deadlines.md")
+        print(f"!! deadline {e['date']} in {days} d{title}{note} — docs/business/deadlines.md")
 if len(loud) > CAP:
     print(f"!! deadline: {len(loud) - CAP} more overdue or due within 7 d — docs/business/deadlines.md")
 if not any((e["date"] - today).days >= 0 for e in loud):
