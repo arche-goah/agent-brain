@@ -102,7 +102,12 @@ def resolve_next(to: list[str], parties: dict, text: str = "") -> list[str]:
 # English here; an instance adds its language in .claude/rules/shared-memory-post.json
 # {"check_words": [regex, ...]}.
 OS_NAMES = {"windows": r"\bwindows\b|\bwin(?:10|11)?\b", "macos": r"\bmac\s?os\b", "linux": r"\blinux\b"}
-CHECK_WORDS = [r"\bcounter-?check", r"\bchecks? (?:it |them )?(?:on|at)\b", r"\bplease (?:run|check|verify|test)\b",
+# "re-check" and "run on <OS>" (2026-11-20, macOS instance): four core requests that day asked a Windows hand check of
+# single PRs ("Please review", "Re-check", "Please re-run", "Run on Windows") and passed os_check_not_needed unseen.
+# "please review / re-run" come from check-request-words.json (check_words() reads it); these two are not there.
+# Replayed over the 196 os:windows requests under core/ of the shared memory: the old list missed 13, now all 13 are seen.
+CHECK_WORDS = [r"\bcounter-?check", r"\bre-?check", r"\bchecks? (?:it |them )?(?:on|at)\b",
+               r"\bplease (?:run|check|verify|test)\b", r"\brun (?:it |them )?on (?:windows|macos|linux)\b",
                r"\bverify (?:on|at)\b"]
 
 # The unit a check word rules is its SENTENCE, not the whole text (2026-11-04, four refusals of correct requests
@@ -152,6 +157,14 @@ def asked_prs(sentences, default):
 
 def check_words():
     words = list(CHECK_WORDS)
+    # One source for "this text asks another instance to check": the request patterns of check-request-gate.cjs are
+    # read too (2026-11-20: the gate knew "please review / re-run", this tool did not, and four requests passed).
+    try:
+        import json
+        words += json.loads((Path(__file__).resolve().parent.parent / "helpers" / "check-request-words.json")
+                            .read_text(encoding="utf-8")).get("request_patterns") or []
+    except (OSError, ValueError):
+        pass
     root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     try:
         import json
@@ -283,12 +296,12 @@ def is_train(repo: str, n: str) -> bool:
         return False
 
 
-def os_check_not_needed(text: str) -> str:
+def os_check_not_needed(text: str, extra=()) -> str:
     """The refusal text when `text` asks an OS hand check of a single PR in a repo whose merge takes the CI as OS proof.
     Measured 2026-11-06 on the macOS instance: three per-PR Windows checks went out for core PRs that a merge train
     covers by its CI; the operator's rule (one check per OS at the train head, nothing twice) lived in prose only."""
     repos = ci_proof_repos()
-    asked = check_sentences(text)
+    asked = check_sentences(text) + list(extra)
     if not repos or not asked or not asked_os(asked):
         return ""
     single = [f"{repo}#{n}" for repo, n in asked_prs(asked, pr_repo_default())
@@ -297,7 +310,8 @@ def os_check_not_needed(text: str) -> str:
         return ""
     return ("an OS hand check is asked for single PR(s) " + ", ".join(single) + " - in this repo a green CI job is the OS "
             "proof for a merge, and a hand check happens at most once per OS at a merge train's head (build the train, ask "
-            "for its PR), or say why this single PR needs a hand check: --hand-check-ok <reason>")
+            "for its PR), or say why this single PR needs a hand check: --hand-check-ok <reason>. A content review: "
+            "leave the OS out of the sentence that asks (\"Content review of #N: Fit, Design, Cost, Gaps\").")
 
 
 def os_check_not_ready(text: str) -> str:
@@ -387,7 +401,11 @@ def main() -> int:
     if miss:
         return refuse(miss)
     if a.kind == "request" and not a.hand_check_ok:
-        needless = os_check_not_needed(a.title + "\n" + body)
+        # A request addressed to an OS is that machine's work: its TITLE counts as a check sentence whatever its words
+        # (2026-11-20 replay: "Windows-Pruefung agent-brain #320 am Kopf ..." and 23 more single-PR titles had no check word).
+        # A content review is no hand check (content review of #622, 2026-11-20): its title is not a check sentence.
+        title_rule = any(t.startswith("os:") for t in to) and not re.search(r"\bcontent[- ]review\b", a.title, re.I)
+        needless = os_check_not_needed(a.title + "\n" + body, [a.title] if title_rule else [])
         if needless:
             return refuse(needless)
     if a.kind == "request" and not a.ci_not_green_ok:
