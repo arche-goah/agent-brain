@@ -816,7 +816,8 @@ shell = shutil.which("bash")
 allowed = lr.ALLOWED if lr else []
 try:
     import json
-    allowed = json.load(open(root + "/.claude/rules/ledgers.json", encoding="utf-8")).get("allowed") or allowed
+    with open(root + "/.claude/rules/ledgers.json", encoding="utf-8") as f:
+        allowed = json.load(f).get("allowed") or allowed
 except Exception:
     pass
 done = []

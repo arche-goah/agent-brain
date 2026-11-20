@@ -44,8 +44,9 @@ run "a refused check is named on the line"    "## $in2 — done but unreadable\n
 run "a permitted check names no refusal"      "## $in2 — plain\n\ncheck: test -f missing.txt\n" "in 2 d" "refused"
 # the instance's allow list replaces the default, as in ledger-reconcile.py
 mkdir -p "$T/brain/.claude/rules"
-printf '{"allowed": ["test", "python3"]}' > "$T/brain/.claude/rules/ledgers.json"
-run "the instance's allow list is used"       "## $in2 — instance-permitted\n\ncheck: python3 -c 'pass'\n" "DONE by its check" "refused"
+# `true` is off the default list and exists on every OS (Windows review of #619: python3 is the Store stub there)
+printf '{"allowed": ["test", "true"]}' > "$T/brain/.claude/rules/ledgers.json"
+run "the instance's allow list is used"       "## $in2 — instance-permitted\n\ncheck: true\n" "DONE by its check" "refused"
 rm -f "$T/brain/.claude/rules/ledgers.json"
 run "far entry: check not run, reported as next" "## $later — far away\n\ncheck: test -f exists.txt\n" "deadlines: next" "DONE"
 run "two entries: the done one steps aside"   "## $yday — done one\n\ncheck: test -f exists.txt\n\n## $later — next one\n\ntext\n" "deadlines: next $later" "OVERDUE"
