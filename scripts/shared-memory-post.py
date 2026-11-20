@@ -102,11 +102,12 @@ def resolve_next(to: list[str], parties: dict, text: str = "") -> list[str]:
 # English here; an instance adds its language in .claude/rules/shared-memory-post.json
 # {"check_words": [regex, ...]}.
 OS_NAMES = {"windows": r"\bwindows\b|\bwin(?:10|11)?\b", "macos": r"\bmac\s?os\b", "linux": r"\blinux\b"}
-# "re-check", "please re-run / review", "run on <OS>" (2026-11-20, macOS instance): four core requests that day asked a
-# Windows hand check of single PRs in those words and passed os_check_not_needed unseen; replayed over the 196 os:windows
-# requests under core/ of the shared memory, the old list missed 13, the new words catch all 13.
+# "re-check" and "run on <OS>" (2026-11-20, macOS instance): four core requests that day asked a Windows hand check of
+# single PRs ("Please review", "Re-check", "Please re-run", "Run on Windows") and passed os_check_not_needed unseen.
+# "please review / re-run" come from check-request-words.json (check_words() reads it); these two are not there.
+# Replayed over the 196 os:windows requests under core/ of the shared memory: the old list missed 13, now all 13 are seen.
 CHECK_WORDS = [r"\bcounter-?check", r"\bre-?check", r"\bchecks? (?:it |them )?(?:on|at)\b",
-               r"\bplease (?:re-?)?(?:run|review|check|verify|test)\b", r"\brun (?:it |them )?on (?:windows|macos|linux)\b",
+               r"\bplease (?:run|check|verify|test)\b", r"\brun (?:it |them )?on (?:windows|macos|linux)\b",
                r"\bverify (?:on|at)\b"]
 
 # The unit a check word rules is its SENTENCE, not the whole text (2026-11-04, four refusals of correct requests
@@ -156,6 +157,14 @@ def asked_prs(sentences, default):
 
 def check_words():
     words = list(CHECK_WORDS)
+    # One source for "this text asks another instance to check": the request patterns of check-request-gate.cjs are
+    # read too (2026-11-20: the gate knew "please review / re-run", this tool did not, and four requests passed).
+    try:
+        import json
+        words += json.loads((Path(__file__).resolve().parent.parent / "helpers" / "check-request-words.json")
+                            .read_text(encoding="utf-8")).get("request_patterns") or []
+    except (OSError, ValueError):
+        pass
     root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     try:
         import json
@@ -287,12 +296,12 @@ def is_train(repo: str, n: str) -> bool:
         return False
 
 
-def os_check_not_needed(text: str) -> str:
+def os_check_not_needed(text: str, extra=()) -> str:
     """The refusal text when `text` asks an OS hand check of a single PR in a repo whose merge takes the CI as OS proof.
     Measured 2026-11-06 on the macOS instance: three per-PR Windows checks went out for core PRs that a merge train
     covers by its CI; the operator's rule (one check per OS at the train head, nothing twice) lived in prose only."""
     repos = ci_proof_repos()
-    asked = check_sentences(text)
+    asked = check_sentences(text) + list(extra)
     if not repos or not asked or not asked_os(asked):
         return ""
     single = [f"{repo}#{n}" for repo, n in asked_prs(asked, pr_repo_default())
@@ -391,7 +400,9 @@ def main() -> int:
     if miss:
         return refuse(miss)
     if a.kind == "request" and not a.hand_check_ok:
-        needless = os_check_not_needed(a.title + "\n" + body)
+        # A request addressed to an OS is that machine's work: its TITLE counts as a check sentence whatever its words
+        # (2026-11-20 replay: "Windows-Pruefung agent-brain #320 am Kopf ..." and 23 more single-PR titles had no check word).
+        needless = os_check_not_needed(a.title + "\n" + body, [a.title] if any(t.startswith("os:") for t in to) else [])
         if needless:
             return refuse(needless)
     if a.kind == "request" and not a.ci_not_green_ok:

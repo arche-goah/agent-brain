@@ -340,6 +340,11 @@ def main() -> int:
                      "'run on Windows' for a single PR is refused"),
                     ("Content review only", "Please review #1 at abc1234: Fit, Design, Cost, Gaps.", [], 0,
                      "control: a content review that names no OS passes"),
+                    # 2026-11-20 replay: to os:<os>, the title is a check sentence whatever its words
+                    ("Windows-Pruefung o/core#1 am Kopf abc1234", "Der Fix ist drin.", [], 2,
+                     "a title naming the OS and a single PR is refused without a check word"),
+                    ("Content review: o/core#1 start findings", "Fit, Design, Cost, Gaps.", [], 0,
+                     "control: a title naming no OS passes"),
                 ):
                     r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                              *extra, me="alex-mac", brain=cip)
