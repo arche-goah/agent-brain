@@ -24,15 +24,20 @@
 # --same-head the train branch IS the PR's head (no merge commit, so the contained head and the train head are one sha)
 # and the same manifest is printed. Refused when the head is not a descendant of origin/main (rebase it first).
 #
-# Usage: merge-train.sh [--repo DIR] [--name NAME] [--same-head] <pr> [<pr>...]   (DIR: a clone of the repo; default cwd)
+# PROBE (--probe; operator 2026-11-18, question tool: "Ja, alle drei (Recommended)" on a daily probe train): the same
+# build in a throw-away worktree of DIR, removed afterwards with its branch - nothing pushed, DIR untouched. Its "Left out"
+# lines name the conflicts days before a train is fixed (train 2.1.6 was rebuilt six times on the day, 2026-11-17).
+#
+# Usage: merge-train.sh [--repo DIR] [--name NAME] [--same-head] [--probe] <pr> [<pr>...]   (DIR: a clone of the repo; default cwd)
 # Exit 0 = train built (at least one PR in), 1 = no PR could join, 2 = could not run.
 set -u
-DIR="."; NAME=""; SAME=0
+DIR="."; NAME=""; SAME=0; PROBE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) DIR="$2"; shift 2 ;;
     --name) NAME="$2"; shift 2 ;;
     --same-head) SAME=1; shift ;;
+    --probe) PROBE=1; shift ;;
     --) shift; break ;;
     -*) echo "merge-train: unknown option $1" >&2; exit 2 ;;
     *) break ;;
@@ -45,6 +50,14 @@ slug="$(git -C "$DIR" remote get-url origin 2>/dev/null | sed -E 's#(\.git)?$##;
 [ -n "$slug" ] || { echo "merge-train: $DIR has no github origin" >&2; exit 2; }
 git -C "$DIR" fetch --quiet origin main || exit 2
 NAME="${NAME:-train/$(date +%Y-%m-%d)-$(date +%H%M)}"
+if [ "$PROBE" -eq 1 ]; then
+  NAME="probe/train-$(date +%Y%m%d-%H%M%S)-$$"
+  SRC="$DIR"; WT="$(mktemp -d)/probe"
+  git -C "$SRC" worktree add --quiet --detach "$WT" origin/main || exit 2
+  # shellcheck disable=SC2064
+  trap "git -C '$SRC' worktree remove --force '$WT' >/dev/null 2>&1; git -C '$SRC' branch -D '$NAME' >/dev/null 2>&1; git -C '$SRC' worktree prune >/dev/null 2>&1" EXIT
+  DIR="$WT"
+fi
 git -C "$DIR" checkout --quiet -B "$NAME" origin/main || exit 2
 
 joined=(); left=()
@@ -81,7 +94,7 @@ for pr in "$@"; do
   fi
 done
 
-echo "## Merge train $NAME"
+if [ "$PROBE" -eq 1 ]; then echo "## Probe train (built in a throw-away worktree, nothing pushed)"; else echo "## Merge train $NAME"; fi
 echo
 echo "Base: main @ $(git -C "$DIR" rev-parse --short origin/main) · train head: $(git -C "$DIR" rev-parse --short HEAD)"
 echo
