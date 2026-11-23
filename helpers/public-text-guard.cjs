@@ -101,23 +101,23 @@ function watchList(root) {
 // backticks: there the quoted text is read as a command too (before this, `bash -c "git commit -m x"` passed
 // the author check: the anchor wanted whitespace or a separator before `git`, and found a quote).
 const { segments } = require('./shell-segments.cjs');
-const RUNS_QUOTED = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-c\b|\beval\b|\$\(|`/;
+const RUNS_QUOTED = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-[a-z]*c[a-z]*\b|\beval\b|\$\(|`/;
 const QUOTED = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
 
 // Each command text as { judge, raw }: `judge` has its quoted parts emptied (what decides whether it is a write),
 // `raw` keeps them (where a quoted `git -C "<dir with spaces>"` is read from).
 function commandParts(cmd) {
   const outside = segments(cmd).map((s) => ({ judge: s.replace(QUOTED, '""').trim(), raw: s.trim() }));
-  if (!RUNS_QUOTED.test(cmd)) return outside;
-  const inside = [...cmd.matchAll(QUOTED)].map((m) => m[0].slice(1, -1));
-  return [...outside, ...inside.flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
+  return [...outside, ...ranTexts(cmd).flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
 }
 const commandTexts = (cmd) => commandParts(cmd).map((p) => p.judge);
 
 function isWrite(cmd) {
   const texts = commandTexts(cmd);
   if (texts.some((t) => WRITE_RX.some((rx) => rx.test(t)) || AUTHOR_RX.test(t))) return true;
-  for (const m of cmd.matchAll(GH_API_RX)) {
+  // over the command parts as judged (quoted data emptied), not the raw text: a quoted `gh api … -f x` is a probe
+  // argument, not a call (2026-11-18, the same 7-of-14 measurement)
+  for (const m of texts.join('\n').matchAll(GH_API_RX)) {
     const args = m[2];
     if (/\s(-f|-F|--field|--raw-field|--input)\b/.test(args)) return true;
     if (/\s(-X|--method)\s*(POST|PATCH|PUT)\b/i.test(args)) return true;
@@ -161,7 +161,7 @@ function referencedFiles(cmd) {
   return out.filter((f) => f !== '-');
 }
 
-const { shellSegments, publishedText, nativePath, scriptBodies } = require('./published-text.cjs');
+const { shellSegments, publishedText, nativePath, scriptBodies, ranTexts } = require('./published-text.cjs');
 
 function slugFromRemote(dir) {
   try {
