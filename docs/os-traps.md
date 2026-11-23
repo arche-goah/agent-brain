@@ -336,6 +336,7 @@ known:     scripts/test-ecosystem-sync.sh=1
 known:     scripts/test-effect-check-e3.sh=1
 known:     scripts/test-fixture-own-home.sh=1
 known:     scripts/test-effect-check-e5.sh=1
+known:     scripts/test-foreign-entry-gate.sh=1
 known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
