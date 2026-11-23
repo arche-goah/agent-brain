@@ -378,6 +378,7 @@ known:     scripts/test-promise-gate.sh=1
 known:     scripts/test-public-text-guard.sh=1
 known:     scripts/test-python-probe.sh=1
 known:     scripts/test-question-gate.sh=1
+known:     scripts/test-reader-break-check.sh=1
 known:     scripts/test-recall-gate.sh=1
 known:     scripts/test-release-freeze-gate.sh=1
 known:     scripts/test-repo-activity-watch.sh=1

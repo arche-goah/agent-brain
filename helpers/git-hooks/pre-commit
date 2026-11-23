@@ -98,6 +98,15 @@ if [ -f "$root/.claude/rules/ledgers.json" ] && [ -f "$core/scripts/ledger-one-e
   run_check "ledger-one-exit" "$py" "$core/scripts/ledger-one-exit.py" --root "$root" --staged
 fi
 
+# 4e. A phrase a reader greps from a file is not removed silently (operator, 2026-11-23, question tool round on the
+#     macOS instance): a ledger `check: grep -q "<phrase>" <file>` and a memory `home: <file> :: <phrase>` broke only at
+#     the next start check after a diet cut their sentences; a replay over that brain's history found ten earlier commits
+#     on seven days. Readers come from the staged tree, so rewriting the reader in the same commit passes. In every repo
+#     (the readers live in brains); ~0.1 s.
+if [ -f "$core/scripts/reader-break-check.py" ]; then
+  run_check "reader-break-check" "$py" "$core/scripts/reader-break-check.py" --root "$root"
+fi
+
 # 4c. A new dated rule: which OLD places say something about the same thing? (rule-conflict protocol step 2,
 #     `rules/thinking-protocol.md`). REPORT ONLY, never blocks: judging an old place takes a look, not a gate.
 #     Until 2026-11-02 backprop-report.py had no caller but a prose pointer (audit of the audits, package G);
@@ -237,6 +246,10 @@ covers_check() {
   [ -n "$staged" ] || return 0
   stems=" "
   while IFS= read -r f; do s=${f##*/}; stems="$stems${s%.*} "; done <<< "$staged"
+  # A fixture runs without the commit's git environment: under `git commit -- <paths>` git hands the hook
+  # GIT_INDEX_FILE (a temporary index), and a fixture that runs git in its own temp repo then wrote into the
+  # outer commit's index — the next step's `git diff --cached` died with 128 (measured 2026-11-23, macOS).
+  local noenv=(env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE -u GIT_PREFIX)
   # JS fixtures (test-*.cjs / test-*.js) take part the same way with `//` comments (reach finding at #453, 2026-11-07:
   # the gate fixtures are .cjs and stayed out of reach).
   for f in "$root"/scripts/test-*.sh "$root"/scripts/*-test.py "$root"/scripts/test-*.cjs "$root"/scripts/test-*.js; do
@@ -247,9 +260,9 @@ covers_check() {
     for t in $tokens; do case "$stems" in *" $t "*) run=1 ;; esac; done
     [ "$run" -eq 1 ] || continue
     case "$f" in
-      *.cjs|*.js) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && node "$2"' _ "$root" "$f" ;;
-      *.py) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && "$2" "$3"' _ "$root" "$py" "$f" ;;
-      *)    run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && bash "$2"' _ "$root" "$f" ;;
+      *.cjs|*.js) run_check "fixture ${f#"$root"/}" "${noenv[@]}" bash -c 'cd "$1" && node "$2"' _ "$root" "$f" ;;
+      *.py) run_check "fixture ${f#"$root"/}" "${noenv[@]}" bash -c 'cd "$1" && "$2" "$3"' _ "$root" "$py" "$f" ;;
+      *)    run_check "fixture ${f#"$root"/}" "${noenv[@]}" bash -c 'cd "$1" && bash "$2"' _ "$root" "$f" ;;
     esac
   done
 }
