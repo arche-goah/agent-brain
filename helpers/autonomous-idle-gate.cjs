@@ -66,7 +66,7 @@ const { newestExitKind } = require('./ledger-exit.cjs');
 
 // LIST EMPTY (2026-11-02, coherence register P0-1): a list run ends when the ORDERED list is done -
 // Order Fidelity #3, an empty list is a success, not a reason to take the rest of the ledger as the pool.
-const END_LINE = /^[ \t>*_-]*(BLOCKED|POOL EMPTY|LIST EMPTY):\s*\S/m;
+const END_LINE = /^[ \t>*_`-]*(BLOCKED|POOL EMPTY|LIST EMPTY):\s*\S/m;
 const HOOK_ECHO = /^Stop hook feedback:/;
 
 /** The running turn: its final assistant text and whether it called ScheduleWakeup. */
@@ -246,7 +246,7 @@ function releasedOpen(root, tp) {
   return out;
 }
 
-const HAND_STEP_LINE = /^[ \t>*_-]*HAND STEP:\s*\S/m;
+const HAND_STEP_LINE = /^[ \t>*_`-]*HAND STEP:\s*\S/m;
 
 /** The interactive variant: one block per turn while released work is open and the turn has no allowed end. */
 function judgeInteractive(input, root, now) {
@@ -262,7 +262,7 @@ function judgeInteractive(input, root, now) {
   if (closeOpenEnds(root, { sessionId: input.session_id, since: t.since, calls: t.cmds.map((cmd) => ({ cmd })) }) !== null) return null;
   const m = measurers(root);
   const measured = t.cmds.some((c) => m.some((r) => r.test(c))) || standingMeasurement(t.all, m, now);
-  const blockedLines = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:\s*\S/.test(l));
+  const blockedLines = t.text.split('\n').filter((l) => /^[ \t>*_`-]*BLOCKED:\s*\S/.test(l));
   const unnamed = ids.filter((id) => !blockedLines.some((l) => l.includes(id)));
   if (measured && !unnamed.length) return null;
   const list = (unnamed.length ? unnamed : ids).slice(0, 5).join(', ');
@@ -390,7 +390,7 @@ function judge(input, now) {
         }
         return false;
       };
-      const mergeOnly = t.text.split('\n').filter((l) => /^[ \t>*_-]*BLOCKED:/.test(l)
+      const mergeOnly = t.text.split('\n').filter((l) => /^[ \t>*_`-]*BLOCKED:/.test(l)
         && /(beta-tag|beta tag|\bpin\b|windows)/i.test(l)
         && !exempt.test(l) && !quotesOperator(l));
       if (!mergeOnly.length) return null;

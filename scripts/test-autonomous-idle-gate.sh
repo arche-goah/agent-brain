@@ -71,6 +71,11 @@ f="$T/4.jsonl"; { user "work through the open points autonomously"; bash_cmd "$M
 check "a POOL EMPTY line after measuring the list ends the turn" "$f" allow
 f="$T/4l.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst "LIST EMPTY: the three ordered items are merged (open-items 18:20)"; } > "$f"
 check "a LIST EMPTY line after measuring the list ends the turn" "$f" allow
+f="$T/4b.jsonl"; { user "work through the open points autonomously"; bash_cmd "$MEAS"; asst '`LIST EMPTY: the three ordered items are merged (open-items 18:20)`'; } > "$f"
+check "the same end line set as inline code ends the turn" "$f" allow
+# Class (2026-11-17): every marker-line reader in helpers/ allows the backtick among its markdown prefixes.
+old_prefix=$(grep -rlF '^[ \t>*_-]*' "$(dirname "$0")/../helpers" 2>/dev/null)
+if [ -z "$old_prefix" ]; then echo "  OK  no marker reader without the backtick prefix"; else echo "  FAIL marker reader without the backtick prefix: $old_prefix"; fail=1; fi
 f="$T/4m.jsonl"; { user "work through the open points autonomously"; asst "LIST EMPTY: all done"; } > "$f"
 check "a LIST EMPTY line without a measurement in the turn is held" "$f" block
 # 2026-10-28 (macOS instance): "BLOCKED: waiting on the watchers, the peer, the operator" while the session

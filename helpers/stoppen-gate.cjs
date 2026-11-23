@@ -80,11 +80,11 @@ const TAIL_BYTES = 4 * 1024 * 1024;
 const TAIL_CHARS = 400; // only the closing stretch of the final text counts
 // The interactive question tool, and the one line that says it is missing here.
 const QUESTION_TOOL = 'AskUserQuestion';
-const NO_TOOL_LINE = /^[ \t>*_-]*⚙️?\s*no question tool:/imu;
+const NO_TOOL_LINE = /^[ \t>*_`-]*⚙️?\s*no question tool:/imu;
 // In the operator's autonomous run the question tool is the wrong way (skill autonomous-run,
 // hard gate 7): the question goes into the instance's ledger and the prose report says where.
 // The reply says so in one line; autonomous-mode.cjs tells the gate which way to demand.
-const AUTONOMOUS_LINE = /^[ \t>*_-]*⚙️?\s*autonomous:/imu;
+const AUTONOMOUS_LINE = /^[ \t>*_`-]*⚙️?\s*autonomous:/imu;
 const { autonomousMode } = require('./autonomous-mode.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
 const MAX_TOOL_BLOCKS = 2; // blocks per turn before a prose decision question is let through
@@ -169,7 +169,7 @@ const BUILTIN_OWN_OPEN = [
 const BUILTIN_OWN_NEGATION = ['^\\W{0,4}(none|nothing|no more|no open)\\b'];
 const NEGATION_BEFORE = /\b(nothing|no|none|not)\b[^.\n]{0,12}$/i;
 // The named turn ends autonomous-idle-gate reads.
-const NAMED_END = /^[ \t>*_-]*(?:\*\*)?(BLOCKED|POOL EMPTY|LIST EMPTY|HAND STEP)(?:\*\*)?:\s*\S/m;
+const NAMED_END = /^[ \t>*_`-]*(?:\*\*)?(BLOCKED|POOL EMPTY|LIST EMPTY|HAND STEP)(?:\*\*)?:\s*\S/m;
 const BUILTIN_CONDITION = [
   '\\b(once|when|after|as soon as|until|if)\\b',
 ];

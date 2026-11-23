@@ -695,11 +695,13 @@ function ghListed(ghCalls, root) {
 // entry passed - `WATCH-GAP: CLAUDE.md` let a PR end unwatched in a brain with 44 unrelated instance entries.
 // Returns the key, or null (no token, no BLOCKED line, unreadable file, undeclared key, an entry without watch_gap).
 function watchGap(root, text) {
-  const t = stripQuoted(text || '');
-  if (!/^[ \t>*_-]*BLOCKED:/m.test(t)) return null;
+  // Fenced blocks only: stripQuoted also drops inline code, and a whole `BLOCKED: ... WATCH-GAP: key` line set as
+  // inline code (the shape the backtick prefix is for) was gone before the test (Windows review of #583, 2026-11-18).
+  const t = String(text || '').replace(/```[\s\S]*?```/g, ' ');
+  if (!/^[ \t>*_`-]*BLOCKED:/m.test(t)) return null;
   const m = /\bWATCH-GAP:\s*(\S+)/.exec(t);
   if (!m) return null;
-  const key = m[1].replace(/[.,;)]+$/, '');
+  const key = m[1].replace(/[.,;)`]+$/, '');   // a closing backtick of an inline-code line is no part of the key
   try {
     const lm = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'local-machinery.json'), 'utf8'));
     return ['instance', 'external', 'alpha'].some((k) => {

@@ -507,6 +507,9 @@ printf '{"instance":{"scripts/no-watch-here":{"why":"show machine offline, no po
 check "WATCH-GAP naming a declared but unrelated key (no watch_gap field)" "$T/wg0.jsonl" block "$WG"
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "BLOCKED: PR review — no watcher can run here. WATCH-GAP: scripts/no-watch-here"; } > "$T/wg1.jsonl"
 check "BLOCKED + declared WATCH-GAP" "$T/wg1.jsonl" allow "$WG"
+# Windows review of #583 (2026-11-18): the whole marker line set as inline code is read too
+{ user "build the PR"; tool Bash "gh pr create --title x --body y"; asst '`BLOCKED: PR review - no watcher can run here. WATCH-GAP: scripts/no-watch-here`'; } > "$T/wg1b.jsonl"
+check "BLOCKED + declared WATCH-GAP set as inline code" "$T/wg1b.jsonl" allow "$WG"
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "BLOCKED: PR review — WATCH-GAP: scripts/made-up"; } > "$T/wg2.jsonl"
 check "WATCH-GAP naming an undeclared key" "$T/wg2.jsonl" block "$WG"
 { user "build the PR"; tool Bash "gh pr create --title x --body y"; asst "No watcher here. WATCH-GAP: scripts/no-watch-here"; } > "$T/wg3.jsonl"
