@@ -212,12 +212,18 @@ function intents(transcriptPath, cwd) {
  * classifier) still matches by time alone.
  */
 function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 40); }
+/** A record written BEFORE the transcript holds the prompt still belongs to it when its text matches: a message typed
+ *  while the agent works is classified at submit, but the transcript writes it as a user record only when the next
+ *  turn starts. Measured 2026-11-18 on the macOS instance: record 06:39:22 (mode_off), user record 06:39:31 - the
+ *  forward-only window missed it, the words read "autonom" as an order, the operator's off-word did nothing. */
+const INTENT_BEFORE_MS = 30 * 60 * 1000;
 function intentFor(list, ts, text) {
   const t = Date.parse(ts || '');
   if (Number.isNaN(t)) return null;
   const want = norm(text);
-  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS
-    && (r.prompt === null || !want || norm(r.prompt).slice(0, want.length) === want.slice(0, norm(r.prompt).length)));
+  const same = (r) => r.prompt === null || !want || norm(r.prompt).slice(0, want.length) === want.slice(0, norm(r.prompt).length);
+  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS && same(r))
+    || list.filter((r) => r.prompt !== null && want && r.at < t && t - r.at <= INTENT_BEFORE_MS && same(r)).pop();
   return hit ? hit.model : null;
 }
 
