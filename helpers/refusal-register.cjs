@@ -100,7 +100,7 @@ function repeatIn(refusals, regText, aliases) {
  * entry says which earlier fix did not hold - `related: none` on the third case was the 2026-11-18 defect.
  */
 function namesEarlier(written, hits) {
-  const rel = (String(written || '').match(/^[ \t>*_-]*related:[^\n]*(?:\n[ \t]+[^\n]*)*/gim) || []).join('\n').toLowerCase();
+  const rel = (String(written || '').match(/^[ \t>*_`-]*related:[^\n]*(?:\n[ \t]+[^\n]*)*/gim) || []).join('\n').toLowerCase();
   if (!rel) return false;
   return (hits || []).some((h) => (h.id ? rel.includes(h.id.toLowerCase()) : Boolean(h.date) && rel.includes(h.date)));
 }
