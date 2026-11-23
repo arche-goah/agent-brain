@@ -562,7 +562,12 @@ function ciStarted(shell, root) {
       continue;
     }
     const dir = callDir(c.cmd, root);
-    const fresh = /\[new branch\]/.test(c.out || '');
+    // No PR exists for the branch, so no `pull_request` run: git prints `[new branch]`, but a quiet push (`-q`) does
+    // not - GitHub's own hint "Create a pull request for '<branch>'" still comes through on stderr, and GitHub prints
+    // it only while no PR is open for that branch. Measured 2026-11-18 on the macOS instance: `push -q -u origin
+    // feat/bin-show-bench` to show-tools (CI on push to main + pull_request) was held for a watcher of a run that
+    // never started; the watch waited until it was stopped.
+    const fresh = /\[new branch\]/.test(c.out || '') || /Create a pull request for '[^']+'/.test(c.out || '');
     if (!pushSegments(c.cmd).some((b) => pushRunsCi(dir, b, fresh))) continue;
     const slug = originSlug(dir);
     if (slug) out.add(slug);
