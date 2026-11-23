@@ -333,11 +333,17 @@ process.stdin.on('end', () => {
     }
 
     const verdict = judge(call);
-    if (verdict && /moves HEAD/i.test(verdict.was) && !marker) {
+    // Every call that rewrites the tree files, not only a branch switch (class sweep 2026-11-23): stash, reset
+    // --hard/--merge/--keep, rebase, merge, pull, cherry-pick, revert, am - also their fast-forward forms, which the
+    // shared-copy rules let through, because a fast-forward changes the files a run is reading just the same.
+    const treeMoving = (verdict && /moves HEAD|removes|discards/i.test(verdict.was))
+      || ['rebase', 'merge', 'pull', 'cherry-pick', 'revert', 'am'].includes(call.sub)
+      || (call.sub === 'reset' && hasOpt(call.args, '--hard', '--merge', '--keep'));
+    if (treeMoving && !marker) {
       const busy = busyRunners(top);
       if (busy.length) {
         deny(`WORKTREE BUSY (${top}): ${busy.length} running process(es) read this checkout, e.g. pid ${busy[0].pid}: ` +
-          `${busy[0].args.slice(0, 120)}\n\n  ${verdict.was} — under a run that is still reading the tree.\n\nThe form that passes:\n` +
+          `${busy[0].args.slice(0, 120)}\n\n  \`git ${call.sub}\` rewrites files under a run that is still reading the tree.\n\nThe form that passes:\n` +
           `  a \`git worktree add <scratchpad>/<name> <branch>\` for the other branch, or wait until the run has ended\n\n` +
           `If the process does not read this tree after all: repeat with "# MECHANISM-OK: <why>".`, project, cmd);
       }

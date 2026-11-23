@@ -172,6 +172,12 @@ SHARED_COPY_FIXTURE_RUNNERS="4242 bash scripts/core-push-lint.sh --fast $PRIV_N"
   probe "a file-level checkout under the run (control)"        "$ONE" "git -C $PRIV_N checkout -- a.txt" allow
 SHARED_COPY_FIXTURE_RUNNERS="4242 bash scripts/core-push-lint.sh --fast $PRIV_N" \
   probe "marker opens it"                                      "$ONE" "git -C $PRIV_N switch -c busy-mk  # MECHANISM-OK: the run reads another tree" allow
+RUN1="4242 bash scripts/core-push-lint.sh --fast $PRIV_N"
+SHARED_COPY_FIXTURE_RUNNERS="$RUN1" probe "stash under the run (class sweep)"         "$ONE" "git -C $PRIV_N stash"              block
+SHARED_COPY_FIXTURE_RUNNERS="$RUN1" probe "reset --hard under the run"                "$ONE" "git -C $PRIV_N reset --hard HEAD"  block
+SHARED_COPY_FIXTURE_RUNNERS="$RUN1" probe "a fast-forward pull under the run"         "$ONE" "git -C $PRIV_N pull --ff-only"     block
+SHARED_COPY_FIXTURE_RUNNERS="$RUN1" probe "rebase under the run"                      "$ONE" "git -C $PRIV_N rebase main"        block
+SHARED_COPY_FIXTURE_RUNNERS="$RUN1" probe "reset --soft leaves the files (control)"   "$ONE" "git -C $PRIV_N reset --soft HEAD"  allow
 SHARED_COPY_FIXTURE_RUNNERS="" \
   probe "no run (control)"                                     "$ONE" "git -C $PRIV_N switch -c busy-none" allow
 
