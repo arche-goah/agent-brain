@@ -39,6 +39,33 @@ X="$T/exit"; mkdir -p "$X/.claude/rules" "$X/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$X/.claude/rules/ledgers.json"
 # "Parked choice" writes its exit as a list item, the project ledgers' form (2026-11-03: such exits went unread).
 printf '%s\n' '- [ ] Parked choice' '  - class: decision' '  - exit: parked 2026-10-20' '- [ ] Release now' '  - class: decision' '  exit: operator-decision 2026-10-28' '  ask-when: 2026-01-01' > "$X/docs/questions.md"   # a date reached: due (counter-case to ask-when in $N)
+# A todo whose newest exit is the operator's decision counts (2026-11-18: filed `class: todo`, counted 0).
+K="$T/todo-exit"; mkdir -p "$K/.claude/rules" "$K/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$K/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Guard exception for its fixture' '  class: todo' '  exit: operator-decision 2026-11-18 — proposal' > "$K/docs/questions.md"
+# A question line counts whatever the exit says (macOS incident 2026-11-23: one entry held the AI's remaining work AND the
+# operator's questions; its exit read ai-does-it, the count was 0, "ask me now" did not end the autonomous run).
+Q="$T/question"; mkdir -p "$Q/.claude/rules" "$Q/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"],"operator_question_patterns":["QUESTION FOR THE OPERATOR"]}' > "$Q/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Collected points' '  - class: decision' '  - circle: B' '  question: wire the new check? recommendation yes' \
+  '  exit: ai-does-it 2026-11-23 — the AI goes on with the rest' > "$Q/docs/questions.md"
+QI="$T/question-instance"; mkdir -p "$QI/.claude/rules" "$QI/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"],"operator_question_patterns":["QUESTION FOR THE OPERATOR"]}' > "$QI/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Collected points' '  - class: decision' '  - circle: B' '  QUESTION FOR THE OPERATOR (2): apply the patch?' \
+  '  exit: ai-does-it 2026-11-23 — the AI goes on with the rest' > "$QI/docs/questions.md"
+# The product of the two incidents (2026-11-18 class, 2026-11-23 exit): a `class: todo` entry asking under ai-does-it.
+QT="$T/question-todo"; mkdir -p "$QT/.claude/rules" "$QT/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$QT/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Collected points' '  - class: todo' '  question: wire the new check? recommendation yes' \
+  '  exit: ai-does-it 2026-11-23 — the AI goes on with the rest' > "$QT/docs/questions.md"
+QN="$T/question-none"; mkdir -p "$QN/.claude/rules" "$QN/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$QN/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Collected points' '  - class: decision' '  - circle: B' '  the AI works through the rest, nothing to ask' \
+  '  exit: ai-does-it 2026-11-23 — the AI goes on with the rest' > "$QN/docs/questions.md"
+QW="$T/question-wait"; mkdir -p "$QW/.claude/rules" "$QW/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$QW/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Housing choice' '  - class: decision' '  - circle: B' '  question: which housing tray? ask when the boards are here' \
+  '  exit: later-at-system 2026-11-17 — waits for the boards' > "$QW/docs/questions.md"
 O="$T/circle"; mkdir -p "$O/.claude/rules" "$O/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$O/.claude/rules/ledgers.json"
 printf '%s\n' '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Release now' '  - class: decision' '  - circle: B' > "$O/docs/questions.md"
@@ -54,6 +81,7 @@ check() { # $1 label, $2 transcript, $3 brain dir, $4 block|allow
 
 f="$T/1.jsonl"; { user "fix the parser"; asst "done"; user "anything open for me?"; asst "Four points: remove the worktrees (recommendation: yes) ..."; } > "$f"
 check "the incident: asked what is open, decisions answered in prose" "$f" "$B" block
+check "a todo whose newest exit is operator-decision counts" "$T/1.jsonl" "$K" block
 f="$T/2.jsonl"; { user "anything open for me?"; asst "Two decisions:"; ask; } > "$f"
 check "same question, answered through the question tool" "$f" "$B" allow
 # An api-request-blob after the prompt repeats its text; it is no prompt (class sweep 2026-11-03).
@@ -94,6 +122,12 @@ f="$T/5x.jsonl"; { user "anything open for me?"; asst "One point, recommendation
 check "an entry whose last exit is operator-decision still counts" "$f" "$X" block
 out=$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$f")" "$(native "$X")" | CLAUDE_PROJECT_DIR="$(native "$X")" node "$(native "$G")" 2>&1)
 case "$out" in *"1 operator hand step"*) ok "a parked exit is not counted";; *) bad "parked exit counted: ${out:0:200}";; esac
+f="$T/5q.jsonl"; { user "anything open for me?"; asst "Nothing open."; } > "$f"
+check "a question line counts though the exit is ai-does-it" "$f" "$Q" block
+check "an instance question pattern counts though the exit is ai-does-it" "$f" "$QI" block
+check "a class: todo entry with a question line under ai-does-it counts (both incidents at once)" "$f" "$QT" block
+check "an ai-does-it entry without a question line stays out (control)" "$f" "$QN" allow
+check "a question under a wait (later-at-system) stays parked" "$f" "$QW" allow
 f="$T/6.jsonl"; { user "fix the parser"; asst "done"; user "now the tests"; asst "done"; } > "$f"
 check "an ordinary turn, not after autonomy, no ask (control)" "$f" "$B" allow
 mkdir -p "$N/.claude-state"

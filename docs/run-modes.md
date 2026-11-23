@@ -39,8 +39,11 @@ interactive?"); due only after a switch from autonomous to interactive, as the l
   instance's ledger as a point for the operator, and the AI goes on with what is safely doable.
 - **The AI keeps working** — as in interactive mode (the one law above); the run itself counts as open own work, and a
   question is no end because it is collected.
-- **When the operator asks what is open**, the mode switches to INTERACTIVE (the operator is here): all collected
-  points come as question-tool questions, and the last one is "continue autonomously?" — a yes switches back.
+- **When the operator asks what is open**, the operator is here for that turn: the question tool and the dialogs
+  pass in it, whatever is or is not filed as open. All collected points come as question-tool questions; the first
+  answered question switches the mode to INTERACTIVE, and the last one is "continue autonomously?" — a yes switches
+  back. A turn that has nothing to ask says so in one line and the run stays AUTONOMOUS; a later turn the operator
+  did not open (a timer, a finished background task) is outside that window again.
 
 What autonomous mode is NOT: not a permission level, not a way past an `ask` rule, not a licence for irreversible
 steps, not a time-boxed run. A run over a stated DURATION ("work through the next 2 h") is the skill

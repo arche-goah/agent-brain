@@ -247,6 +247,17 @@
       "template": "{1} - a peer session in this working copy heard nothing from you: SendMessage + claim",
       "maxLength": 120,
       "_note": "Carrier of 'two sessions, one working copy' (rules/working-rules.md #12): a live peer session in the same project root got no SendMessage from this session - holds the turn once, then a 30 min cooldown per peer. Ported from an instance alpha (2026-11-09 to 2026-11-23, 58 blocks recorded)."
+    },
+    {
+      "label": "MODE OWED",
+      "marker": "MODE-OWED",
+      "cmd": "core/helpers/mode-owed.cjs",
+      "args": ["stop"],
+      "mode": "block",
+      "onReissue": "run",
+      "template": "The mode question is owed: ask the remaining questions at once, then the mode question last",
+      "maxLength": 120,
+      "_note": "Carrier of 'the mode question comes last' (2026-11-23: an operator asked what was open in an autonomous run; three question rounds and about 40 work calls, no mode question): a turn end with the mode question owed after an answered round in a dialog the operator opened is held once per round. Its work-call half runs inside autonomous-gate.cjs."
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",

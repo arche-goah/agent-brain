@@ -583,6 +583,19 @@ def front(it, repo):
     return it["front"]
 
 
+def question_rx(repo):
+    """A `question:` field line, or the instance's operator_question_patterns (.claude/rules/ledgers.json)."""
+    cfg = load_json(Path(repo or ".") / ".claude" / "rules" / "ledgers.json", None) or {}
+    pats = [r"^\s*(?:[-*]\s+)?question:\s*\S"]
+    for p in cfg.get("operator_question_patterns") or []:
+        try:
+            re.compile(p)
+            pats.append(p)
+        except re.error:
+            pass
+    return re.compile("|".join(pats), re.M)
+
+
 def auto_class(it, repo, human_rx):
     """(class, why) from the data alone, or (None, '') when the data does not say."""
     if it["kind"] == "PR":
@@ -592,6 +605,12 @@ def auto_class(it, repo, human_rx):
     if it["kind"] == "session":
         return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it["kind"] == "ledger":
+        # A question to the operator is its own line and wins over the exit (macOS incident 2026-11-23: one
+        # entry held the AI's work AND the operator's questions, exit ai-does-it, the start report said
+        # "human 0"); the same reader as helpers/decision-presentation-gate.cjs questionRx.
+        # Only over the agent's own exits (ai-does-it, in-pr); a wait (later-at-system, other-side, parked) keeps parking it.
+        if it.get("exit") in ("ai-does-it", "in-pr") and question_rx(repo).search(it.get("body") or ""):
+            return "human", "an open question to the operator (question line)"
         # The sorted exit says who moves (skill backlog-catch-up); `class: decision` alone does not
         # — measured 2026-10-28: 9 of 11 "human" ledger rows were no operator decision.
         if it.get("exit") == "operator-decision":

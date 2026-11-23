@@ -253,10 +253,10 @@ function promptModes(transcriptPath, cwd) {
   let state = w.initial;
   const askIds = new Set();
   const known = intents(transcriptPath, cwd);
-  const memo = openCountMemo(cwd);
-  let n = -1;
+  // The asking prompt whose turn is still running with no question answered yet (its `window` is open).
+  let pending = null;
+  const closeWindow = () => { if (pending) { pending.window = false; pending = null; } };
   for (const line of lines) {
-    n += 1;
     if (line.includes('"AskUserQuestion"')) {
       try {
         const c = (JSON.parse(line).message || {}).content;
@@ -272,10 +272,16 @@ function promptModes(transcriptPath, cwd) {
     const queued = queuedHumanPrompt(d);
     // A timer-fired prompt is the agent's or the harness's text: its "Autonomous loop check"
     // switched the mode back on after the operator had said "interactive" (measured 2026-10-27).
+    // A turn the operator did not open (a timer, a peer's message) ends the asking prompt's window: the operator who
+    // asked 20 minutes ago is not thereby present now (operator 2026-11-03, quoted in autonomous-gate.cjs).
+    if (!queued && isAgentOrigin(d)) closeWindow();
     if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isAgentOrigin(d)
         || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
       for (const [q, a] of answers(d.message, askIds)) {
+        // A question answered in the asking prompt's turn: the questions came, the run is interactive from here
+        // (the mode question below may switch it on again).
+        if (pending) { pending.autonomous = false; pending = null; state = false; }
         // A yes/no to the mode question decides by yes; an answer to any other question is read
         // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
         // "yes, work through them autonomously" to "shall I handle them?" set nothing). The mode
@@ -289,9 +295,11 @@ function promptModes(transcriptPath, cwd) {
       }
     }
     const t = queued || promptText(d.message);
+    if (t && /<task-notification>/.test(t) && isNotification(t)) closeWindow(); // a background task's turn, not the operator's
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
+    closeWindow(); // a new operator prompt: its own reading decides
     // The words are matched without pasted blocks; `text` keeps them, so a reader that finds this
     // prompt again in the transcript by its text (decision-presentation-gate) still finds it.
     const own = operatorWords(text);
@@ -315,50 +323,33 @@ function promptModes(transcriptPath, cwd) {
       off = w.off.test(own);
       if (!off && !asks && ordersOn(w.on, own)) state = ordered = true;
     }
-    // "What is open for me?" leaves the run only when something IS open for the operator (operator 2026-11-03,
-    // translated: "why did you just switch to interactive? no questions came. either the questions, or stay
-    // autonomous"). Nothing open: the run goes on and the reply says so in one line. Read lazily - the presentation
-    // gate requires this file.
+    // "What is open for me?" leaves the run when the questions COME (operator 2026-11-03, translated: "why did you
+    // just switch to interactive? no questions came. either the questions, or stay autonomous"). That rule is the
+    // OUTCOME of the turn, not a condition before it: the asking prompt opens a `window` - in its turn the question
+    // tool and the dialogs pass (autonomous-gate.cjs) -, a question answered there ends the run (above), and a turn
+    // that asks nothing leaves it autonomous. Until 2026-11-23 the run ended only when a derived count of open
+    // operator decisions was above 0; the count read what the agent itself had filed, and three incidents on the
+    // macOS instance (2026-11-05, -18, -23) each failed on one more form it did not read - the question tool was
+    // refused on the operator's own request. Replay over that instance's history: 14 such prompts refused, in 6 the
+    // count was 0, and the widened count would have caught 2 of them. What is filed as open stays a DUTY: the
+    // presentation gate holds a turn that asked nothing while a decision is open.
+    let window = false;
     if (off) state = false;
-    else if (asks) state = state && memo.count(`${path.resolve(transcriptPath)}#${n}`) === 0 ? true : false;
-    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words',
-      ordered, at: Date.parse(d.timestamp) || null });
+    else if (asks && state) window = true;
+    const row = { text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words',
+      ordered, window, at: Date.parse(d.timestamp) || null };
+    out.push(row);
+    if (window) pending = row;
   }
-  memo.save();
   return out;
 }
 
-/** The open-for-operator count of an asking prompt, read ONCE - at the first hook that sees the prompt - and kept per
- *  transcript line (2026-11-06, Windows instance: re-read at every hook, the count fell to 0 once the agent had done
- *  the operator's items, and the same "what is open" prompt flipped the run back to autonomous - the closing mode
- *  question was refused, the idle gate asked for a continuation). Unwritable state = the live count, as before. */
-function openCountMemo(cwd) {
-  const file = path.join(cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude-state', 'asks-open-count.json');
-  let data = {};
-  try { data = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch (e) { data = {}; }
-  let dirty = false;
-  return {
-    count(key) {
-      // a pattern case names its own count (scripts/pattern-cases.py): no memo, or one run's count leaks into the next
-      if (/^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '')) return openForOperator(cwd);
-      if (!(key in data)) { data[key] = openForOperator(cwd); dirty = true; }
-      return data[key];
-    },
-    save() {
-      if (!dirty) return;
-      try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); } catch (e) { /* live count next time */ }
-    },
-  };
-}
-
-/** Count of operator decisions and hand steps the presentation gate would put (its own readers); unreadable = 1, the safe side. */
-function openForOperator(cwd) {
-  // scripts/pattern-cases.py sets it: a pattern case tests the words, it names its own open count
-  if (/^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '')) return Number(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR);
-  try {
-    const { ledgerDecisions, registerDecisions } = require('./decision-presentation-gate.cjs');
-    return ledgerDecisions(cwd).length + registerDecisions(cwd).length;
-  } catch (e) { return 1; }
+/** true while the operator's newest prompt asked what is open and its turn still runs with no question answered:
+ *  the question tool and the dialogs pass, though the run is (still) autonomous. */
+function askWindow(transcriptPath, cwd) {
+  const rows = promptModes(transcriptPath, cwd);
+  const last = rows[rows.length - 1];
+  return Boolean(last && last.window);
 }
 
 /** true when the operator's autonomous order is in force at the end of the transcript. A session close of THIS
@@ -381,6 +372,23 @@ function autonomousMode(transcriptPath, cwd) {
   return !closedAfter(transcriptPath, cwd, onAt);
 }
 
+/** Why the run is (still) autonomous, measured from the operator's newest prompt - for a refusal that names its reason
+ *  (2026-11-23, macOS instance: the gate refused the question tool with its generic text after "questions now"; the
+ *  agent guessed at the word list, the operator: "what do you keep saying about the word list?"). */
+function modeReason(transcriptPath, cwd) {
+  const rows = promptModes(transcriptPath, cwd).filter((r) => !r.answer);
+  const last = rows[rows.length - 1];
+  if (!last) return 'no operator prompt read in this transcript - the start state decides';
+  const reader = last.by === 'model' ? 'the intent classifier record' : 'the word lists (no classifier record for this prompt)';
+  if (last.asks && !last.window) {
+    return `the operator's newest prompt was read as asking what is open (${reader}), but its turn ended without a `
+      + 'question and this is a later turn the operator did not open (a timer, a task notification, a peer message) - '
+      + 'the window of an asking prompt is its own turn';
+  }
+  if (!last.asks) return `the operator's newest prompt was not read as asking what is open, nor as an off-word (${reader})`;
+  return `the run is autonomous by an order after the operator's newest prompt (${reader})`;
+}
+
 /** A close stamp of this session written after `since` (ms; null = any time). */
 function closedAfter(transcriptPath, cwd, since) {
   const dir = cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -393,9 +401,17 @@ function closedAfter(transcriptPath, cwd, since) {
   return since == null || st.mtimeMs >= since;
 }
 
-module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, modelSays, answers, promptText, HOOK_ECHO };
+module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason };
+
 
 if (require.main === module) {
-  const [tp, cwd] = process.argv.slice(2);
-  console.log(autonomousMode(tp || '', cwd) ? 'autonomous' : 'interactive');
+  const [tp, cwd, flag] = process.argv.slice(2);
+  // `--window`: the third verdict - `window` while the run is autonomous and the asking prompt's turn is open.
+  if (flag === '--window' && autonomousMode(tp || '', cwd) && askWindow(tp || '', cwd)) { console.log('window'); return; }
+  // scripts/pattern-cases.py runs this on a transcript that ENDS at the prompt under test and names its own open count
+  // (AUTONOMOUS_OPEN_FOR_OPERATOR, default 1): a case tests how the WORDS are read. A prompt read as asking what is
+  // open shows there as `interactive` when something is open (the turn must ask), as `autonomous` with 0 - the
+  // verdicts every instance's case data was written against.
+  const caseOpen = /^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '') && Number(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR) > 0;
+  console.log(autonomousMode(tp || '', cwd) && !(caseOpen && askWindow(tp || '', cwd)) ? 'autonomous' : 'interactive');
 }

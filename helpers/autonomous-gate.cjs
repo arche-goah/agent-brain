@@ -14,7 +14,8 @@
  * it holds". The question-tool half was an instance alpha (autonomous-question-gate, 2026-10-19) that
  * no other brain had.
  *
- * Mode: `autonomous-mode.cjs` (a latch: an on-word sets it; an off-word or asking what is open clears it;
+ * Mode: `autonomous-mode.cjs` (a latch: an on-word sets it; an off-word clears it; asking what is open opens a
+ * window for that prompt's own turn - this hook is silent in it - and the first answered question clears the latch;
  * instance words in `.claude/rules/autonomous-patterns.json`). Outside that mode this hook is silent.
  * Ask rules: `permissions.ask` of the project's `.claude/settings.json`, `.claude/settings.local.json`
  * and the user's settings, matched the way the harness reads them: `Tool` alone matches the tool;
@@ -29,7 +30,7 @@ const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const os = require('os');
-const { autonomousMode, promptModes, asksMode, words } = require('./autonomous-mode.cjs');
+const { autonomousMode, promptModes, askWindow, asksMode, words } = require('./autonomous-mode.cjs');
 
 /** A question call that asks ONLY the mode question ("Continue autonomously?") ends the run's question round; it is
  *  no stop (2026-11-06, Windows instance: once every operator item was answered and done, the "what is open for me"
@@ -216,6 +217,9 @@ function defaultModeNotice(input, root) {
 function judge(input) {
   const tool = input.tool_name || '';
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  // The mode question owed after an answered round in a dialog the operator opened (mode-owed.cjs, 2026-11-23): read
+  // before the mode check - asking what is open has just ended the run, and the work after the answers is what it holds.
+  try { const owed = require('./mode-owed.cjs').pre(input, root); if (owed) return owed; } catch (e) { /* fail open */ }
   const notice = defaultModeNotice(input, root);
   if (notice) return notice;
   const isQuestion = tool === 'AskUserQuestion';
@@ -225,6 +229,12 @@ function judge(input) {
   const own = isQuestion ? null : hitRule(OWN_WORDS, tool, input.tool_input || {}, root);
   if (!isQuestion && !rule && !held && !own) return null;
   if (!autonomousMode(input.transcript_path || '', root)) return null;
+  // The operator's newest prompt asked what is open and its turn still runs: the operator is here for exactly this
+  // turn, so the question tool and the dialogs pass - with no count of what is filed as open (until 2026-11-23 the run
+  // ended on that prompt only when a derived count was above 0; replay on the macOS instance: 14 asking prompts had
+  // the question tool refused, 15 a dialog edit, 3 a dialog command). The gate's own words stay locked (below), and a
+  // later turn the operator did not open is outside the window (autonomous-mode.cjs).
+  if (!own && askWindow(input.transcript_path || '', root)) return null;
   if (own && wayOut(tool, input.tool_input || {}, root, input.transcript_path || '')) return null;
   if (own) {
     return `AUTONOMOUS-GATE: \`${own}\` holds the words this gate decides by, and the run is autonomous - a run does not change ` +
@@ -234,7 +244,12 @@ function judge(input) {
   const what = isQuestion ? 'a question through the question tool'
     : rule ? `a call that the permission rule \`${rule}\` (ask) turns into a dialog`
       : `an edit of hook or permission data (\`${held}\`) that the auto-mode classifier holds for the operator`;
+  // The measured reason the run is still autonomous (2026-11-23: a generic refusal after "questions now" left the agent
+  // guessing at the word list; the real cause was an open-for-operator count of 0).
+  let why = '';
+  try { why = require('./autonomous-mode.cjs').modeReason(input.transcript_path || '', root); } catch (e) { why = ''; }
   return `AUTONOMOUS-GATE: the operator ordered this run autonomous, and this is ${what} - it would stop the run on the operator. ` +
+    (why ? `Still autonomous because ${why}. ` : '') +
     'Not issued. File it with a recommendation in the instance\'s operator-question ledger (the open questions file the ' +
     'session start lists; an edit as a patch file beside it), name it in the next prose report, and go on with everything ' +
     'safely doable. The mode ends when the operator asks what is open or says an off-word.';
