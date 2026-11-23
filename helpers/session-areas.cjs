@@ -451,10 +451,10 @@ if (require.main === module) {
       try { const input = JSON.parse(raw); out = argv[0] === 'record' ? record(input, now) : prompt(input, now); } catch (e) { out = null; }
       if (out && argv[0] === 'record') process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: out } }) + '\n');
       else if (out) process.stdout.write(out + '\n');
-      process.exit(0);
+      process.exitCode = 0;   // no forced exit: it hung at Node shutdown after a transcript read (2026-11-23)
     });
   } else {
-    process.exit(cli(argv, now));
+    process.exitCode = cli(argv, now);
   }
 }
 

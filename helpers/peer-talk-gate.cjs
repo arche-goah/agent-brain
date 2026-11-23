@@ -77,7 +77,7 @@ if (require.main === module) {
       out = decide(JSON.parse(raw), now);
     } catch (e) { out = null; }
     if (out) console.log(JSON.stringify(out));
-    process.exit(0);
+    process.exitCode = 0;   // no forced exit: it hung at Node shutdown after a transcript read (2026-11-23)
   });
 }
 
