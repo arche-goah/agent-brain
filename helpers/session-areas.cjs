@@ -169,7 +169,7 @@ function sessions(root, now) {
     const pid = reg1 ? reg1.pid : rec.pid;
     const gone = pid ? !alive(pid) : (now - Date.parse(rec.updated || 0)) / 36e5 > NO_PID_TTL_H;
     if (gone) { try { fs.unlinkSync(path.join(dir, f)); } catch (e) { /* another session pruned it */ } continue; }
-    const s = byId.get(rec.id) || { id: rec.id, name: rec.name || rec.id.slice(0, 8), pid, status: '' };
+    const s = byId.get(rec.id) || { id: rec.id, name: rec.name || rec.id.slice(0, 8), pid, status: '', sock: reg1 ? reg1.messagingSocketPath || '' : '' };
     byId.set(rec.id, { ...s, areas: rec.areas || {}, claims: rec.claims || [], told: rec.told || [] });
   }
   return [...byId.values()];
@@ -216,7 +216,9 @@ function talkedWith(talked, p) {
   if (talked.has(p.name)) return true;
   // The registry's own reply address first, matched exactly (measured 2026-11-23 on the Windows instance: there it is
   // a named pipe `\\.\pipe\LOCAL\cc-msg-<hash>`, not `<pid>.sock`); the pid form only where the registry names none.
-  for (const t of talked) if (p.sock && t.replace(/^uds:/, '') === p.sock) return true;
+  // Slashes normalised (from the Windows review, agent-brain#631): the same pipe can reach us in either slash form.
+  const flat = (s) => String(s).replace(/^uds:/, '').replace(/\\/g, '/');
+  if (p.sock) for (const t of talked) if (flat(t) === flat(p.sock)) return true;
   for (const t of talked) if (p.pid && new RegExp(`(^|/)${Number(p.pid)}\\.sock$`).test(t)) return true;
   return false;
 }

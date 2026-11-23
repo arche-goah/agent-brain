@@ -43,6 +43,8 @@ fresh; [ -z "$(run "$T/replied.jsonl")" ] && ok "reply to the peer's socket addr
 printf '{"pid":200,"sessionId":"peer","cwd":"%s","name":"brain-b","status":"busy","messagingSocketPath":"\\\\\\\\.\\\\pipe\\\\LOCAL\\\\cc-msg-ab12"}\n' "$ROOT" > "$T/cfg/sessions/peer.json"
 node -e 'console.log(JSON.stringify({message:{role:"assistant",content:[{type:"tool_use",name:"SendMessage",input:{to:"uds:\\\\.\\pipe\\LOCAL\\cc-msg-ab12",message:"x"}}]}}))' > "$T/pipe.jsonl"
 fresh; [ -z "$(run "$T/pipe.jsonl")" ] && ok "reply to the peer's named-pipe address (registry): pass" || bad "reply by named pipe: pass"
+node -e 'console.log(JSON.stringify({message:{role:"assistant",content:[{type:"tool_use",name:"SendMessage",input:{to:"uds://./pipe/LOCAL/cc-msg-ab12",message:"x"}}]}}))' > "$T/pipe-fwd.jsonl"
+fresh; [ -z "$(run "$T/pipe-fwd.jsonl")" ] && ok "the same pipe in forward-slash form: pass" || bad "pipe in forward-slash form: pass"
 node -e 'console.log(JSON.stringify({message:{role:"assistant",content:[{type:"tool_use",name:"SendMessage",input:{to:"uds:\\\\.\\pipe\\LOCAL\\cc-msg-ff99",message:"x"}}]}}))' > "$T/pipe2.jsonl"
 fresh; [[ "$(run "$T/pipe2.jsonl")" == *'"decision":"block"'* ]] && ok "another session's named pipe: still block (control)" || bad "other pipe: block"
 reg 200 peer "$ROOT" brain-b
