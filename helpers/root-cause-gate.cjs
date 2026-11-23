@@ -328,8 +328,8 @@ function readTurns(tp, tail) {
       for (const b of msg.content) {
         if (!b || b.type !== 'tool_result' || !b.is_error) continue;
         const txt = Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join(' ') : String(b.content || '');
-        const m = /^PreToolUse:(\S+) hook error:\s*(?:\[[^\]]*\]:\s*)?([\s\S]*)$/.exec(txt.trim());
-        if (m) (cur.refusals = cur.refusals || []).push({ tool: m[1], text: m[2], at: d.timestamp || '' });
+        const m = /^(?:PreToolUse|PostToolUse):(\S+) hook error:\s*(?:\[[^\]]*\]:\s*)?([\s\S]*)$/.exec(txt.trim());
+        if (m) (cur.refusals = cur.refusals || []).push({ tool: m[1], text: m[2], raw: txt.trim(), at: d.timestamp || '' });
       }
     }
     const t = promptText(msg);
@@ -422,6 +422,34 @@ function correctionIn(prompt, rx) {
   const clean = stripQuoted(operatorWords(prompt));
   const m = rx.exec(clean);
   return m ? sentenceAt(clean, m.index) : null;
+}
+
+/** The malfunction data (gate-malfunction.json at the core root, shared with scripts/gate-health.py). */
+let MALF = null;
+function malfData() {
+  if (MALF) return MALF;
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'gate-malfunction.json'), 'utf8'));
+    MALF = { refusal: new RegExp(d.refusal), malf: new RegExp((d.malfunction || []).join('|')), gate: new RegExp(d.gate) };
+  } catch (e) { MALF = { refusal: /(?!)/, malf: /(?!)/, gate: /(?!)/ }; }
+  return MALF;
+}
+/** A gate malfunction in the turn - a refusal that is no decision (timed out, crashed): "<gate> <what> at <time>" or null.
+ *  2026-11-23 (operator, translated: "the fixes must make further cases visible on historic data, else they are micro
+ *  solutions"): over the 60 newest transcripts of the macOS instance, 45 such refusals and no reply named a cause. */
+function malfunctionIn(group) {
+  const m = malfData();
+  for (const seg of group) {
+    for (const r of seg.refusals || []) {
+      const full = r.raw || `PreToolUse:${r.tool} hook error: ${r.text}`;
+      if (!m.refusal.test(full) || !m.malf.test(full)) continue;
+      const g = m.gate.exec(r.raw || r.text) || [];
+      const gate = g[1] || (g[2] ? `command hook ${g[2]}` : 'a hook');
+      const what = (m.malf.exec(r.raw || r.text) || [''])[0];
+      return `${gate} ${what} on ${r.tool} at ${r.at || '?'}`;
+    }
+  }
+  return null;
 }
 
 /** A refusal in the turn of the step the operator's prompt asked for: "<GATE> refused <tool> ..." or null. The prompt's
@@ -586,15 +614,17 @@ function gate(input) {
     return;
   }
   const self = hit || fired ? null : selfSurprise(texts, loadPatterns(cwd, 'self_surprise_patterns', BUILTIN_SELF_SURPRISE, 'iu'));
-  let refused = null;
+  let refused = null; let malf = null;
   if (!hit && !self && !fired) { try { refused = refusedAsk(group, cwd, input.transcript_path); } catch (e) { refused = null; } }
-  if (!hit && !self && !refused) return;
+  if (!hit && !self && !refused && !fired) { try { malf = malfunctionIn(group); } catch (e) { malf = null; } }
+  if (!hit && !self && !refused && !malf) return;
   const what = hit ? 'an operator message in this turn reads as a correction or a mishap'
     : self ? 'your own text in this turn finds a mishap'
-      : 'a hook refused the very step the operator asked for (name the refusing gate, the reader and the measured value that decided)';
+      : refused ? 'a hook refused the very step the operator asked for (name the refusing gate, the reader and the measured value that decided)'
+        : 'a hook MALFUNCTIONED in this turn - a refusal that is no decision (name the gate and what was measured: its run time, its exit, what it read)';
   process.stdout.write(JSON.stringify(declare({
     decision: 'block',
-    reason: `ROOT-CAUSE-GATE: ${what}: "${(hit || self || refused).slice(0, 200)}". `
+    reason: `ROOT-CAUSE-GATE: ${what}: "${(hit || self || refused || malf).slice(0, 200)}". `
       + 'The reply names no cause. Before this turn ends, measure what produced it and write ONE line — '
       + 'Cause: <what was read, where> — <A produced B>, or Cause: unknown — <what is missing to tell>. '
       + 'Then the class (search: where else does the same sit?) and the carrier (where it is fixed for good: gate, script, rule, core PR). '
@@ -713,18 +743,38 @@ function review(args) {
   return 0;
 }
 
-// `--refused <transcript>`: replay of the refused-step trigger over a whole transcript, one line per turn it would open.
+// `--refused <transcript | folder> [N]`: replay of the two refusal triggers (a refused asked-for step, a gate malfunction)
+// over one transcript or the newest N of a folder; per turn it would open, and per gate whether the turn named a cause.
 if (process.argv[2] === '--refused') {
-  const tp = process.argv[3];
+  const arg = process.argv[3];
   const cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  let turns = [];
-  try { turns = readTurns(tp, false); } catch (e) { turns = []; }
-  let n = 0;
-  for (let i = 0; i < turns.length; i += 1) {
-    const r = refusedAsk([turns[i]], cwd, tp);
-    if (r) { n += 1; console.log(`turn ${i + 1}: ${r}`); }
+  let files = [arg];
+  try {
+    if (fs.statSync(arg).isDirectory()) {
+      files = fs.readdirSync(arg).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(arg, f))
+        .sort((a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs).slice(-Number(process.argv[4] || 60));
+    }
+  } catch (e) { files = []; }
+  const causeRx = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
+  let asked = 0; const perGate = {}; const sessions = {};
+  for (const tp of files) {
+    let turns = [];
+    try { turns = readTurns(tp, false); } catch (e) { turns = []; }
+    for (let i = 0; i < turns.length; i += 1) {
+      const r = refusedAsk([turns[i]], cwd, tp);
+      if (r) { asked += 1; console.log(`${path.basename(tp).slice(0, 8)} turn ${i + 1}: ${r}`); }
+      const m = malfunctionIn([turns[i]]);
+      if (!m) continue;
+      const gate = m.split(' ')[0] === 'command' ? m.split(' ').slice(0, 3).join(' ') : m.split(' ')[0];
+      const p = perGate[gate] = perGate[gate] || { turns: 0, cause: 0 };
+      p.turns += 1; if (causeIn(turns[i].texts, causeRx)) p.cause += 1;
+      (sessions[gate] = sessions[gate] || new Set()).add(tp);
+    }
   }
-  console.log(`refused-step turns: ${n}`);
+  console.log(`${files.length} transcript(s) · refused asked-for step: ${asked} turn(s)`);
+  for (const [g, p] of Object.entries(perGate).sort((a, b) => b[1].turns - a[1].turns)) {
+    console.log(`malfunction ${g}: ${p.turns} turn(s) in ${sessions[g].size} session(s), a cause named in ${p.cause}`);
+  }
   process.exitCode = 0;
 } else if (process.argv[2] === '--review') {
   process.exit(review(process.argv.slice(3)));

@@ -1,0 +1,13 @@
+{
+  "_comment": "The ONE source of what a gate MALFUNCTION looks like in a transcript: a hook refusal that is no decision (the hook timed out or crashed). Read by helpers/root-cause-gate.cjs (a turn that held one owes a cause) and scripts/gate-health.py (the session start counts them per gate). Measured 2026-11-23 over the 60 newest transcripts of the macOS instance: 45 such refusals - content-review-gate timed out 37x, [command hook N] 5x, shared-working-copy-guard 2x, no-input-control 1x - and no reply named a cause for any of them. `refusal`: the form of a hook refusal in a tool result; `malfunction`: what makes it a malfunction; `gate`: where the gate's name sits (group 1 = a helper file name, group 2 = a hook number).",
+  "refusal": "^(?:PreToolUse|PostToolUse):\\S+ hook error:",
+  "malfunction": [
+    "timed out; blocking because onFailure",
+    "Traceback \\(most recent call last\\)",
+    "Cannot find module",
+    "SyntaxError:",
+    "TypeError:",
+    "ReferenceError:"
+  ],
+  "gate": "\\[node \"[^\"]*?([\\w.-]+)\\.(?:cjs|js)\"[^\\]]*\\]|\\[command hook (\\d+)\\]"
+}

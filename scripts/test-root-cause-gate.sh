@@ -53,6 +53,15 @@ check "the incident: a hook refused the question the operator asked for, no caus
 check "a refusal that only orders the step (mode-question order) is no surprise" "$T/ra2.jsonl" allow "$CWD"
 { user "fix the readme"; aq a3; refuse a3 "AUTONOMOUS-GATE: the operator ordered this run autonomous"; asst "Filed the question."; } > "$T/ra3.jsonl"
 check "a refused question the operator did not ask for is no surprise (control)" "$T/ra3.jsonl" allow "$CWD"
+# --- 2026-11-23: a gate MALFUNCTION (timed out, crashed) is no decision - 45 in the 60 newest transcripts, no cause named
+bashq() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":"gh pr comment 1 -b x"}}]}}\n' "$1"; }
+bres() { printf '{"type":"user","timestamp":"2026-11-23T17:30:00.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":true,"content":%s}]}}\n' "$1" "$(js "PreToolUse:Bash hook error: $2")"; }
+{ user "post the review"; bashq b1; bres b1 '[node "$CLAUDE_PROJECT_DIR/core/helpers/content-review-gate.cjs"]: timed out; blocking because onFailure is "block"'; asst "Retried, it went through."; } > "$T/mf1.jsonl"
+check "a gate that timed out, retried without a cause" "$T/mf1.jsonl" block "$CWD"
+{ user "post the review"; bashq b2; bres b2 '[command hook 29]: timed out; blocking because onFailure is "block"'; asst "Retried."; } > "$T/mf2.jsonl"
+check "a numbered hook that timed out (its name unreadable) is a malfunction too" "$T/mf2.jsonl" block "$CWD"
+{ user "post the review"; bashq b3; bres b3 'MECHANISM CHECK (agent-brain): a heredoc'; asst "Used a file instead."; } > "$T/mf3.jsonl"
+check "a gate's decision (a refusal with a reason) is no malfunction (control)" "$T/mf3.jsonl" allow "$CWD"
 
 # --- the class: a correction, a fix on the spot, no cause named
 { user "check the PRs"; asst "Done."; user "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/t1.jsonl"
