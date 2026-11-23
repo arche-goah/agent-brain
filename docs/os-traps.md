@@ -376,6 +376,7 @@ known:     scripts/test-pre-commit-hook-env.sh=1
 known:     scripts/test-pre-commit-os-traps.sh=1
 known:     scripts/test-pre-commit-backprop.sh=1
 known:     scripts/test-pre-commit-covers.sh=1
+known:     scripts/test-pre-commit-hardcode.sh=1
 known:     scripts/test-pre-push.sh=2
 known:     scripts/test-premise-gate.sh=1
 known:     scripts/test-promise-gate.sh=1

@@ -76,8 +76,22 @@ if [ -f "$root/dependencies.json" ] && [ -f "$core/scripts/suite-check.py" ]; th
 fi
 
 # 3. A repo's own hardcode lint (show network parameters never hardcoded) — where it ships one.
+#    No copy of its own (operator decision 2026-11-19 on the macOS instance: a brain kept a hand copy only because this
+#    step read nothing else): the lint an installed plugin ships as tools/hardcode-lint.py, newest first, over the code
+#    directories the repo has, against the one network config $SHOW_NETWORK_CONFIG names. Only where that variable
+#    points at a file: a repo without a show network has nothing to check against.
 if [ -f "$root/scripts/hardcode-lint.py" ]; then
   run_check "hardcode-lint" "$py" "$root/scripts/hardcode-lint.py"
+elif [ -n "${SHOW_NETWORK_CONFIG:-}" ] && [ -f "$SHOW_NETWORK_CONFIG" ]; then
+  hl=""
+  for f in "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/*/*/tools/hardcode-lint.py; do
+    [ -f "$f" ] && { [ -z "$hl" ] || [ "$f" -nt "$hl" ]; } && hl=$f
+  done
+  hl_dirs=()
+  for d in src scripts .claude/skills; do [ -d "$root/$d" ] && hl_dirs+=("$root/$d"); done
+  if [ -n "$hl" ] && [ "${#hl_dirs[@]}" -gt 0 ]; then
+    run_check "hardcode-lint (plugin)" "$py" "$hl" "${hl_dirs[@]}" --config "$SHOW_NETWORK_CONFIG"
+  fi
 fi
 
 # 4. shared-memory: entry rules bite when writing, not at the weekly scan (`--staged` judges only
