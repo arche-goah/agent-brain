@@ -179,6 +179,15 @@ def main() -> int:
              post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "t")),
             ("the same by person", post(repo, "request", "--area", "core", "--to", "person:sam", "--title", "s")),
             # 2026-11-03: 17 LOG lines over the entry cap since 2026-10-31, every one written by this tool
+            # 2026-11-18: written here, refused by the lint's reader at the pre-commit (check 9)
+            ("a Windows run the lint reads, to one Windows device",
+             post(repo, "request", "--area", "core", "--to", "alex-win", "--title",
+                  "Replay: your Windows run at the next train head", "--body", "Please post the exit code.")),
+            # the same for a reply (2026-11-18: "the Windows check of #34 goes to ..." to one Windows device, refused at pre-commit)
+            ("a reply the lint reads as a Windows check, to one Windows device",
+             post(repo, "reply", "--area", "core", "--to", "alex-win", "--title",
+                  "Re: your Windows run at the next train head", "--body", "Please post the exit code.",
+                  "--answers", f"request-check-core-42-on-windows-{STATE}")),
             ("a LOG line over the entry cap",
              post(repo, "note", "--area", "core", "--to", "kim-pc", "--title", "long title " * 30,
                   date=sml.LOG_CAP_SINCE)),
