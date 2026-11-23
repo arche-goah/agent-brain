@@ -33,6 +33,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { isNotification, projectTranscriptDir } = require('./turn-kind.cjs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const LOG = process.env.INTENT_CLASSIFIER_LOG || path.join(ROOT, '.claude-state', 'intent-classifier.jsonl');
@@ -213,7 +214,7 @@ if (require.main === module) {
   const a = process.argv.slice(2);
   if (a[0] === '--replay') replay(parseInt(a[1] || '40', 10));
   else {
-    if (process.env.INTENT_CLASSIFIER_CHILD) process.exit(0);
+    if (process.env.INTENT_CLASSIFIER_CHILD) hookExit(0);
     let data = '';
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', (c) => { data += c; });
@@ -223,12 +224,12 @@ if (require.main === module) {
         // mode "answer": no gate reads it yet (they read mode "hook")
         const answer = inp.tool_name === 'AskUserQuestion';
         const text = answer ? answerText(inp) : String(inp.prompt || '');
-        if (!text.trim()) process.exit(0);
-        if (!answer && (NOT_OPERATOR.test(text) || isNotification(text))) process.exit(0);
+        if (!text.trim()) hookExit(0);
+        if (!answer && (NOT_OPERATOR.test(text) || isNotification(text))) hookExit(0);
         const w = wordVerdict(text), m = modelVerdict(text);
         log({ mode: answer ? 'answer' : 'hook', session: inp.session_id, words: w, model: m, differ: differ(w, m), prompt: text.slice(0, 160) });
       } catch (e) { /* never blocks */ }
-      process.exit(0);
+      hookExit(0);
     });
   }
 }

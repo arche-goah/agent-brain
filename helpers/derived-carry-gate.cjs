@@ -25,6 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 16 * 1024 * 1024;   // a derived claim can sit hours back: measured 2026-11-17, a 10.9 MB session, the source 6 MB before the end
@@ -179,15 +180,15 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 process.stdin.on('end', () => {
   let input = {};
-  try { input = JSON.parse(data); } catch (e) { process.exit(0); }
-  if (input.stop_hook_active || !input.transcript_path) process.exit(0);
+  try { input = JSON.parse(data); } catch (e) { hookExit(0); }
+  if (input.stop_hook_active || !input.transcript_path) hookExit(0);
   const ownRx = ownEcho(input, /DERIVED-CARRY/);
   let hit = null;
   try {
     const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
     hit = judge(events(input.transcript_path, ownRx), markers(cwd));
-  } catch (e) { process.exit(0); }   // transcript unreadable - never block because of that
-  if (!hit) process.exit(0);
+  } catch (e) { hookExit(0); }   // transcript unreadable - never block because of that
+  if (!hit) hookExit(0);
   const cut = (x) => (x.length > 160 ? `${x.slice(0, 157)}...` : x);
   const reason = 'DERIVED-CARRY — a claim marked as derived comes back as a fact.\n'
     + `Earlier (marked): ${cut(hit.earlier)}\n`
@@ -195,5 +196,5 @@ process.stdin.on('end', () => {
     + `No tool call since touched ${hit.anchors.join(', ')}. Measure it now, or keep the label in this reply `
     + '(thinking-protocol rule 0: measured / derived / assumed apart).';
   console.log(JSON.stringify(declare({ decision: 'block', reason }, input)));
-  process.exit(0);
+  hookExit(0);
 });
