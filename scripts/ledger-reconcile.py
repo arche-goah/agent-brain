@@ -214,6 +214,11 @@ def permitted(cmd, allowed):
             return False
         if any(WRITING_OPTION.match(w) for w in words[1:]):
             return False
+    # `gh pr view` exits 0 for any PR that exists, open or merged, so as the LAST part it measures
+    # nothing (measured 2026-11-23: `gh pr view 95 --json state` passed on an OPEN PR and the entry
+    # was reported "done, tick it"). It must feed a filter: `gh pr view N --json state | grep -q MERGED`.
+    if parts[-1].strip().lstrip("!").split()[:3] == ["gh", "pr", "view"]:
+        return False
     return True
 
 
