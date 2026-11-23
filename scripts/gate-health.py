@@ -113,7 +113,28 @@ def read_calls(f: Path):
     return calls, res, allres
 
 
-def scan_file(f: Path, rx, gmap):
+def way_on(root: str, data: dict):
+    """The phrases with which a refusal names its own way on - ONE source with root-cause-gate.cjs: the built-ins in
+    gate-markers.json (`way_on`), other languages in the brain's root-cause-patterns.json (`way_on_patterns`). A pass
+    after such a refusal is the gate followed, not another form (strand review 2026-11-23: FACT-HOME's way on is a
+    changed edit, "look it up, then refer to it", and was counted as bypassed)."""
+    pats = list(data.get("way_on") or [])
+    try:
+        extra = json.loads((Path(root) / ".claude" / "rules" / "root-cause-patterns.json").read_text(encoding="utf-8"))
+        pats += [p for p in extra.get("way_on_patterns") or [] if isinstance(p, str)]
+    except (OSError, ValueError):
+        pass
+    good = []
+    for p in pats:
+        try:
+            re.compile(p)
+            good.append(p)
+        except re.error:
+            continue   # a pattern Python cannot read is skipped, never a crash
+    return re.compile("|".join(good), re.I) if good else None
+
+
+def scan_file(f: Path, rx, gmap, way=None):
     """One transcript: {"malf": {gate: [n, what]}, "rates": {gate: [refusals, passed by own marker]}, "carry": {marker: n}}."""
     refusal, malf, gate = rx
     calls, res, allres = read_calls(f)
@@ -152,7 +173,8 @@ def scan_file(f: Path, rx, gmap):
             if any(re.search(r"#\s*" + re.escape(n) + r"\b", inp2)
                    or re.search(r"(?m)^[ \t>*_`-]*" + re.escape(n) + r":", said) for n in own):
                 r[1] += 1
-            elif inp2 != inp:          # an identical retry is the gate's way on (a step done), not another form
+            elif inp2 != inp and not (way and way.search(t)):
+                # an identical retry, or a changed call after a refusal that names its way on, is the gate followed
                 r[2] += 1
             break
         if not passed:
@@ -178,10 +200,13 @@ def main(argv):
         return 0
     try:
         mraw = mpath.read_text(encoding="utf-8")
-        gmap = json.loads(mraw).get("gates") or {}
+        mdata = json.loads(mraw)
+        gmap = mdata.get("gates") or {}
     except (OSError, ValueError) as e:
         print(f"gate-health: {mpath.name} unreadable ({e}) - marker rates NOT checked")
-        mraw, gmap = "", {}
+        mraw, mdata, gmap = "", {}, {}
+    way = way_on(root, mdata)
+    mraw += way.pattern if way else ""   # the instance's way-on words take part in the cache key too
     version = CACHE_V + hashlib.sha1((HERE.parent / "gate-malfunction.json").read_bytes() + mraw.encode()).hexdigest()[:12]
     cpath = Path(root) / ".claude-state" / "gate-health-cache.json"
     cache = {}
@@ -205,7 +230,7 @@ def main(argv):
             got = c["data"]
         else:
             try:
-                got = scan_file(f, rx, gmap)
+                got = scan_file(f, rx, gmap, way)
             except OSError:
                 continue
         fresh[k] = {"v": version, "size": st.st_size, "mtime": st.st_mtime, "data": got}

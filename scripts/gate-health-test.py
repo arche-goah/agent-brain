@@ -88,6 +88,14 @@ with tempfile.TemporaryDirectory() as d:
     for k in range(25):                       # 25 refusals of a gate nobody overrides
         lines += [use(n, f"cat f{k}"), res(n, True, QUIET), use(n + 1, f"cat f{k} | head"), res(n + 1, False, "ok")]
         n += 2
+    for k in range(21):                       # 21 refusals that name their way on, then a changed call: the gate followed
+        lines += [use(n, f"git commit -a q{k}"), res(n, True, "PreToolUse:Bash hook error: WAYON-GATE: the form that passes is a commit by path."),
+                  use(n + 1, f"git commit q{k} -- f{k}"), res(n + 1, False, "ok")]
+        n += 2
+    for k in range(21):                       # the same in another language as instance data (way_on_patterns): a language is data
+        lines += [use(n, f"edit z{k}"), res(n, True, "PreToolUse:Bash hook error: LOCAL-GATE: primero mira, luego remite."),
+                  use(n + 1, f"edit z{k} ref"), res(n + 1, False, "ok")]
+        n += 2
     for k in range(21):                       # 21 refusals of a markerless gate that never pass (the step dropped)
         lines += [use(n, f"touch q{k}"), res(n, True, "PreToolUse:Bash hook error: NEVER-GATE: not now.")]
         n += 1
@@ -112,11 +120,21 @@ with tempfile.TemporaryDirectory() as d:
         "NOISY GATE": {"markers": ["NOISY-NONE"], "rule_path": False},
         "SMALL GATE": {"markers": ["NOISY-NONE"], "rule_path": False},
         "RULE GATE": {"markers": ["WAS-READ"], "rule_path": True},
-        "QUIET-GATE": {"markers": ["QUIET-OK"], "rule_path": False}}}), encoding="utf-8")
+        "QUIET-GATE": {"markers": ["QUIET-OK"], "rule_path": False}},
+        "way_on": ["the form that passes"]}), encoding="utf-8")
+    wroot = d / "wbrain"
+    (wroot / ".claude" / "rules").mkdir(parents=True)
+    (wroot / ".claude" / "rules" / "root-cause-patterns.json").write_text(json.dumps({"way_on_patterns": ["mira, luego remite"]}), encoding="utf-8")
+
+    # the brain the script reads defaults to CLAUDE_PROJECT_DIR; a run inside a real brain must not see its instance
+    # words (measured while building this: a real brain's way_on_patterns leaked into the no-data control)
+    bare = d / "bare-brain"
+    bare.mkdir()
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(bare)}
 
     def run2(*a):
         return subprocess.run([sys.executable, str(HERE / "gate-health.py"), "--dir", str(d), "--markers", str(mk), *a],
-                              capture_output=True, text=True, encoding="utf-8").stdout
+                              capture_output=True, text=True, encoding="utf-8", env=env).stdout
 
     out = run2("--no-cache")
     ok("NOISY GATE errs often - 16 of 24 refusals (67 %) passed by its override marker" in out,
@@ -134,6 +152,13 @@ with tempfile.TemporaryDirectory() as d:
     ok("QUIET-GATE | 25 | 0 | 0 % | no | QUIET-OK 0 | 25 | 0" in out and "NEVER-GATE | 21 | 0 | 0 % | - | - | 0 | 21" in out
        and "SAME-GATE | 21 | 0 | 0 % | - | - | 0 | 0" in out,
        "--rates: other form and never passed per gate, a markerless gate rated too", out)
+    ok("WAYON-GATE | 21 | 0 | 0 % | - | - | 0 | 0" in out,
+       "a changed call after a refusal that names its way on (gate-markers.json way_on) is the gate followed, not another form", out)
+    ok("LOCAL-GATE | 21 | 0 | 0 % | - | - | 21 | 0" in out,
+       "without the instance's way-on words the same refusal in another language counts as another form (control)", out)
+    out = run2("--rates", "--no-cache", "--root", str(wroot))
+    ok("LOCAL-GATE | 21 | 0 | 0 % | - | - | 0 | 0" in out,
+       "with the instance's way_on_patterns (root-cause-patterns.json, the reader root-cause-gate uses) it is followed", out)
     ok("NOISY-NONE 24 (shared with SMALL GATE)" in out, "a marker two gates share says so in the column (Windows review of #646)", out)
     ok("command hook 29 | 1 |" in out and "a hook" not in out, "a refusal without a label is named by its hook number, not 'a hook' (Windows review)", out)
     # NOISY-NONE: 13 in calls + 10 SMALL + 1 pre-emptive = 24 calls carry it; the 3 answer lines are no calls
