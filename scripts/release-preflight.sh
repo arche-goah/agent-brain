@@ -15,6 +15,11 @@
 # Modes:
 #   release-preflight.sh vX.Y.Z          # LOCAL, before tagging: full preflight
 #   release-preflight.sh --ci-tag vX.Y.Z # CI, on the pushed tag: content checks only
+#   release-preflight.sh --strand vX.Y.Z  # EARLY, once a train is fixed: strand checks 6-11 only, check 8 over
+#                                         # RELEASE_STRAND_PRS="<n> <n> ..." (the planned members, not yet merged)
+#     Why (operator 2026-11-18, "wenn du das beschleunigen kannst, gerne"; question tool: "Ja, alle drei"):
+#     train 2.1.6 ran this script 47 times AFTER the merge, its findings waiting on others (OS proofs,
+#     shared-memory entries, release scope) - none of them needs the merge, so they start with the train.
 #
 # Local checks (all must pass, the summary states its own coverage):
 #   1. plugin.json version == tag version
@@ -75,6 +80,7 @@ ROOT="${RELEASE_PREFLIGHT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 MODE=local
 TAG="${1:-}"
 if [ "$TAG" = "--ci-tag" ]; then MODE=ci; TAG="${2:-}"; fi
+if [ "$TAG" = "--strand" ]; then MODE=strand; TAG="${2:-}"; fi
 case "$TAG" in
   v[0-9]*.[0-9]*.[0-9]*) ;;
   *) echo "usage: release-preflight.sh [--ci-tag] vX.Y.Z" >&2; exit 2 ;;
@@ -93,6 +99,7 @@ OSR_JS="$(cd "$(dirname "$0")/.." && pwd)/helpers/os-review.cjs"
 command -v cygpath >/dev/null 2>&1 && OSR_JS="$(cygpath -m "$OSR_JS")"
 os_review() { if [ -n "${2:-}" ]; then node "$OSR_JS" "$1" --head "$2"; else node "$OSR_JS" "$1"; fi; }
 
+if [ "$MODE" != strand ]; then
 # 1. manifest version == tag — the v1.2.0 class: same version string, different content
 MANIFEST="$ROOT/.claude-plugin/plugin.json"
 MV="$("$PY" -c "import json,sys;print(json.load(open(sys.argv[1]))['version'])" "$MANIFEST" 2>/dev/null || true)"
@@ -119,7 +126,10 @@ else
   bad "$left fragment(s) in changelog.d/ and $unrel line(s) under ## Unreleased not in a version section — run: python3 scripts/changelog-assemble.py $VER"
 fi
 
-if [ "$MODE" = "local" ]; then
+fi # 1-2b: not in strand mode (the release commit does not exist yet)
+
+if [ "$MODE" = "local" ] || [ "$MODE" = strand ]; then
+ if [ "$MODE" = "local" ]; then
   # 3. race guard: the tag must not exist anywhere yet
   git -C "$ROOT" fetch --tags --quiet 2>/dev/null || note "fetch --tags failed — checking local tags only"
   if git -C "$ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
@@ -156,6 +166,8 @@ if [ "$MODE" = "local" ]; then
   else
     note "gh not available — competing-release-PR check NOT run (counts as unchecked, not as green)"
   fi
+
+ fi # 3-5: not in strand mode
 
   # --- readiness of the strand (6-9) ----------------------------------------------------
   EARLY="${RELEASE_EARLY_OK:-}"
@@ -251,6 +263,10 @@ EOF
   PREV="$(git -C "$ROOT" describe --tags --abbrev=0 origin/main 2>/dev/null || true)"
   if [ -n "$PREV" ]; then RANGE="$PREV..origin/main"; else RANGE="origin/main"; fi
   PRS="$(git -C "$ROOT" log --format=%s "$RANGE" 2>/dev/null | grep -oE 'Merge pull request #[0-9]+|\(#[0-9]+\)$' | grep -oE '[0-9]+' | sort -un | tr '\n' ' ')"
+  if [ "$MODE" = strand ]; then
+    PRS="$(printf '%s' "${RELEASE_STRAND_PRS:-}" | grep -aoE '[0-9]+' | sort -un | tr '\n' ' ')"
+    [ -n "$PRS" ] || bad "strand mode needs RELEASE_STRAND_PRS=\"<n> <n> ...\" - the planned members of the train"
+  fi
   if [ -z "$PRS" ]; then
     ok "no PR merged since ${PREV:-the first commit} — nothing to prove"
   elif command -v gh >/dev/null 2>&1; then
