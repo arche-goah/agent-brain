@@ -285,7 +285,8 @@ def main():
                 "grep x a > b", "cat $(rm -f b)", "cat `rm -f b`", "test -f a\nrm -f b",
                 "git -c core.pager=rm log", "git push", "touch x",
                 "gh pr view 5 --web", "gh pr view 5 -w", "gh pr merge 5", "gh pr comment 5 -b x",
-                "git -C core push", "git -C core -c core.pager=rm log"]:
+                "git -C core push", "git -C core -c core.pager=rm log",
+                "gh pr view 95 --repo o/r --json state", "test -f a && gh pr view 5 --json state"]:
         ok(not lr.permitted(cmd, lr.ALLOWED), f"refused: {cmd!r}")
     for cmd in ["grep -q x file", "test -f a && git log -1 --format=%H", "git log --oneline | grep -q fix",
                 "! grep -q draft notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md",

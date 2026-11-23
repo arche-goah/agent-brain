@@ -200,8 +200,9 @@ ALLOWED = ["test", "[", "grep", "ls", "wc", "head", "tail", "cat", "diff",
            "git log", "git show", "git grep", "git rev-parse", "git ls-files", "git cat-file",
            "git merge-base", "git diff", "git status", "gh pr view"]
 # `gh pr view` reads a PR's state - the natural check of an entry whose exit waits on a merge (measured
-# 2026-11-07 on the Windows instance: 10 such checks in one brain's ledgers, every one refused). Its one
-# acting option opens a browser; that is refused below. `git -C <dir>` is read as the same git command:
+# 2026-11-07 on the Windows instance: 10 such checks in one brain's ledgers, every one refused). It is allowed
+# only when it feeds a filter (`| grep -q MERGED`): it exits 0 for any existing PR, so as the last part it is
+# refused in permitted(). Its one acting option opens a browser; that is refused below. `git -C <dir>` is read as the same git command:
 # every brain checks its core submodule as `git -C core ...`; `-c` (a config override) stays refused.
 GH_OPENS = {"--web", "-w"}
 # The shell grammar a check may use is closed, not filtered: parts joined by `&&`, `||` or `|`
@@ -232,6 +233,11 @@ def permitted(cmd, allowed):
             return False
         if any(WRITING_OPTION.match(w) for w in words[1:]):
             return False
+    # `gh pr view` exits 0 for any PR that exists, open or merged, so as the LAST part it measures
+    # nothing (measured 2026-11-23: `gh pr view 95 --json state` passed on an OPEN PR and the entry
+    # was reported "done, tick it"). It must feed a filter: `gh pr view N --json state | grep -q MERGED`.
+    if parts[-1].strip().lstrip("!").split()[:3] == ["gh", "pr", "view"]:
+        return False
     return True
 
 
