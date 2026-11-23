@@ -265,10 +265,13 @@ covers_check() {
     tokens=$(sed -nE 's,^(#|//) covers:[[:space:]]*,,p' "$f" | head -1 | sed 's/(.*//')
     for t in $tokens; do case "$stems" in *" $t "*) run=1 ;; esac; done
     [ "$run" -eq 1 ] || continue
+    # A fixture runs without the commit's git environment (measured 2026-11-19, macOS instance): in `git commit -- <paths>`
+    # git hands the hook GIT_INDEX_FILE (a temporary index); a fixture inherited it, its own `git add/commit` in a sandbox
+    # repo wrote into the commit's index, and the content guard after it died on `git diff --cached` (exit 128).
     case "$f" in
-      *.cjs|*.js) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && node "$2"' _ "$root" "$f" ;;
-      *.py) run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && "$2" "$3"' _ "$root" "$py" "$f" ;;
-      *)    run_check "fixture ${f#"$root"/}" bash -c 'cd "$1" && bash "$2"' _ "$root" "$f" ;;
+      *.cjs|*.js) run_check "fixture ${f#"$root"/}" env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE bash -c 'cd "$1" && node "$2"' _ "$root" "$f" ;;
+      *.py) run_check "fixture ${f#"$root"/}" env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE bash -c 'cd "$1" && "$2" "$3"' _ "$root" "$py" "$f" ;;
+      *)    run_check "fixture ${f#"$root"/}" env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE bash -c 'cd "$1" && bash "$2"' _ "$root" "$f" ;;
     esac
   done
 }

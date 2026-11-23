@@ -85,6 +85,15 @@ echo '{"on": true}' > "$R/.claude/rules/js-rules.json"; gq -C "$R" add .claude/r
 o=$(hook "$R"); rc=$?
 [[ $rc -eq 0 ]] && ok "a green JS fixture lets the commit pass" || bad "green JS fixture blocked" "rc=$rc out: $o"
 
+# A fixture runs without the commit's git environment (2026-11-19): in `git commit -- <paths>` git hands the hook a
+# temporary GIT_INDEX_FILE; a fixture that inherited it wrote its sandbox `git add` into the commit's index and the
+# content guard after it died on `git diff --cached`. The probe fixture fails while GIT_INDEX_FILE reaches it.
+printf '%s\n' '#!/usr/bin/env bash' '# covers: env-probe' '# pre-commit: covers' \
+  '[ -z "${GIT_INDEX_FILE:-}${GIT_DIR:-}${GIT_WORK_TREE:-}" ] || { echo "env-probe: commit git env leaked"; exit 1; }' > "$R/scripts/test-env-probe.sh"
+echo on > "$R/env-probe.txt"; gq -C "$R" add env-probe.txt scripts/test-env-probe.sh
+o=$(cd "$R" && GIT_INDEX_FILE="$R/.git/index" bash "$HOOK" 2>&1); rc=$?
+[[ $rc -eq 0 ]] && ok "a fixture runs without the commit's GIT_INDEX_FILE" || bad "git env reached the fixture" "rc=$rc out: $o"
+
 echo ""
 [ "$fails" -eq 0 ] && echo "pre-commit covers: all $checks checks pass" || echo "pre-commit covers: $fails of $checks FAILED"
 exit "$fails"
