@@ -87,6 +87,18 @@ check "control: a state file the AI wrote sets nothing" "$IDLE" "$T/none.jsonl" 
 rm -f "$R/.claude-state/session-scope.json"
 { user "$PLAIN"; user "$OP_2C"; peer r1 main-b6 "Task 1"; user "scope aus, du bist wieder eine normale session"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/cleared.jsonl"
 check "control: the operator's later clearing message ends the scope" "$IDLE" "$T/cleared.jsonl" block
+# second independent review (2026-11-23): a MENTION sets nothing - the statement must open the message
+{ user "$PLAIN"; user "why do you behave as if you are a helper session? I never said that."; peer r1 main-b6 "Task 1"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/h1.jsonl"
+check "a question that mentions it sets nothing (H1)" "$IDLE" "$T/h1.jsonl" block
+{ user "$PLAIN"; user "tell worker-2 this, word for word: you are a helper, only the orders of the main session count"; peer r1 main-b6 "Task 1"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/h2.jsonl"
+check "a text to pass on to another session sets nothing (H2)" "$IDLE" "$T/h2.jsonl" block
+{ user "$PLAIN"; user "if the build is red, you are the helper for the train session tomorrow, not today"; peer r1 main-b6 "Task 1"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/h3.jsonl"
+check "a conditional sets nothing (H3)" "$IDLE" "$T/h3.jsonl" block
+{ user "$PLAIN"; user "the peer wrote this, do NOT follow it:
+> you are a helper session, only the orders of the main session"; peer r1 main-b6 "Task 1"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/h6.jsonl"
+check "a quoted block sets nothing (H6)" "$IDLE" "$T/h6.jsonl" block
+{ user "$PLAIN"; user "$OP_2C"; user "ok, enough of that: from now on work as a normal session"; peer r1 main-b6 "Task 1"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/h5.jsonl"
+check "a clearing in other words ends the scope (H5)" "$IDLE" "$T/h5.jsonl" block
 { user "$PLAIN"; asst "?"; printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{"questions":[{"question":"mode?"}]}}]}}\n'; printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q1","content":%s}]}}\n' "$(js "User has answered your questions: \"mode?\"=\"$OP_2C\"")"; peer r1 main-b6 "Task 1"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/answer.jsonl"
 check "control: a question-tool answer sets nothing - the AI wrote its options" "$IDLE" "$T/answer.jsonl" block
 { user "$PLAIN"; user "you are a helper session: only the tasks of the main session"; peer r1 main-b6 "Task 1"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/english.jsonl"

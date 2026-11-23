@@ -29,7 +29,40 @@ const fs = require('fs');
 const path = require('path');
 
 const SCOPE_BUILTIN = ['\\bonly (?:the )?(?:orders|tasks) (?:of|from) (?:the |my )?main session\\b', '\\byou are (?:a |the )?helper(?: session)?\\b'];
-const CLEAR_BUILTIN = ['\\b(?:scope off|no longer (?:a )?helper|normal session again)\\b'];
+const CLEAR_BUILTIN = ['\\b(?:scope off|no longer (?:a |the )?helper|not (?:a |the )?helper|stop being (?:a |the )?helper|(?:a |as a |the )?normal session)\\b'];
+
+// A MENTION sets nothing (second independent review of the strand, 2026-11-23: a question that names it, a text to pass
+// on to another session, a conditional, a quoted block all set the scope). The statement must open the message: at
+// most LEAD words before it, no `:` or condition word among them, the sentence it stands in is no question, and quoted
+// text (`> …`, after the squash a ` > ` or `: >`) is cut off first. Conditions: English built in, other languages as
+// data (`helper_condition_words`).
+const LEAD = 4;
+const CONDITION_BUILTIN = ['if', 'when', 'unless', 'once', 'tomorrow', 'later'];
+function unquoted(s) {
+  const i = String(s).search(/(?:^|[\s:])>\s/);
+  return i < 0 ? String(s) : String(s).slice(0, i);
+}
+let condRx = null;
+function conditionRx(root) {
+  if (condRx) return condRx;
+  let words = [...CONDITION_BUILTIN];
+  try {
+    const d = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'autonomous-patterns.json'), 'utf8'));
+    words = words.concat((d && d.helper_condition_words) || []);
+  } catch (e) { /* English only */ }
+  condRx = new RegExp(`\\b(?:${words.map((w) => String(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'iu');
+  return condRx;
+}
+let ROOT = '.';
+function statement(s, on) {
+  const text = unquoted(s);
+  const m = on.exec(text);
+  if (!m) return false;
+  const lead = text.slice(0, m.index);
+  if (lead.includes(':') || (lead.match(/[^\s,;]+/g) || []).length > LEAD || conditionRx(ROOT).test(lead)) return false;
+  const end = text.slice(m.index).search(/[.!?]/);
+  return !(end >= 0 && text.slice(m.index)[end] === '?');
+}
 
 function patterns(root, key, builtin) {
   const list = [...builtin];
@@ -76,11 +109,12 @@ function scopeOf(root, tp, msgs) {
   if (!tp || !Array.isArray(msgs) || !msgs.length) return null;
   const on = patterns(root, 'helper_scope_patterns', SCOPE_BUILTIN);
   const off = patterns(root, 'helper_clear_patterns', CLEAR_BUILTIN);
+  ROOT = root; condRx = null;
   let last = null;
   for (const m of msgs) {
     if (m.ans) continue;
-    if (off.test(m.s)) last = null;
-    if (on.test(m.s)) last = m.s;
+    if (off.test(unquoted(m.s))) last = null;
+    if (statement(m.s, on)) last = m.s;
   }
   if (!last) return null;
   const nameRx = mainName(root);
