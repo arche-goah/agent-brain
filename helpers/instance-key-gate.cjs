@@ -107,7 +107,9 @@ function levelFindings(cmd, cwd, ps) {
     return [`the env -C path "${seg[at + 1]}" is a shell variable - a hook reads the command text, ` +
       `not its expansion, so the PR's checkout cannot be found. Write the path literally: env -C <absolute path> gh pr create ...`];
   }
-  const repo = checkoutOf(at >= 0 && seg[at + 1] ? require('./public-text-guard.cjs').nativePath(seg[at + 1]) : cwd);
+  // the shared reader of where a gh call runs (pr-repo.cjs prCalls: `env -C`, `cd <dir> &&`, `~`, drive form)
+  const call = ((require('./pr-repo.cjs').prCalls(cmd, cwd, ps, ['create'])) || [])[0];
+  const repo = checkoutOf(call ? call.dir : cwd);
   const r = seg.findIndex((t) => t === '-R' || t === '--repo' || /^--repo=/.test(t));
   const slug = r < 0 ? '' : (seg[r].startsWith('--repo=') ? seg[r].slice(7) : seg[r + 1] || '');
   if (slug) {

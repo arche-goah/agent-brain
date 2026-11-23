@@ -110,6 +110,7 @@ out=$(ask s-b "  note first, then [Subagent hand-back] about the other session")
 out=$(ask s-b "the report says parallel sessions overlap — coordinate with the other session"); has "control: the operator naming parallel sessions still gets the map" "$out" "<session-map>"
 mkdir -p "$T/mut/helpers"; cp "$_D/../session-areas.json" "$T/mut/"   # the mutant reads the core's word list beside it
 cp "$_D/../helpers/published-text.cjs" "$T/mut/helpers/"; cp "$_D/../helpers/published-text.cjs" "$T/"   # and its parser
+cp "$_D/../helpers/git-target.cjs" "$T/mut/helpers/"; cp "$_D/../helpers/git-target.cjs" "$T/"   # and the shared git-target reader
 sed -e 's/ || PEER_TEXT\.test(text)//' -e 's/|<agent-message|/|/' "$_D/../helpers/session-areas.cjs" > "$T/mut/helpers/session-areas.cjs"
 out=$(node -e 'process.stdout.write(JSON.stringify({session_id:"s-b",cwd:process.argv[1],prompt:process.argv[2]}))' "$B" "$HB" | node "$(native "$T/mut/helpers/session-areas.cjs")" prompt 2>&1)
 has "control: without the peer filter the hand-back fires the map (the finding)" "$out" "<session-map>"

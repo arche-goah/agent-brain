@@ -122,14 +122,19 @@ function areasFromCall(input) {
   // Every `git [-C <dir>] … commit … [-- <paths>]` segment, read as the shell reads it (quotes, comments)
   // with published-text's word split; a path in the shell's form is made native first (OS-19: Git Bash
   // `/c/...` resolved by node on Windows to `C:\c\...`, measured 2026-11-11 on the Windows instance).
+  // The target directory comes from the shared reader (git-target.cjs: `cd <dir> &&`, `env -C`, every `-C`, `~`,
+  // drive form); the local reading below stays for a line the shell parser cannot read to its end.
+  const shared = (require('./git-target.cjs').gitCalls(ti.command, cwd, ps) || []).filter((g) => g.sub === 'commit');
+  let k = 0;
   for (const words of commitCalls(ti.command, ps)) {
     const ci = words.indexOf('commit');
+    const sh = shared[k++];
     const c = words.slice(0, ci).indexOf('-C');   // `git commit -C <sha>` after the verb is a message source
     // A leading `~` is the home folder (measured 2026-11-20: `git -C ~/Projects/<repo> commit -- scripts/x.py` from
     // the brain resolved to `<brain>/~/...`, no folder, and the file landed in `<brain>/scripts` - a false OVERLAP).
     let dir = c >= 0 ? words[c + 1] : '.';
     if (dir === '~' || /^~[\\/]/.test(dir)) dir = path.join(require('os').homedir(), dir.slice(1));
-    const base = path.resolve(cwd, nativePath(dir));
+    const base = sh ? sh.dir : path.resolve(cwd, nativePath(dir));
     const dd = words.indexOf('--', ci);
     const specs = dd >= 0 ? words.slice(dd + 1).filter((s) => !/^[|>]/.test(s)) : [];
     if (!specs.length) {

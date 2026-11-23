@@ -428,8 +428,10 @@ function prWatched(root, calls) {
 function expandHome(p) { return require('./published-text.cjs').nativePath(p.replace(/^~(?=$|[\\/])/, require('os').homedir())); }
 /** The checkout a shell call acts on: `git -C <dir>`, else a leading `cd <dir>`, else the project root. */
 function callDir(cmd, root) {
-  let m = /\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
-  if (!m) m = /(?:^|[\n;&|(])\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
+  // a git call: the shared reader (`-C` inside a quoted message is no option - measured 2026-11-23)
+  const t = require('./git-target.cjs').gitTarget(cmd, root);
+  if (t) return t;
+  const m = /(?:^|[\n;&|(])\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
   return m ? expandHome(m[1] || m[2] || m[3]) : root;
 }
 function hasWorkflows(dir) {

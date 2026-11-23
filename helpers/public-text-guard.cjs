@@ -181,9 +181,10 @@ function targetRepos(cmd, cwd) {
   if (/(?:^|\s)(?:-R|--repo)[=\s]+"?\$/.test(cmd)) slugs.add('?');
   for (const m of cmd.matchAll(/\brepos\/([\w.-]+\/[\w.-]+?)(?=\/|\s|$|["'?])/g)) slugs.add(m[1]);
   if (!slugs.size) {
-    const c = /git\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd);
-    const dir = c ? unquote(c[1]) : cwd;
-    const s = dir && slugFromRemote(resolveFrom(cwd, dir));
+    // the shared reader of the git target; measured 2026-11-23: the regex took `-C reader` inside a quoted commit
+    // message for `git -C <repo>` and blocked the commit as "visibility unknown"
+    const dir = require('./git-target.cjs').gitTarget(cmd, cwd) || cwd;
+    const s = dir && slugFromRemote(dir);
     if (s) slugs.add(s);
     else if (/(^|\s)gh\s/.test(cmd)) slugs.add('?'); // gh without a resolvable repo: unknown
   }
@@ -323,7 +324,8 @@ function gate(input, script) {
   }
   const a = commandParts(cmd).filter((p) => AUTHOR_RX.test(p.judge)).map((p) => AUTHOR_RX.exec(p.raw)).find(Boolean);
   if (a) {
-    const dir = resolveFrom(cwd, a[3] ? unquote(a[3]) : '.');
+    const dir = require('./git-target.cjs').gitTarget(cmd, cwd, false, ['commit', 'tag'])
+      || resolveFrom(cwd, a[3] ? unquote(a[3]) : '.');
     try {
       const ident = execFileSync('git', ['-C', dir, 'var', 'GIT_AUTHOR_IDENT'],
         { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().replace(/\s+\d+\s+[+-]\d{4}\s*$/, '');
