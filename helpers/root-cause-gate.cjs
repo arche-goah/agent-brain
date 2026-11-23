@@ -474,9 +474,21 @@ const MARKER = /#\s*[A-Z][A-Z]+(?:-[A-Z]+)*(?:-OK\b|:)/;
 const BUILTIN_ANOMALY = ['^[ \\t>*_-]*(anomaly|signal)\\b[^\\n]{0,80}:[^\\n]*\\b(intended|false positive|own mistake)\\b'];
 const WINDOW = 8;
 // A refusal that names its own way on: the form that passes, a repeat, a skill to load, a marker, a step first.
-// English built in; other languages as data (`way_on_patterns` in root-cause-patterns.json).
-const WAY_ON_BUILTIN = ['the form that passes', 'repeat (?:this|the) call', 'load (?:each|it|the skill)[^\\n]{0,30}skill tool',
-  'commit (?:it )?by path', 'add (?:a |the )?(?:`#\\s*)?[A-Z][A-Z-]+-OK\\b', 'then (?:repeat|retry|run it again|call again)', '\\bcall again\\b'];
+// The built-ins and the gate-to-marker map live in ONE data file at the core root, gate-markers.json, read here and by
+// scripts/gate-health.py (main session decision 2026-11-23: one reader, not a second list). Other languages as
+// instance data (`way_on_patterns` in root-cause-patterns.json).
+let MARKER_DATA = null;
+function markerData() {
+  if (MARKER_DATA) return MARKER_DATA;
+  try { MARKER_DATA = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'gate-markers.json'), 'utf8')); } catch (e) { MARKER_DATA = {}; }
+  return MARKER_DATA;
+}
+const WAY_ON_BUILTIN = (markerData().way_on || []).filter((x) => { try { new RegExp(x); return true; } catch (e) { return false; } });
+/** Is a marker one a gate names as its RULE PATH (a step done, a fact checked)? Then passing by it is the gate followed
+ *  and owes no classification; an exception marker (rule_path false) or one no gate entry names does. */
+function rulePathMarker(name) {
+  return Object.values(markerData().gates || {}).some((g) => g && g.rule_path === true && (g.markers || []).includes(name));
+}
 const STEP_TOOLS = new Set(['Skill', 'Read', 'ToolSearch']);
 function callKey(c) {
   const inp = c.input || {};
@@ -523,8 +535,14 @@ function anomalies(group, cwd) {
         // a judgement against the gate or a step the gate asked for - the line says which, and what backs it).
         const mk = MARKER.exec(JSON.stringify(c2.input));
         if (mk) {
-          out.push({ kind: 'marker-pass', block: true, gate, marker: mk[0].replace(/^#\s*/, '').replace(/:$/, ''),
-            what: `${gate} refused ${c.name}, passed by its marker ${mk[0].replace(/:$/, '')}` });
+          const name = mk[0].replace(/^#\s*/, '').replace(/:$/, '');
+          // a rule-path marker (PRS-READ: the reading the gate asks for) is the gate followed; an exception marker
+          // (MECHANISM-OK, CONDITION-NONE) or one no gate names holds until classified (main session 2026-11-23)
+          if (rulePathMarker(name)) {
+            out.push({ kind: 'followed', block: false, gate, what: `${gate} refused ${c.name}, its rule-path marker ${name} was given` });
+          } else {
+            out.push({ kind: 'marker-pass', block: true, gate, marker: name, what: `${gate} refused ${c.name}, passed by its marker # ${name}` });
+          }
           break;
         }
         // The gate's own way on is no bypass (Windows review of #640: most of 84 bypass signals were a skill load and the

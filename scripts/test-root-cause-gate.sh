@@ -96,6 +96,11 @@ mcall() { printf '{"type":"assistant","message":{"role":"assistant","content":[{
 check "a refusal passed by its override marker without a classification holds (break case M)" "$T/an8.jsonl" block "$CWD"
 { user "push the branch then open the PR"; mcall m3 "git push -u origin feat/x"; bres m3 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall m4 "git push -u origin feat/x # CONDITION-NONE: the then is the order of steps"; okres m4 false ok; asst "Anomaly: CONDITIONAL-ORDER-GATE read 'then' as a condition - intended, \`# CONDITION-NONE\` in the push: the then is the order of steps."; } > "$T/an9.jsonl"
 check "the marker pass classified as intended, quoting the marker that stands in the call, is backed" "$T/an9.jsonl" allow "$CWD"
+# main session 2026-11-23: a RULE-PATH marker (gate-markers.json rule_path true) is the gate followed - it owes no line
+{ user "open the PR"; mcall p1 "gh pr create --title x"; bres p1 'PRS-FIRST: read the open PRs first'; mcall p2 "gh pr create --title x # PRS-READ: none is closer"; okres p2 false ok; asst "Opened."; } > "$T/an10.jsonl"
+check "a refusal passed by its rule-path marker (PRS-READ) owes no classification" "$T/an10.jsonl" allow "$CWD"
+{ user "open the PR"; mcall p3 "gh pr create --title y"; bres p3 'PRS-FIRST: read the open PRs first'; mcall p4 "gh pr create --title y # NEWLY-MADE-OK: nobody names this"; okres p4 false ok; asst "Opened."; } > "$T/an11.jsonl"
+check "a marker no gate entry names holds like an exception (control)" "$T/an11.jsonl" block "$CWD"
 { user "check the build"; bashq c3; okres c3 true 'Exit code 1
 3 tests failed'; asst "Three tests fail; fixing them."; } > "$T/an3.jsonl"
 check "a command that fails on purpose-shaped output (a failing test run) is no anomaly (control)" "$T/an3.jsonl" allow "$CWD"
