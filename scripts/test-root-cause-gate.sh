@@ -114,6 +114,8 @@ check "'intended' quoting a call made before the signal is backed" "$T/an13.json
 { user "count the entries"; bashq c14; okres c14 true 'Traceback (most recent call last):
 KeyError: id'; asst "Anomaly: traceback in \`gh pr comment 1 -b x\` - intended"; } > "$T/an14.jsonl"
 check "'intended' quoting the failing call itself is not backed (second review N1)" "$T/an14.jsonl" block "$CWD"
+{ user "push the branch then open the PR"; mcall f0 "gh pr create --title Release-now-question"; bres f0 'PRS-FIRST: read the open PRs first'; mcall f1 "git push -u origin feat/z"; bres f1 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall f2 "git push -u origin feat/z # CONDITION-NONE: ok"; okres f2 false ok; asst "Anomaly: the refusal - intended, \`Release-now-question\` was the plan."; } > "$T/an15.jsonl"
+check "'intended' quoting an earlier call that a hook REFUSED is not backed (second review P2)" "$T/an15.jsonl" block "$CWD"
 # main session 2026-11-23: a RULE-PATH marker (gate-markers.json rule_path true) is the gate followed - it owes no line
 { user "open the PR"; mcall p1 "gh pr create --title x"; bres p1 'PRS-FIRST: read the open PRs first'; mcall p2 "gh pr create --title x # PRS-READ: none is closer"; okres p2 false ok; asst "Opened."; } > "$T/an10.jsonl"
 check "a refusal passed by its rule-path marker (PRS-READ) owes no classification" "$T/an10.jsonl" allow "$CWD"

@@ -659,7 +659,11 @@ function classification(group, cwd, ctx, signal) {
   const quoted = [...line.matchAll(/`([^`]{3,})`|"([^"]{8,})"|“([^”]{8,})”|#\s*([A-Z][A-Z]+(?:-[A-Z]+)+)/g)]
     .map((q) => (q[1] || q[2] || q[3] || q[4] || '').trim()).filter(Boolean);
   const at = signal && signal.at;
-  const earlier = at ? group.flatMap((s, si) => (s.calls || []).filter((c, ci) => si < at.seg || (si === at.seg && ci < at.call))
+  // a call a hook refused carried nothing out - its words back nothing (second review, P2: a repeat classified by
+  // quoting the refused question itself passed)
+  const refusedForm = malfData().refusal;
+  const refusedCall = (s, c) => { const r = (s.results || {})[c.id]; return Boolean(r && r.err && refusedForm.test(String(r.text || '').trim())); };
+  const earlier = at ? group.flatMap((s, si) => (s.calls || []).filter((c, ci) => (si < at.seg || (si === at.seg && ci < at.call)) && !refusedCall(s, c))
     .map((c) => JSON.stringify(c.input || {}))) : [];
   const prompts = group.map((s) => String(s.prompt || '')).filter(Boolean);
   const own = signal && signal.kind === 'marker-pass' && signal.marker ? signal.marker : null;
