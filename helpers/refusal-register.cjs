@@ -93,4 +93,15 @@ function repeatIn(refusals, regText, aliases) {
   return null;
 }
 
-module.exports = { gateOf, entries, earlier, repeatIn };
+/**
+ * Does a register text written in the turn tie the new case to an earlier one? true when a `related:` line names the id
+ * of one of `hits` (an entry without an id: its date). A repeat that is no intended refusal gets a NEW entry, and that
+ * entry says which earlier fix did not hold - `related: none` on the third case was the 2026-11-18 defect.
+ */
+function namesEarlier(written, hits) {
+  const rel = (String(written || '').match(/^[ \t>*_-]*related:[^\n]*(?:\n[ \t]+[^\n]*)*/gim) || []).join('\n').toLowerCase();
+  if (!rel) return false;
+  return (hits || []).some((h) => (h.id ? rel.includes(h.id.toLowerCase()) : Boolean(h.date) && rel.includes(h.date)));
+}
+
+module.exports = { gateOf, entries, earlier, repeatIn, namesEarlier };
