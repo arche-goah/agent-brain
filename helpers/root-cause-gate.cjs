@@ -364,18 +364,20 @@ function shellWrites(shell, cwd, since) {
   return out;
 }
 
-// The first correction in the turn (word list, else the prompt classifier's record) that no later text answers with
-// a cause line; with causeRx null, the first correction regardless (the --pre check wants the class before the
-// instance even when a cause is already named).
+// The first correction in the turn that no later text answers with a cause line; with causeRx null, the first
+// correction regardless (the --pre check wants the class before the instance even when a cause is already named).
+// A prompt classifier's record of the prompt DECIDES, both ways; without one the word list does (operator decision
+// 2026-11-18, question tool, superseding "safe direction only" of 2026-10-30: in a hand-judged sample of 40
+// disagreements the model was right in 30, the words in 7 - every word hit there was a false alarm).
 function firstCorrection(group, cwd, transcriptPath, rx, causeRx) {
   let known = null;
   for (let i = 0; i < group.length; i += 1) {
     const seg = group[i];
     let hit = correctionIn(seg.prompt, rx);
-    if (!hit) {
-      if (!known) known = intents(transcriptPath, cwd);
-      const intent = intentFor(known, seg.when);
-      if (intent && intent.correction) hit = sentenceAt(stripQuoted(seg.prompt), 0);
+    if (!known) known = intents(transcriptPath, cwd);
+    const intent = intentFor(known, seg.when, seg.prompt);
+    if (intent && typeof intent.correction === 'boolean') {
+      hit = intent.correction ? hit || sentenceAt(stripQuoted(seg.prompt), 0) : null;
     }
     if (!hit) continue;
     if (causeRx && causeIn(group.slice(i).flatMap((t) => t.texts), causeRx)) continue;
@@ -463,8 +465,8 @@ function gate(input) {
   if (!group.length) return;
   const writes = direct.concat(shellWrites(shell, cwd, since));
   // The prompt classifier's record decides too (2026-10-30, macOS instance: "find the cause and fix it at the root",
-  // in the operator's language, passed the word list; the classifier read correction=true). Safe direction only: it can open the inquiry (one
-  // cause line owed), never close one the words opened. Every message of the turn is judged (currentTurn), a
+  // in the operator's language, passed the word list; the classifier read correction=true). Since 2026-11-18 a record of
+  // the prompt decides both ways (firstCorrection); no record = the words. Every message of the turn is judged (currentTurn), a
   // cause line from that message on answers it.
   const causeRx = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
   const cause = causeIn(texts, causeRx);
