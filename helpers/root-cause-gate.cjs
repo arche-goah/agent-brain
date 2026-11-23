@@ -52,10 +52,11 @@
 const fs = require('fs');
 const path = require('path');
 const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
+const { gateLabel } = require('./gate-label.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
 const { nativePath } = require('./published-text.cjs');
-const { repeatIn, entries: registerEntries } = require('./refusal-register.cjs');
+const { repeatIn, namesEarlier, entries: registerEntries } = require('./refusal-register.cjs');
 
 let OWN_ECHO = /ROOT-CAUSE-GATE/;
 const HOOK_ECHO = /^Stop hook feedback:/;
@@ -447,8 +448,7 @@ function malfunctionIn(group) {
     for (const r of seg.refusals || []) {
       const full = r.raw || `PreToolUse:${r.tool} hook error: ${r.text}`;
       if (!m.refusal.test(full) || !m.malf.test(full)) continue;
-      const g = m.gate.exec(r.raw || r.text) || [];
-      const gate = g[1] || (g[2] ? `command hook ${g[2]}` : 'a hook');
+      const gate = gateLabel(r.raw || r.text);
       const what = (m.malf.exec(r.raw || r.text) || [''])[0];
       return `${gate} ${what} on ${r.tool} at ${r.at || '?'}`;
     }
@@ -463,9 +463,10 @@ function malfunctionIn(group) {
  * (then a register entry or a fix) | own mistake (then a Cause line)`:
  *   own-fail   the agent's own command failed in a way no plan intends (a Traceback, "command not found", exit 127, a
  *              JSON parse error) - blocks
- *   repeat     the same gate refused twice in the turn - recorded first (.claude-state/turn-anomalies.jsonl)
+ *   repeat     the same gate refused twice in the turn - counted by the replay (--anomalies), no hold
  *   bypass     a refusal, then the same intent passing in another form within 8 calls, with no marker (same tool; Bash:
- *              Jaccard >= 0.5 of the command's words; files: the same path) - recorded first
+ *              Jaccard >= 0.5 of the command's words; files: the same path) - counted by the replay, no hold
+ *   marker-pass a refusal, then the same intent passing by a `# MARKER` - holds until classified with its backing
  * A gate malfunction is the fourth signal; it opens the cause path above (malfunctionIn).
  */
 const OWN_FAIL = /Traceback \(most recent call last\)|: command not found\b|is not recognized as (?:an internal or external command|the name of a cmdlet)|\bExit code 127\b|JSONDecodeError|Unexpected token [^\n]{0,40} in JSON|is not valid JSON|Unexpected end of JSON input/;
@@ -510,16 +511,23 @@ function anomalies(group, cwd) {
         continue;
       }
       if (m.malf.test(r.text)) continue;   // malfunctions go the cause path
-      // The label runs to the first `:` or ` (` (Windows review of #640: "SHARED WORKING COPY" was cut to its first word).
-      const gate = ((/^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^"]*?([\w.-]+)\.cjs"\]:\s*)?(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?/.exec(r.text.trim()) || []).slice(1).find(Boolean) || 'a hook').trim();
+      const gate = gateLabel(r.text);   // one reader for the label (helpers/gate-label.cjs)
       gatesSeen[gate] = (gatesSeen[gate] || 0) + 1;
       if (gatesSeen[gate] === 2) out.push({ kind: 'repeat', block: false, gate, what: `${gate} refused twice in the turn` });
       const k = callKey(c);
       const named = WAY_ON.test(r.text);
       for (let j = i + 1; j < Math.min(calls.length, i + 1 + WINDOW); j += 1) {
         const c2 = calls[j]; const r2 = res[c2.id];
-        if (c2.name !== c.name || !r2 || r2.err || MARKER.test(JSON.stringify(c2.input))) continue;
+        if (c2.name !== c.name || !r2 || r2.err) continue;
         if (!sameIntent(k, callKey(c2))) continue;
+        // A refusal passed by a marker is classified like any anomaly (rule "a gate that errs is a finding": a marker is
+        // a judgement against the gate or a step the gate asked for - the line says which, and what backs it).
+        const mk = MARKER.exec(JSON.stringify(c2.input));
+        if (mk) {
+          out.push({ kind: 'marker-pass', block: true, gate, marker: mk[0].replace(/^#\s*/, '').replace(/:$/, ''),
+            what: `${gate} refused ${c.name}, passed by its marker ${mk[0].replace(/:$/, '')}` });
+          break;
+        }
         // The gate's own way on is no bypass (Windows review of #640: most of 84 bypass signals were a skill load and the
         // repeat, or the form the refusal named): the refusal names a way on, the same call repeats unchanged, or a
         // step the gate asks for (a skill load, a read) came in between.
@@ -533,13 +541,43 @@ function anomalies(group, cwd) {
   }
   return out;
 }
-function recordAnomalies(cwd, input, list) {
-  if (!list.length) return;
-  try {
-    const f = path.join(cwd, '.claude-state', 'turn-anomalies.jsonl');
-    fs.mkdirSync(path.dirname(f), { recursive: true });
-    for (const a of list) fs.appendFileSync(f, JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...a }) + '\n');
-  } catch (e) { /* recording is best effort */ }
+/**
+ * The turn's classification of its anomalies - and whether it is BACKED (independent review of the strand,
+ * 2026-11-23: a bare "Anomaly: x - intended" released the hold with nothing behind it, the "Carrier: none" escape of
+ * 2026-11-02 again). `group` = the turn's segments (readTurns), `ctx` = {texts, writes} of the combined turn.
+ *   intended        backed by what it quotes: a `# MARKER` or `quoted text` that stands in the turn - a call's input or
+ *                   another text of the turn (the plan line)
+ *   false-positive  backed by an entry written to the carrier register in the same turn
+ *   own-mistake     backed by a cause line (that line opens the cause path, which owes the carrier and the entry)
+ * Returns {kind, backed, missing, line}; kind null when no classification line stands.
+ */
+function classification(group, cwd, ctx) {
+  const texts = (ctx && ctx.texts) || group.flatMap((s) => s.texts || []);
+  const writes = (ctx && ctx.writes) || group.flatMap((s) => s.writes || []);
+  const rx = loadPatterns(cwd, 'anomaly_patterns', BUILTIN_ANOMALY, 'imu');
+  let line = '';
+  for (const t of texts) {
+    const m = new RegExp(rx.source, 'imu').exec(stripQuoted(t));
+    if (m) { line = (t.split('\n').find((l) => new RegExp(rx.source, 'iu').test(l)) || m[0]).trim(); break; }
+  }
+  if (!line) return { kind: null, backed: false, missing: 'a classification line', line: '' };
+  const kind = /own mistake/i.test(line) ? 'own-mistake' : /false positive/i.test(line) ? 'false-positive' : 'intended';
+  if (kind === 'false-positive') {
+    const reg = registerPath(cwd);
+    return writesTo(writes, reg) ? { kind, backed: true, missing: '', line }
+      : { kind, backed: false, missing: `an entry in ${reg} written in this turn (the false positive's cause and fix)`, line };
+  }
+  if (kind === 'own-mistake') {
+    return causeIn(texts, loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu')) ? { kind, backed: true, missing: '', line }
+      : { kind, backed: false, missing: 'a Cause line (what was read, what produced it)', line };
+  }
+  const quoted = [...line.matchAll(/`([^`]{3,})`|"([^"]{8,})"|“([^”]{8,})”|#\s*([A-Z][A-Z]+(?:-[A-Z]+)+)/g)]
+    .map((q) => (q[1] || q[2] || q[3] || q[4] || '').trim()).filter(Boolean);
+  const inputs = group.flatMap((s) => (s.calls || []).map((c) => JSON.stringify(c.input || {})));
+  const others = texts.filter((t) => !t.includes(line));
+  const found = quoted.find((q) => inputs.some((i) => i.includes(q)) || others.some((t) => t.includes(q)));
+  return found ? { kind, backed: true, missing: '', line }
+    : { kind, backed: false, missing: 'the marker or plan line the "intended" refers to, quoted, standing in this turn', line };
 }
 
 /** A refusal of this turn that the carrier register already knows for the same gate and tool (refusal-register.cjs):
@@ -552,6 +590,26 @@ function registerRepeat(group, cwd) {
   const refusals = [];
   for (const seg of group) for (const r of seg.refusals || []) refusals.push({ ...r, at: r.at || seg.when || '' });
   return repeatIn(refusals, reg, aliases);
+}
+
+/** Records a register repeat (.claude-state/register-repeats.jsonl: at, session, gate, tool, the earlier entries) and
+ *  says whether this session was already held for that gate and tool. The record is the measurement behind an entry's
+ *  `effective:` - a fix whose refusal keeps coming back is not in force. Best effort: unwritable = not seen. */
+function recordRepeat(cwd, input, rep) {
+  const f = path.join(cwd, '.claude-state', 'register-repeats.jsonl');
+  const sid = String(input.session_id || '');
+  let seen = false;
+  try {
+    seen = Boolean(sid) && fs.readFileSync(f, 'utf8').split('\n').some((l) => {
+      try { const d = JSON.parse(l); return d.session === sid && d.gate === rep.gate && d.tool === rep.tool; } catch (e) { return false; }
+    });
+  } catch (e) { seen = false; }
+  try {
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.appendFileSync(f, JSON.stringify({ at: new Date().toISOString(), session: sid, gate: rep.gate, tool: rep.tool,
+      earlier: rep.hits.map((h) => h.id || h.date), held: !seen }) + '\n');
+  } catch (e) { /* recording is best effort */ }
+  return seen;
 }
 
 /** A refusal in the turn of the step the operator's prompt asked for: "<GATE> refused <tool> ..." or null. The prompt's
@@ -574,7 +632,7 @@ function refusedAsk(group, cwd, transcriptPath) {
       if (!read) continue;
       for (const r of seg.refusals) {
         if (!(rule.tools || []).includes(r.tool)) continue;
-        const gateName = (/^([A-Z][A-Z-]+):/.exec(r.text) || [])[1] || 'a hook';
+        const gateName = gateLabel(r.raw || r.text);
         if ((rule.ignore || []).includes(gateName)) continue;
         return `${gateName} refused ${r.tool} at ${r.at || '?'}, the step the operator's prompt asked for ("${seg.prompt.slice(0, 60)}", ${name} read by ${read})`;
       }
@@ -724,45 +782,49 @@ function gate(input) {
     let list = [];
     try { list = anomalies(group, cwd); } catch (e) { list = []; }
     // A refusal the carrier register already holds for the same gate and tool is a REPEAT (2026-11-23: the third
-    // "the operator asks for the questions, the question tool is refused" was handled as a first case). It is
-    // recorded like the other signals and holds the turn until it is classified - `intended` when the gate decided
-    // rightly again, else the cause of why the earlier fix did not hold.
+    // "the operator asks for the questions, the question tool is refused" was handled as a first case). Every repeat
+    // is recorded; it holds the turn ONCE per session for a gate and tool (the replay: 178 such turns in 605
+    // transcripts, 62 of them one ordering gate - asked at every hit the line becomes ritual), until the turn's
+    // classification is BACKED (classification above - the one judge; independent review 2026-11-23: a bare
+    // "intended" released the hold).
     let rep = null;
     try { rep = registerRepeat(group, cwd); } catch (e) { rep = null; }
-    // Held ONCE per session for a gate and tool; after that only recorded (the replay: 178 such turns in 605
-    // transcripts, 62 of them one ordering gate - asked at every hit the line becomes ritual).
-    if (rep) {
-      const key = `${rep.gate} refused ${rep.tool} `;
-      let seen = false;
-      try {
-        seen = Boolean(input.session_id) && fs.readFileSync(path.join(cwd, '.claude-state', 'turn-anomalies.jsonl'), 'utf8').split('\n')
-          .some((l) => l.includes('"register-repeat"') && l.includes(`"session":"${input.session_id}"`) && l.includes(JSON.stringify(key).slice(1, -1)));
-      } catch (e) { seen = false; }
-      list.push({ kind: 'register-repeat', block: !seen, what: rep.what });
-    }
-    recordAnomalies(cwd, input, list.filter((a) => (!a.block && a.kind !== 'followed') || a.kind === 'register-repeat'));
-    const own = list.find((a) => a.kind === 'register-repeat' && a.block) || list.find((a) => a.block);
+    if (rep && !recordRepeat(cwd, input, rep)) list.unshift({ kind: 'register-repeat', block: true, what: rep.what, hits: rep.hits });
+    const own = list.find((a) => a.block);
     if (!own) return;
-    const classified = causeIn(texts, loadPatterns(cwd, 'anomaly_patterns', BUILTIN_ANOMALY, 'imu')) || causeIn(texts, causeRx);
-    if (classified) return;
+    const cls = classification(group, cwd, { texts, writes });
+    let missing = cls.backed ? '' : (cls.kind ? cls.missing : 'a classification line');
+    if (!missing && own.kind === 'register-repeat' && cls.kind === 'false-positive') {
+      // the new entry ties the case to the earlier one: `related: none` on a third case was the 2026-11-18 defect
+      const reg = registerPath(cwd);
+      let written = writeTexts.filter((w) => writesTo([w.p], reg)).map((w) => w.t).join('\n');
+      if (!written.trim()) { try { written = newestEntry(fs.readFileSync(path.join(cwd, reg), 'utf8')); } catch (e) { written = ''; } }
+      if (!namesEarlier(written, own.hits)) {
+        missing = `the new register entry names the earlier one under related: (${own.hits.slice(-3).map((h) => h.id || h.date).join(', ')})`;
+      }
+    }
+    if (!missing) return;
     if (own.kind === 'register-repeat') {
       process.stdout.write(JSON.stringify(declare({
         decision: 'block',
-        reason: `ROOT-CAUSE-GATE: a REPEAT - ${own.what.slice(0, 520)}. A refusal the register already knows is no first `
-          + 'case. Classify it in ONE line - Anomaly: <gate> refused <tool> again - intended (the gate decided rightly, say '
-          + 'why) | gate false positive | own mistake. For the last two: Cause: <why the earlier fix did not hold - read '
-          + 'whether its carrier is IN FORCE here; a pull request that is open, or merged but not pinned, is no fix>, the new '
-          + 'register entry names the earlier one under related:, carries `refusal: <GATE> <Tool>`, and the earlier entry '
-          + 'gets `effective: no - <why>`.',
+        reason: `ROOT-CAUSE-GATE: a REPEAT - ${own.what.slice(0, 520)}. A refusal the register already knows is no first case`
+          + (cls.kind ? ` - your line "${cls.line.slice(0, 100)}" reads as ${cls.kind}, missing: ${missing}. ` : '. ')
+          + 'Classify it in ONE line, with its backing - Anomaly: <gate> refused <tool> again - intended (quote the '
+          + '`# MARKER` or the plan line the call followed, standing in this turn) | gate false positive (and write its '
+          + 'entry in the carrier register in this turn: `refusal: <GATE> <Tool>`, `related:` naming the earlier entry, '
+          + 'and `effective: no - <why>` on that earlier entry - read whether its carrier is IN FORCE here; a pull request '
+          + 'that is open, or merged but not pinned, is no fix) | own mistake (and a Cause line: why the refused step was '
+          + 'tried again). A bare word releases nothing.',
       }, input)));
       return;
     }
     process.stdout.write(JSON.stringify(declare({
       decision: 'block',
-      reason: `ROOT-CAUSE-GATE: an anomaly in this turn's tool results is not classified: ${own.kind} - "${own.what.slice(0, 160)}". `
-        + 'Classify it in ONE line - Anomaly: <what> - intended | gate false positive (then a register entry or a fix) | '
-        + 'own mistake (then a Cause line: what was read, what produced it). A failure nobody names repeats unseen '
-        + '(operator 2026-11-23: "recognise and improve it on your own").',
+      reason: `ROOT-CAUSE-GATE: an anomaly in this turn's tool results is not classified with its backing: ${own.kind} - "${own.what.slice(0, 160)}"`
+        + (cls.kind ? ` - your line "${cls.line.slice(0, 100)}" reads as ${cls.kind}, missing: ${cls.missing}. ` : '. ')
+        + 'Classify it in ONE line - Anomaly: <what> - intended (quote the `# MARKER` or the plan line it follows, standing in this turn) | '
+        + 'gate false positive (and write its entry in the carrier register in this turn) | own mistake (and a Cause line: '
+        + 'what was read, what produced it). A bare word releases nothing (operator 2026-11-23: "recognise and improve it on your own").',
     }, input)));
     return;
   }
@@ -903,10 +965,16 @@ function review(args) {
   return 0;
 }
 
+// Required as a library (the refusal register calls classification on its own repeat signal - one judge of a
+// classification, not two): export, and run neither a CLI branch nor the stdin hook.
+module.exports = { classification, anomalies, readTurns };
+
 // `--register-repeats <folder> [N] [--gate <NAME>]`: replay of the register lookup - every turn of the newest N
 // transcripts (default: all) with a refusal the carrier register held an EARLIER entry for (same gate, same tool), per
 // gate and tool, and whether the turn named a cause or classified it. `--gate` lists the turns of one gate.
-if (process.argv[2] === '--register-repeats') {
+if (require.main !== module) {
+  /* library use: nothing runs */
+} else if (process.argv[2] === '--register-repeats') {
   const dir = process.argv[3];
   const cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const only = process.argv.includes('--gate') ? process.argv[process.argv.indexOf('--gate') + 1] : '';
@@ -916,9 +984,8 @@ if (process.argv[2] === '--register-repeats') {
       .sort((a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs);
     if (/^\d+$/.test(process.argv[4] || '')) files = files.slice(-Number(process.argv[4]));
   } catch (e) { files = []; }
-  const classRx = loadPatterns(cwd, 'anomaly_patterns', BUILTIN_ANOMALY, 'imu');
   const causeRx = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
-  const per = {}; const rows = []; let total = 0;
+  const per = {}; const rows = []; let total = 0; const tot = { released: 0, cause: 0, bare: 0 };
   for (const tp of files) {
     let turns = [];
     try { turns = readTurns(tp, false); } catch (e) { turns = []; }
@@ -927,9 +994,14 @@ if (process.argv[2] === '--register-repeats') {
       if (!r) continue;
       total += 1;
       const k = `${r.gate} ${r.tool}`;
-      const p = per[k] = per[k] || { turns: 0, named: 0, days: new Set(), first: r.hits[0] };
+      const p = per[k] = per[k] || { turns: 0, released: 0, cause: 0, bare: 0, days: new Set(), first: r.hits[0] };
       p.turns += 1; p.days.add(String(r.at).slice(0, 10));
-      if (causeIn(t.texts, classRx) || causeIn(t.texts, causeRx)) p.named += 1;
+      // what the turn's own text would do at the hold: released by a BACKED classification, sent the cause path by a
+      // cause line, or a bare classification line that releases nothing
+      const cls = classification([t], cwd, { texts: t.texts, writes: t.writes });
+      if (causeIn(t.texts, causeRx)) { p.cause += 1; tot.cause += 1; }
+      else if (cls.backed && (cls.kind !== 'false-positive' || namesEarlier((t.writeTexts || []).map((w) => w.t).join('\n'), r.hits))) { p.released += 1; tot.released += 1; }
+      else if (cls.kind) { p.bare += 1; tot.bare += 1; }
       if (only && r.gate === only) rows.push(`${String(r.at).slice(0, 16)} ${path.basename(tp).slice(0, 8)} ${r.tool}: ${r.hits.length} earlier (${r.hits.map((h) => h.date).join(', ')}) | "${String(t.prompt || '').replace(/\s+/g, ' ').slice(0, 70)}"`);
     }
   }
@@ -937,8 +1009,9 @@ if (process.argv[2] === '--register-repeats') {
   try { reg = registerEntries(fs.readFileSync(path.join(cwd, registerPath(cwd)), 'utf8')); } catch (e) { reg = []; }
   console.log(`${files.length} transcript(s) · ${reg.length} register entr(y/ies), ${reg.filter((e) => e.key).length} with a refusal: field · ${total} turn(s) with a refusal the register already held`);
   for (const [k, p] of Object.entries(per).sort((a, b) => b[1].turns - a[1].turns)) {
-    console.log(`  ${k}: ${p.turns} turn(s) on ${p.days.size} day(s), a cause or classification in ${p.named}; first entry ${p.first.date} ${p.first.id || p.first.title.slice(0, 50)}`);
+    console.log(`  ${k}: ${p.turns} turn(s) on ${p.days.size} day(s) - released by a backed classification ${p.released}, cause path ${p.cause}, a bare line (still held) ${p.bare}; first entry ${p.first.date} ${p.first.id || p.first.title.slice(0, 50)}`);
   }
+  console.log(`  all: released by a backed classification ${tot.released}, cause path ${tot.cause}, a bare line (still held) ${tot.bare}, no line (held) ${total - tot.released - tot.cause - tot.bare}`);
   for (const r of rows.sort()) console.log(`  | ${r}`);
   process.exitCode = 0;
 } else
@@ -961,9 +1034,10 @@ if (process.argv[2] === '--anomalies') {
     try { turns = readTurns(tp, false); } catch (e) { turns = []; }
     for (const t of turns) {
       for (const a of anomalies([t], cwd)) {
-        const s = kinds[a.kind] = kinds[a.kind] || { n: 0, classified: 0 };
+        const s = kinds[a.kind] = kinds[a.kind] || { n: 0, classified: 0, backed: 0 };
         s.n += 1;
         if (causeIn(t.texts, classRx) || causeIn(t.texts, causeRx)) s.classified += 1;
+        if (a.block && (causeIn(t.texts, causeRx) || classification([t], cwd).backed)) s.backed += 1;
         const own = process.argv.includes('--own');
         if (a.kind === 'repeat' || a.kind === 'bypass') gates[a.gate] = (gates[a.gate] || 0) + 1;
         if ((a.kind === 'own-fail') === own && samples.length < k) {
@@ -974,7 +1048,7 @@ if (process.argv[2] === '--anomalies') {
     }
   }
   console.log(`${files.length} transcript(s)`);
-  for (const [kd, s] of Object.entries(kinds)) console.log(`${kd}: ${s.n} signal(s), a classification or cause line in the turn: ${s.classified}`);
+  for (const [kd, s] of Object.entries(kinds)) console.log(`${kd}: ${s.n} signal(s), a classification or cause line in the turn: ${s.classified}` + (s.backed || kd === "own-fail" || kd === "marker-pass" ? `, backed or on the cause path: ${s.backed}` : ""));
   for (const [g, n] of Object.entries(gates).sort((a, b) => b[1] - a[1]).slice(0, 12)) console.log(`  repeat/bypass by ${g}: ${n}`);
   for (const s of samples) console.log(`sample ${s}`);
   process.exitCode = 0;

@@ -70,7 +70,32 @@ KeyError: rules'; asst "Done, there are 12."; } > "$T/an1.jsonl"
 check "an own command failed with a Traceback and the turn does not classify it" "$T/an1.jsonl" block "$CWD"
 { user "count the rules"; bashq c2; okres c2 true 'Traceback (most recent call last):
 KeyError: rules'; asst "Anomaly: KeyError in my one-liner - own mistake. Cause: the file keys rules under \"rules\" of each block, I read the top level."; } > "$T/an2.jsonl"
-check "the same, classified as an own mistake with a cause line" "$T/an2.jsonl" allow "$CWD"
+# strand review 2026-11-23: a classification releases only with its backing - an "own mistake" goes the cause path (a
+# Cause line of its own, which then owes the carrier and the entry); a cause tucked into the classification line is none
+check "an own mistake with the cause only inside the classification line is not backed (strand review)" "$T/an2.jsonl" block "$CWD"
+{ user "count the rules"; bashq c2b; okres c2b true 'Traceback (most recent call last):
+KeyError: rules'; asst "Anomaly: KeyError in my one-liner - own mistake.
+Cause: the file keys rules under \"rules\" of each block, I read the top level."; } > "$T/an2b.jsonl"
+out=$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s","session_id":"s1"}' "$(native "$T/an2b.jsonl")" "$(native "$CWD")" | CLAUDE_PROJECT_DIR="$(native "$CWD")" node "${GATE:-$G}" 2>&1)
+case "$out" in *"names a cause"*) ok "an own mistake with its Cause line goes the cause path (carrier and entry owed)";; *) bad "own mistake not on the cause path: ${out:0:160}";; esac
+{ user "count the entries"; bashq c4; okres c4 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: traceback in count.py - intended
+Counted by hand instead: 12."; } > "$T/an4.jsonl"
+check "a bare 'intended' with nothing it refers to is not backed (break case C)" "$T/an4.jsonl" block "$CWD"
+{ user "count the entries"; asst "Plan: run \`python3 count.py --probe\` first; it fails on purpose when the ledger has no ids yet."; bashq c5; okres c5 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: the KeyError - intended, the probe step \`python3 count.py --probe\` of the plan above."; } > "$T/an5.jsonl"
+check "'intended' quoting the plan line that stands in the turn is backed" "$T/an5.jsonl" allow "$CWD"
+{ user "count the entries"; bashq c6; okres c6 true 'Traceback (most recent call last):
+KeyError: id'; asst "Signal: gate false positive, moving on."; } > "$T/an6.jsonl"
+check "'gate false positive' without a register entry in the turn is not backed (break case C2)" "$T/an6.jsonl" block "$CWD"
+{ user "count the entries"; bashq c7; okres c7 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: the KeyError - gate false positive, entry written."; write "$CWD/docs/maintenance/carrier-register.md"; } > "$T/an7.jsonl"
+check "'gate false positive' with its register entry written in the turn is backed" "$T/an7.jsonl" allow "$CWD"
+mcall() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+{ user "push the branch then open the PR"; mcall m1 "git push -u origin feat/x"; bres m1 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall m2 "git push -u origin feat/x # CONDITION-NONE: no condition"; okres m2 false ok; asst "Pushed."; } > "$T/an8.jsonl"
+check "a refusal passed by its override marker without a classification holds (break case M)" "$T/an8.jsonl" block "$CWD"
+{ user "push the branch then open the PR"; mcall m3 "git push -u origin feat/x"; bres m3 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall m4 "git push -u origin feat/x # CONDITION-NONE: the then is the order of steps"; okres m4 false ok; asst "Anomaly: CONDITIONAL-ORDER-GATE read 'then' as a condition - intended, \`# CONDITION-NONE\` in the push: the then is the order of steps."; } > "$T/an9.jsonl"
+check "the marker pass classified as intended, quoting the marker that stands in the call, is backed" "$T/an9.jsonl" allow "$CWD"
 { user "check the build"; bashq c3; okres c3 true 'Exit code 1
 3 tests failed'; asst "Three tests fail; fixing them."; } > "$T/an3.jsonl"
 check "a command that fails on purpose-shaped output (a failing test run) is no anomaly (control)" "$T/an3.jsonl" allow "$CWD"
@@ -85,8 +110,31 @@ check "a refusal the register holds an earlier entry for (same gate, same tool),
 out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr1.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
 case "$out" in *'a REPEAT'*'asks-read-as-mode-on'*'effective: not stated'*) ok "the block names the earlier entry, its carrier and that its effect is not stated";; *) bad "repeat block without the entry: '${out:0:300}'";; esac
 check "the same refusal with no register (control)" "$T/rr1.jsonl" allow "$CWD"
-{ user "fix the readme"; aq r2; refuse r2 "AUTONOMOUS-GATE: the operator ordered this run autonomous"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, the run is autonomous and the operator asked nothing."; } > "$T/rr2.jsonl"
-check "the repeat classified as intended" "$T/rr2.jsonl" allow "$RG"
+# The classification is BACKED or it releases nothing (independent review 2026-11-23: one self-written line released the hold).
+REF='AUTONOMOUS-GATE: the operator ordered this run autonomous'
+{ user "fix the readme"; aq r2; refuse r2 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, the run is autonomous and the operator asked nothing."; } > "$T/rr2.jsonl"
+check "a repeat with a bare 'intended' line stays held" "$T/rr2.jsonl" block "$RG"
+{ user "fix the readme"; asst "Plan: I put the release question once; if the gate holds it, I file the question in the ledger."; aq r3; refuse r3 "$REF"
+  asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"if the gate holds it, I file the question in the ledger\"."; } > "$T/rr3.jsonl"
+check "a repeat classified as intended, quoting the plan line that stands in the turn" "$T/rr3.jsonl" allow "$RG"
+{ user "fix the readme"; aq r4; refuse r4 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, moving on."; } > "$T/rr4.jsonl"
+check "a repeat declared a false positive with no register entry stays held" "$T/rr4.jsonl" block "$RG"
+ENTRY_NO_REL='## 2026-11-23 — the question tool refused again
+refusal: AUTONOMOUS-GATE AskUserQuestion
+invariant: a request for questions opens the question tool whatever is filed as open
+related: none
+replay: 3 turns in 60 transcripts'
+{ user "fix the readme"; aq r5; refuse r5 "$REF"; write "$RG/docs/maintenance/carrier-register.md" "$ENTRY_NO_REL"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, entry written."; } > "$T/rr5.jsonl"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr5.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'"decision":"block"'*'names the earlier one under related'*'asks-read-as-mode-on'*) ok "a false positive whose new entry says related: none stays held and is told which entry to name";; *) bad "related: none passed: '${out:0:300}'";; esac
+{ user "fix the readme"; aq r6; refuse r6 "$REF"; write "$RG/docs/maintenance/carrier-register.md" "${ENTRY_NO_REL/related: none/related: asks-read-as-mode-on}"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, entry written."; } > "$T/rr6.jsonl"
+check "a false positive with its entry written in the turn, naming the earlier one" "$T/rr6.jsonl" allow "$RG"
+{ user "fix the readme"; aq r7; refuse r7 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - own mistake."; } > "$T/rr7.jsonl"
+check "a repeat declared an own mistake with no cause line stays held" "$T/rr7.jsonl" block "$RG"
+{ user "fix the readme"; aq r8; refuse r8 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - own mistake.
+Cause: read the run mode from memory, not from the gate — I asked inside the run."; } > "$T/rr8.jsonl"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr8.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'"decision":"block"'*'names a cause'*) ok "an own mistake with its cause line goes the cause path (carrier and entry owed)";; *) bad "own mistake + cause did not reach the cause path: '${out:0:300}'";; esac
 RS="$T/reg-same-day"; regdir "$RS" '## 2026-11-23 — the question tool refused' 'id: today' 'incident: AUTONOMOUS-GATE refused AskUserQuestion' 'cause: x'
 check "an entry of the refusal's own day is the present case, not an earlier one" "$T/rr1.jsonl" allow "$RS"
 RO="$T/reg-other-tool"; regdir "$RO" '## 2026-11-05 — an edit held' 'id: edit-held' 'incident: AUTONOMOUS-GATE held the Edit of the settings file' 'cause: x'
@@ -101,7 +149,7 @@ mkdir -p "$RA/.claude/rules"; printf '%s\n' '{"refusal_aliases":{"AskUserQuestio
 check "the same entry with the instance's word for the tool as refusal_aliases" "$T/rr1.jsonl" block "$RA"
 XP=',"session_id":"s-one"' check "a repeat is held once per session for a gate and tool ..." "$T/rr1.jsonl" block "$RG"
 XP=',"session_id":"s-one"' check "... the second time it is only recorded" "$T/rr1.jsonl" allow "$RG"
-n="$(grep -c '"register-repeat"' "$RG/.claude-state/turn-anomalies.jsonl" 2>/dev/null || echo 0)"
+n="$(grep -c '"gate":"AUTONOMOUS-GATE"' "$RG/.claude-state/register-repeats.jsonl" 2>/dev/null || echo 0)"
 [ "$n" -ge 3 ] && ok "every repeat is recorded ($n lines)" || bad "repeats recorded: $n"
 out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/ra1.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
 case "$out" in *'refused the very step'*'A REPEAT'*'asks-read-as-mode-on'*) ok "the refused asked-for step names the earlier register entry too";; *) bad "refused ask without the register hit: '${out:0:300}'";; esac

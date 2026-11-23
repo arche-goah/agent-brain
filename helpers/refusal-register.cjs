@@ -21,12 +21,13 @@
 'use strict';
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-// The same label form as anomalies() in root-cause-gate.cjs: a label runs to the first `:` or ` (`.
-const GATE_RX = /^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^"]*?([\w.-]+)\.cjs"\]:\s*)?(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?/;
+const { gateLabel } = require('./gate-label.cjs');
 
-/** The refusing gate's name from a refusal's raw tool-result text. */
+/** The refusing gate's name from a refusal's raw tool-result text (gate-label.cjs, the one reader); '' when the
+ *  refusal names no gate - an unnamed hook matches no register entry. */
 function gateOf(raw) {
-  return ((GATE_RX.exec(String(raw || '').trim()) || []).slice(1).find(Boolean) || '').trim();
+  const g = gateLabel(raw);
+  return g === 'a hook' ? '' : g;
 }
 
 /** The register's entries: {date, title, id, key (refusal: field), about (heading + incident + cause), carrier, effective}. */
