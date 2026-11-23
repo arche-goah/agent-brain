@@ -97,6 +97,8 @@ with tempfile.TemporaryDirectory() as d:
                   use(n + 1, f"gh pr create t{k} # WAS-READ: read"), res(n + 1, False, "ok")]
         n += 2
     lines += [use(n, "git push # NOISY-NONE: before any refusal"), res(n, False, "ok")]   # a pre-emptive marker
+    n += 1
+    lines += [use(n, "make x"), res(n, True, "PreToolUse:Bash hook error: [command hook 29]: not here, use the target")]
     (d / "m.jsonl").write_text("".join(lines), encoding="utf-8")
     mk = d / "markers.json"
     mk.write_text(json.dumps({"gates": {
@@ -119,6 +121,8 @@ with tempfile.TemporaryDirectory() as d:
     ok("NOISY GATE | 24 | 16 | 67 % | no | NOISY-NONE 24" in out and "QUIET-GATE | 25 | 0 | 0 % | no" in out
        and "SMALL GATE | 10 | 10 | 100 % | no" in out and "RULE GATE | 22 | 22 | 100 % | yes | WAS-READ 22" in out,
        "--rates: gate · refusals · by own marker · rate · rule path · calls carrying it (a pre-emptive marker counted)", out)
+    ok("NOISY-NONE 24 (shared with SMALL GATE)" in out, "a marker two gates share says so in the column (Windows review of #646)", out)
+    ok("command hook 29 | 1 |" in out and "a hook" not in out, "a refusal without a label is named by its hook number, not 'a hook' (Windows review)", out)
     # NOISY-NONE: 13 in calls + 10 SMALL + 1 pre-emptive = 24 calls carry it; the 3 answer lines are no calls
     # the cache: a second run reads it, a grown transcript is read again
     root = d / "brain"

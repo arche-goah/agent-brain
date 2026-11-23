@@ -50,9 +50,15 @@ def transcript_dir(root: str) -> Path:
     return cfg / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(Path(root).resolve()))
 
 
-def label_of(t: str) -> str:
+def label_of(t: str, gate=None) -> str:
+    """The refusal's label; without one, the hook's file name or number the malfunction form names (Windows review of
+    #646: 6 refusals landed as 'a hook')."""
     m = LABEL.search(t)
-    return (next((g for g in m.groups() if g), "") if m else "").strip() or "a hook"
+    lab = (next((g for g in m.groups() if g), "") if m else "").strip()
+    if not lab and gate is not None:
+        g = gate.search(t)
+        lab = (g.group(1) or f"command hook {g.group(2)}") if g else ""
+    return lab or "a hook"
 
 
 def intent(inp: str):
@@ -128,7 +134,7 @@ def scan_file(f: Path, rx, gmap):
         err, t = res.get(cid, (False, ""))
         if not err or not refusal.search(t) or malf.search(t):
             continue
-        lab = label_of(t)
+        lab = label_of(t, gate)
         r = out["rates"].setdefault(lab, [0, 0])
         r[0] += 1
         own = (gmap.get(lab) or {}).get("markers") or []
@@ -224,7 +230,10 @@ def main(argv):
         for lab, (n, m) in sorted(rates.items(), key=lambda kv: -kv[1][0]):
             g = gmap.get(lab) or {}
             rp = "-" if "rule_path" not in g else ("yes" if g["rule_path"] else "no")
-            ca = " + ".join(f"{mk} {carry.get(mk, 0)}" for mk in g.get("markers") or []) or "-"
+            # a marker two gates share counts its calls for both - said, so the column is not read as this gate's alone
+            shared = lambda mk: [o for o, og in gmap.items() if o != lab and mk in (og.get("markers") or [])]
+            ca = " + ".join(f"{mk} {carry.get(mk, 0)}" + (f" (shared with {', '.join(shared(mk))})" if shared(mk) else "")
+                            for mk in g.get("markers") or []) or "-"
             print(f"{lab} | {n} | {m} | {round(100 * m / n)} % | {rp} | {ca}")
         return 0
     for lab, (n, m) in sorted(rates.items(), key=lambda kv: -kv[1][0]):
