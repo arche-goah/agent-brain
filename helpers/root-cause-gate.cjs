@@ -462,9 +462,10 @@ function malfunctionIn(group) {
  * (then a register entry or a fix) | own mistake (then a Cause line)`:
  *   own-fail   the agent's own command failed in a way no plan intends (a Traceback, "command not found", exit 127, a
  *              JSON parse error) - blocks
- *   repeat     the same gate refused twice in the turn - recorded first (.claude-state/turn-anomalies.jsonl)
+ *   repeat     the same gate refused twice in the turn - counted by the replay (--anomalies), no hold
  *   bypass     a refusal, then the same intent passing in another form within 8 calls, with no marker (same tool; Bash:
- *              Jaccard >= 0.5 of the command's words; files: the same path) - recorded first
+ *              Jaccard >= 0.5 of the command's words; files: the same path) - counted by the replay, no hold
+ *   marker-pass a refusal, then the same intent passing by a `# MARKER` - holds until classified with its backing
  * A gate malfunction is the fourth signal; it opens the cause path above (malfunctionIn).
  */
 const OWN_FAIL = /Traceback \(most recent call last\)|: command not found\b|is not recognized as (?:an internal or external command|the name of a cmdlet)|\bExit code 127\b|JSONDecodeError|Unexpected token [^\n]{0,40} in JSON|is not valid JSON|Unexpected end of JSON input/;
@@ -517,8 +518,16 @@ function anomalies(group, cwd) {
       const named = WAY_ON.test(r.text);
       for (let j = i + 1; j < Math.min(calls.length, i + 1 + WINDOW); j += 1) {
         const c2 = calls[j]; const r2 = res[c2.id];
-        if (c2.name !== c.name || !r2 || r2.err || MARKER.test(JSON.stringify(c2.input))) continue;
+        if (c2.name !== c.name || !r2 || r2.err) continue;
         if (!sameIntent(k, callKey(c2))) continue;
+        // A refusal passed by a marker is classified like any anomaly (rule "a gate that errs is a finding": a marker is
+        // a judgement against the gate or a step the gate asked for - the line says which, and what backs it).
+        const mk = MARKER.exec(JSON.stringify(c2.input));
+        if (mk) {
+          out.push({ kind: 'marker-pass', block: true, gate, marker: mk[0].replace(/^#\s*/, '').replace(/:$/, ''),
+            what: `${gate} refused ${c.name}, passed by its marker ${mk[0].replace(/:$/, '')}` });
+          break;
+        }
         // The gate's own way on is no bypass (Windows review of #640: most of 84 bypass signals were a skill load and the
         // repeat, or the form the refusal named): the refusal names a way on, the same call repeats unchanged, or a
         // step the gate asks for (a skill load, a read) came in between.
@@ -532,13 +541,43 @@ function anomalies(group, cwd) {
   }
   return out;
 }
-function recordAnomalies(cwd, input, list) {
-  if (!list.length) return;
-  try {
-    const f = path.join(cwd, '.claude-state', 'turn-anomalies.jsonl');
-    fs.mkdirSync(path.dirname(f), { recursive: true });
-    for (const a of list) fs.appendFileSync(f, JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...a }) + '\n');
-  } catch (e) { /* recording is best effort */ }
+/**
+ * The turn's classification of its anomalies - and whether it is BACKED (independent review of the strand,
+ * 2026-11-23: a bare "Anomaly: x - intended" released the hold with nothing behind it, the "Carrier: none" escape of
+ * 2026-11-02 again). `group` = the turn's segments (readTurns), `ctx` = {texts, writes} of the combined turn.
+ *   intended        backed by what it quotes: a `# MARKER` or `quoted text` that stands in the turn - a call's input or
+ *                   another text of the turn (the plan line)
+ *   false-positive  backed by an entry written to the carrier register in the same turn
+ *   own-mistake     backed by a cause line (that line opens the cause path, which owes the carrier and the entry)
+ * Returns {kind, backed, missing, line}; kind null when no classification line stands.
+ */
+function classification(group, cwd, ctx) {
+  const texts = (ctx && ctx.texts) || group.flatMap((s) => s.texts || []);
+  const writes = (ctx && ctx.writes) || group.flatMap((s) => s.writes || []);
+  const rx = loadPatterns(cwd, 'anomaly_patterns', BUILTIN_ANOMALY, 'imu');
+  let line = '';
+  for (const t of texts) {
+    const m = new RegExp(rx.source, 'imu').exec(stripQuoted(t));
+    if (m) { line = (t.split('\n').find((l) => new RegExp(rx.source, 'iu').test(l)) || m[0]).trim(); break; }
+  }
+  if (!line) return { kind: null, backed: false, missing: 'a classification line', line: '' };
+  const kind = /own mistake/i.test(line) ? 'own-mistake' : /false positive/i.test(line) ? 'false-positive' : 'intended';
+  if (kind === 'false-positive') {
+    const reg = registerPath(cwd);
+    return writesTo(writes, reg) ? { kind, backed: true, missing: '', line }
+      : { kind, backed: false, missing: `an entry in ${reg} written in this turn (the false positive's cause and fix)`, line };
+  }
+  if (kind === 'own-mistake') {
+    return causeIn(texts, loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu')) ? { kind, backed: true, missing: '', line }
+      : { kind, backed: false, missing: 'a Cause line (what was read, what produced it)', line };
+  }
+  const quoted = [...line.matchAll(/`([^`]{3,})`|"([^"]{8,})"|“([^”]{8,})”|#\s*([A-Z][A-Z]+(?:-[A-Z]+)+)/g)]
+    .map((q) => (q[1] || q[2] || q[3] || q[4] || '').trim()).filter(Boolean);
+  const inputs = group.flatMap((s) => (s.calls || []).map((c) => JSON.stringify(c.input || {})));
+  const others = texts.filter((t) => !t.includes(line));
+  const found = quoted.find((q) => inputs.some((i) => i.includes(q)) || others.some((t) => t.includes(q)));
+  return found ? { kind, backed: true, missing: '', line }
+    : { kind, backed: false, missing: 'the marker or plan line the "intended" refers to, quoted, standing in this turn', line };
 }
 
 /** A refusal in the turn of the step the operator's prompt asked for: "<GATE> refused <tool> ..." or null. The prompt's
@@ -710,17 +749,17 @@ function gate(input) {
     if (fired) return;
     let list = [];
     try { list = anomalies(group, cwd); } catch (e) { list = []; }
-    recordAnomalies(cwd, input, list.filter((a) => !a.block && a.kind !== 'followed'));
     const own = list.find((a) => a.block);
     if (!own) return;
-    const classified = causeIn(texts, loadPatterns(cwd, 'anomaly_patterns', BUILTIN_ANOMALY, 'imu')) || causeIn(texts, causeRx);
-    if (classified) return;
+    const cls = classification(group, cwd, { texts, writes });
+    if (cls.backed) return;
     process.stdout.write(JSON.stringify(declare({
       decision: 'block',
-      reason: `ROOT-CAUSE-GATE: an anomaly in this turn's tool results is not classified: ${own.kind} - "${own.what.slice(0, 160)}". `
-        + 'Classify it in ONE line - Anomaly: <what> - intended | gate false positive (then a register entry or a fix) | '
-        + 'own mistake (then a Cause line: what was read, what produced it). A failure nobody names repeats unseen '
-        + '(operator 2026-11-23: "recognise and improve it on your own").',
+      reason: `ROOT-CAUSE-GATE: an anomaly in this turn's tool results is not classified with its backing: ${own.kind} - "${own.what.slice(0, 160)}"`
+        + (cls.kind ? ` - your line "${cls.line.slice(0, 100)}" reads as ${cls.kind}, missing: ${cls.missing}. ` : '. ')
+        + 'Classify it in ONE line - Anomaly: <what> - intended (quote the `# MARKER` or the plan line it follows, standing in this turn) | '
+        + 'gate false positive (and write its entry in the carrier register in this turn) | own mistake (and a Cause line: '
+        + 'what was read, what produced it). A bare word releases nothing (operator 2026-11-23: "recognise and improve it on your own").',
     }, input)));
     return;
   }
@@ -849,9 +888,15 @@ function review(args) {
   return 0;
 }
 
+// Required as a library (the refusal register calls classification on its own repeat signal - one judge of a
+// classification, not two): export, and run neither a CLI branch nor the stdin hook.
+module.exports = { classification, anomalies, readTurns };
+
 // `--anomalies <folder> [N] [--samples K]`: replay of the anomaly signals over the newest N transcripts - per kind, per
 // gate, how many own-fail turns carried a classification or cause line, and K samples of repeat/bypass to judge by hand.
-if (process.argv[2] === '--anomalies') {
+if (require.main !== module) {
+  /* library use: nothing runs */
+} else if (process.argv[2] === '--anomalies') {
   const dir = process.argv[3];
   const cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const k = process.argv.includes('--samples') ? Number(process.argv[process.argv.indexOf('--samples') + 1]) : 0;
@@ -868,9 +913,10 @@ if (process.argv[2] === '--anomalies') {
     try { turns = readTurns(tp, false); } catch (e) { turns = []; }
     for (const t of turns) {
       for (const a of anomalies([t], cwd)) {
-        const s = kinds[a.kind] = kinds[a.kind] || { n: 0, classified: 0 };
+        const s = kinds[a.kind] = kinds[a.kind] || { n: 0, classified: 0, backed: 0 };
         s.n += 1;
         if (causeIn(t.texts, classRx) || causeIn(t.texts, causeRx)) s.classified += 1;
+        if (a.block && (causeIn(t.texts, causeRx) || classification([t], cwd).backed)) s.backed += 1;
         const own = process.argv.includes('--own');
         if (a.kind === 'repeat' || a.kind === 'bypass') gates[a.gate] = (gates[a.gate] || 0) + 1;
         if ((a.kind === 'own-fail') === own && samples.length < k) {
@@ -881,7 +927,7 @@ if (process.argv[2] === '--anomalies') {
     }
   }
   console.log(`${files.length} transcript(s)`);
-  for (const [kd, s] of Object.entries(kinds)) console.log(`${kd}: ${s.n} signal(s), a classification or cause line in the turn: ${s.classified}`);
+  for (const [kd, s] of Object.entries(kinds)) console.log(`${kd}: ${s.n} signal(s), a classification or cause line in the turn: ${s.classified}` + (s.backed || kd === "own-fail" || kd === "marker-pass" ? `, backed or on the cause path: ${s.backed}` : ""));
   for (const [g, n] of Object.entries(gates).sort((a, b) => b[1] - a[1]).slice(0, 12)) console.log(`  repeat/bypass by ${g}: ${n}`);
   for (const s of samples) console.log(`sample ${s}`);
   process.exitCode = 0;
