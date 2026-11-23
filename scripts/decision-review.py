@@ -67,7 +67,7 @@ except (AttributeError, ValueError):
 
 CACHE_VERSION = 6
 REFERRAL_LOOKBACK = 8   # replies searched backwards from a prompt that names a referral
-FRAMES = re.compile(r"<system-reminder>.*?</system-reminder>|<task-notification>.*?</task-notification>", re.S)
+FRAMES = re.compile(r"<system-reminder\b[^>]*>.*?</system-reminder\b[^>]*>|<task-notification>.*?</task-notification>", re.S)
 LOCAL = re.compile(r"<local-command-caveat>.*?</local-command-caveat>|<local-command-std(?:out|err)>.*?"
                    r"</local-command-std(?:out|err)>|<command-(?:name|message|args)>.*?</command-(?:name|message|args)>", re.S)
 # Text the operator PASTED is not the operator's words — the definition of helpers/turn-kind.cjs operatorWords

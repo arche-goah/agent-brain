@@ -44,9 +44,95 @@ check() { # $1 name, $2 transcript, $3 block|allow, $4 cwd, [$5 stop_hook_active
 }
 CWD="$T/cwd"; mkdir -p "$CWD"
 
+# --- 2026-11-23: a hook refused the very step the operator asked for ("questions now" -> AskUserQuestion refused)
+aq() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":"Release now?"}]}}]}}\n' "$1"; }
+refuse() { printf '{"type":"user","timestamp":"2026-11-23T17:14:12.774Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":true,"content":%s}]}}\n' "$1" "$(js "PreToolUse:AskUserQuestion hook error: $2")"; }
+{ user "work through it autonomously"; asst "ok"; user "what is open for me?"; aq a1; refuse a1 "AUTONOMOUS-GATE: the operator ordered this run autonomous, and this is a question"; asst "Fixed the ledger entry, going on."; } > "$T/ra1.jsonl"
+check "the incident: a hook refused the question the operator asked for, no cause" "$T/ra1.jsonl" block "$CWD"
+{ user "work through it autonomously"; asst "ok"; user "what is open for me?"; aq a2; refuse a2 "MODE-QUESTION-ORDER: the mode question comes right after answered decisions"; asst "Running the steps first."; } > "$T/ra2.jsonl"
+check "a refusal that only orders the step (mode-question order) is no surprise" "$T/ra2.jsonl" allow "$CWD"
+{ user "fix the readme"; aq a3; refuse a3 "AUTONOMOUS-GATE: the operator ordered this run autonomous"; asst "Filed the question."; } > "$T/ra3.jsonl"
+check "a refused question the operator did not ask for is no surprise (control)" "$T/ra3.jsonl" allow "$CWD"
+# --- 2026-11-23: a gate MALFUNCTION (timed out, crashed) is no decision - 45 in the 60 newest transcripts, no cause named
+bashq() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":"gh pr comment 1 -b x"}}]}}\n' "$1"; }
+bres() { printf '{"type":"user","timestamp":"2026-11-23T17:30:00.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":true,"content":%s}]}}\n' "$1" "$(js "PreToolUse:Bash hook error: $2")"; }
+{ user "post the review"; bashq b1; bres b1 '[node "$CLAUDE_PROJECT_DIR/core/helpers/content-review-gate.cjs"]: timed out; blocking because onFailure is "block"'; asst "Retried, it went through."; } > "$T/mf1.jsonl"
+check "a gate that timed out, retried without a cause" "$T/mf1.jsonl" block "$CWD"
+{ user "post the review"; bashq b2; bres b2 '[command hook 29]: timed out; blocking because onFailure is "block"'; asst "Retried."; } > "$T/mf2.jsonl"
+check "a numbered hook that timed out (its name unreadable) is a malfunction too" "$T/mf2.jsonl" block "$CWD"
+{ user "post the review"; bashq b3; bres b3 'MECHANISM CHECK (agent-brain): a heredoc'; asst "Used a file instead."; } > "$T/mf3.jsonl"
+check "a gate's decision (a refusal with a reason) is no malfunction (control)" "$T/mf3.jsonl" allow "$CWD"
+# --- 2026-11-23: anomaly signals in the turn's tool results must be classified (an own command's Traceback blocks)
+okres() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":%s,"content":%s}]}}\n' "$1" "$2" "$(js "$3")"; }
+{ user "count the rules"; bashq c1; okres c1 true 'Traceback (most recent call last):
+  File "<string>", line 1
+KeyError: rules'; asst "Done, there are 12."; } > "$T/an1.jsonl"
+check "an own command failed with a Traceback and the turn does not classify it" "$T/an1.jsonl" block "$CWD"
+{ user "count the rules"; bashq c2; okres c2 true 'Traceback (most recent call last):
+KeyError: rules'; asst "Anomaly: KeyError in my one-liner - own mistake. Cause: the file keys rules under \"rules\" of each block, I read the top level."; } > "$T/an2.jsonl"
+# strand review 2026-11-23: a classification releases only with its backing - an "own mistake" goes the cause path (a
+# Cause line of its own, which then owes the carrier and the entry); a cause tucked into the classification line is none
+check "an own mistake with the cause only inside the classification line is not backed (strand review)" "$T/an2.jsonl" block "$CWD"
+{ user "count the rules"; bashq c2b; okres c2b true 'Traceback (most recent call last):
+KeyError: rules'; asst "Anomaly: KeyError in my one-liner - own mistake.
+Cause: the file keys rules under \"rules\" of each block, I read the top level."; } > "$T/an2b.jsonl"
+out=$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s","session_id":"s1"}' "$(native "$T/an2b.jsonl")" "$(native "$CWD")" | CLAUDE_PROJECT_DIR="$(native "$CWD")" node "${GATE:-$G}" 2>&1)
+case "$out" in *"names a cause"*) ok "an own mistake with its Cause line goes the cause path (carrier and entry owed)";; *) bad "own mistake not on the cause path: ${out:0:160}";; esac
+{ user "count the entries"; bashq c4; okres c4 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: traceback in count.py - intended
+Counted by hand instead: 12."; } > "$T/an4.jsonl"
+check "a bare 'intended' with nothing it refers to is not backed (break case C)" "$T/an4.jsonl" block "$CWD"
+{ user "count the entries"; asst "Plan: run \`python3 count.py --probe\` first; it fails on purpose when the ledger has no ids yet."; bashq c5; okres c5 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: the KeyError - intended, the probe step \`python3 count.py --probe\` of the plan above."; } > "$T/an5.jsonl"
+check "'intended' quoting the plan line that stands in the turn is backed" "$T/an5.jsonl" allow "$CWD"
+{ user "count the entries"; bashq c6; okres c6 true 'Traceback (most recent call last):
+KeyError: id'; asst "Signal: gate false positive, moving on."; } > "$T/an6.jsonl"
+check "'gate false positive' without a register entry in the turn is not backed (break case C2)" "$T/an6.jsonl" block "$CWD"
+{ user "count the entries"; bashq c7; okres c7 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: the KeyError - gate false positive, entry written."; write "$CWD/docs/maintenance/carrier-register.md"; } > "$T/an7.jsonl"
+check "'gate false positive' with its register entry written in the turn is backed" "$T/an7.jsonl" allow "$CWD"
+mcall() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+{ user "push the branch then open the PR"; mcall m1 "git push -u origin feat/x"; bres m1 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall m2 "git push -u origin feat/x # CONDITION-NONE: no condition"; okres m2 false ok; asst "Pushed."; } > "$T/an8.jsonl"
+check "a refusal passed by its override marker without a classification holds (break case M)" "$T/an8.jsonl" block "$CWD"
+{ user "push the branch then open the PR"; mcall m3 "git push -u origin feat/x"; bres m3 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall m4 "git push -u origin feat/x # CONDITION-NONE: the then is the order of steps"; okres m4 false ok; asst "Anomaly: CONDITIONAL-ORDER-GATE read 'then' as a condition - intended, \`# CONDITION-NONE\` in the push: the then is the order of steps."; } > "$T/an9.jsonl"
+check "the marker pass classified as intended, quoting the marker that stands in the call, is backed" "$T/an9.jsonl" allow "$CWD"
+# main session 2026-11-23: a RULE-PATH marker (gate-markers.json rule_path true) is the gate followed - it owes no line
+{ user "open the PR"; mcall p1 "gh pr create --title x"; bres p1 'PRS-FIRST: read the open PRs first'; mcall p2 "gh pr create --title x # PRS-READ: none is closer"; okres p2 false ok; asst "Opened."; } > "$T/an10.jsonl"
+check "a refusal passed by its rule-path marker (PRS-READ) owes no classification" "$T/an10.jsonl" allow "$CWD"
+{ user "open the PR"; mcall p3 "gh pr create --title y"; bres p3 'PRS-FIRST: read the open PRs first'; mcall p4 "gh pr create --title y # NEWLY-MADE-OK: nobody names this"; okres p4 false ok; asst "Opened."; } > "$T/an11.jsonl"
+check "a marker no gate entry names holds like an exception (control)" "$T/an11.jsonl" block "$CWD"
+{ user "check the build"; bashq c3; okres c3 true 'Exit code 1
+3 tests failed'; asst "Three tests fail; fixing them."; } > "$T/an3.jsonl"
+check "a command that fails on purpose-shaped output (a failing test run) is no anomaly (control)" "$T/an3.jsonl" allow "$CWD"
+# --- Windows review of #640: the gate's own way on is no bypass; a label with spaces is kept whole
+bcmd() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+skl() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Skill","input":{"skill":"x"}}]}}\n' "$1"; }
+mkdir -p "$T/anr"
+{ user "go"; bcmd w1 "git commit -a -m wip"; bres w1 'SHARED WORKING COPY: two sessions share this copy'; bcmd w2 "git commit -a -m wip again now"; okres w2 false ok; asst "done"; } > "$T/anr/bypass.jsonl"
+{ user "go"; bcmd s1 "mt health check"; bres s1 'SKILL-GATE: load the skill first'; skl s2; okres s2 false ok; bcmd s3 "mt health check"; okres s3 false ok; asst "done"; } > "$T/anr/followed.jsonl"
+an_out=$(env CLAUDE_PROJECT_DIR="$CWD" node "${GATE:-$G}" --anomalies "$(native "$T/anr")" 10 2>&1)
+printf '%s\n' "$an_out" | grep -aq '^bypass: 1 ' && ok "a refusal then another form of the same call is a bypass" || bad "bypass not counted: $an_out"
+printf '%s\n' "$an_out" | grep -aq '^followed: 1 ' && ok "a refusal, the skill load it asks for, then the same call is the way on, not a bypass" || bad "followed not counted: $an_out"
+printf '%s\n' "$an_out" | grep -aq 'by SHARED WORKING COPY: 1' && ok "a gate label with spaces is counted whole" || bad "label cut: $an_out"
+
 # --- the class: a correction, a fix on the spot, no cause named
 { user "check the PRs"; asst "Done."; user "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/t1.jsonl"
 check "correction answered without a cause" "$T/t1.jsonl" block "$CWD"
+# 2026-11-18: the agent's own text finds the mishap - same inquiry, no operator word needed
+{ user "go on"; asst "Measured: my earlier claim was wrong - two of the four were built on 2026-10-31. Next the questions."; } > "$T/s1.jsonl"
+check "own text finds a mishap, no cause line" "$T/s1.jsonl" block "$CWD"
+{ user "go on"; asst "It turned out two of the four were built.
+Cause: the correction stood in a research note, not in the entry (git log f3e152ed)."; write "core/helpers/ledger-reconcile.py"; write "$CWD/docs/maintenance/carrier-register.md"; } > "$T/s2.jsonl"
+check "own text finds a mishap, names the cause, writes carrier and register" "$T/s2.jsonl" allow "$CWD"
+{ user "go on"; asst "It turned out two of the four were built.
+Cause: the correction stood in a research note."; } > "$T/s5.jsonl"
+check "own text finds a mishap, names the cause, no carrier" "$T/s5.jsonl" block "$CWD"
+{ user "go on"; asst "PR #600 is merged, CI green."; } > "$T/s3.jsonl"
+check "a status line is no surprise" "$T/s3.jsonl" allow "$CWD"
+{ user "go on"; asst "The oblique one turned out well."; } > "$T/s6.jsonl"
+check "an everyday result sentence is no surprise (Windows review)" "$T/s6.jsonl" allow "$CWD"
+{ user "go on"; asst "The reviewer wrote \"it turned out fine\" - quoted."; } > "$T/s4.jsonl"
+check "a quoted surprise word stays silent" "$T/s4.jsonl" allow "$CWD"
 { user "go"; asst "ok"; user "why did you ask that again?"; asst "Sorry, I will not ask again."; } > "$T/t2.jsonl"
 check "why-did-you answered with an apology" "$T/t2.jsonl" block "$CWD"
 { user "go"; asst "ok"; user "the same failure class again, this keeps happening"; tres; asst "Fixed."; } > "$T/t3.jsonl"

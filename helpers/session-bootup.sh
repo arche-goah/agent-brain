@@ -370,6 +370,13 @@ fi
 if [[ -f "$HERE/../scripts/instrument-watch.py" ]]; then
   "$PY" "$HERE/../scripts/instrument-watch.py" --repo "$R" 2>/dev/null || true
 fi
+# A gate that MALFUNCTIONS (timed out, crashed) in two or more sessions of the last 14 days (2026-11-23: content-review-gate
+# timed out 37x in 15 sessions, each session saw one retry that passed, no reply named a cause). Detection that does not
+# depend on the agent noticing; the form of a malfunction lives in gate-malfunction.json.
+if [[ -f "$HERE/../scripts/gate-health.py" ]]; then
+  gh_out=$("$PY" "$HERE/../scripts/gate-health.py" --root "$R" 2>/dev/null)
+  [[ -n "$gh_out" ]] && printf '!! %s\n' "$gh_out"
+fi
 # The other direction: what the core template carries and this brain does not. A template is
 # copied once at bootstrap, so its later permission rules never reach an existing brain (measured
 # 2026-10-26: 22 of 83 allow rules, an autonomous run stopped on a refused `gh pr ready`).
