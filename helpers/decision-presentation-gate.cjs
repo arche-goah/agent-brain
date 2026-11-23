@@ -56,6 +56,13 @@ const OPERATOR_CIRCLES = new Set(['B', 'E', 'F']);
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
 
+/** An open question to the operator inside an entry: a `question:` field line, or an instance pattern. */
+function questionRx(cfg) {
+  const extra = (cfg && Array.isArray(cfg.operator_question_patterns) ? cfg.operator_question_patterns : [])
+    .filter((p) => { try { new RegExp(p); return true; } catch (e) { return false; } });
+  return new RegExp(['^\\s*(?:[-*]\\s+)?question:\\s*\\S', ...extra].join('|'), 'm');
+}
+
 /** Open `class: decision` and `class: hand-step` entries of the registered ledgers, as short titles. */
 function ledgerDecisions(root) {
   const cfg = readJson(path.join(root, '.claude', 'rules', 'ledgers.json')) || {};
@@ -79,8 +86,12 @@ function ledgerDecisions(root) {
       // instance: 22 entries counted, by their exits 12 later-at-system, 5 parked, 4 other-side,
       // 1 ai-does-it — none an operator decision.
       // A field may stand as its own list item (`  - exit: ...`), as the project ledgers write it.
+      // A question to the operator is its own line, not a side effect of the exit (macOS incident 2026-11-23: one entry
+      // held the AI's remaining work AND the operator's questions; its exit read ai-does-it, the count was 0, and the
+      // operator's "ask me now" did not end the autonomous run). A `question:` line, or a line matching the instance's
+      // `operator_question_patterns` (ledgers.json), counts the entry whatever its exit says.
       const exit = newestExitKind(body);
-      if (exit && exit !== 'operator-decision') continue;
+      if (exit && exit !== 'operator-decision' && !questionRx(cfg).test(body)) continue;
       // `ask-when:` (operator decision 2026-10-29 on the macOS instance: "questions at the right time"): a date
       // still ahead, or a topic (`ask-when: thema|topic <regex>`, put when the operator's work touches it) - not due here.
       const when = /^\s*(?:[-*]\s+)?ask-when:\s*(.+)$/m.exec(body);
