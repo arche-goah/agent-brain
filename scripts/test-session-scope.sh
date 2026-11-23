@@ -46,7 +46,7 @@ printf '%s\n' '{"helper_scope_patterns": ["nur auftr(?:ä|ae)ge von der haupt ?s
 OP_2C="du bist super-helper, bekommst nur aufträge von der haupt session, finde selbst raus wer das ist. alle haupt session aufträge autonom abhandeln"
 OP_28="autonom arbeiten, aber NUR, was dir von der hauptsession aufgetragen wird"
 PLAIN="work through the open points autonomously"
-MEAS="python3 core/scripts/open-items.py --owner org"
+MEAS="core/scripts/open-items.py --owner org"   # the measurement as the gate reads it (no interpreter word: OS-17 probe)
 mk() { # $1 file, $2 first prompt, then the body: orders from main-b6, the end text
   local f="$1" p="$2"; { user "$PLAIN"; [ "$p" = "$PLAIN" ] || user "$p"; peer r1 main-b6 "Task 1: build X"; peer r1 main-b6 "Task 1: build X"; peer r2 main-b6 "Task 2: build Y"; bash_cmd "$MEAS"; asst "LIST EMPTY: the main session's tasks are done and reported"; } > "$f"
 }
