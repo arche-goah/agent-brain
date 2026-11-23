@@ -66,6 +66,14 @@ const BUILTIN_ASK = [
   '\\bput (the |your )?(open )?(decisions|questions) to me\\b',
 ];
 const BUILTIN_YES = ['^\\s*yes\\b'];
+// An order that pre-authorizes a LATER question ("once you are ready for X, switch to interactive and ask me the X
+// question"): it opens a DEFERRED window that outlives the turns the operator did not open (operator 2026-11-23, after
+// the gate refused exactly that question: "I told you word for word to switch to interactive as soon as you want to
+// put the train question to me ... a bug"). English built in; other languages `defer_ask_patterns` in
+// autonomous-patterns.json. A sentence that is a question ("shall I ask later?") opens nothing.
+const BUILTIN_DEFER = [
+  '\\b(?:once|when|as soon as)\\b[^.?!]{0,100}\\b(?:ask me|put (?:the |your )?[\\w -]{0,30}question(?:s)? to me|switch (?:back )?to interactive)\\b',
+];
 const HOOK_ECHO = /^\s*Stop hook feedback:/;
 // The tool result of an answered AskUserQuestion: `"<question>"="<answer>"` pairs.
 // Two wordings in the wild (measured 2026-10-30, macOS instance: "Your questions have been answered: …" and
@@ -76,6 +84,14 @@ const PAIR = /"([^"]*)"="([^"]*)"/g;
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
 
+/** Does the prompt pre-authorize a later question? The match must not sit in a sentence that is itself a question. */
+function deferAsk(rxDefer, text) {
+  const t = String(text || '');
+  const m = rxDefer.exec(t);
+  if (!m) return false;
+  const end = t.slice(m.index).search(/[.!?]/);
+  return !(end >= 0 && t.slice(m.index)[end] === '?');
+}
 function rx(builtins, extra) {
   const list = [...builtins];
   for (const s of extra || []) { try { new RegExp(s); list.push(s); } catch (e) { /* skip a broken regex */ } }
@@ -101,6 +117,7 @@ function words(cwd) {
     off: rx(BUILTIN_OFF, ap.off_patterns),
     ask: rx(BUILTIN_ASK, oi.ask_patterns),
     yes: rx(BUILTIN_YES, ap.yes_patterns),
+    defer: rx(BUILTIN_DEFER, ap.defer_ask_patterns),
     initial: initialState(dir, ap, oi).granted,
   };
 }
@@ -255,7 +272,8 @@ function promptModes(transcriptPath, cwd) {
   const known = intents(transcriptPath, cwd);
   // The asking prompt whose turn is still running with no question answered yet (its `window` is open).
   let pending = null;
-  const closeWindow = () => { if (pending) { pending.window = false; pending = null; } };
+  // all = a new operator prompt; a turn the operator did not open closes only a same-turn window, never a DEFERRED one
+  const closeWindow = (all) => { if (pending && (all || !pending.deferred)) { pending.window = false; pending = null; } };
   for (const line of lines) {
     if (line.includes('"AskUserQuestion"')) {
       try {
@@ -274,7 +292,7 @@ function promptModes(transcriptPath, cwd) {
     // switched the mode back on after the operator had said "interactive" (measured 2026-10-27).
     // A turn the operator did not open (a timer, a peer's message) ends the asking prompt's window: the operator who
     // asked 20 minutes ago is not thereby present now (operator 2026-11-03, quoted in autonomous-gate.cjs).
-    if (!queued && isAgentOrigin(d)) closeWindow();
+    if (!queued && isAgentOrigin(d)) closeWindow(false);
     if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isAgentOrigin(d)
         || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
@@ -295,11 +313,14 @@ function promptModes(transcriptPath, cwd) {
       }
     }
     const t = queued || promptText(d.message);
-    if (t && /<task-notification>/.test(t) && isNotification(t)) closeWindow(); // a background task's turn, not the operator's
+    if (t && /<task-notification>/.test(t) && isNotification(t)) closeWindow(false); // a background task's turn, not the operator's
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
-    closeWindow(); // a new operator prompt: its own reading decides
+    // a new operator prompt ends a same-turn window; a DEFERRED one only when this prompt ends or re-orders the run
+    // (below) - the operator adding to the work ("and also ...") leaves the pre-authorized question standing
+    // (measured on the incident: three such prompts followed the order and closed the window before the question came)
+    closeWindow(false);
     // The words are matched without pasted blocks; `text` keeps them, so a reader that finds this
     // prompt again in the transcript by its text (decision-presentation-gate) still finds it.
     const own = operatorWords(text);
@@ -336,11 +357,18 @@ function promptModes(transcriptPath, cwd) {
     let window = false;
     if (off) state = false;
     else if (asks && state) window = true;
+    // An order that pre-authorizes a later question opens the window now and keeps it open across the turns that
+    // follow (timers, peers, background tasks) until a question is answered or the operator writes again.
+    const deferred = !off && state && deferAsk(w.defer, own);
+    if (pending && pending.deferred && (off || asks || ordered || deferred)) closeWindow(true);
+    if (deferred) window = true;
     const row = { text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words',
-      ordered, window, at: Date.parse(d.timestamp) || null };
+      ordered, window, deferred, at: Date.parse(d.timestamp) || null };
     out.push(row);
     if (window) pending = row;
   }
+  // a deferred window still open at the end, though later prompts came (they add to the work, they do not re-order it)
+  out.deferredOpen = Boolean(pending && pending.deferred && pending.window);
   return out;
 }
 
@@ -349,7 +377,10 @@ function promptModes(transcriptPath, cwd) {
 function askWindow(transcriptPath, cwd) {
   const rows = promptModes(transcriptPath, cwd);
   const last = rows[rows.length - 1];
-  return Boolean(last && last.window);
+  // 'turn' = an asking prompt's own turn (questions and dialogs pass); 'deferred' = a pre-authorized later question
+  // (only the question tool passes - it stays open across turns, so it must not open every dialog too)
+  if (last && last.window) return last.deferred ? 'deferred' : 'turn';
+  return rows.deferredOpen ? 'deferred' : false;
 }
 
 /** true when the operator's autonomous order is in force at the end of the transcript. A session close of THIS

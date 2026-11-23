@@ -172,6 +172,33 @@ out=$(out2 AskUserQuestion "$QQ" "$RUN2")
 case "$out" in *'Still autonomous because'*'not read as asking what is open'*'word lists'*) ok "the refusal names its measured reason and the reader (not read as an ask)";; *) bad "refusal without its reason: '${out:0:260}'";; esac
 out=$(out2 AskUserQuestion "$QQ" "$LATE2")
 case "$out" in *'its turn ended without a question'*) ok "the refusal after the window names that the asking turn has ended";; *) bad "late refusal without its reason: '${out:0:260}'";; esac
+# 2026-11-23, the DEFERRED ask window. The operator ordered (translated): "continue autonomously; as soon as you are ready
+# for the train build, switch back to interactive on your own and put the train-build question to me" - and the gate
+# refused exactly that question hours later (a timer turn, a peer's message in between). Such an order opens a window that
+# outlives the turns the operator did not open, for the QUESTION only, until a question is answered or the operator writes.
+DEFER="continue autonomously; as soon as you are ready for the train build, switch back to interactive on your own and put the train-build question to me"
+TQ='{"questions":[{"question":"Build the train now?"}]}'
+D1="$T/defer1.jsonl"; { user "work through the open points autonomously"; user "$DEFER"; asst "Working on the review."; tend; tick "# Autonomous loop check  You're being invoked on a timer"; queued "task 22 for you" peer; asst "Ready."; } > "$D1"
+p2 "the incident: a pre-authorized later question passes after timer and peer turns" AskUserQuestion "$TQ" "$D1" allow
+p2 "the deferred window passes the question only - a dialog edit stays refused" Edit '{"file_path":".claude/settings.json"}' "$D1" block
+D2="$T/defer2.jsonl"; { cat "$D1"; answer '"Build the train now?"="Yes, build it"'; answer '"Continue autonomously?"="Yes, continue (Recommended)"'; tend; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$D2"
+p2 "after the question was answered and the run went on, a second question is refused again" AskUserQuestion "$QQ" "$D2" block
+D3="$T/defer3.jsonl"; { user "work through the open points autonomously"; queued "$DEFER" peer; tend; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$D3"
+p2 "a peer's message with the same words opens nothing" AskUserQuestion "$TQ" "$D3" block
+D4="$T/defer4.jsonl"; { user "work through the open points autonomously"; user "as soon as you are ready for the train build, will you ask me the train question?"; tend; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$D4"
+p2 "a sentence that is itself a question opens nothing" AskUserQuestion "$TQ" "$D4" block
+D5="$T/defer5.jsonl"; { user "work through the open points autonomously"; user "$DEFER"; tend; user "and also check the CI of the train"; tend; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$D5"
+p2 "a later prompt that only adds to the work keeps the window (the incident: three such prompts came first)" AskUserQuestion "$TQ" "$D5" allow
+D5b="$T/defer5b.jsonl"; { user "work through the open points autonomously"; user "$DEFER"; tend; user "stop the autonomous run"; tend; user "work through the open points autonomously"; tend; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$D5b"
+p2 "a prompt that ends or re-orders the run closes the deferred window" AskUserQuestion "$TQ" "$D5b" block
+# a language is data: the same order in another language opens it only with the instance's defer_ask_patterns
+B3="$T/brain3"; mkdir -p "$B3/.claude/rules"; cp "$B2/.claude/settings.json" "$B3/.claude/settings.json"
+printf '%s\n' '{"defer_ask_patterns": ["en cuanto[^.?!]{0,80}preg[uú]ntame"]}' > "$B3/.claude/rules/autonomous-patterns.json"
+D6="$T/defer6.jsonl"; { user "work through the open points autonomously"; user "sigue; en cuanto estés listo para el tren, pregúntame"; tend; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$D6"
+p2 "another language without the instance words opens nothing (control)" AskUserQuestion "$TQ" "$D6" block
+out=$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:"AskUserQuestion",tool_input:JSON.parse(a[1]),transcript_path:a[2],cwd:a[3]}))' "$TQ" "$(native "$D6")" "$(native "$B3")" \
+  | CLAUDE_PROJECT_DIR="$(native "$B3")" CLAUDE_CONFIG_DIR="$(native "$T/userdir")" node "$(native "$G")" 2>&1)
+case "$out" in *'"permissionDecision":"deny"'*) bad "the instance's defer_ask_patterns did not open the window";; *) ok "with the instance's defer_ask_patterns the same order opens it";; esac
 # A factual question the classifier misreads as "what is open" (one such case in a brain's register, 2026-11-15): the
 # tools are ALLOWED in that turn, nothing is forced - the worst case is one needless question, never a refused tool.
 IC2="$B2/.claude-state/intent-classifier.jsonl"

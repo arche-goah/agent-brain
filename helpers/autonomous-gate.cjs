@@ -234,7 +234,8 @@ function judge(input) {
   // ended on that prompt only when a derived count was above 0; replay on the macOS instance: 14 asking prompts had
   // the question tool refused, 15 a dialog edit, 3 a dialog command). The gate's own words stay locked (below), and a
   // later turn the operator did not open is outside the window (autonomous-mode.cjs).
-  if (!own && askWindow(input.transcript_path || '', root)) return null;
+  const win = own ? false : askWindow(input.transcript_path || '', root);
+  if (win === 'turn' || (win === 'deferred' && isQuestion)) return null;
   if (own && wayOut(tool, input.tool_input || {}, root, input.transcript_path || '')) return null;
   if (own) {
     return `AUTONOMOUS-GATE: \`${own}\` holds the words this gate decides by, and the run is autonomous - a run does not change ` +
