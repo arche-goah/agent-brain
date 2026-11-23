@@ -44,7 +44,7 @@ _INSTANCE = Path(os.environ.get("BRAIN_DIR", Path.cwd())).resolve()
 DIR_DEFAULT = Path.home() / ".claude/projects" / re.sub(r"[^A-Za-z0-9]", "-", str(_INSTANCE))
 
 # helpers/turn-kind.cjs, verbatim in meaning: keep both in step.
-FRAMES = re.compile(r"<system-reminder>[\s\S]*?</system-reminder>|<task-notification>[\s\S]*?</task-notification>")
+FRAMES = re.compile(r"<system-reminder\b[^>]*>[\s\S]*?</system-reminder\b[^>]*>|<task-notification>[\s\S]*?</task-notification>")
 # A gate is attributed by its marker: any `[CODE]` the block carries (the dispatcher's codes are not all
 # `…-GATE`: `[AUTONOMOUS-IDLE]`), else by the dispatcher's label at the start of a line (`· LABEL …`,
 # `LABEL — …`), which the instance writes in its own language. Measured 2026-11-02 on the macOS instance:
