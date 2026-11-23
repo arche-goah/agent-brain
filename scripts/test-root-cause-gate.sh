@@ -113,6 +113,62 @@ check "a marker no gate entry names holds like an exception (control)" "$T/an11.
 { user "check the build"; bashq c3; okres c3 true 'Exit code 1
 3 tests failed'; asst "Three tests fail; fixing them."; } > "$T/an3.jsonl"
 check "a command that fails on purpose-shaped output (a failing test run) is no anomaly (control)" "$T/an3.jsonl" allow "$CWD"
+# --- 2026-11-23: the register lookup per refusal - a gate refusing a tool the carrier register already holds an EARLIER
+# entry for is a REPEAT (the third "question tool refused on the operator's request" was handled as a first case)
+regdir() { mkdir -p "$1/docs/maintenance"; printf '%s\n' "${@:2}" > "$1/docs/maintenance/carrier-register.md"; }
+RG="$T/reg"; regdir "$RG" '# Carrier register' '' '## 2026-11-05 — a request for questions read as autonomous' 'id: asks-read-as-mode-on' \
+  'incident: the operator asked for the blocking questions; the first AskUserQuestion call was refused by the' '  autonomous-gate' \
+  'cause: the classifier record read mode_on' 'carrier: pull request fix/decision-count (open)' 'replay: 3 hits'
+{ user "fix the readme"; aq r1; refuse r1 "AUTONOMOUS-GATE: the operator ordered this run autonomous"; asst "Filed the question."; } > "$T/rr1.jsonl"
+check "a refusal the register holds an earlier entry for (same gate, same tool), not classified" "$T/rr1.jsonl" block "$RG"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr1.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'a REPEAT'*'asks-read-as-mode-on'*'effective: not stated'*) ok "the block names the earlier entry, its carrier and that its effect is not stated";; *) bad "repeat block without the entry: '${out:0:300}'";; esac
+check "the same refusal with no register (control)" "$T/rr1.jsonl" allow "$CWD"
+# The classification is BACKED or it releases nothing (independent review 2026-11-23: one self-written line released the hold).
+REF='AUTONOMOUS-GATE: the operator ordered this run autonomous'
+{ user "fix the readme"; aq r2; refuse r2 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, the run is autonomous and the operator asked nothing."; } > "$T/rr2.jsonl"
+check "a repeat with a bare 'intended' line stays held" "$T/rr2.jsonl" block "$RG"
+{ user "fix the readme"; asst "Plan: I put the release question once; if the gate holds it, I file the question in the ledger."; aq r3; refuse r3 "$REF"
+  asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"if the gate holds it, I file the question in the ledger\"."; } > "$T/rr3.jsonl"
+check "a repeat classified as intended, quoting the plan line that stands in the turn" "$T/rr3.jsonl" allow "$RG"
+{ user "fix the readme"; aq r4; refuse r4 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, moving on."; } > "$T/rr4.jsonl"
+check "a repeat declared a false positive with no register entry stays held" "$T/rr4.jsonl" block "$RG"
+ENTRY_NO_REL='## 2026-11-23 — the question tool refused again
+refusal: AUTONOMOUS-GATE AskUserQuestion
+invariant: a request for questions opens the question tool whatever is filed as open
+related: none
+replay: 3 turns in 60 transcripts'
+{ user "fix the readme"; aq r5; refuse r5 "$REF"; write "$RG/docs/maintenance/carrier-register.md" "$ENTRY_NO_REL"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, entry written."; } > "$T/rr5.jsonl"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr5.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'"decision":"block"'*'names the earlier one under related'*'asks-read-as-mode-on'*) ok "a false positive whose new entry says related: none stays held and is told which entry to name";; *) bad "related: none passed: '${out:0:300}'";; esac
+{ user "fix the readme"; aq r6; refuse r6 "$REF"; write "$RG/docs/maintenance/carrier-register.md" "${ENTRY_NO_REL/related: none/related: asks-read-as-mode-on}"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, entry written."; } > "$T/rr6.jsonl"
+check "a false positive with its entry written in the turn, naming the earlier one" "$T/rr6.jsonl" allow "$RG"
+{ user "fix the readme"; aq r7; refuse r7 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - own mistake."; } > "$T/rr7.jsonl"
+check "a repeat declared an own mistake with no cause line stays held" "$T/rr7.jsonl" block "$RG"
+{ user "fix the readme"; aq r8; refuse r8 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - own mistake.
+Cause: read the run mode from memory, not from the gate — I asked inside the run."; } > "$T/rr8.jsonl"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr8.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'"decision":"block"'*'names a cause'*) ok "an own mistake with its cause line goes the cause path (carrier and entry owed)";; *) bad "own mistake + cause did not reach the cause path: '${out:0:300}'";; esac
+RS="$T/reg-same-day"; regdir "$RS" '## 2026-11-23 — the question tool refused' 'id: today' 'incident: AUTONOMOUS-GATE refused AskUserQuestion' 'cause: x'
+check "an entry of the refusal's own day is the present case, not an earlier one" "$T/rr1.jsonl" allow "$RS"
+RO="$T/reg-other-tool"; regdir "$RO" '## 2026-11-05 — an edit held' 'id: edit-held' 'incident: AUTONOMOUS-GATE held the Edit of the settings file' 'cause: x'
+check "an earlier entry for the same gate but another tool is no repeat" "$T/rr1.jsonl" allow "$RO"
+RF="$T/reg-field"; regdir "$RF" '## 2026-11-05 — the questions did not come' 'id: by-field' 'refusal: AUTONOMOUS-GATE AskUserQuestion' 'incident: the operator asked and got prose' 'cause: x'
+check "the refusal: field matches where the prose names neither gate nor tool" "$T/rr1.jsonl" block "$RF"
+RFO="$T/reg-field-other"; regdir "$RFO" '## 2026-11-05 — an edit held' 'id: by-field-other' 'refusal: AUTONOMOUS-GATE Edit' 'incident: AUTONOMOUS-GATE refused AskUserQuestion, said the prose' 'cause: x'
+check "a refusal: field decides alone - its entry's prose is not searched" "$T/rr1.jsonl" allow "$RFO"
+RA="$T/reg-alias"; regdir "$RA" '## 2026-11-05 — the questions did not come' 'id: by-alias' 'incident: the autonomous gate refused the question tool' 'cause: x'
+check "an entry in other words for the tool, no instance alias (control)" "$T/rr1.jsonl" allow "$RA"
+mkdir -p "$RA/.claude/rules"; printf '%s\n' '{"refusal_aliases":{"AskUserQuestion":["question tool"]}}' > "$RA/.claude/rules/root-cause-patterns.json"
+check "the same entry with the instance's word for the tool as refusal_aliases" "$T/rr1.jsonl" block "$RA"
+XP=',"session_id":"s-one"' check "a repeat is held once per session for a gate and tool ..." "$T/rr1.jsonl" block "$RG"
+XP=',"session_id":"s-one"' check "... the second time it is only recorded" "$T/rr1.jsonl" allow "$RG"
+n="$(grep -c '"gate":"AUTONOMOUS-GATE"' "$RG/.claude-state/register-repeats.jsonl" 2>/dev/null || echo 0)"
+[ "$n" -ge 3 ] && ok "every repeat is recorded ($n lines)" || bad "repeats recorded: $n"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/ra1.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'refused the very step'*'A REPEAT'*'asks-read-as-mode-on'*) ok "the refused asked-for step names the earlier register entry too";; *) bad "refused ask without the register hit: '${out:0:300}'";; esac
+out="$(CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" --register-repeats "$(native "$T")" 2>&1)"
+case "$out" in *'AUTONOMOUS-GATE AskUserQuestion:'*'first entry 2026-11-05 asks-read-as-mode-on'*) ok "--register-repeats replays the lookup over a folder";; *) bad "replay: '${out:0:300}'";; esac
 # --- Windows review of #640: the gate's own way on is no bypass; a label with spaces is kept whole
 bcmd() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
 skl() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Skill","input":{"skill":"x"}}]}}\n' "$1"; }
