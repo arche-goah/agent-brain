@@ -236,7 +236,12 @@ function judge(input) {
   const what = isQuestion ? 'a question through the question tool'
     : rule ? `a call that the permission rule \`${rule}\` (ask) turns into a dialog`
       : `an edit of hook or permission data (\`${held}\`) that the auto-mode classifier holds for the operator`;
+  // The measured reason the run is still autonomous (2026-11-23: a generic refusal after "questions now" left the agent
+  // guessing at the word list; the real cause was an open-for-operator count of 0).
+  let why = '';
+  try { why = require('./autonomous-mode.cjs').modeReason(input.transcript_path || '', root); } catch (e) { why = ''; }
   return `AUTONOMOUS-GATE: the operator ordered this run autonomous, and this is ${what} - it would stop the run on the operator. ` +
+    (why ? `Still autonomous because ${why}. ` : '') +
     'Not issued. File it with a recommendation in the instance\'s operator-question ledger (the open questions file the ' +
     'session start lists; an edit as a patch file beside it), name it in the next prose report, and go on with everything ' +
     'safely doable. The mode ends when the operator asks what is open or says an off-word.';
