@@ -14,29 +14,34 @@ ok()  { echo "  OK   $1"; }
 bad() { echo "  FAIL $1"; fail=1; }
 H=/fixture-home
 # $1 name, $2 command, $3 expected "dir|sub" of the first git call ("" = no git call), $4 ps (true|false)
+# Windows review of #635 (2026-11-23): the command and HOME travel through stdin and inside node, never argv or the shell's
+# env - Git Bash rewrites an argv `/a b` or `/fixture-home` to `C:/Program Files/Git/...` before node sees it; and the
+# top folders have two or more letters - a one-letter `/r` IS drive R: in Git Bash (the reader is right to read it so).
 probe() {
-  out=$(HOME="$H" USERPROFILE="$H" node -e '
-    const {gitCalls}=require(process.argv[1]); const c=(gitCalls(process.argv[2],"/cwd",process.argv[3]==="true")||[])[0];
-    process.stdout.write(c ? c.dir.replace(/\\/g,"/").replace(/^[A-Za-z]:/,"")+"|"+c.sub : "")' "$GT" "$2" "${4:-false}")
+  out=$(printf '%s' "$2" | node -e '
+    process.env.HOME = process.env.USERPROFILE = "/" + process.argv[2];
+    let cmd = ""; process.stdin.on("data", (c) => { cmd += c; }); process.stdin.on("end", () => {
+      const {gitCalls}=require(process.argv[1]); const c=(gitCalls(cmd,"/cwd",process.argv[3]==="true")||[])[0];
+      process.stdout.write(c ? c.dir.replace(/\\/g,"/").replace(/^[A-Za-z]:/,"")+"|"+c.sub : ""); })' "$GT" "fixture-home" "${4:-false}")
   [ "$out" = "$3" ] && ok "$1" || bad "$1: got '$out', want '$3'"
 }
-probe "plain -C" "git -C /r status" "/r|status"
-probe "quoted -C with a space" 'git -C "/a b" commit -m x' "/a b|commit"
-probe "-C without a space" "git -C/r log" "/r|log"
-probe "chained -C, each relative to the last" "git -C /x -C sub status" "/x/sub|status"
-probe "-c before -C" "git -c a=b -C /r push" "/r|push"
+probe "plain -C" "git -C /repo status" "/repo|status"
+probe "quoted -C with a space" 'git -C "/top b" commit -m x' "/top b|commit"
+probe "-C without a space" "git -C/repo log" "/repo|log"
+probe "chained -C, each relative to the last" "git -C /work -C sub status" "/work/sub|status"
+probe "-c before -C" "git -c a=b -C /repo push" "/repo|push"
 probe "~ in -C is the home folder" "git -C ~/p commit -m x" "$H/p|commit"
 probe "\$HOME in -C is the home folder" 'git -C $HOME/p push' "$H/p|push"
-probe "cd <dir> && git" "cd /t && git commit -m x" "/t|commit"
-probe "cd then a relative -C" "cd /t && git -C sub status" "/t/sub|status"
-probe "env -C before git" "env -C /e git push" "/e|push"
-probe "a VAR= prefix" "FOO=1 git -C /v push" "/v|push"
-probe "git.exe by path" 'C:/Git/cmd/git.exe -C /w status' "/w|status"
+probe "cd <dir> && git" "cd /tree && git commit -m x" "/tree|commit"
+probe "cd then a relative -C" "cd /tree && git -C sub status" "/tree/sub|status"
+probe "env -C before git" "env -C /envdir git push" "/envdir|push"
+probe "a VAR= prefix" "FOO=1 git -C /vardir push" "/vardir|push"
+probe "git.exe by path" 'C:/Git/cmd/git.exe -C /wdir status' "/wdir|status"
 probe "no -C: the cwd" "git status" "/cwd|status"
-probe "PowerShell Set-Location" 'Set-Location /p; git commit -m x' "/p|commit" true
+probe "PowerShell Set-Location" 'Set-Location /pdir; git commit -m x' "/pdir|commit" true
 probe "the incident: -C inside a quoted commit message is no option" 'git commit -m "ledger: git -C reader in train" -- docs/x.md' "/cwd|commit"
 probe "a commit -C <sha> after the verb is no directory" "git commit -C HEAD -- a" "/cwd|commit"
-probe "git as an argument of another command is no call" "echo git -C /no status" ""
+probe "git as an argument of another command is no call" "echo git -C /nodir status" ""
 case "${OSTYPE:-}" in
   msys*|cygwin*)
     out=$(node -e 'const {gitCalls}=require(process.argv[1]);process.stdout.write((gitCalls("git -C /c/work/r status","C:/cwd")||[])[0].dir.replace(/\\/g,"/"))' "$GT")
