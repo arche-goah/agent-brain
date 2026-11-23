@@ -39,6 +39,13 @@ tr_send "brain-b [abc123]" > "$T/talked.jsonl"
 fresh; [ -z "$(run "$T/talked.jsonl")" ] && ok "peer messaged (with ref): pass" || bad "peer messaged: pass"
 tr_send "uds:/tmp/cc-socks/200.sock" > "$T/replied.jsonl"
 fresh; [ -z "$(run "$T/replied.jsonl")" ] && ok "reply to the peer's socket address: pass" || bad "reply by socket: pass"
+# Windows (measured 2026-11-23): the reply address is a named pipe from the registry's messagingSocketPath, no pid in it
+printf '{"pid":200,"sessionId":"peer","cwd":"%s","name":"brain-b","status":"busy","messagingSocketPath":"\\\\\\\\.\\\\pipe\\\\LOCAL\\\\cc-msg-abc123"}\n' "$ROOT" > "$T/cfg/sessions/peer.json"
+printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"SendMessage","input":{"to":"uds:\\\\\\\\.\\\\pipe\\\\LOCAL\\\\cc-msg-abc123","message":"x"}}]}}\n' > "$T/pipe.jsonl"
+fresh; [ -z "$(run "$T/pipe.jsonl")" ] && ok "reply to the peer's Windows pipe address: pass" || bad "reply by pipe: pass"
+printf '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"SendMessage","input":{"to":"uds:\\\\\\\\.\\\\pipe\\\\LOCAL\\\\cc-msg-zzz999","message":"x"}}]}}\n' > "$T/other-pipe.jsonl"
+fresh; [[ "$(run "$T/other-pipe.jsonl")" == *'"decision":"block"'* ]] && ok "a message to another pipe: still block (control)" || bad "other pipe: block"
+reg 200 peer "$ROOT" brain-b
 tr_send "uds:/tmp/cc-socks/2000.sock" > "$T/other-sock.jsonl"
 fresh; [[ "$(run "$T/other-sock.jsonl")" == *'"decision":"block"'* ]] && ok "a message to another pid's socket: still block (control)" || bad "other socket: block"
 { tr_send "brain-b"; node -e 'const l=JSON.stringify({message:{role:"assistant",content:[{type:"text",text:"x".repeat(1000)}]}}); for (let i=0;i<5200;i++) console.log(l)'; } > "$T/long.jsonl"
