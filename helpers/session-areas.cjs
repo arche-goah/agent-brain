@@ -184,18 +184,52 @@ function recent(s, now) {
 /** Does a claim meet a written area? A claim on a FILE meets only that file written (measured 2026-11-20: two
  *  claims on different files of one folder were reported as an overlap on every write, the folder being the
  *  only thing compared); a claim on a folder meets every area inside it or containing it. */
-function claimMeets(c, area, v) {
+function claimMeets(c, area, v, intoOnly) {
   if (v.root === area) return false;   // a write known only as a repo root is no evidence against a claim
   if (c.file) return (v.files || []).includes(c.path);
-  return inside(area, c.path) || inside(c.path, area);
+  return inside(area, c.path) || (!intoOnly && inside(c.path, area));
 }
 
-/** Overlaps between session `me` and every peer: [{key, peer, path, why}]. */
-function overlaps(me, peers, now) {
+/** The ListAgents names (and reply addresses) this session sent a SendMessage to, read from its transcript.
+ *  The WHOLE transcript: a talk early in a long session counts (measured 2026-11-09 on the macOS instance: a 4 MB
+ *  tail window missed the peer's messages at 2.9-3.2 MB of a 9.3 MB transcript). Only lines naming SendMessage
+ *  are parsed. */
+function talkedTo(transcript) {
+  const out = new Set();
+  if (!transcript) return out;
+  let raw = '';
+  try { raw = fs.readFileSync(transcript, 'utf8'); } catch (e) { return out; }
+  for (const line of raw.split('\n')) {
+    if (!line.includes('"SendMessage"')) continue;
+    let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    const c = d && d.message && Array.isArray(d.message.content) ? d.message.content : [];
+    for (const b of c) if (b && b.type === 'tool_use' && b.name === 'SendMessage' && b.input && b.input.to) out.add(String(b.input.to).replace(/\s*\[[^\]]*\]\s*$/, '').trim());
+  }
+  return out;
+}
+
+/** Did this session message peer `p`? By its ListAgents name, or by its socket address `uds:/…/<pid>.sock` -
+ *  a reply goes to the sender's address (measured 2026-11-09: a peer answered that way and was still held). */
+function talkedWith(talked, p) {
+  if (!talked) return false;
+  if (talked.has(p.name)) return true;
+  for (const t of talked) if (p.pid && new RegExp(`(^|/)${Number(p.pid)}\\.sock$`).test(t)) return true;
+  return false;
+}
+
+/** Overlaps between session `me` and every peer: [{key, peer, path, why}]. `talked`: the peers this session has
+ *  messaged - with them only a write INTO a claim is an overlap, not two writes into one folder (measured
+ *  2026-11-09: after both sessions had messaged and claimed their files, the folder's OVERLAP lines kept coming). */
+function overlaps(me, peers, now, talked) {
   const out = [];
   const mine = recent(me, now);
   for (const p of peers) {
     const theirs = recent(p, now);
+    if (talkedWith(talked, p)) {
+      for (const c of p.claims || []) for (const [a, va] of mine) if (claimMeets(c, a, va, true)) out.push({ key: `${p.id}|c|${c.file ? c.path : a}`, peer: p, path: c.file ? c.path : a, why: `claimed by ${p.name}${c.note ? ` (${c.note})` : ''}` });
+      for (const c of me.claims || []) for (const [b, vb] of theirs) if (claimMeets(c, b, vb, true)) out.push({ key: `${p.id}|m|${c.file ? c.path : b}`, peer: p, path: c.file ? c.path : b, why: `claimed by ${me.name}${c.note ? ` (${c.note})` : ''}, written by ${p.name}` });
+      continue;
+    }
     for (const [a, va] of mine) {
       for (const [b, vb] of theirs) {
         const aRepo = va.root === a; const bRepo = vb.root === b;
@@ -313,7 +347,10 @@ function record(input, now) {
     rec.updated = at;
     const all = sessions(root, now);
     const me = { ...rec, name: rec.name || id.slice(0, 8) };
-    const live = overlaps(me, all.filter((s) => s.id !== id), now);
+    const peers = all.filter((s) => s.id !== id);
+    let live = overlaps(me, peers, now);
+    // The transcript is read only when there is something a talk could settle.
+    if (live.length) live = overlaps(me, peers, now, talkedTo(input.transcript_path));
     const told = new Set(rec.told || []);
     const fresh = live.filter((o) => !told.has(o.key));
     // `told` keeps exactly the overlaps that are still live, so it never outgrows them. The old fixed tail of
@@ -401,4 +438,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { areasFromCall, overlaps, record, prompt, map, sessions };
+module.exports = { areasFromCall, overlaps, record, prompt, map, sessions, talkedTo, talkedWith, claimCmd };

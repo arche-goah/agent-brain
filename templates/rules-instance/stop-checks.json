@@ -219,6 +219,17 @@
       "maxLength": 120,
       "required": true,
       "_note": "Carrier of 'a peer's state counts once it is measured' (rules/thinking-protocol.md rule 0, freshness): the closing reply names a peer session as running or holding a claim while parallel-sessions.sh measures only this one. Words in the operator's language: .claude/rules/peer-session.json."
+    },
+    {
+      "label": "PEER TALK",
+      "marker": "PEER-TALK-GATE",
+      "cmd": "core/helpers/peer-talk-gate.cjs",
+      "mode": "block",
+      "onReissue": "run",
+      "extract": "Peers not messaged: ([^\\n]+)",
+      "template": "{1} - a peer session in this working copy heard nothing from you: SendMessage + claim",
+      "maxLength": 120,
+      "_note": "Carrier of 'two sessions, one working copy' (rules/working-rules.md #12): a live peer session in the same project root got no SendMessage from this session - holds the turn once, then a 30 min cooldown per peer. Ported from an instance alpha (2026-11-09 to 2026-11-23, 58 blocks recorded)."
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",
