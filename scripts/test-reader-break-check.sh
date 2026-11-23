@@ -26,7 +26,7 @@ printf 'Cadence lives in the core.\nKeep this sentence.\n' > "$tmp/r/RULES.md"
 printf -- '- [x] entry\n  check: grep -q "Cadence lives" RULES.md && grep -q "Keep this" RULES.md\n- [x] neg\n  check: ! grep -q "weekly scan" RULES.md\n' > "$tmp/r/docs/ledger.md"
 printf -- '---\nname: x\n  home: RULES.md :: Keep this sentence\n---\n' > "$tmp/r/mem/x.md"
 printf 'other\n' > "$tmp/r/OTHER.md"
-git -C "$tmp/r" add -A && git -C "$tmp/r" commit -qm init
+git -C "$tmp/r" add -A && git -c core.hooksPath="$tmp/no-hooks" -C "$tmp/r" commit -qm init
 
 # t1: removing a phrase a ledger check reads -> red
 printf 'Keep this sentence.\n' > "$tmp/r/RULES.md"; git -C "$tmp/r" add RULES.md
@@ -41,7 +41,7 @@ printf 'Cadence lives in the core.\n' > "$tmp/r/RULES.md"; git -C "$tmp/r" add R
 expect 1 "t3 home-anchor phrase removed"
 # t4: negated check's phrase never there / added-removed -> not a reader
 printf 'Cadence lives in the core.\nKeep this sentence.\nweekly scan\n' > "$tmp/r/RULES.md"; git -C "$tmp/r" add RULES.md
-git -C "$tmp/r" commit -qm add-weekly
+git -c core.hooksPath="$tmp/no-hooks" -C "$tmp/r" commit -qm add-weekly
 printf 'Cadence lives in the core.\nKeep this sentence.\n' > "$tmp/r/RULES.md"; git -C "$tmp/r" add RULES.md
 expect 0 "t4 negated check's phrase removed"
 # t5: unrelated file changed -> green
@@ -53,5 +53,12 @@ expect 1 "t6 read file deleted"
 # t7: rewording that keeps the phrase -> green
 printf 'Cadence lives in the core, measured.\nKeep this sentence.\n' > "$tmp/r/RULES.md"; git -C "$tmp/r" add RULES.md
 expect 0 "t7 phrase kept"
+# t8: --history judges each commit with the readers of its own tree (2026-11-23: the tree stood before the pattern, the
+# replay judged 4404 commits with no reader and found nothing)
+printf 'Cadence lives in the core.\nKeep this sentence.\n' > "$tmp/r/RULES.md"; git -C "$tmp/r" add -A
+git -c core.hooksPath="$tmp/no-hooks" -C "$tmp/r" commit -qm restore
+printf 'Keep this sentence.\n' > "$tmp/r/RULES.md"; git -C "$tmp/r" add RULES.md; git -c core.hooksPath="$tmp/no-hooks" -C "$tmp/r" commit -qm cut
+hist=$("$py" "$(native "$chk")" --root "$(native "$tmp/r")" --history 2000-01-01 2>&1)
+case "$hist" in *"1 held"*) pass=$((pass + 1));; *) fail=$((fail + 1)); echo "FAIL: t8 history replay holds the cutting commit: $hist";; esac
 echo "reader-break-check: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -249,7 +249,9 @@ covers_check() {
   # A fixture runs without the commit's git environment: under `git commit -- <paths>` git hands the hook
   # GIT_INDEX_FILE (a temporary index), and a fixture that runs git in its own temp repo then wrote into the
   # outer commit's index — the next step's `git diff --cached` died with 128 (measured 2026-11-23, macOS).
-  local noenv=(env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE -u GIT_PREFIX)
+  # Also without the commit's `-c` settings: GIT_CONFIG_PARAMETERS carries `git -c core.hooksPath=…` into every child and
+  # overrides a fixture repo's own config, so its commits ran this hook again (measured 2026-11-23).
+  local noenv=(env -u GIT_INDEX_FILE -u GIT_DIR -u GIT_WORK_TREE -u GIT_PREFIX -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT)
   # JS fixtures (test-*.cjs / test-*.js) take part the same way with `//` comments (reach finding at #453, 2026-11-07:
   # the gate fixtures are .cjs and stayed out of reach).
   for f in "$root"/scripts/test-*.sh "$root"/scripts/*-test.py "$root"/scripts/test-*.cjs "$root"/scripts/test-*.js; do

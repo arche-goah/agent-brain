@@ -11,7 +11,8 @@ Readers are taken from the STAGED tree (so a commit that rewrites the check toge
 phrase is compared between HEAD and the staged blob of the read file. Negated checks (`! grep`, `grep -v`) want the
 phrase gone and are skipped. Exit 1 lists each break; exit 0 otherwise.
 
-  reader-break-check.py [--root <repo>]
+  reader-break-check.py [--root <repo>]                       (the staged commit; the pre-commit hook)
+  reader-break-check.py --root <repo> --history <YYYY-MM-DD>  (replay: each commit since then, with its own readers)
 """
 import re
 import subprocess
@@ -32,13 +33,20 @@ def blob(root, spec):
     return out if rc == 0 else None
 
 
-def readers(root):
+def readers(root, tree=None):
+    """Reader pairs (file, phrase, source) in the staged tree, or in commit `tree` (the history replay)."""
     # POSIX class, not \s: git grep -E on macOS does not know \s and matched nothing (measured 2026-11-23)
-    rc, out = git(root, 'grep', '--cached', '-n', '-I', '-E', r'^[[:space:]]*(check:|home:)', '--', '*.md')
+    # the tree stands AFTER the pattern (git grep <pattern> <tree>); before it, git read the tree name as the pattern and the
+    # history replay judged 4404 commits with no reader at all (measured 2026-11-23)
+    where = [tree] if tree else []
+    opts = [] if tree else ['--cached']
+    rc, out = git(root, 'grep', *opts, '-n', '-I', '-E', r'^[[:space:]]*(check:|home:)', *where, '--', '*.md')
     if rc not in (0, 1):
         return []
     found = []
     for line in out.splitlines():
+        if tree and line.startswith(tree + ':'):
+            line = line[len(tree) + 1:]
         where, _, text = line.partition(':')
         num, _, text = text.partition(':')
         src = f'{where}:{num}'
@@ -57,22 +65,52 @@ def readers(root):
     return found
 
 
+def breaks_between(root, changed, before_ref, after_spec, tree=None):
+    out = []
+    for path, phrase, src in readers(root, tree):
+        if path not in changed:
+            continue
+        before = blob(root, f'{before_ref}:{path}')
+        if before is None or phrase not in before:
+            continue
+        after = blob(root, f'{after_spec}{path}') or ''
+        if phrase not in after:
+            out.append(f'  {path}: "{phrase[:70]}" is read by {src}')
+    return out
+
+
+def history(root, since):
+    """Replay over the repo's history: each commit judged with the readers of ITS tree (parent as HEAD, the commit
+    staged), the way the pre-commit hook would have judged it."""
+    rc, out = git(root, 'log', '--no-merges', '--format=%h %ad', '--date=short', f'--since={since}')
+    rows = [r.split() for r in out.splitlines() if r.strip()]
+    hits = []
+    for sha, day in rows:
+        rc, names = git(root, 'diff', '--name-only', '--diff-filter=MD', f'{sha}~1', sha)
+        changed = set(names.split())
+        if rc != 0 or not changed:
+            continue
+        found = breaks_between(root, changed, f'{sha}~1', f'{sha}:', tree=sha)
+        if found:
+            hits.append((day, sha, found))
+    days = {d for d, _, _ in hits}
+    readers_n = sum(len(f) for _, _, f in hits)
+    print(f'reader-break history since {since}: {len(rows)} commits judged, {len(hits)} held, {readers_n} broken readers, on {len(days)} days')
+    for day, sha, found in hits:
+        print(f'{day} {sha}')
+        print('\n'.join(found))
+    return 0
+
+
 def main(argv):
     root = argv[argv.index('--root') + 1] if '--root' in argv else '.'
+    if '--history' in argv:
+        return history(root, argv[argv.index('--history') + 1])
     rc, staged = git(root, 'diff', '--cached', '--name-only', '--diff-filter=MD')
     changed = set(staged.split())
     if not changed:
         return 0
-    breaks = []
-    for path, phrase, src in readers(root):
-        if path not in changed:
-            continue
-        before = blob(root, f'HEAD:{path}')
-        if before is None or phrase not in before:
-            continue
-        after = blob(root, f':{path}') or ''
-        if phrase not in after:
-            breaks.append(f'  {path}: "{phrase[:70]}" is read by {src}')
+    breaks = breaks_between(root, changed, 'HEAD', ':')
     if not breaks:
         return 0
     print('reader-break: this commit removes a phrase a reader greps from its file:')
