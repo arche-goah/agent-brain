@@ -95,7 +95,8 @@ History: core/docs/rule-history.md, "Working Rules".
 
 **Naming:** kebab-case, lowercase, English, no umlauts/spaces. **Root files:** only
 README.md, CLAUDE.md, LICENSE, .gitignore, .gitattributes, .gitmodules, .mcp.json, .env,
-.env.example (an instance may extend the whitelist, never silently). YOU MUST NEVER place
+.env.example (an instance may extend the whitelist, never silently: `.claude/rules/root-files.json`;
+carrier `core/helpers/root-files-gate.cjs`, turn end). YOU MUST NEVER place
 other files in root, create duplicate docs (check first) or use code fragments as file
 names (flex, mb-6, BigInt(0), void); delete junk files when discovered.
 

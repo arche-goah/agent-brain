@@ -387,6 +387,7 @@ known:     scripts/test-release-freeze-gate.sh=1
 known:     scripts/test-repo-activity-watch.sh=1
 known:     scripts/test-review-claim-gate.sh=1
 known:     scripts/test-root-cause-gate.sh=1
+known:     scripts/test-root-files-gate.sh=1
 known:     scripts/test-session-areas.sh=1
 known:     scripts/test-claim-write-gate.sh=1
 known:     scripts/test-session-closing.sh=1
