@@ -43,7 +43,9 @@ core brain"; and: "find out why you do not really follow my word".
 5. **Problem test** for proposals: one sentence "what does this change about what the operator named?". Nothing ->
    no proposal.
 6. **Fresh eyes.** An agent gets ONLY the result and the operator's words, no plan: "what does not belong, what looks
-   wrong, unrealistic or unclean?" Each finding is fixed or rejected with a reason.
+   wrong, unrealistic or unclean?" Each finding is fixed or rejected with a reason. Price: one agent per handover
+   (measured in one instance session 2026-11-23 on the smallest model: 140-165k tokens and 30-100 s for 2-12 images);
+   pick the smallest model that can read images.
 7. **Write the acceptance.** `python3 scripts/acceptance.py write <result> --inventory ... --facts ... --fresh-eyes ...`,
    then `python3 scripts/acceptance.py open <result>` (opens only when accepted; browser, not the OS image viewer).
 8. **Report in the operator's words and order:** each quoted word from step 1 -> done / not done / substituted, and
@@ -51,7 +53,8 @@ core brain"; and: "find out why you do not really follow my word".
 
 ## Carrier and limit
 
-- Mechanical: `scripts/acceptance.py open` shows an image only with a fresh, full acceptance; an instance wires its
+- Mechanical: `scripts/acceptance.py open` shows an image only with a full acceptance bound to its bytes (sha256 and
+  size); an instance wires its
   own opener through it and blocks the bypass (an instance `mechanism-rules.json` rule on opening images directly).
   Self-test: `python3 scripts/acceptance.py selftest`.
 - Limit: results that are no file (text in the chat, a live interface) are seen by no gate; there this procedure

@@ -8,8 +8,8 @@ spots where a projector throws a rectangle, and a cabinet the operator had said 
 checked its own task list and its measurements, never the whole result with the operator's eyes. The skill
 `acceptance-before-handover` holds the procedure; this script is its carrier.
 
-The acceptance is `<result>.acceptance.json` next to the result, newer than the result, with three fields of
-substance (each at least MIN_LEN characters):
+The acceptance is `<result>.acceptance.json` next to the result, bound to the result's bytes (sha256 and size, so a
+copied or touched acceptance does not pass), with three fields of substance (each at least MIN_LEN characters):
   inventory    everything visible in the result, and what of it the agent added on the side (helpers, text, lights)
                - each removed, or kept with a reason
   facts        which facts file of the project (the operator's own statements about reality) was checked, and what
@@ -23,6 +23,7 @@ Usage:
   acceptance.py open  <result>            opens the result in the default viewer ONLY when accepted
   acceptance.py selftest
 """
+import hashlib
 import json
 import os
 import sys
@@ -39,19 +40,27 @@ def side(path):
     return str(path) + ".acceptance.json"
 
 
+def digest(path):
+    """sha256 and size of the result: the acceptance is bound to exactly these bytes (review 2026-11-23, measured: a
+    freshness check by mtime passed an acceptance copied next to another image, and one touched after the result
+    changed)."""
+    data = Path(path).read_bytes()
+    return hashlib.sha256(data).hexdigest(), len(data)
+
+
 def check(path):
     if not os.path.exists(path):
         return False, "result missing: %s" % path
     s = side(path)
     if not os.path.exists(s):
         return False, "no acceptance next to the result (%s)" % s
-    if os.path.getmtime(s) < os.path.getmtime(path):
-        return False, "acceptance is older than the result - the result changed after it"
     try:
-        with open(s, encoding="utf-8") as f:
-            d = json.load(f)
+        d = json.loads(Path(s).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         return False, "acceptance unreadable: %s" % e
+    sha, size = digest(path)
+    if d.get("sha256") != sha or d.get("size") != size:
+        return False, "acceptance belongs to other bytes - the result changed after it, or it was copied from elsewhere"
     for k in FIELDS:
         if len(str(d.get(k, "")).strip()) < MIN_LEN:
             return False, "field '%s' missing or too thin (under %d characters)" % (k, MIN_LEN)
@@ -59,7 +68,10 @@ def check(path):
 
 
 def write(path, inventory, facts, fresh):
-    d = {"result": os.path.abspath(path), "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+    if not os.path.exists(path):
+        return False, "result missing: %s" % path
+    sha, size = digest(path)
+    d = {"result": os.path.abspath(path), "time": time.strftime("%Y-%m-%d %H:%M:%S"), "sha256": sha, "size": size,
          "inventory": inventory, "facts": facts, "fresh_eyes": fresh}
     Path(side(path)).write_bytes(json.dumps(d, ensure_ascii=False, indent=2).encode("utf-8") + b"\n")
     return check(path)
@@ -81,9 +93,13 @@ def selftest():
     assert not check(p)[0], "a thin field must fail"
     write(p, "i" * 30, "f" * 30, "e" * 30)
     assert check(p)[0], "a full acceptance must pass"
-    time.sleep(1.1)
     Path(p).write_bytes(b"changed")
+    os.utime(side(p))  # touching the acceptance must not revive it
     assert not check(p)[0], "a result changed after its acceptance must fail"
+    q = str(Path(d) / "other.png")
+    Path(q).write_bytes(b"other")
+    Path(side(q)).write_bytes(Path(side(p)).read_bytes())
+    assert not check(q)[0], "an acceptance copied next to another result must fail"
     print("acceptance selftest ok")
 
 
