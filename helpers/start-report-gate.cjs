@@ -48,7 +48,7 @@ function promptText(d) {
   let text = typeof c === 'string' ? c : Array.isArray(c)
     ? c.filter((x) => x && x.type === 'text').map((x) => x.text).join('\n') : '';
   if (!text.trim() || isNotification(text)) return null;
-  text = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim();
+  text = text.replace(/<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder\b[^>]*>/g, '').trim();
   return text || null;
 }
 

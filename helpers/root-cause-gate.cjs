@@ -52,6 +52,7 @@
 const fs = require('fs');
 const path = require('path');
 const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
+const { gateLabel } = require('./gate-label.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 const { intents, intentFor } = require('./autonomous-mode.cjs');
 const { nativePath } = require('./published-text.cjs');
@@ -446,8 +447,7 @@ function malfunctionIn(group) {
     for (const r of seg.refusals || []) {
       const full = r.raw || `PreToolUse:${r.tool} hook error: ${r.text}`;
       if (!m.refusal.test(full) || !m.malf.test(full)) continue;
-      const g = m.gate.exec(r.raw || r.text) || [];
-      const gate = g[1] || (g[2] ? `command hook ${g[2]}` : 'a hook');
+      const gate = gateLabel(r.raw || r.text);
       const what = (m.malf.exec(r.raw || r.text) || [''])[0];
       return `${gate} ${what} on ${r.tool} at ${r.at || '?'}`;
     }
@@ -600,7 +600,7 @@ function refusedAsk(group, cwd, transcriptPath) {
       if (!read) continue;
       for (const r of seg.refusals) {
         if (!(rule.tools || []).includes(r.tool)) continue;
-        const gateName = (/^([A-Z][A-Z-]+):/.exec(r.text) || [])[1] || 'a hook';
+        const gateName = gateLabel(r.raw || r.text);
         if ((rule.ignore || []).includes(gateName)) continue;
         return `${gateName} refused ${r.tool} at ${r.at || '?'}, the step the operator's prompt asked for ("${seg.prompt.slice(0, 60)}", ${name} read by ${read})`;
       }
