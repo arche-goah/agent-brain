@@ -916,7 +916,7 @@ repeat:    yes
 status:    closed
 note:      Measured 2026-09-30 on a Windows instance whose profile name has a space, core
 v1.3.41. `onboarding-verify.sh` check 3 reported `suites=MISSING (<First> grandma3 )` for an
-installed suite: the `find` result `/c/Users/<First> <Last>/.claude/plugins/cache/...` was
+installed suite: the `find` result `/c/<profile>/<First> <Last>/.claude/plugins/cache/...` was
 split into `/c/Users/<First>` (no SKILL.md there, so MISSING, and the first fragment's
 basename showed up as a suite name) and a relative tail. Checks 6 and 7 walked the same
 fragments. Fixed at the three loops over `suite_dirs`; the fixture in
@@ -1293,3 +1293,28 @@ Python on Windows decodes a piped stdin as cp1252 (`sys.stdin.encoding` printed 
 as the three letters). The scan now covers a `sys.stdin` read in a file that never pins stdin (code inside a string,
 a child script a fixture writes, is not seen); 3 files pinned in the same commit (repo-activity-filter.py,
 pr-ball.py, plugin-scope-check.py), red on origin/main for all three, no baseline.
+
+## OS-24 — a command pattern reads the `git -C` path as one word, and a quoted Windows path with a space slips past it
+
+shape: A
+
+invariant: A regex that recognises a command by what follows `git -C <path>` reads the path as a
+QUOTED token or a bare one — `-C\s+(?:"[^"]*"|'[^']*'|\S+)` — never as `-C\s+\S+`. The bare form
+stops at the first space, and Windows hands out profile paths with spaces as the normal case
+(`"C:/<profile>/First Last/..."`, quoted by every caller). The rest of the command then no longer lines
+up: a read exemption misses (the guard blocks a read, fail-closed), and — worse — a block rule
+that names the subcommand after the path never sees it (`git -C "<path with space>" stash` passed
+the stash rule, fail-open).
+pattern:   -C(\\\\|\\)s\+(\\\\|\\)S\+
+paths:     --include=*.cjs --include=*.js --include=*.py --include=*.json --include=*.sh helpers scripts templates mechanism-rules.json
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-11-17 on the Windows instance (profile path with a space), core v2.1.6 at
+fcbe55a: `git -C "/c/<profile>/<First> <Last>/.../core" show origin/main:.claude-plugin/marketplace.json`
+— a read — was blocked as "moving a marketplace pin": the read exemption names `git -C \S+ show`, and
+`\S+` ended at the space. Class search over origin/main: 9 sites in 5 files (mechanism-rules.json 3 —
+marketplace read exemption, commit with a variable path list, stash; decision-review.py 3;
+public-text-guard.cjs 1 — commit message check; review-claim-gate.cjs 1 — diff/show read;
+templates/rules-instance/start-report-patterns.json 1). All read the quoted form in the same commit;
+`test-guards.sh` carries the three space-path probes, the pattern starts with no baseline.

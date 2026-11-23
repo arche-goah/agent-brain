@@ -632,6 +632,11 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: git -C stash push" Bash command "git -C /r stash push -m x" block
   tr_probe "mechanism-guard/core rule: git stash list (control)" Bash command "git stash list" allow
   tr_probe "mechanism-guard/core rule: git stash show (control)" Bash command "git -C /r stash show -p" allow
+  # OS-24 (2026-11-17, Windows instance): the -C path was read as one non-space token, so a quoted path
+  # with a space (the normal Windows profile) made the read exemption miss and the stash/commit rules pass
+  tr_probe "mechanism-guard/core rule: pin read by git -C show, path with a space (control)" Bash command 'git -C \"/x/A B/r\" show origin/main:.claude-plugin/marketplace.json' allow
+  tr_probe "mechanism-guard/core rule: git -C stash push, path with a space" Bash command 'git -C \"/x/A B/r\" stash push -m x' block
+  tr_probe "mechanism-guard/core rule: git -C commit with \${VAR}, path with a space" Bash command "git -C '/x/A B/r' commit -m x -- \${FILES}" block
   # 2026-11-11 (macOS instance): an office file built by a generic converter lost its sizes and page setup
   tr_probe "mechanism-guard/core rule: textutil builds a docx" Bash command "textutil -convert docx -output a.docx a.html" block
   tr_probe "mechanism-guard/core rule: pandoc builds a docx" Bash command "pandoc a.md -o out.docx" block
