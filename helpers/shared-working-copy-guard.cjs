@@ -115,6 +115,32 @@ function sessions() {
   return out;
 }
 
+// Processes whose command line names this checkout: a background run (a lint, a test suite, a watcher) that reads the
+// tree. Moving HEAD under it changes what it reads mid-run (measured 2026-11-23 on the macOS instance: a branch switch in a
+// core clone while a detached push lint ran there; the lint stamped the SHA, not the tree it saw). Any checkout, private or
+// shared, one session or two. Fixture: SHARED_COPY_FIXTURE_RUNNERS="pid args;pid args".
+function busyRunners(top) {
+  const fx = process.env.SHARED_COPY_FIXTURE_RUNNERS;
+  let rows = [];
+  if (fx !== undefined) {
+    rows = fx.split(';').filter(Boolean).map((r) => { const m = /^(\d+)\s+(.*)$/.exec(r.trim()); return m ? { pid: m[1], args: m[2] } : null; }).filter(Boolean);
+  } else if (PS) {
+    const ps = spawnSync(PS, ['-axo', 'pid=,args='], { encoding: 'utf8', timeout: 5000 });
+    if (ps.status !== 0) return [];
+    rows = (ps.stdout || '').split('\n').map((l) => { const m = /^\s*(\d+)\s+(.*)$/.exec(l); return m ? { pid: m[1], args: m[2] } : null; }).filter(Boolean);
+  } else return [];
+  // the same checkout under its other spellings: macOS /private/tmp vs /tmp, and the realpath
+  const names = new Set([top]);
+  try { names.add(fs.realpathSync(top)); } catch (_) {}
+  for (const n of [...names]) { if (n.startsWith('/private/')) names.add(n.slice('/private'.length)); else names.add('/private' + n); }
+  const self = String(process.pid);
+  const parent = String(process.ppid);
+  return rows.filter((r) => r.pid !== self && r.pid !== parent && [...names].some((n) => {
+    const i = r.args.indexOf(n);
+    return i >= 0 && !/[\w.-]/.test(r.args.charAt(i + n.length) || ' ') || (i >= 0 && r.args.charAt(i + n.length) === '/');
+  }));
+}
+
 function gitDir(repo) {
   const r = spawnSync('git', ['-C', repo, 'rev-parse', '--git-dir'], { encoding: 'utf8', timeout: 5000 });
   if (r.status !== 0) return null;
@@ -307,6 +333,15 @@ process.stdin.on('end', () => {
     }
 
     const verdict = judge(call);
+    if (verdict && /moves HEAD/i.test(verdict.was) && !marker) {
+      const busy = busyRunners(top);
+      if (busy.length) {
+        deny(`WORKTREE BUSY (${top}): ${busy.length} running process(es) read this checkout, e.g. pid ${busy[0].pid}: ` +
+          `${busy[0].args.slice(0, 120)}\n\n  ${verdict.was} — under a run that is still reading the tree.\n\nThe form that passes:\n` +
+          `  a \`git worktree add <scratchpad>/<name> <branch>\` for the other branch, or wait until the run has ended\n\n` +
+          `If the process does not read this tree after all: repeat with "# MECHANISM-OK: <why>".`, project, cmd);
+      }
+    }
     // One session, but the copy holds uncommitted work that is not ours to move (measured 2026-11-03 on the macOS
     // instance: `git switch -c` in the operator's project checkout over their uncommitted settings and profiles —
     // core rule #12 puts branch work into a scratchpad worktree always, the guard only held with a second session).
