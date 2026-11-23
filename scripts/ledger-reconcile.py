@@ -282,6 +282,8 @@ def in_pin(pin, sha, timeout):
         return False
 
 
+# The code a ledger title opens with: `- [x] **KS-110 (P1) ...`, `**FA22-03 ...`.
+TITLE_CODE = re.compile(r"^\s*- \[[ xX]\]\s+\*\*([A-Z][A-Z0-9]*-[0-9]+)\b")
 EXIT_DATE = re.compile(r"^\s*(?:[-*]\s+)?`?exit:\s*[\w-]+\s+(20\d\d-\d\d-\d\d)", re.M)
 
 
@@ -568,10 +570,21 @@ def main():
             except OSError:
                 continue
             for e in entries(text):
+                # An entry is named by its `id:` or by the code its title opens with (`**KS-110 (P1) ...**`):
+                # measured 2026-11-18 on the macOS instance, a question named "KS-110, KS-106" - both ticked since
+                # 2026-10-28 - and passed, because only lowercase slugs were looked up and only a green check counted.
+                code = TITLE_CODE.match(e["text"])
                 ident = label(e, rel)
+                if ident not in want and code and code.group(1) in want:
+                    ident = code.group(1)
                 if ident not in want or ident in res:
                     continue
                 chk = e["fields"].get("check", "")
+                # ticked behind `check: none` = done by the ledger's word; a ticked entry WITH a check is judged by it
+                # (Windows review 2026-11-18: five ticked entries with a failing check would have read as done)
+                if e["done"] and (not chk or NONE.match(chk)):
+                    res[ident] = "ticked"
+                    continue
                 res[ident] = ("none" if not chk or NONE.match(chk) else
                               "refused" if not permitted(chk, allowed) else run_check(chk, a.root, timeout, shell))
         sys.stdout.write(json.dumps(res, sort_keys=True) + "\n")
