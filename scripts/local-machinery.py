@@ -32,8 +32,11 @@ Declarations: `.claude/rules/local-machinery.json`
    "external": {"<id or prefix>": {"source": "<where it comes from>", "why": "..."}},
                  (third-party skills/plugins used as they are — not ours to port to the core)
    "alpha":   {"<id or prefix>": {"kind": "test" | "unreleased", "until": "YYYY-MM-DD", "why": "...",
-                                  "core_pr": "<PR URL or owner/repo#n>"}},
-                 (test: a real test phase, the core port waits for it, `why` names what is measured;
+                                  "core_pr": "<PR URL or owner/repo#n>",
+                                  "record": "<file the test writes to, or URL / owner/repo#n>"}},
+                 (test: a real test phase, the core port waits for it, `why` names what is measured and
+                  `record` where - a file that exists and was written within `record_days` (7), or the
+                  place its result stands; no record, a missing or a silent one = loud;
                   unreleased: a clear core feature wired before its release, `core_pr` required, the
                   date is an emergency brake; no kind, or unreleased without core_pr = loud)
    "review_days": 90, "review_batch": 3}
@@ -78,7 +81,7 @@ SCRIPT_EXT = (".sh", ".py", ".cjs", ".js", ".mjs", ".ps1")
 TEXT_EXT = SCRIPT_EXT + (".md", ".json", ".txt", ".toml", ".yaml", ".yml", ".plist", ".xml", ".ts")
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "site-packages", ".claude-state"}
 CORE_PLUGIN_PREFIXES = ("brain-core@", "brain-core-next@")  # same as plugin-scope-check.py
-LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels", "caughtup", "alphakind")
+LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels", "caughtup", "alphakind", "alpharecord")
 CLASSES = LOUD + ("duplicate", "undeclared", "review")
 # A deviation is not justified once and for all (operator order 2026-10-29: a local deviation must not
 # stay justified once and never questioned again; past exceptions need routine review). Measured the same day on the macOS
@@ -1000,6 +1003,54 @@ def alpha_kinds(decl):
     return out
 
 
+RECORD_DAYS = 7
+
+
+def alpha_records(decl, repo, home, today):
+    """A `test` alpha names where its measurement is written (`record`), and that record lives.
+    `unreleased` had its checkable half from the start (`core_pr`); `test` had none - the kind alone
+    passed. Measured 2026-11-23 on a macOS instance: 53 test alphas, 44 named no record at all, and
+    one gate ran its whole 14 days without writing the record its declaration called the measurement,
+    so the decision at the expiry date (port, extend, unwire) had no data; 30 of 81 alphas had been
+    extended at least once. `record` is a path (relative to the brain, `~` or absolute; a list for
+    several) or the place a result stands that is no file (a URL, owner/repo#n - shape only, no
+    network call at a session start). A path must exist - the declaring session creates it, empty
+    counts as armed - and must have been written within `record_days` (per alpha, else the file's
+    top-level value, else 7): a record nobody wrote for a week measures nothing or the thing it
+    waits for does not happen, and either is the question the review asks."""
+    out = []
+    try:
+        now = datetime.date.fromisoformat(today)
+    except ValueError:
+        now = datetime.date.today()
+    for key, d in (decl.get("alpha") or {}).items():
+        if not isinstance(d, dict) or str(d.get("kind") or "").strip() != "test":
+            continue
+        rec = d.get("record")
+        recs = [rec] if isinstance(rec, str) else [r for r in (rec if isinstance(rec, list) else []) if isinstance(r, str)]
+        recs = [r.strip() for r in recs if r.strip()]
+        if not recs:
+            out.append(f"{key} (test without record)")
+            continue
+        try:
+            days = int(d.get("record_days") or decl.get("record_days") or RECORD_DAYS)
+        except (TypeError, ValueError):
+            days = RECORD_DAYS
+        for r in recs:
+            if re.match(r"https?://\S+$", r) or CORE_PR.fullmatch(r):
+                continue
+            # OS-1: the joined path only opens the file; the finding prints `r`, the declared text
+            p = os.path.join(home, r[2:]) if r.startswith("~/") else r
+            p = p if os.path.isabs(p) else os.path.join(repo, p)
+            if not os.path.isfile(p):
+                out.append(f"{key} (record {r} does not exist)")
+                continue
+            age = (now - datetime.date.fromtimestamp(os.path.getmtime(p))).days
+            if age > days:
+                out.append(f"{key} (record {r} not written for {age} d)")
+    return out
+
+
 MESSAGES = {
     "edited": "!! local machinery: {n} core file(s) edited inside core/: {x} — core changes go as a PR against the core, never edited in place",
     "offmain": "!! local machinery: {n} tool source checkout(s) not on main feed this brain (MCP server or skill symlink): {x} — unreleased code in every session; switch the checkout back to main, or declare it as alpha",
@@ -1011,6 +1062,7 @@ MESSAGES = {
     "caughtup": "!! local machinery: {n} alpha(s) the running core has caught up with, still wired: {x} — unwire the copy and its wiring now (the core carries it)",
     "expired": "!! local machinery: {n} alpha(s) past their date, still wired: {x} — merge, extend with a reason, or unwire",
     "alphakind": "!! local machinery: {n} alpha declaration(s) without a valid kind: {x} — name \"kind\": \"test\" (a real test phase; the core port waits for its result) or \"unreleased\" (a clear core feature wired before its release) with \"core_pr\": the core PR (URL or owner/repo#n), opened now",
+    "alpharecord": "!! local machinery: {n} test alpha(s) whose measurement has no living record: {x} — a test names \"record\": the file it writes its measurement to (create it when the alpha is wired) or the URL / owner/repo#n where its result stands; a missing or silent record means the test measures nothing: make it write, or decide now (port, unwire) instead of at the date",
     "outside": "!! local machinery: {n} item(s) run from outside this brain and outside the core, undeclared: {x} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR",
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
     "noevidence": "!! local machinery: {n} instance declaration(s) give a reason without evidence: {x} — add \"evidence\": the instance-specific token the item relies on",
@@ -1047,6 +1099,7 @@ def main(argv):
     found["missing"] = C.missing
     found["channels"] = both_channels(C)
     found["alphakind"] = alpha_kinds(decl)
+    found["alpharecord"] = alpha_records(decl, a.repo, a.home, a.today)
     n_due, found["review"] = review_due(decl, a.today, a.review_all)
     if a.review_all:
         print(f"local machinery review: {n_due} declared deviation(s), all listed - judge each again "
@@ -1083,7 +1136,7 @@ def main(argv):
         for it in items:
             print(f"{it['class']:11} {it['carrier']:12} {it['id']}")
 
-    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "caughtup", "expired", "alphakind", "outside", "general",
+    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "caughtup", "expired", "alphakind", "alpharecord", "outside", "general",
                 "noevidence", "badevidence", "duplicate", "undeclared", "review"):
         xs = uniq(found[cls])
         if not xs:
