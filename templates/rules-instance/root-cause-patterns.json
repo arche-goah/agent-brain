@@ -12,13 +12,30 @@
     "Measure before relying on it: node core/helpers/root-cause-gate.cjs --review 40 counts corrections over",
     "this project's transcripts — zero over a working month means the patterns miss the operator's wording.",
     "_cases: the operator's real wording with the verdict the gate must reach (text = the message that opens the",
-    "turn, reply = the answer, default 'Done.'); run by core/scripts/pattern-cases.py at every self-test."
+    "turn, reply = the answer, default 'Done.'); run by core/scripts/pattern-cases.py at every self-test.",
+    "self_only_replay_patterns / wide_scope_replay_patterns: the instance's words for a replay that counts only the",
+    "incident's own session (\"this session\", a transcript id) and for a count over the history (\"in 12 sessions\"). The",
+    "built-ins are English; an instance that writes its register in another language MUST fill both lists, else the",
+    "replay-scope check stays silent there (measured 2026-11-23 on a German register: 0 of 142 replay lines matched the",
+    "English built-ins, 26 matched once the instance lists were filled)."
   ],
   "correction_patterns": [],
   "cause_patterns": [],
   "_cases": [
-    {"text": "why did you ask that again?", "expect": "block"},
-    {"text": "why did you ask that again?", "reply": "Cause: the record was a stale snapshot.", "expect": "block"},
-    {"text": "how is the show going?", "expect": "allow"}
-  ]
+    {
+      "text": "why did you ask that again?",
+      "expect": "block"
+    },
+    {
+      "text": "why did you ask that again?",
+      "reply": "Cause: the record was a stale snapshot.",
+      "expect": "block"
+    },
+    {
+      "text": "how is the show going?",
+      "expect": "allow"
+    }
+  ],
+  "self_only_replay_patterns": [],
+  "wide_scope_replay_patterns": []
 }
