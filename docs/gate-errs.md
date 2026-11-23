@@ -52,7 +52,13 @@ judged by nobody until it has one.
     than half passed by its override marker.
   - **How a pass is counted:** the next call of the same tool with the same intent carries the gate's marker, either in
     the call or as a line in the answer before it.
-  - **`--rates`** prints gate · refusals · by own marker · rate · rule path · calls carrying its marker.
+  - **Without a marker:** a gate whose refusals mostly pass in **another form** is named too ("is bypassed often").
+    Every gate is rated that way, and the incident's gate has no marker at all.
+  - **`--rates`** prints gate · refusals · by own marker · rate · rule path · calls carrying its marker · other form ·
+    never passed. An identical retry is the gate's way on, not another form.
   - **Cache:** counts are cached per transcript.
-- `core/helpers/root-cause-gate.cjs`: the classification of each anomaly in the turn (`Anomaly: … - intended | gate
-  false positive | own mistake`), and the register lookup.
+- `core/helpers/root-cause-gate.cjs` (same train, #640): the turn-time carrier of rule 2. A refusal passed by a
+  marker is the blocking signal `marker-pass`; the turn holds until its line is classified **with its backing**:
+  *intended* quotes the marker or plan line that stands in the turn, *gate false positive* writes its register entry in
+  the turn, *own mistake* opens the cause path.
+- The refusal register lookup (same train, #643): a refusal the register already holds for the same gate and tool.

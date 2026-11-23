@@ -88,6 +88,13 @@ with tempfile.TemporaryDirectory() as d:
     for k in range(25):                       # 25 refusals of a gate nobody overrides
         lines += [use(n, f"cat f{k}"), res(n, True, QUIET), use(n + 1, f"cat f{k} | head"), res(n + 1, False, "ok")]
         n += 2
+    for k in range(21):                       # 21 refusals of a markerless gate that never pass (the step dropped)
+        lines += [use(n, f"touch q{k}"), res(n, True, "PreToolUse:Bash hook error: NEVER-GATE: not now.")]
+        n += 1
+    for k in range(21):                       # 21 refusals passed by the identical retry (a step done in between)
+        lines += [use(n, f"git pull q{k}"), res(n, True, "PreToolUse:Bash hook error: SAME-GATE: read first."),
+                  use(n + 1, f"git pull q{k}"), res(n + 1, False, "ok")]
+        n += 2
     for k in range(10):                       # 10 refusals, all by marker - under the 20-refusal floor
         lines += [use(n, f"rm t{k}"), res(n, True, NOISY.replace("NOISY GATE", "SMALL GATE")),
                   use(n + 1, f"rm t{k} # NOISY-NONE: ok"), res(n + 1, False, "ok")]
@@ -114,13 +121,19 @@ with tempfile.TemporaryDirectory() as d:
     out = run2("--no-cache")
     ok("NOISY GATE errs often - 16 of 24 refusals (67 %) passed by its override marker" in out,
        "an override gate with >= 20 refusals mostly passed by its marker errs often, the answer-line form counted", out)
-    ok("QUIET-GATE" not in out, "a gate whose refusals pass in another form is not reported (control)", out)
+    ok("QUIET-GATE is bypassed often - 25 of 25 refusals (100 %) passed in another form" in out,
+       "a gate whose refusals pass in another form is reported too, with or without a marker (strand review)", out)
+    ok("NEVER-GATE" not in out and "SAME-GATE" not in out,
+       "refusals that never pass, or pass as the identical retry, are no finding", out)
     ok("SMALL GATE" not in out, "under 20 refusals is no finding (floor)", out)
     ok("RULE GATE" not in out, "a gate whose marker is its rule path never errs often, 100 % or not (data field)", out)
     out = run2("--rates", "--no-cache")
     ok("NOISY GATE | 24 | 16 | 67 % | no | NOISY-NONE 24" in out and "QUIET-GATE | 25 | 0 | 0 % | no" in out
        and "SMALL GATE | 10 | 10 | 100 % | no" in out and "RULE GATE | 22 | 22 | 100 % | yes | WAS-READ 22" in out,
        "--rates: gate · refusals · by own marker · rate · rule path · calls carrying it (a pre-emptive marker counted)", out)
+    ok("QUIET-GATE | 25 | 0 | 0 % | no | QUIET-OK 0 | 25 | 0" in out and "NEVER-GATE | 21 | 0 | 0 % | - | - | 0 | 21" in out
+       and "SAME-GATE | 21 | 0 | 0 % | - | - | 0 | 0" in out,
+       "--rates: other form and never passed per gate, a markerless gate rated too", out)
     ok("NOISY-NONE 24 (shared with SMALL GATE)" in out, "a marker two gates share says so in the column (Windows review of #646)", out)
     ok("command hook 29 | 1 |" in out and "a hook" not in out, "a refusal without a label is named by its hook number, not 'a hook' (Windows review)", out)
     # NOISY-NONE: 13 in calls + 10 SMALL + 1 pre-emptive = 24 calls carry it; the 3 answer lines are no calls

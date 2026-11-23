@@ -7,7 +7,7 @@
    passed. The operator (translated): "detecting faults on your own ... is the goal". The form of a malfunction lives in
    ONE file, gate-malfunction.json at the core root (also read by helpers/root-cause-gate.cjs).
 2. ERRS OFTEN - a gate whose decision refusals are mostly passed by its own OVERRIDE marker (operator 2026-11-23, rule
-   "a gate that errs is a finding"; measured that day over 605 transcripts: CONDITIONAL-ORDER-GATE 218 of 373 refusals
+   "a gate that errs is a finding"; measured that day over 605 transcripts: CONDITIONAL-ORDER-GATE 224 of 375 refusals
    passed by `# CONDITION-NONE`). Which marker belongs to which gate, and whether passing by it is the gate's own rule
    path (a step done: never "errs") or an override, is data: gate-markers.json at the core root. A pass counts when the
    next call of the same tool with the same intent (the same path; Bash: half the command's words shared) carries the
@@ -37,7 +37,7 @@ LABEL = re.compile(r'^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^
                    r'(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?')
 MARKER_USE = re.compile(r"#\s*([A-Z][A-Z]+(?:-[A-Z]+)+)\b")
 WINDOW = 8
-CACHE_V = "2"
+CACHE_V = "3"
 
 
 def data():
@@ -135,12 +135,12 @@ def scan_file(f: Path, rx, gmap):
         if not err or not refusal.search(t) or malf.search(t):
             continue
         lab = label_of(t, gate)
-        r = out["rates"].setdefault(lab, [0, 0])
+        # [refusals, passed by its own marker, passed in another form, never passed within the window] - the last two
+        # rate a gate without a marker too (strand review 2026-11-23: AUTONOMOUS-GATE, the incident's gate, has none)
+        r = out["rates"].setdefault(lab, [0, 0, 0, 0])
         r[0] += 1
         own = (gmap.get(lab) or {}).get("markers") or []
-        if not own:
-            continue
-        said, key = "", intent(inp)
+        said, key, passed = "", intent(inp), False
         for cid2, name2, inp2 in calls[i + 1:i + 1 + WINDOW]:
             if name2 == "_text":
                 said += "\n" + inp2
@@ -148,10 +148,15 @@ def scan_file(f: Path, rx, gmap):
             # the pass of the SAME intent decides (measured: the next same-tool call was often another command)
             if name2 != name or res.get(cid2, (True, ""))[0] or not same_intent(key, intent(inp2)):
                 continue
+            passed = True
             if any(re.search(r"#\s*" + re.escape(n) + r"\b", inp2)
                    or re.search(r"(?m)^[ \t>*_`-]*" + re.escape(n) + r":", said) for n in own):
                 r[1] += 1
+            elif inp2 != inp:          # an identical retry is the gate's way on (a step done), not another form
+                r[2] += 1
             break
+        if not passed:
+            r[3] += 1
     return out
 
 
@@ -208,10 +213,10 @@ def main(argv):
             e = malf.setdefault(nm, {"n": 0, "sessions": set(), "what": what})
             e["n"] += n
             e["sessions"].add(f.stem)
-        for lab, (n, m) in got["rates"].items():
-            r = rates.setdefault(lab, [0, 0])
-            r[0] += n
-            r[1] += m
+        for lab, vals in got["rates"].items():
+            r = rates.setdefault(lab, [0, 0, 0, 0])
+            for idx, v in enumerate(vals):
+                r[idx] += v
         for mk, n in got["carry"].items():
             carry[mk] = carry.get(mk, 0) + n
     if "--no-cache" not in argv:
@@ -226,21 +231,24 @@ def main(argv):
             print(f"gate-health: {nm} {e['what']} {e['n']}x in {len(e['sessions'])} session(s) (last {days:g} days) - "
                   "a malfunction is no decision: measure why (its run time, what it read), fix it at the gate")
     if "--rates" in argv:
-        print("gate | refusals | by own marker | rate | rule path | calls carrying its marker")
-        for lab, (n, m) in sorted(rates.items(), key=lambda kv: -kv[1][0]):
+        print("gate | refusals | by own marker | rate | rule path | calls carrying its marker | other form | never passed")
+        for lab, (n, m, o, nv) in sorted(rates.items(), key=lambda kv: -kv[1][0]):
             g = gmap.get(lab) or {}
             rp = "-" if "rule_path" not in g else ("yes" if g["rule_path"] else "no")
             # a marker two gates share counts its calls for both - said, so the column is not read as this gate's alone
             shared = lambda mk: [o for o, og in gmap.items() if o != lab and mk in (og.get("markers") or [])]
             ca = " + ".join(f"{mk} {carry.get(mk, 0)}" + (f" (shared with {', '.join(shared(mk))})" if shared(mk) else "")
                             for mk in g.get("markers") or []) or "-"
-            print(f"{lab} | {n} | {m} | {round(100 * m / n)} % | {rp} | {ca}")
+            print(f"{lab} | {n} | {m} | {round(100 * m / n)} % | {rp} | {ca} | {o} | {nv}")
         return 0
-    for lab, (n, m) in sorted(rates.items(), key=lambda kv: -kv[1][0]):
+    for lab, (n, m, o, _nv) in sorted(rates.items(), key=lambda kv: -kv[1][0]):
         g = gmap.get(lab) or {}
         if g.get("rule_path") is False and n >= least_n and m * 2 > n:
             print(f"gate-health: {lab} errs often - {m} of {n} refusals ({round(100 * m / n)} %) passed by its override "
                   f"marker (last {days:g} days) - a gate that errs is a finding: find what it misreads, fix the trigger")
+        elif n >= least_n and o * 2 > n:
+            print(f"gate-health: {lab} is bypassed often - {o} of {n} refusals ({round(100 * o / n)} %) passed in another "
+                  f"form (last {days:g} days) - a gate that errs, or a way around it: either is a finding")
     return 0
 
 
