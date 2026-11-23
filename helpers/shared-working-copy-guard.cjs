@@ -135,10 +135,35 @@ function busyRunners(top) {
   for (const n of [...names]) { if (n.startsWith('/private/')) names.add(n.slice('/private'.length)); else names.add('/private' + n); }
   const self = String(process.pid);
   const parent = String(process.ppid);
-  return rows.filter((r) => r.pid !== self && r.pid !== parent && [...names].some((n) => {
+  // Only a run that READS the tree counts, named by its program: a lint, a test suite, an assembly. A standing watcher
+  // (collab-watch, ci-watch, repo-activity-watch, `tail -f` on a log, `tee`) names the checkout path too and runs all
+  // session long - counted, it held every pull of the brain (independent review 2026-11-23: 32 processes named the brain
+  // checkout). Instance data can add programs: SHARED_COPY_TREE_READERS (one regex per line in the env, or the rule file).
+  const readers = treeReaders();
+  return rows.filter((r) => r.pid !== self && r.pid !== parent && readers.test(r.args) && [...names].some((n) => {
     const i = r.args.indexOf(n);
     return i >= 0 && !/[\w.-]/.test(r.args.charAt(i + n.length) || ' ') || (i >= 0 && r.args.charAt(i + n.length) === '/');
   }));
+}
+
+// Programs that read a whole tree while they run. Built in: the core's lint and test runners and the train assembly;
+// an instance adds its own through `tree_readers` in .claude/rules/shared-copy.json (a list of regexes).
+const TREE_READERS_BUILTIN = [
+  String.raw`(?:^|[\s/])(?:core-push-lint|ci-lint-local|core-merge-lint|merge-train|train|release-preflight)\.sh\b`,
+  String.raw`(?:^|[\s/])test-[\w.-]+\.(?:sh|cjs|js)\b`, String.raw`(?:^|[\s/])[\w.-]+-test\.py\b`,
+  String.raw`(?:^|[\s/])(?:invariant-check|train)\.py\b`, String.raw`\bpytest\b`, String.raw`\bnode\s+--test\b`,
+];
+function treeReaders() {
+  const extra = [];
+  try {
+    const p = path.join(process.env.CLAUDE_PROJECT_DIR || '.', '.claude', 'rules', 'shared-copy.json');
+    const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+    for (const s of d.tree_readers || []) { try { new RegExp(s); extra.push(s); } catch (_) { /* skip a broken regex */ } }
+  } catch (_) { /* no instance file - built-ins only */ }
+  for (const s of String(process.env.SHARED_COPY_TREE_READERS || '').split('\n').filter(Boolean)) {
+    try { new RegExp(s); extra.push(s); } catch (_) { /* skip */ }
+  }
+  return new RegExp(TREE_READERS_BUILTIN.concat(extra).join('|'));
 }
 
 function gitDir(repo) {

@@ -1,0 +1,4 @@
+{
+  "_comment": "Instance additions to the busy-tree hold of helpers/shared-working-copy-guard.cjs: programs that read a whole working tree while they run (one regex each). The built-ins cover the core lint and test runners, the train assembly and the release preflight.",
+  "tree_readers": []
+}
