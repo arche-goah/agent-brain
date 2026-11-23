@@ -20,7 +20,7 @@
  * watcher". A user-typed skill (`/name`) carries the same command frames, but its skill text
  * follows as a record of its own — that one is plain text and stays the boundary.
  */
-const FRAMES = /<system-reminder>[\s\S]*?<\/system-reminder>|<task-notification>[\s\S]*?<\/task-notification>/g;
+const FRAMES = /<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder\b[^>]*>|<task-notification>[\s\S]*?<\/task-notification>/g;
 const LOCAL = /<local-command-caveat>[\s\S]*?<\/local-command-caveat>|<local-command-std(?:out|err)>[\s\S]*?<\/local-command-std(?:out|err)>|<command-(?:name|message|args)>[\s\S]*?<\/command-(?:name|message|args)>/g;
 const LOCAL_MARK = /<local-command-(?:caveat|stdout|stderr)>|<command-name>/;
 
