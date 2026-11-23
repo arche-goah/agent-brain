@@ -74,6 +74,39 @@ check "the same, classified as an own mistake with a cause line" "$T/an2.jsonl" 
 { user "check the build"; bashq c3; okres c3 true 'Exit code 1
 3 tests failed'; asst "Three tests fail; fixing them."; } > "$T/an3.jsonl"
 check "a command that fails on purpose-shaped output (a failing test run) is no anomaly (control)" "$T/an3.jsonl" allow "$CWD"
+# --- 2026-11-23: the register lookup per refusal - a gate refusing a tool the carrier register already holds an EARLIER
+# entry for is a REPEAT (the third "question tool refused on the operator's request" was handled as a first case)
+regdir() { mkdir -p "$1/docs/maintenance"; printf '%s\n' "${@:2}" > "$1/docs/maintenance/carrier-register.md"; }
+RG="$T/reg"; regdir "$RG" '# Carrier register' '' '## 2026-11-05 — a request for questions read as autonomous' 'id: asks-read-as-mode-on' \
+  'incident: the operator asked for the blocking questions; the first AskUserQuestion call was refused by the' '  autonomous-gate' \
+  'cause: the classifier record read mode_on' 'carrier: pull request fix/decision-count (open)' 'replay: 3 hits'
+{ user "fix the readme"; aq r1; refuse r1 "AUTONOMOUS-GATE: the operator ordered this run autonomous"; asst "Filed the question."; } > "$T/rr1.jsonl"
+check "a refusal the register holds an earlier entry for (same gate, same tool), not classified" "$T/rr1.jsonl" block "$RG"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr1.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'a REPEAT'*'asks-read-as-mode-on'*'effective: not stated'*) ok "the block names the earlier entry, its carrier and that its effect is not stated";; *) bad "repeat block without the entry: '${out:0:300}'";; esac
+check "the same refusal with no register (control)" "$T/rr1.jsonl" allow "$CWD"
+{ user "fix the readme"; aq r2; refuse r2 "AUTONOMOUS-GATE: the operator ordered this run autonomous"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, the run is autonomous and the operator asked nothing."; } > "$T/rr2.jsonl"
+check "the repeat classified as intended" "$T/rr2.jsonl" allow "$RG"
+RS="$T/reg-same-day"; regdir "$RS" '## 2026-11-23 — the question tool refused' 'id: today' 'incident: AUTONOMOUS-GATE refused AskUserQuestion' 'cause: x'
+check "an entry of the refusal's own day is the present case, not an earlier one" "$T/rr1.jsonl" allow "$RS"
+RO="$T/reg-other-tool"; regdir "$RO" '## 2026-11-05 — an edit held' 'id: edit-held' 'incident: AUTONOMOUS-GATE held the Edit of the settings file' 'cause: x'
+check "an earlier entry for the same gate but another tool is no repeat" "$T/rr1.jsonl" allow "$RO"
+RF="$T/reg-field"; regdir "$RF" '## 2026-11-05 — the questions did not come' 'id: by-field' 'refusal: AUTONOMOUS-GATE AskUserQuestion' 'incident: the operator asked and got prose' 'cause: x'
+check "the refusal: field matches where the prose names neither gate nor tool" "$T/rr1.jsonl" block "$RF"
+RFO="$T/reg-field-other"; regdir "$RFO" '## 2026-11-05 — an edit held' 'id: by-field-other' 'refusal: AUTONOMOUS-GATE Edit' 'incident: AUTONOMOUS-GATE refused AskUserQuestion, said the prose' 'cause: x'
+check "a refusal: field decides alone - its entry's prose is not searched" "$T/rr1.jsonl" allow "$RFO"
+RA="$T/reg-alias"; regdir "$RA" '## 2026-11-05 — the questions did not come' 'id: by-alias' 'incident: the autonomous gate refused the question tool' 'cause: x'
+check "an entry in other words for the tool, no instance alias (control)" "$T/rr1.jsonl" allow "$RA"
+mkdir -p "$RA/.claude/rules"; printf '%s\n' '{"refusal_aliases":{"AskUserQuestion":["question tool"]}}' > "$RA/.claude/rules/root-cause-patterns.json"
+check "the same entry with the instance's word for the tool as refusal_aliases" "$T/rr1.jsonl" block "$RA"
+XP=',"session_id":"s-one"' check "a repeat is held once per session for a gate and tool ..." "$T/rr1.jsonl" block "$RG"
+XP=',"session_id":"s-one"' check "... the second time it is only recorded" "$T/rr1.jsonl" allow "$RG"
+n="$(grep -c '"register-repeat"' "$RG/.claude-state/turn-anomalies.jsonl" 2>/dev/null || echo 0)"
+[ "$n" -ge 3 ] && ok "every repeat is recorded ($n lines)" || bad "repeats recorded: $n"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/ra1.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'refused the very step'*'A REPEAT'*'asks-read-as-mode-on'*) ok "the refused asked-for step names the earlier register entry too";; *) bad "refused ask without the register hit: '${out:0:300}'";; esac
+out="$(CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" --register-repeats "$(native "$T")" 2>&1)"
+case "$out" in *'AUTONOMOUS-GATE AskUserQuestion:'*'first entry 2026-11-05 asks-read-as-mode-on'*) ok "--register-repeats replays the lookup over a folder";; *) bad "replay: '${out:0:300}'";; esac
 
 # --- the class: a correction, a fix on the spot, no cause named
 { user "check the PRs"; asst "Done."; user "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/t1.jsonl"
