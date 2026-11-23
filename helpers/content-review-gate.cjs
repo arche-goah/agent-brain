@@ -397,6 +397,18 @@ function checkReviewPost(cmd, ps, cwd, getModel) {
  * as absent, and nothing said so until the train merge would block - 30 of 33 PRs of that train had no counted review.
  */
 function checkReviewComment(cmd, text) {
+  // CHECK 3c - a review that counts findings writes each in the form the merge gate reads (Windows review of #591,
+  // 2026-11-18: four first-round reviews that day said "One finding, measured" / "One finding, read from the code" and
+  // would not have held a merge - none carried `**Finding (builder ...)`).
+  const { FINDING_FORM_RX } = require('./merge-request-gate.cjs');
+  const isReview = /\bcontent review\b/i.test(text) || /^\s*Fit:/m.test(text);
+  const counts = /\b(?:one|two|three|four|five|\d+)\s+(?:non-blocking\s+|blocking\s+)?findings?\b/i.test(text);
+  if (isReview && counts && !FINDING_FORM_RX.test(text)) {
+    return block('this review counts findings but writes none in the form the merge gate reads. Write each one as '
+      + '`**Finding (builder: <who builds the fix>) - <what>**` (add `non-blocking` inside the parentheses when it does '
+      + 'not hold the merge), at the head it was measured on.\nWhy: 2026-11-18 - four reviews stated a finding in prose, '
+      + 'and merge-request-gate would have let each PR through.');
+  }
   const { handReview } = require('./os-review.cjs');
   const reviewer = ['macOS', 'Windows', 'Linux'].map((os) => handReview(text, os)).find(Boolean);
   if (!reviewer) return 0;

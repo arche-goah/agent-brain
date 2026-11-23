@@ -187,6 +187,16 @@ probe "approve with a prose Model line naming opus" "gh pr review 5 -R o/r --app
 transcript claude-sonnet-5-5
 probe "a prose Model line claiming opus on a sonnet session" "gh pr comment 5 -R o/r --body-file $N/rev-prose.md" block
 
+# CHECK 3c - a review that counts findings writes them in the merge gate's form (Windows review of #591, 2026-11-18)
+printf 'Content review at abc1234 from the Windows workstation instance. One finding, read from the code.\nFit: x\n' > "$N/rev-prose-finding.md"
+probe "a review that says 'One finding' in prose only" "gh pr comment 5 -R o/r --body-file $N/rev-prose-finding.md" block
+printf 'Content review at abc1234. One finding.\n**Finding (builder: the author side) - x misses y**\n' > "$N/rev-form-finding.md"
+probe "the same with the structured finding line" "gh pr comment 5 -R o/r --body-file $N/rev-form-finding.md" allow
+printf 'Content review at abc1234. No finding.\n' > "$N/rev-no-finding.md"
+probe "a review with no finding" "gh pr comment 5 -R o/r --body-file $N/rev-no-finding.md" allow
+printf 'Finding answered in abc1234: fixed, new case.\n' > "$N/rev-answer.md"
+probe "the author's answer to a finding is no review" "gh pr comment 5 -R o/r --body-file $N/rev-answer.md" allow
+
 # CHECK 3b - an OS review posted as a comment carries the counted content lines (agent-brain #473, 2026-11-12)
 transcript claude-opus-5-5
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
