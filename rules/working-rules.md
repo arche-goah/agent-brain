@@ -184,6 +184,11 @@ decisions 2026-10-22 and 2026-10-27, both modes): it is reversible, on own terra
 no barrier, and the refusal's NAMED ground (guard id, classifier label, hook name) demonstrably
 does not apply to it; an unreadable ground counts as a refusal of the EFFECT, so no second path.
 Carried by the core's `mechanism-rules.json`.
+**A gate that errs is a finding** (2026-11-23): a refusal decides the step, never whether the
+gate was right - a refusal passed by its override marker is classified in the same turn
+(intended · gate false positive · own mistake), and a false positive gets its cause and fix
+like any mishap. The session start names a gate mostly passed by its override marker
+(`core/scripts/gate-health.py`, data `gate-markers.json`); full text `core/docs/gate-errs.md`.
 
 **THE REQUIRED OUTCOME is binary:** find the defined path and take it — or "there is no
 defined path" → it gets DISCUSSED, raised BY THE AGENT BEFORE acting, through the fitting

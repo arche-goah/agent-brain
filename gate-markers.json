@@ -1,0 +1,15 @@
+{
+  "_doc": "Which marker belongs to which gate, and whether passing by it is the gate's own rule path (a step done, a fact checked: rule_path true) or an override of the gate's judgement (rule_path false). Read by scripts/gate-health.py: only an override gate is reported as 'errs often'. Keyed by the label the refusal starts with. Operator 2026-11-23 (rule: a gate that errs is a finding); a mapping read from source text miscounted BETA-MERGE and PR-CLASS-OK (measured that day over 605 transcripts).",
+  "gates": {
+    "MECHANISM CHECK": { "markers": ["MECHANISM-OK"], "rule_path": false, "why": "'Only if that path does not fit: # MECHANISM-OK: <why>' - an override of the documented path" },
+    "SHARED WORKING COPY": { "markers": ["MECHANISM-OK"], "rule_path": false, "why": "the deviation marker of shared-working-copy-guard" },
+    "CONDITIONAL-ORDER-GATE": { "markers": ["CONDITION-NONE"], "rule_path": false, "why": "'# CONDITION-NONE: ...' declares that the condition the gate read does not apply - its trigger was wrong" },
+    "PR-OVERLAP": { "markers": ["OVERLAP-OK"], "rule_path": false, "why": "'# OVERLAP-OK: <why>' - the overlap the gate warns about is declared intended" },
+    "content-review-gate": { "markers": ["CONTENT-REVIEW-OK"], "rule_path": false, "why": "'# CONTENT-REVIEW-OK: <why>' - an override" },
+    "PRS-FIRST": { "markers": ["PRS-READ"], "rule_path": true, "why": "'# PRS-READ: <which one is closest>' records the reading the gate asks for" },
+    "merge-request-gate": { "markers": ["BETA-MERGE", "REQUEST-ANSWERED"], "rule_path": true, "why": "both record a checked fact: the system checked, where the request was answered" },
+    "release-freeze-gate": { "markers": ["SCOPE-OK"], "rule_path": true, "why": "'# SCOPE-OK: \"<the operator's words>\" <date>' quotes the operator" },
+    "review-claim-gate": { "markers": ["DIFF-READ"], "rule_path": true, "why": "'# DIFF-READ: <where it was read>' records the reading" },
+    "START-REPORT-GATE": { "markers": ["START-REPORT-OK"], "rule_path": true, "why": "'# START-REPORT-OK: <quoted order>' quotes the operator's order" }
+  }
+}
