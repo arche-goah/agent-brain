@@ -158,6 +158,11 @@
       "pattern": "(?:^|[\\n;&|(])\\s*(?:bash\\s+)?\\S*core-push-lint\\.sh\\s+(?!--fast)",
       "was": "a full core push lint (lint jobs plus every fixture suite, ~17 min, one run per machine) for a single branch instead of once at a merge train's head - measured 2026-11-11 on the macOS instance: ten PRs linted in full one by one, a queue of ~2 h, another machine waiting on it; ported 2026-11-17 with core-push-lint.sh",
       "instead": "A branch push: `bash core/scripts/core-push-lint.sh --fast <worktree>` (seconds, stamp `<sha>.fast.ok`, which the push gate accepts). A fix to a train member goes into the train head (`merge-train.sh`): one lint, one CI run, one hand check per OS at the head. A full run at a train head only: the same command with `# MECHANISM-OK: train head <name>`."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)|-c\\s+\\S+|--[\\w-]+(?:=\\S+)?))*\\s+submodule\\s+update\\b[^\\n|;&#]*--remote",
+      "was": "`git submodule update --remote` on a brain's core/ - it moves the submodule to the remote branch head (main), not to the released pin, and after a core repo move it resolves the OLD repo's main. The template CLAUDE.md said so as prose only; ported 2026-11-23 from the Windows instance's rule data (wired there since 2026-09-13). The command position is anchored, so the phrase quoted in a message is no hit",
+      "instead": "Core update: `bash core/scripts/brain-update.sh` (follows the marketplace pin on every layer: plugin cache, submodule remote, .gitmodules, tag). `git submodule update --init` without --remote stays allowed. A submodule that is not the core and is meant to track a branch: the same command with `# MECHANISM-OK: <submodule> tracks <branch> on purpose`."
     }
   ]
 }
