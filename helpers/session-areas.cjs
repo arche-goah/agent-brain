@@ -122,14 +122,19 @@ function areasFromCall(input) {
   // Every `git [-C <dir>] … commit … [-- <paths>]` segment, read as the shell reads it (quotes, comments)
   // with published-text's word split; a path in the shell's form is made native first (OS-19: Git Bash
   // `/c/...` resolved by node on Windows to `C:\c\...`, measured 2026-11-11 on the Windows instance).
+  // The target directory comes from the shared reader (git-target.cjs: `cd <dir> &&`, `env -C`, every `-C`, `~`,
+  // drive form); the local reading below stays for a line the shell parser cannot read to its end.
+  const shared = (require('./git-target.cjs').gitCalls(ti.command, cwd, ps) || []).filter((g) => g.sub === 'commit');
+  let k = 0;
   for (const words of commitCalls(ti.command, ps)) {
     const ci = words.indexOf('commit');
+    const sh = shared[k++];
     const c = words.slice(0, ci).indexOf('-C');   // `git commit -C <sha>` after the verb is a message source
     // A leading `~` is the home folder (measured 2026-11-20: `git -C ~/Projects/<repo> commit -- scripts/x.py` from
     // the brain resolved to `<brain>/~/...`, no folder, and the file landed in `<brain>/scripts` - a false OVERLAP).
     let dir = c >= 0 ? words[c + 1] : '.';
     if (dir === '~' || /^~[\\/]/.test(dir)) dir = path.join(require('os').homedir(), dir.slice(1));
-    const base = path.resolve(cwd, nativePath(dir));
+    const base = sh ? sh.dir : path.resolve(cwd, nativePath(dir));
     const dd = words.indexOf('--', ci);
     const specs = dd >= 0 ? words.slice(dd + 1).filter((s) => !/^[|>]/.test(s)) : [];
     if (!specs.length) {
@@ -208,14 +213,15 @@ function talkedTo(transcript) {
   return out;
 }
 
-/** Did this session message peer `p`? By its ListAgents name, or by its socket address `uds:/…/<pid>.sock` -
- *  a reply goes to the sender's address (measured 2026-11-09: a peer answered that way and was still held). */
+/** Did this session message peer `p`? By its ListAgents name, or by its reply address - a reply goes to the
+ *  sender's address (measured 2026-11-09: a peer answered that way and was still held): the registry's
+ *  `messagingSocketPath`, else the macOS form `uds:/…/<pid>.sock`. */
 function talkedWith(talked, p) {
   if (!talked) return false;
   if (talked.has(p.name)) return true;
-  // The harness registry names each session's reply address (`messagingSocketPath`); on Windows it is a named pipe
-  // `\\.\pipe\LOCAL\cc-msg-<hash>` without the pid (measured 2026-11-23, Windows instance), so the pid form below
-  // never matched a reply there. Compared exactly, slashes normalised; the pid form stays for a registry without it.
+  // The registry's own reply address first, matched exactly (measured 2026-11-23 on the Windows instance: there it is
+  // a named pipe `\\.\pipe\LOCAL\cc-msg-<hash>`, not `<pid>.sock`); the pid form only where the registry names none.
+  // Slashes normalised (from the Windows review, agent-brain#631): the same pipe can reach us in either slash form.
   const flat = (s) => String(s).replace(/^uds:/, '').replace(/\\/g, '/');
   if (p.sock) for (const t of talked) if (flat(t) === flat(p.sock)) return true;
   for (const t of talked) if (p.pid && new RegExp(`(^|/)${Number(p.pid)}\\.sock$`).test(t)) return true;
@@ -317,20 +323,34 @@ function loadOwn(root, id) {
 
 /** Run fn while holding the session's record lock: read, compare and write of one record are one step.
  *  Measured 2026-11-23: two PostToolUse calls of one session (parallel tool calls) both read the record
- *  before either wrote it, and both told the same overlap (4 of 8 rounds). A stale lock (a killed hook) is
- *  taken over after LOCK_STALE_MS; without the lock the hook still runs (fails open, as every hook here). */
-const LOCK_STALE_MS = 2000;
+ *  before either wrote it, and both told the same overlap (4 of 8 rounds). The lock names its holder (pid).
+ *  A lock is taken over only when that holder is dead (a killed hook), or - holder unknown or unreadable - when it
+ *  is older than LOCK_STALE_MS, far above a hook's run time (review on the Windows instance, 2026-11-23: a 2 s age
+ *  alone could take the lock from a live holder that runs longer). Without the lock the hook still runs after the
+ *  wait (fails open, as every hook here). */
+const LOCK_STALE_MS = 30000;
+function holderGone(lock) {
+  let owner = null;
+  try { owner = JSON.parse(fs.readFileSync(path.join(lock, 'owner'), 'utf8')); } catch (e) { owner = null; }
+  if (owner && owner.pid) {
+    try { process.kill(Number(owner.pid), 0); return false; } catch (e) { return e.code !== 'EPERM'; }
+  }
+  try { return Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS; } catch (e) { return false; }
+}
 function withLock(root, id, fn) {
   const lock = path.join(stateDir(root), `${id}.lock`);
   let held = false;
   try { fs.mkdirSync(stateDir(root), { recursive: true }); } catch (e) { /* fail open */ }
   for (let i = 0; i < 100 && !held; i++) {
-    try { fs.mkdirSync(lock); held = true; } catch (e) {
-      try { if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) fs.rmdirSync(lock); } catch (e2) { /* gone */ }
+    try {
+      fs.mkdirSync(lock); held = true;
+      try { fs.writeFileSync(path.join(lock, 'owner'), JSON.stringify({ pid: process.pid })); } catch (e) { /* age decides */ }
+    } catch (e) {
+      try { if (holderGone(lock)) fs.rmSync(lock, { recursive: true, force: true }); } catch (e2) { /* gone */ }
       if (!held) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
     }
   }
-  try { return fn(); } finally { if (held) try { fs.rmdirSync(lock); } catch (e) { /* gone */ } }
+  try { return fn(); } finally { if (held) try { fs.rmSync(lock, { recursive: true, force: true }); } catch (e) { /* gone */ } }
 }
 
 /** PostToolUse: record the areas, tell the session about a NEW overlap once. */
@@ -436,10 +456,10 @@ if (require.main === module) {
       try { const input = JSON.parse(raw); out = argv[0] === 'record' ? record(input, now) : prompt(input, now); } catch (e) { out = null; }
       if (out && argv[0] === 'record') process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: out } }) + '\n');
       else if (out) process.stdout.write(out + '\n');
-      process.exit(0);
+      process.exitCode = 0;   // no forced exit: it hung at Node shutdown after a transcript read (2026-11-23)
     });
   } else {
-    process.exit(cli(argv, now));
+    process.exitCode = cli(argv, now);
   }
 }
 

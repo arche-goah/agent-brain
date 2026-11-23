@@ -312,8 +312,8 @@ function checkCommit(cmd, ps, cwd, getModel) {
   const hits = invocations(cmd, ps, 'git', null, null);
   const commits = hits === null ? /\bgit\b[^\n;&|]*\scommit\b/.test(cmd) : hits.some((w) => sub(w) === 'commit');
   if (!commits) return 0;
-  const dir = (/\bgit\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd) || [])[1];
-  const repo = dir ? path.resolve(cwd, nativePath(dir.replace(/^["']|["']$/g, ''))) : cwd;   // OS-19
+  // the shared reader of the git target (`-C` quoted or not, `~`, `cd <dir> &&`, Git Bash drive form)
+  const repo = require('./git-target.cjs').gitTarget(cmd, cwd, ps, ['commit']) || cwd;
   let root;
   try { root = execFileSync('git', ['-C', repo, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
   catch (e) { return 0; }

@@ -1179,8 +1179,9 @@ path on the current drive's root and fails; the hook swallows the read error and
 without the file — on macOS and Linux the same path is the native one, so the defect is invisible there.
 pattern:   publishedText\(|nativePath\(
 paths:     --include=*.cjs helpers
-known:     helpers/content-review-gate.cjs=3
-known:     helpers/instance-key-gate.cjs=3
+known:     helpers/content-review-gate.cjs=2
+known:     helpers/git-target.cjs=1
+known:     helpers/instance-key-gate.cjs=2
 known:     helpers/public-text-guard.cjs=3
 known:     helpers/pr-repo.cjs=1
 known:     helpers/published-text.cjs=5

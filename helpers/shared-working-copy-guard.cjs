@@ -134,6 +134,10 @@ const { segments } = require('./shell-segments.cjs');
 // Split a shell line into the git invocations at command position: start of line or after
 // ; & | ( — with an optional sudo/env/VAR= prefix. Returns [{repo, sub, args[]}].
 function gitCalls(cmd, project) {
+  // The shared reader of the git target (`cd <dir> &&`, `env -C`, quoted `-C`, `~`, Git Bash drive form); the local
+  // split below stays only for a line the shell parser cannot read to its end (a heredoc, an open quote).
+  const shared = require('./git-target.cjs').gitCalls(cmd, project);
+  if (shared) return shared.map((c) => ({ repo: c.dir, sub: c.sub, args: c.args }));
   const calls = [];
   for (const seg of segments(cmd)) {
     const m = /^\s*(?:(?:sudo|env)\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:\S*[\\/])?git\s+(.*)$/.exec(seg);

@@ -110,6 +110,7 @@ out=$(ask s-b "  note first, then [Subagent hand-back] about the other session")
 out=$(ask s-b "the report says parallel sessions overlap — coordinate with the other session"); has "control: the operator naming parallel sessions still gets the map" "$out" "<session-map>"
 mkdir -p "$T/mut/helpers"; cp "$_D/../session-areas.json" "$T/mut/"   # the mutant reads the core's word list beside it
 cp "$_D/../helpers/published-text.cjs" "$T/mut/helpers/"; cp "$_D/../helpers/published-text.cjs" "$T/"   # and its parser
+cp "$_D/../helpers/git-target.cjs" "$T/mut/helpers/"; cp "$_D/../helpers/git-target.cjs" "$T/"   # and the shared git-target reader
 sed -e 's/ || PEER_TEXT\.test(text)//' -e 's/|<agent-message|/|/' "$_D/../helpers/session-areas.cjs" > "$T/mut/helpers/session-areas.cjs"
 out=$(node -e 'process.stdout.write(JSON.stringify({session_id:"s-b",cwd:process.argv[1],prompt:process.argv[2]}))' "$B" "$HB" | node "$(native "$T/mut/helpers/session-areas.cjs")" prompt 2>&1)
 has "control: without the peer filter the hand-back fires the map (the finding)" "$out" "<session-map>"
@@ -164,6 +165,21 @@ mkdir -p "$T/brain3/fc"; : > "$T/brain3/fc/mine.md"
 CLAUDE_PROJECT_DIR="$B3" SESSION_AREAS_ALIVE="301,302,303,304,305,306" node "$G" claim "$B3/fc/mine.md" --note "one file" --session t-4 >/dev/null
 out=$(ed3 t-5 "$B3/fc/other.md"); lacks "a claim on a file does not meet another file of its folder" "$out" "claimed by brain-t4"
 out=$(ed3 t-5 "$B3/fc/mine.md"); has "a claim on a file meets that file written" "$out" "claimed by brain-t4 (one file)"
+# Windows review 2026-11-23: an old lock of a LIVE holder (a hook running long) is not taken over; a dead holder's is.
+L6="$T/brain3/.claude-state/session-areas/t-6.lock"
+node -e 'require("fs").writeFileSync(process.argv[1], String(process.pid)); setTimeout(() => {}, 30000)' "$(native "$T/holder.pid")" &
+HOLDER=$!; for i in 1 2 3 4 5 6 7 8 9 10; do [ -s "$T/holder.pid" ] && break; sleep 0.2; done
+mkdir -p "$L6"; printf '{"pid":%s}' "$(cat "$T/holder.pid")" > "$L6/owner"; touch -t 202001010000 "$L6"
+ed3 t-6 "$B3/fc/x.md" >/dev/null
+[ -d "$L6" ] && ok "an old lock of a live holder is not taken over" || bad "the live holder's lock was taken over"
+kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
+ed3 t-6 "$B3/fc/y.md" >/dev/null
+[ ! -d "$L6" ] && ok "a dead holder's lock is taken over" || bad "the dead holder's lock stayed"
+# a lock 5 s old whose holder is unknown (no owner yet) is no stale lock: 2 s took it, a hook can run that long
+rm -rf "$L6"; mkdir -p "$L6"; node -e 'const t=Date.now()/1000-5; require("fs").utimesSync(process.argv[1], t, t)' "$(native "$L6")"
+ed3 t-6 "$B3/fc/z.md" >/dev/null
+[ -d "$L6" ] && ok "a 5 s old lock is not stale" || bad "a 5 s old lock was taken over"
+rm -rf "$L6"
 
 SESSION_AREAS_ALIVE="102" node "$G" show --session s-b >/dev/null
 [ ! -f "$T/brain/.claude-state/session-areas/s-a.json" ] && ok "a dead peer's record is deleted" || bad "dead record kept"
