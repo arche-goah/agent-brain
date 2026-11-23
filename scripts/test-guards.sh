@@ -497,6 +497,10 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: pin read by cat (control)" Bash command "cat m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by sed -n (control)" Bash command "sed -n 1,40p m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by awk (control)" Bash command "awk '/name/' m/.claude-plugin/marketplace.json" allow
+  # Windows review of #533 (2026-11-17): GNU awk edits in place - awk is a reader only without `-i inplace`
+  tr_probe "mechanism-guard/core rule: pin edit by awk -i inplace" Bash command "awk -i inplace '{print}' m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by awk --include=inplace" Bash command "awk --include=inplace '{print}' m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin read by awk -F (control)" Bash command "awk -F: '{print \$1}' m/.claude-plugin/marketplace.json" allow
   tr_probe "mechanism-guard/core rule: pin read by diff (control)" Bash command "diff m/.claude-plugin/marketplace.json /tmp/x" allow
   tr_probe "mechanism-guard/core rule: pin read by jq (control)" Bash command "jq .plugins m/.claude-plugin/marketplace.json" allow
   # 2026-11-02: a GET of the remote file through gh api is a read; the same endpoint with a method or field is a write
@@ -545,6 +549,71 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: write a style file" Write file_path ".claude/output-styles/mine.md" block
   tr_probe "mechanism-guard/core rule: read the style dir (control)" Bash command "cat .claude/output-styles/caveman.md" allow
   tr_probe "mechanism-guard/core rule: core's own style file (control)" Write file_path "output-styles/caveman.md" allow
+  tr_probe "mechanism-guard/core rule: copy a style OUT of the style dir (control)" Bash command "cp .claude/output-styles/caveman.md /tmp/style-backup.md" allow
+  tr_probe "mechanism-guard/core rule: list the style dir (control)" Bash command "ls -l .claude/output-styles/" allow
+  tr_probe "mechanism-guard/core rule: sed -i on a style file" Bash command "sed -i 's/a/b/' .claude/output-styles/mine.md" block
+  # Class sweep, read forms of the path rules (finding class: a rule that names a file and exempts only a
+  # hand-kept list of read commands holds every reader it forgot - the foreground-wait rules held
+  # `sed -n`/`grep` on a watch script, the pin rule held `gh api` GET and an inline `python -c` read).
+  # A path rule holds write and execute forms only; each read below must pass, each write/execute must block.
+  tr_probe "mechanism-guard/core rule: read a watch script by inline python" Bash command "python3 -c \"print(open('core/scripts/collab-watch.sh').read())\"" allow
+  tr_probe "mechanism-guard/core rule: read a watch script by inline node" Bash command "node -e \"console.log(require('fs').readFileSync('core/scripts/shared-memory-watch.sh','utf8'))\"" allow
+  tr_probe "mechanism-guard/core rule: parse a wait script by inline python" Bash command "python -c \"import ast;ast.parse(open('core/scripts/wait-mcp-reconnect.sh').read())\"" allow
+  tr_probe "mechanism-guard/core rule: read ci-watch.sh in a subshell" Bash command "(cat core/scripts/ci-watch.sh)" allow
+  tr_probe "mechanism-guard/core rule: wc, git log and git diff on ci-watch.sh" Bash command "wc -l core/scripts/ci-watch.sh; git log -- core/scripts/ci-watch.sh; git diff -- core/scripts/ci-watch.sh" allow
+  tr_probe "mechanism-guard/core rule: read ci-lint-local.sh by inline python" Bash command "python3 -c \"print(open('scripts/ci-lint-local.sh').read())\"" allow
+  tr_probe "mechanism-guard/core rule: head and ls on the lint script" Bash command "head -20 scripts/ci-lint-local.sh; ls scripts" allow
+  tr_probe "mechanism-guard/core rule: ci-watch run in a subshell still blocks" Bash command "(bash core/scripts/ci-watch.sh pr o/r 5)" block
+  tr_probe "mechanism-guard/core rule: wait script run in a subshell still blocks" Bash command "(core/scripts/wait-mcp-reconnect.sh td)" block
+  tr_probe "mechanism-guard/core rule: watch script run by sh still blocks" Bash command "sh core/scripts/collab-watch.sh" block
+  tr_probe "mechanism-guard/core rule: lint script run by ./ still blocks" Bash command "./scripts/ci-lint-local.sh lint" block
+  tr_probe "mechanism-guard/core rule: gate script read through a pipe (control)" Bash command "grep -n x core/scripts/handover-gate.sh | tail -3" allow
+  tr_probe "mechanism-guard/core rule: gate script read by inline python through a pipe (control)" Bash command "python3 -c \"print(open('core/scripts/leak-scan.py').read())\" | head -5" allow
+  tr_probe "mechanism-guard/core rule: gate script history through a pipe (control)" Bash command "git log --oneline -- core/scripts/ecosystem-sync.py | head -5" allow
+  tr_probe "mechanism-guard/core rule: gate script run through a pipe still blocks" Bash command "bash core/scripts/handover-gate.sh | tail -3" block
+  tr_probe "mechanism-guard/core rule: pin read by inline python (control)" Bash command "python3 -c \"import json;print(json.load(open('m/.claude-plugin/marketplace.json')))\"" allow
+  tr_probe "mechanism-guard/core rule: pin read by inline node (control)" Bash command "node -e \"console.log(JSON.parse(require('fs').readFileSync('m/.claude-plugin/marketplace.json')).plugins.length)\"" allow
+  tr_probe "mechanism-guard/core rule: pin read by wc and head (control)" Bash command "wc -c m/.claude-plugin/marketplace.json; head -c 200 m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by git log and git diff (control)" Bash command "git -C /r log -p -- m/.claude-plugin/marketplace.json; git -C /r diff -- m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by git show (control)" Bash command "git -C /r show origin/main:.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by git ls-files and git grep (control)" Bash command "git ls-files m/.claude-plugin/marketplace.json; git grep -n ref -- m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin read in a subshell (control)" Bash command "(cat m/.claude-plugin/marketplace.json)" allow
+  tr_probe "mechanism-guard/core rule: pin read by a checksum (control)" Bash command "sha256sum m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin copy OUT as a backup (control)" Bash command "cp m/.claude-plugin/marketplace.json /tmp/marketplace-backup.json" allow
+  tr_probe "mechanism-guard/core rule: pin read by PowerShell Get-Content (control)" PowerShell command "Get-Content m/.claude-plugin/marketplace.json | ConvertFrom-Json" allow
+  tr_probe "mechanism-guard/core rule: pin read by PowerShell Select-String (control)" PowerShell command "Select-String -Path m/.claude-plugin/marketplace.json -Pattern ref" allow
+  tr_probe "mechanism-guard/core rule: pin read by PowerShell Test-Path (control)" PowerShell command "Test-Path m/.claude-plugin/marketplace.json" allow
+  tr_probe "mechanism-guard/core rule: pin edit by inline python write" Bash command "python3 -c \"open('m/.claude-plugin/marketplace.json','w').write('x')\"" block
+  tr_probe "mechanism-guard/core rule: pin edit by inline node write" Bash command "node -e \"require('fs').writeFileSync('m/.claude-plugin/marketplace.json','x')\"" block
+  tr_probe "mechanism-guard/core rule: pin edit by cp over the file" Bash command "cp -f /tmp/x m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by cp over the file, stderr redirected" Bash command "cp /tmp/x m/.claude-plugin/marketplace.json 2>&1" block
+  tr_probe "mechanism-guard/core rule: pin edit by mv" Bash command "mv /tmp/x m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin removal by rm" Bash command "rm -f m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by PowerShell Set-Content" PowerShell command "Set-Content m/.claude-plugin/marketplace.json x" block
+  tr_probe "mechanism-guard/core rule: pin edit by PowerShell pipe into Out-File" PowerShell command "Get-Content a.json | Out-File m/.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin edit by gh api DELETE" Bash command "gh api -X DELETE repos/o/m/contents/.claude-plugin/marketplace.json" block
+  # The other direction (macOS review of this sweep, 2026-11-15): write modes of the listed readers and write calls
+  # an inline-script denylist misses. An inline script naming the pin passes only in the read-only allowlist form
+  # (json.load(open(<pin>)), readFileSync(<pin>)); xxd and base64 are no readers (both have a write mode).
+  tr_probe "mechanism-guard/core rule: pin written by xxd -r" Bash command "xxd -r dump.hex .claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin written by base64 -o" Bash command "base64 -d -i x.b64 -o .claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin written by inline node cpSync" Bash command "node -e \"require('fs').cpSync('x.json','.claude-plugin/marketplace.json')\"" block
+  tr_probe "mechanism-guard/core rule: pin written by inline node createWriteStream" Bash command "node -e \"require('fs').createWriteStream('.claude-plugin/marketplace.json').end('{}')\"" block
+  tr_probe "mechanism-guard/core rule: pin truncated by inline python os.open" Bash command "python3 -c \"import os; os.open('.claude-plugin/marketplace.json', os.O_WRONLY|os.O_TRUNC)\"" block
+  tr_probe "mechanism-guard/core rule: pin written by a sed w command" Bash command "sed -n 'w .claude-plugin/marketplace.json' other.json" block
+  tr_probe "mechanism-guard/core rule: pin written by git diff --output" Bash command "git diff --output=.claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin written by inline python argv" Bash command "python3 -c \"import sys,shutil;shutil.copy('x',sys.argv[1])\" .claude-plugin/marketplace.json" block
+  tr_probe "mechanism-guard/core rule: pin read and written in one inline script" Bash command "python3 -c \"import json;d=json.load(open('.claude-plugin/marketplace.json'));open('.claude-plugin/marketplace.json','W'.lower()).write('x')\"" block
+  tr_probe "mechanism-guard/core rule: pin read by inline python, single-quoted script (control)" Bash command "python3 -c 'import json;print(json.load(open(\".claude-plugin/marketplace.json\")))'" allow
+  tr_probe "mechanism-guard/core rule: style copied in by cp -t" Bash command "cp -t .claude/output-styles/ caveman.md" block
+  tr_probe "mechanism-guard/core rule: style copied in by cp -rt (bundled flags)" Bash command "cp -rt .claude/output-styles x.md" block
+  tr_probe "mechanism-guard/core rule: style copied in by cp --target-directory" Bash command "cp --target-directory=.claude/output-styles caveman.md" block
+  tr_probe "mechanism-guard/core rule: style dir copied in by cp -r, no trailing slash" Bash command "cp -r core/output-styles .claude/output-styles" block
+  tr_probe "mechanism-guard/core rule: style edited by sed with -i after the script" Bash command "sed -e 's/a/b/' -i .claude/output-styles/caveman.md" block
+  tr_probe "mechanism-guard/core rule: style edited by sed -i.bak" Bash command "sed -i.bak 's/a/b/' .claude/output-styles/caveman.md" block
+  tr_probe "mechanism-guard/core rule: style edited by sed --in-place" Bash command "sed --in-place 's/a/b/' .claude/output-styles/caveman.md" block
+  tr_probe "mechanism-guard/core rule: style read by sed --posix -n (control)" Bash command "sed --posix -n p .claude/output-styles/caveman.md" allow
+  tr_probe "mechanism-guard/core rule: style read by sed -n with a file name holding an i (control)" Bash command "sed -n 1,5p .claude/output-styles/minimal.md" allow
   # An inline script in double quotes: a backtick or $( in its text runs as a command first (measured 2026-11-03,
   # Windows instance: two backtick paths in a protocol entry ran as scripts; ported from a macOS instance rule).
   tr_probe "mechanism-guard/core rule: python -c with a backtick" Bash command 'python3 -c \"print(`date`)\"' block
