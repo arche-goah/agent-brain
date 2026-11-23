@@ -43,6 +43,7 @@ transcript claude-sonnet-5-5
 probe "sonnet commits a hook change in the core" "git commit -m x" block "hooks/hooks.json"
 probe "sonnet commits a script change (medium)" "git commit -m x" allow "scripts/foo.py"
 probe "sonnet commits docs (low)" "git -C . commit -m x" allow "docs/a.md"
+probe "sonnet commits a plugin manifest change (high: version and pin)" "git commit -m x" block ".claude-plugin/plugin.json"
 transcript claude-opus-5-5
 probe "opus commits a gate change" "git commit -m x" allow "helpers/x-gate.cjs"
 transcript claude-opus-6
