@@ -178,7 +178,19 @@ const hasCount = (line) => COUNT.test(line.replace(NOT_A_COUNT, ''));
 // The word `recheck` stands right before the date (Windows review 2026-11-17: "none - looked once on 2025-01-01"
 // passed, any date after twelve characters counted).
 const NONE_WITH_RECHECK = /^\s*none\b[\s\S]{4,}?\brecheck\s+\d{4}-\d{2}-\d{2}\b/i;
-const replayOk = (line) => hasCount(line) || NONE_WITH_RECHECK.test(line);
+// A replay over the history, not over the incident (2026-11-23, macOS instance; the operator, translated: "when I point at a
+// mistake, check by yourself whether a root-cause inquiry is due and test generic fixes"): 26 of 466 register replays
+// counted only the incident's own session or the case itself ("this session: 1 hit (this one)") and passed; 4 of them that
+// day. A replay whose ONLY scope is the own session, the current transcript, or the case, needs a second count over a wider
+// scope (n of m transcripts, sessions, ledgers, entries, files ...) - or the `none - <why> - recheck <date>` form.
+// Instance words for "this session" in another language: `self_only_replay_patterns` (root-cause-patterns.json).
+const SELF_SCOPE = /\b(?:this|the current|the own|own) (?:session|transcript|turn|run)\b|\((?:this|it|this one|this case|the case)(?: one| case)?\)|\bonly (?:this|the) (?:case|instance|incident)\b/i;
+const WIDE_SCOPE = /\b(?:[2-9]|\d{2,})\s*(?:of\s+\d+\s+)?(?:earlier |other |older |more )?(?:sessions?|transcripts?|ledgers?|registers?|entries|files|commits|prs|repos|brains|months|weeks|days|lines|records|runs)\b/i;
+let SELF_EXTRA = null;
+let WIDE_EXTRA = null;
+const selfOnly = (line) => (SELF_SCOPE.test(line) || (SELF_EXTRA && SELF_EXTRA.test(line)))
+  && !WIDE_SCOPE.test(line) && !(WIDE_EXTRA && WIDE_EXTRA.test(line));
+const replayOk = (line) => NONE_WITH_RECHECK.test(line) || (hasCount(line) && !selfOnly(line));
 // A PR or issue number names the instance; a core rule number ("Working Rule #10") is the rule itself (same review).
 const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|\b(?:PR|issue|pull)s?\s*#?\d+\b|\b[\w.-]+#\d+\b|(?:^|[\s(])#\d{3,}\b|\b\w+\.(cjs|js|py|sh|json|md)\b/iu;
 function newestEntry(all) {
@@ -213,7 +225,12 @@ function entryGaps(writeTexts, rel, forbidden, cwd) {
   if (!inv) gaps.push('the register entry names no invariant:');
   else if (INSTANCE_WORD.test(inv[1]) || forbidden.test(inv[1])) gaps.push('the invariant: names the instance (a path, a number, a proper noun) - say the rule, not the case');
   const rep = REPLAY_LINE.exec(text);
-  if (!rep || !replayOk(rep[1])) gaps.push('the register entry has no replay: count (a date is no count; '
+  try { SELF_EXTRA = loadPatterns(cwd, 'self_only_replay_patterns', ['(?!)'], 'iu'); } catch (e) { SELF_EXTRA = null; }
+  try { WIDE_EXTRA = loadPatterns(cwd, 'wide_scope_replay_patterns', ['(?!)'], 'iu'); } catch (e) { WIDE_EXTRA = null; }
+  if (rep && hasCount(rep[1]) && selfOnly(rep[1])) gaps.push('the replay: counts only the incident\'s own session or the case '
+    + 'itself - replay the detector over the history (a count over n transcripts, sessions, ledgers ...), or '
+    + '"none - <why> - recheck <YYYY-MM-DD>" when it cannot run yet');
+  else if (!rep || !replayOk(rep[1])) gaps.push('the register entry has no replay: count (a date is no count; '
     + '"none - <why> - recheck <YYYY-MM-DD>" when it cannot run yet)');
   return gaps;
 }

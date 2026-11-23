@@ -204,6 +204,21 @@ check "register entry whose replay lists several counts" "$T/t31h.jsonl" allow "
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
 replay: 1 (this case)"; } > "$T/t31i.jsonl"
 check "register entry whose replay is a bare number (control)" "$T/t31i.jsonl" block "$CWD"
+# 2026-11-23 (macOS instance, operator: "wenn ich auf einen fehler hinweise … musst du … generische fixes testen"; measured: 26 of
+# 466 register replays counted only the incident's own session, 4 of them that day, all passed): a replay whose only scope is
+# the incident's own session or the case itself is no replay over the history.
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: this session: 1 hit (this one)"; } > "$T/t31j.jsonl"
+check "register entry whose replay counts only its own session" "$T/t31j.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: 2 hits (this case and one more) in the current transcript"; } > "$T/t31k.jsonl"
+check "register entry whose replay scope is the current transcript" "$T/t31k.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: this session 1 hit; 7 hits in 60 earlier transcripts"; } > "$T/t31l.jsonl"
+check "own session plus a wider scope with its count" "$T/t31l.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: none - the detector needs records that start today - recheck 2026-12-07"; } > "$T/t31m.jsonl"
+check "a replay that cannot run yet, with reason and recheck (control)" "$T/t31m.jsonl" allow "$CWD"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a promise binds only with a mechanism (Working Rule #10)
 replay: 6 turns"; } > "$T/t31c.jsonl"
 check "invariant citing a core rule number" "$T/t31c.jsonl" allow "$CWD"
