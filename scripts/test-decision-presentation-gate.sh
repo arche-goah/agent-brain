@@ -53,6 +53,10 @@ QN="$T/question-none"; mkdir -p "$QN/.claude/rules" "$QN/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$QN/.claude/rules/ledgers.json"
 printf '%s\n' '- [ ] Collected points' '  - class: decision' '  - circle: B' '  the AI works through the rest, nothing to ask' \
   '  exit: ai-does-it 2026-11-23 — the AI goes on with the rest' > "$QN/docs/questions.md"
+QW="$T/question-wait"; mkdir -p "$QW/.claude/rules" "$QW/docs"
+printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$QW/.claude/rules/ledgers.json"
+printf '%s\n' '- [ ] Housing choice' '  - class: decision' '  - circle: B' '  question: which housing tray? ask when the boards are here' \
+  '  exit: later-at-system 2026-11-17 — waits for the boards' > "$QW/docs/questions.md"
 O="$T/circle"; mkdir -p "$O/.claude/rules" "$O/docs"
 printf '%s\n' '{"ledgers":["docs/questions.md"]}' > "$O/.claude/rules/ledgers.json"
 printf '%s\n' '- [ ] Fixture id scheme' '  - class: decision' '  - circle: C' '- [ ] Release now' '  - class: decision' '  - circle: B' > "$O/docs/questions.md"
@@ -112,6 +116,7 @@ f="$T/5q.jsonl"; { user "anything open for me?"; asst "Nothing open."; } > "$f"
 check "a question line counts though the exit is ai-does-it" "$f" "$Q" block
 check "an instance question pattern counts though the exit is ai-does-it" "$f" "$QI" block
 check "an ai-does-it entry without a question line stays out (control)" "$f" "$QN" allow
+check "a question under a wait (later-at-system) stays parked" "$f" "$QW" allow
 f="$T/6.jsonl"; { user "fix the parser"; asst "done"; user "now the tests"; asst "done"; } > "$f"
 check "an ordinary turn, not after autonomy, no ask (control)" "$f" "$B" allow
 mkdir -p "$N/.claude-state"

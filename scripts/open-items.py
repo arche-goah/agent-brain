@@ -608,7 +608,8 @@ def auto_class(it, repo, human_rx):
         # A question to the operator is its own line and wins over the exit (macOS incident 2026-11-23: one
         # entry held the AI's work AND the operator's questions, exit ai-does-it, the start report said
         # "human 0"); the same reader as helpers/decision-presentation-gate.cjs questionRx.
-        if question_rx(repo).search(it.get("body") or ""):
+        # Only over the agent's own exits (ai-does-it, in-pr); a wait (later-at-system, other-side, parked) keeps parking it.
+        if it.get("exit") in ("ai-does-it", "in-pr") and question_rx(repo).search(it.get("body") or ""):
             return "human", "an open question to the operator (question line)"
         # The sorted exit says who moves (skill backlog-catch-up); `class: decision` alone does not
         # — measured 2026-10-28: 9 of 11 "human" ledger rows were no operator decision.

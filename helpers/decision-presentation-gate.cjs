@@ -89,9 +89,11 @@ function ledgerDecisions(root) {
       // A question to the operator is its own line, not a side effect of the exit (macOS incident 2026-11-23: one entry
       // held the AI's remaining work AND the operator's questions; its exit read ai-does-it, the count was 0, and the
       // operator's "ask me now" did not end the autonomous run). A `question:` line, or a line matching the instance's
-      // `operator_question_patterns` (ledgers.json), counts the entry whatever its exit says.
+      // `operator_question_patterns` (ledgers.json), outranks the AGENT'S OWN exits (ai-does-it, in-pr - they cannot carry
+      // a question to the operator); a wait (later-at-system, other-side, parked) still parks it until its reason falls.
       const exit = newestExitKind(body);
-      if (exit && exit !== 'operator-decision' && !questionRx(cfg).test(body)) continue;
+      const ownExit = exit === 'ai-does-it' || exit === 'in-pr';
+      if (exit && exit !== 'operator-decision' && !(ownExit && questionRx(cfg).test(body))) continue;
       // `ask-when:` (operator decision 2026-10-29 on the macOS instance: "questions at the right time"): a date
       // still ahead, or a topic (`ask-when: thema|topic <regex>`, put when the operator's work touches it) - not due here.
       const when = /^\s*(?:[-*]\s+)?ask-when:\s*(.+)$/m.exec(body);
