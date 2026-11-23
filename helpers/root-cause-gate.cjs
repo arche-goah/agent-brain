@@ -467,7 +467,7 @@ function malfunctionIn(group) {
  *              Jaccard >= 0.5 of the command's words; files: the same path) - recorded first
  * A gate malfunction is the fourth signal; it opens the cause path above (malfunctionIn).
  */
-const OWN_FAIL = /Traceback \(most recent call last\)|: command not found\b|\bExit code 127\b|JSONDecodeError|Unexpected token [^\n]{0,40} in JSON|is not valid JSON|Unexpected end of JSON input/;
+const OWN_FAIL = /Traceback \(most recent call last\)|: command not found\b|is not recognized as (?:an internal or external command|the name of a cmdlet)|\bExit code 127\b|JSONDecodeError|Unexpected token [^\n]{0,40} in JSON|is not valid JSON|Unexpected end of JSON input/;
 const MARKER = /#\s*[A-Z][A-Z-]+-OK\b|MECHANISM-OK|PRS-READ/;
 const BUILTIN_ANOMALY = ['^[ \\t>*_-]*(anomaly|signal)\\b[^\\n]{0,80}:[^\\n]*\\b(intended|false positive|own mistake)\\b'];
 const WINDOW = 8;
