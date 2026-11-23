@@ -72,6 +72,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import template_deviation  # noqa: E402 - the one reader of permissions._template_deviations
+
 # The session start parses this output; left to the platform, Windows' console code page
 # mangles the dashes in these lines (os-traps OS-9).
 try:
@@ -361,6 +364,7 @@ def main():
     cfg = config_dir()
     wired = {}
     have_allow = []
+    deviated = set()
     have_timeout = {}
     scopes = {}  # (event, command) -> the settings scope that wires it, as a fixed forward-slashed label
     for p, label in settings_scopes(root, cfg):
@@ -370,6 +374,10 @@ def main():
             for _m, c, _f in pairs:
                 scopes[(event, c)] = label
         have_allow.extend(allow_entries(s))
+        # A rule the brain declares in permissions._template_deviations is no gap while its declaration counts - the
+        # one reader template_deviation.py (time-limited until a date, or unlimited and recertified within 90 days and
+        # since the last core update; operator 2026-11-18), the same as template-drift.py.
+        deviated.update(template_deviation.counts(s.get("permissions"), since_core=template_deviation.core_updated(root)))
         for key, t in timeouts(s).items():
             have_timeout[key] = max(have_timeout.get(key, 0), t)
 
@@ -412,7 +420,7 @@ def main():
 
     not_granted = []
     for entry in allow_entries(template):
-        if CORE_PERMISSION.search(entry) and not granted(entry, have_allow):
+        if CORE_PERMISSION.search(entry) and not granted(entry, have_allow) and entry not in deviated:
             not_granted.append('permissions: "%s" from the core template is not granted here - every run of a core '
                                'tool it covers ends in a prompt, or in auto mode in the classifier refusing it; add it '
                                'to .claude/settings.json permissions.allow' % entry)
