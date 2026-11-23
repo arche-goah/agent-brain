@@ -300,10 +300,11 @@ function promptModes(transcriptPath, cwd) {
     // translated: "why did you just switch to interactive? no questions came. either the questions, or stay
     // autonomous"). Nothing open: the run goes on and the reply says so in one line. Read lazily - the presentation
     // gate requires this file.
+    let open = null;
     if (off) state = false;
-    else if (asks) state = state && memo.count(`${path.resolve(transcriptPath)}#${n}`) === 0 ? true : false;
+    else if (asks) { open = memo.count(`${path.resolve(transcriptPath)}#${n}`); state = state && open === 0 ? true : false; }
     out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words',
-      ordered, at: Date.parse(d.timestamp) || null });
+      ordered, open, at: Date.parse(d.timestamp) || null });
   }
   memo.save();
   return out;
@@ -322,15 +323,15 @@ function openCountMemo(cwd) {
     count(key) {
       // a pattern case names its own count (scripts/pattern-cases.py): no memo, or one run's count leaks into the next
       if (/^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '')) return openForOperator(cwd);
-      // Only a count ABOVE 0 is kept. A kept 0 is measured again (2026-11-18, macOS instance: "what is open for me?"
-      // counted 0 because the agent had filed the decisions wrongly; once filed right the count was 3, but the kept 0
-      // held the run autonomous and the question tool was refused on the operator's own request, three times). The
-      // 2026-11-06 case is a FALL to 0, which keeping the positive count still prevents.
-      if (!(key in data) || data[key] === 0) {
-        const n = openForOperator(cwd);
-        if (!(key in data) || n !== data[key]) { data[key] = n; dirty = true; }
-      }
-      return data[key];
+      // Only a count ABOVE 0 is kept; a 0 - also one an older helper wrote into the state file - is measured again.
+      // Measured twice on the macOS instance: 2026-11-18 ("what is open for me?" counted 0, the decisions were filed
+      // wrongly; filed right the count was 3, but the kept 0 held the run and the question tool was refused three
+      // times) and 2026-11-23 (the one question entry carried exit `ai-does-it`; the ledger fixed a minute later
+      // changed nothing). The 2026-11-06 case above is a FALL to 0, which the kept positive count still prevents.
+      if (data[key] > 0) return data[key];
+      const n = openForOperator(cwd);
+      if (n > 0) { data[key] = n; dirty = true; }
+      return n;
     },
     save() {
       if (!dirty) return;
@@ -369,6 +370,25 @@ function autonomousMode(transcriptPath, cwd) {
   return !closedAfter(transcriptPath, cwd, onAt);
 }
 
+/** Why the run is (still) autonomous, measured from the operator's newest prompt - for a refusal that names its reason
+ *  (2026-11-23, macOS instance: the gate refused the question tool with its generic text after "questions now"; the
+ *  agent guessed at the word list, the operator: "what do you keep saying about the word list?"). */
+function modeReason(transcriptPath, cwd) {
+  const rows = promptModes(transcriptPath, cwd).filter((r) => !r.answer);
+  const last = rows[rows.length - 1];
+  if (!last) return 'no operator prompt read in this transcript - the start state decides';
+  const reader = last.by === 'model' ? 'the intent classifier record' : 'the word lists (no classifier record for this prompt)';
+  if (last.asks && last.open === 0) {
+    return `the operator's newest prompt was read as asking what is open (${reader}), but nothing is open for the operator: `
+      + '0 decisions in the registered ledgers and the question register (decision-presentation-gate readers). An entry counts '
+      + 'when its newest exit is `operator-decision`, or when it carries a `question:` line under the agent\'s own exit '
+      + '(`ai-does-it`, `in-pr`); file what the operator must decide in one of these forms - the count is read again at '
+      + 'the next call (a 0 is not kept).';
+  }
+  if (!last.asks) return `the operator's newest prompt was not read as asking what is open, nor as an off-word (${reader})`;
+  return `the run is autonomous by an order after the operator's newest prompt (${reader})`;
+}
+
 /** A close stamp of this session written after `since` (ms; null = any time). */
 function closedAfter(transcriptPath, cwd, since) {
   const dir = cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -381,7 +401,7 @@ function closedAfter(transcriptPath, cwd, since) {
   return since == null || st.mtimeMs >= since;
 }
 
-module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, answers, promptText, HOOK_ECHO };
+module.exports = { autonomousMode, promptModes, modeReason, words, initialState, asksMode, intents, intentFor, answers, promptText, HOOK_ECHO };
 
 if (require.main === module) {
   const [tp, cwd] = process.argv.slice(2);

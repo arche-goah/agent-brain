@@ -74,6 +74,10 @@ f="$T/3r.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for 
 mode "asking what is open, nothing filed yet, keeps the run (first reading 0)" "$f" "$RISE" autonomous
 open_q "$RISE"
 mode "the same prompt once a decision is filed ends it (a kept 0 is re-measured)" "$f" "$RISE" interactive
+# A 0 an older helper already wrote into the state file is measured again too (the state survives the update).
+OLD0="$T/old0"; open_q "$OLD0"
+node -e 'const p=require("path"),fs=require("fs");fs.writeFileSync(p.join(process.argv[2],".claude-state","asks-open-count.json"),JSON.stringify({[p.resolve(process.argv[1])+"#2"]:0}))' "$(native "$f")" "$(native "$OLD0")"
+mode "a 0 kept by an older helper is measured again" "$f" "$OLD0" interactive
 # 2026-11-06 (operator: closing the session IS a mode change; the end-of-session loop had come back several times):
 # a close stamp of THIS session written after the order ends the run; another session's stamp does not; a new order
 # after the close switches it on again.

@@ -137,4 +137,18 @@ mprobe "default mode, a new session says it again" default s2 "$AUTO" block
 mprobe "auto mode, autonomous run (control)" auto s3 "$AUTO" allow
 mprobe "default mode, not autonomous (control)" default s4 "$INTER" allow
 
+# 2026-11-23 (macOS instance): the operator asked for the questions while nothing counted as open for them (the one
+# question entry carried exit ai-does-it). The refusal named no reason, and the count 0 was kept for that prompt, so
+# fixing the ledger did not let the questions through.
+B2="$T/brain2"; mkdir -p "$B2/.claude" "$B2/.claude-state"
+ASK2="$T/ask2.jsonl"; { user "work through the open points autonomously"; user "what is open for me?"; } > "$ASK2"
+q2() { node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:"AskUserQuestion",tool_input:{questions:[{question:"Release now?"}]},transcript_path:a[1],cwd:a[2]}))' "$(native "$ASK2")" "$(native "$B2")" \
+  | CLAUDE_PROJECT_DIR="$(native "$B2")" CLAUDE_CONFIG_DIR="$(native "$T/userdir")" node "$(native "$G")" 2>&1; }
+out=$(q2)
+case "$out" in *'nothing is open for the operator'*) ok "the refusal names its measured reason (asked what is open, 0 open)";; *) bad "refusal without its reason: '${out:0:200}'";; esac
+case "$out" in *'intent classifier record'*|*'word lists'*) ok "the refusal names which reader decided";; *) bad "reader not named";; esac
+printf '%s\n' '{"q1": {"q": "Release now?", "status": "unanswered"}}' > "$B2/.claude-state/open-questions.json"
+out=$(q2)
+case "$out" in *'"permissionDecision":"deny"'*) bad "a ledger fixed after the prompt still left the run autonomous (a kept 0)";; *) ok "a ledger fixed after the prompt counts at the next call (a 0 is not kept)";; esac
+
 [ "$fail" = 0 ] && echo "autonomous-gate: all cases pass" || { echo "autonomous-gate: FAILURES"; exit 1; }

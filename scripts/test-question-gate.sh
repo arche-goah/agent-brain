@@ -315,6 +315,23 @@ askp "the mode question in a parallel call next to a decision (the 2026-10-31 in
 askp "the decision call next to a parallel mode question" "$f" t1 "Put the five write tools on ask?" deny "$R"
 f="$T/seq.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; tres; qcall m2 t2 "Continue autonomously?"; } > "$f"
 askp "the mode question as its own later call (control)" "$f" t2 "Continue autonomously?" allow "$R"
+# 2026-11-18: alone, but right after the ANSWERS of the decision call with no step between - held once, then passes
+ares() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":"answered"}]}}\n' "$1"; }
+bcall() { printf '{"type":"assistant","message":{"id":"%s","role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Edit","input":{}}]}}\n' "$1" "$2"; }
+f="$T/ans.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; qcall m2 t2 "Continue autonomously?"; } > "$f"
+askp "the mode question right after the answers, no step between (the 2026-11-18 incident)" "$f" t2 "Continue autonomously?" deny "$R"
+askp "the same mode question again (no step was needed)" "$f" t2 "Continue autonomously?" allow "$R"
+f="$T/ans2.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; bcall m2 e1; ares e1; qcall m3 t3 "Continue autonomously?"; } > "$f"
+askp "the mode question after the answers and a step" "$f" t3 "Continue autonomously?" allow "$R"
+# Windows review 2026-11-18, the measured sequence in a fresh root: held, then asked again after a step (passes by the
+# early return, the state stays `held`), then a NEW round of answers with no step - must be held again, was passed
+R2="$T/r-mode2"; fresh "$R2"
+f="$T/r1.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; qcall m2 t2 "Continue autonomously?"; } > "$f"
+askp "round 1: right after the answers" "$f" t2 "Continue autonomously?" deny "$R2"
+f="$T/r2.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; bcall m2 e1; ares e1; qcall m3 t3 "Continue autonomously?"; } > "$f"
+askp "round 1: after the step" "$f" t3 "Continue autonomously?" allow "$R2"
+f="$T/r3.jsonl"; { qcall m1 t1 "Apply the settings patch?"; ares t1; bcall m2 e1; ares e1; qcall m3 t3 "Continue autonomously?"; ares t3; qcall m4 t4 "Merge PR 5?"; ares t4; qcall m5 t5 "Continue autonomously?"; } > "$f"
+askp "round 2: right after new answers is held again" "$f" t5 "Continue autonomously?" deny "$R2"
 f="$T/par2.jsonl"; { qcall m1 t1 "Put the five write tools on ask?"; qcall m1 t2 "Merge PR 5 now?"; } > "$f"
 askp "two parallel decisions without a mode question" "$f" t2 "Merge PR 5 now?" allow "$R"
 askp "a call not yet in the transcript fails open" "$f" t9 "Continue autonomously?" allow "$R"

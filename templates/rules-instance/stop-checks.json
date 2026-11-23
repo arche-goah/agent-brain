@@ -219,6 +219,17 @@
       "maxLength": 120,
       "required": true,
       "_note": "Carrier of 'a peer's state counts once it is measured' (rules/thinking-protocol.md rule 0, freshness): the closing reply names a peer session as running or holding a claim while parallel-sessions.sh measures only this one. Words in the operator's language: .claude/rules/peer-session.json."
+    },
+    {
+      "label": "MODE OWED",
+      "marker": "MODE-OWED",
+      "cmd": "core/helpers/mode-owed.cjs",
+      "args": ["stop"],
+      "mode": "block",
+      "onReissue": "run",
+      "template": "The mode question is owed: ask the remaining questions at once, then the mode question last",
+      "maxLength": 120,
+      "_note": "Carrier of 'the mode question comes last' (2026-11-23: an operator asked what was open in an autonomous run; three question rounds and about 40 work calls, no mode question): a turn end with the mode question owed after an answered round in a dialog the operator opened is held once per round. Its work-call half runs inside autonomous-gate.cjs."
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",
