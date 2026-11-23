@@ -62,6 +62,18 @@ check "a gate that timed out, retried without a cause" "$T/mf1.jsonl" block "$CW
 check "a numbered hook that timed out (its name unreadable) is a malfunction too" "$T/mf2.jsonl" block "$CWD"
 { user "post the review"; bashq b3; bres b3 'MECHANISM CHECK (agent-brain): a heredoc'; asst "Used a file instead."; } > "$T/mf3.jsonl"
 check "a gate's decision (a refusal with a reason) is no malfunction (control)" "$T/mf3.jsonl" allow "$CWD"
+# --- 2026-11-23: anomaly signals in the turn's tool results must be classified (an own command's Traceback blocks)
+okres() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":%s,"content":%s}]}}\n' "$1" "$2" "$(js "$3")"; }
+{ user "count the rules"; bashq c1; okres c1 true 'Traceback (most recent call last):
+  File "<string>", line 1
+KeyError: rules'; asst "Done, there are 12."; } > "$T/an1.jsonl"
+check "an own command failed with a Traceback and the turn does not classify it" "$T/an1.jsonl" block "$CWD"
+{ user "count the rules"; bashq c2; okres c2 true 'Traceback (most recent call last):
+KeyError: rules'; asst "Anomaly: KeyError in my one-liner - own mistake. Cause: the file keys rules under \"rules\" of each block, I read the top level."; } > "$T/an2.jsonl"
+check "the same, classified as an own mistake with a cause line" "$T/an2.jsonl" allow "$CWD"
+{ user "check the build"; bashq c3; okres c3 true 'Exit code 1
+3 tests failed'; asst "Three tests fail; fixing them."; } > "$T/an3.jsonl"
+check "a command that fails on purpose-shaped output (a failing test run) is no anomaly (control)" "$T/an3.jsonl" allow "$CWD"
 
 # --- the class: a correction, a fix on the spot, no cause named
 { user "check the PRs"; asst "Done."; user "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/t1.jsonl"

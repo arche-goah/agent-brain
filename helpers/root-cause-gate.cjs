@@ -311,6 +311,7 @@ function readTurns(tp, tail) {
       if (!cur) continue;
       for (const b of msg.content) {
         if (b.type === 'text' && b.text) cur.texts.push(b.text);
+        if (b.type === 'tool_use') (cur.calls = cur.calls || []).push({ id: b.id, name: b.name, input: b.input || {} });
         if (b.type === 'tool_use' && b.input && typeof b.input.file_path === 'string') {
           cur.writes.push(b.input.file_path);
           (cur.writeTexts = cur.writeTexts || []).push({ p: b.input.file_path, t: String(b.input.new_string || b.input.content || '') });
@@ -326,8 +327,10 @@ function readTurns(tp, tail) {
     // very step the operator's newest prompt asked for opens the inquiry (refusedAsk below).
     if (cur && Array.isArray(msg.content)) {
       for (const b of msg.content) {
-        if (!b || b.type !== 'tool_result' || !b.is_error) continue;
+        if (!b || b.type !== 'tool_result') continue;
         const txt = Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join(' ') : String(b.content || '');
+        (cur.results = cur.results || {})[b.tool_use_id] = { err: Boolean(b.is_error), text: txt.slice(0, 4000) };
+        if (!b.is_error) continue;
         const m = /^(?:PreToolUse|PostToolUse):(\S+) hook error:\s*(?:\[[^\]]*\]:\s*)?([\s\S]*)$/.exec(txt.trim());
         if (m) (cur.refusals = cur.refusals || []).push({ tool: m[1], text: m[2], raw: txt.trim(), at: d.timestamp || '' });
       }
@@ -450,6 +453,75 @@ function malfunctionIn(group) {
     }
   }
   return null;
+}
+
+/**
+ * ANOMALY SIGNALS of a turn, read from its tool results (operator 2026-11-23, translated: "the deeper level is that once
+ * a not-optimal behaviour shows, you recognise and improve it on your own ... today it happened neither by itself nor on
+ * my hint"). Each signal the turn's text must CLASSIFY in one line - `Anomaly: <what> - intended | gate false positive
+ * (then a register entry or a fix) | own mistake (then a Cause line)`:
+ *   own-fail   the agent's own command failed in a way no plan intends (a Traceback, "command not found", exit 127, a
+ *              JSON parse error) - blocks
+ *   repeat     the same gate refused twice in the turn - recorded first (.claude-state/turn-anomalies.jsonl)
+ *   bypass     a refusal, then the same intent passing in another form within 8 calls, with no marker (same tool; Bash:
+ *              Jaccard >= 0.5 of the command's words; files: the same path) - recorded first
+ * A gate malfunction is the fourth signal; it opens the cause path above (malfunctionIn).
+ */
+const OWN_FAIL = /Traceback \(most recent call last\)|: command not found\b|\bExit code 127\b|JSONDecodeError|Unexpected token [^\n]{0,40} in JSON|is not valid JSON|Unexpected end of JSON input/;
+const MARKER = /#\s*[A-Z][A-Z-]+-OK\b|MECHANISM-OK|PRS-READ/;
+const BUILTIN_ANOMALY = ['^[ \\t>*_-]*(anomaly|signal)\\b[^\\n]{0,80}:[^\\n]*\\b(intended|false positive|own mistake)\\b'];
+const WINDOW = 8;
+function callKey(c) {
+  const inp = c.input || {};
+  if (typeof inp.file_path === 'string') return { file: inp.file_path };
+  if (typeof inp.command === 'string') return { words: new Set(inp.command.replace(/#.*$/gm, '').match(/[\w./-]{3,}/g) || []) };
+  return { raw: JSON.stringify(inp).slice(0, 200) };
+}
+function sameIntent(a, b) {
+  if (a.file !== undefined || b.file !== undefined) return a.file === b.file && Boolean(a.file);
+  if (a.words && b.words) {
+    let n = 0; for (const w of a.words) if (b.words.has(w)) n += 1;
+    const u = new Set([...a.words, ...b.words]).size;
+    return u > 0 && n / u >= 0.5;
+  }
+  return a.raw === b.raw;
+}
+function anomalies(group) {
+  const out = [];
+  const m = malfData();
+  for (const seg of group) {
+    const calls = seg.calls || []; const res = seg.results || {};
+    const gatesSeen = {};
+    for (let i = 0; i < calls.length; i += 1) {
+      const c = calls[i]; const r = res[c.id];
+      if (!r || !r.err) continue;
+      const refusal = m.refusal.test(r.text.trim());
+      if (!refusal) {
+        const f = OWN_FAIL.exec(r.text);
+        if (f && c.name === 'Bash') out.push({ kind: 'own-fail', block: true, what: `${f[0]} in: ${String(c.input.command || '').slice(0, 80)}` });
+        continue;
+      }
+      if (m.malf.test(r.text)) continue;   // malfunctions go the cause path
+      const gate = (/^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^"]*?([\w.-]+)\.cjs"\]:\s*)?(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)[:(])?/.exec(r.text.trim()) || []).slice(1).find(Boolean) || 'a hook';
+      gatesSeen[gate] = (gatesSeen[gate] || 0) + 1;
+      if (gatesSeen[gate] === 2) out.push({ kind: 'repeat', block: false, what: `${gate} refused twice in the turn` });
+      const k = callKey(c);
+      for (const c2 of calls.slice(i + 1, i + 1 + WINDOW)) {
+        const r2 = res[c2.id];
+        if (c2.name !== c.name || !r2 || r2.err || MARKER.test(JSON.stringify(c2.input))) continue;
+        if (sameIntent(k, callKey(c2))) { out.push({ kind: 'bypass', block: false, what: `${gate} refused ${c.name}, the same intent passed in another form` }); break; }
+      }
+    }
+  }
+  return out;
+}
+function recordAnomalies(cwd, input, list) {
+  if (!list.length) return;
+  try {
+    const f = path.join(cwd, '.claude-state', 'turn-anomalies.jsonl');
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    for (const a of list) fs.appendFileSync(f, JSON.stringify({ at: new Date().toISOString(), session: input.session_id || '', ...a }) + '\n');
+  } catch (e) { /* recording is best effort */ }
 }
 
 /** A refusal in the turn of the step the operator's prompt asked for: "<GATE> refused <tool> ..." or null. The prompt's
@@ -617,7 +689,24 @@ function gate(input) {
   let refused = null; let malf = null;
   if (!hit && !self && !fired) { try { refused = refusedAsk(group, cwd, input.transcript_path); } catch (e) { refused = null; } }
   if (!hit && !self && !refused && !fired) { try { malf = malfunctionIn(group); } catch (e) { malf = null; } }
-  if (!hit && !self && !refused && !malf) return;
+  if (!hit && !self && !refused && !malf) {
+    if (fired) return;
+    let list = [];
+    try { list = anomalies(group); } catch (e) { list = []; }
+    recordAnomalies(cwd, input, list.filter((a) => !a.block));
+    const own = list.find((a) => a.block);
+    if (!own) return;
+    const classified = causeIn(texts, loadPatterns(cwd, 'anomaly_patterns', BUILTIN_ANOMALY, 'imu')) || causeIn(texts, causeRx);
+    if (classified) return;
+    process.stdout.write(JSON.stringify(declare({
+      decision: 'block',
+      reason: `ROOT-CAUSE-GATE: an anomaly in this turn's tool results is not classified: ${own.kind} - "${own.what.slice(0, 160)}". `
+        + 'Classify it in ONE line - Anomaly: <what> - intended | gate false positive (then a register entry or a fix) | '
+        + 'own mistake (then a Cause line: what was read, what produced it). A failure nobody names repeats unseen '
+        + '(operator 2026-11-23: "recognise and improve it on your own").',
+    }, input)));
+    return;
+  }
   const what = hit ? 'an operator message in this turn reads as a correction or a mishap'
     : self ? 'your own text in this turn finds a mishap'
       : refused ? 'a hook refused the very step the operator asked for (name the refusing gate, the reader and the measured value that decided)'
@@ -743,6 +832,43 @@ function review(args) {
   return 0;
 }
 
+// `--anomalies <folder> [N] [--samples K]`: replay of the anomaly signals over the newest N transcripts - per kind, per
+// gate, how many own-fail turns carried a classification or cause line, and K samples of repeat/bypass to judge by hand.
+if (process.argv[2] === '--anomalies') {
+  const dir = process.argv[3];
+  const cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const k = process.argv.includes('--samples') ? Number(process.argv[process.argv.indexOf('--samples') + 1]) : 0;
+  let files = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(dir, f))
+      .sort((a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs).slice(-Number(process.argv[4] || 60));
+  } catch (e) { files = []; }
+  const classRx = loadPatterns(cwd, 'anomaly_patterns', BUILTIN_ANOMALY, 'imu');
+  const causeRx = loadPatterns(cwd, 'cause_patterns', BUILTIN_CAUSE, 'imu');
+  const kinds = {}; const gates = {}; const samples = [];
+  for (const tp of files) {
+    let turns = [];
+    try { turns = readTurns(tp, false); } catch (e) { turns = []; }
+    for (const t of turns) {
+      for (const a of anomalies([t])) {
+        const s = kinds[a.kind] = kinds[a.kind] || { n: 0, classified: 0 };
+        s.n += 1;
+        if (causeIn(t.texts, classRx) || causeIn(t.texts, causeRx)) s.classified += 1;
+        const own = process.argv.includes('--own');
+        if (a.kind !== 'own-fail') { const g = a.what.split(' ')[0]; gates[g] = (gates[g] || 0) + 1; }
+        if ((a.kind === 'own-fail') === own && samples.length < k) {
+          const next = (t.texts.find((x) => x.length > 20) || '').replace(/\s+/g, ' ').slice(0, 160);
+          samples.push(`${path.basename(tp).slice(0, 8)} ${a.kind}: ${a.what}${own ? `\n    turn text: ${next}` : ''}`);
+        }
+      }
+    }
+  }
+  console.log(`${files.length} transcript(s)`);
+  for (const [kd, s] of Object.entries(kinds)) console.log(`${kd}: ${s.n} signal(s), a classification or cause line in the turn: ${s.classified}`);
+  for (const [g, n] of Object.entries(gates).sort((a, b) => b[1] - a[1]).slice(0, 12)) console.log(`  repeat/bypass by ${g}: ${n}`);
+  for (const s of samples) console.log(`sample ${s}`);
+  process.exitCode = 0;
+} else
 // `--refused <transcript | folder> [N]`: replay of the two refusal triggers (a refused asked-for step, a gate malfunction)
 // over one transcript or the newest N of a folder; per turn it would open, and per gate whether the turn named a cause.
 if (process.argv[2] === '--refused') {
