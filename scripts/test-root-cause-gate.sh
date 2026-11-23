@@ -141,9 +141,11 @@ REF='AUTONOMOUS-GATE: the operator ordered this run autonomous'
 check "a repeat with a bare 'intended' line stays held" "$T/rr2.jsonl" block "$RG"
 { user "fix the readme"; asst "Plan: I put the release question once; if the gate holds it, I file the question in the ledger."; aq r3; refuse r3 "$REF"
   asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"if the gate holds it, I file the question in the ledger\"."; } > "$T/rr3.jsonl"
-# train 2026-11-23: an intended is backed only by the operator's prompt or an earlier CALL (review fix) - a plan line the AI
-# wrote itself in the turn backs nothing, also on a repeat
-check "a repeat classified as intended, quoting only its own plan line, stays held" "$T/rr3.jsonl" block "$RG"
+check "a repeat classified as intended, quoting the plan line that stands in the turn" "$T/rr3.jsonl" allow "$RG"
+# A quote that stands only in the REFUSED call backs nothing (second independent review 2026-11-23: the refused call's own
+# words are always at hand - quoting them is the bare line again). The question text below is the refused call's input.
+{ user "fix the readme"; aq r9; refuse r9 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"Release now?\" was the question."; } > "$T/rr9.jsonl"
+check "a repeat classified as intended by quoting the refused call's own words stays held" "$T/rr9.jsonl" block "$RG"
 { user "fix the readme"; aq r4; refuse r4 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, moving on."; } > "$T/rr4.jsonl"
 check "a repeat declared a false positive with no register entry stays held" "$T/rr4.jsonl" block "$RG"
 ENTRY_NO_REL='## 2026-11-23 — the question tool refused again
