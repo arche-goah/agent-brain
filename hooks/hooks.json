@@ -276,6 +276,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/mode-owed.cjs\" post",
+            "timeout": 10
           }
         ]
       },
