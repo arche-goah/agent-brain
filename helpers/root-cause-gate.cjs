@@ -510,8 +510,7 @@ function anomalies(group, cwd) {
         continue;
       }
       if (m.malf.test(r.text)) continue;   // malfunctions go the cause path
-      // The label runs to the first `:` or ` (` (Windows review of #640: "SHARED WORKING COPY" was cut to its first word).
-      const gate = ((/^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^"]*?([\w.-]+)\.cjs"\]:\s*)?(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?/.exec(r.text.trim()) || []).slice(1).find(Boolean) || 'a hook').trim();
+      const gate = gateLabel(r.text);   // one reader for the label (helpers/gate-label.cjs)
       gatesSeen[gate] = (gatesSeen[gate] || 0) + 1;
       if (gatesSeen[gate] === 2) out.push({ kind: 'repeat', block: false, gate, what: `${gate} refused twice in the turn` });
       const k = callKey(c);
