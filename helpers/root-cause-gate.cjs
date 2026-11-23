@@ -468,9 +468,15 @@ function malfunctionIn(group) {
  * A gate malfunction is the fourth signal; it opens the cause path above (malfunctionIn).
  */
 const OWN_FAIL = /Traceback \(most recent call last\)|: command not found\b|is not recognized as (?:an internal or external command|the name of a cmdlet)|\bExit code 127\b|JSONDecodeError|Unexpected token [^\n]{0,40} in JSON|is not valid JSON|Unexpected end of JSON input/;
-const MARKER = /#\s*[A-Z][A-Z-]+-OK\b|MECHANISM-OK|PRS-READ/;
+// A marker the gate asks for: `# WORD-OK: …` or `# WORD-WORD: …` (CONDITION-NONE, PRS-READ, OVERLAP-OK), in the call.
+const MARKER = /#\s*[A-Z][A-Z]+(?:-[A-Z]+)*(?:-OK\b|:)/;
 const BUILTIN_ANOMALY = ['^[ \\t>*_-]*(anomaly|signal)\\b[^\\n]{0,80}:[^\\n]*\\b(intended|false positive|own mistake)\\b'];
 const WINDOW = 8;
+// A refusal that names its own way on: the form that passes, a repeat, a skill to load, a marker, a step first.
+// English built in; other languages as data (`way_on_patterns` in root-cause-patterns.json).
+const WAY_ON_BUILTIN = ['the form that passes', 'repeat (?:this|the) call', 'load (?:each|it|the skill)[^\\n]{0,30}skill tool',
+  'commit (?:it )?by path', 'add (?:a |the )?(?:`#\\s*)?[A-Z][A-Z-]+-OK\\b', 'then (?:repeat|retry|run it again|call again)', '\\bcall again\\b'];
+const STEP_TOOLS = new Set(['Skill', 'Read', 'ToolSearch']);
 function callKey(c) {
   const inp = c.input || {};
   if (typeof inp.file_path === 'string') return { file: inp.file_path };
@@ -486,9 +492,10 @@ function sameIntent(a, b) {
   }
   return a.raw === b.raw;
 }
-function anomalies(group) {
+function anomalies(group, cwd) {
   const out = [];
   const m = malfData();
+  const WAY_ON = loadPatterns(cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), 'way_on_patterns', WAY_ON_BUILTIN, 'iu');
   for (const seg of group) {
     const calls = seg.calls || []; const res = seg.results || {};
     const gatesSeen = {};
@@ -502,14 +509,24 @@ function anomalies(group) {
         continue;
       }
       if (m.malf.test(r.text)) continue;   // malfunctions go the cause path
-      const gate = (/^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^"]*?([\w.-]+)\.cjs"\]:\s*)?(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)[:(])?/.exec(r.text.trim()) || []).slice(1).find(Boolean) || 'a hook';
+      // The label runs to the first `:` or ` (` (Windows review of #640: "SHARED WORKING COPY" was cut to its first word).
+      const gate = ((/^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^"]*?([\w.-]+)\.cjs"\]:\s*)?(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?/.exec(r.text.trim()) || []).slice(1).find(Boolean) || 'a hook').trim();
       gatesSeen[gate] = (gatesSeen[gate] || 0) + 1;
-      if (gatesSeen[gate] === 2) out.push({ kind: 'repeat', block: false, what: `${gate} refused twice in the turn` });
+      if (gatesSeen[gate] === 2) out.push({ kind: 'repeat', block: false, gate, what: `${gate} refused twice in the turn` });
       const k = callKey(c);
-      for (const c2 of calls.slice(i + 1, i + 1 + WINDOW)) {
-        const r2 = res[c2.id];
+      const named = WAY_ON.test(r.text);
+      for (let j = i + 1; j < Math.min(calls.length, i + 1 + WINDOW); j += 1) {
+        const c2 = calls[j]; const r2 = res[c2.id];
         if (c2.name !== c.name || !r2 || r2.err || MARKER.test(JSON.stringify(c2.input))) continue;
-        if (sameIntent(k, callKey(c2))) { out.push({ kind: 'bypass', block: false, what: `${gate} refused ${c.name}, the same intent passed in another form` }); break; }
+        if (!sameIntent(k, callKey(c2))) continue;
+        // The gate's own way on is no bypass (Windows review of #640: most of 84 bypass signals were a skill load and the
+        // repeat, or the form the refusal named): the refusal names a way on, the same call repeats unchanged, or a
+        // step the gate asks for (a skill load, a read) came in between.
+        const between = calls.slice(i + 1, j);
+        const followed = named || JSON.stringify(c2.input) === JSON.stringify(c.input) || between.some((b) => STEP_TOOLS.has(b.name));
+        out.push({ kind: followed ? 'followed' : 'bypass', block: false, gate, what: followed
+          ? `${gate} refused ${c.name}, its way on was taken` : `${gate} refused ${c.name}, the same intent passed in another form` });
+        break;
       }
     }
   }
@@ -692,8 +709,8 @@ function gate(input) {
   if (!hit && !self && !refused && !malf) {
     if (fired) return;
     let list = [];
-    try { list = anomalies(group); } catch (e) { list = []; }
-    recordAnomalies(cwd, input, list.filter((a) => !a.block));
+    try { list = anomalies(group, cwd); } catch (e) { list = []; }
+    recordAnomalies(cwd, input, list.filter((a) => !a.block && a.kind !== 'followed'));
     const own = list.find((a) => a.block);
     if (!own) return;
     const classified = causeIn(texts, loadPatterns(cwd, 'anomaly_patterns', BUILTIN_ANOMALY, 'imu')) || causeIn(texts, causeRx);
@@ -850,12 +867,12 @@ if (process.argv[2] === '--anomalies') {
     let turns = [];
     try { turns = readTurns(tp, false); } catch (e) { turns = []; }
     for (const t of turns) {
-      for (const a of anomalies([t])) {
+      for (const a of anomalies([t], cwd)) {
         const s = kinds[a.kind] = kinds[a.kind] || { n: 0, classified: 0 };
         s.n += 1;
         if (causeIn(t.texts, classRx) || causeIn(t.texts, causeRx)) s.classified += 1;
         const own = process.argv.includes('--own');
-        if (a.kind !== 'own-fail') { const g = a.what.split(' ')[0]; gates[g] = (gates[g] || 0) + 1; }
+        if (a.kind === 'repeat' || a.kind === 'bypass') gates[a.gate] = (gates[a.gate] || 0) + 1;
         if ((a.kind === 'own-fail') === own && samples.length < k) {
           const next = (t.texts.find((x) => x.length > 20) || '').replace(/\s+/g, ' ').slice(0, 160);
           samples.push(`${path.basename(tp).slice(0, 8)} ${a.kind}: ${a.what}${own ? `\n    turn text: ${next}` : ''}`);
@@ -891,7 +908,7 @@ if (process.argv[2] === '--refused') {
       if (r) { asked += 1; console.log(`${path.basename(tp).slice(0, 8)} turn ${i + 1}: ${r}`); }
       const m = malfunctionIn([turns[i]]);
       if (!m) continue;
-      const gate = m.split(' ')[0] === 'command' ? m.split(' ').slice(0, 3).join(' ') : m.split(' ')[0];
+      const gate = /^(command hook \d+|a hook|\S+)/.exec(m)[1];
       const p = perGate[gate] = perGate[gate] || { turns: 0, cause: 0 };
       p.turns += 1; if (causeIn(turns[i].texts, causeRx)) p.cause += 1;
       (sessions[gate] = sessions[gate] || new Set()).add(tp);

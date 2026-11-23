@@ -74,6 +74,16 @@ check "the same, classified as an own mistake with a cause line" "$T/an2.jsonl" 
 { user "check the build"; bashq c3; okres c3 true 'Exit code 1
 3 tests failed'; asst "Three tests fail; fixing them."; } > "$T/an3.jsonl"
 check "a command that fails on purpose-shaped output (a failing test run) is no anomaly (control)" "$T/an3.jsonl" allow "$CWD"
+# --- Windows review of #640: the gate's own way on is no bypass; a label with spaces is kept whole
+bcmd() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+skl() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Skill","input":{"skill":"x"}}]}}\n' "$1"; }
+mkdir -p "$T/anr"
+{ user "go"; bcmd w1 "git commit -a -m wip"; bres w1 'SHARED WORKING COPY: two sessions share this copy'; bcmd w2 "git commit -a -m wip again now"; okres w2 false ok; asst "done"; } > "$T/anr/bypass.jsonl"
+{ user "go"; bcmd s1 "mt health check"; bres s1 'SKILL-GATE: load the skill first'; skl s2; okres s2 false ok; bcmd s3 "mt health check"; okres s3 false ok; asst "done"; } > "$T/anr/followed.jsonl"
+an_out=$(env CLAUDE_PROJECT_DIR="$CWD" node "${GATE:-$G}" --anomalies "$(native "$T/anr")" 10 2>&1)
+printf '%s\n' "$an_out" | grep -aq '^bypass: 1 ' && ok "a refusal then another form of the same call is a bypass" || bad "bypass not counted: $an_out"
+printf '%s\n' "$an_out" | grep -aq '^followed: 1 ' && ok "a refusal, the skill load it asks for, then the same call is the way on, not a bypass" || bad "followed not counted: $an_out"
+printf '%s\n' "$an_out" | grep -aq 'by SHARED WORKING COPY: 1' && ok "a gate label with spaces is counted whole" || bad "label cut: $an_out"
 
 # --- the class: a correction, a fix on the spot, no cause named
 { user "check the PRs"; asst "Done."; user "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/t1.jsonl"
