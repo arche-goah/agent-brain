@@ -158,15 +158,22 @@ function turnSince(transcriptPath, lastPrompt) {
 function judge(input) {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const modes = promptModes(input.transcript_path || '', root);
-  if (!modes.length || modes[modes.length - 1].autonomous) return null; // in the run, or "yes, continue"
+  if (!modes.length) return null;
+  const last = modes[modes.length - 1];
   let n = modes.length - 1;
   while (n >= 0 && modes[n].answer) n--; // the newest operator PROMPT, not an answer to a question
   if (n < 0) return null;
   const now = modes[n];
-  const wasOn = n > 0 && modes[n - 1].autonomous;
+  // The asking prompt's own turn with no question answered: the run is still autonomous (autonomous-mode.cjs, the
+  // window), and what is filed as open is the DUTY this hook carries - a turn that asked nothing while a decision is
+  // open is held; with nothing open the run goes on and nothing is owed.
+  const window = last === now && Boolean(now.window);
+  if (last.autonomous && !window) return null; // in the run, or "yes, continue"
+  const wasOn = window || (n > 0 && modes[n - 1].autonomous);
   if (!now.asks && !wasOn) return null;
   const open = [...ledgerDecisions(root), ...registerDecisions(root)];
   const { calls, cmds, since } = turnSince(input.transcript_path, now.text);
+  if (window && !open.length && !calls.length) return null;
   const missing = [];
   if (open.length && !calls.length) {
     missing.push(`${open.length} operator hand step(s) and decision(s) through the question tool (one question each, recommended option first; ` +

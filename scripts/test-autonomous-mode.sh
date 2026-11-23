@@ -30,8 +30,8 @@ open_q() { mkdir -p "$1/.claude-state"; printf '%s\n' '{"q1": {"q": "Release now
 open_q "$EN"; open_q "$DE"
 NONE="$T/none"; mkdir -p "$NONE"
 
-mode() { # $1 name, $2 transcript, $3 cwd, $4 expected autonomous|interactive
-  local got; got="$(node "$M" "$(native "$2")" "$(native "$3")")"
+mode() { # $1 name, $2 transcript, $3 cwd, $4 expected autonomous|interactive|window (autonomous, the asking prompt's turn open)
+  local got; got="$(node "$M" "$(native "$2")" "$(native "$3")" --window)"
   [ "$got" = "$4" ] && ok "$1: $4" || bad "$1: expected $4, got $got"
 }
 
@@ -53,31 +53,24 @@ f="$T/2y.jsonl"; { user "back to normal mode"; asst "y"; user "# Autonomous loop
 mode "the same words typed by the operator switch it (control)" "$f" "$EN" autonomous
 f="$T/3.jsonl"; { user "autonomous, please"; asst "x"; user "status?"; asst "y"; user "back to normal mode"; } > "$f"
 mode "an off word ends it" "$f" "$EN" interactive
-# Asking what is open ends it: the operator is here (operator 2026-10-26, Windows instance).
+# Asking what is open opens a WINDOW (2026-11-23): the run is still autonomous, and in that prompt's own turn the
+# question tool and the dialogs pass (autonomous-gate). A question answered there ends the run; a turn that asks nothing
+# leaves it autonomous. No count of what is filed as open decides - three incidents on the macOS instance (2026-11-05,
+# -18, -23) each failed on one more input form of that count, and the question tool was refused on the operator's request.
 f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
-mode "asking what is open ends it" "$f" "$EN" interactive
-mode "asking what is open with NOTHING open keeps the run (2026-11-03)" "$f" "$NONE" autonomous
-# 2026-11-06 (Windows instance): the open count was re-read at every hook, so once the agent had answered and done
-# every operator item the same "what is open" prompt read 0 and the run counted as autonomous again - the closing
-# mode question was refused, the idle gate asked for a continuation. The count at the FIRST reading of that prompt holds.
-LATER="$T/later"; mkdir -p "$LATER"; open_q "$LATER"
-f="$T/3h.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
-mode "asking what is open with an item open ends it (first reading)" "$f" "$LATER" interactive
-rm -f "$LATER/.claude-state/open-questions.json"
-mode "the same prompt after the item is done stays interactive (count of the first reading)" "$f" "$LATER" interactive
+mode "asking what is open opens the window, something filed as open" "$f" "$EN" window
+mode "asking what is open opens the window, nothing filed as open (no count decides)" "$f" "$NONE" window
 f="$T/3i.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; asst "y"; user "anything open for me now?"; } > "$f"
-mode "a NEW ask with nothing open keeps the run (control: the memo is per prompt)" "$f" "$LATER" autonomous
-# 2026-11-18 (macOS instance): the ask read 0 (decisions filed wrongly), then the agent filed them right - the kept 0
-# held the run autonomous and the question tool was refused on the operator's own request. A kept 0 is measured again.
-RISE="$T/rise"; mkdir -p "$RISE"
-f="$T/3r.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
-mode "asking what is open, nothing filed yet, keeps the run (first reading 0)" "$f" "$RISE" autonomous
-open_q "$RISE"
-mode "the same prompt once a decision is filed ends it (a kept 0 is re-measured)" "$f" "$RISE" interactive
-# A 0 an older helper already wrote into the state file is measured again too (the state survives the update).
-OLD0="$T/old0"; open_q "$OLD0"
-node -e 'const p=require("path"),fs=require("fs");fs.writeFileSync(p.join(process.argv[2],".claude-state","asks-open-count.json"),JSON.stringify({[p.resolve(process.argv[1])+"#2"]:0}))' "$(native "$f")" "$(native "$OLD0")"
-mode "a 0 kept by an older helper is measured again" "$f" "$OLD0" interactive
+mode "a second ask opens its own window" "$f" "$NONE" window
+f="$T/3w1.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; asst "Nothing open."; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$f"
+mode "a turn that asked nothing: the timer turn after it is back in the run, the window is closed" "$f" "$EN" autonomous
+peer() { printf '{"type":"user","origin":{"kind":"peer"},"message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
+f="$T/3w2.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; asst "Nothing open."; peer "the build is done"; } > "$f"
+mode "a peer's message after the asking turn closes the window" "$f" "$EN" autonomous
+f="$T/3w3.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; asst "Nothing open."; user "how is it going?"; } > "$f"
+mode "a later prompt that asks nothing closes the window, the run goes on" "$f" "$EN" autonomous
+f="$T/3w4.jsonl"; { user "status?"; asst "x"; user "anything open for me?"; } > "$f"
+mode "an ask outside a run opens no window (control)" "$f" "$EN" interactive
 # 2026-11-06 (operator: closing the session IS a mode change; the end-of-session loop had come back several times):
 # a close stamp of THIS session written after the order ends the run; another session's stamp does not; a new order
 # after the close switches it on again.
@@ -93,7 +86,7 @@ printf 'sess-b\n- x\n' > "$CL/.claude-state/session-close.stamp"
 f="$T/sess-b.jsonl"; { userAt "2026-01-01T10:00:00Z" "autonomous, please"; asst "x"; userAt "2099-01-01T10:00:00Z" "work through the list autonomously"; } > "$f"
 mode "a new order after the close switches it on again" "$f" "$CL" autonomous
 f="$T/3e.jsonl"; { user "autonomous, please"; asst "x"; qcmd "anything open for me?"; } > "$f"
-mode "asking mid-turn ends it" "$f" "$EN" interactive
+mode "asking mid-turn ends it" "$f" "$EN" window
 # The answer to "continue autonomously?" arrives as a tool result.
 # A real answer is the result of an AskUserQuestion call (its tool_use comes first, same id).
 answer() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t9","name":"AskUserQuestion","input":{"questions":[]}}]}}\n'
@@ -107,6 +100,7 @@ f="$T/3g.jsonl"; { user "autonomous, please"; user "anything open for me?"; answ
 mode "no to continue autonomously keeps it off" "$f" "$EN" interactive
 f="$T/3h.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
 mode "yes to another question sets nothing" "$f" "$EN" interactive
+mode "a question answered in the window ends the run - nothing filed as open, no count" "$f" "$NONE" interactive
 # An order inside the answer to another question counts like a prompt (macOS instance 2026-10-30).
 f="$T/3k.jsonl"; { user "status?"; answer '"Shall I handle the 42 items?"="yes, work through them autonomously. document false reports"'; } > "$f"
 mode "an autonomous order inside an answer to another question sets it" "$f" "$EN" autonomous
@@ -144,7 +138,7 @@ mode "the same German prompt without the data file (discriminator)" "$f" "$EN" i
 printf '%s\n' '{"on_patterns": ["\\bautonom"], "off_patterns": ["\\bnormalmodus\\b"], "yes_patterns": ["^\\s*ja\\b"]}' > "$DE/.claude/rules/autonomous-patterns.json"
 printf '%s\n' '{"ask_patterns": ["\\birgendwas\\b[^?\\n]{0,30}\\boffen\\b"]}' > "$DE/.claude/rules/open-items.json"
 f="$T/7b.jsonl"; { user "weiter autonom"; user "irgendwas offen?"; } > "$f"
-mode "the operator's ask wording from instance data ends it" "$f" "$DE" interactive
+mode "the operator's ask wording from instance data ends it" "$f" "$DE" window
 f="$T/7c.jsonl"; { user "weiter autonom"; user "irgendwas offen?"; answer '"Weiter autonom?"="Ja, weiter autonom"'; } > "$f"
 mode "the operator's yes from instance data sets it again" "$f" "$DE" autonomous
 mode "missing transcript fails toward interactive" "$T/none.jsonl" "$EN" interactive
@@ -200,7 +194,7 @@ tuser() { printf '{"type":"user","timestamp":"%s","message":{"role":"user","cont
 irec() { printf '{"at":"%s","session":"%s","mode":"hook","model":{"asks_open":%s,"mode_on":%s,"mode_off":false,"correction":false}}\n' "$1" "$2" "$3" "$4"; }
 f="$T/sess-a.jsonl"; { tuser 2026-10-28T20:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-10-28T21:29:00Z "you need something?"; } > "$f"
 irec 2026-10-28T21:29:05Z sess-a true false > "$IC/.claude-state/intent-classifier.jsonl"
-mode "the classifier reads an ask the words miss: the mode ends" "$f" "$IC" interactive
+mode "the classifier reads an ask the words miss: the mode ends" "$f" "$IC" window
 mode "without the classifier record the words alone keep it (control)" "$f" "$EN" autonomous
 irec 2026-10-28T21:29:05Z other-session true false > "$IC/.claude-state/intent-classifier.jsonl"
 mode "a record of another session does not count" "$f" "$IC" autonomous
@@ -214,18 +208,18 @@ irec 2026-10-31T15:40:05Z sess-c true true > "$IC/.claude-state/intent-classifie
 mode "the model's asks_open does not cancel an autonomous order in the same prompt" "$f" "$IC" autonomous
 f="$T/sess-d.jsonl"; { tuser 2026-10-31T15:40:00Z "work through the list autonomously"; asst "x"; tuser 2026-10-31T16:40:00Z "anything for me?"; } > "$f"
 irec 2026-10-31T16:40:05Z sess-d true false > "$IC/.claude-state/intent-classifier.jsonl"
-mode "an ask without an order still ends the run (control)" "$f" "$IC" interactive
+mode "an ask without an order still ends the run (control)" "$f" "$IC" window
 
 # The record of THIS prompt (2026-11-01, macOS instance): a notification's record 1.6 s before the
 # operator's own record was the first in the window, and the operator's ask was read as "nothing".
 irecp() { printf '{"at":"%s","session":"%s","mode":"hook","prompt":%s,"model":{"asks_open":%s,"mode_on":false,"mode_off":false,"correction":false}}\n' "$1" "$2" "$(js "$3")" "$4"; }
 f="$T/sess-e.jsonl"; { tuser 2026-11-01T07:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-01T07:53:40Z "please lay the open questions before me"; } > "$f"
 { irecp 2026-11-01T07:53:42Z sess-e "<task-notification> a build finished" false; irecp 2026-11-01T07:53:44Z sess-e "please lay the open questions before me" true; } > "$IC/.claude-state/intent-classifier.jsonl"
-mode "the operator's own record wins over a notification's record in the window" "$f" "$IC" interactive
+mode "the operator's own record wins over a notification's record in the window" "$f" "$IC" window
 { irecp 2026-11-01T07:53:42Z sess-e "<task-notification> a build finished" true; irecp 2026-11-01T07:53:44Z sess-e "please lay the open questions before me" false; } > "$IC/.claude-state/intent-classifier.jsonl"
 mode "a notification's ask does not end the run (control)" "$f" "$IC" autonomous
 irec 2026-11-01T07:53:43Z sess-e true false > "$IC/.claude-state/intent-classifier.jsonl"
-mode "a record without a prompt field still matches by time" "$f" "$IC" interactive
+mode "a record without a prompt field still matches by time" "$f" "$IC" window
 
 # The record decides over the words (2026-11-01, three measured prompts of one session).
 irecf() { printf '{"at":"%s","session":"%s","mode":"hook","prompt":%s,"model":{"asks_open":%s,"mode_on":%s,"mode_off":false,"correction":false}}\n' "$1" "$2" "$(js "$3")" "$4" "$5"; }
@@ -235,7 +229,7 @@ mode "the words see 'autonomous', the model sees no order: the model decides" "$
 mode "without a record the words decide (control: the belief reads as an order)" "$f" "$EN" autonomous
 f="$T/sess-g.jsonl"; { tuser 2026-11-01T07:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-01T07:53:40Z "go on, give me what you have collected"; } > "$f"
 { irecf 2026-11-01T07:00:02Z sess-g "work through the list autonomously" false true; irecf 2026-11-01T07:53:44Z sess-g "go on, give me what you have collected" true false; } > "$IC/.claude-state/intent-classifier.jsonl"
-mode "the model reads an ask the words miss: the run ends" "$f" "$IC" interactive
+mode "the model reads an ask the words miss: the run ends" "$f" "$IC" window
 printf '%s\n' '{"at":"2026-11-01T07:53:44Z","session":"sess-g","mode":"hook","prompt":"go on, give me what you have collected","model":{}}' > "$IC/.claude-state/intent-classifier.jsonl"
 mode "a record without readable fields falls back to the words" "$f" "$IC" autonomous
 
@@ -252,7 +246,7 @@ f="$T/init0.jsonl"; : > "$f"
 mode "initial_mode autonomous: an empty transcript is autonomous" "$f" "$AU" autonomous
 mode "default: an empty transcript is interactive (control)" "$f" "$EN" interactive
 f="$T/init2.jsonl"; { user "status?"; asst "x"; user "anything open for me?"; } > "$f"
-mode "initial_mode autonomous: asking what is open still ends it" "$f" "$AU" interactive
+mode "initial_mode autonomous: asking what is open still ends it" "$f" "$AU" window
 f="$T/init3.jsonl"; { user "status?"; asst "x"; user "back to normal mode"; } > "$f"
 mode "initial_mode autonomous: an off word still ends it" "$f" "$AU" interactive
 f="$T/init4.jsonl"; { user "anything open for me?"; asst "x"; user "fine, autonomous again"; } > "$f"

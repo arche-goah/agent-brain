@@ -14,7 +14,8 @@
  * it holds". The question-tool half was an instance alpha (autonomous-question-gate, 2026-10-19) that
  * no other brain had.
  *
- * Mode: `autonomous-mode.cjs` (a latch: an on-word sets it; an off-word or asking what is open clears it;
+ * Mode: `autonomous-mode.cjs` (a latch: an on-word sets it; an off-word clears it; asking what is open opens a
+ * window for that prompt's own turn - this hook is silent in it - and the first answered question clears the latch;
  * instance words in `.claude/rules/autonomous-patterns.json`). Outside that mode this hook is silent.
  * Ask rules: `permissions.ask` of the project's `.claude/settings.json`, `.claude/settings.local.json`
  * and the user's settings, matched the way the harness reads them: `Tool` alone matches the tool;
@@ -28,7 +29,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { autonomousMode, promptModes, asksMode, words } = require('./autonomous-mode.cjs');
+const { autonomousMode, promptModes, askWindow, asksMode, words } = require('./autonomous-mode.cjs');
 
 /** A question call that asks ONLY the mode question ("Continue autonomously?") ends the run's question round; it is
  *  no stop (2026-11-06, Windows instance: once every operator item was answered and done, the "what is open for me"
@@ -227,6 +228,12 @@ function judge(input) {
   const own = isQuestion ? null : hitRule(OWN_WORDS, tool, input.tool_input || {}, root);
   if (!isQuestion && !rule && !held && !own) return null;
   if (!autonomousMode(input.transcript_path || '', root)) return null;
+  // The operator's newest prompt asked what is open and its turn still runs: the operator is here for exactly this
+  // turn, so the question tool and the dialogs pass - with no count of what is filed as open (until 2026-11-23 the run
+  // ended on that prompt only when a derived count was above 0; replay on the macOS instance: 14 asking prompts had
+  // the question tool refused, 15 a dialog edit, 3 a dialog command). The gate's own words stay locked (below), and a
+  // later turn the operator did not open is outside the window (autonomous-mode.cjs).
+  if (!own && askWindow(input.transcript_path || '', root)) return null;
   if (own && wayOut(tool, input.tool_input || {}, root, input.transcript_path || '')) return null;
   if (own) {
     return `AUTONOMOUS-GATE: \`${own}\` holds the words this gate decides by, and the run is autonomous - a run does not change ` +

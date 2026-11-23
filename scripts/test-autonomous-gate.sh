@@ -17,7 +17,7 @@ js() { node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$1"; }
 user() { printf '{"type":"user","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
 
 B="$T/brain"; mkdir -p "$B/.claude" "$T/userdir"
-# one open operator question: "what is open?" leaves the run only when something is (autonomous-mode.cjs, 2026-11-03)
+# one open operator question (the presentation gate's duty; the mode no longer reads a count, 2026-11-23)
 mkdir -p "$B/.claude-state"; printf '%s\n' '{"q1": {"q": "Release now?", "status": "unanswered"}}' > "$B/.claude-state/open-questions.json"
 printf '%s\n' '{"permissions":{"ask":["Edit(.claude/settings.json)","Bash(git -C * push * main*)","Bash(gh pr close*)"]}}' > "$B/.claude/settings.json"
 printf '%s\n' '{"permissions":{"ask":["WebFetch"]}}' > "$T/userdir/settings.json"
@@ -137,18 +137,55 @@ mprobe "default mode, a new session says it again" default s2 "$AUTO" block
 mprobe "auto mode, autonomous run (control)" auto s3 "$AUTO" allow
 mprobe "default mode, not autonomous (control)" default s4 "$INTER" allow
 
-# 2026-11-23 (macOS instance): the operator asked for the questions while nothing counted as open for them (the one
-# question entry carried exit ai-does-it). The refusal named no reason, and the count 0 was kept for that prompt, so
-# fixing the ledger did not let the questions through.
-B2="$T/brain2"; mkdir -p "$B2/.claude" "$B2/.claude-state"
+# 2026-11-23, the ask window: the operator's newest prompt asks what is open - in THAT turn the question tool and the
+# dialogs pass, with no count of what is filed as open. Incident (macOS instance, third of its kind): the operator typed
+# "questions now", the count read 0 (the question entry carried the agent's own exit), the question tool was refused.
+# B2 has NOTHING filed as open: every pass below is a case the count refused.
+B2="$T/brain2"; mkdir -p "$B2/.claude/rules" "$B2/.claude-state"
+printf '%s\n' '{"permissions":{"ask":["Edit(.claude/settings.json)","Bash(gh pr close*)"]}}' > "$B2/.claude/settings.json"
+tick() { printf '{"type":"user","isMeta":true,"promptSource":"system","queuePriority":"later","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
+asst() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":%s}]}}\n' "$(js "$1")"; }
 ASK2="$T/ask2.jsonl"; { user "work through the open points autonomously"; user "what is open for me?"; } > "$ASK2"
-q2() { node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:"AskUserQuestion",tool_input:{questions:[{question:"Release now?"}]},transcript_path:a[1],cwd:a[2]}))' "$(native "$ASK2")" "$(native "$B2")" \
+RUN2="$T/run2.jsonl"; { user "work through the open points autonomously"; user "status?"; } > "$RUN2"
+LATE2="$T/late2.jsonl"; { user "work through the open points autonomously"; user "what is open for me?"; asst "Nothing open."; tick "# Autonomous loop check  You're being invoked on a timer"; } > "$LATE2"
+MIDASK="$T/midask.jsonl"; { user "work through the open points autonomously"; queued "I am here, everything interactive to me now - what is open for me?"; } > "$MIDASK"
+out2() { node -e 'const a=process.argv;process.stdout.write(JSON.stringify({tool_name:a[1],tool_input:JSON.parse(a[2]),transcript_path:a[3],cwd:a[4]}))' "$1" "$2" "$(native "$3")" "$(native "$B2")" \
   | CLAUDE_PROJECT_DIR="$(native "$B2")" CLAUDE_CONFIG_DIR="$(native "$T/userdir")" node "$(native "$G")" 2>&1; }
-out=$(q2)
-case "$out" in *'nothing is open for the operator'*) ok "the refusal names its measured reason (asked what is open, 0 open)";; *) bad "refusal without its reason: '${out:0:200}'";; esac
-case "$out" in *'intent classifier record'*|*'word lists'*) ok "the refusal names which reader decided";; *) bad "reader not named";; esac
+p2() { # $1 label, $2 tool, $3 tool_input JSON, $4 transcript, $5 block|allow
+  case "$(out2 "$2" "$3" "$4")" in
+    *'"permissionDecision":"deny"'*) [ "$5" = block ] && ok "$1 blocks" || bad "$1 blocked";;
+    *) [ "$5" = allow ] && ok "$1 allows" || bad "$1 did NOT block";;
+  esac
+}
+QQ='{"questions":[{"question":"Release now?"}]}'
+p2 "the incident: asked what is open, nothing filed as open - the question tool passes" AskUserQuestion "$QQ" "$ASK2" allow
+p2 "asked what is open: a dialog edit (ask rule) passes in that turn" Edit '{"file_path":".claude/settings.json"}' "$ASK2" allow
+p2 "asked what is open: a dialog command (ask rule) passes in that turn" Bash '{"command":"gh pr close 7"}' "$ASK2" allow
+p2 "asked what is open: an edit the classifier holds passes in that turn" Edit '{"file_path":".claude/rules/stop-checks.json"}' "$ASK2" allow
+p2 "asked mid-turn (a queued message): the question tool passes" AskUserQuestion "$QQ" "$MIDASK" allow
+p2 "mid-run, the operator asked nothing: the question tool stays refused (control)" AskUserQuestion "$QQ" "$RUN2" block
+p2 "mid-run, the operator asked nothing: the dialog edit stays refused (control)" Edit '{"file_path":".claude/settings.json"}' "$RUN2" block
+p2 "mid-run, the operator asked nothing: the dialog command stays refused (control)" Bash '{"command":"gh pr close 7"}' "$RUN2" block
+p2 "the asking turn ended without a question: a later timer turn is outside the window" AskUserQuestion "$QQ" "$LATE2" block
+p2 "the gate's own words stay locked inside the window" Edit '{"file_path":".claude/rules/autonomous-patterns.json"}' "$ASK2" block
+out=$(out2 AskUserQuestion "$QQ" "$RUN2")
+case "$out" in *'Still autonomous because'*'not read as asking what is open'*'word lists'*) ok "the refusal names its measured reason and the reader (not read as an ask)";; *) bad "refusal without its reason: '${out:0:260}'";; esac
+out=$(out2 AskUserQuestion "$QQ" "$LATE2")
+case "$out" in *'its turn ended without a question'*) ok "the refusal after the window names that the asking turn has ended";; *) bad "late refusal without its reason: '${out:0:260}'";; esac
+# A factual question the classifier misreads as "what is open" (one such case in a brain's register, 2026-11-15): the
+# tools are ALLOWED in that turn, nothing is forced - the worst case is one needless question, never a refused tool.
+IC2="$B2/.claude-state/intent-classifier.jsonl"
+MIS="$T/sess-mis.jsonl"; { printf '{"type":"user","timestamp":"2026-11-15T20:00:30Z","message":{"role":"user","content":"work through the list autonomously"}}\n'; printf '{"type":"user","timestamp":"2026-11-15T20:00:35Z","message":{"role":"user","content":"when does the order arrive, and what is the deadline?"}}\n'; } > "$MIS"
+printf '%s\n' '{"at":"2026-11-15T20:00:37Z","session":"sess-mis","mode":"hook","prompt":"when does the order arrive, and what is the deadline?","model":{"asks_open":true,"mode_on":false,"mode_off":false,"correction":false}}' > "$IC2"
+p2 "a factual question misread as an ask: the question tool is allowed" AskUserQuestion "$QQ" "$MIS" allow
+{ cat "$MIS"; asst "It arrives on Friday; the deadline is the 26th."; } > "$T/sess-mis2.jsonl"; cp "$T/sess-mis2.jsonl" "$MIS"
+dp=$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({transcript_path:a[1],cwd:a[2]}))' "$(native "$MIS")" "$(native "$B2")" | CLAUDE_PROJECT_DIR="$(native "$B2")" node "$(native "$_D/../helpers/decision-presentation-gate.cjs")" 2>&1)
+[ -z "$dp" ] && ok "... and nothing is forced: the turn that only answers ends without a demanded question" || bad "misread ask forced a question: '${dp:0:200}'"
+rm -f "$IC2"
+# The count stays a DUTY (presentation gate): something filed as open and a turn that asked nothing is held at its end.
 printf '%s\n' '{"q1": {"q": "Release now?", "status": "unanswered"}}' > "$B2/.claude-state/open-questions.json"
-out=$(q2)
-case "$out" in *'"permissionDecision":"deny"'*) bad "a ledger fixed after the prompt still left the run autonomous (a kept 0)";; *) ok "a ledger fixed after the prompt counts at the next call (a 0 is not kept)";; esac
+{ cat "$ASK2"; asst "Nothing from my side."; } > "$T/duty.jsonl"
+dp=$(node -e 'const a=process.argv;process.stdout.write(JSON.stringify({transcript_path:a[1],cwd:a[2]}))' "$(native "$T/duty.jsonl")" "$(native "$B2")" | CLAUDE_PROJECT_DIR="$(native "$B2")" node "$(native "$_D/../helpers/decision-presentation-gate.cjs")" 2>&1)
+case "$dp" in *'"decision":"block"'*'through the question tool'*) ok "asked, a decision filed as open, the turn asked nothing: held at the turn end (the count as a duty)";; *) bad "duty not held: '${dp:0:200}'";; esac
 
 [ "$fail" = 0 ] && echo "autonomous-gate: all cases pass" || { echo "autonomous-gate: FAILURES"; exit 1; }
