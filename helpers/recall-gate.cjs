@@ -50,6 +50,7 @@
  *   a whole re-issue for nothing).
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
@@ -61,7 +62,7 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 
 const RECORD = process.argv.includes('--record');
-function allow() { process.exit(0); }
+function allow() { hookExit(0); }
 
 const HOOK_ECHO = /^Stop hook feedback:/;
 let OWN_ECHO = /RECALL-GATE/;
@@ -264,7 +265,7 @@ process.stdin.on('end', () => {
       '(Before the NEXT live read: scripts/transcript-recall.py <keyword> finds what earlier ' +
       'sessions already read.)',
   }, input)));
-  process.exit(0);
+  hookExit(0);
 });
 
 process.stdin.resume();

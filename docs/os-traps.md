@@ -341,6 +341,7 @@ known:     scripts/test-git-sandbox.sh=1
 known:     scripts/test-guards.sh=6
 known:     scripts/test-headless-browser-gate.sh=1
 known:     scripts/test-hook-coverage.sh=1
+known:     scripts/test-hook-exit.sh=1
 known:     scripts/test-install-git-hooks.sh=1
 known:     scripts/test-instance-key-gate.sh=1
 known:     scripts/test-instrument-watch.sh=1

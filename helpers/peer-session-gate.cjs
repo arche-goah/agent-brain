@@ -25,6 +25,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { replyText } = require('./close-loss-gate.cjs');
 const { declare } = require('./stop-echo.cjs');
@@ -100,10 +101,10 @@ if (require.main === module) {
   process.stdin.on('data', (c) => { raw += c; });
   process.stdin.on('end', () => {
     let input;
-    try { input = JSON.parse(raw); } catch (e) { process.exit(0); }
+    try { input = JSON.parse(raw); } catch (e) { hookExit(0); }
     let reason = null;
     try { reason = judge(input); } catch (e) { reason = null; }
     if (reason) console.log(JSON.stringify(declare({ decision: 'block', reason }, input)));
-    process.exit(0);
+    hookExit(0);
   });
 }

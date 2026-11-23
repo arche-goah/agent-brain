@@ -50,6 +50,7 @@
  * Fixture: scripts/test-root-cause-gate.sh.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { isNotification, isAgentOrigin, isSkillExpansion, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
@@ -636,7 +637,7 @@ function review(args) {
 }
 
 if (process.argv[2] === '--review') {
-  process.exit(review(process.argv.slice(3)));
+  hookExit(review(process.argv.slice(3)));
 } else {
   const pre = process.argv[2] === '--pre';
   let data = '';
@@ -644,6 +645,6 @@ if (process.argv[2] === '--review') {
   process.stdin.on('data', (c) => { data += c; });
   process.stdin.on('end', () => {
     try { (pre ? preGate : gate)(JSON.parse(data || '{}')); } catch (e) { /* fail open */ }
-    process.exit(0);
+    hookExit(0);
   });
 }

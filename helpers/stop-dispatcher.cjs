@@ -85,6 +85,7 @@
  * fire and belongs in the recurring audit, not in someone's memory.
  */
 const { execFile } = require('child_process');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const fs = require('fs');
 const path = require('path');
 
@@ -215,7 +216,7 @@ function loadConfig() {
 const LIST = process.argv.includes('--list');
 if (LIST) {
   const text = JSON.stringify({ config: CONFIG.split(path.sep).join('/'), checks: loadConfig().checks }) + '\n';
-  process.stdout.write(text, () => process.exit(0));
+  process.stdout.write(text, () => hookExit(0));
 }
 
 function short(s, n) {
@@ -345,12 +346,12 @@ function run(check, base) {
 process.stdin.on('end', async () => {
   if (LIST) return; // the list is on its way out; its write callback ends the process
   let input = {};
-  try { input = JSON.parse(data); } catch (e) { process.exit(0); }
+  try { input = JSON.parse(data); } catch (e) { hookExit(0); }
   const cfg = loadConfig();
   // The re-issue pass runs only the checks that opted in (header, RE-ISSUE PASS).
   const reissue = !!input.stop_hook_active;
   const eligible = cfg.checks.filter((c) => !reissue || c.onReissue === 'run');
-  if (eligible.length === 0) process.exit(0);
+  if (eligible.length === 0) hookExit(0);
 
   const kind = input.transcript_path ? turnKind(input.transcript_path) : 'unknown';
   const payload = { ...input, turn_kind: kind };
@@ -374,7 +375,7 @@ process.stdin.on('end', async () => {
   }
   if (results.length === 0) {
     if (notes.length) console.log(JSON.stringify({ systemMessage: notes.join('\n') }));
-    process.exit(0);
+    hookExit(0);
   }
 
   // SHORT LINES, NOTHING SWALLOWED (2026-10-31, the operator: the stop hook "is really a background
@@ -424,5 +425,5 @@ process.stdin.on('end', async () => {
   console.log(JSON.stringify(notes.length
     ? { decision: 'block', reason, systemMessage: notes.join('\n') }
     : { decision: 'block', reason }));
-  process.exit(0);
+  hookExit(0);
 });

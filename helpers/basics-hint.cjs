@@ -18,6 +18,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { operatorPrompt } = require('./turn-kind.cjs');
 
@@ -120,7 +121,7 @@ if (require.main === module) {
     let out = null;
     try { out = judge(JSON.parse(raw)); } catch (e) { out = null; }
     if (out) process.stdout.write(out + '\n');
-    process.exit(0);
+    hookExit(0);
   });
 }
 

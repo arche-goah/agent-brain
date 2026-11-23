@@ -46,6 +46,7 @@
  * indistinguishable from one that agrees.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
@@ -56,7 +57,7 @@ let data = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 
-function allow() { process.exit(0); }
+function allow() { hookExit(0); }
 
 // The harness replays a blocked turn's feedback as an operator message. It must not
 // end the turn window — after the first block the window would be empty otherwise.
@@ -242,7 +243,7 @@ process.stdin.on('end', () => {
       'with the reason, or already there? Nothing transferable: ' +
       '"⚙ writer level, no class elsewhere, core has it" — the level is always named.',
   }, input)));
-  process.exit(0);
+  hookExit(0);
 });
 
 process.stdin.resume();

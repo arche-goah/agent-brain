@@ -49,7 +49,7 @@ with tempfile.TemporaryDirectory() as td:
     (root / "core/helpers").mkdir(parents=True)
     # The report asks the brain's consumed dispatcher which checks run (`--list`); the fixture brain
     # consumes the one under test, which reads the template of ITS checkout (root/core/templates).
-    for helper in ("stop-dispatcher.cjs", "turn-kind.cjs"):
+    for helper in ("stop-dispatcher.cjs", "turn-kind.cjs", "hook-exit.cjs"):
         shutil.copy(HELPERS / helper, root / "core/helpers" / helper)
     (root / "core/helpers/own.cjs").write_text("path.join(dir, 'own-log.jsonl')\n", encoding="utf-8")
     (root / ".claude/rules/stop-checks.json").write_text(json.dumps({"checks": [

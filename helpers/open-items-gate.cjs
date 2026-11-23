@@ -54,6 +54,7 @@
  * on "Missing:". Fails open on unreadable input: a crashed gate must not stop a session.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, isTurnEnd } = require('./turn-kind.cjs');
 const { autonomousMode } = require('./autonomous-mode.cjs');
@@ -618,11 +619,11 @@ if (require.main === module) {
   process.stdin.on('data', (c) => { data += c; });
   process.stdin.on('end', () => {
     let input;
-    try { input = JSON.parse(data); } catch (e) { process.exit(0); }
-    if (input.stop_hook_active) process.exit(0);
+    try { input = JSON.parse(data); } catch (e) { hookExit(0); }
+    if (input.stop_hook_active) hookExit(0);
     let reason = null;
     try { reason = judge(input); } catch (e) { reason = null; }
     if (reason) console.log(JSON.stringify({ decision: 'block', reason }));
-    process.exit(0);
+    hookExit(0);
   });
 }

@@ -44,6 +44,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { promptModes, words } = require('./autonomous-mode.cjs');
 const ITEM_CLASS = /\bclass:\s*`?(decision|hand-step)\b/i;
@@ -176,12 +177,12 @@ if (require.main === module) {
   process.stdin.on('data', (c) => { raw += c; });
   process.stdin.on('end', () => {
     let input;
-    try { input = JSON.parse(raw); } catch (e) { process.exit(0); }
-    if (input.stop_hook_active) process.exit(0);
+    try { input = JSON.parse(raw); } catch (e) { hookExit(0); }
+    if (input.stop_hook_active) hookExit(0);
     let reason = null;
     try { reason = judge(input); } catch (e) { reason = null; }
     if (reason) console.log(JSON.stringify({ decision: 'block', reason }));
-    process.exit(0);
+    hookExit(0);
   });
 }
 

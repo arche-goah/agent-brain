@@ -26,6 +26,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const os = require('os');
 const { autonomousMode, promptModes, asksMode, words } = require('./autonomous-mode.cjs');
@@ -250,7 +251,7 @@ if (require.main === module) {
       process.stdout.write(JSON.stringify({ hookSpecificOutput: {
         hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
     }
-    process.exit(0);
+    hookExit(0);
   });
 }
 

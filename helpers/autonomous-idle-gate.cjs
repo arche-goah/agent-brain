@@ -57,6 +57,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { autonomousMode, answers, promptText, HOOK_ECHO: PROMPT_ECHO } = require('./autonomous-mode.cjs');
 const { isTranscriptRecord, isNotification, isSkillExpansion, isAgentOrigin, queuedHumanPrompt, operatorWords, FRAMES, LOCAL } = require('./turn-kind.cjs');
@@ -429,7 +430,7 @@ if (require.main === module) {
     let reason = null;
     try { reason = judge(JSON.parse(raw)); } catch (e) { reason = null; }
     if (reason) console.log(JSON.stringify({ decision: 'block', reason }));
-    process.exit(0);
+    hookExit(0);
   });
 }
 
