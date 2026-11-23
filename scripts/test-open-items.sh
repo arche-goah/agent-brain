@@ -520,6 +520,12 @@ out=$(run "" "$L")
 has "[ledger|wait] 2026-10-25 other-thing" "$out" && has "waiting on the ledger exit other-side: since 2026-10-25" "$out" \
   && ok "exit other-side waits quietly" || bad "exit other-side: $out"
 has "[ledger|ai] 2026-10-25 mine-thing" "$out" && ok "exit ai-does-it stays open work" || bad "exit ai-does-it: $out"
+# A question line outranks an ai-does-it exit (macOS incident 2026-11-23: the start report said "human 0" while the
+# entry asked the operator three questions).
+printf '%s\n' '' '- [ ] Mine with a question' '  id: mine-asks' '  question: wire the new check? recommendation yes' \
+  '  exit: ai-does-it 2026-10-25 — the rest is mine' >> "$L/docs/x/open.md"
+out=$(run "" "$L")
+has "[ledger|human] 2026-10-25 mine-asks" "$out" && ok "a question line makes it the operator's despite ai-does-it" || bad "question line under ai-does-it: $out"
 # The fields as list items under the entry, the project ledgers' form (measured 2026-11-03: ten
 # such entries with `  - exit: other-side|parked` were listed as untouched agent work).
 printf '%s\n' '' '- [ ] Parked in a project ledger' '  - id: `bullet-thing`' '  - class: todo' '  - exit: parked 2026-10-25 — operator said later' '' \

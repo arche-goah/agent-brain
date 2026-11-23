@@ -56,6 +56,13 @@ const OPERATOR_CIRCLES = new Set(['B', 'E', 'F']);
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
 
+/** An open question to the operator inside an entry: a `question:` field line, or an instance pattern. */
+function questionRx(cfg) {
+  const extra = (cfg && Array.isArray(cfg.operator_question_patterns) ? cfg.operator_question_patterns : [])
+    .filter((p) => { try { new RegExp(p); return true; } catch (e) { return false; } });
+  return new RegExp(['^\\s*(?:[-*]\\s+)?question:\\s*\\S', ...extra].join('|'), 'm');
+}
+
 /** Open `class: decision` and `class: hand-step` entries of the registered ledgers, as short titles. */
 function ledgerDecisions(root) {
   const cfg = readJson(path.join(root, '.claude', 'rules', 'ledgers.json')) || {};
@@ -71,10 +78,14 @@ function ledgerDecisions(root) {
       const block = [lines[i]];
       while (j < lines.length && lines[j].startsWith(' ')) block.push(lines[j++]);
       const body = block.join('\n');
-      // An entry whose NEWEST exit is `operator-decision` waits on the operator whatever its class says (2026-11-18,
-      // macOS instance: a proposal filed `class: todo` with that exit was invisible here, "what is open for me?" counted 0
-      // and kept the autonomous run - the question tool was refused on the operator's own request).
-      if (!ITEM_CLASS.test(body) && newestExitKind(body) !== 'operator-decision') continue;
+      // ONE predicate says whether the entry waits on the operator; the class decides only where no exit is written yet.
+      // Two incidents on the macOS instance each added one input form the count did not read, and each time the
+      // operator's own "ask me now" left the question tool refused: 2026-11-18 a proposal filed `class: todo` with the
+      // exit operator-decision; 2026-11-23 the operator's questions under the agent's own exit (below). Read apart,
+      // the two fixes still missed their product: a `class: todo` entry with a question line under `ai-does-it`.
+      const exit = newestExitKind(body);
+      const asksOperator = (exit === 'ai-does-it' || exit === 'in-pr') && questionRx(cfg).test(body);
+      if (exit ? (exit !== 'operator-decision' && !asksOperator) : !ITEM_CLASS.test(body)) continue;
       const circle = /^\s+(?:-\s*)?circle:\s*`?([A-Fa-f])\b/m.exec(body);
       if (circle && !OPERATOR_CIRCLES.has(circle[1].toUpperCase())) continue;
       // The entry's NEWEST exit line (helpers/ledger-exit.cjs) says who moves now; only
@@ -82,8 +93,11 @@ function ledgerDecisions(root) {
       // instance: 22 entries counted, by their exits 12 later-at-system, 5 parked, 4 other-side,
       // 1 ai-does-it — none an operator decision.
       // A field may stand as its own list item (`  - exit: ...`), as the project ledgers write it.
-      const exit = newestExitKind(body);
-      if (exit && exit !== 'operator-decision') continue;
+      // A question to the operator is its own line, not a side effect of the exit (macOS incident 2026-11-23: one entry
+      // held the AI's remaining work AND the operator's questions; its exit read ai-does-it, the count was 0, and the
+      // operator's "ask me now" did not end the autonomous run). A `question:` line, or a line matching the instance's
+      // `operator_question_patterns` (ledgers.json), outranks the AGENT'S OWN exits (ai-does-it, in-pr - they cannot carry
+      // a question to the operator); a wait (later-at-system, other-side, parked) still parks it until its reason falls.
       // `ask-when:` (operator decision 2026-10-29 on the macOS instance: "questions at the right time"): a date
       // still ahead, or a topic (`ask-when: thema|topic <regex>`, put when the operator's work touches it) - not due here.
       const when = /^\s*(?:[-*]\s+)?ask-when:\s*(.+)$/m.exec(body);
