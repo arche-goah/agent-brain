@@ -1014,8 +1014,10 @@ def alpha_records(decl, repo, home, today):
     so the decision at the expiry date (port, extend, unwire) had no data; 30 of 81 alphas had been
     extended at least once. `record` is a path (relative to the brain, `~` or absolute; a list for
     several) or the place a result stands that is no file (a URL, owner/repo#n - shape only, no
-    network call at a session start). A path must exist - the declaring session creates it, empty
-    counts as armed - and must have been written within `record_days` (per alpha, else the file's
+    network call at a session start). A path must exist - the instrument creates it on its
+    first run (measured the same evening: a `touch` by the declaring session was refused by the
+    permission layer, so a record that waits for a hand may never appear), empty counts as armed -
+    and must have been written within `record_days` (per alpha, else the file's
     top-level value, else 7): a record nobody wrote for a week measures nothing or the thing it
     waits for does not happen, and either is the question the review asks."""
     out = []
@@ -1062,7 +1064,7 @@ MESSAGES = {
     "caughtup": "!! local machinery: {n} alpha(s) the running core has caught up with, still wired: {x} — unwire the copy and its wiring now (the core carries it)",
     "expired": "!! local machinery: {n} alpha(s) past their date, still wired: {x} — merge, extend with a reason, or unwire",
     "alphakind": "!! local machinery: {n} alpha declaration(s) without a valid kind: {x} — name \"kind\": \"test\" (a real test phase; the core port waits for its result) or \"unreleased\" (a clear core feature wired before its release) with \"core_pr\": the core PR (URL or owner/repo#n), opened now",
-    "alpharecord": "!! local machinery: {n} test alpha(s) whose measurement has no living record: {x} — a test names \"record\": the file it writes its measurement to (create it when the alpha is wired) or the URL / owner/repo#n where its result stands; a missing or silent record means the test measures nothing: make it write, or decide now (port, unwire) instead of at the date",
+    "alpharecord": "!! local machinery: {n} test alpha(s) whose measurement has no living record: {x} — a test names \"record\": the file it writes its measurement to (the instrument creates it on its first run) or the URL / owner/repo#n where its result stands; a missing or silent record means the test measures nothing: make it write, or decide now (port, unwire) instead of at the date",
     "outside": "!! local machinery: {n} item(s) run from outside this brain and outside the core, undeclared: {x} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR",
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
     "noevidence": "!! local machinery: {n} instance declaration(s) give a reason without evidence: {x} — add \"evidence\": the instance-specific token the item relies on",
