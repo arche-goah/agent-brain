@@ -434,6 +434,11 @@ bash core/scripts/handover-gate.sh | grep FAIL" block
   tr_probe "mechanism-guard/core rule: submodule update --remote=main after a separator" Bash command "cd /r && git -C /r submodule update --init --remote=main" block
   tr_probe "mechanism-guard/core rule: submodule update --init" Bash command "git submodule update --init core" allow
   tr_probe "mechanism-guard/core rule: the phrase inside a commit message" Bash command "git -C /r commit -m \"docs: never git submodule update --remote\"" allow
+  # review of the macOS instance on #627: git's global options before submodule, and a shell comment after the command
+  tr_probe "mechanism-guard/core rule: submodule --remote after -c" Bash command "git -c protocol.file.allow=always submodule update --remote core" block
+  tr_probe "mechanism-guard/core rule: submodule --remote after --git-dir" Bash command "git --git-dir=.git submodule update --remote core" block
+  tr_probe "mechanism-guard/core rule: submodule --remote after a quoted -C path" Bash command "git -C \"/a b\" submodule update --remote core" block
+  tr_probe "mechanism-guard/core rule: --remote only in a shell comment" Bash command "git submodule update --init core # never --remote" allow
   # class sweep of the same day: waiting scripts by name
   tr_probe "mechanism-guard/core rule: wait-mcp-reconnect in the foreground" Bash command "bash core/scripts/wait-mcp-reconnect.sh touchdesigner" block
   tr_probe "mechanism-guard/core rule: shared-memory-watch in the foreground" Bash command "bash core/scripts/shared-memory-watch.sh watch 300" block
