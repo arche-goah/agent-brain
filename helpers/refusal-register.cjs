@@ -21,11 +21,12 @@
 'use strict';
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-const GATE_RX = /^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^"]*?([\w.-]+)\.cjs"\]:\s*)?(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)[:(])?/;
+// The same label form as anomalies() in root-cause-gate.cjs: a label runs to the first `:` or ` (`.
+const GATE_RX = /^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^"]*?([\w.-]+)\.cjs"\]:\s*)?(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?/;
 
-/** The refusing gate's name from a refusal's raw tool-result text (the form root-cause-gate's anomalies() reads). */
+/** The refusing gate's name from a refusal's raw tool-result text. */
 function gateOf(raw) {
-  return (GATE_RX.exec(String(raw || '').trim()) || []).slice(1).find(Boolean) || '';
+  return ((GATE_RX.exec(String(raw || '').trim()) || []).slice(1).find(Boolean) || '').trim();
 }
 
 /** The register's entries: {date, title, id, key (refusal: field), about (heading + incident + cause), carrier, effective}. */
