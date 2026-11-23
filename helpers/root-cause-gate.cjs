@@ -570,16 +570,18 @@ function anomalies(group, cwd) {
   const out = [];
   const m = malfData();
   const WAY_ON = loadPatterns(cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), 'way_on_patterns', WAY_ON_BUILTIN, 'iu');
-  for (const seg of group) {
+  for (let si = 0; si < group.length; si += 1) {
+    const seg = group[si];
     const calls = seg.calls || []; const res = seg.results || {};
     const gatesSeen = {};
     for (let i = 0; i < calls.length; i += 1) {
       const c = calls[i]; const r = res[c.id];
+      const at = { seg: si, call: i };   // where the signal starts: what may back its classification lies before it
       if (!r || !r.err) continue;
       const refusal = m.refusal.test(r.text.trim());
       if (!refusal) {
         const f = OWN_FAIL.exec(r.text);
-        if (f && c.name === 'Bash') out.push({ kind: 'own-fail', block: true, what: `${f[0]} in: ${String(c.input.command || '').slice(0, 80)}` });
+        if (f && c.name === 'Bash') out.push({ kind: 'own-fail', block: true, at, what: `${f[0]} in: ${String(c.input.command || '').slice(0, 80)}` });
         continue;
       }
       if (m.malf.test(r.text)) continue;   // malfunctions go the cause path
@@ -602,7 +604,7 @@ function anomalies(group, cwd) {
           if (rulePathMarker(name)) {
             out.push({ kind: 'followed', block: false, gate, what: `${gate} refused ${c.name}, its rule-path marker ${name} was given` });
           } else {
-            out.push({ kind: 'marker-pass', block: true, gate, marker: name, what: `${gate} refused ${c.name}, passed by its marker # ${name}` });
+            out.push({ kind: 'marker-pass', block: true, gate, marker: name, at, what: `${gate} refused ${c.name}, passed by its marker # ${name}` });
           }
           break;
         }
@@ -623,13 +625,18 @@ function anomalies(group, cwd) {
  * The turn's classification of its anomalies - and whether it is BACKED (independent review of the strand,
  * 2026-11-23: a bare "Anomaly: x - intended" released the hold with nothing behind it, the "Carrier: none" escape of
  * 2026-11-02 again). `group` = the turn's segments (readTurns), `ctx` = {texts, writes} of the combined turn.
- *   intended        backed by what it quotes: a `# MARKER` or `quoted text` that stands in the turn - a call's input or
- *                   another text of the turn (the plan line)
+ *   intended        backed by what it quotes, found where the agent cannot write it after the fact (second review of
+ *                   the strand, 2026-11-23: quoting the failed command itself, an own "Plan:" line, the marker just
+ *                   used or a word of the refused call all passed): in the operator's prompt of the turn, or in the
+ *                   input of a call made BEFORE the signal's call. Never the signal's own call, a later call, or the
+ *                   agent's own text; a marker pass is never backed by its own marker.
  *   false-positive  backed by an entry written to the carrier register in the same turn
  *   own-mistake     backed by a cause line (that line opens the cause path, which owes the carrier and the entry)
+ * `signal` = the anomaly ({kind, at: {seg, call}, marker}); without it no earlier call is known and only the
+ * operator's prompt can back an "intended".
  * Returns {kind, backed, missing, line}; kind null when no classification line stands.
  */
-function classification(group, cwd, ctx) {
+function classification(group, cwd, ctx, signal) {
   const texts = (ctx && ctx.texts) || group.flatMap((s) => s.texts || []);
   const writes = (ctx && ctx.writes) || group.flatMap((s) => s.writes || []);
   const rx = loadPatterns(cwd, 'anomaly_patterns', BUILTIN_ANOMALY, 'imu');
@@ -651,11 +658,14 @@ function classification(group, cwd, ctx) {
   }
   const quoted = [...line.matchAll(/`([^`]{3,})`|"([^"]{8,})"|“([^”]{8,})”|#\s*([A-Z][A-Z]+(?:-[A-Z]+)+)/g)]
     .map((q) => (q[1] || q[2] || q[3] || q[4] || '').trim()).filter(Boolean);
-  const inputs = group.flatMap((s) => (s.calls || []).map((c) => JSON.stringify(c.input || {})));
-  const others = texts.filter((t) => !t.includes(line));
-  const found = quoted.find((q) => inputs.some((i) => i.includes(q)) || others.some((t) => t.includes(q)));
+  const at = signal && signal.at;
+  const earlier = at ? group.flatMap((s, si) => (s.calls || []).filter((c, ci) => si < at.seg || (si === at.seg && ci < at.call))
+    .map((c) => JSON.stringify(c.input || {}))) : [];
+  const prompts = group.map((s) => String(s.prompt || '')).filter(Boolean);
+  const own = signal && signal.kind === 'marker-pass' && signal.marker ? signal.marker : null;
+  const found = quoted.find((q) => q !== own && (prompts.some((p) => p.includes(q)) || earlier.some((i) => i.includes(q))));
   return found ? { kind, backed: true, missing: '', line }
-    : { kind, backed: false, missing: 'the marker or plan line the "intended" refers to, quoted, standing in this turn', line };
+    : { kind, backed: false, missing: 'what the "intended" refers to, quoted from the operator\'s prompt or a call made before it (not the failing call, a later call or your own text; a marker never backs itself)', line };
 }
 
 /** A refusal of this turn that the carrier register already knows for the same gate and tool (refusal-register.cjs):
@@ -870,7 +880,7 @@ function gate(input) {
     if (rep && !recordRepeat(cwd, input, rep)) list.unshift({ kind: 'register-repeat', block: true, what: rep.what, hits: rep.hits });
     const own = list.find((a) => a.block);
     if (!own) return;
-    const cls = classification(group, cwd, { texts, writes });
+    const cls = classification(group, cwd, { texts, writes }, own);
     let missing = cls.backed ? '' : (cls.kind ? cls.missing : 'a classification line');
     if (!missing && own.kind === 'register-repeat' && cls.kind === 'false-positive') {
       // the new entry ties the case to the earlier one: `related: none` on a third case was the 2026-11-18 defect
@@ -1156,7 +1166,7 @@ if (process.argv[2] === '--anomalies') {
         const s = kinds[a.kind] = kinds[a.kind] || { n: 0, classified: 0, backed: 0 };
         s.n += 1;
         if (causeIn(t.texts, classRx) || causeIn(t.texts, causeRx)) s.classified += 1;
-        if (a.block && (causeIn(t.texts, causeRx) || classification([t], cwd).backed)) s.backed += 1;
+        if (a.block && (causeIn(t.texts, causeRx) || classification([t], cwd, null, a).backed)) s.backed += 1;
         const own = process.argv.includes('--own');
         if (a.kind === 'repeat' || a.kind === 'bypass') gates[a.gate] = (gates[a.gate] || 0) + 1;
         if ((a.kind === 'own-fail') === own && samples.length < k) {
