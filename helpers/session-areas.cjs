@@ -158,7 +158,7 @@ function sessions(root, now) {
   const byId = new Map();
   for (const r of reg) {
     if (norm(r.cwd || '') !== norm(root) || !alive(r.pid)) continue;
-    byId.set(r.sessionId, { id: r.sessionId, name: r.name || r.sessionId.slice(0, 8), pid: r.pid, status: r.status || '', areas: {}, claims: [] });
+    byId.set(r.sessionId, { id: r.sessionId, name: r.name || r.sessionId.slice(0, 8), pid: r.pid, status: r.status || '', sock: r.messagingSocketPath || '', areas: {}, claims: [] });
   }
   let files = [];
   try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch (e) { files = []; }
@@ -208,11 +208,15 @@ function talkedTo(transcript) {
   return out;
 }
 
-/** Did this session message peer `p`? By its ListAgents name, or by its socket address `uds:/…/<pid>.sock` -
- *  a reply goes to the sender's address (measured 2026-11-09: a peer answered that way and was still held). */
+/** Did this session message peer `p`? By its ListAgents name, or by its reply address - a reply goes to the
+ *  sender's address (measured 2026-11-09: a peer answered that way and was still held): the registry's
+ *  `messagingSocketPath`, else the macOS form `uds:/…/<pid>.sock`. */
 function talkedWith(talked, p) {
   if (!talked) return false;
   if (talked.has(p.name)) return true;
+  // The registry's own reply address first, matched exactly (measured 2026-11-23 on the Windows instance: there it is
+  // a named pipe `\\.\pipe\LOCAL\cc-msg-<hash>`, not `<pid>.sock`); the pid form only where the registry names none.
+  for (const t of talked) if (p.sock && t.replace(/^uds:/, '') === p.sock) return true;
   for (const t of talked) if (p.pid && new RegExp(`(^|/)${Number(p.pid)}\\.sock$`).test(t)) return true;
   return false;
 }
