@@ -356,9 +356,9 @@ function judge(input, now) {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const autonomous = autonomousMode(input.transcript_path, root);
   keepWatchdog(root, autonomous);
-  // A HELPER session works only the orders of the session it helps (session-scope.cjs, the operator's words quoted):
+  // A HELPER session works only the orders of the session it helps (session-scope.cjs, set by the operator's typed message):
   // the brain's ledger releases and start findings are that session's, and the orders in this transcript are the list.
-  const scope = require('./session-scope.cjs').scopeOf(root, input.session_id, input.transcript_path, operatorSaid(input.transcript_path));
+  const scope = require('./session-scope.cjs').scopeOf(root, input.transcript_path, operatorMessages(input.transcript_path));
   const rel = scope ? [] : releasedOpen(root, input.transcript_path);
   const own = !scope && (autonomous || startReleased(root, input.transcript_path)) ? ownStartFindings(root) : [];
   if (!autonomous && !rel.length && !own.length) return null; // no own work open: nothing to hold
@@ -465,4 +465,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { judge, END_LINE, operatorSaid };
+module.exports = { judge, END_LINE, operatorSaid, operatorMessages };
