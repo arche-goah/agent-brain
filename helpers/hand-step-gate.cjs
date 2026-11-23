@@ -19,7 +19,7 @@
  * commitment-carrier-gate.cjs `proseRules` since core #173, and is not ported). Replay 2026-10-28 over 393 transcripts:
  * self_run_handed_over 6 hits.
  *
- * Hook: holds the turn end ONCE (a re-issue after its own block passes). Replay:
+ * Frequency design: holds the turn end ONCE (a re-issue after its own block passes). Replay:
  * `node hand-step-gate.cjs --replay [transcript dir] [--since YYYY-MM-DD]` — every past turn through the same checks,
  * one line per hit; rc 1 when anything was found. Log: `.claude-state/hand-step-gate.jsonl`.
  * Fixture: scripts/test-hand-step-gate.cjs.

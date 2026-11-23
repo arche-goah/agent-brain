@@ -17,7 +17,7 @@
  * Instance data: .claude/rules/peer-session.json {"now_patterns", "past_patterns", "name_patterns"} —
  * regexes in the operator's language, extending the English built-ins (template in
  * templates/rules-instance/).
- * Frequency: once per turn — the check does not run on the re-issue pass (no onReissue in its row), so
+ * Frequency design: once per turn — the check does not run on the re-issue pass (no onReissue in its row), so
  * a corrected reply or a reasoned keep passes.
  * Output: {"decision":"block","reason":"PEER-SESSION-GATE: ... measures only this one: <sentence>"}.
  * Fails open: no transcript, unreadable input, unmeasurable session count.
