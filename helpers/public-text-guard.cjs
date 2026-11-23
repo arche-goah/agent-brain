@@ -279,7 +279,7 @@ function gate(input, script) {
   if (!script) {
     for (const s of scriptBodies(cmd, ps, cwd)) {
       const rc = s.text === null ? unreadableScript(input, cmd, cwd, s)
-        : gate(Object.assign({}, input, { tool_input: { command: s.text } }), s.file);
+        : gate(Object.assign({}, input, { tool_input: { command: s.text } }, s.ps ? { tool_name: 'PowerShell' } : {}), s.file);
       if (rc) return rc;
     }
   }

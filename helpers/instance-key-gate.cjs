@@ -269,7 +269,9 @@ function gate(input, script) {
   if (!script) {
     const { scriptBodies } = require('./published-text.cjs');
     for (const s of scriptBodies(cmd, ps, input.cwd || process.cwd())) {
-      const rc = s.text === null ? 0 : gate(Object.assign({}, input, { tool_input: { command: s.text } }), s.file);
+      // a .ps1 is read as PowerShell (published-text.cjs, `ps`)
+      const rc = s.text === null ? 0 : gate(Object.assign({}, input, { tool_input: { command: s.text } },
+        s.ps ? { tool_name: 'PowerShell' } : {}), s.file);
       if (rc) return rc;
     }
   }
