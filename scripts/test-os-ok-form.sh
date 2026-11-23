@@ -84,9 +84,13 @@ POST_OS_OK_DRY=1 POST_OS_OK_HEAD=$H SHARED_MEMORY_SELF=mac bash "$ROOT/scripts/p
 [ "$rc" -eq 2 ] && ok "poster: an unknown OS is refused" || bad "poster: unknown OS rc=$rc"
 # Windows review 2026-11-17 (finding on #567): a post from inside a script passes the text guards unseen. The poster
 # writes the body and prints the post line for the session to run; it never calls gh to post.
-outp="$(SHARED_MEMORY_SELF=mac POST_OS_OK_HEAD=$H bash "$ROOT/scripts/post-os-ok.sh" o/r 67 macOS "$T/details.md")"; rc=$?
+outp="$(SHARED_MEMORY_SELF=mac POST_OS_OK_HEAD=$H POST_OS_OK_LIVE_HEAD=${H}0000000 bash "$ROOT/scripts/post-os-ok.sh" o/r 67 macOS "$T/details.md")"; rc=$?
 [ "$rc" -eq 0 ] && [ -s "$T/details.os-ok.md" ] && ok "poster: writes the body next to the details" || bad "poster: no body file rc=$rc"
 case "$outp" in *"pr comment 67 -R o/r --body-file "*"details.os-ok.md"*) ok "poster: prints the post line" ;; *) bad "poster: post line missing: $outp" ;; esac
+# 2026-11-17 (#576): a given head that is not the PR's own is refused, nothing written.
+rm -f "$T/details.os-ok.md"
+SHARED_MEMORY_SELF=mac POST_OS_OK_HEAD=7b760f1 POST_OS_OK_LIVE_HEAD=421aef9bbeb4511071434c4341fb9dcf17bb33ad bash "$ROOT/scripts/post-os-ok.sh" o/r 67 macOS "$T/details.md" >/dev/null 2>&1; rc=$?
+[ "$rc" -eq 2 ] && [ ! -e "$T/details.os-ok.md" ] && ok "poster: a head that is not the PR's is refused" || bad "poster: wrong head rc=$rc"
 grep -anE '^[^#]*\bgh\s+pr\s+comment\b' "$ROOT/scripts/post-os-ok.sh" | grep -av printf >/dev/null \
   && bad "poster: the script itself still posts" || ok "poster: the script never posts (no gh pr comment call)"
 [ $fail -eq 0 ] && echo "os-ok-form: all passed" || echo "os-ok-form: FAILED"
