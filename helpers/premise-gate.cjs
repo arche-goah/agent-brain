@@ -223,10 +223,22 @@ process.stdin.on('end', () => {
   }
   if (!carries) return allow(); // a generalisation alone is analysis, not a premise
 
+  // The sentence itself, early in the reason: the dispatcher's record keeps only the first 300 characters, and an
+  // evaluation from the word alone was hand work (2026-11-18, macOS instance: 36 cases, each sentence re-read from
+  // the transcript; operator, question tool: "Protokollieren + Satz loggen (Recommended)").
+  let sentence = '';
+  try {
+    const clean = stripQuoted(analyze(input.transcript_path).texts.join('\n'));
+    const first = hits[0];
+    sentence = (clean.split(/(?<=[.!?])\s+|\n+/).find((s) => s.toLowerCase().replace(/\s+/g, ' ').includes(first)) || '')
+      .replace(/\s+/g, ' ').trim().slice(0, 160);
+  } catch (e) { sentence = ''; }
+
   // Terse on purpose (same trim as the class gate, operator finding 2026-08-19):
   // show the sentence, name the one check, get out of the way.
   const reason = 'PREMISE-GATE — a general sentence is carrying an action ' +
     `(${carries}), so it is a premise now.\n` +
+    (sentence ? `Sentence: "${sentence}"\n` : '') +
     `Rule-shaped wording: ${hits.slice(0, 4).join(' · ')}\n` +
     'Hold it against EACH single observation, including the operator\'s own ' +
     'qualifiers ("stays where I let go", "even with no finger on it"). One that ' +
