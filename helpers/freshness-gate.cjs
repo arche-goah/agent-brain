@@ -44,6 +44,7 @@
  * defaults. Fail-open throughout: a gate that errors must never block work.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const os = require('os');
 
@@ -55,7 +56,7 @@ const DEFAULT_MIN_TOKENS = 50000;
 // same name replaces the default.
 const DEFAULT_WORKFLOWS = { 'brain-scan': { thresholdDays: 7 } };
 
-function allow() { process.exit(0); }
+function allow() { hookExit(0); }
 
 function loadConfig(projectRoot) {
   const cfg = { thresholdDays: DEFAULT_THRESHOLD_DAYS, minTokens: DEFAULT_MIN_TOKENS,
@@ -229,5 +230,5 @@ process.stdin.on('end', () => {
         `.claude/rules/freshness-gate.json as a per-workflow threshold, not in a marker.`,
     },
   }));
-  process.exit(0);
+  hookExit(0);
 });

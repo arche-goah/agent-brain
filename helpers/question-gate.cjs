@@ -80,6 +80,7 @@
  * Fixture: scripts/test-question-gate.sh.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const crypto = require('crypto');
 const { isNotification, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
@@ -553,7 +554,7 @@ function cli(args) {
 }
 
 if (process.argv.length > 2) {
-  process.exit(cli(process.argv.slice(2)));
+  hookExit(cli(process.argv.slice(2)));
 } else {
   let data = '';
   process.stdin.setEncoding('utf8');
@@ -563,6 +564,6 @@ if (process.argv.length > 2) {
       const input = JSON.parse(data || '{}');
       if (input.hook_event_name === 'PreToolUse' || input.tool_name) preTool(input); else gate(input);
     } catch (e) { /* fail open */ }
-    process.exit(0);
+    hookExit(0);
   });
 }

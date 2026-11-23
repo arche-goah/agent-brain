@@ -42,6 +42,7 @@
  * Fixture: scripts/test-decision-register.sh.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
@@ -379,20 +380,20 @@ function cli(argv) {
 module.exports = { answerPairs, candidates, match, words, transcriptAnswers, deferrals, config };
 
 if (require.main === module) {
-  if (process.argv.slice(2).some((a) => a.startsWith('--'))) process.exit(cli(process.argv.slice(1)));
+  if (process.argv.slice(2).some((a) => a.startsWith('--'))) hookExit(cli(process.argv.slice(1)));
   let buf = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => { buf += c; });
   process.stdin.on('end', () => {
     try {
       const cfg = config();
-      if (!cfg.enabled) process.exit(0);
+      if (!cfg.enabled) hookExit(0);
       const input = JSON.parse(buf);
-      if (input.tool_name && input.tool_name !== 'AskUserQuestion') process.exit(0);
-      if (input.hook_event_name === 'PostToolUse') { post(input, cfg); process.exit(0); }
+      if (input.tool_name && input.tool_name !== 'AskUserQuestion') hookExit(0);
+      if (input.hook_event_name === 'PostToolUse') { post(input, cfg); hookExit(0); }
       const out = pre(input, cfg);
       if (out) console.log(JSON.stringify(out));
     } catch (e) { /* fails open */ }
-    process.exit(0);
+    hookExit(0);
   });
 }

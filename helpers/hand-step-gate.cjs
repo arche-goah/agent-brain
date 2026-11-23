@@ -26,6 +26,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const os = require('os');
 const path = require('path');
 const { isNotification, isPeerMessage, isTranscriptRecord, isSkillExpansion, operatorPrompt, projectTranscriptDir } = require('./turn-kind.cjs');
@@ -128,7 +129,7 @@ function logLine(dir, o) {
 function replay(args) {
   const dir = root();
   const D = loadData(dir);
-  if (!D) { console.log('hand-step-gate: no .claude/rules/hand-steps.json - nothing to replay'); process.exit(0); }
+  if (!D) { console.log('hand-step-gate: no .claude/rules/hand-steps.json - nothing to replay'); hookExit(0); }
   const i = args.indexOf('--since');
   const since = i >= 0 ? args[i + 1] : '';
   const dirArg = args.find((a, k) => !a.startsWith('--') && args[k - 1] !== '--since');
@@ -147,7 +148,7 @@ function replay(args) {
     }
   }
   console.log(`replay: ${files.length} transcripts · self_run_handed_over ${count.self_run_handed_over} · not_at_hand ${count.not_at_hand}`);
-  process.exit(count.self_run_handed_over + count.not_at_hand ? 1 : 0);
+  hookExit(count.self_run_handed_over + count.not_at_hand ? 1 : 0);
 }
 
 function reason(hits, D) {
@@ -167,22 +168,22 @@ if (require.main === module) {
     process.stdin.on('data', (c) => { data += c; });
     process.stdin.on('end', () => {
       let input = {};
-      try { input = JSON.parse(data); } catch (e) { process.exit(0); }
-      if (!input.transcript_path) process.exit(0);
+      try { input = JSON.parse(data); } catch (e) { hookExit(0); }
+      if (!input.transcript_path) hookExit(0);
       try {
         const dir = root(input);
         const D = loadData(dir);
-        if (!D) process.exit(0);
+        if (!D) hookExit(0);
         const ts = turns(input.transcript_path);
         const turn = ts[ts.length - 1];
-        if (!turn) process.exit(0);
+        if (!turn) hookExit(0);
         const echo = ownEcho(input, new RegExp(MARKER));
-        if (turn.echoes.some((e) => echo.test(e))) { logLine(dir, { session: input.session_id, decision: 'pass-after-block' }); process.exit(0); }
+        if (turn.echoes.some((e) => echo.test(e))) { logLine(dir, { session: input.session_id, decision: 'pass-after-block' }); hookExit(0); }
         const hits = check(turn, D, true);
-        if (!hits.length) process.exit(0);
+        if (!hits.length) hookExit(0);
         logLine(dir, { session: input.session_id, decision: 'block', hits });
         console.log(JSON.stringify(declare({ decision: 'block', reason: reason(hits, D) }, input)));
-      } catch (e) { process.exit(0); }   // an unreadable transcript never blocks
+      } catch (e) { hookExit(0); }   // an unreadable transcript never blocks
     });
   }
 }

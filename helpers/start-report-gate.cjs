@@ -27,6 +27,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { isNotification, isSkillExpansion, isPeerMessage, isTranscriptRecord, queuedHumanPrompt, isTurnEnd } =
   require('./turn-kind.cjs');
@@ -186,7 +187,7 @@ function replay(files) {
 }
 
 if (require.main === module) {
-  if (process.argv[2] === '--replay') { replay(process.argv.slice(3)); process.exit(0); }
+  if (process.argv[2] === '--replay') { replay(process.argv.slice(3)); hookExit(0); }
   let raw = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => { raw += c; });
@@ -197,7 +198,7 @@ if (require.main === module) {
       process.stdout.write(JSON.stringify({ hookSpecificOutput: {
         hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }));
     }
-    process.exit(0);
+    hookExit(0);
   });
 }
 

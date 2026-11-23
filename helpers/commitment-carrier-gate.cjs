@@ -28,6 +28,7 @@
  * would let exactly the case it exists for through: the second empty promise of the same hour.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
 const { declare } = require('./stop-echo.cjs');
@@ -42,7 +43,7 @@ const STOP = new Set(['which', 'every', 'their', 'there', 'these', 'those', 'abo
   'would', 'should', 'could', 'other', 'being', 'doing', 'start', 'starts', 'always', 'future', 'going', 'forward']);
 const MECH = /\/helpers\/[^/]+\.(?:c?js|mjs|sh)$|\/scripts\/[^/]+\.(?:py|sh|c?js|mjs|ps1)$|\/hooks\/|\/\.claude\/(?:settings(?:\.local)?\.json|rules\/[^/]+\.json)$|mechanism-rules\.json$|\/\.github\/workflows\//i;
 
-function allow() { process.exit(0); }
+function allow() { hookExit(0); }
 
 function readTail(file) {
   const size = fs.statSync(file).size;
@@ -221,7 +222,7 @@ if (require.main === module) {
         'feedback entry does not carry it; a written rule may name an existing mechanism file ("Carrier: <path>") — ' +
         'or take the promise back and say what is not guaranteed.',
     }, input)));
-    process.exit(0);
+    hookExit(0);
   });
   process.stdin.resume();
 }
