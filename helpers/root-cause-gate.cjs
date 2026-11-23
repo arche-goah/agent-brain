@@ -96,6 +96,17 @@ const BUILTIN_SELF_SURPRISE = [
   '\\b(my|the) (earlier|previous) (claim|count|statement|report|measurement|reading) was (wrong|false|stale)\\b',
   '\\bwas (stale|outdated) all along\\b',
 ];
+// A hook refusing the very step the operator's newest prompt asked for is a surprise of its own (operator 2026-11-23,
+// translated: "correcting the entry is not enough - find the cause, fix it at the root, and find out why you do not do
+// that on your own when such a fault shows"). Measured that day on the macOS instance: the operator typed "questions now",
+// the classifier read asks_open, AUTONOMOUS-GATE refused the question tool twice (17:14:12 and 17:16:15 UTC); the agent
+// guessed at the word list, fixed one ledger entry and went on - no inquiry opened. Map: the intent the classifier record
+// (or the word lists) read for the prompt -> the tools whose refusal is that surprise; `ignore` = gates whose refusal
+// only orders the step (they say what to run first) and is no surprise. Instance override: `refused_intent` in
+// root-cause-patterns.json.
+const BUILTIN_REFUSED_INTENT = {
+  asks_open: { tools: ['AskUserQuestion'], ignore: ['MODE-QUESTION-ORDER', 'QUESTION-GATE', 'MODE-OWED', 'DECISION-REGISTER'] },
+};
 // A harness notice about another session arrives as a user record without the frames
 // turn-kind.cjs knows (measured in the same replay: seven of them matched "you asked").
 const HARNESS_NOTICE = /^\s*\[Cross-session [^\]]*\]/;
@@ -311,6 +322,16 @@ function readTurns(tp, tail) {
       continue;
     }
     if (msg.role !== 'user') continue;
+    // A hook's refusal of a tool call (PreToolUse deny): kept with the tool and the refusing text, so a refusal of the
+    // very step the operator's newest prompt asked for opens the inquiry (refusedAsk below).
+    if (cur && Array.isArray(msg.content)) {
+      for (const b of msg.content) {
+        if (!b || b.type !== 'tool_result' || !b.is_error) continue;
+        const txt = Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join(' ') : String(b.content || '');
+        const m = /^PreToolUse:(\S+) hook error:\s*(?:\[[^\]]*\]:\s*)?([\s\S]*)$/.exec(txt.trim());
+        if (m) (cur.refusals = cur.refusals || []).push({ tool: m[1], text: m[2], at: d.timestamp || '' });
+      }
+    }
     const t = promptText(msg);
     if (t === null) continue;
     if (HOOK_ECHO.test(t)) {
@@ -401,6 +422,35 @@ function correctionIn(prompt, rx) {
   const clean = stripQuoted(operatorWords(prompt));
   const m = rx.exec(clean);
   return m ? sentenceAt(clean, m.index) : null;
+}
+
+/** A refusal in the turn of the step the operator's prompt asked for: "<GATE> refused <tool> ..." or null. The prompt's
+ *  intent comes from the classifier record, else from the word lists of autonomous-mode.cjs (asks_open only). */
+function refusedAsk(group, cwd, transcriptPath) {
+  let map = BUILTIN_REFUSED_INTENT;
+  try {
+    const inst = JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'rules', 'root-cause-patterns.json'), 'utf8')).refused_intent;
+    if (inst && typeof inst === 'object') map = Object.assign({}, map, inst);
+  } catch (e) { /* built-ins */ }
+  let known = null; let am = null;
+  try { am = require('./autonomous-mode.cjs'); } catch (e) { am = null; }
+  for (const seg of group) {
+    if (!seg.refusals || !seg.refusals.length) continue;
+    if (!known) known = intents(transcriptPath, cwd);
+    const intent = intentFor(known, seg.when) || {};
+    for (const [name, rule] of Object.entries(map)) {
+      let read = intent[name] === true ? 'the intent classifier record' : null;
+      if (!read && name === 'asks_open' && am) { try { if (am.words(cwd).ask.test(seg.prompt)) read = 'the word lists'; } catch (e) { /* none */ } }
+      if (!read) continue;
+      for (const r of seg.refusals) {
+        if (!(rule.tools || []).includes(r.tool)) continue;
+        const gateName = (/^([A-Z][A-Z-]+):/.exec(r.text) || [])[1] || 'a hook';
+        if ((rule.ignore || []).includes(gateName)) continue;
+        return `${gateName} refused ${r.tool} at ${r.at || '?'}, the step the operator's prompt asked for ("${seg.prompt.slice(0, 60)}", ${name} read by ${read})`;
+      }
+    }
+  }
+  return null;
 }
 
 /** A sentence of the agent's own text that says an earlier statement or record was wrong; quotes and code stripped. */
@@ -536,10 +586,15 @@ function gate(input) {
     return;
   }
   const self = hit || fired ? null : selfSurprise(texts, loadPatterns(cwd, 'self_surprise_patterns', BUILTIN_SELF_SURPRISE, 'iu'));
-  if (!hit && !self) return;
+  let refused = null;
+  if (!hit && !self && !fired) { try { refused = refusedAsk(group, cwd, input.transcript_path); } catch (e) { refused = null; } }
+  if (!hit && !self && !refused) return;
+  const what = hit ? 'an operator message in this turn reads as a correction or a mishap'
+    : self ? 'your own text in this turn finds a mishap'
+      : 'a hook refused the very step the operator asked for (name the refusing gate, the reader and the measured value that decided)';
   process.stdout.write(JSON.stringify(declare({
     decision: 'block',
-    reason: `ROOT-CAUSE-GATE: ${hit ? 'an operator message in this turn reads as a correction or a mishap' : 'your own text in this turn finds a mishap'}: "${(hit || self).slice(0, 160)}". `
+    reason: `ROOT-CAUSE-GATE: ${what}: "${(hit || self || refused).slice(0, 200)}". `
       + 'The reply names no cause. Before this turn ends, measure what produced it and write ONE line — '
       + 'Cause: <what was read, where> — <A produced B>, or Cause: unknown — <what is missing to tell>. '
       + 'Then the class (search: where else does the same sit?) and the carrier (where it is fixed for good: gate, script, rule, core PR). '
@@ -658,7 +713,20 @@ function review(args) {
   return 0;
 }
 
-if (process.argv[2] === '--review') {
+// `--refused <transcript>`: replay of the refused-step trigger over a whole transcript, one line per turn it would open.
+if (process.argv[2] === '--refused') {
+  const tp = process.argv[3];
+  const cwd = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  let turns = [];
+  try { turns = readTurns(tp, false); } catch (e) { turns = []; }
+  let n = 0;
+  for (let i = 0; i < turns.length; i += 1) {
+    const r = refusedAsk([turns[i]], cwd, tp);
+    if (r) { n += 1; console.log(`turn ${i + 1}: ${r}`); }
+  }
+  console.log(`refused-step turns: ${n}`);
+  process.exitCode = 0;
+} else if (process.argv[2] === '--review') {
   process.exit(review(process.argv.slice(3)));
 } else {
   const pre = process.argv[2] === '--pre';

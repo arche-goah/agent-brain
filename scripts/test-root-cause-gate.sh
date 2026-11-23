@@ -44,6 +44,16 @@ check() { # $1 name, $2 transcript, $3 block|allow, $4 cwd, [$5 stop_hook_active
 }
 CWD="$T/cwd"; mkdir -p "$CWD"
 
+# --- 2026-11-23: a hook refused the very step the operator asked for ("questions now" -> AskUserQuestion refused)
+aq() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":"Release now?"}]}}]}}\n' "$1"; }
+refuse() { printf '{"type":"user","timestamp":"2026-11-23T17:14:12.774Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":true,"content":%s}]}}\n' "$1" "$(js "PreToolUse:AskUserQuestion hook error: $2")"; }
+{ user "work through it autonomously"; asst "ok"; user "what is open for me?"; aq a1; refuse a1 "AUTONOMOUS-GATE: the operator ordered this run autonomous, and this is a question"; asst "Fixed the ledger entry, going on."; } > "$T/ra1.jsonl"
+check "the incident: a hook refused the question the operator asked for, no cause" "$T/ra1.jsonl" block "$CWD"
+{ user "work through it autonomously"; asst "ok"; user "what is open for me?"; aq a2; refuse a2 "MODE-QUESTION-ORDER: the mode question comes right after answered decisions"; asst "Running the steps first."; } > "$T/ra2.jsonl"
+check "a refusal that only orders the step (mode-question order) is no surprise" "$T/ra2.jsonl" allow "$CWD"
+{ user "fix the readme"; aq a3; refuse a3 "AUTONOMOUS-GATE: the operator ordered this run autonomous"; asst "Filed the question."; } > "$T/ra3.jsonl"
+check "a refused question the operator did not ask for is no surprise (control)" "$T/ra3.jsonl" allow "$CWD"
+
 # --- the class: a correction, a fix on the spot, no cause named
 { user "check the PRs"; asst "Done."; user "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/t1.jsonl"
 check "correction answered without a cause" "$T/t1.jsonl" block "$CWD"
