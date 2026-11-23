@@ -203,7 +203,56 @@ const hasCount = (line) => COUNT.test(line.replace(NOT_A_COUNT, ''));
 // The word `recheck` stands right before the date (Windows review 2026-11-17: "none - looked once on 2025-01-01"
 // passed, any date after twelve characters counted).
 const NONE_WITH_RECHECK = /^\s*none\b[\s\S]{4,}?\brecheck\s+\d{4}-\d{2}-\d{2}\b/i;
-const replayOk = (line) => hasCount(line) || NONE_WITH_RECHECK.test(line);
+// A replay over the history, not over the incident (2026-11-23, macOS instance; the operator, translated: "when I point at a
+// mistake, check by yourself whether a root-cause inquiry is due and test generic fixes"): 26 of 466 register replays
+// counted only the incident's own session or the case itself ("this session: 1 hit (this one)") and passed; 4 of them that
+// day. A replay whose ONLY scope is the own session, the current transcript, or the case, needs a second count over a wider
+// scope (n of m transcripts, sessions, ledgers, entries, files ...) - or the `none - <why> - recheck <date>` form.
+// Instance words for "this session" in another language: `self_only_replay_patterns` (root-cause-patterns.json).
+const SELF_SCOPE = /\b(?:this|the current|the own|own) (?:session|transcript|turn|run)\b|\((?:this|it|this one|this case|the case)(?: one| case)?\)|\bonly (?:this|the) (?:case|instance|incident)\b/i;
+const WIDE_SCOPE = /\b(?:[2-9]|\d{2,})\s*(?:of\s+\d+\s+)?(?:earlier |other |older |more )?(?:sessions?|transcripts?|ledgers?|registers?|entries|files|commits|prs|repos|brains|months|weeks|days|lines|records|runs)\b/i;
+let SELF_EXTRA = null;
+let WIDE_EXTRA = null;
+const selfOnly = (line) => (SELF_SCOPE.test(line) || (SELF_EXTRA && SELF_EXTRA.test(line)))
+  && !WIDE_SCOPE.test(line) && !(WIDE_EXTRA && WIDE_EXTRA.test(line));
+const replayOk = (line) => NONE_WITH_RECHECK.test(line) || (hasCount(line) && !selfOnly(line));
+// A replay that RAN, not one that is claimed (independent review of the strand, 2026-11-23: "the gate accepts the agent's
+// claim that a replay ran" - every check above reads only the wording of a line the agent writes itself). Every number of
+// the replay: line must stand in the output of a shell command or an agent that ran in this session; a command that only
+// prints text (echo, printf, a heredoc) produces no measurement. The `none - <why> - recheck <date>` form stays the way out.
+const PRINT_ONLY = /^\s*(?:echo|printf|cat\s*<<|true\b|:)(?:\s|$)/;
+function sessionRuns(transcriptPath) {
+  const cmds = new Map();
+  const outs = [];
+  let text = '';
+  try { text = fs.readFileSync(transcriptPath, 'utf8'); } catch (e) { return outs; }
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    const content = d.message && Array.isArray(d.message.content) ? d.message.content : [];
+    for (const b of content) {
+      if (b.type === 'tool_use' && b.id) {
+        const inp = b.input || {};
+        if (b.name === 'Bash' && typeof inp.command === 'string') cmds.set(b.id, PRINT_ONLY.test(inp.command) ? null : inp.command);
+        else if (b.name === 'Agent' || b.name === 'Task') cmds.set(b.id, 'agent');
+      }
+      if (b.type === 'tool_result' && b.tool_use_id && cmds.get(b.tool_use_id)) {
+        const c = b.content;
+        outs.push(typeof c === 'string' ? c : Array.isArray(c) ? c.map((x) => (x && x.text) || '').join('\n') : '');
+      }
+    }
+  }
+  return outs;
+}
+function replayRan(line, outs) {
+  if (NONE_WITH_RECHECK.test(line)) return true;
+  const nums = String(line).replace(NOT_A_COUNT, ' ').match(/\d+(?:[.,]\d+)?/g) || [];
+  if (!nums.length) return false;
+  // all numbers of the line in ONE output: one run measured them together (a lone "1" stands in almost any output -
+  // measured 2026-11-23: per-number matching let 278 of 292 historic replay lines pass)
+  const has = (o, n) => new RegExp(`(^|[^\\d.,])${n.replace(/[.,]/g, '[.,]')}(?![\\d])`).test(o);
+  return outs.some((o) => nums.every((n) => has(o, n)));
+}
 // A PR or issue number names the instance; a core rule number ("Working Rule #10") is the rule itself (same review).
 const INSTANCE_WORD = /[\\/][\w.-]+\.\w{1,5}\b|\b(?:PR|issue|pull)s?\s*#?\d+\b|\b[\w.-]+#\d+\b|(?:^|[\s(])#\d{3,}\b|\b\w+\.(cjs|js|py|sh|json|md)\b/iu;
 function newestEntry(all) {
@@ -223,7 +272,7 @@ function entryAround(file, piece) {
   const end = all.indexOf('\n## ', i + t.length);
   return all.slice(start + 1, end < 0 ? undefined : end);
 }
-function entryGaps(writeTexts, rel, forbidden, cwd) {
+function entryGaps(writeTexts, rel, forbidden, cwd, transcriptPath) {
   const mine = writeTexts.filter((w) => writesTo([w.p], rel));
   let text = mine.map((w) => w.t).join('\n');
   let disk = null;
@@ -238,8 +287,16 @@ function entryGaps(writeTexts, rel, forbidden, cwd) {
   if (!inv) gaps.push('the register entry names no invariant:');
   else if (INSTANCE_WORD.test(inv[1]) || forbidden.test(inv[1])) gaps.push('the invariant: names the instance (a path, a number, a proper noun) - say the rule, not the case');
   const rep = REPLAY_LINE.exec(text);
-  if (!rep || !replayOk(rep[1])) gaps.push('the register entry has no replay: count (a date is no count; '
+  try { SELF_EXTRA = loadPatterns(cwd, 'self_only_replay_patterns', ['(?!)'], 'iu'); } catch (e) { SELF_EXTRA = null; }
+  try { WIDE_EXTRA = loadPatterns(cwd, 'wide_scope_replay_patterns', ['(?!)'], 'iu'); } catch (e) { WIDE_EXTRA = null; }
+  if (rep && hasCount(rep[1]) && selfOnly(rep[1])) gaps.push('the replay: counts only the incident\'s own session or the case '
+    + 'itself - replay the detector over the history (a count over n transcripts, sessions, ledgers ...), or '
+    + '"none - <why> - recheck <YYYY-MM-DD>" when it cannot run yet');
+  else if (!rep || !replayOk(rep[1])) gaps.push('the register entry has no replay: count (a date is no count; '
     + '"none - <why> - recheck <YYYY-MM-DD>" when it cannot run yet)');
+  else if (transcriptPath && !replayRan(rep[1], sessionRuns(transcriptPath))) gaps.push('the replay: count was written, not '
+    + 'measured - no command or agent of this session printed it; run the detector over the history (a script, the gate\'s '
+    + '--review, a search) and copy its count, or write "none - <why> - recheck <YYYY-MM-DD>"');
   return gaps;
 }
 
@@ -729,7 +786,7 @@ function gate(input) {
   if (!cause && !fired) {
     const reg = registerPath(cwd);
     const gaps = writesTo(writes, reg)
-      ? entryGaps(writeTexts, reg, loadPatterns(cwd, 'invariant_forbidden', ['(?!)'], 'iu'), cwd) : [];
+      ? entryGaps(writeTexts, reg, loadPatterns(cwd, 'invariant_forbidden', ['(?!)'], 'iu'), cwd, input.transcript_path) : [];
     if (gaps.length) {
       process.stdout.write(JSON.stringify(declare({
         decision: 'block',
@@ -745,7 +802,7 @@ function gate(input) {
     const mech = writes.some(isMechanismWrite)
       || noCarrierAgreed(texts, loadPatterns(cwd, 'nocarrier_patterns', BUILTIN_NOCARRIER, 'imu'), turns);
     const registered = writesTo(writes, reg);
-    const gaps = registered ? entryGaps(writeTexts, reg, loadPatterns(cwd, 'invariant_forbidden', ['(?!)'], 'iu'), cwd) : [];
+    const gaps = registered ? entryGaps(writeTexts, reg, loadPatterns(cwd, 'invariant_forbidden', ['(?!)'], 'iu'), cwd, input.transcript_path) : [];
     if (mech && registered && !gaps.length) return;
     const missing = [!mech && 'no mechanism written', !registered && `no entry in ${reg}`, ...gaps].filter(Boolean).join(', ');
     process.stdout.write(JSON.stringify(declare({
@@ -908,6 +965,47 @@ function review(args) {
   return 0;
 }
 
+// --claimed-replays <dir|transcript...>: every register `replay:` line a session wrote, and whether a command or an agent of
+// that session printed its count (the replay of the 2026-11-23 "measured, not claimed" rule; prints its counts).
+function claimedReplays(args) {
+  const files = [];
+  for (const a of args) {
+    try {
+      if (fs.statSync(a).isDirectory()) for (const f of fs.readdirSync(a)) { if (f.endsWith('.jsonl')) files.push(path.join(a, f)); }
+      else files.push(a);
+    } catch (e) { /* skip */ }
+  }
+  let lines = 0; let ran = 0; let none = 0; const sessions = new Set(); const claimed = []; const seen = new Set();
+  for (const f of files) {
+    let text = ''; try { text = fs.readFileSync(f, 'utf8'); } catch (e) { continue; }
+    if (!text.includes('carrier-register')) continue;
+    let outs = null;
+    for (const l of text.split('\n')) {
+      if (!l.includes('carrier-register') || !l.includes('replay:')) continue;
+      let d; try { d = JSON.parse(l); } catch (e) { continue; }
+      for (const b of (d.message && Array.isArray(d.message.content) ? d.message.content : [])) {
+        if (b.type !== 'tool_use' || !b.input) continue;
+        const target = String(b.input.file_path || b.input.command || '');
+        if (!/carrier-register/.test(target)) continue;
+        const body = String(b.input.new_string || b.input.content || b.input.command || '');
+        const m = REPLAY_LINE.exec(body);
+        if (!m || !hasCount(m[1]) && !NONE_WITH_RECHECK.test(m[1])) continue;
+        const key = path.basename(f) + m[1];
+        if (seen.has(key)) continue;
+        seen.add(key);
+        lines += 1;
+        if (NONE_WITH_RECHECK.test(m[1])) { none += 1; continue; }
+        if (!outs) outs = sessionRuns(f);
+        if (replayRan(m[1], outs)) ran += 1;
+        else { sessions.add(path.basename(f)); claimed.push(`${path.basename(f).slice(0, 8)} ${d.timestamp || ''}: ${m[1].slice(0, 110)}`); }
+      }
+    }
+  }
+  console.log(`claimed-replays: ${files.length} transcripts · ${lines} replay lines with a count · ${ran} printed by a run of the session · ${none} none-with-recheck · ${claimed.length} claimed only, in ${sessions.size} sessions`);
+  for (const c of claimed.slice(0, 40)) console.log(`- ${c}`);
+  return 0;
+}
+
 // Required as a library (the refusal register calls classification on its own repeat signal - one judge of a
 // classification, not two): export, and run neither a CLI branch nor the stdin hook.
 module.exports = { classification, anomalies, readTurns };
@@ -987,6 +1085,8 @@ if (process.argv[2] === '--refused') {
   process.exitCode = 0;
 } else if (process.argv[2] === '--review') {
   hookExit(review(process.argv.slice(3)));
+} else if (process.argv[2] === '--claimed-replays') {
+  hookExit(claimedReplays(process.argv.slice(3)));
 } else {
   const pre = process.argv[2] === '--pre';
   let data = '';

@@ -26,8 +26,17 @@ asst() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"
 # write <path> [text]: a register path carries a complete class entry unless the text is given (2026-11-11: invariant + replay)
 GOOD_ENTRY='invariant: a summary over a set of sources reads every source before it counts
 replay: 28 turns in 401 transcripts'
+# run <command> <output>: a Bash call of the session and its result (2026-11-23: a replay count must stand in a real output)
+RUNID=0
+run() {
+  RUNID=$((RUNID + 1))
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r%s","name":"%s","input":{"command":%s}}]}}\n' "$RUNID" "${RUNTOOL:-Bash}" "$(js "$1")"
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"r%s","content":%s}]}}\n' "$RUNID" "$(js "$2")"
+}
 write() {
-  local t="${2-}"; case "$1" in *carrier-register.md) [ $# -lt 2 ] && t="$GOOD_ENTRY";; esac
+  local t="${2-}"; case "$1" in *carrier-register.md) [ $# -lt 2 ] && t="$GOOD_ENTRY"
+    # the detector ran: its output carries the replay line's count, unless a case tests the claim without a run (NORUN=1)
+    [ -z "${NORUN:-}" ] && run "node scripts/replay.cjs" "$(printf '%s\n' "$t" | sed -n 's/^replay:[[:space:]]*//p')";; esac
   printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":%s,"new_string":%s}}]}}\n' "$(js "$1")" "$(js "$t")"
 }
 tres() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"x"}]}}\n'; }
@@ -155,27 +164,27 @@ NOW="$(node -e 'process.stdout.write(new Date(Date.now()-5000).toISOString())')"
 touch "$SHW/scripts/gen.py"
 # the shell append lands a complete entry (the register-field check reads the newest entry on disk, train 2026-11-12)
 printf '## 2026-11-08 — generator pads\nid: gen-pads\ninvariant: a generator takes positions from the data file, never from a photo\nreplay: 2 cases in 40 transcripts\n' > "$SHW/$REG"
-{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t7.jsonl"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t7.jsonl"
 check "register and carrier written by shell commands, changed in this turn" "$T/t7.jsonl" allow "$SHW"
-{ WHEN="2099-01-01T00:00:00.000Z" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t8.jsonl"
+{ WHEN="2099-01-01T00:00:00.000Z" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t8.jsonl"
 check "the same files named but unchanged since the turn began (negative control)" "$T/t8.jsonl" block "$SHW"
 { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; } > "$T/t9.jsonl"
 check "shell-written carrier, no register entry" "$T/t9.jsonl" block "$SHW"
 # --- Windows review 2026-11-12 (OS-19): the register named by an ABSOLUTE path - quoted with a space (native form on
 # Windows), the drive form C:/... and the Git Bash form /c/... (only where cygpath exists: node elsewhere has no drives)
 SPC="$T/sh w"; mkdir -p "$SPC/docs/maintenance" "$SPC/scripts"; touch "$SPC/scripts/gen.py"; cp "$SHW/$REG" "$SPC/$REG"
-{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> \"$(native "$SPC")/$REG\""; } > "$T/t9a.jsonl"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> \"$(native "$SPC")/$REG\""; } > "$T/t9a.jsonl"
 check "register written by an absolute quoted path with a space" "$T/t9a.jsonl" allow "$SPC"
 # portability windows-latest, train #510: the runner's temp folder is an 8.3 name (`RUNNER~1`, OS-8) - a `~` inside a
 # segment ended the match. Measured on every OS with a folder named that way.
 TLD="$T/RUN~1"; mkdir -p "$TLD/docs/maintenance" "$TLD/scripts"; touch "$TLD/scripts/gen.py"; cp "$SHW/$REG" "$TLD/$REG"
-{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $(native "$TLD")/$REG"; } > "$T/t9d.jsonl"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $(native "$TLD")/$REG"; } > "$T/t9d.jsonl"
 check "register written by a path with an 8.3 short segment (RUN~1)" "$T/t9d.jsonl" allow "$TLD"
 if command -v cygpath >/dev/null 2>&1; then
   M="$(cygpath -m "$SHW")"; U="/$(printf %s "${M:0:1}" | tr 'A-Z' 'a-z')${M:2}"
-  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $M/$REG"; } > "$T/t9b.jsonl"
+  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $M/$REG"; } > "$T/t9b.jsonl"
   check "register written by its drive path (cygpath -m form)" "$T/t9b.jsonl" allow "$SHW"
-  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $U/$REG"; } > "$T/t9c.jsonl"
+  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $U/$REG"; } > "$T/t9c.jsonl"
   check "register written by its Git Bash path (/c/... form)" "$T/t9c.jsonl" allow "$SHW"
 else
   echo "  --  register written by its drive path and its /c/... path (Windows only: no cygpath here)"
@@ -290,6 +299,42 @@ check "register entry whose replay lists several counts" "$T/t31h.jsonl" allow "
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
 replay: 1 (this case)"; } > "$T/t31i.jsonl"
 check "register entry whose replay is a bare number (control)" "$T/t31i.jsonl" block "$CWD"
+# 2026-11-23 (macOS instance, operator: "wenn ich auf einen fehler hinweise … musst du … generische fixes testen"; measured: 26 of
+# 466 register replays counted only the incident's own session, 4 of them that day, all passed): a replay whose only scope is
+# the incident's own session or the case itself is no replay over the history.
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: this session: 1 hit (this one)"; } > "$T/t31j.jsonl"
+check "register entry whose replay counts only its own session" "$T/t31j.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: 2 hits (this case and one more) in the current transcript"; } > "$T/t31k.jsonl"
+check "register entry whose replay scope is the current transcript" "$T/t31k.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: this session 1 hit; 7 hits in 60 earlier transcripts"; } > "$T/t31l.jsonl"
+check "own session plus a wider scope with its count" "$T/t31l.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: none - the detector needs records that start today - recheck 2026-12-07"; } > "$T/t31m.jsonl"
+check "a replay that cannot run yet, with reason and recheck (control)" "$T/t31m.jsonl" allow "$CWD"
+# 2026-11-23, independent review of the strand: "the gate accepts the agent's claim that a replay ran" - a count must stand in
+# the output of a command or an agent of the session, a printed text is no measurement.
+E="invariant: a summary reads every source before it counts"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 0 hits in 60 transcripts"; } > "$T/t31n.jsonl"
+check "a replay count no command printed (the review's case G)" "$T/t31n.jsonl" block "$CWD"
+{ user "go"; asst "$C"; run "echo '0 hits in 60 transcripts'" "0 hits in 60 transcripts"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 0 hits in 60 transcripts"; } > "$T/t31o.jsonl"
+check "a replay count only an echo printed" "$T/t31o.jsonl" block "$CWD"
+{ user "go"; asst "$C"; run "node scripts/replay.cjs" "3 hits in 60 transcripts"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31p.jsonl"
+check "a replay count that differs from what the run printed" "$T/t31p.jsonl" block "$CWD"
+{ user "go"; asst "$C"; run "node scripts/replay.cjs --history" "scanned 60 transcripts: 7 hits"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31q.jsonl"
+check "a replay count the run printed (control)" "$T/t31q.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; RUNTOOL=Agent run "count the hits over the history" "Result: 7 hits in 60 transcripts"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31r.jsonl"
+check "a replay count an agent of the session reported (control)" "$T/t31r.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: none - the detector needs records that start today - recheck 2026-12-07"; } > "$T/t31s.jsonl"
+check "none with recheck needs no run (control)" "$T/t31s.jsonl" allow "$CWD"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a promise binds only with a mechanism (Working Rule #10)
 replay: 6 turns"; } > "$T/t31c.jsonl"
 check "invariant citing a core rule number" "$T/t31c.jsonl" allow "$CWD"
@@ -325,7 +370,7 @@ replay: 18 hits in 13 sessions"; } > "$T/t35.jsonl"
 check "domain-free invariant with a replay count" "$T/t35.jsonl" allow "$T/cwdf"
 # written without text in the transcript (shell append): the newest entry on disk is judged
 mkdir -p "$T/disk/docs/maintenance"; printf '## old\ninvariant: an older rule said once\nreplay: 2\n\n## new\ncause: x\n' > "$T/disk/$REG"
-{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$T/disk/$REG" ""; } > "$T/t36.jsonl"
+{ user "go"; asst "$C"; run "node scripts/replay.cjs" "5 turns"; write "scripts/sources.cjs"; write "$T/disk/$REG" ""; } > "$T/t36.jsonl"
 check "entry on disk: the newest one lacks the invariant (an older one has it)" "$T/t36.jsonl" block "$T/disk"
 printf '## new\ninvariant: a summary reads every source before it counts\nreplay: 5 turns\n' >> "$T/disk/$REG"
 check "entry on disk: the newest one is complete" "$T/t36.jsonl" allow "$T/disk"
