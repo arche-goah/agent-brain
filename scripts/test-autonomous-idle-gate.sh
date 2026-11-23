@@ -156,11 +156,49 @@ f="$T/i6.jsonl"; { user "which package first?"; ask; answer "go ahead with the p
 check "interactive: the words in a question-tool answer release" "$f" block "$R"
 f="$T/i7.jsonl"; { user "go ahead with the plan"; asst "Next: package A."; } > "$f"
 out=$(printf '{"transcript_path":"%s","cwd":"%s","stop_hook_active":true}' "$(native "$f")" "$(native "$R")" | CLAUDE_PROJECT_DIR="$(native "$R")" node "$(native "$G")" 2>&1)
-case "$out" in *'"block"'*) bad "interactive re-issue blocked again: ${out:0:160}";; *) ok "interactive: the re-issue after its own block passes (once per turn)";; esac
+case "$out" in *'"block"'*) ok "interactive: the re-issue is judged too, one law for both modes (superseded 2026-11-18: held once)";; *) bad "interactive re-issue passed: ${out:0:160}";; esac
 f="$T/i8.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the peer's merge of the shared carrier"; } > "$f"
 check "interactive: every released entry named BLOCKED after measuring" "$f" allow "$R"
 f="$T/i9.jsonl"; { user "go ahead with the plan"; asst "BLOCKED: pkg-a — the peer's merge"; } > "$f"
 check "interactive: the BLOCKED line without measuring the list (control)" "$f" block "$R"
+# One turn-end law for both modes (operator 2026-11-18): the build-now rule for pin/tag/Windows waits holds
+# interactively too; a HAND STEP line ends an autonomous turn as it ends an interactive one.
+f="$T/i9p.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — waits for the next beta tag"; } > "$f"
+check "interactive: a BLOCKED line that waits on a beta tag is no build blocker (one law)" "$f" block "$R"
+f="$T/i9h.jsonl"; { user "work through everything autonomously"; asst "Done with Z.
+HAND STEP: plug the desk into port 4, then say go"; } > "$f"
+check "autonomous: a HAND STEP line ends it (one law)" "$f" allow "$R"
+f="$T/i9q.jsonl"; { user "work through everything autonomously"; asst "Which first?"; ask; } > "$f"
+check "autonomous: a question-tool call is no end (the one difference: autonomous collects)" "$f" block "$R"
+# Own start findings (2026-11-18, macOS instance): every released entry BLOCKED is no idle end while the session start
+# tracks findings for the AI; a handled call, or each finding named BLOCKED, ends it; operator-owned ones do not count.
+mkdir -p "$R/.claude-state"
+# interactive: they count only once the operator released them (operator 2026-11-18: "Nur autonom oder freigegeben")
+printf '%s\n' '{"findings":{"f1a2b3c4":{"id":"f1a2b3c4","owner":"ai","text":"local machinery: 1 alpha past its date","sessions_seen":3},"f9e8d7c6":{"id":"f9e8d7c6","owner":"operator","text":"settings line","sessions_seen":2},"f0000001":{"id":"f0000001","owner":"ai","text":"old","handled_at":"2026-11-17"}}}' > "$R/.claude-state/start-findings.json"
+f="$T/i8a.jsonl"; { user "how late does the switch run?"; asst "It runs until 18:00."; } > "$f"
+check "interactive, findings not released: a plain answer ends the turn (Windows review of #597)" "$f" allow "$R"
+f="$T/i8r.jsonl"; { user "go ahead with the plan"; asst "Started."; } > "$f"
+printf '%s\n' '{"findings":{"f1a2b3c4":{"id":"f1a2b3c4","owner":"ai","text":"x"}},"released":{"words":"words never said"}}' > "$R/.claude-state/start-findings.json"
+check "interactive: a release whose words the operator never said does not count" "$T/i8a.jsonl" allow "$R"
+printf '%s\n' '{"findings":{"f1a2b3c4":{"id":"f1a2b3c4","owner":"ai","text":"local machinery: 1 alpha past its date","sessions_seen":3},"f9e8d7c6":{"id":"f9e8d7c6","owner":"operator","text":"settings line","sessions_seen":2},"f0000001":{"id":"f0000001","owner":"ai","text":"old","handled_at":"2026-11-17"}},"released":{"words":"go ahead with the plan"}}' > "$R/.claude-state/start-findings.json"
+f="$T/i8b.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the peer's merge of the shared carrier"; } > "$f"
+check "interactive: released BLOCKED, an own start finding open (the 2026-11-18 class)" "$f" block "$R"
+f="$T/i8c.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; bash_cmd 'python3 core/scripts/start-findings.py handled f1a2b3c4 --how "unwired"'; asst "BLOCKED: pkg-a — the peer's merge"; } > "$f"
+check "interactive: released BLOCKED, a start finding handled in the turn" "$f" allow "$R"
+f="$T/i8d.jsonl"; { user "go ahead with the plan"; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the peer's merge
+BLOCKED: f1a2b3c4 — waits on the owner of the shared carrier"; } > "$f"
+check "interactive: released BLOCKED, the own finding named BLOCKED too" "$f" allow "$R"
+# A HAND STEP closes the turn only after the independent work (2026-11-18: three hand-step ends with eleven own findings open).
+f="$T/i8h.jsonl"; { user "go ahead with the plan"; asst "HAND STEP: read the router log and send me the output"; } > "$f"
+check "a HAND STEP with an own start finding open is no end (the 2026-11-18 class)" "$f" block "$R"
+f="$T/i8i.jsonl"; { user "go ahead with the plan"; bash_cmd 'python3 core/scripts/start-findings.py handled f1a2b3c4 --how "unwired"'; asst "HAND STEP: read the router log"; } > "$f"
+check "a HAND STEP after handling a start finding in the turn ends it" "$f" allow "$R"
+f="$T/i8j.jsonl"; { user "go ahead with the plan"; asst "BLOCKED: f1a2b3c4 — waits on the operator's router read-out
+HAND STEP: read the router log"; } > "$f"
+check "a HAND STEP with every own finding named BLOCKED ends it" "$f" allow "$R"
+printf '%s\n' '{"findings":{"f9e8d7c6":{"id":"f9e8d7c6","owner":"operator","text":"settings line"}}}' > "$R/.claude-state/start-findings.json"
+check "interactive: released BLOCKED, only operator findings open" "$T/i8b.jsonl" allow "$R"
+rm -f "$R/.claude-state/start-findings.json"
 cat_ledger "$REL" "$REL"
 f="$T/i10.jsonl"; { user "go ahead with the plan"; tool Bash; bash_cmd "$MEAS"; asst "BLOCKED: pkg-a — the CI watcher runs, continue when PR 12 is green"; } > "$f"
 check "interactive: a waiter with its condition covers its item only, another released item open" "$f" block "$R"

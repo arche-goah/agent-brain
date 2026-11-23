@@ -499,6 +499,12 @@ function judge(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const t = readTurn(input.transcript_path);
   if (!t) return null;
+  // A HELPER session reports the orders of the session it helps, not the brain's open items: those belong to that
+  // session (session-scope.cjs; the operator sets the scope by a typed message in this transcript).
+  {
+    const { operatorMessages } = require('./autonomous-idle-gate.cjs');
+    if (require('./session-scope.cjs').scopeOf(cwd, input.transcript_path, operatorMessages(input.transcript_path))) return null;
+  }
   if (!t.boot) {
     // No bootup record at all: only the very first turn of a session is ours to judge.
     if (t.total !== 1 || t.ended) return null;

@@ -305,7 +305,7 @@ History: core/docs/rule-history.md, "A Needed Reload Is Not a Wait State (operat
 10. **What the operator just criticised is not re-released unseen** (2026-08-19).
 
 **Carriers** (operator decision 2026-11-03, HARD needs a mechanical check): #3
-`core/helpers/autonomous-idle-gate.cjs` (an idle end of an autonomous run needs one of the gate's
+`core/helpers/autonomous-idle-gate.cjs` (an idle end with own work open - in either run mode since 2026-11-18 - needs one of the gate's
 end lines `BLOCKED:`, `POOL EMPTY:` or `LIST EMPTY:`, measured; the gate is their one source), #7 in its conditional part only — `core/helpers/conditional-order-gate.cjs` (a
 condition word holds the first expensive call). The rest of #7 ("own notes are not orders",
 "settle WHICH machine first") and the other items carry none and rank with the instance's rule
