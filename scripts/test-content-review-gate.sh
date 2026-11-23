@@ -16,7 +16,7 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 N="$(native "$T")"  # native form: the gate (node) reads the --body-file paths below
 # the fake gh: `gh api ...` (the compare view) answers COMPARE_FILES, everything else the PR JSON
 # pr-<n>.json next to pr.json, when present, answers `gh pr view <n>` (a train's member); else pr.json
-printf 'const fs = require("fs"); const own = process.env.PR_JSON.replace(/\\.json$/, "-" + process.argv[4] + ".json");\nprocess.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : fs.readFileSync(fs.existsSync(own) ? own : process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
+printf 'const fs = require("fs"); const own = process.env.PR_JSON.replace(/\\.json$/, "-" + process.argv[4] + ".json");\nif (process.env.GH_DELAY_MS && process.argv[2] === "pr") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.GH_DELAY_MS));\nif (process.env.GH_SLOW_NR && process.argv[2] === "pr" && process.argv[4] === process.env.GH_SLOW_NR) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000);\nprocess.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : fs.readFileSync(fs.existsSync(own) ? own : process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
 # a core-like repo: its root carries pr-risk.json
 git init -q "$T/core"
 cp "$ROOT/pr-risk.json" "$T/core/pr-risk.json"
@@ -268,5 +268,28 @@ probe "an empty train body is held" "$M" block
 main=$(sed -n '/^if (require.main === module)/,$p' "$GATE")
 case "$main" in *"process.exit("*) bad "the gate's entry point calls process.exit() (hangs at Node shutdown)";; *) ok "the gate's entry point ends naturally (process.exitCode)";; esac
 case "$main" in *"process.exitCode"*) ok "the gate's exit code is still set";; *) bad "the gate sets no exit code";; esac
+
+# train #571 (2026-11-17): 55 members read one after another took 34 s against the hook's 30 s. 40 members whose gh
+# answer takes 1 s each: read in parallel, the merge is judged within the budget (sequential would need 40 s).
+body="## Merge train big"; for n in $(seq 100 139); do body="$body
+- #$n fix/m$n abc1234"; done
+pr "$body" "" "$T/c-7.md"
+for n in $(seq 100 139); do cp "$T/pr.json" "$T/pr-$n.json"; done
+pr "$body" "" ""
+t0=$(date +%s)
+GH_DELAY_MS=1000 probe "40 members, 1 s per gh answer: all read, all reviewed" "$M" allow
+t1=$(date +%s)
+[ $((t1 - t0)) -le 15 ] && ok "  ... in $((t1 - t0)) s (sequential: 40 s)" || bad "  ... took $((t1 - t0)) s"
+for n in $(seq 100 139); do rm -f "$T/pr-$n.json"; done
+# Windows review of #590 (2026-11-18): over the budget only the slow member is unread, the answered ones count
+body="## Merge train slow"; for n in $(seq 200 209); do body="$body
+- #$n fix/s$n abc1234"; done
+pr "$body" "" "$T/c-7.md"
+for n in $(seq 200 209); do cp "$T/pr.json" "$T/pr-$n.json"; done
+pr "$body" "" ""
+out=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$T/core")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$M")}}" \
+  | PR_JSON="$(native "$T/pr.json")" CONTENT_REVIEW_GATE_GH="$(native "$T/gh.js")" GH_SLOW_NR=205 CONTENT_REVIEW_GATE_BUDGET_MS=3000 node "$(native "$GATE")" 2>&1)
+case "$out" in *"#205 (unreadable)"*) case "$out" in *"#200 (unreadable)"*) bad "budget overrun lost the answered members: ${out:0:200}";; *) ok "budget overrun names only the slow member";; esac;; *) bad "budget overrun did not name the slow member: ${out:0:200}";; esac
+for n in $(seq 200 209); do rm -f "$T/pr-$n.json"; done
 
 [ "$fail" -eq 0 ] && echo "content-review-gate fixtures: ALL passed" || { echo "content-review-gate fixtures: FAILURES"; exit 1; }
