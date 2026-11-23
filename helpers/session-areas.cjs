@@ -312,20 +312,34 @@ function loadOwn(root, id) {
 
 /** Run fn while holding the session's record lock: read, compare and write of one record are one step.
  *  Measured 2026-11-23: two PostToolUse calls of one session (parallel tool calls) both read the record
- *  before either wrote it, and both told the same overlap (4 of 8 rounds). A stale lock (a killed hook) is
- *  taken over after LOCK_STALE_MS; without the lock the hook still runs (fails open, as every hook here). */
-const LOCK_STALE_MS = 2000;
+ *  before either wrote it, and both told the same overlap (4 of 8 rounds). The lock names its holder (pid).
+ *  A lock is taken over only when that holder is dead (a killed hook), or - holder unknown or unreadable - when it
+ *  is older than LOCK_STALE_MS, far above a hook's run time (review on the Windows instance, 2026-11-23: a 2 s age
+ *  alone could take the lock from a live holder that runs longer). Without the lock the hook still runs after the
+ *  wait (fails open, as every hook here). */
+const LOCK_STALE_MS = 30000;
+function holderGone(lock) {
+  let owner = null;
+  try { owner = JSON.parse(fs.readFileSync(path.join(lock, 'owner'), 'utf8')); } catch (e) { owner = null; }
+  if (owner && owner.pid) {
+    try { process.kill(Number(owner.pid), 0); return false; } catch (e) { return e.code !== 'EPERM'; }
+  }
+  try { return Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS; } catch (e) { return false; }
+}
 function withLock(root, id, fn) {
   const lock = path.join(stateDir(root), `${id}.lock`);
   let held = false;
   try { fs.mkdirSync(stateDir(root), { recursive: true }); } catch (e) { /* fail open */ }
   for (let i = 0; i < 100 && !held; i++) {
-    try { fs.mkdirSync(lock); held = true; } catch (e) {
-      try { if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) fs.rmdirSync(lock); } catch (e2) { /* gone */ }
+    try {
+      fs.mkdirSync(lock); held = true;
+      try { fs.writeFileSync(path.join(lock, 'owner'), JSON.stringify({ pid: process.pid })); } catch (e) { /* age decides */ }
+    } catch (e) {
+      try { if (holderGone(lock)) fs.rmSync(lock, { recursive: true, force: true }); } catch (e2) { /* gone */ }
       if (!held) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
     }
   }
-  try { return fn(); } finally { if (held) try { fs.rmdirSync(lock); } catch (e) { /* gone */ } }
+  try { return fn(); } finally { if (held) try { fs.rmSync(lock, { recursive: true, force: true }); } catch (e) { /* gone */ } }
 }
 
 /** PostToolUse: record the areas, tell the session about a NEW overlap once. */
