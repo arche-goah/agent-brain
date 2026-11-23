@@ -139,9 +139,13 @@ check "the same refusal with no register (control)" "$T/rr1.jsonl" allow "$CWD"
 REF='AUTONOMOUS-GATE: the operator ordered this run autonomous'
 { user "fix the readme"; aq r2; refuse r2 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, the run is autonomous and the operator asked nothing."; } > "$T/rr2.jsonl"
 check "a repeat with a bare 'intended' line stays held" "$T/rr2.jsonl" block "$RG"
-{ user "fix the readme"; asst "Plan: I put the release question once; if the gate holds it, I file the question in the ledger."; aq r3; refuse r3 "$REF"
-  asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"if the gate holds it, I file the question in the ledger\"."; } > "$T/rr3.jsonl"
-check "a repeat classified as intended, quoting the plan line that stands in the turn" "$T/rr3.jsonl" allow "$RG"
+{ user "fix the readme; if the gate holds a question, file it in the ledger and go on"; aq r3; refuse r3 "$REF"
+  asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"if the gate holds a question, file it in the ledger\"."; } > "$T/rr3.jsonl"
+check "a repeat classified as intended, quoting the operator's prompt of the turn" "$T/rr3.jsonl" allow "$RG"
+# the agent's own earlier text backs nothing (second independent review: a plan line it wrote itself is the bare line again)
+{ user "fix the readme"; asst "Plan: I put the release question once; if the gate holds it, I file the question in the ledger."; aq r3b; refuse r3b "$REF"
+  asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"if the gate holds it, I file the question in the ledger\"."; } > "$T/rr3b.jsonl"
+check "a repeat classified as intended by quoting the agent's own plan line stays held" "$T/rr3b.jsonl" block "$RG"
 # A quote that stands only in the REFUSED call backs nothing (second independent review 2026-11-23: the refused call's own
 # words are always at hand - quoting them is the bare line again). The question text below is the refused call's input.
 { user "fix the readme"; aq r9; refuse r9 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"Release now?\" was the question."; } > "$T/rr9.jsonl"

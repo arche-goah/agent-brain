@@ -85,7 +85,7 @@ function repeatIn(refusals, regText, aliases) {
     if (!hits.length) continue;
     const last = hits[hits.length - 1];
     return {
-      gate, tool: r.tool, at: r.at || '', hits,
+      gate, tool: r.tool, at: r.at || '', hits, refusal: r,
       what: `${gate} refused ${r.tool} - the carrier register already holds ${hits.length} earlier entr${hits.length === 1 ? 'y' : 'ies'} `
         + `for this gate and tool (${hits.slice(-3).map((h) => `${h.date} ${h.id || h.title.slice(0, 40)}`).join('; ')}). `
         + `Newest: carrier "${last.carrier.slice(0, 140) || 'none named'}", effective: ${last.effective || 'not stated'}`,

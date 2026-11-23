@@ -680,8 +680,17 @@ function registerRepeat(group, cwd) {
   let reg = '';
   try { reg = fs.readFileSync(path.join(cwd, registerPath(cwd)), 'utf8'); } catch (e) { return null; }
   const refusals = [];
-  for (const seg of group) for (const r of seg.refusals || []) refusals.push({ ...r, at: r.at || seg.when || '' });
-  return repeatIn(refusals, reg, aliases);
+  group.forEach((seg, si) => { for (const r of seg.refusals || []) refusals.push({ ...r, at: r.at || seg.when || '', seg: si }); });
+  const rep = repeatIn(refusals, reg, aliases);
+  if (!rep) return null;
+  // Where the refused call stands in the turn (segment, call index): the classification's judge takes it as the
+  // signal's place, so that nothing of the refused call itself - or of a later one - can back an "intended".
+  const seg = group[rep.refusal.seg] || {};
+  const raw = String(rep.refusal.raw || '').slice(0, 200);
+  const call = (seg.calls || []).findIndex((c) => c.name === rep.tool && (seg.results || {})[c.id]
+    && seg.results[c.id].err && String(seg.results[c.id].text || '').trim().startsWith(raw));
+  rep.pos = { seg: rep.refusal.seg, call: call < 0 ? 0 : call };
+  return rep;
 }
 
 /** Records a register repeat (.claude-state/register-repeats.jsonl: at, session, gate, tool, the earlier entries) and
@@ -881,10 +890,10 @@ function gate(input) {
     // "intended" released the hold).
     let rep = null;
     try { rep = registerRepeat(group, cwd); } catch (e) { rep = null; }
-    if (rep && !recordRepeat(cwd, input, rep)) list.unshift({ kind: 'register-repeat', block: true, what: rep.what, hits: rep.hits });
+    if (rep && !recordRepeat(cwd, input, rep)) list.unshift({ kind: 'register-repeat', block: true, what: rep.what, hits: rep.hits, at: rep.pos });
     const own = list.find((a) => a.block);
     if (!own) return;
-    const cls = classification(group, cwd, { texts, writes }, own);
+    const cls = classification(group, cwd, { texts, writes }, own);   // the signal: its kind and the place of its call
     let missing = cls.backed ? '' : (cls.kind ? cls.missing : 'a classification line');
     if (!missing && own.kind === 'register-repeat' && cls.kind === 'false-positive') {
       // the new entry ties the case to the earlier one: `related: none` on a third case was the 2026-11-18 defect
