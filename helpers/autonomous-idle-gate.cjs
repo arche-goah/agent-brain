@@ -356,8 +356,11 @@ function judge(input, now) {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const autonomous = autonomousMode(input.transcript_path, root);
   keepWatchdog(root, autonomous);
-  const rel = releasedOpen(root, input.transcript_path);
-  const own = autonomous || startReleased(root, input.transcript_path) ? ownStartFindings(root) : [];
+  // A HELPER session works only the orders of the session it helps (session-scope.cjs, the operator's words quoted):
+  // the brain's ledger releases and start findings are that session's, and the orders in this transcript are the list.
+  const scope = require('./session-scope.cjs').scopeOf(root, input.session_id, input.transcript_path, operatorSaid(input.transcript_path));
+  const rel = scope ? [] : releasedOpen(root, input.transcript_path);
+  const own = !scope && (autonomous || startReleased(root, input.transcript_path)) ? ownStartFindings(root) : [];
   if (!autonomous && !rel.length && !own.length) return null; // no own work open: nothing to hold
   const t = turnOf(input.transcript_path);
   if (!t || !t.text) return null;
@@ -389,7 +392,8 @@ function judge(input, now) {
   // A wakeup alone or a running waiter is no end (2026-10-29): only the forms above.
   void t.wake; void t.waiting;
   const m = measurers(root);
-  const measured = t.cmds.some((c) => m.some((r) => r.test(c))) || standingMeasurement(t.all, m, now);
+  // A helper's list is its orders, read here from the transcript - no own-items command measures it.
+  const measured = Boolean(scope) || t.cmds.some((c) => m.some((r) => r.test(c))) || standingMeasurement(t.all, m, now);
   if (END_LINE.test(t.text)) {
     if (!measured) {
       return 'IDLE: this turn ends on a BLOCKED / POOL EMPTY / LIST EMPTY line, but the list behind it was not measured ' +
@@ -437,7 +441,9 @@ function judge(input, now) {
   // one and its measurement still stands (fresh, no state-changing call since), this turn ends without repeating it.
   if (t.lastEndText && END_LINE.test(t.lastEndText) && standingMeasurement(t.all, m, now)) return null;
   const what = [autonomous ? 'the autonomous run' : null, ids.length ? `released ${ids.slice(0, 3).join(', ')}` : null,
-    own.length ? `${own.length} own start finding(s)` : null].filter(Boolean).join(', ');
+    own.length ? `${own.length} own start finding(s)` : null,
+    scope ? `helper of ${scope.of}: ${scope.orders} order(s) received - the list is those orders, end with LIST EMPTY or BLOCKED on them` : null]
+    .filter(Boolean).join(', ');
   return `IDLE: own work is open (${what}) and this turn ends without its continuation. `
     + 'Do the next item now (tool calls in this turn), or end in one of the allowed forms: '
     + (autonomous ? '' : 'a question through the question tool, ')
@@ -459,4 +465,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { judge, END_LINE };
+module.exports = { judge, END_LINE, operatorSaid };
