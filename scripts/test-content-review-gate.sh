@@ -252,4 +252,12 @@ cp "$T/pr-8.json" "$T/pr-9.json"
 probe "note and left-out lines of a train are no members" "$M" allow
 rm -f "$T/pr-8.json" "$T/pr-9.json"
 
+# 2026-11-23, macOS instance (Node 25.9): after reading a large transcript, `process.exit()` hung in Node's platform
+# shutdown (DisposePlatform -> uv_thread_join) - 21 of 40 runs on a real 7 MB transcript, 2 of 20 on a synthetic one -
+# and the harness reported "timed out; blocking". With `process.exitCode` the same runs ended 40 of 40. The hang is
+# too rare on synthetic data for a timed red case, so the fixture holds the form: the entry point sets exitCode.
+main=$(sed -n '/^if (require.main === module)/,$p' "$GATE")
+case "$main" in *"process.exit("*) bad "the gate's entry point calls process.exit() (hangs at Node shutdown)";; *) ok "the gate's entry point ends naturally (process.exitCode)";; esac
+case "$main" in *"process.exitCode"*) ok "the gate's exit code is still set";; *) bad "the gate sets no exit code";; esac
+
 [ "$fail" -eq 0 ] && echo "content-review-gate fixtures: ALL passed" || { echo "content-review-gate fixtures: FAILURES"; exit 1; }

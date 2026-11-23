@@ -421,7 +421,10 @@ if (require.main === module) {
   process.stdin.on('end', () => {
     let rc = 0;
     try { rc = gate(JSON.parse(data)); } catch (e) { rc = 0; /* unparsable input: nothing to check */ }
-    process.exit(rc);
+    // No forced exit call here: measured 2026-11-23 on the macOS instance (Node 25.9), after reading a large transcript it
+    // hung in Node's platform shutdown (uv_thread_join) in 21 of 40 runs - the harness then reports "timed out;
+    // blocking". Ending naturally with exitCode: 0 of 40.
+    process.exitCode = rc;
   });
   process.stdin.resume();
 }
