@@ -168,7 +168,10 @@ function judge(input) {
   // The asking prompt's own turn with no question answered: the run is still autonomous (autonomous-mode.cjs, the
   // window), and what is filed as open is the DUTY this hook carries - a turn that asked nothing while a decision is
   // open is held; with nothing open the run goes on and nothing is owed.
-  const window = last === now && Boolean(now.window);
+  // a PURE deferred window (an order that only pre-authorizes a later question) is no asking prompt: nothing is owed
+  // in its turns (train 2026-11-23: it held the order's own turn and every timer turn after it). A prompt that asks
+  // what is open AND defers a later question still owes the answer (second review of the train).
+  const window = last === now && Boolean(now.window) && !(now.deferred && !now.asks);
   if (last.autonomous && !window) return null; // in the run, or "yes, continue"
   const wasOn = window || (n > 0 && modes[n - 1].autonomous);
   if (!now.asks && !wasOn) return null;

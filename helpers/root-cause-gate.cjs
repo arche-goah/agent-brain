@@ -1140,7 +1140,8 @@ if (require.main !== module) {
       p.turns += 1; p.days.add(String(r.at).slice(0, 10));
       // what the turn's own text would do at the hold: released by a BACKED classification, sent the cause path by a
       // cause line, or a bare classification line that releases nothing
-      const cls = classification([t], cwd, { texts: t.texts, writes: t.writes });
+      const cls = classification([t], cwd, { texts: t.texts, writes: t.writes },
+        { kind: 'register-repeat', block: true, what: r.what, hits: r.hits, at: r.pos });   // as the live hook
       if (causeIn(t.texts, causeRx)) { p.cause += 1; tot.cause += 1; }
       else if (cls.backed && (cls.kind !== 'false-positive' || namesEarlier((t.writeTexts || []).map((w) => w.t).join('\n'), r.hits))) { p.released += 1; tot.released += 1; }
       else if (cls.kind) { p.bare += 1; tot.bare += 1; }

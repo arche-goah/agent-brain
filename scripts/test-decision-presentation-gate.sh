@@ -175,4 +175,16 @@ checks "the same reply without the close in this turn" "$f" "$C" block s1
 cp "$H/docs/questions.md" "$C/docs/questions.md"
 checks "a close does not pass an open hand step" "$T/c1.jsonl" "$C" block s1
 
+# train review 2026-11-23: a PURE deferred window (an order that pre-authorizes a later question) is no asking prompt;
+# with a decision filed as open, the order's own turn and the timer turn after it were held. A prompt that asks what
+# is open AND defers still owes the answer.
+DEFER="continue autonomously; as soon as you are ready for the train build, switch back to interactive on your own and put the train-build question to me"
+tick() { printf '{"type":"user","isMeta":true,"promptSource":"system","queuePriority":"later","message":{"role":"user","content":%s}}\n' "$(js "$1")"; }
+tend() { printf '%s\n' '{"type":"system","subtype":"turn_duration","durationMs":1000}'; }
+{ user "work through the open points autonomously"; user "$DEFER"; asst "Working on the review."; } > "$T/dfr1.jsonl"
+check "the deferred order's own turn owes no decisions" "$T/dfr1.jsonl" "$B" allow
+{ user "work through the open points autonomously"; user "$DEFER"; asst "Working."; tend; tick "# Autonomous loop check"; asst "Still working."; } > "$T/dfr2.jsonl"
+check "a timer turn inside the deferred window owes no decisions" "$T/dfr2.jsonl" "$B" allow
+{ user "work through the open points autonomously"; user "what is open for me? and once you are ready for the train build, put the train-build question to me"; asst "Two decisions are open: the worktrees and the release."; } > "$T/dfr3.jsonl"
+check "a prompt that asks what is open AND defers still owes the question tool" "$T/dfr3.jsonl" "$B" block
 [ "$fail" = 0 ] && echo "decision-presentation-gate: all cases pass" || { echo "decision-presentation-gate: FAILURES"; exit 1; }
