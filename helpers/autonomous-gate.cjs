@@ -215,6 +215,9 @@ function defaultModeNotice(input, root) {
 function judge(input) {
   const tool = input.tool_name || '';
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  // The mode question owed after an answered round in a dialog the operator opened (mode-owed.cjs, 2026-11-23): read
+  // before the mode check - asking what is open has just ended the run, and the work after the answers is what it holds.
+  try { const owed = require('./mode-owed.cjs').pre(input, root); if (owed) return owed; } catch (e) { /* fail open */ }
   const notice = defaultModeNotice(input, root);
   if (notice) return notice;
   const isQuestion = tool === 'AskUserQuestion';
