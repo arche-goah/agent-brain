@@ -267,6 +267,25 @@ function unreadableScript(input, cmd, cwd, s) {
   return 2;
 }
 
+// The core's own guard fixtures, and only they: `scripts/test-guards.sh` and `scripts/test-public-text-guard.sh` (operator
+// 2026-11-18, the second one: "Ja, gleiche Bedingung (Recommended)") in a checkout whose
+// `helpers/public-text-guard.cjs` sits beside it. Its gh commands are probe ARGUMENTS against throw-away
+// repos (o/lab, o/r) and a fake gh; read as posts they refused every hand run of the fixture on a machine
+// with a watch list (2026-11-18, macOS instance, review of #533). Operator, question tool, the same day:
+// "Ja, eng begrenzt (Recommended)" - no other script, no other path, every real post still read.
+function ownGuardFixture(file, cwd) {
+  try {
+    const p = fs.realpathSync(path.resolve(cwd || '.', nativePath(String(file))));
+    if (!['test-guards.sh', 'test-public-text-guard.sh'].includes(path.basename(p)) || path.basename(path.dirname(p)) !== 'scripts') return false;
+    const top = path.join(path.dirname(p), '..');
+    if (!fs.existsSync(path.join(top, 'helpers', 'public-text-guard.cjs'))) return false;
+    // ...and the checkout is the core repo itself (review of this PR, the Windows instance 2026-11-18: any file of that
+    // name passed). Not the running guard's own path: that one lives in the plugin cache, the fixture in a clone.
+    const url = execFileSync('git', ['-C', top, 'remote', 'get-url', 'origin'], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim();
+    return /[/:]arche-goah\/agent-brain(\.git)?$/.test(url);
+  } catch (e) { return false; }
+}
+
 // `script`: set when `input` carries the text of a local script the command runs (scriptBodies,
 // published-text.cjs) - its command lines are read as the outer command is, one level deep. Text a
 // script composes at run time (`$1`, a variable, `$(printf …)` output) is beyond any reading of its
@@ -278,6 +297,7 @@ function gate(input, script) {
   const cwd = input.cwd || process.cwd();
   if (!script) {
     for (const s of scriptBodies(cmd, ps, cwd)) {
+      if (ownGuardFixture(s.file, cwd)) continue;
       const rc = s.text === null ? unreadableScript(input, cmd, cwd, s)
         : gate(Object.assign({}, input, { tool_input: { command: s.text } }, s.ps ? { tool_name: 'PowerShell' } : {}), s.file);
       if (rc) return rc;

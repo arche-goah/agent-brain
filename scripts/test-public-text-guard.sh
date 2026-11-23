@@ -257,6 +257,21 @@ expect "a name in a file the script hands over blocks"      block "$T" "sh $NT/s
 expect "a script run directly (./path) is read too"         block "$SC" "./direct.sh 5"
 expect "a script after a ; and VAR= prefix is read too"     block "$T" "echo go; X=1 bash -e $NT/scripts/named.sh 5"
 expect "a script path that does not exist passes"           allow "$T" "bash $NT/scripts/no-such.sh"
+# The core's own guard fixture only (operator 2026-11-18, "Ja, eng begrenzt"): scripts/test-guards.sh with
+# helpers/public-text-guard.cjs beside it. The same body under another name, or without the guard beside it, is read.
+FX="$T/fxcore"; mkdir -p "$FX/scripts" "$FX/helpers" "$T/fxother/scripts"
+cp "$SC/named.sh" "$FX/scripts/test-guards.sh"; : > "$FX/helpers/public-text-guard.cjs"
+cp "$SC/named.sh" "$FX/scripts/test-other.sh"; cp "$SC/named.sh" "$T/fxother/scripts/test-guards.sh"
+# ...and only in a checkout of the core repo (review 2026-11-18: any file of that name passed): a tree whose origin is
+# another repo is read (control), the core's own origin passes.
+cp -R "$FX" "$T/fxfake"; git init -q "$T/fxfake"; git -C "$T/fxfake" remote add origin https://github.com/o/pub.git
+expect "the same layout in another repo is read (control)"   block "$T" "bash $(native "$T")/fxfake/scripts/test-guards.sh 5"
+git init -q "$FX"; git -C "$FX" remote add origin https://github.com/arche-goah/agent-brain.git
+expect "the core's own guard fixture is not read as posts"  allow "$T" "bash $(native "$FX")/scripts/test-guards.sh"
+cp "$SC/named.sh" "$FX/scripts/test-public-text-guard.sh"
+expect "the guard's second fixture is not read as posts"    allow "$T" "bash $(native "$FX")/scripts/test-public-text-guard.sh"
+expect "another script beside the guard is read (control)"  block "$T" "bash $(native "$FX")/scripts/test-other.sh 5"
+expect "test-guards.sh without the guard beside it is read (control)" block "$T" "bash $(native "$T")/fxother/scripts/test-guards.sh 5"
 expect "a script path the guard cannot expand blocks (unknown target)" block "$T" 'bash "$NOSUCHDIR/named.sh" 5'
 expect "the same unreadable script from a private clone passes" allow "$T/privclone" 'bash "$NOSUCHDIR/named.sh" 5'
 # PowerShell scripts the same way (debt named in #515): pwsh/powershell with a .ps1, `& x.ps1`, a .ps1 run by path
