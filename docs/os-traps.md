@@ -370,6 +370,7 @@ known:     scripts/test-os-ok-form.sh=1
 known:     scripts/test-own-open-gate.sh=1
 known:     scripts/test-parallel-sessions.sh=1
 known:     scripts/test-pattern-cases.sh=1
+known:     scripts/test-peer-talk-gate.sh=1
 known:     scripts/test-pr-ball.sh=1
 known:     scripts/test-pr-close-gate.sh=1
 known:     scripts/test-pre-commit-behind.sh=1

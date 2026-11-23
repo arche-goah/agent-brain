@@ -84,7 +84,12 @@ out=$(node -e 'const {areasFromCall}=require(process.argv[1]);process.stdout.wri
 has "commit -C <sha> after the verb is no directory" "$out" "proj/firmware"
 out=$(node -e 'Object.defineProperty(process,"platform",{value:"win32"});const {nativePath}=require(process.argv[1]);process.stdout.write(nativePath("/c/work/x y/brain"))' "$(native "$_D/../helpers/published-text.cjs")")
 [ "$out" = "C:/work/x y/brain" ] && ok "the Git Bash drive form becomes native (the -C and pathspec reader uses it)" || bad "nativePath: '$out'"
-grep -q 'nativePath(words\[c + 1\])' "$_D/../helpers/session-areas.cjs" && ok "the -C value goes through nativePath" || bad "-C not translated"
+grep -q 'nativePath(dir)' "$_D/../helpers/session-areas.cjs" && ok "the -C value goes through nativePath" || bad "-C not translated"
+# 2026-11-20: `git -C ~/<repo>` from the brain landed in <brain>/scripts (a false OVERLAP between two sessions)
+mkdir -p "$T/hm"; ln -s "$T/proj" "$T/hm/proj" 2>/dev/null || cp -R "$T/proj" "$T/hm/proj"
+out=$(HOME="$(native "$T/hm")" USERPROFILE="$(native "$T/hm")" node -e 'const {areasFromCall}=require(process.argv[1]);process.stdout.write(JSON.stringify(areasFromCall({cwd:process.argv[2],tool_name:"Bash",tool_input:{command:"git -C ~/proj commit -m t -- firmware/main.c"}})))' "$G" "$B")
+has "a ~ path in -C is the home folder" "$out" "proj/firmware"
+lacks "a ~ path in -C does not land in the cwd" "$out" "brain/firmware"
 
 out=$(ask s-b "check what the other session is doing")
 has "the operator's prompt about other sessions injects the map" "$out" "<session-map>"
@@ -131,13 +136,34 @@ out=$(node "$G" show --session s-b); has "the commit's files are recorded, not t
 out=$(commit s-b "[main $BIZ] biz"); has "a commit whose files lie inside the claim is named" "$out" "claimed by brain-aa (shopping)"
 node "$G" release --session s-a >/dev/null
 # Negative control: the helper without the repo-root guard (a mutated copy) reports the incident again.
-sed -e 's/va\.root !== a && //' -e 's/vb\.root !== b && //' "$_D/../helpers/session-areas.cjs" > "$T/mutant.cjs"
-grep -q 'va.root !== a &&' "$T/mutant.cjs" && bad "control: the mutation did not apply" || ok "control: the mutation removed the guard"
+sed -e '/if (v\.root === area) return false;/d' "$_D/../helpers/session-areas.cjs" > "$T/mutant.cjs"
+grep -q 'v.root === area' "$T/mutant.cjs" && bad "control: the mutation did not apply" || ok "control: the mutation removed the guard"
 node "$G" claim "$R/docs/business" --note "shopping" --session s-a >/dev/null
 rm -f "$T/brain/.claude-state/session-areas/s-b.json"
 out=$(node -e 'process.stdout.write(JSON.stringify({session_id:"s-b",cwd:process.argv[1],tool_name:"Bash",tool_input:{command:"git -C "+process.argv[1]+" commit -m x"},tool_response:{stdout:"nothing to commit"}}))' "$R" | node "$(native "$T/mutant.cjs")" record 2>&1)
 has "control: without the guard the repo-root commit is reported as a write into the claim" "$out" "claimed by brain-aa"
 node "$G" release --session s-a >/dev/null
+
+# 2026-11-23, told once for real: (1) the told list was a fixed tail of 50 keys - with more live overlaps the
+# oldest fell out and were told again on EVERY write; (2) two record calls of one session at the same time
+# (parallel tool calls) both told the same overlap; (3) a claim on a FILE met every write in its folder.
+B3="$(native "$T/brain3")"; mkdir -p "$T/brain3/.git"
+for i in 1 2 3 4 5 6; do printf '{"pid":30%s,"sessionId":"t-%s","cwd":"%s","name":"brain-t%s"}' $i $i "$B3" $i > "$T/cfg/sessions/30$i.json"; done
+ed3() { printf '{"session_id":"%s","cwd":"%s","tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$1" "$B3" "$2" | CLAUDE_PROJECT_DIR="$B3" SESSION_AREAS_ALIVE="301,302,303,304,305,306" node "$G" record 2>&1; }
+for s in 2 3 4 5 6; do for i in 1 2 3 4 5 6 7 8 9 10 11 12; do mkdir -p "$T/brain3/docs/p$s-$i"; ed3 t-$s "$B3/docs/p$s-$i/f.md" >/dev/null; done; done
+out=$(ed3 t-1 "$B3/docs/a.md"); [ "$(grep -o 'OVERLAP:' <<<"$out" | wc -l | tr -d ' ')" = 60 ] && ok "60 live overlaps are told at the first write" || bad "first tell: $(grep -o 'OVERLAP:' <<<"$out" | wc -l)"
+out=$(ed3 t-1 "$B3/docs/b.md"); [ -z "$out" ] && ok "more than 50 live overlaps are still told once" || bad "told again: $(grep -o 'OVERLAP:' <<<"$out" | wc -l) lines"
+mkdir -p "$T/brain3/par/q"; ed3 t-2 "$B3/par/q/a.md" >/dev/null
+told=0; for r in 1 2 3 4 5 6; do
+  rm -f "$T/brain3/.claude-state/session-areas/t-3.json"
+  ed3 t-3 "$B3/par/q/b.md" > "$T/p1" & ed3 t-3 "$B3/par/q/c.md" > "$T/p2" & wait
+  told=$((told + $(cat "$T/p1" "$T/p2" | grep -ac 'and brain-t2 — both write')))
+done
+[ "$told" = 6 ] && ok "two record calls of one session at once tell an overlap once" || bad "parallel calls told $told times in 6 rounds"
+mkdir -p "$T/brain3/fc"; : > "$T/brain3/fc/mine.md"
+CLAUDE_PROJECT_DIR="$B3" SESSION_AREAS_ALIVE="301,302,303,304,305,306" node "$G" claim "$B3/fc/mine.md" --note "one file" --session t-4 >/dev/null
+out=$(ed3 t-5 "$B3/fc/other.md"); lacks "a claim on a file does not meet another file of its folder" "$out" "claimed by brain-t4"
+out=$(ed3 t-5 "$B3/fc/mine.md"); has "a claim on a file meets that file written" "$out" "claimed by brain-t4 (one file)"
 
 SESSION_AREAS_ALIVE="102" node "$G" show --session s-b >/dev/null
 [ ! -f "$T/brain/.claude-state/session-areas/s-a.json" ] && ok "a dead peer's record is deleted" || bad "dead record kept"

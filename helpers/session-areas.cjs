@@ -36,6 +36,7 @@ const { shellSegments, unquote, nativePath } = require('./published-text.cjs');
 const AREA_DEPTH = 3;          // levels below the repo root an area keeps
 const AREA_TTL_H = 8;          // a write older than this is no longer "recent"
 const MAX_AREAS = 12;          // per session, newest kept
+const MAX_FILES = 20;          // written files kept per area (for claims on a file)
 const NO_PID_TTL_H = 12;       // a record without a known pid expires after this
 // System text that arrives as a prompt (the list of basics-hint.cjs plus <agent-message).
 const NOT_A_PROMPT = /^\s*(<task-notification|<system-reminder|<cross-session-message|<agent-message|<local-command|Stop hook feedback|\[Request interrupted)/;
@@ -78,14 +79,16 @@ function repoRoot(dir) {
   return found;
 }
 
-/** A written path -> {area, root}. A folder path (commit pathspec) counts as itself. */
+/** A written path -> {area, root, file}. A folder path (commit pathspec) counts as itself; `file` is the
+ *  written file itself (null for a folder), so a claim on a FILE can be compared against files. */
 function areaOf(p, isDir) {
   const abs = norm(p);
   const dir = isDir ? abs : norm(path.dirname(abs));
+  const file = isDir ? null : abs;
   const root = repoRoot(dir);
-  if (!root) return { area: dir, root: null };
+  if (!root) return { area: dir, root: null, file };
   const rel = dir === root ? [] : dir.slice(root.length + 1).split('/').slice(0, AREA_DEPTH);
-  return { area: rel.length ? `${root}/${rel.join('/')}` : root, root };
+  return { area: rel.length ? `${root}/${rel.join('/')}` : root, root, file };
 }
 
 /** The files of the commit a Bash call made, read from its own output `[<branch> <sha>] …`. */
@@ -122,7 +125,11 @@ function areasFromCall(input) {
   for (const words of commitCalls(ti.command, ps)) {
     const ci = words.indexOf('commit');
     const c = words.slice(0, ci).indexOf('-C');   // `git commit -C <sha>` after the verb is a message source
-    const base = path.resolve(cwd, c >= 0 ? nativePath(words[c + 1]) : '.');
+    // A leading `~` is the home folder (measured 2026-11-20: `git -C ~/Projects/<repo> commit -- scripts/x.py` from
+    // the brain resolved to `<brain>/~/...`, no folder, and the file landed in `<brain>/scripts` - a false OVERLAP).
+    let dir = c >= 0 ? words[c + 1] : '.';
+    if (dir === '~' || /^~[\\/]/.test(dir)) dir = path.join(require('os').homedir(), dir.slice(1));
+    const base = path.resolve(cwd, nativePath(dir));
     const dd = words.indexOf('--', ci);
     const specs = dd >= 0 ? words.slice(dd + 1).filter((s) => !/^[|>]/.test(s)) : [];
     if (!specs.length) {
@@ -132,7 +139,7 @@ function areasFromCall(input) {
       if (!r) continue;
       const files = committedFiles(r, input.tool_response);
       if (files.length) for (const f of files) out.push(areaOf(path.join(r, f), false));
-      else out.push({ area: r, root: r });
+      else out.push({ area: r, root: r, file: null });
       continue;
     }
     for (const s of specs) {
@@ -151,7 +158,7 @@ function sessions(root, now) {
   const byId = new Map();
   for (const r of reg) {
     if (norm(r.cwd || '') !== norm(root) || !alive(r.pid)) continue;
-    byId.set(r.sessionId, { id: r.sessionId, name: r.name || r.sessionId.slice(0, 8), pid: r.pid, status: r.status || '', areas: {}, claims: [] });
+    byId.set(r.sessionId, { id: r.sessionId, name: r.name || r.sessionId.slice(0, 8), pid: r.pid, status: r.status || '', sock: r.messagingSocketPath || '', areas: {}, claims: [] });
   }
   let files = [];
   try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.json')); } catch (e) { files = []; }
@@ -162,7 +169,7 @@ function sessions(root, now) {
     const pid = reg1 ? reg1.pid : rec.pid;
     const gone = pid ? !alive(pid) : (now - Date.parse(rec.updated || 0)) / 36e5 > NO_PID_TTL_H;
     if (gone) { try { fs.unlinkSync(path.join(dir, f)); } catch (e) { /* another session pruned it */ } continue; }
-    const s = byId.get(rec.id) || { id: rec.id, name: rec.name || rec.id.slice(0, 8), pid, status: '' };
+    const s = byId.get(rec.id) || { id: rec.id, name: rec.name || rec.id.slice(0, 8), pid, status: '', sock: reg1 ? reg1.messagingSocketPath || '' : '' };
     byId.set(rec.id, { ...s, areas: rec.areas || {}, claims: rec.claims || [], told: rec.told || [] });
   }
   return [...byId.values()];
@@ -174,12 +181,60 @@ function recent(s, now) {
     .sort((a, b) => Date.parse(b[1].at) - Date.parse(a[1].at));
 }
 
-/** Overlaps between session `me` and every peer: [{key, peer, path, why}]. */
-function overlaps(me, peers, now) {
+/** Does a claim meet a written area? A claim on a FILE meets only that file written (measured 2026-11-20: two
+ *  claims on different files of one folder were reported as an overlap on every write, the folder being the
+ *  only thing compared); a claim on a folder meets every area inside it or containing it. */
+function claimMeets(c, area, v, intoOnly) {
+  if (v.root === area) return false;   // a write known only as a repo root is no evidence against a claim
+  if (c.file) return (v.files || []).includes(c.path);
+  return inside(area, c.path) || (!intoOnly && inside(c.path, area));
+}
+
+/** The ListAgents names (and reply addresses) this session sent a SendMessage to, read from its transcript.
+ *  The WHOLE transcript: a talk early in a long session counts (measured 2026-11-09 on the macOS instance: a 4 MB
+ *  tail window missed the peer's messages at 2.9-3.2 MB of a 9.3 MB transcript). Only lines naming SendMessage
+ *  are parsed. */
+function talkedTo(transcript) {
+  const out = new Set();
+  if (!transcript) return out;
+  let raw = '';
+  try { raw = fs.readFileSync(transcript, 'utf8'); } catch (e) { return out; }
+  for (const line of raw.split('\n')) {
+    if (!line.includes('"SendMessage"')) continue;
+    let d; try { d = JSON.parse(line); } catch (e) { continue; }
+    const c = d && d.message && Array.isArray(d.message.content) ? d.message.content : [];
+    for (const b of c) if (b && b.type === 'tool_use' && b.name === 'SendMessage' && b.input && b.input.to) out.add(String(b.input.to).replace(/\s*\[[^\]]*\]\s*$/, '').trim());
+  }
+  return out;
+}
+
+/** Did this session message peer `p`? By its ListAgents name, or by its socket address `uds:/…/<pid>.sock` -
+ *  a reply goes to the sender's address (measured 2026-11-09: a peer answered that way and was still held). */
+function talkedWith(talked, p) {
+  if (!talked) return false;
+  if (talked.has(p.name)) return true;
+  // The harness registry names each session's reply address (`messagingSocketPath`); on Windows it is a named pipe
+  // `\\.\pipe\LOCAL\cc-msg-<hash>` without the pid (measured 2026-11-23, Windows instance), so the pid form below
+  // never matched a reply there. Compared exactly, slashes normalised; the pid form stays for a registry without it.
+  const flat = (s) => String(s).replace(/^uds:/, '').replace(/\\/g, '/');
+  if (p.sock) for (const t of talked) if (flat(t) === flat(p.sock)) return true;
+  for (const t of talked) if (p.pid && new RegExp(`(^|/)${Number(p.pid)}\\.sock$`).test(t)) return true;
+  return false;
+}
+
+/** Overlaps between session `me` and every peer: [{key, peer, path, why}]. `talked`: the peers this session has
+ *  messaged - with them only a write INTO a claim is an overlap, not two writes into one folder (measured
+ *  2026-11-09: after both sessions had messaged and claimed their files, the folder's OVERLAP lines kept coming). */
+function overlaps(me, peers, now, talked) {
   const out = [];
   const mine = recent(me, now);
   for (const p of peers) {
     const theirs = recent(p, now);
+    if (talkedWith(talked, p)) {
+      for (const c of p.claims || []) for (const [a, va] of mine) if (claimMeets(c, a, va, true)) out.push({ key: `${p.id}|c|${c.file ? c.path : a}`, peer: p, path: c.file ? c.path : a, why: `claimed by ${p.name}${c.note ? ` (${c.note})` : ''}` });
+      for (const c of me.claims || []) for (const [b, vb] of theirs) if (claimMeets(c, b, vb, true)) out.push({ key: `${p.id}|m|${c.file ? c.path : b}`, peer: p, path: c.file ? c.path : b, why: `claimed by ${me.name}${c.note ? ` (${c.note})` : ''}, written by ${p.name}` });
+      continue;
+    }
     for (const [a, va] of mine) {
       for (const [b, vb] of theirs) {
         const aRepo = va.root === a; const bRepo = vb.root === b;
@@ -190,10 +245,10 @@ function overlaps(me, peers, now) {
     }
     // A write known only as a repo root (a commit whose files are unknown) is no evidence against a claim.
     for (const c of p.claims || []) {
-      for (const [a, va] of mine) if (va.root !== a && (inside(a, c.path) || inside(c.path, a))) out.push({ key: `${p.id}|c|${a}`, peer: p, path: a, why: `claimed by ${p.name}${c.note ? ` (${c.note})` : ''}` });
+      for (const [a, va] of mine) if (claimMeets(c, a, va)) out.push({ key: `${p.id}|c|${c.file ? c.path : a}`, peer: p, path: c.file ? c.path : a, why: `claimed by ${p.name}${c.note ? ` (${c.note})` : ''}` });
     }
     for (const c of me.claims || []) {
-      for (const [b, vb] of theirs) if (vb.root !== b && (inside(b, c.path) || inside(c.path, b))) out.push({ key: `${p.id}|m|${b}`, peer: p, path: b, why: `claimed by ${me.name}${c.note ? ` (${c.note})` : ''}, written by ${p.name}` });
+      for (const [b, vb] of theirs) if (claimMeets(c, b, vb)) out.push({ key: `${p.id}|m|${c.file ? c.path : b}`, peer: p, path: c.file ? c.path : b, why: `claimed by ${me.name}${c.note ? ` (${c.note})` : ''}, written by ${p.name}` });
     }
   }
   const seen = new Set();
@@ -260,6 +315,24 @@ function loadOwn(root, id) {
   return rec;
 }
 
+/** Run fn while holding the session's record lock: read, compare and write of one record are one step.
+ *  Measured 2026-11-23: two PostToolUse calls of one session (parallel tool calls) both read the record
+ *  before either wrote it, and both told the same overlap (4 of 8 rounds). A stale lock (a killed hook) is
+ *  taken over after LOCK_STALE_MS; without the lock the hook still runs (fails open, as every hook here). */
+const LOCK_STALE_MS = 2000;
+function withLock(root, id, fn) {
+  const lock = path.join(stateDir(root), `${id}.lock`);
+  let held = false;
+  try { fs.mkdirSync(stateDir(root), { recursive: true }); } catch (e) { /* fail open */ }
+  for (let i = 0; i < 100 && !held; i++) {
+    try { fs.mkdirSync(lock); held = true; } catch (e) {
+      try { if (Date.now() - fs.statSync(lock).mtimeMs > LOCK_STALE_MS) fs.rmdirSync(lock); } catch (e2) { /* gone */ }
+      if (!held) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+  try { return fn(); } finally { if (held) try { fs.rmdirSync(lock); } catch (e) { /* gone */ } }
+}
+
 /** PostToolUse: record the areas, tell the session about a NEW overlap once. */
 function record(input, now) {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
@@ -267,17 +340,31 @@ function record(input, now) {
   if (!id) return null;
   const found = areasFromCall(input);
   if (!found.length) return null;
-  const rec = loadOwn(root, id);
-  const at = new Date(now).toISOString();
-  for (const f of found) rec.areas[f.area] = { at, root: f.root };
-  rec.areas = Object.fromEntries(Object.entries(rec.areas).sort((a, b) => Date.parse(b[1].at) - Date.parse(a[1].at)).slice(0, MAX_AREAS));
-  rec.updated = at;
-  const all = sessions(root, now);
-  const me = { ...rec, name: rec.name || id.slice(0, 8) };
-  const fresh = overlaps(me, all.filter((s) => s.id !== id), now).filter((o) => !(rec.told || []).includes(o.key));
-  rec.told = [...(rec.told || []), ...fresh.map((o) => o.key)].slice(-50);
-  writeRecord(root, rec);
-  return fresh.length ? fresh.map((o) => overlapLine(me, o)).join('\n') : null;
+  return withLock(root, id, () => {
+    const rec = loadOwn(root, id);
+    const at = new Date(now).toISOString();
+    for (const f of found) {
+      const prev = rec.areas[f.area] || {};
+      const files = f.file ? [f.file, ...(prev.files || []).filter((x) => x !== f.file)].slice(0, MAX_FILES) : (prev.files || []);
+      rec.areas[f.area] = { at, root: f.root, files };
+    }
+    rec.areas = Object.fromEntries(Object.entries(rec.areas).sort((a, b) => Date.parse(b[1].at) - Date.parse(a[1].at)).slice(0, MAX_AREAS));
+    rec.updated = at;
+    const all = sessions(root, now);
+    const me = { ...rec, name: rec.name || id.slice(0, 8) };
+    const peers = all.filter((s) => s.id !== id);
+    let live = overlaps(me, peers, now);
+    // The transcript is read only when there is something a talk could settle.
+    if (live.length) live = overlaps(me, peers, now, talkedTo(input.transcript_path));
+    const told = new Set(rec.told || []);
+    const fresh = live.filter((o) => !told.has(o.key));
+    // `told` keeps exactly the overlaps that are still live, so it never outgrows them. The old fixed tail of
+    // 50 keys dropped the oldest once more overlaps were live (measured 2026-11-23: 60 live overlaps -> 10
+    // told again on EVERY write, for good). An overlap that ended and comes back is new and told again.
+    rec.told = live.map((o) => o.key);
+    writeRecord(root, rec);
+    return fresh.length ? fresh.map((o) => overlapLine(me, o)).join('\n') : null;
+  });
 }
 
 function triggers(root) {
@@ -310,17 +397,22 @@ function cli(argv, now) {
   const pos = argv.filter((a, i) => i > 0 && !a.startsWith('--') && !(argv[i - 1] || '').startsWith('--'));
   if (cmd === 'claim' || cmd === 'release') {
     if (!id) { console.error('session-areas: no session id (CLAUDE_CODE_SESSION_ID unset) — pass --session <id>'); return 2; }
+    if (cmd === 'claim' && !pos[0]) { console.error('usage: session-areas.cjs claim <path> [--note <text>]'); return 2; }
+    withLock(root, id, () => {
     const rec = loadOwn(root, id);
     rec.claims = rec.claims || [];
     if (cmd === 'claim') {
-      if (!pos[0]) { console.error('usage: session-areas.cjs claim <path> [--note <text>]'); return 2; }
       const p = norm(path.resolve(pos[0]));
-      rec.claims = rec.claims.filter((c) => c.path !== p).concat({ path: p, note: opt('--note') || '', at: new Date(now).toISOString() });
+      // A claim on a file is compared against written files, a claim on a folder against areas. A path that does
+      // not exist yet counts as a file when it has an extension.
+      let file; try { file = fs.statSync(p).isFile(); } catch (e) { file = path.extname(p) !== ''; }
+      rec.claims = rec.claims.filter((c) => c.path !== p).concat({ path: p, file, note: opt('--note') || '', at: new Date(now).toISOString() });
     } else {
       rec.claims = pos[0] ? rec.claims.filter((c) => c.path !== norm(path.resolve(pos[0]))) : [];
     }
     rec.updated = new Date(now).toISOString();
     writeRecord(root, rec);
+    });
   }
   if (['claim', 'release', 'show', 'overlaps'].includes(cmd)) {
     let lines = map(root, id, now, { brief: argv.includes('--brief'), peersOnly: argv.includes('--peers-only') });
@@ -351,4 +443,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { areasFromCall, overlaps, record, prompt, map, sessions };
+module.exports = { areasFromCall, overlaps, record, prompt, map, sessions, talkedTo, talkedWith, claimCmd };
