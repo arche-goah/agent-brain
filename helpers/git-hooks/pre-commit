@@ -43,7 +43,12 @@ run_check() {   # run_check <label> <command...>
 lint_mode=0
 if [ -f "$root/scripts/ci-lint-local.sh" ] && [ -f "$root/.github/workflows/ci.yml" ]; then
   lint_mode=1
-  lint=(bash "$root/scripts/ci-lint-local.sh" --commit --skip "leak scan (tree)" --skip "content guard")
+  # Without git's hook variables (Windows instance, 2026-11-18): a hook runs with GIT_DIR / GIT_INDEX_FILE /
+  # GIT_WORK_TREE set, and they win over `git -C <dir>` - the fixtures' git calls (init, commit, reset, config) landed in
+  # the committing repository: three foreign commits on the branch, MERGE_HEAD lost, `core.bare = true` in its config.
+  lint=(env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE -u GIT_PREFIX -u GIT_OBJECT_DIRECTORY \
+    -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR \
+    bash "$root/scripts/ci-lint-local.sh" --commit --skip "leak scan (tree)" --skip "content guard")
   if [ -f "$brain/.claude/rules/leak-names.json" ] && [ "$root" != "$brain" ]; then
     LEAK_NAMES_JSON="$(cat "$brain/.claude/rules/leak-names.json")" run_check "ci lint (--commit)" "${lint[@]}"
   else

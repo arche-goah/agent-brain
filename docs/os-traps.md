@@ -372,6 +372,7 @@ known:     scripts/test-pr-ball.sh=1
 known:     scripts/test-pr-close-gate.sh=1
 known:     scripts/test-pre-commit-behind.sh=1
 known:     scripts/test-pre-commit-change-level.sh=1
+known:     scripts/test-pre-commit-hook-env.sh=1
 known:     scripts/test-pre-commit-os-traps.sh=1
 known:     scripts/test-pre-commit-backprop.sh=1
 known:     scripts/test-pre-commit-covers.sh=1
