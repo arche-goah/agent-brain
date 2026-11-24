@@ -526,6 +526,15 @@ printf '%s\n' '' '- [ ] Mine with a question' '  id: mine-asks' '  question: wir
   '  exit: ai-does-it 2026-10-25 — the rest is mine' >> "$L/docs/x/open.md"
 out=$(run "" "$L")
 has "[ledger|human] 2026-10-25 mine-asks" "$out" && ok "a question line makes it the operator's despite ai-does-it" || bad "question line under ai-does-it: $out"
+# Windows review of #638/#642 (2026-11-24): the instance pattern lives in the BRAIN's ledgers.json; reading it from
+# the channel repo (--repo) left the start report at "human 0". An inline-flag pattern `(?i)` crashed the joined regex.
+printf '%s\n' '' '- [ ] Mine with an instance-form question' '  id: mine-asks-pattern' '  QUESTION FOR THE OPERATOR (1): wire it?' \
+  '  exit: ai-does-it 2026-10-25 — the rest is mine' >> "$L/docs/x/open.md"
+printf '%s\n' '{"ledgers": ["docs/x/open.md"], "operator_question_patterns": ["(?i)question for", "QUESTION FOR THE OPERATOR \\("]}' > "$L/.claude/rules/ledgers.json"
+out=$(run "" "$L")
+has "[ledger|human] 2026-10-25 mine-asks-pattern" "$out" && ok "the brain root's question pattern counts (not the channel repo's)" || bad "instance question pattern: $out"
+has "Traceback" "$out" && bad "an inline-flag pattern crashed open-items: $out" || ok "an inline-flag pattern is dropped, no crash"
+printf '%s\n' '{"ledgers": ["docs/x/open.md"]}' > "$L/.claude/rules/ledgers.json"
 # The fields as list items under the entry, the project ledgers' form (measured 2026-11-03: ten
 # such entries with `  - exit: other-side|parked` were listed as untouched agent work).
 printf '%s\n' '' '- [ ] Parked in a project ledger' '  - id: `bullet-thing`' '  - class: todo' '  - exit: parked 2026-10-25 — operator said later' '' \

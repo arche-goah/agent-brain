@@ -583,20 +583,26 @@ def front(it, repo):
     return it["front"]
 
 
-def question_rx(repo):
-    """A `question:` field line, or the instance's operator_question_patterns (.claude/rules/ledgers.json)."""
-    cfg = load_json(Path(repo or ".") / ".claude" / "rules" / "ledgers.json", None) or {}
+def question_rx(root):
+    """A `question:` field line, or the instance's operator_question_patterns (.claude/rules/ledgers.json).
+    Read from the BRAIN root, as its twin helpers/decision-presentation-gate.cjs does: reading the
+    channel repo made the start report say "human 0" where the gate said 1 (Windows review of #638/#642,
+    2026-11-24). A pattern JavaScript cannot compile (an inline flag group like `(?i)`) is dropped here
+    too, so both readers count the same entries; joined unwrapped it crashed this script (rc=1)."""
+    cfg = load_json(Path(root or ".") / ".claude" / "rules" / "ledgers.json", None) or {}
     pats = [r"^\s*(?:[-*]\s+)?question:\s*\S"]
     for p in cfg.get("operator_question_patterns") or []:
+        if not isinstance(p, str) or re.match(r"\(\?[aiLmsux]+\)", p):
+            continue
         try:
             re.compile(p)
             pats.append(p)
         except re.error:
             pass
-    return re.compile("|".join(pats), re.M)
+    return re.compile("|".join(f"(?:{p})" for p in pats), re.M)
 
 
-def auto_class(it, repo, human_rx):
+def auto_class(it, repo, human_rx, root=None):
     """(class, why) from the data alone, or (None, '') when the data does not say."""
     if it["kind"] == "PR":
         return "ai", it.get("pr_note") or "pull request: review or merge is agent work"
@@ -609,7 +615,7 @@ def auto_class(it, repo, human_rx):
         # entry held the AI's work AND the operator's questions, exit ai-does-it, the start report said
         # "human 0"); the same reader as helpers/decision-presentation-gate.cjs questionRx.
         # Only over the agent's own exits (ai-does-it, in-pr); a wait (later-at-system, other-side, parked) keeps parking it.
-        if it.get("exit") in ("ai-does-it", "in-pr") and question_rx(repo).search(it.get("body") or ""):
+        if it.get("exit") in ("ai-does-it", "in-pr") and question_rx(root).search(it.get("body") or ""):
             return "human", "an open question to the operator (question line)"
         # The sorted exit says who moves (skill backlog-catch-up); `class: decision` alone does not
         # — measured 2026-10-28: 9 of 11 "human" ledger rows were no operator decision.
@@ -1204,7 +1210,7 @@ def main():
         # A ledger exit is newer than a stored class: it was set by measuring the entry.
         if own and it.get("exit") in ("ai-does-it", "operator-decision"):
             own = None
-        it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx)
+        it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx, root)
         it["cls"] = it["cls"] or "?"
         # An operator decision whose check was green from its first run: the answer may already be applied
         # (measured 2026-11-17 on the macOS instance: an entry the operator had decided the day before, its
