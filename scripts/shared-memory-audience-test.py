@@ -118,6 +118,19 @@ def main() -> int:
         check("os:windows reaches a windows device of another person", "OSWIN" in laptop)
         check("os:windows does not reach a mac", "OSWIN" not in mac)
         check("os:windows does not reach an unknown-os device", "OSWIN" not in box)
+        # 2026-11-24: a hand-written entry keeps the category but leaves a person out with `except:`
+        ex = repo / "core" / "request-os-win-except.md"
+        ex.write_bytes((f'---\nname: {ex.stem}\ndescription: "EXCEPTWIN please run this"\nmetadata:\n  type: project\n'
+                        f"  von: lee-tower\n  audience: os:windows\n  except: person:sam\n  topic: core\n"
+                        f"  date: {NEW}\n---\n\nbody\n").encode("utf-8"))
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "except")
+        pc2, laptop2 = inbox(repo, "kim-pc,kim"), inbox(repo, "sam-laptop,sam")
+        check("except: person:sam keeps a hand-written os:windows entry away from sam", "EXCEPTWIN" not in laptop2)
+        check("NEGATIVE: the same entry still reaches the other Windows devices", "EXCEPTWIN" in pc2)
+        check("left_out: a category narrows, a named device does not",
+              parties_mod.left_out("sam-laptop", "os:windows", "", {"person:sam"}, PARTIES)
+              and not parties_mod.left_out("sam-laptop", "sam-laptop", "", {"person:sam"}, PARTIES))
         check("person:kim reaches both of kim's devices", "PERSONKIM" in pc and "PERSONKIM" in mac)
         check("person:kim does not reach sam", "PERSONKIM" not in laptop)
         check("a device id reaches only that device", "DEVICEONLY" in pc and "DEVICEONLY" not in mac)
