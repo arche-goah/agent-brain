@@ -293,8 +293,13 @@ function promptModes(transcriptPath, cwd) {
         const ia = intentFor(knownAnswers, d.timestamp, `Question: ${q}`);
         const byModel = Boolean(ia && typeof ia.mode_on === 'boolean');
         const wants = byModel && ia.mode_change !== false;
+        // The model alone never switches ON (operator decision 2026-11-17 on the proving instance: on a disagreement
+        // between classifier and words, never toward autonomous): for an answer it can end the mode, and it can veto an
+        // on-word the words would take for an order; switching on needs the words too.
+        const wordsOn = asksMode(w.on, q) ? modeAnswer(w, a) === true : ordersOn(w.on, a);
         if (wants && ia.mode_off) state = false;
-        else if (wants && ia.mode_on) state = true;
+        else if (wants && ia.mode_on && wordsOn) state = true;
+        else if (byModel && ia.mode_on && !wordsOn) continue;   // model on, words not: no switch
         // null (the answer names neither mode nor yes/no) stays on the safe side: interactive.
         else if (asksMode(w.on, q)) state = modeAnswer(w, a) === true;
         else if (byModel) continue;          // the model read no mode order in an answer to another question

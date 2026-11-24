@@ -297,7 +297,7 @@ mode "an on-word in an answer to another question: the model's record says no mo
 mode "the same answer without a record: the words decide as before (control)" "$f" "$EN" autonomous
 f="$T/sess-f.jsonl"; { tuser 2026-11-23T23:00:00Z "status?"; tanswer 2026-11-23T23:07:37Z '"Shall I work it off on my own or stay with you?"="On my own (Recommended)"'; } > "$f"
 arec 2026-11-23T23:07:39Z sess-f true true "Shall I work it off on my own or stay with you?" > "$IC/.claude-state/intent-classifier.jsonl"
-mode "the model reads a mode order in an answer the words cannot read" "$f" "$IC" autonomous
+mode "model on, words not: the model alone never switches on (decision 2026-11-17)" "$f" "$IC" interactive
 # The classifier decides FIRST whether a change is intended at all (operator 2026-11-24): talk ABOUT the mode switches nothing.
 crec() { printf '{"at":"%s","session":"%s","mode":"hook","model":{"asks_open":false,"mode_change":%s,"mode_on":%s,"mode_off":%s,"correction":false}}\n' "$1" "$2" "$3" "$4" "$5"; }
 f="$T/sess-g.jsonl"; { tuser 2026-11-24T05:28:39Z "you are in interactive mode now? it was autonomous, what made you switch?"; } > "$f"
