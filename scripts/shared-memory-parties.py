@@ -13,11 +13,16 @@ machines is not): `parties.json` at the repo root, one file every party reads.
   {"people": {"<person>": {"github": "<login>",
                            "devices": {"<device-id>": {"os": "macos" | "windows" | "linux" | null}},
                            "legacy_ids": ["<old id>", ...],
-                           "private_repos_without_access": ["<owner>/<repo>", ...]}}}
+                           "private_repos_without_access": ["<owner>/<repo>", ...],
+                           "except_topics": ["<area>", ...]}}}
 `os: null` = not known; such a device is reached by its id and its person, never by an
 `os:` category (an unknown OS is not guessed into one). `private_repos_without_access` (optional):
 repos that person's account cannot open; a category address whose text names one of them
-(`owner/repo#N`) leaves that person's devices out of `next:`.
+(`owner/repo#N`) leaves that person's devices out of `next:`. `except_topics` (optional): areas
+(`core`, …) whose requests that person does not want through a broad address — `os:<o>` or
+everyone leaves their devices out; addressing the person or a device by name still reaches them.
+An entry can also leave parties out itself: `except: <tokens>` (a device id, `person:<p>`, `os:<o>`)
+narrows every category in its audience (`left_out()`).
 
 AUDIENCE SYNTAX (comma-separated, any mix):
   <device-id>          exactly that device (as before)
@@ -89,6 +94,25 @@ def without_access(device: str, text: str, parties: dict) -> bool:
     p = (parties.get("people") or {}).get(person) or {} if person else {}
     hidden = {str(r).lower() for r in (p.get("private_repos_without_access") or [])}
     return bool(hidden) and any(r.lower() in hidden for r in REPO_REF.findall(text or ""))
+
+
+def left_out(device: str, via: str, topic: str, excepted: set[str], parties: dict) -> bool:
+    """True when the address token `via` must not reach `device`. Only a category narrows: a device
+    or a person named by itself is reached on purpose. `excepted` = the entry's `except:` tokens
+    (they narrow `person:` as well); a person's `except_topics` narrow only `os:` and everyone.
+    Generalises `without_access` (operator order 2026-11-24, translated: "build it generically so that instances
+    or persons can always be included or excluded on purpose" - a Windows check reached a party that
+    takes no AI topics, because `os:windows` reaches every Windows machine)."""
+    dev = device.lower()
+    if via == dev or not (via in EVERYONE or is_category(via)):
+        return False
+    if categories(dev, parties) & excepted:
+        return True
+    if via.startswith("person:"):
+        return False
+    person = devices(parties).get(dev, (None, None))[0]
+    p = (parties.get("people") or {}).get(person) or {} if person else {}
+    return bool(topic) and topic.lower() in {str(t).lower() for t in (p.get("except_topics") or [])}
 
 
 def categories(device: str, parties: dict) -> set[str]:
@@ -282,6 +306,9 @@ def non_report_clauses(text: str, is_check) -> list[str]:
             if not (REPORT_WORDS.search(c) and not is_check(REPORT_WORDS.sub(" ", c)))]
 # The writer's way to say one machine IS needed (the finding then stays silent).
 ONE_MACHINE = re.compile(r"\bone[- ]machine:|\bnur diese maschine\b", re.I)
+# An entry that narrowed a broad address on purpose (`except:`, written by shared-memory-post.py) names the devices
+# it reaches; a single Windows device left there is the result of that choice, not a misaddressed check.
+EXCEPT_FIELD = re.compile(r"^\s+except:\s*\S", re.M)
 
 
 def windows_check_to_one_device(text: str, audience: str, parties: dict) -> str | None:
