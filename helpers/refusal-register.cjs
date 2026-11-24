@@ -64,11 +64,16 @@ function earlier(gate, tool, regEntries, before, aliases) {
   return regEntries.filter((e) => {
     if (day && (!e.date || e.date >= day)) return false;
     if (e.key) {
-      const k = e.key.split(/\s+/);
-      return g.includes(norm(k[0])) && t.includes(norm(k[1]));
+      // `refusal: <gate> <tool>` - the tool is the last word, so a gate label with spaces keys too (MECHANISM CHECK)
+      const k = e.key.trim().split(/\s+/);
+      return g.includes(norm(k.slice(0, -1).join(' '))) && t.includes(norm(k[k.length - 1]));
     }
     const about = norm(e.about);
-    return g.some((w) => about.includes(w)) && t.some((w) => about.includes(w));
+    // a tool name as a whole word only (Windows review of #643, 2026-11-24: `read` matched "already", `edit` "edited")
+    const words = ` ${String(e.about).toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+    const toolSpaced = (tool && aliases && Array.isArray(aliases[tool]) ? [tool, ...aliases[tool]] : [tool])
+      .map((w) => ` ${String(w).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `).filter((w) => w.trim().length >= 3);
+    return g.some((w) => about.includes(w)) && toolSpaced.some((w) => words.includes(w));
   });
 }
 

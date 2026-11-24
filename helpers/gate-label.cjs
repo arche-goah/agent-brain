@@ -19,7 +19,10 @@ const fs = require('fs');
 const path = require('path');
 
 const HEAD = /^(?:PreToolUse|PostToolUse):\S+ hook error:\s*/;
-const LABEL = /^(?:\[[^\]]*\]:\s*)?(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())/;
+// `BLOCKED (instance-key-gate, change level)` names its gate before the comma; a bare `BLOCKED:` (file-guard) names
+// none - it is a verdict word, not a gate, and fell through to step 2 (Windows review of #643, 2026-11-24: the bare
+// word lumped two gates and matched any register entry holding "blocked").
+const LABEL = /^(?:\[[^\]]*\]:\s*)?(?:BLOCKED \(([\w-]+)[,)]|(?!BLOCKED\b)([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())/;
 let hookForm = null;
 function hookRx() {
   if (hookForm) return hookForm;

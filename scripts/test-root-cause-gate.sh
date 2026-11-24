@@ -135,6 +135,23 @@ check "a refusal the register holds an earlier entry for (same gate, same tool),
 out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr1.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
 case "$out" in *'a REPEAT'*'asks-read-as-mode-on'*'effective: not stated'*) ok "the block names the earlier entry, its carrier and that its effect is not stated";; *) bad "repeat block without the entry: '${out:0:300}'";; esac
 check "the same refusal with no register (control)" "$T/rr1.jsonl" allow "$CWD"
+# Windows review of #643 (2026-11-24): a bare BLOCKED names no gate, and a tool name counts only as a whole word
+rr() { node -e 'const r=require(process.argv[1]); const x=r.repeatIn([{tool:process.argv[2],raw:process.argv[3],at:"2026-11-24"}], require("fs").readFileSync(process.argv[4],"utf8"), {}); process.stdout.write(x?"REPEAT":"none")' \
+  "$(native "$(dirname "$G")/refusal-register.cjs")" "$1" "$2" "$(native "$RG/docs/maintenance/carrier-register.md")"; }
+regdir "$RG" '# Carrier register' '' '## 2026-11-05 — the autonomous gate blocked an edit of the ledger' 'id: autonomous-ledger-edit' \
+  'incident: AUTONOMOUS-GATE blocked an edit; the state was already measured' 'cause: the run was autonomous' \
+  '' '## 2026-11-06 — a shared copy hold' 'id: shared-copy' 'refusal: SHARED WORKING COPY Bash' 'cause: two sessions'
+[ "$(rr Edit 'PreToolUse:Edit hook error: [node "x/core/helpers/file-guard.cjs"]: BLOCKED: /r/a.md')" = none ] \
+  && ok "a file-guard BLOCKED refusal is no repeat of an unrelated entry that says blocked" || bad "file-guard BLOCKED matched an unrelated entry"
+[ "$(rr Read 'PreToolUse:Read hook error: AUTONOMOUS-GATE: held')" = none ] \
+  && ok "a tool name inside a word (read in already) is no hit" || bad "read matched inside already"
+[ "$(rr Edit 'PreToolUse:Edit hook error: AUTONOMOUS-GATE: held')" = REPEAT ] \
+  && ok "the same gate and the tool as a whole word is a repeat (control)" || bad "whole-word edit missed"
+[ "$(rr Bash 'PreToolUse:Bash hook error: SHARED WORKING COPY (/r): another session')" = REPEAT ] \
+  && ok "a refusal: key with a spaced gate label matches" || bad "spaced refusal key missed"
+RG="$T/reg"; regdir "$RG" '# Carrier register' '' '## 2026-11-05 — a request for questions read as autonomous' 'id: asks-read-as-mode-on' \
+  'incident: the operator asked for the blocking questions; the first AskUserQuestion call was refused by the' '  autonomous-gate' \
+  'cause: the classifier record read mode_on' 'carrier: pull request fix/decision-count (open)' 'replay: 3 hits'
 # The classification is BACKED or it releases nothing (independent review 2026-11-23: one self-written line released the hold).
 REF='AUTONOMOUS-GATE: the operator ordered this run autonomous'
 { user "fix the readme"; aq r2; refuse r2 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, the run is autonomous and the operator asked nothing."; } > "$T/rr2.jsonl"

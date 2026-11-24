@@ -34,7 +34,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 LABEL = re.compile(r'^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^"]*?([\w.-]+)\.cjs"\]:\s*)?'
-                   r'(?:BLOCKED \(([\w-]+)\)|([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?')
+                   r'(?:BLOCKED \(([\w-]+)[,)]|(?!BLOCKED\b)([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?')
 MARKER_USE = re.compile(r"#\s*([A-Z][A-Z]+(?:-[A-Z]+)+)\b")
 WINDOW = 8
 CACHE_V = "3"
