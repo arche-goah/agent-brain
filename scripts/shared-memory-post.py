@@ -83,16 +83,25 @@ def slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:50].rstrip("-") or "message"
 
 
-def resolve_next(to: list[str], parties: dict, text: str = "") -> list[str]:
+def resolve_next(to: list[str], parties: dict, text: str = "", topic: str = "",
+                 excepted: set[str] = frozenset()) -> list[str]:
     """The devices an addressee list reaches — what `next:` names. A category address leaves out the
-    devices of a person who cannot see a repo the text names; a device named by itself stays."""
+    devices of a person who cannot see a repo the text names, the devices `--except` names and those of
+    a person whose `except_topics` hold the entry's area; a device named by itself stays."""
+    return resolve(to, parties, text, topic, excepted)[0]
+
+
+def resolve(to, parties, text="", topic="", excepted=frozenset()):
+    """(devices reached, devices a category would have reached but left out)."""
     devs = _parties.devices(parties)
-    out = []
+    out, dropped = [], []
     for t in to:
-        hit = sorted(d for d in devs if (t in _parties.EVERYONE or t in _parties.categories(d, parties))
-                     and not _parties.without_access(d, text, parties))
-        out += [d for d in (hit or [t]) if d not in out]
-    return out
+        reach = sorted(d for d in devs if (t in _parties.EVERYONE or t in _parties.categories(d, parties))
+                       and not _parties.without_access(d, text, parties))
+        keep = [d for d in reach if not _parties.left_out(d, t, topic, set(excepted), parties)]
+        dropped += [d for d in reach if d not in keep and d not in dropped]
+        out += [d for d in (keep or ([] if reach else [t])) if d not in out]
+    return out, [d for d in dropped if d not in out]
 
 
 # A check request goes to every machine of that OS (`os:<os>`), never to one device, unless exactly
@@ -344,6 +353,8 @@ def main() -> int:
     ap.add_argument("--repo", type=Path, default=_lint.REPO_DEFAULT,
                     help="the local shared-memory CHECKOUT (a folder) - not the GitHub repo of a PR the entry is about")
     ap.add_argument("--date", default=dt.date.today().isoformat())
+    ap.add_argument("--except", dest="except_", default="",
+                    help="leave these out of a broad address: device ids, person:<p>, os:<o> (comma or space separated)")
     ap.add_argument("--one-machine", default="", help="a check that needs exactly this machine: the reason")
     ap.add_argument("--one-machine-evidence", default="",
                     help="evidence for --one-machine: URL, existing file path[:line], or the operator's quoted words with date")
@@ -433,6 +444,31 @@ def main() -> int:
         if named:
             return refuse(f"{', '.join(named)} handed core and AI mechanics to your side (ai_handover) - "
                           f"decide it yourselves, or mark what the handover keeps: handover-keeps: <why>")
+    # Narrowing a broad address (operator order 2026-11-24: include or exclude instances or persons on purpose).
+    # The category is resolved HERE and the entry names the devices it reaches, so a reader on an older core -
+    # which knows no `except:` - is not addressed either; `except:` records what was left out and why.
+    excepted = {t.strip().lower() for t in a.except_.replace(",", " ").split() if t.strip()}
+    if excepted and parties:
+        bad = sorted(t for t in excepted if t not in _parties.known(parties))
+        if bad:
+            return refuse(f"--except names what parties.json does not know: {', '.join(bad)}")
+    dropped = []
+    if parties:
+        reached, dropped = resolve(to, parties, a.title + "\n" + body, a.area, excepted)
+        if dropped:
+            if not reached:
+                return refuse(f"nobody is left: every device of {', '.join(to)} is left out ({', '.join(dropped)})")
+            print(f"left out of {', '.join(to)}: {', '.join(dropped)} (--except, or except_topics "
+                  f"'{a.area}' in parties.json); the entry names the devices it reaches")
+            to = reached
+            # The narrowed address meets the same one-machine rule as a direct one (Windows review of #657,
+            # 2026-11-24: `--to os:windows --except <every other Windows device>` wrote a check to ONE machine with
+            # no reason, while `--to <that machine>` is refused).
+            if a.kind in ("request", "note", "reply") and not a.one_machine:
+                one = _parties.windows_check_to_one_device(a.title + "\n" + body, ", ".join(to), parties)
+                if one:
+                    return refuse(f"left out down to one machine ({one}), and this asks for a Windows check - a "
+                                  "check only that machine can do: --one-machine <reason>")
     stem = f"{a.kind}-{slug(a.title)}-{a.date}"
     path = area_dir / f"{stem}.md"
     if path.exists():
@@ -463,6 +499,8 @@ def main() -> int:
         meta.append(f"  next: {', '.join(nxt)}")
     if answers:
         meta.append(f"  {'claims' if a.kind == 'claim' else 'answers'}: {', '.join(answers)}")
+    if dropped:
+        meta.append(f"  except: {', '.join(dropped)}")
     if a.one_machine:
         meta.append(f"  one-machine: {a.one_machine}")
         meta.append(f"  one-machine-evidence: {a.one_machine_evidence}")
