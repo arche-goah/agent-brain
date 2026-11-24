@@ -221,7 +221,10 @@ const replayOk = (line) => NONE_WITH_RECHECK.test(line) || (hasCount(line) && !s
 // claim that a replay ran" - every check above reads only the wording of a line the agent writes itself). Every number of
 // the replay: line must stand in the output of a shell command or an agent that ran in this session; a command that only
 // prints text (echo, printf, a heredoc) produces no measurement. The `none - <why> - recheck <date>` form stays the way out.
-const PRINT_ONLY = /^\s*(?:echo|printf|cat\s*<<|true\b|:)(?:\s|$)/;
+// PowerShell is the primary shell on Windows (Windows review of #641, 2026-11-24: a replay run there was held as
+// "written, not measured"); Write-Output / Write-Host only print, like echo.
+const PRINT_ONLY = /^\s*(?:echo|printf|cat\s*<<|true\b|:|write-output|write-host)(?:\s|$)/i;
+const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
 function sessionRuns(transcriptPath) {
   const cmds = new Map();
   const outs = [];
@@ -234,7 +237,7 @@ function sessionRuns(transcriptPath) {
     for (const b of content) {
       if (b.type === 'tool_use' && b.id) {
         const inp = b.input || {};
-        if (b.name === 'Bash' && typeof inp.command === 'string') cmds.set(b.id, PRINT_ONLY.test(inp.command) ? null : inp.command);
+        if (SHELL_TOOLS.has(b.name) && typeof inp.command === 'string') cmds.set(b.id, PRINT_ONLY.test(inp.command) ? null : inp.command);
         else if (b.name === 'Agent' || b.name === 'Task') cmds.set(b.id, 'agent');
       }
       if (b.type === 'tool_result' && b.tool_use_id && cmds.get(b.tool_use_id)) {

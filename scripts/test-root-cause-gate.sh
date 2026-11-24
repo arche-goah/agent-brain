@@ -407,6 +407,13 @@ check "a replay count the run printed (control)" "$T/t31q.jsonl" allow "$CWD"
 { user "go"; asst "$C"; RUNTOOL=Agent run "count the hits over the history" "Result: 7 hits in 60 transcripts"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
 replay: 7 hits in 60 transcripts"; } > "$T/t31r.jsonl"
 check "a replay count an agent of the session reported (control)" "$T/t31r.jsonl" allow "$CWD"
+# Windows review of #641 (2026-11-24, probe R5): PowerShell is the primary shell there; its run measures like Bash.
+{ user "go"; asst "$C"; RUNTOOL=PowerShell run "node helpers/root-cause-gate.cjs --review 60" "scanned 60 transcripts: 7 hits"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31t.jsonl"
+check "a replay count a PowerShell run printed" "$T/t31t.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; RUNTOOL=PowerShell run "Write-Output '7 hits in 60 transcripts'" "7 hits in 60 transcripts"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31u.jsonl"
+check "a replay count only a PowerShell Write-Output printed" "$T/t31u.jsonl" block "$CWD"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
 replay: none - the detector needs records that start today - recheck 2026-12-07"; } > "$T/t31s.jsonl"
 check "none with recheck needs no run (control)" "$T/t31s.jsonl" allow "$CWD"
