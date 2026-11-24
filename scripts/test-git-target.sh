@@ -23,7 +23,13 @@ probe() {
     let cmd = ""; process.stdin.on("data", (c) => { cmd += c; }); process.stdin.on("end", () => {
       const {gitCalls}=require(process.argv[1]); const c=(gitCalls(cmd,"/cwd",process.argv[3]==="true")||[])[0];
       process.stdout.write(c ? c.dir.replace(/\\/g,"/").replace(/^[A-Za-z]:/,"")+"|"+c.sub : ""); })' "$GT" "fixture-home" "${4:-false}")
-  [ "$out" = "$3" ] && ok "$1" || bad "$1: got '$out', want '$3'"
+  # Windows re-check of #635 (2026-11-23/24): in Git Bash an absolute POSIX path IS a path under the MSYS root
+  # (`cygpath -m /repo` = `C:/Program Files/Git/repo`), and the reader is right to return it - so the expected value is
+  # built the way the shell sees it. The session cwd (`/cwd`, passed inside node) is not converted.
+  local want="$3" d="${3%%|*}"
+  case "${OSTYPE:-}" in msys*|cygwin*)
+    [ -n "$d" ] && [ "$d" != /cwd ] && want="$(cygpath -m "$d" | sed 's/^[A-Za-z]://')|${3#*|}" ;; esac
+  [ "$out" = "$want" ] && ok "$1" || bad "$1: got '$out', want '$want'"
 }
 probe "plain -C" "git -C /repo status" "/repo|status"
 probe "quoted -C with a space" 'git -C "/top b" commit -m x' "/top b|commit"
