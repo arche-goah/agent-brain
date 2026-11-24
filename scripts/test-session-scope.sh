@@ -103,6 +103,9 @@ check "a clearing in other words ends the scope (H5)" "$IDLE" "$T/h5.jsonl" bloc
 check "control: a question-tool answer sets nothing - the AI wrote its options" "$IDLE" "$T/answer.jsonl" block
 { user "$PLAIN"; user "you are a helper session: only the tasks of the main session"; peer r1 main-b6 "Task 1"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/english.jsonl"
 check "the built-in English words set it too" "$IDLE" "$T/english.jsonl" allow
+# Windows review of #644 (2026-11-24, P1): "you are a helper" without the order part orders nothing
+{ user "$PLAIN"; user "thanks, you are a helper - now go on with the ledger"; peer r1 main-b6 "Task 1"; bash_cmd "$MEAS"; asst "LIST EMPTY: done"; } > "$T/praise.jsonl"
+check "praise that names a helper sets nothing (P1)" "$IDLE" "$T/praise.jsonl" block
 # the German comes from the instance data: the same German sentence without that file sets nothing
 mv "$R/.claude/rules/autonomous-patterns.json" "$R/.claude/rules/autonomous-patterns.off"
 check "control: the operator's German sentence without the instance words sets nothing (a language is data)" "$IDLE" "$T/op2c.jsonl" block

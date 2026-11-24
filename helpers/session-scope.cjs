@@ -28,7 +28,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const SCOPE_BUILTIN = ['\\bonly (?:the )?(?:orders|tasks) (?:of|from) (?:the |my )?main session\\b', '\\byou are (?:a |the )?helper(?: session)?\\b'];
+// "you are a helper" alone orders nothing (Windows review of #644, 2026-11-24: praise like "thanks, you are a helper -
+// now go on" set the scope): the built-in form needs the order part, in the same sentence.
+const ORDER_PART = 'only (?:the )?(?:orders|tasks) (?:of|from) (?:the |my )?main session\\b';
+const SCOPE_BUILTIN = [`\\b${ORDER_PART}`, `\\byou are (?:a |the )?helper(?: session)?\\b[^.!?]{0,40}\\b${ORDER_PART}`];
 const CLEAR_BUILTIN = ['\\b(?:scope off|no longer (?:a |the )?helper|not (?:a |the )?helper|stop being (?:a |the )?helper|(?:a |as a |the )?normal session)\\b'];
 
 // A MENTION sets nothing (second independent review of the strand, 2026-11-23: a question that names it, a text to pass
