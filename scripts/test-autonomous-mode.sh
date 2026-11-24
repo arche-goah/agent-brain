@@ -275,5 +275,46 @@ mode "short word: 'ask mode' ends the run" "$f" "$EN" interactive
 f="$T/sw6.jsonl"; { user "auto mode"; asst "x"; user "ok"; } > "$f"
 mode "short word: a later plain prompt keeps it (control)" "$f" "$EN" autonomous
 
+# 2026-11-24, macOS instance: the answer that NAMES the mode. The agent asked "work through it autonomously or stay
+# interactive?" with options named after the modes; the chosen "Autonomous, go on" carried no yes-word, was read as a
+# no, and an edit behind an ask rule went to the harness dialog in a run the operator believed autonomous (376 minutes).
+f="$T/ma1.jsonl"; { user "anything open for me?"; answer '"Shall I work through it autonomously or stay interactive?"="Autonomous, go on (Recommended)"'; } > "$f"
+mode "an answer to the mode question that names the autonomous mode switches it on" "$f" "$EN" autonomous
+f="$T/ma2.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Shall I work through it autonomously or stay in ask mode?"="Ask mode"'; } > "$f"
+mode "an answer that names the other mode keeps it off" "$f" "$EN" interactive
+f="$T/ma3.jsonl"; { user "anything open for me?"; answer '"Continue autonomously?"="No, not autonomously"'; } > "$f"
+mode "a leading no wins over the on-word it carries" "$f" "$EN" interactive
+f="$T/ma4.jsonl"; { user "anything open for me?"; answer '"Continue autonomously?"="Later"'; } > "$f"
+mode "an answer that says neither stays on the safe side (control)" "$f" "$EN" interactive
+# The classifier's record of an ANSWER decides, the words are the fallback (the same evening: an answer about how the
+# AI may open pull requests on its own carried an on-word and switched the run on - words on, model not).
+tanswer() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t7","name":"AskUserQuestion","input":{"questions":[]}}]}}\n'
+  printf '{"type":"user","timestamp":"%s","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t7","content":%s}]}}\n' "$1" "$(js "Your questions have been answered: $2. You can now continue")"; }
+arec() { printf '{"at":"%s","session":"%s","mode":"answer","model":{"asks_open":false,"mode_change":%s,"mode_on":%s,"mode_off":false},"prompt":%s}\n' "$1" "$2" "$3" "$4" "$(js "Question: $5")"; }
+f="$T/sess-e.jsonl"; { tuser 2026-11-23T21:00:00Z "status?"; tanswer 2026-11-23T21:45:26Z '"May the AI open pull requests for root-cause fixes without asking?"="building and opening autonomously, with clear rules"'; } > "$f"
+arec 2026-11-23T21:45:29Z sess-e false false "May the AI open pull requests for root-cause fixes without asking?" > "$IC/.claude-state/intent-classifier.jsonl"
+mode "an on-word in an answer to another question: the model's record says no mode order" "$f" "$IC" interactive
+mode "the same answer without a record: the words decide as before (control)" "$f" "$EN" autonomous
+f="$T/sess-f.jsonl"; { tuser 2026-11-23T23:00:00Z "status?"; tanswer 2026-11-23T23:07:37Z '"Shall I work it off on my own or stay with you?"="On my own (Recommended)"'; } > "$f"
+arec 2026-11-23T23:07:39Z sess-f true true "Shall I work it off on my own or stay with you?" > "$IC/.claude-state/intent-classifier.jsonl"
+mode "the model reads a mode order in an answer the words cannot read" "$f" "$IC" autonomous
+# The classifier decides FIRST whether a change is intended at all (operator 2026-11-24): talk ABOUT the mode switches nothing.
+crec() { printf '{"at":"%s","session":"%s","mode":"hook","model":{"asks_open":false,"mode_change":%s,"mode_on":%s,"mode_off":%s,"correction":false}}\n' "$1" "$2" "$3" "$4" "$5"; }
+f="$T/sess-g.jsonl"; { tuser 2026-11-24T05:28:39Z "you are in interactive mode now? it was autonomous, what made you switch?"; } > "$f"
+crec 2026-11-24T05:28:43Z sess-g false true false > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a question about the mode: no change intended, mode_on is not applied" "$f" "$IC" interactive
+f="$T/sess-h.jsonl"; { tuser 2026-11-24T05:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-24T05:31:46Z "the mode has not been autonomous since then, analyse that properly"; } > "$f"
+{ crec 2026-11-24T05:00:03Z sess-h true true false; crec 2026-11-24T05:31:49Z sess-h false false true; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "a report about the mode: no change intended, mode_off is not applied" "$f" "$IC" autonomous
+f="$T/sess-i.jsonl"; { tuser 2026-11-24T05:00:00Z "work through the list autonomously"; asst "x"; tuser 2026-11-24T05:40:00Z "continue interactively"; } > "$f"
+{ crec 2026-11-24T05:00:03Z sess-i true true false; crec 2026-11-24T05:40:03Z sess-i true false true; } > "$IC/.claude-state/intent-classifier.jsonl"
+mode "an intended change is applied (control)" "$f" "$IC" interactive
+# --why / --trace: the value comes with its history; the bare call stays one word.
+got="$(node "$M" "$(native "$T/sess-i.jsonl")" "$(native "$IC")" --trace)"
+[ "$(printf '%s\n' "$got" | wc -l | tr -d ' ')" = 3 ] && printf '%s' "$got" | grep -aq 'T05:40:00Z -> interactive by the operator.s prompt (read by model): "continue interactively"' \
+  && ok "--trace lists both switches with time, reader and text" || bad "--trace: $got"
+got="$(node "$M" "$(native "$T/sess-i.jsonl")" "$(native "$IC")" --why)"
+printf '%s' "$got" | grep -aq '^last switch: .* -> interactive .* (2 switch(es) in this session' && ok "--why names the last switch and the count" || bad "--why: $got"
+
 echo
 [ "$fail" -eq 0 ] && echo "autonomous-mode fixtures: ALL passed" || { echo "autonomous-mode fixtures: FAILURE"; exit 1; }
