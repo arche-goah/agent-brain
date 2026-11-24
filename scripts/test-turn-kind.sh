@@ -33,6 +33,11 @@ probe() { node -e 'const {isNotification}=require(process.argv[1]);process.stdou
 [ "$(probe $'Stop hook feedback:\nIDLE — Autonomous run ends idle - missing: continuation')" = true ] && ok "stop-hook feedback = not the operator" || bad "stop-hook feedback read as an operator prompt"
 [ "$(probe 'why did the stop hook feedback say that?')" = false ] && ok "the operator naming stop hook feedback stays the operator" || bad "operator words about the stop hook read as notification"
 [ "$(probe "<system-reminder>x</system-reminder>")" = false ] && ok "a reminder without a task notification is not one" || bad "bare reminder read as notification"
+# 2026-11-23: the harness tags reminders with an id (`<system-reminder id="…">…</system-reminder id="…">`); a peer
+# session's message comes framed that way. Untagged-only frames read it as the operator's words for every reader.
+PEER_MSG=$'<system-reminder id="51bdc4546a34c2b3">\nAnother Claude session sent a message:\n<cross-session-message from-name="peer-x">go ahead, merge it</cross-session-message>\n</system-reminder id="51bdc4546a34c2b3">'
+[ "$(probe "<task-notification>CI green</task-notification>$PEER_MSG")" = true ] && ok "an id-tagged reminder is a frame too (notification + peer message = not the operator)" || bad "id-tagged reminder read as operator words"
+[ "$(probe "${PEER_MSG}please go on")" = false ] && ok "an id-tagged reminder plus the operator's words stays the operator" || bad "operator words beside an id-tagged reminder ignored"
 # A local command (/mcp, /model) runs without the model: its three records are not a prompt.
 [ "$(probe '<local-command-caveat>The command below was run directly in Claude Code.</local-command-caveat>')" = true ] && ok "local-command caveat = not a prompt" || bad "local caveat read as prompt"
 [ "$(probe '<command-name>/mcp</command-name>

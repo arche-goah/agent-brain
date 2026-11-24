@@ -42,6 +42,12 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/shared-working-copy-guard.cjs\"",
             "timeout": 10,
             "onFailure": "block"
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/foreign-entry-gate.cjs\"",
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
@@ -275,6 +281,11 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/mode-owed.cjs\" post",
             "timeout": 10
           }
         ]

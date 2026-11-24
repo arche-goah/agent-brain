@@ -40,6 +40,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, questionAnswers } = require('./turn-kind.cjs');
 // A push is git's push SUBCOMMAND, not "git … push" anywhere in the line (git-push.cjs, 2026-10-26).
@@ -51,7 +52,7 @@ let data = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 
-function allow() { process.exit(0); }
+function allow() { hookExit(0); }
 
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
@@ -201,7 +202,7 @@ function deny(hit, why) {
         + '(Example: "then run the audit", written while an answer is pending, means "after that answer", not "now".)',
     },
   }));
-  process.exit(0);
+  hookExit(0);
 }
 
 process.stdin.on('end', () => {

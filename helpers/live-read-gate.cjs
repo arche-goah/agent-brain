@@ -57,6 +57,7 @@
  * "quick look".
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const os = require('os');
 const path = require('path');
 
@@ -207,7 +208,7 @@ function deny(reason) {
       permissionDecisionReason: reason,
     },
   }));
-  process.exit(0);
+  hookExit(0);
 }
 
 let input = '';
@@ -215,15 +216,15 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { input += c; });
 process.stdin.on('end', () => {
   let hook;
-  try { hook = JSON.parse(input); } catch (_) { process.exit(0); }
+  try { hook = JSON.parse(input); } catch (_) { hookExit(0); }
   const tool = String(hook.tool_name || '');
   const cmd = (tool === 'Bash' || tool === 'PowerShell') ? String((hook.tool_input || {}).command || '') : '';
 
   const hits = loadDomains().filter((d) =>
     d.tools.some((r) => r.test(tool)) || (cmd && d.bash.some((r) => r.test(cmd))));
-  if (!hits.length) process.exit(0);
+  if (!hits.length) hookExit(0);
   if (!hook.transcript_path || !fs.existsSync(hook.transcript_path)) {
-    log(`NO-TRANSCRIPT tool=${tool}`); process.exit(0);
+    log(`NO-TRANSCRIPT tool=${tool}`); hookExit(0);
   }
 
   // A sub-agent's own Reads land in ITS transcript (<session>/subagents/agent-<id>.jsonl), while the
@@ -238,7 +239,7 @@ process.stdin.on('end', () => {
   let ev;
   try {
     ev = readEvidence(sources, hits.flatMap((d) => d.required.map((r) => r.path)));
-  } catch (e) { log(`ERR ${e.message}`); process.exit(0); }
+  } catch (e) { log(`ERR ${e.message}`); hookExit(0); }
 
   const missing = [];
   for (const d of hits) {
@@ -247,7 +248,7 @@ process.stdin.on('end', () => {
       if (why) missing.push({ domain: d.name, why, ...r });
     }
   }
-  if (!missing.length) process.exit(0);
+  if (!missing.length) hookExit(0);
 
   const list = missing.map((m) =>
     `  - [${m.domain}] ${m.path}${m.label ? `   (${m.label})` : ''}\n      → ${m.why}`).join('\n');

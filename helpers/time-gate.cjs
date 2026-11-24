@@ -53,6 +53,7 @@
  * 2026-11-07), ported as running instance machinery (Working Rule #11).
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
@@ -62,7 +63,7 @@ let data = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 
-function allow() { process.exit(0); }
+function allow() { hookExit(0); }
 
 const HOOK_ECHO = /^Stop hook feedback:/;
 // Both of this gate's markers: the dispatcher echoes the clock block as TIME-CLOCK. Measured
@@ -316,7 +317,7 @@ process.stdin.on('end', () => {
       if (utc) {
         console.log(JSON.stringify(declare({ decision: 'block', reason: `TIME-CLOCK — "${utc[0]}" is a UTC time in the reply; ` +
           'this brain gives times to the operator in local time (local_time_only). Convert it, or put a log line in code quotes.' }, input)));
-        return process.exit(0);
+        return hookExit(0);
       }
       const bad = clockContradictions(prose, cwd, now);
       if (bad.length === 0) return allow();
@@ -325,7 +326,7 @@ process.stdin.on('end', () => {
         `"${b.phrase}" (that slot starts at ${b.start}:00) in: ${b.sentence.slice(0, 120)}`).join(' · ')
         + ' — a daytime the day has not reached is a false claim, not an imprecise one: fix or drop the word.';
       console.log(JSON.stringify(declare({ decision: 'block', reason }, input)));
-      return process.exit(0);
+      return hookExit(0);
     }
     // A recorder has no cooldown — the point is completeness, not restraint.
     if (seen.quiet && !RECORD) return allow();
@@ -352,7 +353,7 @@ process.stdin.on('end', () => {
         }
       }
       console.log(JSON.stringify({ record: records }));
-      return process.exit(0);
+      return hookExit(0);
     }
     const found = anchored ? [] : (clean.match(loadPatterns(cwd)) || []);
     for (const h of found) {
@@ -389,7 +390,7 @@ process.stdin.on('end', () => {
   reason += 'If everything checks out true, re-issue the reply unchanged.';
 
   console.log(JSON.stringify({ decision: 'block', reason }));
-  process.exit(0);
+  hookExit(0);
 });
 
 process.stdin.resume();

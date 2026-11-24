@@ -66,6 +66,14 @@ const BUILTIN_ASK = [
   '\\bput (the |your )?(open )?(decisions|questions) to me\\b',
 ];
 const BUILTIN_YES = ['^\\s*yes\\b'];
+// An order that pre-authorizes a LATER question ("once you are ready for X, switch to interactive and ask me the X
+// question"): it opens a DEFERRED window that outlives the turns the operator did not open (operator 2026-11-23, after
+// the gate refused exactly that question: "I told you word for word to switch to interactive as soon as you want to
+// put the train question to me ... a bug"). English built in; other languages `defer_ask_patterns` in
+// autonomous-patterns.json. A sentence that is a question ("shall I ask later?") opens nothing.
+const BUILTIN_DEFER = [
+  '\\b(?:once|when|as soon as)\\b[^.?!]{0,100}\\b(?:ask me|put (?:the |your )?[\\w -]{0,30}question(?:s)? to me|switch (?:back )?to interactive)\\b',
+];
 const HOOK_ECHO = /^\s*Stop hook feedback:/;
 // The tool result of an answered AskUserQuestion: `"<question>"="<answer>"` pairs.
 // Two wordings in the wild (measured 2026-10-30, macOS instance: "Your questions have been answered: …" and
@@ -76,6 +84,14 @@ const PAIR = /"([^"]*)"="([^"]*)"/g;
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
 
+/** Does the prompt pre-authorize a later question? The match must not sit in a sentence that is itself a question. */
+function deferAsk(rxDefer, text) {
+  const t = String(text || '');
+  const m = rxDefer.exec(t);
+  if (!m) return false;
+  const end = t.slice(m.index).search(/[.!?]/);
+  return !(end >= 0 && t.slice(m.index)[end] === '?');
+}
 function rx(builtins, extra) {
   const list = [...builtins];
   for (const s of extra || []) { try { new RegExp(s); list.push(s); } catch (e) { /* skip a broken regex */ } }
@@ -101,6 +117,7 @@ function words(cwd) {
     off: rx(BUILTIN_OFF, ap.off_patterns),
     ask: rx(BUILTIN_ASK, oi.ask_patterns),
     yes: rx(BUILTIN_YES, ap.yes_patterns),
+    defer: rx(BUILTIN_DEFER, ap.defer_ask_patterns),
     initial: initialState(dir, ap, oi).granted,
   };
 }
@@ -212,13 +229,32 @@ function intents(transcriptPath, cwd) {
  * classifier) still matches by time alone.
  */
 function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, 40); }
+/** A record written BEFORE the transcript holds the prompt still belongs to it when its text matches: a message typed
+ *  while the agent works is classified at submit, but the transcript writes it as a user record only when the next
+ *  turn starts. Measured 2026-11-18 on the macOS instance: record 06:39:22 (mode_off), user record 06:39:31 - the
+ *  forward-only window missed it, the words read "autonom" as an order, the operator's off-word did nothing. */
+const INTENT_BEFORE_MS = 30 * 60 * 1000;
 function intentFor(list, ts, text) {
   const t = Date.parse(ts || '');
   if (Number.isNaN(t)) return null;
   const want = norm(text);
-  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS
-    && (r.prompt === null || !want || norm(r.prompt).slice(0, want.length) === want.slice(0, norm(r.prompt).length)));
+  const same = (r) => r.prompt === null || !want || norm(r.prompt).slice(0, want.length) === want.slice(0, norm(r.prompt).length);
+  const hit = list.find((r) => r.at >= t && r.at - t <= INTENT_WINDOW_MS && same(r))
+    || list.filter((r) => r.prompt !== null && want && r.at < t && t - r.at <= INTENT_BEFORE_MS && same(r)).pop();
   return hit ? hit.model : null;
+}
+
+/**
+ * One field of the classifier's record for one prompt: true or false when a record of THIS prompt (intentFor: same
+ * session, inside the window, same text) carries the field, else null - no record, a failed call, or an older record
+ * without the field - and the caller's words decide. Read for asks_open, correction and orders_task (operator decision
+ * 2026-11-18, question tool: "gates read the model for asks-open / correction / orders-task; mode-on stays with the
+ * words"). Hand-judged sample the same day on the macOS instance, 40 disagreements per field: the model was right in
+ * 91 % (asks_open), 81 % (correction) and 97 % (orders_task) of the decided cases.
+ */
+function modelSays(key, transcriptPath, cwd, ts, text) {
+  const hit = intentFor(intents(transcriptPath, cwd), ts, text);
+  return hit && typeof hit[key] === 'boolean' ? hit[key] : null;
 }
 
 /**
@@ -234,10 +270,11 @@ function promptModes(transcriptPath, cwd) {
   let state = w.initial;
   const askIds = new Set();
   const known = intents(transcriptPath, cwd);
-  const memo = openCountMemo(cwd);
-  let n = -1;
+  // The asking prompt whose turn is still running with no question answered yet (its `window` is open).
+  let pending = null;
+  // all = a new operator prompt; a turn the operator did not open closes only a same-turn window, never a DEFERRED one
+  const closeWindow = (all) => { if (pending && (all || !pending.deferred)) { pending.window = false; pending = null; } };
   for (const line of lines) {
-    n += 1;
     if (line.includes('"AskUserQuestion"')) {
       try {
         const c = (JSON.parse(line).message || {}).content;
@@ -253,10 +290,16 @@ function promptModes(transcriptPath, cwd) {
     const queued = queuedHumanPrompt(d);
     // A timer-fired prompt is the agent's or the harness's text: its "Autonomous loop check"
     // switched the mode back on after the operator had said "interactive" (measured 2026-10-27).
+    // A turn the operator did not open (a timer, a peer's message) ends the asking prompt's window: the operator who
+    // asked 20 minutes ago is not thereby present now (operator 2026-11-03, quoted in autonomous-gate.cjs).
+    if (!queued && isAgentOrigin(d)) closeWindow(false);
     if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isAgentOrigin(d)
         || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
       for (const [q, a] of answers(d.message, askIds)) {
+        // A question answered in the asking prompt's turn: the questions came, the run is interactive from here
+        // (the mode question below may switch it on again).
+        if (pending) { pending.autonomous = false; pending = null; state = false; }
         // A yes/no to the mode question decides by yes; an answer to any other question is read
         // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
         // "yes, work through them autonomously" to "shall I handle them?" set nothing). The mode
@@ -270,9 +313,14 @@ function promptModes(transcriptPath, cwd) {
       }
     }
     const t = queued || promptText(d.message);
+    if (t && /<task-notification>/.test(t) && isNotification(t)) closeWindow(false); // a background task's turn, not the operator's
     if (!t || HOOK_ECHO.test(t) || isNotification(t)) continue;
     const text = t.replace(FRAMES, ' ').replace(LOCAL, ' ');
     if (!text.trim()) continue;
+    // a new operator prompt ends a same-turn window; a DEFERRED one only when this prompt ends or re-orders the run
+    // (below) - the operator adding to the work ("and also ...") leaves the pre-authorized question standing
+    // (measured on the incident: three such prompts followed the order and closed the window before the question came)
+    closeWindow(false);
     // The words are matched without pasted blocks; `text` keeps them, so a reader that finds this
     // prompt again in the transcript by its text (decision-presentation-gate) still finds it.
     const own = operatorWords(text);
@@ -296,50 +344,43 @@ function promptModes(transcriptPath, cwd) {
       off = w.off.test(own);
       if (!off && !asks && ordersOn(w.on, own)) state = ordered = true;
     }
-    // "What is open for me?" leaves the run only when something IS open for the operator (operator 2026-11-03,
-    // translated: "why did you just switch to interactive? no questions came. either the questions, or stay
-    // autonomous"). Nothing open: the run goes on and the reply says so in one line. Read lazily - the presentation
-    // gate requires this file.
+    // "What is open for me?" leaves the run when the questions COME (operator 2026-11-03, translated: "why did you
+    // just switch to interactive? no questions came. either the questions, or stay autonomous"). That rule is the
+    // OUTCOME of the turn, not a condition before it: the asking prompt opens a `window` - in its turn the question
+    // tool and the dialogs pass (autonomous-gate.cjs) -, a question answered there ends the run (above), and a turn
+    // that asks nothing leaves it autonomous. Until 2026-11-23 the run ended only when a derived count of open
+    // operator decisions was above 0; the count read what the agent itself had filed, and three incidents on the
+    // macOS instance (2026-11-05, -18, -23) each failed on one more form it did not read - the question tool was
+    // refused on the operator's own request. Replay over that instance's history: 14 such prompts refused, in 6 the
+    // count was 0, and the widened count would have caught 2 of them. What is filed as open stays a DUTY: the
+    // presentation gate holds a turn that asked nothing while a decision is open.
+    let window = false;
     if (off) state = false;
-    else if (asks) state = state && memo.count(`${path.resolve(transcriptPath)}#${n}`) === 0 ? true : false;
-    out.push({ text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words',
-      ordered, at: Date.parse(d.timestamp) || null });
+    else if (asks && state) window = true;
+    // An order that pre-authorizes a later question opens the window now and keeps it open across the turns that
+    // follow (timers, peers, background tasks) until a question is answered or the operator writes again.
+    const deferred = !off && state && deferAsk(w.defer, own);
+    if (pending && pending.deferred && (off || asks || ordered || deferred)) closeWindow(true);
+    if (deferred) window = true;
+    const row = { text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words',
+      ordered, window, deferred, at: Date.parse(d.timestamp) || null };
+    out.push(row);
+    if (window) pending = row;
   }
-  memo.save();
+  // a deferred window still open at the end, though later prompts came (they add to the work, they do not re-order it)
+  out.deferredOpen = Boolean(pending && pending.deferred && pending.window);
   return out;
 }
 
-/** The open-for-operator count of an asking prompt, read ONCE - at the first hook that sees the prompt - and kept per
- *  transcript line (2026-11-06, Windows instance: re-read at every hook, the count fell to 0 once the agent had done
- *  the operator's items, and the same "what is open" prompt flipped the run back to autonomous - the closing mode
- *  question was refused, the idle gate asked for a continuation). Unwritable state = the live count, as before. */
-function openCountMemo(cwd) {
-  const file = path.join(cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd(), '.claude-state', 'asks-open-count.json');
-  let data = {};
-  try { data = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch (e) { data = {}; }
-  let dirty = false;
-  return {
-    count(key) {
-      // a pattern case names its own count (scripts/pattern-cases.py): no memo, or one run's count leaks into the next
-      if (/^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '')) return openForOperator(cwd);
-      if (!(key in data)) { data[key] = openForOperator(cwd); dirty = true; }
-      return data[key];
-    },
-    save() {
-      if (!dirty) return;
-      try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(data)); } catch (e) { /* live count next time */ }
-    },
-  };
-}
-
-/** Count of operator decisions and hand steps the presentation gate would put (its own readers); unreadable = 1, the safe side. */
-function openForOperator(cwd) {
-  // scripts/pattern-cases.py sets it: a pattern case tests the words, it names its own open count
-  if (/^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '')) return Number(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR);
-  try {
-    const { ledgerDecisions, registerDecisions } = require('./decision-presentation-gate.cjs');
-    return ledgerDecisions(cwd).length + registerDecisions(cwd).length;
-  } catch (e) { return 1; }
+/** true while the operator's newest prompt asked what is open and its turn still runs with no question answered:
+ *  the question tool and the dialogs pass, though the run is (still) autonomous. */
+function askWindow(transcriptPath, cwd) {
+  const rows = promptModes(transcriptPath, cwd);
+  const last = rows[rows.length - 1];
+  // 'turn' = an asking prompt's own turn (questions and dialogs pass); 'deferred' = a pre-authorized later question
+  // (only the question tool passes - it stays open across turns, so it must not open every dialog too)
+  if (last && last.window) return last.deferred ? 'deferred' : 'turn';
+  return rows.deferredOpen ? 'deferred' : false;
 }
 
 /** true when the operator's autonomous order is in force at the end of the transcript. A session close of THIS
@@ -362,6 +403,23 @@ function autonomousMode(transcriptPath, cwd) {
   return !closedAfter(transcriptPath, cwd, onAt);
 }
 
+/** Why the run is (still) autonomous, measured from the operator's newest prompt - for a refusal that names its reason
+ *  (2026-11-23, macOS instance: the gate refused the question tool with its generic text after "questions now"; the
+ *  agent guessed at the word list, the operator: "what do you keep saying about the word list?"). */
+function modeReason(transcriptPath, cwd) {
+  const rows = promptModes(transcriptPath, cwd).filter((r) => !r.answer);
+  const last = rows[rows.length - 1];
+  if (!last) return 'no operator prompt read in this transcript - the start state decides';
+  const reader = last.by === 'model' ? 'the intent classifier record' : 'the word lists (no classifier record for this prompt)';
+  if (last.asks && !last.window) {
+    return `the operator's newest prompt was read as asking what is open (${reader}), but its turn ended without a `
+      + 'question and this is a later turn the operator did not open (a timer, a task notification, a peer message) - '
+      + 'the window of an asking prompt is its own turn';
+  }
+  if (!last.asks) return `the operator's newest prompt was not read as asking what is open, nor as an off-word (${reader})`;
+  return `the run is autonomous by an order after the operator's newest prompt (${reader})`;
+}
+
 /** A close stamp of this session written after `since` (ms; null = any time). */
 function closedAfter(transcriptPath, cwd, since) {
   const dir = cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -374,9 +432,17 @@ function closedAfter(transcriptPath, cwd, since) {
   return since == null || st.mtimeMs >= since;
 }
 
-module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, answers, promptText, HOOK_ECHO };
+module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason };
+
 
 if (require.main === module) {
-  const [tp, cwd] = process.argv.slice(2);
-  console.log(autonomousMode(tp || '', cwd) ? 'autonomous' : 'interactive');
+  const [tp, cwd, flag] = process.argv.slice(2);
+  // `--window`: the third verdict - `window` while the run is autonomous and the asking prompt's turn is open.
+  if (flag === '--window' && autonomousMode(tp || '', cwd) && askWindow(tp || '', cwd)) { console.log('window'); return; }
+  // scripts/pattern-cases.py runs this on a transcript that ENDS at the prompt under test and names its own open count
+  // (AUTONOMOUS_OPEN_FOR_OPERATOR, default 1): a case tests how the WORDS are read. A prompt read as asking what is
+  // open shows there as `interactive` when something is open (the turn must ask), as `autonomous` with 0 - the
+  // verdicts every instance's case data was written against.
+  const caseOpen = /^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '') && Number(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR) > 0;
+  console.log(autonomousMode(tp || '', cwd) && !(caseOpen && askWindow(tp || '', cwd)) ? 'autonomous' : 'interactive');
 }

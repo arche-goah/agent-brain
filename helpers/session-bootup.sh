@@ -370,6 +370,13 @@ fi
 if [[ -f "$HERE/../scripts/instrument-watch.py" ]]; then
   "$PY" "$HERE/../scripts/instrument-watch.py" --repo "$R" 2>/dev/null || true
 fi
+# A gate that MALFUNCTIONS (timed out, crashed) in two or more sessions of the last 14 days (2026-11-23: content-review-gate
+# timed out 37x in 15 sessions, each session saw one retry that passed, no reply named a cause). Detection that does not
+# depend on the agent noticing; the form of a malfunction lives in gate-malfunction.json.
+if [[ -f "$HERE/../scripts/gate-health.py" ]]; then
+  gh_out=$("$PY" "$HERE/../scripts/gate-health.py" --root "$R" 2>/dev/null)
+  [[ -n "$gh_out" ]] && printf '!! %s\n' "$gh_out"
+fi
 # The other direction: what the core template carries and this brain does not. A template is
 # copied once at bootstrap, so its later permission rules never reach an existing brain (measured
 # 2026-10-26: 22 of 83 allow rules, an autonomous run stopped on a refused `gh pr ready`).
@@ -812,11 +819,23 @@ for line in open(os.environ["DEADLINE_FILE"], encoding="utf-8"):
     if cur is not None and cur["check"] is None and c:
         cur["check"] = c.group(1)
 shell = shutil.which("bash")
+# The ledgers' allow list, the instance's own when it names one (ledger-reconcile.py: it replaces the default).
+allowed = lr.ALLOWED if lr else []
+try:
+    import json
+    with open(root + "/.claude/rules/ledgers.json", encoding="utf-8") as f:
+        allowed = json.load(f).get("allowed") or allowed
+except Exception:
+    pass
 done = []
 for e in entries:
     if not e["check"] or lr is None or (e["date"] - today).days >= 7:
         continue
-    if lr.permitted(e["check"], lr.ALLOWED) and lr.run_check(e["check"], root, 5, shell) == "pass":
+    # A refused check is said, never skipped silently: measured 2026-11-20 (macOS instance), a `python3 -c` check
+    # was refused without a word and a part done three days earlier stayed reported as due.
+    if not lr.permitted(e["check"], allowed):
+        e["refused"] = True
+    elif lr.run_check(e["check"], root, 5, shell) == "pass":
         done.append(e)
 for e in done:
     title = f" ({e['title'][:60]})" if e["title"] else ""
@@ -831,10 +850,11 @@ loud = [e for e in open_ if (e["date"] - today).days < 7]
 for e in loud[:CAP]:
     days = (e["date"] - today).days
     title = f" ({e['title'][:60]})" if e["title"] else ""
+    note = " — its check is refused (not on the ledgers' read-only list), so it may be done already" if e.get("refused") else ""
     if days < 0:
-        print(f"!! deadline OVERDUE by {-days} d: {e['date']}{title} — docs/business/deadlines.md")
+        print(f"!! deadline OVERDUE by {-days} d: {e['date']}{title}{note} — docs/business/deadlines.md")
     else:
-        print(f"!! deadline {e['date']} in {days} d{title} — docs/business/deadlines.md")
+        print(f"!! deadline {e['date']} in {days} d{title}{note} — docs/business/deadlines.md")
 if len(loud) > CAP:
     print(f"!! deadline: {len(loud) - CAP} more overdue or due within 7 d — docs/business/deadlines.md")
 if not any((e["date"] - today).days >= 0 for e in loud):

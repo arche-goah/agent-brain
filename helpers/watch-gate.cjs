@@ -87,6 +87,7 @@
  * block — its fixture (`scripts/test-watch-gate.sh`) is the proof it still fires.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
@@ -230,7 +231,7 @@ let data = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 process.stdin.on('end', () => {
-  try { main(JSON.parse(data || '{}')); } catch (e) { process.exit(0); }
+  try { main(JSON.parse(data || '{}')); } catch (e) { hookExit(0); }
 });
 
 function readTail(p) {
@@ -428,8 +429,10 @@ function prWatched(root, calls) {
 function expandHome(p) { return require('./published-text.cjs').nativePath(p.replace(/^~(?=$|[\\/])/, require('os').homedir())); }
 /** The checkout a shell call acts on: `git -C <dir>`, else a leading `cd <dir>`, else the project root. */
 function callDir(cmd, root) {
-  let m = /\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
-  if (!m) m = /(?:^|[\n;&|(])\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
+  // a git call: the shared reader (`-C` inside a quoted message is no option - measured 2026-11-23)
+  const t = require('./git-target.cjs').gitTarget(cmd, root);
+  if (t) return t;
+  const m = /(?:^|[\n;&|(])\s*cd\s+(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(cmd);
   return m ? expandHome(m[1] || m[2] || m[3]) : root;
 }
 function hasWorkflows(dir) {
@@ -561,7 +564,12 @@ function ciStarted(shell, root) {
       continue;
     }
     const dir = callDir(c.cmd, root);
-    const fresh = /\[new branch\]/.test(c.out || '');
+    // No PR exists for the branch, so no `pull_request` run: git prints `[new branch]`, but a quiet push (`-q`) does
+    // not - GitHub's own hint "Create a pull request for '<branch>'" still comes through on stderr, and GitHub prints
+    // it only while no PR is open for that branch. Measured 2026-11-18 on the macOS instance: `push -q -u origin
+    // feat/bin-show-bench` to show-tools (CI on push to main + pull_request) was held for a watcher of a run that
+    // never started; the watch waited until it was stopped.
+    const fresh = /\[new branch\]/.test(c.out || '') || /Create a pull request for '[^']+'/.test(c.out || '');
     if (!pushSegments(c.cmd).some((b) => pushRunsCi(dir, b, fresh))) continue;
     const slug = originSlug(dir);
     if (slug) out.add(slug);
@@ -694,11 +702,13 @@ function ghListed(ghCalls, root) {
 // entry passed - `WATCH-GAP: CLAUDE.md` let a PR end unwatched in a brain with 44 unrelated instance entries.
 // Returns the key, or null (no token, no BLOCKED line, unreadable file, undeclared key, an entry without watch_gap).
 function watchGap(root, text) {
-  const t = stripQuoted(text || '');
-  if (!/^[ \t>*_-]*BLOCKED:/m.test(t)) return null;
+  // Fenced blocks only: stripQuoted also drops inline code, and a whole `BLOCKED: ... WATCH-GAP: key` line set as
+  // inline code (the shape the backtick prefix is for) was gone before the test (Windows review of #583, 2026-11-18).
+  const t = String(text || '').replace(/```[\s\S]*?```/g, ' ');
+  if (!/^[ \t>*_`-]*BLOCKED:/m.test(t)) return null;
   const m = /\bWATCH-GAP:\s*(\S+)/.exec(t);
   if (!m) return null;
-  const key = m[1].replace(/[.,;)]+$/, '');
+  const key = m[1].replace(/[.,;)`]+$/, '');   // a closing backtick of an inline-code line is no part of the key
   try {
     const lm = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'local-machinery.json'), 'utf8'));
     return ['instance', 'external', 'alpha'].some((k) => {
@@ -710,10 +720,10 @@ function watchGap(root, text) {
 
 function main(input) {
   OWN_ECHO = ownEcho(input, OWN_ECHO);
-  if (input.stop_hook_active || !input.transcript_path) process.exit(0);
+  if (input.stop_hook_active || !input.transcript_path) hookExit(0);
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const { calls, since, fired, lastText } = turn(input.transcript_path);
-  if (fired) process.exit(0);
+  if (fired) hookExit(0);
   const shell = calls.filter((c) => c.name === 'Bash' || c.name === 'PowerShell');
   // Each finding: its text, and whether a close entry's open-end lines cover it (null = never).
   const missing = [];
@@ -792,7 +802,7 @@ function main(input) {
         + 'say it is open and what is awaited, or read the verdict first', covered: null });
     }
   }
-  if (!missing.length) process.exit(0);
+  if (!missing.length) hookExit(0);
   // A measured BLOCKED end with a declared watcher gap (Windows coherence scan 2026-11-16, agreed by the
   // operator the same day): a machine that cannot keep a watcher alive (no collaborators, a show machine
   // offline, a channel it may not poll) ended every such turn here, although the gap is written down. The
@@ -803,12 +813,12 @@ function main(input) {
   let gapped = missing;
   const gap = watchGap(root, lastText);
   if (gap) gapped = missing.filter((m) => !m.covered);
-  if (!gapped.length) process.exit(0);
+  if (!gapped.length) hookExit(0);
   // The close turn: a close stamp of this session and turn passes what its entry lists (header).
   let left = gapped;
   const ends = gapped.some((m) => m.covered) ? closeOpenEnds(root, { sessionId: input.session_id, since, calls }) : null;
   if (ends) left = gapped.filter((m) => !(m.covered && m.covered(ends)));
-  if (!left.length) process.exit(0);
+  if (!left.length) hookExit(0);
   process.stdout.write(JSON.stringify(declare({
     decision: 'block',
     reason: `WATCH-GATE: a watcher is missing. ${left.map((m) => m.text).join(' · ')}. `
@@ -816,5 +826,5 @@ function main(input) {
         + '(a shared-memory request by its file name). ' : '')
       + 'If nothing is awaited, say why in one line and stop again.',
   }, input)));
-  process.exit(0);
+  hookExit(0);
 }

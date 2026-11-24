@@ -264,9 +264,8 @@ def hook_entries(path):
 
 
 def settings_layers(repo, cfg):
-    return [(os.path.join(cfg, "settings.json"), "user"),
-            (os.path.join(repo, ".claude", "settings.json"), "project"),
-            (os.path.join(repo, ".claude", "settings.local.json"), "local")]
+    import settings_layers as sl   # the one layer reader (follow-up 4)
+    return [(str(p), n) for p, n in sl.layers(repo, user=cfg)]
 
 
 def enabled_plugins(layers):

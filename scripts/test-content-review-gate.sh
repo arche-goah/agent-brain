@@ -16,7 +16,7 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 N="$(native "$T")"  # native form: the gate (node) reads the --body-file paths below
 # the fake gh: `gh api ...` (the compare view) answers COMPARE_FILES, everything else the PR JSON
 # pr-<n>.json next to pr.json, when present, answers `gh pr view <n>` (a train's member); else pr.json
-printf 'const fs = require("fs"); const own = process.env.PR_JSON.replace(/\\.json$/, "-" + process.argv[4] + ".json");\nprocess.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : fs.readFileSync(fs.existsSync(own) ? own : process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
+printf 'const fs = require("fs"); const own = process.env.PR_JSON.replace(/\\.json$/, "-" + process.argv[4] + ".json");\nif (process.env.GH_DELAY_MS && process.argv[2] === "pr") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.GH_DELAY_MS));\nif (process.env.GH_SLOW_NR && process.argv[2] === "pr" && process.argv[4] === process.env.GH_SLOW_NR) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10000);\nprocess.stdout.write(process.argv[2] === "api" ? (process.env.COMPARE_FILES || "") : fs.readFileSync(fs.existsSync(own) ? own : process.env.PR_JSON, "utf8"))\n' > "$T/gh.js"
 # a core-like repo: its root carries pr-risk.json
 git init -q "$T/core"
 cp "$ROOT/pr-risk.json" "$T/core/pr-risk.json"
@@ -43,6 +43,7 @@ transcript claude-sonnet-5-5
 probe "sonnet commits a hook change in the core" "git commit -m x" block "hooks/hooks.json"
 probe "sonnet commits a script change (medium)" "git commit -m x" allow "scripts/foo.py"
 probe "sonnet commits docs (low)" "git -C . commit -m x" allow "docs/a.md"
+probe "sonnet commits a plugin manifest change (high: version and pin)" "git commit -m x" block ".claude-plugin/plugin.json"
 transcript claude-opus-5-5
 probe "opus commits a gate change" "git commit -m x" allow "helpers/x-gate.cjs"
 transcript claude-opus-6
@@ -186,6 +187,16 @@ probe "approve with a prose Model line naming opus" "gh pr review 5 -R o/r --app
 transcript claude-sonnet-5-5
 probe "a prose Model line claiming opus on a sonnet session" "gh pr comment 5 -R o/r --body-file $N/rev-prose.md" block
 
+# CHECK 3c - a review that counts findings writes them in the merge gate's form (Windows review of #591, 2026-11-18)
+printf 'Content review at abc1234 from the Windows workstation instance. One finding, read from the code.\nFit: x\n' > "$N/rev-prose-finding.md"
+probe "a review that says 'One finding' in prose only" "gh pr comment 5 -R o/r --body-file $N/rev-prose-finding.md" block
+printf 'Content review at abc1234. One finding.\n**Finding (builder: the author side) - x misses y**\n' > "$N/rev-form-finding.md"
+probe "the same with the structured finding line" "gh pr comment 5 -R o/r --body-file $N/rev-form-finding.md" allow
+printf 'Content review at abc1234. No finding.\n' > "$N/rev-no-finding.md"
+probe "a review with no finding" "gh pr comment 5 -R o/r --body-file $N/rev-no-finding.md" allow
+printf 'Finding answered in abc1234: fixed, new case.\n' > "$N/rev-answer.md"
+probe "the author's answer to a finding is no review" "gh pr comment 5 -R o/r --body-file $N/rev-answer.md" allow
+
 # CHECK 3b - an OS review posted as a comment carries the counted content lines (agent-brain #473, 2026-11-12)
 transcript claude-opus-5-5
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
@@ -198,7 +209,8 @@ probe "the author's own OS check needs no content review" "gh pr comment 5 -R o/
 probe "an author update without an OS verdict stays free" "gh pr comment 5 -R o/r --body-file $N/rev-thin.md" allow
 # Windows review of #508: the one OS check at a merge train's head carries no content lines - its members do
 pr "## Merge train train/x
-- #5 a/b 1234567 <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
+- #5 a/b 1234567
+<!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
 printf '<!-- instance-key: %s -->\nWindows OK at head abc1234, ci-lint-local all steps passed.\n' "$B" > "$T/os-train.md"
 probe "the OS check at a merge train's head" "gh pr comment 5 -R o/r --body-file $N/os-train.md" allow
 pr "Risk: high - gate <!-- instance-key: $A -->" "helpers/x-gate.cjs" ""
@@ -234,8 +246,8 @@ probe "control: low-risk docs PR, review on the smaller model" "$M" allow
 pr "Risk: low - docs <!-- instance-key: $A -->" "docs/x.md" "$T/c-small.md" "" 150
 probe "file list shorter than changedFiles (gh page limit): top risk, smaller model too small" "$M" block
 pr "## Merge train t1
-- #7 fix/a abc
-- #8 fix/b def" "" ""
+- #7 fix/a abc1234
+- #8 fix/b def5678" "" ""
 probe "train PR whose members lack a content review" "$M" block
 # merge train 2.1.6: a note line "- #N: …" or a left-out line is no member; only #7, which has its review, is one
 printf '%s\nModel: claude-opus-5-5 <!-- instance-key: %s -->\n' "$GOOD" "$B" > "$T/c-7.md"
@@ -246,10 +258,48 @@ Left out:
 - #9 (conflicts with the train so far)
 
 Train-level fixes:
-- #8: a note about #8, which is no member" "" "$T/c-7.md"
+- #8: a note about #8, which is no member
+- #8 fix/b def5678 was merged by hand later (prose after the sha: no member line)" "" "$T/c-7.md"
 printf '{"body":"Risk: high - gate","files":[{"path":"helpers/x-gate.cjs"}],"comments":[],"reviews":[]}' > "$T/pr-8.json"
 cp "$T/pr-8.json" "$T/pr-9.json"
 probe "note and left-out lines of a train are no members" "$M" allow
 rm -f "$T/pr-8.json" "$T/pr-9.json"
+# Windows review of #587: a train with no member line in the writer's form (a 6-hex sha) was "nothing open" and merged
+pr "## Merge train t3
+- #7 fix/a abc123" "" ""
+probe "a train whose body names no member in the writer's form is held" "$M" block
+pr "## Merge train t4" "" ""
+probe "an empty train body is held" "$M" block
+
+# 2026-11-23, macOS instance (Node 25.9): after reading a large transcript, `process.exit()` hung in Node's platform
+# shutdown (DisposePlatform -> uv_thread_join) - 21 of 40 runs on a real 7 MB transcript, 2 of 20 on a synthetic one -
+# and the harness reported "timed out; blocking". With `process.exitCode` the same runs ended 40 of 40. The hang is
+# too rare on synthetic data for a timed red case, so the fixture holds the form: the entry point sets exitCode.
+main=$(sed -n '/^if (require.main === module)/,$p' "$GATE")
+case "$main" in *"process.exit("*) bad "the gate's entry point calls process.exit() (hangs at Node shutdown)";; *) ok "the gate's entry point ends naturally (process.exitCode)";; esac
+case "$main" in *"process.exitCode"*) ok "the gate's exit code is still set";; *) bad "the gate sets no exit code";; esac
+
+# train #571 (2026-11-17): 55 members read one after another took 34 s against the hook's 30 s. 40 members whose gh
+# answer takes 1 s each: read in parallel, the merge is judged within the budget (sequential would need 40 s).
+body="## Merge train big"; for n in $(seq 100 139); do body="$body
+- #$n fix/m$n abc1234"; done
+pr "$body" "" "$T/c-7.md"
+for n in $(seq 100 139); do cp "$T/pr.json" "$T/pr-$n.json"; done
+pr "$body" "" ""
+t0=$(date +%s)
+GH_DELAY_MS=1000 probe "40 members, 1 s per gh answer: all read, all reviewed" "$M" allow
+t1=$(date +%s)
+[ $((t1 - t0)) -le 15 ] && ok "  ... in $((t1 - t0)) s (sequential: 40 s)" || bad "  ... took $((t1 - t0)) s"
+for n in $(seq 100 139); do rm -f "$T/pr-$n.json"; done
+# Windows review of #590 (2026-11-18): over the budget only the slow member is unread, the answered ones count
+body="## Merge train slow"; for n in $(seq 200 209); do body="$body
+- #$n fix/s$n abc1234"; done
+pr "$body" "" "$T/c-7.md"
+for n in $(seq 200 209); do cp "$T/pr.json" "$T/pr-$n.json"; done
+pr "$body" "" ""
+out=$(printf '%s' "{\"tool_name\":\"Bash\",\"cwd\":\"$(native "$T/core")\",\"transcript_path\":\"$(native "$T/t.jsonl")\",\"tool_input\":{\"command\":$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$M")}}" \
+  | PR_JSON="$(native "$T/pr.json")" CONTENT_REVIEW_GATE_GH="$(native "$T/gh.js")" GH_SLOW_NR=205 CONTENT_REVIEW_GATE_BUDGET_MS=3000 node "$(native "$GATE")" 2>&1)
+case "$out" in *"#205 (unreadable)"*) case "$out" in *"#200 (unreadable)"*) bad "budget overrun lost the answered members: ${out:0:200}";; *) ok "budget overrun names only the slow member";; esac;; *) bad "budget overrun did not name the slow member: ${out:0:200}";; esac
+for n in $(seq 200 209); do rm -f "$T/pr-$n.json"; done
 
 [ "$fail" -eq 0 ] && echo "content-review-gate fixtures: ALL passed" || { echo "content-review-gate fixtures: FAILURES"; exit 1; }

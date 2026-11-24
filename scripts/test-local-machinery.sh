@@ -472,10 +472,17 @@ out=$(run)
 grep -q 'local machinery: 5 declared deviation(s) due for review (oldest 3 shown)' <<< "$out" && ! grep -q 'c/ (instance' <<< "$out" \
   && grep -q 'review=5' <<< "$out" && ok "review-batch-of-the-oldest" || bad "review-batch-of-the-oldest: $out"
 TODAY=2026-10-08 out=$(run --review-all)
-grep -q 'local machinery review: 6 declared deviation(s), all listed' <<< "$out" && grep -q 'c/ (instance, reviewed 2026-10-01)' <<< "$out" \
+grep -q 'local machinery review: 6 declared deviation(s), all listed' <<< "$out" && grep -q 'c/ (instance, reviewed 2026-10-01, cadence 90 days)' <<< "$out" \
   && ok "review-all-lists-every-declaration" || bad "review-all-lists-every-declaration: $out"
 decl '{"instance":{"c/":{"reviewed":"2026-10-01","why":"w","evidence":"x"}}}'
 out=$(run); ! grep -q 'due for review' <<< "$out" && ok "review-fresh-silent" || bad "review-fresh-silent: $out"
+# --- per-deviation cadence (2026-11-18, drift scan agreed between the instances) --------------------
+# a hook path is capped at 30 days, its own shorter cadence counts, a docs path may go to 180; an alpha `until` far ahead is named
+decl '{"instance":{"scripts/hooks/g.cjs":{"reviewed":"2026-09-01","why":"w","evidence":"x"},"scripts/x.py":{"reviewed":"2026-09-20","review_every_days":14,"why":"w","evidence":"x"},"docs/n.md":{"reviewed":"2026-06-01","review_every_days":180,"why":"w","evidence":"x"}}}'
+out=$(run); grep -q 'scripts/hooks/g.cjs (instance, reviewed 2026-09-01, cadence 30 days)' <<< "$out" && grep -q 'scripts/x.py (instance, reviewed 2026-09-20, cadence 14 days)' <<< "$out" \
+  && ! grep -q 'docs/n.md (instance' <<< "$out" && ok "review-cadence-per-deviation" || bad "review-cadence-per-deviation: $out"
+decl '{"alpha":{"scripts/hooks/y.cjs":{"until":"2027-06-01","why":"alpha","kind":"test"}}}'
+out=$(run); grep -q 'scripts/hooks/y.cjs (alpha, until more than 90 days ahead)' <<< "$out" && ok "review-alpha-until-far-ahead" || bad "review-alpha-until-far-ahead: $out"
 rm -rf "$T/b"
 
 # --- an alpha the running core caught up with (operator 2026-10-31: unwired with the update) -------
@@ -513,6 +520,14 @@ decl '{"instance":{".claude/rules/mechanism-rules.json#merge-":{"reviewed":"2026
 out=$(run); [[ -z "$out" ]] \
   && ok "hash-key-prefix-at-word-boundary-covers" || bad "hash-key-prefix-at-word-boundary-covers: $out"
 rm -rf "$T/b"
+
+# --- review at every core update (operator rule 2026-11-18): a review older than the last core update is due ------------
+HERE="$(cd "$(dirname "$0")" && pwd)"
+out="$("$PY" -c 'import importlib.util,sys
+s=importlib.util.spec_from_file_location("lm", sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+d={"instance":{"a":{"why":"x","reviewed":"2026-11-15"},"b":{"why":"x","reviewed":"2026-11-18"}}}
+print(m.review_due(d,"2026-11-18")[0], m.review_due(d,"2026-11-18",since_core="2026-11-17")[0])' "$HERE/local-machinery.py" 2>&1)"
+[[ "$out" == "0 1" ]] && ok "review-due-after-core-update" || bad "review-due-after-core-update: $out"
 
 (( fail )) && { echo "test-local-machinery: FAILED"; exit 1; }
 echo "test-local-machinery: all checks passed"

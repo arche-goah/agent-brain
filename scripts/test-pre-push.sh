@@ -70,6 +70,12 @@ git -C "$B" init -q; git -C "$B" remote add origin "$REM/o/brain.git"; git init 
 c "$B" b1; try "main of the brain itself passes" ok "$B" main
 S="$TMP/shared"; repo shared "$S"; echo '{}' > "$S/parties.json"; git -C "$S" add parties.json; c "$S" s1
 try "main of the shared memory (parties.json) passes" ok "$S" main
+# train review #571, design edge 2: where main may go, a new branch still says what it sends
+git -C "$B" checkout -qb feat/b2; c "$B" b2-1; c "$B" b2-2
+try "a new branch of the brain with two commits passes" ok "$B" feat/b2
+grep -q 'sends 2 commits' "$TMP/err" && pass "  ... and lists what it sends there too" \
+  || fail "  ... no list where main is free: $(tr '\n' ' ' < "$TMP/err")"
+git -C "$B" checkout -q main
 
 # --- a fixture's throwaway remote under the system temp: main is free, rewrite and delete are not ----
 F="$TMP/fixture"; git init -q --bare "$TMP/f.git"; git clone -q "$TMP/f.git" "$F" 2>/dev/null

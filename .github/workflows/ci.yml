@@ -116,6 +116,11 @@ jobs:
       # before `gh pr create` (instance-key-gate.cjs); here it catches a fragment edited later.
       - name: change level declared
         run: node helpers/change-level.cjs check
+      # A hook that reads a session transcript ends through helpers/hook-exit.cjs, never process.exit():
+      # measured 2026-11-23 (Node 25.9, macOS), process.exit hung at Node's shutdown after a large
+      # transcript read and the harness blocked the call ("timed out; blocking").
+      - name: transcript-reading hooks end without process.exit
+        run: python3 scripts/hook-exit-lint.py
       # Every .claude/rules/<name>.json the core reads has a template a new brain gets, or a
       # declared reason why none is needed (templates/instance-files-optional.json; its
       # `unclassified` list may only shrink).
@@ -239,7 +244,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+      - uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
         with:
           fail-on-severity: moderate
 

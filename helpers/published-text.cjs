@@ -99,7 +99,58 @@ const GH_TEXT = new Set(['--title', '-t', '--body', '-b', '--notes', '-n', '--su
 const GH_FIELD = new Set(['-f', '--raw-field', '--field']);
 const GH_FILE = new Set(['--body-file', '--notes-file', '--input', '--file']);
 
-function publishedText(cmd, ps) {
+// The quote and runner patterns ranTexts needs (the same as public-text-guard.cjs, which reads them from here).
+const QUOTED_RX = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
+const RUNS_RX = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-[a-z]*c[a-z]*\b|\beval\b|\$\(|`/;
+// What the shell RUNS of a quoted text is read where it runs, not everywhere (2026-11-18, macOS instance, measured
+// with the pinned guard: 7 of 14 core fixtures refused on a hand run - one `$(` anywhere in a script turned EVERY
+// quoted probe argument (`pr_probe "…" "gh pr create -R o/lab --fill"`) into a command). Read as commands: the body
+// of each `$( … )` and each backtick pair, anywhere (also inside double quotes), and the quoted parts of a segment
+// whose OWN command is `sh -c` / `eval`. A quoted argument of any other command stays data.
+const RUNNER = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-[a-z]*c[a-z]*\b|\beval\b/; // `-c`, also combined (`-lc`, `-ec`)
+// The shell's own reading, char by char: nothing runs inside single quotes, a backslash makes the next char text
+// (outside single quotes), `$(` and a backtick run their body outside quotes and inside double quotes.
+function substitutions(cmd) {
+  const out = [];
+  let q = '';
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q === "'") { if (c === "'") q = ''; continue; }
+    if (c === '\\') { i++; continue; }
+    if (c === '"') { q = q === '"' ? '' : '"'; continue; }
+    if (c === "'" && !q) { q = "'"; continue; }
+    if (c === '$' && cmd[i + 1] === '(') {
+      let depth = 0, j = i + 1, iq = '';
+      for (; j < cmd.length; j++) {
+        const d = cmd[j];
+        if (iq === "'") { if (d === "'") iq = ''; continue; }
+        if (d === '\\') { j++; continue; }
+        if (d === '"' || d === "'") { iq = iq === d ? '' : (iq || d); continue; }
+        if (iq) continue;
+        if (d === '(') depth++;
+        else if (d === ')' && --depth === 0) break;
+      }
+      out.push(cmd.slice(i + 2, j));
+      i = j;
+    } else if (c === '`') {
+      const j = cmd.indexOf('`', i + 1);
+      if (j === -1) break;
+      out.push(cmd.slice(i + 1, j));
+      i = j;
+    }
+  }
+  return out;
+}
+// The texts the shell runs inside the command: `$( )` / backtick bodies and the quoted text of an `sh -c` / `eval`
+// segment. Their published text is read too (review of this PR, the Windows instance 2026-11-18: a named post run
+// through `bash -c '…'` or `echo "$(…)"` was judged a write, but its body was read from the outer command only).
+function ranTexts(cmd) {
+  if (!RUNS_RX.test(cmd)) return [];
+  const ran = substitutions(cmd);
+  for (const s of require('./shell-segments.cjs').segments(cmd)) if (RUNNER.test(s.replace(QUOTED_RX, '""'))) ran.push(...[...s.matchAll(QUOTED_RX)].map((m) => m[0].slice(1, -1)));
+  return ran;
+}
+function publishedText(cmd, ps, inner = false) {
   const segs = shellSegments(cmd, ps);
   if (!segs) return null;
   const texts = [];
@@ -151,6 +202,14 @@ function publishedText(cmd, ps) {
       }
     }
   }
+  // what the shell RUNS inside the command is published too (2026-11-18, review of agent-brain #615: a post through
+  // `bash -c '…'` or `$( )` passed every gate that reads published text - their body was read from the outer command)
+  if (!inner) {
+    for (const t of ranTexts(cmd)) {
+      const r = publishedText(t, ps, true);
+      if (r) { texts.push(...r.texts); files.push(...r.files); }
+    }
+  }
   return { texts, files: files.map((f) => expandVars(f, cmd) ?? f), spans };
 }
 
@@ -171,7 +230,7 @@ function expandVars(f, cmd) {
   return unknown ? null : out;
 }
 
-function invocations(cmd, ps, prog, subs, verbs) {
+function invocations(cmd, ps, prog, subs, verbs, inner = false) {
   const segs = shellSegments(cmd, ps);
   if (!segs) return null;
   if (!prog) return segs;
@@ -186,6 +245,9 @@ function invocations(cmd, ps, prog, subs, verbs) {
     if (verbs && !verbs.includes(w[i + 2])) continue;
     out.push(w.slice(i));
   }
+  // what the shell RUNS inside the command is a call too, one level deep (2026-11-18, review of agent-brain #615: a post
+  // through `bash -c '…'` was no gh call for instance-key-gate, so its key went unchecked)
+  if (!inner) for (const t of ranTexts(cmd)) out.push(...(invocations(t, ps, prog, subs, verbs, true) || []));
   return out;
 }
 
@@ -215,8 +277,13 @@ function withoutPublished(cmd, ps) {
 // Returns [{ file, text, why }]: `text` null when the script cannot be read (`why` says so); a path
 // that does not exist is left out - the shell cannot run it either. Over SCRIPT_MAX: a `bash <file>`
 // counts as unreadable, a directly run path is skipped (it may well be a binary).
+// PowerShell scripts the same way (debt named in #515, follow-up item 6): `pwsh|powershell [opts] [-File] x.ps1`
+// (an inline `-Command` is no file), `& x.ps1` and `.\x.ps1`; the entry carries `ps: true`, and a reader gates its text
+// as PowerShell.
 const SCRIPT_MAX = 200 * 1024;
 const SHELL_RX = /^(?:.*[\\/])?(?:ba|z|da|k)?sh(?:\.exe)?$/;
+const PWSH_RX = /^(?:.*[\\/])?(?:pwsh|powershell)(?:\.exe)?$/i;
+const PS1_RX = /\.ps1$/i;
 function scriptBodies(cmd, ps, cwd) {
   const segs = shellSegments(cmd, ps);
   if (!segs) return [];
@@ -229,10 +296,20 @@ function scriptBodies(cmd, ps, cwd) {
     while (i < w.length && /^[A-Za-z_]\w*=/.test(w[i])) i++; // VAR=value prefixes
     let file = null;
     let direct = false;
+    let psFile = false;
+    if (w[i] === '&' && PS1_RX.test(w[i + 1] || '')) i++;   // PowerShell call operator
     if (SHELL_RX.test(w[i] || '')) {
       let j = i + 1;
       for (; j < w.length && /^[-+]/.test(w[j]); j++) if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(w[j])) { j = w.length; break; } // -c: inline text
       file = w[j] || null;
+    } else if (PWSH_RX.test(w[i] || '')) {
+      const rest = w.slice(i + 1);
+      if (rest.some((t) => /^-c(?:ommand)?$/i.test(t))) continue;   // inline text, no file
+      file = rest.find((t) => PS1_RX.test(t)) || null;
+      psFile = true;
+    } else if (PS1_RX.test(w[i] || '')) {
+      file = w[i];
+      psFile = true;
     } else if (/[\\/]/.test(w[i] || '')) {
       file = w[i];
       direct = true;
@@ -251,7 +328,7 @@ function scriptBodies(cmd, ps, cwd) {
     let text;
     try { text = fs.readFileSync(p, 'utf8'); } catch (e) { out.push({ file, text: null, why: e.code || 'cannot be read' }); continue; }
     if (direct && !/^#!\s*\S*?(?:\/env\s+)?(?:ba|z|da|k)?sh\b/.test(text)) continue;
-    out.push({ file, text, why: '' });
+    out.push(psFile ? { file, text, why: '', ps: true } : { file, text, why: '' });
   }
   return out;
 }
@@ -265,4 +342,4 @@ function answerHalves(text) {
   return [...String(text || '').matchAll(ANSWER_PAIR)].map((m) => m[1]).join('\n');
 }
 
-module.exports = { shellSegments, publishedText, invocations, withoutPublished, unquote, expandVars, nativePath, answerHalves, scriptBodies };
+module.exports = { shellSegments, publishedText, ranTexts, substitutions, invocations, withoutPublished, unquote, expandVars, nativePath, answerHalves, scriptBodies };

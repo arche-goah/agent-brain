@@ -88,7 +88,7 @@ pattern:   str\([A-Za-z_.]+\.relative_to\(|os\.path\.join\(
 paths:     --include=*.py --include=*.sh scripts helpers
 known:     helpers/session-bootup.sh=4
 known:     scripts/always-loaded.py=4
-known:     scripts/autonomy-diagnose.py=26
+known:     scripts/autonomy-diagnose.py=23
 known:     scripts/backprop-report.py=5
 known:     scripts/brain-friction.py=1
 known:     scripts/brain-selftest.sh=3
@@ -233,6 +233,7 @@ known:     scripts/device-status.py=1
 known:     scripts/eco_owner.py=1
 known:     scripts/ecosystem-sync.py=1
 known:     scripts/english-only.py=1
+known:     scripts/gate-health.py=1
 known:     scripts/invariant-check.py=1
 known:     scripts/invariant-index.py=1
 known:     scripts/ledger-one-exit.py=1
@@ -325,6 +326,7 @@ known:     scripts/test-conditional-order-gate.sh=1
 known:     scripts/test-content-review-gate.sh=1
 known:     scripts/test-dead-carriers.sh=1
 known:     scripts/test-decision-presentation-gate.sh=1
+known:     scripts/test-derived-carry-gate.sh=1
 known:     scripts/test-decision-readiness.sh=1
 known:     scripts/test-decision-register.sh=1
 known:     scripts/test-decision-review.sh=1
@@ -335,16 +337,20 @@ known:     scripts/test-ecosystem-sync.sh=1
 known:     scripts/test-effect-check-e3.sh=1
 known:     scripts/test-fixture-own-home.sh=1
 known:     scripts/test-effect-check-e5.sh=1
+known:     scripts/test-foreign-entry-gate.sh=1
 known:     scripts/test-full-audit-synthesis-files.sh=1
 known:     scripts/test-git-hooks.sh=1
 known:     scripts/test-git-sandbox.sh=1
 known:     scripts/test-guards.sh=6
 known:     scripts/test-headless-browser-gate.sh=1
 known:     scripts/test-hook-coverage.sh=1
+known:     scripts/test-hook-exit.sh=1
 known:     scripts/test-install-git-hooks.sh=1
 known:     scripts/test-instance-key-gate.sh=1
 known:     scripts/test-instrument-watch.sh=1
+known:     scripts/test-intent-classifier.sh=1
 known:     scripts/test-leak-scan.sh=1
+known:     scripts/test-lint-placeholders.sh=1
 known:     scripts/test-live-read-gate.sh=1
 known:     scripts/test-live-watchdog.sh=1
 known:     scripts/test-local-machinery.sh=1
@@ -353,6 +359,7 @@ known:     scripts/test-memory-dream-files.sh=1
 known:     scripts/test-merge-request-gate.sh=1
 known:     scripts/test-merge-train.sh=1
 known:     scripts/test-mode-log.sh=1
+known:     scripts/test-mode-owed.sh=1
 known:     scripts/test-monitor-arm-shape.sh=1
 known:     scripts/test-no-input-control.sh=1
 known:     scripts/test-notify.sh=1
@@ -365,29 +372,37 @@ known:     scripts/test-os-ok-form.sh=1
 known:     scripts/test-own-open-gate.sh=1
 known:     scripts/test-parallel-sessions.sh=1
 known:     scripts/test-pattern-cases.sh=1
+known:     scripts/test-peer-talk-gate.sh=1
 known:     scripts/test-pr-ball.sh=1
 known:     scripts/test-pr-close-gate.sh=1
 known:     scripts/test-pre-commit-behind.sh=1
 known:     scripts/test-pre-commit-change-level.sh=1
+known:     scripts/test-pre-commit-hook-env.sh=1
 known:     scripts/test-pre-commit-os-traps.sh=1
 known:     scripts/test-pre-commit-backprop.sh=1
 known:     scripts/test-pre-commit-covers.sh=1
+known:     scripts/test-pre-commit-hardcode.sh=1
 known:     scripts/test-pre-push.sh=2
 known:     scripts/test-premise-gate.sh=1
 known:     scripts/test-promise-gate.sh=1
 known:     scripts/test-public-text-guard.sh=1
 known:     scripts/test-python-probe.sh=1
 known:     scripts/test-question-gate.sh=1
+known:     scripts/test-reader-break-check.sh=1
 known:     scripts/test-recall-gate.sh=1
 known:     scripts/test-release-freeze-gate.sh=1
 known:     scripts/test-repo-activity-watch.sh=1
 known:     scripts/test-review-claim-gate.sh=1
 known:     scripts/test-root-cause-gate.sh=1
+known:     scripts/test-root-files-gate.sh=1
 known:     scripts/test-session-areas.sh=1
+known:     scripts/test-session-scope.sh=1
 known:     scripts/test-claim-write-gate.sh=1
 known:     scripts/test-session-closing.sh=1
 known:     scripts/test-core-branch.sh=1
 known:     scripts/test-core-merge-lint-gate.sh=1
+known:     scripts/test-core-push-lint-identity.sh=1
+known:     scripts/test-core-push-lint-queue.sh=1
 known:     scripts/test-session-helpers.sh=1
 known:     scripts/test-session-order.sh=1
 known:     scripts/test-session-pull.sh=1
@@ -914,7 +929,7 @@ repeat:    yes
 status:    closed
 note:      Measured 2026-09-30 on a Windows instance whose profile name has a space, core
 v1.3.41. `onboarding-verify.sh` check 3 reported `suites=MISSING (<First> grandma3 )` for an
-installed suite: the `find` result `/c/Users/<First> <Last>/.claude/plugins/cache/...` was
+installed suite: the `find` result `/c/<profile>/<First> <Last>/.claude/plugins/cache/...` was
 split into `/c/Users/<First>` (no SKILL.md there, so MISSING, and the first fragment's
 basename showed up as a suite name) and a relative tail. Checks 6 and 7 walked the same
 fragments. Fixed at the three loops over `suite_dirs`; the fixture in
@@ -1168,11 +1183,12 @@ path on the current drive's root and fails; the hook swallows the read error and
 without the file — on macOS and Linux the same path is the native one, so the defect is invisible there.
 pattern:   publishedText\(|nativePath\(
 paths:     --include=*.cjs helpers
-known:     helpers/content-review-gate.cjs=3
-known:     helpers/instance-key-gate.cjs=3
-known:     helpers/public-text-guard.cjs=2
+known:     helpers/content-review-gate.cjs=2
+known:     helpers/git-target.cjs=1
+known:     helpers/instance-key-gate.cjs=2
+known:     helpers/public-text-guard.cjs=3
 known:     helpers/pr-repo.cjs=1
-known:     helpers/published-text.cjs=4
+known:     helpers/published-text.cjs=5
 known:     helpers/review-claim-gate.cjs=2
 known:     helpers/root-cause-gate.cjs=1
 known:     helpers/session-areas.cjs=2
@@ -1240,7 +1256,7 @@ was read.
 pattern:   ^[^#]*[^+#]"\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}"
 paths:     --include=*.sh scripts helpers
 known:     scripts/ci-lint-local.sh=1
-known:     scripts/lint-placeholders.sh=1
+known:     scripts/lint-placeholders.sh=3
 known:     scripts/merge-train.sh=1
 known:     scripts/repo-activity-watch.sh=1
 known:     scripts/shared-memory-watch-lock-test.sh=3
@@ -1291,3 +1307,28 @@ Python on Windows decodes a piped stdin as cp1252 (`sys.stdin.encoding` printed 
 as the three letters). The scan now covers a `sys.stdin` read in a file that never pins stdin (code inside a string,
 a child script a fixture writes, is not seen); 3 files pinned in the same commit (repo-activity-filter.py,
 pr-ball.py, plugin-scope-check.py), red on origin/main for all three, no baseline.
+
+## OS-24 — a command pattern reads the `git -C` path as one word, and a quoted Windows path with a space slips past it
+
+shape: A
+
+invariant: A regex that recognises a command by what follows `git -C <path>` reads the path as a
+QUOTED token or a bare one — `-C\s+(?:"[^"]*"|'[^']*'|\S+)` — never as `-C\s+\S+`. The bare form
+stops at the first space, and Windows hands out profile paths with spaces as the normal case
+(`"C:/<profile>/First Last/..."`, quoted by every caller). The rest of the command then no longer lines
+up: a read exemption misses (the guard blocks a read, fail-closed), and — worse — a block rule
+that names the subcommand after the path never sees it (`git -C "<path with space>" stash` passed
+the stash rule, fail-open).
+pattern:   -C(\\\\|\\)s\+(\\\\|\\)S\+
+paths:     --include=*.cjs --include=*.js --include=*.py --include=*.json --include=*.sh helpers scripts templates mechanism-rules.json
+instances: 1
+repeat:    no
+status:    closed
+note:      Measured 2026-11-17 on the Windows instance (profile path with a space), core v2.1.6 at
+fcbe55a: `git -C "/c/<profile>/<First> <Last>/.../core" show origin/main:.claude-plugin/marketplace.json`
+— a read — was blocked as "moving a marketplace pin": the read exemption names `git -C \S+ show`, and
+`\S+` ended at the space. Class search over origin/main: 9 sites in 5 files (mechanism-rules.json 3 —
+marketplace read exemption, commit with a variable path list, stash; decision-review.py 3;
+public-text-guard.cjs 1 — commit message check; review-claim-gate.cjs 1 — diff/show read;
+templates/rules-instance/start-report-patterns.json 1). All read the quoted form in the same commit;
+`test-guards.sh` carries the three space-path probes, the pattern starts with no baseline.

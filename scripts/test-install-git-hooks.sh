@@ -2,10 +2,11 @@
 # Fixture for scripts/install-git-hooks.sh, both directions: the default writes the hooks path into
 # the brain's own config and leaves the user's config alone; --global writes the user's config;
 # --check accepts either, and refuses an unset path and a local path that points elsewhere (git
-# itself lets the local value win). Sandbox only: GIT_CONFIG_GLOBAL is a temp file.
+# itself lets the local value win); the default refuses hooks that are not inside the target repo.
+# Sandbox only: GIT_CONFIG_GLOBAL is a temp file.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-S="$HERE/install-git-hooks.sh"
+SRC="$HERE/install-git-hooks.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 FAIL=0
@@ -17,6 +18,10 @@ export GIT_CONFIG_GLOBAL="$(native "$TMP/gitconfig")" GIT_CONFIG_NOSYSTEM=1
 : > "$TMP/gitconfig"
 B="$TMP/brain"; O="$TMP/other"
 git init -q "$B"; git init -q "$O"
+# the brain carries its own core (script + hooks dir), as a real brain does
+mkdir -p "$B/core/scripts" "$B/core/helpers/git-hooks"
+cp "$SRC" "$B/core/scripts/install-git-hooks.sh"; : > "$B/core/helpers/git-hooks/pre-commit"
+S="$B/core/scripts/install-git-hooks.sh"
 glob() { git config --global --get core.hooksPath; }
 loc() { git -C "$1" config --local --get core.hooksPath; }
 
@@ -27,6 +32,12 @@ out=$(cd "$B" && bash "$S")
 [ -z "$(glob)" ] && pass "default leaves the user's config alone" || fail "default wrote the global config: $(glob)"
 ( cd "$B" && bash "$S" --check >/dev/null ) && pass "--check accepts a local hooks path" || fail "--check refuses the local path"
 ( cd "$O" && bash "$S" --check >/dev/null ) && fail "--check passes in a repo without hooks" || pass "another repo stays without the hooks"
+
+# another checkout's script started from this repo: refused, nothing written (2026-11-20: a scratch core
+# clone's script, run from the brain's root, pointed the brain at the clone's hooks)
+out=$(cd "$O" && bash "$S" 2>&1); rc=$?
+[ "$rc" = 1 ] && [ -z "$(loc "$O")" ] && pass "hooks of another checkout are refused and nothing is written" \
+  || fail "another checkout's hooks: rc=$rc local='$(loc "$O")' $out"
 
 git -C "$B" config --local core.hooksPath "$TMP/elsewhere"
 ( cd "$B" && bash "$S" --check >/dev/null ) && fail "--check passes a local path that points elsewhere" \

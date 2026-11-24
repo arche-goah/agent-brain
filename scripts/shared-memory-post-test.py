@@ -179,6 +179,15 @@ def main() -> int:
              post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "t")),
             ("the same by person", post(repo, "request", "--area", "core", "--to", "person:sam", "--title", "s")),
             # 2026-11-03: 17 LOG lines over the entry cap since 2026-10-31, every one written by this tool
+            # 2026-11-18: written here, refused by the lint's reader at the pre-commit (check 9)
+            ("a Windows run the lint reads, to one Windows device",
+             post(repo, "request", "--area", "core", "--to", "alex-win", "--title",
+                  "Replay: your Windows run at the next train head", "--body", "Please post the exit code.")),
+            # the same for a reply (2026-11-18: "the Windows check of #34 goes to ..." to one Windows device, refused at pre-commit)
+            ("a reply the lint reads as a Windows check, to one Windows device",
+             post(repo, "reply", "--area", "core", "--to", "alex-win", "--title",
+                  "Re: your Windows run at the next train head", "--body", "Please post the exit code.",
+                  "--answers", f"request-check-core-42-on-windows-{STATE}")),
             ("a LOG line over the entry cap",
              post(repo, "note", "--area", "core", "--to", "kim-pc", "--title", "long title " * 30,
                   date=sml.LOG_CAP_SINCE)),
@@ -331,6 +340,23 @@ def main() -> int:
                     ("Single PR with a reason", "Please run the fixtures on Windows at the head of #1.",
                      ["--hand-check-ok", "touches the Windows hook path only a machine shows"], 0,
                      "a stated reason lets a single-PR hand check go"),
+                    # 2026-11-20: the wordings of four requests that passed unseen
+                    ("Review single PR", "Please review #1 at abc1234 on Windows.", [], 2,
+                     "'please review' with Windows for a single PR is refused"),
+                    ("Re-check single PR", "Re-check #1 at abc1234 on Windows - the finding is fixed.", [], 2,
+                     "'re-check' on Windows for a single PR is refused"),
+                    ("Run on Windows single PR", "Run on Windows the fixture of #1 at abc1234.", [], 2,
+                     "'run on Windows' for a single PR is refused"),
+                    ("Content review only", "Please review #1 at abc1234: Fit, Design, Cost, Gaps.", [], 0,
+                     "control: a content review that names no OS passes"),
+                    # 2026-11-20 replay: to os:<os>, the title is a check sentence whatever its words
+                    ("Windows-Pruefung o/core#1 am Kopf abc1234", "Der Fix ist drin.", [], 2,
+                     "a title naming the OS and a single PR is refused without a check word"),
+                    ("Content review: o/core#1 start findings", "Fit, Design, Cost, Gaps.", [], 0,
+                     "control: a title naming no OS passes"),
+                    # content review of #622: a content-review title naming the OS is no hand check
+                    ("Content review core o/core#1 on Windows", "Fit, Design, Cost, Gaps; no hand run.", [], 0,
+                     "a content-review title naming the OS passes"),
                 ):
                     r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                              *extra, me="alex-mac", brain=cip)

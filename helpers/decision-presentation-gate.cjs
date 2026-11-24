@@ -44,6 +44,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { promptModes, words } = require('./autonomous-mode.cjs');
 const ITEM_CLASS = /\bclass:\s*`?(decision|hand-step)\b/i;
@@ -55,6 +56,13 @@ const { newestExitKind } = require('./ledger-exit.cjs');
 const OPERATOR_CIRCLES = new Set(['B', 'E', 'F']);
 
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
+
+/** An open question to the operator inside an entry: a `question:` field line, or an instance pattern. */
+function questionRx(cfg) {
+  const extra = (cfg && Array.isArray(cfg.operator_question_patterns) ? cfg.operator_question_patterns : [])
+    .filter((p) => { try { new RegExp(p); return true; } catch (e) { return false; } });
+  return new RegExp(['^\\s*(?:[-*]\\s+)?question:\\s*\\S', ...extra].join('|'), 'm');
+}
 
 /** Open `class: decision` and `class: hand-step` entries of the registered ledgers, as short titles. */
 function ledgerDecisions(root) {
@@ -71,7 +79,14 @@ function ledgerDecisions(root) {
       const block = [lines[i]];
       while (j < lines.length && lines[j].startsWith(' ')) block.push(lines[j++]);
       const body = block.join('\n');
-      if (!ITEM_CLASS.test(body)) continue;
+      // ONE predicate says whether the entry waits on the operator; the class decides only where no exit is written yet.
+      // Two incidents on the macOS instance each added one input form the count did not read, and each time the
+      // operator's own "ask me now" left the question tool refused: 2026-11-18 a proposal filed `class: todo` with the
+      // exit operator-decision; 2026-11-23 the operator's questions under the agent's own exit (below). Read apart,
+      // the two fixes still missed their product: a `class: todo` entry with a question line under `ai-does-it`.
+      const exit = newestExitKind(body);
+      const asksOperator = (exit === 'ai-does-it' || exit === 'in-pr') && questionRx(cfg).test(body);
+      if (exit ? (exit !== 'operator-decision' && !asksOperator) : !ITEM_CLASS.test(body)) continue;
       const circle = /^\s+(?:-\s*)?circle:\s*`?([A-Fa-f])\b/m.exec(body);
       if (circle && !OPERATOR_CIRCLES.has(circle[1].toUpperCase())) continue;
       // The entry's NEWEST exit line (helpers/ledger-exit.cjs) says who moves now; only
@@ -79,8 +94,11 @@ function ledgerDecisions(root) {
       // instance: 22 entries counted, by their exits 12 later-at-system, 5 parked, 4 other-side,
       // 1 ai-does-it — none an operator decision.
       // A field may stand as its own list item (`  - exit: ...`), as the project ledgers write it.
-      const exit = newestExitKind(body);
-      if (exit && exit !== 'operator-decision') continue;
+      // A question to the operator is its own line, not a side effect of the exit (macOS incident 2026-11-23: one entry
+      // held the AI's remaining work AND the operator's questions; its exit read ai-does-it, the count was 0, and the
+      // operator's "ask me now" did not end the autonomous run). A `question:` line, or a line matching the instance's
+      // `operator_question_patterns` (ledgers.json), outranks the AGENT'S OWN exits (ai-does-it, in-pr - they cannot carry
+      // a question to the operator); a wait (later-at-system, other-side, parked) still parks it until its reason falls.
       // `ask-when:` (operator decision 2026-10-29 on the macOS instance: "questions at the right time"): a date
       // still ahead, or a topic (`ask-when: thema|topic <regex>`, put when the operator's work touches it) - not due here.
       const when = /^\s*(?:[-*]\s+)?ask-when:\s*(.+)$/m.exec(body);
@@ -141,15 +159,25 @@ function turnSince(transcriptPath, lastPrompt) {
 function judge(input) {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const modes = promptModes(input.transcript_path || '', root);
-  if (!modes.length || modes[modes.length - 1].autonomous) return null; // in the run, or "yes, continue"
+  if (!modes.length) return null;
+  const last = modes[modes.length - 1];
   let n = modes.length - 1;
   while (n >= 0 && modes[n].answer) n--; // the newest operator PROMPT, not an answer to a question
   if (n < 0) return null;
   const now = modes[n];
-  const wasOn = n > 0 && modes[n - 1].autonomous;
+  // The asking prompt's own turn with no question answered: the run is still autonomous (autonomous-mode.cjs, the
+  // window), and what is filed as open is the DUTY this hook carries - a turn that asked nothing while a decision is
+  // open is held; with nothing open the run goes on and nothing is owed.
+  // a PURE deferred window (an order that only pre-authorizes a later question) is no asking prompt: nothing is owed
+  // in its turns (train 2026-11-23: it held the order's own turn and every timer turn after it). A prompt that asks
+  // what is open AND defers a later question still owes the answer (second review of the train).
+  const window = last === now && Boolean(now.window) && !(now.deferred && !now.asks);
+  if (last.autonomous && !window) return null; // in the run, or "yes, continue"
+  const wasOn = window || (n > 0 && modes[n - 1].autonomous);
   if (!now.asks && !wasOn) return null;
   const open = [...ledgerDecisions(root), ...registerDecisions(root)];
   const { calls, cmds, since } = turnSince(input.transcript_path, now.text);
+  if (window && !open.length && !calls.length) return null;
   const missing = [];
   if (open.length && !calls.length) {
     missing.push(`${open.length} operator hand step(s) and decision(s) through the question tool (one question each, recommended option first; ` +
@@ -176,12 +204,12 @@ if (require.main === module) {
   process.stdin.on('data', (c) => { raw += c; });
   process.stdin.on('end', () => {
     let input;
-    try { input = JSON.parse(raw); } catch (e) { process.exit(0); }
-    if (input.stop_hook_active) process.exit(0);
+    try { input = JSON.parse(raw); } catch (e) { hookExit(0); }
+    if (input.stop_hook_active) hookExit(0);
     let reason = null;
     try { reason = judge(input); } catch (e) { reason = null; }
     if (reason) console.log(JSON.stringify({ decision: 'block', reason }));
-    process.exit(0);
+    hookExit(0);
   });
 }
 

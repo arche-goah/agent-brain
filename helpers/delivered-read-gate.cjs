@@ -27,6 +27,7 @@
  * through: acting on a description in a later turn while the file says otherwise.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
 
 // Own echo: legacy token or, behind the dispatcher, the label line (stop-echo.cjs).
@@ -36,7 +37,7 @@ const HOOK_ECHO = /^Stop hook feedback:|Stop hook blocking error/;
 const LINE = /^\s*-\s+\d{4}-\d{2}-\d{2}\s+\[[^\]]+\]\s+[^:\n]+:.*\(([\w./-]+\.md)\)\s*(?:<\/[\w-]+>\s*)*$/gm;
 const ESCAPE = /\bunread-ok:\s*\S/i;
 
-function allow() { process.exit(0); }
+function allow() { hookExit(0); }
 
 function textOf(content) {
   if (typeof content === 'string') return content;
@@ -117,7 +118,7 @@ process.stdin.on('end', () => {
       'is its description, not the message. Read the file before acting on it, or say ' +
       '`unread-ok: <why>` if you are deliberately not acting on it.',
   }, input)));
-  process.exit(0);
+  hookExit(0);
 });
 process.stdin.resume();
 

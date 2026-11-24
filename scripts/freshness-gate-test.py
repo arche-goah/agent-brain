@@ -210,6 +210,31 @@ with tempfile.TemporaryDirectory() as tmp:
     st = make_state(tmp, "brain-scan", age_days=8)
     res = run({"script": scan}, st, root)
     cases.append(("instance entry replaces the brain-scan default", res is not None))
+
+    # 16 an instance entry below the core floor does not lower it (a brain once set 6; the floor is 7)
+    json.dump({"workflows": {"brain-scan": {"thresholdDays": 6}}}, open(cfgp, "w", encoding="utf-8"))
+    st = make_state(tmp, "brain-scan", age_days=6.5)
+    res = run({"script": scan}, st, root)
+    cases.append(("instance entry below the floor does not lower it", res is not None))
+
+    # 17 the global fallback below the floor does not lower it either (macOS review of #539)
+    json.dump({"thresholdDays": 1, "workflows": {"brain-scan": {"minTokens": 0}}}, open(cfgp, "w", encoding="utf-8"))
+    st = make_state(tmp, "brain-scan", age_days=3)
+    res = run({"script": scan}, st, root)
+    cases.append(("global fallback below the floor does not lower it", res is not None))
+
+    # 18/19 the token bound is the floor's second lever (Windows review of #539): a huge minTokens, per workflow or
+    # global, must not turn a full brain-scan into a "cheap probe"; 20: another workflow keeps its instance bound
+    st = make_state(tmp, "brain-scan", age_days=2)
+    json.dump({"workflows": {"brain-scan": {"minTokens": 1e12}}}, open(cfgp, "w", encoding="utf-8"))
+    res = run({"script": scan}, st, root)
+    cases.append(("a per-workflow minTokens above the core default does not lift the floor", res is not None))
+    json.dump({"minTokens": 1e12}, open(cfgp, "w", encoding="utf-8"))
+    res = run({"script": scan}, st, root)
+    cases.append(("a global minTokens above the core default does not lift the floor", res is not None))
+    st = make_state(tmp, "coherence-scan", age_days=2)
+    res = run({"name": "coherence-scan", "args": {"date": "2026-11-08", "scratch": "/x"}}, st, root)
+    cases.append(("a workflow without a core floor keeps the instance token bound (control)", res is None))
     os.unlink(cfgp)
 
 fails = [n for n, ok in cases if not ok]

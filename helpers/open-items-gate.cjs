@@ -54,9 +54,10 @@
  * on "Missing:". Fails open on unreadable input: a crashed gate must not stop a session.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const { isSkillExpansion, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorWords, isTurnEnd } = require('./turn-kind.cjs');
-const { autonomousMode } = require('./autonomous-mode.cjs');
+const { autonomousMode, modelSays } = require('./autonomous-mode.cjs');
 const { PRE_COMMIT, closeOpenEnds } = require('./close-stamp.cjs');
 
 const MAX_BYTES = 16 * 1024 * 1024; // the first turn sits at the top; a huge file is past it
@@ -148,6 +149,7 @@ function readTurn(tp) {
   let newest = [];
   let lastCmds = []; // ...and its shell commands (is it the session-close turn?)
   let lastPrompt = '';
+  let lastAt = ''; // when the operator wrote lastPrompt (the classifier record is matched by it)
   let since = ''; // when the running turn began (the close stamp must be no older)
   let ended = false; // the first turn has ended (turn-kind isTurnEnd)
   for (const line of raw.split('\n')) {
@@ -170,14 +172,14 @@ function readTurn(tp) {
     // A message typed mid-turn (queued_command, turn-kind #139) is the operator's WORD - it can be
     // the "is anything open?" this gate answers - but no turn BOUNDARY: the reply buffer stays.
     const queued = queuedHumanPrompt(d);
-    if (queued) { lastPrompt = queued; continue; }
+    if (queued) { lastPrompt = queued; lastAt = d.timestamp || ''; continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
     if (msg.role === 'user') {
       if (isSkillExpansion(d) || isAgentOrigin(d)) continue;   // a loaded skill's text or another agent's report is no second prompt
       const t = promptText(msg);
       if (t !== null) newest = [];   // any user text - a prompt, a watcher event, a hook echo - opens a new reply
-      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; last = []; lastCmds = []; lastPrompt = t; since = d.timestamp || ''; if (prompts === 1) first = t; }
+      if (t !== null && !NOT_A_PROMPT.test(t)) { prompts++; total++; last = []; lastCmds = []; lastPrompt = t; since = d.timestamp || ''; lastAt = since; if (prompts === 1) first = t; }
       continue;
     }
     if (msg.role === 'assistant' && Array.isArray(msg.content)) {
@@ -197,7 +199,7 @@ function readTurn(tp) {
       }
     }
   }
-  return { boot, prompts, total, ended, first, reply: reply.join('\n'), last: last.join('\n'), newest: newest.join('\n'), lastCmds, lastPrompt, since };
+  return { boot, prompts, total, ended, first, reply: reply.join('\n'), last: last.join('\n'), newest: newest.join('\n'), lastCmds, lastPrompt, lastAt, since, tp };
 }
 
 /**
@@ -476,7 +478,9 @@ function relabelled(t, cwd, sessionId) {
   if (t.prompts === 1) return null;
   const closing = (t.lastCmds || []).some((c) => PRE_COMMIT.test(c));
   // A pasted ticket that asks "anything open?" is not the operator asking (operatorWords, 2026-10-28).
-  const asked = patterns(cwd, 'ask').test(operatorWords(t.lastPrompt));
+  // A prompt classifier's record of that prompt decides (asks_open, operator decision 2026-11-18); no record = the words.
+  const model = modelSays('asks_open', t.tp, cwd, t.lastAt, t.lastPrompt);
+  const asked = model === null ? patterns(cwd, 'ask').test(operatorWords(t.lastPrompt)) : model;
   if (!closing && !asked && !patterns(cwd, 'nothing').test(t.last)) return null;
   // An item this close already carries as an `open end:` line of its session-log entry
   // (close-stamp.cjs, skill session-close step 4) is named — on record, where the next session
@@ -495,6 +499,12 @@ function judge(input) {
   const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const t = readTurn(input.transcript_path);
   if (!t) return null;
+  // A HELPER session reports the orders of the session it helps, not the brain's open items: those belong to that
+  // session (session-scope.cjs; the operator sets the scope by a typed message in this transcript).
+  {
+    const { operatorMessages } = require('./autonomous-idle-gate.cjs');
+    if (require('./session-scope.cjs').scopeOf(cwd, input.transcript_path, operatorMessages(input.transcript_path))) return null;
+  }
   if (!t.boot) {
     // No bootup record at all: only the very first turn of a session is ours to judge.
     if (t.total !== 1 || t.ended) return null;
@@ -618,11 +628,11 @@ if (require.main === module) {
   process.stdin.on('data', (c) => { data += c; });
   process.stdin.on('end', () => {
     let input;
-    try { input = JSON.parse(data); } catch (e) { process.exit(0); }
-    if (input.stop_hook_active) process.exit(0);
+    try { input = JSON.parse(data); } catch (e) { hookExit(0); }
+    if (input.stop_hook_active) hookExit(0);
     let reason = null;
     try { reason = judge(input); } catch (e) { reason = null; }
     if (reason) console.log(JSON.stringify({ decision: 'block', reason }));
-    process.exit(0);
+    hookExit(0);
   });
 }

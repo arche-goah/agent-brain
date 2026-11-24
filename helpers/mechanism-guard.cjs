@@ -37,6 +37,7 @@
  * without the flag keep the old behaviour; a brain that never sets it changes nothing.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const { withoutPublished, answerHalves } = require('./published-text.cjs');
 
 // A heredoc body is literal text ONLY when its consumer cannot execute it. Scanning the
@@ -366,14 +367,14 @@ process.stdin.on('end', () => {
     background = monitor || ti.run_in_background === true;
     filePath = (ti.file_path || ti.notebook_path || '').replace(/\\/g, '/');
   } catch (_) {
-    process.exit(0);
+    hookExit(0);
   }
   // A marker is a deliberate, justified deviation. It opens every rule as before — except a
   // rule that needs the operator's word, which reads the justification before it opens.
   const marker = /MECHANISM-OK:([\s\S]*)$/.exec(cmd);
   const project = process.env.CLAUDE_PROJECT_DIR || '.';
   const rules = loadRules();
-  if (marker && !rules.some((r) => r.needsOperatorWord)) process.exit(0);
+  if (marker && !rules.some((r) => r.needsOperatorWord)) hookExit(0);
 
   // The published text of gh/git (messages, titles, bodies, fields) is data, not a command: the
   // shared extraction blanks exactly those values and leaves every other byte for the rules
@@ -431,7 +432,7 @@ process.stdin.on('end', () => {
         permissionDecisionReason: msg,
       },
     }));
-    process.exit(0);
+    hookExit(0);
   }
   // A long run no rule names (2026-10-31, helpers/long-runs.cjs): a script that declares itself
   // `long-run: detached`, or one the operator once had to background by hand. A marker opens it.
@@ -449,8 +450,8 @@ process.stdin.on('end', () => {
             'and keep working; read its result line before claiming anything (Working Rule #13).',
         },
       }));
-      process.exit(0);
+      hookExit(0);
     }
   }
-  process.exit(0);
+  hookExit(0);
 });

@@ -80,6 +80,7 @@
  * Fixture: scripts/test-question-gate.sh.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 const crypto = require('crypto');
 const { isNotification, isTranscriptRecord, operatorWords, queuedHumanPrompt } = require('./turn-kind.cjs');
@@ -335,13 +336,45 @@ function siblingQuestionSets(tp, toolUseId) {
   return calls.filter((c) => c.msg === msgId && c.id !== toolUseId && Array.isArray(c.qs) && c.qs.length).map((c) => c.qs);
 }
 
+/** The mode question asked alone right after an answered question-tool call with no other tool call since; once per
+ *  distinct question (state .claude-state/question-gate-mode.json). Fails open on any read error. */
+function modeAlone(input, q) {
+  let on = null; let asksMode = null;
+  try { const am = require('./autonomous-mode.cjs'); on = am.words(root(input.cwd)).on; asksMode = am.asksMode; } catch (e) { return false; }
+  if (!on || !asksMode || !asksMode(on, String(q.question || ''))) return false;
+  let lines;
+  try { lines = fs.readFileSync(input.transcript_path, 'utf8').split('\n'); } catch (e) { return false; }
+  const askIds = new Set(); let answered = false; let calls = 0; let round = '';
+  for (const l of lines) {
+    let d; try { d = JSON.parse(l); } catch (e) { continue; }
+    const content = d && d.message && Array.isArray(d.message.content) ? d.message.content : [];
+    for (const b of content) {
+      if (b && b.type === 'tool_use') {
+        if (b.name === 'AskUserQuestion') askIds.add(b.id);
+        else if (answered) calls += 1;
+      } else if (b && b.type === 'tool_result' && askIds.has(b.tool_use_id) && b.tool_use_id !== input.tool_use_id && !b.is_error) {
+        answered = true; calls = 0; round = b.tool_use_id;
+      }
+    }
+  }
+  if (!answered || calls) return false;
+  // the key is the answer round: a new round of answers holds the mode question anew (Windows review 2026-11-18:
+  // keyed by the question text alone, a hold that was released stayed `held`, and the next round passed unheld)
+  const key = require('crypto').createHash('sha1').update(`${round}\n${String(q.question || '')}`).digest('hex');
+  const sp = path.join(root(input.cwd), '.claude-state', 'question-gate-mode.json');
+  let st = {}; try { st = JSON.parse(fs.readFileSync(sp, 'utf8')); } catch (e) { /* first */ }
+  try { fs.mkdirSync(path.dirname(sp), { recursive: true }); fs.writeFileSync(sp, JSON.stringify(st.held === key ? { passed: key } : { held: key })); } catch (e) { /* ignore */ }
+  return st.held !== key;
+}
+
 /** PreToolUse on the question tool: an aged question is measured before it is asked again. */
 /** Ledger ids named in the questions whose `check:` passes now (core/scripts/ledger-reconcile.py --ids).
  *  Candidates are slugs of three or more parts; the script answers only for ids its registered ledgers carry.
  *  Fails open: no interpreter, a timeout or an unreadable answer = no hit. */
 function doneLedgerIds(input, qs) {
   const text = qs.map((q) => [q.question, q.header, ...((q.options || []).map((o) => `${o.label || ''} ${o.description || ''}`))].join(' ')).join(' ');
-  const ids = [...new Set(text.match(/\b[a-z0-9]+(?:-[a-z0-9]+){2,}\b/g) || [])];
+  // slugs of three or more parts, and the codes a ledger title opens with (KS-110, FA22-03 - 2026-11-18)
+  const ids = [...new Set(text.match(/\b[a-z0-9]+(?:-[a-z0-9]+){2,}\b|\b[A-Z][A-Z0-9]*-[0-9]+\b/g) || [])];
   if (!ids.length) return [];
   const r = root(input.cwd);
   const script = path.join(__dirname, '..', 'scripts', 'ledger-reconcile.py');
@@ -350,7 +383,7 @@ function doneLedgerIds(input, qs) {
   for (const py of ['python3', 'python']) {
     const p = spawnSync(py, [script, '--root', r, '--ids', ids.join(',')], { encoding: 'utf8', timeout: 8000, windowsHide: true });
     let res; try { res = JSON.parse(String(p.stdout || '').trim().split('\n').pop()); } catch (e) { continue; }
-    return Object.entries(res || {}).filter(([, v]) => v === 'pass').map(([k]) => k);
+    return Object.entries(res || {}).filter(([, v]) => v === 'pass' || v === 'ticked').map(([k]) => k);
   }
   return [];
 }
@@ -405,6 +438,24 @@ function preTool(input) {
       return;
     }
   }
+  // The mode question ALONE, but right after answered decisions with no step run since (2026-11-18, macOS instance;
+  // the operator: "you put the mode question before the interactive things were done"): the settings.json edit just
+  // allowed then met the autonomous gate and stayed undone. Held ONCE per distinct question - the answers may have
+  // needed no step, then the same call passes. ponytail: any tool call counts as "the steps ran"; an unrelated call
+  // between the answers and the mode question passes. Upgrade: match the answered options to the calls they need.
+  if (qs.length === 1 && !siblings.length && modeAlone(input, qs[0])) {
+    process.stdout.write(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason:
+          'QUESTION-GATE: the mode question comes right after answered decisions, with no step run since. '
+          + 'Carry out what the answers set off first (an edit behind an ask rule, a merge the classifier holds, a hand step), '
+          + 'then ask the mode question. If no answer needs a step, ask it again unchanged - it passes. (Measured 2026-11-18.)',
+      },
+    }));
+    return;
+  }
   // A question that names a ledger entry runs that entry's check first (operator 2026-10-31, question tool:
   // "Ja, Kern-PR bauen"). Measured twice that evening on the macOS instance: points taken from a register and
   // from a three-hour-old start report went to the operator as decisions while their checks were green - 2 of 4,
@@ -416,7 +467,7 @@ function preTool(input) {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
         permissionDecisionReason:
-          `QUESTION-GATE: this question names ledger item(s) whose check passes now: ${done.slice(0, 4).join(', ')}. `
+          `QUESTION-GATE: this question names ledger item(s) that are done (check passes now, or ticked): ${done.slice(0, 4).join(', ')}. `
           + 'A green check means the item is done - tick it with the evidence and report it; ask only what is still open. '
           + '(Measured 2026-10-31: points from an older report reached the operator although they were done.)',
       },
@@ -553,7 +604,7 @@ function cli(args) {
 }
 
 if (process.argv.length > 2) {
-  process.exit(cli(process.argv.slice(2)));
+  hookExit(cli(process.argv.slice(2)));
 } else {
   let data = '';
   process.stdin.setEncoding('utf8');
@@ -563,6 +614,6 @@ if (process.argv.length > 2) {
       const input = JSON.parse(data || '{}');
       if (input.hook_event_name === 'PreToolUse' || input.tool_name) preTool(input); else gate(input);
     } catch (e) { /* fail open */ }
-    process.exit(0);
+    hookExit(0);
   });
 }

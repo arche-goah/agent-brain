@@ -51,13 +51,21 @@ brain b2 '{"permissions":{"allow":["Bash(gh pr ready*)","Bash(gh pr create*)","B
 out="$(run b2)"
 [ -z "$out" ] && ok "complete brain (plus own extras) is silent" || bad "complete brain reported: '$out'"
 
-# 3 a declared deviation with a reason is silent; an empty reason is not a declaration
-brain b3 '{"permissions":{"allow":["Bash(git status*)","Bash(gh pr create*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"],"_template_deviations":{"Bash(gh pr ready*)":"this brain never drafts"}}}'
+# 3 a declared deviation counts time-limited or recertified (operator rule 2026-11-18); a bare text or an empty reason does not
+brain b3 '{"permissions":{"allow":["Bash(git status*)","Bash(gh pr create*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"],"_template_deviations":{"Bash(gh pr ready*)":{"until":"2999-01-01","why":"this brain never drafts"}}}}'
 out="$(run b3)"
-[ -z "$out" ] && ok "declared deviation with a reason is silent" || bad "declared deviation reported: '$out'"
+[ -z "$out" ] && ok "a time-limited declared deviation is silent" || bad "declared deviation reported: '$out'"
+brain b3t '{"permissions":{"allow":["Bash(git status*)","Bash(gh pr create*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"],"_template_deviations":{"Bash(gh pr ready*)":"this brain never drafts"}}}'
+out="$(run b3t)"
+case "$out" in *'do not count'*'gh pr ready'*'no date'*) ok "a bare-text declaration is named as not counting (superseded 2026-11-18: it was silent)";; *) bad "bare text not named: '$out'";; esac
 brain b3b '{"permissions":{"allow":["Bash(git status*)","Bash(gh pr create*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"],"_template_deviations":{"Bash(gh pr ready*)":"  "}}}'
 out="$(run b3b)"
 case "$out" in *'gh pr ready'*) ok "a blank reason is no declaration";; *) bad "blank reason silenced the rule: '$out'";; esac
+
+# Windows review of #599 (2026-11-18): a declaration that does not count AND an undeclared missing rule - one message, both parts
+brain b3m '{"permissions":{"allow":["Bash(git status*)"],"ask":["Edit(.claude/settings.json)"],"deny":["Bash(git push --force*)"],"_template_deviations":{"Bash(gh pr ready*)":"this brain never drafts"}}}'
+out="$(run b3m)"
+case "$out" in *'do not count'*'gh pr ready'*'gh pr create'*) ok "a non-counting declaration and an undeclared missing rule are named in one run";; *) bad "one part missing: '$out'";; esac
 
 # 4 a missing deny is named too (a dropped limit)
 brain b4 '{"permissions":{"allow":["Bash(gh pr ready*)","Bash(gh pr create*)","Bash(git status*)"],"ask":["Edit(.claude/settings.json)"]}}'
