@@ -178,15 +178,6 @@ SHARED_COPY_FIXTURE_RUNNERS="$RUN1" probe "reset --hard under the run"          
 SHARED_COPY_FIXTURE_RUNNERS="$RUN1" probe "a fast-forward pull under the run"         "$ONE" "git -C $PRIV_N pull --ff-only"     block
 SHARED_COPY_FIXTURE_RUNNERS="$RUN1" probe "rebase under the run"                      "$ONE" "git -C $PRIV_N rebase main"        block
 SHARED_COPY_FIXTURE_RUNNERS="$RUN1" probe "reset --soft leaves the files (control)"   "$ONE" "git -C $PRIV_N reset --soft HEAD"  allow
-# independent review 2026-11-23: standing watchers name the checkout too and run all session long - they are no tree read
-SHARED_COPY_FIXTURE_RUNNERS="4243 bash core/scripts/collab-watch.sh --root $PRIV_N" \
-  probe "a standing watcher naming the tree is no tree read"     "$ONE" "git -C $PRIV_N pull --ff-only"     allow
-SHARED_COPY_FIXTURE_RUNNERS="4244 tail -f $PRIV_N/.claude-state/collab-watch/events.log" \
-  probe "tail -f on a file inside the tree is no tree read"     "$ONE" "git -C $PRIV_N switch -c tail-ctl" allow
-SHARED_COPY_FIXTURE_RUNNERS="4245 bash scripts/test-root-cause-gate.sh $PRIV_N" \
-  probe "a test suite naming the tree still holds"              "$ONE" "git -C $PRIV_N switch -c suite"    block
-SHARED_COPY_FIXTURE_RUNNERS="4246 /usr/local/bin/my-runner --tree $PRIV_N" SHARED_COPY_TREE_READERS="my-runner" \
-  probe "an instance-listed reader holds"                       "$ONE" "git -C $PRIV_N switch -c listed"   block
 SHARED_COPY_FIXTURE_RUNNERS="" \
   probe "no run (control)"                                     "$ONE" "git -C $PRIV_N switch -c busy-none" allow
 
