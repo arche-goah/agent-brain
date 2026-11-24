@@ -602,7 +602,7 @@ def audience_findings(f: dict, where: str, audience: str, what: str, parties: di
                               "fix": "a device id, person:<person> or os:<macos|windows|linux> "
                                      "from parties.json, or an everyone spelling"})
     one = _parties.windows_check_to_one_device(what, audience, parties)
-    if one and not _parties.ONE_MACHINE.search(escape) and not _parties.EXCEPT_FIELD.search(escape):
+    if one and not _parties.ONE_MACHINE.search(escape):
         f["audience"].append({"where": where, "issue": "a Windows check goes to one machine",
                               "device": one,
                               "fix": "address os:windows so every Windows machine can run it — "

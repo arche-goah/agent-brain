@@ -457,6 +457,12 @@ def main() -> int:
         t = t.read_text(encoding="utf-8") if t.is_file() else ""
         check("--except person:<p> leaves every device of that person out of a broad address",
               "  audience: kim-win, lee-win\n" in t and "  except: max-pc, max-win\n" in t, r.stdout + r.stderr + t)
+        # Windows review of #657 (2026-11-24): narrowing down to ONE Windows device needs --one-machine like a direct address
+        r = post(repo, "request", "--area", "grandma3", "--to", "os:windows", "--except", "person:max,kim-win",
+                 "--title", "Verify suite t6 on Windows", *body, me="kim-mac")
+        check("--except that leaves one Windows device for a Windows check is refused without --one-machine",
+              r.returncode != 0 and "one-machine" in r.stdout + r.stderr
+              and not (repo / "grandma3" / f"request-verify-suite-t6-on-windows-{STATE}.md").is_file(), r.stdout + r.stderr)
         r = post(repo, "request", "--area", "grandma3", "--to", "os:windows", "--except", "nobody-known",
                  "--title", "Verify suite t5 on Windows", *body, me="kim-mac")
         check("--except with an unknown token is refused", r.returncode != 0 and "does not know" in r.stdout + r.stderr,

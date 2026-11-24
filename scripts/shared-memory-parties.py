@@ -306,9 +306,9 @@ def non_report_clauses(text: str, is_check) -> list[str]:
             if not (REPORT_WORDS.search(c) and not is_check(REPORT_WORDS.sub(" ", c)))]
 # The writer's way to say one machine IS needed (the finding then stays silent).
 ONE_MACHINE = re.compile(r"\bone[- ]machine:|\bnur diese maschine\b", re.I)
-# An entry that narrowed a broad address on purpose (`except:`, written by shared-memory-post.py) names the devices
-# it reaches; a single Windows device left there is the result of that choice, not a misaddressed check.
-EXCEPT_FIELD = re.compile(r"^\s+except:\s*\S", re.M)
+# A narrowed address is no reason for one machine (Windows review of #657, 2026-11-24: an `except:` line - empty,
+# in the body, in a LOG section, with an unknown token - silenced the one-machine finding). A narrowed entry that
+# leaves one Windows device needs `one-machine:` like a direct address; one that leaves two or more is no finding.
 
 
 def windows_check_to_one_device(text: str, audience: str, parties: dict) -> str | None:

@@ -31,7 +31,8 @@ can be included by name or excluded:
 Naming a device or the person by itself still reaches them. The post tool resolves the category and writes the devices
 it reaches into `audience` and `next`, with the left-out ones under `except:` — so a reader on an older core, which knows
 no `except:`, is not addressed either. A hand-written entry may keep the category and add `except:`; the inbox honours
-it, and the lint's "Windows check to one machine" stays silent on an entry that narrowed itself this way.
+it. Narrowing is no reason for one machine: an entry left with ONE Windows device for a Windows check needs
+`one-machine: <why>` like a direct address - the post tool refuses it without `--one-machine`, the lint names it.
 
 ## Who is asked first: priority (a hint, never a sequence)
 

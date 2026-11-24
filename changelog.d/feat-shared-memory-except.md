@@ -6,4 +6,4 @@
   days, all `audience: os:windows`). Generalises `without_access`: `left_out()` in `shared-memory-parties.py`;
   `shared-memory-post.py --except <tokens>` and `people.<p>.except_topics` narrow a category; the post tool writes the
   devices it reaches plus `except:`, so an older reader is not addressed either; the inbox honours a hand-written
-  `except:`, the lint's one-machine check stays silent on a narrowed entry. Cases: post 5, audience 3, lint 2.
+  `except:`; narrowing is no reason for one machine (a narrowed Windows check left with one device needs `--one-machine`, the lint names it - Windows review of this PR). Cases: post 6, audience 3, lint 5.

@@ -461,6 +461,14 @@ def main() -> int:
             print(f"left out of {', '.join(to)}: {', '.join(dropped)} (--except, or except_topics "
                   f"'{a.area}' in parties.json); the entry names the devices it reaches")
             to = reached
+            # The narrowed address meets the same one-machine rule as a direct one (Windows review of #657,
+            # 2026-11-24: `--to os:windows --except <every other Windows device>` wrote a check to ONE machine with
+            # no reason, while `--to <that machine>` is refused).
+            if a.kind in ("request", "note", "reply") and not a.one_machine:
+                one = _parties.windows_check_to_one_device(a.title + "\n" + body, ", ".join(to), parties)
+                if one:
+                    return refuse(f"left out down to one machine ({one}), and this asks for a Windows check - a "
+                                  "check only that machine can do: --one-machine <reason>")
     stem = f"{a.kind}-{slug(a.title)}-{a.date}"
     path = area_dir / f"{stem}.md"
     if path.exists():

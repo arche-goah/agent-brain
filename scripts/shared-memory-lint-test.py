@@ -613,8 +613,14 @@ def main() -> int:
             (repo / "ops" / f"{stem}.md").unlink()
             return res
 
-        res = narrowed("  except: max-win\n")
-        ok("54g NEGATIVE: a narrowed address left with one Windows device is silent") if not res else bad(f"54g: {res}")
+        # Windows review of #657 (2026-11-24): a narrowed address is no reason for one machine - every form of an
+        # `except:` line (filled, empty, unknown token) left the one-machine finding silent, a bypass of `one-machine:`
+        for extra, label in (("  except: max-win\n", "filled"), ("  except:\n", "empty"), ("  except: nobody\n", "unknown token")):
+            res = narrowed(extra)
+            ok(f"54g a narrowed address left with one Windows device is named ({label} except:)") if len(res) == 1 \
+                else bad(f"54g {label}: {res}")
+        res = narrowed("  except: max-win\n  one-machine: only lee-win has the desk attached\n")
+        ok("54g control: one-machine with its reason stays silent on a narrowed entry") if not res else bad(f"54g one-machine: {res}")
         res = narrowed("")
         ok("54h control: the same entry without except: is named") if len(res) == 1 else bad(f"54h missed: {res}")
 
