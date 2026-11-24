@@ -247,8 +247,9 @@ PR, never as a local copy. Allowed deviations are DECLARED with the reason in
 `evidence` token or its `reach` analysis — "not yet ported" is no reason) · **external**
 (third-party, used as is; names its `source`) · **alpha** (with an expiry date; past it:
 merge, extend with a reason, or unwire). **An alpha names its kind** (operator decision
-2026-11-17): `test` — a real test phase, names what is measured, the core port waits for
-its result; `unreleased` — a clear core feature wired here at once so nobody waits for a
+2026-11-17): `test` — a real test phase, names what is measured and the `record` it is written
+to (2026-11-23: a record that is missing or silent for a week is a finding — the test
+measures nothing), the core port waits for its result; `unreleased` — a clear core feature wired here at once so nobody waits for a
 release: its core PR is opened at once, in the same strand (`core_pr`), the local copy
 goes with the pin, and the date is an emergency brake, never a waiting period.
 **A suite that ships as a plugin is consumed as the plugin** (2026-10-11); a clone only to

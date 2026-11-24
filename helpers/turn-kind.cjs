@@ -189,4 +189,19 @@ function projectTranscriptDir(root) {
   return path.join(os.homedir(), '.claude', 'projects', path.resolve(root).replace(/[^A-Za-z0-9]/g, '-'));
 }
 
-module.exports = { projectTranscriptDir, isTurnEnd, isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };
+/** A transcript of a headless model call (`claude -p`, the prompt classifier) is no session: its records carry
+ * `entrypoint: "sdk-cli"`, and the FIRST entrypoint value decides (a quoted field later in a session does not). The
+ * first record of such a call is its whole prompt, so the field can stand far in: 256 KB are read (measured
+ * 2026-11-02, root-cause-gate.cjs `--review`, which still carries its own copy of this rule; Python:
+ * scripts/transcript_kind.py `is_headless`). */
+function isHeadlessTranscript(file) {
+  const fs = require('fs');
+  try {
+    const fd = fs.openSync(file, 'r'); const buf = Buffer.alloc(256 * 1024);
+    const len = fs.readSync(fd, buf, 0, buf.length, 0); fs.closeSync(fd);
+    const m = /"entrypoint"\s*:\s*"([^"]+)"/.exec(buf.toString('utf8', 0, len));
+    return !!m && m[1] === 'sdk-cli';
+  } catch (e) { return false; }
+}
+
+module.exports = { isHeadlessTranscript, projectTranscriptDir, isTurnEnd, isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };
