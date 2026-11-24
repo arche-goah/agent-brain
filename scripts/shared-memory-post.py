@@ -147,7 +147,8 @@ def asked_prs(sentences, default):
         # the repos in play (a named slug, or the default). Measured 2026-11-06 on the macOS instance: "agent-brain
         # #407" next to a chataigne-suite PR URL was read as chataigne-suite#407 and the request refused.
         short = {slug.rsplit("/", 1)[-1].lower(): slug for slug in named | ({default} if default else set())}
-        for m in re.finditer(r"(?<![\w/.-])([\w.-]+)\s+#(\d+)\b", s):
+        # also `<repo>#n` without the space (2026-11-24 replay: "agent-brain#420" was read as no PR at all)
+        for m in re.finditer(r"(?<![\w/.-])([\w.-]+)\s*#(\d+)\b", s):
             if m.group(1).lower() in short:
                 out.append((short[m.group(1).lower()], m.group(2)))
                 refs = [(r, n) for r, n in refs if r or n != m.group(2)]
@@ -284,34 +285,68 @@ def ci_proof_repos() -> set:
         return set()
 
 
-def is_train(repo: str, n: str) -> bool:
-    """True when the PR's head branch is a merge train (train/...); False when not or unreadable."""
+RELEASE_FILE = ".claude-plugin/plugin.json"
+BRANCH_REF = re.compile(r"(?<![\w/.-])((?:train|release)/[\w.-]+(?:/[\w.-]+)*)")
+# a head named by its commit ("train 2026-11-23-strand at 72c6663"): replay 2026-11-24 - today's three train-head
+# requests named the head only so, and the branch only in a step line that is no check sentence
+HEAD_SHA = re.compile(r"\bat (?:head )?`?([0-9a-f]{7,40})\b")
+
+
+def _gh_json(args):
     import json
     gh = os.environ.get("SHARED_MEMORY_POST_GH", "gh")
     try:
-        r = subprocess.run([gh, "pr", "view", n, "-R", repo, "--json", "headRefName"],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
-        return r.returncode == 0 and str(json.loads(r.stdout).get("headRefName") or "").startswith("train/")
+        r = subprocess.run([gh, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        return json.loads(r.stdout) if r.returncode == 0 else None
     except (OSError, subprocess.TimeoutExpired, ValueError):
-        return False
+        return None
+
+
+def is_release_pr(repo: str, n: str) -> bool:
+    """True when the PR carries the release commit: it changes the plugin manifest (the version). False when not or
+    unreadable - an unread head is no release head."""
+    d = _gh_json(["pr", "view", n, "-R", repo, "--json", "files"])
+    return bool(d) and any(f.get("path") == RELEASE_FILE for f in d.get("files") or [])
+
+
+def is_release_branch(repo: str, branch: str) -> bool:
+    """True when the branch changes the plugin manifest against main (it carries the release commit)."""
+    d = _gh_json(["api", f"repos/{repo}/compare/main...{branch}", "--jq", "{s: .status, f: [.files[].filename]}"])
+    if isinstance(d, dict) and d.get("s") in ("behind", "identical"):
+        # already in main (a check asked before its merge, read again later): the head's own commit decides
+        d = _gh_json(["api", f"repos/{repo}/compare/{branch}~1...{branch}", "--jq", "{s: .status, f: [.files[].filename]}"])
+    return isinstance(d, dict) and RELEASE_FILE in (d.get("f") or [])
 
 
 def os_check_not_needed(text: str, extra=()) -> str:
-    """The refusal text when `text` asks an OS hand check of a single PR in a repo whose merge takes the CI as OS proof.
-    Measured 2026-11-06 on the macOS instance: three per-PR Windows checks went out for core PRs that a merge train
-    covers by its CI; the operator's rule (one check per OS at the train head, nothing twice) lived in prose only."""
+    """The refusal text when `text` asks an OS hand check, in a repo whose merge takes the CI as OS proof, of a head
+    that does not carry the release commit.
+    Measured 2026-11-06 on the macOS instance: three per-PR Windows checks went out for core PRs a merge train covers
+    by its CI. Measured 2026-11-24: the exemption "a train head may be asked" let FOUR hand checks through for ONE
+    release (train heads f547c3e, 72c6663, 60ea9e9, then the release head) - every late member or fix makes a new
+    train head; 28 Windows check requests for trains or releases since 2026-11-06 for about four releases. The
+    operator's rules (2026-11-04: a merge counts the green Windows CI job; the hand check is for the tag/pin;
+    2026-11-06: once per OS, nothing twice) name the RELEASE as the unit - one hand check per OS, at the head that
+    carries the release commit; that check is the pin review too."""
     repos = ci_proof_repos()
     asked = check_sentences(text) + list(extra)
     if not repos or not asked or not asked_os(asked):
         return ""
-    single = [f"{repo}#{n}" for repo, n in asked_prs(asked, pr_repo_default())
-              if repo.lower() in repos and not is_train(repo, n)]
-    if not single:
+    default = pr_repo_default()
+    heads = [(f"{repo}#{n}", is_release_pr(repo, n)) for repo, n in asked_prs(asked, default) if repo.lower() in repos]
+    if default and default.lower() in repos and not heads:
+        # no PR named: the head is a branch or a commit, read from the whole text (the branch often stands only in a
+        # step line, the commit in the title)
+        refs = list(dict.fromkeys(BRANCH_REF.findall(text) + HEAD_SHA.findall("\n".join([text, *extra]))))
+        heads += [(f"{default} {b}", is_release_branch(default, b)) for b in refs]
+    not_release = [h for h, rel in heads if not rel]
+    if not not_release or any(rel for _, rel in heads):
         return ""
-    return ("an OS hand check is asked for single PR(s) " + ", ".join(single) + " - in this repo a green CI job is the OS "
-            "proof for a merge, and a hand check happens at most once per OS at a merge train's head (build the train, ask "
-            "for its PR), or say why this single PR needs a hand check: --hand-check-ok <reason>. A content review: "
-            "leave the OS out of the sentence that asks (\"Content review of #N: Fit, Design, Cost, Gaps\").")
+    return ("an OS hand check is asked for " + ", ".join(not_release) + " - no head of it carries the release commit "
+            f"({RELEASE_FILE} unchanged). In this repo a merge rides the green OS jobs of the CI; the hand check comes once "
+            "per OS per release, at the head that carries the release commit, and counts as the pin review too. Ask "
+            "there, or say why this head needs a hand check now: --hand-check-ok <reason>. A content review: leave the "
+            "OS out of the sentence that asks (\"Content review of #N: Fit, Design, Cost, Gaps\").")
 
 
 def os_check_not_ready(text: str) -> str:

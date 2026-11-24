@@ -247,12 +247,18 @@ def main() -> int:
             "import json, sys\n"
             "n = sys.argv[3]\n"
             "repo = sys.argv[5] if len(sys.argv) > 5 else ''\n"
+            "if sys.argv[1] == 'api':\n"
+            "    rel = 'release-2-1-7' in sys.argv[2] or 'f46f083' in sys.argv[2]\n"
+            "    print(json.dumps({'s': 'ahead', 'f': ['CHANGELOG.md', '.claude-plugin/plugin.json'] if rel else ['helpers/x.cjs']})); sys.exit(0)\n"
+            "if 'files' in sys.argv:\n"
+            "    print(json.dumps({'files': [{'path': '.claude-plugin/plugin.json'}] if n == '8' else [{'path': 'helpers/x.cjs'}]})); sys.exit(0)\n"
             "if 'headRefName' in sys.argv:\n"
-            "    print(json.dumps({'headRefName': 'train/2026-11-06-1432' if n == '7' else 'feat/x'})); sys.exit(0)\n"
+            "    print(json.dumps({'headRefName': 'train/2026-11-06-1432' if n in ('7', '8') else 'feat/x'})); sys.exit(0)\n"
             "if repo == 'o/other':\n"
             "    print(json.dumps({'statusCheckRollup': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}]})); sys.exit(0)\n"
             "rows = {'1': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
             "        '7': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
+            "        '8': [{'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
             "        '2': [{'name': 'python-floor', 'status': 'COMPLETED', 'conclusion': 'FAILURE'},\n"
             "              {'name': 'lint', 'status': 'COMPLETED', 'conclusion': 'SUCCESS'}],\n"
             "        '3': [{'name': 'lint', 'status': 'IN_PROGRESS', 'conclusion': ''}]}\n"
@@ -335,8 +341,23 @@ def main() -> int:
                 for title, body, extra, want, label in (
                     ("Single PR hand check", "Please run the fixtures on Windows at the head of #1.", [], 2,
                      "a hand check of a single PR in a CI-proof repo is refused"),
-                    ("Train head hand check", "Please run the fixtures on Windows at the head of #7.", [], 0,
-                     "the merge train's PR may be asked"),
+                    # 2026-11-24: four hand checks for ONE release, one per train head - the unit is the release
+                    ("Train head hand check", "Please run the fixtures on Windows at the head of #7.", [], 2,
+                     "a merge train's PR without the release commit is refused (the merge rides the CI)"),
+                    ("Release head hand check", "Please run the fixtures on Windows at the head of #8.", [], 0,
+                     "the PR that carries the release commit may be asked"),
+                    ("Train branch only", "Please run every fixture suite on Windows at train/2026-11-23-strand.", [], 2,
+                     "a train branch named without a PR is refused when it carries no release commit"),
+                    ("Release branch only", "Please run every fixture suite on Windows at train/release-2-1-7-b.", [], 0,
+                     "a branch that carries the release commit may be asked"),
+                    ("Release with members", "Please run the fixtures on Windows at the head of #8 (members #1, #7).", [], 0,
+                     "a release head named with its members passes"),
+                    ("Train head by commit", "Please run the full lint on Windows at 72c6663 (train 2026-11-23-strand).", [], 2,
+                     "a train head named only by its commit is refused when it carries no release commit"),
+                    ("Release head by commit", "Please run the full lint on Windows at f46f083 (release 2.1.3).", [], 0,
+                     "a release head named by its commit passes"),
+                    ("Short repo name", "Please run on Windows at the head of core#7.", [], 2,
+                     "'<repo>#n' without a space binds to that repo (a train head without the release commit)"),
                     ("Single PR with a reason", "Please run the fixtures on Windows at the head of #1.",
                      ["--hand-check-ok", "touches the Windows hook path only a machine shows"], 0,
                      "a stated reason lets a single-PR hand check go"),
