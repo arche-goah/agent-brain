@@ -162,7 +162,11 @@ function asksMode(on, question) {
 function modeAnswer(w, answer) {
   const a = String(answer || '');
   if (w.off.test(a) || (w.no && w.no.test(a))) return false;
-  if (w.yes.test(a) || w.on.test(a)) return true;
+  // The on-word counts only as the answer's HEAD - the option is named after the mode ("Autonomous, go on"). An
+  // on-word further in ("only autonomous or released") is an answer ABOUT autonomy: replayed over 119 answered mode
+  // questions of the proving instance, the head rule reads two missed switches right and adds no false one; an
+  // on-word anywhere would have switched a run on at a design question (2026-11-18).
+  if (w.yes.test(a) || w.on.test(a.trim().split(/\s+/)[0] || '')) return true;
   return null;
 }
 
