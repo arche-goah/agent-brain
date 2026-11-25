@@ -522,8 +522,8 @@ def _reconcile(out, main, root, ledgers, since, timeout, shell, allowed, budget,
             elif res == "pass" and not e["done"] and first == "pass":
                 out["unproven"].append(label(e, rel))
                 out.setdefault("unproven_at", []).append({"ledger": rel, "line": e["line"], "id": label(e, rel)})
-            elif res == "pass" and not e["done"] and PARKED_EXIT.search(e["text"]):
-                pass
+            elif (res == "pass" or on_main) and not e["done"] and PARKED_EXIT.search(e["text"]):
+                pass   # parked: neither DONE-OPEN nor MERGED-MAIN (both feed the "tick it" rows; review of #671)
             elif res == "pass" and not e["done"]:
                 out["done_open"].append(label(e, rel))
                 out.setdefault("done_open_at", []).append({"ledger": rel, "line": e["line"], "id": label(e, rel)})
