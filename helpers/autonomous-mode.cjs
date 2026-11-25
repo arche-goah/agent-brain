@@ -192,8 +192,11 @@ function confirmChoice(w, labels, answer) {
     if (a === ls[ls.length - 1]) return false;
     if (ls.slice(0, -1).includes(a)) return true;
   }
-  if (w.off.test(a)) return false;
-  return ordersOn(w.on, a) || w.yes.test(a);
+  // Free text: the interactive option's label, or an off-word, anywhere in it = interactive; only an order switches on -
+  // a yes-word alone does not (Windows review of #672: "yes, stay interactive" read autonomous by its yes).
+  const last = ls.length ? ls[ls.length - 1].toLowerCase() : '';
+  if (w.off.test(a) || (last && a.toLowerCase().includes(last))) return false;
+  return ordersOn(w.on, a);
 }
 
 function promptText(msg) {
@@ -360,17 +363,24 @@ function promptModes(transcriptPath, cwd) {
             at: Date.parse(d.timestamp) || null });
           continue;
         }
-        // A question answered in the asking prompt's turn: the questions came, the run is interactive from here
-        // (the mode question below may switch it on again).
-        if (pending) { pending.autonomous = false; pending = null; state = false; }
+        // A question answered in the asking prompt's turn leaves the mode AND the window standing: all the collected
+        // questions and the other dialogs come in it, and only then the mode question decides (operator 2026-11-25,
+        // question tool: "not after the first answered question, the logic is different ... when I ask for
+        // interactive questions, all questions come + other interactive dialogs if any, AFTER THAT comes the final
+        // question 'continue autonomously'"). This replaces the core's implementation of the ask window of 2026-11-23
+        // (changelog feat-ask-window), under which the first answered question ended the run - an AI's reading, not the
+        // operator's word: on 2026-11-03 the operator said only that the mode changes when they ask for the questions,
+        // and "either the questions come, or stay autonomous".
         // A yes/no to the mode question decides by yes; an answer to any other question is read
         // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
         // "yes, work through them autonomously" to "shall I handle them?" set nothing). The mode
         // question is read from its question sentence (asksMode), not from any on-word in the text.
         // The mode question itself ("continue autonomously?") is a question: its answer switches. A mode word in the
         // answer to ANY OTHER question is a mode word like one in a prompt: it waits for the mode-confirm answer.
-        if (asksMode(w.on, q)) state = w.yes.test(a) && !w.off.test(a);
-        else if (w.off.test(a)) {
+        if (asksMode(w.on, q)) {
+          if (pending) { pending.window = false; pending = null; } // the dialog's last question: the window ends here
+          state = w.yes.test(a) && !w.off.test(a);
+        } else if (w.off.test(a)) {
           if (confirming && state) { confirm = { direction: 'interactive', text: a, at: Date.parse(d.timestamp) || null }; continue; }
           state = false;
         } else if (ordersOn(w.on, a)) {
@@ -423,11 +433,12 @@ function promptModes(transcriptPath, cwd) {
     else if (confirming && off && state) { confirm = { direction: 'interactive', text: own, at }; off = false; }
     else if (confirming && (on || off)) confirm = null; // the operator named the mode in force: nothing left to confirm
     if (on) { state = ordered = true; lastOn = at; }
-    // "What is open for me?" leaves the run when the questions COME (operator 2026-11-03, translated: "why did you
-    // just switch to interactive? no questions came. either the questions, or stay autonomous"). That rule is the
-    // OUTCOME of the turn, not a condition before it: the asking prompt opens a `window` - in its turn the question
-    // tool and the dialogs pass (autonomous-gate.cjs) -, a question answered there ends the run (above), and a turn
-    // that asks nothing leaves it autonomous. Until 2026-11-23 the run ended only when a derived count of open
+    // "What is open for me?" brings the questions (operator 2026-11-03, translated: "why did you just switch to
+    // interactive? no questions came. either the questions, or stay autonomous"): the asking prompt opens a `window` -
+    // in its turn the question tool and the dialogs pass (autonomous-gate.cjs) -, ALL questions and dialogs come in it
+    // and the mode stays as it is, and the closing mode-confirm question decides (operator 2026-11-25, above); a turn
+    // that asks nothing leaves it autonomous. (Until 2026-11-25 the core's implementation of 2026-11-23 ended the run
+    // at the first answered question.) Until 2026-11-23 the run ended only when a derived count of open
     // operator decisions was above 0; the count read what the agent itself had filed, and three incidents on the
     // macOS instance (2026-11-05, -18, -23) each failed on one more form it did not read - the question tool was
     // refused on the operator's own request. Replay over that instance's history: 14 such prompts refused, in 6 the
@@ -437,7 +448,7 @@ function promptModes(transcriptPath, cwd) {
     if (off) state = false;
     else if (asks && state) window = true;
     // An order that pre-authorizes a later question opens the window now and keeps it open across the turns that
-    // follow (timers, peers, background tasks) until a question is answered or the operator writes again.
+    // follow (timers, peers, background tasks) until the closing mode question is answered or the operator writes again.
     const deferred = !off && state && deferAsk(w.defer, own);
     if (pending && pending.deferred && (off || asks || ordered || deferred)) closeWindow(true);
     if (deferred) window = true;

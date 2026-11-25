@@ -40,9 +40,11 @@ interactive?"); due only after a switch from autonomous to interactive, as the l
 - **The AI keeps working** — as in interactive mode (the one law above); the run itself counts as open own work, and a
   question is no end because it is collected.
 - **When the operator asks what is open**, the operator is here for that turn: the question tool and the dialogs
-  pass in it, whatever is or is not filed as open. All collected points come as question-tool questions; the first
-  answered question switches the mode to INTERACTIVE, and the last one is "continue autonomously?" — asked as the
-  mode-confirm question (below, "Switching"), an option other than the last one switches back. A turn that has nothing to ask says so in one line and the run stays AUTONOMOUS; a later turn the operator
+  pass in it, whatever is or is not filed as open. ALL collected points come as question-tool questions, and the
+  other interactive dialogs with them; the mode stays as it is meanwhile. AFTER them comes, as the last call, the mode
+  question "continue autonomously?" — asked as the mode-confirm question (below, "Switching") — and only its answer
+  switches (operator 2026-11-25; until then the core's implementation of 2026-11-23 ended the run at the first answered
+  question). A turn that has nothing to ask says so in one line and the run stays AUTONOMOUS; a later turn the operator
   did not open (a timer, a finished background task) is outside that window again.
 
 What autonomous mode is NOT: not a permission level, not a way past an `ask` rule, not a licence for irreversible

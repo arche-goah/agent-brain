@@ -57,7 +57,8 @@ mode "the same words typed by the operator switch it (control)" "$f" "$EN" auton
 f="$T/3.jsonl"; { user "autonomous, please"; asst "x"; user "status?"; asst "y"; user "back to normal mode"; } > "$f"
 mode "an off word ends it" "$f" "$EN" interactive
 # Asking what is open opens a WINDOW (2026-11-23): the run is still autonomous, and in that prompt's own turn the
-# question tool and the dialogs pass (autonomous-gate). A question answered there ends the run; a turn that asks nothing
+# question tool and the dialogs pass (autonomous-gate). Since 2026-11-25 an answered question there ends nothing - the
+# closing mode-confirm answer decides (before: the first answered question ended the run); a turn that asks nothing
 # leaves it autonomous. No count of what is filed as open decides - three incidents on the macOS instance (2026-11-05,
 # -18, -23) each failed on one more input form of that count, and the question tool was refused on the operator's request.
 f="$T/3b.jsonl"; { user "autonomous, please"; asst "x"; user "anything open for me?"; } > "$f"
@@ -102,8 +103,11 @@ mode "yes to continue autonomously sets it again" "$f" "$EN" autonomous
 f="$T/3g.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Continue autonomously?"="No, interactive"'; } > "$f"
 mode "no to continue autonomously keeps it off" "$f" "$EN" interactive
 f="$T/3h.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"Release now?"="Yes"'; } > "$f"
-mode "yes to another question sets nothing" "$f" "$EN" interactive
-mode "a question answered in the window ends the run - nothing filed as open, no count" "$f" "$NONE" interactive
+# Since 2026-11-25 (operator, question tool) an answered question in the window ends nothing: all questions and dialogs
+# come, then the closing mode-confirm question decides (test-mode-confirm.sh). Before, the core implementation of
+# 2026-11-23 ended the run here (expected: interactive).
+mode "yes to another question sets nothing - the run and its window stand" "$f" "$EN" window
+mode "a question answered in the window ends nothing - nothing filed as open, no count" "$f" "$NONE" window
 # An order inside the answer to another question counts like a prompt (macOS instance 2026-10-30).
 f="$T/3k.jsonl"; { user "status?"; answer '"Shall I handle the 42 items?"="yes, work through them autonomously. document false reports"'; } > "$f"
 mode "an autonomous order inside an answer to another question sets it" "$f" "$EN" autonomous
@@ -115,7 +119,7 @@ mode "the 'The user answered:' wording counts as an answer too" "$f" "$EN" auton
 f="$T/3l.jsonl"; { user "autonomous, please"; answer '"Shall I run the scan?"="no, back to normal mode"'; } > "$f"
 mode "an off word inside an answer to another question ends it" "$f" "$EN" interactive
 f="$T/3n.jsonl"; { user "autonomous, please"; user "anything open for me?"; answer '"The autonomous gate held the settings edit back; the patch is in a file. Shall I apply it now?"="Yes, apply it now"'; } > "$f"
-mode "an on-word outside the question sentence makes no mode question (2026-10-31)" "$f" "$EN" interactive
+mode "an on-word outside the question sentence makes no mode question (2026-10-31) - the window stands (2026-11-25)" "$f" "$EN" window
 f="$T/3o.jsonl"; { user "anything open for me?"; answer '"Patch applied. Continue autonomously?"="Yes"'; } > "$f"
 mode "the on-word in the question sentence still is the mode question (control)" "$f" "$EN" autonomous
 f="$T/3i.jsonl"; { user "fix the parser"; answer '"Continue autonomously?"="Yes"'; user "status?"; } > "$f"

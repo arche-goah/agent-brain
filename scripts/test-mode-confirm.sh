@@ -84,10 +84,16 @@ QH='{"questions":[{"question":"Continue autonomously?","header":"mode-confirm","
 [ "$(hook AskUserQuestion "$T/2.jsonl" s9 "$QH" | pre)" = pass ] && ok "pre: control - the same question as mode-confirm passes" || bad "pre: the mode-confirm form was held"
 QO='{"questions":[{"question":"Release now?","header":"release","options":[{"label":"Yes"},{"label":"No"}]}]}'
 [ "$(hook AskUserQuestion "$T/2.jsonl" s9 "$QO" | pre)" = pass ] && ok "pre: control - a question that is no mode question passes" || bad "pre: another question was held"
-f="$T/12a.jsonl"; { cat "$T/2.jsonl"; asst "x"; user "anything open for me?"; confirm q1 release "Yes" "Yes" "No"; } > "$f"
-mode "a dialog: the first answered question ends the run" "$f" interactive
+# The dialog (operator 2026-11-25): all questions and dialogs come, the mode stands, the closing mode-confirm decides.
+wmode() { local got; got="$(node "$M" "$(native "$2")" "$(native "$EN")" --window)"; [ "$got" = "$3" ] && ok "$1: $3" || bad "$1: expected $3, got $got"; }
+f="$T/12a.jsonl"; { cat "$T/2.jsonl"; asst "x"; user "anything open for me?"; confirm q1 release "Yes" "Yes" "No"; confirm q2 budget "No" "Yes" "No"; confirm q3 device "Later" "Now" "Later"; } > "$f"
+wmode "a dialog: three answered questions leave the run and its window standing" "$f" window
 f="$T/12.jsonl"; { cat "$T/12a.jsonl"; confirm c3 mode-confirm "Yes, the open list" "Yes, the open list" "Continue interactively"; } > "$f"
-mode "the dialog's last question in mode-confirm form switches back on" "$f" autonomous
+wmode "the closing mode-confirm answer 'autonomous' keeps the run, the window ends" "$f" autonomous
+f="$T/12b.jsonl"; { cat "$T/12a.jsonl"; confirm c3 mode-confirm "Continue interactively" "Yes, the open list" "Continue interactively"; } > "$f"
+wmode "the closing mode-confirm answer 'interactive' ends the run" "$f" interactive
+f="$T/12c.jsonl"; { cat "$T/12a.jsonl"; asst "done"; peer() { printf '{"type":"user","origin":{"kind":"peer"},"message":{"role":"user","content":%s}}\n' "$(js "$1")"; }; peer "the build is done"; } > "$f"
+wmode "control: a turn the operator did not open closes the window, the run stays" "$f" autonomous
 grep -q 'mode-confirm' "$_D/../helpers/mode-owed.cjs" && ok "mode-owed: its holds name the mode-confirm form" || bad "mode-owed: no mode-confirm in its holds"
 f="$T/2.jsonl"
 [ "$(hook Edit "$f" s2 | pre)" = pass ] && ok "pre: control - after the answer the edit passes" || bad "pre: held after the answer"
@@ -97,6 +103,27 @@ hook Edit "$g" s3 | pre >/dev/null; asst "more work" >> "$g"
 [ "$(hook Edit "$g" s3 | pre)" = held ] && ok "pre: cache - an assistant record keeps the hold" || bad "pre: cache lost the hold"
 confirm c1 mode-confirm "The open list" "The open list" "Stay interactive" >> "$g"
 [ "$(hook Edit "$g" s3 | pre)" = pass ] && ok "pre: cache - an appended answer releases it" || bad "pre: cache kept a stale hold"
+# Windows review of #672 (2026-11-25), finding 1: a half-written answer line must not leave a stale hold
+g="$T/half.jsonl"; cp "$T/1.jsonl" "$g"; confirm c1 mode-confirm "The open list" "The open list" "Stay interactive" > "$T/ans.txt"
+hook Edit "$g" s11 | pre >/dev/null
+head -n 1 "$T/ans.txt" >> "$g"; tail -n 1 "$T/ans.txt" | head -c 60 | tr -d '\n' >> "$g"
+[ "$(hook Edit "$g" s11 | pre)" = held ] && ok "pre: a half-written answer line holds (not yet an answer)" || bad "pre: passed on half a line"
+tail -n 1 "$T/ans.txt" | tail -c +61 >> "$g"
+[ "$(hook Edit "$g" s11 | pre)" = pass ] && ok "pre: once the line is complete the hold is gone (no stale hold)" || bad "pre: stale hold after the line completed"
+# finding 2: a free-text yes is no order
+f="$T/13.jsonl"; { user "work through the list autonomously"; confirm c1 mode-confirm "yes, stay interactive" "The open list" "Continue interactively"; } > "$f"
+mode "free text 'yes, stay interactive' stays interactive" "$f" interactive
+f="$T/13b.jsonl"; { user "work through the list autonomously"; confirm c1 mode-confirm "Stay interactive please" "The open list" "Stay interactive"; } > "$f"
+mode "free text naming the last option stays interactive" "$f" interactive
+f="$T/13c.jsonl"; { user "work through the list autonomously"; confirm c1 mode-confirm "only the list, work through it autonomously" "The open list" "Continue interactively"; } > "$f"
+mode "control: a free-text order switches on" "$f" autonomous
+# finding 3: a misordered option list is held at ask time
+QM='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"Stay interactive"},{"label":"The open list"}]}]}'
+[ "$(hook AskUserQuestion "$T/1.jsonl" s12 "$QM" | pre)" = held ] && ok "pre: the interactive option first is held" || bad "pre: a misordered list passed"
+QM2='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"Continue interactively"},{"label":"Stay autonomous"}]}]}'
+[ "$(hook AskUserQuestion "$T/6.jsonl" s12 "$QM2" | pre)" = held ] && ok "pre: towards interactive, autonomous last is held" || bad "pre: autonomous last passed"
+QM3='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"Stay autonomous"},{"label":"Continue interactively"}]}]}'
+[ "$(hook AskUserQuestion "$T/6.jsonl" s12 "$QM3" | pre)" = pass ] && ok "pre: control - the right order passes" || bad "pre: the right order was held"
 # through the gate itself
 out="$(hook Edit "$T/1.jsonl" s4 | CLAUDE_PROJECT_DIR="$(native "$EN")" node "$AG")"
 [[ "$out" == *MODE-CONFIRM* && "$out" == *"no extra rights"* ]] && ok "gate: the hold names the question and the explanation" || bad "gate: no MODE-CONFIRM hold: $out"

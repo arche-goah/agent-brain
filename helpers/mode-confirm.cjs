@@ -50,6 +50,19 @@ function moves(delta) {
   return false;
 }
 
+/** The byte after the last newline at or before `size` (a half-written last line is not yet read). */
+function completeEnd(tp, size) {
+  try {
+    const n = Math.min(size, 1 << 20);
+    const fd = fs.openSync(tp, 'r');
+    const buf = Buffer.alloc(n);
+    fs.readSync(fd, buf, 0, n, size - n);
+    fs.closeSync(fd);
+    const i = buf.lastIndexOf(0x0a);
+    return i < 0 ? size - n : size - n + i + 1;
+  } catch (e) { return 0; }
+}
+
 /** The pending mode word {direction, text, at} or null, re-read only when the transcript moved. */
 function pending(input, r) {
   const tp = input.transcript_path || '';
@@ -57,20 +70,25 @@ function pending(input, r) {
   try { size = fs.statSync(tp).size; } catch (e) { return null; }
   const st = load(r);
   const s = st[sid(input)];
+  // The cache advances only to the end of the last COMPLETE line: a record half written at call time is read again,
+  // whole, next time (Windows review of #672, 2026-11-25: with the size moved to the file's end, a half-written answer
+  // line left the hold standing until the next prompt).
   if (s && s.size <= size) {
-    let delta = '';
+    let buf = null;
     try {
       const fd = fs.openSync(tp, 'r');
-      const buf = Buffer.alloc(size - s.size);
+      buf = Buffer.alloc(size - s.size);
       fs.readSync(fd, buf, 0, buf.length, s.size);
       fs.closeSync(fd);
-      delta = buf.toString('utf8');
-    } catch (e) { delta = '\n"type":"user"\n'; }
-    if (!moves(delta)) { s.size = size; save(r, st); return s.pending || null; }
+    } catch (e) { buf = null; }
+    if (buf) {
+      const end = buf.lastIndexOf(0x0a) + 1; // bytes of complete lines in the delta
+      if (!moves(buf.subarray(0, end).toString('utf8'))) { s.size += end; save(r, st); return s.pending || null; }
+    }
   }
   let p = null;
   try { p = require('./autonomous-mode.cjs').confirmPending(tp, r); } catch (e) { return null; }
-  st[sid(input)] = { size, pending: p, stopHeld: s && p && s.pending && s.pending.at === p.at ? s.stopHeld : false };
+  st[sid(input)] = { size: completeEnd(tp, size), pending: p, stopHeld: s && p && s.pending && s.pending.at === p.at ? s.stopHeld : false };
   save(r, st);
   return p;
 }
@@ -90,15 +108,30 @@ function pre(input, r) {
   if (tool === 'AskUserQuestion') {
     const am = require('./autonomous-mode.cjs');
     const qs = (input.tool_input && input.tool_input.questions) || [];
+    const w = am.words(rt);
+    const on = w.on;
     const bad = qs.filter((q) => am.isConfirm(q) && ((q.options || []).length < 2));
     if (bad.length) {
       return 'MODE-CONFIRM: a mode-confirm question needs at least two options - the last one is the interactive one '
         + '("stay interactive" / "continue interactively"). Not issued; ask it again with the options.';
     }
+    // The answer is read by position (the last option = interactive), so a misordered list is held here, at ask time
+    // (Windows review of #672: "Stay interactive" written first switched ON). Not language-complete: it catches the
+    // likely slip - an on-word in the last label, an off-word or "interactive" in any other.
+    const INTER = /interakti|interacti/i;
+    const misordered = qs.filter((q) => {
+      if (!am.isConfirm(q)) return false;
+      const ls = (q.options || []).map((o) => String((o && o.label) || ''));
+      return on.test(ls[ls.length - 1]) && !INTER.test(ls[ls.length - 1])
+        || ls.slice(0, -1).some((l) => w.off.test(l) || INTER.test(l));
+    });
+    if (misordered.length) {
+      return 'MODE-CONFIRM: in a mode-confirm question the interactive option must be the LAST one, and only that one - '
+        + 'the answer is read by position. Not issued; reorder the options ("stay interactive" / "continue interactively" last).';
+    }
     // EVERY mode switch goes through the mode-confirm question, also the mode question at the end of a question dialog
     // ("continue autonomously?") - operator 2026-11-25, translated: "for a mode switch ALWAYS an interactive question",
     // "with a mode switch there shall ALWAYS be a short explanation". A mode question in the old form is held once more.
-    const on = am.words(rt).on;
     if (qs.some((q) => !am.isConfirm(q) && am.asksMode(on, String((q && q.question) || '')))) {
       return 'MODE-CONFIRM: this question asks about the run mode but is no mode-confirm question. Not issued. Ask it with '
         + 'header "mode-confirm", the interactive option LAST ("stay interactive" / "continue interactively"), and the short '

@@ -180,7 +180,8 @@ case "$out" in *'its turn ended without a question'*) ok "the refusal after the 
 # 2026-11-23, the DEFERRED ask window. The operator ordered (translated): "continue autonomously; as soon as you are ready
 # for the train build, switch back to interactive on your own and put the train-build question to me" - and the gate
 # refused exactly that question hours later (a timer turn, a peer's message in between). Such an order opens a window that
-# outlives the turns the operator did not open, for the QUESTION only, until a question is answered or the operator writes.
+# outlives the turns the operator did not open, for the QUESTION only, until the closing mode question is answered or the
+# operator writes (2026-11-25; before: until any question was answered).
 DEFER="continue autonomously; as soon as you are ready for the train build, switch back to interactive on your own and put the train-build question to me"
 TQ='{"questions":[{"question":"Build the train now?"}]}'
 D1="$T/defer1.jsonl"; { user "work through the open points autonomously"; user "$DEFER"; asst "Working on the review."; tend; tick "# Autonomous loop check  You're being invoked on a timer"; queued "task 22 for you" peer; asst "Ready."; } > "$D1"
