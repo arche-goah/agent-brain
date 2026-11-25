@@ -222,10 +222,10 @@ check "correction answered without a cause" "$T/t1.jsonl" block "$CWD"
 # 2026-11-18: the agent's own text finds the mishap - same inquiry, no operator word needed
 { user "go on"; asst "Measured: my earlier claim was wrong - two of the four were built on 2026-10-31. Next the questions."; } > "$T/s1.jsonl"
 check "own text finds a mishap, no cause line" "$T/s1.jsonl" block "$CWD"
-{ user "go on"; asst "It turned out two of the four were built.
+{ user "go on"; asst "My earlier count was wrong - two of the four were built.
 Cause: the correction stood in a research note, not in the entry (git log f3e152ed)."; write "core/helpers/ledger-reconcile.py"; write "$CWD/docs/maintenance/carrier-register.md"; } > "$T/s2.jsonl"
 check "own text finds a mishap, names the cause, writes carrier and register" "$T/s2.jsonl" allow "$CWD"
-{ user "go on"; asst "It turned out two of the four were built.
+{ user "go on"; asst "My earlier count was wrong - two of the four were built.
 Cause: the correction stood in a research note."; } > "$T/s5.jsonl"
 check "own text finds a mishap, names the cause, no carrier" "$T/s5.jsonl" block "$CWD"
 { user "go on"; asst "PR #600 is merged, CI green."; } > "$T/s3.jsonl"
