@@ -69,7 +69,9 @@ function judge(input, out) {
   const form = `Model: <${classes.join('|')}|inherit> — <why this class for this task>`;
   if (!lines.length) return `the agent's prompt carries no model line. Every spawn names its model class and why (rules/intelligence.md, Model Routing: "inheriting counts as a choice") - add one line to the prompt:\n  ${form}\nThis call: model ${callWord}.`;
   if (!called) return `the call's model "${callWord}" names no model class (${classes.join(', ')}, inherit) - set the model parameter to a class.`;
-  const line = lines.find((l) => l.cls === called);
+  // among the lines of the call's class, the first with a reason: a high-risk review brief quotes a bare
+  // `Model: fable` of the SAME class ahead of its own line (re-review of #653, 2026-11-25)
+  const line = lines.find((l) => l.cls === called && l.why.length >= MIN_WHY) || lines.find((l) => l.cls === called);
   if (!line) {
     const named = lines.filter((l) => l.cls);
     if (!named.length) return `the model line names "${lines[0].word}", which is no model class (${classes.join(', ')}, inherit).\n  ${form}`;
