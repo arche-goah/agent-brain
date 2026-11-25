@@ -51,9 +51,12 @@ Every suite is a Claude Code plugin. Verified layout (2026-08-03, CLI 2.1.220):
   skills/<skill-name>/SKILL.md
   commands/*.md                # optional
   agents/*.md                  # optional
-  hooks/hooks.json             # optional; a suite with an npm MCP server copies hooks.json +
-  hooks/ensure-deps.cjs        #   ensure-deps.cjs from the core's templates/suite/hooks/ unchanged
-  .mcp.json                    # optional: the suite's MCP server
+  hooks/hooks.json             # optional; a suite with an npm MCP server copies hooks.json,
+  hooks/ensure-deps.cjs        #   ensure-deps.cjs and ensure-link.cjs from the core's
+  hooks/ensure-link.cjs        #   templates/suite/hooks/ unchanged
+  .mcp.json                    # optional: the suite's MCP server; an npm server starts as
+                               #   node --require ${CLAUDE_PLUGIN_ROOT}/hooks/ensure-link.cjs <server>
+                               #   (a .ts <server> needs a node that runs .ts directly; else the built .js)
   mcp/                         # server source
   config/<name>.example.json
   .github/workflows/lint.yml
