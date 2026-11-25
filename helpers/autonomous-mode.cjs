@@ -66,6 +66,19 @@ const BUILTIN_ASK = [
   '\\bput (the |your )?(open )?(decisions|questions) to me\\b',
 ];
 const BUILTIN_YES = ['^\\s*yes\\b'];
+// A session close word is NO mode switch: it ends the autonomous mode at once, without the mode-confirm question, in
+// every brain (operator 2026-11-25, question tool, translated: "closing the session is a point of its own that behaves
+// differently. what I said concerns recognising a mode switch between autonomous and interactive. closing always
+// closes" - agreeing with the decision of another brain's operator on #672: "a close word ends the autonomous mode at
+// once, with no mode question"). English built in (the session-close skill's triggers); other languages
+// `close_patterns` in autonomous-patterns.json. A sentence that is a question ("can I end the session?") closes too:
+// the skill fires on it, and ending the mode is the safe direction.
+const BUILTIN_CLOSE = [
+  '\\b(close|end) the session\\b',
+  "\\bwe'?re done for today\\b",
+  '\\bwrap it up\\b',
+  "\\bi'?m shutting (everything )?down\\b",
+];
 // An order that pre-authorizes a LATER question ("once you are ready for X, switch to interactive and ask me the X
 // question"): it opens a DEFERRED window that outlives the turns the operator did not open (operator 2026-11-23, after
 // the gate refused exactly that question: "I told you word for word to switch to interactive as soon as you want to
@@ -133,6 +146,7 @@ function words(cwd) {
     off: rx(BUILTIN_OFF, ap.off_patterns),
     ask: rx(BUILTIN_ASK, oi.ask_patterns),
     yes: rx(BUILTIN_YES, ap.yes_patterns),
+    close: rx(BUILTIN_CLOSE, ap.close_patterns),
     defer: rx(BUILTIN_DEFER, ap.defer_ask_patterns),
     initial: initialState(dir, ap, oi).granted,
   };
@@ -429,7 +443,9 @@ function promptModes(transcriptPath, cwd) {
     // changes nothing and asks nothing (an order after this session's close counts as a change).
     const at = Date.parse(d.timestamp) || null;
     const running = state && !closedAfter(transcriptPath, cwd, lastOn);
-    if (confirming && on && !running) { confirm = { direction: 'autonomous', text: own, at }; on = false; }
+    // a session close word ends the mode at once and asks nothing (BUILTIN_CLOSE above)
+    if (w.close.test(own)) { on = false; off = true; asks = false; confirm = null; }
+    else if (confirming && on && !running) { confirm = { direction: 'autonomous', text: own, at }; on = false; }
     else if (confirming && off && state) { confirm = { direction: 'interactive', text: own, at }; off = false; }
     else if (confirming && (on || off)) confirm = null; // the operator named the mode in force: nothing left to confirm
     if (on) { state = ordered = true; lastOn = at; }

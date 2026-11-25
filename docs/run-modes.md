@@ -68,6 +68,9 @@ towards interactive it asks "continue interactively?", the interactive option la
 is answered the mode stays as it is, and the autonomous gate holds every call but reads and the question itself
 (`helpers/mode-confirm.cjs`). A rejected question switches nothing; a word naming the mode already in force asks nothing. The mode question at the
 end of a question dialog ("continue autonomously?") takes the same form: a mode question without the header is held.
+**Closing the session is no mode switch** (operator 2026-11-25: "closing always closes"): a close word ("close the
+session", "we're done for today"; the operator's language: `close_patterns`) ends the autonomous mode at once, with no
+question.
 A remark in between ("status?", "the desk is running") keeps the mode. The operator's own language is instance data:
 `.claude/rules/autonomous-patterns.json` (`on_patterns`, `off_patterns`, `yes_patterns`, test cases in `_cases`) and the
 `ask_patterns` of `.claude/rules/open-items.json`; template `templates/rules-instance/autonomous-patterns.json`. An AI

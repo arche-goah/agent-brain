@@ -63,6 +63,19 @@ pend "naming the mode in force cancels the wait" "$f" none
 f="$T/11.jsonl"; { user "work through the list autonomously"; asst "x"; user "and also check the build"; } > "$f"
 pend "a later prompt without a mode word keeps the wait" "$f" autonomous
 
+# A session close word is no mode switch (operator 2026-11-25): it ends the run at once, nothing pending
+f="$T/14.jsonl"; { cat "$T/2.jsonl"; asst "x"; user "ok, close the session"; } > "$f"
+mode "a close word in a run ends it at once" "$f" interactive
+pend "a close word leaves no question pending" "$f" none
+DEC="$T/de"; mkdir -p "$DEC/.claude/rules"
+printf '%s\n' '{"on_patterns": ["\\bautonom (durch|weiter)\\b"], "off_patterns": ["\\bnormalmodus\\b"], "close_patterns": ["\\bbeende die session\\b"]}' > "$DEC/.claude/rules/autonomous-patterns.json"
+f="$T/14d.jsonl"; { user "arbeite die liste autonom durch"; confirm c1 mode-confirm "Die Liste" "Die Liste" "Weiter interaktiv"; asst "x"; user "beende die session"; } > "$f"
+[ "$(node "$M" "$(native "$f")" "$(native "$DEC")")" = interactive ] && ok "an instance close word (close_patterns) ends it at once: interactive" || bad "the instance close word did not end the run"
+f="$T/14e.jsonl"; { user "arbeite die liste autonom durch"; confirm c1 mode-confirm "Die Liste" "Die Liste" "Weiter interaktiv"; asst "x"; user "normalmodus bitte"; } > "$f"
+[ "$(node "$M" "$(native "$f")" "$(native "$DEC")")" = autonomous ] && ok "control: an off-word (no close word) still waits for the question" || bad "control: the off-word switched by itself"
+f="$T/14f.jsonl"; { user "status?"; asst "x"; user "close the session"; asst "y"; user "work through the list autonomously"; } > "$f"
+pend "control: a mode word after a close still opens the question" "$f" autonomous
+
 # pre / stop (state file under the fixture's .claude-state)
 hook() { # $1 tool, $2 transcript, $3 session, [$4 tool_input json]
   local ti="${4:-}"; [ -n "$ti" ] || ti='{}'
