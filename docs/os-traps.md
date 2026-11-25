@@ -1155,22 +1155,30 @@ site, and with the two old hooks put back it names exactly those two.
 
 shape: B
 
-invariant: A Python program that runs DETACHED on Windows (`DETACHED_PROCESS`, no console of its
-own) passes `creationflags=CREATE_NO_WINDOW` (0x08000000) to every console child it starts (`bash`,
-`git`, `python`). Without it each child gets a NEW console; with Windows Terminal as the default
+invariant: A Python program started to run on its own in the background on Windows is started with
+`creationflags=CREATE_NO_WINDOW` (0x08000000), not `DETACHED_PROCESS`: it then owns a console with
+no window, and every console child it starts (`bash`, `git`, `gh`, `python`) inherits that console.
+Flagging the children one by one does not hold - the next child added without the flag opens a
+window (2026-11-25, below). Without a console each child gets a NEW one; with Windows Terminal as the default
 terminal every console becomes a tab, and the run is slow on top. On macOS and Linux a detached
 process has no such step, so the same code is quiet there.
 pattern:   DETACHED_PROCESS|0x0+8\b
 paths:     --include=*.py scripts helpers skills
 known:     scripts/ledger-reconcile.py=1
-instances: 1
-repeat:    no
+instances: 2
+repeat:    yes
 status:    closed
 note:      Measured 2026-10-19 on the Windows instance: the `--cached` run of `ledger-reconcile.py`
 (PR #41, heads before 9831ce0) started one `bash` per check without the flag; 136 tabs opened in one
 Windows Terminal window (21:12:58-21:18:36 local time, pairs about every 3 s). 4 checks took 12.3 s
 with default flags, 0.11 s with CREATE_NO_WINDOW. Fixed in #41 (`run_check`). The search lists the
 detached launch, not the children: a new detached site is read for the children it starts.
+The repeat, 2026-11-25 on a Windows instance: the same run's `gh pr view` and `git` calls carried no
+flag, and every session start opened 3 Windows Terminal windows that took the focus (window watcher:
+EnumWindows for CASCADIA_HOSTING_WINDOW_CLASS every 50 ms; `ledger-reconcile.py --cached` alone,
+spawned hidden: 3 windows; the same with the launch on CREATE_NO_WINDOW: 0, the run still wrote its
+stamp). Fixed at the launch, so a child added later inherits the windowless console; the one remaining
+match of the pattern is the comment that names the old flag.
 
 ## OS-19 — a hook reads a file the command hands over by its Git Bash path, which node on Windows cannot open
 

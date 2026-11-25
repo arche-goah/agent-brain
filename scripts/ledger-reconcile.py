@@ -726,7 +726,11 @@ def cached(a):
     kw = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
           "cwd": a.root}
     if os.name == "nt":
-        kw["creationflags"] = 0x00000008 | 0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        # CREATE_NO_WINDOW, not DETACHED_PROCESS (OS-18): the run gets a console of its own with no
+        # window, and every child it starts (bash, git, gh) inherits it. Detached without a console,
+        # each child not flagged by hand got a NEW console - measured 2026-11-25 on a Windows brain: the
+        # `gh pr view` and `git` calls opened 3 Windows Terminal windows per session start, taking focus.
+        kw["creationflags"] = 0x08000000 | 0x00000200   # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
     else:
         kw["start_new_session"] = True
     try:

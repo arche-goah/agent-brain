@@ -547,6 +547,15 @@ def main():
         ok("merged in core main" not in out and "on-main" in next((l for l in out.splitlines() if "done but still open" in l), ""),
            "after the pin moved: DONE-OPEN, no longer MERGED-MAIN", out)
 
+    # OS-18: the Windows launch of the --cached background run is windowless (CREATE_NO_WINDOW), never
+    # console-less (the detach flag) - there every gh/git child opened a terminal window (2026-11-25).
+    # The detach flag is built from two parts so this fixture is no site of the OS-18 search itself.
+    src = pathlib.Path(SCRIPT).read_text(encoding="utf-8")
+    launch = next((l for l in src.splitlines() if 'kw["creationflags"] =' in l and "0x00000200" in l), "")
+    detach = "0x0000000" + "8"
+    ok("0x08000000" in launch and detach not in launch,
+       "background run on Windows starts with CREATE_NO_WINDOW, not the detach flag", launch)
+
     print()
     if fails:
         print(f"ledger-reconcile-test: {fails} FAILURE(S)")
