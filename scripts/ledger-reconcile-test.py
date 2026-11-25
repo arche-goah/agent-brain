@@ -22,6 +22,12 @@ LEDGER = """# Orders
   check: test -f marker-absent
   id: really-open
 
+- [ ] **parked by the operator, check green** — operator (2026-11-20)
+  check: test -f marker-present
+  exit: parked 2026-11-23 (operator: as it is for now)
+  was-exit: ai-does-it 2026-11-20
+  id: parked-green
+
 - [x] **ticked, but broke again** — derived (2026-10-10)
   check: test -f marker-absent
   id: ticked-regressed
@@ -119,6 +125,7 @@ def main():
         done_line = next((l for l in out.splitlines() if "done but still open" in l), "")
         ok("done-but-open" in done_line, "open entry whose check passes = DONE-OPEN", out)
         ok("really-open" not in out, "open entry whose check fails is not reported", out)
+        ok("parked-green" not in done_line, "an entry the operator parked is not DONE-OPEN while its check passes", out)
         ok("docs/orders.md:" in done_line, "an entry without an id is named by file:line", out)
         reg = next((l for l in out.splitlines() if "whose check fails" in l), "")
         ok("ticked-regressed" in reg and "ticked-holds" not in reg, "ticked entry whose check fails = REGRESSED, the holding one not", out)
