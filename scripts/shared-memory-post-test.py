@@ -179,6 +179,15 @@ def main() -> int:
              post(repo, "request", "--area", "core", "--to", "sam-win", "--title", "t")),
             ("the same by person", post(repo, "request", "--area", "core", "--to", "person:sam", "--title", "s")),
             # 2026-11-03: 17 LOG lines over the entry cap since 2026-10-31, every one written by this tool
+            # 2026-11-18: written here, refused by the lint's reader at the pre-commit (check 9)
+            ("a Windows run the lint reads, to one Windows device",
+             post(repo, "request", "--area", "core", "--to", "alex-win", "--title",
+                  "Replay: your Windows run at the next train head", "--body", "Please post the exit code.")),
+            # the same for a reply (2026-11-18: "the Windows check of #34 goes to ..." to one Windows device, refused at pre-commit)
+            ("a reply the lint reads as a Windows check, to one Windows device",
+             post(repo, "reply", "--area", "core", "--to", "alex-win", "--title",
+                  "Re: your Windows run at the next train head", "--body", "Please post the exit code.",
+                  "--answers", f"request-check-core-42-on-windows-{STATE}")),
             ("a LOG line over the entry cap",
              post(repo, "note", "--area", "core", "--to", "kim-pc", "--title", "long title " * 30,
                   date=sml.LOG_CAP_SINCE)),
@@ -331,6 +340,23 @@ def main() -> int:
                     ("Single PR with a reason", "Please run the fixtures on Windows at the head of #1.",
                      ["--hand-check-ok", "touches the Windows hook path only a machine shows"], 0,
                      "a stated reason lets a single-PR hand check go"),
+                    # 2026-11-20: the wordings of four requests that passed unseen
+                    ("Review single PR", "Please review #1 at abc1234 on Windows.", [], 2,
+                     "'please review' with Windows for a single PR is refused"),
+                    ("Re-check single PR", "Re-check #1 at abc1234 on Windows - the finding is fixed.", [], 2,
+                     "'re-check' on Windows for a single PR is refused"),
+                    ("Run on Windows single PR", "Run on Windows the fixture of #1 at abc1234.", [], 2,
+                     "'run on Windows' for a single PR is refused"),
+                    ("Content review only", "Please review #1 at abc1234: Fit, Design, Cost, Gaps.", [], 0,
+                     "control: a content review that names no OS passes"),
+                    # 2026-11-20 replay: to os:<os>, the title is a check sentence whatever its words
+                    ("Windows-Pruefung o/core#1 am Kopf abc1234", "Der Fix ist drin.", [], 2,
+                     "a title naming the OS and a single PR is refused without a check word"),
+                    ("Content review: o/core#1 start findings", "Fit, Design, Cost, Gaps.", [], 0,
+                     "control: a title naming no OS passes"),
+                    # content review of #622: a content-review title naming the OS is no hand check
+                    ("Content review core o/core#1 on Windows", "Fit, Design, Cost, Gaps; no hand run.", [], 0,
+                     "a content-review title naming the OS passes"),
                 ):
                     r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", title, "--body", body,
                              *extra, me="alex-mac", brain=cip)
@@ -389,6 +415,58 @@ def main() -> int:
         t = req.read_text(encoding="utf-8") if req.is_file() else ""
         check("NEGATIVE: a repo not on the list reaches every Windows device",
               "  next: kim-win, lee-win\n" in t, r.stdout + r.stderr + t)
+    # 2026-11-24 (operator order, translated: "build it generically so that instances or persons can always be
+    # included or excluded on purpose"): a person's except_topics and an entry's --except narrow a broad address; the entry then names the
+    # devices it reaches, so a reader on an older core is not addressed either. A device or person named stays reached.
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], capture_output=True)
+        for area in ("core", "grandma3"):
+            (repo / area).mkdir()
+            (repo / area / "LOG.md").write_text("# Log\n", encoding="utf-8")
+        (repo / "INDEX.md").write_text("# Index\n", encoding="utf-8")
+        (repo / "parties.json").write_text(json.dumps({"people": {
+            "kim": {"github": "k", "devices": {"kim-mac": {"os": "macos"}, "kim-win": {"os": "windows"}}},
+            "max": {"github": "m", "devices": {"max-win": {"os": "windows"}, "max-pc": {"os": "windows"}}},
+            "lee": {"github": "l", "devices": {"lee-win": {"os": "windows"}}, "except_topics": ["core"]}}}),
+            encoding="utf-8")
+        body = ("--body", "Run the full lint and the fixtures at the head.")
+        r = post(repo, "request", "--area", "core", "--to", "os:windows", "--title", "Verify train t1 on Windows",
+                 *body, me="kim-mac")
+        t = (repo / "core" / f"request-verify-train-t1-on-windows-{STATE}.md")
+        t = t.read_text(encoding="utf-8") if t.is_file() else ""
+        check("except_topics: a core request to os:windows leaves that person out and names the devices it reaches",
+              "  audience: kim-win, max-pc, max-win\n" in t and "  except: lee-win\n" in t and "lee-win" not in
+              t.split("  except:")[0], r.stdout + r.stderr + t)
+        r = post(repo, "request", "--area", "grandma3", "--to", "os:windows", "--title", "Verify suite t2 on Windows",
+                 *body, me="kim-mac")
+        t = (repo / "grandma3" / f"request-verify-suite-t2-on-windows-{STATE}.md")
+        t = t.read_text(encoding="utf-8") if t.is_file() else ""
+        check("NEGATIVE: another area keeps os:windows whole (no except written)",
+              "  audience: os:windows\n" in t and "except:" not in t, r.stdout + r.stderr + t)
+        r = post(repo, "request", "--area", "core", "--to", "lee-win", "--title", "Verify train t3 on lee-win",
+                 *body, "--one-machine", "the only machine with the desk attached", "--one-machine-evidence",
+                 "https://example.org/desk", me="kim-mac")
+        t = (repo / "core" / f"request-verify-train-t3-on-lee-win-{STATE}.md")
+        t = t.read_text(encoding="utf-8") if t.is_file() else ""
+        check("NEGATIVE: a device named by itself is reached despite except_topics",
+              "  audience: lee-win\n" in t and "except:" not in t, r.stdout + r.stderr + t)
+        r = post(repo, "request", "--area", "grandma3", "--to", "os:windows", "--except", "person:max",
+                 "--title", "Verify suite t4 on Windows", *body, me="kim-mac")
+        t = (repo / "grandma3" / f"request-verify-suite-t4-on-windows-{STATE}.md")
+        t = t.read_text(encoding="utf-8") if t.is_file() else ""
+        check("--except person:<p> leaves every device of that person out of a broad address",
+              "  audience: kim-win, lee-win\n" in t and "  except: max-pc, max-win\n" in t, r.stdout + r.stderr + t)
+        # Windows review of #657 (2026-11-24): narrowing down to ONE Windows device needs --one-machine like a direct address
+        r = post(repo, "request", "--area", "grandma3", "--to", "os:windows", "--except", "person:max,kim-win",
+                 "--title", "Verify suite t6 on Windows", *body, me="kim-mac")
+        check("--except that leaves one Windows device for a Windows check is refused without --one-machine",
+              r.returncode != 0 and "one-machine" in r.stdout + r.stderr
+              and not (repo / "grandma3" / f"request-verify-suite-t6-on-windows-{STATE}.md").is_file(), r.stdout + r.stderr)
+        r = post(repo, "request", "--area", "grandma3", "--to", "os:windows", "--except", "nobody-known",
+                 "--title", "Verify suite t5 on Windows", *body, me="kim-mac")
+        check("--except with an unknown token is refused", r.returncode != 0 and "does not know" in r.stdout + r.stderr,
+              r.stdout + r.stderr)
     # 2026-11-08 (macOS instance): the PR's GitHub repo given as --repo was refused as "not an area" - now named for what it is
     r = post(Path("o/some-suite"), "request", "--area", "core", "--to", "os:windows", "--title", "x", "--body", "y")
     check("--repo owner/repo (a GitHub repo, no folder) is refused and named as such",

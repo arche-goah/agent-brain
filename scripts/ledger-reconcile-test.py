@@ -285,7 +285,8 @@ def main():
                 "grep x a > b", "cat $(rm -f b)", "cat `rm -f b`", "test -f a\nrm -f b",
                 "git -c core.pager=rm log", "git push", "touch x",
                 "gh pr view 5 --web", "gh pr view 5 -w", "gh pr merge 5", "gh pr comment 5 -b x",
-                "git -C core push", "git -C core -c core.pager=rm log"]:
+                "git -C core push", "git -C core -c core.pager=rm log",
+                "gh pr view 95 --repo o/r --json state", "test -f a && gh pr view 5 --json state"]:
         ok(not lr.permitted(cmd, lr.ALLOWED), f"refused: {cmd!r}")
     for cmd in ["grep -q x file", "test -f a && git log -1 --format=%H", "git log --oneline | grep -q fix",
                 "! grep -q draft notes.md", "ls docs || test -d docs", "git diff --quiet HEAD -- a.md",
@@ -373,6 +374,9 @@ def main():
             "- [ ] **waits** — derived (2026-11-02)\n  id: waits-met\n  check: none — waits for the pin that carries #1\n\n"
             "- [ ] **two** — derived (2026-11-02)\n  id: one-outside\n  check: none — after the Pin with agent-brain#1 and #2\n\n"
             "- [ ] **other repo** — derived (2026-11-02)\n  id: other-repo\n  check: none — pin carries grandma3-suite#1\n\n"
+            "- [ ] **other repo spaced** — derived (2026-11-18)\n  id: other-repo-spaced\n  check: none — Pin-Lage per heavy-metal #1\n\n"
+            "- [ ] **follow-up word** — derived (2026-11-18)\n  id: follow-up-word\n  check: none — waits for the pin that carries the follow-up #1\n\n"
+            "- [ ] **the repo named elsewhere** — derived (2026-11-18)\n  id: repo-elsewhere\n  check: none — see heavy-metal#9 and arche-goah/heavy-metal\n\n"
             "- [ ] **no anchor word** — derived (2026-11-02)\n  id: no-pin-word\n  check: none — see #1\n\n"
             "- [ ] **unreadable** — derived (2026-11-02)\n  id: unreadable\n  check: none — the pin with #9\n\n"
             "- [x] **ticked** — derived (2026-11-02)\n  id: ticked-pin\n  check: none — the pin with #1\n\n"
@@ -385,7 +389,8 @@ def main():
         out = r.stdout + r.stderr
         pm = next((l for l in out.splitlines() if "waiting for a pin" in l), "")
         ok("waits-met" in pm, "PIN-MET: every named PR is in the pin (head or merge commit an ancestor)", out)
-        for i, why in (("one-outside", "one PR outside the pin"), ("other-repo", "another repo's #N"),
+        ok("follow-up-word" in pm, "PIN-MET: a hyphenated word before #N is no repo name (the follow-up #1)", out)
+        for i, why in (("one-outside", "one PR outside the pin"), ("other-repo", "another repo's #N"), ("other-repo-spaced", "another repo's name, a space, then #N"),
                        ("no-pin-word", "no word pin"), ("unreadable", "an unreadable PR"),
                        ("ticked-pin", "a ticked entry"),
                        ("looked-at", "an exit dated on or after the pin's commit")):

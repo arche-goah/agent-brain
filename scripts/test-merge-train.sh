@@ -42,6 +42,14 @@ printf '%s' "$out" | grep -aq -- "#3 (conflicts with the train so far)" && ok "a
 printf '%s' "$out" | grep -aq -- "#9 (not an open same-repo PR)" && ok "an unknown PR is left out and named" || bad "unknown PR not named: $out"
 git -C "$T/work" merge-base --is-ancestor "$TWO_HEAD" train/test && ok "the train holds PR 2's head unchanged (reachable)" || bad "PR 2 head not in the train"
 [ -z "$(git -C "$T/work" status --porcelain)" ] && ok "no merge left half-done" || bad "working tree dirty after a left-out PR"
+# --probe (2026-11-18): the same build in a throw-away worktree; conflicts named, the clone left as it was.
+before_head="$(git -C "$T/work" rev-parse HEAD)"; before_br="$(git -C "$T/work" branch --format='%(refname:short)' | sort | tr '\n' ' ')"
+out="$(MERGE_TRAIN_GH="$stub" bash "$S" --repo "$T/work" --probe 1 2 3 2>&1)"; rc=$?
+[ $rc -eq 0 ] && printf '%s' "$out" | grep -aq -- "## Probe train" && printf '%s' "$out" | grep -aq -- "#3 (conflicts with the train so far)" \
+  && ok "--probe names the conflict" || bad "probe rc=$rc: $out"
+[ "$(git -C "$T/work" rev-parse HEAD)" = "$before_head" ] && [ "$(git -C "$T/work" branch --format='%(refname:short)' | sort | tr '\n' ' ')" = "$before_br" ] \
+  && [ "$(git -C "$T/work" worktree list | wc -l | tr -d ' ')" = 1 ] && ok "--probe leaves the clone as it was (HEAD, branches, no worktree)" \
+  || bad "probe left traces: $(git -C "$T/work" branch --format='%(refname:short)' | tr '\n' ' ') / $(git -C "$T/work" worktree list)"
 out="$(MERGE_TRAIN_GH="$stub" bash "$S" --repo "$T/work" --name train/none 9 2>&1)"; rc=$?
 [ $rc -eq 1 ] && ok "a train no PR could join exits 1 (negative control)" || bad "rc=$rc for an empty train"
 

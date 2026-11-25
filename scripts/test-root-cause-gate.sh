@@ -26,8 +26,17 @@ asst() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"
 # write <path> [text]: a register path carries a complete class entry unless the text is given (2026-11-11: invariant + replay)
 GOOD_ENTRY='invariant: a summary over a set of sources reads every source before it counts
 replay: 28 turns in 401 transcripts'
+# run <command> <output>: a Bash call of the session and its result (2026-11-23: a replay count must stand in a real output)
+RUNID=0
+run() {
+  RUNID=$((RUNID + 1))
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"r%s","name":"%s","input":{"command":%s}}]}}\n' "$RUNID" "${RUNTOOL:-Bash}" "$(js "$1")"
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"r%s","content":%s}]}}\n' "$RUNID" "$(js "$2")"
+}
 write() {
-  local t="${2-}"; case "$1" in *carrier-register.md) [ $# -lt 2 ] && t="$GOOD_ENTRY";; esac
+  local t="${2-}"; case "$1" in *carrier-register.md) [ $# -lt 2 ] && t="$GOOD_ENTRY"
+    # the detector ran: its output carries the replay line's count, unless a case tests the claim without a run (NORUN=1)
+    [ -z "${NORUN:-}" ] && run "node scripts/replay.cjs" "$(printf '%s\n' "$t" | sed -n 's/^replay:[[:space:]]*//p')";; esac
   printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":%s,"new_string":%s}}]}}\n' "$(js "$1")" "$(js "$t")"
 }
 tres() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"x"}]}}\n'; }
@@ -44,9 +53,187 @@ check() { # $1 name, $2 transcript, $3 block|allow, $4 cwd, [$5 stop_hook_active
 }
 CWD="$T/cwd"; mkdir -p "$CWD"
 
+# --- 2026-11-23: a hook refused the very step the operator asked for ("questions now" -> AskUserQuestion refused)
+aq() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":"Release now?"}]}}]}}\n' "$1"; }
+refuse() { printf '{"type":"user","timestamp":"2026-11-23T17:14:12.774Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":true,"content":%s}]}}\n' "$1" "$(js "PreToolUse:AskUserQuestion hook error: $2")"; }
+{ user "work through it autonomously"; asst "ok"; user "what is open for me?"; aq a1; refuse a1 "AUTONOMOUS-GATE: the operator ordered this run autonomous, and this is a question"; asst "Fixed the ledger entry, going on."; } > "$T/ra1.jsonl"
+check "the incident: a hook refused the question the operator asked for, no cause" "$T/ra1.jsonl" block "$CWD"
+{ user "work through it autonomously"; asst "ok"; user "what is open for me?"; aq a2; refuse a2 "MODE-QUESTION-ORDER: the mode question comes right after answered decisions"; asst "Running the steps first."; } > "$T/ra2.jsonl"
+check "a refusal that only orders the step (mode-question order) is no surprise" "$T/ra2.jsonl" allow "$CWD"
+{ user "fix the readme"; aq a3; refuse a3 "AUTONOMOUS-GATE: the operator ordered this run autonomous"; asst "Filed the question."; } > "$T/ra3.jsonl"
+check "a refused question the operator did not ask for is no surprise (control)" "$T/ra3.jsonl" allow "$CWD"
+# --- 2026-11-23: a gate MALFUNCTION (timed out, crashed) is no decision - 45 in the 60 newest transcripts, no cause named
+bashq() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":"gh pr comment 1 -b x"}}]}}\n' "$1"; }
+bres() { printf '{"type":"user","timestamp":"2026-11-23T17:30:00.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":true,"content":%s}]}}\n' "$1" "$(js "PreToolUse:Bash hook error: $2")"; }
+{ user "post the review"; bashq b1; bres b1 '[node "$CLAUDE_PROJECT_DIR/core/helpers/content-review-gate.cjs"]: timed out; blocking because onFailure is "block"'; asst "Retried, it went through."; } > "$T/mf1.jsonl"
+check "a gate that timed out, retried without a cause" "$T/mf1.jsonl" block "$CWD"
+{ user "post the review"; bashq b2; bres b2 '[command hook 29]: timed out; blocking because onFailure is "block"'; asst "Retried."; } > "$T/mf2.jsonl"
+check "a numbered hook that timed out (its name unreadable) is a malfunction too" "$T/mf2.jsonl" block "$CWD"
+{ user "post the review"; bashq b3; bres b3 'MECHANISM CHECK (agent-brain): a heredoc'; asst "Used a file instead."; } > "$T/mf3.jsonl"
+check "a gate's decision (a refusal with a reason) is no malfunction (control)" "$T/mf3.jsonl" allow "$CWD"
+# --- 2026-11-23: anomaly signals in the turn's tool results must be classified (an own command's Traceback blocks)
+okres() { printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":%s,"content":%s}]}}\n' "$1" "$2" "$(js "$3")"; }
+{ user "count the rules"; bashq c1; okres c1 true 'Traceback (most recent call last):
+  File "<string>", line 1
+KeyError: rules'; asst "Done, there are 12."; } > "$T/an1.jsonl"
+check "an own command failed with a Traceback and the turn does not classify it" "$T/an1.jsonl" block "$CWD"
+{ user "count the rules"; bashq c2; okres c2 true 'Traceback (most recent call last):
+KeyError: rules'; asst "Anomaly: KeyError in my one-liner - own mistake. Cause: the file keys rules under \"rules\" of each block, I read the top level."; } > "$T/an2.jsonl"
+# strand review 2026-11-23: a classification releases only with its backing - an "own mistake" goes the cause path (a
+# Cause line of its own, which then owes the carrier and the entry); a cause tucked into the classification line is none
+check "an own mistake with the cause only inside the classification line is not backed (strand review)" "$T/an2.jsonl" block "$CWD"
+{ user "count the rules"; bashq c2b; okres c2b true 'Traceback (most recent call last):
+KeyError: rules'; asst "Anomaly: KeyError in my one-liner - own mistake.
+Cause: the file keys rules under \"rules\" of each block, I read the top level."; } > "$T/an2b.jsonl"
+out=$(printf '{"transcript_path":"%s","stop_hook_active":false,"cwd":"%s","session_id":"s1"}' "$(native "$T/an2b.jsonl")" "$(native "$CWD")" | CLAUDE_PROJECT_DIR="$(native "$CWD")" node "${GATE:-$G}" 2>&1)
+case "$out" in *"names a cause"*) ok "an own mistake with its Cause line goes the cause path (carrier and entry owed)";; *) bad "own mistake not on the cause path: ${out:0:160}";; esac
+{ user "count the entries"; bashq c4; okres c4 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: traceback in count.py - intended
+Counted by hand instead: 12."; } > "$T/an4.jsonl"
+check "a bare 'intended' with nothing it refers to is not backed (break case C)" "$T/an4.jsonl" block "$CWD"
+{ user "count the entries"; asst "Plan: run \`python3 count.py --probe\` first; it fails on purpose when the ledger has no ids yet."; bashq c5; okres c5 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: the KeyError - intended, the probe step \`python3 count.py --probe\` of the plan above."; } > "$T/an5.jsonl"
+check "'intended' quoting the agent's own plan line is not backed (second review N2)" "$T/an5.jsonl" block "$CWD"
+{ user "count the entries"; bashq c6; okres c6 true 'Traceback (most recent call last):
+KeyError: id'; asst "Signal: gate false positive, moving on."; } > "$T/an6.jsonl"
+check "'gate false positive' without a register entry in the turn is not backed (break case C2)" "$T/an6.jsonl" block "$CWD"
+{ user "count the entries"; bashq c7; okres c7 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: the KeyError - gate false positive, entry written."; write "$CWD/docs/maintenance/carrier-register.md"; } > "$T/an7.jsonl"
+check "'gate false positive' with its register entry written in the turn is backed" "$T/an7.jsonl" allow "$CWD"
+mcall() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+{ user "push the branch then open the PR"; mcall m1 "git push -u origin feat/x"; bres m1 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall m2 "git push -u origin feat/x # CONDITION-NONE: no condition"; okres m2 false ok; asst "Pushed."; } > "$T/an8.jsonl"
+check "a refusal passed by its override marker without a classification holds (break case M)" "$T/an8.jsonl" block "$CWD"
+{ user "push the branch then open the PR"; mcall m3 "git push -u origin feat/x"; bres m3 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall m4 "git push -u origin feat/x # CONDITION-NONE: the then is the order of steps"; okres m4 false ok; asst "Anomaly: CONDITIONAL-ORDER-GATE read 'then' as a condition - intended, \`# CONDITION-NONE\` in the push: the then is the order of steps."; } > "$T/an9.jsonl"
+check "a marker pass 'intended' citing its own marker is not backed (second review N4)" "$T/an9.jsonl" block "$CWD"
+# what still backs an "intended": the operator's prompt, or a call made before the signal's call
+{ user "run count.py --probe, it fails on purpose while the ledger has no ids"; bashq c12; okres c12 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: the KeyError - intended, \"it fails on purpose while the ledger has no ids\"."; } > "$T/an12.jsonl"
+check "'intended' quoting the operator's prompt is backed" "$T/an12.jsonl" allow "$CWD"
+{ user "push the branch then open the PR"; mcall e0 "git log --oneline -1 # CONDITION-NONE: the then orders the steps"; okres e0 false ok; mcall e1 "git push -u origin feat/y"; bres e1 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall e2 "git push -u origin feat/y # CONDITION-NONE: the then orders the steps"; okres e2 false ok; asst "Anomaly: CONDITIONAL-ORDER-GATE - intended, \`the then orders the steps\` was stated before the push."; } > "$T/an13.jsonl"
+check "'intended' quoting a call made before the signal is backed" "$T/an13.jsonl" allow "$CWD"
+{ user "count the entries"; bashq c14; okres c14 true 'Traceback (most recent call last):
+KeyError: id'; asst "Anomaly: traceback in \`gh pr comment 1 -b x\` - intended"; } > "$T/an14.jsonl"
+check "'intended' quoting the failing call itself is not backed (second review N1)" "$T/an14.jsonl" block "$CWD"
+{ user "push the branch then open the PR"; mcall f0 "gh pr create --title Release-now-question"; bres f0 'PRS-FIRST: read the open PRs first'; mcall f1 "git push -u origin feat/z"; bres f1 'CONDITIONAL-ORDER-GATE: the order names a condition (then)'; mcall f2 "git push -u origin feat/z # CONDITION-NONE: ok"; okres f2 false ok; asst "Anomaly: the refusal - intended, \`Release-now-question\` was the plan."; } > "$T/an15.jsonl"
+check "'intended' quoting an earlier call that a hook REFUSED is not backed (second review P2)" "$T/an15.jsonl" block "$CWD"
+# main session 2026-11-23: a RULE-PATH marker (gate-markers.json rule_path true) is the gate followed - it owes no line
+{ user "open the PR"; mcall p1 "gh pr create --title x"; bres p1 'PRS-FIRST: read the open PRs first'; mcall p2 "gh pr create --title x # PRS-READ: none is closer"; okres p2 false ok; asst "Opened."; } > "$T/an10.jsonl"
+check "a refusal passed by its rule-path marker (PRS-READ) owes no classification" "$T/an10.jsonl" allow "$CWD"
+{ user "open the PR"; mcall p3 "gh pr create --title y"; bres p3 'PRS-FIRST: read the open PRs first'; mcall p4 "gh pr create --title y # NEWLY-MADE-OK: nobody names this"; okres p4 false ok; asst "Opened."; } > "$T/an11.jsonl"
+check "a marker no gate entry names holds like an exception (control)" "$T/an11.jsonl" block "$CWD"
+{ user "check the build"; bashq c3; okres c3 true 'Exit code 1
+3 tests failed'; asst "Three tests fail; fixing them."; } > "$T/an3.jsonl"
+check "a command that fails on purpose-shaped output (a failing test run) is no anomaly (control)" "$T/an3.jsonl" allow "$CWD"
+# --- 2026-11-23: the register lookup per refusal - a gate refusing a tool the carrier register already holds an EARLIER
+# entry for is a REPEAT (the third "question tool refused on the operator's request" was handled as a first case)
+regdir() { mkdir -p "$1/docs/maintenance"; printf '%s\n' "${@:2}" > "$1/docs/maintenance/carrier-register.md"; }
+RG="$T/reg"; regdir "$RG" '# Carrier register' '' '## 2026-11-05 — a request for questions read as autonomous' 'id: asks-read-as-mode-on' \
+  'incident: the operator asked for the blocking questions; the first AskUserQuestion call was refused by the' '  autonomous-gate' \
+  'cause: the classifier record read mode_on' 'carrier: pull request fix/decision-count (open)' 'replay: 3 hits'
+{ user "fix the readme"; aq r1; refuse r1 "AUTONOMOUS-GATE: the operator ordered this run autonomous"; asst "Filed the question."; } > "$T/rr1.jsonl"
+check "a refusal the register holds an earlier entry for (same gate, same tool), not classified" "$T/rr1.jsonl" block "$RG"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr1.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'a REPEAT'*'asks-read-as-mode-on'*'effective: not stated'*) ok "the block names the earlier entry, its carrier and that its effect is not stated";; *) bad "repeat block without the entry: '${out:0:300}'";; esac
+check "the same refusal with no register (control)" "$T/rr1.jsonl" allow "$CWD"
+# Windows review of #643 (2026-11-24): a bare BLOCKED names no gate, and a tool name counts only as a whole word
+rr() { node -e 'const r=require(process.argv[1]); const x=r.repeatIn([{tool:process.argv[2],raw:process.argv[3],at:"2026-11-24"}], require("fs").readFileSync(process.argv[4],"utf8"), {}); process.stdout.write(x?"REPEAT":"none")' \
+  "$(native "$(dirname "$G")/refusal-register.cjs")" "$1" "$2" "$(native "$RG/docs/maintenance/carrier-register.md")"; }
+regdir "$RG" '# Carrier register' '' '## 2026-11-05 — the autonomous gate blocked an edit of the ledger' 'id: autonomous-ledger-edit' \
+  'incident: AUTONOMOUS-GATE blocked an edit; the state was already measured' 'cause: the run was autonomous' \
+  '' '## 2026-11-06 — a shared copy hold' 'id: shared-copy' 'refusal: SHARED WORKING COPY Bash' 'cause: two sessions'
+[ "$(rr Edit 'PreToolUse:Edit hook error: [node "x/core/helpers/file-guard.cjs"]: BLOCKED: /r/a.md')" = none ] \
+  && ok "a file-guard BLOCKED refusal is no repeat of an unrelated entry that says blocked" || bad "file-guard BLOCKED matched an unrelated entry"
+[ "$(rr Read 'PreToolUse:Read hook error: AUTONOMOUS-GATE: held')" = none ] \
+  && ok "a tool name inside a word (read in already) is no hit" || bad "read matched inside already"
+[ "$(rr Edit 'PreToolUse:Edit hook error: AUTONOMOUS-GATE: held')" = REPEAT ] \
+  && ok "the same gate and the tool as a whole word is a repeat (control)" || bad "whole-word edit missed"
+[ "$(rr Bash 'PreToolUse:Bash hook error: SHARED WORKING COPY (/r): another session')" = REPEAT ] \
+  && ok "a refusal: key with a spaced gate label matches" || bad "spaced refusal key missed"
+RG="$T/reg"; regdir "$RG" '# Carrier register' '' '## 2026-11-05 — a request for questions read as autonomous' 'id: asks-read-as-mode-on' \
+  'incident: the operator asked for the blocking questions; the first AskUserQuestion call was refused by the' '  autonomous-gate' \
+  'cause: the classifier record read mode_on' 'carrier: pull request fix/decision-count (open)' 'replay: 3 hits'
+# The classification is BACKED or it releases nothing (independent review 2026-11-23: one self-written line released the hold).
+REF='AUTONOMOUS-GATE: the operator ordered this run autonomous'
+{ user "fix the readme"; aq r2; refuse r2 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, the run is autonomous and the operator asked nothing."; } > "$T/rr2.jsonl"
+check "a repeat with a bare 'intended' line stays held" "$T/rr2.jsonl" block "$RG"
+{ user "fix the readme; if the gate holds a question, file it in the ledger and go on"; aq r3; refuse r3 "$REF"
+  asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"if the gate holds a question, file it in the ledger\"."; } > "$T/rr3.jsonl"
+check "a repeat classified as intended, quoting the operator's prompt of the turn" "$T/rr3.jsonl" allow "$RG"
+# the agent's own earlier text backs nothing (second independent review: a plan line it wrote itself is the bare line again)
+{ user "fix the readme"; asst "Plan: I put the release question once; if the gate holds it, I file the question in the ledger."; aq r3b; refuse r3b "$REF"
+  asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"if the gate holds it, I file the question in the ledger\"."; } > "$T/rr3b.jsonl"
+check "a repeat classified as intended by quoting the agent's own plan line stays held" "$T/rr3b.jsonl" block "$RG"
+# A quote that stands only in the REFUSED call backs nothing (second independent review 2026-11-23: the refused call's own
+# words are always at hand - quoting them is the bare line again). The question text below is the refused call's input.
+{ user "fix the readme"; aq r9; refuse r9 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - intended, \"Release now?\" was the question."; } > "$T/rr9.jsonl"
+check "a repeat classified as intended by quoting the refused call's own words stays held" "$T/rr9.jsonl" block "$RG"
+{ user "fix the readme"; aq r4; refuse r4 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, moving on."; } > "$T/rr4.jsonl"
+check "a repeat declared a false positive with no register entry stays held" "$T/rr4.jsonl" block "$RG"
+ENTRY_NO_REL='## 2026-11-23 — the question tool refused again
+refusal: AUTONOMOUS-GATE AskUserQuestion
+invariant: a request for questions opens the question tool whatever is filed as open
+related: none
+replay: 3 turns in 60 transcripts'
+{ user "fix the readme"; aq r5; refuse r5 "$REF"; write "$RG/docs/maintenance/carrier-register.md" "$ENTRY_NO_REL"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, entry written."; } > "$T/rr5.jsonl"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr5.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'"decision":"block"'*'names the earlier one under related'*'asks-read-as-mode-on'*) ok "a false positive whose new entry says related: none stays held and is told which entry to name";; *) bad "related: none passed: '${out:0:300}'";; esac
+{ user "fix the readme"; aq r6; refuse r6 "$REF"; write "$RG/docs/maintenance/carrier-register.md" "${ENTRY_NO_REL/related: none/related: asks-read-as-mode-on}"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - gate false positive, entry written."; } > "$T/rr6.jsonl"
+check "a false positive with its entry written in the turn, naming the earlier one" "$T/rr6.jsonl" allow "$RG"
+{ user "fix the readme"; aq r7; refuse r7 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - own mistake."; } > "$T/rr7.jsonl"
+check "a repeat declared an own mistake with no cause line stays held" "$T/rr7.jsonl" block "$RG"
+{ user "fix the readme"; aq r8; refuse r8 "$REF"; asst "Anomaly: AUTONOMOUS-GATE refused AskUserQuestion again - own mistake.
+Cause: read the run mode from memory, not from the gate — I asked inside the run."; } > "$T/rr8.jsonl"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/rr8.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'"decision":"block"'*'names a cause'*) ok "an own mistake with its cause line goes the cause path (carrier and entry owed)";; *) bad "own mistake + cause did not reach the cause path: '${out:0:300}'";; esac
+RS="$T/reg-same-day"; regdir "$RS" '## 2026-11-23 — the question tool refused' 'id: today' 'incident: AUTONOMOUS-GATE refused AskUserQuestion' 'cause: x'
+check "an entry of the refusal's own day is the present case, not an earlier one" "$T/rr1.jsonl" allow "$RS"
+RO="$T/reg-other-tool"; regdir "$RO" '## 2026-11-05 — an edit held' 'id: edit-held' 'incident: AUTONOMOUS-GATE held the Edit of the settings file' 'cause: x'
+check "an earlier entry for the same gate but another tool is no repeat" "$T/rr1.jsonl" allow "$RO"
+RF="$T/reg-field"; regdir "$RF" '## 2026-11-05 — the questions did not come' 'id: by-field' 'refusal: AUTONOMOUS-GATE AskUserQuestion' 'incident: the operator asked and got prose' 'cause: x'
+check "the refusal: field matches where the prose names neither gate nor tool" "$T/rr1.jsonl" block "$RF"
+RFO="$T/reg-field-other"; regdir "$RFO" '## 2026-11-05 — an edit held' 'id: by-field-other' 'refusal: AUTONOMOUS-GATE Edit' 'incident: AUTONOMOUS-GATE refused AskUserQuestion, said the prose' 'cause: x'
+check "a refusal: field decides alone - its entry's prose is not searched" "$T/rr1.jsonl" allow "$RFO"
+RA="$T/reg-alias"; regdir "$RA" '## 2026-11-05 — the questions did not come' 'id: by-alias' 'incident: the autonomous gate refused the question tool' 'cause: x'
+check "an entry in other words for the tool, no instance alias (control)" "$T/rr1.jsonl" allow "$RA"
+mkdir -p "$RA/.claude/rules"; printf '%s\n' '{"refusal_aliases":{"AskUserQuestion":["question tool"]}}' > "$RA/.claude/rules/root-cause-patterns.json"
+check "the same entry with the instance's word for the tool as refusal_aliases" "$T/rr1.jsonl" block "$RA"
+XP=',"session_id":"s-one"' check "a repeat is held once per session for a gate and tool ..." "$T/rr1.jsonl" block "$RG"
+XP=',"session_id":"s-one"' check "... the second time it is only recorded" "$T/rr1.jsonl" allow "$RG"
+n="$(grep -c '"gate":"AUTONOMOUS-GATE"' "$RG/.claude-state/register-repeats.jsonl" 2>/dev/null || echo 0)"
+[ "$n" -ge 3 ] && ok "every repeat is recorded ($n lines)" || bad "repeats recorded: $n"
+out="$(printf '{"transcript_path":"%s","cwd":"%s"}' "$(native "$T/ra1.jsonl")" "$(native "$RG")" | CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" 2>&1)"
+case "$out" in *'refused the very step'*'A REPEAT'*'asks-read-as-mode-on'*) ok "the refused asked-for step names the earlier register entry too";; *) bad "refused ask without the register hit: '${out:0:300}'";; esac
+out="$(CLAUDE_PROJECT_DIR="$(native "$RG")" node "$G" --register-repeats "$(native "$T")" 2>&1)"
+case "$out" in *'AUTONOMOUS-GATE AskUserQuestion:'*'first entry 2026-11-05 asks-read-as-mode-on'*) ok "--register-repeats replays the lookup over a folder";; *) bad "replay: '${out:0:300}'";; esac
+# --- Windows review of #640: the gate's own way on is no bypass; a label with spaces is kept whole
+bcmd() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Bash","input":{"command":%s}}]}}\n' "$1" "$(js "$2")"; }
+skl() { printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"Skill","input":{"skill":"x"}}]}}\n' "$1"; }
+mkdir -p "$T/anr"
+{ user "go"; bcmd w1 "git commit -a -m wip"; bres w1 'SHARED WORKING COPY: two sessions share this copy'; bcmd w2 "git commit -a -m wip again now"; okres w2 false ok; asst "done"; } > "$T/anr/bypass.jsonl"
+{ user "go"; bcmd s1 "mt health check"; bres s1 'SKILL-GATE: load the skill first'; skl s2; okres s2 false ok; bcmd s3 "mt health check"; okres s3 false ok; asst "done"; } > "$T/anr/followed.jsonl"
+an_out=$(env CLAUDE_PROJECT_DIR="$CWD" node "${GATE:-$G}" --anomalies "$(native "$T/anr")" 10 2>&1)
+printf '%s\n' "$an_out" | grep -aq '^bypass: 1 ' && ok "a refusal then another form of the same call is a bypass" || bad "bypass not counted: $an_out"
+printf '%s\n' "$an_out" | grep -aq '^followed: 1 ' && ok "a refusal, the skill load it asks for, then the same call is the way on, not a bypass" || bad "followed not counted: $an_out"
+printf '%s\n' "$an_out" | grep -aq 'by SHARED WORKING COPY: 1' && ok "a gate label with spaces is counted whole" || bad "label cut: $an_out"
+
 # --- the class: a correction, a fix on the spot, no cause named
 { user "check the PRs"; asst "Done."; user "that is already active! something went wrong"; asst "Closed the question in the register."; } > "$T/t1.jsonl"
 check "correction answered without a cause" "$T/t1.jsonl" block "$CWD"
+# 2026-11-18: the agent's own text finds the mishap - same inquiry, no operator word needed
+{ user "go on"; asst "Measured: my earlier claim was wrong - two of the four were built on 2026-10-31. Next the questions."; } > "$T/s1.jsonl"
+check "own text finds a mishap, no cause line" "$T/s1.jsonl" block "$CWD"
+{ user "go on"; asst "It turned out two of the four were built.
+Cause: the correction stood in a research note, not in the entry (git log f3e152ed)."; write "core/helpers/ledger-reconcile.py"; write "$CWD/docs/maintenance/carrier-register.md"; } > "$T/s2.jsonl"
+check "own text finds a mishap, names the cause, writes carrier and register" "$T/s2.jsonl" allow "$CWD"
+{ user "go on"; asst "It turned out two of the four were built.
+Cause: the correction stood in a research note."; } > "$T/s5.jsonl"
+check "own text finds a mishap, names the cause, no carrier" "$T/s5.jsonl" block "$CWD"
+{ user "go on"; asst "PR #600 is merged, CI green."; } > "$T/s3.jsonl"
+check "a status line is no surprise" "$T/s3.jsonl" allow "$CWD"
+{ user "go on"; asst "The oblique one turned out well."; } > "$T/s6.jsonl"
+check "an everyday result sentence is no surprise (Windows review)" "$T/s6.jsonl" allow "$CWD"
+{ user "go on"; asst "The reviewer wrote \"it turned out fine\" - quoted."; } > "$T/s4.jsonl"
+check "a quoted surprise word stays silent" "$T/s4.jsonl" allow "$CWD"
 { user "go"; asst "ok"; user "why did you ask that again?"; asst "Sorry, I will not ask again."; } > "$T/t2.jsonl"
 check "why-did-you answered with an apology" "$T/t2.jsonl" block "$CWD"
 { user "go"; asst "ok"; user "the same failure class again, this keeps happening"; tres; asst "Fixed."; } > "$T/t3.jsonl"
@@ -69,27 +256,27 @@ NOW="$(node -e 'process.stdout.write(new Date(Date.now()-5000).toISOString())')"
 touch "$SHW/scripts/gen.py"
 # the shell append lands a complete entry (the register-field check reads the newest entry on disk, train 2026-11-12)
 printf '## 2026-11-08 — generator pads\nid: gen-pads\ninvariant: a generator takes positions from the data file, never from a photo\nreplay: 2 cases in 40 transcripts\n' > "$SHW/$REG"
-{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t7.jsonl"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t7.jsonl"
 check "register and carrier written by shell commands, changed in this turn" "$T/t7.jsonl" allow "$SHW"
-{ WHEN="2099-01-01T00:00:00.000Z" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t8.jsonl"
+{ WHEN="2099-01-01T00:00:00.000Z" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $REG"; } > "$T/t8.jsonl"
 check "the same files named but unchanged since the turn began (negative control)" "$T/t8.jsonl" block "$SHW"
 { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; } > "$T/t9.jsonl"
 check "shell-written carrier, no register entry" "$T/t9.jsonl" block "$SHW"
 # --- Windows review 2026-11-12 (OS-19): the register named by an ABSOLUTE path - quoted with a space (native form on
 # Windows), the drive form C:/... and the Git Bash form /c/... (only where cygpath exists: node elsewhere has no drives)
 SPC="$T/sh w"; mkdir -p "$SPC/docs/maintenance" "$SPC/scripts"; touch "$SPC/scripts/gen.py"; cp "$SHW/$REG" "$SPC/$REG"
-{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> \"$(native "$SPC")/$REG\""; } > "$T/t9a.jsonl"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> \"$(native "$SPC")/$REG\""; } > "$T/t9a.jsonl"
 check "register written by an absolute quoted path with a space" "$T/t9a.jsonl" allow "$SPC"
 # portability windows-latest, train #510: the runner's temp folder is an 8.3 name (`RUNNER~1`, OS-8) - a `~` inside a
 # segment ended the match. Measured on every OS with a folder named that way.
 TLD="$T/RUN~1"; mkdir -p "$TLD/docs/maintenance" "$TLD/scripts"; touch "$TLD/scripts/gen.py"; cp "$SHW/$REG" "$TLD/$REG"
-{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $(native "$TLD")/$REG"; } > "$T/t9d.jsonl"
+{ WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $(native "$TLD")/$REG"; } > "$T/t9d.jsonl"
 check "register written by a path with an 8.3 short segment (RUN~1)" "$T/t9d.jsonl" allow "$TLD"
 if command -v cygpath >/dev/null 2>&1; then
   M="$(cygpath -m "$SHW")"; U="/$(printf %s "${M:0:1}" | tr 'A-Z' 'a-z')${M:2}"
-  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $M/$REG"; } > "$T/t9b.jsonl"
+  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $M/$REG"; } > "$T/t9b.jsonl"
   check "register written by its drive path (cygpath -m form)" "$T/t9b.jsonl" allow "$SHW"
-  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $U/$REG"; } > "$T/t9c.jsonl"
+  { WHEN="$NOW" user "go"; asst "Cause: the generator took the pad positions from the photo."; run "node scripts/replay.cjs" "2 cases in 40 transcripts"; sh "python3 /x/fix.py scripts/gen.py"; sh "cat /x/e.md >> $U/$REG"; } > "$T/t9c.jsonl"
   check "register written by its Git Bash path (/c/... form)" "$T/t9c.jsonl" allow "$SHW"
 else
   echo "  --  register written by its drive path and its /c/... path (Windows only: no cygpath here)"
@@ -204,6 +391,49 @@ check "register entry whose replay lists several counts" "$T/t31h.jsonl" allow "
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
 replay: 1 (this case)"; } > "$T/t31i.jsonl"
 check "register entry whose replay is a bare number (control)" "$T/t31i.jsonl" block "$CWD"
+# 2026-11-23 (macOS instance, operator: "wenn ich auf einen fehler hinweise … musst du … generische fixes testen"; measured: 26 of
+# 466 register replays counted only the incident's own session, 4 of them that day, all passed): a replay whose only scope is
+# the incident's own session or the case itself is no replay over the history.
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: this session: 1 hit (this one)"; } > "$T/t31j.jsonl"
+check "register entry whose replay counts only its own session" "$T/t31j.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: 2 hits (this case and one more) in the current transcript"; } > "$T/t31k.jsonl"
+check "register entry whose replay scope is the current transcript" "$T/t31k.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: this session 1 hit; 7 hits in 60 earlier transcripts"; } > "$T/t31l.jsonl"
+check "own session plus a wider scope with its count" "$T/t31l.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a summary reads every source before it counts
+replay: none - the detector needs records that start today - recheck 2026-12-07"; } > "$T/t31m.jsonl"
+check "a replay that cannot run yet, with reason and recheck (control)" "$T/t31m.jsonl" allow "$CWD"
+# 2026-11-23, independent review of the strand: "the gate accepts the agent's claim that a replay ran" - a count must stand in
+# the output of a command or an agent of the session, a printed text is no measurement.
+E="invariant: a summary reads every source before it counts"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 0 hits in 60 transcripts"; } > "$T/t31n.jsonl"
+check "a replay count no command printed (the review's case G)" "$T/t31n.jsonl" block "$CWD"
+{ user "go"; asst "$C"; run "echo '0 hits in 60 transcripts'" "0 hits in 60 transcripts"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 0 hits in 60 transcripts"; } > "$T/t31o.jsonl"
+check "a replay count only an echo printed" "$T/t31o.jsonl" block "$CWD"
+{ user "go"; asst "$C"; run "node scripts/replay.cjs" "3 hits in 60 transcripts"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31p.jsonl"
+check "a replay count that differs from what the run printed" "$T/t31p.jsonl" block "$CWD"
+{ user "go"; asst "$C"; run "node scripts/replay.cjs --history" "scanned 60 transcripts: 7 hits"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31q.jsonl"
+check "a replay count the run printed (control)" "$T/t31q.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; RUNTOOL=Agent run "count the hits over the history" "Result: 7 hits in 60 transcripts"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31r.jsonl"
+check "a replay count an agent of the session reported (control)" "$T/t31r.jsonl" allow "$CWD"
+# Windows review of #641 (2026-11-24, probe R5): PowerShell is the primary shell there; its run measures like Bash.
+{ user "go"; asst "$C"; RUNTOOL=PowerShell run "node helpers/root-cause-gate.cjs --review 60" "scanned 60 transcripts: 7 hits"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31t.jsonl"
+check "a replay count a PowerShell run printed" "$T/t31t.jsonl" allow "$CWD"
+{ user "go"; asst "$C"; RUNTOOL=PowerShell run "Write-Output '7 hits in 60 transcripts'" "7 hits in 60 transcripts"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: 7 hits in 60 transcripts"; } > "$T/t31u.jsonl"
+check "a replay count only a PowerShell Write-Output printed" "$T/t31u.jsonl" block "$CWD"
+{ user "go"; asst "$C"; write "scripts/sources.cjs"; NORUN=1 write "$CWD/$REG" "$E
+replay: none - the detector needs records that start today - recheck 2026-12-07"; } > "$T/t31s.jsonl"
+check "none with recheck needs no run (control)" "$T/t31s.jsonl" allow "$CWD"
 { user "go"; asst "$C"; write "scripts/sources.cjs"; write "$CWD/$REG" "invariant: a promise binds only with a mechanism (Working Rule #10)
 replay: 6 turns"; } > "$T/t31c.jsonl"
 check "invariant citing a core rule number" "$T/t31c.jsonl" allow "$CWD"
@@ -239,7 +469,7 @@ replay: 18 hits in 13 sessions"; } > "$T/t35.jsonl"
 check "domain-free invariant with a replay count" "$T/t35.jsonl" allow "$T/cwdf"
 # written without text in the transcript (shell append): the newest entry on disk is judged
 mkdir -p "$T/disk/docs/maintenance"; printf '## old\ninvariant: an older rule said once\nreplay: 2\n\n## new\ncause: x\n' > "$T/disk/$REG"
-{ user "go"; asst "$C"; write "scripts/sources.cjs"; write "$T/disk/$REG" ""; } > "$T/t36.jsonl"
+{ user "go"; asst "$C"; run "node scripts/replay.cjs" "5 turns"; write "scripts/sources.cjs"; write "$T/disk/$REG" ""; } > "$T/t36.jsonl"
 check "entry on disk: the newest one lacks the invariant (an older one has it)" "$T/t36.jsonl" block "$T/disk"
 printf '## new\ninvariant: a summary reads every source before it counts\nreplay: 5 turns\n' >> "$T/disk/$REG"
 check "entry on disk: the newest one is complete" "$T/t36.jsonl" allow "$T/disk"
@@ -313,6 +543,16 @@ printf '{"at":"2026-10-30T18:13:35.000Z","session":"other","mode":"hook","model"
 check "a record of another session does not count" "$T/sess-rc.jsonl" allow "$IC"
 printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rc","mode":"hook","model":{"correction":false}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
 check "classifier reads no correction: allows" "$T/sess-rc.jsonl" allow "$IC"
+# 2026-11-18 (operator decision): the record decides both ways - a word hit the model reads as no correction passes
+{ user "go"; asst "ok"; user "that is already active! something went wrong"; asst "Done."; } > "$T/sess-rw.jsonl"
+: > "$IC/.claude-state/intent-classifier.jsonl"
+check "words hit, no record: blocks (control)" "$T/sess-rw.jsonl" block "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rw","mode":"hook","model":{"correction":false}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "words hit, the record reads no correction: allows" "$T/sess-rw.jsonl" allow "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rw","mode":"hook","model":null}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "a failed classifier call falls back to the words: blocks" "$T/sess-rw.jsonl" block "$IC"
+printf '{"at":"2026-10-30T18:13:35.000Z","session":"sess-rw","mode":"hook","prompt":"something else entirely","model":{"correction":false}}\n' > "$IC/.claude-state/intent-classifier.jsonl"
+check "a record of another prompt does not count: blocks" "$T/sess-rw.jsonl" block "$IC"
 unset WHEN
 
 # --- a correction typed mid-turn (queued_command attachment, 2026-10-29 / 2026-11-02, macOS instance)

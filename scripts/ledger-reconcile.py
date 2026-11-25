@@ -91,6 +91,24 @@ ENTRY = re.compile(r"^- \[( |x|X)\] (.*)$")
 PIN_WORD = re.compile(r"(?<![\w-])pin\b", re.I)   # not inside a slug (`none-pin-bedingung`)
 PIN_NEAR = 80   # characters on each side of the word pin in which a #N is the condition
 PR_REF = re.compile(r"(?:(?<![\w-])agent-brain#|(?<![\w/#-])#)(\d+)\b")
+# A bare `#N` right after another repo's name and one space ("heavy-metal #67") is that repo's number, not the
+# core's: measured 2026-11-18 on the macOS instance, a project ledger's "Pin-Lage ... heavy-metal #67" read as
+# a core PR waiting for the pin.
+OTHER_REPO_BEFORE = re.compile(r"(?<![\w-])(?!agent-brain\s$)([A-Za-z0-9_.]+(?:-[A-Za-z0-9_.]+)+)\s$")
+
+
+def core_refs(text, ledger=""):
+    """The core PR numbers in `text`: `agent-brain#N`, and a bare `#N` no other repo's name owns. A hyphenated word
+    before a bare `#N` is a repo's name only when the ledger also writes it as one (`name#N` or `owner/name`): the
+    Windows review of this change (2026-11-18) measured "the follow-up #601" read as a repo and the core PR dropped."""
+    out = []
+    for m in PR_REF.finditer(text):
+        if m.group(0).startswith("#"):
+            o = OTHER_REPO_BEFORE.search(text[max(0, m.start() - 60):m.start()])
+            if o and re.search(r"(?<![\w-])" + re.escape(o.group(1)) + r"#\d|/" + re.escape(o.group(1)) + r"\b", ledger or text):
+                continue
+        out.append(m.group(1))
+    return out
 # A field line is `  key: value`, and just as often a list item `  - key: value` or a code span
 # `  - `key: value``: measured 2026-10-26 on the Windows instance, 20 of 20 entries the ratchet
 # named as "without a check" were in list form, ids and checks unread.
@@ -182,8 +200,9 @@ ALLOWED = ["test", "[", "grep", "ls", "wc", "head", "tail", "cat", "diff",
            "git log", "git show", "git grep", "git rev-parse", "git ls-files", "git cat-file",
            "git merge-base", "git diff", "git status", "gh pr view"]
 # `gh pr view` reads a PR's state - the natural check of an entry whose exit waits on a merge (measured
-# 2026-11-07 on the Windows instance: 10 such checks in one brain's ledgers, every one refused). Its one
-# acting option opens a browser; that is refused below. `git -C <dir>` is read as the same git command:
+# 2026-11-07 on the Windows instance: 10 such checks in one brain's ledgers, every one refused). It is allowed
+# only when it feeds a filter (`| grep -q MERGED`): it exits 0 for any existing PR, so as the last part it is
+# refused in permitted(). Its one acting option opens a browser; that is refused below. `git -C <dir>` is read as the same git command:
 # every brain checks its core submodule as `git -C core ...`; `-c` (a config override) stays refused.
 GH_OPENS = {"--web", "-w"}
 # The shell grammar a check may use is closed, not filtered: parts joined by `&&`, `||` or `|`
@@ -214,6 +233,11 @@ def permitted(cmd, allowed):
             return False
         if any(WRITING_OPTION.match(w) for w in words[1:]):
             return False
+    # `gh pr view` exits 0 for any PR that exists, open or merged, so as the LAST part it measures
+    # nothing (measured 2026-11-23: `gh pr view 95 --json state` passed on an OPEN PR and the entry
+    # was reported "done, tick it"). It must feed a filter: `gh pr view N --json state | grep -q MERGED`.
+    if parts[-1].strip().lstrip("!").split()[:3] == ["gh", "pr", "view"]:
+        return False
     return True
 
 
@@ -264,6 +288,8 @@ def in_pin(pin, sha, timeout):
         return False
 
 
+# The code a ledger title opens with: `- [x] **KS-110 (P1) ...`, `**FA22-03 ...`.
+TITLE_CODE = re.compile(r"^\s*- \[[ xX]\]\s+\*\*([A-Z][A-Z0-9]*-[0-9]+)\b")
 EXIT_DATE = re.compile(r"^\s*(?:[-*]\s+)?`?exit:\s*[\w-]+\s+(20\d\d-\d\d-\d\d)", re.M)
 
 
@@ -386,7 +412,7 @@ class CoreMain:
         self.tree = None
 
 
-def pin_met(e, pin, timeout, since=""):
+def pin_met(e, pin, timeout, since="", ledger=""):
     """Every PR an open `check: none` entry names next to the word pin is in the pin: True.
     `since` = the pin's commit date: an entry whose newest exit is dated on or after it was looked at
     after the pin moved, and stays silent (macOS instance, 2026-11-02: entries already set to their
@@ -400,7 +426,7 @@ def pin_met(e, pin, timeout, since=""):
     # entry's #N made a 25-PR collection entry and a suite's "Pin `x` folgt" read as conditions.
     t = e["text"]
     nums = sorted({n for m in PIN_WORD.finditer(t)
-                   for n in PR_REF.findall(t[max(0, m.start() - PIN_NEAR):m.end() + PIN_NEAR])}, key=int)
+                   for n in core_refs(t[max(0, m.start() - PIN_NEAR):m.end() + PIN_NEAR], ledger)}, key=int)
     if not nums:
         return False
     for n in nums:
@@ -461,7 +487,7 @@ def _reconcile(out, main, root, ledgers, since, timeout, shell, allowed, budget,
                 kinds = EXIT_KIND.findall(e["text"])
                 if not e["done"] and kinds and kinds[-1] in OWN_WORK:
                     out["own_unchecked"].append(label(e, rel))
-                if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout, pin_since):
+                if deadline - time.monotonic() >= timeout and pin_met(e, pin, timeout, pin_since, text):
                     out["pin_met"].append(label(e, rel))
                 continue
             if not permitted(chk, allowed):
@@ -550,10 +576,21 @@ def main():
             except OSError:
                 continue
             for e in entries(text):
+                # An entry is named by its `id:` or by the code its title opens with (`**KS-110 (P1) ...**`):
+                # measured 2026-11-18 on the macOS instance, a question named "KS-110, KS-106" - both ticked since
+                # 2026-10-28 - and passed, because only lowercase slugs were looked up and only a green check counted.
+                code = TITLE_CODE.match(e["text"])
                 ident = label(e, rel)
+                if ident not in want and code and code.group(1) in want:
+                    ident = code.group(1)
                 if ident not in want or ident in res:
                     continue
                 chk = e["fields"].get("check", "")
+                # ticked behind `check: none` = done by the ledger's word; a ticked entry WITH a check is judged by it
+                # (Windows review 2026-11-18: five ticked entries with a failing check would have read as done)
+                if e["done"] and (not chk or NONE.match(chk)):
+                    res[ident] = "ticked"
+                    continue
                 res[ident] = ("none" if not chk or NONE.match(chk) else
                               "refused" if not permitted(chk, allowed) else run_check(chk, a.root, timeout, shell))
         sys.stdout.write(json.dumps(res, sort_keys=True) + "\n")

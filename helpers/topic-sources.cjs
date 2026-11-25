@@ -19,6 +19,7 @@
  * the topic are a source too. Fails silent. Fixture: scripts/test-topic-sources.sh.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
 
 const { isNotification, isPeerMessage } = require('./turn-kind.cjs');
@@ -68,10 +69,10 @@ if (require.main === module) {
       const prompt = input.prompt || '';
       // a notification, a Stop-hook echo or another session's message is no operator prompt (measured
       // 2026-11-11, macOS instance: the alpha fired three times on peer messages naming the topic)
-      if (isNotification(prompt) || isPeerMessage(input) || PEER.test(prompt)) process.exit(0);
+      if (isNotification(prompt) || isPeerMessage(input) || PEER.test(prompt)) hookExit(0);
       const out = render(prompt, d);
       if (out) console.log(out);
     } catch (e) { /* no data, no output */ }
-    process.exit(0);
+    hookExit(0);
   });
 }

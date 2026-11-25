@@ -49,7 +49,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const { invocations, publishedText, nativePath } = require('./published-text.cjs');
 
 const LABELS = ['Fit', 'Design', 'Cost', 'Gaps'];
@@ -188,7 +188,45 @@ function gh(args) {
   return execFileSync(fake ? process.execPath : 'gh', fake ? [fake, ...args] : args,
     { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] });
 }
-const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', 'body,comments,reviews,files,changedFiles']));
+const PR_FIELDS = 'body,comments,reviews,files,changedFiles';
+const readPr = (repo, nr) => JSON.parse(gh(['pr', 'view', String(nr), '-R', repo, '--json', PR_FIELDS]));
+
+/**
+ * A train's members, read IN PARALLEL with one shared budget: { <nr>: pr | null } (null = unread in time or unreadable).
+ * Measured 2026-11-17 at train #571: 55 members read one after another took 34 s against the hook's 30 s, and the merge
+ * was held by the timeout. A child process starts the gh calls together (at most PARALLEL at a time) and returns
+ * what came back within MEMBERS_BUDGET_MS.
+ */
+const PARALLEL = 8;
+const MEMBERS_BUDGET_MS = Number(process.env.CONTENT_REVIEW_GATE_BUDGET_MS) || 20000;   // env = the fixture's seam
+function readPrs(repo, nrs) {
+  const fake = process.env.CONTENT_REVIEW_GATE_GH;
+  const child = `
+const { execFile } = require('child_process');
+const [bin, fake, repo, fields, par, ...nrs] = process.argv.slice(1);
+let next = 0, running = 0;
+const start = () => {
+  while (running < Number(par) && next < nrs.length) {
+    const n = nrs[next++]; running++;
+    const args = ['pr', 'view', n, '-R', repo, '--json', fields];
+    execFile(bin, fake ? [fake, ...args] : args, { encoding: 'utf8', timeout: 15000 }, (err, so) => {
+      let v = null; try { v = err ? null : JSON.parse(so); } catch (e) { v = null; }
+      process.stdout.write(JSON.stringify([n, v]) + '\\n');
+      running--; start();
+    });
+  }
+};
+start();`;
+  const r = spawnSync(process.execPath, ['-e', child, fake ? process.execPath : 'gh', fake || '', repo, PR_FIELDS,
+    String(PARALLEL), ...nrs.map(String)], { encoding: 'utf8', timeout: MEMBERS_BUDGET_MS });
+  // One line per member as it arrives: a budget overrun keeps every member already answered (Windows review of #590,
+  // 2026-11-18: the child wrote its JSON once at the end, a kill at the budget lost all of them).
+  const got = {};
+  for (const l of String(r.stdout || '').split('\n')) { try { const [n, v] = JSON.parse(l); got[n] = v; } catch (e) { /* partial line */ } }
+  const res = {};
+  for (const n of nrs) res[n] = got[n] || null;
+  return res;
+}
 /** `-R OWNER/REPO` or gh's long form `-R HOST/OWNER/REPO`, as OWNER/REPO (Windows review of #504). */
 function repoArg(cmd) {
   const m = /(?:-R|--repo)[=\s]+["']?([\w.-]+(?:\/[\w.-]+){1,2})/.exec(cmd);
@@ -274,8 +312,8 @@ function checkCommit(cmd, ps, cwd, getModel) {
   const hits = invocations(cmd, ps, 'git', null, null);
   const commits = hits === null ? /\bgit\b[^\n;&|]*\scommit\b/.test(cmd) : hits.some((w) => sub(w) === 'commit');
   if (!commits) return 0;
-  const dir = (/\bgit\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd) || [])[1];
-  const repo = dir ? path.resolve(cwd, nativePath(dir.replace(/^["']|["']$/g, ''))) : cwd;   // OS-19
+  // the shared reader of the git target (`-C` quoted or not, `~`, `cd <dir> &&`, Git Bash drive form)
+  const repo = require('./git-target.cjs').gitTarget(cmd, cwd, ps, ['commit']) || cwd;
   let root;
   try { root = execFileSync('git', ['-C', repo, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
   catch (e) { return 0; }
@@ -359,6 +397,18 @@ function checkReviewPost(cmd, ps, cwd, getModel) {
  * as absent, and nothing said so until the train merge would block - 30 of 33 PRs of that train had no counted review.
  */
 function checkReviewComment(cmd, text) {
+  // CHECK 3c - a review that counts findings writes each in the form the merge gate reads (Windows review of #591,
+  // 2026-11-18: four first-round reviews that day said "One finding, measured" / "One finding, read from the code" and
+  // would not have held a merge - none carried `**Finding (builder ...)`).
+  const { FINDING_FORM_RX } = require('./merge-request-gate.cjs');
+  const isReview = /\bcontent review\b/i.test(text) || /^\s*Fit:/m.test(text);
+  const counts = /\b(?:one|two|three|four|five|\d+)\s+(?:non-blocking\s+|blocking\s+)?findings?\b/i.test(text);
+  if (isReview && counts && !FINDING_FORM_RX.test(text)) {
+    return block('this review counts findings but writes none in the form the merge gate reads. Write each one as '
+      + '`**Finding (builder: <who builds the fix>) - <what>**` (add `non-blocking` inside the parentheses when it does '
+      + 'not hold the merge), at the head it was measured on.\nWhy: 2026-11-18 - four reviews stated a finding in prose, '
+      + 'and merge-request-gate would have let each PR through.');
+  }
   const { handReview } = require('./os-review.cjs');
   const reviewer = ['macOS', 'Windows', 'Linux'].map((os) => handReview(text, os)).find(Boolean);
   if (!reviewer) return 0;
@@ -389,11 +439,21 @@ function checkMerge(cmd, ps) {
   const train = /^\s*##\s*Merge train\b/.test(String(pr.body || ''));
   // members are manifest lines (`- #N <branch> <sha>`), never a note line "- #N: …" or a left-out "- #N (conflicts …)" (merge
   // train 2.1.6: release-preflight read train #510's notes as members; this reader had the same loose form)
-  const members = train ? [...String(pr.body).matchAll(/^- #(\d+) \S+ [0-9a-f]{3,40}(?:\s|$)/gm)].map((m) => m[1]) : [t.nr];
+  // ONE pattern with release-preflight.sh (#574 review): the form merge-train.sh writes, `- #N <branch> <sha>` with 7-40
+  // hex and nothing after it, read only above "Left out:".
+  const contains = String(pr.body).split(/^Left out:/m)[0];
+  const members = train ? [...contains.matchAll(/^- #(\d+) \S+ [0-9a-f]{7,40}[ \t]*$/gm)].map((m) => m[1]) : [t.nr];
+  // a train whose body names no member in that form is not "nothing to review" - it is unread (Windows review of #587,
+  // 2026-11-19: a short sha below 7 hex merged unchecked)
+  if (train && !members.length) {
+    return block(`${t.repo}#${t.nr} - a merge train whose body names no member in the form \`- #N <branch> <sha>\` (7-40 hex), ` +
+      'so no member review could be read. Write the members as merge-train.sh writes them, or add `# CONTENT-REVIEW-OK: <why>`.');
+  }
   const open = [];
+  const read = train ? readPrs(t.repo, members) : {};
   for (const n of members) {
     let p = pr;
-    if (train) { try { p = readPr(t.repo, n); } catch (e) { open.push(`#${n} (unreadable)`); continue; } }
+    if (train) { p = read[n]; if (!p) { open.push(`#${n} (unreadable)`); continue; } }
     if (!reviewed(p)) open.push(`#${n} (risk ${RISKS[prRisk(p)]}, review on ${CFG.tiers[need(RISKS[prRisk(p)], 'review')]} or above)`);
   }
   if (!open.length) return 0;
@@ -421,7 +481,10 @@ if (require.main === module) {
   process.stdin.on('end', () => {
     let rc = 0;
     try { rc = gate(JSON.parse(data)); } catch (e) { rc = 0; /* unparsable input: nothing to check */ }
-    process.exit(rc);
+    // No forced exit call here: measured 2026-11-23 on the macOS instance (Node 25.9), after reading a large transcript it
+    // hung in Node's platform shutdown (uv_thread_join) in 21 of 40 runs - the harness then reports "timed out;
+    // blocking". Ending naturally with exitCode: 0 of 40.
+    process.exitCode = rc;
   });
   process.stdin.resume();
 }

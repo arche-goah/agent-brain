@@ -9,16 +9,22 @@
       "needs_operator_word": true
     },
     {
-      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:(?:bash|sh|zsh)\\s+)?(?:\"[^\"\\n]*/|'[^'\\n]*/|\\S*/)?ci-watch\\.sh[\"']?\\s+(?:pr|ref)\\b|gh\\s+run\\s+watch\\b|gh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
+      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\(|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:(?:bash|sh|zsh)\\s+)?(?:\"[^\"\\n]*/|'[^'\\n]*/|[^\\s()]*/)?ci-watch\\.sh[\"']?\\s+(?:pr|ref)\\b|gh\\s+run\\s+watch\\b|gh\\s+pr\\s+checks\\b[^|;&]*--watch\\b)",
       "foreground_only": true,
       "was": "waiting for CI in the foreground - a core CI run takes about 15 minutes and holds the whole session; several PRs in a row cost hours",
       "instead": "Start the same command with Bash run_in_background and keep working; the verdict arrives as a notification (Working Rule #9). Not through Monitor: the harness ends a Monitor after 30 min at most, and a core CI run takes about 36 min (2026-10-26). Several PRs: one detached watch each, in parallel."
     },
     {
-      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?ci-lint-local\\.sh\\b",
+      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\(|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:[^\\s()]*/)?ci-lint-local\\.sh\\b",
       "foreground_only": true,
       "was": "running the local CI mirror in the foreground - measured 2026-10-25 on the macOS instance: the lint job runs the fixture suites and holds the session for minutes, the operator had to background it by hand",
       "instead": "Start the same command detached (Bash run_in_background, or Monitor) and keep working; read its summary line before claiming green (Working Rule #13)."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:(?:env|command)\\s+)?(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?core-(?:merge|push)-lint\\.sh\\b",
+      "foreground_only": true,
+      "was": "running core-merge-lint.sh or core-push-lint.sh in the foreground - both run ci-lint-local.sh plus the touched fixture suites; measured 2026-10-31 on the macOS instance: a merge lint held the session for over 3 min until the operator moved it to the background by hand (ported 2026-11-17 from that instance's rule, which stood in no core file)",
+      "instead": "Start the same command detached (Bash run_in_background) and keep working; read its GREEN/RED line before pushing or merging (Working Rule #13). Several PRs: one clone each through CORE_MERGE_LINT_CLONE, in parallel."
     },
     {
       "target": "raw",
@@ -33,7 +39,7 @@
       "instead": "Start the loop detached (Bash run_in_background, or Monitor) and keep working; its end arrives as a notification. A background job you already started notifies on its own - no loop needed (Working Rule #13)."
     },
     {
-      "pattern": "(?:^|[\\n;&|(]|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\"[^\"\\n]*/|'[^'\\n]*/|\\S*/)?(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
+      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\(|\\b(?:until|while|if|then|do|else|time|nohup|exec)\\s)\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*(?:(?:bash|sh|zsh)\\s+)?(?:\"[^\"\\n]*/|'[^'\\n]*/|[^\\s()]*/)?(?!test-)(?!(?:repo-activity|shared-memory)-watch\\.sh\\s+(?:status|disarm)\\b)(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b(?![^|;&]*\\s(?:--help|-h)\\b)",
       "foreground_only": true,
       "was": "a waiting script (wait-*.sh, *-watch.sh: reconnect, link, collab, repo-activity, shared-memory watches) in the foreground - the class sweep of the wait-loop rule (2026-10-26): these scripts are the same wait under a name, and only ci-watch.sh was listed",
       "instead": "Start it detached (Monitor for a stream of events, Bash run_in_background for one verdict) and keep working (Working Rule #13). A help call passes, and so do the `status`/`disarm` subcommands of the two scripts that have them (repo-activity-watch.sh, shared-memory-watch.sh) - collab-watch.sh has none: `collab-watch.sh status` ARMS the watch (measured 2026-10-26)."
@@ -51,14 +57,19 @@
       "needs_operator_word": true
     },
     {
+      "pattern": "\\bworktree\\s+add\\b[^\\n;|&]*\\bFETCH_HEAD\\b",
+      "was": "a worktree created at FETCH_HEAD - FETCH_HEAD belongs to the whole repository, and a parallel fetch (another agent, another session) moves it between the fetch and the worktree add; measured 2026-11-17 on the Windows instance: of five parallel review agents, one worktree landed on another PR's commit (ported from that instance's rule)",
+      "instead": "Name the full sha: `git -C <repo> fetch origin pull/<n>/head`, then `git -C <repo> worktree add <path> <full 40-char sha>`, then compare `git -C <path> rev-parse HEAD` with the PR head."
+    },
+    {
       "pattern": "\\|\\s*grep\\b(?![^|\\n]*--line-buffered)",
       "was": "a Monitor stream piped through `grep` without `--line-buffered` - the filter holds its matches in a buffer, the events arrive late or never, and the watch looks dead (measured 2026-10-11 on the macOS instance: a measurement watcher wrote only at its end, the operator saw 'nothing happens')",
       "instead": "Give every grep in the stream `--line-buffered` (awk: `fflush()`); then the first match reaches the session as it happens. A one-shot `grep -q` after the stream ended is no stream and does not need it.",
       "monitor_only": true
     },
     {
-      "pattern": "(?:^|[\\n;&|(])\\s*(?=\\S)(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?=\\S)(?:\\S*/)?(?!(?:cat|less|head|tail|grep|rg|jq|wc|ls|stat|echo|printf|sed\\s+-n|awk|diff|cmp|git\\s+(?:-C\\s+\\S+\\s+)?(?:diff|log|show|status|blame|commit)|gh\\s+api(?![^\\n;&|]*\\s(?:-X(?!\\s*GET\\b)|-[fF]|--method(?![\\s=]*GET\\b)|--(?:field|raw-field|input)\\b)))\\b)[^\\n;&|]*\\.claude-plugin/marketplace\\.json|>\\s*\\S*\\.claude-plugin/marketplace\\.json",
-      "was": "moving a marketplace pin (any write to a `.claude-plugin/marketplace.json`: editor script, sed -i, cp, redirect) - a pin pulls a plugin update onto EVERY consumer of the marketplace, other parties included; ported 2026-10-28 from an instance rule that only one brain carried. Read-only access (cat, head, grep, jq, sed -n, awk, diff, cmp, git diff/log/show, `gh api` without a method or field flag - a GET of the remote file) passes",
+      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\()(?<!\\b(?:python3?|node)(?:\\.exe)?(?:\\s+-\\S+)*?\\s+-[ce]\\s+\"[^\"\\n]*)(?<!\\b(?:python3?|node)(?:\\.exe)?(?:\\s+-\\S+)*?\\s+-[ce]\\s+'[^'\\n]*)\\s*(?=\\S)(?:(?:sudo(?:\\s+-\\S+)*|env|command|exec|nohup|time)\\s+|[A-Za-z_]\\w*=\\S*\\s+)*(?=\\S)(?:\\S*/)?(?!(?:\\(\\s*)*cp\\s+(?![^\\n;&|]*\\.claude-plugin/marketplace\\.json\\s*(?:\\d?>>?&?\\s*\\S+\\s*)*(?:$|[\\n;&|)])))(?!(?:\\(\\s*)*(?:cat|less|head|tail|grep|rg|jq|wc|ls|stat|echo|printf|nl|tac|file|test|basename|dirname|realpath|readlink|du|sha\\d+sum|md5sum|shasum|cksum|strings|hexdump|od|[Gg]et-[Cc]ontent|gc|type|[Ss]elect-[Ss]tring|sls|[Gg]et-[Ii]tem|gi|[Gg]et-[Cc]hild[Ii]tem|gci|dir|[Tt]est-[Pp]ath|[Gg]et-[Ff]ile[Hh]ash|[Rr]esolve-[Pp]ath|sed\\s+-n(?![^\\n;&|]*(?:\\s-(?!-)[A-Za-z]*i|\\s--in-place\\b|['\"\\s;}/]w\\s*[^\\s'\"]*\\.claude-plugin/marketplace\\.json))|awk(?![^\\n;&|]*\\s(?:-i\\s*|--include[=\\s]\\s*)inplace\\b)|diff|cmp|find(?![^\\n;&|]*\\s-(?:delete|exec|execdir|ok|fprintf?|fls)\\b)|git\\s+(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?(?:diff|log|show|status|blame|commit|ls-files|ls-tree|cat-file|grep|rev-parse)(?![^\\n;&|]*\\s--output\\b)|gh\\s+api(?![^\\n;&|]*\\s(?:-X(?!\\s*GET\\b)|-[fF]|--method(?![\\s=]*GET\\b)|--(?:field|raw-field|input)\\b)))\\b)(?!\\[\\[?\\s)(?!(?:python3?|node)(?:\\.exe)?(?:\\s+-\\S+)*?\\s+-[ce]\\s+(?:\"(?:json\\.load\\(open\\('[^'\"\\n]*\\.claude-plugin/marketplace\\.json'\\)\\)|readFileSync\\('[^'\"\\n]*\\.claude-plugin/marketplace\\.json'(?:,\\s*'utf-?8')?\\)|(?!\\.claude-plugin/marketplace\\.json)[^\"\\n])*\"|'(?:json\\.load\\(open\\(\"[^'\"\\n]*\\.claude-plugin/marketplace\\.json\"\\)\\)|readFileSync\\(\"[^'\"\\n]*\\.claude-plugin/marketplace\\.json\"(?:,\\s*\"utf-?8\")?\\)|(?!\\.claude-plugin/marketplace\\.json)[^'\\n])*')(?:\\s*\\d?>>?&?\\s*\\S+)*\\s*(?:$|[\\n;&|)]))[^\\n;&|]*\\.claude-plugin/marketplace\\.json|>\\s*\\S*\\.claude-plugin/marketplace\\.json|\\b(?:python3?|node)(?:\\.exe)?(?:\\s+-\\S+)*?\\s+-[ce]\\s+(?!\"(?:json\\.load\\(open\\('[^'\"\\n]*\\.claude-plugin/marketplace\\.json'\\)\\)|readFileSync\\('[^'\"\\n]*\\.claude-plugin/marketplace\\.json'(?:,\\s*'utf-?8')?\\)|(?!\\.claude-plugin/marketplace\\.json)[^\"\\n])*\"|'(?:json\\.load\\(open\\(\"[^'\"\\n]*\\.claude-plugin/marketplace\\.json\"\\)\\)|readFileSync\\(\"[^'\"\\n]*\\.claude-plugin/marketplace\\.json\"(?:,\\s*\"utf-?8\")?\\)|(?!\\.claude-plugin/marketplace\\.json)[^'\\n])*')([\"'])(?=(?:(?!\\1)[^\\n])*\\.claude-plugin/marketplace\\.json)|\\b(?:python3?|node)(?:\\.exe)?(?:\\s+-\\S+)*?\\s+-[ce]\\s+(?:\"[^\"\\n]*\"|'[^'\\n]*')[^\\n;&|]*\\.claude-plugin/marketplace\\.json",
+      "was": "moving a marketplace pin (any write to a `.claude-plugin/marketplace.json`: editor script, sed -i, cp, redirect) - a pin pulls a plugin update onto EVERY consumer of the marketplace, other parties included; ported 2026-10-28 from an instance rule that only one brain carried. Read-only access passes: cat, head, grep, jq, sed -n, awk, diff, cmp, wc, ls, find, test, hexdump/od, a checksum, the PowerShell readers (Get-Content, Select-String, Get-Item, Test-Path, Get-FileHash), a `cp` that takes the file as SOURCE, git diff/log/show/ls-files/grep, `gh api` without a method or field flag (a GET of the remote file), and an inline `python -c` / `node -e` script whose every mention of the file is a read-only call (`json.load(open(<pin>))`, `readFileSync(<pin>)`). A script FILE run on the pin, any other inline script naming it or handed it as an argument, `xxd`/`base64` (both have a write mode), `sed` with `-i` or a `w` command, `awk -i inplace` (GNU awk edits in place), and `git ... --output` stay held",
       "instead": "A pin moves on its owner's word: the core channel on the operator's word, a suite's pin on the word of that suite's owner (the owner's own pin PR is that word). A green CI run, a measurement on both systems or a hold field that reads its own condition as met is no substitute - those are artefacts the AI wrote. After every move run the marketplace's own pin check and read its verdict.",
       "needs_operator_word": true
     },
@@ -68,7 +79,7 @@
       "instead": "core/scripts/ci-watch.sh pr <owner/repo> <nr> (or ref <owner/repo> <ref>), started detached (Bash run_in_background). Exit 0 green, 1 red, 2 NOT measurable (loud, not green), 3 the repo has no CI. A compound that calls ci-watch.sh itself passes."
     },
     {
-      "pattern": "(?:^|[\\n;&|(])\\s*(?:(?:bash|sh|zsh)\\s+)?(?:\\S*/)?(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b[^|;\\n]*(?:&\\s*(?:$|\\n)|>\\s*/dev/null)",
+      "pattern": "(?:^|[\\n;&|]|(?<![\\w.)\\]])\\()\\s*(?:(?:bash|sh|zsh)\\s+)?(?:[^\\s()]*/)?(?:wait-[\\w-]+|[\\w-]+-watch)\\.sh\\b[^|;\\n]*(?:&\\s*(?:$|\\n)|>\\s*/dev/null)",
       "was": "a waiting script armed with '&' or with its output thrown away - the process hangs on the tool session and dies with it, the harness never knows it and can never notify; measured 2026-08-08 on the macOS instance: an operator's restart ran into nothing",
       "instead": "Start it with Bash run_in_background (or Monitor for a stream), never with '&'. Its OUTPUT is the report path: no >/dev/null. Afterwards check that it runs."
     },
@@ -93,8 +104,8 @@
       "instead": "For a verdict on a commit: `scripts/ci-watch.sh` (reads `actions/runs?head_sha=`, detached as Working Rule #9 says). To look: `gh run list --workflow <name> ...` with the workflow you mean (e.g. `--workflow CI`)."
     },
     {
-      "pattern": "(?:^|[\\s;&|(])(?:>>?|cp|mv|touch|tee)\\s+[^\\n;&|]*\\.claude[/\\\\]output-styles[/\\\\]",
-      "was": "a second output-style source under .claude/output-styles/ - the core ships its style through the plugin (output-styles/, force-for-plugin: true); a brain's own copy is a second source that drifts from the core's text (measured on the Windows instance: the instance carried this rule since 2026-08-04, after a copied style had diverged)",
+      "pattern": "(?:^|[\\s;&|(])(?:(?:>>?|mv|touch|tee)\\s+[^\\n;&|]*\\.claude[/\\\\]output-styles(?:[/\\\\]|(?=[\\s;&|)]|$))|sed(?=\\s)(?=[^\\n;&|]*\\s(?:-(?!-)[A-Za-z]*i|--in-place\\b))[^\\n;&|]*\\.claude[/\\\\]output-styles[/\\\\]|cp(?=\\s)(?:[^\\n;&|]*\\s(?:-(?!-)[A-Za-z]*t\\s*|--target-directory[=\\s]\\s*)\\S*\\.claude[/\\\\]output-styles(?:[/\\\\]|(?=[\\s;&|)]|$))|[^\\n;&|]*\\.claude[/\\\\]output-styles(?:[/\\\\]\\S*)?(?:\\s*\\d?>>?&?\\s*\\S+)*\\s*(?:$|[\\n;&|)])))",
+      "was": "a second output-style source under .claude/output-styles/ - the core ships its style through the plugin (output-styles/, force-for-plugin: true); a brain's own copy is a second source that drifts from the core's text (measured on the Windows instance: the instance carried this rule since 2026-08-04, after a copied style had diverged). Only write forms hold (redirect, tee, touch, mv, sed with -i/--in-place anywhere among its options, cp INTO the directory: as last argument with or without a trailing slash, or after -t/--target-directory); reading the directory or copying a file OUT of it passes",
       "instead": "The style comes from the enabled core plugin. If it does not take effect: update the marketplace and the plugin (`bash core/scripts/brain-update.sh`), then start a new session - do not copy the file. A brain that really wants its own style names it in .claude/rules/local-machinery.json."
     },
     {
@@ -109,12 +120,12 @@
       "instead": "Multi-line or quoted text goes into a file (Working Rule #8): write the script with the Write tool and run the file, or quote the argument in single quotes. An escaped backtick (\\`) is no hit."
     },
     {
-      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+-C\\s+\\S+)?\\s+(?:add|commit|rm|restore|checkout)\\b[^\\n;&|]*\\s\\$\\{?[A-Za-z_]\\w*\\}?(?=\\s|$)",
+      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+))?\\s+(?:add|commit|rm|restore|checkout)\\b[^\\n;&|]*\\s\\$\\{?[A-Za-z_]\\w*\\}?(?=\\s|$)",
       "was": "a path list passed to git as an unquoted shell variable (`git add $F`): zsh does not split it into words, so it arrives as ONE path with spaces; bash splits it, PowerShell does neither - the same command means three things. Measured 2026-11-02 on the macOS instance, twice in one project (\"pathspec ... did not match any files\").",
       "instead": "Write the paths out (one call, by path - Working Rule #12). In a script of your own use an array (\"${ARR[@]}\" in bash, ${=VAR} only in zsh)."
     },
     {
-      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+-C\\s+\\S+)?\\s+stash\\b(?!\\s+(?:list|show)\\b)",
+      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+))?\\s+stash\\b(?!\\s+(?:list|show)\\b)",
       "was": "git stash - also in a worktree of your own: the stash lives in the repository that every worktree of it shares, so it is visible and poppable from each of them. Measured 2026-11-02 on the macOS instance: a stash for a negative control emptied the worktree's changes, and the control ran against the wrong test. shared-working-copy-guard covers stash only while a second session shares the same checkout.",
       "instead": "Run a negative control against the old state in a folder of its own: `git show origin/main:<path> > <scratch>/negctl/<file>` and the test there. Commit your own paths instead of stashing (Working Rule #12). `git stash list` / `git stash show` only read and pass."
     },
@@ -134,7 +145,7 @@
       "instead": "`python3 core/scripts/product-sources.py open <order-list.csv>` opens the tabs after the check. Reading the browser (`osascript -e 'tell application \"Safari\" to get URL of ...'`) stays free."
     },
     {
-      "pattern": "(?:^|[\\n;&|(]\\s*)(?:(?:bash|sh|python3|python|node)\\s+(?:-\\S+\\s+)*)?(?:\"[^\"\\n]*|'[^'\\n]*|[^\\s;&|]*)(handover-gate|effect-check|leak-scan|suite-check|skill-lint|dep-lint|memory-lint|ecosystem-sync|workflow-parse-check|parallel-sessions|brain-scan\\.sh)(?:[^|;&\\n]|\\d?>&\\d?)*\\|&?\\s*(tail|head|grep|tee|cut|sed|awk)\\b",
+      "pattern": "(?:^|[\\n;&|]\\s*|(?<![\\w.)\\]])\\(\\s*)(?:(?:bash|sh|python3|python|node)\\s+(?:-(?![ce]\\b)\\S+\\s+)*)?(?:\"[^\"\\n()]*|'[^'\\n()]*|[^\\s;&|()]*)(handover-gate|effect-check|leak-scan|suite-check|skill-lint|dep-lint|memory-lint|ecosystem-sync|workflow-parse-check|parallel-sessions|brain-scan\\.sh)(?:[^|;&\\n]|\\d?>&\\d?)*\\|&?\\s*(tail|head|grep|tee|cut|sed|awk)\\b",
       "was": "a core gate or check run through a pipe (`leak-scan.py | tail`) - the pipeline's exit code is the LAST command's, so a red gate reads green. Measured 2026-08-04 on the Windows instance: a red gate slipped through into a commit and a push; ported 2026-11-07 from that instance's rule data (in use since 2026-08-04, command position anchored 2026-08-08 so reading a script with `git show ... | sed` passes)",
       "instead": "Run the gate without a pipe and read its exit code on its own (`python3 core/scripts/leak-scan.py; echo \"exit=$?\"`), or write the output to a file first and filter that."
     },
@@ -147,6 +158,11 @@
       "pattern": "(?:^|[\\n;&|(])\\s*(?:bash\\s+)?\\S*core-push-lint\\.sh\\s+(?!--fast)",
       "was": "a full core push lint (lint jobs plus every fixture suite, ~17 min, one run per machine) for a single branch instead of once at a merge train's head - measured 2026-11-11 on the macOS instance: ten PRs linted in full one by one, a queue of ~2 h, another machine waiting on it; ported 2026-11-17 with core-push-lint.sh",
       "instead": "A branch push: `bash core/scripts/core-push-lint.sh --fast <worktree>` (seconds, stamp `<sha>.fast.ok`, which the push gate accepts). A fix to a train member goes into the train head (`merge-train.sh`): one lint, one CI run, one hand check per OS at the head. A full run at a train head only: the same command with `# MECHANISM-OK: train head <name>`."
+    },
+    {
+      "pattern": "(?:^|[\\n;&|(])\\s*git(?:\\s+(?:-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)|-c\\s+\\S+|--[\\w-]+(?:=\\S+)?))*\\s+submodule\\s+update\\b[^\\n|;&#]*--remote",
+      "was": "`git submodule update --remote` on a brain's core/ - it moves the submodule to the remote branch head (main), not to the released pin, and after a core repo move it resolves the OLD repo's main. The template CLAUDE.md said so as prose only; ported 2026-11-23 from the Windows instance's rule data (wired there since 2026-09-13). The command position is anchored, so the phrase quoted in a message is no hit",
+      "instead": "Core update: `bash core/scripts/brain-update.sh` (follows the marketplace pin on every layer: plugin cache, submodule remote, .gitmodules, tag). `git submodule update --init` without --remote stays allowed. A submodule that is not the core and is meant to track a branch: the same command with `# MECHANISM-OK: <submodule> tracks <branch> on purpose`."
     }
   ]
 }

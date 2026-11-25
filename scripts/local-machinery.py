@@ -32,8 +32,11 @@ Declarations: `.claude/rules/local-machinery.json`
    "external": {"<id or prefix>": {"source": "<where it comes from>", "why": "..."}},
                  (third-party skills/plugins used as they are — not ours to port to the core)
    "alpha":   {"<id or prefix>": {"kind": "test" | "unreleased", "until": "YYYY-MM-DD", "why": "...",
-                                  "core_pr": "<PR URL or owner/repo#n>"}},
-                 (test: a real test phase, the core port waits for it, `why` names what is measured;
+                                  "core_pr": "<PR URL or owner/repo#n>",
+                                  "record": "<file the test writes to, or URL / owner/repo#n>"}},
+                 (test: a real test phase, the core port waits for it, `why` names what is measured and
+                  `record` where - a file that exists and was written within `record_days` (7), or the
+                  place its result stands; no record, a missing or a silent one = loud;
                   unreleased: a clear core feature wired before its release, `core_pr` required, the
                   date is an emergency brake; no kind, or unreleased without core_pr = loud)
    "review_days": 90, "review_batch": 3}
@@ -78,7 +81,7 @@ SCRIPT_EXT = (".sh", ".py", ".cjs", ".js", ".mjs", ".ps1")
 TEXT_EXT = SCRIPT_EXT + (".md", ".json", ".txt", ".toml", ".yaml", ".yml", ".plist", ".xml", ".ts")
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "site-packages", ".claude-state"}
 CORE_PLUGIN_PREFIXES = ("brain-core@", "brain-core-next@")  # same as plugin-scope-check.py
-LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels", "caughtup", "alphakind")
+LOUD = ("missing", "shadow", "wrapper", "contradiction", "outside", "expired", "offmain", "clone", "edited", "general", "noevidence", "badevidence", "channels", "caughtup", "alphakind", "alpharecord")
 CLASSES = LOUD + ("duplicate", "undeclared", "review")
 # A deviation is not justified once and for all (operator order 2026-10-29: a local deviation must not
 # stay justified once and never questioned again; past exceptions need routine review). Measured the same day on the macOS
@@ -87,23 +90,42 @@ REVIEW_DAYS = 90
 REVIEW_BATCH = 3
 
 
-def review_due(decl, today, review_all=False):
+def review_due(decl, today, review_all=False, since_core=None, touched=None):
     """Instance/external declarations whose `reviewed` date is missing or older than review_days,
     oldest first (never reviewed = oldest). Returns (total due, the batch to show). The session start
     shows a few at a time (routine, never a wall); the brain-scan passes review_all: EVERY declaration,
     due or not, is judged again there (operator order 2026-10-29: in a brain-scan all of them are
-    looked through)."""
-    days = 0 if review_all else int(decl.get("review_days") or REVIEW_DAYS)
+    looked through). since_core (ISO date of the brain's last core update): a review older than it is due
+    too (operator rule 2026-11-18, translated: "90 days, plus at every core update check local deviations
+    without an expiry")."""
+    # Per deviation since 2026-11-18 (drift scan, agreed between the instances): its own cadence (`review_every_days`,
+    # capped by the path rule in template_deviation.cadence), and a core update makes it due only when the pin diff
+    # touches it (template_deviation.touches; `touched` None = unknown, then every update counts, as before).
+    try:
+        import template_deviation as td
+    except ImportError:  # a copy run outside scripts/ (fixture negative controls): one cadence for all, as before
+        class td:  # noqa: N801
+            REVIEW_DAYS = REVIEW_DAYS
+            cadence = staticmethod(lambda key, d: REVIEW_DAYS)
+            touches = staticmethod(lambda key, touched: True)
     batch = None if review_all else int(decl.get("review_batch") or REVIEW_BATCH)
-    limit = (datetime.date.fromisoformat(today) - datetime.timedelta(days=days)).isoformat()
+    day = datetime.date.fromisoformat(today)
     due = []
     for sec in ("instance", "external"):
         for key, d in (decl.get(sec) or {}).items():
             rev = str(d.get("reviewed", "")) if isinstance(d, dict) else ""
-            if review_all or not rev or rev < limit:
-                due.append((rev, sec, key))
+            days = int(decl.get("review_days") or 0) or td.cadence(key, d)
+            limit = (day - datetime.timedelta(days=days)).isoformat()
+            pin = bool(since_core and rev and rev < since_core and (touched is None or td.touches(key, touched)))
+            if review_all or not rev or rev < limit or pin:
+                due.append((rev, sec, key, days))
+    for key, d in (decl.get("alpha") or {}).items():
+        until = str(d.get("until", "")) if isinstance(d, dict) else ""
+        if until and until > (day + datetime.timedelta(days=td.REVIEW_DAYS)).isoformat():
+            due.append(("", "alpha", key, 0))  # a date more than 90 days ahead is an unlimited deviation in disguise
     due.sort()
-    return len(due), [f"{key} ({sec}, reviewed {rev or 'never'})" for rev, sec, key in due[:batch]]
+    return len(due), [f"{key} ({sec}, until more than {td.REVIEW_DAYS} days ahead)" if sec == "alpha"
+                      else f"{key} ({sec}, reviewed {rev or 'never'}, cadence {days} days)" for rev, sec, key, days in due[:batch]]
 
 
 def load(path):
@@ -1000,6 +1022,56 @@ def alpha_kinds(decl):
     return out
 
 
+RECORD_DAYS = 7
+
+
+def alpha_records(decl, repo, home, today):
+    """A `test` alpha names where its measurement is written (`record`), and that record lives.
+    `unreleased` had its checkable half from the start (`core_pr`); `test` had none - the kind alone
+    passed. Measured 2026-11-23 on a macOS instance: 53 test alphas, 44 named no record at all, and
+    one gate ran its whole 14 days without writing the record its declaration called the measurement,
+    so the decision at the expiry date (port, extend, unwire) had no data; 30 of 81 alphas had been
+    extended at least once. `record` is a path (relative to the brain, `~` or absolute; a list for
+    several) or the place a result stands that is no file (a URL, owner/repo#n - shape only, no
+    network call at a session start). A path must exist - the instrument creates it on its
+    first run (measured the same evening: a `touch` by the declaring session was refused by the
+    permission layer, so a record that waits for a hand may never appear), empty counts as armed -
+    and must have been written within `record_days` (per alpha, else the file's
+    top-level value, else 7): a record nobody wrote for a week measures nothing or the thing it
+    waits for does not happen, and either is the question the review asks."""
+    out = []
+    try:
+        now = datetime.date.fromisoformat(today)
+    except ValueError:
+        now = datetime.date.today()
+    for key, d in (decl.get("alpha") or {}).items():
+        if not isinstance(d, dict) or str(d.get("kind") or "").strip() != "test":
+            continue
+        rec = d.get("record")
+        recs = [rec] if isinstance(rec, str) else [r for r in (rec if isinstance(rec, list) else []) if isinstance(r, str)]
+        recs = [r.strip() for r in recs if r.strip()]
+        if not recs:
+            out.append(f"{key} (test without record)")
+            continue
+        try:
+            days = int(d.get("record_days") or decl.get("record_days") or RECORD_DAYS)
+        except (TypeError, ValueError):
+            days = RECORD_DAYS
+        for r in recs:
+            if re.match(r"https?://\S+$", r) or CORE_PR.fullmatch(r):
+                continue
+            # OS-1: the joined path only opens the file; the finding prints `r`, the declared text
+            p = os.path.join(home, r[2:]) if r.startswith("~/") else r
+            p = p if os.path.isabs(p) else os.path.join(repo, p)
+            if not os.path.isfile(p):
+                out.append(f"{key} (record {r} does not exist)")
+                continue
+            age = (now - datetime.date.fromtimestamp(os.path.getmtime(p))).days
+            if age > days:
+                out.append(f"{key} (record {r} not written for {age} d)")
+    return out
+
+
 MESSAGES = {
     "edited": "!! local machinery: {n} core file(s) edited inside core/: {x} — core changes go as a PR against the core, never edited in place",
     "offmain": "!! local machinery: {n} tool source checkout(s) not on main feed this brain (MCP server or skill symlink): {x} — unreleased code in every session; switch the checkout back to main, or declare it as alpha",
@@ -1011,6 +1083,7 @@ MESSAGES = {
     "caughtup": "!! local machinery: {n} alpha(s) the running core has caught up with, still wired: {x} — unwire the copy and its wiring now (the core carries it)",
     "expired": "!! local machinery: {n} alpha(s) past their date, still wired: {x} — merge, extend with a reason, or unwire",
     "alphakind": "!! local machinery: {n} alpha declaration(s) without a valid kind: {x} — name \"kind\": \"test\" (a real test phase; the core port waits for its result) or \"unreleased\" (a clear core feature wired before its release) with \"core_pr\": the core PR (URL or owner/repo#n), opened now",
+    "alpharecord": "!! local machinery: {n} test alpha(s) whose measurement has no living record: {x} — a test names \"record\": the file it writes its measurement to (the instrument creates it on its first run) or the URL / owner/repo#n where its result stands; a missing or silent record means the test measures nothing: make it write, or decide now (port, unwire) instead of at the date",
     "outside": "!! local machinery: {n} item(s) run from outside this brain and outside the core, undeclared: {x} — for the AI: classify each (why local, sensible, core-worthy?) and declare it as alpha with a date in .claude/rules/local-machinery.json, or open the core PR",
     "general": "!! local machinery: {n} undeclared item(s) contain none of this brain's identity tokens, presumably general: {x} — for the AI: core (or suite) PR, or declare as instance with the token it relies on as evidence",
     "noevidence": "!! local machinery: {n} instance declaration(s) give a reason without evidence: {x} — add \"evidence\": the instance-specific token the item relies on",
@@ -1047,7 +1120,15 @@ def main(argv):
     found["missing"] = C.missing
     found["channels"] = both_channels(C)
     found["alphakind"] = alpha_kinds(decl)
-    n_due, found["review"] = review_due(decl, a.today, a.review_all)
+    found["alpharecord"] = alpha_records(decl, a.repo, a.home, a.today)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        import template_deviation  # the one reader of the brain's last core update
+        cu = template_deviation.core_updated(a.repo)
+        tc = template_deviation.core_touched(a.repo)
+    except ImportError:  # a copy run outside scripts/ (fixture negative controls): the 90 days alone
+        cu = tc = None
+    n_due, found["review"] = review_due(decl, a.today, a.review_all, cu.isoformat() if cu else None, tc)
     if a.review_all:
         print(f"local machinery review: {n_due} declared deviation(s), all listed - judge each again "
               "(reason still true? core or suite carries it by now? still used?), then core PR, unwire, "
@@ -1083,7 +1164,7 @@ def main(argv):
         for it in items:
             print(f"{it['class']:11} {it['carrier']:12} {it['id']}")
 
-    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "caughtup", "expired", "alphakind", "outside", "general",
+    for cls in ("missing", "edited", "channels", "offmain", "clone", "shadow", "wrapper", "contradiction", "caughtup", "expired", "alphakind", "alpharecord", "outside", "general",
                 "noevidence", "badevidence", "duplicate", "undeclared", "review"):
         xs = uniq(found[cls])
         if not xs:

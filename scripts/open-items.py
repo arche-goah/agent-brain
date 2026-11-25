@@ -583,7 +583,26 @@ def front(it, repo):
     return it["front"]
 
 
-def auto_class(it, repo, human_rx):
+def question_rx(root):
+    """A `question:` field line, or the instance's operator_question_patterns (.claude/rules/ledgers.json).
+    Read from the BRAIN root, as its twin helpers/decision-presentation-gate.cjs does: reading the
+    channel repo made the start report say "human 0" where the gate said 1 (Windows review of #638/#642,
+    2026-11-24). A pattern JavaScript cannot compile (an inline flag group like `(?i)`) is dropped here
+    too, so both readers count the same entries; joined unwrapped it crashed this script (rc=1)."""
+    cfg = load_json(Path(root or ".") / ".claude" / "rules" / "ledgers.json", None) or {}
+    pats = [r"^\s*(?:[-*]\s+)?question:\s*\S"]
+    for p in cfg.get("operator_question_patterns") or []:
+        if not isinstance(p, str) or re.match(r"\(\?[aiLmsux]+\)", p):
+            continue
+        try:
+            re.compile(p)
+            pats.append(p)
+        except re.error:
+            pass
+    return re.compile("|".join(f"(?:{p})" for p in pats), re.M)
+
+
+def auto_class(it, repo, human_rx, root=None):
     """(class, why) from the data alone, or (None, '') when the data does not say."""
     if it["kind"] == "PR":
         return "ai", it.get("pr_note") or "pull request: review or merge is agent work"
@@ -592,6 +611,12 @@ def auto_class(it, repo, human_rx):
     if it["kind"] == "session":
         return "ai", "the transcript holds the cause; the agent reads it and says it, the operator knows no more"
     if it["kind"] == "ledger":
+        # A question to the operator is its own line and wins over the exit (macOS incident 2026-11-23: one
+        # entry held the AI's work AND the operator's questions, exit ai-does-it, the start report said
+        # "human 0"); the same reader as helpers/decision-presentation-gate.cjs questionRx.
+        # Only over the agent's own exits (ai-does-it, in-pr); a wait (later-at-system, other-side, parked) keeps parking it.
+        if it.get("exit") in ("ai-does-it", "in-pr") and question_rx(root).search(it.get("body") or ""):
+            return "human", "an open question to the operator (question line)"
         # The sorted exit says who moves (skill backlog-catch-up); `class: decision` alone does not
         # — measured 2026-10-28: 9 of 11 "human" ledger rows were no operator decision.
         if it.get("exit") == "operator-decision":
@@ -796,6 +821,12 @@ ANY_EXIT = re.compile(FIELD_LINE + r"exit:\s*([\w-]+)\s+(\d{4}-\d{2}-\d{2})", re
 # still ahead or a topic is not due at the session start. Measured 2026-10-30: nine entries with a
 # topic trigger printed every session, seven of them as "needs you".
 ASK_WHEN = re.compile(FIELD_LINE + r"ask-when:\s*(.+?)\s*$", re.M)
+# `operator-only: deferred` - the operator put the topic off in their own words: it returns on their word, not at every
+# session start (rules/intelligence.md, "a point the operator deferred is said once per session - and only the operator
+# defers"). Measured 2026-11-18 on the macOS instance: an entry whose operator had said "all fine, leave it", recorded
+# as operator-decision + `operator-only: deferred` without an ask-when line, printed as "needs you" in 30 session starts;
+# no reader knew the field, and the next session asked it again and nearly built the fix nobody wanted.
+DEFERRED = re.compile(FIELD_LINE + r"operator-only:\s*deferred\b", re.M)
 # `record-read: <date> ...` - the agent read the record of a green-from-birth operator decision and the answer is not in
 # it (Windows review 2026-11-17, #570: without it a weak check kept a real decision away from the operator for good).
 RECORD_READ = re.compile(FIELD_LINE + r"record-read:\s*\d{4}-\d{2}-\d{2}\b", re.M)
@@ -912,7 +943,8 @@ def ledgers(root):
                     "exit": last[0] if last else "", "body": e["text"],
                     "until": until,
                     "waiting_on": (f"the ledger exit {x[0]}", f"since {x[1]}") if x
-                    else ("its trigger", f"ask-when {topic}") if topic else None}
+                    else ("its trigger", f"ask-when {topic}") if topic
+                    else ("the operator's word", "deferred by the operator") if DEFERRED.search(e["text"]) else None}
             if rows:
                 item["ours"] = datetime.datetime.fromtimestamp(max(moved)).isoformat() if moved else ""
             if e["line"] in ticks:
@@ -1178,7 +1210,7 @@ def main():
         # A ledger exit is newer than a stored class: it was set by measuring the entry.
         if own and it.get("exit") in ("ai-does-it", "operator-decision"):
             own = None
-        it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx)
+        it["cls"], it["why"] = (own["class"], own.get("why", "")) if own else auto_class(it, a.repo, human_rx, root)
         it["cls"] = it["cls"] or "?"
         # An operator decision whose check was green from its first run: the answer may already be applied
         # (measured 2026-11-17 on the macOS instance: an entry the operator had decided the day before, its

@@ -13,7 +13,7 @@
 # A hooksPath that points somewhere else is reported, never overwritten without being named:
 # an instance may carry its own hooks dir on purpose.
 set -u
-hooks=$(cd "$(dirname "${BASH_SOURCE[0]}")/../helpers/git-hooks" && pwd)
+hooks=$(cd "$(dirname "${BASH_SOURCE[0]}")/../helpers/git-hooks" && pwd -P)  # -P: git's toplevel resolves symlinks too (/var on macOS)
 # Git Bash: pwd gives /c/..., git config may hold C:/... for the same folder — compare (and
 # write) the mixed long form (8.3 names expanded); everywhere else cygpath does not exist and the path stays.
 norm() { [ -z "$1" ] || cygpath -ml "$1" 2>/dev/null || printf '%s' "$1"; }
@@ -33,6 +33,18 @@ fi
 if [ "$scope" = --local ] && ! git rev-parse --git-dir >/dev/null 2>&1; then
   echo "install-git-hooks: not inside a git repo — run it from the brain's root, or pass --global"
   exit 1
+fi
+# The local path names hooks of THIS repo only (its own core/ or, in a core checkout, its own helpers/).
+# Measured 2026-11-20 (macOS instance): the script of a core clone in a scratch folder, started from the
+# brain's root, pointed the brain at the clone's hooks; the brain's pre-push then read its push targets
+# from the scratch folder and refused every push.
+top=$(norm "$(git rev-parse --show-toplevel 2>/dev/null || true)")
+if [ "$scope" = --local ] && [ "${1:-}" != "--check" ] && [ -n "$top" ]; then
+  case "$hooks/" in
+    "$top"/*) ;;
+    *) echo "install-git-hooks: refused — these hooks ($hooks) are not inside this repo ($top); run the script of this repo's own core, or pass --global"
+       exit 1 ;;
+  esac
 fi
 if [ "$scope" = --global ]; then cur=$glob; else cur=$loc; fi
 if [ -n "$cur" ] && [ "$cur" != "$hooks" ]; then

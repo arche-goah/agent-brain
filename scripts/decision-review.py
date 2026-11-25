@@ -67,7 +67,7 @@ except (AttributeError, ValueError):
 
 CACHE_VERSION = 6
 REFERRAL_LOOKBACK = 8   # replies searched backwards from a prompt that names a referral
-FRAMES = re.compile(r"<system-reminder>.*?</system-reminder>|<task-notification>.*?</task-notification>", re.S)
+FRAMES = re.compile(r"<system-reminder\b[^>]*>.*?</system-reminder\b[^>]*>|<task-notification>.*?</task-notification>", re.S)
 LOCAL = re.compile(r"<local-command-caveat>.*?</local-command-caveat>|<local-command-std(?:out|err)>.*?"
                    r"</local-command-std(?:out|err)>|<command-(?:name|message|args)>.*?</command-(?:name|message|args)>", re.S)
 # Text the operator PASTED is not the operator's words — the definition of helpers/turn-kind.cjs operatorWords
@@ -103,7 +103,7 @@ BUILTIN = {
 
 # Actions with external effect. Bash commands: (group, regex). MCP tools: write-like name parts.
 BASH_ACTIONS = [
-    ("git push", r"\bgit\b(?:\s+-C\s+\S+)?\s+push\b"),
+    ("git push", r"\bgit\b(?:\s+-C\s+(?:\"[^\"]*\"|'[^']*'|\S+))?\s+push\b"),
     ("gh pr merge", r"\bgh\s+pr\s+merge\b"),
     ("gh pr create", r"\bgh\s+pr\s+create\b"),
     ("gh pr comment/review", r"\bgh\s+pr\s+(comment|review|close|edit|ready)\b"),
@@ -111,9 +111,9 @@ BASH_ACTIONS = [
     ("gh release", r"\bgh\s+release\s+(create|delete|edit|upload)\b"),
     ("gh repo write", r"\bgh\s+repo\s+(create|delete|edit|rename|archive)\b"),
     ("gh api write", r"\bgh\s+api\b.*(-X|--method)\s*(POST|PUT|PATCH|DELETE)\b"),
-    ("git tag push/delete", r"\bgit\b(?:\s+-C\s+\S+)?\s+tag\s+-d\b"),
+    ("git tag push/delete", r"\bgit\b(?:\s+-C\s+(?:\"[^\"]*\"|'[^']*'|\S+))?\s+tag\s+-d\b"),
     ("rm -r", r"\brm\s+-[a-zA-Z]*r"),
-    ("git reset --hard", r"\bgit\b(?:\s+-C\s+\S+)?\s+reset\s+--hard\b"),
+    ("git reset --hard", r"\bgit\b(?:\s+-C\s+(?:\"[^\"]*\"|'[^']*'|\S+))?\s+reset\s+--hard\b"),
     ("http write", r"\bcurl\b.*(-X|--request)\s*(POST|PUT|PATCH|DELETE)\b"),
     ("package publish", r"\b(npm|pnpm|yarn|twine|cargo)\s+publish\b"),
 ]

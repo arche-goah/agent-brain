@@ -15,7 +15,12 @@ incident: <what happened, where (session, PR, file:line)>
 cause: <what was read, where — A produced B>
 invariant: <the rule that was broken, without the instance's names: no path, no PR number, no proper noun — checked>
 effect: <what it cost or would have cost>
+refusal: <GATE> <Tool> — only when the incident is a hook refusing a tool call (e.g. `refusal: AUTONOMOUS-GATE AskUserQuestion`):
+  the key the lookup matches when that gate refuses that tool again (helpers/refusal-register.cjs) - a repeat is then
+  no first case
 carrier: <path of the gate/script/data, or the PR> | none — <why no mechanism can carry it>
+effective: yes — <how it was measured that the carrier is in force here, date> | no — <why: the PR is open, merged but
+  not pinned, the gate not wired> — a pull request is a carrier only once it runs; `--review` lists a PR carrier without it
 recheck: <YYYY-MM-DD, only with carrier: none — when to look again whether it is still impossible>
 related: <ids of earlier entries, ledger ids, PRs of the same class>
 replay: <the invariant run over the history: command, count, newest examples> — a count is required in the turn

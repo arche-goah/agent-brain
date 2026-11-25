@@ -20,6 +20,7 @@
  */
 'use strict';
 const { execFileSync } = require('child_process');
+const { gitStarts } = require('./branch-start.cjs');
 
 function target(cmd) {
   if (!/(?:^|[\n;&|(]\s*)gh\s+pr\s+create\b/.test(cmd)) return null;
@@ -35,10 +36,11 @@ function target(cmd) {
 // anything is built. Measured: a translation for grandma3-suite was built from a ledger line ("next:
 // mcp/REFERENCE.md") while the same AI's #232 of the evening before already carried it; the create-time
 // check came after the work. Pass: `# PRS-READ: <which one is closest, or none>`.
-function branchStart(cmd) {
-  const m = /(?:^|[\n;&|(]\s*)git\s+(?:-C\s+("[^"]+"|\S+)\s+)?(?:worktree\s+add\b[^\n;&|]*?\s-[bB]\s+(\S+)|(?:checkout|switch)\s+-[bcBC]\s+(\S+))/.exec(cmd);
-  if (!m) return null;
-  return { dir: m[1] ? m[1].replace(/^"|"$/g, '') : process.cwd(), branch: m[2] || m[3] };
+// The start is read by the one shared reader (branch-start.cjs, also release-freeze-gate's); this file's own regex
+// missed `switch --create`, a `-c` option before the subcommand and a quoted -C path with a space (#563 review).
+function branchStart(cmd, ps, cwd) {
+  const all = gitStarts(cmd, Boolean(ps), cwd || process.cwd());
+  return all && all.length ? all[0] : null;
 }
 
 function repoOf(dir) {
@@ -47,9 +49,9 @@ function repoOf(dir) {
   return m ? m[1] : null;
 }
 
-function judgeStart(cmd) {
+function judgeStart(cmd, ps, cwd) {
   if (/#\s*PRS-READ:\s*\S/.test(cmd)) return null;
-  const s = branchStart(cmd);
+  const s = branchStart(cmd, ps, cwd);
   if (!s) return null;
   let repo, prs;
   try {
@@ -87,7 +89,7 @@ function judge(input) {
   // PowerShell tool, and a Bash-only gate let it pass unseen - the neighbours on this path are registered for both.
   if (!input || (input.tool_name !== 'Bash' && input.tool_name !== 'PowerShell')) return null;
   const cmd = String((input.tool_input && input.tool_input.command) || '');
-  const start = judgeStart(cmd);
+  const start = judgeStart(cmd, input.tool_name === 'PowerShell', input.cwd);
   if (start) return start;
   if (/#\s*OVERLAP-OK:\s*\S/.test(cmd)) return null;
   const t = target(cmd);

@@ -52,6 +52,7 @@
  * The settings matcher must cover every declared tool; the template wires `.*`.
  */
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const os = require('os');
 const path = require('path');
 
@@ -208,23 +209,23 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { input += c; });
 process.stdin.on('end', () => {
   let hook;
-  try { hook = JSON.parse(input); } catch (_) { process.exit(0); }
+  try { hook = JSON.parse(input); } catch (_) { hookExit(0); }
   const tool = String(hook.tool_name || '');
-  if (tool === 'Skill' || tool === 'Read') process.exit(0);
+  if (tool === 'Skill' || tool === 'Read') hookExit(0);
   const target = targetPath(hook.tool_input);
 
   let hits;
   try {
     const command = String((hook.tool_input || {}).command || '');
     hits = rules().filter((r) => matches(r, tool, target, command));
-  } catch (e) { log(`ERR rules ${e.message}`); process.exit(0); }
-  if (!hits.length) process.exit(0);
+  } catch (e) { log(`ERR rules ${e.message}`); hookExit(0); }
+  if (!hits.length) hookExit(0);
   if (!hook.transcript_path || !fs.existsSync(hook.transcript_path)) {
-    log(`NO-TRANSCRIPT tool=${tool}`); process.exit(0);
+    log(`NO-TRANSCRIPT tool=${tool}`); hookExit(0);
   }
 
   let ev;
-  try { ev = loaded(transcripts(hook)); } catch (e) { log(`ERR transcript ${e.message}`); process.exit(0); }
+  try { ev = loaded(transcripts(hook)); } catch (e) { log(`ERR transcript ${e.message}`); hookExit(0); }
   const missing = [];
   for (const r of hits) {
     r.skills.forEach((s, i) => {
@@ -233,7 +234,7 @@ process.stdin.on('end', () => {
       }
     });
   }
-  if (!missing.length) process.exit(0);
+  if (!missing.length) hookExit(0);
 
   log(`BLOCKED tool=${tool}${target ? ' path=' + target : ''} missing=${missing.map((m) => m.skill).join(',')}`);
   console.log(JSON.stringify({
@@ -247,5 +248,5 @@ process.stdin.on('end', () => {
         'follow it, then repeat the call. No bypass marker: loading a skill is one call.',
     },
   }));
-  process.exit(0);
+  hookExit(0);
 });

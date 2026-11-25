@@ -21,6 +21,15 @@ then an explicit release follows.
    the close words; otherwise say in the first close line that the run ends here.
 
 1. **Secure open work (semantic — no script can do this):**
+   - **The instance's own close steps run first (2026-11-23):** the instance rules file
+     (`.claude/rules/working-rules-instance.md`) may carry a section about the session close
+     (a heading that names the close — "Session close", or the instance language's word for
+     it). Read it now, in the file, and run every step it names; a step that is skipped is
+     named with its reason in the close report (step 5). Before this bullet, only the
+     live-verify path was looked up there (below), so any other step an instance wrote into
+     that section had no trigger — measured on a macOS instance the day a per-session audit
+     was added to its close section: the line stood in an always-loaded file and nothing in
+     this procedure led to it.
    - Unfinished orders and intermediate STATES go into the list that owns them — the
      domain ledger or order list (Project Work Ledgers rule) — not into memory. Memory
      gets the FACTS this session found (observe the auto-memory rules and the MEMORY.md

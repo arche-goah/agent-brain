@@ -25,6 +25,7 @@
  */
 'use strict';
 const fs = require('fs');
+const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
 const { doneClaimRegex } = require('./done-claim.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
@@ -99,14 +100,14 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', (c) => { data += c; });
 process.stdin.on('end', () => {
   let input = {};
-  try { input = JSON.parse(data || '{}'); } catch (e) { process.exit(0); }
-  if (input.stop_hook_active || !input.transcript_path) process.exit(0);
+  try { input = JSON.parse(data || '{}'); } catch (e) { hookExit(0); }
+  if (input.stop_hook_active || !input.transcript_path) hookExit(0);
   const root = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
   let s;
-  try { s = scan(input.transcript_path, ownEcho(input, /VERIFICATION-GATE/)); } catch (e) { process.exit(0); }
-  if (s.fired || s.loaded || s.code.length === 0) process.exit(0);
+  try { s = scan(input.transcript_path, ownEcho(input, /VERIFICATION-GATE/)); } catch (e) { hookExit(0); }
+  if (s.fired || s.loaded || s.code.length === 0) hookExit(0);
   const m = stripQuoted(s.lastText).match(doneClaimRegex(root));
-  if (!m) process.exit(0);
+  if (!m) hookExit(0);
   const files = [...new Set(s.code.map((f) => f.replace(/\\/g, '/').split('/').pop()))].slice(0, 5).join(', ');
   console.log(JSON.stringify(declare({
     decision: 'block',
@@ -114,5 +115,5 @@ process.stdin.on('end', () => {
       `(${files}), and skill ${SKILL} was not loaded in this session. Load it, run its checks, then report ` +
       '— or say in the reply why this change needs none.',
   }, input)));
-  process.exit(0);
+  hookExit(0);
 });

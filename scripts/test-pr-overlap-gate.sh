@@ -54,6 +54,10 @@ out=$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(js "$W")" | P
 case "$out" in *"#232"*"already uses the branch name"*) ok "the block lists the PRs and the same branch name";; *) bad "list or name missing: ${out:0:300}";; esac
 check "checkout -b is a branch start too" "git checkout -b feat/x" block "$SF"
 check "switch -c is a branch start too" "git -C /x/r switch -c feat/x" block "$SF"
+# one reader with release-freeze-gate (branch-start.cjs, 2026-11-17): forms the old regex missed
+check "switch --create is a branch start" "git -C /x/r switch --create feat/x" block "$SF"
+check "a -c option before the subcommand" "git -c core.autocrlf=false checkout -b feat/x" block "$SF"
+check "a quoted -C path with a space" 'git -C "/x/First Last/r" checkout -b feat/x' block "$SF"
 check "a PRS-READ marker with a reason passes" "$W # PRS-READ: #232 carries it - not built" allow "$SF"
 check "a PRS-READ marker without a reason does not pass" "$W # PRS-READ:" block "$SF"
 check "a repo without open PRs passes" "$W" allow '{"repo":"a/b","prs":[]}'

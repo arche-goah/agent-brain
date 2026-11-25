@@ -32,6 +32,9 @@ probe() { # $1 label, $2 command, $3 block|allow, [$4 SELF value, default mac]
 probe "comment without key" "gh pr comment 5 -R o/r --body \"OK to merge\"" block
 probe "comment with own key" "gh pr comment 5 -R o/r --body \"OK <!-- instance-key: $KEY -->\"" allow
 probe "comment with ANOTHER instance's key" "gh pr comment 5 -R o/r --body \"OK <!-- instance-key: 0123456789 -->\"" block
+# what the shell runs is published too (2026-11-18, review of #615: a post through bash -c or $( ) skipped every text gate)
+probe "comment without key, run through bash -c" "bash -c 'gh pr comment 5 -R o/r --body \"OK to merge\"'" block
+probe "comment with own key, run through bash -c" "bash -c 'gh pr comment 5 -R o/r --body \"OK <!-- instance-key: $KEY -->\"'" allow
 printf 'body\n<!-- instance-key: %s -->\n' "$KEY" > "$T/body.md"
 probe "create with key in --body-file" "gh pr create --head x --title t --body-file $(native "$T/body.md")" allow
 printf 'body without key\n' > "$T/nokey.md"
@@ -183,6 +186,14 @@ FAKE_GH=missing shaprobe "a backticked 10-hex instance key (API says 422)" "$RC"
 printf 'the suite head is `%s`\n<!-- instance-key: %s -->\n' "$FOREIGN" "$KEY" > "$T/foreign.md"
 FAKE_GH=missing shaprobe "a commit of another repo (API says 422)" "$RC" "$T/foreign.md" allow
 FAKE_GH=missing shaprobe "a sha outside any checkout (cwd no repo)" "$T" "$T/sha.md" allow
+# #514 review (2026-11-17): posted from a brain's root, whose origin is the brain - the core commit lives in the
+# submodule core/ (.gitmodules url = the target repo); a local-only core commit must still be held.
+SB="$T/sbrain"; git init -q -b main "$SB"; git -C "$SB" remote add origin https://github.com/o/brain.git
+cp -R "$RC" "$SB/core"
+printf '[submodule "core"]\n\tpath = core\n\turl = https://github.com/o/r.git\n' > "$SB/.gitmodules"
+FAKE_GH=missing shaprobe "a local-only commit of the brain's core submodule, posted from the brain root" "$SB" "$T/sha.md" block
+printf '[submodule "core"]\n\tpath = core\n\turl = https://github.com/o/other.git\n' > "$SB/.gitmodules"
+FAKE_GH=missing shaprobe "control: a submodule of another repo is no checkout of the target" "$SB" "$T/sha.md" allow
 printf 'see https://github.com/o/r/commit/`%s` and [x](https://github.com/o/r/blob/%s/a.md)\n<!-- instance-key: %s -->\n' "$LOCAL" "$LOCAL" "$KEY" > "$T/url.md"
 FAKE_GH=missing shaprobe "hex inside a URL" "$RC" "$T/url.md" allow
 printf 'measured on `20261112`, word `defaced`, not hex `4a560fz`\n<!-- instance-key: %s -->\n' "$KEY" > "$T/num.md"

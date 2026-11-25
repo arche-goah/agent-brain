@@ -9,7 +9,7 @@
     "\\bgh\\s+pr\\s+(merge|create|comment|close|review|edit|ready)\\b",
     "\\bgh\\s+(issue\\s+(create|comment|close|edit)|release\\s+(create|edit|delete))\\b",
     "\\bgh\\s+api\\b.*\\s-X\\s*(POST|PATCH|PUT|DELETE)\\b",
-    "\\bgit\\s+(-C\\s+\\S+\\s+)?push\\b",
+    "\\bgit\\s+(-C\\s+(?:\"[^\"]*\"|'[^']*'|\\S+)\\s+)?push\\b",
     "shared-memory-post|brain-update\\.sh|claude\\s+plugin\\s+(install|update|enable|disable)"
   ],
   "_cases": [

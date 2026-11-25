@@ -83,16 +83,25 @@ def slug(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", t).strip("-")[:50].rstrip("-") or "message"
 
 
-def resolve_next(to: list[str], parties: dict, text: str = "") -> list[str]:
+def resolve_next(to: list[str], parties: dict, text: str = "", topic: str = "",
+                 excepted: set[str] = frozenset()) -> list[str]:
     """The devices an addressee list reaches — what `next:` names. A category address leaves out the
-    devices of a person who cannot see a repo the text names; a device named by itself stays."""
+    devices of a person who cannot see a repo the text names, the devices `--except` names and those of
+    a person whose `except_topics` hold the entry's area; a device named by itself stays."""
+    return resolve(to, parties, text, topic, excepted)[0]
+
+
+def resolve(to, parties, text="", topic="", excepted=frozenset()):
+    """(devices reached, devices a category would have reached but left out)."""
     devs = _parties.devices(parties)
-    out = []
+    out, dropped = [], []
     for t in to:
-        hit = sorted(d for d in devs if (t in _parties.EVERYONE or t in _parties.categories(d, parties))
-                     and not _parties.without_access(d, text, parties))
-        out += [d for d in (hit or [t]) if d not in out]
-    return out
+        reach = sorted(d for d in devs if (t in _parties.EVERYONE or t in _parties.categories(d, parties))
+                       and not _parties.without_access(d, text, parties))
+        keep = [d for d in reach if not _parties.left_out(d, t, topic, set(excepted), parties)]
+        dropped += [d for d in reach if d not in keep and d not in dropped]
+        out += [d for d in (keep or ([] if reach else [t])) if d not in out]
+    return out, [d for d in dropped if d not in out]
 
 
 # A check request goes to every machine of that OS (`os:<os>`), never to one device, unless exactly
@@ -102,7 +111,12 @@ def resolve_next(to: list[str], parties: dict, text: str = "") -> list[str]:
 # English here; an instance adds its language in .claude/rules/shared-memory-post.json
 # {"check_words": [regex, ...]}.
 OS_NAMES = {"windows": r"\bwindows\b|\bwin(?:10|11)?\b", "macos": r"\bmac\s?os\b", "linux": r"\blinux\b"}
-CHECK_WORDS = [r"\bcounter-?check", r"\bchecks? (?:it |them )?(?:on|at)\b", r"\bplease (?:run|check|verify|test)\b",
+# "re-check" and "run on <OS>" (2026-11-20, macOS instance): four core requests that day asked a Windows hand check of
+# single PRs ("Please review", "Re-check", "Please re-run", "Run on Windows") and passed os_check_not_needed unseen.
+# "please review / re-run" come from check-request-words.json (check_words() reads it); these two are not there.
+# Replayed over the 196 os:windows requests under core/ of the shared memory: the old list missed 13, now all 13 are seen.
+CHECK_WORDS = [r"\bcounter-?check", r"\bre-?check", r"\bchecks? (?:it |them )?(?:on|at)\b",
+               r"\bplease (?:run|check|verify|test)\b", r"\brun (?:it |them )?on (?:windows|macos|linux)\b",
                r"\bverify (?:on|at)\b"]
 
 # The unit a check word rules is its SENTENCE, not the whole text (2026-11-04, four refusals of correct requests
@@ -152,6 +166,14 @@ def asked_prs(sentences, default):
 
 def check_words():
     words = list(CHECK_WORDS)
+    # One source for "this text asks another instance to check": the request patterns of check-request-gate.cjs are
+    # read too (2026-11-20: the gate knew "please review / re-run", this tool did not, and four requests passed).
+    try:
+        import json
+        words += json.loads((Path(__file__).resolve().parent.parent / "helpers" / "check-request-words.json")
+                            .read_text(encoding="utf-8")).get("request_patterns") or []
+    except (OSError, ValueError):
+        pass
     root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
     try:
         import json
@@ -283,12 +305,12 @@ def is_train(repo: str, n: str) -> bool:
         return False
 
 
-def os_check_not_needed(text: str) -> str:
+def os_check_not_needed(text: str, extra=()) -> str:
     """The refusal text when `text` asks an OS hand check of a single PR in a repo whose merge takes the CI as OS proof.
     Measured 2026-11-06 on the macOS instance: three per-PR Windows checks went out for core PRs that a merge train
     covers by its CI; the operator's rule (one check per OS at the train head, nothing twice) lived in prose only."""
     repos = ci_proof_repos()
-    asked = check_sentences(text)
+    asked = check_sentences(text) + list(extra)
     if not repos or not asked or not asked_os(asked):
         return ""
     single = [f"{repo}#{n}" for repo, n in asked_prs(asked, pr_repo_default())
@@ -297,7 +319,8 @@ def os_check_not_needed(text: str) -> str:
         return ""
     return ("an OS hand check is asked for single PR(s) " + ", ".join(single) + " - in this repo a green CI job is the OS "
             "proof for a merge, and a hand check happens at most once per OS at a merge train's head (build the train, ask "
-            "for its PR), or say why this single PR needs a hand check: --hand-check-ok <reason>")
+            "for its PR), or say why this single PR needs a hand check: --hand-check-ok <reason>. A content review: "
+            "leave the OS out of the sentence that asks (\"Content review of #N: Fit, Design, Cost, Gaps\").")
 
 
 def os_check_not_ready(text: str) -> str:
@@ -330,6 +353,8 @@ def main() -> int:
     ap.add_argument("--repo", type=Path, default=_lint.REPO_DEFAULT,
                     help="the local shared-memory CHECKOUT (a folder) - not the GitHub repo of a PR the entry is about")
     ap.add_argument("--date", default=dt.date.today().isoformat())
+    ap.add_argument("--except", dest="except_", default="",
+                    help="leave these out of a broad address: device ids, person:<p>, os:<o> (comma or space separated)")
     ap.add_argument("--one-machine", default="", help="a check that needs exactly this machine: the reason")
     ap.add_argument("--one-machine-evidence", default="",
                     help="evidence for --one-machine: URL, existing file path[:line], or the operator's quoted words with date")
@@ -386,8 +411,22 @@ def main() -> int:
         or (a.kind == "request" and one_machine_unproven(a.one_machine, a.one_machine_evidence, a.repo))
     if miss:
         return refuse(miss)
+    # The lint's own reader decides too: the two readers disagreed (measured 2026-11-18 on the macOS instance, a
+    # request "... your Windows run at the next train head" to one Windows device was written here and refused by
+    # the pre-commit lint, check 9). One reader for one question; a writer never writes what the lint refuses.
+    # a reply too: the lint reads every kind (measured the same day: a reply "the Windows check of #34 goes to the
+    # operator's own machine" to one Windows device was written here and refused at pre-commit)
+    if a.kind in ("request", "note", "reply") and not a.one_machine:
+        one = _parties.windows_check_to_one_device(a.title + "\n" + body, ", ".join(to), parties)
+        if one:
+            return refuse(f"this asks for a Windows check but goes to one machine ({one}) - address os:windows "
+                          "(whoever comes first takes it); a check only that machine can do: --one-machine <reason>")
     if a.kind == "request" and not a.hand_check_ok:
-        needless = os_check_not_needed(a.title + "\n" + body)
+        # A request addressed to an OS is that machine's work: its TITLE counts as a check sentence whatever its words
+        # (2026-11-20 replay: "Windows-Pruefung agent-brain #320 am Kopf ..." and 23 more single-PR titles had no check word).
+        # A content review is no hand check (content review of #622, 2026-11-20): its title is not a check sentence.
+        title_rule = any(t.startswith("os:") for t in to) and not re.search(r"\bcontent[- ]review\b", a.title, re.I)
+        needless = os_check_not_needed(a.title + "\n" + body, [a.title] if title_rule else [])
         if needless:
             return refuse(needless)
     if a.kind == "request" and not a.ci_not_green_ok:
@@ -405,6 +444,31 @@ def main() -> int:
         if named:
             return refuse(f"{', '.join(named)} handed core and AI mechanics to your side (ai_handover) - "
                           f"decide it yourselves, or mark what the handover keeps: handover-keeps: <why>")
+    # Narrowing a broad address (operator order 2026-11-24: include or exclude instances or persons on purpose).
+    # The category is resolved HERE and the entry names the devices it reaches, so a reader on an older core -
+    # which knows no `except:` - is not addressed either; `except:` records what was left out and why.
+    excepted = {t.strip().lower() for t in a.except_.replace(",", " ").split() if t.strip()}
+    if excepted and parties:
+        bad = sorted(t for t in excepted if t not in _parties.known(parties))
+        if bad:
+            return refuse(f"--except names what parties.json does not know: {', '.join(bad)}")
+    dropped = []
+    if parties:
+        reached, dropped = resolve(to, parties, a.title + "\n" + body, a.area, excepted)
+        if dropped:
+            if not reached:
+                return refuse(f"nobody is left: every device of {', '.join(to)} is left out ({', '.join(dropped)})")
+            print(f"left out of {', '.join(to)}: {', '.join(dropped)} (--except, or except_topics "
+                  f"'{a.area}' in parties.json); the entry names the devices it reaches")
+            to = reached
+            # The narrowed address meets the same one-machine rule as a direct one (Windows review of #657,
+            # 2026-11-24: `--to os:windows --except <every other Windows device>` wrote a check to ONE machine with
+            # no reason, while `--to <that machine>` is refused).
+            if a.kind in ("request", "note", "reply") and not a.one_machine:
+                one = _parties.windows_check_to_one_device(a.title + "\n" + body, ", ".join(to), parties)
+                if one:
+                    return refuse(f"left out down to one machine ({one}), and this asks for a Windows check - a "
+                                  "check only that machine can do: --one-machine <reason>")
     stem = f"{a.kind}-{slug(a.title)}-{a.date}"
     path = area_dir / f"{stem}.md"
     if path.exists():
@@ -435,6 +499,8 @@ def main() -> int:
         meta.append(f"  next: {', '.join(nxt)}")
     if answers:
         meta.append(f"  {'claims' if a.kind == 'claim' else 'answers'}: {', '.join(answers)}")
+    if dropped:
+        meta.append(f"  except: {', '.join(dropped)}")
     if a.one_machine:
         meta.append(f"  one-machine: {a.one_machine}")
         meta.append(f"  one-machine-evidence: {a.one_machine_evidence}")

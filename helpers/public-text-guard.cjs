@@ -56,7 +56,7 @@ const { execFileSync } = require('child_process');
 const WRITE_RX = [
   /(^|[;&|(]\s*|\s)gh\s+(pr|issue)\s+(create|comment|edit|review|close|reopen|merge)\b/,
   /(^|[;&|(]\s*|\s)gh\s+release\s+(create|edit)\b/,
-  /(^|[;&|(]\s*|\s)git\s+(-C\s+\S+\s+)?(commit|tag)\b[^;&|]*\s(-[a-zA-Z]*m|--message|-F|--file)\b/,
+  /(^|[;&|(]\s*|\s)git\s+(-C\s+(?:"[^"]*"|'[^']*'|\S+)\s+)?(commit|tag)\b[^;&|]*\s(-[a-zA-Z]*m|--message|-F|--file)\b/,
 ];
 // Any commit or tag carries an AUTHOR identity (git config user.name / user.email), message or
 // not. Measured 2026-10-10 in a public core repo: 46 commits carried a full real name and a
@@ -101,23 +101,23 @@ function watchList(root) {
 // backticks: there the quoted text is read as a command too (before this, `bash -c "git commit -m x"` passed
 // the author check: the anchor wanted whitespace or a separator before `git`, and found a quote).
 const { segments } = require('./shell-segments.cjs');
-const RUNS_QUOTED = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-c\b|\beval\b|\$\(|`/;
+const RUNS_QUOTED = /\b(?:ba|z|da)?sh\s+(?:-\w+\s+)*-[a-z]*c[a-z]*\b|\beval\b|\$\(|`/;
 const QUOTED = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
 
 // Each command text as { judge, raw }: `judge` has its quoted parts emptied (what decides whether it is a write),
 // `raw` keeps them (where a quoted `git -C "<dir with spaces>"` is read from).
 function commandParts(cmd) {
   const outside = segments(cmd).map((s) => ({ judge: s.replace(QUOTED, '""').trim(), raw: s.trim() }));
-  if (!RUNS_QUOTED.test(cmd)) return outside;
-  const inside = [...cmd.matchAll(QUOTED)].map((m) => m[0].slice(1, -1));
-  return [...outside, ...inside.flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
+  return [...outside, ...ranTexts(cmd).flatMap((t) => segments(t).map((s) => ({ judge: s.trim(), raw: s.trim() })))];
 }
 const commandTexts = (cmd) => commandParts(cmd).map((p) => p.judge);
 
 function isWrite(cmd) {
   const texts = commandTexts(cmd);
   if (texts.some((t) => WRITE_RX.some((rx) => rx.test(t)) || AUTHOR_RX.test(t))) return true;
-  for (const m of cmd.matchAll(GH_API_RX)) {
+  // over the command parts as judged (quoted data emptied), not the raw text: a quoted `gh api … -f x` is a probe
+  // argument, not a call (2026-11-18, the same 7-of-14 measurement)
+  for (const m of texts.join('\n').matchAll(GH_API_RX)) {
     const args = m[2];
     if (/\s(-f|-F|--field|--raw-field|--input)\b/.test(args)) return true;
     if (/\s(-X|--method)\s*(POST|PATCH|PUT)\b/i.test(args)) return true;
@@ -161,7 +161,7 @@ function referencedFiles(cmd) {
   return out.filter((f) => f !== '-');
 }
 
-const { shellSegments, publishedText, nativePath, scriptBodies } = require('./published-text.cjs');
+const { shellSegments, publishedText, nativePath, scriptBodies, ranTexts } = require('./published-text.cjs');
 
 function slugFromRemote(dir) {
   try {
@@ -181,9 +181,10 @@ function targetRepos(cmd, cwd) {
   if (/(?:^|\s)(?:-R|--repo)[=\s]+"?\$/.test(cmd)) slugs.add('?');
   for (const m of cmd.matchAll(/\brepos\/([\w.-]+\/[\w.-]+?)(?=\/|\s|$|["'?])/g)) slugs.add(m[1]);
   if (!slugs.size) {
-    const c = /git\s+-C\s+("[^"]+"|'[^']+'|\S+)/.exec(cmd);
-    const dir = c ? unquote(c[1]) : cwd;
-    const s = dir && slugFromRemote(resolveFrom(cwd, dir));
+    // the shared reader of the git target; measured 2026-11-23: the regex took `-C reader` inside a quoted commit
+    // message for `git -C <repo>` and blocked the commit as "visibility unknown"
+    const dir = require('./git-target.cjs').gitTarget(cmd, cwd) || cwd;
+    const s = dir && slugFromRemote(dir);
     if (s) slugs.add(s);
     else if (/(^|\s)gh\s/.test(cmd)) slugs.add('?'); // gh without a resolvable repo: unknown
   }
@@ -267,6 +268,25 @@ function unreadableScript(input, cmd, cwd, s) {
   return 2;
 }
 
+// The core's own guard fixtures, and only they: `scripts/test-guards.sh` and `scripts/test-public-text-guard.sh` (operator
+// 2026-11-18, the second one: "Ja, gleiche Bedingung (Recommended)") in a checkout whose
+// `helpers/public-text-guard.cjs` sits beside it. Its gh commands are probe ARGUMENTS against throw-away
+// repos (o/lab, o/r) and a fake gh; read as posts they refused every hand run of the fixture on a machine
+// with a watch list (2026-11-18, macOS instance, review of #533). Operator, question tool, the same day:
+// "Ja, eng begrenzt (Recommended)" - no other script, no other path, every real post still read.
+function ownGuardFixture(file, cwd) {
+  try {
+    const p = fs.realpathSync(path.resolve(cwd || '.', nativePath(String(file))));
+    if (!['test-guards.sh', 'test-public-text-guard.sh'].includes(path.basename(p)) || path.basename(path.dirname(p)) !== 'scripts') return false;
+    const top = path.join(path.dirname(p), '..');
+    if (!fs.existsSync(path.join(top, 'helpers', 'public-text-guard.cjs'))) return false;
+    // ...and the checkout is the core repo itself (review of this PR, the Windows instance 2026-11-18: any file of that
+    // name passed). Not the running guard's own path: that one lives in the plugin cache, the fixture in a clone.
+    const url = execFileSync('git', ['-C', top, 'remote', 'get-url', 'origin'], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim();
+    return /[/:]arche-goah\/agent-brain(\.git)?$/.test(url);
+  } catch (e) { return false; }
+}
+
 // `script`: set when `input` carries the text of a local script the command runs (scriptBodies,
 // published-text.cjs) - its command lines are read as the outer command is, one level deep. Text a
 // script composes at run time (`$1`, a variable, `$(printf …)` output) is beyond any reading of its
@@ -278,8 +298,9 @@ function gate(input, script) {
   const cwd = input.cwd || process.cwd();
   if (!script) {
     for (const s of scriptBodies(cmd, ps, cwd)) {
+      if (ownGuardFixture(s.file, cwd)) continue;
       const rc = s.text === null ? unreadableScript(input, cmd, cwd, s)
-        : gate(Object.assign({}, input, { tool_input: { command: s.text } }), s.file);
+        : gate(Object.assign({}, input, { tool_input: { command: s.text } }, s.ps ? { tool_name: 'PowerShell' } : {}), s.file);
       if (rc) return rc;
     }
   }
@@ -323,7 +344,8 @@ function gate(input, script) {
   }
   const a = commandParts(cmd).filter((p) => AUTHOR_RX.test(p.judge)).map((p) => AUTHOR_RX.exec(p.raw)).find(Boolean);
   if (a) {
-    const dir = resolveFrom(cwd, a[3] ? unquote(a[3]) : '.');
+    const dir = require('./git-target.cjs').gitTarget(cmd, cwd, false, ['commit', 'tag'])
+      || resolveFrom(cwd, a[3] ? unquote(a[3]) : '.');
     try {
       const ident = execFileSync('git', ['-C', dir, 'var', 'GIT_AUTHOR_IDENT'],
         { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().replace(/\s+\d+\s+[+-]\d{4}\s*$/, '');
