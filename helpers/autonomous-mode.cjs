@@ -149,6 +149,10 @@ function words(cwd) {
     close: rx(BUILTIN_CLOSE, ap.close_patterns),
     defer: rx(BUILTIN_DEFER, ap.defer_ask_patterns),
     initial: initialState(dir, ap, oi).granted,
+    // `mode_confirm: true` turns the mode-confirm question on; missing or false keeps the direct switch (a mode word
+    // switches at once), so a brain that sets nothing sees no change (operator 2026-11-25: "provide both options").
+    // The close words and the ask window hold in both settings.
+    confirm: ap.mode_confirm === true,
   };
 }
 
@@ -227,7 +231,11 @@ function promptText(msg) {
  * operator's autonomous run, and the next call that an ask rule turns into a dialog stopped on the
  * operator. A replay over one brain's transcripts found 11 such results (Read and Bash) in 5 sessions.
  */
-function answers(msg, askIds) {
+// `qsById` (call id -> the question texts it asked): the pair is found by the question as asked, not by a quote
+// pattern - the harness does not escape a `"` inside the question, and PAIR then read nothing (measured 2026-11-25,
+// macOS instance: a mode-confirm question quoting the operator's `"was soll das?"` was answered "continue
+// interactively", read as REJECTED, and the run stayed autonomous; decision-register.cjs reads it this way already).
+function answers(msg, askIds, qsById) {
   const c = msg && msg.content;
   if (!Array.isArray(c)) return [];
   const out = [];
@@ -237,7 +245,17 @@ function answers(msg, askIds) {
     const s = typeof b.content === 'string' ? b.content
       : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join('\n') : '';
     if (!ANSWERED.test(s)) continue;
-    for (const m of s.matchAll(PAIR)) out.push([m[1], m[2]]);
+    const known = [];
+    for (const q of (qsById && qsById.get(b.tool_use_id)) || []) {
+      const k = `"${q}"="`;
+      const i = s.indexOf(k);
+      if (i < 0) continue;
+      const rest = s.slice(i + k.length);
+      const end = /"(?=, "|\.(?:\s|$)|\s*$)/.exec(rest);
+      known.push([q, end ? rest.slice(0, end.index) : rest]);
+    }
+    if (known.length) out.push(...known);
+    else for (const m of s.matchAll(PAIR)) out.push([m[1], m[2]]);
   }
   return out;
 }
@@ -317,13 +335,14 @@ function promptModes(transcriptPath, cwd) {
   const out = [];
   let state = w.initial;
   const askIds = new Set();
+  const qsById = new Map(); // call id -> its question texts (answers() finds a pair by them)
   const known = intents(transcriptPath, cwd);
   // The asking prompt whose turn is still running with no question answered yet (its `window` is open).
   let pending = null;
   // all = a new operator prompt; a turn the operator did not open closes only a same-turn window, never a DEFERRED one
   const closeWindow = (all) => { if (pending && (all || !pending.deferred)) { pending.window = false; pending = null; } };
   // A mode word waiting for its mode-confirm answer: {direction: 'autonomous'|'interactive', text, at}.
-  const confirming = !wordsOnly();
+  const confirming = w.confirm && !wordsOnly();
   let confirm = null;
   const confirmIds = new Set();
   const confirmQs = new Map(); // "<tool_use id>\n<question text>" -> option labels, of the mode-confirm questions asked
@@ -335,6 +354,7 @@ function promptModes(transcriptPath, cwd) {
         for (const b of Array.isArray(c) ? c : []) {
           if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
           askIds.add(b.id);
+          qsById.set(b.id, ((b.input && b.input.questions) || []).map((q) => String((q && q.question) || '')));
           for (const q of (b.input && b.input.questions) || []) {
             if (!isConfirm(q)) continue;
             confirmIds.add(b.id);
@@ -360,11 +380,11 @@ function promptModes(transcriptPath, cwd) {
     if (!queued) {
       // A mode-confirm question that came back without an answer (rejected, interrupted) ends the wait, switches nothing.
       const c = Array.isArray(d.message.content) ? d.message.content : [];
-      if (c.some((b) => b && b.type === 'tool_result' && confirmIds.has(b.tool_use_id) && answers({ content: [b] }, null).length === 0)) confirm = null;
+      if (c.some((b) => b && b.type === 'tool_result' && confirmIds.has(b.tool_use_id) && answers({ content: [b] }, null, qsById).length === 0)) confirm = null;
       // pairs with their call id: a mode-confirm answer is matched by the call that asked it, never by its text alone
       // (a later question with the same text is another question)
       const pairs = c.filter((b) => b && b.type === 'tool_result')
-        .flatMap((b) => answers({ content: [b] }, askIds).map(([q, a]) => [q, a, b.tool_use_id]));
+        .flatMap((b) => answers({ content: [b] }, askIds, qsById).map(([q, a]) => [q, a, b.tool_use_id]));
       for (const [q, a, id] of pairs) {
         const key = `${id}\n${q}`;
         if (confirmQs.has(key)) {

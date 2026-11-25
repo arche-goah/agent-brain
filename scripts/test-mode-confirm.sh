@@ -30,7 +30,8 @@ rejected() {
   printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"a"},{"label":"b"}]}]}}]}}\n' "$1"
   printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","is_error":true,"content":"The user doesn'"'"'t want to proceed with this tool use."}]}}\n' "$1"
 }
-EN="$T/en"; mkdir -p "$EN"
+EN="$T/en"; mkdir -p "$EN/.claude/rules"
+printf '%s\n' '{"mode_confirm": true}' > "$EN/.claude/rules/autonomous-patterns.json"
 mode() { local got; got="$(node "$M" "$(native "$2")" "$(native "$EN")")"; [ "$got" = "$3" ] && ok "$1: $3" || bad "$1: expected $3, got $got"; }
 pend() { local got; got="$(node -e 'const p=require(process.argv[1]).confirmPending(process.argv[2],process.argv[3]);process.stdout.write(p?p.direction:"none")' "$(native "$M")" "$(native "$2")" "$(native "$EN")")"
   [ "$got" = "$3" ] && ok "$1: pending $3" || bad "$1: expected pending $3, got $got"; }
@@ -68,7 +69,7 @@ f="$T/14.jsonl"; { cat "$T/2.jsonl"; asst "x"; user "ok, close the session"; } >
 mode "a close word in a run ends it at once" "$f" interactive
 pend "a close word leaves no question pending" "$f" none
 DEC="$T/de"; mkdir -p "$DEC/.claude/rules"
-printf '%s\n' '{"on_patterns": ["\\bautonom (durch|weiter)\\b"], "off_patterns": ["\\bnormalmodus\\b"], "close_patterns": ["\\bbeende die session\\b"]}' > "$DEC/.claude/rules/autonomous-patterns.json"
+printf '%s\n' '{"on_patterns": ["\\bautonom (durch|weiter)\\b"], "off_patterns": ["\\bnormalmodus\\b"], "close_patterns": ["\\bbeende die session\\b"], "mode_confirm": true}' > "$DEC/.claude/rules/autonomous-patterns.json"
 f="$T/14d.jsonl"; { user "arbeite die liste autonom durch"; confirm c1 mode-confirm "Die Liste" "Die Liste" "Weiter interaktiv"; asst "x"; user "beende die session"; } > "$f"
 [ "$(node "$M" "$(native "$f")" "$(native "$DEC")")" = interactive ] && ok "an instance close word (close_patterns) ends it at once: interactive" || bad "the instance close word did not end the run"
 f="$T/14e.jsonl"; { user "arbeite die liste autonom durch"; confirm c1 mode-confirm "Die Liste" "Die Liste" "Weiter interaktiv"; asst "x"; user "normalmodus bitte"; } > "$f"
@@ -150,6 +151,55 @@ st() { printf '{"transcript_path":%s,"session_id":"%s","cwd":%s}' "$(js "$(nativ
 [ -n "$(st "$T/1.jsonl" s7)" ] && ok "stop: a turn end with the question unasked is held" || bad "stop: not held"
 [ -z "$(st "$T/1.jsonl" s7)" ] && ok "stop: once per mode word" || bad "stop: held twice"
 [ -z "$(st "$T/2.jsonl" s8)" ] && ok "stop: control - answered, no hold" || bad "stop: held after the answer"
+
+# Two incidents of 2026-11-25 (macOS instance, one session, the operator's own words and the options as asked), with an
+# instance's own on/off words. Both read wrong on origin/main (checked with its helpers in a separate folder).
+DE="$T/de2"; mkdir -p "$DE/.claude/rules"
+printf '%s\n' '{"on_patterns": ["\\bautonom\\b"], "off_patterns": ["\\binteraktiv\\b"], "mode_confirm": true}' > "$DE/.claude/rules/autonomous-patterns.json"
+dmode() { local got; got="$(node "$M" "$(native "$2")" "$(native "$DE")")"; [ "$got" = "$3" ] && ok "$1: $3" || bad "$1: expected $3, got $got"; }
+dpend() { local got; got="$(node -e 'const p=require(process.argv[1]).confirmPending(process.argv[2],process.argv[3]);process.stdout.write(p?p.direction:"none")' "$(native "$M")" "$(native "$2")" "$(native "$DE")")"
+  [ "$got" = "$3" ] && ok "$1: pending $3" || bad "$1: expected pending $3, got $got"; }
+# 1) an on-word, then the mode-confirm answer is a listed option that does not repeat the word: the run is on
+f="$T/i1.jsonl"; { user "weiter autonom"; confirm i1 mode-confirm "Watch + PRs + eigene Punkte (Recommended)" "Watch + PRs + eigene Punkte (Recommended)" "Nur Watch + PRs" "weiter interaktiv"; } > "$f"
+dmode "incident 1: a listed scope option without the on-word switches the run on" "$f" autonomous
+f="$T/i1c.jsonl"; { user "weiter autonom"; confirm i1 mode-confirm "weiter interaktiv" "Watch + PRs + eigene Punkte (Recommended)" "Nur Watch + PRs" "weiter interaktiv"; } > "$f"
+dmode "incident 1, control: the last option keeps it interactive" "$f" interactive
+# 2) interactive again after a confirmed switch back, then an on-word: nothing switches, and the mode-confirm question
+# is let through (the old reading switched at once, then AUTONOMOUS-GATE refused the very question that confirms it)
+f="$T/i2.jsonl"; { cat "$T/i1.jsonl"; asst "x"; user "noch mal interaktiv bitte"; confirm i2 mode-confirm "weiter interaktiv" "autonom bleiben" "weiter interaktiv"; asst "x"; user "noch mal test: ab jetzt bitte autonom"; } > "$f"
+dmode "incident 2: back to interactive by the confirmed answer" "$T/i2.jsonl" interactive
+dpend "incident 2: the on-word waits for its question" "$f" autonomous
+[ "$(MODE_READING=words node "$M" "$(native "$f")" "$(native "$DE")")" = autonomous ] && ok "incident 2, control: the word reading switches at once" || bad "incident 2, control: the word reading did not switch"
+QI='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"autonom: Watch + PRs + eigene Punkte (Recommended)"},{"label":"autonom: nur Watch + PRs"},{"label":"weiter interaktiv"}]}]}'
+out="$(hook AskUserQuestion "$f" s20 "$QI" | CLAUDE_PROJECT_DIR="$(native "$DE")" node "$AG")"
+[ -z "$out" ] && ok "incident 2: the mode-confirm question passes the gate" || bad "incident 2: the gate refused it: $out"
+out="$(hook Edit "$f" s20 | CLAUDE_PROJECT_DIR="$(native "$DE")" node "$AG")"
+[[ "$out" == *MODE-CONFIRM* ]] && ok "incident 2, control: an edit is held until it is asked" || bad "incident 2, control: the edit passed: $out"
+# The answer is found by the question as asked: a `"` inside the question (the operator quoted) read as REJECTED before,
+# and the run stayed autonomous (measured 2026-11-25 on the same session, when the reader re-read its history).
+qq() { # a mode-confirm question whose text quotes the operator, answered with the last option
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":%s,"header":"mode-confirm","options":[{"label":"autonom bleiben"},{"label":"weiter interaktiv"}]}]}}]}}\n' "$1" "$(js 'Weiter interaktiv? Zu deinem "was soll das?": was hat gestoert?')"
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":%s}]}}\n' "$1" "$(js 'Your questions have been answered: "Weiter interaktiv? Zu deinem "was soll das?": was hat gestoert?"="weiter interaktiv". You can now continue')"
+}
+f="$T/q1.jsonl"; { cat "$T/i1.jsonl"; asst "x"; user "noch mal interaktiv bitte"; qq q1; } > "$f"
+dmode "a quote in the question: its answer still decides" "$f" interactive
+dpend "a quote in the question: the wait ends" "$f" none
+
+# The instance switch `mode_confirm` (operator 2026-11-25: "provide both options"): missing or false = the direct
+# switch of before - a brain that sets nothing sees no change. The close words and the ask window hold in both settings.
+OFF="$T/off"; mkdir -p "$OFF/.claude/rules"
+printf '%s\n' '{"on_patterns": ["\\bautonom\\b"], "off_patterns": ["\\binteraktiv\\b"]}' > "$OFF/.claude/rules/autonomous-patterns.json"
+omode() { local got; got="$(node "$M" "$(native "$2")" "$(native "$OFF")")"; [ "$got" = "$3" ] && ok "$1: $3" || bad "$1: expected $3, got $got"; }
+omode "switch off: an on-word switches at once" "$T/1.jsonl" autonomous
+omode "switch off: incident 2's on-word switches at once" "$T/i2.jsonl" autonomous
+[ "$(node -e 'const p=require(process.argv[1]).confirmPending(process.argv[2],process.argv[3]);process.stdout.write(p?"yes":"none")' "$(native "$M")" "$(native "$T/1.jsonl")" "$(native "$OFF")")" = none ] && ok "switch off: nothing waits" || bad "switch off: a confirmation waits"
+[ "$(hook Edit "$T/1.jsonl" s30 | CLAUDE_PROJECT_DIR="$(native "$OFF")" node -e 'let r="";process.stdin.on("data",c=>r+=c).on("end",()=>{const x=require(process.argv[1]).pre(JSON.parse(r));process.stdout.write(x?"held":"pass")})' "$(native "$C")")" = pass ] && ok "switch off: an edit is not held" || bad "switch off: an edit was held"
+[ "$(hook AskUserQuestion "$T/2.jsonl" s30 "$QL" | CLAUDE_PROJECT_DIR="$(native "$OFF")" node -e 'let r="";process.stdin.on("data",c=>r+=c).on("end",()=>{const x=require(process.argv[1]).pre(JSON.parse(r));process.stdout.write(x?"held":"pass")})' "$(native "$C")")" = pass ] && ok "switch off: the old-form mode question passes" || bad "switch off: the old form was held"
+[ -z "$(printf '{"transcript_path":%s,"session_id":"s31","cwd":%s}' "$(js "$(native "$T/1.jsonl")")" "$(js "$(native "$OFF")")" | CLAUDE_PROJECT_DIR="$(native "$OFF")" node "$C" stop)" ] && ok "switch off: the turn end is not held" || bad "switch off: the turn end was held"
+f="$T/o1.jsonl"; { user "weiter autonom"; asst "x"; user "close the session"; } > "$f"
+omode "switch off: a close word still ends the run at once" "$f" interactive
+f="$T/o2.jsonl"; { cat "$T/12a.jsonl"; } > "$f"
+[ "$(node "$M" "$(native "$f")" "$(native "$OFF")" --window)" = "$(node "$M" "$(native "$f")" "$(native "$EN")" --window)" ] && ok "switch off: the ask window reads as with the switch on" || bad "switch off: the ask window differs"
 
 echo
 [ "$fail" -eq 0 ] && echo "mode-confirm fixtures: ALL passed" || { echo "mode-confirm fixtures: FAILURE"; exit 1; }

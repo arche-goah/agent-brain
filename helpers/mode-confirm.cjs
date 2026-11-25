@@ -105,6 +105,8 @@ function pre(input, r) {
   const tool = (input && input.tool_name) || '';
   if (READS.has(tool)) return null;
   const rt = r || root(input);
+  // the instance switch (autonomous-patterns.json `mode_confirm`): off = the direct switch, nothing to check here
+  if (!require('./autonomous-mode.cjs').words(rt).confirm) return null;
   if (tool === 'AskUserQuestion') {
     const am = require('./autonomous-mode.cjs');
     const qs = (input.tool_input && input.tool_input.questions) || [];

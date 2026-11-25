@@ -60,7 +60,12 @@ The operator switches with words in the session — a click cannot (a status-lin
 | AUTONOMOUS | "autonomous(ly)", "work through it alone / on your own", "I'm away" | "continue autonomously?" answered as the mode-confirm question |
 | INTERACTIVE | "normal mode", "stop autonomous", "no longer autonomous" | asking what is open ("anything open for me?", "what is open?") |
 
-**The words never switch by themselves** (operator order 2026-11-25): a word above that would CHANGE the mode - read
+**Two settings, chosen per instance** (operator 2026-11-25, "provide both options"): `"mode_confirm": true` in
+`.claude/rules/autonomous-patterns.json` turns on the mode-confirm question described next; missing or `false` (the
+default) keeps the direct switch - a mode word switches at once, as before, and nothing is held. The close words and the
+ask window (all questions and dialogs, then the closing mode question) hold in both settings.
+
+**With `mode_confirm: true` the words never switch by themselves** (operator order 2026-11-25): a word above that would CHANGE the mode - read
 by the word lists or by the intent classifier - opens the mode-confirm question, and only its answer switches. Towards
 autonomous the question offers what is to be handled autonomously, with "stay interactive" always as the last option;
 towards interactive it asks "continue interactively?", the interactive option last. The question carries the header
