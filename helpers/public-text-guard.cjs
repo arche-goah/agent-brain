@@ -197,16 +197,24 @@ function targetRepos(cmd, cwd) {
 }
 
 // The folders of the git calls that publish text (commit and tag carry a message and the author, notes a note, push
-// sends them). A text the shell reader cannot read whole (a heredoc, a here-string in a script) is read line by line;
-// a line that stays unreadable and holds such a call is '?' - before, the whole text fell back to the cwd, and a named
-// commit into a public clone passed from a private folder (measured 2026-11-25).
+// sends them). A text the shell reader cannot read whole (a heredoc, a here-string in a script) is read line by line,
+// and a line that stays unreadable (a message running on to the next line) up to the end of its git subcommand -
+// before, the whole text fell back to the cwd, and a named commit into a public clone passed from a private folder
+// (measured 2026-11-25). What none of that reads keeps the cwd, as before.
 // ponytail: line by line drops a `cd` of an earlier line, the call then counts in the cwd.
 const PUBLISHING = ['commit', 'tag', 'notes', 'push'];
-const PUBLISH_RX = /(^|[^\w-])git\s+(?:-\S+\s+(?:\S+\s+)?)*(commit|tag|notes|push)\b/;
+const PUBLISH_RX = /\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*?(commit|tag|notes|push)\b/;
+function lineCalls(l, cwd) {
+  const { gitCalls } = require('./git-target.cjs');
+  const all = gitCalls(l, cwd);
+  if (all) return all;
+  const m = PUBLISH_RX.exec(l);
+  return m ? (gitCalls(l.slice(0, m.index + m[0].length), cwd) || []) : [];
+}
 function publishingDirs(cmd, cwd) {
   const { gitCalls } = require('./git-target.cjs');
   const whole = gitCalls(cmd, cwd);
-  const calls = whole || cmd.split('\n').flatMap((l) => gitCalls(l, cwd) || (PUBLISH_RX.test(l.replace(/^\s*#.*$/, '')) ? [{ dir: '?', sub: 'commit' }] : []));
+  const calls = whole || cmd.split('\n').flatMap((l) => lineCalls(l, cwd));
   const dirs = [...new Set(calls.filter((c) => PUBLISHING.includes(c.sub)).map((c) => c.dir))];
   return dirs.length ? dirs : [cwd];
 }
