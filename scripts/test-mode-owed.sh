@@ -8,6 +8,8 @@
 # answered in a dialog the operator did NOT open (no "what is open" prompt) owes nothing.
 # Usage: bash scripts/test-mode-owed.sh   (exit 0 = pass)
 set -u
+# The mode is set by its words here (the latch before the mode-confirm answer); the confirmation: test-mode-confirm.sh.
+export MODE_READING=words
 _D="$(cd "$(dirname "$0")" && pwd)"
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
 MO="$(native "$_D/../helpers/mode-owed.cjs")"

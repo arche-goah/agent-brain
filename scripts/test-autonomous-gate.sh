@@ -5,6 +5,8 @@
 # of .claude/settings.json (an ask rule) raised a dialog, and the operator had to answer it.
 # Usage: bash scripts/test-autonomous-gate.sh   (exit 0 = pass)
 set -u
+# The mode is set by its words here (the latch before the mode-confirm answer); the confirmation: test-mode-confirm.sh.
+export MODE_READING=words
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 _D="$(cd "$(dirname "$0")" && pwd)"

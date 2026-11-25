@@ -45,7 +45,7 @@ function asksModeQ(r, qs) {
   try {
     const am = require('./autonomous-mode.cjs');
     const on = am.words(r).on;
-    return (qs || []).some((q) => am.asksMode(on, String((q && q.question) || '')));
+    return (qs || []).some((q) => am.isConfirm(q) || am.asksMode(on, String((q && q.question) || '')));
   } catch (e) { return false; }
 }
 

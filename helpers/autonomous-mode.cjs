@@ -74,6 +74,22 @@ const BUILTIN_YES = ['^\\s*yes\\b'];
 const BUILTIN_DEFER = [
   '\\b(?:once|when|as soon as)\\b[^.?!]{0,100}\\b(?:ask me|put (?:the |your )?[\\w -]{0,30}question(?:s)? to me|switch (?:back )?to interactive)\\b',
 ];
+// The mode-confirm question (operator order 2026-11-25, translated: a recognised mode word never switches by itself; it
+// opens a question, and only the answer switches). A mode word - from the word lists or from the intent classifier - no
+// longer moves the latch: it leaves a PENDING confirmation, and the latch moves only when the operator answers a
+// question-tool question whose header is exactly this word (the chip, at most 12 characters, the same in every
+// language). Measured cause (macOS instance, .claude-state/intent-classifier.jsonl 2026-11-25T12:46:20Z): the classifier
+// set mode_on on "ask his AI now anyway to pull everything to 2.1.7 on its own" (translated) - the sentence was about
+// another party's AI - and the run switched. Replay over the 5562 classifier records of that brain: 47 switched to
+// autonomous against the word lists, several of them complaints or questions ABOUT the mode.
+// The answer: the LAST option of a mode-confirm question is the interactive one ("stay interactive" / "continue
+// interactively"); any other listed option is autonomous (its label names what the run takes on); a free-text answer is
+// read by the words (an off-word = interactive, an order or a yes = autonomous), anything else stays interactive - a
+// false "autonomous" is the dangerous direction. A mode-confirm question rejected or interrupted switches nothing.
+// MODE_READING=words gives the reading BEFORE the confirmation (the old latch): scripts/pattern-cases.py tests how the
+// WORDS are read, and every instance's case data was written against that reading.
+const CONFIRM_HEADER = 'mode-confirm';
+const wordsOnly = () => String(process.env.MODE_READING || '').toLowerCase() === 'words';
 const HOOK_ECHO = /^\s*Stop hook feedback:/;
 // The tool result of an answered AskUserQuestion: `"<question>"="<answer>"` pairs.
 // Two wordings in the wild (measured 2026-10-30, macOS instance: "Your questions have been answered: …" and
@@ -163,6 +179,21 @@ function ordersOn(on, text) {
  */
 function asksMode(on, question) {
   return (question.match(/[^.!?\n]+[.!?]*/g) || []).some((s) => /\?\s*$/.test(s) && on.test(s));
+}
+
+/** Is this question-tool question a mode-confirm question? By its header alone - language-independent. */
+function isConfirm(q) { return Boolean(q) && String(q.header || '').trim().toLowerCase() === CONFIRM_HEADER; }
+
+/** The answer to a mode-confirm question: true = autonomous, false = interactive (CONFIRM_HEADER above). */
+function confirmChoice(w, labels, answer) {
+  const a = String(answer || '').trim();
+  const ls = (labels || []).map((l) => String(l || '').trim());
+  if (ls.length >= 2) {
+    if (a === ls[ls.length - 1]) return false;
+    if (ls.slice(0, -1).includes(a)) return true;
+  }
+  if (w.off.test(a)) return false;
+  return ordersOn(w.on, a) || w.yes.test(a);
 }
 
 function promptText(msg) {
@@ -274,11 +305,25 @@ function promptModes(transcriptPath, cwd) {
   let pending = null;
   // all = a new operator prompt; a turn the operator did not open closes only a same-turn window, never a DEFERRED one
   const closeWindow = (all) => { if (pending && (all || !pending.deferred)) { pending.window = false; pending = null; } };
+  // A mode word waiting for its mode-confirm answer: {direction: 'autonomous'|'interactive', text, at}.
+  const confirming = !wordsOnly();
+  let confirm = null;
+  const confirmIds = new Set();
+  const confirmQs = new Map(); // question text -> option labels, of the mode-confirm questions asked
+  let lastOn = null;           // when the run in force was ordered or confirmed (a close stamp after it ends it)
   for (const line of lines) {
     if (line.includes('"AskUserQuestion"')) {
       try {
         const c = (JSON.parse(line).message || {}).content;
-        for (const b of Array.isArray(c) ? c : []) if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') askIds.add(b.id);
+        for (const b of Array.isArray(c) ? c : []) {
+          if (!b || b.type !== 'tool_use' || b.name !== 'AskUserQuestion') continue;
+          askIds.add(b.id);
+          for (const q of (b.input && b.input.questions) || []) {
+            if (!isConfirm(q)) continue;
+            confirmIds.add(b.id);
+            confirmQs.set(String(q.question || ''), (q.options || []).map((o) => (o && o.label) || ''));
+          }
+        }
       } catch (e) { /* not a record */ }
     }
     if (!line.includes('"user"') && !line.includes('queued_command')) continue;
@@ -296,7 +341,20 @@ function promptModes(transcriptPath, cwd) {
     if (!queued && (!isTranscriptRecord(d) || isSkillExpansion(d) || isAgentOrigin(d)
         || !d.message || d.message.role !== 'user')) continue;
     if (!queued) {
+      // A mode-confirm question that came back without an answer (rejected, interrupted) ends the wait, switches nothing.
+      const c = Array.isArray(d.message.content) ? d.message.content : [];
+      if (c.some((b) => b && b.type === 'tool_result' && confirmIds.has(b.tool_use_id) && answers({ content: [b] }, null).length === 0)) confirm = null;
       for (const [q, a] of answers(d.message, askIds)) {
+        if (confirmQs.has(q)) {
+          // The mode-confirm answer: the one place a mode word's switch takes effect.
+          if (pending) { pending.window = false; pending = null; }
+          state = confirmChoice(w, confirmQs.get(q), a);
+          if (state) lastOn = Date.parse(d.timestamp) || null;
+          confirm = null;
+          out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true, ordered: state, confirmed: true,
+            at: Date.parse(d.timestamp) || null });
+          continue;
+        }
         // A question answered in the asking prompt's turn: the questions came, the run is interactive from here
         // (the mode question below may switch it on again).
         if (pending) { pending.autonomous = false; pending = null; state = false; }
@@ -304,10 +362,17 @@ function promptModes(transcriptPath, cwd) {
         // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
         // "yes, work through them autonomously" to "shall I handle them?" set nothing). The mode
         // question is read from its question sentence (asksMode), not from any on-word in the text.
+        // The mode question itself ("continue autonomously?") is a question: its answer switches. A mode word in the
+        // answer to ANY OTHER question is a mode word like one in a prompt: it waits for the mode-confirm answer.
         if (asksMode(w.on, q)) state = w.yes.test(a) && !w.off.test(a);
-        else if (w.off.test(a)) state = false;
-        else if (ordersOn(w.on, a)) state = true;
-        else continue;
+        else if (w.off.test(a)) {
+          if (confirming && state) { confirm = { direction: 'interactive', text: a, at: Date.parse(d.timestamp) || null }; continue; }
+          state = false;
+        } else if (ordersOn(w.on, a)) {
+          if (confirming && !state) { confirm = { direction: 'autonomous', text: a, at: Date.parse(d.timestamp) || null }; continue; }
+          state = true;
+        } else continue;
+        if (state) lastOn = Date.parse(d.timestamp) || null;
         out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true, ordered: state,
           at: Date.parse(d.timestamp) || null });
       }
@@ -335,15 +400,24 @@ function promptModes(transcriptPath, cwd) {
     let asks;
     let off;
     let ordered = false; // this prompt itself ordered the run (the close stamp is compared against the newest order)
+    let on;
     if (intent && typeof intent.asks_open === 'boolean') {
       asks = intent.asks_open && !intent.mode_on;
       off = intent.mode_off;
-      if (!off && !asks && intent.mode_on) state = ordered = true;
+      on = !off && !asks && intent.mode_on;
     } else {
       asks = w.ask.test(own);
       off = w.off.test(own);
-      if (!off && !asks && ordersOn(w.on, own)) state = ordered = true;
+      on = !off && !asks && ordersOn(w.on, own);
     }
+    // A mode word that would CHANGE the mode waits for the mode-confirm answer; one that names the mode already in force
+    // changes nothing and asks nothing (an order after this session's close counts as a change).
+    const at = Date.parse(d.timestamp) || null;
+    const running = state && !closedAfter(transcriptPath, cwd, lastOn);
+    if (confirming && on && !running) { confirm = { direction: 'autonomous', text: own, at }; on = false; }
+    else if (confirming && off && state) { confirm = { direction: 'interactive', text: own, at }; off = false; }
+    else if (confirming && (on || off)) confirm = null; // the operator named the mode in force: nothing left to confirm
+    if (on) { state = ordered = true; lastOn = at; }
     // "What is open for me?" leaves the run when the questions COME (operator 2026-11-03, translated: "why did you
     // just switch to interactive? no questions came. either the questions, or stay autonomous"). That rule is the
     // OUTCOME of the turn, not a condition before it: the asking prompt opens a `window` - in its turn the question
@@ -363,12 +437,15 @@ function promptModes(transcriptPath, cwd) {
     if (pending && pending.deferred && (off || asks || ordered || deferred)) closeWindow(true);
     if (deferred) window = true;
     const row = { text, autonomous: state, queued: Boolean(queued), asks, answer: false, by: intent ? 'model' : 'words',
-      ordered, window, deferred, at: Date.parse(d.timestamp) || null };
+      ordered, window, deferred, confirm: confirm && confirm.at === at && confirm.text === own ? confirm.direction : null,
+      at: Date.parse(d.timestamp) || null };
     out.push(row);
     if (window) pending = row;
   }
   // a deferred window still open at the end, though later prompts came (they add to the work, they do not re-order it)
   out.deferredOpen = Boolean(pending && pending.deferred && pending.window);
+  // a mode word still waiting for its mode-confirm answer at the end of the transcript
+  out.confirmPending = confirm;
   return out;
 }
 
@@ -432,7 +509,11 @@ function closedAfter(transcriptPath, cwd, since) {
   return since == null || st.mtimeMs >= since;
 }
 
-module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason };
+/** The mode word still waiting for its mode-confirm answer: {direction, text, at}, or null. */
+function confirmPending(transcriptPath, cwd) { return promptModes(transcriptPath, cwd).confirmPending || null; }
+
+module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason,
+  confirmPending, confirmChoice, isConfirm, CONFIRM_HEADER };
 
 
 if (require.main === module) {

@@ -58,6 +58,13 @@ The operator switches with words in the session — a click cannot (a status-lin
 | AUTONOMOUS | "autonomous(ly)", "work through it alone / on your own", "I'm away" | yes to "continue autonomously?" |
 | INTERACTIVE | "normal mode", "stop autonomous", "no longer autonomous" | asking what is open ("anything open for me?", "what is open?") |
 
+**The words never switch by themselves** (operator order 2026-11-25): a word above that would CHANGE the mode - read
+by the word lists or by the intent classifier - opens the mode-confirm question, and only its answer switches. Towards
+autonomous the question offers what is to be handled autonomously, with "stay interactive" always as the last option;
+towards interactive it asks "continue interactively?", the interactive option last. The question carries the header
+`mode-confirm` and a short explanation from this page (no extra rights; questions collected or asked at once). Until it
+is answered the mode stays as it is, and the autonomous gate holds every call but reads and the question itself
+(`helpers/mode-confirm.cjs`). A rejected question switches nothing; a word naming the mode already in force asks nothing.
 A remark in between ("status?", "the desk is running") keeps the mode. The operator's own language is instance data:
 `.claude/rules/autonomous-patterns.json` (`on_patterns`, `off_patterns`, `yes_patterns`, test cases in `_cases`) and the
 `ask_patterns` of `.claude/rules/open-items.json`; template `templates/rules-instance/autonomous-patterns.json`. An AI
@@ -68,6 +75,7 @@ asked "which words switch the mode here?" reads those two files of its own brain
 | Part | Carrier |
 |---|---|
 | the latch | `helpers/autonomous-mode.cjs` (`promptModes`, `autonomousMode`) |
+| a mode word only opens the mode-confirm question | `helpers/autonomous-mode.cjs` (`confirmPending`), `helpers/mode-confirm.cjs` (hold + Stop row MODE-CONFIRM) |
 | no question tool, no ask dialog | `helpers/autonomous-gate.cjs` (PreToolUse) |
 | no closing question in prose; questions only when asked | `helpers/stoppen-gate.cjs`, `helpers/decision-presentation-gate.cjs`, `helpers/question-gate.cjs` |
 | open items in the first reply / no "shall I?" in the mode | `helpers/open-items-gate.cjs` |

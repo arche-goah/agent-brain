@@ -5,6 +5,8 @@
 # a CI notification ended on a status report while own items stayed open, a watcher still running.
 # Usage: bash scripts/test-autonomous-idle-gate.sh   (exit 0 = pass)
 set -u
+# The mode is set by its words here (the latch before the mode-confirm answer); the confirmation: test-mode-confirm.sh.
+export MODE_READING=words
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 _D="$(cd "$(dirname "$0")" && pwd)"

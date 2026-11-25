@@ -6,6 +6,9 @@
 # through the tool — a "⚙ autonomous:" line passes there and ONLY there.
 # Usage: bash scripts/test-autonomous-mode.sh   (exit 0 = pass)
 set -u
+# These cases test how the WORDS are read (the latch before the mode-confirm answer, autonomous-mode.cjs CONFIRM_HEADER);
+# the confirmation itself: scripts/test-mode-confirm.sh.
+export MODE_READING=words
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 _D="$(cd "$(dirname "$0")" && pwd)"
