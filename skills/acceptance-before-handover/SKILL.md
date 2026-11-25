@@ -39,7 +39,10 @@ core brain"; and: "find out why you do not really follow my word".
    list wins over any file: where the model disagrees, the model is changed, not the operator asked again.
 3. **Inventory.** List everything visible in the result. Each item the agent added on the side is removed or kept with
    a reason. Every light has a real source.
-4. **Reality.** One sentence per element: would it look, stand, behave like this in reality?
+4. **Reality.** One sentence per element: would it look, stand, behave like this in reality? An optimizer that searches
+   positions judges only what it measures: for a projector always the image itself too (incidence at most about 55°,
+   brightest vs. darkest spot, focus across the surface, lens shift instead of tilting where the device has it) -
+   measured 2026-11-25 on a Windows instance: a projector tilted 64° up came out of a shadow-only search.
 5. **Problem test** for proposals: one sentence "what does this change about what the operator named?". Nothing ->
    no proposal.
 6. **Fresh eyes.** An agent gets ONLY the result and the operator's words, no plan: "what does not belong, what looks
