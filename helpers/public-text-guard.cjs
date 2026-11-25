@@ -397,4 +397,4 @@ if (require.main === module) {
   process.stdin.resume();
 }
 
-module.exports = { gate, isWrite, referencedFiles, targetRepos, publishedText, shellSegments, nativePath };
+module.exports = { gate, isWrite, referencedFiles, targetRepos, publishedText, shellSegments, nativePath, ownGuardFixture };

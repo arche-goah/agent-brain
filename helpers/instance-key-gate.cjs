@@ -43,9 +43,16 @@ const { invocations } = require('./published-text.cjs');
 // the end (heredoc, unbalanced quote): unsure means stricter.
 const WRITE_RX = /(^|[;&|(]\s*|\s)gh\s+(pr\s+(create|comment|review)|issue\s+(create|comment))\b/;
 const CREATE_RX = /(^|[;&|(]\s*|\s)gh\s+pr\s+create\b/;
+// A text the parser cannot read whole is read line by line, the regex only on a line that stays unreadable (measured
+// 2026-11-25, macOS instance: one heredoc made a whole core fixture, scripts/test-template-drift.sh, unreadable, and
+// its JSON data `"Bash(gh pr create*)"` read as a post - six refused hand runs in 150 transcripts).
 function runs(cmd, ps, subs, verbs, rx) {
   const hit = invocations(cmd, ps, 'gh', subs, verbs);
-  return hit === null ? rx.test(cmd) : hit.length > 0;
+  if (hit !== null) return hit.length > 0;
+  return String(cmd).split('\n').some((l) => {
+    const h = invocations(l, ps, 'gh', subs, verbs);
+    return h === null ? rx.test(l) : h.length > 0;
+  });
 }
 const posts = (cmd, ps) => runs(cmd, ps, ['pr'], ['create', 'comment', 'review'], WRITE_RX)
   || runs(cmd, ps, ['issue'], ['create', 'comment'], WRITE_RX);
@@ -271,6 +278,10 @@ function gate(input, script) {
   if (!script) {
     const { scriptBodies } = require('./published-text.cjs');
     for (const s of scriptBodies(cmd, ps, input.cwd || process.cwd())) {
+      // the core's own guard fixtures post only to throw-away repos through a fake gh - the one exception
+      // public-text-guard makes (#614), read from there (measured 2026-11-25, macOS instance: a hand run of
+      // scripts/test-public-text-guard.sh passed that guard and was refused here)
+      if (require('./public-text-guard.cjs').ownGuardFixture(s.file, input.cwd || process.cwd())) continue;
       // a .ps1 is read as PowerShell (published-text.cjs, `ps`)
       const rc = s.text === null ? 0 : gate(Object.assign({}, input, { tool_input: { command: s.text } },
         s.ps ? { tool_name: 'PowerShell' } : {}), s.file);
