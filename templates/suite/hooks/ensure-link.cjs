@@ -34,6 +34,9 @@ function ensureLink() {
     fs.symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
     return "made";
   } catch (e) {
+    // The preload and the SessionStart hook can link at the same instant; the loser gets EEXIST although the
+    // link is there (macOS review of agent-brain#667, 2026-11-25). Re-read before calling it a failure.
+    try { fs.lstatSync(linkPath); return "present"; } catch (_) { /* really missing */ }
     return `failed: ${String(e).slice(0, 100)}`;
   }
 }

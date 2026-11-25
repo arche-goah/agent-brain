@@ -57,6 +57,17 @@ try {
   ok(h.status === 0 && h.stdout.includes("suite: node_modules link restored") && exists(link),
      "SessionStart hook relinks through ensure-link.cjs and reports it once");
 
+  // Two writers at the same instant (preload and hook): the loser's symlinkSync throws EEXIST, the link exists.
+  fs.rmSync(link, { force: true });
+  process.env.CLAUDE_PLUGIN_ROOT = root; process.env.CLAUDE_PLUGIN_DATA = data;
+  const mod = require(path.join(root, "hooks", "ensure-link.cjs")); // its load-time run makes the link
+  const orig = fs.symlinkSync;
+  fs.rmSync(link, { force: true });
+  fs.symlinkSync = (t, l, ty) => { orig(t, l, ty); const e = new Error("EEXIST: file already exists"); e.code = "EEXIST"; throw e; };
+  let race;
+  try { race = mod.ensureLink(); } finally { fs.symlinkSync = orig; }
+  ok(race === "present" && exists(link), "the other writer won the race (EEXIST, link there): reported as present, not failed");
+
   const dev = spawnSync(process.execPath, ["--require", path.join(root, "hooks", "ensure-link.cjs"), "-e", ""],
                         { env: { ...process.env, CLAUDE_PLUGIN_ROOT: "", CLAUDE_PLUGIN_DATA: "" }, encoding: "utf8" });
   ok(dev.status === 0 && dev.stdout === "", "outside a plugin (no CLAUDE_PLUGIN_* vars): the preload is a silent no-op");
