@@ -148,8 +148,15 @@ const PASTED = /<pasted_content\b[^>]*?\bid="([^"]*)"[^>]*>[\s\S]*?<\/pasted_con
 // "only then ask" read as the operator's condition and held two pushes.
 const HOOK_PASTE = /^[ \t]*(?:Error:\s*)?(?:(?:PreToolUse|PostToolUse|UserPromptSubmit|SessionStart|SessionEnd|Stop|SubagentStop)(?::[^\s:]+)?\s+hook\s+(?:error|feedback)\b|Stop hook feedback:)[\s\S]*?(?=\n[ \t]*\n|(?![\s\S]))/gm;
 
+// The output of the operator's `!` command (the harness wraps it as <bash-stdout>/<bash-stderr>) is the machine's text;
+// the typed command (<bash-input>) is the operator's and stays, without its tags. Measured 2026-11-25 on the macOS
+// instance: a prompt of only `!bash core/scripts/brain-update.sh` held a push - the script's line "OK ledger reconcile
+// after the pin move" read as the operator's condition.
+const BANG_OUTPUT = /<bash-(stdout|stderr)>[\s\S]*?<\/bash-\1>/g;
+const BANG_INPUT = /<\/?bash-input>/g;
+
 function operatorWords(text) {
-  return String(text || '').replace(PASTED, '\n').replace(HOOK_PASTE, '\n');
+  return String(text || '').replace(PASTED, '\n').replace(HOOK_PASTE, '\n').replace(BANG_OUTPUT, '\n').replace(BANG_INPUT, ' ');
 }
 
 /** A tracker for one pass over a transcript: returns true for the record that carries the operator's answer

@@ -59,6 +59,12 @@ P1=$'<pasted_content id="81eb">\nInvestors first react too slowly, then like a h
 case "$(raw "do it once${P1}now")" in *'once\nnow'*) ok "a removed block leaves a line break, the words around it do not fuse";; *) bad "fused: $(raw "do it once${P1}now")";; esac
 TWO=$'<pasted_content id="a1f0">\nplan one, then sell\n</pasted_content id="a1f0">\nafter the mac answers, push it\n<pasted_content id="b2e1">\nplan two, then buy\n</pasted_content id="b2e1">'
 [ "$(words "$TWO")" = "after the mac answers, push it" ] && ok "two pasted blocks: the text between them stays, both blocks go" || bad "two blocks: '$(words "$TWO")'"
+# The output of an operator's `!` command is the machine's text, not the operator's words (measured 2026-11-25 on the
+# macOS instance: the prompt was only `<bash-input>bash core/scripts/brain-update.sh</bash-input>` plus its stdout, and
+# the condition gate read the script line "OK ledger reconcile after the pin move" as the operator's condition).
+BANG=$'<bash-input>bash core/scripts/brain-update.sh</bash-input><bash-stdout>OK   ledger reconcile after the pin move: 0 open entries\nDONE</bash-stdout><bash-stderr>warn: then retry</bash-stderr>'
+[ "$(words "$BANG")" = "bash core/scripts/brain-update.sh" ] && ok "a bang command's stdout and stderr are no operator words, the typed command stays" || bad "bang: '$(words "$BANG")'"
+[ "$(words "$BANG"$'\nafter that, push')" = "bash core/scripts/brain-update.sh after that, push" ] && ok "words typed after a bang output stay (control)" || bad "bang after: '$(words "$BANG"$'\nafter that, push')'"
 [ "$(words $'<pasted_content source="clipboard" id="a1f0" lines="2">\nthen\n</pasted_content id="a1f0">tail')" = "tail" ] && ok "other tag attributes are tolerated" || bad "attributes not tolerated"
 [ "$(words $'<pasted_content id="a1f0">\nx </pasted_content id="ffff"> then y\n</pasted_content id="a1f0">z')" = "z" ] && ok "a closing tag with another id inside the block does not end it" || bad "inner foreign closer ended the block"
 [ "$(words $'<pasted_content id="a1f0">\nwait for the CI\n</pasted_content id="ffff">')" = '<pasted_content id="a1f0"> wait for the CI </pasted_content id="ffff">' ] && ok "a closer with another id closes nothing (text kept)" || bad "mismatched ids stripped"
