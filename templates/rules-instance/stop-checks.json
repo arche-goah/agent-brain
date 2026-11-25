@@ -263,6 +263,15 @@
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",
   "_optional_checks": [
     {
+      "label": "LANGUAGE",
+      "marker": "REPLY-LANGUAGE-GATE",
+      "cmd": "core/helpers/reply-language-gate.cjs",
+      "mode": "block",
+      "extract": "the reply is English \\(([^)]+)\\)",
+      "template": "Reply in English ({1}) - write it again in the declared language",
+      "maxLength": 140
+    },
+    {
       "label": "NOT VERIFIED",
       "marker": "VERIFICATION-GATE",
       "cmd": "core/helpers/verification-gate.cjs",

@@ -18,6 +18,7 @@
     "orphan-check.json": "orphan-check.py: extra process paths and allows with reasons; missing file = built-ins only",
     "premise-patterns.json": "premise-gate.cjs: generalisation/instruction patterns in the instance's language; missing file = English built-ins",
     "promise-patterns.json": "promise-gate.cjs: commitment/condition patterns in the instance's language; missing file = English built-ins",
+    "reply-language.json": "reply-language-gate.cjs: the instance's declared chat language (`language`) and its function words (`words`); missing file, \"en\" or no words = the check does nothing",
     "secret-patterns.json": "secret-guard.cjs: extra file/bash patterns; missing file is the normal case, a broken one never widens the guard",
     "session-areas.json": "session-areas.cjs: words for other/parallel sessions in the instance's language; missing file = the core's English list in session-areas.json",
     "shared-memory-post.json": "shared-memory-post.py: check_words in the instance's language; missing file = English built-ins",
