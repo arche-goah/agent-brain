@@ -18,7 +18,13 @@ then an explicit release follows.
    The `memory-sync.cjs prune` of step 2 is NOT one of them: it drops only the snapshot copies
    of memory files this session deleted, merged or renamed, and git keeps them — it runs
    without asking, as step 2 says. The close prompt itself ends the mode where the instance's off-patterns carry
-   the close words; otherwise say in the first close line that the run ends here.
+   the close words; otherwise say in the first close line that the run ends here. **The switch takes no question**
+   (operator decision 2026-11-25): a close word is no mode change to confirm - a close stuck in the autonomous mode
+   cannot finish. **And the close asks only when a clean close is impossible without it** (same decision): what
+   the agent can settle itself (a commit its instance rule allows, a ledger state, a log line, a memory pointer)
+   it does and reports; a question is put only for a step that needs the operator's word (a gated push or release,
+   an instance with no written commit rule - step 4), one question per such step; a step only their hand can take
+   is no question - it is written out as step 5 says.
 
 1. **Secure open work (semantic — no script can do this):**
    - **The instance's own close steps run first (2026-11-23):** the instance rules file
@@ -281,8 +287,10 @@ then an explicit release follows.
      through the question tool ("Shall I run X now?", recommended option first); on yes the agent
      runs it and measures the effect (operator, same day: "I would rather have that interactively
      than a nested instruction 'type ! and then something'");
-   - a step only the operator's HAND can take (a device, a click outside the session) is the FIRST
-     line of the report, alone, with what to do in one sentence — never a bullet below the release;
+   - a step only the operator's HAND can take (a device, a click outside the session) is written out
+     as the command block that ends the reply, one block per device (`rules/intelligence.md`,
+     "Presenting to the Operator", one form since 2026-11-03; the earlier "FIRST line of the report"
+     form is superseded), named in the report's first line - never a bullet below the release;
    - while it is open, the report gives NO release: it says what is awaited, arms a watcher on
      the step's measurable effect, and gives the release only after the measurement — or after
      the operator defers the step in their own words;
