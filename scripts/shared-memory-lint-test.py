@@ -601,6 +601,28 @@ def main() -> int:
         ok("54e a Windows name in a report clause is not a Windows check") if not res else bad(f"54e report read: {res}")
         res = win_to_one("Windows check at head, please")
         ok("54f control: a Windows check to one device is still named") if len(res) == 1 else bad(f"54f missed: {res}")
+        (repo / "ops" / "LOG.md").write_text("# Log\n", encoding="utf-8")
+
+        # 54g-54h. 9: an entry that narrowed os:windows on purpose (`except:`, operator order 2026-11-24) and is left
+        #     with one Windows device is no misaddressed check; without the field it still is.
+        def narrowed(extra: str) -> list:
+            stem = "request-windows-check-at-head-2026-11-24"
+            text = fm(stem, date="2026-11-24", von="sam-mac", audience="lee-win").replace("---\n\n", extra + "---\n\n", 1)
+            (repo / "ops" / f"{stem}.md").write_text(text, encoding="utf-8")
+            res = [i for i in sml.lint(repo, bl)["findings"]["audience"] if i["issue"] == "a Windows check goes to one machine"]
+            (repo / "ops" / f"{stem}.md").unlink()
+            return res
+
+        # Windows review of #657 (2026-11-24): a narrowed address is no reason for one machine - every form of an
+        # `except:` line (filled, empty, unknown token) left the one-machine finding silent, a bypass of `one-machine:`
+        for extra, label in (("  except: max-win\n", "filled"), ("  except:\n", "empty"), ("  except: nobody\n", "unknown token")):
+            res = narrowed(extra)
+            ok(f"54g a narrowed address left with one Windows device is named ({label} except:)") if len(res) == 1 \
+                else bad(f"54g {label}: {res}")
+        res = narrowed("  except: max-win\n  one-machine: only lee-win has the desk attached\n")
+        ok("54g control: one-machine with its reason stays silent on a narrowed entry") if not res else bad(f"54g one-machine: {res}")
+        res = narrowed("")
+        ok("54h control: the same entry without except: is named") if len(res) == 1 else bad(f"54h missed: {res}")
 
         # 55-62. RELATIONS (check 11, written request state). A relation value names a file stem
         #     or a LOG id; from STATE_SINCE on a request to a party is a file, not a bare heading.

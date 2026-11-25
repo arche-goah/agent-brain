@@ -365,6 +365,11 @@ def open_items(repo: Path, ref: str, me: set[str], days: int,
         if not e["audience"] or not (tokens(e["audience"]) & reach) or tokens(e["von"]) & me:
             continue
         head = blob.split("\n---", 1)[0] if blob.startswith("---") else ""
+        # `except:` leaves parties out of a broad address (shared-memory-parties.py left_out); a hand-written
+        # entry may keep the category in `audience`, so the reader honours the field too.
+        ex = re.search(r"^\s+except:\s*(.+?)\s*$", head, re.M)
+        if ex and tokens(ex.group(1)) & reach:
+            continue
         st = FM_STATUS.search(head)
         status = st.group(1).lower() if st else ""
         if status in CLOSED_STATUS:
