@@ -307,6 +307,7 @@ known:     scripts/test-autonomy-diagnose.sh=1
 known:     scripts/test-basics-hint.sh=1
 known:     scripts/test-bootstrap-brain.sh=1
 known:     scripts/test-bootup-deadlines.sh=1
+known:     scripts/test-bootup-auto-update.sh=1
 known:     scripts/test-bootup-declared-alpha.sh=1
 known:     scripts/test-bootup-git-login.sh=1
 known:     scripts/test-bootup-time-budget.sh=1
@@ -1255,6 +1256,7 @@ is invisible on every other platform and in a CI that runs ubuntu only. An array
 was read.
 pattern:   ^[^#]*[^+#]"\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}"
 paths:     --include=*.sh scripts helpers
+known:     scripts/brain-update.sh=1
 known:     scripts/ci-lint-local.sh=1
 known:     scripts/lint-placeholders.sh=3
 known:     scripts/merge-train.sh=1

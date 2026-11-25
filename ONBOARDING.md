@@ -219,7 +219,8 @@ Two opt-in pieces, both off until the brain has their file:
 
 ## Afterwards: the maintenance rhythm
 
-- Weekly, never on a show day: `bash core/scripts/brain-update.sh` from your brain —
+- The session start updates the core by itself (hold it on a show day with
+  `.claude/rules/core-update.json`, CONVENTIONS "The sync beat"); by hand: `bash core/scripts/brain-update.sh` from your brain —
   one command that follows the marketplace pin on every layer (marketplaces, plugins
   with provenance check, `core/` submodule on the pinned tag, ecosystem.json).
   NOT `git submodule update --remote core`: that tracks `main` instead of the pin.

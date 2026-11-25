@@ -223,9 +223,63 @@ upd=$(printf '%s\n' "$upd" | grep -av '^__AHEAD__' | tr -d '\n')
 if [[ -n "$ahead_note" ]]; then
   echo "!! $ahead_note"
 fi
-if [[ -n "$upd" ]]; then
-  echo "!! update available: $upd — ask the operator, then ONE command updates everything: bash core/scripts/brain-update.sh (restart Claude Code afterwards if it says so)"
+# Automatic update (operator decision 2026-11-25, translated: "auto at the start"). The two core
+# channels — the plugin (skills, the hook LIST) and core/ (rules, the helpers those hooks run) —
+# were aligned only when a person typed brain-update.sh after a question. The plugin channel moved
+# on, the submodule did not: measured 2026-11-25 on a Windows brain, core v2.0.4 under plugin
+# 2.1.5 for at least 13 days, so the hooks of one release ran the helpers of another. The start
+# now runs the one command itself, detached (it calls the claude CLI and the network; the hook
+# budget cannot carry it), and the NEXT start reports how it ended. Held — said why, and the old
+# question stays — where the run would destroy something or the brain said no: a declared core
+# alpha (brain-update.sh ends it) · a checkout ahead of the pin (a PR under test) · local changes
+# in core/ · `.claude/rules/core-update.json` "auto": false or "hold_until": "<YYYY-MM-DD>" (a show
+# day) · an earlier automatic run still going (two sessions starting together).
+BU_LOG=".claude-state/brain-update-auto.log"
+BU_RC=".claude-state/brain-update-auto.rc"
+BU_PID=".claude-state/brain-update-auto.pid"
+if [[ -s "$BU_RC" ]]; then
+  bu_rc=$(head -n 1 "$BU_RC" | tr -d '\r ')
+  bu_when=$(sed -n 2p "$BU_RC" | tr -d '\r')
+  if [[ "$bu_rc" == 0 ]]; then
+    echo "core update ran automatically ($bu_when): $(grep -a '^DONE' "$BU_LOG" 2>/dev/null | tail -n 1)"
+  else
+    echo "!! automatic core update ($bu_when) ended with failures (rc $bu_rc): $(grep -a '^FAIL' "$BU_LOG" 2>/dev/null | head -n 3 | tr '\n' ' ')— full log $BU_LOG; rerun by hand: bash core/scripts/brain-update.sh"
+  fi
+  mv -f "$BU_RC" "$BU_RC.seen" 2>/dev/null
 fi
+if [[ -n "$upd" ]]; then
+  bu_hold=""
+  [[ -n "$core_alpha" ]] && bu_hold="a declared core alpha runs (brain-update.sh would end it)"
+  [[ -z "$bu_hold" && -n "$ahead_note" ]] && bu_hold="the core checkout is ahead of the pin (a PR under test)"
+  [[ -z "$bu_hold" && -n "$(git -C core status --porcelain 2>/dev/null | head -n 1)" ]] && bu_hold="core/ has local changes"
+  if [[ -z "$bu_hold" ]]; then
+    bu_hold=$("$PY" -c '
+import datetime, json, sys
+try:
+    d = json.load(open(".claude/rules/core-update.json", encoding="utf-8"))
+except Exception:
+    sys.exit()
+why = str(d.get("reason") or "no reason given")
+if d.get("auto") is False:
+    print(".claude/rules/core-update.json sets auto false (%s)" % why)
+elif str(d.get("hold_until") or "") >= datetime.date.today().isoformat():
+    print("held until %s by .claude/rules/core-update.json (%s)" % (d["hold_until"], why))
+' 2>/dev/null | tr -d '\r')
+  fi
+  if [[ -z "$bu_hold" && -s "$BU_PID" ]] && kill -0 "$(cat "$BU_PID" 2>/dev/null)" 2>/dev/null; then
+    bu_hold="an automatic run started earlier is still going (pid $(cat "$BU_PID"))"
+  fi
+  if [[ -z "$bu_hold" && -f "$HERE/../scripts/brain-update.sh" && -z "${BRAIN_UPDATE_AUTO_OFF:-}" ]]; then
+    mkdir -p .claude-state
+    ( bash "$HERE/../scripts/brain-update.sh" < /dev/null > "$BU_LOG" 2>&1; bu_rc=$?
+      printf '%s\n%s\n' "$bu_rc" "$(date '+%F %T')" > "$BU_RC"; rm -f "$BU_PID" ) >/dev/null 2>&1 &
+    echo $! > "$BU_PID"
+    echo "core update started automatically: $upd — runs in the background (log $BU_LOG); plugin changes load at the next start of Claude Code, which reports how the run ended"
+  else
+    echo "!! update available: $upd — automatic update held: ${bu_hold:-switched off for this run}; ask the operator, then ONE command updates everything: bash core/scripts/brain-update.sh (restart Claude Code afterwards if it says so)"
+  fi
+fi
+# end automatic update (scripts/test-bootup-auto-update.sh runs the block from BU_LOG= to here)
 
 # Suite clones are NOT plugins — a new suite release tag reaches no pin, so without
 # this check it slips past every session start (operator order 2026-08-13: the
