@@ -126,4 +126,11 @@ BL='{"type":"api-request-blob","message":{"role":"user","content":"blob"}}'
 [ "$(op "[$QH,$UR,$UB]")" = "typed|said|block" ] && ok "typed, said and text-block prompts are the operator's" || bad "operatorPrompt missed a form: $(op "[$QH,$UR,$UB]")"
 [ "$(op "[$QP,$TR,$ME,$BL]")" = "-|-|-|-" ] && ok "peer queue, tool result, meta and blob are no prompt" || bad "operatorPrompt took a non-prompt: $(op "[$QP,$TR,$ME,$BL]")"
 
+# --- turnWindows(): claims from the newest operator word, work from the start of the turn (2026-11-25) ---------
+tw() { node -e 'const { turnWindows } = require(process.argv[1]); const w = turnWindows(JSON.parse(process.argv[2])); console.log(w.words + "," + w.start);' "$D/turn-kind.cjs" "$1"; }
+[ "$(tw '[{"boundary":true},{"w":1},{"boundary":true,"byAnswer":true},{"t":1}]')" = "2,0" ] && ok "turnWindows: an answer bounds the claims, not the turn's work" || bad "turnWindows answer: $(tw '[{"boundary":true},{"w":1},{"boundary":true,"byAnswer":true},{"t":1}]')"
+[ "$(tw '[{"boundary":true},{"w":1},{"turnEnd":true},{"t":1}]')" = "2,2" ] && ok "turnWindows: a turn end starts a new turn for both" || bad "turnWindows turn end: $(tw '[{"boundary":true},{"w":1},{"turnEnd":true},{"t":1}]')"
+[ "$(tw '[{"w":1},{"boundary":true,"byAnswer":true}]')" = "1,-1" ] && ok "turnWindows: only an answer in sight - no turn start (the gate keeps its default)" || bad "turnWindows only answer: $(tw '[{"w":1},{"boundary":true,"byAnswer":true}]')"
+[ "$(tw '[{"w":1}]')" = "-1,-1" ] && ok "turnWindows: no boundary at all" || bad "turnWindows none: $(tw '[{"w":1}]')"
+
 [ "$fail" = 0 ] && echo "turn-kind: all cases pass" || { echo "turn-kind: FAILURES"; exit 1; }

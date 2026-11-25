@@ -79,7 +79,7 @@ const path = require('path');
 const { segments } = require('./shell-segments.cjs');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
-const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers, isTurnEnd, turnWindows } = require('./turn-kind.cjs');
 const { ownEcho, declare } = require('./stop-echo.cjs');
 
 let data = '';
@@ -271,9 +271,10 @@ function analyze(transcriptPath, cwd, unreadableRx) {
     if (!line.trim()) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
+    if (isTurnEnd(d)) { events.push({ turnEnd: true }); continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
-    if (questionAnswered(d)) { events.push({ boundary: true }); continue; }
+    if (questionAnswered(d)) { events.push({ boundary: true, byAnswer: true }); continue; }
     if (msg.role === 'user' && typeof msg.content === 'string') {
       if (HOOK_ECHO.test(msg.content)) {
         if (OWN_ECHO.test(msg.content)) events.push({ gate: true });
@@ -313,16 +314,16 @@ function analyze(transcriptPath, cwd, unreadableRx) {
     }
   }
 
-  let last = 0;
-  for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].boundary) { last = i; break; }
-  }
+  // the absence claims from the newest operator word, the reads that back them from the start of the turn (turnWindows)
+  const win = turnWindows(events);
+  const words = Math.max(win.words, 0);
+  const start = Math.max(win.start, 0);
   const texts = [];
   const searched = [];
   const unreadable = [];
   let delegated = 0;
-  for (let i = last; i < events.length; i++) {
-    if (events[i].text) texts.push(events[i].text);
+  for (let i = start; i < events.length; i++) {
+    if (events[i].text && i >= words) texts.push(events[i].text);
     if (events[i].searched) searched.push(...events[i].searched);
     for (const p of events[i].unreadable || []) if (!unreadable.includes(p)) unreadable.push(p);
     if (events[i].delegated) delegated += 1;

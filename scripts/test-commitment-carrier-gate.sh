@@ -102,6 +102,18 @@ turn "$tmp/t.jsonl" "x" "$promise" "$(ask q2 AskUserQuestion)"; res q2 true >> "
 expect "a refused question (error result) is no boundary" block "$(run "$tmp/t.jsonl")"
 turn "$tmp/u.jsonl" "x" "$(ask q3 AskUserQuestion)"; res q3 false >> "$tmp/u.jsonl"; asst "$promise" >> "$tmp/u.jsonl"
 expect "a promise AFTER a question-tool answer still blocks" block "$(run "$tmp/u.jsonl")"
+# 2026-11-25 (macOS instance, held twice): the mechanism was written in the turn BEFORE a question; the promise came
+# after the answer. The answer arrives inside the turn: it bounds which promises are new, not what the turn built.
+gatew="$(wr "$tmp/core/helpers/no-window-gate.cjs" '// refuse any command that would open a window on the operator machine')"
+turn "$tmp/v.jsonl" "stop measuring" "$gatew" "$(ask q4 AskUserQuestion)"; res q4 false >> "$tmp/v.jsonl"; asst "$promise" >> "$tmp/v.jsonl"
+expect "a mechanism written before the question carries the promise after the answer" pass "$(run "$tmp/v.jsonl")"
+tend() { printf '{"type":"system","subtype":"turn_duration","durationMs":1}\n'; }
+turn "$tmp/w.jsonl" "stop measuring" "$gatew"; tend >> "$tmp/w.jsonl"
+printf '{"type":"user","message":{"role":"user","content":"<task-notification>done</task-notification>"}}\n' >> "$tmp/w.jsonl"; asst "$promise" >> "$tmp/w.jsonl"
+expect "control: a mechanism of an ENDED turn carries nothing in the next one" block "$(run "$tmp/w.jsonl")"
+turn "$tmp/x.jsonl" "x" "$promise"; tend >> "$tmp/x.jsonl"
+printf '{"type":"user","message":{"role":"user","content":"<task-notification>done</task-notification>"}}\n' >> "$tmp/x.jsonl"; asst "$(txt 'Done.')" >> "$tmp/x.jsonl"
+expect "a promise of an ended turn is not judged again in a turn a notification opened" pass "$(run "$tmp/x.jsonl")"
 
 # 2026-11-06 (macOS instance, held three times): the sentence names the mechanism file written this turn, but prose and
 # code share no word (another language) - the file name carries it; a write to another mechanism file does not.

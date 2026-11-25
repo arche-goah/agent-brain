@@ -171,6 +171,29 @@ function questionAnswers() {
 }
 
 /**
+ * The two windows of a Stop gate over one pass of events (2026-11-25). Events carry `boundary: true` for an operator
+ * prompt, `boundary: true, byAnswer: true` for a question-tool answer, `turnEnd: true` for `isTurnEnd`.
+ *   words  - index of the newest operator word or turn end: the CLAIMS of the reply (a promise, an absence claim, a
+ *            premise) are read after it - a claim written before the operator's answer was judged with its own stop.
+ *   start  - index of the start of the TURN (the newest prompt or turn end, never an answer): the WORK that carries a
+ *            claim (writes, reads, calls) counts from here - a question-tool answer arrives inside the turn.
+ * -1 = none. WHY (measured 2026-11-25 on the macOS instance): commitment-carrier-gate cut the window at a question-tool
+ * answer, so a rule written and committed before the question counted as "no mechanism this turn" and the stop was
+ * blocked twice; the same single cut ran in absence-, premise-, class-gate and stop-verifier (since 712e9c4,
+ * 2026-10-30, where the answer boundary fixed a window that reached back hours - the turn end now bounds that).
+ */
+function turnWindows(events) {
+  let words = -1;
+  let start = -1;
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i] || {};
+    if (words < 0 && (e.boundary || e.turnEnd)) words = i;
+    if (e.turnEnd || (e.boundary && !e.byAnswer)) { start = i; break; }
+  }
+  return { words, start };
+}
+
+/**
  * True for the record the harness writes once a turn has really ended - after every Stop hook let it
  * through (`system/turn_duration`). A blocked stop writes none, so a re-issued reply stays in its turn.
  * WHY (measured 2026-11-02 on the macOS instance): every later operator word arrived mid-turn
@@ -204,4 +227,4 @@ function isHeadlessTranscript(file) {
   } catch (e) { return false; }
 }
 
-module.exports = { isHeadlessTranscript, projectTranscriptDir, isTurnEnd, isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorPrompt, operatorWords, questionAnswers, FRAMES, LOCAL };
+module.exports = { isHeadlessTranscript, projectTranscriptDir, isTurnEnd, isNotification, isSkillExpansion, isPeerMessage, isScheduledPrompt, isAgentOrigin, isTranscriptRecord, queuedHumanPrompt, operatorPrompt, operatorWords, questionAnswers, turnWindows, FRAMES, LOCAL };

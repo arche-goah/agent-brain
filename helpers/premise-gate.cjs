@@ -44,7 +44,7 @@ const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it
 const path = require('path');
 // A harness notification (task done, watcher event) is not an operator turn — it must not
 // count down this gate's cooldown (2026-10-07; one definition: turn-kind.cjs).
-const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers } = require('./turn-kind.cjs');
+const { isNotification, isAgentOrigin, isTranscriptRecord, questionAnswers, isTurnEnd, turnWindows } = require('./turn-kind.cjs');
 
 // stdin is read to its END, never on a timer. Measured 2026-08-20 while building
 // this gate: with `setTimeout(..., 0)` the same input on the same file blocked once
@@ -145,9 +145,10 @@ function analyze(transcriptPath) {
     if (!line.trim()) continue;
     let d;
     try { d = JSON.parse(line); } catch (e) { continue; }
+    if (isTurnEnd(d)) { events.push({ turnEnd: true }); continue; }
     const msg = d.message;
     if (!msg || !isTranscriptRecord(d)) continue;
-    if (questionAnswered(d)) { events.push({ boundary: true }); continue; }
+    if (questionAnswered(d)) { events.push({ boundary: true, byAnswer: true }); continue; }
     if (msg.role === 'user' && typeof msg.content === 'string') {
       if (HOOK_ECHO.test(msg.content)) {
         if (OWN_ECHO.test(msg.content)) events.push({ gate: true });
@@ -164,14 +165,15 @@ function analyze(transcriptPath) {
     }
   }
 
-  let last = events.length;
-  for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].boundary) { last = i; break; }
-  }
+  // the premises from the newest operator word, the actions that answer them from the start of the turn (turnWindows);
+  // no boundary at all = nothing, as before
+  const win = turnWindows(events);
+  const fromWords = win.words < 0 ? events.length : win.words;
+  const fromStart = win.start < 0 ? fromWords : win.start;
   const texts = [];
   const actions = [];
-  for (let i = last; i < events.length; i++) {
-    if (events[i].text) texts.push(events[i].text);
+  for (let i = fromStart; i < events.length; i++) {
+    if (events[i].text && i >= fromWords) texts.push(events[i].text);
     if (events[i].action) actions.push(events[i].action);
   }
 
