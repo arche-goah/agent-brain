@@ -296,6 +296,30 @@ expect "powershell <x.ps1> posting a name blocks"           block "$T" "powershe
 expect "a .ps1 run by its path blocks"                      block "$T" "$NT/scripts/named.ps1"
 expect "the same .ps1 without the name passes"              allow "$T" "pwsh -File $NT/scripts/clean.ps1"
 expect "pwsh -Command with inline text names no file"       allow "$T" "pwsh -Command Get-Date $NT/scripts/named.ps1"
+# A script's comment lines are no commands, for the target either (measured 2026-11-25, macOS instance: the update script
+# of a private brain was held as a post to the public core - the first `git -C` in its text was a comment, and the
+# commit author of the brain became "a name for a public repo"). The commit runs in the folder the script runs in.
+mkdir -p "$T/namedpriv/scripts"
+printf '%s\n' '#!/usr/bin/env bash' '# `git -C ../pubclone rev-parse --git-dir` is NOT the test here' 'git commit -q -m "chore: update"' > "$T/namedpriv/scripts/up.sh"
+printf '%s\n' '#!/usr/bin/env bash' '# then git -C ../pubclone commit -m x would go public' 'git commit -q -m "chore: update"' > "$T/namedpriv/scripts/up2.sh"
+printf '%s\n' '#!/usr/bin/env bash' '# the update' 'git -C ../namedclone commit -q -m "chore: update"' > "$T/namedpriv/scripts/up-pub.sh"
+mkdir -p "$T/namedclone/scripts"
+printf '%s\n' '#!/usr/bin/env bash' '# `git -C ../privclone rev-parse --git-dir` is NOT the test here' 'git commit -q -m "chore: update"' > "$T/namedclone/scripts/up.sh"
+expect "a git -C in a script's comment is no target (private brain commit passes)" allow "$T/namedpriv" "bash scripts/up.sh"
+expect "a git -C commit in a comment is no commit target either"                  allow "$T/namedpriv" "bash scripts/up2.sh"
+expect "a private git -C in a comment does not hide a public commit (control)"    block "$T/namedclone" "bash scripts/up.sh"
+expect "a real git -C commit to a public repo in a script blocks (control)"        block "$T/namedpriv" "bash scripts/up-pub.sh"
+# Only a call that publishes is a target: a read in a public clone before a private commit is no post there (the same
+# measurement - the update script fetches in the core submodule, then commits in the brain).
+printf '%s\n' '#!/usr/bin/env bash' 'git -C ../namedclone fetch -q' 'if git commit -q -m "chore: update"; then git push -q; fi' > "$T/namedpriv/scripts/fetch.sh"
+expect "a read in a public clone, then a private commit, passes"                  allow "$T/namedpriv" "bash scripts/fetch.sh"
+expect "the same as one command passes"                                            allow "$T/namedpriv" 'git -C ../namedclone fetch -q; git commit -q -m "chore: update"'
+# A script the shell reader cannot read whole is read line by line, not judged by the cwd: a named commit into a public
+# clone from a private folder passed before.
+printf '%s\n' '#!/usr/bin/env bash' 'while read -r l; do echo "$l"; done <<< "$x"' 'git -C ../namedclone commit -q -m "chore: update"' > "$T/namedpriv/scripts/hs.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'while read -r l; do echo "$l"; done <<< "$x"' 'if git commit -q -m "chore: update"; then git push -q; fi' > "$T/namedpriv/scripts/hs-priv.sh"
+expect "a public commit in a script with a here-string blocks"                     block "$T/namedpriv" "bash scripts/hs.sh"
+expect "a private commit in a script with a here-string passes (control)"          allow "$T/namedpriv" "bash scripts/hs-priv.sh"
 
 [ "$fail" -eq 0 ] && echo "public-text-guard: all checks passed" || echo "public-text-guard: FAILURE"
 exit "$fail"

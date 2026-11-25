@@ -26,6 +26,7 @@ const DIR_SH = /^(?:cd|pushd)$/;
 const DIR_PS = /^(?:cd|chdir|sl|set-location|push-location|pushd)$/i;
 // git's global options that take the next word as their value
 const WITH_VALUE = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
+const SH_KEYWORD = new Set(['if', 'then', 'elif', 'else', 'while', 'until', 'do', '!', 'time', '{']);
 
 function home() { return process.env.HOME || process.env.USERPROFILE || os.homedir(); }
 
@@ -63,7 +64,9 @@ function gitCalls(cmd, cwd, ps) {
         }
         break;
       }
-      if (t === 'sudo' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) { i += 1; continue; }
+      // a shell keyword before the call (`if git commit …; then`, `do git push`) - measured 2026-11-25: such a call was not
+      // read at all, and a gate that wanted its folder judged the cwd instead
+      if (t === 'sudo' || SH_KEYWORD.has(t) || /^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) { i += 1; continue; }
       break;
     }
     if (i >= w.length || !isGit(w[i])) continue;

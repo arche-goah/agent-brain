@@ -182,13 +182,33 @@ function targetRepos(cmd, cwd) {
   for (const m of cmd.matchAll(/\brepos\/([\w.-]+\/[\w.-]+?)(?=\/|\s|$|["'?])/g)) slugs.add(m[1]);
   if (!slugs.size) {
     // the shared reader of the git target; measured 2026-11-23: the regex took `-C reader` inside a quoted commit
-    // message for `git -C <repo>` and blocked the commit as "visibility unknown"
-    const dir = require('./git-target.cjs').gitTarget(cmd, cwd) || cwd;
-    const s = dir && slugFromRemote(dir);
-    if (s) slugs.add(s);
-    else if (/(^|\s)gh\s/.test(cmd)) slugs.add('?'); // gh without a resolvable repo: unknown
+    // message for `git -C <repo>` and blocked the commit as "visibility unknown".
+    // Only a call that publishes text is a target (measured 2026-11-25, macOS instance: a private brain's update
+    // script was held as a post to the public core - the first `git -C` was a read in the core submodule, or with
+    // the older reader a comment, and the brain's commit author became "a name for a public repo"). The commit's
+    // target is the folder the commit runs in.
+    for (const dir of publishingDirs(cmd, cwd)) {
+      const s = dir === '?' ? '?' : slugFromRemote(dir);
+      if (s) slugs.add(s);
+    }
+    if (!slugs.size && /(^|\s)gh\s/.test(cmd)) slugs.add('?'); // gh without a resolvable repo: unknown
   }
   return [...slugs];
+}
+
+// The folders of the git calls that publish text (commit and tag carry a message and the author, notes a note, push
+// sends them). A text the shell reader cannot read whole (a heredoc, a here-string in a script) is read line by line;
+// a line that stays unreadable and holds such a call is '?' - before, the whole text fell back to the cwd, and a named
+// commit into a public clone passed from a private folder (measured 2026-11-25).
+// ponytail: line by line drops a `cd` of an earlier line, the call then counts in the cwd.
+const PUBLISHING = ['commit', 'tag', 'notes', 'push'];
+const PUBLISH_RX = /(^|[^\w-])git\s+(?:-\S+\s+(?:\S+\s+)?)*(commit|tag|notes|push)\b/;
+function publishingDirs(cmd, cwd) {
+  const { gitCalls } = require('./git-target.cjs');
+  const whole = gitCalls(cmd, cwd);
+  const calls = whole || cmd.split('\n').flatMap((l) => gitCalls(l, cwd) || (PUBLISH_RX.test(l.replace(/^\s*#.*$/, '')) ? [{ dir: '?', sub: 'commit' }] : []));
+  const dirs = [...new Set(calls.filter((c) => PUBLISHING.includes(c.sub)).map((c) => c.dir))];
+  return dirs.length ? dirs : [cwd];
 }
 
 function visibility(slug, root) {
