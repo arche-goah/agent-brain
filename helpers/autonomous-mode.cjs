@@ -309,7 +309,7 @@ function promptModes(transcriptPath, cwd) {
   const confirming = !wordsOnly();
   let confirm = null;
   const confirmIds = new Set();
-  const confirmQs = new Map(); // question text -> option labels, of the mode-confirm questions asked
+  const confirmQs = new Map(); // "<tool_use id>\n<question text>" -> option labels, of the mode-confirm questions asked
   let lastOn = null;           // when the run in force was ordered or confirmed (a close stamp after it ends it)
   for (const line of lines) {
     if (line.includes('"AskUserQuestion"')) {
@@ -321,7 +321,7 @@ function promptModes(transcriptPath, cwd) {
           for (const q of (b.input && b.input.questions) || []) {
             if (!isConfirm(q)) continue;
             confirmIds.add(b.id);
-            confirmQs.set(String(q.question || ''), (q.options || []).map((o) => (o && o.label) || ''));
+            confirmQs.set(`${b.id}\n${String(q.question || '')}`, (q.options || []).map((o) => (o && o.label) || ''));
           }
         }
       } catch (e) { /* not a record */ }
@@ -344,11 +344,16 @@ function promptModes(transcriptPath, cwd) {
       // A mode-confirm question that came back without an answer (rejected, interrupted) ends the wait, switches nothing.
       const c = Array.isArray(d.message.content) ? d.message.content : [];
       if (c.some((b) => b && b.type === 'tool_result' && confirmIds.has(b.tool_use_id) && answers({ content: [b] }, null).length === 0)) confirm = null;
-      for (const [q, a] of answers(d.message, askIds)) {
-        if (confirmQs.has(q)) {
+      // pairs with their call id: a mode-confirm answer is matched by the call that asked it, never by its text alone
+      // (a later question with the same text is another question)
+      const pairs = c.filter((b) => b && b.type === 'tool_result')
+        .flatMap((b) => answers({ content: [b] }, askIds).map(([q, a]) => [q, a, b.tool_use_id]));
+      for (const [q, a, id] of pairs) {
+        const key = `${id}\n${q}`;
+        if (confirmQs.has(key)) {
           // The mode-confirm answer: the one place a mode word's switch takes effect.
           if (pending) { pending.window = false; pending = null; }
-          state = confirmChoice(w, confirmQs.get(q), a);
+          state = confirmChoice(w, confirmQs.get(key), a);
           if (state) lastOn = Date.parse(d.timestamp) || null;
           confirm = null;
           out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true, ordered: state, confirmed: true,

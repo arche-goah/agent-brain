@@ -89,9 +89,22 @@ function pre(input, r) {
   const rt = r || root(input);
   if (tool === 'AskUserQuestion') {
     const am = require('./autonomous-mode.cjs');
-    const bad = ((input.tool_input && input.tool_input.questions) || []).filter((q) => am.isConfirm(q) && ((q.options || []).length < 2));
-    return bad.length ? 'MODE-CONFIRM: a mode-confirm question needs at least two options - the last one is the interactive one '
-      + '("stay interactive" / "continue interactively"). Not issued; ask it again with the options.' : null;
+    const qs = (input.tool_input && input.tool_input.questions) || [];
+    const bad = qs.filter((q) => am.isConfirm(q) && ((q.options || []).length < 2));
+    if (bad.length) {
+      return 'MODE-CONFIRM: a mode-confirm question needs at least two options - the last one is the interactive one '
+        + '("stay interactive" / "continue interactively"). Not issued; ask it again with the options.';
+    }
+    // EVERY mode switch goes through the mode-confirm question, also the mode question at the end of a question dialog
+    // ("continue autonomously?") - operator 2026-11-25, translated: "for a mode switch ALWAYS an interactive question",
+    // "with a mode switch there shall ALWAYS be a short explanation". A mode question in the old form is held once more.
+    const on = am.words(rt).on;
+    if (qs.some((q) => !am.isConfirm(q) && am.asksMode(on, String((q && q.question) || '')))) {
+      return 'MODE-CONFIRM: this question asks about the run mode but is no mode-confirm question. Not issued. Ask it with '
+        + 'header "mode-confirm", the interactive option LAST ("stay interactive" / "continue interactively"), and the short '
+        + `explanation in the question text, in the operator's language: ${EXPLAIN}`;
+    }
+    return null;
   }
   const p = pending(input, rt);
   if (!p) return null;

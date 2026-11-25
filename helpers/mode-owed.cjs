@@ -75,7 +75,7 @@ function post(input) {
 const HOLD = 'MODE-OWED: the operator opened a question dialog and a question round is answered - the mode question ("continue '
   + 'autonomously?") is owed, and work has started past it. Not issued, once per answer round. Ask the REMAINING collected '
   + 'questions now, all of them in one question-tool call (every operator-only item you know of, not one more round later), '
-  + 'carry out what their answers set off, then ask the mode question alone, last. Re-issue this call only if nothing is '
+  + 'carry out what their answers set off, then ask the mode question alone, last, as the mode-confirm question (header mode-confirm, interactive option last, with the short explanation of the modes). Re-issue this call only if nothing is '
   + 'left to ask - it passes. (Measured 2026-11-23: three question rounds, about 40 work calls between them, no mode question.)';
 
 function pre(input, r) {
@@ -107,7 +107,7 @@ function stop(input) {
   save(r, st);
   return 'MODE-OWED: this turn ends with the mode question owed - the operator opened a question dialog and answered a round, '
     + 'and "continue autonomously?" was never asked. Ask the remaining collected questions (all at once), then the mode '
-    + 'question alone, last. Re-issue to pass.';
+    + 'question alone, last, as the mode-confirm question (header mode-confirm, interactive option last). Re-issue to pass.';
 }
 
 /** Replay over a transcript: where would `pre` have held? Prints one line per answer round and hold. It assumes every

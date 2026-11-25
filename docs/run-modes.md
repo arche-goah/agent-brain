@@ -41,8 +41,8 @@ interactive?"); due only after a switch from autonomous to interactive, as the l
   question is no end because it is collected.
 - **When the operator asks what is open**, the operator is here for that turn: the question tool and the dialogs
   pass in it, whatever is or is not filed as open. All collected points come as question-tool questions; the first
-  answered question switches the mode to INTERACTIVE, and the last one is "continue autonomously?" — a yes switches
-  back. A turn that has nothing to ask says so in one line and the run stays AUTONOMOUS; a later turn the operator
+  answered question switches the mode to INTERACTIVE, and the last one is "continue autonomously?" — asked as the
+  mode-confirm question (below, "Switching"), an option other than the last one switches back. A turn that has nothing to ask says so in one line and the run stays AUTONOMOUS; a later turn the operator
   did not open (a timer, a finished background task) is outside that window again.
 
 What autonomous mode is NOT: not a permission level, not a way past an `ask` rule, not a licence for irreversible
@@ -55,7 +55,7 @@ The operator switches with words in the session — a click cannot (a status-lin
 
 | To | Built-in English words | Also |
 |---|---|---|
-| AUTONOMOUS | "autonomous(ly)", "work through it alone / on your own", "I'm away" | yes to "continue autonomously?" |
+| AUTONOMOUS | "autonomous(ly)", "work through it alone / on your own", "I'm away" | "continue autonomously?" answered as the mode-confirm question |
 | INTERACTIVE | "normal mode", "stop autonomous", "no longer autonomous" | asking what is open ("anything open for me?", "what is open?") |
 
 **The words never switch by themselves** (operator order 2026-11-25): a word above that would CHANGE the mode - read
@@ -64,7 +64,8 @@ autonomous the question offers what is to be handled autonomously, with "stay in
 towards interactive it asks "continue interactively?", the interactive option last. The question carries the header
 `mode-confirm` and a short explanation from this page (no extra rights; questions collected or asked at once). Until it
 is answered the mode stays as it is, and the autonomous gate holds every call but reads and the question itself
-(`helpers/mode-confirm.cjs`). A rejected question switches nothing; a word naming the mode already in force asks nothing.
+(`helpers/mode-confirm.cjs`). A rejected question switches nothing; a word naming the mode already in force asks nothing. The mode question at the
+end of a question dialog ("continue autonomously?") takes the same form: a mode question without the header is held.
 A remark in between ("status?", "the desk is running") keeps the mode. The operator's own language is instance data:
 `.claude/rules/autonomous-patterns.json` (`on_patterns`, `off_patterns`, `yes_patterns`, test cases in `_cases`) and the
 `ask_patterns` of `.claude/rules/open-items.json`; template `templates/rules-instance/autonomous-patterns.json`. An AI

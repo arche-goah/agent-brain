@@ -57,8 +57,11 @@ probe "question tool, not autonomous" AskUserQuestion '{"questions":[]}' "$INTER
 # 2026-11-06 (Windows instance): after "questions for me now" every operator item got answered and done, the
 # "asks" latch re-read "open for operator = 0" and the run counted as autonomous again - the mandatory closing mode
 # question (question-gate: alone, last) was refused. A call that asks ONLY the mode question is the run's end, no stop.
-MODEQ='{"questions":[{"question":"Continue autonomously?","header":"Mode","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]}]}'
+# Since 2026-11-25 it is asked as the mode-confirm question (header mode-confirm, interactive option last); the old form is held.
+MODEQ='{"questions":[{"question":"Continue autonomously?","header":"mode-confirm","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"Continue interactively","description":"b"}]}]}'
 probe "the mode question alone in an autonomous run passes" AskUserQuestion "$MODEQ" "$AUTO" allow
+MODEQ_OLD='{"questions":[{"question":"Continue autonomously?","header":"Mode","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]}]}'
+probe "the mode question in the old form (no mode-confirm header)" AskUserQuestion "$MODEQ_OLD" "$AUTO" block
 MIXQ='{"questions":[{"question":"Delete the branch?","header":"X","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]},{"question":"Continue autonomously?","header":"Mode","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]}]}'
 probe "the mode question next to another question stays held (control)" AskUserQuestion "$MIXQ" "$AUTO" block
 # The gate's own words are locked inside the run (2026-10-28: a refused question was made to pass by widening them).

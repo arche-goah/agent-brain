@@ -77,6 +77,18 @@ Q='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label"
 [ "$(hook AskUserQuestion "$f" s1 "$Q" | pre)" = pass ] && ok "pre: the mode-confirm question passes" || bad "pre: the question was held"
 Q1='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"a"}]}]}'
 [ "$(hook AskUserQuestion "$f" s1 "$Q1" | pre)" = held ] && ok "pre: a mode-confirm question with one option is held" || bad "pre: one option passed"
+# every mode switch takes the mode-confirm form, also "continue autonomously?" at the end of a dialog (2026-11-25)
+QL='{"questions":[{"question":"Continue autonomously?","header":"Mode","options":[{"label":"Yes"},{"label":"No"}]}]}'
+[ "$(hook AskUserQuestion "$T/2.jsonl" s9 "$QL" | pre)" = held ] && ok "pre: the old-form mode question is held" || bad "pre: the old-form mode question passed"
+QH='{"questions":[{"question":"Continue autonomously?","header":"mode-confirm","options":[{"label":"Yes, the open list"},{"label":"Continue interactively"}]}]}'
+[ "$(hook AskUserQuestion "$T/2.jsonl" s9 "$QH" | pre)" = pass ] && ok "pre: control - the same question as mode-confirm passes" || bad "pre: the mode-confirm form was held"
+QO='{"questions":[{"question":"Release now?","header":"release","options":[{"label":"Yes"},{"label":"No"}]}]}'
+[ "$(hook AskUserQuestion "$T/2.jsonl" s9 "$QO" | pre)" = pass ] && ok "pre: control - a question that is no mode question passes" || bad "pre: another question was held"
+f="$T/12a.jsonl"; { cat "$T/2.jsonl"; asst "x"; user "anything open for me?"; confirm q1 release "Yes" "Yes" "No"; } > "$f"
+mode "a dialog: the first answered question ends the run" "$f" interactive
+f="$T/12.jsonl"; { cat "$T/12a.jsonl"; confirm c3 mode-confirm "Yes, the open list" "Yes, the open list" "Continue interactively"; } > "$f"
+mode "the dialog's last question in mode-confirm form switches back on" "$f" autonomous
+grep -q 'mode-confirm' "$_D/../helpers/mode-owed.cjs" && ok "mode-owed: its holds name the mode-confirm form" || bad "mode-owed: no mode-confirm in its holds"
 f="$T/2.jsonl"
 [ "$(hook Edit "$f" s2 | pre)" = pass ] && ok "pre: control - after the answer the edit passes" || bad "pre: held after the answer"
 # the cache: the transcript grows by an assistant record only - the pending state is reused; an answer moves it
