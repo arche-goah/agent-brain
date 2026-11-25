@@ -11,6 +11,8 @@
  *
  * What it asks of an Agent call: one line in the prompt
  *     Model: <haiku|sonnet|opus|fable|inherit> — <why this class for this task>
+ * Every such line is read and the one naming the call's class counts: a brief may quote another (the review form
+ * asks the agent to return `Model: <family>`). The `model` parameter counts by family (`claude-sonnet-4-5` = sonnet).
  * - no such line: denied, with the rule in one sentence;
  * - the line names another class than the call's `model` parameter (or names a class while the call inherits, or
  *   says inherit while the call sets one): denied - the reason and the call say the same thing;
@@ -33,34 +35,54 @@ function tiers() {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'pr-risk.json'), 'utf8')).tiers || []; } catch (e) { return ['haiku', 'sonnet', 'opus', 'fable']; }
 }
 
-/** { cls, why } of the prompt's Model line, or null. */
-function modelLine(prompt, classes) {
-  const m = /^[ \t>*-]*Model(?:[ \t]+choice)?:[ \t]*([A-Za-z]+)\b[ \t]*(?:[-—–:,(][ \t]*)?(.*)$/im.exec(String(prompt || ''));
-  if (!m) return null;
-  const cls = m[1].toLowerCase();
-  return classes.includes(cls) || cls === 'inherit' ? { cls, why: m[2].replace(/[)\s]+$/, '').trim() } : { cls: null, why: m[2].trim(), word: m[1] };
+/** The class a model word or a `model` parameter names: a full id or a variant counts by its family
+ * (`claude-sonnet-4-5`, `sonnet[1m]`, `Sonnet` -> sonnet), empty or "inherit" -> inherit, anything else -> null.
+ * Same matching by family as content-review-gate. */
+function classOf(word, classes) {
+  const w = String(word || '').toLowerCase().trim();
+  if (!w || w === 'inherit') return 'inherit';
+  return classes.find((c) => w.includes(c)) || null;
+}
+
+/** Every Model line of the prompt as { cls, why, word }. A brief may QUOTE another Model line before its own one
+ * (the review form of docs/content-review.md asks the agent to return `Model: <family>`), so no single line is
+ * "the" line: judge() takes the one that names the call's class. */
+function modelLines(prompt, classes) {
+  const re = /^[ \t>*-]*Model(?:[ \t]+choice)?:[ \t]*([A-Za-z][\w.\-[\]]*)[ \t]*(?:[-—–:,(][ \t]*)?(.*)$/gim;
+  const out = [];
+  for (let m; (m = re.exec(String(prompt || ''))) !== null;) {
+    out.push({ cls: classOf(m[1], classes), why: m[2].replace(/[)\s]+$/, '').trim(), word: m[1] });
+  }
+  return out;
 }
 
 /** null = nothing to say; else the denial text. `out` gets the record of a passing spawn. */
 function judge(input, out) {
   if (!input || input.tool_name !== 'Agent') return null;
-  const ti = input.tool_input || {};
-  if (String(ti.subagent_type || '') === 'fork') return null;
+  const ti = input.tool_input;
+  if (!ti || typeof ti !== 'object') return null; // unreadable input fails open, as the header says
+  if (String(ti.subagent_type || '').toLowerCase() === 'fork') return null;
   const classes = tiers();
-  const called = ti.model ? String(ti.model).toLowerCase() : 'inherit';
-  const line = modelLine(ti.prompt, classes);
+  const called = classOf(ti.model, classes);
+  const callWord = ti.model ? String(ti.model) : 'inherit';
+  const lines = modelLines(ti.prompt, classes);
   const form = `Model: <${classes.join('|')}|inherit> — <why this class for this task>`;
-  if (!line) return `the agent's prompt carries no model line. Every spawn names its model class and why (rules/intelligence.md, Model Routing: "inheriting counts as a choice") - add one line to the prompt:\n  ${form}\nThis call: model ${called}.`;
-  if (!line.cls) return `the model line names "${line.word}", which is no model class (${classes.join(', ')}, inherit).\n  ${form}`;
-  if (line.cls !== called) return `the model line says ${line.cls}, the call ${called === 'inherit' ? 'sets no model (it inherits the session\'s)' : 'sets model ' + called}. Reason and call say the same thing - change one of them.`;
+  if (!lines.length) return `the agent's prompt carries no model line. Every spawn names its model class and why (rules/intelligence.md, Model Routing: "inheriting counts as a choice") - add one line to the prompt:\n  ${form}\nThis call: model ${callWord}.`;
+  if (!called) return `the call's model "${callWord}" names no model class (${classes.join(', ')}, inherit) - set the model parameter to a class.`;
+  const line = lines.find((l) => l.cls === called);
+  if (!line) {
+    const named = lines.filter((l) => l.cls);
+    if (!named.length) return `the model line names "${lines[0].word}", which is no model class (${classes.join(', ')}, inherit).\n  ${form}`;
+    return `the model line says ${named.map((l) => l.cls).join(', ')}, the call ${called === 'inherit' ? 'sets no model (it inherits the session\'s)' : 'sets model ' + called}. Reason and call say the same thing - change one of them (every Model line is read; the one naming the call's class counts).`;
+  }
   if (line.why.length < MIN_WHY) return `the model line gives no reason ("${line.why}"). Say why ${line.cls} fits THIS task: reading and collecting, or judging, verifying, writing.`;
-  if (out) Object.assign(out, { model: line.cls, type: String(ti.subagent_type || 'general-purpose'), why: line.why.slice(0, 300) });
+  if (out) Object.assign(out, { model: line.cls, called: callWord, type: String(ti.subagent_type || 'general-purpose'), why: line.why.slice(0, 300) });
   return null;
 }
 
 function main(raw) {
   let input;
-  try { input = JSON.parse(raw); } catch (e) { return ''; }
+  try { input = JSON.parse(String(raw).replace(new RegExp('^' + String.fromCharCode(0xFEFF)), '')); } catch (e) { return ''; } // a BOM must not make a deny-worthy call pass
   const rec = {};
   let deny;
   try { deny = judge(input, rec); } catch (e) { return ''; }
@@ -81,4 +103,4 @@ if (require.main === module) {
   process.stdin.on('data', (c) => { raw += c; });
   process.stdin.on('end', () => { const o = main(raw); if (o) process.stdout.write(o); });
 }
-module.exports = { judge, modelLine };
+module.exports = { judge, modelLines, classOf };
