@@ -234,16 +234,26 @@ fi
 # alpha (brain-update.sh ends it) · a checkout ahead of the pin (a PR under test) · local changes
 # in core/ · `.claude/rules/core-update.json` "auto": false or "hold_until": "<YYYY-MM-DD>" (a show
 # day) · an earlier automatic run still going (two sessions starting together).
+# Review of #670 (Windows instance, 2026-11-25) made every hold fail CLOSED: the hold file is the one
+# safety switch for a show day, so a file that exists and cannot be read as a hold holds and says so
+# (a BOM, UTF-16, a trailing comma, "auto": "false", a non-ISO date each started the update before);
+# a core/ HEAD that is no released tag or sits on a branch holds (a clean checkout with local commits
+# passed every other test and was moved off its branch); the per-machine switch of the machine profile
+# (`- Session pull: off` / `- Core update: off`, the show machine's switch) holds; one run at a time by
+# an atomic lock directory; a failed run is not retried for BU_QUIET_H hours (default 6).
 BU_LOG=".claude-state/brain-update-auto.log"
 BU_RC=".claude-state/brain-update-auto.rc"
-BU_PID=".claude-state/brain-update-auto.pid"
+BU_LAST=".claude-state/brain-update-auto.last"
+BU_LOCK=".claude-state/brain-update-auto.lock"
 if [[ -s "$BU_RC" ]]; then
   bu_rc=$(head -n 1 "$BU_RC" | tr -d '\r ')
   bu_when=$(sed -n 2p "$BU_RC" | tr -d '\r')
+  bu_warn=$(grep -a '^WARN' "$BU_LOG" 2>/dev/null | head -n 3 | tr '\n' ' ')
   if [[ "$bu_rc" == 0 ]]; then
-    echo "core update ran automatically ($bu_when): $(grep -a '^DONE' "$BU_LOG" 2>/dev/null | tail -n 1)"
+    echo "core update ran automatically ($bu_when): $(grep -a '^DONE' "$BU_LOG" 2>/dev/null | tail -n 1)${bu_warn:+ — warnings: $bu_warn}"
   else
-    echo "!! automatic core update ($bu_when) ended with failures (rc $bu_rc): $(grep -a '^FAIL' "$BU_LOG" 2>/dev/null | head -n 3 | tr '\n' ' ')— full log $BU_LOG; rerun by hand: bash core/scripts/brain-update.sh"
+    bu_fail=$(grep -a '^FAIL' "$BU_LOG" 2>/dev/null | head -n 3 | tr '\n' ' ')
+    echo "!! automatic core update ($bu_when) ended with failures (rc $bu_rc): ${bu_fail:-no FAIL line in the log}${bu_warn:+ $bu_warn}— full log $BU_LOG; rerun by hand: bash core/scripts/brain-update.sh"
   fi
   mv -f "$BU_RC" "$BU_RC.seen" 2>/dev/null
 fi
@@ -253,30 +263,74 @@ if [[ -n "$upd" ]]; then
   [[ -z "$bu_hold" && -n "$ahead_note" ]] && bu_hold="the core checkout is ahead of the pin (a PR under test)"
   [[ -z "$bu_hold" && -n "$(git -C core status --porcelain 2>/dev/null | head -n 1)" ]] && bu_hold="core/ has local changes"
   if [[ -z "$bu_hold" ]]; then
+    bu_branch=$(git -C core symbolic-ref -q --short HEAD 2>/dev/null)
+    if [[ -n "$bu_branch" ]]; then
+      bu_hold="core/ is on branch $bu_branch (work in progress there)"
+    elif ! git -C core describe --exact-match --tags HEAD >/dev/null 2>&1; then
+      bu_hold="core/ HEAD is no released tag (local commits or a hand checkout)"
+    fi
+  fi
+  if [[ -z "$bu_hold" && -f "$HERE/../scripts/machine-key.sh" ]]; then
+    # shellcheck source=../scripts/machine-key.sh
+    bu_key=$(. "$HERE/../scripts/machine-key.sh" 2>/dev/null && machine_key 2>/dev/null)
+    if [[ -n "$bu_key" && -f "config/machines/$bu_key.md" ]] && \
+       tr -d '\r' < "config/machines/$bu_key.md" | grep -aiqE '^- (Session pull|Core update):[[:space:]]*off'; then
+      bu_hold="switched off on this machine (config/machines/$bu_key.md)"
+    fi
+  fi
+  if [[ -z "$bu_hold" && -e ".claude/rules/core-update.json" ]]; then
     bu_hold=$("$PY" -c '
-import datetime, json, sys
+import datetime, json, re
+p = ".claude/rules/core-update.json"
 try:
-    d = json.load(open(".claude/rules/core-update.json", encoding="utf-8"))
-except Exception:
-    sys.exit()
+    raw = open(p, "rb").read()
+    enc = "utf-16" if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig"
+    d = json.loads(raw.decode(enc))
+except Exception as e:
+    print("%s exists but is not readable as a hold (%s) - fix it; it holds until then" % (p, type(e).__name__)); raise SystemExit
+if not isinstance(d, dict):
+    print("%s is no JSON object - fix it; it holds until then" % p); raise SystemExit
+d = {str(k).lower(): v for k, v in d.items()}
 why = str(d.get("reason") or "no reason given")
-if d.get("auto") is False:
-    print(".claude/rules/core-update.json sets auto false (%s)" % why)
-elif str(d.get("hold_until") or "") >= datetime.date.today().isoformat():
-    print("held until %s by .claude/rules/core-update.json (%s)" % (d["hold_until"], why))
+if "auto" in d and d["auto"] is not True:
+    print("%s sets auto %s (%s)" % (p, json.dumps(d["auto"]), why))
+elif "hold_until" in d:
+    u = str(d["hold_until"])
+    try:
+        ok = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", u)) and datetime.date.fromisoformat(u)
+    except ValueError:
+        ok = False
+    if not ok:
+        print("%s hold_until %s is no YYYY-MM-DD date - fix it; it holds until then" % (p, json.dumps(u)))
+    elif u >= datetime.date.today().isoformat():
+        print("held until %s by %s (%s)" % (u, p, why))
+    else:
+        print("-")
+else:
+    print("-")
 ' 2>/dev/null | tr -d '\r')
+    [[ -z "$bu_hold" ]] && bu_hold=".claude/rules/core-update.json could not be read (no working Python) - it holds"
+    [[ "$bu_hold" == "-" ]] && bu_hold=""
   fi
-  if [[ -z "$bu_hold" && -s "$BU_PID" ]] && kill -0 "$(cat "$BU_PID" 2>/dev/null)" 2>/dev/null; then
-    bu_hold="an automatic run started earlier is still going (pid $(cat "$BU_PID"))"
+  if [[ -z "$bu_hold" && -s "$BU_LAST" && "$(head -n 1 "$BU_LAST" | tr -d '\r ')" != 0 ]]; then
+    bu_age=$(( $(date +%s) - $(sed -n 2p "$BU_LAST" | tr -d '\r ' | grep -a '^[0-9][0-9]*$' || echo 0) ))
+    (( bu_age < ${BU_QUIET_H:-6} * 3600 )) && bu_hold="the last automatic run failed $((bu_age / 60)) min ago - the next try waits ${BU_QUIET_H:-6} h"
   fi
-  if [[ -z "$bu_hold" && -f "$HERE/../scripts/brain-update.sh" && -z "${BRAIN_UPDATE_AUTO_OFF:-}" ]]; then
+  if [[ -z "$bu_hold" && -n "${BRAIN_UPDATE_AUTO_OFF:-}" ]]; then bu_hold="BRAIN_UPDATE_AUTO_OFF is set"; fi
+  if [[ -z "$bu_hold" && ! -f "$HERE/../scripts/brain-update.sh" ]]; then bu_hold="core/scripts/brain-update.sh is missing"; fi
+  if [[ -z "$bu_hold" ]]; then
     mkdir -p .claude-state
+    # A lock older than an hour is a run that died (a reboot mid-run); it is taken over.
+    [[ -d "$BU_LOCK" && -n "$(find "$BU_LOCK" -maxdepth 0 -mmin +60 2>/dev/null)" ]] && rmdir "$BU_LOCK" 2>/dev/null
+    mkdir "$BU_LOCK" 2>/dev/null || bu_hold="an automatic run started earlier is still going (lock $BU_LOCK)"
+  fi
+  if [[ -z "$bu_hold" ]]; then
     ( bash "$HERE/../scripts/brain-update.sh" < /dev/null > "$BU_LOG" 2>&1; bu_rc=$?
-      printf '%s\n%s\n' "$bu_rc" "$(date '+%F %T')" > "$BU_RC"; rm -f "$BU_PID" ) >/dev/null 2>&1 &
-    echo $! > "$BU_PID"
+      printf '%s\n%s\n' "$bu_rc" "$(date '+%F %T')" > "$BU_RC"
+      printf '%s\n%s\n' "$bu_rc" "$(date +%s)" > "$BU_LAST"; rmdir "$BU_LOCK" ) >/dev/null 2>&1 &
     echo "core update started automatically: $upd — runs in the background (log $BU_LOG); plugin changes load at the next start of Claude Code, which reports how the run ended"
   else
-    echo "!! update available: $upd — automatic update held: ${bu_hold:-switched off for this run}; ask the operator, then ONE command updates everything: bash core/scripts/brain-update.sh (restart Claude Code afterwards if it says so)"
+    echo "!! update available: $upd — automatic update held: $bu_hold; ask the operator, then ONE command updates everything: bash core/scripts/brain-update.sh (restart Claude Code afterwards if it says so)"
   fi
 fi
 # end automatic update (scripts/test-bootup-auto-update.sh runs the block from BU_LOG= to here)

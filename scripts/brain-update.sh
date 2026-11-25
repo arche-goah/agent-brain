@@ -563,6 +563,12 @@ elif [ "$pin_dirty" -eq 1 ]; then
     else
       echo "NOTE not pushed (repo visibility: $vis — only a PRIVATE own brain pushes freely)"
     fi
+  else
+    # Measured on the #670 review (2026-11-25, Windows): with the brain's index locked by another
+    # session's commit, core/ moved, nothing was committed, and the run still ended DONE with rc 0 -
+    # an unattended start would have reported a clean update over an uncommitted pin.
+    echo "FAIL core/ moved but the pin was NOT committed (git commit failed - index locked by another session?) — commit by hand: git commit -m \"chore(core): brain-update to the released state\" -- ${own_paths[*]}"
+    failed=1
   fi
 fi
 

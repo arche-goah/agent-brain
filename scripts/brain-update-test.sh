@@ -340,6 +340,15 @@ elif ! git -C "$SB/bypath" diff --cached --name-only | grep -aqx foreign.txt; th
 else
   ok "commit by path: the pin commit holds core only, a foreign staged file stays staged"
 fi
+# 9. the pin commit fails (index locked by another session's commit, #670 review 2026-11-25): FAIL and rc 1, never DONE.
+mk_brain locked v1.0.0 2.0.0 "mk" ""
+touch "$SB/locked/.git/index.lock"
+out=$(run_brain locked); rc=$?
+rm -f "$SB/locked/.git/index.lock"
+case "$out" in
+  *"FAIL core/ moved but the pin was NOT committed"*) [ "$rc" -ne 0 ] && ok "a failed pin commit is FAIL with rc $rc" || bad "a failed pin commit: FAIL line but rc 0" ;;
+  *) bad "a failed pin commit was not reported: $(printf %s "$out" | grep -a -m2 -E 'pin|DONE')" ;;
+esac
 rm -rf "$SB"
 
 echo
