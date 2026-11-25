@@ -13,7 +13,8 @@
  * The plugin cache is read-only delivery; node_modules must not live there (they'd be
  * wiped on every update and bloat git). This installs the MCP server's npm deps ONCE
  * into CLAUDE_PLUGIN_DATA and re-installs only when mcp/package.json changed.
- * The .mcp.json points NODE_PATH at the same place.
+ * The link the ESM server resolves through is written by ensure-link.cjs (same folder), which
+ * the suite's .mcp.json also loads as `--require` preload in front of the server.
  *
  * Fails soft: a broken npm install prints a warning; the session still starts —
  * the MCP server will then fail loudly with a missing-module error, which names
@@ -55,27 +56,16 @@ try { have = fs.readFileSync(stamp, "utf8"); } catch (_) {}
 // node_modules directories next to the code, so the cache needs a LINK to the installed
 // deps: mcp/node_modules -> CLAUDE_PLUGIN_DATA/node_modules. A plugin update replaces
 // the cache dir and silently removes the link, so its existence is checked EVERY start,
-// independent of the package.json stamp. Windows: junction (no elevated rights needed).
-function ensureLink() {
-  const linkPath = path.join(root, "mcp", "node_modules");
-  const target = path.join(data, "node_modules");
-  if (!fs.existsSync(target)) return false;
-  try {
-    const st = fs.lstatSync(linkPath);
-    if (st.isSymbolicLink() || st.isDirectory()) return true; // present (link or real dir)
-  } catch (_) { /* missing — create below */ }
-  try {
-    fs.symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
-    console.log(`${name}: node_modules link restored in plugin cache`);
-    return true;
-  } catch (e) {
-    console.log(`${name}: could not link node_modules into the cache (${String(e).slice(0, 100)})`);
-    return false;
-  }
+// independent of the package.json stamp. The one writer is ensure-link.cjs (also the server's
+// preload, so the link is there before the first connect); this hook only reports.
+const link = require("./ensure-link.cjs");
+function ensureLink(status = link.ensureLink()) {
+  if (status === "made") console.log(`${name}: node_modules link restored in plugin cache`);
+  else if (status.startsWith("failed")) console.log(`${name}: could not link node_modules into the cache (${status.slice(8)})`);
 }
 
 if (have === want && fs.existsSync(path.join(data, "node_modules"))) {
-  ensureLink();
+  ensureLink(link.result);
   process.exit(0);
 }
 

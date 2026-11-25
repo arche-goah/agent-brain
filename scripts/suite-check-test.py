@@ -139,16 +139,29 @@ with tempfile.TemporaryDirectory() as td:
     tpl_dir = HERE.parent / "templates" / "suite" / "hooks"
     hooked = make_repo(base, "hooked")
     (hooked / "hooks").mkdir()
-    for f in ("ensure-deps.cjs", "hooks.json"):
+    for f in ("ensure-deps.cjs", "ensure-link.cjs", "hooks.json"):
         (hooked / "hooks" / f).write_bytes((tpl_dir / f).read_bytes())
-    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["INFO", "INFO"],
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["INFO", "INFO", "INFO"],
        "hook copies equal to the core templates: INFO only")
+    # ensure-link.cjs (2026-11-25): the template ensure-deps.cjs requires it, and the server start preloads it.
+    preload = '{"mcpServers":{"s":{"command":"node","args":["--require","${CLAUDE_PLUGIN_ROOT}/hooks/ensure-link.cjs","x"]}}}'
+    (hooked / ".mcp.json").write_text(preload.replace("--require\",\"${CLAUDE_PLUGIN_ROOT}/hooks/ensure-link.cjs\",\"", ""),
+                                      encoding="utf-8")
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["INFO", "INFO", "INFO", "WARN"],
+       ".mcp.json starts the server without the ensure-link preload: WARN")
+    (hooked / ".mcp.json").write_text(preload, encoding="utf-8")
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["INFO", "INFO", "INFO"],
+       ".mcp.json with the ensure-link preload: no WARN (control)")
+    (hooked / "hooks" / "ensure-link.cjs").unlink()
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["INFO", "INFO", "WARN"],
+       "ensure-deps.cjs copied without ensure-link.cjs (its require would fail): WARN")
+    (hooked / "hooks" / "ensure-link.cjs").write_bytes((tpl_dir / "ensure-link.cjs").read_bytes())
     (hooked / "hooks" / "ensure-deps.cjs").write_text(
         (tpl_dir / "ensure-deps.cjs").read_text(encoding="utf-8").replace("${name}:", "my-suite:", 1), encoding="utf-8")
-    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["WARN", "INFO"],
-       "an edited hook copy (the suite name written in): WARN, hooks.json still INFO")
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)] == ["WARN", "INFO", "INFO"],
+       "an edited hook copy (the suite name written in): WARN, the others still INFO")
     (hooked / "hooks" / "hooks.json").write_bytes((tpl_dir / "hooks.json").read_bytes().replace(b"\n", b"\r\n"))
-    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)][1] == "INFO",
+    ok([lvl for lvl, _ in sc.hook_template_findings(hooked)][2] == "INFO",
        "a CRLF copy of hooks.json (Windows checkout) still equals the template")
     ok(any(lvl == "WARN" and "ensure-deps.cjs" in msg for lvl, msg in sc.check(hooked, contract)),
        "check() carries the hook-template finding (wired, not only defined)")

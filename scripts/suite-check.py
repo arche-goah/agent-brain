@@ -59,7 +59,11 @@ def single_branch(repo: Path) -> bool:
 # 2026-11-03 on the macOS instance: two suites carried the same 105 lines, differing only in the
 # five lines naming the suite, and a fix in one copy reached no other. A copy that differs from
 # this core's template is a WARN, not an ERROR: a suite may deviate with a reason it writes down.
-HOOK_TEMPLATES = ("hooks/ensure-deps.cjs", "hooks/hooks.json")
+HOOK_TEMPLATES = ("hooks/ensure-deps.cjs", "hooks/ensure-link.cjs", "hooks/hooks.json")
+# ensure-link.cjs (2026-11-25) is the one writer of the mcp/node_modules link and the server's preload:
+# after `claude plugin update` the first MCP connect ran before the SessionStart hook relinked, failed,
+# and the harness cached the failure (measured 2026-11-13 on the Windows instance, grandma3-next 1.2.0).
+PRELOAD = "hooks/ensure-link.cjs"
 
 
 def hook_template_findings(repo: Path, core: Path = CORE) -> list:
@@ -79,6 +83,15 @@ def hook_template_findings(repo: Path, core: Path = CORE) -> list:
         else:
             out.append(("WARN", f"{rel}: differs from the core template templates/suite/{rel} - take the "
                                 "template unchanged (the plugin name is read from plugin.json), or say why not"))
+    if (repo / "hooks" / "ensure-deps.cjs").is_file() and (core / "templates" / "suite" / PRELOAD).is_file():
+        if not (repo / PRELOAD).is_file():
+            out.append(("WARN", f"{PRELOAD}: missing - the template ensure-deps.cjs requires it; copy "
+                                f"templates/suite/{PRELOAD} unchanged"))
+        mcp = repo / ".mcp.json"
+        if mcp.is_file() and PRELOAD not in mcp.read_text(encoding="utf-8", errors="replace"):
+            out.append(("WARN", f".mcp.json: the server start does not preload {PRELOAD} - start it as "
+                                f"`node --require ${{CLAUDE_PLUGIN_ROOT}}/{PRELOAD} <server>`, or the first "
+                                "connect after a plugin update fails before the SessionStart hook relinks"))
     return out
 
 
