@@ -18,7 +18,12 @@ then an explicit release follows.
    The `memory-sync.cjs prune` of step 2 is NOT one of them: it drops only the snapshot copies
    of memory files this session deleted, merged or renamed, and git keeps them — it runs
    without asking, as step 2 says. The close prompt itself ends the mode where the instance's off-patterns carry
-   the close words; otherwise say in the first close line that the run ends here.
+   the close words; otherwise say in the first close line that the run ends here. **The switch takes no question**
+   (operator decision 2026-11-25): a close word is no mode change to confirm - a close stuck in the autonomous mode
+   cannot finish. **And the close asks only when a clean close is impossible without it** (same decision): what
+   the agent can settle itself (a commit its instance rule allows, a ledger state, a log line, a memory pointer)
+   it does and reports; a question is put only for a step that the operator alone can decide or take (a gated push
+   or release, a hand step, an instance with no written commit rule - step 4), one question per such step.
 
 1. **Secure open work (semantic — no script can do this):**
    - **The instance's own close steps run first (2026-11-23):** the instance rules file
