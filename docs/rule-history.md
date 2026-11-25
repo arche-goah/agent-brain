@@ -87,6 +87,16 @@ Wording before the context diet of 2026-10-20, verbatim. The rule file now carri
     is the agreed channel ASK OR ACT step 1 names. Making a repo public, a first
     publication, a push outside the organisation's repos and a deployment stay gated.
     Carriers on every push: leak-scan, the English-only ratchet, the instance's name guard.
+    **Superseded 2026-11-25** (operator corrections 2026-11-24 and 2026-11-25): new
+    functionality waits for no word either. The operator, translated: "a new core function
+    does not need my word, he can simply open a PR - we review it critically and on content
+    anyway, and that review should raise objections if something is not built cleanly; the
+    AIs may still discuss safety, complexity and reversibility with each other." Incident:
+    another brain's AI asked first whether a stop check may go into the core, and this side
+    answered "needs the operator's word (rule #11)" - the 2026-11-24 correction ("an alpha
+    that worked goes out as a normal PR, the others review it before the beta") had been
+    filed with instance reach only, so the core text kept telling every brain to ask first.
+    The operator-only class `core-new` leaves the instance template with it.
 12. **Two sessions, one working copy: commit by path, never rewrite, never touch the other's
     operation** (operator direction 2026-10-13). A checkout
     has one index and one HEAD; git cannot tell sessions apart. While a second session runs on
