@@ -320,6 +320,12 @@ printf '%s\n' '#!/usr/bin/env bash' 'while read -r l; do echo "$l"; done <<< "$x
 printf '%s\n' '#!/usr/bin/env bash' 'while read -r l; do echo "$l"; done <<< "$x"' 'if git commit -q -m "chore: update"; then git push -q; fi' > "$T/namedpriv/scripts/hs-priv.sh"
 expect "a public commit in a script with a here-string blocks"                     block "$T/namedpriv" "bash scripts/hs.sh"
 expect "a private commit in a script with a here-string passes (control)"          allow "$T/namedpriv" "bash scripts/hs-priv.sh"
+# An unreadable line is searched for a publishing word linearly (CodeQL on #679: the first pattern backtracked
+# exponentially on '-! ' repeats - measured 8.3 s at 40 repeats). Same input, under a time bound.
+# (a commit makes it a write; the here-string makes the whole text unreadable; the open quote makes the last line so)
+LONG="$(printf 'git commit -q -m x\ncat <<< y\ngit %s commitx "' "$(printf -- '-! %.0s' $(seq 1 40))")"
+t0=$SECONDS; rc=$(run "$GATE" "$T/namedpriv" "$LONG"); dt=$((SECONDS - t0))
+[ "$dt" -le 3 ] && ok "an unreadable line with 40 '-! ' repeats is read in ${dt}s (rc=$rc)" || bad "the long line took ${dt}s"
 
 [ "$fail" -eq 0 ] && echo "public-text-guard: all checks passed" || echo "public-text-guard: FAILURE"
 exit "$fail"

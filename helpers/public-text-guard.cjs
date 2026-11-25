@@ -203,13 +203,18 @@ function targetRepos(cmd, cwd) {
 // (measured 2026-11-25). What none of that reads keeps the cwd, as before.
 // ponytail: line by line drops a `cd` of an earlier line, the call then counts in the cwd.
 const PUBLISHING = ['commit', 'tag', 'notes', 'push'];
-const PUBLISH_RX = /\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*?(commit|tag|notes|push)\b/;
+// one plain word, no nested repetition (CodeQL on the first version: exponential backtracking); the shell reader decides
+// whether the line up to the word holds a publishing git call
+const PUBLISH_WORD = /\b(?:commit|tag|notes|push)\b/g;
 function lineCalls(l, cwd) {
   const { gitCalls } = require('./git-target.cjs');
   const all = gitCalls(l, cwd);
   if (all) return all;
-  const m = PUBLISH_RX.exec(l);
-  return m ? (gitCalls(l.slice(0, m.index + m[0].length), cwd) || []) : [];
+  for (const m of l.matchAll(PUBLISH_WORD)) {
+    const calls = gitCalls(l.slice(0, m.index + m[0].length), cwd) || [];
+    if (calls.some((c) => PUBLISHING.includes(c.sub))) return calls;
+  }
+  return [];
 }
 function publishingDirs(cmd, cwd) {
   const { gitCalls } = require('./git-target.cjs');
