@@ -291,6 +291,10 @@ def in_pin(pin, sha, timeout):
 # The code a ledger title opens with: `- [x] **KS-110 (P1) ...`, `**FA22-03 ...`.
 TITLE_CODE = re.compile(r"^\s*- \[[ xX]\]\s+\*\*([A-Z][A-Z0-9]*-[0-9]+)\b")
 EXIT_DATE = re.compile(r"^\s*(?:[-*]\s+)?`?exit:\s*[\w-]+\s+(20\d\d-\d\d-\d\d)", re.M)
+# An entry the operator parked ("passt jetzt mal so", taken up again on their word) is not DONE-OPEN while its
+# check passes: the check measured the work so far, the operator chose to stop there. Measured 2026-11-25 on a
+# Windows brain: two parked entries stood in every start report as "check green - tick it" since the park.
+PARKED_EXIT = re.compile(r"^\s*(?:[-*]\s+)?`?exit:\s*parked\b", re.M)
 
 
 def pin_date(pin, timeout):
@@ -518,6 +522,8 @@ def _reconcile(out, main, root, ledgers, since, timeout, shell, allowed, budget,
             elif res == "pass" and not e["done"] and first == "pass":
                 out["unproven"].append(label(e, rel))
                 out.setdefault("unproven_at", []).append({"ledger": rel, "line": e["line"], "id": label(e, rel)})
+            elif (res == "pass" or on_main) and not e["done"] and PARKED_EXIT.search(e["text"]):
+                pass   # parked: neither DONE-OPEN nor MERGED-MAIN (both feed the "tick it" rows; review of #671)
             elif res == "pass" and not e["done"]:
                 out["done_open"].append(label(e, rel))
                 out.setdefault("done_open_at", []).append({"ledger": rel, "line": e["line"], "id": label(e, rel)})
