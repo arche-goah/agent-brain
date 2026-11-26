@@ -224,7 +224,7 @@ const replayOk = (line) => NONE_WITH_RECHECK.test(line) || (hasCount(line) && !s
 // PowerShell is the primary shell on Windows (Windows review of #641, 2026-11-24: a replay run there was held as
 // "written, not measured"); Write-Output / Write-Host only print, like echo.
 const PRINT_ONLY = /^\s*(?:echo|printf|cat\s*<<|true\b|:|write-output|write-host)(?:\s|$)/i;
-const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
+const { SHELL_TOOLS } = require('./shell-tools.cjs');
 function sessionRuns(transcriptPath) {
   const cmds = new Map();
   const outs = [];
@@ -584,7 +584,7 @@ function anomalies(group, cwd) {
       const refusal = m.refusal.test(r.text.trim());
       if (!refusal) {
         const f = OWN_FAIL.exec(r.text);
-        if (f && c.name === 'Bash') out.push({ kind: 'own-fail', block: true, at, what: `${f[0]} in: ${String(c.input.command || '').slice(0, 80)}` });
+        if (f && SHELL_TOOLS.has(c.name)) out.push({ kind: 'own-fail', block: true, at, what: `${f[0]} in: ${String(c.input.command || '').slice(0, 80)}` });
         continue;
       }
       if (m.malf.test(r.text)) continue;   // malfunctions go the cause path

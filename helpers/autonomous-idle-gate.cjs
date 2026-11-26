@@ -59,6 +59,7 @@
 const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 const { autonomousMode, answers, promptText, HOOK_ECHO: PROMPT_ECHO } = require('./autonomous-mode.cjs');
 const { isTranscriptRecord, isNotification, isSkillExpansion, isAgentOrigin, queuedHumanPrompt, operatorWords, FRAMES, LOCAL } = require('./turn-kind.cjs');
 const { closeOpenEnds } = require('./close-stamp.cjs');
@@ -118,7 +119,7 @@ function turnOf(tp) {
         if (b && b.type === 'tool_use' && b.name === 'ScheduleWakeup') wake = true;
         if (b && b.type === 'tool_use' && b.name === 'AskUserQuestion') { asked = true; askIds.add(b.id); }
         if (b && b.type === 'tool_use' && (b.name === 'Monitor'
-          || ((b.name === 'Bash' || b.name === 'Agent') && b.input && b.input.run_in_background === true))) armed.add(b.id);
+          || ((isShell(b.name) || b.name === 'Agent') && b.input && b.input.run_in_background === true))) armed.add(b.id);
         if (b && b.type === 'tool_use' && b.input && typeof b.input.command === 'string') cmds.push(b.input.command);
         if (b && b.type === 'tool_use') all.push({ name: b.name, cmd: (b.input && typeof b.input.command === 'string') ? b.input.command : '', ts: Date.parse(d.timestamp || '') || 0 });
       }

@@ -26,6 +26,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 const { execFileSync } = require('child_process');
 
 function cfg(project) {
@@ -79,7 +80,7 @@ function addedIds(cwd, file, rx) {
 function main(raw) {
   let input;
   try { input = JSON.parse(raw); } catch (e) { return ''; }
-  if (input.tool_name !== 'Bash') return '';
+  if (!isShell(input.tool_name)) return '';
   const cmd = String((input.tool_input && input.tool_input.command) || '');
   if (!/\bgit\b[^\n]*\bcommit\b/.test(cmd) || /#\s*FOREIGN-ENTRY-OK:\s*\S/.test(cmd)) return '';
   const cwd = commitRepo(cmd, input.cwd || process.env.CLAUDE_PROJECT_DIR || '.');

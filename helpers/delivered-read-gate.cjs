@@ -27,6 +27,7 @@
  * through: acting on a description in a later turn while the file says otherwise.
  */
 const fs = require('fs');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const { isNotification, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
 
@@ -93,7 +94,7 @@ function analyze(lines) {
       if (b.type === 'text' && ESCAPE.test(b.text || '')) escaped = true;
       if (b.type !== 'tool_use' || !b.input) continue;
       const hay = b.name === 'Read' ? String(b.input.file_path || '')
-        : b.name === 'Bash' ? String(b.input.command || '') : '';
+        : isShell(b.name) ? String(b.input.command || '') : '';
       if (!hay) continue;
       for (const k of [...pending.keys()]) if (hay.includes(k)) pending.delete(k);
     }

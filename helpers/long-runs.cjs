@@ -19,6 +19,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 
 const EXEC_RE = /(?:^|[\n;&|(]|\$\()\s*(?:(?:env|command|exec|nohup|time)\s+|[A-Za-z_]\w*=\S*\s+)*(?:(?:bash|sh|zsh|python3?|node)(?:\s+-\S+)*\s+)?("[^"\n]+\.(?:sh|py|cjs|mjs|js)"|'[^'\n]+\.(?:sh|py|cjs|mjs|js)'|[^\s;&|()'"]+\.(?:sh|py|cjs|mjs|js))(?=$|[\s;&|)])/g;
 const DECLARED_RE = /^\s*(?:#|\/\/)\s*long-run:\s*detached\b/m;
@@ -71,7 +72,7 @@ function learn(transcriptPath, project, now) {
     let d; try { d = JSON.parse(line); } catch (_) { continue; }
     const c = d && d.message && d.message.content;
     for (const b of Array.isArray(c) ? c : []) {
-      if (b && b.type === 'tool_use' && b.name === 'Bash') cmds[b.id] = (b.input || {}).command || '';
+      if (b && b.type === 'tool_use' && isShell(b.name)) cmds[b.id] = (b.input || {}).command || '';
       if (b && b.type === 'tool_result' && d.toolUseResult && d.toolUseResult.backgroundedByUser === true) hits.push(b.tool_use_id);
     }
   }

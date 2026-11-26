@@ -19,7 +19,7 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 use() { # $1 tool name, $2 command or file path
   node -e '
     const [name, arg] = process.argv.slice(1);
-    const input = name === "Bash" ? { command: arg } : { file_path: arg };
+    const input = (name === "Bash" || name === "PowerShell") ? { command: arg } : { file_path: arg };
     console.log(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", name, input }] } }));
   ' "$1" "$2"
 }
@@ -68,5 +68,9 @@ probe "a commit message quoting the claim is no post" "$T/t1.jsonl" "git commit 
 # The asking command already stands in the transcript (PreToolUse after the record was written).
 { use Bash "gh pr comment 4 -R o/r --body ok"; use Bash "$C_CLAIM"; } > "$T/t5.jsonl"
 probe "the asking call itself is not counted as the previous post" "$T/t5.jsonl" "$C_CLAIM" block
+
+# PowerShell is a shell too (2026-11-24, ten gates read only Bash): a diff read through the PowerShell tool counts.
+{ use PowerShell "gh pr diff 5 -R o/r"; } > "$T/t10.jsonl"
+probe "claim after gh pr diff 5 run through PowerShell" "$T/t10.jsonl" "$C_CLAIM" allow
 
 [ "$fail" -eq 0 ] && echo "review-claim-gate: all cases pass" || { echo "review-claim-gate: FAILURES"; exit 1; }

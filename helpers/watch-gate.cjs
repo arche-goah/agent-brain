@@ -89,6 +89,7 @@
 const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const path = require('path');
+const { SHELL_TOOLS } = require('./shell-tools.cjs');
 const { execFileSync } = require('child_process');
 const { isNotification, isSkillExpansion, isAgentOrigin, isTranscriptRecord } = require('./turn-kind.cjs');
 const { closeOpenEnds, listed } = require('./close-stamp.cjs');
@@ -724,7 +725,7 @@ function main(input) {
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const { calls, since, fired, lastText } = turn(input.transcript_path);
   if (fired) hookExit(0);
-  const shell = calls.filter((c) => c.name === 'Bash' || c.name === 'PowerShell');
+  const shell = calls.filter((c) => SHELL_TOOLS.has(c.name));
   // Each finding: its text, and whether a close entry's open-end lines cover it (null = never).
   const missing = [];
 

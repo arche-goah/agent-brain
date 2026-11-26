@@ -139,6 +139,8 @@ BG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_bg1
 END='{"message":{"role":"user","content":"<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>toolu_bg1</tool-use-id>\n<status>completed</status>\n</task-notification>"}}'
 MON='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_m1","name":"Monitor","input":{"command":"x"}}]}}'
 WAKE='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_w1","name":"ScheduleWakeup","input":{"delaySeconds":600}}]}}'
+PSBG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_ps1","name":"PowerShell","input":{"command":"x","run_in_background":true}}]}}'
+
 FG='{"message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_f1","name":"Bash","input":{"command":"x"}}]}}'
 run_case en-announce '"Tests are green. Next, I will write the Windows request."' block "$CWD"
 run_case en-announce-now '"The fixture passes. Doing that now."' block "$CWD"
@@ -154,6 +156,8 @@ LONG_TAIL="$(printf 'Item two waits for the Windows check of the other machine, 
 run_case en-announce-early "\"1. The lock for watch-pr is due, I will build it next. 2. $LONG_TAIL\"" block "$CWD"
 # NEGATIVE: a running waiter is what the announcement waits for.
 run_case_turn waiter-bash-live '"CI laeuft. Mache das jetzt, sobald sie gruen ist."' allow "$DE" "$BG"
+# PowerShell is a shell too (2026-11-24): its background run is a waiter like Bash's.
+run_case_turn waiter-powershell-live '"CI laeuft. Mache das jetzt, sobald sie gruen ist."' allow "$DE" "$PSBG"
 run_case_turn waiter-monitor-live '"Watcher scharf. Once it reports, I will read the answer."' allow "$CWD" "$MON"
 run_case_turn waiter-wakeup '"Wakeup gesetzt. Arbeite weiter, sobald er feuert."' allow "$DE" "$WAKE"
 # A Workflow always runs in the background; an Agent counts only when started in the

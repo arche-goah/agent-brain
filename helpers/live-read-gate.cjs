@@ -60,6 +60,7 @@ const fs = require('fs');
 const { exit: hookExit } = require('./hook-exit.cjs');   // not process.exit: it hung at Node shutdown (2026-11-23)
 const os = require('os');
 const path = require('path');
+const { isShell } = require('./shell-tools.cjs');   // Bash AND PowerShell, one list
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const LOG = path.join(ROOT, '.claude-state', 'live-read-gate.log');
@@ -152,7 +153,7 @@ function readEvidence(transcriptPaths, requiredPaths) {
     const msg = d.message;
     if (!msg || msg.role !== 'assistant' || !Array.isArray(msg.content)) return;
     for (const b of msg.content) {
-      if (b.type !== 'tool_use' || b.name !== 'Bash' || !b.input || typeof b.input.command !== 'string') continue;
+      if (b.type !== 'tool_use' || !isShell(b.name) || !b.input || typeof b.input.command !== 'string') continue;
       const m = b.input.command.match(/(?:^|[;&|]\s*)cat\s+(?:-[A-Za-z]+\s+)*("[^"]+"|'[^']+'|\S+)/g);
       for (const hit of m || []) {
         const file = hit.replace(/^.*?cat\s+(?:-[A-Za-z]+\s+)*/, '').replace(/^["']|["']$/g, '');

@@ -37,6 +37,10 @@ out="$(run "$OWN" "$C")"
 case "$out" in *"FOREIGN-ENTRY"*"their-entry"*) ok "a foreign id blocks and is named";; *) bad "foreign id not blocked: '$out'";; esac
 case "$out" in *"my-entry"*) bad "own id named as foreign";; *) ok "the own id is not named";; esac
 
+# PowerShell is a shell too (2026-11-24): the same commit through the PowerShell tool is held.
+out="$(printf '{"tool_name":"PowerShell","tool_input":{"command":"%s"},"transcript_path":"%s","cwd":"%s"}' "$C" "$(native "$OWN")" "$(native "$R")" | CLAUDE_PROJECT_DIR="$(native "$R")" node "$G")"
+case "$out" in *"FOREIGN-ENTRY"*"their-entry"*) ok "the same commit through PowerShell blocks";; *) bad "PowerShell commit passed: '$out'";; esac
+
 out="$(run "$ALL" "$C")"
 [ -z "$out" ] && ok "every added id seen in the transcript passes" || bad "seen ids blocked: '$out'"
 
