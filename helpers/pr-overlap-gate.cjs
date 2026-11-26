@@ -68,6 +68,9 @@ function judgeStart(cmd, ps, cwd) {
   return `PRS-FIRST: ${repo} has ${prs.length} open PR(s) — read them before building on a new branch: ${list}` +
     (prs.length > 8 ? ` · (+${prs.length - 8})` : '') +
     (same.length ? `. An open PR already uses the branch name ${s.branch}: #${same[0].number}.` : '.') +
+    // A title does not say which lines a PR changes (2026-11-23: #645 fixed what the open #618 had fixed): the class
+    // search runs over the open diffs too.
+    ` Search their diffs for the pattern of the fix: \`python3 core/scripts/pr-diff-search.py '<regex>' -R ${repo}\`.` +
     ' Third case of the class 2026-10-29 (#210/#194, #297/#294, grandma3 #232 rebuilt). Pass: the same command with ' +
     '`# PRS-READ: <the closest PR, or none>`.';
 }
