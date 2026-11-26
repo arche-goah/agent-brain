@@ -69,6 +69,44 @@ for (const ev of Object.values(h)) for (const m of ev) for (const k of m.hooks||
 process.stdout.write(out.join("\n"));' "$(native "$_D/../hooks/hooks.json")")"
 [ -z "$gone" ] && ok "every node hook in hooks/hooks.json carries the operator-lead preload" || bad "node hooks without the preload: $gone"
 
+# --- Windows review of #683 (2026-11-26), the four before-merge points ---------------------------------------------
+LEAD="$(native "$_D/../hooks/operator-lead.cjs")"
+GL="$(native "$_D/../helpers/gate-label.cjs")"
+GH="$(native "$_D/gate-health.py")"
+PY=python3; "$PY" -c 'import sys' >/dev/null 2>&1 || PY=python
+S1="Stopped: there is a defined path for this. Nothing for you to do."
+S2="Stopped: a question to you belongs in the question tool."
+# a fresh brain: the case above left $T/b with a broken data file on purpose
+mkdir -p "$T/w/.claude/rules"
+printf '{"lines":{"MECHANISM CHECK":"%s","STOPPEN-GATE":"%s"}}\n' "$S1" "$S2" > "$T/w/.claude/rules/operator-lines.json"
+lead() { CLAUDE_PROJECT_DIR="$(native "$1")" node -e 'process.stdout.write(require(process.argv[1]).lead(process.argv[2]))' "$LEAD" "$2"; }
+# (3) the Stop dispatcher's form: LABEL - long text - trailing [MARKER]; two findings -> both sentences, in order
+LONG="$(printf 'x%.0s' $(seq 1 140))"
+r="$(lead "$T/w" "CLOSING QUESTION — $LONG   [STOPPEN-GATE]")"
+case "$r" in "$S2"$'\n'"CLOSING QUESTION"*) ok "(3) a trailing [MARKER] behind a long text gets its sentence";; *) bad "(3) trailing tag: '${r:0:120}'";; esac
+r="$(lead "$T/w" "$(printf 'CLOSING QUESTION — a   [STOPPEN-GATE]\nPATH — b   [MECHANISM CHECK]')")"
+[ "$r" = "$(printf '%s\n%s\nCLOSING QUESTION — a   [STOPPEN-GATE]\nPATH — b   [MECHANISM CHECK]' "$S2" "$S1")" ] \
+  && ok "(3) two findings: both sentences, in the order of the text" || bad "(3) two findings: '$r'"
+r="$(lead "$T/w" "FOREIGN-ENTRY: the MECHANISM CHECK path names an id")"
+[ "$r" = "FOREIGN-ENTRY: the MECHANISM CHECK path names an id" ] && ok "(3) a marker only MENTIONED in another gate's text gets no sentence" || bad "(3) mention: '$r'"
+# (4) a UTF-8 BOM in front of the data file (PowerShell 5.1 Set-Content -Encoding utf8)
+mkdir -p "$T/bom/.claude/rules"; printf '\357\273\277' > "$T/bom/.claude/rules/operator-lines.json"; cat "$T/w/.claude/rules/operator-lines.json" >> "$T/bom/.claude/rules/operator-lines.json"
+r="$(lead "$T/bom" "MECHANISM CHECK (core): a heredoc")"
+case "$r" in "$S1"$'\n'*) ok "(4) a data file with a BOM is read";; *) bad "(4) BOM: '$r'";; esac
+# (1) the refusal readers take the sentence off again - both ways, node and python
+RAW="PreToolUse:Bash hook error: $(lead "$T/w" "MECHANISM CHECK (agent-brain): a heredoc")"
+gl() { node -e 'process.stdout.write(require(process.argv[1]).gateLabel(process.argv[2], process.argv[3]))' "$GL" "$1" "$(native "$2")"; }
+[ "$(gl "$RAW" "$T/w")" = "MECHANISM CHECK" ] && ok "(1) gate-label: the label behind the sentence" || bad "(1) gate-label with sentence: '$(gl "$RAW" "$T/w")'"
+[ "$(gl "$RAW" "$T/none")" = "a hook" ] && ok "(1) control: without the brain's sentences the first line stays (one source)" || bad "(1) gate-label control: '$(gl "$RAW" "$T/none")'"
+RAWB="PreToolUse:Bash hook error: [node \"x/content-review-gate.cjs\"]: $(printf '%s\nBLOCKED (content-review-gate): risk' "$S1")"
+[ "$(gl "$RAWB" "$T/w")" = "content-review-gate" ] && ok "(1) gate-label: the guard form behind a [node] tag and the sentence" || bad "(1) guard form: '$(gl "$RAWB" "$T/w")'"
+ghl() { "$PY" -c 'import importlib.util,sys
+s=importlib.util.spec_from_file_location("gh",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+m.SENTENCES=m.operator_sentences(sys.argv[3]);print(m.label_of(sys.argv[2]))' "$GH" "$1" "$(native "$2")"; }
+[ "$(ghl "$RAW" "$T/w")" = "MECHANISM CHECK" ] && ok "(1) gate-health: the label behind the sentence" || bad "(1) gate-health with sentence: '$(ghl "$RAW" "$T/w")'"
+[ "$(ghl "$RAW" "$T/none")" = "a hook" ] && ok "(1) control: gate-health without the brain's sentences" || bad "(1) gate-health control: '$(ghl "$RAW" "$T/none")'"
+[ "$(ghl "$RAW" "$T/bom")" = "MECHANISM CHECK" ] && ok "(1)+(4) gate-health reads the BOM file too" || bad "(1) gate-health BOM: '$(ghl "$RAW" "$T/bom")'"
+
 echo
 [ "$fail" -eq 0 ] && echo "operator-lead fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"

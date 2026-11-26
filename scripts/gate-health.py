@@ -37,7 +37,7 @@ LABEL = re.compile(r'^(?:PreToolUse|PostToolUse):\S+ hook error:\s*(?:\[node "[^
                    r'(?:BLOCKED \(([\w-]+)[,)]|(?!BLOCKED\b)([A-Z][A-Z0-9 _-]{2,40}?)\s*(?::| \())?')
 MARKER_USE = re.compile(r"#\s*([A-Z][A-Z]+(?:-[A-Z]+)+)\b")
 WINDOW = 8
-CACHE_V = "3"
+CACHE_V = "4"
 
 
 def data():
@@ -50,9 +50,46 @@ def transcript_dir(root: str) -> Path:
     return cfg / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(Path(root).resolve()))
 
 
+SENTENCES: list = []   # the brain's operator sentences (operator-lines.json), set by main()
+
+
+def operator_sentences(root: str) -> list:
+    """The values of the brain's .claude/rules/operator-lines.json, BOM stripped - the rule of
+    helpers/operator-lines.cjs, the one reader in node."""
+    try:
+        raw = (Path(root) / ".claude" / "rules" / "operator-lines.json").read_text(encoding="utf-8").lstrip("\ufeff")
+        d = json.loads(raw).get("lines") or {}
+        return [s for s in d.values() if isinstance(s, str) and s]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+LEAD_PRE = re.compile(r'^(\s*(?:(?:PreToolUse|PostToolUse|Stop):\S*\s*hook error:\s*)?(?:\[[^\]]*\]:\s*)?)')
+
+
+def strip_lead(t: str, sentences=None) -> str:
+    """The refusal text without the operator's sentence in front (hooks/operator-lead.cjs writes it; Windows review of
+    #683: with it every refusal was counted as 'a hook')."""
+    ss = SENTENCES if sentences is None else sentences
+    if not ss:
+        return t
+    m = LEAD_PRE.match(t)
+    pre = m.group(1) if m else ""
+    rest = t[len(pre):]
+    again = True
+    while again:
+        again = False
+        for s in ss:
+            if rest.startswith(s + "\n") or rest.startswith(s + "\r\n"):
+                rest = rest[rest.index("\n") + 1:]
+                again = True
+    return pre + rest
+
+
 def label_of(t: str, gate=None) -> str:
     """The refusal's label; without one, the hook's file name or number the malfunction form names (Windows review of
     #646: 6 refusals landed as 'a hook')."""
+    t = strip_lead(t)
     m = LABEL.search(t)
     lab = (next((g for g in m.groups() if g), "") if m else "").strip()
     if not lab and gate is not None:
@@ -207,7 +244,10 @@ def main(argv):
         mraw, mdata, gmap = "", {}, {}
     way = way_on(root, mdata)
     mraw += way.pattern if way else ""   # the instance's way-on words take part in the cache key too
-    version = CACHE_V + hashlib.sha1((HERE.parent / "gate-malfunction.json").read_bytes() + mraw.encode()).hexdigest()[:12]
+    global SENTENCES
+    SENTENCES = operator_sentences(root)   # the operator's sentence in front of a hold is no label (#683)
+    version = CACHE_V + hashlib.sha1((HERE.parent / "gate-malfunction.json").read_bytes() + mraw.encode()
+                                     + "\n".join(SENTENCES).encode()).hexdigest()[:12]
     cpath = Path(root) / ".claude-state" / "gate-health-cache.json"
     cache = {}
     if "--no-cache" not in argv:

@@ -11,37 +11,38 @@
  * them without touching a gate.
  *
  * Data: the brain's `.claude/rules/operator-lines.json` {"lines": {"<MARKER>": "<one sentence>"}}; a marker is the
- * text the reason starts with (or holds in its first 120 characters). No file, no match: the reason stays as it is.
+ * text that names the hold (see lead() below). No file, no match: the reason stays as it is.
  * Only whole JSON writes are touched (permissionDecisionReason of a deny, reason of a block); anything else passes
  * byte for byte. Fails open: an error here never changes or drops a hook's output.
  * Fixture: scripts/test-operator-lead.sh. Lives in hooks/, not helpers/: readers of hooks.json take the first core/helpers/ path of a command as the hook (check-catalog.py, hook-coverage.py; CI python-floor 2026-11-26)
  */
-const fs = require('fs');
 const path = require('path');
+// one reader of the data (BOM stripped; also read by the refusal readers, which take the sentence off again)
+const { lines } = require(path.join(__dirname, '..', 'helpers', 'operator-lines.cjs'));
+const table = () => lines();
 
-let lines = null;
-function table() {
-  if (lines) return lines;
-  lines = {};
-  try {
-    const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-    const d = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'rules', 'operator-lines.json'), 'utf8'));
-    if (d && d.lines && typeof d.lines === 'object') lines = d.lines;
-  } catch (e) { /* no data: nothing to add */ }
-  return lines;
-}
+function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
+/**
+ * Where a marker NAMES the hold, never where a text merely mentions it (Windows review of #683, probe 3: a foreign
+ * gate's reason that mentioned "MECHANISM CHECK" early got that gate's sentence): at the start of the reason or of a
+ * line (a gate's own label, a dispatcher finding `LABEL — text`), as `BLOCKED (<marker>` (the guard form), or as a
+ * `[<marker>]` tag anywhere (the Stop dispatcher puts it AFTER the text: `LABEL — text   [MARKER]`; probe 2 lost it
+ * behind the first 120 characters). Every finding gets its sentence, in the order of the text, each once.
+ */
 function lead(reason) {
   if (typeof reason !== 'string' || !reason) return reason;
-  const head = reason.slice(0, 120);
-  // The marker named FIRST wins (a Stop dispatcher's reason can carry several).
-  let best = null;
+  const found = [];
   for (const [marker, sentence] of Object.entries(table())) {
-    const at = marker && typeof sentence === 'string' ? head.indexOf(marker) : -1;
-    if (at >= 0 && (!best || at < best.at)) best = { at, sentence };
+    if (!marker || typeof sentence !== 'string' || !sentence) continue;
+    const m = esc(marker);
+    const rx = new RegExp(`(?:^|\\n)\\s*${m}(?![\\w-])|BLOCKED \\(${m}[,)]|\\[${m}\\]`, 'g');
+    let hit;
+    while ((hit = rx.exec(reason))) found.push({ at: hit.index, sentence });
   }
-  if (!best || reason.startsWith(best.sentence)) return reason;
-  return `${best.sentence}\n${reason}`;
+  found.sort((a, b) => a.at - b.at);
+  const say = [...new Set(found.map((f) => f.sentence))].filter((s) => !reason.startsWith(s));
+  return say.length ? `${say.join('\n')}\n${reason}` : reason;
 }
 
 function rewrite(chunk) {
