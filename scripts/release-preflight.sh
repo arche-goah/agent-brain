@@ -241,8 +241,13 @@ if [ "$MODE" = "local" ] || [ "$MODE" = strand ]; then
 d = json.load(open(sys.argv[1], encoding="utf-8"))
 ex = []
 if str(d.get("version", "")).lstrip("v") == sys.argv[2].lstrip("v"):
-    ex = [m.group(1) for k in (d.get("excluded") or {}) for m in [re.fullmatch(r"(?:[\w.-]+)?#?(\d+)", str(k))] if m]
-print(" ".join(n for n in sys.argv[3].split() if n not in ex) + "|" + " ".join(ex))' "$SCOPE_JSON" "$VER" "$OPEN_NRS" 2>/dev/null)"
+    # a bare number, "#n", or "<this repo>#n"; ledger ids and numbers of other repos are no PR of this repo (Windows
+    # review of #696: the first regex let the prefix eat digits, "653" read as 3)
+    for k in d.get("excluded") or {}:
+        m = re.fullmatch(r"(?:(\S*?)#)?(\d+)", str(k).strip())
+        if m and (not m.group(1) or m.group(1).rsplit("/", 1)[-1] == sys.argv[4]):
+            ex.append(m.group(2))
+print(" ".join(n for n in sys.argv[3].split() if n not in ex) + "|" + " ".join(ex))' "$SCOPE_JSON" "$VER" "$OPEN_NRS" "$base" 2>/dev/null)"
       if [ -n "$SPLIT" ]; then
         OPEN_NRS="${SPLIT%%|*}"; EXCL_NRS="${SPLIT#*|}"
         [ -n "$EXCL_NRS" ] && note "PRs excluded from the $VER scope do not count as awaited: #${EXCL_NRS// / #}"

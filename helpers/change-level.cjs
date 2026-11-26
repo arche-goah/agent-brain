@@ -159,11 +159,15 @@ function check(root, only) {
     const raw = read(p);
     // A `symptom:` line runs WITHOUT a shell (scripts/real-data-replay.py: shlex.split): measured 2026-11-25 in the
     // v2.1.7 preflight, a line with `|` ended rc 2 ("unrecognized arguments: | grep") - the bug was not measured at
-    // all. Shell syntax goes inside `sh -c '...'`, the form CHANGELOG 2.1.x already uses.
+    // all. Shell syntax goes inside `sh -c '...'`, the form CHANGELOG 2.1.x already uses - the WHOLE line, nothing after
+    // the quoted script (Windows review of #696: `sh -c 'x' | wc -l` hands the pipe to sh as $0/$1, ignored; `bash -c`
+    // starts WSL's bash on Windows, OS-14, so it is no accepted form). Limit named in the fragment: on Windows the
+    // `sh -c` form itself does not measure yet (python3 is the Store stub inside sh, `{core}` with a backslash path).
+    const SH_FORM = /^sh\s+-c\s+(?:'[^']*'|"(?:[^"\\]|\\.)*")$/;
     for (const m of raw.matchAll(SYMPTOM)) {
       const c = m[1].trim();
-      if (/[|&;<>]|\$\(|`/.test(c) && !/^(?:sh|bash)\s+-c\s/.test(c)) {
-        findings.push(`${name}: symptom: "${c.slice(0, 80)}" uses shell syntax but runs without a shell - write it as sh -c '...'`);
+      if (/[|&;<>$~*]|`/.test(c) && !SH_FORM.test(c)) {
+        findings.push(`${name}: symptom: "${c.slice(0, 80)}" uses shell syntax but runs without a shell - write the whole line as sh -c '...'`);
       }
     }
     const gs = groups(raw);

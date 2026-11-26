@@ -62,6 +62,14 @@ repo "$R"; frag a "$L
 symptom: sh -c 'python3 {core}/scripts/x.py | wc -l'";                     check "the same symptom inside sh -c passes" pass
 repo "$R"; frag a "$L
 symptom: python3 {core}/scripts/x.py --brain {brain}";                                     check "a symptom without shell syntax passes" pass
+# Windows review of #696: only the whole line `sh -c '...'` counts; bash -c starts WSL bash on Windows (OS-14),
+# a pipe after the quoted script goes to sh as $0/$1, and $VAR / ~ / * need a shell too
+repo "$R"; frag a "$L
+symptom: sh -c 'python3 {core}/scripts/x.py' | wc -l";                                     check "a pipe AFTER the sh -c script fails" fail "runs without a shell"
+repo "$R"; frag a "$L
+symptom: bash -c 'python3 {core}/scripts/x.py | wc -l'";                                   check "bash -c is no accepted form" fail "runs without a shell"
+repo "$R"; frag a "$L
+symptom: python3 {core}/scripts/x.py --home \$HOME";                                       check "a variable outside sh -c fails" fail "runs without a shell"
 repo "$R"; printf '# Changelog\n\n## 1.0.0 — 2026-01-01\n\n- **old.** (level: writer; higher: design — x; debt: y) <!-- fragment: old-one -->\n' > "$R/CHANGELOG.md"
 frag a "$B (level: design; higher: none; debt: none; settles-debt: old-one)";              check "settles-debt naming a released fragment passes" pass
 repo "$R"; frag a "$B (level: design; higher: none; debt: none)"; frag b "$B";              check "every fragment of a PR is checked" fail "b.md"
