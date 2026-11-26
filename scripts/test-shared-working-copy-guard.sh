@@ -177,6 +177,11 @@ if [ -n "$BUSY_SH" ]; then
     probe "clean -fd under the run"                     "$ONE" "git -C $PRIV_N clean -fd"                      block
     probe "restore --staged changes no file"            "$ONE" "git -C $PRIV_N restore --staged a.txt"         allow
     probe "a new branch on the same commit (switch -c)" "$ONE" "git -C $PRIV_N switch -c side"                 allow
+    # Windows review of #692, gaps 1, 2, 4: --worktree undoes the --staged exemption, a start point moves the files, -X before f
+    probe "restore --staged --worktree rewrites files"  "$ONE" "git -C $PRIV_N restore --staged --worktree a.txt" block
+    probe "a new branch on ANOTHER start point (switch -c n other)" "$ONE" "git -C $PRIV_N switch -c side fixture-lookalike" block
+    probe "a new branch on another start point (checkout -b n other)" "$ONE" "git -C $PRIV_N checkout -b side fixture-lookalike" block
+    probe "clean -Xdf under the run"                    "$ONE" "git -C $PRIV_N clean -Xdf"                     block
     probe "commit by path under the run"                "$ONE" "git -C $PRIV_N commit a.txt -m x"              allow
     probe "marker opens it"                             "$ONE" "git -C $PRIV_N switch fixture-lookalike  # MECHANISM-OK: fixture" allow
     probe "the sibling worktree is not busy"            "$ONE" "git -C $(native "$PRIVW") switch fixture-lookalike" allow

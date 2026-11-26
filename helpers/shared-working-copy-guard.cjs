@@ -335,14 +335,16 @@ process.stdin.on('end', () => {
     // Every call that rewrites the tree files (class sweep 2026-11-23, widened by the Windows review 2026-11-24): a
     // branch switch, stash, reset --hard/--merge/--keep, rebase, merge, pull (fast-forward included), cherry-pick,
     // revert, am, a file-level checkout or restore, clean -f. A new branch on the same commit (`-b`, `-c`) changes no file.
-    const newBranch = (call.sub === 'checkout' && hasOpt(call.args, '-b', '-B')) || (call.sub === 'switch' && hasOpt(call.args, '-c', '-C', '--create', '--force-create'));
+    // only on the SAME commit: a start point after the branch name moves the files (Windows review of #692, gap 2)
+    const newBranch = ((call.sub === 'checkout' && hasOpt(call.args, '-b', '-B')) || (call.sub === 'switch' && hasOpt(call.args, '-c', '-C', '--create', '--force-create')))
+      && call.args.filter((a) => !a.startsWith('-')).length <= 1;
     const treeMoving = !newBranch && (
       (verdict && /moves HEAD|removes|discards/i.test(verdict.was))
       || ['rebase', 'merge', 'pull', 'cherry-pick', 'revert', 'am'].includes(call.sub)
       || (call.sub === 'reset' && hasOpt(call.args, '--hard', '--merge', '--keep'))
       || (call.sub === 'checkout' && call.args.filter((a) => !a.startsWith('-')).length > 0)
-      || (call.sub === 'restore' && !hasOpt(call.args, '--staged', '-S'))
-      || (call.sub === 'clean' && call.args.some((a) => /^-[a-z]*f/.test(a) || a === '--force')));
+      || (call.sub === 'restore' && (!hasOpt(call.args, '--staged', '-S') || hasOpt(call.args, '--worktree', '-W')))   // gap 1
+      || (call.sub === 'clean' && call.args.some((a) => /^-[a-zA-Z]*f/.test(a) || a === '--force')));   // gap 4: -Xdf
     if (treeMoving && !marker) {
       const busy = busyMarks(gd);
       if (busy.length) {
