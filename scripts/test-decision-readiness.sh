@@ -55,6 +55,17 @@ out="$(run)"
 has "dropped core matter named" "does not name release" "$out"
 hasnt "the other matters are not named" "goal" "$out"
 
+# 5b — a copy that still names an id the core retired (Windows review of #669, 2026-11-25: `core-new` stays in every
+# existing brain and its AI goes on asking first) is a finding; the fresh template copy is not
+cp "$HERE/../templates/rules-instance/operator-only.json" "$B/.claude/rules/operator-only.json"
+"$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); d["matters"].append({"id":"core-new","label":"new functionality in the core"}); json.dump(d,open(sys.argv[1],"w"))' "$(native "$B/.claude/rules/operator-only.json")"
+out="$(run)"
+has "a retired id still in the copy is named" "still names core-new" "$out"
+has "its reason is said" "the review decides" "$out"
+cp "$HERE/../templates/rules-instance/operator-only.json" "$B/.claude/rules/operator-only.json"
+out="$(run)"
+hasnt "the template copy itself names no retired id" "still names" "$out"
+
 # 6 — an empty list is a finding
 printf '{"matters":[]}\n' > "$B/.claude/rules/operator-only.json"
 out="$(run)"

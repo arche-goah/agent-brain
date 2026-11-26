@@ -107,6 +107,13 @@ def main():
             lines.append(f".claude/rules/operator-only.json does not name {', '.join(gone)} from the core template — "
                          "a matter missing there never reaches the operator; add it, or keep its id with the "
                          "operator's own label")
+        # The other direction (Windows review of #669, 2026-11-25): an id the core retired stays in an existing copy,
+        # and the brain's AI goes on asking the operator about a matter the core no longer gives them.
+        old = [r for r in tpl.get("retired") or [] if isinstance(r, dict) and r.get("id") in have]
+        for r in old:
+            lines.append(f".claude/rules/operator-only.json still names {r['id']}, which the core took out of the list "
+                         f"({r.get('since', '?')}: {r.get('why', 'no reason given')}) — the AI asks the operator about it "
+                         "although the core no longer does; delete the entry, or keep it with the operator's own word")
 
     asked, star = [], False
     for name in ("settings.json", "settings.local.json"):
