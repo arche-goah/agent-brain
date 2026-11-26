@@ -22,9 +22,12 @@ then an explicit release follows.
 
 1. **Secure open work (semantic — no script can do this):**
    - **The instance's own close steps run first (2026-11-23):** the instance rules file
-     (`.claude/rules/working-rules-instance.md`) may carry a section about the session close
-     (a heading that names the close — "Session close", or the instance language's word for
-     it). Read it now, in the file, and run every step it names; a step that is skipped is
+     (`.claude/rules/working-rules-instance.md`) and the instance's feedback rules
+     (`.claude/rules/feedback.md`) may each carry steps for the session close - under a heading
+     or as a single bullet; every line that names the close ("session close", "close report", or
+     the instance language's word for it) counts (Windows reviews of 2026-11-24 and 2026-11-26: an
+     instance keeps its close rules as bullets in feedback.md, and a heading test missed them).
+     Read both files now, search them for those lines, and run every step they name; a step that is skipped is
      named with its reason in the close report (step 5). Before this bullet, only the
      live-verify path was looked up there (below), so any other step an instance wrote into
      that section had no trigger — measured on a macOS instance the day a per-session audit
