@@ -350,6 +350,18 @@ def supersession_re(repo: Path) -> "re.Pattern[str]":
                       + r")\b", re.I)
 
 
+def unquote(v: str) -> str:
+    """A YAML scalar's value: one pair of enclosing quotes removed and its escapes resolved, a plain value as written.
+    Measured 2026-11-25 on the macOS instance: stripping every leading and trailing quote char cut the closing quote
+    off `Alex 2026-11-25: "..."` and the opening one off `"..." (Alex, 2026-11-25)`, so check 9b called both
+    evidence values "without evidence" although shared-memory-post.py had accepted them."""
+    if len(v) >= 2 and v[0] == v[-1] == '"':
+        return re.sub(r'\\(["\\])', r"\1", v[1:-1])
+    if len(v) >= 2 and v[0] == v[-1] == "'":
+        return v[1:-1].replace("''", "'")
+    return v
+
+
 def frontmatter(text: str) -> dict | None:
     """Minimal YAML frontmatter parser — only what this schema needs.
     Deliberately NO yaml import: this runs without pip, like the rest of scripts/."""
@@ -375,7 +387,7 @@ def frontmatter(text: str) -> dict | None:
         if ":" not in line:
             continue
         k, _, v = line.partition(":")
-        k, v = k.strip(), v.strip().strip('"').strip("'")
+        k, v = k.strip(), unquote(v.strip())
         if indented and section:
             out.setdefault(section, {})[k] = v
             last = (out[section], k)

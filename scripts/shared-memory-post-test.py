@@ -216,8 +216,22 @@ def main() -> int:
                  "--one-machine-evidence", "https://example.org/devices/usb-box", me="alex-mac")
         one = repo / "core" / f"request-one-machine-check-{STATE}.md"
         check("a check for exactly one machine passes with --one-machine, and the reason is written",
-              r.returncode == 0 and one.is_file() and "one-machine: the USB device" in one.read_text(encoding="utf-8"),
+              r.returncode == 0 and one.is_file() and 'one-machine: "the USB device' in one.read_text(encoding="utf-8"),
               r.stdout + r.stderr)
+        # 2026-11-25: the post tool took a dated quote the lint then called "without evidence" - the value went out
+        # unquoted and the lint's reader cut a quote off. What the post accepts, the lint accepts.
+        for n, ev in [("colon", 'Alex 2026-11-25: "keep the desk on this box"'),
+                      ("lead", '"keep the desk on this box" (Alex, 2026-11-25)')]:
+            r = post(repo, "request", "--area", "core", "--to", "alex-win", "--title", f"One machine quote {n}",
+                     "--body", "Please counter-check on Windows: only this box has the device.",
+                     "--one-machine", "the USB device sits at this box", "--one-machine-evidence", ev, me="alex-mac")
+            p = repo / "core" / f"request-one-machine-quote-{n}-{STATE}.md"
+            meta = (sml.frontmatter(p.read_text(encoding="utf-8")) or {}).get("metadata", {}) if p.is_file() else {}
+            f = {"audience": []}
+            sml.one_machine_findings(f, p.name, str(meta.get("one-machine")), str(meta.get("one-machine-evidence") or ""))
+            check(f"a dated quote the post accepts ({n} form) passes the lint, read back unchanged",
+                  r.returncode == 0 and not f["audience"] and meta.get("one-machine-evidence") == ev,
+                  f"{r.stdout}{r.stderr} meta={meta} findings={f['audience']}")
         check("the LOG line carries the one-machine reason too (the lint reads it there)",
               f"core/request-one-machine-check-{STATE}.md · one-machine: the USB device sits at this box"
               in (repo / "core" / "LOG.md").read_text(encoding="utf-8"))
@@ -280,7 +294,7 @@ def main() -> int:
                      "--body", "Please run on Windows: #2 fixes the red CI for all others.",
                      "--ci-not-green-ok", "#2 is the ci-unblock fix", me="alex-mac", brain=cib)
             check("--ci-not-green-ok lets it go and writes the reason",
-                  r.returncode == 0 and "ci-not-green-ok: #2 is the ci-unblock fix" in
+                  r.returncode == 0 and 'ci-not-green-ok: "#2 is the ci-unblock fix' in
                   (repo / "core" / f"request-please-check-pr-2-on-windows-now-{STATE}.md").read_text(encoding="utf-8"),
                   r.stdout + r.stderr)
             r = post(repo, "note", "--area", "core", "--to", "alex-win", "--title", "PR #2 is red",

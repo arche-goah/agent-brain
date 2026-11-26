@@ -486,7 +486,11 @@ def main() -> int:
         return refuse(f"the LOG line is {over} B over the entry cap of {_lint._rotate.ENTRY_CAP} B - shorten "
                       "--title (the file name follows it) or --one-machine; the substance belongs in the body")
 
-    q = '"' + a.title.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    # Free text goes out as a double-quoted YAML scalar (2026-11-25: an unquoted `Alex 2026-11-25: "..."` was read back
+    # by the lint without its closing quote and failed check 9b; the lint's frontmatter reader resolves this form).
+    def yq(s):
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    q = yq(a.title)
     # The writer's system and core version, written by the producer at write time (operator order
     # 2026-10-28; first asked 2026-10-18 and built then only as a commit trailer): activity per core
     # version is read from the entries (`device-status.py entries`). Same source as that trailer.
@@ -502,12 +506,12 @@ def main() -> int:
     if dropped:
         meta.append(f"  except: {', '.join(dropped)}")
     if a.one_machine:
-        meta.append(f"  one-machine: {a.one_machine}")
-        meta.append(f"  one-machine-evidence: {a.one_machine_evidence}")
+        meta.append(f"  one-machine: {yq(a.one_machine)}")
+        meta.append(f"  one-machine-evidence: {yq(a.one_machine_evidence)}")
     if a.ci_not_green_ok:
-        meta.append(f"  ci-not-green-ok: {a.ci_not_green_ok}")
+        meta.append(f"  ci-not-green-ok: {yq(a.ci_not_green_ok)}")
     if a.hand_check_ok:
-        meta.append(f"  hand-check-ok: {a.hand_check_ok}")
+        meta.append(f"  hand-check-ok: {yq(a.hand_check_ok)}")
     text = "---\n" + f"name: {stem}\ndescription: {q}\nmetadata:\n" + "\n".join(meta) + "\n---\n\n" + body.strip() + "\n"
     log = area_dir / "LOG.md"
     old = log.read_text(encoding="utf-8")
