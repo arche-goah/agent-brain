@@ -64,6 +64,22 @@ pend "naming the mode in force cancels the wait" "$f" none
 f="$T/11.jsonl"; { user "work through the list autonomously"; asst "x"; user "and also check the build"; } > "$f"
 pend "a later prompt without a mode word keeps the wait" "$f" autonomous
 
+# #654 inside #672 (merged 2026-11-26): with mode_confirm ON the two readers hold together. A mode question without the
+# mode-confirm header (the agent's "shall I work through it autonomously or stay interactive?") still switches by the
+# answer that NAMES the mode (#654 cause 1), and an on-word in the answer to ANOTHER question opens the wait, it does
+# not switch (#672).
+modeq() { # modeq <id> <question> <answer>: a question-tool call without the mode-confirm header and its answer
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":%s,"header":"Mode","options":[{"label":"a"},{"label":"b"}]}]}}]}}\n' "$1" "$(js "$2")"
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":%s}]}}\n' "$1" "$(js "Your questions have been answered: \"$2\"=\"$3\". You can now continue")"
+}
+f="$T/12.jsonl"; { user "anything open for me?"; modeq q1 "Shall I work through it autonomously or stay interactive?" "Autonomous, go on (Recommended)"; } > "$f"
+mode "confirm on: the answer naming the autonomous mode to the mode question switches it on (#654)" "$f" autonomous
+f="$T/12b.jsonl"; { user "anything open for me?"; modeq q1 "Shall I work through it autonomously or stay interactive?" "Stay interactive"; } > "$f"
+mode "control: the interactive answer keeps it interactive" "$f" interactive
+f="$T/13.jsonl"; { user "status?"; modeq q2 "How shall the PRs be opened?" "work through them autonomously, one PR each"; } > "$f"
+mode "confirm on: an on-word in the answer to another question switches nothing" "$f" interactive
+pend "confirm on: it leaves the mode-confirm question pending" "$f" autonomous
+
 # A session close word is no mode switch (operator 2026-11-25): it ends the run at once, nothing pending
 f="$T/14.jsonl"; { cat "$T/2.jsonl"; asst "x"; user "ok, close the session"; } > "$f"
 mode "a close word in a run ends it at once" "$f" interactive

@@ -103,6 +103,8 @@ const BUILTIN_DEFER = [
 // WORDS are read, and every instance's case data was written against that reading.
 const CONFIRM_HEADER = 'mode-confirm';
 const wordsOnly = () => String(process.env.MODE_READING || '').toLowerCase() === 'words';
+// A leading no to the mode question (an instance adds its language: `no_patterns` in autonomous-patterns.json).
+const BUILTIN_NO = ['^\\s*no\\b'];
 const HOOK_ECHO = /^\s*Stop hook feedback:/;
 // The tool result of an answered AskUserQuestion: `"<question>"="<answer>"` pairs.
 // Two wordings in the wild (measured 2026-10-30, macOS instance: "Your questions have been answered: …" and
@@ -148,6 +150,7 @@ function words(cwd) {
     yes: rx(BUILTIN_YES, ap.yes_patterns),
     close: rx(BUILTIN_CLOSE, ap.close_patterns),
     defer: rx(BUILTIN_DEFER, ap.defer_ask_patterns),
+    no: rx(BUILTIN_NO, ap.no_patterns),
     initial: initialState(dir, ap, oi).granted,
     // `mode_confirm: true` turns the mode-confirm question on; missing or false keeps the direct switch (a mode word
     // switches at once), so a brain that sets nothing sees no change (operator 2026-11-25: "provide both options").
@@ -217,6 +220,25 @@ function confirmChoice(w, labels, answer) {
   return ordersOn(w.on, a);
 }
 
+/**
+ * The answer to the MODE question: true = on, false = off, null = it says neither. Before 2026-11-24 only a
+ * yes-word switched on. Measured that night on a macOS instance: the agent asked "work through it autonomously
+ * or stay interactive?" with the options named after the modes; the operator chose the option that NAMES the
+ * autonomous mode, it carried no yes-word, and the run was read as interactive. The autonomous gate therefore let
+ * an edit behind an ask rule through to the harness dialog, and the run stood 376 minutes at it. An answer that
+ * names the mode is that mode; an off-word or a leading no wins over everything.
+ */
+function modeAnswer(w, answer) {
+  const a = String(answer || '');
+  if (w.off.test(a) || (w.no && w.no.test(a))) return false;
+  // The on-word counts only as the answer's HEAD - the option is named after the mode ("Autonomous, go on"). An
+  // on-word further in ("only autonomous or released") is an answer ABOUT autonomy: replayed over 119 answered mode
+  // questions of the proving instance, the head rule reads two missed switches right and adds no false one; an
+  // on-word anywhere would have switched a run on at a design question (2026-11-18).
+  if (w.yes.test(a) || w.on.test(a.trim().split(/\s+/)[0] || '')) return true;
+  return null;
+}
+
 function promptText(msg) {
   const c = msg && msg.content;
   if (typeof c === 'string') return c;
@@ -272,7 +294,7 @@ function answers(msg, askIds, qsById) {
  * Matched by session and time: the first record within 90 s after the prompt. No file = words only.
  */
 const INTENT_WINDOW_MS = 90 * 1000;
-function intents(transcriptPath, cwd) {
+function intents(transcriptPath, cwd, kind) {
   const session = path.basename(transcriptPath || '', '.jsonl');
   const file = process.env.INTENT_CLASSIFIER_LOG || path.join(cwd || '.', '.claude-state', 'intent-classifier.jsonl');
   let text;
@@ -280,7 +302,7 @@ function intents(transcriptPath, cwd) {
   const out = [];
   for (const line of text.split('\n')) {
     let r; try { r = JSON.parse(line); } catch (e) { continue; }
-    if (!r || r.session !== session || r.mode !== 'hook' || !r.model) continue;
+    if (!r || r.session !== session || r.mode !== (kind || 'hook') || !r.model) continue;
     const at = Date.parse(r.at);
     if (!Number.isNaN(at)) out.push({ at, model: r.model, prompt: typeof r.prompt === 'string' ? r.prompt : null });
   }
@@ -347,6 +369,12 @@ function promptModes(transcriptPath, cwd) {
   const confirmIds = new Set();
   const confirmQs = new Map(); // "<tool_use id>\n<question text>" -> option labels, of the mode-confirm questions asked
   let lastOn = null;           // when the run in force was ordered or confirmed (a close stamp after it ends it)
+  // The classifier also reads every question-tool ANSWER (records with mode "answer", prompt "Question: <q> …").
+  // Until 2026-11-24 the answers were decided by the word lists alone. Measured on a macOS instance in one
+  // session: an answer about how the AI may open pull requests on its own carried an on-word and switched the run
+  // to autonomous (words on, model not) - nobody had ordered it; the next evening the answer that named the
+  // autonomous mode was read as a no (words: no yes-word) while the model read mode_on. Both records were on disk.
+  const knownAnswers = intents(transcriptPath, cwd, 'answer');
   for (const line of lines) {
     if (line.includes('"AskUserQuestion"')) {
       try {
@@ -409,20 +437,45 @@ function promptModes(transcriptPath, cwd) {
         // like a prompt, since the operator may order the run inside it (2026-10-30, macOS instance:
         // "yes, work through them autonomously" to "shall I handle them?" set nothing). The mode
         // question is read from its question sentence (asksMode), not from any on-word in the text.
-        // The mode question itself ("continue autonomously?") is a question: its answer switches. A mode word in the
-        // answer to ANY OTHER question is a mode word like one in a prompt: it waits for the mode-confirm answer.
+        // A matched classifier record of the answer DECIDES, as for a prompt; the words are the fallback (#654).
+        // The model alone never switches ON (operator decision 2026-11-17 on the proving instance: on a disagreement
+        // between classifier and words, never toward autonomous): for an answer it can end the mode, and it can veto an
+        // on-word the words would take for an order; switching on needs the words too.
+        const ia = intentFor(knownAnswers, d.timestamp, `Question: ${q}`);
+        const byModel = Boolean(ia && typeof ia.mode_on === 'boolean');
+        const wants = byModel && ia.mode_change !== false;
+        const wordsOn = asksMode(w.on, q) ? modeAnswer(w, a) === true : ordersOn(w.on, a);
         if (asksMode(w.on, q)) {
+          // The mode question itself ("continue autonomously?") is a question: its answer switches (#672).
           if (pending) { pending.window = false; pending = null; } // the dialog's last question: the window ends here
-          state = w.yes.test(a) && !w.off.test(a);
-        } else if (w.off.test(a)) {
-          if (confirming && state) { confirm = { direction: 'interactive', text: a, at: Date.parse(d.timestamp) || null }; continue; }
-          state = false;
-        } else if (ordersOn(w.on, a)) {
-          if (confirming && !state) { confirm = { direction: 'autonomous', text: a, at: Date.parse(d.timestamp) || null }; continue; }
-          state = true;
-        } else continue;
+          if (wants && ia.mode_off) state = false;
+          else if (wants && ia.mode_on && wordsOn) state = true;
+          else if (byModel && ia.mode_on && !wordsOn) continue;   // model on, words not: no switch
+          // an answer that NAMES the mode is that mode (#654); null (it names neither) stays interactive
+          else state = modeAnswer(w, a) === true;
+        } else {
+          // A mode word in the answer to ANY OTHER question is a mode word like one in a prompt: with mode_confirm on
+          // it waits for the mode-confirm answer (#672). The model reads it first; without a record the words decide.
+          let aOff;
+          let aOn;
+          if (byModel) {
+            if (!wants || (ia.mode_on && !wordsOn)) continue;   // no mode order in it, or model on and words not
+            aOff = Boolean(ia.mode_off);
+            aOn = !aOff && Boolean(ia.mode_on);
+          } else {
+            aOff = w.off.test(a);
+            aOn = !aOff && ordersOn(w.on, a);
+          }
+          if (aOff) {
+            if (confirming && state) { confirm = { direction: 'interactive', text: a, at: Date.parse(d.timestamp) || null }; continue; }
+            state = false;
+          } else if (aOn) {
+            if (confirming && !state) { confirm = { direction: 'autonomous', text: a, at: Date.parse(d.timestamp) || null }; continue; }
+            state = true;
+          } else continue;
+        }
         if (state) lastOn = Date.parse(d.timestamp) || null;
-        out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true, ordered: state,
+        out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true, ordered: state, by: byModel ? 'model' : 'words',
           at: Date.parse(d.timestamp) || null });
       }
     }
@@ -450,10 +503,19 @@ function promptModes(transcriptPath, cwd) {
     let off;
     let ordered = false; // this prompt itself ordered the run (the close stamp is compared against the newest order)
     let on;
+    // The classifier decides FIRST whether the message intends a mode change at all (`mode_change`), and only then
+    // which (operator 2026-11-24, translated: "the classifier must recognise whether there is an intention to switch
+    // the mode at all, and if so which. We are talking about the modes themselves and you keep switching, although
+    // that is not my intention"). Measured that morning on a macOS instance: five operator messages ABOUT the mode
+    // (a question since when, a report that it had been wrong, the analysis of the misread) flipped it four times
+    // in ten minutes, and the agent read the last value back as "it never changed". A record without the field
+    // (an older classifier) is read as before (#654). A mode word that does intend a change then waits for the
+    // mode-confirm answer below (#672).
+    const intends = !(intent && intent.mode_change === false);
     if (intent && typeof intent.asks_open === 'boolean') {
-      asks = intent.asks_open && !intent.mode_on;
-      off = intent.mode_off;
-      on = !off && !asks && intent.mode_on;
+      asks = intent.asks_open && !(intent.mode_on && intends);
+      off = intent.mode_off && intends;
+      on = !off && !asks && intent.mode_on && intends;
     } else {
       asks = w.ask.test(own);
       off = w.off.test(own);
@@ -564,12 +626,31 @@ function closedAfter(transcriptPath, cwd, since) {
 /** The mode word still waiting for its mode-confirm answer: {direction, text, at}, or null. */
 function confirmPending(transcriptPath, cwd) { return promptModes(transcriptPath, cwd).confirmPending || null; }
 
-module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason,
+/**
+ * The switches of a session: every entry at which the mode changed, with what changed it. The reader's last value
+ * alone says nothing about when and why (2026-11-24: asked "since when, and did I order that?", the agent answered
+ * from the last value twice in two days, both times wrong). [{at, autonomous, kind: 'prompt'|'answer', by, text}]
+ */
+function switches(transcriptPath, cwd) {
+  const out = [];
+  let prev = words(cwd).initial;
+  for (const m of promptModes(transcriptPath, cwd)) {
+    if (m.autonomous !== prev) out.push({ at: m.at, autonomous: m.autonomous, kind: m.answer ? 'answer' : 'prompt', by: m.by || 'words', text: String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 120) });
+    prev = m.autonomous;
+  }
+  return out;
+}
+
+module.exports = { autonomousMode, promptModes, words, initialState, asksMode, modeAnswer, switches, intents, intentFor, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason,
   confirmPending, confirmChoice, isConfirm, CONFIRM_HEADER };
 
-
 if (require.main === module) {
-  const [tp, cwd, flag] = process.argv.slice(2);
+  // The bare call prints ONE word: other scripts and the fixtures compare it. `--why` adds the last switch, `--trace`
+  // every switch - to answer "since when, and why", never the bare word (read back to an operator as "it never
+  // changed" twice in two days, macOS instance 2026-11-23/24). `--window`: the third verdict, see below.
+  const args = process.argv.slice(2);
+  const [tp, cwd] = args.filter((a) => !a.startsWith('--'));
+  const flag = args.find((a) => a === '--window');
   // `--window`: the third verdict - `window` while the run is autonomous and the asking prompt's turn is open.
   if (flag === '--window' && autonomousMode(tp || '', cwd) && askWindow(tp || '', cwd)) { console.log('window'); return; }
   // scripts/pattern-cases.py runs this on a transcript that ENDS at the prompt under test and names its own open count
@@ -578,4 +659,11 @@ if (require.main === module) {
   // verdicts every instance's case data was written against.
   const caseOpen = /^\d+$/.test(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR || '') && Number(process.env.AUTONOMOUS_OPEN_FOR_OPERATOR) > 0;
   console.log(autonomousMode(tp || '', cwd) && !(caseOpen && askWindow(tp || '', cwd)) ? 'autonomous' : 'interactive');
+  const trace = args.includes('--trace');
+  if (!trace && !args.includes('--why')) return;
+  const sw = switches(tp || '', cwd);
+  const line = (x) => `${x.at ? new Date(x.at).toISOString().slice(0, 19) + 'Z' : 'time unknown'} -> ${x.autonomous ? 'autonomous' : 'interactive'} by the operator's ${x.kind} (read by ${x.by}): "${x.text}"`;
+  if (!sw.length) console.log('no switch in this session: the start state holds');
+  else if (trace) for (const x of sw) console.log(line(x));
+  else console.log(`last switch: ${line(sw[sw.length - 1])} (${sw.length} switch(es) in this session; --trace lists them)`);
 }
