@@ -161,6 +161,37 @@ printf 'x\n' > "$PRIV/scratch.txt"
 probe "own scratchpad worktree, dirty" "$ONE" "git -C $PRIV_N switch -c in-scratch"                    allow
 git -C "$REPO" checkout -q -- a.txt; rm -f "$REPO/untracked.txt" "$PRIV/scratch.txt"
 
+echo "busy tree (a run marked the checkout it reads, scripts/busy-tree.sh):"
+# The incident (2026-11-23): a branch switch in a clone while a detached push lint read it. One session, own
+# scratchpad worktree - no other rule of the guard holds there, so only the mark can.
+BUSY_SH=$(resolve scripts/busy-tree.sh) || BUSY_SH=""
+if [ -n "$BUSY_SH" ]; then
+  (
+    . "$BUSY_SH"; busy_tree_mark "$PRIV" "core-push-lint fixture"
+    probe "the incident: switch under a running lint"   "$ONE" "git -C $PRIV_N switch fixture-lookalike"       block
+    probe "reset --hard under the run"                  "$ONE" "git -C $PRIV_N reset --hard"                   block
+    probe "pull --ff-only under the run"                "$ONE" "git -C $PRIV_N pull --ff-only"                 block
+    probe "file-level checkout under the run"           "$ONE" "git -C $PRIV_N checkout -- a.txt"              block
+    probe "restore . under the run"                     "$ONE" "git -C $PRIV_N restore ."                      block
+    probe "clean -fd under the run"                     "$ONE" "git -C $PRIV_N clean -fd"                      block
+    probe "restore --staged changes no file"            "$ONE" "git -C $PRIV_N restore --staged a.txt"         allow
+    probe "a new branch on the same commit (switch -c)" "$ONE" "git -C $PRIV_N switch -c side"                 allow
+    probe "commit by path under the run"                "$ONE" "git -C $PRIV_N commit a.txt -m x"              allow
+    probe "marker opens it"                             "$ONE" "git -C $PRIV_N switch fixture-lookalike  # MECHANISM-OK: fixture" allow
+    probe "the sibling worktree is not busy"            "$ONE" "git -C $(native "$PRIVW") switch fixture-lookalike" allow
+    touch -t 202601010000 "$BUSY_TREE_FILE"
+    probe "a mark older than two hours counts no more"  "$ONE" "git -C $PRIV_N switch fixture-lookalike"       allow
+    touch "$BUSY_TREE_FILE"
+  )
+  marks=$(ls "$(git -C "$PRIV" rev-parse --absolute-git-dir)/agent-busy" 2>/dev/null | wc -l | tr -d ' ')
+  [ "$marks" = 0 ] && ok "the mark is gone when the run exits" || bad "a mark is left after the run: $marks"
+  probe "after the run: the switch passes"              "$ONE" "git -C $PRIV_N switch fixture-lookalike"       allow
+  ( trap 'touch "$TMP/prev-trap-ran"' EXIT; . "$BUSY_SH"; busy_tree_mark "$PRIV" "x" )
+  [ -f "$TMP/prev-trap-ran" ] && ok "an EXIT trap the run had set still runs" || bad "the run's own EXIT trap was replaced"
+else
+  echo "  --  scripts/busy-tree.sh not in this layout"
+fi
+
 echo "fail-open:"
 probe "not a git repo"               "$TWO" "git -C $TMP_N/nowhere commit -m x"                     allow
 probe "broken json"                  "$TWO" ""                                                     allow

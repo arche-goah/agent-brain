@@ -122,6 +122,27 @@ function gitDir(repo) {
   return path.isAbsolute(d) ? d : path.join(repo, d);
 }
 
+// A run that reads this checkout marks it busy in its own git dir (scripts/busy-tree.sh: core-push-lint, core-merge-lint).
+// Measured 2026-11-23 on the macOS instance: a branch switch in a core clone while a detached push lint ran there; the lint
+// stamped the SHA, not the tree it read. The first form read the process list (#649) and never fired on Windows (no `ps`
+// for node, four spellings of one path - Windows review 2026-11-24); the mark needs neither. A mark older than two hours
+// is a run killed hard and counts no more.
+const BUSY_MAX_MS = 2 * 60 * 60 * 1000;
+function busyMarks(gd) {
+  const dir = path.join(gd, 'agent-busy');
+  let names = [];
+  try { names = fs.readdirSync(dir); } catch (_) { return []; }
+  const out = [];
+  for (const n of names) {
+    const f = path.join(dir, n);
+    try {
+      if (Date.now() - fs.statSync(f).mtimeMs > BUSY_MAX_MS) continue;
+      out.push({ file: f, what: fs.readFileSync(f, 'utf8').trim() || n });
+    } catch (_) {}
+  }
+  return out;
+}
+
 function topLevel(repo) {
   const r = spawnSync('git', ['-C', repo, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', timeout: 5000 });
   return r.status === 0 ? (r.stdout || '').trim() : null;
@@ -311,6 +332,27 @@ process.stdin.on('end', () => {
     }
 
     const verdict = judge(call);
+    // Every call that rewrites the tree files (class sweep 2026-11-23, widened by the Windows review 2026-11-24): a
+    // branch switch, stash, reset --hard/--merge/--keep, rebase, merge, pull (fast-forward included), cherry-pick,
+    // revert, am, a file-level checkout or restore, clean -f. A new branch on the same commit (`-b`, `-c`) changes no file.
+    const newBranch = (call.sub === 'checkout' && hasOpt(call.args, '-b', '-B')) || (call.sub === 'switch' && hasOpt(call.args, '-c', '-C', '--create', '--force-create'));
+    const treeMoving = !newBranch && (
+      (verdict && /moves HEAD|removes|discards/i.test(verdict.was))
+      || ['rebase', 'merge', 'pull', 'cherry-pick', 'revert', 'am'].includes(call.sub)
+      || (call.sub === 'reset' && hasOpt(call.args, '--hard', '--merge', '--keep'))
+      || (call.sub === 'checkout' && call.args.filter((a) => !a.startsWith('-')).length > 0)
+      || (call.sub === 'restore' && !hasOpt(call.args, '--staged', '-S'))
+      || (call.sub === 'clean' && call.args.some((a) => /^-[a-z]*f/.test(a) || a === '--force')));
+    if (treeMoving && !marker) {
+      const busy = busyMarks(gd);
+      if (busy.length) {
+        deny(`WORKTREE BUSY (${top}): a run that reads this checkout is still going: ${busy[0].what}` +
+          (busy.length > 1 ? ` (+${busy.length - 1} more)` : '') +
+          `\n\n  \`git ${call.sub}\` rewrites files under a run that is still reading the tree.\n\nThe form that passes:\n` +
+          `  a \`git worktree add <scratchpad>/<name> <branch>\` for the other work, or wait until the run has ended\n\n` +
+          `A run killed hard leaves its mark behind (${busy[0].file}): delete it, or repeat with "# MECHANISM-OK: <why>".`, project, cmd);
+      }
+    }
     // One session, but the copy holds uncommitted work that is not ours to move (measured 2026-11-03 on the macOS
     // instance: `git switch -c` in the operator's project checkout over their uncommitted settings and profiles —
     // core rule #12 puts branch work into a scratchpad worktree always, the guard only held with a second session).

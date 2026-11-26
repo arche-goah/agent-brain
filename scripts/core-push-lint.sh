@@ -59,6 +59,8 @@ until mkdir "$LOCK" 2>/dev/null; do
 done
 echo $$ > "$LOCK/pid"
 trap 'rm -rf "$LOCK"' EXIT
+# The tree is busy while the lint reads it: the guard holds a branch switch or reset there meanwhile (2026-11-23).
+. "$HERE/busy-tree.sh"; busy_tree_mark "$DIR" "core-push-lint ${head:0:7}"
 # The stamp names the commit read at the start, the lint reads the files at run time (2026-11-03, measured: a run queued
 # 20 min while two commits landed in its worktree — it would have stamped the old sha for the new files).
 moved() { [ "$(git -C "$DIR" rev-parse HEAD)" != "$head" ] || [ -n "$(git -C "$DIR" status --porcelain --untracked-files=no)" ]; }
