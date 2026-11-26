@@ -53,7 +53,7 @@ if ! git -C "$CLONE" -c user.email=lint@local -c user.name=lint merge --quiet --
   git -C "$CLONE" merge --abort >/dev/null 2>&1
   echo "core-merge-lint: PR #$PR head ${head:0:7} does not merge cleanly with main ${main:0:7}"; exit 1
 fi
-. "$HERE/busy-tree.sh"; busy_tree_mark "$CLONE" "core-merge-lint PR #$PR"
+. "$HERE/busy-tree.sh"; trap busy_tree_clear EXIT; busy_tree_mark "$CLONE" "core-merge-lint PR #$PR"
 out="$(bash "$CLONE/scripts/ci-lint-local.sh" 2>&1)"; rc=$?
 summary="$(printf '%s\n' "$out" | grep -a 'ci-lint-local:' | tail -1)"
 

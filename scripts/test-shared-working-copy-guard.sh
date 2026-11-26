@@ -167,7 +167,8 @@ echo "busy tree (a run marked the checkout it reads, scripts/busy-tree.sh):"
 BUSY_SH=$(resolve scripts/busy-tree.sh) || BUSY_SH=""
 if [ -n "$BUSY_SH" ]; then
   (
-    . "$BUSY_SH"; busy_tree_mark "$PRIV" "core-push-lint fixture"
+    # the caller's own trap clears the mark, as in core-push-lint.sh (`trap '…; busy_tree_clear' EXIT`)
+    . "$BUSY_SH"; trap 'touch "$TMP/caller-trap-ran"; busy_tree_clear' EXIT; busy_tree_mark "$PRIV" "core-push-lint fixture"
     probe "the incident: switch under a running lint"   "$ONE" "git -C $PRIV_N switch fixture-lookalike"       block
     probe "reset --hard under the run"                  "$ONE" "git -C $PRIV_N reset --hard"                   block
     probe "pull --ff-only under the run"                "$ONE" "git -C $PRIV_N pull --ff-only"                 block
@@ -186,8 +187,11 @@ if [ -n "$BUSY_SH" ]; then
   marks=$(ls "$(git -C "$PRIV" rev-parse --absolute-git-dir)/agent-busy" 2>/dev/null | wc -l | tr -d ' ')
   [ "$marks" = 0 ] && ok "the mark is gone when the run exits" || bad "a mark is left after the run: $marks"
   probe "after the run: the switch passes"              "$ONE" "git -C $PRIV_N switch fixture-lookalike"       allow
-  ( trap 'touch "$TMP/prev-trap-ran"' EXIT; . "$BUSY_SH"; busy_tree_mark "$PRIV" "x" )
-  [ -f "$TMP/prev-trap-ran" ] && ok "an EXIT trap the run had set still runs" || bad "the run's own EXIT trap was replaced"
+  [ -f "$TMP/caller-trap-ran" ] && ok "the caller's EXIT trap ran (busy-tree sets no trap of its own)" || bad "the caller's EXIT trap did not run"
+  # both lint scripts put busy_tree_clear into their EXIT trap
+  for s in core-push-lint.sh core-merge-lint.sh; do
+    f=$(resolve "scripts/$s") && grep -q "trap .*busy_tree_clear.* EXIT" "$f" && ok "$s clears its mark on exit" || bad "$s: no busy_tree_clear in its EXIT trap"
+  done
 else
   echo "  --  scripts/busy-tree.sh not in this layout"
 fi
