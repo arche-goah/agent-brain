@@ -19,7 +19,7 @@ fail=0
 # $1 label, $2 expected block|pass, $3 command, $4 background true|false, $5 transcript
 verdict() {
   local out got
-  out="$(node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",transcript_path:process.argv[3],tool_input:{command:process.argv[1],run_in_background:process.argv[2]==="true"}}))' "$3" "$4" "${5:+$(native "$5")}" \
+  out="$(node -e 'process.stdout.write(JSON.stringify({tool_name:process.env.TOOL||"Bash",transcript_path:process.argv[3],tool_input:{command:process.argv[1],run_in_background:process.argv[2]==="true"}}))' "$3" "$4" "${5:+$(native "$5")}" \
         | HOME="$NT" CLAUDE_PROJECT_DIR="$NT" node "$GUARD")"
   if printf '%s' "$out" | grep -aq '"permissionDecision":"deny"'; then got=block; else got=pass; fi
   if [ "$got" = "$2" ]; then echo "  OK   $1"; else echo "  FAIL $1 (expected $2, got $got)"; fail=1; fi
@@ -27,6 +27,9 @@ verdict() {
 
 verdict "a declared long run in the foreground is held" block 'bash scripts/slow-lint.sh 217' false
 verdict "the same run detached passes" pass 'bash scripts/slow-lint.sh 217' true
+# Windows review of #691: long-runs learns from PowerShell, so the hold reads PowerShell too
+TOOL=PowerShell verdict "the declared long run through PowerShell in the foreground is held" block 'bash scripts/slow-lint.sh 217' false
+TOOL=PowerShell verdict "the same PowerShell run detached passes" pass 'bash scripts/slow-lint.sh 217' true
 verdict "a declared script behind an env assignment is held" block 'X=1 bash scripts/slow-lint.sh' false
 verdict "a grep naming the declared script passes" pass 'grep -n slow-lint.sh scripts/quick.sh' false
 verdict "a commit message naming it passes" pass 'git commit -m "run bash scripts/slow-lint.sh detached"' false
