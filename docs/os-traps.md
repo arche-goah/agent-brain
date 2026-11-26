@@ -367,6 +367,7 @@ known:     scripts/test-onboarding-leak-check.sh=1
 known:     scripts/test-open-items-gate.sh=1
 known:     scripts/test-open-items-wake.sh=1
 known:     scripts/test-open-items.sh=1
+known:     scripts/test-operator-lead.sh=1
 known:     scripts/test-order-list-reader.sh=1
 known:     scripts/test-os-ok-form.sh=1
 known:     scripts/test-own-open-gate.sh=1

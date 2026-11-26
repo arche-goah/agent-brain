@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/file-guard.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/file-guard.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -18,12 +18,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/root-cause-gate.cjs\" --pre",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/root-cause-gate.cjs\" --pre",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/claim-write-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/claim-write-gate.cjs\"",
             "timeout": 5
           }
         ]
@@ -33,19 +33,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/mechanism-guard.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/mechanism-guard.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/shared-working-copy-guard.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/shared-working-copy-guard.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/foreign-entry-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/foreign-entry-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/secret-guard.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/secret-guard.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/freshness-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/freshness-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -78,13 +78,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/question-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/question-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
             "timeout": 60
           }
         ]
@@ -94,60 +94,60 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/public-text-guard.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/public-text-guard.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/instance-key-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/instance-key-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/pr-close-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/pr-close-gate.cjs\"",
             "timeout": 15,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/review-claim-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/review-claim-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/check-request-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/check-request-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/merge-request-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/merge-request-gate.cjs\"",
             "timeout": 15,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/core-merge-lint-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/core-merge-lint-gate.cjs\"",
             "timeout": 30
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/content-review-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/content-review-gate.cjs\"",
             "timeout": 30,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/release-freeze-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/release-freeze-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/start-report-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/start-report-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -158,7 +158,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/pr-overlap-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/pr-overlap-gate.cjs\"",
             "timeout": 30
           }
         ]
@@ -168,7 +168,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-read-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/live-read-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -179,7 +179,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-watchdog.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/live-watchdog.cjs\"",
             "timeout": 120,
             "onFailure": "block"
           }
@@ -190,7 +190,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/headless-browser-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/headless-browser-gate.cjs\"",
             "timeout": 5
           }
         ]
@@ -200,12 +200,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/skill-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/skill-gate.cjs\"",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/autonomous-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/autonomous-gate.cjs\"",
             "timeout": 10
           }
         ]
@@ -215,7 +215,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/conditional-order-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/conditional-order-gate.cjs\"",
             "timeout": 10,
             "onFailure": "block"
           }
@@ -226,7 +226,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/no-input-control.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/no-input-control.cjs\"",
             "timeout": 5,
             "onFailure": "block"
           }
@@ -239,7 +239,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/junk-cleaner.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/junk-cleaner.cjs\"",
             "timeout": 10
           }
         ]
@@ -249,7 +249,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/session-areas.cjs\" record",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/session-areas.cjs\" record",
             "timeout": 5
           }
         ]
@@ -259,7 +259,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/live-watchdog.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/live-watchdog.cjs\"",
             "timeout": 120
           }
         ]
@@ -269,7 +269,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/notify.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/notify.cjs\"",
             "timeout": 3,
             "async": true
           }
@@ -280,12 +280,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/decision-register.cjs\"",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/mode-owed.cjs\" post",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/mode-owed.cjs\" post",
             "timeout": 10
           }
         ]
@@ -295,7 +295,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/plan-label-gate.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/plan-label-gate.cjs\"",
             "timeout": 5
           }
         ]
@@ -316,7 +316,7 @@
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" import",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" import",
             "timeout": 10
           }
         ]
@@ -332,7 +332,7 @@
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" export",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" export",
             "timeout": 10
           }
         ]
@@ -343,7 +343,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/stop-dispatcher.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/stop-dispatcher.cjs\"",
             "timeout": 20
           }
         ]
@@ -354,7 +354,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" export",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/memory-sync.cjs\" export",
             "timeout": 10
           }
         ]
@@ -365,17 +365,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/basics-hint.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/basics-hint.cjs\"",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/session-areas.cjs\" prompt",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/session-areas.cjs\" prompt",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/topic-sources.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/topic-sources.cjs\"",
             "timeout": 5
           }
         ]
@@ -386,7 +386,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/core/helpers/notify.cjs\"",
+            "command": "node -r \"$CLAUDE_PROJECT_DIR/core/helpers/operator-lead.cjs\" \"$CLAUDE_PROJECT_DIR/core/helpers/notify.cjs\"",
             "timeout": 3,
             "async": true
           }

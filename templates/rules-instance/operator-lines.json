@@ -1,0 +1,20 @@
+{
+  "_comment": "Read by helpers/operator-lead.cjs (preloaded into every core hook). One sentence per hold marker, in the OPERATOR's language, put in front of the hold text the harness shows the operator (about two lines are visible). Say what was stopped and whether the operator has to do anything; the agent's text follows unchanged. A marker is the text the hold starts with (or holds in its first 120 characters); the marker named first wins. Copy this file to .claude/rules/operator-lines.json and translate the sentences; a marker left out keeps its hold as it is.",
+  "lines": {
+    "MECHANISM CHECK": "Stopped: there is a defined path for this step; the agent takes it. Nothing for you to do.",
+    "CONDITIONAL-ORDER-GATE": "Stopped: your message may tie this step to a condition; the agent checks it first. Nothing for you to do.",
+    "ROOT-CAUSE-GATE": "Stopped: a mishap needs its cause named before the agent goes on. Nothing for you to do.",
+    "CLASS-FIRST": "Stopped: the agent checks first whether this fix has siblings elsewhere. Nothing for you to do.",
+    "PRS-FIRST": "Stopped: the agent reads the open pull requests before starting new work. Nothing for you to do.",
+    "SHARED WORKING COPY": "Stopped: another session works in the same folder; the agent avoids its files. Nothing for you to do.",
+    "SKILL-GATE": "Stopped: the agent loads the matching skill first. Nothing for you to do.",
+    "STOPPEN-GATE": "Stopped: a question to you belongs in the question tool; the agent asks it there.",
+    "DECISIONS": "Stopped: open decisions of yours are due; the agent puts them to you in the question tool.",
+    "AUTONOMOUS-IDLE": "Stopped: the autonomous run must not idle; the agent goes on or says what blocks it. Nothing for you to do.",
+    "CORE-PUSH-LINT": "Stopped: the agent runs the core's local checks before pushing. Nothing for you to do.",
+    "AI-PR": "Stopped: a pull request must say who wanted it and which model wrote it; the agent adds that. Nothing for you to do.",
+    "content-review-gate": "Stopped: the pull request's risk or review is not declared right yet; the agent fixes it. Nothing for you to do.",
+    "instance-key-gate": "Stopped: the text is missing its instance key or a required field; the agent adds it. Nothing for you to do.",
+    "public-text-guard": "Stopped: text for a public place is checked for names first; the agent fixes it. Nothing for you to do."
+  }
+}
