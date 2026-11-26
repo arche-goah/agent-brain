@@ -21,7 +21,7 @@
  *   - `Agent` from the third call in the turn (one or two agents are a lookup, nine are a
  *     scan — the collaborator's threshold);
  *   - a shell command that leaves the machine or starts a model: `claude -p`, `git push`,
- *     `gh pr create|comment|review|merge`, `gh api … -X`, `gh issue create|comment`.
+ *     `gh pr create|comment|review|merge|edit|ready|close|reopen`, `gh issue create|comment|edit|close|reopen`, `gh release create|edit|delete`, `gh api … -X`.
  * It passes once the agent has written, in this turn, either
  *   CONDITION-MET: <the condition, in the operator's words> — <evidence: where/when it was met>
  * or
@@ -57,7 +57,7 @@ function allow() { hookExit(0); }
 const HOOK_ECHO = /^Stop hook feedback:/;
 const TAIL_BYTES = 4 * 1024 * 1024;
 const AGENT_THRESHOLD = 3;   // the call that trips the gate: this many Agent calls in one turn
-const EXTERNAL = /(?:^|[\s;&|(`])(?:claude\s+-p\b|gh\s+pr\s+(?:create|comment|review|merge)\b|gh\s+issue\s+(?:create|comment)\b|gh\s+api\b[^\n|;&]*\s-X\s)/i;
+const EXTERNAL = /(?:^|[\s;&|(`])(?:claude\s+-p\b|gh\s+pr\s+(?:create|comment|review|merge|edit|ready|close|reopen)\b|gh\s+issue\s+(?:create|comment|edit|close|reopen)\b|gh\s+release\s+(?:create|edit|delete)\b|gh\s+api\b[^\n|;&]*\s-X\s)/i;
 const MET = /CONDITION-MET:\s*(\S[^\n]{19,})/;
 const NONE = /CONDITION-NONE:\s*(\S[^\n]{14,})/;
 
