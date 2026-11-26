@@ -287,6 +287,25 @@ run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
 printf '{"at":"2026-10-30T19:00:04.000Z","session":"other","mode":"hook","model":{"condition":true}}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
 run_case cls-cond allow Workflow '{"name":"x"}' "$CIC"
 
+# --- the record decides in BOTH directions (operator decision 2026-11-26): a word hit the model reads as no
+# condition passes; without a record of this prompt the words still hold
+{
+  printf '{"message":{"role":"user","content":"earlier prompt"}}\n'
+  printf '{"timestamp":"2026-11-26T09:00:00.000Z","message":{"role":"user","content":"Fine, then the core needs a fix."}}\n'
+} > "$T/cls-then.jsonl"
+rm -f "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then allow Workflow '{"name":"x"}' "$CIC"
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":{"condition":true},"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# a record of ANOTHER prompt (different text) does not waive the word hit
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"something else entirely"}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# a failed classifier call (model null) leaves the words in charge
+printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":null,"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+
 echo
 [ "$fail" -eq 0 ] && echo "conditional-order-gate fixtures: ALL passed" || echo "FAILURE"
 exit "$fail"
