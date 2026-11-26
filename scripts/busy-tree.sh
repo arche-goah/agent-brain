@@ -14,8 +14,11 @@ busy_tree_mark() {
   mkdir -p "$gd/agent-busy" 2>/dev/null || return 0
   BUSY_TREE_FILE="$gd/agent-busy/$$-$RANDOM"
   printf '%s\n' "$2" > "$BUSY_TREE_FILE" || return 0
+  # `trap -p` alone in the substitution: in a pipeline it runs in a subshell, where bash 5 has reset the traps
+  # (measured on the ubuntu CI 2026-11-26; bash 3.2 on macOS still showed them).
   local prev
-  prev="$(trap -p EXIT | sed -e "s/^trap -- '//" -e "s/' EXIT\$//")"
+  prev="$(trap -p EXIT)"
+  prev="${prev#trap -- \'}"; prev="${prev%\' EXIT}"
   # shellcheck disable=SC2064
   trap "${prev:+$prev; }rm -f '$BUSY_TREE_FILE'" EXIT
 }
