@@ -5,6 +5,8 @@
 # of .claude/settings.json (an ask rule) raised a dialog, and the operator had to answer it.
 # Usage: bash scripts/test-autonomous-gate.sh   (exit 0 = pass)
 set -u
+# The mode is set by its words here (the latch before the mode-confirm answer); the confirmation: test-mode-confirm.sh.
+export MODE_READING=words
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 _D="$(cd "$(dirname "$0")" && pwd)"
@@ -55,8 +57,12 @@ probe "question tool, not autonomous" AskUserQuestion '{"questions":[]}' "$INTER
 # 2026-11-06 (Windows instance): after "questions for me now" every operator item got answered and done, the
 # "asks" latch re-read "open for operator = 0" and the run counted as autonomous again - the mandatory closing mode
 # question (question-gate: alone, last) was refused. A call that asks ONLY the mode question is the run's end, no stop.
-MODEQ='{"questions":[{"question":"Continue autonomously?","header":"Mode","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]}]}'
+# Since 2026-11-25 it may be asked as the mode-confirm question (header mode-confirm, interactive option last); the old form
+# passes too in the default setting - with mode_confirm: true it is held (scripts/test-mode-confirm.sh).
+MODEQ='{"questions":[{"question":"Continue autonomously?","header":"mode-confirm","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"Continue interactively","description":"b"}]}]}'
 probe "the mode question alone in an autonomous run passes" AskUserQuestion "$MODEQ" "$AUTO" allow
+MODEQ_OLD='{"questions":[{"question":"Continue autonomously?","header":"Mode","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]}]}'
+probe "the mode question in the old form passes (mode_confirm off, the default)" AskUserQuestion "$MODEQ_OLD" "$AUTO" allow
 MIXQ='{"questions":[{"question":"Delete the branch?","header":"X","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]},{"question":"Continue autonomously?","header":"Mode","multiSelect":false,"options":[{"label":"Yes","description":"a"},{"label":"No","description":"b"}]}]}'
 probe "the mode question next to another question stays held (control)" AskUserQuestion "$MIXQ" "$AUTO" block
 # The gate's own words are locked inside the run (2026-10-28: a refused question was made to pass by widening them).
@@ -175,7 +181,8 @@ case "$out" in *'its turn ended without a question'*) ok "the refusal after the 
 # 2026-11-23, the DEFERRED ask window. The operator ordered (translated): "continue autonomously; as soon as you are ready
 # for the train build, switch back to interactive on your own and put the train-build question to me" - and the gate
 # refused exactly that question hours later (a timer turn, a peer's message in between). Such an order opens a window that
-# outlives the turns the operator did not open, for the QUESTION only, until a question is answered or the operator writes.
+# outlives the turns the operator did not open, for the QUESTION only, until the closing mode question is answered or the
+# operator writes (2026-11-25; before: until any question was answered).
 DEFER="continue autonomously; as soon as you are ready for the train build, switch back to interactive on your own and put the train-build question to me"
 TQ='{"questions":[{"question":"Build the train now?"}]}'
 D1="$T/defer1.jsonl"; { user "work through the open points autonomously"; user "$DEFER"; asst "Working on the review."; tend; tick "# Autonomous loop check  You're being invoked on a timer"; queued "task 22 for you" peer; asst "Ready."; } > "$D1"

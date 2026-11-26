@@ -258,6 +258,18 @@
       "template": "The mode question is owed: ask the remaining questions at once, then the mode question last",
       "maxLength": 120,
       "_note": "Carrier of 'the mode question comes last' (2026-11-23: an operator asked what was open in an autonomous run; three question rounds and about 40 work calls, no mode question): a turn end with the mode question owed after an answered round in a dialog the operator opened is held once per round. Its work-call half runs inside autonomous-gate.cjs."
+    },
+    {
+      "label": "MODE CONFIRM",
+      "marker": "MODE-CONFIRM",
+      "cmd": "core/helpers/mode-confirm.cjs",
+      "args": ["stop"],
+      "mode": "block",
+      "onReissue": "run",
+      "required": true,
+      "template": "A mode word waits for its mode-confirm question: ask it, with the short explanation of the modes",
+      "maxLength": 120,
+      "_note": "Carrier of 'a mode word never switches by itself, only the answer does' (operator order 2026-11-25): a turn end with a mode word unanswered is held once per mode word. The switch itself is safe by construction (autonomous-mode.cjs moves the latch only on the mode-confirm answer); its work-call half runs inside autonomous-gate.cjs."
     }
   ],
   "_optional_checks_comment": "Opt-in per instance, decided with the operator: move an entry into \"checks\" to switch it on. The dispatcher reads only \"checks\".",

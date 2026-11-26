@@ -303,6 +303,7 @@ known:     scripts/test-autonomous-gate.sh=1
 known:     scripts/test-autonomous-idle-gate.sh=1
 known:     scripts/test-autonomous-mode.sh=1
 known:     scripts/test-autonomy-diagnose-run.sh=1
+known:     scripts/test-mode-confirm.sh=1
 known:     scripts/test-autonomy-diagnose.sh=1
 known:     scripts/test-basics-hint.sh=1
 known:     scripts/test-bootstrap-brain.sh=1
