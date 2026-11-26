@@ -101,6 +101,10 @@ run_case de-no-pack '"Bericht fertig. Soll ich das jetzt umsetzen?"' allow "$CWD
 # English engine built-ins
 run_case en-proceed '"The fix is ready. Should I proceed with the merge?"' block "$CWD"
 run_case en-want-me '"Tests are green. Do you want me to tag the release?"' block "$CWD"
+# The question shape: auxiliary + you + ?, without a first-person handback phrase
+run_case en-you-shape '"Tests are green. Would you like the gate as a core PR for every brain?"' block "$CWD"
+run_case en-you-bold '"**To agree:** Do you want the gate in the core?"' block "$CWD"
+run_case en-you-inline '"The rule forbids endings like do you want X? at the turn end, fixed."' allow "$CWD"
 # English built-ins still grip with a language file present (merge, not replace)
 run_case en-with-pack '"Tests are green. Do you want me to tag the release?"' block "$DE"
 # Negative direction
