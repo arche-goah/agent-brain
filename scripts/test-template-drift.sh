@@ -82,6 +82,23 @@ brain b6 '{"permissions":{}}'
 out="$("$PY" "$S" --repo "$(native "$T/b6")" 2>&1)"
 case "$out" in *'permission rule(s) of the core template'*'allow '[1-9]*) ok "the shipped template is read by default";; *) bad "shipped template not read: '$out'";; esac
 
+# 6b a plain top-level setting of the template (viewMode, operator 2026-11-26): named while unset, silent once the
+# brain sets it - to the template's value or its own
+TPLV="$T/template-view.json"
+printf '%s\n' '{"_viewMode":"why","viewMode":"focus","permissions":{"allow":["Bash(git status*)"]}}' > "$TPLV"
+runv() { "$PY" "$S" --repo "$(native "$T/$1")" --template "$(native "$TPLV")" --rules-template "$(native "$T/no-rules")" 2>&1; }
+brain v1 '{"permissions":{"allow":["Bash(git status*)"]}}'
+out="$(runv v1)"
+case "$out" in *'note: settings: 1 setting(s)'*'"viewMode": "focus"'*) case "$out" in *_viewMode*|*'!!'*) bad "comment key named or line loud: '$out'";; *) ok "an unset template setting is named, as a note";; esac;; *) bad "unset viewMode not named: '$out'";; esac
+brain v2 '{"viewMode":"default","permissions":{"allow":["Bash(git status*)"]}}'
+out="$(runv v2)"
+[ -z "$out" ] && ok "a brain that sets its own view is silent" || bad "own value reported: '$out'"
+brain v3 '{"permissions":{"allow":["Bash(git status*)"]}}'; printf '%s\n' '{"viewMode":"default"}' > "$T/v3/.claude/settings.local.json"
+out="$(runv v3)"
+[ -z "$out" ] && ok "a person's own view in settings.local.json is silent" || bad "local value reported: '$out'"
+out="$("$PY" "$S" --repo "$(native "$T/v1")" 2>&1)"
+case "$out" in *'"viewMode": "focus"'*) ok "the shipped template carries viewMode focus";; *) bad "shipped template lacks viewMode: '$out'";; esac
+
 # 7-11 the user half: autoMode lives only in ~/.claude/settings.json (classifier docs, 2026-10-26)
 UT="$T/user-template.json"
 printf '%s\n' '{"autoMode":{"environment":["$defaults","Source control: github.com/<org>"],"allow":["$defaults","Own PRs in github.com/<org> may be marked ready"]}}' > "$UT"
