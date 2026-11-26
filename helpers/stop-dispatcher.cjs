@@ -280,6 +280,23 @@ function record(check, items, payload) {
   } catch (e) { /* recording must never break a turn */ }
 }
 
+/**
+ * A recording check that ran and found nothing still leaves its trace: the record file exists and its mtime is the
+ * last run, with no line added. Before, a recorder with 0 hits had no file at all, and "never ran" looked the same
+ * (measured 2026-11-26 on a macOS instance: two record-mode gates ran for 6 and 15 days, no .jsonl existed, and the
+ * alpha review could not tell an idle instrument from a dead one).
+ */
+function ranEmpty(check) {
+  try {
+    const dir = path.join(ROOT, '.claude-state');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${check.marker.toLowerCase()}.jsonl`);
+    fs.closeSync(fs.openSync(file, 'a'));
+    const now = new Date();
+    fs.utimesSync(file, now, now);
+  } catch (e) { /* recording must never break a turn */ }
+}
+
 // A check row names a script the dispatcher runs with node at every turn end. Whoever can write
 // stop-checks.json (or a file it names) would otherwise run code from anywhere (Windows coherence scan
 // 2026-11-16, agreed by the operator the same day). Allowed: the brain's core helpers, its scripts/,
@@ -329,6 +346,8 @@ function run(check, base) {
             // it recorded nothing, ever: measured 2026-10-23, premise-gate ran as a recorder
             // in the template and no premise-gate.jsonl existed on any brain checked.
             record(check, [{ would_block: true, reason: short(parsed.reason, 300) }], payload);
+          } else if (!err) {
+            ranEmpty(check);
           }
           return resolve(null); // a recorder never blocks, by construction
         }

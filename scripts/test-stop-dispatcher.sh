@@ -212,6 +212,17 @@ if grep -q big-old-row "$CFG3/.claude-state/rec-probe.1.jsonl" 2>/dev/null \
 else
   bad "a log above the limit was not rotated"
 fi
+# A recorder that ran and found nothing leaves its file, empty, with a fresh mtime (2026-11-26: two record-mode
+# gates ran for days with no file at all - "idle" and "dead" looked the same)
+printf '%s\n' "console.log(JSON.stringify({}))" > "$REC"; inprobe "$CFG3" "$REC" >/dev/null
+rm -f "$RLOG" "$CFG3/.claude-state/rec-probe.1.jsonl"
+feed3
+if [ -f "$RLOG" ] && [ ! -s "$RLOG" ]; then ok "a recorder with nothing to record leaves an empty file (it ran)"
+else bad "a recorder with nothing to record left no file"; fi
+printf '{"probe":"kept"}\n' > "$RLOG"; touch -t 202001010000 "$RLOG"
+feed3
+if grep -q kept "$RLOG" && [ "$(find "$RLOG" -newermt 2021-01-01 2>/dev/null)" ]; then ok "an empty run keeps the rows and moves the mtime"
+else bad "an empty run lost rows or left the mtime"; fi
 
 # --- a gate without --record in a recorder slot: its block is recorded, never shown ---
 # premise-gate has no record mode; until 2026-10-23 its block was dropped in a record slot
