@@ -24,7 +24,9 @@ then an explicit release follows.
    - **The instance's own close steps run first (2026-11-23):** the instance rules file
      (`.claude/rules/working-rules-instance.md`) may carry a section about the session close
      (a heading that names the close — "Session close", or the instance language's word for
-     it). Read it now, in the file, and run every step it names; a step that is skipped is
+     it), and so may the instance's feedback rules (`.claude/rules/feedback.md`; a Windows
+     review of 2026-11-24 found an instance that keeps its close rules there and nothing led
+     to them). Read both now, in the files, and run every step they name; a step that is skipped is
      named with its reason in the close report (step 5). Before this bullet, only the
      live-verify path was looked up there (below), so any other step an instance wrote into
      that section had no trigger — measured on a macOS instance the day a per-session audit
