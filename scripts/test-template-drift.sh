@@ -93,6 +93,9 @@ case "$out" in *'note: settings: 1 setting(s)'*'"viewMode": "focus"'*) case "$ou
 brain v2 '{"viewMode":"default","permissions":{"allow":["Bash(git status*)"]}}'
 out="$(runv v2)"
 [ -z "$out" ] && ok "a brain that sets its own view is silent" || bad "own value reported: '$out'"
+brain v3 '{"permissions":{"allow":["Bash(git status*)"]}}'; printf '%s\n' '{"viewMode":"default"}' > "$T/v3/.claude/settings.local.json"
+out="$(runv v3)"
+[ -z "$out" ] && ok "a person's own view in settings.local.json is silent" || bad "local value reported: '$out'"
 out="$("$PY" "$S" --repo "$(native "$T/v1")" 2>&1)"
 case "$out" in *'"viewMode": "focus"'*) ok "the shipped template carries viewMode focus";; *) bad "shipped template lacks viewMode: '$out'";; esac
 

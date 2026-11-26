@@ -156,8 +156,10 @@ def key_drift(repo, template):
     here = load(pathlib.Path(repo) / ".claude" / "settings.json")
     if here is None:
         return None   # project_drift names a missing or broken file already
+    # A person's own value in settings.local.json is a choice too (Windows review of #685, 2026-11-26)
+    local = load(pathlib.Path(repo) / ".claude" / "settings.local.json") or {}
     gone = [f'"{k}": {json.dumps(v)}' for k, v in tpl.items()
-            if not k.startswith("_") and isinstance(v, (str, int, float, bool)) and k not in here]
+            if not k.startswith("_") and isinstance(v, (str, int, float, bool)) and k not in here and k not in local]
     if not gone:
         return None
     return (f"note: settings: {len(gone)} setting(s) of the core template are not in this brain's .claude/settings.json "
