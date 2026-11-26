@@ -95,8 +95,10 @@ const BUILTIN_DEFER = [
 // set mode_on on "ask his AI now anyway to pull everything to 2.1.7 on its own" (translated) - the sentence was about
 // another party's AI - and the run switched. Replay over the 5562 classifier records of that brain: 47 switched to
 // autonomous against the word lists, several of them complaints or questions ABOUT the mode.
-// The answer: the LAST option of a mode-confirm question is the interactive one ("stay interactive" / "continue
-// interactively"); any other listed option is autonomous (its label names what the run takes on); a free-text answer is
+// The answer: the option the operator's words name comes FIRST (operator 2026-11-26, translated: "continue
+// interactively, and that should be the first choice when I say so"). Towards interactive the FIRST option is the
+// interactive one ("continue interactively"); towards autonomous - and with no mode word waiting - the LAST one is
+// ("stay interactive"); any other listed option is autonomous (its label names what the run takes on); a free-text answer is
 // read by the words (an off-word = interactive, an order or a yes = autonomous), anything else stays interactive - a
 // false "autonomous" is the dangerous direction. A mode-confirm question rejected or interrupted switches nothing.
 // MODE_READING=words gives the reading BEFORE the confirmation (the old latch): scripts/pattern-cases.py tests how the
@@ -205,18 +207,23 @@ function asksMode(on, question) {
 /** Is this question-tool question a mode-confirm question? By its header alone - language-independent. */
 function isConfirm(q) { return Boolean(q) && String(q.header || '').trim().toLowerCase() === CONFIRM_HEADER; }
 
-/** The answer to a mode-confirm question: true = autonomous, false = interactive (CONFIRM_HEADER above). */
-function confirmChoice(w, labels, answer) {
+/** Index of the interactive option: first when the waiting mode word asks for interactive, else last. */
+function interactiveAt(n, direction) { return direction === 'interactive' ? 0 : n - 1; }
+
+/** The answer to a mode-confirm question: true = autonomous, false = interactive (CONFIRM_HEADER above).
+ *  `direction` is the waiting mode word's ('interactive' | 'autonomous' | none): it says where the interactive option stands. */
+function confirmChoice(w, labels, answer, direction) {
   const a = String(answer || '').trim();
   const ls = (labels || []).map((l) => String(l || '').trim());
+  const i = interactiveAt(ls.length, direction);
   if (ls.length >= 2) {
-    if (a === ls[ls.length - 1]) return false;
-    if (ls.slice(0, -1).includes(a)) return true;
+    if (a === ls[i]) return false;
+    if (ls.some((l, k) => k !== i && l === a)) return !(w.off.test(a) || /interakti|interacti/i.test(a));   // a label that names interactive never switches on
   }
   // Free text: the interactive option's label, or an off-word, anywhere in it = interactive; only an order switches on -
   // a yes-word alone does not (Windows review of #672: "yes, stay interactive" read autonomous by its yes).
-  const last = ls.length ? ls[ls.length - 1].toLowerCase() : '';
-  if (w.off.test(a) || (last && a.toLowerCase().includes(last))) return false;
+  const inter = ls.length ? ls[i].toLowerCase() : '';
+  if (w.off.test(a) || (inter && a.toLowerCase().includes(inter))) return false;
   return ordersOn(w.on, a);
 }
 
@@ -434,7 +441,7 @@ function promptModes(transcriptPath, cwd) {
         if (confirmQs.has(key)) {
           // The mode-confirm answer: the one place a mode word's switch takes effect.
           if (pending) { pending.window = false; pending = null; }
-          state = confirmChoice(w, confirmQs.get(key), a);
+          state = confirmChoice(w, confirmQs.get(key), a, confirm && confirm.direction);
           if (state) lastOn = Date.parse(d.timestamp) || null;
           confirm = null;
           out.push({ text: a, autonomous: state, queued: false, asks: false, answer: true, ordered: state, confirmed: true,
@@ -658,7 +665,7 @@ function switches(transcriptPath, cwd) {
 }
 
 module.exports = { autonomousMode, promptModes, words, initialState, asksMode, modeAnswer, switches, intents, intentFor, intentExact, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason,
-  confirmPending, confirmChoice, isConfirm, CONFIRM_HEADER };
+  confirmPending, confirmChoice, interactiveAt, isConfirm, CONFIRM_HEADER };
 
 if (require.main === module) {
   // The bare call prints ONE word: other scripts and the fixtures compare it. `--why` adds the last switch, `--trace`

@@ -68,7 +68,8 @@ ask window (all questions and dialogs, then the closing mode question) hold in b
 **With `mode_confirm: true` the words never switch by themselves** (operator order 2026-11-25): a word above that would CHANGE the mode - read
 by the word lists or by the intent classifier - opens the mode-confirm question, and only its answer switches. Towards
 autonomous the question offers what is to be handled autonomously, with "stay interactive" always as the last option;
-towards interactive it asks "continue interactively?", the interactive option last. The question carries the header
+towards interactive it asks "continue interactively?", the interactive option FIRST - the mode the operator's words name
+comes first (operator 2026-11-26). The question carries the header
 `mode-confirm` and a short explanation from this page (no extra rights; questions collected or asked at once). Until it
 is answered the mode stays as it is, and the autonomous gate holds every call but reads and the question itself
 (`helpers/mode-confirm.cjs`). A rejected question switches nothing; a word naming the mode already in force asks nothing. The mode question at the

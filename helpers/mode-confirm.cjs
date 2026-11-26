@@ -15,7 +15,8 @@
  * header is `mode-confirm` (CONFIRM_HEADER there). This helper makes the question COME:
  *   pre   called by autonomous-gate.cjs on every tool call (no extra process): while a mode word waits for its answer,
  *         every call but a read and the question tool is held, with the question to ask and its explanation. A
- *         mode-confirm question needs at least two options (the last one is the interactive one).
+ *         mode-confirm question needs at least two options; the mode the operator's words name comes first (towards
+ *         interactive the interactive option first, towards autonomous the scope options first, "stay interactive" last).
  *   stop  Stop check (stop-dispatcher row MODE-CONFIRM): a turn end with the question not asked is held once per mode word.
  * Cost: the transcript is re-read only when the bytes appended since the last call hold an operator prompt or a
  * question-tool result (state .claude-state/mode-confirm.json, per session) - the reader takes about 1.2 s on a
@@ -97,8 +98,9 @@ function ask(p) {
   return p.direction === 'autonomous'
     ? 'ask ONE question-tool question with header "mode-confirm": what is to be handled autonomously - the options name '
       + 'the scope (the work of this prompt, the open list, ...), and the LAST option is always "stay interactive"'
-    : 'ask ONE question-tool question with header "mode-confirm": "continue interactively?" - the LAST option is the '
-      + 'interactive one ("continue interactively"), the other one "stay autonomous"';
+    : 'ask ONE question-tool question with header "mode-confirm": "continue interactively?" - the FIRST option is the '
+      + 'interactive one ("continue interactively", the recommended one: the operator\'s words named it), the other one '
+      + '"stay autonomous"';
 }
 
 function pre(input, r) {
@@ -112,31 +114,37 @@ function pre(input, r) {
     const qs = (input.tool_input && input.tool_input.questions) || [];
     const w = am.words(rt);
     const on = w.on;
+    // Where the interactive option stands: first when the waiting mode word asks for interactive (the named mode comes
+    // first, operator 2026-11-26), else last (towards autonomous, or no mode word waiting).
+    const p = pending(input, rt);
+    const dir = p && p.direction;
+    const where = dir === 'interactive' ? 'FIRST' : 'LAST';
     const bad = qs.filter((q) => am.isConfirm(q) && ((q.options || []).length < 2));
     if (bad.length) {
-      return 'MODE-CONFIRM: a mode-confirm question needs at least two options - the last one is the interactive one '
+      return `MODE-CONFIRM: a mode-confirm question needs at least two options - the ${where.toLowerCase()} one is the interactive one `
         + '("stay interactive" / "continue interactively"). Not issued; ask it again with the options.';
     }
-    // The answer is read by position (the last option = interactive), so a misordered list is held here, at ask time
-    // (Windows review of #672: "Stay interactive" written first switched ON). Not language-complete: it catches the
-    // likely slip - an on-word in the last label, an off-word or "interactive" in any other.
+    // The answer is read by position (interactiveAt), so a misordered list is held here, at ask time (Windows review of
+    // #672: "Stay interactive" written first switched ON). Not language-complete: it catches the likely slip - an
+    // on-word in the interactive slot, an off-word or "interactive" in any other.
     const INTER = /interakti|interacti/i;
     const misordered = qs.filter((q) => {
       if (!am.isConfirm(q)) return false;
       const ls = (q.options || []).map((o) => String((o && o.label) || ''));
-      return on.test(ls[ls.length - 1]) && !INTER.test(ls[ls.length - 1])
-        || ls.slice(0, -1).some((l) => w.off.test(l) || INTER.test(l));
+      const i = am.interactiveAt(ls.length, dir);
+      return on.test(ls[i]) && !INTER.test(ls[i])
+        || ls.some((l, k) => k !== i && (w.off.test(l) || INTER.test(l)));
     });
     if (misordered.length) {
-      return 'MODE-CONFIRM: in a mode-confirm question the interactive option must be the LAST one, and only that one - '
-        + 'the answer is read by position. Not issued; reorder the options ("stay interactive" / "continue interactively" last).';
+      return `MODE-CONFIRM: in this mode-confirm question the interactive option must be the ${where} one, and only that one - `
+        + `the answer is read by position. Not issued; reorder the options (the interactive option ${where.toLowerCase()}).`;
     }
     // EVERY mode switch goes through the mode-confirm question, also the mode question at the end of a question dialog
     // ("continue autonomously?") - operator 2026-11-25, translated: "for a mode switch ALWAYS an interactive question",
     // "with a mode switch there shall ALWAYS be a short explanation". A mode question in the old form is held once more.
     if (qs.some((q) => !am.isConfirm(q) && am.asksMode(on, String((q && q.question) || '')))) {
       return 'MODE-CONFIRM: this question asks about the run mode but is no mode-confirm question. Not issued. Ask it with '
-        + 'header "mode-confirm", the interactive option LAST ("stay interactive" / "continue interactively"), and the short '
+        + `header "mode-confirm", the interactive option ${where} ("stay interactive" / "continue interactively"), and the short `
         + `explanation in the question text, in the operator's language: ${EXPLAIN}`;
     }
     return null;
