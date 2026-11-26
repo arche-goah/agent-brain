@@ -9,7 +9,7 @@
 set -u
 _D="$(cd "$(dirname "$0")" && pwd)"
 native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf %s "$1"; fi; }
-OL="$(native "$_D/../helpers/operator-lead.cjs")"
+OL="$(native "$_D/../hooks/operator-lead.cjs")"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 fail=0
 ok()  { echo "  OK   $1"; }

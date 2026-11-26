@@ -14,7 +14,7 @@
  * text the reason starts with (or holds in its first 120 characters). No file, no match: the reason stays as it is.
  * Only whole JSON writes are touched (permissionDecisionReason of a deny, reason of a block); anything else passes
  * byte for byte. Fails open: an error here never changes or drops a hook's output.
- * Fixture: scripts/test-operator-lead.sh
+ * Fixture: scripts/test-operator-lead.sh. Lives in hooks/, not helpers/: readers of hooks.json take the first core/helpers/ path of a command as the hook (check-catalog.py, hook-coverage.py; CI python-floor 2026-11-26)
  */
 const fs = require('fs');
 const path = require('path');
