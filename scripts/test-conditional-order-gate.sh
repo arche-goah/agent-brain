@@ -305,6 +305,16 @@ run_case cls-then block Workflow '{"name":"x"}' "$CIC"
 # a failed classifier call (model null) leaves the words in charge
 printf '{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":null,"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
 run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# Windows content review 2026-11-26, case (4): the prompt's own call failed and an EARLIER short prompt ("ok", a
+# prefix of nothing here but matched by the 40-character prefix rule before) was read as no condition - no waive
+printf '{"at":"2026-11-26T08:40:00.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"Fine"}\n{"at":"2026-11-26T09:00:03.000Z","session":"cls-then","mode":"hook","model":null,"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# case (1): no own record yet, an earlier record of a prompt with the same first 40 characters waived the hold
+printf '{"at":"2026-11-26T08:58:00.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"Fine, then the core needs a fix. Nothing else."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then block Workflow '{"name":"x"}' "$CIC"
+# the record written at submit, BEFORE the transcript holds the prompt (queued), with the same text still waives
+printf '{"at":"2026-11-26T08:59:50.000Z","session":"cls-then","mode":"hook","model":{"condition":false},"prompt":"Fine, then the core needs a fix."}\n' > "$CIC/.claude-state/intent-classifier.jsonl"
+run_case cls-then allow Workflow '{"name":"x"}' "$CIC"
 
 echo
 [ "$fail" -eq 0 ] && echo "conditional-order-gate fixtures: ALL passed" || echo "FAILURE"

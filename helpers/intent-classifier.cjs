@@ -10,7 +10,8 @@
  * macOS instance, 2026-11-18 (model right / decided): asks_open 32/35, correction 30/37, orders_task 32/33; mode_on
  * gave no gain (all eight model errors were false trues) - the prompt below names those cases instead. Operator decision 2026-11-18 (question tool): a record of
  * THIS prompt decides those three fields (autonomous-mode.cjs `modelSays` / `intentFor`), no record = the words;
- * mode_on, mode_off and condition keep the reading they had (autonomous-mode.cjs, conditional-order-gate.cjs).
+ * condition: a record of exactly this prompt (autonomous-mode.cjs intentExact) decides it in both directions in
+ * conditional-order-gate.cjs, a looser match may only add a hold; mode_on and mode_off keep the reading they had.
  *
  * One `claude -p` call per operator prompt with all hooks off (no recursion; INTENT_CLASSIFIER_CHILD as a second
  * guard), cwd outside the brain (the nested call writes a transcript of its own, which history readers would take

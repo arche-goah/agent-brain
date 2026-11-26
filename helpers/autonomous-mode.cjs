@@ -252,6 +252,22 @@ function intentFor(list, ts, text) {
  * words"). Hand-judged sample the same day on the macOS instance, 40 disagreements per field: the model was right in
  * 91 % (asks_open), 81 % (correction) and 97 % (orders_task) of the decided cases.
  */
+/**
+ * The record whose prompt IS this prompt (whitespace folded, the 160 characters a record keeps) - for a reading that
+ * WAIVES a check. intentFor matches on a 40-character prefix and reaches 30 min back, right for adding a check, wrong for
+ * removing one: measured 2026-11-26 by the Windows review of #682, an earlier "ok" or a prompt with the same first
+ * 40 characters waived a hold main kept, and a failed call of the prompt itself fell back to an older record.
+ */
+function intentExact(list, ts, text) {
+  const t = Date.parse(ts || '');
+  const full = (x) => String(x || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  const want = full(text);
+  if (Number.isNaN(t) || !want) return null;
+  const hit = list.find((r) => r.prompt !== null && r.at >= t - INTENT_BEFORE_MS && r.at - t <= INTENT_WINDOW_MS
+    && full(r.prompt) === want && r.model);
+  return hit ? hit.model : null;
+}
+
 function modelSays(key, transcriptPath, cwd, ts, text) {
   const hit = intentFor(intents(transcriptPath, cwd), ts, text);
   return hit && typeof hit[key] === 'boolean' ? hit[key] : null;
@@ -432,7 +448,7 @@ function closedAfter(transcriptPath, cwd, since) {
   return since == null || st.mtimeMs >= since;
 }
 
-module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason };
+module.exports = { autonomousMode, promptModes, words, initialState, asksMode, intents, intentFor, intentExact, modelSays, answers, promptText, HOOK_ECHO, askWindow, modeReason };
 
 
 if (require.main === module) {
