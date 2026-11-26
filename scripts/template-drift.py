@@ -29,7 +29,9 @@ The invariants:
      reached an older brain, so a German order never switched the autonomous mode on there);
   4. every stop check of `core/templates/rules-instance/stop-checks.json` that is not `required` is in
      the brain's `.claude/rules/stop-checks.json`, or switched off there in `"disabled"` with a reason
-     (Windows instance 2026-11-05: MODE-LOG was missing and nothing said so) - a note, not a `!!`.
+     (Windows instance 2026-11-05: MODE-LOG was missing and nothing said so) - a note, not a `!!`;
+  5. every top-level setting of `core/templates/settings.json` with a plain value (`viewMode`) is set in the brain's
+     project settings, to the template's value or its own (operator 2026-11-26: focus view as the core default) - a note.
 Anything else is named at every session start, loudly, as long as it stands.
 
 Usage:
@@ -145,6 +147,21 @@ def project_drift(repo, template):
             f"limit. Take them over, or declare why in permissions._template_deviations "
             f"(full list: {py_name()} core/scripts/autonomy-diagnose.py, section 4)")
     return "!! settings: " + " | ".join(msgs)
+
+
+def key_drift(repo, template):
+    """Invariant 5: a top-level setting of the template with a plain value (string, number, bool - `viewMode`) that the
+    brain's .claude/settings.json does not set at all. A brain that sets its own value is not behind; it chose."""
+    tpl = load(template) or {}
+    here = load(pathlib.Path(repo) / ".claude" / "settings.json")
+    if here is None:
+        return None   # project_drift names a missing or broken file already
+    gone = [f'"{k}": {json.dumps(v)}' for k, v in tpl.items()
+            if not k.startswith("_") and isinstance(v, (str, int, float, bool)) and k not in here]
+    if not gone:
+        return None
+    return (f"note: settings: {len(gone)} setting(s) of the core template are not in this brain's .claude/settings.json "
+            f"- {', '.join(gone)}. Take them over (a settings edit is the operator's), or set the brain's own value")
 
 
 def wanted_auto(user_template, org, key="autoMode"):
@@ -292,6 +309,7 @@ def main():
     if args.copy_data:
         return copy_data(args.repo, args.rules_template, args.helpers)
     for line in (project_drift(args.repo, args.template),
+                 key_drift(args.repo, args.template),
                  data_drift(args.repo, args.rules_template, args.helpers),
                  stop_check_drift(args.repo, args.rules_template)):
         if line:

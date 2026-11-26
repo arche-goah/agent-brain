@@ -1,5 +1,7 @@
 {
   "_comment": "From agent-brain/templates. The core's hooks are NOT here: the brain-core plugin ships them (hooks/hooks.json, since 2.0.4) and they run from core/helpers (submodule). A `hooks` block in a brain's settings.json carries only that brain's own hooks; a copy of a core hook fires twice and scripts/hook-coverage.py names it. Marketplace/plugins: enter once, installation happens on the next start. The marketplace below is an EXAMPLE - replace '<your-org>' (an invalid name on purpose: an unedited template fails to resolve instead of reaching a stranger's organisation) with the marketplace repo that pins this core for your setup.",
+  "_viewMode": "Focus view as the core default (operator decision 2026-11-26, after a session in it): the operator sees the last prompt, a one-line summary of the tool calls and the final reply - the form the core's reporting rules already assume (text between tool calls does not reach the operator). Honoured in any settings file; a project value overrides the user's (docs settings-reference, viewMode, read 2026-11-26). Needs the fullscreen renderer. A brain that wants another view sets its own value; scripts/template-drift.py names the key only while a brain sets none.",
+  "viewMode": "focus",
   "extraKnownMarketplaces": {
     "<your-org>": {
       "source": {
