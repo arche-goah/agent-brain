@@ -10,7 +10,10 @@
  *
  * A REQUEST is everything between two prompts the operator typed (helpers/turn-kind.cjs `operatorPrompt` - the one
  * reader; notifications, hook echoes, peer messages, timer prompts and local commands open no request), in one
- * session. Its tokens are the usage of every model call in that span, each message id counted once (a call is
+ * session. An answer the operator gives in the question tool is no typed prompt either: it stays inside the request
+ * that asked, so a request with questions costs what it took to settle them (Windows review of #651, 2026-11-24: on
+ * one workstation in November 58 such answers stood against 84 typed prompts - counted as requests of their own, the
+ * cost per request would have dropped by about 40 % without anything getting cheaper). Its tokens are the usage of every model call in that span, each message id counted once (a call is
  * written as several records with the same id), plus the calls of the sub-agents the session started in that span
  * (`<session>/subagents/*.jsonl`, assigned by timestamp). Headless calls (`sdk-cli`) are no session.
  *
