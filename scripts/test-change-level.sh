@@ -53,6 +53,15 @@ repo "$R"; frag a '- **x.** the form `(level: …; higher: …)` quoted in code 
 repo "$R"; frag a "$B (level: design; higher: none; debt: none; settles-debt: nowhere)";    check "settles-debt naming nothing fails" fail "names no fragment"
 repo "$R"; frag a "$B (level: design; higher: none; debt: none; settles-debt: b)"; frag b "$B (level: writer; higher: design — x; debt: y)"
 check "settles-debt naming an open fragment passes" pass
+# symptom lines run without a shell (real-data-replay.py, shlex.split): the v2.1.7 preflight 2026-11-25 ran
+# a piped command as one command, rc 2 - the bug was never measured
+L="$B (level: writer; higher: design — x; debt: none)"
+repo "$R"; frag a "$L
+symptom: python3 {core}/scripts/x.py --brain {brain} | wc -l";             check "a symptom with a pipe and no sh -c fails" fail "runs without a shell"
+repo "$R"; frag a "$L
+symptom: sh -c 'python3 {core}/scripts/x.py | wc -l'";                     check "the same symptom inside sh -c passes" pass
+repo "$R"; frag a "$L
+symptom: python3 {core}/scripts/x.py --brain {brain}";                                     check "a symptom without shell syntax passes" pass
 repo "$R"; printf '# Changelog\n\n## 1.0.0 — 2026-01-01\n\n- **old.** (level: writer; higher: design — x; debt: y) <!-- fragment: old-one -->\n' > "$R/CHANGELOG.md"
 frag a "$B (level: design; higher: none; debt: none; settles-debt: old-one)";              check "settles-debt naming a released fragment passes" pass
 repo "$R"; frag a "$B (level: design; higher: none; debt: none)"; frag b "$B";              check "every fragment of a PR is checked" fail "b.md"

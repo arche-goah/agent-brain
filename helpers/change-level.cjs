@@ -33,6 +33,7 @@ const path = require('path');
 
 const LEVELS = ['symptom', 'reader', 'writer', 'design'];
 const MARK = /<!--\s*fragment:\s*([\w.-]+)\s*-->/;
+const SYMPTOM = /^\s*(?:[-*]\s+)?symptom:\s*(.+?)\s*$/gm;   // the line form scripts/real-data-replay.py reads
 
 // Every `(level: …)` group of a text, parentheses balanced (the reasons may carry their own).
 // Inline code is blanked first: a fragment that QUOTES the form (`(level: …)`) is not a field.
@@ -155,7 +156,17 @@ function check(root, only) {
   const findings = [];
   for (const p of files) {
     const name = path.relative(root, p).replace(/\\/g, '/');
-    const gs = groups(read(p));
+    const raw = read(p);
+    // A `symptom:` line runs WITHOUT a shell (scripts/real-data-replay.py: shlex.split): measured 2026-11-25 in the
+    // v2.1.7 preflight, a line with `|` ended rc 2 ("unrecognized arguments: | grep") - the bug was not measured at
+    // all. Shell syntax goes inside `sh -c '...'`, the form CHANGELOG 2.1.x already uses.
+    for (const m of raw.matchAll(SYMPTOM)) {
+      const c = m[1].trim();
+      if (/[|&;<>]|\$\(|`/.test(c) && !/^(?:sh|bash)\s+-c\s/.test(c)) {
+        findings.push(`${name}: symptom: "${c.slice(0, 80)}" uses shell syntax but runs without a shell - write it as sh -c '...'`);
+      }
+    }
+    const gs = groups(raw);
     if (!gs.length) {
       findings.push(`${name}: no (level: …; higher: …; debt: …) field - every change declares its level`);
       continue;

@@ -253,6 +253,16 @@ mv "$TMP/request-x.md" "$SHM/core/request-x.md"
 echo 7 > "$TMP/gh-open"
 RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1
 check "control: the PR-naming entry blocks again while #7 is open" 1 $?
+# v2.1.7, 2026-11-25: an entry naming PRs the release scope EXCLUDES (the operator's word) held the tag
+mkscope "$TMP/scope-brain-excl" 2.0.0 '[]'
+"$PY" -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["excluded"]={"7": "next train - operator \"later\" 2026-11-25"}; json.dump(d,open(p,"w"))' "$(native "$TMP/scope-brain-excl/.claude-state/release-scope.json")"
+OUT="$(RELEASE_PREFLIGHT_ROOT="$R" RELEASE_SCOPE_BRAIN="$TMP/scope-brain-excl" bash "$S" v2.0.0 2>&1)"; rc=$?; printf '%s\n' "$OUT" > "$LAST"
+case "$OUT" in *"excluded from the 2.0.0 scope"*"#7"*) said=0;; *) said=1;; esac
+check "an entry naming only a PR the scope excludes does not hold the release, and it is said" 0 $(( rc + said ))
+mkscope "$TMP/scope-brain-excl-old" 1.9.0 '[]'
+"$PY" -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["excluded"]={"7": "x"}; json.dump(d,open(p,"w"))' "$(native "$TMP/scope-brain-excl-old/.claude-state/release-scope.json")"
+RELEASE_PREFLIGHT_ROOT="$R" RELEASE_SCOPE_BRAIN="$TMP/scope-brain-excl-old" bash "$S" v2.0.0 >"$LAST" 2>&1
+check "an exclusion of another version's scope does not count" 1 $?
 : > "$TMP/gh-open"
 sed -i.bak 's/status: open/status: answered/' "$SHM/core/request-x.md" && rm -f "$SHM/core/request-x.md.bak"
 RELEASE_PREFLIGHT_ROOT="$R" bash "$S" v2.0.0 >"$LAST" 2>&1

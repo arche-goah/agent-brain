@@ -230,6 +230,24 @@ if [ "$MODE" = "local" ] || [ "$MODE" = strand ]; then
     # named, never counted. gh unreadable = every entry counts, as before.
     OPEN_NRS="?"
     command -v gh >/dev/null 2>&1 && OPEN_NRS="$(cd "$ROOT" && gh pr list --state open --limit 200 --json number,isDraft --jq '[.[].number] | join(" ")' 2>/dev/null || echo "?")"
+    # A PR the release scope EXCLUDES for this version (release-scope.py exclude, the operator's word) is not awaited:
+    # measured 2026-11-25 at v2.1.7, an entry that named the excluded #653 and #662 and itself said "not for 2.1.7"
+    # held the tag. The scope file is the brain's (RELEASE_SCOPE_BRAIN), its version must be this one.
+    SCOPE_JSON="${RELEASE_SCOPE_BRAIN:-}/.claude-state/release-scope.json"
+    if [ "$OPEN_NRS" != "?" ] && [ -n "${RELEASE_SCOPE_BRAIN:-}" ] && [ -f "$SCOPE_JSON" ]; then
+      command -v cygpath >/dev/null 2>&1 && SCOPE_JSON="$(cygpath -m "$SCOPE_JSON")"   # OS-3: python reads it as data
+      # prints "<open numbers left>|<excluded numbers>"
+      SPLIT="$("$PY" -c 'import json,re,sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+ex = []
+if str(d.get("version", "")).lstrip("v") == sys.argv[2].lstrip("v"):
+    ex = [m.group(1) for k in (d.get("excluded") or {}) for m in [re.fullmatch(r"(?:[\w.-]+)?#?(\d+)", str(k))] if m]
+print(" ".join(n for n in sys.argv[3].split() if n not in ex) + "|" + " ".join(ex))' "$SCOPE_JSON" "$VER" "$OPEN_NRS" 2>/dev/null)"
+      if [ -n "$SPLIT" ]; then
+        OPEN_NRS="${SPLIT%%|*}"; EXCL_NRS="${SPLIT#*|}"
+        [ -n "$EXCL_NRS" ] && note "PRs excluded from the $VER scope do not count as awaited: #${EXCL_NRS// / #}"
+      fi
+    fi
     awaited=""; other=""
     while IFS= read -r f; do
       [ -n "$f" ] || continue
