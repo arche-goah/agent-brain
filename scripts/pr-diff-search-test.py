@@ -76,6 +76,26 @@ rc, out = run(["shell_tools", "-i"], PRS)
 check(rc == 0, "-i matches case-insensitively")
 rc, out = run(["(unclosed"], PRS)
 check(rc == 2 and "bad regex" in out, "a bad regex exits 2 and says so")
+# Windows review 2026-11-26: a removed `-- comment` / an added `++ x` line inside a hunk is content, not a header
+DIFF_SQL = """diff --git a/db/q.sql b/db/q.sql
+--- a/db/q.sql
++++ b/db/q.sql
+@@ -1,3 +1,3 @@
+ select 1;
+--- old needle comment
++++ new needle line
+ select 2;
+@@ -10,2 +10,2 @@
+-tail needle a
++tail needle b
+"""
+rc, out = run(["needle"], [{"number": 700, "title": "sql", "diff": DIFF_SQL}])
+check("#700 db/q.sql:2 - -- old needle comment" in out, "a removed `-- ` line inside a hunk is a hit with its path")
+check("#700 db/q.sql:2 + ++ new needle line" in out, "an added `++ ` line inside a hunk is a hit with its path")
+check("#700 db/q.sql:10 - tail needle a" in out and "#700 db/q.sql:10 + tail needle b" in out,
+      "after such lines the path and the line numbers of the next hunk stay right")
+rc, out = run(["needle"], [{"number": 701, "title": "crlf", "diff": DIFF_SQL.replace("\n", "\r\n")}])
+check("#701 db/q.sql:10 + tail needle b" in out, "a CRLF diff reads the same")
 rc, out = run(["x"], [])
 check(rc == 1 and "0 open PR(s)" in out, "no open PR: exit 1, the count said")
 

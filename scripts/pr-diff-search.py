@@ -11,6 +11,10 @@ Prints one line per changed line that matches: `#<nr> <path>:<line> <+|-> <text>
 `+`, old-side for `-`), then a summary. Only added and removed lines are searched, never context.
 Exit: 0 = at least one hit, 1 = no hit, 2 = error (gh missing, repo unknown, bad regex) - like grep.
 The repo defaults to the origin of the current directory's git repo.
+Git Bash on Windows rewrites an argument that starts with `/` into a Windows path before Python sees it (MSYS path
+conversion): `'/tmp/out'` arrives as `C:/Program Files/Git/tmp/out` and gives "no hit". Write `'[/]tmp/out'`, or
+run from PowerShell, which passes it unchanged (Windows review 2026-11-26). A PR whose diff cannot be read is named
+and skipped; the others are still searched.
 Test fixture via PR_DIFF_FIXTURE (path to JSON {"repo": ..., "prs": [{"number", "title", "diff"}]}).
 Test: scripts/pr-diff-search-test.py.
 """
@@ -45,32 +49,44 @@ def origin_repo():
 
 def hits_in(diff, rx):
     """Yield (path, line, sign, text) for every added or removed line of a unified diff that matches rx."""
-    path, old, new = None, 0, 0
-    for raw in diff.splitlines():
-        if raw.startswith("diff --git "):
+    # `---` / `+++` are headers only OUTSIDE a hunk: inside one, a removed `-- comment` or an added `++ x` line is
+    # content (Windows review 2026-11-26: such a line was read as a header, its hit lost, the path replaced). A hunk
+    # ends when its counts from the `@@` header are used up. split("\n"), not splitlines(): a form feed or U+2028 in
+    # a changed line must not start a new line.
+    path, old, new, old_left, new_left = None, 0, 0, 0, 0
+    for raw in diff.split("\n"):
+        raw = raw[:-1] if raw.endswith("\r") else raw
+        in_hunk = old_left > 0 or new_left > 0
+        if not in_hunk and raw.startswith("diff --git "):
             path = None
-        elif raw.startswith("--- "):
+        elif not in_hunk and raw.startswith("--- "):
             p = raw[4:].strip()
             path = None if p == "/dev/null" else (p[2:] if p.startswith("a/") else p)
-        elif raw.startswith("+++ "):
+        elif not in_hunk and raw.startswith("+++ "):
             p = raw[4:].strip()
             if p != "/dev/null":
                 path = p[2:] if p.startswith("b/") else p
         elif raw.startswith("@@"):
-            m = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)", raw)
+            m = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))?", raw)
             if m:
-                old, new = int(m.group(1)), int(m.group(2))
-        elif raw.startswith("+"):
+                old, new = int(m.group(1)), int(m.group(3))
+                old_left = int(m.group(2)) if m.group(2) is not None else 1
+                new_left = int(m.group(4)) if m.group(4) is not None else 1
+        elif in_hunk and raw.startswith("+"):
             if rx.search(raw[1:]):
                 yield path, new, "+", raw[1:]
             new += 1
-        elif raw.startswith("-"):
+            new_left -= 1
+        elif in_hunk and raw.startswith("-"):
             if rx.search(raw[1:]):
                 yield path, old, "-", raw[1:]
             old += 1
-        elif raw.startswith(" "):
+            old_left -= 1
+        elif in_hunk and raw.startswith(" "):
             old += 1
             new += 1
+            old_left -= 1
+            new_left -= 1
 
 
 def load(repo):
@@ -81,7 +97,11 @@ def load(repo):
         return d.get("repo") or repo, d["prs"]
     prs = json.loads(gh(["pr", "list", "-R", repo, "--state", "open", "--limit", "200", "--json", "number,title"]))
     for p in prs:
-        p["diff"] = gh(["pr", "diff", str(p["number"]), "-R", repo])
+        try:
+            p["diff"] = gh(["pr", "diff", str(p["number"]), "-R", repo])
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"pr-diff-search: #{p['number']} diff not readable, skipped ({type(e).__name__})", file=sys.stderr)
+            p["diff"] = ""
     return repo, prs
 
 
