@@ -179,7 +179,29 @@ out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-folder-fresh-file-silent" |
 touch -t 202609010000 "$T/b/.claude-state/runs/a.md"
 out=$(run); grep -q 'no living record: scripts/rig-check.sh (record .claude-state/runs not written for 37 d)' <<< "$out" \
   && ok "test-alpha-record-folder-stale-loud" || bad "test-alpha-record-folder-stale-loud: $out"
+# Windows review of #688 (2026-11-26): a folder of per-run folders and an OS metadata file
+mkdir -p "$T/b/.claude-state/runs/2026-09-01"; : > "$T/b/.claude-state/runs/2026-09-01/result.md"
+touch -t 202609010000 "$T/b/.claude-state/runs/2026-09-01/result.md"; rm -f "$T/b/.claude-state/runs/a.md"
+out=$(run); grep -q 'no living record: scripts/rig-check.sh (record .claude-state/runs not written for 37 d)' <<< "$out" \
+  && ok "test-alpha-record-nested-folder-stale-loud" || bad "test-alpha-record-nested-folder-stale-loud: $out"
+: > "$T/b/.claude-state/runs/desktop.ini"; touch -t 202610070000 "$T/b/.claude-state/runs/desktop.ini"
+out=$(run); grep -q 'record .claude-state/runs not written for 37 d' <<< "$out" \
+  && ok "test-alpha-record-metadata-file-is-no-write" || bad "test-alpha-record-metadata-file-is-no-write: $out"
 rm -rf "$T/b/.claude-state/runs"
+# Windows-only forms (`~\` and a Git Bash drive path): run where they mean something
+if [ "${OS:-}" = Windows_NT ]; then
+  mkdir -p "$T/fakehome/.claude-state"; : > "$T/fakehome/.claude-state/rig.jsonl"; touch -t 202610070000 "$T/fakehome/.claude-state/rig.jsonl"
+  decl '{"alpha":{"scripts/rig-check.sh":{"kind":"test","until":"2026-10-20","why":"home record","record":"~\\.claude-state\\rig.jsonl"}}}'
+  out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-tilde-backslash-silent (Windows)" || bad "tilde-backslash: $out"
+  mkdir -p "$T/b/.claude-state"; : > "$T/b/.claude-state/rig.jsonl"; touch -t 202610070000 "$T/b/.claude-state/rig.jsonl"
+  w="$(cygpath -m "$T/b/.claude-state")"   # C:/... - written back as the Git Bash form /c/...
+  gb="/$(printf %s "${w:0:1}" | tr 'A-Z' 'a-z')/${w:3}/rig.jsonl"
+  decl "{\"alpha\":{\"scripts/rig-check.sh\":{\"kind\":\"test\",\"until\":\"2026-10-20\",\"why\":\"drive path\",\"record\":\"$gb\"}}}"
+  out=$(run); [[ -z "$out" ]] && ok "test-alpha-record-git-bash-drive-path-silent (Windows)" || bad "drive path ($gb): $out"
+  rm -f "$T/b/.claude-state/rig.jsonl" "$T/fakehome/.claude-state/rig.jsonl"
+else
+  echo "  SKIP test-alpha-record ~\\ and /c/ forms (Windows only)"
+fi
 # Every alpha names its kind (operator 2026-11-17): test waits for its result, unreleased carries its core PR.
 decl '{"alpha":{"scripts/rig-check.sh":{"kind":"unreleased","until":"2026-10-20","why":"core feature","core_pr":"o/r#123"}}}'
 out=$(run); [[ -z "$out" ]] && ok "alpha-unreleased-with-core-pr-silent" || bad "alpha-unreleased-with-core-pr-silent: $out"
