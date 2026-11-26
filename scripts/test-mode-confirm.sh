@@ -52,10 +52,14 @@ mode "a free-text answer that orders nothing stays interactive" "$f" interactive
 f="$T/6.jsonl"; { user "work through the list autonomously"; confirm c1 mode-confirm "The open list" "The open list" "Stay interactive"; asst "x"; user "back to normal mode"; } > "$f"
 mode "an off-word in a run switches nothing by itself" "$f" autonomous
 pend "the off-word leaves 'continue interactively?' pending" "$f" interactive
-f="$T/7.jsonl"; { cat "$T/6.jsonl"; confirm c2 mode-confirm "Continue interactively" "Stay autonomous" "Continue interactively"; } > "$f"
+f="$T/7.jsonl"; { cat "$T/6.jsonl"; confirm c2 mode-confirm "Continue interactively" "Continue interactively" "Stay autonomous"; } > "$f"
 mode "the answer to 'continue interactively?' ends the run" "$f" interactive
-f="$T/8.jsonl"; { cat "$T/6.jsonl"; confirm c2 mode-confirm "Stay autonomous" "Stay autonomous" "Continue interactively"; } > "$f"
+f="$T/8.jsonl"; { cat "$T/6.jsonl"; confirm c2 mode-confirm "Stay autonomous" "Continue interactively" "Stay autonomous"; } > "$f"
 mode "'stay autonomous' keeps the run" "$f" autonomous
+# the operator 2026-11-26: the mode the words name comes FIRST - towards interactive the old order (interactive last)
+# no longer reads interactive by its position - answered with the interactive label it still ends the run
+f="$T/8b.jsonl"; { cat "$T/6.jsonl"; confirm c2 mode-confirm "Continue interactively" "Stay autonomous" "Continue interactively"; } > "$f"
+mode "towards interactive, the old order answered with its interactive label still ends the run (an off-word in the label)" "$f" interactive
 f="$T/9.jsonl"; { user "work through the list autonomously"; rejected c1; } > "$f"
 mode "a rejected mode-confirm question switches nothing" "$f" interactive
 pend "a rejected mode-confirm question ends the wait" "$f" none
@@ -150,14 +154,14 @@ mode "control: a free-text order switches on" "$f" autonomous
 # finding 3: a misordered option list is held at ask time
 QM='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"Stay interactive"},{"label":"The open list"}]}]}'
 [ "$(hook AskUserQuestion "$T/1.jsonl" s12 "$QM" | pre)" = held ] && ok "pre: the interactive option first is held" || bad "pre: a misordered list passed"
-QM2='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"Continue interactively"},{"label":"Stay autonomous"}]}]}'
-[ "$(hook AskUserQuestion "$T/6.jsonl" s12 "$QM2" | pre)" = held ] && ok "pre: towards interactive, autonomous last is held" || bad "pre: autonomous last passed"
-QM3='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"Stay autonomous"},{"label":"Continue interactively"}]}]}'
-[ "$(hook AskUserQuestion "$T/6.jsonl" s12 "$QM3" | pre)" = pass ] && ok "pre: control - the right order passes" || bad "pre: the right order was held"
+QM2='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"Stay autonomous"},{"label":"Continue interactively"}]}]}'
+[ "$(hook AskUserQuestion "$T/6.jsonl" s12 "$QM2" | pre)" = held ] && ok "pre: towards interactive, the interactive option last is held" || bad "pre: interactive last passed"
+QM3='{"questions":[{"question":"Mode?","header":"mode-confirm","options":[{"label":"Continue interactively"},{"label":"Stay autonomous"}]}]}'
+[ "$(hook AskUserQuestion "$T/6.jsonl" s12 "$QM3" | pre)" = pass ] && ok "pre: control - towards interactive, the interactive option first passes" || bad "pre: the right order was held"
 # through the gate itself
 out="$(hook Edit "$T/1.jsonl" s4 | CLAUDE_PROJECT_DIR="$(native "$EN")" node "$AG")"
 [[ "$out" == *MODE-CONFIRM* && "$out" == *"no extra rights"* ]] && ok "gate: the hold names the question and the explanation" || bad "gate: no MODE-CONFIRM hold: $out"
-f="$T/6.jsonl"; out="$(hook AskUserQuestion "$f" s5 "$Q" | CLAUDE_PROJECT_DIR="$(native "$EN")" node "$AG")"
+f="$T/6.jsonl"; out="$(hook AskUserQuestion "$f" s5 "$QM3" | CLAUDE_PROJECT_DIR="$(native "$EN")" node "$AG")"
 [ -z "$out" ] && ok "gate: in an autonomous run the mode-confirm question is not refused" || bad "gate: refused it: $out"
 Q2='{"questions":[{"question":"Release now?","header":"release","options":[{"label":"a"},{"label":"b"}]}]}'
 out="$(hook AskUserQuestion "$T/2.jsonl" s6 "$Q2" | CLAUDE_PROJECT_DIR="$(native "$EN")" node "$AG")"
@@ -182,7 +186,7 @@ f="$T/i1c.jsonl"; { user "weiter autonom"; confirm i1 mode-confirm "weiter inter
 dmode "incident 1, control: the last option keeps it interactive" "$f" interactive
 # 2) interactive again after a confirmed switch back, then an on-word: nothing switches, and the mode-confirm question
 # is let through (the old reading switched at once, then AUTONOMOUS-GATE refused the very question that confirms it)
-f="$T/i2.jsonl"; { cat "$T/i1.jsonl"; asst "x"; user "noch mal interaktiv bitte"; confirm i2 mode-confirm "weiter interaktiv" "autonom bleiben" "weiter interaktiv"; asst "x"; user "noch mal test: ab jetzt bitte autonom"; } > "$f"
+f="$T/i2.jsonl"; { cat "$T/i1.jsonl"; asst "x"; user "noch mal interaktiv bitte"; confirm i2 mode-confirm "weiter interaktiv" "weiter interaktiv" "autonom bleiben"; asst "x"; user "noch mal test: ab jetzt bitte autonom"; } > "$f"
 dmode "incident 2: back to interactive by the confirmed answer" "$T/i2.jsonl" interactive
 dpend "incident 2: the on-word waits for its question" "$f" autonomous
 [ "$(MODE_READING=words node "$M" "$(native "$f")" "$(native "$DE")")" = autonomous ] && ok "incident 2, control: the word reading switches at once" || bad "incident 2, control: the word reading did not switch"
@@ -193,8 +197,8 @@ out="$(hook Edit "$f" s20 | CLAUDE_PROJECT_DIR="$(native "$DE")" node "$AG")"
 [[ "$out" == *MODE-CONFIRM* ]] && ok "incident 2, control: an edit is held until it is asked" || bad "incident 2, control: the edit passed: $out"
 # The answer is found by the question as asked: a `"` inside the question (the operator quoted) read as REJECTED before,
 # and the run stayed autonomous (measured 2026-11-25 on the same session, when the reader re-read its history).
-qq() { # a mode-confirm question whose text quotes the operator, answered with the last option
-  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":%s,"header":"mode-confirm","options":[{"label":"autonom bleiben"},{"label":"weiter interaktiv"}]}]}}]}}\n' "$1" "$(js 'Weiter interaktiv? Zu deinem "was soll das?": was hat gestoert?')"
+qq() { # a mode-confirm question whose text quotes the operator, answered with the first option (towards interactive)
+  printf '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"%s","name":"AskUserQuestion","input":{"questions":[{"question":%s,"header":"mode-confirm","options":[{"label":"weiter interaktiv"},{"label":"autonom bleiben"}]}]}}]}}\n' "$1" "$(js 'Weiter interaktiv? Zu deinem "was soll das?": was hat gestoert?')"
   printf '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"%s","content":%s}]}}\n' "$1" "$(js 'Your questions have been answered: "Weiter interaktiv? Zu deinem "was soll das?": was hat gestoert?"="weiter interaktiv". You can now continue')"
 }
 f="$T/q1.jsonl"; { cat "$T/i1.jsonl"; asst "x"; user "noch mal interaktiv bitte"; qq q1; } > "$f"
